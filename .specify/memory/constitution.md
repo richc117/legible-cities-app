@@ -1,12 +1,14 @@
 <!--
 Sync Impact Report
-- Version change: 1.0.0 -> 1.0.1
-- Bump rationale: PATCH. Governance states a policy it already relied on;
-  nothing is newly permitted or forbidden, and no principle changed.
-- Modified principles: none
+- Version change: 1.0.1 -> 1.1.0
+- Bump rationale: MINOR. Principle III is materially expanded: determinism
+  is now stated per project over a stored layout, and the capture rules
+  gain the paint wait, the stills case and independence from the attached
+  display. Nothing that complied before now fails; no work re-ran the
+  layout implicitly, because no work exists yet.
+- Modified principles: III (Determinism is a feature)
 - Added sections: none
-- Modified sections: Governance (explicit versioning policy; compliance
-  review expectation made explicit rather than implied)
+- Modified sections: none
 - Removed sections: none
 - Templates requiring updates: none. Dependent templates and commands read
   this file at runtime; plan-template.md derives its Constitution Check
@@ -48,14 +50,23 @@ generated from the engine's JSON Schema.
 
 ### III. Determinism is a feature
 
-Two exports of the same job agree within the published threshold, and a test
-says so. Capture sets `setCapture(true)` and settles before the first frame,
-steps the clock by `1/fps`, and compares in RGB with a channel tolerance of
-8 - never RGBA, never exact equality.
+A project's layout is computed once and stored with the project. Every
+render and every export reads that stored layout and never re-runs the
+layout stages; re-running them is an explicit action, and the app says
+plainly that it may produce a different map. Two exports of the same
+project agree within the published threshold, and a test says so.
+
+Capture sets `setCapture(true)` before any wait - stills included - settles
+before the first frame, steps the clock by `1/fps`, waits for the paint
+before each frame it takes, and compares in RGB with a channel tolerance of
+8 - never RGBA, never exact equality. Exported pixels never depend on the
+display attached to the machine.
 
 "It looked right when I ran it" is not a result. A person making a video for
-a city's transit page needs the same input to give the same output next
-month, on their machine, at whatever scale factor their monitor has.
+a city's transit page needs the same project to give the same output next
+month, on their machine, at whatever scale factor their monitor has. The
+layout engine is heuristic and, on some platforms, not reproducible
+(ADR-023); storing its result is what makes that promise keepable.
 
 ### IV. No network without a reason, no telemetry ever
 
@@ -162,4 +173,4 @@ moved.
 Complexity is justified in the pull request or removed. "We might need it"
 is not a justification.
 
-**Version**: 1.0.1 | **Ratified**: 2026-09-07 | **Last Amended**: 2026-09-07
+**Version**: 1.1.0 | **Ratified**: 2026-09-07 | **Last Amended**: 2026-09-07
