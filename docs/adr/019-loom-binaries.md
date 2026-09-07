@@ -90,18 +90,33 @@ libc++.
 
 ## Addendum, 2026-09-07
 
-Added after acceptance because the record above ended on a conjecture that
-the spike then settled. The decision is unchanged; only the guess about the
-cause was wrong, and leaving it would send the next reader the wrong way.
+Added after acceptance because the record above ended on a conjecture, and
+the first version of this addendum then overstated how far the spike had got
+past it. The decision is unchanged by either correction - it is better
+supported now than when it was written.
 
-The Consequences section supposed "uninitialised memory or ... iteration
-order over a hash container". It is neither. `util/graph/Graph.h` stores a
-graph's nodes in `std::set<Node*>` - an *ordered* container whose key is the
-pointer - and `topo` iterates it at 163 sites, so every pass runs in heap
-order. glibc lays those objects out in a stable relative order run to run and
-macOS's allocator does not, which is the whole of the difference between the
-two builds. `docs/adr/spikes/loom-native.md` has the evidence and a patch
-that fixes the node-count symptom without fixing the cause.
+**The conjecture was wrong.** Consequences supposed "uninitialised memory or
+... iteration order over a hash container". It is neither.
+`util/graph/Graph.h` stores a graph's nodes in `std::set<Node*>` - an
+*ordered* container whose key is the pointer - and `topo` iterates it at 163
+sites, so every pass runs in heap order. glibc lays those objects out in a
+stable relative order run to run; macOS's allocator does not.
+
+**But the cause is not settled, and this addendum first said it was.** It
+claimed a patch that "fixes the node-count symptom". At eight runs that
+looked true; at ten it is not - the patched build varies exactly as the
+unpatched one does. The tie-break in `collapseShrdSegs` is one contributor
+among 163 pointer-ordered iterations, and no fix has been demonstrated.
+
+What is established: both macOS builds are nondeterministic when compared as
+graphs, the Linux build is deterministic across eight runs on the same test,
+and the solver-free build's stable node count is a stable *count* over a
+graph that still changes. That last point strengthens the decision above
+rather than weakening it - the build this record chose to ship is no more
+reproducible than the other, and node count is not a determinism test.
+
+Reported upstream as https://github.com/ad-freiburg/loom/issues/44.
+`docs/adr/spikes/loom-native.md` has the numbers and the retraction.
 
 ---
 
