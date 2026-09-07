@@ -29,8 +29,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: macos-14,     target: darwin-arm64 }
-          - { os: macos-13,     target: darwin-x64   }
+          - { os: macos-15,       target: darwin-arm64 }
+          - { os: macos-15-intel, target: darwin-x64   }
           - { os: ubuntu-22.04, target: linux-x64    }
     steps:
       - uses: actions/checkout@v6
@@ -123,7 +123,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: macos-14, target: darwin-arm64 }
+          - { os: macos-15, target: darwin-arm64 }
     steps:
       - uses: actions/checkout@v6
       - name: Check out the engine at its pin
@@ -160,6 +160,9 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
+      # Runner labels: macos-13 was retired and macos-14 is deprecated in
+      # GitHub's runner-images table (checked 2026-09-07); macos-15 and
+      # macos-15-intel are the current arm64 and x64 images.
       - uses: msys2/setup-msys2@v2
         with:
           msystem: UCRT64
@@ -183,9 +186,10 @@ jobs:
           git -C port checkout "$port"
           echo "Patches from the Cairo port are applied here; the spike did not"
           echo "reach this step, so treat the first run as an experiment."
-          echo "(The first run on 2026-09-07 died before this line: the UCRT64"
-          echo "shell had no python to read the pins with. Hence the package above.)"
-          cmake -S loom-src -B loom-src/build -G "Unix Makefiles" \
+          echo "(Run one on 2026-09-07 died before this line: the UCRT64 shell had no"
+          echo "python to read the pins with. Run two found no make program: MSYS2's gcc"
+          echo "does not ship make, and ninja arrives with cmake, hence -G Ninja.)"
+          cmake -S loom-src -B loom-src/build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_DISABLE_FIND_PACKAGE_GLPK=ON \
             -DCMAKE_DISABLE_FIND_PACKAGE_COIN=ON \
