@@ -98,8 +98,9 @@ export function resolveConfig(input: ConfigInput): Config {
 /** The startup log lines, without the `[config]` tag the logger adds. */
 export function describeConfig(config: Config, options: { development: boolean }): string[] {
   const lines: string[] = []
+  const where = options.development ? '.env.local' : 'the environment'
   const unset = (key: Key): string =>
-    `${key} unset - nothing in this build needs it; set it in .env.local`
+    `${key} unset - nothing in this build needs it; set it in ${where}`
 
   lines.push(`SCHEMATIC_HOME=${config.home} (${config.sources.SCHEMATIC_HOME})`)
   lines.push(

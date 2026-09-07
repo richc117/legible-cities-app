@@ -92,6 +92,14 @@ describe('describeConfig', () => {
       '.env.local not found; using defaults',
     )
   })
+  it('points at the environment, not the file, in a packaged build', () => {
+    const c = resolveConfig({ ...base, env: {} })
+    const lines = describeConfig(c, { development: false })
+    expect(lines).toContain(
+      'SCHEMATIC_LOOM_BIN unset - nothing in this build needs it; set it in the environment',
+    )
+    expect(lines.join('\n')).not.toContain('.env.local')
+  })
   it('mentions the engine checkout only when set, and unknown keys', () => {
     const c = resolveConfig({
       ...base,

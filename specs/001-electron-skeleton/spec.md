@@ -117,7 +117,7 @@ Installers and the vendored components they carry are specified in `specs/002-ve
 - **FR-004**: The application MUST quit cleanly: window closed, no orphaned child process, no blocking dialog.
 - **FR-005**: The interface MUST be operable by keyboard alone, with visible focus, labelled controls, and contrast that holds in every theme it offers.
 - **FR-006**: The interface MUST respect the operating system's reduced-motion preference in anything that animates.
-- **FR-007**: The interface MUST take its colours, type and spacing from a single declared set of design tokens rather than values written at each use site. The tokens are a committed stylesheet copied from the engine's animation page at the pinned engine version — both of its theme blocks, warm-dark and sepia — and a unit test MUST fail when the copy differs from the pinned engine's page, so the two cannot drift unnoticed.
+- **FR-007**: The interface MUST take its colours, type and spacing from declared design tokens rather than values written at each use site. The colours are a committed stylesheet copied from the engine's animation page at the pinned engine version — both of its theme blocks, warm-dark and sepia; type and spacing, which the engine's blocks do not define, are a small token set the interface declares once. A unit test MUST fail when the colour copy differs from the engine's page. Until the engine is vendored at a pinned tag (A0-06, E11a), the test compares against the checkout named by configuration and skips, saying so, where none is configured; the pinned form activates with the pin.
 
 **The single origin**
 

@@ -13,9 +13,10 @@ vendor/python/
 vendor/loom/
 vendor/ffmpeg/
 
-# Secrets and signing material
+# Secrets and signing material (the documented example is tracked)
 .env
 .env.*
+!.env.example
 *.p12
 *.pem
 *.key

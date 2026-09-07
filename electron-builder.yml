@@ -2,7 +2,7 @@
 # unpacked app locally; the installers, and the vendored engine runtime,
 # LOOM and ffmpeg they carry (extraResources), arrive with
 # specs/002-vendored-components-and-installers (issue A0-10). Unsigned
-# until the release gate (ADR-008).
+# until the release-readiness gate (issue A6-05).
 appId: com.richardcaballero.legiblecities
 productName: Legible Cities
 directories:

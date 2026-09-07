@@ -44,13 +44,21 @@ function createWindow(): BrowserWindow {
   window.on('closed', () => {
     if (mainWindow === window) mainWindow = null
   })
-  void window.loadURL('app://local/ui/')
+  window.loadURL('app://local/ui/').catch((error: Error) => {
+    // A hidden window that never loads is the "loading forever" User Story 1
+    // rules out: say so, and show what there is.
+    log.error('window', `failed to load the interface: ${error.message}`)
+    window.show()
+  })
   return window
 }
 
 async function loadConfig(): Promise<Config> {
   const development = !app.isPackaged
-  const baseDir = app.getAppPath()
+  // Relative values resolve against the repository in development; a
+  // packaged app's own path is inside the bundle, so use the working
+  // directory there instead (nothing may resolve into the bundle, FR-016).
+  const baseDir = development ? app.getAppPath() : process.cwd()
   let fileText: string | undefined
   if (development) {
     try {
@@ -74,9 +82,13 @@ if (!hasLock) {
   app.quit()
 } else {
   app.on('second-instance', () => {
+    // A second launch focuses the existing window (FR-035); on macOS, where
+    // closing every window leaves the app running, it opens one again.
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore()
       mainWindow.focus()
+    } else {
+      mainWindow = createWindow()
     }
   })
 
@@ -84,7 +96,9 @@ if (!hasLock) {
     const config = await loadConfig()
     registerLibrary(ipcMain)
     registerAppProtocol({
-      devUrl: process.env.ELECTRON_RENDERER_URL,
+      // Development only: a packaged build never proxies anything, whatever
+      // its environment says (FR-009, FR-034).
+      devUrl: app.isPackaged ? undefined : process.env.ELECTRON_RENDERER_URL,
       uiRoot: join(__dirname, '../renderer'),
       engineHome: config.home,
       log: (message) => log.warn('protocol', message),
