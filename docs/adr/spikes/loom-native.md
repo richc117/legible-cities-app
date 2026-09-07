@@ -449,6 +449,39 @@ isolation run produced empty files because a shell variable holding
 reported the empties as a failure to parse rather than as a finding. A
 size check on every output before comparing is now part of the method.
 
+## Session five: Windows, built
+
+ADR-021 chose to build rather than borrow, and the first CI run had already
+bounded the work to two headers in `util`. `scripts/loom-windows-patch.py`
+now applies the port's documented changes to our own tree at the pin: the
+shim header and the five `cppgtfs` files whose only difference is the
+`timezone` rename are copied from the port at its pinned commit (their base
+equals ours); the four entry points, the root CMake file and three `util`
+files are edited in place on exact anchors that must match once, so a pin
+bump that moves one fails at the patch step and names it. Only the four
+tools this project ships are built, on every platform, which keeps
+`transitmap`, the HTTP server and the test targets out of the patch surface.
+
+| Attempt | Result |
+|---|---|
+| 1 | Compiles and links all four. `gtfs2graph.exe` needs only Windows' own DLLs; `topo`, `loom` and `octi` still load `zlib1.dll` and `libbz2-1.dll` from the MSYS2 tree, because CMake resolves both libraries to their import libraries by full path and `-static` does not override that. The gate refused them, as it should. |
+| 2 | With the static archives handed to CMake explicitly: **all four executables load only `ntdll`, `KERNEL32`, `KERNELBASE`, `ucrtbase` and, for three of them, `ADVAPI32`, `msvcrt`, `sechost`, `RPCRT4`** - Windows' own. Artefact 4.8 MB for the four. |
+
+The surprise was how little was left. Upstream `util` already carries a
+`_WIN32` branch; it merely includes `psapi.h` before `windows.h`. With that
+swapped, `pwd.h` shimmed, four macros undefined and the `timezone`
+identifier renamed in `cppgtfs`, the whole of LOOM's algorithm code compiles
+under GCC 16 on MSYS2 UCRT64 without a change. The port's claim that its
+changes are shims only is borne out by the compiler.
+
+**Not measured: what the Windows binaries produce.** No Windows host is
+attached to this repository, and the artefact cannot run here. The port
+claims no algorithmic change and the compiler agrees, but ADR-021 was right
+that a third data point is needed before Windows is called supported
+rather than shipped. That measurement belongs to the determinism gate
+(A5-04) and the acceptance run on the Windows PC (A6-04); the parity script
+and the LA feed are ready for it.
+
 ## What we ruled out
 
 **Bundling the Homebrew dylibs** (`dylibbundler`, rpath rewriting, static
@@ -524,8 +557,8 @@ method: the same build recipe should work on `macos-13` and under MSYS2, and
   prefer shipping cached graph stages over re-running the pipeline per export.
 - **Done in session four**: macOS x86_64 and Linux x64 built in CI, run and
   compared; `gtfs2graph` agrees on all three builds and with the reference.
-  Still open: Windows x64, which now fails only on the port's two `util`
-  shims that the job does not apply yet.
+  **Done in session five**: Windows x64 built in CI from our tree with the
+  port's changes applied, statically linked, only Windows' own DLLs.
 - The engine's committed reference graphs under `data/graphs/` predate this
   pin and cannot be reproduced exactly by any build, because the stage that
   produced them is not reproducible. They remain useful as a shape, not as a
