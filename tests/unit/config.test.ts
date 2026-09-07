@@ -2,7 +2,9 @@ import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { describeConfig, parseEnvFile, resolveConfig } from '../../src/main/config'
 
-// The code builds platform paths, so the expectations do too.
+// The default home is built with path.join and a relative value with
+// path.resolve, so those expectations are too; an absolute value is kept
+// verbatim on every platform (a rooted path counts as absolute on Windows).
 const home = join('/ud', 'engine')
 
 describe('parseEnvFile', () => {
@@ -49,9 +51,9 @@ describe('resolveConfig', () => {
       env: { SCHEMATIC_HOME: '/from-env' },
       fileText: 'SCHEMATIC_HOME=/from-file\nSCHEMATIC_FFMPEG=/file/ffmpeg\n',
     })
-    expect(c.home).toBe(resolve('/from-env'))
+    expect(c.home).toBe('/from-env')
     expect(c.sources.SCHEMATIC_HOME).toBe('environment')
-    expect(c.ffmpeg).toBe(resolve('/file/ffmpeg'))
+    expect(c.ffmpeg).toBe('/file/ffmpeg')
     expect(c.sources.SCHEMATIC_FFMPEG).toBe('.env.local')
     expect(c.fileFound).toBe(true)
   })
@@ -77,7 +79,7 @@ describe('describeConfig', () => {
     const c = resolveConfig({ ...base, env: {}, fileText: 'SCHEMATIC_LOOM_BIN=/opt/loom\n' })
     expect(describeConfig(c, { development: true })).toEqual([
       `SCHEMATIC_HOME=${home} (default)`,
-      `SCHEMATIC_LOOM_BIN=${resolve('/opt/loom')} (.env.local)`,
+      'SCHEMATIC_LOOM_BIN=/opt/loom (.env.local)',
       'SCHEMATIC_FFMPEG unset - nothing in this build needs it; set it in .env.local',
     ])
   })
@@ -97,7 +99,7 @@ describe('describeConfig', () => {
       fileText: 'LEGIBLE_ENGINE_CHECKOUT=/eng\nOOPS=1\n',
     })
     const lines = describeConfig(c, { development: true })
-    expect(lines).toContain(`LEGIBLE_ENGINE_CHECKOUT=${resolve('/eng')} (.env.local)`)
+    expect(lines).toContain('LEGIBLE_ENGINE_CHECKOUT=/eng (.env.local)')
     expect(lines).toContain('.env.local: unknown key OOPS ignored')
   })
 })
