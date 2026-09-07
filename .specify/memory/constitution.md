@@ -1,3 +1,19 @@
+<!--
+Sync Impact Report
+- Version change: 1.0.0 -> 1.0.1
+- Bump rationale: PATCH. Governance states a policy it already relied on;
+  nothing is newly permitted or forbidden, and no principle changed.
+- Modified principles: none
+- Added sections: none
+- Modified sections: Governance (explicit versioning policy; compliance
+  review expectation made explicit rather than implied)
+- Removed sections: none
+- Templates requiring updates: none. Dependent templates and commands read
+  this file at runtime; plan-template.md derives its Constitution Check
+  gates from it and needs no regeneration.
+- Follow-up TODOs: none
+-->
+
 # Legible Cities Constitution
 
 How this project builds software. Every spec, plan and pull request is read
@@ -122,7 +138,28 @@ below, and update anything the change contradicts in the same commit.
 Principles I and II have been load-bearing since before this repository
 existed; amending either is an ADR, not a tidy-up.
 
+Compliance is checked at review. A pull request is read against these
+principles the way it is read against its tests: `CONTRIBUTING.md`'s
+definition of done carries that as a line, and the `reviewer` subagent
+checks the same list. A violation is either fixed or argued in the open;
+it is never merged quietly on the grounds that it is small.
+
+The version below is the constitution's own, and it moves by semantic
+versioning:
+
+- **MAJOR** - a backward-incompatible governance change: a principle
+  removed, or redefined so that work which used to comply no longer does.
+- **MINOR** - a principle or section added, or guidance materially
+  expanded.
+- **PATCH** - a clarification, a wording fix, a corrected reference:
+  nothing that changes what is permitted or forbidden.
+
+An amendment names its bump and its reason in the pull request. Where the
+bump is arguable, it is the larger one - a reader who over-estimates a
+change loses a minute, and one who under-estimates it misses that the rules
+moved.
+
 Complexity is justified in the pull request or removed. "We might need it"
 is not a justification.
 
-**Version**: 1.0.0 | **Ratified**: 2026-09-07 | **Last Amended**: 2026-09-07
+**Version**: 1.0.1 | **Ratified**: 2026-09-07 | **Last Amended**: 2026-09-07
