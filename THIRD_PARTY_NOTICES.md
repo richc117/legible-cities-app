@@ -9,7 +9,7 @@ intended build.
 | Component | Role | Licence | Source |
 |---|---|---|---|
 | LOOM (planned) | Schematisation: `gtfs2graph`, `topo`, `loom`, `octi`, shipped as native binaries built in this repository's CI from a pinned commit | GPL-3.0 | https://github.com/ad-freiburg/loom |
-| LOOM Windows compatibility patches (planned) | Building LOOM under MSYS2 on Windows | GPL-3.0 | https://github.com/transportforcairo/loom-windows-port |
+| LOOM Windows compatibility changes, by Transport for Cairo | Building LOOM under MSYS2 on Windows. At build time the vendor workflow takes `win_compat.h` and five `cppgtfs` files (the `timezone` identifier rename) from the port at the commit pinned in `vendor/pins.json`, and applies the port's other documented changes to our own tree with `scripts/loom-windows-patch.py`. Shims only; the port states, and our parity check assumes, no change to LOOM's algorithms | GPL-3.0 | https://github.com/transportforcairo/loom-windows-port |
 | `legible-cities` engine (planned) | The Python pipeline: feeds, rendering, scheduling, animation, export | To be released under GPL-3.0-or-later; its repository does not yet carry a licence file, and nothing is bundled until it does | https://github.com/richc117/legible-cities |
 | Esri Calcite UI icons | View-switcher icons inside the engine's animation page; redistributed **unmodified** as the licence requires | Esri Master License Agreement | https://github.com/Esri/calcite-ui-icons |
 | FFmpeg (planned) | Encoding MP4 and GIF exports; a GPL build because it links x264 | GPL-2.0-or-later (this build; LGPL-2.1-or-later without `--enable-gpl`) | https://git.ffmpeg.org/ffmpeg.git |

@@ -78,7 +78,7 @@ jobs:
       - name: Build
         shell: bash
         working-directory: loom-src
-        run: cmake --build build -j 4
+        run: cmake --build build -j 4 --target gtfs2graph topo loom octi
 
       - name: Refuse anything that is not self-contained
         shell: bash
@@ -166,10 +166,11 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  # Windows needs MSYS2 and the Transport for Cairo compatibility patches, and
-  # neither was exercised by the spike. Left as a separate job rather than a
-  # matrix entry so its failure does not read as the others failing, and so
-  # the shell difference stays visible.
+  # Windows builds under MSYS2 UCRT64 from our own tree at the pin, with the
+  # changes Transport for Cairo's port documents applied by
+  # scripts/loom-windows-patch.py (ADR-021: build, do not borrow). A separate
+  # job rather than a matrix entry so its failure does not read as the others
+  # failing, and so the shell difference stays visible.
   loom-windows:
     name: loom (win-x64)
     runs-on: windows-latest
@@ -186,9 +187,12 @@ jobs:
             git
             mingw-w64-ucrt-x86_64-gcc
             mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
             mingw-w64-ucrt-x86_64-protobuf
+            mingw-w64-ucrt-x86_64-zlib
+            mingw-w64-ucrt-x86_64-bzip2
             mingw-w64-ucrt-x86_64-python
-      - name: Build with the Cairo patches
+      - name: Clone LOOM at the pin and the port at its pin
         shell: msys2 {0}
         run: |
           set -euo pipefail
@@ -197,13 +201,17 @@ jobs:
           git clone --recurse-submodules https://github.com/ad-freiburg/loom loom-src
           git -C loom-src checkout "$commit"
           git -C loom-src submodule update --init --recursive
+          test "$(git -C loom-src rev-parse HEAD)" = "$commit"
           git clone https://github.com/transportforcairo/loom-windows-port port
           git -C port checkout "$port"
-          echo "Patches from the Cairo port are applied here; the spike did not"
-          echo "reach this step, so treat the first run as an experiment."
-          echo "(Run one on 2026-09-07 died before this line: the UCRT64 shell had no"
-          echo "python to read the pins with. Run two found no make program: MSYS2's gcc"
-          echo "does not ship make, and ninja arrives with cmake, hence -G Ninja.)"
+          test "$(git -C port rev-parse HEAD)" = "$port"
+      - name: Apply the port's documented changes to our tree
+        shell: msys2 {0}
+        run: python scripts/loom-windows-patch.py loom-src port
+      - name: Configure and build the four tools
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
           cmake -S loom-src -B loom-src/build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_DISABLE_FIND_PACKAGE_GLPK=ON \
@@ -211,11 +219,34 @@ jobs:
             -DCMAKE_DISABLE_FIND_PACKAGE_Gurobi=ON \
             -DCMAKE_DISABLE_FIND_PACKAGE_LibZip=ON \
             -DCMAKE_DISABLE_FIND_PACKAGE_OpenMP=ON
-          cmake --build loom-src/build -j 4
-          ldd loom-src/build/loom.exe || true
+          cmake --build loom-src/build -j 4 --target gtfs2graph topo loom octi
+      - name: Refuse anything that is not self-contained
+        shell: msys2 {0}
+        working-directory: loom-src/build
+        run: |
+          status=0
+          for b in gtfs2graph topo loom octi; do
+            echo "--- $b.exe ---"
+            ldd "$b.exe"
+            # Only Windows' own DLLs may appear. Anything from the MSYS2 tree
+            # would be a DLL we would have to ship; anything missing is worse.
+            if ldd "$b.exe" | grep -iE '/ucrt64/|/mingw|/usr/|not found'; then
+              echo "::error::$b.exe needs a DLL that is not Windows' own"
+              status=1
+            fi
+          done
+          exit $status
+      - name: Prove it still runs
+        shell: msys2 {0}
+        working-directory: loom-src/build
+        run: ./loom.exe --help > /dev/null && ./octi.exe --help > /dev/null
       - uses: actions/upload-artifact@v4
         with:
           name: loom-win-x64
-          path: loom-src/build/*.exe
+          path: |
+            loom-src/build/gtfs2graph.exe
+            loom-src/build/topo.exe
+            loom-src/build/loom.exe
+            loom-src/build/octi.exe
           if-no-files-found: error
           retention-days: 30
