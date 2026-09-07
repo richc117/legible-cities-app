@@ -9,7 +9,12 @@
     "repo": "https://github.com/ad-freiburg/loom",
     "commit": "1e4757838104d1e4d22186c9b77d5fc4b98681a0",
     "note": "Head of master on 2026-09-07. The published maps were built from an unpinned master build; the spike checks whether that output matches this commit.",
-    "binaries": ["gtfs2graph", "topo", "loom", "octi"],
+    "binaries": [
+      "gtfs2graph",
+      "topo",
+      "loom",
+      "octi"
+    ],
     "licence": "GPL-3.0"
   },
   "loom_windows_port": {
@@ -17,5 +22,19 @@
     "commit": "8c521a1815759a64b46a5f876dd84b1d8b0878d4",
     "note": "MSYS2/UCRT64 build scripts and compatibility patches for Windows.",
     "licence": "GPL-3.0"
+  },
+  "python": {
+    "source": "https://github.com/astral-sh/python-build-standalone",
+    "release": "20260901",
+    "version": "3.12.14",
+    "note": "Upstream publishes no checksum manifest and no per-asset .sha256, so these hashes were computed on first download and are what every later build is checked against. A changed hash means the asset changed, which is the point.",
+    "targets": {
+      "darwin-arm64": {
+        "asset": "cpython-3.12.14+20260901-aarch64-apple-darwin-install_only.tar.gz",
+        "sha256": "3ee3ee547cedfeb7c2b16b2b7156039f7b470bb8f857e226fd3d2eb11db83c76"
+      }
+    },
+    "licence": "PSF-2.0 (CPython); MPL-2.0 (the project's build scripts)",
+    "licence_check": "Verified 2026-09-07: the interpreter links libedit, not GNU readline, and _dbm links only libSystem - no GDBM. Both are GPL components that must stay out; see THIRD_PARTY_NOTICES.md."
   }
 }
