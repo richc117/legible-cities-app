@@ -145,8 +145,11 @@ the same commit:
 
 | Build | `topo` node count over N runs |
 |---|---|
-| Docker linux/arm64 | 117 on all 8 runs |
+| Docker linux/arm64 | 117 on all 8 runs, and the 8 graphs agree with each other |
 | macOS arm64 native | 116-119 over 5 runs |
+
+The Docker row was re-checked as graphs in session two, not only as counts,
+after counts proved misleading elsewhere in this report.
 
 Comparing bytes here would have been wrong in both directions, and was: LOOM
 writes pointer addresses as ids, so `loom` and `octi` look different every
@@ -239,19 +242,39 @@ ordered by pointer address**. The input graph has no equal-length edges, but
 the pass calls `densify(..., SEGL)`, which manufactures uniform-length
 segments from the second iteration onward.
 
-**Confirming it.** Patching only that comparator to break ties by geometry
-instead of by address (`loom-topo-tiebreak.patch`, 18 lines) and rebuilding:
+**Testing it, and a result that did not survive its own sample size.**
+Patching only that comparator to break ties by geometry instead of by
+address (`loom-topo-tiebreak.patch`, 18 lines) and rebuilding gave 117 on
+all eight runs, matching Docker. Written up as a fix for the node count.
 
-| | Node count over 8 runs |
-|---|---|
-| Before | 116, 117, 118, 119, 117, … (5 runs spanned 116-119) |
-| After | **117 on all 8 runs** - matching Docker's answer |
+At ten runs it gives `118 117 117 117 117 117 117 117 118 117`. The eight-run
+sample was luck. **The patch reduces the variance and does not remove it**,
+not even for the count, and the earlier claim in this report was wrong.
 
-So the tie-break is a real cause, and it is the one that moves the node
-count. It is **not the whole cause**: the eight runs still disagree on node
-positions - 6 or 7 nodes present on one side only, 60 to 70 moved beyond
-tolerance - and one edge's line ordering still flips. With 163 pointer-order
-iterations in `topo`, fixing one of them was never going to be sufficient.
+A second measurement failed the same way and is worth recording. Run against
+the raw feed, the unpatched solver-free build gave 117 ten times, which read
+as "the solver-free build is deterministic". It is not: that run changed two
+variables at once - build *and* input - and node count is a weak proxy.
+Compared as graphs, its ten runs disagree with each other too.
+
+The corrected picture, ten runs each, compared as graphs rather than counts:
+
+| Build | Node counts | Agree as graphs? |
+|---|---|---|
+| macOS, full (GLPK + COIN-OR linked) | 118 117 117 117 117 117 117 117 118 117 | no |
+| macOS, solver-free | 117 x10 | **no** - the count is stable, the graph is not |
+| macOS, full + tie-break patch | 118 117 117 117 117 117 117 117 118 117 | no |
+| Docker linux/arm64 | 117 x8 | **yes** - checked as graphs, not only counts |
+
+So: both macOS builds are nondeterministic, the Linux build is
+deterministic, and the tie-break is at most one contributor among the 163
+pointer-ordered iterations. Nothing here is a fix.
+
+**Node count is not a determinism test.** It caught the loudest symptom and
+hid the rest; the solver-free build looked clean by that measure while 6 or 7
+nodes existed on one side only and 60 to 70 moved beyond tolerance between
+runs. Any determinism gate this project builds - A5-04 - has to compare
+graphs, and has to run more than a handful of times before it is believed.
 
 An allocator experiment supports the same story without fixing it:
 `MallocNanoZone=0`, which moves small allocations out of macOS's nano zone,
@@ -328,10 +351,11 @@ method: the same build recipe should work on `macos-13` and under MSYS2, and
 - **Done in session two**: the cause is `std::set<Node*>` iterated in heap
   order, at 163 sites in `topo`. Not uninitialised memory, and not a hash
   container - an *ordered* container whose key is the address.
-- Report it upstream, with `loom-topo-tiebreak.patch` as a starting point and
-  the eight-run node counts as the reproduction. The fix upstream is to order
-  nodes by something stable - an insertion counter or an id - rather than to
-  patch each of the 163 call sites.
+- **Reported upstream**: https://github.com/ad-freiburg/loom/issues/44, with
+  the ten-run counts, the Linux control, and the analysis labelled as
+  analysis. No pull request: the patch is not a fix and saying otherwise
+  would waste a maintainer's time. `loom-topo-tiebreak.patch` is kept here as
+  evidence only.
 - Until then, treat Linux as the only build whose output is reproducible, and
   prefer shipping cached graph stages over re-running the pipeline per export.
 - Still open, needing CI: macOS x86_64 and Windows x64 builds, and the
