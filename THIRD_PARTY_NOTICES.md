@@ -16,8 +16,8 @@ intended build.
 | x264 (planned) | H.264 encoder linked into the FFmpeg build | GPL-2.0-or-later | https://code.videolan.org/videolan/x264 |
 | Electron (planned) | Application shell; includes Chromium and Node.js under their own licences | MIT | https://www.electronjs.org/ |
 | React (planned) | User interface | MIT | https://react.dev/ |
-| python-build-standalone (candidate, pending a spike) | The bundled Python interpreter | PSF-2.0 (CPython); MPL-2.0 (the project's build code); bundled libraries under their own licences, listed in each archive's `PYTHON.json` and `licenses/` directory. A 2023-or-later release is required so that no GPL readline or GDBM is linked | https://github.com/astral-sh/python-build-standalone |
-| PyInstaller (candidate, pending a spike) | Alternative way to bundle the interpreter | GPL-2.0-or-later with the bootloader exception | https://pyinstaller.org/ |
+| python-build-standalone (planned; ADR-020) | The bundled Python interpreter, pinned by release and by a checksum this repository records in `vendor/pins.json`, stripped after install | PSF-2.0 (CPython); MPL-2.0 (the project's build code); bundled libraries under their own licences. The runtime's own `licenses/` directory and manifest ship inside it and are referenced from the app's Licences screen. Verified 2026-09-07: the interpreter links libedit, not GNU readline, and no GDBM; `vendor.yml` fails the build if either appears | https://github.com/astral-sh/python-build-standalone |
+| PyInstaller (measured, not chosen: ADR-020) | Was the alternative way to bundle the interpreter; not used and not shipped | GPL-2.0-or-later with the bootloader exception | https://pyinstaller.org/ |
 | pandas (planned) | GTFS tables in the engine | BSD-3-Clause | https://pandas.pydata.org/ |
 | NumPy (planned) | Dependency of pandas | BSD-3-Clause | https://numpy.org/ |
 | requests (planned) | Feed download in the engine | Apache-2.0 | https://requests.readthedocs.io/ |
