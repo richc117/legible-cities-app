@@ -4,9 +4,9 @@
 
 **Created**: 2026-09-07
 
-**Status**: Draft — contains open questions, see [Open Questions](#open-questions-needs-clarification)
+**Status**: Clarified 2026-09-07. The seven open questions are answered below under [Clarifications](#clarifications-2026-09-07); the installers and the vendored components moved to `specs/002-vendored-components-and-installers/` (planned issue A0-10).
 
-**Input**: Planned issue A0-09. The desktop application has no code yet; this feature is the empty shell everything later is built inside — a window that opens, a single origin the engine's animation page can eventually be embedded from, a development loop against a local engine checkout, an automated check on all three platforms, and installers a person can download and run.
+**Input**: Planned issue A0-09. The desktop application has no code yet; this feature is the empty shell everything later is built inside — a window that opens, a single origin the engine's animation page can eventually be embedded from, a development loop against a local engine checkout, and an automated check on all three platforms.
 
 ---
 
@@ -89,35 +89,20 @@ A change pushed to the repository is checked without anyone remembering to run a
 
 ---
 
-### User Story 5 - Installers are produced and downloadable from a build run (Priority: P3)
+### User Story 5 - moved
 
-A build run produces installable packages — macOS disk images for both processor families and a Windows installer — with the vendored engine runtime, layout binary and media encoder bundled inside, and attaches them to the run so a person can download and install one.
-
-**Why this priority**: It is how the application reaches the two machines it must open on, and it proves the vendored-binary layout end to end. It sits below the checks because a broken installer is discovered in minutes while a broken check is discovered in months.
-
-**Independent Test**: Trigger a build run, download the macOS disk image and the Windows installer from the completed run, install each on the corresponding machine, and launch the application.
-
-**Acceptance Scenarios**:
-
-1. **Given** a build run completes, **When** its outputs are listed, **Then** macOS disk images for both processor families and a Windows installer are downloadable from the run.
-2. **Given** an installer is installed, **When** the application is launched, **Then** it opens to an empty Library — the same result as User Story 1, from a packaged build rather than a development one.
-3. **Given** an installed application, **When** its bundled resources are inspected, **Then** the engine runtime, the layout binary and the media encoder for that platform and processor family are present and executable.
-4. **Given** the packages are unsigned, **When** a person installs one, **Then** the documented steps for getting past the operating system's warning are published alongside the download.
-5. **Given** the application is installed, **When** it runs, **Then** it writes nothing inside its own installed bundle; the engine's home and any writable state live under the user's data folder (Constitution: *Never write inside the app bundle*).
-6. **Given** the application runs, **When** its network activity is observed for a full session of opening and quitting, **Then** it makes no outbound request at all — no update check, no analytics, no crash report, no remotely hosted font (Constitution: *No network without a reason, no telemetry ever*).
+Installers and the vendored components they carry are specified in `specs/002-vendored-components-and-installers/spec.md` (planned issue A0-10), so that this feature can be built and checked before any vendored component exists. The "no outbound request" scenario stays here as FR-034 and SC-006, because a development build must satisfy it too.
 
 ---
 
 ### Edge Cases
 
-- A second launch while the application is already running: a single window is the stated design, so the second launch must either focus the existing window or open a second one deliberately — see [Q6](#open-questions-needs-clarification).
+- A second launch while the application is already running: the application holds a single-instance lock and the second launch focuses the existing window (FR-035), which is the platform convention on both targets.
 - The engine home directory does not exist, or exists and is not writable: the application must still open to an empty Library and report the problem, not fail to start.
 - The engine home contains an output directory with no recognisable project inside it: the Library stays empty rather than showing a broken entry.
 - A project identifier containing characters that are meaningful to a file system (separators, traversal segments, a leading dot, a drive letter, a URL-encoded separator): served as a path component it must be rejected, not resolved.
 - Windows and macOS disagree about path separators and case sensitivity: a project path that resolves on one must not resolve differently on the other.
-- The vendored binaries for the current platform and processor family are missing from a build: the build fails loudly rather than shipping an installer that cannot run the engine.
 - The end-to-end smoke test on the Linux runner has no display server: the check must provide one rather than being skipped, or the platform's coverage is a fiction.
-- A person on macOS running the Intel disk image on an Apple-silicon machine, or the reverse: the application either runs through translation or refuses with a clear message.
 - The window is resized very small, or the display's scale factor is unusual: the Library's empty state stays legible and its controls stay reachable.
 
 ## Requirements *(mandatory)*
@@ -128,11 +113,11 @@ A build run produces installable packages — macOS disk images for both process
 
 - **FR-001**: The application MUST open exactly one window on launch, containing a Library area.
 - **FR-002**: The Library MUST show an explicit empty state when no projects exist — a message a person can read, not a blank area.
-- **FR-003**: The window MUST have a stable, asserted title so an automated test can identify it. The exact title is [Q1](#open-questions-needs-clarification).
+- **FR-003**: The window MUST have a stable, asserted title so an automated test can identify it. The title is `Legible Cities`, constant in this feature; if a later feature appends the open project's name, the test is updated in the same change.
 - **FR-004**: The application MUST quit cleanly: window closed, no orphaned child process, no blocking dialog.
 - **FR-005**: The interface MUST be operable by keyboard alone, with visible focus, labelled controls, and contrast that holds in every theme it offers.
 - **FR-006**: The interface MUST respect the operating system's reduced-motion preference in anything that animates.
-- **FR-007**: The interface MUST take its colours, type and spacing from a single declared set of design tokens rather than values written at each use site. The source and content of those tokens is [Q2](#open-questions-needs-clarification).
+- **FR-007**: The interface MUST take its colours, type and spacing from a single declared set of design tokens rather than values written at each use site. The tokens are a committed stylesheet copied from the engine's animation page at the pinned engine version — both of its theme blocks, warm-dark and sepia — and a unit test MUST fail when the copy differs from the pinned engine's page, so the two cannot drift unnoticed.
 
 **The single origin**
 
@@ -153,24 +138,19 @@ A build run produces installable packages — macOS disk images for both process
 
 - **FR-017**: The application MUST read three locations — the engine's home, the layout binary, the media encoder — from configuration, with the local development file uncommitted and ignored by version control.
 - **FR-018**: The application MUST record the three resolved locations in its log at startup, so a misconfigured run is diagnosable without a debugger.
-- **FR-019**: The application MUST behave predictably when configuration is absent: documented defaults, or a message naming the file and the values. Which of the two is [Q3](#open-questions-needs-clarification).
+- **FR-019**: The application MUST start with documented defaults when configuration is absent — the engine home under the user's data folder, the layout binary and the media encoder unset — and MUST log prominently which values are unset and the name of the file that would set them. It never refuses to start over configuration in this feature, because nothing in it uses the two binaries.
 - **FR-020**: One documented command MUST start the application in development mode with interface changes applied to the running window without a manual restart.
 
 **Packaging**
 
-- **FR-021**: The build MUST produce installable packages under a fixed product name and application identifier: "Legible Cities" and `com.richardcaballero.legiblecities`.
-- **FR-022**: The build MUST produce macOS disk images for both Apple-silicon and Intel processor families, and a Windows installer for 64-bit Intel-compatible processors.
-- **FR-023**: The build MUST bundle, per platform and processor family, the engine's runtime, the layout binary and the media encoder, placed where the application can find and execute them at run time.
-- **FR-024**: The build MUST fail if the vendored components for a target it is building are missing, rather than producing an installer without them.
-- **FR-025**: Packages are unsigned in this feature; the download page MUST carry the steps for getting past each operating system's warning. Whether Linux ships an installable package at all is [Q4](#open-questions-needs-clarification).
-- **FR-026**: Every bundled third-party component MUST be listed in `THIRD_PARTY_NOTICES.md` with its licence and the obligations that licence places on distribution.
+- **FR-021** to **FR-026**: moved to `specs/002-vendored-components-and-installers/spec.md`. The numbers are left unassigned here so references in either document stay stable. The product name and application identifier they fix — "Legible Cities" and `com.richardcaballero.legiblecities` — are also the values FR-003 and the development build use.
 
 **Verification**
 
 - **FR-027**: An automated check MUST run style, type and unit checks and one end-to-end smoke test on Linux, macOS and Windows for every change.
 - **FR-028**: The smoke test MUST launch the real application, assert the window title, quit it, and fail if the process does not exit.
-- **FR-029**: A build run MUST obtain the vendored components, build the installers and attach them to the run as downloadable outputs. How vendored components reach the build is [Q5](#open-questions-needs-clarification).
-- **FR-030**: The checks MUST be nameable as required status checks so direct pushes to the main branch can be refused once they exist.
+- **FR-029**: moved to `specs/002-vendored-components-and-installers/spec.md`.
+- **FR-030**: The checks MUST be nameable as required status checks so direct pushes to the main branch can be refused once they exist. When the check exists, the repository's branch protection is applied from `docs/repository-settings.md` and `CONTRIBUTING.md` flips from direct commits to pull requests in the same change.
 - **FR-031**: The existing hygiene checks MUST keep passing over the new files: no machine paths, no personal addresses, no private hostnames, no keys, no links to tool sessions.
 
 **Not in this feature**
@@ -178,28 +158,28 @@ A build run produces installable packages — macOS disk images for both process
 - **FR-032**: The application MUST NOT draw a map, a line, a station or any transit geometry — now or ever (Constitution: *One renderer*). This feature draws no visualisation of any kind.
 - **FR-033**: The application MUST NOT start the engine, speak the sidecar protocol, run the pipeline or export anything. Those are later features; this one only makes the place they will live.
 - **FR-034**: The application MUST make no outbound network request during normal operation.
+- **FR-035**: The application MUST hold a single-instance lock; a second launch while it is running focuses the existing window and opens nothing.
 
 ### Key Entities
 
-- **Project**: a piece of generated engine output identified by an opaque identifier, living in its own directory beneath the engine's home output folder. This feature never creates one; it only defines how one is addressed and served. The identifier's permitted character set is part of [Q1](#open-questions-needs-clarification)'s neighbouring gap and is treated in FR-011 as untrusted input regardless.
+- **Project**: a piece of generated engine output identified by an opaque identifier, living in its own directory beneath the engine's home output folder. This feature never creates one; it only defines how one is addressed and served. The identifier's permitted character set is fixed by the feature that creates projects (planned issue A1-05); FR-011 treats it as untrusted input regardless.
 - **Library**: the list of projects the application knows about. In this feature it is always empty; its only behaviour is its empty state.
 - **Engine home**: the writable directory the engine owns, holding the output folder among other things. Configured, defaulting under the user's data folder, never inside the application bundle.
-- **Vendored component**: an executable shipped with the application — the engine's runtime, the layout binary, the media encoder — selected by platform and processor family, and carrying its own licence obligations.
 - **Application origin**: the single custom origin from which both the interface and project output are served, with one path prefix for each.
 
 ## Success Criteria *(mandatory)*
 
 ### Measurable Outcomes
 
-- **SC-001**: Installing from a build run's output and launching, on both a macOS machine and a Windows machine, produces one window showing an empty Library, with no error, in under 10 seconds on each. (Manual, on the two target machines.)
-- **SC-002**: The automated checks complete green on Linux, macOS and Windows for a change, and the run's outputs include a macOS disk image for each processor family and a Windows installer, each downloadable by a person with access to the run.
+- **SC-001**: Launching a development build on both a macOS machine and a Windows machine produces one window showing an empty Library, with no error, in under 10 seconds on each. (Manual, on the two target machines; the same outcome from an installed package is `specs/002`'s SC-001.)
+- **SC-002**: The automated checks complete green on Linux, macOS and Windows for a change, and the run's log distinguishes which platform each result came from.
 - **SC-003**: The end-to-end smoke test launches the application, finds the window title and quits it within 60 seconds on every platform, and fails — rather than hanging or passing — when the title is changed or the process does not exit.
 - **SC-004**: 100% of interactive elements in the window are reachable and operable by keyboard with visible focus, and the empty state is announced by a screen reader on both target platforms. (Manual check with the platform's own screen reader, recorded in the pull request.)
 - **SC-005**: A request from the interface for a project asset outside its project's directory is refused in 100% of the traversal, absolute-path, encoded-separator and outward-symlink cases the test suite covers, on every platform.
 - **SC-006**: A full launch-and-quit session produces zero outbound network requests, observed on a machine with network monitoring.
 - **SC-007**: A developer with the engine checked out beside this repository, following only the committed documentation, reaches a running window in under 10 minutes on a machine that has never built this project.
 - **SC-008**: The hygiene checks pass over every file this feature adds, and a reviewer reading the tracked files finds no machine path, personal address, private hostname, key or tool-session link.
-- **SC-009**: The installed application writes nothing inside its own bundle across a full session, verified by comparing the bundle before and after.
+- **SC-009**: A development build writes nothing beside its own source or build output across a full session; everything it writes lands under the user's data folder or the configured engine home. (The installed-bundle form of this outcome is `specs/002`'s SC-003.)
 
 ## Assumptions
 
@@ -207,33 +187,32 @@ Decisions taken here because the issue is silent and a reasonable default exists
 
 - **A-001**: The window's Library is the only surface in this feature. No menu structure beyond the platform's default, no preferences window, no about box. *Why*: the issue's acceptance criterion is "opens to an empty Library"; anything more is a later feature and a later spec.
 - **A-002**: The engine's home defaults to a directory under the operating system's per-user application data folder for this application, and the configured value overrides it. *Why*: the constitution names the user-data folder and forbids writing in the bundle; ADR-016 records it.
-- **A-003**: "The site's design tokens" means one committed stylesheet of custom properties, consumed by every component. This feature ships the file and the mechanism; its exact values are [Q2](#open-questions-needs-clarification). *Why*: the mechanism is what the skeleton must fix; the values can change without changing the shape.
+- **A-003**: "The site's design tokens" means one committed stylesheet of custom properties, consumed by every component. This feature ships the file and the mechanism; the values are the engine page's, copied and tested against the pin (FR-007). *Why*: the mechanism is what the skeleton must fix; the values can change with the engine pin without changing the shape.
 - **A-004**: Project identifiers are treated as untrusted input from an external process even though the engine produces them. *Why*: a path served from a privileged origin is a path-traversal surface, and the cost of validating is near zero.
-- **A-005**: The Linux runner in the automated checks is a verification platform, not a shipping target, unless [Q4](#open-questions-needs-clarification) says otherwise. *Why*: the issue lists Linux under checks and omits it from installer targets.
+- **A-005**: The Linux runner in the automated checks is a verification platform, not a shipping target. *Why*: the issue lists Linux under checks and omits it from installer targets, and the project's vision names Linux as unsupported; the answer is recorded under Clarifications.
 - **A-006**: The end-to-end smoke test drives a build of the application rather than an installed package. *Why*: installing a package inside a check run is slow and platform-specific; the installers are exercised by a person on the two target machines instead (SC-001).
 - **A-007**: A theme is offered — at least following the operating system's light and dark preference — because the constitution requires contrast that holds "in every theme". *Why*: it is cheaper to define tokens for both at the start than to add a second theme to values already written.
 - **A-008**: Unit checks exist in this feature only to prove the test runner works and to cover the path-resolution rules in FR-011. *Why*: there is almost no logic yet; a test suite with nothing in it rots, and path resolution is the one piece with real edge cases.
 - **A-009**: Documentation added by this feature lists any new commands in `CLAUDE.md` and adds their permission rules at the same time. *Why*: `CLAUDE.md` says so explicitly.
-- **A-010**: The vendored components are placed under a directory laid out by platform and processor family, and the build selects from it; the directory is not committed. *Why*: binaries in a git repository are a licensing and size problem, and the issue describes the build as downloading them.
 
 ## Dependencies
 
 - **D-001**: An engine checkout beside this repository, for the development loop (User Story 3). Its location is a personal setting and is never committed.
-- **D-002**: Vendored builds of the engine runtime, the layout binary and the media encoder, per platform and processor family. Producing them is the subject of the earlier planned spikes; this feature consumes their result and is blocked on it for User Story 5 only. Users Stories 1–4 do not need them.
+- **D-002**: None of the vendored components. This feature needs no engine runtime, layout binary or media encoder; they arrive with `specs/002`, which depends on this feature rather than the reverse.
 - **D-003**: A public repository mirror with its protection settings applied, for FR-030 to have anything to protect. Until it exists, FR-030 is satisfied by the checks being nameable, and the setting itself stays in the repository settings checklist.
 - **D-004**: The decision records the constitution cites for the origin and the engine home must exist publicly before or with this feature, so a reader of this repository can follow the reasoning.
 
-## Open Questions *(NEEDS CLARIFICATION)*
+## Clarifications (2026-09-07)
 
-Every unresolved question in this spec, in one place. Each names what is blocked and what happens if it stays unanswered.
+The seven questions the first draft left open, answered during the re-plan of 7 September 2026 and written into the requirements above. Recorded here so the reasoning is not lost.
 
-- **Q1**: [NEEDS CLARIFICATION: What exactly is the window title, and is it constant or does it change with the open project later? The smoke test asserts it, so the value becomes a contract the moment the test is written.] — *Blocks*: FR-003, FR-028, SC-003. *If unanswered*: the product name alone is used, and the test is updated when a project name is added to the title.
-- **Q2**: [NEEDS CLARIFICATION: Where do "the site's design tokens" come from? There is no site in this repository. The engine's generated animation pages and its gallery script already define custom properties, so the values probably exist there rather than needing authoring - but whether the app copies them, imports them, or receives them from the engine at runtime is undecided, and that choice is what fixes whether the two can drift.] — *Blocks*: FR-007, and the visual result of User Story 1. *If unanswered*: tokens are authored fresh in this repository as the single source, and reconciling with the site becomes a later issue.
-- **Q3**: [NEEDS CLARIFICATION: With no configuration file present, should the application start with defaults or refuse to start with a message? Defaults make a first run easy and can silently point at the wrong place; refusing is loud and stops a person who only wants to see the window.] — *Blocks*: FR-019, and the third acceptance scenario of User Story 3. *If unanswered*: it starts with the documented default engine home and logs prominently that the layout binary and the media encoder are unset — nothing in this feature uses them.
-- **Q4**: [NEEDS CLARIFICATION: Is Linux a supported platform for users, or only a check runner? The checks run on it and no Linux installer is listed. Users' expectations, the vendored-binary matrix and the licence notices all depend on the answer.] — *Blocks*: FR-025, A-005, and the scope of D-002. *If unanswered*: Linux is a verification platform only, and no Linux package is published.
-- **Q5**: [NEEDS CLARIFICATION: Where does the build get the vendored components from, and how is a specific version pinned and verified? "Downloads vendor artefacts" does not say from where, nor whether a checksum is checked.] — *Blocks*: FR-023, FR-024, FR-029. *If unanswered*: the build fails with a message naming the missing components, and the acquisition step is left to a follow-up issue — which means no installers until it is answered.
-- **Q6**: [NEEDS CLARIFICATION: What should a second launch do while the application is already running — focus the existing window, or open a second one? "One window" reads as a design statement but may only describe the first launch.] — *Blocks*: an edge case above and, indirectly, whether the application holds a single-instance lock. *If unanswered*: a second launch focuses the existing window, which is the platform convention on both targets.
-- **Q7**: [NEEDS CLARIFICATION: Are the macOS disk images intended to stay unsigned and un-notarised beyond this feature? Unsigned is stated for now; whether a signing identity is planned changes whether the build is written to accept one.] — *Blocks*: FR-025 and the honesty of the download instructions. *If unanswered*: unsigned, with documented steps for the operating system warning, and signing becomes its own issue with its own decision record.
+- **Q1, the window title**: `Legible Cities`, constant in this feature (FR-003). A later feature may append the open project's name and updates the smoke test in the same change.
+- **Q2, the design tokens**: copied from the engine's animation page at the pinned engine version — both theme blocks, warm-dark and sepia — into one committed stylesheet, with a unit test that fails when the copy differs from the pinned page (FR-007). Copying keeps the engine the source of truth without a new engine capability on the critical path; a single token file published by the engine is on the backlog.
+- **Q3, absent configuration**: documented defaults and a prominent log line naming what is unset and the file that would set it (FR-019). Nothing in this feature uses the two binaries, so refusing to start would stop a person who only wants to see the window.
+- **Q4, Linux**: a verification platform only; no Linux package is published (A-005, and `specs/002`).
+- **Q5, where vendored components come from**: answered in `specs/002` — a vendoring workflow builds or fetches each component from `vendor/pins.json`, verifies the recorded checksum, and publishes artefacts keyed by the hash of the pins file; the build consumes those artefacts and fails if one is missing.
+- **Q6, a second launch**: a single-instance lock; the second launch focuses the existing window (FR-035).
+- **Q7, signing**: unsigned, with documented steps for each operating system's warning, until the release-readiness decision gate (planned issue A6-05) records otherwise (`specs/002`).
 
 ---
 
@@ -249,9 +228,9 @@ Not requirements this feature invents — requirements it is measured against, l
 | No network, no telemetry | FR-034, SC-006 |
 | Hygiene enforced by tools | FR-031, SC-008 |
 | Accessible by default | FR-005, FR-006, SC-004 |
-| Decisions are recorded | D-004, and Q4/Q7 are decision-record candidates |
-| Never write inside the app bundle | FR-016, SC-009 |
+| Decisions are recorded | D-004; the answers under Clarifications cite their records where one exists |
+| Never write inside the app bundle | FR-016, SC-009; the installed form in `specs/002` |
 | `app://local` is one origin on purpose | FR-008 to FR-013, SC-005 |
 | The renderer holds no Node APIs | FR-014, FR-015 |
 | Child processes get argument arrays, hidden windows, timeouts | Not exercised; this feature starts no child process |
-| GPL-3.0-or-later, third parties listed | FR-026 |
+| GPL-3.0-or-later, third parties listed | Nothing bundled here; `specs/002` FR-006 |

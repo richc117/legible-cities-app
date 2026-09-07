@@ -2,6 +2,7 @@
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
 **Created**: 2026-09-07
+**Updated**: 2026-09-07 (clarified; user story 5 moved to spec 002)
 **Feature**: [spec.md](../spec.md)
 
 ## Content Quality
@@ -13,7 +14,7 @@
 
 ## Requirement Completeness
 
-- [ ] No [NEEDS CLARIFICATION] markers remain
+- [x] No [NEEDS CLARIFICATION] markers remain
 - [x] Requirements are testable and unambiguous
 - [x] Success criteria are measurable
 - [x] Success criteria are technology-agnostic (no implementation details)
@@ -31,20 +32,16 @@
 
 ## Notes
 
-- **Seven [NEEDS CLARIFICATION] markers remain, deliberately.** The instruction for this
-  spec was to leave a marker wherever the source issue is silent rather than to decide.
-  They are collected in one place — [Open Questions](../spec.md#open-questions-needs-clarification) —
-  and each names what it blocks and what happens if it goes unanswered, so planning can
-  proceed on the unaffected requirements. Q2 (design tokens) and Q5 (vendored component
-  acquisition) are the two that actually stop work: Q2 blocks the visible result of User
-  Story 1, Q5 blocks User Story 5 entirely. Q1, Q3, Q4, Q6 and Q7 each have a stated
-  fallback that is safe to build against.
-- **"No implementation details" needs a caveat.** This feature *is* infrastructure, and
+- **The seven [NEEDS CLARIFICATION] markers are answered.** Each answer is written
+  into the requirement it blocked, and the reasoning is kept under
+  [Clarifications](../spec.md#clarifications-2026-09-07). The answers came from the
+  re-plan of 7 September 2026, not from `/speckit-clarify`; the outcome is the same file.
+- **User story 5 and FR-021 to FR-026 and FR-029 moved** to
+  `specs/002-vendored-components-and-installers/`, so this feature can be built and checked
+  before any vendored component exists. The numbers are left unassigned here rather than
+  renumbered, so references in either document stay stable.
+- **"No implementation details" keeps its caveat.** This feature *is* infrastructure, and
   parts of its technology are fixed by the constitution (a single custom origin, an
   isolated renderer with no Node access) or by the issue as contracts (the product name,
-  the application identifier, the processor families, the installer kinds). Those are
-  stated because a reviewer has to check them. Named tools — the scaffold, the bundler,
-  the packager, the test runners — are deliberately *not* in the spec; they belong in
-  `plan.md`.
-- Items marked incomplete require spec updates before `/speckit-plan` can settle the
-  affected areas. `/speckit-clarify` is the natural next step for the seven questions.
+  the application identifier). Named tools belong in `plan.md`.
+- Ready for `/speckit-plan`.
