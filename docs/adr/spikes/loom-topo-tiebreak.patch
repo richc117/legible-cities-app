@@ -1,0 +1,30 @@
+diff --git a/src/topo/mapconstructor/MapConstructor.cpp b/src/topo/mapconstructor/MapConstructor.cpp
+index 1a45de4..7f70e75 100644
+--- a/src/topo/mapconstructor/MapConstructor.cpp
++++ b/src/topo/mapconstructor/MapConstructor.cpp
+@@ -217,7 +217,24 @@ int MapConstructor::collapseShrdSegs(double dCut, size_t MAX_ITERS,
+       }
+     }
+ 
+-    std::sort(sortedEdges.rbegin(), sortedEdges.rend());
++    // SPIKE PATCH (not upstream): break length ties by geometry, not by heap
++    // address. The original sorts pair<double, LineEdge*> descending, so two
++    // edges of equal length are ordered by pointer value - which macOS's
++    // allocator varies between runs. densify(..., SEGL) makes equal lengths
++    // common after the first iteration.
++    std::sort(sortedEdges.begin(), sortedEdges.end(),
++              [](const std::pair<double, LineEdge*>& a,
++                 const std::pair<double, LineEdge*>& b) {
++                if (a.first != b.first) return a.first > b.first;
++                const auto& af = *a.second->getFrom()->pl().getGeom();
++                const auto& bf = *b.second->getFrom()->pl().getGeom();
++                if (af.getX() != bf.getX()) return af.getX() < bf.getX();
++                if (af.getY() != bf.getY()) return af.getY() < bf.getY();
++                const auto& at = *a.second->getTo()->pl().getGeom();
++                const auto& bt = *b.second->getTo()->pl().getGeom();
++                if (at.getX() != bt.getX()) return at.getX() < bt.getX();
++                return at.getY() < bt.getY();
++              });
+ 
+     for (const auto& ep : sortedEdges) {
+       auto e = ep.second;
