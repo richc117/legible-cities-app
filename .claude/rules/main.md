@@ -36,6 +36,31 @@ Schema, so a change on one side is a build error on the other rather than a
 runtime surprise. Do not hand-write a method signature, and do not add a
 method here before the engine has it and the pin has moved. See ADR-010.
 
+## Capture
+
+A project's layout is computed once and stored with the project; a render
+or an export reads it and never runs the layout stages on its own.
+Re-layout is a button with a warning. See ADR-023.
+
+Every capture, without exception:
+
+- `setCapture(true)` **before any wait**, stills included. The engine's own
+  recorder waits with the clock running on the still path, and its stills
+  are not reproducible for exactly that reason.
+- `settle()` before the first frame, then `advance(1/fps)` per frame.
+- **Two animation frames between the step and the capture.** `capturePage()`
+  returns the last *painted* frame, not the state just set; without the
+  wait one frame in sixty differs, intermittently, which is the worst way
+  to be wrong.
+- Compare in RGB with a channel tolerance of 8: never RGBA, never equality.
+- Never hand `getBoundingClientRect()` to `capturePage()`. The rect is in
+  device-independent pixels, the DOM measures in CSS pixels, and offscreen
+  they differ; the result is a correctly *sized* image of the wrong region.
+
+Exported pixels must not depend on the display attached to the machine.
+How the scale factor is set is ADR-024, pending;
+`docs/adr/spikes/offscreen-capture.md` has what was measured and why.
+
 ## The preload bridge
 
 The bridge is the whole attack surface between the page and the machine.

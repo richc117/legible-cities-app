@@ -9,17 +9,24 @@ this app never draws a map of its own.
 
 Pre-alpha. The repository holds its charter (licence, contribution guide,
 security policy, templates, decision-record convention), its hygiene tooling
-(`bin/preflight`, gitleaks, the git hooks, the CI checks), and its specs
-(Spec Kit, the constitution) - and **no application code yet**. There is
+(`bin/preflight`, gitleaks, the git hooks, the CI checks), its specs
+(Spec Kit, the constitution), and the Phase 0 spike reports and decision
+records under `docs/adr/` - and **no application code yet**. There is
 nothing to build, run or test.
 
 Work proceeds phase by phase; `CONTRIBUTING.md` explains the flow, the
-labels, the milestones and the `A0-05`-style issue codes. Phase 0 is
-scaffolding and four spikes (native LOOM binaries, sidecar packaging,
-offscreen capture, encoding), each ending in a decision record, then the
-Electron skeleton. Until the build-and-test workflow lands with that
-skeleton, the maintainer commits to `main` directly; after it, one issue,
-one branch, one pull request.
+labels, the milestones and the `A0-05`-style issue codes. The four Phase 0
+spikes have run: LOOM ships without its optional solvers (ADR-019), the
+sidecar is a pinned python-build-standalone runtime (ADR-020), Windows
+stays in the first release (ADR-021), and a project's layout is stored
+rather than recomputed because `topo` is not reproducible on macOS
+(ADR-023). Two spikes wait on continuous integration to measure the
+platforms a developer machine cannot; the offscreen-capture spike has one
+bounded session left, and its record will be ADR-024. Next is the Electron
+skeleton, then a "First reel" milestone that drives one preset feed through
+layout, viewer and export before the phases broaden. Until the
+build-and-test workflow lands with the skeleton, the maintainer commits to
+`main` directly; after it, one issue, one branch, one pull request.
 
 Personal settings and private pointers (sibling checkouts, planning notes)
 live in `CLAUDE.local.md`, which is gitignored. Read it if it exists.
@@ -120,9 +127,14 @@ Stated now so the first implementation does not have to rediscover them.
 - **The sidecar protocol is a contract.** JSON-RPC 2.0 over stdio, types
   generated from the engine's JSON Schema; a change on one side is a build
   error on the other, never a runtime surprise.
-- **Capture is deterministic.** `setCapture(true)` and `settle()` before the
-  first captured frame; step the clock by `1/fps`; compare renders in RGB
-  with a channel tolerance of 8, never RGBA and never exact equality.
+- **Capture is deterministic, per project.** A project's layout is
+  computed once and stored; renders and exports read it and never re-run
+  it (ADR-023). `setCapture(true)` before any wait, stills included, then
+  `settle()` before the first captured frame; step the clock by `1/fps`;
+  wait for the paint (two animation frames) before every capture; compare
+  renders in RGB with a channel tolerance of 8, never RGBA and never exact
+  equality. `getBoundingClientRect()` is in CSS pixels and `capturePage()`'s
+  rect is not; never pass one to the other.
 - **Renderer**: no Node APIs; everything goes through the preload bridge.
   `contextIsolation` on, `nodeIntegration` off, `sandbox` on.
 

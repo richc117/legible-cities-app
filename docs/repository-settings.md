@@ -45,7 +45,8 @@ canonical set: a phase (`phase:0` … `phase:6`), a type (`type:spike`,
 `type:spec`, `type:feature`, `type:bug`, `type:chore`, `type:docs`), an area
 (`area:engine`, `area:shell`, `area:sidecar`, `area:capture`, `area:export`,
 `area:ui`, `area:ci`, `area:release`) and a size (`size:S`, `size:M`,
-`size:L`). The milestones are the seven phases.
+`size:L`). The milestones are the seven phases and `Phase 1.5 - First
+reel` between Engine boundary and Library and inspect.
 
 ## Checking it later
 

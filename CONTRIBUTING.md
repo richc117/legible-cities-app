@@ -5,11 +5,13 @@ what keeps it coherent as it grows.
 
 ## Where things stand
 
-The repository holds its charter and nothing to build yet. The roadmap is
-the milestones on this repository, once published, in order: Phase 0
-(foundation and spikes) through Phase 6 (release readiness). An issue with
-the `type:spike` label is a timeboxed experiment whose deliverable is a
-decision record, not code.
+The repository holds its charter, the Phase 0 spike reports and decision
+records, and nothing to build yet. The roadmap is the milestones on this
+repository, once published, in order: Phase 0 (foundation and spikes),
+Phase 1 (engine boundary), First reel (one preset feed through layout,
+viewer and export, before anything broadens), then Phases 2 to 6 through
+release readiness. An issue with the `type:spike` label is a timeboxed
+experiment whose deliverable is a decision record, not code.
 
 ### Labels, milestones and issue codes
 
@@ -17,9 +19,11 @@ Issues carry four labels: a phase (`phase:0` to `phase:6`), a type
 (`type:spike`, `type:spec`, `type:feature`, `type:bug`, `type:chore`,
 `type:docs`), an area (`area:engine`, `area:shell`, `area:sidecar`,
 `area:capture`, `area:export`, `area:ui`, `area:ci`, `area:release`) and a
-size (`size:S`, `size:M`, `size:L`). The milestones are the seven phases:
-Foundation, Engine boundary, Library and inspect, Schematic, Style, Export,
-Release readiness. The maintainer creates labels and milestones before the
+size (`size:S`, `size:M`, `size:L`). The milestones are the seven phases and one
+between them: Foundation, Engine boundary, First reel, Library and inspect,
+Schematic, Style, Export, Release readiness. First reel carries no phase
+label of its own; its issues keep the label of the capability they belong
+to, and the milestone says when. The maintainer creates labels and milestones before the
 first issues are posted; the issue templates apply a type label only when it
 already exists.
 
