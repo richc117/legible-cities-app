@@ -4,10 +4,41 @@
 # committed), the messages of commits not yet pushed, and private files that
 # have strayed into the working tree. Exit 1 on any hit. Run before every
 # push; the pull request template asks for it.
+#
+#   bin/preflight                     the three passes above
+#   bin/preflight --message-file FILE scan a commit message being written
+#
+# The second form is what the `commit-msg` hook in .pre-commit-config.yaml
+# runs, so a bad trailer is refused while it can still be edited rather than
+# after it is history. gitleaks is the other half of the pair: it knows keys
+# and tokens, this knows the rest of the never list.
 set -u
+usage() { echo "usage: preflight [--message-file FILE]" >&2; exit 2; }
+msgfile=''
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --message-file) [ $# -ge 2 ] || usage; msgfile=$2; shift 2 ;;
+    -h|--help) usage ;;
+    *) echo "preflight: unknown argument: $1" >&2; usage ;;
+  esac
+done
 cd "$(git rev-parse --show-toplevel)" || exit 1
 pattern='/Users/[A-Za-z]|/home/[A-Za-z0-9._-]+|[A-Za-z]:[\\/]{1,2}[Uu]sers[\\/]|@gmail\.com|@icloud\.com|@outlook\.com|100\.[0-9]+\.[0-9]+\.[0-9]+|192\.168\.[0-9]+\.[0-9]+|172\.(1[6-9]|2[0-9]|3[01])\.[0-9]+\.[0-9]+|10\.[0-9]+\.[0-9]+\.[0-9]+:[0-9]+|\.ts\.net\b|fd7a:115c:a1e0:|ghp_[A-Za-z0-9]{20,}|github_pat_|-----BEGIN [A-Z ]*PRIVATE KEY|AKIA[0-9A-Z]{16}|claude\.ai/code/|Claude-Session:'
 status=0
+
+if [ -n "$msgfile" ]; then
+  # 0. A commit message being written, read from the file git is about to
+  #    use. One file, so grep prints line numbers without a path prefix.
+  found=$(grep -nE "$pattern" -- "$msgfile" || true)
+  if [ -n "$found" ]; then
+    echo "preflight: this commit message contains something that must not be public:" >&2
+    echo "$found" >&2
+    echo "preflight: edit the message; nothing has been committed." >&2
+    exit 1
+  fi
+  echo "preflight: commit message clean"
+  exit 0
+fi
 
 # 1. The index: tracked files plus staged changes, real path:line output.
 hits=$(git grep --cached -nE "$pattern" -- . ':(exclude)bin/preflight' 2>/dev/null || true)

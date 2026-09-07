@@ -38,8 +38,14 @@ report those upstream, and tell us so we can update).
 
 ## Hygiene this repository practises
 
-`bin/preflight` refuses personal paths, addresses, keys and tool-session
-links before a push. When the repository is published on GitHub, secret
-scanning, push protection and private vulnerability reporting will be
-switched on and Dependabot will watch dependencies. Signing material, when
-it exists, will live only in CI secrets.
+Two scanners run over every commit and again in CI: `gitleaks` for keys,
+tokens and certificates, and `bin/preflight` for personal paths, addresses,
+private hostnames and tool-session links. `CONTRIBUTING.md` says how to
+install them; `docs/adr/015-hygiene-enforced-by-tools.md` says why there are
+two. Dependabot watches dependencies once there are manifests to watch.
+
+The settings that only the host can enforce - secret scanning, push
+protection, private vulnerability reporting, branch protection on `main` -
+are listed in `docs/repository-settings.md` and are switched on as the
+repository is published. Signing material, when it exists, will live only in
+CI secrets.

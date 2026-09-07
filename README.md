@@ -41,8 +41,10 @@ existed and are being written up as its first decision records under
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md). Issues are the unit of work; every
 feature starts as a spec with acceptance criteria. Please read the
-[code of conduct](CODE_OF_CONDUCT.md) and, before pushing, run
-`bin/preflight`, which refuses personal paths, addresses and keys.
+[code of conduct](CODE_OF_CONDUCT.md), and run `pre-commit install` once in
+your checkout so that `gitleaks` and `bin/preflight` see every commit: this
+is a public repository, and they refuse keys, personal paths and addresses
+before those become history.
 
 ## Licence
 

@@ -1,0 +1,31 @@
+# The half of the never list that no secret scanner recognises: absolute
+# paths from someone's machine, personal addresses, private hostnames, links
+# to tool sessions. `gitleaks.yml` covers keys and tokens.
+#
+# The same script runs locally through .pre-commit-config.yaml. Here it reads
+# every commit message in the history it was given, not just the new ones, so
+# a leak that arrived through a merge is still a red check.
+name: preflight
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: preflight-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preflight:
+    name: preflight
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Personal paths, addresses, keys and session links
+        run: bin/preflight

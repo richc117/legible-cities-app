@@ -14,8 +14,10 @@ by ADR-NNN. Copy `000-template.md` to start one.
 Spikes (timeboxed experiments) end in a record here, not in code.
 
 The founding decisions were made before this repository existed and are
-being written up as its first records.
+being written up as its first records. A number is allocated when a decision
+is accepted rather than when it is written up, so the sequence has gaps.
 
 | Number | Title | Status |
 |---|---|---|
 | 000 | Template | n/a |
+| 015 | [Public-repo hygiene is enforced by tools, not attention](015-hygiene-enforced-by-tools.md) | Accepted |

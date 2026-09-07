@@ -1,0 +1,49 @@
+# Dependency updates. Alerts come from the repository's security settings;
+# this file is the other half - pull requests that actually do the upgrade.
+#
+# The npm and pip entries are here before the manifests they watch. Until
+# `package.json` lands with the Electron skeleton and the sidecar brings its
+# Python requirements, Dependabot reports "no manifest found" for those two
+# ecosystems in its job log and opens nothing. That is quieter than
+# remembering to add them later.
+#
+# The labels below must exist on the repository or Dependabot cannot apply
+# them; see docs/repository-settings.md.
+version: 2
+
+updates:
+  # The actions in .github/workflows/, pinned by tag and updated here.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    labels: ["type:chore", "area:ci"]
+    commit-message:
+      prefix: "ci"
+
+  # The app: Electron, React and their build tooling (from A0-09).
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels: ["type:chore", "area:ci"]
+    commit-message:
+      prefix: "deps"
+      prefix-development: "deps-dev"
+    groups:
+      # One pull request for the build and test tooling; production
+      # dependencies stay separate so each is read on its own.
+      development:
+        dependency-type: development
+        update-types: ["minor", "patch"]
+
+  # The Python sidecar's own requirements, once it has any.
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels: ["type:chore", "area:sidecar"]
+    commit-message:
+      prefix: "deps"

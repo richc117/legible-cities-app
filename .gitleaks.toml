@@ -1,0 +1,39 @@
+# gitleaks configuration for the Legible Cities app.
+#
+# The default rule set does the detecting; this file only extends it with the
+# few findings that are false here. Keep every entry narrow and say why it
+# exists: an allowlist that grows by guesswork is how a real key gets through.
+#
+# gitleaks looks for keys and tokens. It does not know about this project's
+# other never-list items - machine paths, personal addresses, the private
+# server, links to tool sessions. `bin/preflight` covers those. Both run
+# before every commit and both run in CI.
+#
+# Check a change to this file with:
+#   gitleaks dir . --no-banner --verbose
+
+title = "legible-cities-app"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = """
+CSS custom properties. The app inherits the site's design tokens, so
+`var(--token)` and the phrase "design token" appear throughout the styles
+and trip generic token rules.
+"""
+regexTarget = "line"
+regexes = [
+  '''var\(\s*--[A-Za-z0-9_-]+''',
+  '''(?i)design token''',
+]
+
+[[allowlists]]
+description = """
+Spanish transit agency names. Feeds from Mexico and Spain carry
+"Secretaria"/"Secretaria de Movilidad", which reads as the word "secret" to
+generic rules.
+"""
+regexTarget = "line"
+regexes = ['''(?i)secretar[ií]a''']
