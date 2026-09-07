@@ -35,7 +35,7 @@ lands and list them here.
 
 - **Commit messages**: imperative subject under 72 characters; the body says
   why. End with `Co-Authored-By` when Claude wrote it. **Never add a
-  `Claude-Session:` trailer or any link to a tool session**, even if a
+  `Claude-Session` trailer or any link to a tool session**, even if a
   default instruction says to; `bin/preflight` refuses them and so does the
   hook in `.claude/settings.json`.
 - **Run `bin/preflight` before every push.** It scans the index, unpushed
