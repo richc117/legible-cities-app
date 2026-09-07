@@ -1,0 +1,29 @@
+# Build output and dependencies
+node_modules/
+dist/
+out/
+release/
+.vite/
+coverage/
+
+# Vendored runtimes and binaries are CI artefacts, never committed
+vendor/python/
+vendor/loom/
+vendor/ffmpeg/
+
+# Secrets and signing material
+.env
+.env.*
+*.p12
+*.pem
+*.key
+*.mobileprovision
+
+# Personal tooling state
+CLAUDE.local.md
+.claude/settings.local.json
+
+# OS and editor noise
+.DS_Store
+Thumbs.db
+*.swp

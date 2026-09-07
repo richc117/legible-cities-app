@@ -1,0 +1,46 @@
+name: Bug report
+description: Something the app does wrong
+labels: ["type:bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks. Before pasting diagnostics or logs, remove anything personal:
+        your user name in file paths, addresses, feed URLs you would rather not share.
+  - type: input
+    id: version
+    attributes:
+      label: App version and operating system
+      placeholder: "0.1.0, macOS 15.1 (Apple Silicon) / Windows 11 24H2"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. Add the Boston preset  2. Schematise  3. Export › Instagram reel"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: Settings › Copy diagnostics, pasted here. Check it for personal paths first.
+      render: text
+  - type: input
+    id: feed
+    attributes:
+      label: Feed
+      description: Which network or feed URL, if the bug depends on the data and you are happy to share it.

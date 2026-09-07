@@ -1,0 +1,32 @@
+name: Spike
+description: A timeboxed experiment that ends in a decision record, not code
+labels: ["type:spike"]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: The question
+      description: One question with a yes/no or a number as its answer.
+    validations:
+      required: true
+  - type: textarea
+    id: method
+    attributes:
+      label: Method
+      description: What you will build or measure, and how you will know.
+    validations:
+      required: true
+  - type: input
+    id: timebox
+    attributes:
+      label: Timebox
+      placeholder: "two afternoons"
+    validations:
+      required: true
+  - type: textarea
+    id: deliverable
+    attributes:
+      label: Deliverable
+      description: The decision record under docs/adr/ and anything else that survives; spike branches are deleted.
+    validations:
+      required: true

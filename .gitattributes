@@ -1,0 +1,15 @@
+# One line ending in the repository regardless of the machine that committed.
+* text=auto eol=lf
+# Windows command files must stay CRLF or cmd.exe mis-parses them.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+# Binaries, including GTFS fixtures.
+*.zip binary
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.icns binary
+*.mp4 binary
+*.woff2 binary

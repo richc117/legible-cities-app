@@ -1,0 +1,20 @@
+name: Feature request
+description: Something the app should do
+labels: ["type:feature"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you are trying to do and what gets in the way.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: A proposal
+      description: How it could work, from the user's side of the screen. Acceptance criteria welcome.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered

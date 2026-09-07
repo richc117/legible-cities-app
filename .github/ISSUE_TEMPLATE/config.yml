@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/richc117/legible-cities-app/security/advisories/new
+    about: Please report vulnerabilities privately, not as an issue; see SECURITY.md. This link works once the repository is on GitHub with private reporting enabled.

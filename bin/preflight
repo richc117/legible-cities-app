@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Refuse to let personal paths, addresses, keys or tool-session links into a
+# public repository. Three passes: the index (everything that would be
+# committed), the messages of commits not yet pushed, and private files that
+# have strayed into the working tree. Exit 1 on any hit. Run before every
+# push; the pull request template asks for it.
+set -u
+cd "$(git rev-parse --show-toplevel)" || exit 1
+pattern='/Users/[A-Za-z]|/home/[A-Za-z0-9._-]+|[A-Za-z]:[\\/]{1,2}[Uu]sers[\\/]|@gmail\.com|@icloud\.com|@outlook\.com|100\.[0-9]+\.[0-9]+\.[0-9]+|192\.168\.[0-9]+\.[0-9]+|172\.(1[6-9]|2[0-9]|3[01])\.[0-9]+\.[0-9]+|10\.[0-9]+\.[0-9]+\.[0-9]+:[0-9]+|\.ts\.net\b|fd7a:115c:a1e0:|ghp_[A-Za-z0-9]{20,}|github_pat_|-----BEGIN [A-Z ]*PRIVATE KEY|AKIA[0-9A-Z]{16}|claude\.ai/code/|Claude-Session:'
+status=0
+
+# 1. The index: tracked files plus staged changes, real path:line output.
+hits=$(git grep --cached -nE "$pattern" -- . ':(exclude)bin/preflight' 2>/dev/null || true)
+if [ -n "$hits" ]; then
+  echo "preflight: files about to be committed contain something that must not be public:" >&2
+  echo "$hits" >&2; status=1
+fi
+
+# 2. Commit messages not yet on the upstream branch (all of history when there
+#    is no upstream). Bodies only; author metadata is not scanned.
+if git rev-parse -q --verify '@{upstream}' >/dev/null 2>&1; then range='@{upstream}..HEAD'; else range='HEAD'; fi
+if git rev-parse -q --verify HEAD >/dev/null 2>&1; then
+  msgs=$(git log --format='%h %B' "$range" 2>/dev/null | grep -nE "$pattern" || true)
+  if [ -n "$msgs" ]; then
+    echo "preflight: an unpushed commit message contains something that must not be public:" >&2
+    echo "$msgs" >&2; status=1
+  fi
+fi
+
+# 3. Private files present and not ignored.
+stray=$(git status --porcelain 2>/dev/null | grep -E 'CLAUDE\.local\.md|settings\.local\.json|\.env|\.p12|\.pem|\.key$' || true)
+if [ -n "$stray" ]; then
+  echo "preflight: a private file is in the working tree and not ignored:" >&2
+  echo "$stray" >&2; status=1
+fi
+
+[ $status -eq 0 ] && echo "preflight: clean"
+exit $status
