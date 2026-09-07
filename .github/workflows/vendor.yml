@@ -9,7 +9,9 @@
 # The configure flags are the spike's finding, not a preference: LOOM's
 # optional dependencies (GLPK, COIN-OR, Gurobi, libzip) are never called at
 # the settings this project uses, and leaving them out is what makes the
-# binaries self-contained. Do not "fix" this by adding them back and
+# binaries self-contained. OpenMP joined the list after the first CI run:
+# GCC finds it and links libgomp dynamically, Apple clang never does, and
+# the Linux octi then needed a library a stock container does not have. Do not "fix" this by adding them back and
 # bundling - read the spike first.
 name: vendor
 
@@ -70,7 +72,8 @@ jobs:
             -DCMAKE_DISABLE_FIND_PACKAGE_GLPK=ON \
             -DCMAKE_DISABLE_FIND_PACKAGE_COIN=ON \
             -DCMAKE_DISABLE_FIND_PACKAGE_Gurobi=ON \
-            -DCMAKE_DISABLE_FIND_PACKAGE_LibZip=ON
+            -DCMAKE_DISABLE_FIND_PACKAGE_LibZip=ON \
+            -DCMAKE_DISABLE_FIND_PACKAGE_OpenMP=ON
 
       - name: Build
         shell: bash
@@ -93,6 +96,18 @@ jobs:
               fi
             else
               ldd "$b"
+              # A library the runner has to supply is not self-contained.
+              # The first run's octi linked libgomp and this branch let it
+              # through because it only printed. Only the C and C++ runtime
+              # and the two compression libraries the pin needs may appear.
+              if ldd "$b" | grep -q 'not found'; then
+                echo "::error::$b needs a library the runner does not ship"
+                status=1
+              fi
+              if ldd "$b" | grep '=>' | grep -vE 'libc\.so|libm\.so|libstdc\+\+|libgcc_s|libpthread|libdl|libz\.so|libbz2' | grep -q .; then
+                echo "::error::$b links a library outside the allowlist"
+                status=1
+              fi
             fi
           done
           exit $status
@@ -194,7 +209,8 @@ jobs:
             -DCMAKE_DISABLE_FIND_PACKAGE_GLPK=ON \
             -DCMAKE_DISABLE_FIND_PACKAGE_COIN=ON \
             -DCMAKE_DISABLE_FIND_PACKAGE_Gurobi=ON \
-            -DCMAKE_DISABLE_FIND_PACKAGE_LibZip=ON
+            -DCMAKE_DISABLE_FIND_PACKAGE_LibZip=ON \
+            -DCMAKE_DISABLE_FIND_PACKAGE_OpenMP=ON
           cmake --build loom-src/build -j 4
           ldd loom-src/build/loom.exe || true
       - uses: actions/upload-artifact@v4

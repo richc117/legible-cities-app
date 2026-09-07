@@ -118,8 +118,32 @@ reproducible than the other, and node count is not a determinism test.
 Reported upstream as https://github.com/ad-freiburg/loom/issues/44.
 `docs/adr/spikes/loom-native.md` has the numbers and the retraction.
 
+## Second addendum, 2026-09-07 (evening)
+
+The mirror's runners built all three POSIX targets from the pin, and
+session four of the spike ran and compared them. Two corrections to the
+record above, neither changing the decision:
+
+**"No non-system dependencies" was true of the macOS builds and false of
+the Linux one.** LOOM's CMake picks up OpenMP wherever the compiler offers
+it; GCC does and Apple clang does not, so the Linux `octi` linked
+`libgomp.so.1` and the Linux gate - which only printed `ldd` - let it
+through. OpenMP is now disabled at configure time on every platform, in the
+same spirit as the four packages above, and the Linux gate fails on any
+library outside the C and C++ runtime, `libz` and `libbz2`.
+
+**`octi` is nondeterministic on macOS in its own right**, not only
+downstream of `topo`: three runs on one identical input, two agree and the
+third moves stations by up to 1.4 km on arm64, and no two agree on x64. It
+is the stage whose variance a person sees. `loom` is deterministic on every
+build. And no two builds agree past `gtfs2graph`, including two Linux
+builds with different compilers, each stable with itself - deterministic is
+not portable. ADR-023 is the answer to both.
+
 ---
 
-Two of the three targets remain unmeasured. The recipe should carry to
-`macos-13` unchanged and to Windows through the Transport for Cairo patches,
-but "should" is doing work in that sentence, and the spike says so.
+*(Written before the mirror existed.)* Two of the three targets remain
+unmeasured. The recipe should carry to Intel macOS unchanged and to Windows
+through the Transport for Cairo patches, but "should" is doing work in that
+sentence, and the spike says so. *Since measured: it did carry to Intel; see
+the second addendum.*
