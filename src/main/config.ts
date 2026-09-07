@@ -10,6 +10,7 @@ export const KEYS = [
   'SCHEMATIC_LOOM_BIN',
   'SCHEMATIC_FFMPEG',
   'LEGIBLE_ENGINE_CHECKOUT',
+  'LEGIBLE_ENGINE_PYTHON',
 ] as const
 
 export type Key = (typeof KEYS)[number]
@@ -20,6 +21,8 @@ export interface Config {
   loomBin: string | null
   ffmpeg: string | null
   engineCheckout: string | null
+  /** An interpreter named explicitly: a path, or a bare command name left for PATH to resolve. */
+  enginePython: string | null
   sources: Record<Key, Source>
   unknownKeys: string[]
   fileFound: boolean
@@ -69,6 +72,10 @@ function pick(
   return { value: null, source: 'default' }
 }
 
+export function isCommandName(value: string): boolean {
+  return !value.includes('/') && !value.includes('\\')
+}
+
 export function resolveConfig(input: ConfigInput): Config {
   const file = input.fileText === undefined ? {} : parseEnvFile(input.fileText)
   const absolute = (value: string): string =>
@@ -78,17 +85,27 @@ export function resolveConfig(input: ConfigInput): Config {
   const loomBin = pick('SCHEMATIC_LOOM_BIN', input.env, file)
   const ffmpeg = pick('SCHEMATIC_FFMPEG', input.env, file)
   const checkout = pick('LEGIBLE_ENGINE_CHECKOUT', input.env, file)
+  const python = pick('LEGIBLE_ENGINE_PYTHON', input.env, file)
 
   return {
     home: home.value === null ? join(input.userData, 'engine') : absolute(home.value),
     loomBin: loomBin.value === null ? null : absolute(loomBin.value),
     ffmpeg: ffmpeg.value === null ? null : absolute(ffmpeg.value),
     engineCheckout: checkout.value === null ? null : absolute(checkout.value),
+    // A bare name ("python3") is a command for the spawn to find on PATH,
+    // because the person named it; anything with a separator is a path.
+    enginePython:
+      python.value === null
+        ? null
+        : isCommandName(python.value)
+          ? python.value
+          : absolute(python.value),
     sources: {
       SCHEMATIC_HOME: home.source,
       SCHEMATIC_LOOM_BIN: loomBin.source,
       SCHEMATIC_FFMPEG: ffmpeg.source,
       LEGIBLE_ENGINE_CHECKOUT: checkout.source,
+      LEGIBLE_ENGINE_PYTHON: python.source,
     },
     unknownKeys: Object.keys(file).filter((k) => !(KEYS as readonly string[]).includes(k)),
     fileFound: input.fileText !== undefined,
@@ -116,6 +133,11 @@ export function describeConfig(config: Config, options: { development: boolean }
   if (config.engineCheckout !== null) {
     lines.push(
       `LEGIBLE_ENGINE_CHECKOUT=${config.engineCheckout} (${config.sources.LEGIBLE_ENGINE_CHECKOUT})`,
+    )
+  }
+  if (config.enginePython !== null) {
+    lines.push(
+      `LEGIBLE_ENGINE_PYTHON=${config.enginePython} (${config.sources.LEGIBLE_ENGINE_PYTHON})`,
     )
   }
   if (options.development && !config.fileFound) {

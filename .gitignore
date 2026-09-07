@@ -30,3 +30,7 @@ CLAUDE.local.md
 .DS_Store
 Thumbs.db
 *.swp
+
+# The stand-in engine is Python; the Python bytecode cache has no place here.
+__pycache__/
+*.pyc

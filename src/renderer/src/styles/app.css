@@ -45,6 +45,19 @@ body {
   box-sizing: border-box;
 }
 
+/* The engine's status line, above whichever screen is showing. */
+
+.app-header {
+  width: min(100%, var(--measure));
+  margin-bottom: var(--space-3);
+}
+
+.engine-status {
+  margin: 0;
+  font-size: var(--text-small);
+  color: var(--muted);
+}
+
 /* The one panel each screen sits in. */
 
 .panel {

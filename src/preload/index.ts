@@ -1,8 +1,16 @@
 // The whole surface between the page and the machine. Named, typed,
-// narrow; never ipcRenderer itself. Contract: specs/003-project/contracts/bridge.md.
+// narrow; never ipcRenderer itself. Contracts: specs/003-project/contracts/bridge.md
+// (projects) and specs/004-sidecar-supervisor/contracts/bridge.md (engine).
 
-import { contextBridge, ipcRenderer } from 'electron'
-import { CHANNELS, type Api } from '../shared/api'
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
+import {
+  CHANNELS,
+  type Api,
+  type EngineAccepted,
+  type EngineRequest,
+  type EngineSettled,
+} from '../shared/api'
+import { type EngineErrorShape } from '../shared/engine'
 import { unwrapIpcError } from '../shared/errors'
 
 // A rejection's message is the contract's sentence, without Electron's
@@ -16,6 +24,46 @@ async function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
   }
 }
 
+function subscribe<T>(channel: string, listener: (value: T) => void): () => void {
+  const handler = (_event: IpcRendererEvent, value: T): void => listener(value)
+  ipcRenderer.on(channel, handler)
+  return () => {
+    ipcRenderer.removeListener(channel, handler)
+  }
+}
+
+// A request's answer arrives as an event on the same channel as its
+// progress, after the last notification, never as the invoke's reply
+// (Electron does not order the two). It settles with the engine's own
+// error shape, code, message and data, as a plain object: an Error loses
+// everything but its message on the way over the bridge, and the engine's
+// data.hint is what the interface shows.
+function engineRequest(method: string, params?: Record<string, unknown>): EngineRequest {
+  const id = crypto.randomUUID()
+  const result = new Promise<unknown>((resolve, reject) => {
+    const off = subscribe<EngineSettled>(CHANNELS.engineSettled, (settled) => {
+      if (settled.id !== id) return
+      off()
+      if (settled.ok) resolve(settled.result)
+      else reject(settled.error)
+    })
+    ipcRenderer.invoke(CHANNELS.engineRequest, id, method, params).then(
+      (answer: EngineAccepted) => {
+        if (answer.accepted) return
+        off()
+        reject(answer.error)
+      },
+      (error: unknown) => {
+        off()
+        const message = error instanceof Error ? error.message : String(error)
+        const shape: EngineErrorShape = { code: -32603, message: unwrapIpcError(message) }
+        reject(shape)
+      },
+    )
+  })
+  return { id, result }
+}
+
 const api: Api = {
   projects: {
     list: () => invoke(CHANNELS.projectsList),
@@ -23,6 +71,14 @@ const api: Api = {
     create: (input) => invoke(CHANNELS.projectsCreate, input),
     rename: (id, name) => invoke(CHANNELS.projectsRename, id, name),
     delete: (id) => invoke(CHANNELS.projectsDelete, id),
+  },
+  engine: {
+    state: () => invoke(CHANNELS.engineState),
+    request: engineRequest,
+    cancel: (id) => invoke(CHANNELS.engineCancel, id),
+    onState: (listener) => subscribe(CHANNELS.engineStateChanged, listener),
+    onProgress: (listener) => subscribe(CHANNELS.engineProgress, listener),
+    onLog: (listener) => subscribe(CHANNELS.engineLog, listener),
   },
 }
 

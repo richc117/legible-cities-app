@@ -74,7 +74,8 @@ log lines.
 | `SCHEMATIC_HOME` | The engine home | `<userData>/engine` |
 | `SCHEMATIC_LOOM_BIN` | Directory holding `gtfs2graph`, `topo`, `loom`, `octi` | unset |
 | `SCHEMATIC_FFMPEG` | Path to the ffmpeg executable | unset |
-| `LEGIBLE_ENGINE_CHECKOUT` | The engine's source checkout, development only: the tokens drift test reads the animation page from it | unset |
+| `LEGIBLE_ENGINE_CHECKOUT` | The engine's source checkout, development only: the tokens drift test reads the animation page from it, and the engine runs from its `.venv` (`specs/004`) | unset |
+| `LEGIBLE_ENGINE_PYTHON` | An interpreter to run the engine with, named explicitly: a path, or a bare command name for the spawn to resolve on PATH (added by `specs/004`) | unset |
 
 ## Design tokens
 
