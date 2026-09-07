@@ -5,7 +5,7 @@
   8, at device scale factor 2 - deterministically across runs, and how fast?
 - **Timebox:** one weekend.
 - **Started:** 2026-09-07
-- **Ended:** 2026-09-07 (determinism and speed answered; parity open)
+- **Ended:** 2026-09-07 (determinism, speed and the cause of the parity failure answered; the fix is not)
 - **Branch:** `spike/offscreen-capture` (deleted when this lands; the report
   is the deliverable)
 
@@ -131,6 +131,60 @@ matches exactly, and content sits at precisely twice the vertical offset.
 A doubling is a scale factor applied twice, not a rendering difference, and
 it points back at the same axis the crash is on.
 
+## Session two: what the doubling is
+
+Not the page. A probe run under both hosts - same expression, same waits -
+returns identical values for everything the rendering depends on:
+
+| | Playwright | Electron |
+|---|---|---|
+| `devicePixelRatio` | 2 | 2 |
+| `innerWidth` x `innerHeight` | 540 x 960 | 540 x 960 |
+| `#stage` rect | 0, 0, 540, 960 | 0, 0, 540, 960 |
+| `svg` `viewBox` | `-78.95 -1062.71 2013.71 3579.93` | identical |
+| inner transforms | `rotate(-45 627.43 338.42)`, … | identical |
+| clock, trains shown | 08:02, 64 | 08:02, 64 |
+
+Only `screen` and `outer` differ, and the page does not lay out from either.
+The DOM is the same in both. So the difference is in the capture.
+
+**The capture scale is applied twice.** Asking `capturePage()` for the whole
+page, from a 540x960 CSS viewport, returns **2160x3840** - an effective
+factor of 4, not 2. Passing a rect makes it worse rather than better, because
+the rect is in device-independent pixels while `getBoundingClientRect()`
+returns CSS pixels, and on this window one CSS pixel is two of them:
+
+| Rect passed | Output |
+|---|---|
+| none | 2160 x 3840 |
+| `{0, 0, 1080, 1920}` | 2160 x 3840 |
+| `{0, 0, 540, 960}` - `#stage`'s CSS rect | 1080 x 1920 |
+
+The last one is the right *size* by accident: it captures the top-left
+quarter of the page and rasterises it at 4x. That is the whole finding.
+Content the recorder puts at CSS y=282 lands at 282x2=565 in its output and
+282x4=1128 in Electron's - which is the 1130 measured in session one, to
+within a rounding.
+
+**Neither API that would fix it works.** On a minimal page, with no large
+SVG involved:
+
+| Configuration | page sees `devicePixelRatio` | CSS viewport | capture |
+|---|---|---|---|
+| offscreen | **1** | 540 x 960 | 1080 x 1920 |
+| offscreen, `--force-device-scale-factor=2` | **1** - ignored | 540 x 960 | 1080 x 1920 |
+| onscreen | 2 | 540 x 917 | 1080 x 1834 |
+
+Offscreen, the page is told the scale factor is 1 and is then rasterised at
+2. The switch that should set it is ignored, and `enableDeviceEmulation`
+segfaults. So a page whose layout consults `devicePixelRatio` - as this one
+evidently does - cannot be made to agree with a Playwright capture through
+either documented route.
+
+The segfault in session one was this configuration meeting the real page; on
+a trivial page the same switches do not crash. That narrows the crash but
+does not explain it, and it was not chased further.
+
 ## What we ruled out
 
 **`webPreferences.zoomFactor` as a scale factor.** It scales layout, not the
@@ -161,13 +215,15 @@ either. What stands between the two is a single unexplained doubling and a
 crash in the one API that would remove the display dependency. Both are
 tractable and neither has been chased:
 
-1. Find the doubling. The next step is to compare what the page measures in
-   each host - `devicePixelRatio` against whatever the layout actually uses
-   - rather than to compare pixels. The clue is exact: 565 becomes 1130.
-2. Establish whether the `enableDeviceEmulation` crash is known upstream, and
-   whether a fixed Electron release exists. Until it is resolved, capture
-   output depends on the display attached to the machine doing the capture,
-   which no export path can accept.
+1. ~~Find the doubling.~~ Done, in session two: the capture scale is applied
+   twice, the rect argument is in device-independent pixels rather than CSS
+   pixels, and offscreen rendering tells the page a scale factor it does not
+   then rasterise at.
+2. Establish whether any Electron release renders offscreen at a scale the
+   page has been told about. Both documented routes fail here - one ignored,
+   one crashing - and until one works, a page that consults
+   `devicePixelRatio` cannot be captured to match. This is the question A0-08
+   waits on.
 
 **What would change our mind.** If the doubling turns out to be the page
 reading the host's scale factor, then the fix belongs in the engine's page
