@@ -3,10 +3,11 @@
 #   pip install pre-commit   (or: brew install pre-commit)
 #   pre-commit install
 #
-# After that `git commit` runs gitleaks over the staged changes and
-# bin/preflight over the staged tree and the message being written. Both run
-# again in CI (.github/workflows/gitleaks.yml and preflight.yml), so a
-# bypassed hook is caught rather than trusted.
+# After that `git commit` runs gitleaks over the staged changes,
+# bin/preflight over the staged tree and the message being written, and
+# shellcheck over the shell. The two scanners run again in CI
+# (.github/workflows/gitleaks.yml and preflight.yml), so a bypassed hook is
+# caught rather than trusted.
 #
 # The gitleaks version is pinned by `rev`; pre-commit builds it in its own
 # environment, so nothing needs to be installed for it. Update the pin with
@@ -25,6 +26,14 @@ repos:
       # scan the same staged changes twice.
       - id: gitleaks
         stages: [pre-commit]
+
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1
+    hooks:
+      # The hooks and bin/preflight are the only executable code here, and
+      # they are what the repository's hygiene rests on. A wheel, so it needs
+      # no Docker and no separate shellcheck install.
+      - id: shellcheck
 
   - repo: local
     hooks:

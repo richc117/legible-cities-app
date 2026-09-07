@@ -19,11 +19,27 @@ from the template and add its row below, and `/spike` to set up an
 experiment and its report. Neither is required: a record written by hand is
 the same record.
 
-The founding decisions were made before this repository existed and are
-being written up as its first records. A number is allocated when a decision
-is accepted rather than when it is written up, so the sequence has gaps.
+A number is allocated when a decision is accepted, not when it is written
+up. The founding decisions were made before this repository existed, so the
+numbers below are already taken even where the file is not here yet, and the
+table has gaps: those numbers belong to decisions about the project rather
+than the software, which are recorded elsewhere and will not appear here.
+Take the next unreserved number when you add a record, and check that
+nothing already cites the one you mean to use.
 
 | Number | Title | Status |
 |---|---|---|
 | 000 | Template | n/a |
+| 001 | The desktop shell is Electron | Accepted, not yet written up |
+| 002 | The engine stays in Python and runs as a sidecar | Accepted, not yet written up |
+| 003 | The code is licensed GPL-3.0-or-later | Accepted, not yet written up |
+| 009 | electron-vite + React + TypeScript, packaged by electron-builder | Accepted, not yet written up |
+| 010 | JSON-RPC 2.0 over stdio, using existing LSP libraries | Accepted, not yet written up |
+| 011 | LOOM ships as native binaries built in CI from a pinned commit | Accepted, not yet written up |
+| 012 | FFmpeg is bundled and encoding stays in Python | Accepted, not yet written up |
+| 013 | The generated animation page is the viewer, served same-origin | Accepted, not yet written up |
+| 014 | Spec Kit for specs; ADRs for decisions; spikes end in an ADR | Accepted, not yet written up |
 | 015 | [Public-repo hygiene is enforced by tools, not attention](015-hygiene-enforced-by-tools.md) | Accepted |
+| 016 | All data lives in the user's data folder; the engine never writes beside its code | Accepted, not yet written up |
+| 017 | The app is called "Legible Cities" | Accepted, not yet written up |
+| 018 | Public ADRs use three-digit numbers and a header block | Accepted, not yet written up |
