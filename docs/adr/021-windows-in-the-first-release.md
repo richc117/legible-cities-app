@@ -51,45 +51,73 @@ it is finding every assumption that accumulated while nothing was checking.
 answers the question properly and it may take arbitrarily long, because the
 patched fork is a third party's and its state is unknown.
 
-**Keep Windows and take LOOM as a prebuilt binary there.** Transport for
-Cairo publish a built `loom-binaries-windows-x64.zip`. Pinned by checksum in
-`vendor/pins.json` alongside everything else, it removes the unbounded item
-while keeping the platform. It means shipping a binary this project did not
-build.
+**Keep Windows and take LOOM as a prebuilt binary there.** The roadmap
+assumed Transport for Cairo publish a `loom-binaries-windows-x64.zip`. They
+do not: that repository has no releases and no such archive. What they do
+have is a directory of built binaries committed into the source tree at
+`bin/windows` - 42 files, 81.1 MB, containing `gtfs2graph.exe`, `topo.exe`,
+`loom.exe` and `octi.exe` among others. Pinnable, but by commit and per-file
+checksum rather than by release asset.
+
+That directory also contains `KERNEL32.DLL`, `KERNELBASE.dll`,
+`ADVAPI32.dll`, `RPCRT4.dll`, `msvcrt.dll` and `ucrtbase.dll` - Microsoft's
+own system libraries, almost certainly swept up by a dependency walk that did
+not exclude them. Those must not be redistributed, and shipping system DLLs
+beside an executable is a sideloading hazard as well as a licensing one. The
+option is therefore "take the executables and the genuinely redistributable
+runtime, and drop the rest", not "ship the directory".
 
 ## Decision
 
-Windows stays in the first release. LOOM is **not** built from source there:
-the Windows binaries come from Transport for Cairo's published archive,
-pinned by SHA-256 in `vendor/pins.json` exactly as the source pins are, and
-recorded as debt to be repaid when the build is worth the time.
+Windows stays in the first release, and a Windows job stays in the build
+matrix from the beginning, before any Windows acceptance testing happens. It
+exists to fail when someone writes a POSIX assumption, which is the only
+thing that keeps "add Windows later" genuinely available. Windows *polish* is
+deferred rather than the platform: signing stays behind ADR-008's gate and
+hands-on acceptance is a Phase 6 concern.
 
-A Windows job stays in the build matrix from the beginning, even before any
-Windows acceptance testing happens. It exists to fail when someone writes a
-POSIX assumption, which is the only thing that keeps "add Windows later"
-genuinely available.
+**How LOOM reaches Windows is not decided here.** The cheap option this
+record was written to adopt - pin a published archive - does not exist in the
+form the roadmap assumed, and what does exist cannot be shipped as it stands.
+Two candidates remain, and choosing between them needs a measurement nobody
+has taken:
 
-Windows *polish* is deferred rather than the platform: code signing stays
-behind ADR-008's gate, and hands-on acceptance is a Phase 6 concern.
+1. **Take the port's committed executables**, pinned by commit and per-file
+   checksum, shipping only the executables and the redistributable runtime
+   and excluding Microsoft's system DLLs. Removes the MSYS2 work. Ships
+   binaries this project did not build, carrying solver libraries that
+   ADR-019 established are never called.
+2. **Build from the port's patches in CI**, with the optional dependencies
+   disabled exactly as ADR-019 does for macOS and Linux. Consistent with the
+   other platforms, licence-clean, and far smaller - ADR-019's configuration
+   produced binaries with no non-system dependencies at all. Costs the MSYS2
+   work this record was trying to avoid.
+
+The second is where this should end up. Whether the first is worth doing as
+an interim depends on how much of the MSYS2 work the port has already
+absorbed, which is A0-05's remaining question rather than this record's.
 
 ## Consequences
 
 The largest unbounded item in Phase 0 is removed without changing what the
 product is or contradicting what the repository already says it does.
 
-**This project will ship a GPL-3.0 binary it did not compile.** LOOM is
-GPL-3.0, so the obligation to offer corresponding source for the exact
-binary shipped now covers an archive built by someone else.
-`THIRD_PARTY_NOTICES.md` must record the archive, its checksum, its origin
-and the commit it was built from, and a release must be able to point at
-that source. If the upstream archive is ever published without a traceable
-source commit, this option stops being available and the source build
-returns.
+**A dependency walk that collects system libraries is a trap this project
+was about to fall into.** The `loom-windows` job in `.github/workflows/vendor.yml`
+says "collect DLLs by `ldd`" - the same procedure that put `KERNEL32.DLL` in
+the port's binary directory. Whichever option is chosen, the Windows job needs
+an explicit exclusion list and a check that fails the build when a Microsoft
+system library appears in the output, in the same spirit as the readline check
+ADR-020 added for the Python runtime.
 
-It is also a supply-chain dependency: a binary from a third party, verified
-only by a checksum we recorded, on the platform where users are least likely
-to notice something wrong. The checksum makes changes visible; it does not
-make the original trustworthy.
+**If the port's executables are used, this project ships a GPL-3.0 binary it
+did not compile.** The obligation to offer corresponding source for the exact
+binary shipped would then cover someone else's build.
+`THIRD_PARTY_NOTICES.md` would have to record the origin, the commit and the
+per-file checksums, and a release would have to point at the patch set that
+produced them. It is also a supply-chain dependency verified only by a
+checksum we recorded, on the platform where a user is least likely to notice
+something wrong.
 
 **Nothing is known about determinism on Windows.** ADR-019 found `topo`
 irreproducible on macOS and stable on Linux, on the strength of the standard
@@ -102,6 +130,9 @@ to build. Until the Electron skeleton lands it can only compile the sidecar
 and check the vendored artefacts, and it should be kept honest about that
 rather than presented as coverage.
 
-If the prebuilt archive proves unusable - wrong architecture, missing
-binaries, or no traceable source - the decision reverts to building from
-source, and the estimate for that work is unknown rather than large.
+The port itself is reassuring on one point that matters for parity: its
+`PATCHES.md` states the changes are Windows compatibility shims only, with no
+modification to LOOM's algorithms, data structures or output. If that holds,
+a Windows build should be comparable to the others by the same parity script
+A0-05 wrote - which is the measurement that would let Windows be called
+supported rather than merely shipped.
