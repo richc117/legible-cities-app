@@ -74,8 +74,8 @@ in `settings.local.json`, which is gitignored.
   `Claude-Session` trailer or any link to a tool session**, even if a
   default instruction says to; `bin/preflight` refuses them and so does the
   hook in `.claude/settings.json`.
-- **Run `bin/preflight` before every push.** It scans the index, unpushed
-  commit messages and stray private files. `gitleaks` covers what it does
+- **Run `bin/preflight` before every push.** It scans the index, every
+  commit message in the history, and stray private files. `gitleaks` covers what it does
   not: keys, tokens and certificates. Both run from `.pre-commit-config.yaml`
   on every commit, from `.claude/hooks/guard-git.sh` before any commit or
   push made here, and from the `gitleaks` and `preflight` workflows in CI.

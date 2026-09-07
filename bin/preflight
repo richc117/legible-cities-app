@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Refuse to let personal paths, addresses, keys or tool-session links into a
 # public repository. Three passes: the index (everything that would be
-# committed), the messages of commits not yet pushed, and private files that
+# committed), every commit message in the history, and private files that
 # have strayed into the working tree. Exit 1 on any hit. Run before every
 # push; the pull request template asks for it.
 #
@@ -47,11 +47,13 @@ if [ -n "$hits" ]; then
   echo "$hits" >&2; status=1
 fi
 
-# 2. Commit messages not yet on the upstream branch (all of history when there
-#    is no upstream). Bodies only; author metadata is not scanned.
-if git rev-parse -q --verify '@{upstream}' >/dev/null 2>&1; then range='@{upstream}..HEAD'; else range='HEAD'; fi
+# 2. Commit message bodies, all of them; author metadata is not scanned.
+#    Not the range against the tracked upstream: that describes the branch,
+#    not the remote a push is going to, so with a second remote it can be
+#    empty for a push that sends the whole history somewhere new. CI scans
+#    everything for the same reason; this way the answer is the same here.
 if git rev-parse -q --verify HEAD >/dev/null 2>&1; then
-  msgs=$(git log --format='%h %B' "$range" 2>/dev/null | grep -nE "$pattern" || true)
+  msgs=$(git log --format='%h %B' HEAD 2>/dev/null | grep -nE "$pattern" || true)
   if [ -n "$msgs" ]; then
     echo "preflight: an unpushed commit message contains something that must not be public:" >&2
     echo "$msgs" >&2; status=1
