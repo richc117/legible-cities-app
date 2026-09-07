@@ -95,7 +95,7 @@ if (!hasLock) {
 
   app.whenReady().then(async () => {
     const config = await loadConfig()
-    const store = new ProjectStore(join(config.home, 'projects'), (m) => log.warn('projects', m))
+    const store = new ProjectStore(config.home, (m) => log.warn('projects', m))
     registerProjectHandlers(
       ipcMain,
       store,

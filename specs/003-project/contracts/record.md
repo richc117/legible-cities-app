@@ -29,3 +29,6 @@ The on-disk form of `ProjectRecord` (`data-model.md`), version 1:
   and are copied here as data; the numbers are re-checked against the engine
   when A4-02 exposes them.
 - Readers accept a missing optional field and refuse a `version` above 1.
+- A write stores the record as the reader normalised it, stamped with the
+  current `version`: unknown keys are dropped, an invalid colour, theme or
+  date falls back to its default, and a missing timestamp becomes the epoch.

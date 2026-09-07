@@ -134,7 +134,9 @@ export function parseRecord(json: unknown): Parsed {
   if (isObject(json.colors)) {
     for (const [k, v] of Object.entries(json.colors)) if (isColor(v)) colors[k] = v
   }
-  const now = new Date().toISOString()
+  // A record without a timestamp gets a fixed one, so it sorts last and
+  // reads the same on every open; every write sets both.
+  const epoch = '1970-01-01T00:00:00.000Z'
 
   const record: ProjectRecord = {
     version,
@@ -142,7 +144,7 @@ export function parseRecord(json: unknown): Parsed {
     name,
     feed,
     mode: isString(json.mode) && MODE_PATTERN.test(json.mode) ? json.mode : DEFAULT_MODE,
-    agency: isString(json.agency) ? json.agency : null,
+    agency: isString(json.agency) && json.agency.trim() !== '' ? json.agency : null,
     date: isString(json.date) && /^\d{4}-\d{2}-\d{2}$/.test(json.date) ? json.date : null,
     style: {
       lineWidth: num(style.lineWidth, DEFAULT_STYLE.lineWidth),
@@ -155,8 +157,8 @@ export function parseRecord(json: unknown): Parsed {
     lineOrder: Array.isArray(json.lineOrder) ? json.lineOrder.filter(isString) : [],
     theme: json.theme === 'sepia' ? 'sepia' : DEFAULT_THEME,
     layout: isString(json.layout) && json.layout !== '' ? json.layout : null,
-    created: isString(json.created) ? json.created : now,
-    modified: isString(json.modified) ? json.modified : now,
+    created: isString(json.created) ? json.created : epoch,
+    modified: isString(json.modified) ? json.modified : epoch,
   }
   return { record, readOnly: version > RECORD_VERSION }
 }

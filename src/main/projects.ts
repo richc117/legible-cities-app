@@ -9,7 +9,7 @@
 import { randomBytes } from 'node:crypto'
 import type { Dirent } from 'node:fs'
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import {
   DEFAULT_COLOR,
   DEFAULT_MODE,
@@ -31,9 +31,10 @@ import {
 import { isValidProjectId } from './paths'
 
 const RECORD_FILE = 'project.json'
-// Written first, then renamed over the record, so a crash mid-write leaves
-// the previous record whole (FR-004). Readers never open it.
-const TEMP_FILE = 'project.json.tmp'
+// A fresh temporary name per write, written first and then renamed over the
+// record, so a crash mid-write leaves the previous record whole (FR-004) and
+// two overlapping writes cannot share a file. Readers open only project.json.
+const tempFile = (): string => `project.json.${randomBytes(4).toString('hex')}.tmp`
 
 const LETTERS = 'abcdefghijklmnopqrstuvwxyz'
 const ALPHABET = LETTERS + '0123456789'
@@ -42,8 +43,7 @@ const ID_LENGTH = 12
 /** The code of a filesystem failure, never its message, which names the path. */
 function reasonOf(error: unknown): string {
   const code = (error as NodeJS.ErrnoException).code
-  if (typeof code === 'string') return code
-  return error instanceof Error ? error.message : 'unknown error'
+  return typeof code === 'string' ? code : 'unknown error'
 }
 
 /** A uniform index below `limit` from one random byte; the biased tail is redrawn. */
@@ -76,10 +76,17 @@ type Loaded = { record: ProjectRecord; readOnly: boolean }
 type ReadResult = Loaded | { missing: true } | { reason: string }
 
 export class ProjectStore {
+  private readonly root: string
+  private readonly output: string
+
+  /** Both folders derive from the engine home, so neither can be handed a stray path. */
   constructor(
-    private readonly root: string,
+    home: string,
     private readonly log: (message: string) => void,
-  ) {}
+  ) {
+    this.root = join(home, 'projects')
+    this.output = join(home, 'out')
+  }
 
   private dir(id: string): string {
     return join(this.root, id)
@@ -89,9 +96,9 @@ export class ProjectStore {
     return join(this.dir(id), RECORD_FILE)
   }
 
-  /** Generated output lives beside the projects folder, under out/<id>. */
+  /** Generated output lives under the engine home's out/<id>. */
   private outputDir(id: string): string {
-    return join(dirname(this.root), 'out', id)
+    return join(this.output, id)
   }
 
   private checkId(id: string): void {
@@ -140,11 +147,12 @@ export class ProjectStore {
 
   private async writeAtomic(id: string, record: ProjectRecord): Promise<void> {
     const text = JSON.stringify(record, null, 2) + '\n'
-    const temp = join(this.dir(id), TEMP_FILE)
+    const temp = join(this.dir(id), tempFile())
     try {
       await writeFile(temp, text, 'utf8')
       await rename(temp, this.file(id))
     } catch (error) {
+      await rm(temp, { force: true }).catch(() => undefined)
       this.log(`projects/${id}: write failed (${reasonOf(error)})`)
       throw new Error('the project could not be saved', { cause: error })
     }
@@ -185,6 +193,10 @@ export class ProjectStore {
   async list(): Promise<ProjectSummary[]> {
     const summaries: ProjectSummary[] = []
     for (const entry of await this.entries()) {
+      if (entry.isSymbolicLink()) {
+        this.log(`projects/${entry.name}: symbolic link ignored`)
+        continue
+      }
       if (!entry.isDirectory()) continue
       if (!ID_PATTERN.test(entry.name) || !isValidProjectId(entry.name)) {
         this.log(`projects/${entry.name}: not a project identifier`)
@@ -253,7 +265,14 @@ export class ProjectStore {
     check(validateName(trimmed))
     const { record, readOnly } = await this.load(id)
     if (readOnly) throw new Error('read-only')
-    const updated: ProjectRecord = { ...record, name: trimmed, modified: new Date().toISOString() }
+    // Written back in the current form: the reader normalised the record,
+    // so the version it carries is ours (record.md).
+    const updated: ProjectRecord = {
+      ...record,
+      version: RECORD_VERSION,
+      name: trimmed,
+      modified: new Date().toISOString(),
+    }
     await this.writeAtomic(id, updated)
     return updated
   }

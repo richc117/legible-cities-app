@@ -136,7 +136,8 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
       )}
       {project?.readOnly && (
         <p role="status">
-          This project was made by a newer version of the app and is read-only here.
+          This project was made by a newer version of the app and is read-only here. It can still be
+          deleted.
         </p>
       )}
       {project && (
@@ -173,7 +174,7 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
             >
               Rename
             </button>
-            <button type="button" disabled={project.readOnly} onClick={() => setConfirming(true)}>
+            <button type="button" onClick={() => setConfirming(true)}>
               Delete project
             </button>
           </div>

@@ -21,5 +21,10 @@ Error messages are the strings a person sees in the form; they never contain
 a path. The `failed` entries of delete name the folder by role, not by path.
 
 The handlers check `event.senderFrame` is the interface's top frame from
-this feature on (the bridge contract of `specs/001`): no frame under
-`/projects/` can call them.
+this feature on (the bridge contract of `specs/001`). That refuses a call
+from any other web contents - a second window, a webview - and nothing
+else: a same-origin iframe calling `parent.api` runs the bridge's function
+in the top frame that exposed it, so the check does not see it. The viewer
+iframe (A3-02) therefore needs its own answer, most likely its own web
+contents driven from the main process; this contract does not claim to
+protect against it.

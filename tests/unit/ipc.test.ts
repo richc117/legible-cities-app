@@ -27,13 +27,13 @@ function harness(topFrame = true) {
   registerProjectHandlers(ipc, store, () => topFrame)
   const event = {} as IpcMainInvokeEvent
   const call = (channel: string, ...args: unknown[]) => handlers.get(channel)!(event, ...args)
-  return { call, calls }
+  return { call, calls, handlers }
 }
 
 describe('registerProjectHandlers', () => {
-  it('registers the five channels', () => {
-    const { calls } = harness()
-    expect(calls).toEqual([])
+  it('registers the five channels and nothing else', () => {
+    const { handlers } = harness()
+    expect([...handlers.keys()].sort()).toEqual(Object.values(CHANNELS).sort())
   })
   it('refuses a caller that is not the top frame', async () => {
     const { call, calls } = harness(false)

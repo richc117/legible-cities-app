@@ -2,7 +2,7 @@
 // developer's own data, and every root is removed afterwards.
 
 import { createHash } from 'node:crypto'
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, relative, sep } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -25,7 +25,7 @@ beforeEach(async () => {
   home = await mkdtemp(join(tmpdir(), 'legible-cities-store-'))
   root = join(home, 'projects')
   lines = []
-  store = new ProjectStore(root, (message) => lines.push(message))
+  store = new ProjectStore(home, (message) => lines.push(message))
 })
 
 afterEach(async () => {
@@ -329,4 +329,28 @@ describe('delete', () => {
     await expect(store.delete('../feeds')).rejects.toThrow(/^invalid id$/)
     await expect(store.delete('Con')).rejects.toThrow(/^invalid id$/)
   })
+})
+
+describe('delete when a folder cannot be removed', () => {
+  it.skipIf(process.platform === 'win32')(
+    'reports the output folder by role and still removes the project',
+    async () => {
+      const record = await store.create({ name: 'Stuck', feed: 'la-metro-rail' })
+      const outParent = join(home, 'out')
+      await mkdir(join(outParent, record.id), { recursive: true })
+      await writeFile(join(outParent, record.id, 'index.html'), 'x')
+      // A read-and-execute-only parent cannot have a child unlinked from it.
+      await chmod(outParent, 0o500)
+      try {
+        const result = await store.delete(record.id)
+        expect(result.removed).toEqual(['project'])
+        expect(result.failed).toHaveLength(1)
+        expect(result.failed[0].folder).toBe('output')
+        expect(result.failed[0].reason).toMatch(/^[A-Z]+$/)
+      } finally {
+        await chmod(outParent, 0o700)
+      }
+      expect(await readdir(root)).toEqual([])
+    },
+  )
 })

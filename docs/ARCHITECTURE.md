@@ -73,8 +73,11 @@ Every argument is validated on the main side, with the validators in
 `src/shared/project.ts` that the form also uses; a refusal is a rejected
 promise whose message is the sentence a person reads, never a path. Every
 handler checks that `event.senderFrame` is the window's top frame and
-refuses any other caller: the viewer iframe (A3-02) is same-origin by
-design and could otherwise reach `parent.api`. Nothing that crosses the
+refuses any other caller, which is another web contents: a second window,
+a webview. It does not distinguish a same-origin iframe calling
+`parent.api`, because the bridge's functions run in the top frame that
+exposed them; the viewer iframe (A3-02) needs its own answer, most likely
+its own web contents. Nothing that crosses the
 bridge, in either direction, is a filesystem path; the renderer addresses a
 project by its identifier only. Each addition is a reviewed change to the
 type, the preload and the main-side handler together. Contract:
