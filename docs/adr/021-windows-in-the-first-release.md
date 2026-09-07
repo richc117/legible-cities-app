@@ -1,6 +1,6 @@
 # ADR-021: Windows stays in the first release; LOOM is not built from source there
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-09-07
 - **Supersedes:** none
 - **Superseded by:** none
