@@ -11,6 +11,8 @@ import { EngineError, ERROR_CODES, type EngineState } from '../../src/shared/eng
 
 type Handler = (event: IpcMainInvokeEvent, ...args: unknown[]) => Promise<unknown>
 
+const tick = (): Promise<void> => new Promise((r) => setImmediate(r))
+
 interface Deferred {
   resolve(value: unknown): void
   reject(error: unknown): void
@@ -107,20 +109,35 @@ describe('registerEngineHandlers', () => {
       },
     ])
   })
-  it('forwards a request and resolves with the result', async () => {
-    const { call, requests } = harness()
-    const answer = call(CHANNELS.engineRequest, 'tok-1', 'engine.info', undefined)
+  it('accepts a request at once and settles it on the event channel with the result', async () => {
+    const { call, requests, sent } = harness()
+    expect(await call(CHANNELS.engineRequest, 'tok-1', 'engine.info', undefined)).toEqual({
+      accepted: true,
+    })
     expect(requests).toHaveLength(1)
     expect(requests[0]).toMatchObject({ id: 1, method: 'engine.info', params: undefined })
     requests[0].deferred.resolve({ engine: '0.2.0' })
-    expect(await answer).toEqual({ ok: true, result: { engine: '0.2.0' } })
+    await tick()
+    expect(sent).toEqual([
+      {
+        channel: CHANNELS.engineSettled,
+        payload: { id: 'tok-1', ok: true, result: { engine: '0.2.0' } },
+      },
+    ])
   })
-  it('resolves an engine error with its code, message and data, never rejecting', async () => {
-    const { call, requests } = harness()
-    const answer = call(CHANNELS.engineRequest, 'tok-2', 'map.build', { key: 'x' })
+  it('settles an engine error with its code, message and data, after its notifications', async () => {
+    const { call, requests, sent, notify } = harness()
+    await call(CHANNELS.engineRequest, 'tok-2', 'map.build', { key: 'x' })
+    notify({
+      method: 'job/progress',
+      params: { id: 1, stage: 'topo', fraction: 0.5, message: 'm' },
+    })
     const data = { kind: 'params', detail: 'date is required', hint: 'date is required' }
     requests[0].deferred.reject(new EngineError(-32602, 'date is required', data))
-    expect(await answer).toEqual({
+    await tick()
+    expect(sent.map((m) => m.channel)).toEqual([CHANNELS.engineProgress, CHANNELS.engineSettled])
+    expect(sent[1].payload).toEqual({
+      id: 'tok-2',
       ok: false,
       error: { code: -32602, message: 'date is required', data },
     })
@@ -136,53 +153,64 @@ describe('registerEngineHandlers', () => {
       ['tok', 'engine.info', [1]],
     ]) {
       const answer = (await call(CHANNELS.engineRequest, ...args)) as {
-        ok: boolean
+        accepted: boolean
         error?: { code: number }
       }
-      expect(answer.ok).toBe(false)
+      expect(answer.accepted).toBe(false)
       expect(answer.error?.code).toBe(ERROR_CODES.badCall)
     }
     expect(requests).toEqual([])
   })
   it('refuses a token already in flight, and frees it when the request settles', async () => {
-    const { call, requests } = harness()
-    const first = call(CHANNELS.engineRequest, 'same', 'graph.build', { key: 'x' })
+    const { call, requests, sent } = harness()
+    await call(CHANNELS.engineRequest, 'same', 'graph.build', { key: 'x' })
     const dup = (await call(CHANNELS.engineRequest, 'same', 'graph.build', { key: 'x' })) as {
-      ok: boolean
+      accepted: boolean
     }
-    expect(dup.ok).toBe(false)
+    expect(dup.accepted).toBe(false)
     requests[0].deferred.resolve('done')
-    await first
-    const again = call(CHANNELS.engineRequest, 'same', 'graph.build', { key: 'x' })
+    await tick()
+    expect(await call(CHANNELS.engineRequest, 'same', 'graph.build', { key: 'x' })).toEqual({
+      accepted: true,
+    })
     expect(requests).toHaveLength(2)
     requests[1].deferred.resolve('done again')
-    expect(await again).toEqual({ ok: true, result: 'done again' })
+    await tick()
+    expect(sent.filter((m) => m.channel === CHANNELS.engineSettled).map((m) => m.payload)).toEqual([
+      { id: 'same', ok: true, result: 'done' },
+      { id: 'same', ok: true, result: 'done again' },
+    ])
   })
-  it('passes a refusal from the supervisor through as an answer', async () => {
-    const { call, setState } = harness()
+  it('passes a refusal from the supervisor through as a settled error', async () => {
+    const { call, setState, sent } = harness()
     setState({ state: 'unavailable', reason: 'no engine' })
-    const answer = (await call(CHANNELS.engineRequest, 'tok', 'engine.info')) as {
-      ok: boolean
-      error: { code: number }
-    }
-    expect(answer).toMatchObject({ ok: false, error: { code: ERROR_CODES.notReady } })
+    expect(await call(CHANNELS.engineRequest, 'tok', 'engine.info')).toEqual({ accepted: true })
+    await tick()
+    const settled = sent.find((m) => m.channel === CHANNELS.engineSettled)
+    expect(settled?.payload).toMatchObject({
+      id: 'tok',
+      ok: false,
+      error: { code: ERROR_CODES.notReady },
+    })
   })
   it('cancels by token and ignores an unknown one', async () => {
-    const { call, requests, cancelled } = harness()
-    const answer = call(CHANNELS.engineRequest, 'tok-c', 'graph.build', { key: 'x' })
+    const { call, requests, cancelled, sent } = harness()
+    await call(CHANNELS.engineRequest, 'tok-c', 'graph.build', { key: 'x' })
     await call(CHANNELS.engineCancel, 'tok-c')
     await call(CHANNELS.engineCancel, 'nope')
     await call(CHANNELS.engineCancel, 42)
     expect(cancelled).toEqual([1])
     requests[0].deferred.reject(new EngineError(-32800, 'Request Cancelled'))
-    expect(await answer).toEqual({
+    await tick()
+    expect(sent.at(-1)?.payload).toEqual({
+      id: 'tok-c',
       ok: false,
       error: { code: -32800, message: 'Request Cancelled' },
     })
   })
   it('forwards progress and log lines with the page token, and drops the rest', async () => {
     const { call, requests, sent, notify, log } = harness()
-    const answer = call(CHANNELS.engineRequest, 'tok-p', 'graph.build', { key: 'x' })
+    await call(CHANNELS.engineRequest, 'tok-p', 'graph.build', { key: 'x' })
     notify({ method: 'job/log', params: { id: 1, level: 'info', line: 'topo: running' } })
     notify({
       method: 'job/progress',
@@ -206,8 +234,9 @@ describe('registerEngineHandlers', () => {
     ])
     expect(log.filter((l) => l.includes('unexpected shape'))).toHaveLength(2)
     requests[0].deferred.resolve('ok')
-    await answer
+    await tick()
     notify({ method: 'job/progress', params: { id: 1, stage: 'late', fraction: 1, message: 'm' } })
-    expect(sent).toHaveLength(2)
+    expect(sent).toHaveLength(3)
+    expect(sent[2].channel).toBe(CHANNELS.engineSettled)
   })
 })

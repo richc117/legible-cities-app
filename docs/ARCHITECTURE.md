@@ -81,7 +81,9 @@ The engine bridge is deliberately untyped beyond a method name and an
 object of parameters: A1-02 generates the methods from the engine's schema
 and wraps it. An engine error crosses as a plain object rather than an
 `Error`, because Electron keeps only an error's message and the engine's
-`data.hint` is what the interface shows.
+`data.hint` is what the interface shows. A request's answer arrives as an
+event on the same ordered channel as its progress and log lines, after
+them, because Electron does not order an invoke's reply against events.
 
 Every argument is validated on the main side, with the validators in
 `src/shared/project.ts` that the form also uses; a refusal is a rejected
@@ -120,8 +122,8 @@ client rather than a library because the engine keys its notifications by
 the request id, which the client must therefore assign and know.
 
 The handshake is `engine.info`, bounded at 10 s: the version and the
-protocol must equal the pin, or a native dialog names both and the state
-is *mismatched* for the rest of the run. Every other request has an
+protocol must equal the pin, or the page's own dialog names both and the
+state is *mismatched* for the rest of the run. Every other request has an
 inactivity bound (10 min without a `job/progress` or `job/log` line for it),
 after which the app cancels it and says so. An exit nobody asked for
 rejects the requests in flight, restarts the engine after 1, 2 and 4 s, and

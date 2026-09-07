@@ -118,12 +118,16 @@ what the inactivity bound is for.
 loops); restart only on the next request (a person reads "stopped" on the
 screen with no way to fix it but to try something).
 
-**A trap found on the runners**: the mismatch dialog must be attached to the
-window and shown only once the window is visible. A message box with no
-parent runs synchronously on macOS and blocks the main process, the quit
-included (the first CI run of this feature hung there on macOS and Linux),
-and a sheet on a hidden window shows nothing. `before-quit` aborts the
-dialog through its `signal` so a quit never waits behind it.
+**Two traps found on the runners, after the plan was written.** The mismatch
+dialog is the page's own `<dialog>`, not a native message box: without a
+parent a native box runs synchronously on macOS and blocks the main process,
+the quit included, and even with a parent it held the quit on Linux under
+the display server (the first two CI runs of this feature hung there). The
+page already owns modal dialogs the accessible way, and a state the
+supervisor reports is all the page needs. And a request's answer travels
+as an `engine:settled` event on the same channel as its notifications, not
+as the invoke's reply: Electron does not order the two, and on macOS the
+result overtook the fourth progress line (contracts/bridge.md).
 
 ## 6. The stand-in engine
 

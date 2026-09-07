@@ -80,7 +80,7 @@ stand-in package, six test files, one e2e file.
 | III. Determinism is a feature | Untouched: no layout is run by this feature. The supervisor never retries a request on its own, so nothing runs twice without being asked. |
 | IV. No network, no telemetry | Nothing reaches the network. The environment passed to the engine is built from an allowlist, so no proxy or token variable leaks in by accident. |
 | V. Hygiene by tools | The stand-in and the tests write only under a temporary home; the pin names a public repository and a tag; no machine path in the tree. |
-| VI. Accessible by default | The status line is a `role="status"` region with `aria-live="polite"`, labelled, no animation; the mismatch dialog is the operating system's (keyboard, screen reader). SC-007 is a manual check recorded in the pull request. |
+| VI. Accessible by default | The status line is a `role="status"` region with `aria-live="polite"`, labelled, no animation; the mismatch dialog is the page's own `<dialog>` (modal, focus trapped and returned by the browser, Escape closes), as the project dialogs are. SC-007 is a manual check recorded in the pull request. |
 | VII. Decisions recorded | Own JSON-RPC client rather than `vscode-jsonrpc`: research.md section 1, reversible, no ADR. Process-group ending: research.md section 4. ADR-010 (JSON-RPC over stdio) is the record this builds on and is still private; nothing here is hard to reverse. |
 | Never write inside the bundle | The supervisor writes nothing. The engine's home is the configuration's, as before. |
 | `app://local` is one origin | Unchanged. |

@@ -3,7 +3,7 @@
 // not follow. See specs/003-project/contracts/bridge.md (projects) and
 // specs/004-sidecar-supervisor/contracts/bridge.md (engine).
 
-import type { EngineState, JobLog, JobProgress } from './engine'
+import type { EngineErrorShape, EngineState, JobLog, JobProgress } from './engine'
 import type { CreateProjectInput, DeleteResult, ProjectRecord, ProjectSummary } from './project'
 
 export type { CreateProjectInput, DeleteResult, ProjectRecord, ProjectSummary } from './project'
@@ -14,6 +14,17 @@ export interface EngineRequest {
   id: string
   result: Promise<unknown>
 }
+
+/** What `engine:request` answers at once: started, or refused before it started. */
+export type EngineAccepted = { accepted: true } | { accepted: false; error: EngineErrorShape }
+
+/**
+ * How a request ends, sent on the same ordered channel as its progress and
+ * log lines, so the page never sees the answer before the last notification
+ * (an invoke reply is not ordered against events; see specs/004 research.md).
+ */
+export type EngineSettled =
+  { id: string; ok: true; result: unknown } | { id: string; ok: false; error: EngineErrorShape }
 
 export interface Api {
   projects: {
@@ -45,6 +56,7 @@ export const CHANNELS = {
   engineRequest: 'engine:request',
   engineCancel: 'engine:cancel',
   engineStateChanged: 'engine:state-changed',
+  engineSettled: 'engine:settled',
   engineProgress: 'engine:progress',
   engineLog: 'engine:log',
 } as const

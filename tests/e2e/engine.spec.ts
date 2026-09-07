@@ -161,10 +161,7 @@ test('says the engine is unavailable when no interpreter exists, and still works
   })
 })
 
-test('shows the mismatch after the dialog when the engine is the wrong version', async () => {
-  // The native dialog is modal to the window but not to the test: the state
-  // behind it is what the page shows once it is dismissed, and what the
-  // bridge answers meanwhile.
+test('shows the mismatch in a dialog, then on the status line, when the engine is the wrong version', async () => {
   const home = fakeHome({ version: '0.1.0' })
   const env = {
     SCHEMATIC_HOME: home,
@@ -182,7 +179,17 @@ test('shows the mismatch after the dialog when the engine is the wrong version',
     const state = await page.evaluate(() => (globalThis as unknown as Bridge).api.engine.state())
     expect(state).toMatchObject({ state: 'mismatched', found: { version: '0.1.0', protocol: 1 } })
     await expect.poll(() => alive(pidIn(home)), { timeout: 5_000 }).toBe(false)
-    // The quit that follows dismisses the dialog itself (before-quit aborts it).
+
+    // The page's own dialog names both versions, closes on Escape, and the
+    // status line still says it afterwards (FR-006, FR-016).
+    const dialog = page.getByRole('dialog', { name: 'Engine version mismatch' })
+    await expect(dialog).toBeVisible()
+    await expect(dialog).toContainText('needs engine 0.2.0')
+    await expect(dialog).toContainText('found engine 0.1.0')
+    await expect(dialog.getByRole('button', { name: 'OK' })).toBeFocused()
+    await page.keyboard.press('Escape')
+    await expect(dialog).toBeHidden()
+    await expect(page.getByRole('status', { name: 'Engine' })).toContainText(/version mismatch/i)
     void app
   })
 })

@@ -5,7 +5,7 @@
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { app, BrowserWindow, dialog, ipcMain, protocol } from 'electron'
+import { app, BrowserWindow, ipcMain, protocol } from 'electron'
 import pins from '../../vendor/pins.json'
 import { CHANNELS } from '../shared/api'
 import { describeConfig, resolveConfig, type Config } from './config'
@@ -31,8 +31,6 @@ protocol.registerSchemesAsPrivileged([
 let mainWindow: BrowserWindow | null = null
 let sidecar: Sidecar | null = null
 let quitting = false
-// The mismatch dialog, so a quit can dismiss it rather than wait behind it.
-let mismatchDialog: AbortController | null = null
 
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
@@ -93,7 +91,9 @@ async function loadConfig(): Promise<Config> {
 }
 
 // The engine, from the interpreter the configuration points at; without
-// one, a supervisor that says so and never spawns (specs/004, FR-002).
+// one, a supervisor that says so and never spawns (specs/004, FR-002). A
+// version mismatch is a state the page shows in its own dialog: a native
+// message box would block the process on macOS and hold a quit on Linux.
 function createSidecar(config: Config): Sidecar {
   const pin = pins.engine
   const resolution = resolveInterpreter({
@@ -120,36 +120,6 @@ function createSidecar(config: Config): Sidecar {
     env: engineEnvironment({ config, base: process.env, development: !app.isPackaged }),
     pin,
     log: engineLog,
-    onMismatch: (expected, found) => {
-      const options = {
-        type: 'error' as const,
-        title: 'Engine version mismatch',
-        message: `This version of ${PRODUCT_NAME} needs engine ${expected.version} (protocol ${expected.protocol}).`,
-        detail: `The engine it found is ${found.version} (protocol ${found.protocol}). The engine's features are off until the versions match: reinstall the app, or point LEGIBLE_ENGINE_PYTHON at an environment with engine ${expected.version}.`,
-        buttons: ['OK'],
-        defaultId: 0,
-      }
-      // Always on the window, and only once the window is visible: a message
-      // box with no parent runs synchronously on macOS and blocks the whole
-      // process, the quit included, and a sheet on a hidden window shows
-      // nothing. The status line carries the state either way.
-      const show = (): void => {
-        if (quitting || mainWindow === null || mainWindow.isDestroyed()) return
-        mismatchDialog = new AbortController()
-        dialog
-          .showMessageBox(mainWindow, { ...options, signal: mismatchDialog.signal })
-          .catch((error: Error) =>
-            log.error('engine', `could not show the mismatch dialog: ${error.message}`),
-          )
-      }
-      if (mainWindow === null) {
-        log.warn('engine', 'no window to attach the mismatch dialog to')
-      } else if (mainWindow.isVisible()) {
-        show()
-      } else {
-        mainWindow.once('show', show)
-      }
-    },
   })
 }
 
@@ -208,7 +178,6 @@ if (!hasLock) {
   app.on('before-quit', (event) => {
     if (quitting) return
     quitting = true
-    mismatchDialog?.abort()
     if (sidecar === null) return
     event.preventDefault()
     const stopping = sidecar.stop()

@@ -24,11 +24,19 @@ Every spawn, without exception:
 
 ## Native dialogs
 
-`dialog.showMessageBox` always with the window as its parent, and only
-once the window is visible: without a parent it runs synchronously on
-macOS and blocks the main process, quit included; on a hidden window the
-sheet shows nothing. Give it an `AbortSignal` and abort it from
-`before-quit`, so a quit never waits behind a dialog.
+Prefer the page's own `<dialog>` for anything the app has to say: the
+renderer owns modality and focus the accessible way, and a state sent over
+the bridge is all it needs. A native `dialog.showMessageBox` with no parent
+runs synchronously on macOS and blocks the main process, quit included;
+with a parent it still held a quit on Linux under a display server. Keep
+native dialogs for what only the OS can do (choosing a file or a folder).
+
+## Ordering over the bridge
+
+An `ipcMain.handle` reply is not ordered against `webContents.send`
+events. If the page must see events before the answer they lead up to
+(progress before a result), send the answer as an event on the same
+channel and let the preload make the promise.
 
 ## Where things are written
 

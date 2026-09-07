@@ -40,7 +40,6 @@ interface Harness {
   home: string
   states: EngineState[]
   log: string[]
-  mismatches: unknown[]
   until: (predicate: (s: EngineState) => boolean, ms?: number) => Promise<EngineState>
   pid: () => number
   received: () => Record<string, unknown>[]
@@ -53,7 +52,6 @@ function harness(control: Record<string, unknown> = {}, bounds: Partial<Bounds> 
   writeFileSync(join(home, 'fake-engine.json'), JSON.stringify(control))
   const states: EngineState[] = []
   const log: string[] = []
-  const mismatches: unknown[] = []
   const sidecar = new Sidecar({
     command: [PYTHON as string, '-m', 'schematic.serve'],
     env: engineEnvironment({
@@ -63,7 +61,6 @@ function harness(control: Record<string, unknown> = {}, bounds: Partial<Bounds> 
     }),
     pin: PIN,
     log: (m) => log.push(m),
-    onMismatch: (expected, found) => mismatches.push({ expected, found }),
     bounds: { ...FAST, ...bounds },
   })
   sidecar.onState((s) => states.push(s))
@@ -72,7 +69,6 @@ function harness(control: Record<string, unknown> = {}, bounds: Partial<Bounds> 
     home,
     states,
     log,
-    mismatches,
     until: (predicate, ms = 10_000) =>
       new Promise((resolve, reject) => {
         if (predicate(sidecar.state)) {
@@ -154,7 +150,7 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
     expect(alive(h.pid())).toBe(true)
   })
 
-  it('refuses a wrong version or protocol: the dialog once, the process gone, no restart', async () => {
+  it('refuses a wrong version or protocol: the state says both, the process gone, no restart', async () => {
     for (const control of [{ version: '0.1.0' }, { protocol: 2 }]) {
       const h = harness(control)
       h.sidecar.start()
@@ -164,9 +160,6 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
         expected: PIN,
         found: { version: control.version ?? '0.2.0', protocol: control.protocol ?? 1 },
       })
-      expect(h.mismatches).toEqual([
-        { expected: PIN, found: state.state === 'mismatched' ? state.found : null },
-      ])
       await eventually(() => !alive(h.pid()), 5_000, 'the mismatched engine to end')
       expect(h.states.filter((s) => s.state === 'restarting')).toEqual([])
       const error = await h.sidecar.request('engine.info').result.catch((e: EngineError) => e)

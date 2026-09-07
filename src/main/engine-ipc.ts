@@ -1,13 +1,14 @@
 // The engine bridge's main side: three handlers over the supervisor and
-// three events to the window. The page addresses a request by a token it
+// four events to the window. The page addresses a request by a token it
 // minted; this layer maps it to the id the engine saw and back, so a
-// notification reaches the page with the page's own id. An answer is
-// always resolved, never rejected: a rejection loses its data on the way
-// through Electron, and the engine's error data is the point.
+// notification reaches the page with the page's own id. A request's answer
+// travels as an event too, on the same channel as its progress and log
+// lines and after them, because an invoke reply is not ordered against
+// events and the page must never see a result before the last progress.
 // Contract: specs/004-sidecar-supervisor/contracts/bridge.md.
 
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
-import { CHANNELS } from '../shared/api'
+import { CHANNELS, type EngineAccepted, type EngineSettled } from '../shared/api'
 import {
   EngineError,
   ERROR_CODES,
@@ -32,17 +33,15 @@ export interface EngineSource {
 
 export type Send = (channel: string, payload: unknown) => void
 
-export type Answer = { ok: true; result: unknown } | { ok: false; error: EngineErrorShape }
-
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
 
 const TOKEN = /^[A-Za-z0-9-]{1,64}$/
 const LEVELS = new Set(['debug', 'info', 'warning', 'error'])
 
-function badCall(what: string): Answer {
+function badCall(what: string): EngineAccepted {
   return {
-    ok: false,
+    accepted: false,
     error: new EngineError(ERROR_CODES.badCall, what, {
       kind: 'params',
       detail: what,
@@ -76,7 +75,7 @@ export function registerEngineHandlers(
 
   handle(CHANNELS.engineState, async () => engine.state)
 
-  handle(CHANNELS.engineRequest, async (token, method, params): Promise<Answer> => {
+  handle(CHANNELS.engineRequest, async (token, method, params): Promise<EngineAccepted> => {
     if (typeof token !== 'string' || !TOKEN.test(token)) return badCall('a request needs an id')
     if (typeof method !== 'string' || method === '') return badCall('a request needs a method name')
     if (params !== undefined && !isObject(params)) return badCall('parameters must be an object')
@@ -86,14 +85,24 @@ export function registerEngineHandlers(
       idOf.set(token, id)
       tokenOf.set(id, token)
     }
-    try {
-      return { ok: true, result: await result }
-    } catch (error) {
-      return { ok: false, error: toShape(error) }
-    } finally {
-      idOf.delete(token)
-      tokenOf.delete(id)
-    }
+    // Settle on the event channel, after every notification for the id.
+    result.then(
+      (value) => {
+        const settled: EngineSettled = { id: token, ok: true, result: value }
+        send(CHANNELS.engineSettled, settled)
+      },
+      (error: unknown) => {
+        const settled: EngineSettled = { id: token, ok: false, error: toShape(error) }
+        send(CHANNELS.engineSettled, settled)
+      },
+    )
+    void result
+      .finally(() => {
+        idOf.delete(token)
+        tokenOf.delete(id)
+      })
+      .catch(() => {})
+    return { accepted: true }
   })
 
   handle(CHANNELS.engineCancel, async (token) => {

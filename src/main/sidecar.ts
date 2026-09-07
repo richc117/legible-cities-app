@@ -50,7 +50,6 @@ export interface SidecarOptions {
   env: Record<string, string>
   pin: EnginePin
   log: (message: string) => void
-  onMismatch?: (expected: EnginePin, found: { version: string; protocol: number }) => void
   bounds?: Partial<Bounds>
   platform?: NodeJS.Platform
 }
@@ -336,7 +335,6 @@ export class Sidecar {
         `mismatch: expected engine ${pin.version} protocol ${pin.protocol}, found ${version} protocol ${protocol}`,
       )
       this.setState({ state: 'mismatched', expected: pin, found: { version, protocol } })
-      this.options.onMismatch?.(pin, { version, protocol })
       void this.endChild(child, 'mismatch')
       return
     }

@@ -43,11 +43,18 @@ engine: {
 | Channel | Direction | Arguments | Answer |
 |---|---|---|---|
 | `engine:state` | invoke | — | `EngineState` |
-| `engine:request` | invoke | `token, method, params` | `{ ok: true, result }` or `{ ok: false, error: { code, message, data? } }` (resolved, never rejected, so `data` survives the trip) |
+| `engine:request` | invoke | `token, method, params` | `{ accepted: true }` once the request is on its way, or `{ accepted: false, error: { code, message, data? } }` for a call refused before it started (resolved, never rejected, so `data` survives the trip) |
 | `engine:cancel` | invoke | `token` | `undefined` |
 | `engine:state-changed` | send | `EngineState` | — |
 | `engine:progress` | send | `JobProgress` | — |
 | `engine:log` | send | `JobLog` | — |
+| `engine:settled` | send | `{ id, ok: true, result }` or `{ id, ok: false, error }` | — |
+
+A request's answer is an event, not the invoke's reply, because Electron
+does not order an invoke reply against `webContents.send` events and the
+page must never see a result before the last progress line for it: the
+main process sends `engine:settled` after every notification for the id,
+on the same channel, in order. The preload turns it into the promise.
 
 Every invoke handler refuses a caller that is not the window's top frame,
 as the projects handlers do; a project page in a frame shares the origin
