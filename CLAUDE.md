@@ -11,8 +11,10 @@ Pre-alpha. The repository holds its charter (licence, contribution guide,
 security policy, templates, decision-record convention), its hygiene tooling
 (`bin/preflight`, gitleaks, the git hooks, the CI checks), its specs
 (Spec Kit, the constitution), and the Phase 0 spike reports and decision
-records under `docs/adr/` - and **no application code yet**. There is
-nothing to build, run or test.
+records under `docs/adr/` - and the Electron skeleton (A0-09): one window
+opening to an empty Library on the `app://local` origin, a one-method
+preload bridge, the dev loop against the sibling engine, and CI on three
+platforms. It draws nothing and runs no engine yet.
 
 Work proceeds phase by phase; `CONTRIBUTING.md` explains the flow, the
 labels, the milestones and the `A0-05`-style issue codes. The four Phase 0
@@ -43,9 +45,23 @@ pre-commit run --all-files        # the hooks, without committing
 pre-commit install                # once per checkout, to get them on git commit
 ```
 
-Nothing else yet. Do not invent `npm` scripts; add them when the skeleton
-lands, list them here, and add their permission rules to
-`.claude/settings.json` at the same time.
+The application's own scripts (`package.json`), each with a permission rule
+in `.claude/settings.json`:
+
+```
+npm ci && npx install-electron --no   # install; the Electron binary is fetched separately since Electron 42
+npm run dev                           # the app against the sibling engine checkout; interface changes hot-reload
+npm run lint                          # eslint and prettier --check
+npm run typecheck                     # tsc over the node and the web project
+npm test                              # vitest: path validation, config parsing, tokens drift
+npm run build                         # electron-vite build into out/
+npm run test:e2e                      # Playwright launches the built app, reads the window, quits it
+npm run dist                          # electron-builder --dir; installers arrive with A0-10
+```
+
+`.github/workflows/ci.yml` runs lint, typecheck, test, build and the smoke
+test on Ubuntu (under xvfb), macOS and Windows for every push and pull
+request. Add a script here and its permission rule at the same time.
 
 `gitleaks` and `pre-commit` are development tools, not dependencies; install
 them from a package manager. Everything they enforce is enforced again in

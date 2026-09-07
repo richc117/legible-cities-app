@@ -13,7 +13,15 @@
       "Bash(gitleaks git*)",
       "Bash(pre-commit run)",
       "Bash(pre-commit run --all-files)",
-      "Bash(pre-commit validate-config*)"
+      "Bash(pre-commit validate-config*)",
+      "Bash(npm ci)",
+      "Bash(npm run lint*)",
+      "Bash(npm run typecheck*)",
+      "Bash(npm test*)",
+      "Bash(npm run test:e2e*)",
+      "Bash(npm run build*)",
+      "Bash(npx install-electron*)",
+      "Bash(npx prettier --check*)"
     ],
     "deny": [
       "Bash(git difftool*)",

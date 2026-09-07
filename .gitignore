@@ -5,6 +5,8 @@ out/
 release/
 .vite/
 coverage/
+test-results/
+playwright-report/
 
 # Vendored runtimes and binaries are CI artefacts, never committed
 vendor/python/

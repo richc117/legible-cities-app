@@ -37,6 +37,39 @@ LOOM, bundled FFmpeg, the page as viewer) were made before this repository
 existed and are being written up as its first decision records under
 `docs/adr/`; see the README there for the convention.
 
+## Developing
+
+The skeleton runs today: one window, an empty Library, the `app://local`
+origin, and a check on three platforms. It draws no map and runs no engine
+yet; `docs/ARCHITECTURE.md` says what exists and what each later issue adds.
+
+You need Node.js 22 or later. Optionally, for the development loop and the
+tokens test, check out the engine beside this repository and point
+`LEGIBLE_ENGINE_CHECKOUT` at it in `.env.local`:
+
+```
+cp .env.example .env.local        # then edit; the file is gitignored
+npm ci
+npx install-electron --no         # the Electron binary is fetched separately since Electron 42
+npm run dev                       # the window; interface edits hot-reload
+```
+
+The terminal shows the three configured locations and their sources before
+the window opens. The checks, which `.github/workflows/ci.yml` runs on
+Ubuntu, macOS and Windows for every change:
+
+```
+npm run lint          # eslint and prettier
+npm run typecheck     # tsc, both projects
+npm test              # vitest: path validation, configuration, tokens drift
+npm run build         # electron-vite build into out/
+npm run test:e2e      # Playwright launches the built app and quits it
+```
+
+On Linux the last one needs a display server: `xvfb-run -a npm run test:e2e`.
+`specs/001-electron-skeleton/quickstart.md` walks through what each run
+proves.
+
 ## Contributing
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md). Issues are the unit of work; every

@@ -1,0 +1,70 @@
+# Every change, on the three platforms: style, types, unit tests, a build,
+# and one end-to-end test that launches the real application, reads its
+# window and quits it. The job names are the required status checks in
+# docs/repository-settings.md.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: ci (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-15, windows-latest]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # Since Electron 42 the npm package fetches no binary; without this
+      # step the first electron.launch() in the smoke test would download
+      # it against the launch timeout (specs/001, research.md section 3).
+      - name: Fetch the Electron binary
+        run: npx install-electron --no
+
+      - name: Style
+        run: npm run lint
+
+      - name: Types
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Smoke test (Linux, under a display server)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npm run test:e2e
+        env:
+          CI: 'true'
+
+      - name: Smoke test
+        if: runner.os != 'Linux'
+        run: npm run test:e2e
+        env:
+          CI: 'true'
+
+      - name: Keep the failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.os }}
+          path: test-results/
+          if-no-files-found: ignore
