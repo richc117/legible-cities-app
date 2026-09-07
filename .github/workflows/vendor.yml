@@ -113,6 +113,44 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  # The Python sidecar runtime. ADR-020 chose python-build-standalone over
+  # PyInstaller; scripts/vendor-python.sh verifies the pinned checksum and
+  # fails rather than continuing if the asset changed. NOT YET RUN either.
+  python:
+    name: python (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-14, target: darwin-arm64 }
+    steps:
+      - uses: actions/checkout@v6
+      - name: Check out the engine at its pin
+        run: echo "The engine pin lands with A1-02; until then this job needs a path."
+      - name: Fetch, verify and strip the runtime
+        run: scripts/vendor-python.sh ${{ matrix.target }} "$ENGINE_PATH"
+        env:
+          ENGINE_PATH: ${{ github.workspace }}/engine
+      - name: Refuse a runtime carrying a GPL component we did not intend
+        shell: bash
+        run: |
+          # THIRD_PARTY_NOTICES.md requires no GNU readline and no GDBM. The
+          # spike found PyInstaller collecting readline from the build host;
+          # this is the check that would have caught it.
+          if find vendor/python -iname '*gdbm*' -o -iname 'libreadline*' | grep -q .; then
+            echo "::error::the vendored runtime carries GDBM or GNU readline"
+            find vendor/python -iname '*gdbm*' -o -iname 'libreadline*'
+            exit 1
+          fi
+          echo "no GPL readline or GDBM in the vendored runtime"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-${{ matrix.target }}
+          path: vendor/python/${{ matrix.target }}
+          if-no-files-found: error
+          retention-days: 30
+
   # Windows needs MSYS2 and the Transport for Cairo compatibility patches, and
   # neither was exercised by the spike. Left as a separate job rather than a
   # matrix entry so its failure does not read as the others failing, and so
