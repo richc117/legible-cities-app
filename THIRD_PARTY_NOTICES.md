@@ -24,6 +24,7 @@ intended build.
 | vscode-jsonrpc (planned) | JSON-RPC over stdio, app side | MIT | https://github.com/microsoft/vscode-languageserver-node |
 | python-lsp-jsonrpc (planned) | JSON-RPC over stdio, engine side | MIT | https://github.com/python-lsp/python-lsp-jsonrpc |
 | react-colorful (planned) | Colour picker | MIT | https://github.com/omgovich/react-colorful |
+| Spec Kit | Spec templates, scripts and agent skills, committed under `.specify/` and `.claude/skills/speckit-*`. Development tooling: present in this repository, not shipped in the app | MIT | https://github.com/github/spec-kit |
 | Contributor Covenant 2.1 | The code of conduct text | CC BY 4.0 | https://www.contributor-covenant.org/ |
 
 ## Obligations we take on

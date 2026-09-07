@@ -32,8 +32,8 @@ number. It is a reading aid, not something a tool checks.
 1. **Pick an issue.** Comment that you are taking it. Issues carry a phase,
    a type, an area and a size label.
 2. **Spec first.** Feature issues get a spec under `specs/` with user stories
-   and acceptance criteria before any code (the tooling for this arrives in
-   Phase 0). Spikes get a question, a method and a timebox.
+   and acceptance criteria before any code. Spikes get a question, a method
+   and a timebox. See **Specs** below.
 3. **Branch and pull request.** One issue, one branch named for it
    (`123-geographic-view`, or `A2-03-geographic-view` for a planned issue),
    one pull request. `main` only changes through pull requests with green
@@ -105,10 +105,49 @@ None of it is required, and none of it replaces reading the diff yourself.
 Other tools are welcome; if you configure one, keep its files out of the
 diff unless the configuration is worth sharing.
 
+## Specs
+
+Features are specified before they are built, with
+[Spec Kit](https://github.com/github/spec-kit). The loop, one step per
+command, each producing a file the next one reads:
+
+| Step | Command | Produces |
+|---|---|---|
+| Specify | `/speckit-specify` from the issue text | `specs/NNN-name/spec.md`: user stories, acceptance criteria, edge cases |
+| Clarify | `/speckit-clarify` | The open questions answered, in the spec |
+| Plan | `/speckit-plan` | `plan.md`: technical approach, files touched |
+| Tasks | `/speckit-tasks` | `tasks.md`: ordered, checkable tasks |
+| Implement | `/speckit-implement`, or by hand | Code and tests |
+| Analyse | `/speckit-analyze` | Whether the tasks and tests cover the spec |
+
+One issue maps to one spec. The issue stays short and links the spec; the
+spec is where the detail lives.
+
+Every spec is read against
+[`.specify/memory/constitution.md`](.specify/memory/constitution.md), which
+states the principles this project builds by. A spec that conflicts with a
+principle either changes, or the constitution does - in the open, with the
+reason recorded, before the code is written. See
+`docs/adr/014-spec-kit-for-specs.md`.
+
+Where an issue is silent, the spec carries a `[NEEDS CLARIFICATION]` marker
+naming what it blocks and what happens if it stays open, rather than a
+quietly invented answer. A spec is allowed to ship with open questions; it
+is not allowed to hide them.
+
+Issues are created two ways, and they do not collide: `/speckit-taskstoissues`
+turns a task list into issues for work that has already been specified, and
+the maintainer publishes the planned roadmap from drafts with a script that
+is idempotent by title.
+
+Engine work does not need a spec. A good issue body and tests are enough
+there.
+
 ## Definition of done
 
 - The spec's acceptance criteria pass, and a test asserts each one that can
-  be asserted.
+  be asserted. No `[NEEDS CLARIFICATION]` marker survives into the merge
+  unless the pull request says why it may.
 - Checks are green on macOS, Windows and Linux.
 - Documentation changed with the code: architecture notes, the decision
   record, user-facing text.
