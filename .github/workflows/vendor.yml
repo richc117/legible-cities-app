@@ -212,13 +212,22 @@ jobs:
         shell: msys2 {0}
         run: |
           set -euo pipefail
+          # -static alone is not enough: CMake resolves zlib and bzip2 to their
+          # import libraries by full path, and the first run's topo, loom and
+          # octi then loaded zlib1.dll and libbz2-1.dll from the MSYS2 tree.
+          # Hand it the static archives instead.
+          test -f /ucrt64/lib/libz.a && test -f /ucrt64/lib/libbz2.a
+          bz2=$(cygpath -m /ucrt64/lib/libbz2.a)
           cmake -S loom-src -B loom-src/build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_DISABLE_FIND_PACKAGE_GLPK=ON \
             -DCMAKE_DISABLE_FIND_PACKAGE_COIN=ON \
             -DCMAKE_DISABLE_FIND_PACKAGE_Gurobi=ON \
             -DCMAKE_DISABLE_FIND_PACKAGE_LibZip=ON \
-            -DCMAKE_DISABLE_FIND_PACKAGE_OpenMP=ON
+            -DCMAKE_DISABLE_FIND_PACKAGE_OpenMP=ON \
+            -DZLIB_USE_STATIC_LIBS=ON \
+            -DBZIP2_LIBRARY_RELEASE="$bz2" \
+            -DBZIP2_LIBRARY_DEBUG="$bz2"
           cmake --build loom-src/build -j 4 --target gtfs2graph topo loom octi
       - name: Refuse anything that is not self-contained
         shell: msys2 {0}
