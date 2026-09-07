@@ -39,8 +39,9 @@ existed and are being written up as its first decision records under
 
 ## Developing
 
-The skeleton runs today: one window, an empty Library, the `app://local`
-origin, and a check on three platforms. It draws no map and runs no engine
+The skeleton runs today: one window, the Library and its projects, the
+`app://local` origin, the pinned engine started as a child process and
+spoken to over JSON-RPC, and a check on three platforms. It draws no map
 yet; `docs/ARCHITECTURE.md` says what exists and what each later issue adds.
 
 You need Node.js 22 or later. Optionally, for the development loop and the

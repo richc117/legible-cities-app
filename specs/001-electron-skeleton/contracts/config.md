@@ -30,6 +30,7 @@ startup, before the window opens, exactly these lines appear:
    or
 [config] SCHEMATIC_FFMPEG unset - nothing in this build needs it; set it in .env.local
 [config] LEGIBLE_ENGINE_CHECKOUT=<path>  (.env.local | environment)   (development only, when set)
+[config] LEGIBLE_ENGINE_PYTHON=<path or command>  (.env.local | environment)   (when set; specs/004)
 [config] .env.local not found; using defaults   (development only, when absent)
 ```
 

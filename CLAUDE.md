@@ -14,9 +14,11 @@ security policy, templates, decision-record convention), its hygiene tooling
 records under `docs/adr/` - and the Electron skeleton (A0-09): one window
 opening to the Library on the `app://local` origin, the project object
 (A1-05: a versioned record under the engine home, created, renamed and
-deleted from the Library through a five-method preload bridge), the dev
-loop against the sibling engine, and CI on three platforms. It draws
-nothing and runs no engine yet.
+deleted from the Library through a five-method preload bridge), the engine's
+supervisor (A1-01: the pinned engine started as a child process and spoken
+to over JSON-RPC on its stdio, with a handshake, restart and a clean
+shutdown; `docs/ARCHITECTURE.md`, "The engine process"), the dev loop
+against the sibling engine, and CI on three platforms. It draws nothing.
 
 Work proceeds phase by phase; `CONTRIBUTING.md` explains the flow, the
 labels, the milestones and the `A0-05`-style issue codes. The four Phase 0
@@ -56,9 +58,9 @@ npm ci && npx install-electron --no   # install; the Electron binary is fetched 
 npm run dev                           # the app against the sibling engine checkout; interface changes hot-reload
 npm run lint                          # eslint and prettier --check
 npm run typecheck                     # tsc over the node and the web project
-npm test                              # vitest: path validation, config parsing, tokens drift
+npm test                              # vitest; the supervisor runs against a stand-in engine (needs a python3 on PATH)
 npm run build                         # electron-vite build into out/
-npm run test:e2e                      # Playwright launches the built app, reads the window, quits it
+npm run test:e2e                      # Playwright launches the built app, with and without the stand-in engine
 npm run dist                          # electron-builder --dir; installers arrive with A0-10
 ```
 

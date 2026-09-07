@@ -5,3 +5,7 @@ package-lock.json
 test-results/
 playwright-report/
 src/renderer/src/styles/tokens.css
+
+# Python, not ours to format.
+*.py
+__pycache__/

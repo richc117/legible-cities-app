@@ -111,3 +111,38 @@ describe('describeConfig', () => {
     expect(lines).toContain('.env.local: unknown key OOPS ignored')
   })
 })
+
+describe('LEGIBLE_ENGINE_PYTHON', () => {
+  const base = { userData: '/ud', baseDir: '/repo' }
+
+  it('is unset by default and absent from the log', () => {
+    const c = resolveConfig({ ...base, env: {} })
+    expect(c.enginePython).toBeNull()
+    expect(c.sources.LEGIBLE_ENGINE_PYTHON).toBe('default')
+    expect(describeConfig(c, { development: true }).join('\n')).not.toContain(
+      'LEGIBLE_ENGINE_PYTHON',
+    )
+  })
+  it('keeps a bare command name for the spawn to resolve', () => {
+    const c = resolveConfig({ ...base, env: { LEGIBLE_ENGINE_PYTHON: 'python3' } })
+    expect(c.enginePython).toBe('python3')
+    expect(describeConfig(c, { development: false })).toContain(
+      'LEGIBLE_ENGINE_PYTHON=python3 (environment)',
+    )
+  })
+  it('resolves a relative path against the base directory and keeps an absolute one', () => {
+    expect(
+      resolveConfig({ ...base, fileText: 'LEGIBLE_ENGINE_PYTHON=.venv/bin/python', env: {} })
+        .enginePython,
+    ).toBe(resolve('/repo', '.venv/bin/python'))
+    expect(
+      resolveConfig({ ...base, env: { LEGIBLE_ENGINE_PYTHON: '/opt/py/bin/python3' } })
+        .enginePython,
+    ).toBe('/opt/py/bin/python3')
+  })
+  it('is a known key, not an unknown one', () => {
+    const c = resolveConfig({ ...base, fileText: 'LEGIBLE_ENGINE_PYTHON=python', env: {} })
+    expect(c.unknownKeys).toEqual([])
+    expect(c.sources.LEGIBLE_ENGINE_PYTHON).toBe('.env.local')
+  })
+})

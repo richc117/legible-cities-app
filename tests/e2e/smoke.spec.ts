@@ -101,7 +101,9 @@ test('opens to an empty Library on the app://local origin, and quits', async () 
       await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.getTitle()),
     ).toBe('Legible Cities')
     await expect(window.getByRole('heading', { level: 1 })).toHaveText('Library')
-    await expect(window.getByRole('status')).toContainText(/no projects/i)
+    await expect(window.getByRole('status').filter({ hasText: /projects/i })).toContainText(
+      /no projects/i,
+    )
 
     // The origin, and the refusals, from inside the page (User Story 2).
     expect(
@@ -174,7 +176,9 @@ test('creates, opens, renames and deletes a project, and serves its output', asy
   // Create one from the empty Library, and read the record it left on disk
   // (User Story 1).
   await withApp(home, async (window) => {
-    await expect(window.getByRole('status')).toContainText(/no projects/i)
+    await expect(window.getByRole('status').filter({ hasText: /projects/i })).toContainText(
+      /no projects/i,
+    )
     // Keyboard first (User Story 4): Enter opens the dialog from the button,
     // Escape closes it and returns focus to the button.
     const newProject = window.getByRole('button', { name: 'New project' })
@@ -280,7 +284,9 @@ test('creates, opens, renames and deletes a project, and serves its output', asy
     await expect(confirm).toBeVisible()
     await confirm.getByRole('button', { name: 'Delete', exact: true }).click()
     await expect(heading).toHaveText('Library')
-    await expect(window.getByRole('status')).toContainText(/no projects yet/i)
+    await expect(window.getByRole('status').filter({ hasText: /projects/i })).toContainText(
+      /no projects yet/i,
+    )
 
     // On disk, the project folder and its output are gone; the origin no
     // longer serves the file.

@@ -1,15 +1,21 @@
-// The main process: one window, one origin, one bridge. Nothing here
-// draws, runs the engine or spawns a child; see
-// specs/001-electron-skeleton/plan.md and .claude/rules/main.md.
+// The main process: one window, one origin, one bridge, one engine. Nothing
+// here draws; see specs/001-electron-skeleton/plan.md,
+// specs/004-sidecar-supervisor/plan.md and .claude/rules/main.md.
 
+import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { app, BrowserWindow, ipcMain, protocol } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, protocol } from 'electron'
+import pins from '../../vendor/pins.json'
+import { CHANNELS } from '../shared/api'
 import { describeConfig, resolveConfig, type Config } from './config'
+import { registerEngineHandlers } from './engine-ipc'
+import { engineCommand, engineEnvironment, resolveInterpreter } from './interpreter'
 import { registerProjectHandlers } from './ipc'
 import { log } from './log'
 import { ProjectStore } from './projects'
 import { registerAppProtocol } from './protocol'
+import { Sidecar } from './sidecar'
 
 export const PRODUCT_NAME = 'Legible Cities'
 
@@ -23,6 +29,10 @@ protocol.registerSchemesAsPrivileged([
 ])
 
 let mainWindow: BrowserWindow | null = null
+let sidecar: Sidecar | null = null
+let quitting = false
+// The mismatch dialog, so a quit can dismiss it rather than wait behind it.
+let mismatchDialog: AbortController | null = null
 
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
@@ -44,6 +54,10 @@ function createWindow(): BrowserWindow {
   window.on('page-title-updated', (event) => event.preventDefault())
   window.on('closed', () => {
     if (mainWindow === window) mainWindow = null
+  })
+  // A state that changed before the page existed would otherwise be missed.
+  window.webContents.on('did-finish-load', () => {
+    if (sidecar !== null) window.webContents.send(CHANNELS.engineStateChanged, sidecar.state)
   })
   window.loadURL('app://local/ui/').catch((error: Error) => {
     // A hidden window that never loads is the "loading forever" User Story 1
@@ -78,6 +92,58 @@ async function loadConfig(): Promise<Config> {
   return config
 }
 
+// The engine, from the interpreter the configuration points at; without
+// one, a supervisor that says so and never spawns (specs/004, FR-002).
+function createSidecar(config: Config): Sidecar {
+  const pin = pins.engine
+  const resolution = resolveInterpreter({
+    config,
+    packaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    platform: process.platform,
+    exists: existsSync,
+  })
+  const engineLog = (message: string): void => log.info('engine', message)
+  if (resolution.interpreter === null) {
+    log.warn('engine', resolution.detail)
+    return new Sidecar({
+      command: null,
+      unavailableReason: resolution.reason,
+      env: {},
+      pin,
+      log: engineLog,
+    })
+  }
+  log.info('engine', `interpreter: ${resolution.interpreter} (${resolution.origin})`)
+  return new Sidecar({
+    command: engineCommand(resolution.interpreter),
+    env: engineEnvironment({ config, base: process.env, development: !app.isPackaged }),
+    pin,
+    log: engineLog,
+    onMismatch: (expected, found) => {
+      const options = {
+        type: 'error' as const,
+        title: 'Engine version mismatch',
+        message: `This version of ${PRODUCT_NAME} needs engine ${expected.version} (protocol ${expected.protocol}).`,
+        detail: `The engine it found is ${found.version} (protocol ${found.protocol}). The engine's features are off until the versions match: reinstall the app, or point LEGIBLE_ENGINE_PYTHON at an environment with engine ${expected.version}.`,
+        buttons: ['OK'],
+        defaultId: 0,
+      }
+      mismatchDialog = new AbortController()
+      const withSignal = { ...options, signal: mismatchDialog.signal }
+      // A sheet on a window that is not showing yet is not visible either.
+      const parent = mainWindow !== null && mainWindow.isVisible() ? mainWindow : null
+      const shown =
+        parent === null
+          ? dialog.showMessageBox(withSignal)
+          : dialog.showMessageBox(parent, withSignal)
+      shown.catch((error: Error) =>
+        log.error('engine', `could not show the mismatch dialog: ${error.message}`),
+      )
+    },
+  })
+}
+
 const hasLock = app.requestSingleInstanceLock()
 if (!hasLock) {
   app.quit()
@@ -95,11 +161,22 @@ if (!hasLock) {
 
   app.whenReady().then(async () => {
     const config = await loadConfig()
+    const engine = createSidecar(config)
+    sidecar = engine
+    engine.start()
     const store = new ProjectStore(config.home, (m) => log.warn('projects', m))
-    registerProjectHandlers(
+    const isTopFrame = (event: Electron.IpcMainInvokeEvent): boolean =>
+      mainWindow !== null && event.senderFrame === mainWindow.webContents.mainFrame
+    registerProjectHandlers(ipcMain, store, isTopFrame)
+    registerEngineHandlers(
       ipcMain,
-      store,
-      (event) => mainWindow !== null && event.senderFrame === mainWindow.webContents.mainFrame,
+      engine,
+      isTopFrame,
+      (channel, payload) => {
+        if (mainWindow !== null && !mainWindow.isDestroyed())
+          mainWindow.webContents.send(channel, payload)
+      },
+      (message) => log.warn('engine', message),
     )
     registerAppProtocol({
       // Development only: a packaged build never proxies anything, whatever
@@ -114,6 +191,20 @@ if (!hasLock) {
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) mainWindow = createWindow()
     })
+  })
+
+  // Quitting ends the engine first: ask, then terminate, then kill, and only
+  // then let Electron go (specs/004, FR-014). The first pass prevents the
+  // default and comes back through here with the flag set.
+  app.on('before-quit', (event) => {
+    if (quitting) return
+    quitting = true
+    mismatchDialog?.abort()
+    if (sidecar === null) return
+    event.preventDefault()
+    const stopping = sidecar.stop()
+    stopping.catch((error: Error) => log.error('engine', `stop failed: ${error.message}`))
+    void stopping.finally(() => app.quit())
   })
 
   app.on('window-all-closed', () => {

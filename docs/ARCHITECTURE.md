@@ -7,24 +7,26 @@ what.
 ## Three processes, one origin, one bridge
 
 ```
-┌──────────────────────── Electron app ─────────────────────────┐
-│  Renderer (React)            Main (Node)                      │
-│  ┌───────────────────┐       ┌──────────────────────────┐     │
-│  │ Library           │◄─IPC─►│ window, single instance  │     │
-│  │ project view      │       │ app:// protocol handler  │     │
-│  │ window.api ───────┼───────┤ projects:* → the store   │     │
-│  └───────────────────┘       │ config + startup log     │     │
-│   origin: app://local        └──────────────────────────┘     │
-└───────────────────────────────────────────────────────────────┘
+┌──────────────────────── Electron app ─────────────────────────┐      ┌─────────────────────┐
+│  Renderer (React)            Main (Node)                      │      │ Engine (Python)     │
+│  ┌───────────────────┐       ┌──────────────────────────┐     │      │ python -m           │
+│  │ Library           │◄─IPC─►│ window, single instance  │     │      │   schematic.serve   │
+│  │ project view      │       │ app:// protocol handler  │     │ stdio│                     │
+│  │ engine status     │       │ projects:* → the store   │     │◄────►│ JSON-RPC 2.0,       │
+│  │ window.api ───────┼───────┤ engine:*   → the sidecar ├─────┼──────┤ Content-Length      │
+│  └───────────────────┘       │ config + startup log     │     │stderr│ frames; LOOM as its │
+│   origin: app://local        └──────────────────────────┘     │→ log │ own child processes │
+└───────────────────────────────────────────────────────────────┘      └─────────────────────┘
         userData/engine = SCHEMATIC_HOME
           projects/<id>/project.json   written by the store
           out/<id>/                    served read-only; removed on delete
+          feeds/, data/graphs/, out/   the engine's, under the same home
 ```
 
 - **Main** (`src/main/`): the app lifecycle, the one window, the
   single-instance lock, the `app://` protocol handler, the project store
-  and the handlers behind the bridge, configuration and the log. It spawns
-  nothing yet.
+  and the handlers behind the bridge, configuration and the log, and the
+  engine's supervisor: the one child process the app starts.
 - **Preload** (`src/preload/`): a `contextBridge` exposing `window.api` and
   nothing else. `contextIsolation` on, `nodeIntegration` off, `sandbox` on.
 - **Renderer** (`src/renderer/`): React. It draws the Library, the create
@@ -59,7 +61,8 @@ which a cross-origin frame hides (ADR-013).
 ## The bridge: `window.api`
 
 Typed in `src/shared/api.ts`, which the preload and the renderer both
-import. Five methods today, all under `api.projects`:
+import. Five methods under `api.projects`, and the engine under
+`api.engine`:
 
 | Method | Does |
 |---|---|
@@ -68,6 +71,17 @@ import. Five methods today, all under `api.projects`:
 | `create({ name, feed, mode?, agency? })` | a new record, every other field at its default |
 | `rename(id, name)` | changes `name` and `modified` and nothing else |
 | `delete(id)` | removes the project and its output, and reports what could not be removed by folder role |
+
+| `engine.state()` | the engine's state: starting, ready, restarting, unavailable, mismatched or stopped, with a reason where there is one |
+| `engine.request(method, params?)` | a request to the engine, as `{ id, result }`: the id is a token the preload mints, the result settles with the engine's answer or its error (`code`, `message`, `data: { kind, detail, hint }`) unchanged |
+| `engine.cancel(id)` | `$/cancelRequest` for that request |
+| `engine.onState`, `onProgress`, `onLog` | subscriptions; each returns its unsubscribe |
+
+The engine bridge is deliberately untyped beyond a method name and an
+object of parameters: A1-02 generates the methods from the engine's schema
+and wraps it. An engine error crosses as a plain object rather than an
+`Error`, because Electron keeps only an error's message and the engine's
+`data.hint` is what the interface shows.
 
 Every argument is validated on the main side, with the validators in
 `src/shared/project.ts` that the form also uses; a refusal is a rejected
@@ -78,10 +92,52 @@ a webview. It does not distinguish a same-origin iframe calling
 `parent.api`, because the bridge's functions run in the top frame that
 exposed them; the viewer iframe (A3-02) needs its own answer, most likely
 its own web contents. Nothing that crosses the
-bridge, in either direction, is a filesystem path; the renderer addresses a
-project by its identifier only. Each addition is a reviewed change to the
-type, the preload and the main-side handler together. Contract:
-`specs/003-project/contracts/bridge.md`.
+bridge, in either direction, is a filesystem path the renderer did not ask
+the engine for; the renderer addresses a project by its identifier only.
+Each addition is a reviewed change to the type, the preload and the
+main-side handler together. Contracts: `specs/003-project/contracts/bridge.md`
+and `specs/004-sidecar-supervisor/contracts/bridge.md`.
+
+## The engine process
+
+The engine is `python -m schematic.serve` from the pinned engine
+(`vendor/pins.json`, `engine` block: tag, version, protocol), run by the
+first interpreter of these that exists and by nothing else: the one
+`LEGIBLE_ENGINE_PYTHON` names; in development, the engine checkout's own
+`.venv`; in a packaged app, the bundled runtime under the app's resources.
+With none, the state is *unavailable* with a sentence that names the key to
+set, and the app is otherwise usable.
+
+`src/main/sidecar.ts` spawns it with an argument array, `windowsHide`, a
+process group of its own on POSIX, and an environment built from an
+allowlist (the path, the home, the temporary directory, the locale, proxy
+and certificate variables, `DOCKER_*` for the development backend, the
+engine's four `SCHEMATIC_*` keys, and `PYTHONPATH` in development only, which
+is how the tests substitute a stand-in engine). Every stderr line goes to the
+log as it arrives under the `engine` tag. `src/main/jsonrpc.ts` speaks
+JSON-RPC 2.0 with `Content-Length` framing over the child's stdio, our own
+client rather than a library because the engine keys its notifications by
+the request id, which the client must therefore assign and know.
+
+The handshake is `engine.info`, bounded at 10 s: the version and the
+protocol must equal the pin, or a native dialog names both and the state
+is *mismatched* for the rest of the run. Every other request has an
+inactivity bound (10 min without a `job/progress` or `job/log` line for it),
+after which the app cancels it and says so. An exit nobody asked for
+rejects the requests in flight, restarts the engine after 1, 2 and 4 s, and
+gives up after three consecutive failures; the count starts afresh once
+the engine has answered a request or been ready for 30 s. On quit the app
+asks (`engine.shutdown`, 3 s), terminates (the group on POSIX, the tree with
+`taskkill /T /F` on Windows, 3 s), then kills, and only then exits. The
+state is one line in the interface's header, a polite live region.
+Contract: `specs/004-sidecar-supervisor/contracts/sidecar.md`.
+
+The tests run the supervisor against a stand-in engine,
+`tests/fake-engine/schematic/serve.py`: a standard-library Python module
+that speaks the same framing and is told how to behave by a file in the
+test's engine home, so the supervisor is proven on runners that have no
+engine. The tests against the real engine run where `.env.local` names a
+checkout with an environment, and skip, saying so, elsewhere.
 
 ## Projects
 
@@ -144,7 +200,8 @@ it), then defaults:
 | `SCHEMATIC_HOME` | `<userData>/engine` (ADR-016) |
 | `SCHEMATIC_LOOM_BIN` | unset |
 | `SCHEMATIC_FFMPEG` | unset |
-| `LEGIBLE_ENGINE_CHECKOUT` | unset; the tokens test reads the engine page from it |
+| `LEGIBLE_ENGINE_CHECKOUT` | unset; the tokens test reads the engine page from it, and the engine runs from its `.venv` |
+| `LEGIBLE_ENGINE_PYTHON` | unset; an interpreter named explicitly (a path, or a bare command for PATH), which wins over the checkout |
 
 At startup the main process logs every value with its source, and what is
 unset, before the window opens, so a misconfigured run is diagnosable from
@@ -170,22 +227,29 @@ light or dark preference; a switch arrives with A4-03.
 ## Checks
 
 `.github/workflows/ci.yml` runs on Ubuntu, macOS and Windows for every push
-and pull request: lint, typecheck, unit tests, a build, and two Playwright
-Electron tests over the built app. The first launches it, asserts the
+and pull request: lint, typecheck, unit tests, a build, and the Playwright
+Electron tests over the built app. The smoke test launches it, asserts the
 title, reads the empty Library, probes the origin's refusals from inside
-the page, and quits; the second creates a project from the Library,
+the page, and quits; the lifecycle test creates a project from the Library,
 relaunches on the same engine home, opens, renames and deletes it, and
-fetches a file placed in its output folder before and after the delete.
-Unit tests cover the traversal matrix, configuration parsing, the tokens,
-the record's validators and versioning, and the store against a temporary
-directory. The hygiene checks (`gitleaks`, `bin/preflight`) run beside
-them.
+fetches a file placed in its output folder before and after the delete; the
+engine test runs the app against the stand-in engine and checks the status
+line, a request and an error from the page, a restart after the engine is
+killed, that nothing survives the quit, the mismatch state, and the app
+with no interpreter at all. Unit tests cover the traversal matrix,
+configuration parsing, the tokens, the record's validators and versioning,
+the store against a temporary directory, the JSON-RPC framing, the
+interpreter resolution and the environment allowlist, the supervisor
+against the stand-in as a real child process, and the engine bridge's main
+side. The hygiene checks (`gitleaks`, `bin/preflight`) run beside them.
 
 ## Deliberately absent
 
 | Not here | Arrives with |
 |---|---|
-| The engine, the sidecar protocol, any child process | A1-01, A1-02 (E09a on the engine side) |
+| Typed engine methods generated from the engine's schema; contract tests against the real engine in CI | A1-02 (the engine must be vendored first, A0-06) |
+| A screen for long jobs: progress, cancellation, the engine's log | A1-03 |
+| Settings: the data folder, the export folder, the versions shown | A1-04 |
 | A feed chooser over the engine's registry; the feed key is typed and checked for form | A2-01 |
 | The service day and the stored layout: `date` and `layout` are `null` until the first layout sets both | A3-01 |
 | The viewer iframe | A3-02 |

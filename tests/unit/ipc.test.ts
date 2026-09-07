@@ -33,7 +33,8 @@ function harness(topFrame = true) {
 describe('registerProjectHandlers', () => {
   it('registers the five channels and nothing else', () => {
     const { handlers } = harness()
-    expect([...handlers.keys()].sort()).toEqual(Object.values(CHANNELS).sort())
+    const projectChannels = Object.values(CHANNELS).filter((c) => c.startsWith('projects:'))
+    expect([...handlers.keys()].sort()).toEqual(projectChannels.sort())
   })
   it('refuses a caller that is not the top frame', async () => {
     const { call, calls } = harness(false)
