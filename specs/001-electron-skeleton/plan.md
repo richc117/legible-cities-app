@@ -142,7 +142,7 @@ docs/ARCHITECTURE.md         # the technical architecture, present tense for wha
 **Structure Decision**: electron-vite's conventional three-directory layout
 under `src/`, because its build produces `out/main`, `out/preload` and
 `out/renderer` that the protocol handler and the smoke test address by name,
-and because the `.claude/rules/` path scopes (`src/main/**`,
+and because the assistant's rule scopes (`src/main/**`,
 `src/renderer/**`) were written for it. Pure modules (`paths.ts`,
 `config.ts`) import nothing from Electron so Vitest runs them in Node.
 

@@ -193,7 +193,7 @@ Decisions taken here because the issue is silent and a reasonable default exists
 - **A-006**: The end-to-end smoke test drives a build of the application rather than an installed package. *Why*: installing a package inside a check run is slow and platform-specific; the installers are exercised by a person on the two target machines instead (SC-001).
 - **A-007**: A theme is offered — at least following the operating system's light and dark preference — because the constitution requires contrast that holds "in every theme". *Why*: it is cheaper to define tokens for both at the start than to add a second theme to values already written.
 - **A-008**: Unit checks exist in this feature only to prove the test runner works and to cover the path-resolution rules in FR-011. *Why*: there is almost no logic yet; a test suite with nothing in it rots, and path resolution is the one piece with real edge cases.
-- **A-009**: Documentation added by this feature lists any new commands in `CLAUDE.md` and adds their permission rules at the same time. *Why*: `CLAUDE.md` says so explicitly.
+- **A-009**: Documentation added by this feature lists any new commands in the README and the contributing guide. *Why*: they are the two places a person looks.
 
 ## Dependencies
 

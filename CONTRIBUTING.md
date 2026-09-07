@@ -96,17 +96,15 @@ the pull request rather than reaching for `--no-verify`: a false positive is
 a line in `.gitleaks.toml`, with a comment saying why. See
 `docs/adr/015-hygiene-enforced-by-tools.md`.
 
-## If you use Claude Code
+## If you use an assistant
 
-The repository configures it, and everything in `.claude/` is committed and
-readable. `rules/` holds the detailed rules for each process, loaded when
-you work on files they cover. Three skills match the conventions above:
-`/adr` writes a numbered decision record and indexes it, `/spike` sets up a
-timeboxed experiment and its report, and `/spec` scaffolds a feature spec
-from an issue. `agents/reviewer.md` is a read-only reviewer that checks a
-diff for correctness, leaks, a second renderer creeping in, and child
-processes without a timeout. `hooks/guard-git.sh` runs the two scanners
-before any commit or push it makes.
+The repository does not configure one: `CLAUDE.md` and `.claude/` are
+ignored, and what the maintainer uses stays out of the tree. The rules an
+assistant needs are the ones a person needs, and they are here: the
+constitution in `.specify/memory/constitution.md`, the decision records
+under `docs/adr/`, and the specs under `specs/`. Whatever runs on your
+side, the scanners in `.pre-commit-config.yaml` and the checks in CI are
+what decide whether a change lands.
 
 None of it is required, and none of it replaces reading the diff yourself.
 Other tools are welcome; if you configure one, keep its files out of the

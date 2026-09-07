@@ -1,6 +1,6 @@
 // The main process: one window, one origin, one bridge, one engine. Nothing
-// here draws; see specs/001-electron-skeleton/plan.md,
-// specs/004-sidecar-supervisor/plan.md and .claude/rules/main.md.
+// here draws; see specs/001-electron-skeleton/plan.md and
+// specs/004-sidecar-supervisor/plan.md.
 
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'

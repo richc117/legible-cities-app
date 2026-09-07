@@ -50,9 +50,10 @@ Both scanners, run in three places.
 `gitleaks` finds keys and tokens; `bin/preflight` finds the rest of the
 never list. They run from `.pre-commit-config.yaml` on every commit (and
 `bin/preflight --message-file` on the message itself, while it can still be
-edited), from `.claude/hooks/guard-git.sh` before any commit or push an
-assistant makes, and from `.github/workflows/gitleaks.yml` and
-`preflight.yml` on every push and pull request. The local hooks are convenience; CI is the one that counts,
+edited), from a hook the maintainer's assistant runs before any commit or
+push it makes (kept outside the repository), and from
+`.github/workflows/gitleaks.yml` and `preflight.yml` on every push and
+pull request. The local hooks are convenience; CI is the one that counts,
 because it cannot be skipped.
 
 `.gitleaks.toml` extends the default rule set with an allowlist for this

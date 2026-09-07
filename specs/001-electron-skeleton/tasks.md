@@ -124,10 +124,10 @@ electron-vite's three-process layout under `src/` (`main/`, `preload/`, `rendere
 ### Implementation for User Story 4
 
 - [ ] T034 [US4] Create `.github/workflows/ci.yml`: `on: [push (branches: [main]), pull_request]`; `permissions: contents: read`; `jobs.ci` with `name: ci (${{ matrix.os }})`, `strategy.fail-fast: false`, `matrix.os: [ubuntu-22.04, macos-15, windows-latest]`; steps: `actions/checkout@v6`, `actions/setup-node@v6` (`node-version: 22`, `cache: npm`), `npm ci`, `npx install-electron --no`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`, then the smoke test: on Linux `xvfb-run -a npm run test:e2e`, elsewhere `npm run test:e2e` (`if: runner.os == 'Linux'` / `!= 'Linux'`); upload `test-results/` on failure
-- [ ] T035 [P] [US4] Update `CLAUDE.md`: replace "Nothing else yet. Do not invent npm scripts" with the script list and one line each; update "Where things stand"; and add to `.claude/settings.json` allow rules `Bash(npm ci)`, `Bash(npm run lint*)`, `Bash(npm run typecheck*)`, `Bash(npm test*)`, `Bash(npm run test:e2e*)`, `Bash(npm run build*)`, `Bash(npx install-electron*)`
+- [ ] T035 [P] [US4] Update the assistant notes: replace "Nothing else yet. Do not invent npm scripts" with the script list and one line each; update "Where things stand"; and add to `.claude/settings.json` allow rules `Bash(npm ci)`, `Bash(npm run lint*)`, `Bash(npm run typecheck*)`, `Bash(npm test*)`, `Bash(npm run test:e2e*)`, `Bash(npm run build*)`, `Bash(npx install-electron*)`
 - [ ] T036 [P] [US4] Update `THIRD_PARTY_NOTICES.md`: Electron and React rows no longer "(planned)"; add development tooling rows for electron-vite, Vite, Vitest, Playwright, ESLint, Prettier, TypeScript, electron-builder (present in the repository, not shipped)
 - [ ] T037 [US4] Commit and push to both remotes with `bin/preflight` clean; watch the three `ci (<os>)` checks to green; fix and repeat until they are
-- [ ] T038 [US4] Flip the workflow in one final direct commit: `CONTRIBUTING.md` "Where things stand" and "Branch and pull request" say `main` now changes only through pull requests; `docs/repository-settings.md` branch-protection boxes ticked with the date; `CLAUDE.md` "Where things stand" likewise; push
+- [ ] T038 [US4] Flip the workflow in one final direct commit: `CONTRIBUTING.md` "Where things stand" and "Branch and pull request" say `main` now changes only through pull requests; `docs/repository-settings.md` branch-protection boxes ticked with the date; the README's "Developing" likewise; push
 - [ ] T039 [US4] Apply branch protection on the mirror through the API: require a pull request, required status checks `ci (ubuntu-22.04)`, `ci (macos-15)`, `ci (windows-latest)`, `gitleaks`, `preflight`, strict (up to date), no force pushes, no deletions; verify by reading the protection back and by observing that a direct push of a throwaway commit is refused, then discard that commit
 
 **Checkpoint**: the repository has a gate; the next change is a pull request.
@@ -137,7 +137,7 @@ electron-vite's three-process layout under `src/` (`main/`, `preload/`, `rendere
 ## Phase 7: Polish & Cross-Cutting Concerns
 
 - [ ] T040 Negative checks for SC-003, locally: change the window title, run the smoke test, see it fail, restore; introduce a type error, run `npm run typecheck`, see the file and line named, restore
-- [ ] T041 [P] Run `bin/preflight`, `pre-commit run --all-files`, `gitleaks dir . --redact` and `bin/test-hooks`; fix anything reported
+- [ ] T041 [P] Run `bin/preflight`, `pre-commit run --all-files` and `gitleaks dir . --redact`; fix anything reported
 - [ ] T042 [P] Run the repository's `reviewer` subagent over the feature's diff (correctness, leaks, a second renderer creeping in, child processes without a timeout) and address findings
 - [ ] T043 Close A0-09 on both boards with what was tested by hand and on which OS (CONTRIBUTING's definition of done); update the roadmap's Phase 0 status and `CLAUDE.local.md`
 

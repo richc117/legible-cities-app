@@ -34,8 +34,7 @@ Two constraints bear on the answer. `README.md` already tells the public
 this is "a desktop app for macOS and Windows". And the rules that keep the
 code portable - argument arrays rather than shell strings, `windowsHide`,
 no assumptions about path separators or case - are written down in the
-constitution and in `.claude/rules/main.md`, but **nothing currently
-verifies them**, because the workflows that would have run them have never
+constitution, but **nothing currently verifies them**, because the workflows that would have run them have never
 run.
 
 ## Options

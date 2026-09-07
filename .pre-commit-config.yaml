@@ -57,13 +57,3 @@ repos:
         entry: bin/preflight --message-file
         language: script
         stages: [commit-msg]
-
-      # The hooks in .claude/hooks/ decide whether a commit or a command is
-      # allowed. shellcheck reads their syntax; this reads their behaviour.
-      - id: test-hooks
-        name: the Claude Code hooks behave
-        entry: bin/test-hooks
-        language: script
-        pass_filenames: false
-        files: '^(\.claude/hooks/|bin/(preflight|test-hooks)$)'
-        stages: [pre-commit]

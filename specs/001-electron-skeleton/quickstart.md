@@ -1,7 +1,7 @@
 # Quickstart: the Electron skeleton
 
 What to run to see the feature work, and what each run proves. Commands are
-the `package.json` scripts; `CLAUDE.md` lists them too.
+the `package.json` scripts; `README.md` lists them too.
 
 ## Prerequisites
 

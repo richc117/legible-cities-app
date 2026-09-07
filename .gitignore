@@ -22,9 +22,11 @@ vendor/ffmpeg/
 *.key
 *.mobileprovision
 
-# Personal tooling state
+# The maintainer's assistant configuration is not part of the repository:
+# the checkout reaches it through symbolic links kept out of the tree.
+CLAUDE.md
 CLAUDE.local.md
-.claude/settings.local.json
+.claude/
 
 # OS and editor noise
 .DS_Store
