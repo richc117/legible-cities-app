@@ -17,12 +17,8 @@ Write `docs/adr/NNN-short-title.md` for: **$ARGUMENTS**
 maintainer which number this decision has; the founding decisions were
 numbered before they were written up, so several numbers between the files
 in `docs/adr/` are already spoken for. `docs/adr/README.md` lists the
-reserved ones - check it, and check that nothing else in the repository
-already cites the number you are about to take:
-
-```
-grep -rn 'ADR-NNN' .
-```
+reserved ones - check it, and search the repository with Grep for
+`ADR-NNN` to be sure nothing already cites the number you are about to take.
 
 Only if the decision is genuinely new and no number has been allocated, take
 the next one that is neither used nor reserved. Never renumber an existing

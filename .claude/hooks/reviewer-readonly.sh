@@ -6,15 +6,24 @@
 # "read-only" true rather than aspirational. Exit 2 blocks the call and shows
 # the reason; exit 0 lets it through.
 #
-# Read-only is a property of the whole command line, not of the verb at the
-# front of it. `git diff` writes a file with --output, `git difftool` runs a
-# command with --extcmd, and `gitleaks` writes one with --report-path, so the
-# option checks below are load-bearing rather than defensive tidiness.
+# Two rules learned by getting this wrong:
+#
+# 1. Read-only is a property of the whole command line, not of the verb at
+#    the front of it. `git diff --output=<file>` overwrites a file,
+#    `git diff --no-index` reads one outside the history, and
+#    `gitleaks -r <file>` writes one.
+# 2. An option pattern that assumes surrounding spaces misses `-r=file`.
+#    Where a tool's option surface is large, allowlist the exact invocations
+#    instead of trying to enumerate what is dangerous - which is why gitleaks
+#    and bin/preflight appear below in one form each.
+#
+# bin/test-hooks exercises every line of this. Run it after any edit.
 set -u
 
 refuse() {
-  printf 'the reviewer is read-only: %s\nAllowed: git diff/status/log/show/blame/ls-files/rev-parse, gitleaks, bin/preflight.\n' \
-    "$1" >&2
+  printf 'the reviewer is read-only: %s\n' "$1" >&2
+  printf 'Allowed: git diff/status/log/show/blame/grep/ls-files/rev-parse (no --output, --no-index or -O),\n' >&2
+  printf '         git branch --show-current, git remote, and the two scanners in their exact forms.\n' >&2
   exit 2
 }
 
@@ -32,32 +41,42 @@ case "$cmd" in
     refuse "no chaining, redirection or substitution" ;;
 esac
 
-# Options that turn a reading command into a writing or executing one,
-# wherever they appear on the line.
+# The scanners, in the exact forms the reviewer needs and no others. Anything
+# else - another path, a report file, a dropped --redact - is refused rather
+# than parsed. `bin/preflight --message-file <path>` prints the matching
+# lines of whatever file it is given, which is the private notes if asked.
 case "$cmd" in
-  *'--output'*|*'--report-path'*|*' -r '*|*'--diagnostics'*|*'--extcmd'*|*' -x '*|\
-  *'--upload-pack'*|*'--receive-pack'*|*'--exec'*|*'-c '*|*'--pager'*|*'-O'*)
-    refuse "that option writes, executes or reconfigures" ;;
+  "gitleaks dir . --no-banner --redact"|\
+  "gitleaks git --no-banner --redact"|\
+  "bin/preflight")
+    exit 0 ;;
 esac
 
-# Read-only git, plus the repository's own scanners, which only read.
-# `git branch` appears only in its reporting form: the same verb with -d or
-# -D deletes. `git remote` appears without -v on purpose - the remote's URL
-# is private, and a transcript of this review may end up in a public pull
-# request. Do not "helpfully" add it.
+# Options that turn one of the read-only git verbs below into a writing,
+# reading-outside-the-repository, or executing one. Only options reachable
+# from those verbs are listed: `git -c`, `git --pager` and `git --exec-path`
+# come before the subcommand, so they never match the anchored patterns
+# below, and `--extcmd` belongs to difftool, which is not allowlisted.
+case "$cmd" in
+  *'--output'*|*'--no-index'*|*'--open-files-in-pager'*|*'-O'*)
+    refuse "that option writes a file, reads outside the repository, or opens a pager" ;;
+esac
+
+# Read-only git. `git branch` appears only in its reporting form: the same
+# verb with -d or -D deletes. `git remote` appears without -v on purpose -
+# the remote's URL is private, and a transcript of this review may end up in
+# a public pull request. Do not "helpfully" add it.
 case "$cmd" in
   "git diff"|"git diff "*|\
   "git status"|"git status "*|\
   "git log"|"git log "*|\
   "git show"|"git show "*|\
   "git blame "*|\
+  "git grep "*|\
   "git ls-files"|"git ls-files "*|\
   "git rev-parse "*|\
   "git branch --show-current"|\
-  "git remote"|\
-  "gitleaks dir "*|\
-  "gitleaks git "*|\
-  "bin/preflight"|"bin/preflight "*)
+  "git remote")
     exit 0 ;;
 esac
 

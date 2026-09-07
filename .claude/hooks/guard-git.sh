@@ -34,15 +34,27 @@ fi
 if ! out=$(gitleaks git --staged --no-banner --redact 2>&1); then
   block "gitleaks found something in the staged changes; nothing was committed:" "$out"
 fi
+
+# `git commit -a` stages tracked changes as part of the commit, after this
+# hook has run, so the index scan above has not seen them. Scan the unstaged
+# diff too when the command asks for that.
+case "$cmd" in
+  *" -a"*|*" --all"*)
+    if ! out=$(gitleaks git --pre-commit --no-banner --redact 2>&1); then
+      block "gitleaks found something in the changes -a would stage; nothing was committed:" "$out"
+    fi
+    ;;
+esac
+
 case "$cmd" in
   *"git push"*)
-    if git rev-parse -q --verify '@{upstream}' >/dev/null 2>&1; then
-      logopts='--log-opts=@{upstream}..HEAD'
-    else
-      logopts=''   # nothing pushed yet: scan all of history
-    fi
-    if ! out=$(gitleaks git --no-banner --redact ${logopts:+"$logopts"} 2>&1); then
-      block "gitleaks found something in the commits about to be pushed:" "$out"
+    # Every commit, not the range against the tracked upstream: `@{upstream}`
+    # is a property of the branch, not of the remote being pushed to, so once
+    # there is a second remote the range can be empty for a push that sends
+    # the whole history somewhere new. Scanning all of it costs milliseconds
+    # and needs no reasoning about which remote was named.
+    if ! out=$(gitleaks git --no-banner --redact 2>&1); then
+      block "gitleaks found something in the history about to be pushed:" "$out"
     fi
     ;;
 esac

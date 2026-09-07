@@ -27,6 +27,7 @@ live in `CLAUDE.local.md`, which is gitignored. Read it if it exists.
 
 ```
 bin/preflight                     # refuses personal paths, addresses, keys, session links
+bin/test-hooks                    # the .claude/hooks/ allow and refuse tables
 bin/preflight --message-file F    # the same, over a commit message being written
 gitleaks git --staged --redact    # keys and tokens in the staged changes
 gitleaks dir . --redact           # the same, over the whole working tree

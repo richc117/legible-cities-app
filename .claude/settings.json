@@ -18,8 +18,8 @@
     "deny": [
       "Bash(git difftool*)",
       "Bash(git mergetool*)",
+      "Read(./.git/**)",
       "Read(./.env*)",
-      "Read(./.git/config)",
       "Read(./**/*.p12)",
       "Read(./**/*.pem)",
       "Read(./**/*.key)",

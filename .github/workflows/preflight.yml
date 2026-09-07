@@ -29,3 +29,5 @@ jobs:
           fetch-depth: 0
       - name: Personal paths, addresses, keys and session links
         run: bin/preflight
+      - name: The hooks that enforce all this still behave
+        run: bin/test-hooks
