@@ -1,41 +1,24 @@
-import { useEffect, useState, type JSX } from 'react'
-import type { ProjectSummary } from '../../shared/api'
+import { useState, type JSX } from 'react'
+import Library from './Library'
+import ProjectView from './ProjectView'
 
-type LibraryState = { status: 'loading' } | { status: 'ready'; projects: ProjectSummary[] }
+// Two screens and no URL to preserve, so navigation is local state rather
+// than a router. The Library is unmounted while a project is open and lists
+// afresh when it mounts again, so a rename or a delete shows on return. A
+// delete that could not remove everything hands the Library one sentence
+// to show, since the view that found out is gone by then.
+type Screen = { screen: 'library'; notice: string | null } | { screen: 'project'; id: string }
 
 export default function App(): JSX.Element {
-  const [library, setLibrary] = useState<LibraryState>({ status: 'loading' })
+  const [screen, setScreen] = useState<Screen>({ screen: 'library', notice: null })
 
-  useEffect(() => {
-    let cancelled = false
-    window.api.library
-      .list()
-      .then((projects) => {
-        if (!cancelled) setLibrary({ status: 'ready', projects })
-      })
-      .catch(() => {
-        if (!cancelled) setLibrary({ status: 'ready', projects: [] })
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  return (
-    <main className="library" aria-labelledby="library-heading">
-      <h1 id="library-heading">Library</h1>
-      {library.status === 'ready' && library.projects.length === 0 && (
-        <p role="status">
-          No projects yet. The first feed and the first project arrive with a later release.
-        </p>
-      )}
-      {library.status === 'ready' && library.projects.length > 0 && (
-        <ul>
-          {library.projects.map((project) => (
-            <li key={project.id}>{project.name}</li>
-          ))}
-        </ul>
-      )}
-    </main>
-  )
+  if (screen.screen === 'project') {
+    return (
+      <ProjectView
+        id={screen.id}
+        onBack={(notice) => setScreen({ screen: 'library', notice: notice ?? null })}
+      />
+    )
+  }
+  return <Library notice={screen.notice} onOpen={(id) => setScreen({ screen: 'project', id })} />
 }

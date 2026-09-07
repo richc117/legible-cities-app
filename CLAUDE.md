@@ -12,9 +12,11 @@ security policy, templates, decision-record convention), its hygiene tooling
 (`bin/preflight`, gitleaks, the git hooks, the CI checks), its specs
 (Spec Kit, the constitution), and the Phase 0 spike reports and decision
 records under `docs/adr/` - and the Electron skeleton (A0-09): one window
-opening to an empty Library on the `app://local` origin, a one-method
-preload bridge, the dev loop against the sibling engine, and CI on three
-platforms. It draws nothing and runs no engine yet.
+opening to the Library on the `app://local` origin, the project object
+(A1-05: a versioned record under the engine home, created, renamed and
+deleted from the Library through a five-method preload bridge), the dev
+loop against the sibling engine, and CI on three platforms. It draws
+nothing and runs no engine yet.
 
 Work proceeds phase by phase; `CONTRIBUTING.md` explains the flow, the
 labels, the milestones and the `A0-05`-style issue codes. The four Phase 0
