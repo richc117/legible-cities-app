@@ -43,10 +43,10 @@ already cites the number you mean to use.
 | 010 | JSON-RPC 2.0 over stdio, using existing LSP libraries | Accepted, not yet written up |
 | 011 | LOOM ships as native binaries built in CI from a pinned commit | Accepted, not yet written up |
 | 012 | FFmpeg is bundled and encoding stays in Python | Accepted, not yet written up |
-| 013 | The generated animation page is the viewer, served same-origin | Accepted, not yet written up |
+| 013 | [The generated animation page is the viewer, served same-origin](013-the-generated-page-is-the-viewer.md) | Accepted |
 | 014 | [Spec Kit for specs; decision records for decisions; spikes end in a record](014-spec-kit-for-specs.md) | Accepted |
 | 015 | [Public-repo hygiene is enforced by tools, not attention](015-hygiene-enforced-by-tools.md) | Accepted |
-| 016 | All data lives in the user's data folder; the engine never writes beside its code | Accepted, not yet written up |
+| 016 | [All data lives in the user's data folder; the engine never writes beside its code](016-data-lives-in-the-user-data-folder.md) | Accepted |
 | 017 | The app is called "Legible Cities" | Accepted, not yet written up |
 | 018 | Public ADRs use three-digit numbers and a header block | Accepted, not yet written up |
 | 019 | [LOOM ships without its optional solvers, and not on macOS until it is deterministic](019-loom-binaries.md) | Accepted |

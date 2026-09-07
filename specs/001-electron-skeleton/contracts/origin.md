@@ -38,7 +38,7 @@ By extension: `html`, `js`/`mjs`, `css`, `json`, `svg`, `png`, `jpg`/`jpeg`,
 extensions are `application/octet-stream`. HTML is served with a
 `Content-Security-Policy` header:
 
-- `/ui/`: `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'` — plus, in development only, `ws://localhost:<port>` in `connect-src` for Vite's HMR client and `'unsafe-inline'` in `script-src` for its injected client.
+- `/ui/`: `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'` — plus, in development only, `ws://localhost:5173` in `connect-src` for Vite's HMR client and `'unsafe-inline'` in `script-src` and `style-src` for its injected client and styles.
 - `/projects/`: reserved for the viewer feature (A3-02); the generated page is self-contained and will need inline scripts. Not served in this feature beyond the routing above.
 
 ## Privileges

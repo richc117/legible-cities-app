@@ -61,7 +61,9 @@ if git rev-parse -q --verify HEAD >/dev/null 2>&1; then
 fi
 
 # 3. Private files present and not ignored.
-stray=$(git status --porcelain 2>/dev/null | grep -E 'CLAUDE\.local\.md|settings\.local\.json|\.env|\.p12|\.pem|\.key$' || true)
+# .env.example is the documented, tracked example with no real value in it;
+# every other .env* file is private.
+stray=$(git status --porcelain 2>/dev/null | grep -E 'CLAUDE\.local\.md|settings\.local\.json|\.env|\.p12|\.pem|\.key$' | grep -vE '(^|[ /])\.env\.example$' || true)
 if [ -n "$stray" ]; then
   echo "preflight: a private file is in the working tree and not ignored:" >&2
   echo "$stray" >&2; status=1

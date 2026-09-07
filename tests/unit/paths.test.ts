@@ -28,6 +28,11 @@ describe('isValidProjectId', () => {
       'a b',
       '%2e%2e',
       '~',
+      'CON',
+      'con',
+      'nul.txt',
+      'COM1',
+      'lpt9.html',
     ]) {
       expect(isValidProjectId(id), JSON.stringify(id)).toBe(false)
     }
@@ -58,6 +63,12 @@ describe('decodeAssetPath', () => {
     for (const raw of ['a%2fb', 'a%5cb', 'a\\b', 'a%00', 'a%0a', '', 'a/', '/a', 'a//b', '%']) {
       expect(decodeAssetPath(raw), JSON.stringify(raw)).toBeNull()
     }
+  })
+  it('refuses Windows device names as segments, in any case and with an extension', () => {
+    for (const raw of ['CON', 'a/nul', 'a/Aux.txt', 'com3/x', 'LPT1.html']) {
+      expect(decodeAssetPath(raw), raw).toBeNull()
+    }
+    expect(decodeAssetPath('console/nullable.txt')).toEqual(['console', 'nullable.txt'])
   })
   it('decodes exactly once, so a double-encoded dot-dot is a literal filename', () => {
     expect(decodeAssetPath('%252e%252e')).toEqual(['%2e%2e'])

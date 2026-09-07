@@ -16,7 +16,10 @@ that takes a command to run. Validation is on the main side.
 | `api.library.list()` | none | `Promise<ProjectSummary[]>` | Always `[]` in this feature. A1-05 fills it and defines `ProjectSummary`; here it is `{ id: string; name: string }` so the empty state has a type to render against. |
 
 That is the whole surface. Each later addition is a reviewed change to
-`src/shared/api.ts`, the preload and the main-side handler together.
+`src/shared/api.ts`, the preload and the main-side handler together. When
+the viewer iframe arrives (A3-02) it is same-origin by design and can reach
+`parent.api`; from then on main-side handlers check `event.senderFrame` and
+serve only the interface's frame.
 
 ## IPC channels behind it
 

@@ -4,7 +4,8 @@
 // refusals and content types: specs/001-electron-skeleton/contracts/origin.md.
 
 import { createReadStream } from 'node:fs'
-import { realpath, stat } from 'node:fs/promises'
+import { access, realpath, stat } from 'node:fs/promises'
+import { constants } from 'node:fs'
 import { join } from 'node:path'
 import { Readable } from 'node:stream'
 import { net, protocol } from 'electron'
@@ -56,6 +57,11 @@ async function streamFile(path: string, method: string): Promise<Response> {
     return notFound()
   }
   if (!info.isFile()) return notFound()
+  try {
+    await access(path, constants.R_OK)
+  } catch {
+    return notFound() // an unreadable file would otherwise fail after a 200 went out
+  }
   const headers: Record<string, string> = {
     'content-type': contentTypeFor(path),
     'content-length': String(info.size),

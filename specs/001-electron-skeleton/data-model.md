@@ -78,11 +78,12 @@ log lines.
 
 ## Design tokens
 
-One committed stylesheet, `src/renderer/styles/tokens.css`, holding exactly
+One committed stylesheet, `src/renderer/src/styles/tokens.css`, holding exactly
 the two theme blocks of the engine's animation page (`:root`, warm-dark, and
 `:root[data-theme="sepia"]`) plus a header comment naming their origin.
 Every component consumes tokens; no colour, type or spacing value is written
-at a use site (FR-007). A unit test compares the copy with the engine's page
+at a use site (FR-007). Type and spacing are not in the engine's blocks, so
+`app.css` declares them as its own small token set. A unit test compares the copy with the engine's page
 and fails on any difference; where no engine is reachable it skips and says
 so (see `research.md`).
 

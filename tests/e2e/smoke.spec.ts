@@ -2,9 +2,11 @@
 // Library, prove the origin, quit, and see the process end. Runs on the
 // three runners; on Linux under xvfb-run (research.md section 3).
 
+import { spawn } from 'node:child_process'
 import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import electronPath from 'electron'
 import { _electron as electron, expect, test } from '@playwright/test'
 
 const repoRoot = resolve(__dirname, '../..')
@@ -81,6 +83,26 @@ test('opens to an empty Library on the app://local origin, and quits', async () 
     expect(missing.body).not.toContain('/')
     const listing = await probe('/projects/p1/')
     expect(listing.status).toBe(404)
+
+    // A second launch while the first runs must exit on its own and leave
+    // the first with its one window (FR-035, the single-instance lock).
+    const second = spawn(electronPath as unknown as string, ['.'], {
+      cwd: repoRoot,
+      env: { ...process.env, SCHEMATIC_HOME: home },
+      stdio: 'ignore',
+    })
+    const secondExit = await new Promise<number | null>((done) => {
+      const timer = setTimeout(() => {
+        second.kill()
+        done(null)
+      }, 15_000)
+      second.once('exit', (code) => {
+        clearTimeout(timer)
+        done(code)
+      })
+    })
+    expect(secondExit, 'the second instance exits by itself').not.toBeNull()
+    expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1)
 
     // Nothing in the renderer reaches Node.
     expect(await window.evaluate(() => typeof (globalThis as { require?: unknown }).require)).toBe(

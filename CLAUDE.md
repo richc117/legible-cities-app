@@ -45,8 +45,8 @@ pre-commit run --all-files        # the hooks, without committing
 pre-commit install                # once per checkout, to get them on git commit
 ```
 
-The application's own scripts (`package.json`), each with a permission rule
-in `.claude/settings.json`:
+The application's own scripts (`package.json`). The checks have permission
+rules in `.claude/settings.json`; `dev`, `start` and `dist` are for a person:
 
 ```
 npm ci && npx install-electron --no   # install; the Electron binary is fetched separately since Electron 42
@@ -61,7 +61,8 @@ npm run dist                          # electron-builder --dir; installers arriv
 
 `.github/workflows/ci.yml` runs lint, typecheck, test, build and the smoke
 test on Ubuntu (under xvfb), macOS and Windows for every push and pull
-request. Add a script here and its permission rule at the same time.
+request. Add a script here, and a permission rule if it is a check, at the
+same time.
 
 `gitleaks` and `pre-commit` are development tools, not dependencies; install
 them from a package manager. Everything they enforce is enforced again in
