@@ -6,8 +6,9 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { app, BrowserWindow, ipcMain, protocol } from 'electron'
 import { describeConfig, resolveConfig, type Config } from './config'
-import { registerLibrary } from './library'
+import { registerProjectHandlers } from './ipc'
 import { log } from './log'
+import { ProjectStore } from './projects'
 import { registerAppProtocol } from './protocol'
 
 export const PRODUCT_NAME = 'Legible Cities'
@@ -94,7 +95,12 @@ if (!hasLock) {
 
   app.whenReady().then(async () => {
     const config = await loadConfig()
-    registerLibrary(ipcMain)
+    const store = new ProjectStore(config.home, (m) => log.warn('projects', m))
+    registerProjectHandlers(
+      ipcMain,
+      store,
+      (event) => mainWindow !== null && event.senderFrame === mainWindow.webContents.mainFrame,
+    )
     registerAppProtocol({
       // Development only: a packaged build never proxies anything, whatever
       // its environment says (FR-009, FR-034).

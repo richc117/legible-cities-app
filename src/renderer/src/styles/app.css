@@ -4,18 +4,25 @@
 
 :root {
   --font-body: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --text-small: 0.875rem;
   --text-base: 1rem;
+  --text-subheading: 1.25rem;
   --text-heading: 1.5rem;
   --leading: 1.5;
   --weight-heading: 600;
+  --space-1: 0.5rem;
   --space-2: 0.75rem;
+  --space-3: 1rem;
   --space-4: 1.5rem;
   --space-5: 2rem;
   --space-7: 3rem;
   --radius: 0.5rem;
   --measure: 40rem;
+  --dialog-measure: 28rem;
+  --border-width: 1px;
   --focus-width: 3px;
   --focus-offset: 2px;
+  --backdrop-opacity: 0.6;
   --panel-transition: background-color 200ms ease;
 }
 
@@ -38,24 +45,218 @@ body {
   box-sizing: border-box;
 }
 
-.library {
+/* The one panel each screen sits in. */
+
+.panel {
   width: min(100%, var(--measure));
   padding: var(--space-4) var(--space-5);
-  border: 1px solid var(--border);
+  border: var(--border-width) solid var(--border);
   border-radius: var(--radius);
   background: var(--bg-soft);
+  box-sizing: border-box;
   transition: var(--panel-transition);
 }
 
-.library h1 {
+.panel h1 {
   margin: 0 0 var(--space-2);
   font-size: var(--text-heading);
   font-weight: var(--weight-heading);
 }
 
-.library p {
-  margin: 0;
+.panel p {
+  margin: 0 0 var(--space-3);
+}
+
+.panel [role='status'],
+.hint {
   color: var(--muted);
+}
+
+.notice {
+  color: var(--text);
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+}
+
+/* Controls. Every one shows focus through the global rule at the end. */
+
+button,
+input {
+  font: inherit;
+  color: var(--text);
+}
+
+button {
+  padding: var(--space-1) var(--space-3);
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  cursor: pointer;
+  transition: var(--panel-transition);
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--muted);
+}
+
+button:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+button.primary {
+  background: var(--text);
+  color: var(--bg);
+  border-color: var(--text);
+}
+
+button.primary:disabled {
+  background: var(--muted);
+  border-color: var(--muted);
+}
+
+input[type='text'] {
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  box-sizing: border-box;
+}
+
+input[aria-invalid='true'] {
+  border-color: var(--text);
+}
+
+/* The Library's list: each entry is one full-width button. */
+
+.entries {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-1);
+}
+
+.entry {
+  display: grid;
+  gap: var(--space-1);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  background: var(--bg-soft);
+}
+
+.entry:hover {
+  background: var(--bg);
+  border-color: var(--focus);
+}
+
+.entry-name {
+  font-size: var(--text-subheading);
+  font-weight: var(--weight-heading);
+}
+
+.entry-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  color: var(--muted);
+  font-size: var(--text-small);
+}
+
+/* Forms: a field is a label, a control and the message the control
+   references, muted for a hint and full-strength for an error. */
+
+.field {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0 0 var(--space-3);
+}
+
+.field label {
+  font-weight: var(--weight-heading);
+}
+
+.message {
+  margin: 0;
+  font-size: var(--text-small);
+  color: var(--muted);
+}
+
+.message.error {
+  color: var(--text);
+}
+
+.message:empty {
+  display: none;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.inline-form {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-3);
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+/* The project's fields. */
+
+.fields {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-1) var(--space-4);
+  margin: 0 0 var(--space-4);
+}
+
+.fields dt {
+  color: var(--muted);
+}
+
+.fields dd {
+  margin: 0;
+}
+
+/* Dialogs: the native element, opened with showModal(). The backdrop is
+   the page colour made translucent by opacity, since it cannot take an
+   alpha of its own without a colour literal. */
+
+dialog {
+  width: min(calc(100% - 2 * var(--space-5)), var(--dialog-measure));
+  padding: var(--space-4);
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-soft);
+  color: var(--text);
+  box-sizing: border-box;
+}
+
+dialog h2 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-subheading);
+  font-weight: var(--weight-heading);
+}
+
+dialog p {
+  margin: 0 0 var(--space-3);
+}
+
+dialog::backdrop {
+  background: var(--bg);
+  opacity: var(--backdrop-opacity);
 }
 
 :focus-visible {
@@ -66,7 +267,8 @@ body {
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
-  *::after {
+  *::after,
+  dialog::backdrop {
     transition: none !important;
     animation: none !important;
   }
