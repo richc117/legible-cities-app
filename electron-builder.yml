@@ -1,0 +1,21 @@
+# Packaging configuration. Present so that `npm run dist` produces an
+# unpacked app locally; the installers, and the vendored engine runtime,
+# LOOM and ffmpeg they carry (extraResources), arrive with
+# specs/002-vendored-components-and-installers (issue A0-10). Unsigned
+# until the release gate (ADR-008).
+appId: com.richardcaballero.legiblecities
+productName: Legible Cities
+directories:
+  output: release
+  buildResources: build
+files:
+  - out/**
+  - package.json
+asar: true
+mac:
+  target:
+    - dmg
+  category: public.app-category.graphics-design
+win:
+  target:
+    - nsis

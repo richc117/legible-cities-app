@@ -1,0 +1,60 @@
+/* Layout and interaction for the shell. Every colour, and the one
+   transition, come from tokens.css; nothing is written at a use site. */
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+#root {
+  min-height: 100vh;
+  display: grid;
+  place-items: start center;
+  padding: 3rem 1.5rem;
+  box-sizing: border-box;
+}
+
+.library {
+  width: min(100%, 40rem);
+  padding: 1.5rem 2rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--bg-soft);
+  transition: background-color 200ms ease;
+}
+
+.library h1 {
+  margin: 0 0 0.75rem;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.library p {
+  margin: 0;
+  color: var(--muted);
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}

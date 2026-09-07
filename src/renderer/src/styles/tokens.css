@@ -1,0 +1,23 @@
+/*
+ * Design tokens, copied from the engine's animation page
+ * (src/schematic/page/page.html in legible-cities, at the pinned engine
+ * version): its two theme blocks, warm-dark and sepia, verbatim.
+ * tests/unit/tokens.test.ts fails when this copy drifts from the page.
+ * Do not edit by hand; change the engine, then copy.
+ */
+:root {
+  --bg: #15120f; --bg-soft: #1f1915; --text: #f2ede6; --muted: #c3b8aa;
+  --border: #3a2f27; --link-hover: #ded5c8; --focus: #81a5ff;
+  /* Consumed by the inlined SVG. Only page furniture -- never a line colour,
+     which belongs to the agency and is drawn literally. */
+  --map-bg: #1f1915; --map-station-fill: #f2ede6;
+  --map-station-stroke: #15120f; --map-label: #f2ede6;
+  --train-halo: #15120f;
+}
+:root[data-theme="sepia"] {
+  --bg: #f7efe1; --bg-soft: #f0e2cf; --text: #2d241d; --muted: #655748;
+  --border: #cab9a2; --link-hover: #1f1812; --focus: #4068cf;
+  --map-bg: #f7efe1; --map-station-fill: #f7efe1;
+  --map-station-stroke: #2d241d; --map-label: #2d241d;
+  --train-halo: #f7efe1;
+}
