@@ -219,11 +219,16 @@ tractable and neither has been chased:
    twice, the rect argument is in device-independent pixels rather than CSS
    pixels, and offscreen rendering tells the page a scale factor it does not
    then rasterise at.
-2. Establish whether any Electron release renders offscreen at a scale the
-   page has been told about. Both documented routes fail here - one ignored,
-   one crashing - and until one works, a page that consults
-   `devicePixelRatio` cannot be captured to match. This is the question A0-08
-   waits on.
+2. **Reported upstream**: https://github.com/electron/electron/issues/53675,
+   with a self-contained reproduction that needs no network and no local
+   files. Whether any Electron release renders offscreen at a scale the page
+   has been told about is now their question; A0-08 waits on the answer.
+
+   Worth knowing while waiting: electron#13069, a 2018 pull request that
+   would have added `scaleFactor` to `webPreferences`, says the offscreen
+   factor "was previously locked to 1.0". It was closed unmerged. If that is
+   still true, this behaviour is long-standing rather than a regression, and
+   waiting for a fix is not a plan.
 
 **What would change our mind.** If the doubling turns out to be the page
 reading the host's scale factor, then the fix belongs in the engine's page
@@ -246,5 +251,7 @@ frames come from is this one.
   engine checkout, and this repository refuses those. They land with A0-08 or
   with the capture work, whichever comes first, with the path taken from
   configuration.
-- `enableDeviceEmulation` segfaulting is worth reporting upstream once it is
-  reduced to a case that does not involve this project's page.
+- The `enableDeviceEmulation` segfault was deliberately left out of that
+  report: it does not reproduce on the trivial page, and filing a crash with
+  no reduction wastes a maintainer's time. It is mentioned there as observed
+  and unreduced, which is the honest amount to say.
