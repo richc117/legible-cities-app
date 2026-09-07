@@ -27,15 +27,16 @@ Everything below is free for a public repository.
 
 ## Branch protection on `main`
 
-Applies from A0-09, when there is a `ci` check to require. Until then the
-maintainer commits to `main` directly; see `CONTRIBUTING.md`.
+Applied 2026-09-07, when A0-09 landed the `ci` check. Direct commits to
+`main` ended with the commit that ticked these boxes; see `CONTRIBUTING.md`.
 
-- [ ] Require a pull request before merging.
-- [ ] Require status checks to pass: `gitleaks`, `preflight`, and `ci` once
-      it exists.
-- [ ] Require branches to be up to date before merging.
-- [ ] Block force pushes.
-- [ ] Block deletions.
+- [x] Require a pull request before merging.
+- [x] Require status checks to pass: `gitleaks`, `preflight`, and the three
+      `ci (<os>)` jobs: `ci (ubuntu-22.04)`, `ci (macos-15)`,
+      `ci (windows-latest)`.
+- [x] Require branches to be up to date before merging.
+- [x] Block force pushes.
+- [x] Block deletions.
 
 ## Labels and milestones
 

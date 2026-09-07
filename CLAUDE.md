@@ -26,9 +26,10 @@ rather than recomputed because `topo` is not reproducible on macOS
 platforms a developer machine cannot; the offscreen-capture spike has one
 bounded session left, and its record will be ADR-024. Next is the Electron
 skeleton, then a "First reel" milestone that drives one preset feed through
-layout, viewer and export before the phases broaden. Until the
-build-and-test workflow lands with the skeleton, the maintainer commits to
-`main` directly; after it, one issue, one branch, one pull request.
+layout, viewer and export before the phases broaden. The skeleton
+landed the `ci` check on 2026-09-07 and branch protection with it: `main`
+changes only through pull requests now, one issue, one branch, one pull
+request, the maintainer included.
 
 Personal settings and private pointers (sibling checkouts, planning notes)
 live in `CLAUDE.local.md`, which is gitignored. Read it if it exists.

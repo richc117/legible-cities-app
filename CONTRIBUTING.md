@@ -6,7 +6,9 @@ what keeps it coherent as it grows.
 ## Where things stand
 
 The repository holds its charter, the Phase 0 spike reports and decision
-records, and nothing to build yet. The roadmap is the milestones on this
+records, and the Electron skeleton: one window, an empty Library, the
+`app://local` origin, and checks on three platforms (`README.md`,
+"Developing"). The roadmap is the milestones on this
 repository, once published, in order: Phase 0 (foundation and spikes),
 Phase 1 (engine boundary), First reel (one preset feed through layout,
 viewer and export, before anything broadens), then Phases 2 to 6 through
@@ -41,7 +43,8 @@ number. It is a reading aid, not something a tool checks.
 3. **Branch and pull request.** One issue, one branch named for it
    (`123-geographic-view`, or `A2-03-geographic-view` for a planned issue),
    one pull request. `main` only changes through pull requests with green
-   checks.
+   checks: since 2026-09-07, when the `ci` check landed with the skeleton,
+   branch protection refuses a direct push, the maintainer's included.
 4. **Review.** A maintainer reviews; automated checks must pass; the pull
    request template's checklist must be honest.
 5. **Squash merge.** `main` reads as one commit per issue.
