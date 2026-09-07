@@ -93,14 +93,38 @@ has taken:
    produced binaries with no non-system dependencies at all. Costs the MSYS2
    work this record was trying to avoid.
 
-The second is where this should end up. Whether the first is worth doing as
-an interim depends on how much of the MSYS2 work the port has already
-absorbed, which is A0-05's remaining question rather than this record's.
+That question has since been bounded, and it changes the answer. Measured
+against the pinned commit, **every LOOM source file the port's registry does
+not list is byte-identical to ours**, including the whole algorithm surface;
+the documented changes are one POSIX shim header, two mechanical edits per
+entry point, about six `util` files resolving `windows.h` macro collisions
+and Winsock spellings, and a mechanical identifier rename through `cppgtfs`
+forced by MinGW's `<time.h>`. The port also vendors *older* copies of `util`
+and `cppgtfs` than our pin resolves to.
+
+So the porting work is done, documented, and small - it is the toolchain,
+not the source, that was ever the unknown. Option 1's advantage largely
+evaporates: it saves setting up MSYS2 in CI, and costs shipping someone
+else's binaries, built against older support libraries, carrying solver
+libraries ADR-019 established are never called, from a directory that has to
+be filtered before anything leaves it.
+
+**Option 2.** Build from the documented changes in CI, with the optional
+dependencies disabled as ADR-019 does elsewhere, so that all three platforms
+build the same sources the same way. Whether the port's tree is used directly
+or its changes are applied to ours is an implementation question for A0-05,
+and it turns on whether Windows output matches the other platforms under the
+parity script - which is a measurement, not a preference.
 
 ## Consequences
 
 The largest unbounded item in Phase 0 is removed without changing what the
 product is or contradicting what the repository already says it does.
+
+Building rather than borrowing keeps one property the other option loses:
+the Windows binaries are then subject to the same configuration, the same
+pins and the same parity check as the others, so a Windows regression looks
+like every other regression instead of like a supplier problem.
 
 **A dependency walk that collects system libraries is a trap this project
 was about to fall into.** The `loom-windows` job in `.github/workflows/vendor.yml`

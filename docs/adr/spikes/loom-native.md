@@ -285,6 +285,76 @@ report for an upstream report; this project does not fork LOOM, and carrying
 a partial determinism patch would be worse than the problem - it would make
 the build look deterministic while it is not.
 
+## Session three: bounding the Windows build
+
+The roadmap's escape hatch - "use Transport for Cairo's
+`loom-binaries-windows-x64.zip` pinned by sha256" - rests on an artefact that
+is not published. That repository has no releases. It does commit built
+binaries into its source tree at `bin/windows`: 42 files, 81.1 MB, including
+`gtfs2graph.exe`, `topo.exe`, `loom.exe` and `octi.exe`.
+
+**Those cannot be shipped as they stand.** The directory also contains
+`KERNEL32.DLL`, `KERNELBASE.dll`, `ADVAPI32.dll`, `RPCRT4.dll`, `msvcrt.dll`
+and `ucrtbase.dll` - Microsoft's own system libraries, collected by a
+dependency walk that did not exclude them. Not redistributable, and shipping
+system DLLs beside an executable is a sideloading hazard as well.
+`.github/workflows/vendor.yml` currently instructs its Windows job to
+"collect DLLs by `ldd`", which is the same procedure; it needs an exclusion
+list and a check that fails on a Microsoft system library.
+
+### How far the port has drifted from our pin
+
+Measured by fetching files from the port and diffing them against the pinned
+commit, since it vendors its sources rather than patching upstream.
+
+| File | Listed in `PATCHES.md`? | Differing lines |
+|---|---|---|
+| `src/loom/optim/CombOptimizer.cpp` | no | **0** |
+| `src/octi/basegraph/OctiGridGraph.cpp` | no | **0** |
+| `src/topo/statinserter/StatInserter.cpp` | no | **0** |
+| `src/topo/mapconstructor/MapConstructor.cpp` | no | **0** |
+| `src/util/graph/Graph.h` | no | **0** |
+| `src/topo/TopoMain.cpp` | yes | 5 |
+| `src/util/log/Log.h` | yes | 15 |
+| `src/util/Misc.h` | yes | 166 |
+
+**LOOM's own sources are byte-identical to the commit this project pins.**
+Every file the patch registry does not list matches exactly, including the
+whole of the algorithm surface. That is much better than expected: the port
+tracks current upstream rather than a fork of an old release.
+
+The two submodules are a different story. `Log.h`'s fifteen lines are purely
+the documented `#undef` block plus a UTF-8 BOM that PowerShell added.
+`Misc.h`'s 166 are not: 119 lines were *removed*, including live code
+(`UNUSED`, `TOOK`, `TOOK_UNTIL`) that our checkout has. The port vendored
+**older copies of `util` and `cppgtfs`** than the submodule commits our pin
+resolves to.
+
+### What that bounds
+
+Building LOOM on Windows is not the unbounded risk the roadmap treated it
+as. The porting work is done, documented file by file, and confined:
+
+- one new file, `win_compat.h`, a POSIX shim;
+- two mechanical edits in each entry point - and only four of the seven
+  (`gtfs2graph`, `topo`, `loom`, `octi`) matter here;
+- about six files in `util`, all of them `windows.h` macro collisions,
+  Winsock spellings, and `getHomeDir`;
+- a mechanical `timezone` to `tz` rename through `cppgtfs`, forced by
+  MinGW's `<time.h>`, with the GTFS column *strings* deliberately left alone;
+- `transitmap`, `dot2tg` and `topoeval` changes that this project does not
+  need at all.
+
+The remaining question is not "can LOOM be built on Windows" - it evidently
+can, and someone has - but which tree to build. Building the port as it
+stands gives LOOM at our exact commit against older support libraries, so
+its output would have to be *measured* for parity rather than assumed equal.
+Applying the same documented changes to our own tree keeps every input
+identical across the three platforms, at the cost of redoing a rename that
+someone has already done once.
+
+Neither was attempted: still no Windows host and no CI.
+
 ## What we ruled out
 
 **Bundling the Homebrew dylibs** (`dylibbundler`, rpath rewriting, static
