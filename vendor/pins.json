@@ -1,0 +1,21 @@
+{
+  "$comment": [
+    "Exact versions of everything vendored into a build. Committed; the",
+    "binaries themselves never are - CI builds them from these pins and",
+    "uploads them as artefacts. Changing a pin is a pull request with a",
+    "reason, and it re-runs the parity check in docs/adr/spikes/loom-native.md."
+  ],
+  "loom": {
+    "repo": "https://github.com/ad-freiburg/loom",
+    "commit": "1e4757838104d1e4d22186c9b77d5fc4b98681a0",
+    "note": "Head of master on 2026-09-07. The published maps were built from an unpinned master build; the spike checks whether that output matches this commit.",
+    "binaries": ["gtfs2graph", "topo", "loom", "octi"],
+    "licence": "GPL-3.0"
+  },
+  "loom_windows_port": {
+    "repo": "https://github.com/transportforcairo/loom-windows-port",
+    "commit": "8c521a1815759a64b46a5f876dd84b1d8b0878d4",
+    "note": "MSYS2/UCRT64 build scripts and compatibility patches for Windows.",
+    "licence": "GPL-3.0"
+  }
+}

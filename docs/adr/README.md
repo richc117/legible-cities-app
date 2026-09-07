@@ -49,3 +49,4 @@ already cites the number you mean to use.
 | 016 | All data lives in the user's data folder; the engine never writes beside its code | Accepted, not yet written up |
 | 017 | The app is called "Legible Cities" | Accepted, not yet written up |
 | 018 | Public ADRs use three-digit numbers and a header block | Accepted, not yet written up |
+| 019 | [LOOM ships without its optional solvers, and not on macOS until it is deterministic](019-loom-binaries.md) | Accepted |

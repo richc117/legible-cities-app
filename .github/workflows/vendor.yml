@@ -1,0 +1,160 @@
+# Build the LOOM binaries from the pinned commit and upload them as
+# artefacts. Never on every push: the pins change rarely and the build is
+# minutes, so it runs when vendor/pins.json changes or when asked.
+#
+# NOT YET RUN. Written during the A0-05 spike, which had no CI to run it on;
+# see docs/adr/spikes/loom-native.md. macOS arm64 is the only target measured
+# so far, and it was measured on a developer machine.
+#
+# The configure flags are the spike's finding, not a preference: LOOM's
+# optional dependencies (GLPK, COIN-OR, Gurobi, libzip) are never called at
+# the settings this project uses, and leaving them out is what makes the
+# binaries self-contained. Do not "fix" this by adding them back and
+# bundling - read the spike first.
+name: vendor
+
+on:
+  push:
+    paths: ['vendor/pins.json', '.github/workflows/vendor.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  loom:
+    name: loom (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-14,     target: darwin-arm64 }
+          - { os: macos-13,     target: darwin-x64   }
+          - { os: ubuntu-22.04, target: linux-x64    }
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Read the pin
+        id: pin
+        shell: bash
+        run: |
+          commit=$(python3 -c "import json;print(json.load(open('vendor/pins.json'))['loom']['commit'])")
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          echo "Building LOOM at $commit"
+
+      - name: Build tools
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            sudo apt-get update
+            sudo apt-get install --no-install-recommends -y cmake g++ libprotobuf-dev protobuf-compiler
+          else
+            brew install cmake protobuf
+          fi
+
+      - name: Clone at the pin
+        shell: bash
+        run: |
+          git clone --recurse-submodules https://github.com/ad-freiburg/loom loom-src
+          cd loom-src
+          git checkout "${{ steps.pin.outputs.commit }}"
+          git submodule update --init --recursive
+          test "$(git rev-parse HEAD)" = "${{ steps.pin.outputs.commit }}"
+
+      - name: Configure without the optional dependencies
+        shell: bash
+        working-directory: loom-src
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_DISABLE_FIND_PACKAGE_GLPK=ON \
+            -DCMAKE_DISABLE_FIND_PACKAGE_COIN=ON \
+            -DCMAKE_DISABLE_FIND_PACKAGE_Gurobi=ON \
+            -DCMAKE_DISABLE_FIND_PACKAGE_LibZip=ON
+
+      - name: Build
+        shell: bash
+        working-directory: loom-src
+        run: cmake --build build -j 4
+
+      - name: Refuse anything that is not self-contained
+        shell: bash
+        working-directory: loom-src/build
+        run: |
+          status=0
+          for b in gtfs2graph topo loom octi; do
+            echo "--- $b ---"
+            if [ "$RUNNER_OS" = "macOS" ]; then
+              otool -L "$b" | tail -n +2
+              # Only /usr/lib and @rpath may appear. Homebrew must not.
+              if otool -L "$b" | tail -n +2 | grep -qE '/opt/homebrew|/usr/local/(opt|Cellar)'; then
+                echo "::error::$b links a Homebrew library; it will not run on a clean machine"
+                status=1
+              fi
+            else
+              ldd "$b"
+            fi
+          done
+          exit $status
+
+      - name: Prove it still runs
+        shell: bash
+        working-directory: loom-src/build
+        run: ./loom --help > /dev/null && ./octi --help > /dev/null
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: loom-${{ matrix.target }}
+          path: |
+            loom-src/build/gtfs2graph
+            loom-src/build/topo
+            loom-src/build/loom
+            loom-src/build/octi
+          if-no-files-found: error
+          retention-days: 30
+
+  # Windows needs MSYS2 and the Transport for Cairo compatibility patches, and
+  # neither was exercised by the spike. Left as a separate job rather than a
+  # matrix entry so its failure does not read as the others failing, and so
+  # the shell difference stays visible.
+  loom-windows:
+    name: loom (win-x64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-protobuf
+      - name: Build with the Cairo patches
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          commit=$(python -c "import json;print(json.load(open('vendor/pins.json'))['loom']['commit'])")
+          port=$(python -c "import json;print(json.load(open('vendor/pins.json'))['loom_windows_port']['commit'])")
+          git clone --recurse-submodules https://github.com/ad-freiburg/loom loom-src
+          git -C loom-src checkout "$commit"
+          git -C loom-src submodule update --init --recursive
+          git clone https://github.com/transportforcairo/loom-windows-port port
+          git -C port checkout "$port"
+          echo "Patches from the Cairo port are applied here; the spike did not"
+          echo "reach this step, so treat the first run as an experiment."
+          cmake -S loom-src -B loom-src/build -G "Unix Makefiles" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_DISABLE_FIND_PACKAGE_GLPK=ON \
+            -DCMAKE_DISABLE_FIND_PACKAGE_COIN=ON \
+            -DCMAKE_DISABLE_FIND_PACKAGE_Gurobi=ON \
+            -DCMAKE_DISABLE_FIND_PACKAGE_LibZip=ON
+          cmake --build loom-src/build -j 4
+          ldd loom-src/build/loom.exe || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: loom-win-x64
+          path: loom-src/build/*.exe
+          if-no-files-found: error
+          retention-days: 30
