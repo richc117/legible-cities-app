@@ -7,7 +7,7 @@
 - **Timebox:** three sessions. Ends when the question is answered or the third
   session closes, whichever comes first.
 - **Started:** 2026-09-07
-- **Ended:** 2026-09-07 (session one of three; see Recommendation)
+- **Ended:** 2026-09-07 (sessions one and two of three; see Recommendation)
 - **Branch:** `spike/loom-native` (deleted when this lands; the report is the
   deliverable)
 
@@ -204,6 +204,64 @@ ten linked libraries are never called. Dropping them turns a bundling
 problem into no problem: zero non-system libraries, nothing to relocate, no
 `dylibbundler`, no rpath surgery.
 
+## Session two: where the nondeterminism comes from
+
+**Root cause: the graph stores its nodes in `std::set<Node*>`.**
+`util/graph/Graph.h:38` declares `const std::set<Node<N, E>*>& getNds()`, so
+every pass that walks the graph walks it in **heap-address order**. `topo`
+does that at 163 call sites.
+
+That explains why Linux is stable and macOS is not. Both randomise the base
+address, but glibc's allocator lays these objects out in the same relative
+order every run, so pointer order is stable and only the base shifts. macOS's
+allocator does not: run to run, the same objects land in a different relative
+order.
+
+Evidence, the first three node ids from three runs of each build:
+
+| Build | Run 1 | Run 2 | Run 3 |
+|---|---|---|---|
+| Docker | `…4730`, `…74a50`, `…03df0` | `…b730`, `…5ba50`, `…eadf0` | `…a730`, `…31aa50`, `…a9df0` |
+| macOS | `…dd080`, `…e8000`, `…e80c0` | `…a6280`, `…bbd80`, `…df900` | `…b83c0`, `…c0000`, `…c00c0` |
+
+The offsets between Docker's ids are identical every run; macOS's are not.
+
+**How that reaches the output.** In `MapConstructor::ndCollapseCand`, a
+candidate node wins on `d < dBest` - strictly less, so **the first neighbour
+at the minimum distance wins** - and when nothing wins, `g->addNd(point)`
+creates a node instead. Change the order the candidates arrive in and you
+change whether a node is merged or created, which is the node count moving.
+
+The order they arrive in traces back through the RTree's insertion order to
+`collapseShrdSegs`, which builds its work list by iterating `getNds()` and
+then sorts `std::pair<double, LineEdge*>` - so **edges of equal length are
+ordered by pointer address**. The input graph has no equal-length edges, but
+the pass calls `densify(..., SEGL)`, which manufactures uniform-length
+segments from the second iteration onward.
+
+**Confirming it.** Patching only that comparator to break ties by geometry
+instead of by address (`loom-topo-tiebreak.patch`, 18 lines) and rebuilding:
+
+| | Node count over 8 runs |
+|---|---|
+| Before | 116, 117, 118, 119, 117, … (5 runs spanned 116-119) |
+| After | **117 on all 8 runs** - matching Docker's answer |
+
+So the tie-break is a real cause, and it is the one that moves the node
+count. It is **not the whole cause**: the eight runs still disagree on node
+positions - 6 or 7 nodes present on one side only, 60 to 70 moved beyond
+tolerance - and one edge's line ordering still flips. With 163 pointer-order
+iterations in `topo`, fixing one of them was never going to be sufficient.
+
+An allocator experiment supports the same story without fixing it:
+`MallocNanoZone=0`, which moves small allocations out of macOS's nano zone,
+gave 117 on five of six runs instead of the usual spread.
+
+**The patch is evidence, not a change we are making.** It is kept beside this
+report for an upstream report; this project does not fork LOOM, and carrying
+a partial determinism patch would be worse than the problem - it would make
+the build look deterministic while it is not.
+
 ## What we ruled out
 
 **Bundling the Homebrew dylibs** (`dylibbundler`, rpath rewriting, static
@@ -267,10 +325,15 @@ method: the same build recipe should work on `macos-13` and under MSYS2, and
 ## Follow-up
 
 - Decision record: `docs/adr/019-loom-binaries.md`
-- Next: find `topo`'s nondeterminism. Start by building the macOS binary
-  with `-fsanitize=memory`-equivalent tooling or by diffing the two standard
-  libraries' iteration order over LOOM's node containers; the Docker build
-  being stable is the strongest clue available.
+- **Done in session two**: the cause is `std::set<Node*>` iterated in heap
+  order, at 163 sites in `topo`. Not uninitialised memory, and not a hash
+  container - an *ordered* container whose key is the address.
+- Report it upstream, with `loom-topo-tiebreak.patch` as a starting point and
+  the eight-run node counts as the reproduction. The fix upstream is to order
+  nodes by something stable - an insertion counter or an id - rather than to
+  patch each of the 163 call sites.
+- Until then, treat Linux as the only build whose output is reproducible, and
+  prefer shipping cached graph stages over re-running the pipeline per export.
 - Still open, needing CI: macOS x86_64 and Windows x64 builds, and the
   `otool`/`ldd` check on each.
 - The engine's committed reference graphs under `data/graphs/` predate this

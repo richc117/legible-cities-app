@@ -88,6 +88,23 @@ build being stable is the strongest clue, and points at uninitialised memory
 or at iteration order over a hash container differing between libstdc++ and
 libc++.
 
+## Addendum, 2026-09-07
+
+Added after acceptance because the record above ended on a conjecture that
+the spike then settled. The decision is unchanged; only the guess about the
+cause was wrong, and leaving it would send the next reader the wrong way.
+
+The Consequences section supposed "uninitialised memory or ... iteration
+order over a hash container". It is neither. `util/graph/Graph.h` stores a
+graph's nodes in `std::set<Node*>` - an *ordered* container whose key is the
+pointer - and `topo` iterates it at 163 sites, so every pass runs in heap
+order. glibc lays those objects out in a stable relative order run to run and
+macOS's allocator does not, which is the whole of the difference between the
+two builds. `docs/adr/spikes/loom-native.md` has the evidence and a patch
+that fixes the node-count symptom without fixing the cause.
+
+---
+
 Two of the three targets remain unmeasured. The recipe should carry to
 `macos-13` unchanged and to Windows through the Transport for Cairo patches,
 but "should" is doing work in that sentence, and the spike says so.
