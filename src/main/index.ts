@@ -129,17 +129,26 @@ function createSidecar(config: Config): Sidecar {
         buttons: ['OK'],
         defaultId: 0,
       }
-      mismatchDialog = new AbortController()
-      const withSignal = { ...options, signal: mismatchDialog.signal }
-      // A sheet on a window that is not showing yet is not visible either.
-      const parent = mainWindow !== null && mainWindow.isVisible() ? mainWindow : null
-      const shown =
-        parent === null
-          ? dialog.showMessageBox(withSignal)
-          : dialog.showMessageBox(parent, withSignal)
-      shown.catch((error: Error) =>
-        log.error('engine', `could not show the mismatch dialog: ${error.message}`),
-      )
+      // Always on the window, and only once the window is visible: a message
+      // box with no parent runs synchronously on macOS and blocks the whole
+      // process, the quit included, and a sheet on a hidden window shows
+      // nothing. The status line carries the state either way.
+      const show = (): void => {
+        if (quitting || mainWindow === null || mainWindow.isDestroyed()) return
+        mismatchDialog = new AbortController()
+        dialog
+          .showMessageBox(mainWindow, { ...options, signal: mismatchDialog.signal })
+          .catch((error: Error) =>
+            log.error('engine', `could not show the mismatch dialog: ${error.message}`),
+          )
+      }
+      if (mainWindow === null) {
+        log.warn('engine', 'no window to attach the mismatch dialog to')
+      } else if (mainWindow.isVisible()) {
+        show()
+      } else {
+        mainWindow.once('show', show)
+      }
     },
   })
 }

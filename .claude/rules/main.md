@@ -22,6 +22,14 @@ Every spawn, without exception:
   user can send us;
 - a **clean shutdown on quit**, so nothing outlives the app.
 
+## Native dialogs
+
+`dialog.showMessageBox` always with the window as its parent, and only
+once the window is visible: without a parent it runs synchronously on
+macOS and blocks the main process, quit included; on a hidden window the
+sheet shows nothing. Give it an `AbortSignal` and abort it from
+`before-quit`, so a quit never waits behind a dialog.
+
 ## Where things are written
 
 Never inside the app bundle: it is read-only on macOS and it is wiped on

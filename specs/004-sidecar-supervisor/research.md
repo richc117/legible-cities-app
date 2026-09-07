@@ -118,6 +118,13 @@ what the inactivity bound is for.
 loops); restart only on the next request (a person reads "stopped" on the
 screen with no way to fix it but to try something).
 
+**A trap found on the runners**: the mismatch dialog must be attached to the
+window and shown only once the window is visible. A message box with no
+parent runs synchronously on macOS and blocks the main process, the quit
+included (the first CI run of this feature hung there on macOS and Linux),
+and a sheet on a hidden window shows nothing. `before-quit` aborts the
+dialog through its `signal` so a quit never waits behind it.
+
 ## 6. The stand-in engine
 
 **Decision**: `tests/fake-engine/schematic/serve.py`, a standard-library
