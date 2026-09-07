@@ -51,4 +51,7 @@ already cites the number you mean to use.
 | 018 | Public ADRs use three-digit numbers and a header block | Accepted, not yet written up |
 | 019 | [LOOM ships without its optional solvers, and not on macOS until it is deterministic](019-loom-binaries.md) | Accepted |
 | 020 | [The Python sidecar ships as a pinned python-build-standalone runtime](020-sidecar-packaging.md) | Accepted |
-| 021 | [Windows stays in the first release; LOOM is not built from source there](021-windows-in-the-first-release.md) | Proposed |
+| 021 | [Windows stays in the first release; LOOM is not built from source there](021-windows-in-the-first-release.md) | Accepted |
+| 022 | Reserved: a decision about the project, recorded outside this repository | - |
+| 023 | [Determinism is per project; the layout is computed once and stored](023-per-project-determinism.md) | Accepted |
+| 024 | Reserved: the capture path, written when spike A0-07 ends | - |
