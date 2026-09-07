@@ -355,6 +355,94 @@ someone has already done once.
 
 Neither was attempted: still no Windows host and no CI.
 
+## Session four: the CI artefacts, measured
+
+The mirror exists (ADR-022), `vendor.yml` has run, and the three POSIX
+artefacts it uploaded - `loom-darwin-arm64`, `loom-darwin-x64`,
+`loom-linux-x64`, all built from the pin with the solver-free configure -
+were run on one machine: the arm64 build natively, the x64 build under
+Rosetta 2, the Linux build in a stock `ubuntu:22.04` amd64 container. The
+input is the LA feed unpacked to a directory, `gtfs2graph -m all` as the
+engine calls it. Every comparison is `scripts/loom-parity.py`, as graphs.
+
+### The build did not keep one of its promises
+
+`octi` from the Linux artefact does not start in a stock container:
+`libgomp.so.1: cannot open shared object file`. LOOM's root CMake does
+`find_package(OpenMP)` and adds its flags globally; GCC found it, Apple
+clang never does, so the two macOS builds are OpenMP-free and the Linux one
+is not. **The `ldd` gate in `vendor.yml` printed this and did not fail** -
+on Linux it only listed the libraries. The macOS gate greps for Homebrew
+paths; the Linux one had no condition at all. Both were wrong in the same
+way: they checked for what we expected to go wrong rather than for what
+"self-contained" means. Fixed with this session: the Linux gate fails on
+`not found` and on anything outside the C and C++ runtime, `libz` and
+`libbz2`; and OpenMP is disabled at configure time on every platform, so
+all three build the same way and the Linux artefact needs nothing the
+container does not have. The measurements below used the artefact as
+uploaded, with `libgomp1` installed by hand.
+
+A second small one: every CI binary answers `--version` with
+`-128-NOTFOUND`, because the build tree is not a git checkout that
+`GetGitRevisionDescription` can read. E04's cache metadata must take the
+LOOM pin from `vendor/pins.json`, never from the binary.
+
+### `gtfs2graph`: agrees everywhere
+
+| Comparison | Result |
+|---|---|
+| committed reference vs darwin-arm64 | agree, 114 nodes, 112 edges |
+| committed reference vs darwin-x64 | agree |
+| committed reference vs linux-x64 | agree |
+| darwin-arm64 vs darwin-x64 vs linux-x64 | agree |
+
+The asserted half of the acceptance criterion holds: three compilers, two
+architectures, one graph, and it is the graph the published maps started
+from.
+
+### Each stage alone, three runs on one identical input
+
+The earlier sessions compared whole pipeline runs, so a difference at
+`octi` could have been inherited from `topo`. This time each stage was run
+three times on the *same* file.
+
+| Stage | darwin-arm64 | darwin-x64 (Rosetta) | linux-x64 |
+|---|---|---|---|
+| `topo` | **differs**: 117 or 118 nodes; 7-8 nodes on one side only; up to 68 stations moved, worst ~40 m | **differs**: 116 to 119 nodes; up to 89 moved, worst ~32 m | agrees 3/3, 116 nodes |
+| `loom` | agrees 3/3 | agrees 3/3 | agrees 3/3 |
+| `octi` | **differs**: two runs of three agree, the third moves 7 stations, worst **~1.4 km** | **differs**: no two runs agree; 27 to 55 stations moved, worst **~6.7 km** | agrees 3/3 |
+
+Three things this settles. `loom` adds no nondeterminism of its own on
+any build. `topo`'s is what session two described. And **`octi` is
+nondeterministic on macOS in its own right**, independently of `topo`, and
+by a margin that is not subtle: an octilinear layout is a placement on a
+grid, so a station that lands in a different cell moves kilometres, not
+metres. Over a whole pipeline run on macOS, all 110 stations move between
+runs and the worst offset is 3 to 8 km. That is a visibly different map
+every time, which is what ADR-023 exists for.
+
+### Across builds: deterministic is not the same as portable
+
+Past `gtfs2graph`, no two builds agree - not the two macOS builds with each
+other, which is expected, and not the Linux build with anything else. The
+Linux artefact (GCC 11, Ubuntu 22.04, x86_64) gives 116 nodes at `topo`
+every time; the Docker linux/arm64 build in session one (GCC 13, Ubuntu
+24.04) gave 117 every time; the committed reference, from an unpinned
+build, has 118. Each Linux build is stable with itself because glibc lays
+the graph's nodes out in the same relative order run after run; a different
+compiler or architecture lays them out differently and is stable in *its*
+order. So a determinism gate must never compare graphs across machines, and
+"the same map on every platform" is not something this LOOM can promise.
+The stored layout (ADR-023) is the only unit that is.
+
+### Instrument note
+
+One measurement was wrong before it was right, again: the first x64
+isolation run produced empty files because a shell variable holding
+`arch -x86_64` was not word-split, and the comparison script would have
+reported the empties as a failure to parse rather than as a finding. A
+size check on every output before comparing is now part of the method.
+
 ## What we ruled out
 
 **Bundling the Homebrew dylibs** (`dylibbundler`, rpath rewriting, static
@@ -428,8 +516,10 @@ method: the same build recipe should work on `macos-13` and under MSYS2, and
   evidence only.
 - Until then, treat Linux as the only build whose output is reproducible, and
   prefer shipping cached graph stages over re-running the pipeline per export.
-- Still open, needing CI: macOS x86_64 and Windows x64 builds, and the
-  `otool`/`ldd` check on each.
+- **Done in session four**: macOS x86_64 and Linux x64 built in CI, run and
+  compared; `gtfs2graph` agrees on all three builds and with the reference.
+  Still open: Windows x64, which now fails only on the port's two `util`
+  shims that the job does not apply yet.
 - The engine's committed reference graphs under `data/graphs/` predate this
   pin and cannot be reproduced exactly by any build, because the stage that
   produced them is not reproducible. They remain useful as a shape, not as a
