@@ -2,7 +2,7 @@
 name: spec
 description: Scaffold a feature spec from an issue - user stories, acceptance criteria and edge cases under specs/ - before any code is written. Use when starting a feature issue, or when an issue's acceptance criteria need turning into something testable.
 argument-hint: "<issue number, or the feature in a sentence>"
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash(gh issue view *), Bash(gh issue list *), Bash(ls *)
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash(gh issue view *), Bash(gh issue list *), Bash(ls *), Bash(bin/preflight)
 ---
 
 # Scaffold a spec

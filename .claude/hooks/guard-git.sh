@@ -8,16 +8,22 @@
 # because a tool-driven commit can reach for `--no-verify`, and because the
 # reason for a block is worth putting in front of the model that caused it.
 set -u
+block() { printf '%s\n%s\n' "$1" "$2" >&2; exit 2; }
+
+# Fail closed. Without jq the command cannot be read, and a hook that cannot
+# read the command must not be the one that says the commit is fine.
 input=$(cat)
-cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)
+command -v jq >/dev/null 2>&1 ||
+  block "jq is not installed, so the command cannot be read." \
+        "Install jq; until then this hook refuses every commit and push."
+cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null) ||
+  block "the command could not be read." "Nothing was committed."
 case "$cmd" in
   *"git commit"*|*"git push"*) ;;
   *) exit 0 ;;
 esac
 root="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null)}"
 cd "$root" || exit 0
-
-block() { printf '%s\n%s\n' "$1" "$2" >&2; exit 2; }
 
 # 1. Keys and tokens, in the staged changes and - before a push - in every
 #    commit that is about to leave this machine.

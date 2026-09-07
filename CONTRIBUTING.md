@@ -56,8 +56,9 @@ number. It is a reading aid, not something a tool checks.
 This is a public repository, so two scanners run over every commit:
 `gitleaks` for keys and tokens, and `bin/preflight` for the things a secret
 scanner does not recognise - absolute paths from someone's machine, personal
-addresses, private hostnames, links to tool sessions. Install them once per
-checkout:
+addresses, private hostnames, links to tool sessions. `shellcheck` runs
+beside them, because the hooks that enforce all this are themselves shell.
+Install them once per checkout:
 
 ```
 pip install pre-commit        # or your package manager's equivalent

@@ -2,7 +2,7 @@
 name: adr
 description: Write a new architecture decision record under docs/adr/ from the repository's template, number it after the last one, and add its row to the index. Use when a choice has been made that would be expensive to reverse, or when a spike has finished and its recommendation needs recording.
 argument-hint: "<short title, or the decision in a sentence>"
-allowed-tools: Read, Write, Edit, Glob, Grep
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash(ls docs/adr*), Bash(bin/preflight)
 ---
 
 # Write a decision record
@@ -13,10 +13,20 @@ Write `docs/adr/NNN-short-title.md` for: **$ARGUMENTS**
 
 ## Number it
 
-`NNN` is three digits. Use the next unused number after the highest one in
-`docs/adr/`, unless this decision already carries a number somewhere the
-maintainer will tell you about, in which case use that one so the references
-match. Never renumber an existing record.
+`NNN` is three digits, and it is **allocated, not computed**. Ask the
+maintainer which number this decision has; the founding decisions were
+numbered before they were written up, so several numbers between the files
+in `docs/adr/` are already spoken for. `docs/adr/README.md` lists the
+reserved ones - check it, and check that nothing else in the repository
+already cites the number you are about to take:
+
+```
+grep -rn 'ADR-NNN' .
+```
+
+Only if the decision is genuinely new and no number has been allocated, take
+the next one that is neither used nor reserved. Never renumber an existing
+record.
 
 The filename's title is kebab-case and short: `013-page-is-the-viewer.md`,
 not `013-decision-about-how-the-viewer-works.md`.

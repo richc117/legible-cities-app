@@ -64,8 +64,10 @@ When the timebox is up, or the question is answered, whichever comes first:
    an option and says what would change your mind.
 2. Turn it into a decision record with `/adr`, citing the report. The report
    is the evidence; the record is the decision.
-3. Commit the report and the record to `main` (the branch's code is not
-   merged), then delete the branch.
+3. Land the report and the record the way `CONTRIBUTING.md` says work
+   lands - straight to `main` while that is still the flow, a pull request
+   once CI requires one. The branch's code is not merged either way. Then
+   delete the branch.
 
 Say this out loud at the end of the spike, because it is the part that gets
 skipped: **the branch is deleted and only the report survives.**

@@ -11,11 +11,15 @@
       "Bash(bin/preflight*)",
       "Bash(gitleaks dir*)",
       "Bash(gitleaks git*)",
-      "Bash(pre-commit run*)",
+      "Bash(pre-commit run)",
+      "Bash(pre-commit run --all-files)",
       "Bash(pre-commit validate-config*)"
     ],
     "deny": [
+      "Bash(git difftool*)",
+      "Bash(git mergetool*)",
       "Read(./.env*)",
+      "Read(./.git/config)",
       "Read(./**/*.p12)",
       "Read(./**/*.pem)",
       "Read(./**/*.key)",
