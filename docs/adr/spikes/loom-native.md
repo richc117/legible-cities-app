@@ -382,6 +382,12 @@ all three build the same way and the Linux artefact needs nothing the
 container does not have. The measurements below used the artefact as
 uploaded, with `libgomp1` installed by hand.
 
+*Re-verified the same evening (run 34122269572):* the Linux job passes the
+new gate, the artefact's `octi` starts in a stock `ubuntu:22.04` container,
+and every stage of the OpenMP-free build agrees exactly - as graphs and to
+the byte - with the build that had it. OpenMP was a dependency without an
+effect at this size of graph.
+
 A second small one: every CI binary answers `--version` with
 `-128-NOTFOUND`, because the build tree is not a git checkout that
 `GetGitRevisionDescription` can read. E04's cache metadata must take the
