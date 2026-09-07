@@ -26,7 +26,7 @@ vendor/ffmpeg/
 # the checkout reaches it through symbolic links kept out of the tree.
 CLAUDE.md
 CLAUDE.local.md
-.claude/
+.claude
 
 # OS and editor noise
 .DS_Store
