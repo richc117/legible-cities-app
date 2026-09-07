@@ -30,15 +30,19 @@ the acceptance criteria, and the phase and area labels.
 
 ## 2. Use Spec Kit if it is installed
 
-If `.specify/` exists, Spec Kit owns the spec's structure and numbering:
-run `/speckit.specify` with the issue text and let it write
-`specs/NNN-name/spec.md`, then fill in the sections below. Read
-`.specify/memory/constitution.md` first and keep the spec inside it.
+Spec Kit is installed, so it owns the spec's structure and numbering:
+run `/speckit-specify` with the issue text and let it write
+`specs/NNN-name/spec.md`. The names are hyphenated - `/speckit-specify`,
+`/speckit-clarify`, `/speckit-plan`, `/speckit-tasks`, `/speckit-implement`,
+`/speckit-analyze` - not the dotted spelling an older release used.
 
-If `.specify/` does not exist yet, write `specs/NNN-name/spec.md` by hand
-from [spec-template.md](spec-template.md), numbering it after the highest
-directory already under `specs/`, and keep the same section names so the
-two forms are interchangeable later.
+Read `.specify/memory/constitution.md` first and keep the spec inside it. A
+spec that conflicts with a principle either changes, or the constitution
+does - in the open, before the code.
+
+[spec-template.md](spec-template.md) beside this file is the fallback for a
+checkout without `.specify/`; it uses the same section names so the two are
+interchangeable. Prefer the real thing.
 
 ## 3. Fill it in
 

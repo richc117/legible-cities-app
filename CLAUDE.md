@@ -8,9 +8,10 @@ this app never draws a map of its own.
 ## Where things stand
 
 Pre-alpha. The repository holds its charter (licence, contribution guide,
-security policy, templates, decision-record convention) and its hygiene
-tooling (`bin/preflight`, gitleaks, the git hooks, the CI checks) and
-**no application code yet**. There is nothing to build, run or test.
+security policy, templates, decision-record convention), its hygiene tooling
+(`bin/preflight`, gitleaks, the git hooks, the CI checks), and its specs
+(Spec Kit, the constitution) - and **no application code yet**. There is
+nothing to build, run or test.
 
 Work proceeds phase by phase; `CONTRIBUTING.md` explains the flow, the
 labels, the milestones and the `A0-05`-style issue codes. Phase 0 is
@@ -66,6 +67,12 @@ in `settings.local.json`, which is gitignored.
   and its report; `/spec` scaffolds a feature spec from an issue.
 - `agents/reviewer.md` - a read-only reviewer for correctness, leaks, a
   second renderer creeping in, and child processes without a timeout.
+- `skills/speckit-*` - installed by Spec Kit, not written here. Leave them
+  alone; `specify init` regenerates them.
+
+`.specify/` holds the constitution, the templates and the scripts Spec Kit
+runs. It is committed so a checkout is reproducible; only its
+machine-local `feature.json` is ignored.
 
 ## Conventions
 
@@ -84,8 +91,12 @@ in `settings.local.json`, which is gitignored.
 - **Decisions get a record** under `docs/adr/` (three-digit number, copy
   `000-template.md`, or run `/adr`). A spike's deliverable is a record, not
   code; `/spike` sets one up.
-- **Spec first** for features once Spec Kit is set up: user stories and
-  acceptance criteria before code.
+- **Spec first** for features: `/speckit-specify` writes
+  `specs/NNN-name/spec.md` from the issue, and every spec is read against
+  `.specify/memory/constitution.md`. Names are hyphenated (`/speckit-plan`,
+  `/speckit-tasks`), not dotted. Where the issue is silent, leave a
+  `[NEEDS CLARIFICATION]` marker rather than inventing an answer.
+  `CONTRIBUTING.md` has the loop; ADR-014 has the reasoning.
 - **Third-party additions** go in `THIRD_PARTY_NOTICES.md` with their
   licence. The code is GPL-3.0-or-later; contributions arrive under the same.
 - **Public repository.** No machine paths, e-mail addresses, private
