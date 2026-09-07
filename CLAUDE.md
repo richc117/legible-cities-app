@@ -8,16 +8,17 @@ this app never draws a map of its own.
 ## Where things stand
 
 Pre-alpha. The repository holds its charter (licence, contribution guide,
-security policy, templates, decision-record convention, `bin/preflight`) and
-**no application code yet**. There is nothing to build, run or test. The
-only command that does anything is `bin/preflight`.
+security policy, templates, decision-record convention) and its hygiene
+tooling (`bin/preflight`, gitleaks, the git hooks, the CI checks) and
+**no application code yet**. There is nothing to build, run or test.
 
 Work proceeds phase by phase; `CONTRIBUTING.md` explains the flow, the
 labels, the milestones and the `A0-05`-style issue codes. Phase 0 is
 scaffolding and four spikes (native LOOM binaries, sidecar packaging,
 offscreen capture, encoding), each ending in a decision record, then the
-Electron skeleton. Until CI exists, the maintainer commits to `main`
-directly; after it, one issue, one branch, one pull request.
+Electron skeleton. Until the build-and-test workflow lands with that
+skeleton, the maintainer commits to `main` directly; after it, one issue,
+one branch, one pull request.
 
 Personal settings and private pointers (sibling checkouts, planning notes)
 live in `CLAUDE.local.md`, which is gitignored. Read it if it exists.
@@ -25,11 +26,25 @@ live in `CLAUDE.local.md`, which is gitignored. Read it if it exists.
 ## Commands
 
 ```
-bin/preflight        # refuses personal paths, addresses, keys and tool-session links
+bin/preflight                     # refuses personal paths, addresses, keys, session links
+bin/preflight --message-file F    # the same, over a commit message being written
+gitleaks git --staged --redact    # keys and tokens in the staged changes
+gitleaks dir . --redact           # the same, over the whole working tree
+pre-commit run --all-files        # the hooks, without committing
+pre-commit install                # once per checkout, to get them on git commit
 ```
 
 Nothing else yet. Do not invent `npm` scripts; add them when the skeleton
 lands and list them here.
+
+`gitleaks` and `pre-commit` are development tools, not dependencies; install
+them from a package manager. Everything they enforce is enforced again in
+CI, so a machine without them can still contribute.
+
+The `gitleaks` pre-commit hook reads only the **staged** changes, which is
+the right scope at commit time and the wrong one for an audit:
+`pre-commit run --all-files` will not find a key sitting unstaged in the
+working tree. Use `gitleaks dir .` for that.
 
 ## Conventions
 
@@ -39,7 +54,12 @@ lands and list them here.
   default instruction says to; `bin/preflight` refuses them and so does the
   hook in `.claude/settings.json`.
 - **Run `bin/preflight` before every push.** It scans the index, unpushed
-  commit messages and stray private files.
+  commit messages and stray private files. `gitleaks` covers what it does
+  not: keys, tokens and certificates. Both run from `.pre-commit-config.yaml`
+  on every commit, from `.claude/hooks/guard-git.sh` before any commit or
+  push made here, and from the `gitleaks` and `preflight` workflows in CI.
+  See ADR-015; `.gitleaks.toml` holds the allowlist, and every entry in it
+  says why it is there.
 - **Decisions get a record** under `docs/adr/` (three-digit number, copy
   `000-template.md`). A spike's deliverable is a record, not code.
 - **Spec first** for features once Spec Kit is set up: user stories and

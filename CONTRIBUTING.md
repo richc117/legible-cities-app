@@ -51,6 +51,43 @@ number. It is a reading aid, not something a tool checks.
   private addresses, keys and session links, none of which belong in a
   public repository.
 
+## Local hooks
+
+This is a public repository, so two scanners run over every commit:
+`gitleaks` for keys and tokens, and `bin/preflight` for the things a secret
+scanner does not recognise - absolute paths from someone's machine, personal
+addresses, private hostnames, links to tool sessions. Install them once per
+checkout:
+
+```
+pip install pre-commit        # or your package manager's equivalent
+pre-commit install
+```
+
+That is all the setup there is. `pre-commit` fetches and builds its own
+pinned copy of `gitleaks`, so nothing else needs installing; the first
+commit afterwards is a little slow while it does. To run the hooks by hand
+without committing:
+
+```
+pre-commit run --all-files
+```
+
+Note what that does and does not cover: `bin/preflight` reads the whole
+tracked tree, but the `gitleaks` hook reads only what is **staged**, because
+that is the job it has at commit time. For a scan of everything in the
+working tree you need `gitleaks` itself on your `PATH`:
+
+```
+gitleaks dir . --redact
+```
+
+CI scans the full history on every push and pull request, so a missing hook
+costs you a red check rather than a leak. If a scanner is wrong, say so in
+the pull request rather than reaching for `--no-verify`: a false positive is
+a line in `.gitleaks.toml`, with a comment saying why. See
+`docs/adr/015-hygiene-enforced-by-tools.md`.
+
 ## Definition of done
 
 - The spec's acceptance criteria pass, and a test asserts each one that can
@@ -58,7 +95,8 @@ number. It is a reading aid, not something a tool checks.
 - Checks are green on macOS, Windows and Linux.
 - Documentation changed with the code: architecture notes, the decision
   record, user-facing text.
-- No new secret-scanner finding; no absolute path, address or key in the diff.
+- No new secret-scanner finding; no absolute path, address or key in the
+  diff. `pre-commit run --all-files` is clean.
 - The pull request says what was tested by hand and on which operating system.
 - The installer still builds after the merge, once there is one.
 
