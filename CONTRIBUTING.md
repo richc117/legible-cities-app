@@ -148,6 +148,9 @@ there.
 - The spec's acceptance criteria pass, and a test asserts each one that can
   be asserted. No `[NEEDS CLARIFICATION]` marker survives into the merge
   unless the pull request says why it may.
+- The change complies with
+  [the constitution](.specify/memory/constitution.md), or the pull request
+  argues the exception in the open and amends the constitution first.
 - Checks are green on macOS, Windows and Linux.
 - Documentation changed with the code: architecture notes, the decision
   record, user-facing text.
