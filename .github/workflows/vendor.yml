@@ -169,6 +169,7 @@ jobs:
             mingw-w64-ucrt-x86_64-gcc
             mingw-w64-ucrt-x86_64-cmake
             mingw-w64-ucrt-x86_64-protobuf
+            mingw-w64-ucrt-x86_64-python
       - name: Build with the Cairo patches
         shell: msys2 {0}
         run: |
@@ -182,6 +183,8 @@ jobs:
           git -C port checkout "$port"
           echo "Patches from the Cairo port are applied here; the spike did not"
           echo "reach this step, so treat the first run as an experiment."
+          echo "(The first run on 2026-09-07 died before this line: the UCRT64"
+          echo "shell had no python to read the pins with. Hence the package above.)"
           cmake -S loom-src -B loom-src/build -G "Unix Makefiles" \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_DISABLE_FIND_PACKAGE_GLPK=ON \
