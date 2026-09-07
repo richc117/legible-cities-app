@@ -35,7 +35,8 @@ pre-commit install                # once per checkout, to get them on git commit
 ```
 
 Nothing else yet. Do not invent `npm` scripts; add them when the skeleton
-lands and list them here.
+lands, list them here, and add their permission rules to
+`.claude/settings.json` at the same time.
 
 `gitleaks` and `pre-commit` are development tools, not dependencies; install
 them from a package manager. Everything they enforce is enforced again in
@@ -45,6 +46,25 @@ The `gitleaks` pre-commit hook reads only the **staged** changes, which is
 the right scope at commit time and the wrong one for an audit:
 `pre-commit run --all-files` will not find a key sitting unstaged in the
 working tree. Use `gitleaks dir .` for that.
+
+## What is in `.claude/`
+
+All of it is committed, and all of it is technical; personal permissions go
+in `settings.local.json`, which is gitignored.
+
+- `settings.json` - a permission allowlist for the read-only commands, and a
+  `PreToolUse` hook on `Bash`.
+- `hooks/guard-git.sh` - runs gitleaks and `bin/preflight` before any
+  `git commit` or `git push` made from here, and blocks on a finding.
+- `hooks/reviewer-readonly.sh` - keeps the `reviewer` subagent's `Bash` to
+  read-only commands.
+- `rules/renderer.md`, `rules/main.md` - the detailed rules for each
+  process, loaded when the matching files are read. The short form is below.
+- `skills/adr`, `skills/spike`, `skills/spec` - `/adr` writes a numbered
+  decision record and indexes it; `/spike` sets up a timeboxed experiment
+  and its report; `/spec` scaffolds a feature spec from an issue.
+- `agents/reviewer.md` - a read-only reviewer for correctness, leaks, a
+  second renderer creeping in, and child processes without a timeout.
 
 ## Conventions
 
@@ -61,7 +81,8 @@ working tree. Use `gitleaks dir .` for that.
   See ADR-015; `.gitleaks.toml` holds the allowlist, and every entry in it
   says why it is there.
 - **Decisions get a record** under `docs/adr/` (three-digit number, copy
-  `000-template.md`). A spike's deliverable is a record, not code.
+  `000-template.md`, or run `/adr`). A spike's deliverable is a record, not
+  code; `/spike` sets one up.
 - **Spec first** for features once Spec Kit is set up: user stories and
   acceptance criteria before code.
 - **Third-party additions** go in `THIRD_PARTY_NOTICES.md` with their
@@ -92,6 +113,9 @@ Stated now so the first implementation does not have to rediscover them.
   with a channel tolerance of 8, never RGBA and never exact equality.
 - **Renderer**: no Node APIs; everything goes through the preload bridge.
   `contextIsolation` on, `nodeIntegration` off, `sandbox` on.
+
+`.claude/rules/renderer.md` and `.claude/rules/main.md` carry the same rules
+at length, and load when the files they cover are read.
 
 ## The engine
 

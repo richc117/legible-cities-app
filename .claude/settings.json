@@ -5,13 +5,21 @@
       "Bash(git diff*)",
       "Bash(git log*)",
       "Bash(git show*)",
-      "Bash(bin/preflight*)"
+      "Bash(git blame*)",
+      "Bash(git ls-files*)",
+      "Bash(git branch --show-current)",
+      "Bash(bin/preflight*)",
+      "Bash(gitleaks dir*)",
+      "Bash(gitleaks git*)",
+      "Bash(pre-commit run*)",
+      "Bash(pre-commit validate-config*)"
     ],
     "deny": [
       "Read(./.env*)",
       "Read(./**/*.p12)",
       "Read(./**/*.pem)",
-      "Read(./**/*.key)"
+      "Read(./**/*.key)",
+      "Read(./**/*.mobileprovision)"
     ]
   },
   "hooks": {

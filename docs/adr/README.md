@@ -11,7 +11,13 @@ was on the table), **Decision** (what we chose), **Consequences** (what it
 costs and what it buys). Status is one of Proposed, Accepted, or Superseded
 by ADR-NNN. Copy `000-template.md` to start one.
 
-Spikes (timeboxed experiments) end in a record here, not in code.
+Spikes (timeboxed experiments) end in a record here, not in code; their
+working reports sit under `spikes/`.
+
+Anyone using Claude Code in this repository can run `/adr` to write a record
+from the template and add its row below, and `/spike` to set up an
+experiment and its report. Neither is required: a record written by hand is
+the same record.
 
 The founding decisions were made before this repository existed and are
 being written up as its first records. A number is allocated when a decision
