@@ -21,11 +21,12 @@ the same record.
 
 A number is allocated when a decision is accepted, not when it is written
 up. The founding decisions were made before this repository existed, so the
-numbers below are already taken even where the file is not here yet, and the
-table has gaps: those numbers belong to decisions about the project rather
-than the software, which are recorded elsewhere and will not appear here.
-Take the next unreserved number when you add a record, and check that
-nothing already cites the one you mean to use.
+numbers below are already taken even where the file is not here yet. Every
+number in use appears in the table, including the ones held by decisions
+about the project rather than the software, which are recorded elsewhere and
+will not appear here as files. **The next free number is the one after the
+last row.** Add your row when you add a record, and check that nothing
+already cites the number you mean to use.
 
 | Number | Title | Status |
 |---|---|---|
@@ -33,6 +34,11 @@ nothing already cites the one you mean to use.
 | 001 | The desktop shell is Electron | Accepted, not yet written up |
 | 002 | The engine stays in Python and runs as a sidecar | Accepted, not yet written up |
 | 003 | The code is licensed GPL-3.0-or-later | Accepted, not yet written up |
+| 004 | Reserved: a decision about the project, recorded outside this repository | - |
+| 005 | Reserved: a decision about the project, recorded outside this repository | - |
+| 006 | Reserved: a decision about the project, recorded outside this repository | - |
+| 007 | Reserved: a decision about the project, recorded outside this repository | - |
+| 008 | Reserved: a decision about the project, recorded outside this repository | - |
 | 009 | electron-vite + React + TypeScript, packaged by electron-builder | Accepted, not yet written up |
 | 010 | JSON-RPC 2.0 over stdio, using existing LSP libraries | Accepted, not yet written up |
 | 011 | LOOM ships as native binaries built in CI from a pinned commit | Accepted, not yet written up |

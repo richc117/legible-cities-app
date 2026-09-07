@@ -1,0 +1,164 @@
+#!/usr/bin/env bash
+# Exercise the two Claude Code hooks in .claude/hooks/.
+#
+# They are the only executable code in this repository that decides whether
+# something is allowed, and shellcheck cannot tell you that an option pattern
+# assuming spaces misses `-r=file`. Every case below is a bug that was
+# actually shipped, or a legitimate command that a fix for one broke.
+#
+# Run it directly, or let the pre-commit hook run it. No arguments.
+set -u
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+reviewer=.claude/hooks/reviewer-readonly.sh
+guard=.claude/hooks/guard-git.sh
+pass=0 fail=0
+
+# Feed a command to a hook as the tool-call payload it expects.
+run_hook() {
+  local hook=$1 command=$2
+  jq -n --arg c "$command" '{tool_input: {command: $c}}' | "$hook" >/dev/null 2>&1
+}
+
+check() {
+  local hook=$1 want=$2 command=$3 got
+  run_hook "$hook" "$command"; got=$?
+  if [ "$got" -eq "$want" ]; then
+    pass=$((pass + 1))
+  else
+    fail=$((fail + 1))
+    printf 'FAIL %-24s %-46s want %s, got %s\n' "$(basename "$hook")" "$command" "$want" "$got" >&2
+  fi
+}
+
+# Compare an exit code that has already been produced, for the cases that
+# have to set the sandbox up first.
+expect() {
+  local want=$1 got=$2 what=$3
+  if [ "$got" -eq "$want" ]; then
+    pass=$((pass + 1))
+  else
+    fail=$((fail + 1))
+    printf 'FAIL guard-git.sh          %-46s want %s, got %s\n' "$what" "$want" "$got" >&2
+  fi
+}
+
+allow()  { check "$reviewer" 0 "$1"; }
+refuse() { check "$reviewer" 2 "$1"; }
+
+# --- the reviewer's Bash tool: what it may run ------------------------------
+allow  'git diff'
+allow  'git diff --cached'
+allow  'git diff main...HEAD'
+allow  'git status --short'
+allow  'git log --oneline -20'
+allow  'git show 2d6edaa'
+allow  'git blame CLAUDE.md'
+allow  'git grep -n TODO'
+allow  'git ls-files'
+allow  'git rev-parse HEAD'
+allow  'git branch --show-current'
+allow  'git remote'
+allow  'gitleaks dir . --no-banner --redact'
+allow  'gitleaks git --no-banner --redact'
+allow  'bin/preflight'
+
+# --- and what it may not ----------------------------------------------------
+# Writing a file through a command that reads.
+refuse 'git diff --output=CLAUDE.md HEAD'
+refuse 'git diff HEAD --output CLAUDE.md'
+refuse 'git log --output=x'
+# Reading outside the history, which is how the private notes get printed.
+refuse 'git diff --no-index /dev/null CLAUDE.local.md'
+# Executing something.
+refuse 'git difftool -y -x sh HEAD'
+refuse 'git grep -O sh TODO'
+refuse 'git grep --open-files-in-pager TODO'
+# The scanners outside their exact forms: a report file is a file write, a
+# dropped --redact prints the secret, another path leaves the repository.
+refuse 'gitleaks dir . -r out.json'
+refuse 'gitleaks dir . -r=out.json'
+refuse 'gitleaks dir . --report-path=out.json'
+refuse 'gitleaks dir . --no-banner'
+refuse 'gitleaks dir ..'
+refuse 'gitleaks dir . --diagnostics http'
+# bin/preflight --message-file prints the matching lines of any file it is
+# given, and the pattern it matches is exactly the private one.
+refuse 'bin/preflight --message-file CLAUDE.local.md'
+# Chaining, redirection, substitution.
+refuse 'git status; rm -rf .'
+refuse 'git status && rm -rf .'
+refuse 'git diff | tee out'
+refuse 'echo hi > CLAUDE.md'
+# shellcheck disable=SC2016  # the literal `$(` is the point of this case.
+refuse 'git log --format=$(whoami)'
+# Changing anything at all.
+refuse 'git commit -m x'
+refuse 'git push'
+refuse 'git branch -D main'
+refuse 'rm -rf /'
+refuse 'git remote -v'          # the remote URL is private
+
+# --- the commit guard: what it ignores and what it stops --------------------
+check "$guard" 0 'ls'
+check "$guard" 0 'git status'
+check "$guard" 0 'npm test'
+
+# --- both hooks fail closed when they cannot read the command ---------------
+minimal=$(mktemp -d)
+for tool in bash cat printf env; do
+  path=$(command -v "$tool") && ln -s "$path" "$minimal/$tool"
+done
+for hook in "$reviewer" "$guard"; do
+  out=$(printf '{"tool_input":{"command":"git commit -m x"}}' |
+        env PATH="$minimal" "$hook" 2>&1); got=$?
+  if [ "$got" -eq 2 ] && printf '%s' "$out" | grep -q jq; then
+    pass=$((pass + 1))
+  else
+    fail=$((fail + 1))
+    printf 'FAIL %-24s without jq: want exit 2 mentioning jq, got %s\n' \
+      "$(basename "$hook")" "$got" >&2
+  fi
+done
+rm -rf "$minimal"
+
+# --- the commit guard, end to end, in a repository of its own ---------------
+# A staged key must stop a commit, and so must an unstaged one when the
+# command is `git commit -a`, which stages after this hook has run.
+if command -v gitleaks >/dev/null 2>&1; then
+  sandbox=$(mktemp -d)
+  mkdir -p "$sandbox/bin" "$sandbox/.claude/hooks"
+  cp bin/preflight "$sandbox/bin/"
+  cp "$guard" "$sandbox/.claude/hooks/"
+  git -C "$sandbox" init -q .
+  echo clean > "$sandbox/f.txt"
+  git -C "$sandbox" add f.txt
+  git -C "$sandbox" -c user.email=t@example.invalid -c user.name=t commit -qm one
+
+  # Assembled rather than written out. gitleaks and bin/preflight both scan
+  # this file, and a literal key here would fail the very checks it exists to
+  # test - which is itself a small demonstration that they work.
+  body='4KZQR7YBTX2WPLQN'
+  key="aws_access_key_id = AKIA$body"
+  guard_says() {   # $1 = command, echoes the exit code
+    (cd "$sandbox" && jq -n --arg c "$1" '{tool_input: {command: $c}}' |
+      env CLAUDE_PROJECT_DIR="$sandbox" .claude/hooks/guard-git.sh >/dev/null 2>&1)
+    echo $?
+  }
+
+  echo "$key" > "$sandbox/staged.txt"; git -C "$sandbox" add staged.txt
+  expect 2 "$(guard_says 'git commit -m \"add config\"')" "staged key stops a commit"
+  git -C "$sandbox" rm -q --cached staged.txt; rm -f "$sandbox/staged.txt"
+
+  echo "$key" > "$sandbox/f.txt"          # tracked, modified, not staged
+  expect 2 "$(guard_says 'git commit -am \"add config\"')" "-a stages a key after the index scan"
+
+  expect 0 "$(guard_says 'git push origin main')" "a clean history pushes"
+
+  rm -rf "$sandbox"
+else
+  echo "test-hooks: gitleaks is not installed; skipped the end-to-end cases" >&2
+fi
+
+printf 'test-hooks: %d passed, %d failed\n' "$pass" "$fail"
+[ "$fail" -eq 0 ]
