@@ -9,3 +9,7 @@ src/renderer/src/styles/tokens.css
 # Python, not ours to format.
 *.py
 __pycache__/
+
+# Vendored icons and their licence, not ours to format.
+*.svg
+src/renderer/src/icons/phosphor/LICENSE

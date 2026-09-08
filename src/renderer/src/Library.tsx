@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type JSX } from 'react'
 import type { CreateProjectInput, ProjectSummary } from '../../shared/api'
 import CreateProjectDialog from './CreateProjectDialog'
+import Icon from './icons/Icon'
+import Button from './kit/Button'
 
 type LibraryState = { status: 'loading' } | { status: 'ready'; projects: ProjectSummary[] }
 
@@ -56,9 +58,10 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
         Library
       </h1>
       <div className="toolbar">
-        <button type="button" onClick={() => setCreating(true)}>
+        <Button variant="primary" onClick={() => setCreating(true)}>
+          <Icon name="add" />
           New project
-        </button>
+        </Button>
       </div>
       {notice && (
         <p role="alert" className="notice">
@@ -66,7 +69,12 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
         </p>
       )}
       {library.status === 'ready' && library.projects.length === 0 && (
-        <p role="status">No projects yet. Create one to begin.</p>
+        <div className="empty">
+          <Icon name="mark" size={24} />
+          <p role="status" className="prose">
+            No projects yet. Create one to begin.
+          </p>
+        </div>
       )}
       {library.status === 'ready' && library.projects.length > 0 && (
         <ul className="entries" aria-label="Projects">

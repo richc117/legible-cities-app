@@ -1,0 +1,143 @@
+/*
+ * FigUI3 speaks Figma's variable names; the app speaks the design system's.
+ * This file, unlayered and imported after the kit's stylesheet, maps the
+ * semantic tokens (theme.css) into the kit's names for both themes, points
+ * its type at the interface track, sets its control height, and covers the
+ * two colours the kit hard-codes. Contract:
+ * specs/005-design-system-foundations/contracts/kit.md. Nothing else in
+ * the app uses a --figma-* name.
+ */
+/* The kit declares every token on :root and again on :host from inside
+   each shadow root, where a value inherited from :root cannot reach; a
+   rule on the host from this, the outer tree, wins over the shadow's
+   :host rule. So the mapping is declared for the root and for every kit
+   element the app uses. */
+:root,
+fig-button,
+fig-input-text,
+fig-dropdown,
+fig-checkbox,
+fig-switch,
+fig-segmented-control,
+fig-segment,
+fig-tooltip,
+fig-header,
+fig-spinner,
+fig-field,
+fig-separator {
+  --figma-color-bg: var(--surface);
+  --figma-color-bg-secondary: var(--surface-raised);
+  --figma-color-bg-tertiary: var(--surface-sunken);
+  --figma-color-bg-hover: var(--surface-hover);
+  --figma-color-bg-pressed: var(--surface-selected);
+  --figma-color-bg-selected: var(--surface-selected);
+  --figma-color-bg-selected-hover: var(--surface-selected);
+  --figma-color-bg-selected-pressed: var(--surface-selected);
+  --figma-color-bg-menu: var(--surface-raised);
+  --figma-color-bg-menu-hover: var(--surface-hover);
+  --figma-color-bg-brand: var(--accent);
+  --figma-color-bg-brand-hover: color-mix(in srgb, var(--accent) 88%, var(--text));
+  --figma-color-bg-brand-pressed: color-mix(in srgb, var(--accent) 80%, var(--text));
+  --figma-color-bg-danger: var(--error);
+  --figma-color-bg-danger-hover: color-mix(in srgb, var(--error) 88%, var(--text));
+  --figma-color-bg-danger-pressed: color-mix(in srgb, var(--error) 80%, var(--text));
+  --figma-color-bg-warning: var(--warning);
+  --figma-color-bg-success: var(--success);
+  --figma-color-bg-disabled: var(--surface-sunken);
+  --figma-color-bg-disabled-secondary: var(--surface-raised);
+  --figma-color-bg-inverse: var(--text);
+
+  --figma-color-text: var(--text);
+  --figma-color-text-secondary: var(--text-muted);
+  --figma-color-text-tertiary: var(--text-faint);
+  --figma-color-text-disabled: var(--text-faint);
+  --figma-color-text-hover: var(--text);
+  --figma-color-text-menu: var(--text);
+  --figma-color-text-menu-secondary: var(--text-muted);
+  --figma-color-text-brand: var(--accent-text);
+  --figma-color-text-danger: var(--error);
+  --figma-color-text-warning: var(--warning);
+  --figma-color-text-success: var(--success-strong);
+  --figma-color-text-onbrand: var(--on-accent);
+  --figma-color-text-ondanger: var(--surface);
+  --figma-color-text-onselected: var(--text);
+  --figma-color-text-oninverse: var(--surface);
+  --figma-color-text-selection: var(--selection);
+
+  --figma-color-icon: var(--text);
+  --figma-color-icon-secondary: var(--text-muted);
+  --figma-color-icon-tertiary: var(--text-faint);
+  --figma-color-icon-disabled: var(--text-faint);
+  --figma-color-icon-hover: var(--text);
+  --figma-color-icon-brand: var(--accent);
+  --figma-color-icon-danger: var(--error);
+  --figma-color-icon-warning: var(--warning);
+  --figma-color-icon-success: var(--success);
+  --figma-color-icon-onbrand: var(--on-accent);
+  --figma-color-icon-ondanger: var(--surface);
+  --figma-color-icon-onselected: var(--text);
+
+  --figma-color-border: var(--border);
+  --figma-color-border-strong: var(--border-strong);
+  --figma-color-border-disabled: var(--border);
+  --figma-color-border-menu: var(--border);
+  --figma-color-border-brand: var(--accent);
+  --figma-color-border-brand-strong: var(--accent);
+  --figma-color-border-selected: var(--accent);
+  --figma-color-border-selected-strong: var(--accent);
+  --figma-color-border-danger: var(--error);
+  --figma-color-border-danger-strong: var(--error);
+  --figma-color-border-onbrand-strong: var(--on-accent);
+
+  --figma-focus-outline: var(--focus-ring-width) solid var(--focus);
+  --figma-focus-outline-offset: var(--focus-ring-offset);
+
+  /* Type: the kit's 11px body becomes the interface track. */
+  --font-family: var(--font-chrome);
+  --text-body-medium-font-size: var(--font-ui);
+  --text-body-large-font-size: var(--font-ui-medium);
+  --text-body-small-font-size: var(--font-ui-small);
+  --line-height: var(--line-ui);
+  --body-medium-fontWeight: 400;
+  --body-medium-strong-fontWeight: var(--weight-strong);
+  --body-large-strong-fontWeight: var(--weight-strong);
+  --body-letter-spacing: 0;
+
+  /* Motion follows the system's. */
+  --transition-duration: var(--duration-fast);
+  --transition-timing-function: var(--easing);
+
+  /* The kit declares these four at :root outside its layer, after
+     scale.css in the import order, so they are restated here, after the
+     kit, from the aliases scale.css keeps for the purpose. */
+  --spacer-4: var(--size-control);
+  --control-height: var(--size-control);
+  --radius-small: var(--shape-radius-small);
+  --radius-medium: var(--shape-radius);
+  --radius-large: var(--shape-radius-large);
+}
+
+:root {
+  color-scheme: dark;
+}
+
+:root[data-theme='sepia'] {
+  color-scheme: light;
+}
+
+/* The kit draws a text field's edge only under the pointer or focus, as
+   Figma does; the design document gives inputs a resting edge (section
+   3, --border-strong), drawn here on the host so the kit's own focus
+   treatment still applies over it. */
+fig-input-text:not(:focus-within):not(:hover) {
+  box-shadow: inset 0 0 0 var(--border-width) var(--border-strong);
+  border-radius: var(--shape-radius-small);
+}
+
+/* The kit hard-codes the native option popup's colours (its own comment
+   calls it deliberate); the app's surfaces apply instead. */
+option,
+optgroup {
+  color: var(--text);
+  background-color: var(--surface-raised);
+}

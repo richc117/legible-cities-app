@@ -27,7 +27,11 @@ const DEV_HMR_SOCKET = 'ws://localhost:5173'
 
 function csp(development: boolean): string {
   const script = development ? "'self' 'unsafe-inline'" : "'self'"
-  const style = development ? "'self' 'unsafe-inline'" : "'self'"
+  // Styles may be inline in every build: the control kit (FigUI3) styles
+  // the inside of its shadow roots with <style> elements it creates, and a
+  // policy of 'self' alone leaves its controls unstyled (specs/005,
+  // research.md section 7). Scripts stay 'self' outside development.
+  const style = "'self' 'unsafe-inline'"
   const connect = development ? `'self' ${DEV_HMR_SOCKET}` : "'self'"
   return [
     "default-src 'self'",

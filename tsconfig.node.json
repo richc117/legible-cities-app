@@ -21,7 +21,6 @@
     "playwright.config.ts",
     "src/main/**/*",
     "src/preload/**/*",
-    "src/shared/**/*",
-    "tests/**/*"
+    "src/shared/**/*"
   ]
 }

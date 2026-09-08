@@ -1,0 +1,82 @@
+/*
+ * The scale (docs/DESIGN.md, sections 4, 5 and 7): two type tracks, the 4px
+ * grid, control sizes, radii, layers and motion. Every size, duration and
+ * face the interface uses is a token here; tests/unit/no-literals.test.ts
+ * refuses a literal anywhere else.
+ */
+:root {
+  /* Type: the fixed track for chrome, the relative track for prose. */
+  --font-chrome: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-prose: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --font-ui-smaller: 11px;
+  --font-ui-small: 12px;
+  --font-ui: 13px;
+  --font-ui-medium: 15px;
+  --font-ui-large: 20px;
+  --line-ui-tight: 16px;
+  --line-ui: 20px;
+  --line-ui-large: 24px;
+  --font-text: 18px;
+  --font-text-small: 0.86em;
+  --line-text: 1.72;
+  --weight-strong: 600;
+  --weight-heading: 700;
+  --numerals: lining-nums tabular-nums slashed-zero;
+
+  /* Space: a 4px grid, named base-multiple; the 2px set for icon-to-label gaps. */
+  --space-2-1: 2px;
+  --space-2-2: 4px;
+  --space-2-3: 6px;
+  --space-4-1: 4px;
+  --space-4-2: 8px;
+  --space-4-3: 12px;
+  --space-4-4: 16px;
+  --space-4-5: 20px;
+  --space-4-6: 24px;
+  --space-4-8: 32px;
+  --space-4-12: 48px;
+  --space-4-16: 64px;
+
+  /* Sizes, deliberately off the grid where the platform is. The kit uses
+     the names --control-height and --radius-* for its own tokens, so the
+     values live under --size-* and --shape-* and both names point at them
+     (figui-adapter.css hands the --size-* forms to the kit's hosts). */
+  --root-size: 16px;
+  --size-control: 28px;
+  --size-control-small: 24px;
+  --size-control-large: 32px;
+  --control-height: var(--size-control);
+  --control-height-small: var(--size-control-small);
+  --control-height-large: var(--size-control-large);
+  --icon-size: 16px;
+  --icon-size-large: 24px;
+  --target-min: 24px;
+  --header-height: 40px;
+  --shape-radius-small: 2px;
+  --shape-radius: 4px;
+  --shape-radius-large: 8px;
+  --radius-small: var(--shape-radius-small);
+  --radius: var(--shape-radius);
+  --radius-large: var(--shape-radius-large);
+  --radius-pill: 999px;
+  --border-width: 1px;
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+  --dialog-width: 28rem;
+  --dialog-width-wide: 40rem;
+  --measure: 40rem;
+  --backdrop-opacity: 0.6;
+
+  /* Layers. */
+  --layer-base: 0;
+  --layer-raised: 10;
+  --layer-overlay: 100;
+  --layer-dialog: 1000;
+  --layer-toast: 1100;
+
+  /* Motion: to explain a change of state, never to decorate. */
+  --duration-fast: 120ms;
+  --duration: 200ms;
+  --easing: cubic-bezier(0.2, 0, 0, 1);
+}

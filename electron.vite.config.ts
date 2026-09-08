@@ -1,6 +1,7 @@
 import { resolve } from 'node:path'
 import react from '@vitejs/plugin-react'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
+import { figuiGuard } from './scripts/figui-guard'
 
 // The renderer is never loaded from the dev server's own URL: the main
 // process proxies it through app://local so the origin is the same in
@@ -24,7 +25,8 @@ export default defineConfig({
         '@renderer': resolve('src/renderer/src'),
       },
     },
-    plugins: [react()],
+    // The guard refuses FigUI3's PolyForm-licensed half (ADR-026).
+    plugins: [figuiGuard(), react()],
     server: {
       host: 'localhost',
       port: DEV_PORT,

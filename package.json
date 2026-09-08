@@ -15,7 +15,7 @@
     "start": "electron-vite preview",
     "lint": "eslint . && prettier --check \"src/**\" \"tests/**\" \"*.{ts,mts,js,mjs,json}\"",
     "format": "prettier --write \"src/**\" \"tests/**\" \"*.{ts,mts,js,mjs,json}\"",
-    "typecheck": "tsc --noEmit -p tsconfig.node.json --composite false && tsc --noEmit -p tsconfig.web.json --composite false",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json --composite false && tsc --noEmit -p tsconfig.web.json --composite false && tsc --noEmit -p tsconfig.tests.json --composite false",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "dist": "electron-builder --dir"
@@ -27,6 +27,7 @@
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@playwright/test": "1.63.0",
+    "@rogieking/figui3": "9.0.0",
     "@swc/core": "1.16.2",
     "@types/node": "22.20.1",
     "@types/react": "19.2.18",
