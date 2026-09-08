@@ -167,5 +167,7 @@ cannot succeed, because the engine's `main` and its tags are not pushed to
 GitHub; that is the maintainer's action and it is outside this feature.
 
 **Decision**: wire the job to the pin, and say in the plan and in the
-issue that it goes green when the tag is published. Wiring it is what
-closes A0-06, which has been open on exactly this sentence.
+issue that it goes green when the tag is published. Wiring it removes the
+placeholder A0-06 has been open on, but does not close that issue: A0-06
+also wants the job green on darwin-x64 and win-x64, and the matrix carries
+only darwin-arm64 today.

@@ -76,7 +76,7 @@
 **Independent test**: `npm test -- protocol-real` with and without a checkout.
 
 - [x] T015 [US4] Write the contract half of `tests/unit/protocol-real.test.ts`, gated as in T009 and spawning the sidecar with `Sidecar` from `src/main/sidecar.ts` (a test may import from `src/main`; only the renderer may not): `engine.info` returns the pinned version and `protocol` 1; `engine.shutdown` answers and the process ends; `graph.build` with an unregistered feed key is refused; `map.build` without `date` is refused; each refusal carries a code and `data` of `{kind, detail, hint}` with `hint` a sentence (SC-003, SC-007). Do not attempt a full run of either long method (research §7)
-- [x] T016 [US4] Replace the placeholder in `.github/workflows/vendor.yml`'s python job ("The engine pin lands with A1-02; until then this job needs a path") with a checkout of `engine.repo` at `engine.tag` from `vendor/pins.json` into `$ENGINE_PATH`; note in the step's comment that it goes green once the engine's tag is published, which closes A0-06
+- [x] T016 [US4] Replace the placeholder in `.github/workflows/vendor.yml`'s python job ("The engine pin lands with A1-02; until then this job needs a path") with a checkout of `engine.repo` at `engine.tag` from `vendor/pins.json` into `$ENGINE_PATH`; note in the step's comment what still stands between this and closing A0-06: the engine's tag being published, and the matrix growing darwin-x64 and win-x64
 
 ---
 
