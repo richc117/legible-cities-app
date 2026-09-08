@@ -2,6 +2,9 @@ import { useEffect, useRef, useState, type FormEvent, type JSX } from 'react'
 import type { DeleteResult, ProjectRecord } from '../../shared/api'
 import { validateName } from '../../shared/project'
 import ConfirmDialog from './ConfirmDialog'
+import Icon from './icons/Icon'
+import Button from './kit/Button'
+import TextInput, { type TextInputHandle } from './kit/TextInput'
 
 type Project = ProjectRecord & { readOnly: boolean }
 type ViewState =
@@ -44,8 +47,8 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
   const [saving, setSaving] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const headingRef = useRef<HTMLHeadingElement>(null)
-  const renameButtonRef = useRef<HTMLButtonElement>(null)
-  const newNameRef = useRef<HTMLInputElement>(null)
+  const renameButtonRef = useRef<HTMLElement>(null)
+  const newNameRef = useRef<TextInputHandle>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -125,9 +128,10 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
         {project?.name ?? 'Project'}
       </h1>
       <div className="toolbar">
-        <button type="button" onClick={() => onBack()}>
+        <Button onClick={() => onBack()}>
+          <Icon name="back" />
           Back to Library
-        </button>
+        </Button>
       </div>
       {state.status === 'error' && (
         <p role="alert" className="notice">
@@ -165,45 +169,43 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
             </dd>
           </dl>
           <div className="toolbar">
-            <button
-              type="button"
+            <Button
               ref={renameButtonRef}
               aria-expanded={renaming}
               disabled={project.readOnly}
               onClick={() => (renaming ? closeRename() : openRename())}
             >
+              <Icon name="edit" />
               Rename
-            </button>
-            <button type="button" onClick={() => setConfirming(true)}>
+            </Button>
+            <Button variant="destructive" onClick={() => setConfirming(true)}>
+              <Icon name="trash" />
               Delete project
-            </button>
+            </Button>
           </div>
           {renaming && (
             <form className="inline-form" noValidate onSubmit={saveRename}>
               <div className="field">
                 <label htmlFor="rename-name">New name</label>
-                <input
+                <TextInput
                   id="rename-name"
                   ref={newNameRef}
-                  type="text"
+                  size="large"
                   value={newName}
-                  onChange={(event) => setNewName(event.target.value)}
-                  required
-                  autoFocus
+                  onChange={setNewName}
                   aria-describedby="rename-message"
                   aria-invalid={renameMessage ? true : undefined}
+                  aria-required
                 />
                 <p id="rename-message" className="message error">
                   {renameMessage}
                 </p>
               </div>
               <div className="actions">
-                <button type="button" onClick={closeRename}>
-                  Cancel
-                </button>
-                <button type="submit" className="primary" disabled={saving}>
+                <Button onClick={closeRename}>Cancel</Button>
+                <Button variant="primary" type="submit" disabled={saving}>
                   Save
-                </button>
+                </Button>
               </div>
             </form>
           )}

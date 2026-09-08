@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type JSX } from 'react'
+import Button from './kit/Button'
 
 interface Props {
   open: boolean
@@ -19,7 +20,7 @@ export default function ConfirmDialog({
   onCancel,
 }: Props): JSX.Element {
   const dialogRef = useRef<HTMLDialogElement>(null)
-  const cancelRef = useRef<HTMLButtonElement>(null)
+  const cancelRef = useRef<HTMLElement>(null)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
 
@@ -69,12 +70,12 @@ export default function ConfirmDialog({
         </p>
       )}
       <div className="actions">
-        <button type="button" ref={cancelRef} autoFocus onClick={() => onCancel()}>
+        <Button ref={cancelRef} onClick={() => onCancel()}>
           Cancel
-        </button>
-        <button type="button" className="primary" disabled={busy} onClick={() => void confirm()}>
+        </Button>
+        <Button variant="destructive" disabled={busy} onClick={() => void confirm()}>
           {confirmLabel}
-        </button>
+        </Button>
       </div>
     </dialog>
   )

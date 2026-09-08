@@ -1,209 +1,228 @@
-/* Layout and interaction for the shell. Colours come from tokens.css (the
-   engine's); type and spacing from the block below; nothing is written at a
-   use site (FR-007). */
+/* Layout and components for the shell (docs/DESIGN.md, sections 4, 5, 7
+   and 8.2). Every colour, size and duration is a token from tokens.css,
+   theme.css and scale.css; tests/unit/no-literals.test.ts holds this file
+   to that, so a value written here is a bug. */
 
-:root {
-  --font-body: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --text-small: 0.875rem;
-  --text-base: 1rem;
-  --text-subheading: 1.25rem;
-  --text-heading: 1.5rem;
-  --leading: 1.5;
-  --weight-heading: 600;
-  --space-1: 0.5rem;
-  --space-2: 0.75rem;
-  --space-3: 1rem;
-  --space-4: 1.5rem;
-  --space-5: 2rem;
-  --space-7: 3rem;
-  --radius: 0.5rem;
-  --measure: 40rem;
-  --dialog-measure: 28rem;
-  --border-width: 1px;
-  --focus-width: 3px;
-  --focus-offset: 2px;
-  --backdrop-opacity: 0.6;
-  --panel-transition: background-color 200ms ease;
+/* The root keeps a 16px rem so the kit's rem-based values hold; the
+   interface's own text starts at the body. */
+
+html {
+  margin: 0;
+  min-height: 100%;
+  font-size: var(--root-size);
 }
 
-html,
 body {
   margin: 0;
   min-height: 100%;
-  background: var(--bg);
+  background: var(--surface);
   color: var(--text);
-  font-family: var(--font-body);
-  font-size: var(--text-base);
-  line-height: var(--leading);
+  font-family: var(--font-chrome);
+  font-size: var(--font-ui);
+  line-height: var(--line-ui);
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--selection);
 }
 
 #root {
   min-height: 100vh;
   display: grid;
-  place-items: start center;
-  padding: var(--space-7) var(--space-4);
-  box-sizing: border-box;
+  grid-template-rows: auto 1fr;
+  align-content: start;
 }
 
-/* The engine's status line, above whichever screen is showing. */
+/* The header: the mark, the product name and the engine's status line, on
+   every screen. */
 
 .app-header {
-  width: min(100%, var(--measure));
-  margin-bottom: var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-4-3);
+  height: var(--header-height);
+  padding: 0 var(--space-4-4);
+  border-bottom: var(--border-width) solid var(--border);
+  background: var(--surface);
+  position: sticky;
+  top: 0;
+  z-index: var(--layer-raised);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2-2);
+  font-weight: var(--weight-strong);
 }
 
 .engine-status {
-  margin: 0;
-  font-size: var(--text-small);
-  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2-2);
+  margin: 0 0 0 auto;
+  min-width: 0;
+  font-size: var(--font-ui-small);
+  line-height: var(--line-ui-tight);
+  color: var(--text-muted);
 }
 
-/* The one panel each screen sits in. */
+/* A long reason is cut with an ellipsis on screen; assistive technology
+   still reads the whole sentence. */
+.engine-status span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.engine-status[data-state='ready'] .icon {
+  color: var(--success);
+}
+
+.engine-status[data-state='restarting'] .icon {
+  color: var(--warning);
+}
+
+.engine-status[data-state='unavailable'] .icon,
+.engine-status[data-state='mismatched'] .icon,
+.engine-status[data-state='stopped'] .icon {
+  color: var(--error);
+}
+
+/* A screen: one column at the prose measure. */
 
 .panel {
   width: min(100%, var(--measure));
-  padding: var(--space-4) var(--space-5);
-  border: var(--border-width) solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg-soft);
+  margin: 0 auto;
+  padding: var(--space-4-6) var(--space-4-4);
   box-sizing: border-box;
-  transition: var(--panel-transition);
 }
 
 .panel h1 {
-  margin: 0 0 var(--space-2);
-  font-size: var(--text-heading);
-  font-weight: var(--weight-heading);
+  margin: 0 0 var(--space-4-4);
+  font-size: var(--font-ui-large);
+  line-height: var(--line-ui-large);
+  font-weight: var(--weight-strong);
 }
 
-.panel p {
-  margin: 0 0 var(--space-3);
-}
-
-.panel [role='status'],
-.hint {
-  color: var(--muted);
-}
-
-.notice {
-  color: var(--text);
+.prose {
+  font-family: var(--font-prose);
+  font-size: var(--font-text);
+  line-height: var(--line-text);
 }
 
 .toolbar {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2);
-  margin: 0 0 var(--space-3);
+  align-items: center;
+  gap: var(--space-2-2);
+  margin: 0 0 var(--space-4-4);
 }
 
-/* Controls. Every one shows focus through the global rule at the end. */
-
-button,
-input {
-  font: inherit;
+.notice {
+  margin: 0 0 var(--space-4-3);
   color: var(--text);
 }
 
-button {
-  padding: var(--space-1) var(--space-3);
-  border: var(--border-width) solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg);
-  cursor: pointer;
-  transition: var(--panel-transition);
+.hint,
+.panel [role='status'] {
+  color: var(--text-muted);
 }
 
-button:hover:not(:disabled) {
-  border-color: var(--muted);
+/* The empty state: the mark, one sentence, and the action the toolbar
+   already offers. */
+
+.empty {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-4-3);
+  padding: var(--space-4-6) 0;
 }
 
-button:disabled {
-  color: var(--muted);
-  cursor: not-allowed;
+.empty .icon {
+  color: var(--text-muted);
 }
 
-button.primary {
-  background: var(--text);
-  color: var(--bg);
-  border-color: var(--text);
+.empty p {
+  margin: 0;
 }
 
-button.primary:disabled {
-  background: var(--muted);
-  border-color: var(--muted);
-}
-
-input[type='text'] {
-  width: 100%;
-  padding: var(--space-1) var(--space-2);
-  border: var(--border-width) solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg);
-  box-sizing: border-box;
-}
-
-input[aria-invalid='true'] {
-  border-color: var(--text);
-}
-
-/* The Library's list: each entry is one full-width button. */
+/* Lists: each entry one full-width button, a dense row. */
 
 .entries {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  gap: var(--space-1);
+  border-top: var(--border-width) solid var(--border);
 }
 
 .entry {
-  display: grid;
-  gap: var(--space-1);
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4-3);
   width: 100%;
-  padding: var(--space-2) var(--space-3);
+  min-height: var(--control-height);
+  padding: var(--space-2-2) var(--space-4-2);
+  border: 0;
+  border-bottom: var(--border-width) solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
   text-align: left;
-  background: var(--bg-soft);
+  cursor: pointer;
+  box-sizing: border-box;
 }
 
 .entry:hover {
-  background: var(--bg);
-  border-color: var(--focus);
+  background: var(--surface-hover);
 }
 
 .entry-name {
-  font-size: var(--text-subheading);
-  font-weight: var(--weight-heading);
+  font-weight: var(--weight-strong);
 }
 
 .entry-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-3);
-  color: var(--muted);
-  font-size: var(--text-small);
+  gap: var(--space-4-3);
+  margin-left: auto;
+  font-size: var(--font-ui-small);
+  line-height: var(--line-ui-tight);
+  color: var(--text-faint);
+  font-variant-numeric: var(--numerals);
 }
 
 /* Forms: a field is a label, a control and the message the control
-   references, muted for a hint and full-strength for an error. */
+   references, muted for a hint and in the error colour for an error. */
 
 .field {
   display: grid;
-  gap: var(--space-1);
-  margin: 0 0 var(--space-3);
+  gap: var(--space-2-2);
+  margin: 0 0 var(--space-4-3);
 }
 
 .field label {
-  font-weight: var(--weight-heading);
+  font-weight: var(--weight-strong);
+}
+
+/* A field's control fills its column, so a name is read in full. */
+.field fig-input-text {
+  width: 100%;
 }
 
 .message {
   margin: 0;
-  font-size: var(--text-small);
-  color: var(--muted);
+  font-size: var(--font-ui-small);
+  line-height: var(--line-ui-tight);
+  color: var(--text-muted);
 }
 
 .message.error {
-  color: var(--text);
+  color: var(--error);
 }
 
 .message:empty {
@@ -214,16 +233,16 @@ input[aria-invalid='true'] {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: var(--space-2);
-  margin-top: var(--space-3);
+  gap: var(--space-2-2);
+  margin-top: var(--space-4-4);
 }
 
 .inline-form {
-  margin: 0 0 var(--space-3);
-  padding: var(--space-3);
+  margin: 0 0 var(--space-4-3);
+  padding: var(--space-4-3);
   border: var(--border-width) solid var(--border);
   border-radius: var(--radius);
-  background: var(--bg);
+  background: var(--surface-raised);
 }
 
 /* The project's fields. */
@@ -231,50 +250,153 @@ input[aria-invalid='true'] {
 .fields {
   display: grid;
   grid-template-columns: max-content 1fr;
-  gap: var(--space-1) var(--space-4);
-  margin: 0 0 var(--space-4);
+  gap: var(--space-2-2) var(--space-4-4);
+  margin: 0 0 var(--space-4-4);
 }
 
 .fields dt {
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .fields dd {
   margin: 0;
+  font-variant-numeric: var(--numerals);
 }
 
-/* Dialogs: the native element, opened with showModal(). The backdrop is
-   the page colour made translucent by opacity, since it cannot take an
-   alpha of its own without a colour literal. */
+/* Dialogs: the native element, opened with showModal(). */
 
+/* The kit's stylesheet gives every dialog `inset: auto` for its own
+   popups, which parks a modal in the corner; the browser's centring is
+   restored here. */
 dialog {
-  width: min(calc(100% - 2 * var(--space-5)), var(--dialog-measure));
-  padding: var(--space-4);
+  inset: 0;
+  margin: auto;
+  width: min(calc(100% - 2 * var(--space-4-5)), var(--dialog-width));
+  max-width: none;
+  padding: var(--space-4-4);
   border: var(--border-width) solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg-soft);
+  border-radius: var(--radius-large);
+  background: var(--surface-raised);
   color: var(--text);
   box-sizing: border-box;
 }
 
 dialog h2 {
-  margin: 0 0 var(--space-2);
-  font-size: var(--text-subheading);
-  font-weight: var(--weight-heading);
+  margin: 0 0 var(--space-4-2);
+  font-size: var(--font-ui-medium);
+  line-height: var(--line-ui);
+  font-weight: var(--weight-strong);
 }
 
 dialog p {
-  margin: 0 0 var(--space-3);
+  margin: 0 0 var(--space-4-3);
 }
 
 dialog::backdrop {
-  background: var(--bg);
+  background: var(--surface);
   opacity: var(--backdrop-opacity);
 }
 
+/* Icons take the text's colour and one of two sizes. */
+
+.icon {
+  display: inline-flex;
+  flex: none;
+  width: var(--icon-size);
+  height: var(--icon-size);
+  vertical-align: middle;
+}
+
+.icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.icon-24 {
+  width: var(--icon-size-large);
+  height: var(--icon-size-large);
+}
+
+/* The progress line: stages as ticks on a line, the running one a hollow
+   diamond, a failed one in the error colour (docs/DESIGN.md, section 10).
+   SVG lengths are unitless grid units, not pixels. */
+
+.progress {
+  display: grid;
+  gap: var(--space-2-2);
+}
+
+.progress svg {
+  display: block;
+  max-width: 100%;
+  overflow: visible;
+}
+
+.progress .line {
+  fill: none;
+  stroke: var(--border-strong);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* One square per stage; the state's class shapes it. A tick is the square
+   narrowed, a diamond the square turned, so a state change transitions. */
+.progress .mark {
+  stroke: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  transform-box: fill-box;
+  transform-origin: center;
+  transition:
+    fill var(--duration) var(--easing),
+    stroke var(--duration) var(--easing),
+    transform var(--duration) var(--easing);
+}
+
+.progress .mark-pending {
+  fill: var(--border-strong);
+  transform: scale(0.25, 1.25);
+}
+
+.progress .mark-done {
+  fill: var(--text);
+  transform: scale(0.5, 1.25);
+}
+
+.progress .mark-running {
+  fill: var(--surface);
+  stroke: var(--accent);
+  transform: rotate(45deg) scale(0.85);
+}
+
+.progress .mark-failed {
+  fill: var(--error);
+  stroke: var(--error);
+  transform: rotate(45deg) scale(0.85);
+}
+
+.progress .label {
+  font-family: var(--font-chrome);
+  font-size: var(--font-ui-small);
+  fill: var(--text-faint);
+}
+
+.progress .label-current {
+  fill: var(--text);
+}
+
+.progress-message {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+/* Focus and motion, for everything. */
+
 :focus-visible {
-  outline: var(--focus-width) solid var(--focus);
-  outline-offset: var(--focus-offset);
+  outline: var(--focus-ring-width) solid var(--focus);
+  outline-offset: var(--focus-ring-offset);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -1,0 +1,72 @@
+/*
+ * Tiers 2 and 3 of the design system (docs/DESIGN.md, section 3): a
+ * twelve-step warm ramp interpolated from the brand's background to its
+ * text, and the semantic tokens components use, per theme. The brand's six
+ * live in tokens.css (the engine page's, drift-tested); the theme attribute
+ * is the engine's: none is warm-dark, data-theme="sepia" the light theme.
+ * tests/unit/contrast.test.ts recomputes every pair here against
+ * specs/005-design-system-foundations/contracts/tokens.md.
+ */
+:root {
+  --tone-0: #15120f;
+  --tone-1: #1e1b18;
+  --tone-2: #272420;
+  --tone-3: #322e2b;
+  --tone-4: #3d3936;
+  --tone-5: #4a4743;
+  --tone-6: #5c5854;
+  --tone-7: #726e69;
+  --tone-8: #8f8a85;
+  --tone-9: #b0aba6;
+  --tone-10: #d1ccc6;
+  --tone-11: #f2ede6;
+
+  --surface: var(--bg);
+  --surface-raised: var(--bg-soft);
+  --surface-sunken: var(--tone-2);
+  --surface-hover: var(--tone-2);
+  --surface-selected: var(--tone-3);
+  --border-strong: var(--tone-7);
+  --text-muted: var(--muted);
+  --text-faint: var(--tone-8);
+  --accent: #81a5ff;
+  --accent-text: #81a5ff;
+  --on-accent: #15120f;
+  --success: #5fb37a;
+  --success-strong: #5fb37a;
+  --warning: #e0a83a;
+  --error: #e0574a;
+  --selection: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+:root[data-theme='sepia'] {
+  --tone-0: #f7efe1;
+  --tone-1: #efe7d9;
+  --tone-2: #e7dfd1;
+  --tone-3: #ddd5c8;
+  --tone-4: #d3cabe;
+  --tone-5: #c7beb2;
+  --tone-6: #b6aea2;
+  --tone-7: #a29a8f;
+  --tone-8: #887f75;
+  --tone-9: #6a6158;
+  --tone-10: #4b423a;
+  --tone-11: #2d241d;
+
+  --surface: var(--bg);
+  --surface-raised: var(--bg-soft);
+  --surface-sunken: var(--tone-2);
+  --surface-hover: var(--tone-1);
+  --surface-selected: var(--tone-3);
+  --border-strong: var(--tone-8);
+  --text-muted: var(--muted);
+  --text-faint: var(--tone-9);
+  --accent: #4068cf;
+  --accent-text: #2f56b8;
+  --on-accent: #f2ede6;
+  --success: #2f7a4f;
+  --success-strong: #276a44;
+  --warning: #8a5a10;
+  --error: #b3261e;
+  --selection: color-mix(in srgb, var(--accent) 25%, transparent);
+}

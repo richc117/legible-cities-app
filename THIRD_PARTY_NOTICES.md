@@ -11,7 +11,9 @@ intended build.
 | LOOM (planned) | Schematisation: `gtfs2graph`, `topo`, `loom`, `octi`, shipped as native binaries built in this repository's CI from a pinned commit | GPL-3.0 | https://github.com/ad-freiburg/loom |
 | LOOM Windows compatibility changes, by Transport for Cairo | Building LOOM under MSYS2 on Windows. At build time the vendor workflow takes `win_compat.h` and five `cppgtfs` files (the `timezone` identifier rename) from the port at the commit pinned in `vendor/pins.json`, and applies the port's other documented changes to our own tree with `scripts/loom-windows-patch.py`. Shims only; the port states, and our parity check assumes, no change to LOOM's algorithms | GPL-3.0 | https://github.com/transportforcairo/loom-windows-port |
 | `legible-cities` engine (planned) | The Python pipeline: feeds, rendering, scheduling, animation, export | To be released under GPL-3.0-or-later; its repository does not yet carry a licence file, and nothing is bundled until it does | https://github.com/richc117/legible-cities |
-| Esri Calcite UI icons | View-switcher icons inside the engine's animation page; redistributed **unmodified** as the licence requires | Esri Master License Agreement | https://github.com/Esri/calcite-ui-icons |
+| Esri Calcite UI icons | Four view-switcher icons inside the engine's animation page, which the app embeds; the engine redistributes them **unmodified** with the agreement's notice, and its issue E16 replaces them with Phosphor (ADR-026). The app's own tree carries none | Esri Master License Agreement | https://github.com/Esri/calcite-ui-icons |
+| FigUI3 core | The interface's control kit: `fig.css` and `fig.js` of `@rogieking/figui3` **9.0.0**, pinned exactly. The package is split-licensed and its `package.json` says only "SEE LICENSE IN LICENSE": the core is MIT; the editor and lab bundles are PolyForm Shield 1.0.0 and are never imported (the build refuses them, `scripts/figui-guard.ts`; ADR-026). The core vendors `@ungap/custom-elements-builtin` (ISC) | MIT (core); ISC (the vendored polyfill) | https://github.com/rogie/figui3 |
+| Phosphor Icons | The interface's icons, vendored unmodified from `@phosphor-icons/core` **2.1.1** under `src/renderer/src/icons/phosphor/` with the licence beside them; the light weight at 16px, the regular at 24px, the fill weight for toggled states | MIT | https://github.com/phosphor-icons/core |
 | FFmpeg (planned) | Encoding MP4 and GIF exports; a GPL build because it links x264 | GPL-2.0-or-later (this build; LGPL-2.1-or-later without `--enable-gpl`) | https://git.ffmpeg.org/ffmpeg.git |
 | x264 (planned) | H.264 encoder linked into the FFmpeg build | GPL-2.0-or-later | https://code.videolan.org/videolan/x264 |
 | Electron | Application shell; includes Chromium and Node.js under their own licences. Pinned in `package.json` | MIT | https://www.electronjs.org/ |
@@ -35,8 +37,36 @@ intended build.
   binaries, together with the build scripts and the FFmpeg configure line
   used. The installed app ships `LICENSE` and this file and shows them in
   its Licences screen.
-- **Esri Calcite UI icons**: redistributed without modification, with this
-  notice, which the engine also keeps beside the files:
+- **FigUI3 core and Phosphor Icons** (MIT): the kit is compiled into the
+  interface and the icons are inlined into it, so neither licence file
+  reaches the built app on its own; this file, which the installed app
+  ships and its Licences screen shows, carries the notices instead. The
+  kit is a build-time dependency on purpose: the packager copies every
+  production dependency whole, and the package's other half is not ours to
+  ship.
+
+  > FigUI3 core: Copyright (c) 2026 Rogie King
+  >
+  > Phosphor Icons: Copyright (c) 2023 Phosphor Icons
+  >
+  > Permission is hereby granted, free of charge, to any person obtaining a
+  > copy of this software and associated documentation files (the
+  > "Software"), to deal in the Software without restriction, including
+  > without limitation the rights to use, copy, modify, merge, publish,
+  > distribute, sublicense, and/or sell copies of the Software, and to
+  > permit persons to whom the Software is furnished to do so, subject to
+  > the following conditions: The above copyright notice and this
+  > permission notice shall be included in all copies or substantial
+  > portions of the Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT
+  > WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+  > THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+  > NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+  > LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+  > OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+  > WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+- **Esri Calcite UI icons**: inside the engine's page only, redistributed
+  without modification, with this notice, which the engine keeps beside the
+  files:
 
   > COPYRIGHT Esri. All rights reserved under the copyright laws of the United
   > States and applicable international laws, treaties, and conventions. This

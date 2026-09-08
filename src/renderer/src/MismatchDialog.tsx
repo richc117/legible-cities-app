@@ -1,5 +1,6 @@
 import { useEffect, useRef, type JSX } from 'react'
 import type { EnginePin } from '../../shared/engine'
+import Button from './kit/Button'
 
 interface Props {
   open: boolean
@@ -15,7 +16,7 @@ interface Props {
 // status line keeps saying it after this is dismissed.
 export default function MismatchDialog({ open, expected, found, onClose }: Props): JSX.Element {
   const dialogRef = useRef<HTMLDialogElement>(null)
-  const okRef = useRef<HTMLButtonElement>(null)
+  const okRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
     const dialog = dialogRef.current
@@ -44,9 +45,9 @@ export default function MismatchDialog({ open, expected, found, onClose }: Props
         environment with engine {expected.version}.
       </p>
       <div className="actions">
-        <button type="button" className="primary" ref={okRef} autoFocus onClick={() => onClose()}>
+        <Button variant="primary" ref={okRef} onClick={() => onClose()}>
           OK
-        </button>
+        </Button>
       </div>
     </dialog>
   )

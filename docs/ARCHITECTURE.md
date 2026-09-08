@@ -219,19 +219,53 @@ bug report.
 
 ## Design tokens
 
-`src/renderer/src/styles/tokens.css` is a verbatim copy of the two theme
-blocks in the engine's animation page, warm-dark and sepia. The page is the
-source of truth (principle II); a unit test fails when the copy drifts from
-the checkout named by `LEGIBLE_ENGINE_CHECKOUT`, and skips with a message
-where no checkout is configured. The theme follows the operating system's
-light or dark preference; a switch arrives with A4-03.
+Four stylesheets, loaded from `src/renderer/src/main.tsx` in this order,
+each building on the one before; the design system they implement is
+[`docs/DESIGN.md`](DESIGN.md), and every interface issue cites it.
 
-Those six colours per theme are the first tier of the design system in
-[`docs/DESIGN.md`](DESIGN.md): the ramp, the semantic tokens, the two
-type tracks, the 4px grid, the control kit (FigUI3's MIT core behind an
-adapter), the iconography and the motifs the interface may borrow from
-Beck's diagram are all specified there, and every interface issue cites
-it. Applying it to the existing screens is its own issue (section 14).
+| File | Holds |
+|---|---|
+| `styles/tokens.css` | a verbatim copy of the two theme blocks in the engine's animation page, warm-dark and sepia: six colours per theme, the brand's. The page is the source of truth (principle II); a unit test fails when the copy drifts from the checkout named by `LEGIBLE_ENGINE_CHECKOUT`, and skips with a message where no checkout is configured |
+| `styles/theme.css` | the twelve-step warm ramp derived from those six, and the semantic tokens on top of it (surfaces, borders, muted text, the accent, success, warning, error, selection), declared once per theme |
+| `styles/scale.css` | everything that is not a colour: the two type tracks, the 4px spacing grid, control heights, radii, layers, motion |
+| `styles/figui-adapter.css` | the mapping from the app's tokens onto the control kit's own variables, so a kit control is drawn in the app's colours and at the app's sizes without a rule of its own |
+
+The theme attribute is the engine's: `data-theme="sepia"` for light, no
+attribute for warm-dark, following the operating system's preference until
+a switch arrives with A4-03. Two unit tests keep the system honest: one
+recomputes the WCAG contrast of every text and control pair named in the
+design document in both themes and fails under the thresholds; the other
+scans the renderer's sources and fails on a colour, size or duration
+literal outside the four token files, so a component can only be drawn in
+tokens.
+
+The control kit is the MIT core of FigUI3 (`@rogieking/figui3`, pinned
+exactly; ADR-026), imported from `kit/index.ts` and nowhere else: its
+stylesheet and the script that registers the custom elements. The
+package's editor and lab bundles are PolyForm Shield licensed, and a Vite
+plugin (`scripts/figui-guard.ts`) refuses any import of them at build time
+with the decision's sentence, so the wrong half cannot ship by accident.
+The kit injects its styles into each element's shadow root, which is why
+the renderer's Content Security Policy allows inline styles and nothing
+else inline (`specs/001-electron-skeleton/contracts/origin.md`). The
+renderer reaches the kit through three thin wrappers (`kit/Button.tsx`,
+`TextInput.tsx`, `Select.tsx`) that own the custom element's attributes
+and listeners, because React sets an unknown attribute as a property and
+the kit reads attributes; the select is the native element, styled with
+the tokens (ADR-026).
+
+Icons are Phosphor (ADR-026), vendored as plain SVG files under
+`icons/phosphor/` with their licence: the light weight at 16px and the
+regular weight at 24px, plus the filled play and pause. `icons/Icon.tsx`
+inlines them as markup so they take `currentColor`, hidden from assistive
+technology unless given a label. The mark, `icons/mark.svg`, is the
+design document's 45-degree join with a hollow interchange diamond, drawn
+by hand; `scripts/render-icon.sh` renders it on the sepia ground into
+`build/icon.png`, the committed application icon. The progress line
+(`ProgressLine.tsx`) is the first of the document's Beck motifs on screen:
+one line with a tick per pipeline stage, a filled mark for a stage that
+has run, a hollow diamond for the one running, drawn from the tokens and
+described to assistive technology as one sentence.
 
 ## Checks
 
@@ -250,7 +284,15 @@ configuration parsing, the tokens, the record's validators and versioning,
 the store against a temporary directory, the JSON-RPC framing, the
 interpreter resolution and the environment allowlist, the supervisor
 against the stand-in as a real child process, and the engine bridge's main
-side. The hygiene checks (`gitleaks`, `bin/preflight`) run beside them.
+side. The design system's own tests recompute the WCAG contrast of every
+token pair the design document names, in both themes, and check the
+document's stated ratios against the arithmetic; refuse a colour, size or
+duration literal in a component file; prove the build guard refuses the
+kit's PolyForm half and that the kit is a build-time dependency; check
+every vendored icon; and render the progress line's four states. The
+design end-to-end test reads the computed sizes and the focus ring of the
+kit's controls in both themes, tabs through a dialog and closes it with
+Escape. The hygiene checks (`gitleaks`, `bin/preflight`) run beside them.
 
 ## Deliberately absent
 

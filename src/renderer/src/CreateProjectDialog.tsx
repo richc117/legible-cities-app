@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent, type JSX } from 'react'
 import type { CreateProjectInput } from '../../shared/api'
 import { DEFAULT_FEED, validateFeedKey, validateName } from '../../shared/project'
+import Button from './kit/Button'
+import TextInput, { type TextInputHandle } from './kit/TextInput'
 
 interface Props {
   open: boolean
@@ -21,8 +23,8 @@ function fieldFor(message: string): Field {
 
 export default function CreateProjectDialog({ open, onCreate, onCancel }: Props): JSX.Element {
   const dialogRef = useRef<HTMLDialogElement>(null)
-  const nameRef = useRef<HTMLInputElement>(null)
-  const feedRef = useRef<HTMLInputElement>(null)
+  const nameRef = useRef<TextInputHandle>(null)
+  const feedRef = useRef<TextInputHandle>(null)
   const [name, setName] = useState('')
   const [feed, setFeed] = useState(DEFAULT_FEED)
   const [messages, setMessages] = useState<Messages>({})
@@ -98,16 +100,15 @@ export default function CreateProjectDialog({ open, onCreate, onCancel }: Props)
         </p>
         <div className="field">
           <label htmlFor="create-name">Name</label>
-          <input
+          <TextInput
             id="create-name"
             ref={nameRef}
-            type="text"
+            size="large"
             value={name}
-            onChange={(event) => setName(event.target.value)}
-            required
-            autoFocus
+            onChange={setName}
             aria-describedby="create-name-message"
             aria-invalid={messages.name ? true : undefined}
+            aria-required
           />
           <p id="create-name-message" className="message error">
             {messages.name}
@@ -115,15 +116,13 @@ export default function CreateProjectDialog({ open, onCreate, onCancel }: Props)
         </div>
         <div className="field">
           <label htmlFor="create-feed">Feed key</label>
-          <input
+          <TextInput
             id="create-feed"
             ref={feedRef}
-            type="text"
+            size="large"
             value={feed}
-            onChange={(event) => setFeed(event.target.value)}
+            onChange={setFeed}
             spellCheck={false}
-            autoCapitalize="off"
-            autoCorrect="off"
             aria-describedby="create-feed-message"
             aria-invalid={messages.feed ? true : undefined}
           />
@@ -132,12 +131,10 @@ export default function CreateProjectDialog({ open, onCreate, onCancel }: Props)
           </p>
         </div>
         <div className="actions">
-          <button type="button" onClick={() => onCancel()}>
-            Cancel
-          </button>
-          <button type="submit" className="primary" disabled={busy}>
+          <Button onClick={() => onCancel()}>Cancel</Button>
+          <Button variant="primary" type="submit" disabled={busy}>
             Create
-          </button>
+          </Button>
         </div>
       </form>
     </dialog>

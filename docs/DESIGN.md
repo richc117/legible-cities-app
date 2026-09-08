@@ -136,9 +136,10 @@ status colour as the text.
   "the red line means error".
 - Every colour in the app is a token. A hex value in a component file is a
   bug; the contrast test reads the token file.
-- Themes are set explicitly on `<html data-theme="dark|light">` by the app's
-  setting (A1-04), defaulting to warm-dark; `prefers-color-scheme` is read
-  once for the default and never overrides a choice.
+- The theme attribute is the engine's: no attribute is warm-dark and
+  `data-theme="sepia"` is the light theme, on `<html>`, as the engine page
+  and the copied tokens already do. The OS preference chooses until the
+  setting arrives (A1-04); a chosen theme is never overridden by it.
 - Elevation is expressed by surface step and a 1px border, never by a
   shadow larger than 0 1px 2px at 20% black; the engine's page is flat and
   the app sits beside it.
@@ -313,7 +314,8 @@ its core is adoptable under the app's licence. Verified at 9.0.0
 **Adoption rules.**
 
 1. Import only `@rogieking/figui3/fig.css` and `@rogieking/figui3/fig.js`,
-   pinned at 9.0.0; a CI grep refuses any `fig-editor` or `fig-lab` import.
+   pinned at 9.0.0 as a build-time dependency, so packaging copies none of
+   it; a guard in the build refuses any `fig-editor` or `fig-lab` import.
    The select control is the native `<select>` styled with the tokens
    (ADR-026); `<fig-select>` is in the editor bundle and is not used.
    Its popup renders in the platform's own style, which is accepted.
@@ -346,7 +348,7 @@ not used:
 | Component | Rule |
 |---|---|
 | Dialogs | native `<dialog>` with `showModal()`, as the create, confirm and mismatch dialogs already are; title 15px, body prose track, actions right-aligned, the safe action focused first, Escape cancels; width `--dialog-width` |
-| Lists (Library, feeds, jobs) | rows of `--control-height`, 13px, name in `--text`, meta in `--text-faint` at 12px, the whole row a button, `--surface-hover` and `--surface-selected`, a 1px `--border` between groups only |
+| Lists (Library, feeds, jobs) | rows of `--control-height`, 13px, name in `--text`, meta in `--text-faint` at 12px (`--text-muted` on a selected row, where faint falls under 4.5), the whole row a button, `--surface-hover` and `--surface-selected`, a 1px `--border` between groups only |
 | Status line | one line, 12px, `role="status"` `aria-live="polite"`, a 16px icon for the state, never animated; sits in the header on every screen |
 | Progress and steps | the Beck vocabulary (section 10): a line with ticks per stage, the current stage a hollow diamond in `--accent`, done stages filled, the sentence from the engine beside it at 13px; cancel is a text button to the right |
 | Toolbar | 24px controls in a row with `--space-2-2` gaps, segmented groups as pills, labels visible at 13px until the window is narrower than 720px, then icons with tooltips |
@@ -435,7 +437,7 @@ Settled here:
   `:has()`, container queries and relative colour syntax (full since
   Chromium 131), so nothing is missing. Files: `tokens.css` (the brand six
   per theme, copied from the engine page, drift-tested), `theme.css` (the
-  ramp and the semantic tokens per theme, on `:root[data-theme=...]`),
+  ramp and the semantic tokens per theme, on `:root` and `:root[data-theme="sepia"]`), `scale.css` (type, space, sizes, motion),
   `figui-adapter.css`. The DTCG format (2025.10, a stable Community Group
   report, not a W3C standard) and a build with Style Dictionary 5.5.3
   (Apache-2.0) or Terrazzo 2.7.1 (MIT) become worth it only when a third
@@ -462,7 +464,7 @@ interface on the old scaffolding:
    over every pair in both themes, and the header, status line, dialogs
    and Library restyled to sections 3 to 5 and 8.2.
 2. FigUI3 core pinned, the adapter, the wrappers for the controls the
-   Library and dialogs use, the CI grep, the notices entry.
+   Library and dialogs use, the build guard, the notices entry.
 3. Phosphor vendored as plain SVG files with its notice; the status line
    and toolbar take their icons; the mark drawn.
 4. The progress component (section 10), ready for A3-01.
