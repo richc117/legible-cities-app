@@ -69,7 +69,8 @@ npm run test:e2e      # Playwright launches the built app and quits it
 
 On Linux the last one needs a display server: `xvfb-run -a npm run test:e2e`.
 `specs/001-electron-skeleton/quickstart.md` walks through what each run
-proves.
+proves. `docs/ARCHITECTURE.md` says what exists; `docs/DESIGN.md` says what
+it looks like and why.
 
 ## Contributing
 

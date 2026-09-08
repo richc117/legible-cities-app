@@ -226,6 +226,13 @@ the checkout named by `LEGIBLE_ENGINE_CHECKOUT`, and skips with a message
 where no checkout is configured. The theme follows the operating system's
 light or dark preference; a switch arrives with A4-03.
 
+Those six colours per theme are the first tier of the design system in
+[`docs/DESIGN.md`](DESIGN.md): the ramp, the semantic tokens, the two
+type tracks, the 4px grid, the control kit (FigUI3's MIT core behind an
+adapter), the iconography and the motifs the interface may borrow from
+Beck's diagram are all specified there, and every interface issue cites
+it. Applying it to the existing screens is its own issue (section 14).
+
 ## Checks
 
 `.github/workflows/ci.yml` runs on Ubuntu, macOS and Windows for every push
