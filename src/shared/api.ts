@@ -5,6 +5,7 @@
 
 import type { EngineErrorShape, EngineState, JobLog, JobProgress } from './engine'
 import type { LayoutDone, LayoutResult } from './layout'
+import type { ViewerMethod } from './viewer'
 import type { CreateProjectInput, DeleteResult, ProjectRecord, ProjectSummary } from './project'
 
 export type { CreateProjectInput, DeleteResult, ProjectRecord, ProjectSummary } from './project'
@@ -43,6 +44,18 @@ export interface Api {
      */
     completeLayout(id: string, done: LayoutDone): Promise<LayoutResult>
   }
+  /**
+   * The map on the screen. The page runs in a sandboxed frame at an opaque
+   * origin and cannot reach any of this; the app reaches into it from the
+   * privileged process instead (ADR-028).
+   */
+  viewer: {
+    /** Hold the frame showing this project. False if it is not there. */
+    attach(projectId: string): Promise<boolean>
+    release(): Promise<void>
+    /** One of the page's own methods, with its arguments. */
+    call(method: ViewerMethod, ...args: unknown[]): Promise<unknown>
+  }
   // Untyped beyond "a method name and an object" on purpose: the bridge is
   // transport and should not know the engine's methods. The typed client
   // over it is `src/renderer/src/engine/client.ts`, whose types are
@@ -65,6 +78,9 @@ export const CHANNELS = {
   projectsRename: 'projects:rename',
   projectsDelete: 'projects:delete',
   projectsCompleteLayout: 'projects:complete-layout',
+  viewerAttach: 'viewer:attach',
+  viewerRelease: 'viewer:release',
+  viewerCall: 'viewer:call',
   engineState: 'engine:state',
   engineRequest: 'engine:request',
   engineCancel: 'engine:cancel',

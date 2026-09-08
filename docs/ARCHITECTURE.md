@@ -54,9 +54,12 @@ a traversal. Refusals are 403 or 404 with a one-word body and never a
 path. The full contract:
 `specs/001-electron-skeleton/contracts/origin.md`.
 
-The reason for one origin is the viewer (planned, A3-02): the engine's page
-is embedded in an iframe and driven through `iframe.contentWindow.__present`,
-which a cross-origin frame hides (ADR-013).
+One origin is what the app has; it is no longer what makes the viewer work.
+ADR-013 said a parent can drive a framed page only when the two share an
+origin, and A3-02 found that false: the main process injects into a frame's
+main world whatever its origin, and the sandbox does not stop it. So the
+viewer's frame is sandboxed to an opaque origin instead, and the app reaches
+into it from the privileged side (ADR-028).
 
 ## The bridge: `window.api`
 
@@ -386,6 +389,45 @@ stored day for every later build. Choosing a *good* day, rather than merely
 a fixed one, needs the feed's service window, which arrives with the engine
 issues behind A3-04.
 
+## The viewer
+
+A project that has a layout shows the page the engine wrote for it, in a
+frame, filling the region it is given. The app draws no part of the map
+(principle I) and puts no chrome over the page: its own controls are the
+controls.
+
+The frame carries `sandbox="allow-scripts"` and nothing else, so the page
+runs at an opaque origin. **`allow-same-origin` must never be added beside
+it**: one word restores the page's origin, and a page with both can read the
+bridge, call it and remove its own sandbox attribute. That is not a
+hypothetical. Before this feature a page in a plain frame read `parent.api`
+and called it, listing every project and reading the engine's state, and the
+main-process frame check could not see it, because the bridge's functions
+run in the frame that exposed them.
+
+That matters because the page is not the app's and is not trusted. The
+engine embeds each project's line and station names in it, and those come
+from a transit feed fetched over the network.
+
+The app drives the page from the main process. `src/main/viewer.ts` holds
+the frame by identity from the moment the interface attaches it, never looks
+one up by address at the moment of use, and refuses to inject into the
+interface's own frame under any circumstance. A call names one of the
+methods the page exposes, checked against that list before a character is
+sent, and its arguments go in as data inside a dispatcher the app wrote.
+What comes back is data from a page we do not trust, and a page that throws
+becomes a sentence.
+
+Generated pages are served with a policy of their own, written fresh: the
+interface's forbids being framed and would block the viewer outright. The
+window refuses to open a window and refuses to be navigated away.
+
+Reading the page's state is therefore a round trip through the main process
+rather than a property access. That is fine for a control and wrong for a
+live clock, which would need polling. Contracts:
+`specs/008-viewer/contracts/viewer.md`; the decision and what it corrects:
+ADR-028.
+
 ## Checks
 
 `.github/workflows/ci.yml` runs on Ubuntu, macOS and Windows for every push
@@ -405,10 +447,14 @@ interpreter resolution and the environment allowlist, the supervisor
 against the stand-in as a real child process, the engine bridge's main
 side, the protocol's fingerprint and the reproducibility of its generated
 types, the typed client against a stub bridge, the layout identifier and the
-paths it refuses, and the layout run's state machine against a stub. A fourth
-Playwright suite drives a layout against the stand-in: the stages on screen,
+paths it refuses, the layout run's state machine against a stub, and the
+viewer's method list and frame discipline. One Playwright
+suite drives a layout against the stand-in: the stages on screen,
 what a completed run writes, that a cancelled one writes nothing and can be
-repeated, and that no path reaches the screen. One further test lays a
+repeated, and that no path reaches the screen. Another loads a hostile page
+in the viewer's frame and asserts it cannot read or call the bridge, reach
+the interface's document, navigate the window or open one, and that the
+frame's sandbox is exactly the one flag. One further test lays a
 project out against the real engine and asserts the eight stage names in
 order; it needs a checkout with a warm layout cache and skips, saying so,
 without one, so it never runs in continuous integration. The design system's own tests recompute the WCAG contrast of every

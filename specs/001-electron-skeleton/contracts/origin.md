@@ -2,8 +2,14 @@
 
 Registered with `protocol.registerSchemesAsPrivileged` before the app is
 ready, handled with `protocol.handle("app", …)` in the main process. One
-scheme, one host, so the interface and a project page are same-origin and a
-later feature can reach `iframe.contentWindow.__present` (ADR-013).
+scheme, one host, for the interface and for generated project pages.
+
+The original reason for that was wrong. ADR-013 said the two had to share an
+origin so a later feature could reach `iframe.contentWindow`; A3-02 found
+that a parent never needed to, because the main process injects into a
+frame's main world whatever its origin. The viewer's frame is sandboxed to
+an opaque origin, and generated pages are served with a policy of their own
+rather than the interface's (ADR-028).
 
 ## Routes
 

@@ -36,3 +36,8 @@ Thumbs.db
 # The stand-in engine is Python; the Python bytecode cache has no place here.
 __pycache__/
 *.pyc
+
+# Scratch probes. bin/preflight reads the index, not the working tree, so a
+# stray file here would be invisible to it until the moment it was staged.
+*.tmp.*
+probe*.mjs

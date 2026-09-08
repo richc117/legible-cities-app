@@ -6,7 +6,7 @@
 // is one a person can read and none carries a path.
 // Contract: specs/003-project/contracts/bridge.md.
 
-import type { IpcMain, IpcMainInvokeEvent } from 'electron'
+import type { IpcMain, IpcMainInvokeEvent, WebContents } from 'electron'
 import { CHANNELS } from '../shared/api'
 import {
   validateAgency,
@@ -19,6 +19,7 @@ import {
 } from '../shared/project'
 import type { LayoutDone } from '../shared/layout'
 import type { ProjectStore } from './projects'
+import type { Viewer } from './viewer'
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -69,6 +70,38 @@ function readCreateInput(raw: unknown): CreateProjectInput {
   if (typeof agency !== 'string' && agency !== null) throw new Error('agency must be text')
   check(validateAgency(agency))
   return { name, feed, mode, agency }
+}
+
+/**
+ * The viewer's three. Separate from the projects' because they need the
+ * window's own web contents: the frame the app drives is a child of it, and
+ * holding it by identity is what keeps a page from being addressed by its
+ * URL at the moment of use (ADR-028).
+ */
+export function registerViewerHandlers(
+  ipcMain: IpcMain,
+  viewer: Viewer,
+  contentsFor: (event: IpcMainInvokeEvent) => WebContents | null,
+  isTopFrame: (event: IpcMainInvokeEvent) => boolean,
+): void {
+  const handle = (channel: string, handler: (...a: unknown[]) => Promise<unknown>): void => {
+    ipcMain.handle(channel, async (event, ...args: unknown[]) => {
+      if (!isTopFrame(event)) throw new Error('forbidden')
+      const contents = contentsFor(event)
+      if (contents === null) throw new Error('the window has gone')
+      return handler(contents, ...args)
+    })
+  }
+  handle(CHANNELS.viewerAttach, async (contents, id) =>
+    viewer.attach(contents as WebContents, readId(id)),
+  )
+  handle(CHANNELS.viewerRelease, async () => {
+    viewer.release()
+  })
+  handle(CHANNELS.viewerCall, async (contents, method, args) => {
+    if (typeof method !== 'string') throw new Error('the map needs to be told what to do')
+    return viewer.call(contents as WebContents, method, Array.isArray(args) ? args : [])
+  })
 }
 
 export function registerProjectHandlers(

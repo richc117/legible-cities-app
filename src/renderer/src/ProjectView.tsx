@@ -4,6 +4,7 @@ import { shortLayoutId } from '../../shared/layout'
 import { validateName } from '../../shared/project'
 import ConfirmDialog from './ConfirmDialog'
 import { layoutRunFor } from './engine/runs'
+import Viewer from './Viewer'
 import Icon from './icons/Icon'
 import Button from './kit/Button'
 import LayoutRunView from './LayoutRun'
@@ -197,6 +198,7 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
             </dd>
           </dl>
           {!project.readOnly && <LayoutRunView run={run} project={project} engine={engine} />}
+          {project.layout !== null && <Viewer project={project} />}
           <div className="toolbar">
             <Button
               ref={renameButtonRef}

@@ -5,15 +5,16 @@
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { app, BrowserWindow, ipcMain, protocol } from 'electron'
+import { app, BrowserWindow, ipcMain, protocol, session } from 'electron'
 import pins from '../../vendor/pins.json'
 import { CHANNELS } from '../shared/api'
 import { describeConfig, resolveConfig, type Config } from './config'
 import { registerEngineHandlers } from './engine-ipc'
 import { engineCommand, engineEnvironment, resolveInterpreter } from './interpreter'
-import { registerProjectHandlers } from './ipc'
+import { registerProjectHandlers, registerViewerHandlers } from './ipc'
 import { log } from './log'
 import { ProjectStore } from './projects'
+import { Viewer } from './viewer'
 import { registerAppProtocol } from './protocol'
 import { Sidecar } from './sidecar'
 
@@ -47,6 +48,42 @@ function createWindow(): BrowserWindow {
       sandbox: true,
     },
   })
+  // Nothing this app shows may open a window or move the one it has. The
+  // viewer's frame is sandboxed and cannot do either (ADR-028); these are
+  // the window's own refusals, so a route nobody thought of is refused too.
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    // The denial comes first: `window.open('')` hands us a url that is not
+    // one, and a throw here would leave a security decision unmade.
+    let scheme: string
+    try {
+      scheme = new URL(url).protocol
+    } catch {
+      scheme = 'no scheme'
+    }
+    log.warn('window', `refused to open a window (${scheme})`)
+    return { action: 'deny' }
+  })
+  // Safe as a prefix because the scheme is registered `standard: true`, so
+  // Chromium canonicalises before these fire: `…/ui/../projects/x` arrives
+  // as `…/projects/x`, and `…/ui@evil` fails the trailing slash.
+  const ORIGIN = 'app://local/'
+  const allowed = 'app://local/ui/'
+  window.webContents.on('will-navigate', (event, url) => {
+    if (url.startsWith(allowed)) return
+    event.preventDefault()
+    log.warn('window', 'refused to navigate the interface away')
+  })
+  // A frame may load and reload its own page, and nothing else. The sandbox
+  // does not stop a frame navigating *itself*, and the interface's own
+  // `default-src` happens to cover it through the frame-src fallback; this
+  // says so directly, so the containment does not rest on a fallback three
+  // hundred lines away. It also refuses a file dropped onto the viewer.
+  window.webContents.on('will-frame-navigate', (event) => {
+    if (event.url.startsWith(ORIGIN)) return
+    event.preventDefault()
+    log.warn('window', 'refused a frame trying to leave the origin')
+  })
+
   window.on('ready-to-show', () => window.show())
   // The page must not rename the window; the title is a contract (FR-003).
   window.on('page-title-updated', (event) => event.preventDefault())
@@ -147,6 +184,13 @@ if (!hasLock) {
     const isTopFrame = (event: Electron.IpcMainInvokeEvent): boolean =>
       mainWindow !== null && event.senderFrame === mainWindow.webContents.mainFrame
     registerProjectHandlers(ipcMain, store, isTopFrame)
+    const viewer = new Viewer((m) => log.warn('viewer', m))
+    registerViewerHandlers(
+      ipcMain,
+      viewer,
+      () => (mainWindow === null || mainWindow.isDestroyed() ? null : mainWindow.webContents),
+      isTopFrame,
+    )
     registerEngineHandlers(
       ipcMain,
       engine,
@@ -157,6 +201,15 @@ if (!hasLock) {
       },
       (message) => log.warn('engine', message),
     )
+    // Electron grants a permission request by default. Nothing this app
+    // shows has any business asking for one, and the viewer's page least of
+    // all; the cost of saying so is three lines.
+    session.defaultSession.setPermissionRequestHandler((_contents, permission, callback) => {
+      log.warn('window', `refused a request for ${permission}`)
+      callback(false)
+    })
+    session.defaultSession.setPermissionCheckHandler(() => false)
+
     registerAppProtocol({
       // Development only: a packaged build never proxies anything, whatever
       // its environment says (FR-009, FR-034).
