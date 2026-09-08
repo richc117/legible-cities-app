@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState, type FormEvent, type JSX } from 'react'
 import type { DeleteResult, ProjectRecord } from '../../shared/api'
+import { shortLayoutId } from '../../shared/layout'
 import { validateName } from '../../shared/project'
 import ConfirmDialog from './ConfirmDialog'
+import { layoutRunFor } from './engine/runs'
 import Icon from './icons/Icon'
 import Button from './kit/Button'
+import LayoutRunView from './LayoutRun'
 import TextInput, { type TextInputHandle } from './kit/TextInput'
+import { useEngineState } from './useEngineState'
 
 type Project = ProjectRecord & { readOnly: boolean }
 type ViewState =
@@ -46,7 +50,31 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
   const [renameMessage, setRenameMessage] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [confirming, setConfirming] = useState(false)
+  const engine = useEngineState()
   const headingRef = useRef<HTMLHeadingElement>(null)
+
+  // One run per project, made once. It reads the record and the engine's
+  // state through refs when it starts, so writing the record at the end of a
+  // run does not rebuild the run and discard the outcome it just produced.
+
+  // The run belongs to the project, not to this view: a person can start a
+  // layout, go back to the Library and come back to one still running.
+  const run = layoutRunFor(id)
+
+  // When a run finishes it has written the record; read it back so the
+  // screen shows the layout and the day it just stored.
+  useEffect(() => {
+    let previous = run.snapshot.state
+    return run.subscribe((snapshot) => {
+      if (snapshot.state === 'done' && previous !== 'done') {
+        window.api.projects.get(id).then(
+          (project) => setState({ status: 'ready', project }),
+          () => undefined,
+        )
+      }
+      previous = snapshot.state
+    })
+  }, [id, run])
   const renameButtonRef = useRef<HTMLElement>(null)
   const newNameRef = useRef<TextInputHandle>(null)
 
@@ -156,7 +184,7 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
             <dt>Service day</dt>
             <dd>{project.date ?? 'not yet chosen'}</dd>
             <dt>Layout</dt>
-            <dd>{project.layout ?? 'not laid out yet'}</dd>
+            <dd>{project.layout === null ? 'not laid out yet' : shortLayoutId(project.layout)}</dd>
             <dt>Theme</dt>
             <dd>{project.theme}</dd>
             <dt>Created</dt>
@@ -168,6 +196,7 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
               <Time iso={project.modified} />
             </dd>
           </dl>
+          {!project.readOnly && <LayoutRunView run={run} project={project} engine={engine} />}
           <div className="toolbar">
             <Button
               ref={renameButtonRef}

@@ -27,7 +27,10 @@ import {
   type DeleteResult,
   type ProjectRecord,
   type ProjectSummary,
+  validateServiceDate,
 } from '../shared/project'
+import type { LayoutDone, LayoutResult } from '../shared/layout'
+import { layoutIdentity } from './layout'
 import { isValidProjectId } from './paths'
 
 const RECORD_FILE = 'project.json'
@@ -81,7 +84,7 @@ export class ProjectStore {
 
   /** Both folders derive from the engine home, so neither can be handed a stray path. */
   constructor(
-    home: string,
+    private readonly home: string,
     private readonly log: (message: string) => void,
   ) {
     this.root = join(home, 'projects')
@@ -275,6 +278,33 @@ export class ProjectStore {
     }
     await this.writeAtomic(id, updated)
     return updated
+  }
+
+  /**
+   * A run finished: the layout it was drawn from, the day it was drawn for
+   * and the modification time go in together, or none of them does. The
+   * engine named the stage graphs; they are read here, where a path is
+   * allowed to exist, and checked against the engine's home first.
+   *
+   * A project keeps a service day it already has: the day is resolved once
+   * and never recomputed, because a day chosen afresh would depend on when
+   * the person asked (ADR-023).
+   */
+  async completeLayout(id: string, done: LayoutDone): Promise<LayoutResult> {
+    this.checkId(id)
+    check(validateServiceDate(done.date))
+    const { record, readOnly } = await this.load(id)
+    if (readOnly) throw new Error('read-only')
+    const layout = await layoutIdentity(done.paths, this.home)
+    const updated: ProjectRecord = {
+      ...record,
+      version: RECORD_VERSION,
+      layout,
+      date: record.date ?? done.date,
+      modified: new Date().toISOString(),
+    }
+    await this.writeAtomic(id, updated)
+    return { record: updated, changed: record.layout !== null && record.layout !== layout }
   }
 
   async delete(id: string): Promise<DeleteResult> {

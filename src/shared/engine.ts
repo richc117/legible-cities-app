@@ -85,6 +85,22 @@ export const ERROR_CODES = {
   cancelled: -32800,
 } as const
 
+/**
+ * A sentence with any filesystem path taken out of it.
+ *
+ * The engine writes `hint` for a person, and for an I/O failure it writes
+ * "{reason}: {filename}" with an absolute path in it (its `classify`). A
+ * path is not for a screen (constitution V), and this is the sentence the
+ * interface shows, so the path comes out here, at the boundary, once, for
+ * every consumer. `detail` keeps the whole of it for the log.
+ */
+export function withoutPaths(sentence: string): string {
+  const stripped = sentence
+    .replace(/(^|[\s(])(?:[A-Za-z]:)?[\\/][^\s,;:)]*/g, '$1a file')
+    .replace(/(^|[\s(])[A-Za-z]:\\[^\s,;:)]*/g, '$1a file')
+  return stripped.trim() === '' ? sentence : stripped
+}
+
 /** A rejected request, whoever produced the error: the engine, or the app on its behalf. */
 export class EngineError extends Error {
   readonly code: number

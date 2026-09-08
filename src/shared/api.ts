@@ -4,10 +4,12 @@
 // specs/004-sidecar-supervisor/contracts/bridge.md (engine).
 
 import type { EngineErrorShape, EngineState, JobLog, JobProgress } from './engine'
+import type { LayoutDone, LayoutResult } from './layout'
 import type { CreateProjectInput, DeleteResult, ProjectRecord, ProjectSummary } from './project'
 
 export type { CreateProjectInput, DeleteResult, ProjectRecord, ProjectSummary } from './project'
 export type { EngineState, JobLog, JobProgress } from './engine'
+export type { LayoutDone, LayoutResult } from './layout'
 
 /** A request in flight: the token the page uses for progress and cancel, and the answer. */
 export interface EngineRequest {
@@ -33,6 +35,13 @@ export interface Api {
     create(input: CreateProjectInput): Promise<ProjectRecord>
     rename(id: string, name: string): Promise<ProjectRecord>
     delete(id: string): Promise<DeleteResult>
+    /**
+     * A layout run finished: the day it was drawn for and the stage graphs
+     * the engine named. The main process reads those files, derives the
+     * layout's identifier and writes the record; the page never sees a path
+     * of its own (specs/007-layout-run/contracts/bridge.md).
+     */
+    completeLayout(id: string, done: LayoutDone): Promise<LayoutResult>
   }
   // Untyped beyond "a method name and an object" on purpose: the bridge is
   // transport and should not know the engine's methods. The typed client
@@ -55,6 +64,7 @@ export const CHANNELS = {
   projectsCreate: 'projects:create',
   projectsRename: 'projects:rename',
   projectsDelete: 'projects:delete',
+  projectsCompleteLayout: 'projects:complete-layout',
   engineState: 'engine:state',
   engineRequest: 'engine:request',
   engineCancel: 'engine:cancel',

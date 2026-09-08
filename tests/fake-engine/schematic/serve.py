@@ -134,6 +134,9 @@ class Engine:
                 error(msg_id, -32602, "date is required: the service day to draw, as "
                       "YYYY-MM-DD. The engine never picks one, because its choice "
                       "would depend on the day you asked.", "params")
+            elif self.control.get("map_draws"):
+                threading.Thread(target=self.draw, args=(msg_id, params),
+                                 daemon=True).start()
             else:
                 error(msg_id, -32000, "the stand-in draws nothing", "engine")
             return True
@@ -163,6 +166,55 @@ class Engine:
         paths = {s: str(HOME / "data" / "graphs" / key / f"0{i}_{s}.json")
                  for i, s in enumerate(stages)}
         write({"jsonrpc": "2.0", "id": msg_id, "result": {"stages": stages, "paths": paths}})
+
+
+    def draw(self, msg_id, params: dict) -> None:
+        """The map build, when the control file asks for one. Reports the same
+        eight stages the real engine does, writes the same three files, and
+        answers with the same shape, so a test can drive a whole run."""
+        key = params.get("key", "x")
+        delay = self.control.get("progress_delay_ms", 30) / 1000
+        graphs = HOME / "data" / "graphs" / key
+        graphs.mkdir(parents=True, exist_ok=True)
+        for i, stage in enumerate(("gtfs2graph", "topo", "loom", "octi")):
+            path = graphs / f"0{i}_{stage}.json"
+            if not path.exists():
+                path.write_text(json.dumps({"stage": stage, "key": key}))
+        out = HOME / "out" / params["out"] if params.get("out") else HOME / "out"
+        out.mkdir(parents=True, exist_ok=True)
+        stages = ("gtfs2graph", "topo", "loom", "octi",
+                  "schedule", "render", "animate", "write")
+        for i, stage in enumerate(stages, start=1):
+            time.sleep(delay)
+            if msg_id in self.cancelled:
+                write({"jsonrpc": "2.0", "id": msg_id,
+                       "error": {"code": -32800, "message": "Request Cancelled"}})
+                return
+            # The real engine's last message is the folder it wrote into,
+            # which is a path; the app must not put that on a screen.
+            message = str(out) if stage == "write" else f"{stage}: 3 nodes, 2 edges"
+            write({"jsonrpc": "2.0", "method": "job/progress",
+                   "params": {"id": msg_id, "stage": stage, "fraction": i / len(stages),
+                              "message": message}})
+        files = {}
+        for name, suffix in (("svg", ".svg"), ("html", ".html"),
+                             ("positions", ".positions.json")):
+            path = out / f"{key}{suffix}"
+            path.write_text("<svg/>" if suffix == ".svg" else "{}")
+            files[name] = str(path)
+        write({"jsonrpc": "2.0", "id": msg_id, "result": {
+            "date": params["date"], "files": files,
+            "summary": "the stand-in drew a map",
+            # The shape is the protocol's Diagnostics, not a flat guess: a
+            # stand-in that answers a different shape lets a consumer pass
+            # here and fail against the engine.
+            "diagnostics": {"stations": 3, "junctions": 0, "edges": 2, "lines": ["A"],
+                            "octilinear": 1.0,
+                            "stops": {"matched": 3, "total": 3, "unmatched": [],
+                                      "by": {"station_id": 3, "parent_station": 0, "name": 0}},
+                            "trips": {"total": 1, "paths": 1, "unrouted": 0},
+                            "degraded": {"borrowed_track": 0, "skipped_calls": 0},
+                            "labels_dropped": 0, "peak_concurrent": 1}}})
 
 
 def main() -> int:

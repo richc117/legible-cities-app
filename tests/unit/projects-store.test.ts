@@ -354,3 +354,91 @@ describe('delete when a folder cannot be removed', () => {
     },
   )
 })
+
+// A run that finished: the layout, the day and the modification time go in
+// together or not at all, and the day a project already has is kept.
+describe('completeLayout', () => {
+  const stageGraphs = async (feed: string, bytes: string[] = []): Promise<string[]> => {
+    const dir = join(home, 'data', 'graphs', feed)
+    await mkdir(dir, { recursive: true })
+    const names = ['00_gtfs2graph', '01_topo', '02_loom', '03_octi']
+    const paths: string[] = []
+    for (let i = 0; i < names.length; i++) {
+      const path = join(dir, `${names[i]}.json`)
+      await writeFile(path, bytes[i] ?? `{"stage":${i}}`, 'utf8')
+      paths.push(path)
+    }
+    return paths
+  }
+
+  it('writes the layout, the day and the time together', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    expect(project.layout).toBeNull()
+    expect(project.date).toBeNull()
+    const paths = await stageGraphs('la-metro-rail')
+    const { record, changed } = await store.completeLayout(project.id, {
+      date: '2026-09-02',
+      paths,
+    })
+    expect(record.layout).toMatch(/^[0-9a-f]{64}$/)
+    expect(record.date).toBe('2026-09-02')
+    expect(record.modified >= project.modified).toBe(true)
+    expect(changed, 'a first layout has nothing to differ from').toBe(false)
+    const onDisk = await store.get(project.id)
+    expect(onDisk.layout).toBe(record.layout)
+    expect(onDisk.date).toBe('2026-09-02')
+  })
+
+  it('keeps a service day the project already has', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    const paths = await stageGraphs('la-metro-rail')
+    await store.completeLayout(project.id, { date: '2026-09-02', paths })
+    const second = await store.completeLayout(project.id, { date: '2026-12-25', paths })
+    expect(second.record.date, 'the day is resolved once (ADR-023)').toBe('2026-09-02')
+  })
+
+  it('reports two projects on one feed as the same layout', async () => {
+    const one = await store.create({ name: 'One', feed: 'la-metro-rail' })
+    const two = await store.create({ name: 'Two', feed: 'la-metro-rail' })
+    const paths = await stageGraphs('la-metro-rail')
+    const a = await store.completeLayout(one.id, { date: '2026-09-02', paths })
+    const b = await store.completeLayout(two.id, { date: '2026-09-03', paths })
+    expect(b.record.layout).toBe(a.record.layout)
+  })
+
+  it('reports a layout that changed since the project was drawn from it', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    const paths = await stageGraphs('la-metro-rail')
+    const first = await store.completeLayout(project.id, { date: '2026-09-02', paths })
+    await stageGraphs('la-metro-rail', ['{"stage":0,"again":true}'])
+    const second = await store.completeLayout(project.id, { date: '2026-09-02', paths })
+    expect(second.changed).toBe(true)
+    expect(second.record.layout).not.toBe(first.record.layout)
+  })
+
+  it('refuses a day that is not one, and leaves the record alone', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    const paths = await stageGraphs('la-metro-rail')
+    for (const date of ['2026-13-01', '2026-02-30', 'yesterday', '2026-9-2', '']) {
+      await expect(store.completeLayout(project.id, { date, paths }), date).rejects.toThrow()
+    }
+    const after = await store.get(project.id)
+    expect(after.layout).toBeNull()
+    expect(after.date).toBeNull()
+  })
+
+  it('refuses stage graphs outside the engine home, and leaves the record alone', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    const paths = await stageGraphs('la-metro-rail')
+    const elsewhere = await mkdtemp(join(tmpdir(), 'lc-elsewhere-'))
+    await writeFile(join(elsewhere, 'other.json'), 'not yours', 'utf8')
+    await expect(
+      store.completeLayout(project.id, {
+        date: '2026-09-02',
+        paths: [join(elsewhere, 'other.json'), ...paths.slice(1)],
+      }),
+    ).rejects.toThrow()
+    expect((await store.get(project.id)).layout).toBeNull()
+    await rm(elsewhere, { recursive: true, force: true })
+  })
+})
