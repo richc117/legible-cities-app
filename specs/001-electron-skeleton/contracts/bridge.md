@@ -18,10 +18,13 @@ that takes a command to run. Validation is on the main side.
 Replaced by `projects.*` in `specs/003-project/contracts/bridge.md`.
 
 That is the whole surface. Each later addition is a reviewed change to
-`src/shared/api.ts`, the preload and the main-side handler together. When
-the viewer iframe arrives (A3-02) it is same-origin by design and can reach
-`parent.api`; from then on main-side handlers check `event.senderFrame` and
-serve only the interface's frame.
+`src/shared/api.ts`, the preload and the main-side handler together. Main-side
+handlers check `event.senderFrame` and serve only the interface's frame.
+
+That check cannot see a same-origin frame calling `parent.api`, because the
+bridge's functions run in the frame that exposed them; the viewer's frame is
+therefore sandboxed to an opaque origin, where the browser refuses the reach
+before the check would matter (ADR-028).
 
 ## IPC channels behind it
 

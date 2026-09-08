@@ -1,5 +1,26 @@
 <!--
-Sync Impact Report
+Sync Impact Report (1.2.0)
+- Version change: 1.1.0 -> 1.2.0
+- Bump rationale: MINOR. A constraint's reasoning was **replaced**, not
+  merely expanded, and a prohibition was added, which reads closer to a
+  redefinition than an expansion. The deciding test is the one this project
+  uses for the bump: does work that complied before now fail? It does not,
+  because no viewer existed. So MINOR, with the wording noted. The old line said one origin exists so the viewer's contentWindow is
+  reachable; A3-02 demonstrated that a page in a same-origin frame reads and
+  calls the preload bridge, and that a parent never needed the shared origin
+  to drive the page, because the main process injects into a frame's main
+  world regardless. The new line requires the embedded page to be contained
+  and forbids `allow-same-origin`. Nothing that complied before now fails:
+  no viewer existed.
+- Modified sections: Constraints these principles imply
+- Added sections: none
+- Removed sections: none
+- Templates requiring updates: none; the plan template derives its gates from
+  the principles, which are unchanged.
+- Follow-up TODOs: none. ADR-028 carries the evidence and ADR-013 carries a
+  note pointing at it.
+
+Sync Impact Report (1.1.0)
 - Version change: 1.0.1 -> 1.1.0
 - Bump rationale: MINOR. Principle III is materially expanded: determinism
   is now stated per project over a stored layout, and the capture rules
@@ -113,9 +134,13 @@ the day it surprises you, while you still know why.
 - **Never write inside the app bundle.** The engine's home is
   `SCHEMATIC_HOME` under the user-data folder; exports go where the user
   chose. See ADR-016.
-- **`app://local` is one origin on purpose.** The UI and the generated
-  project pages share a scheme and host so the viewer's `contentWindow` is
-  reachable. See ADR-013.
+- **The page the app embeds is contained, not trusted.** The generated
+  project page carries text from a transit feed, so it runs in a frame
+  sandboxed to an opaque origin, served with a policy of its own, and driven
+  from the main process. `allow-same-origin` is never added beside
+  `allow-scripts`: it gives the page back the interface's realm and with it
+  the bridge. `app://local` remains one scheme and one host, but that is no
+  longer what makes the viewer work. See ADR-028, which corrects ADR-013.
 - **The renderer holds no Node APIs.** `contextIsolation` on,
   `nodeIntegration` off, `sandbox` on; everything crosses through a narrow,
   typed preload bridge.
@@ -173,4 +198,4 @@ moved.
 Complexity is justified in the pull request or removed. "We might need it"
 is not a justification.
 
-**Version**: 1.1.0 | **Ratified**: 2026-09-07 | **Last Amended**: 2026-09-07
+**Version**: 1.2.0 | **Ratified**: 2026-09-07 | **Last Amended**: 2026-09-08

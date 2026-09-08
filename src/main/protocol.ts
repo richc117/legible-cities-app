@@ -25,6 +25,30 @@ export interface AppProtocolOptions {
 const HOST = 'local'
 const DEV_HMR_SOCKET = 'ws://localhost:5173'
 
+/**
+ * The policy a generated project page is served with. Written fresh rather
+ * than reusing the interface's, which forbids being framed at all and would
+ * block the viewer outright (ADR-028).
+ *
+ * The page is deliberately one self-contained file, so inline scripts and
+ * styles have to be allowed and this policy does not defend against the
+ * page's own script. It is a second line. The first is the sandbox on the
+ * frame, which gives the page an opaque origin and no way back to the app.
+ *
+ * `'self'` would match nothing inside that opaque origin, which is harmless
+ * while the page asks for nothing, and is the thing to remember the day the
+ * engine emits a sibling asset.
+ */
+const PROJECT_CSP = [
+  "default-src 'none'",
+  "script-src 'unsafe-inline'",
+  "style-src 'unsafe-inline'",
+  'img-src data:',
+  "frame-ancestors 'self'",
+  "base-uri 'none'",
+  "form-action 'none'",
+].join('; ')
+
 function csp(development: boolean): string {
   const script = development ? "'self' 'unsafe-inline'" : "'self'"
   // Styles may be inline in every build: the control kit (FigUI3) styles
@@ -154,7 +178,10 @@ export async function handleAppRequest(
     }
     if (rest === '') return notFound() // no directory listings
     const root = join(options.engineHome, 'out', id)
-    return serveUnder(root, rest, req.method, log, url.href)
+    const response = await serveUnder(root, rest, req.method, log, url.href)
+    const headers = new Headers(response.headers)
+    headers.set('content-security-policy', PROJECT_CSP)
+    return new Response(response.body, { status: response.status, headers })
   }
 
   // The interface. In development every remaining path is the dev server's

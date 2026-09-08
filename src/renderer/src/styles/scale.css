@@ -66,6 +66,8 @@
   --dialog-width: 28rem;
   --dialog-width-wide: 40rem;
   --measure: 40rem;
+  /* What the viewer takes: wider than prose, because a map is not read. */
+  --measure-wide: 64rem;
   --backdrop-opacity: 0.6;
 
   /* Layers. */

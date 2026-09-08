@@ -4,6 +4,10 @@
 - **Date:** 2026-09-06 (written up 2026-09-07, with the skeleton that builds on it)
 - **Supersedes:** none
 - **Superseded by:** none
+- **Amended by:** [ADR-028](028-the-viewer-frame-is-sandboxed.md), which corrects
+  this record's premise that a parent can drive a framed page only when the two
+  share an origin, and sandboxes the frame. The decision here, that the
+  engine's page is the viewer, stands.
 
 ## Context
 

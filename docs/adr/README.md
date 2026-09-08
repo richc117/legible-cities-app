@@ -58,3 +58,11 @@ already cites the number you mean to use.
 | 025 | Reserved: a decision about the project, recorded outside this repository | - |
 | 026 | [The design system's icons, select control and mark](026-design-system-choices.md) | Accepted |
 | 027 | [The layout a project stores, and what the engine cannot yet promise](027-the-layout-a-project-stores.md) | Accepted |
+| 028 | [The viewer frame is sandboxed, and driven from the main process](028-the-viewer-frame-is-sandboxed.md) | Accepted |
+
+## Amending rather than superseding
+
+A record whose **decision** still stands but whose **reasoning** turns out to
+be wrong is amended, not superseded: the new record carries `Amends:` and the
+old one gains `Amended by:`, and both stay Accepted. ADR-013 and ADR-028 are
+the first pair. Superseding is for a decision that has been replaced.
