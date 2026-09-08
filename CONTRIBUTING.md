@@ -159,6 +159,9 @@ there.
 - Checks are green on macOS, Windows and Linux.
 - Documentation changed with the code: architecture notes, the decision
   record, user-facing text.
+- Anything a person sees follows [`docs/DESIGN.md`](docs/DESIGN.md): its
+  tokens, its two type tracks, its density, its accessibility rules; a new
+  component adds its rules there.
 - No new secret-scanner finding; no absolute path, address or key in the
   diff. `pre-commit run --all-files` is clean.
 - The pull request says what was tested by hand and on which operating system.
