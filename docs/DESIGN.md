@@ -7,9 +7,8 @@ the map; the map itself is the engine's page and is never drawn here
 
 Status: written 2026-09-07 from two research passes whose verified findings
 are cited at the end, and from the two websites the brand already lives on.
-It is the reference every interface issue cites from here on. Three
-decisions in section 13 are recommendations awaiting the maintainer's
-confirmation; the rest is settled.
+It is the reference every interface issue cites from here on. The three
+choices it left open were decided the same day (ADR-026).
 
 ## 1. Principles
 
@@ -241,35 +240,28 @@ a hand close to Esri's Calcite UI icons (thin, geometric, drawn on a
 entry and nothing else, and glyphs for train, map, layers, route,
 timeline, clock, play, pause, export, settings.
 
-**The Calcite finding.** The maintainer's preference is to keep the Calcite
-UI icons without the Calcite framework. The package that carries only the
-SVGs is `@esri/calcite-ui-icons` (4.5.0: 1,501 icons at 16, 24 and 32, 225
-filled variants). Its licence is Esri's Master License Agreement:
-"redistribute and use this code without modification, provided you adhere
-to the terms of the MLA". The current MLA (E204, revised 1 August 2025),
-Article B.1(k), forbids combining Esri offerings "in a manner that would
-subject any Esri Offering to open-source or open-database license terms
-(e.g. GPL)". Whether unmodified SVG files with their own notice inside a
-GPL app fall under the GPL's aggregate exception is a legal judgement the
-research could not settle; the engine's own page already ships four of
-these icons on that reading. Options, in order of safety:
+**The set: Phosphor** (`@phosphor-icons/core` 2.1.1, MIT; ADR-026).
+Designed on a 16px grid like Calcite, six weights as separate files
+(thin, light, regular, bold, fill, duotone), filled paths rather than
+strokes, a 256 viewBox. The **light** weight is the 16px icon in
+controls, the **regular** weight the 24px icon in empty states and
+headers, and the **fill** weight the toggled state. Icons are vendored as
+plain SVG files under `src/renderer/src/icons/` with the MIT notice in
+`THIRD_PARTY_NOTICES.md`; a glyph the set lacks is drawn by hand to the
+same grid, never borrowed from another set.
 
-1. **Phosphor** (`@phosphor-icons/core` 2.1.1, MIT): designed on a 16px
-   grid like Calcite, six weights as separate files (thin, light, regular,
-   bold, fill, duotone), filled paths rather than strokes, 256 viewBox.
-   The light weight at 16px and regular at 24px are the nearest hand to
-   Calcite among the open sets. Recommended.
-2. **Tabler** (`@tabler/icons` 3.46.0, MIT): 24-grid, 2px strokes that
-   the README says render well at 1.5px, 5,130 outline and 1,054 filled;
-   strong transit coverage (train, route, timeline, map).
-3. **Lucide** (`lucide-static` 1.42.0, ISC plus MIT for 129 Feather-derived
-   glyphs): 24-grid, 2px strokes, outline only.
-4. **Calcite, kept**: only with written confirmation from Esri's licensing
-   contact that the MLA permits it, and then shipped as separate unmodified
-   files with the MLA notice, never inlined into GPL-licensed code.
-
-Avoid Remix Icon: since January 2026 its own licence names permissive
-hosts only and warns of incompatibility with copyleft.
+Why not the Calcite UI icons the maintainer preferred: the package that
+carries only the SVGs (`@esri/calcite-ui-icons` 4.5.0) is under Esri's
+Master License Agreement, whose current text (E204, revised 1 August
+2025, Article B.1(k)) forbids combining Esri offerings "in a manner that
+would subject any Esri Offering to open-source or open-database license
+terms (e.g. GPL)". This app is GPL-3.0-or-later; whether unmodified files
+with their own notice escape that clause is a legal judgement nobody here
+can make. The engine's page ships four of these icons on the same
+reasoning and gets its own issue. Tabler (MIT) and Lucide (ISC) were the
+runners-up, both 24-grid sets with 2px strokes and heavier at 16px; Remix
+Icon is ruled out by its January 2026 licence, which names permissive
+hosts only.
 
 **Rules.** Icons are monochrome and inherit `currentColor`; never a second
 colour, never a shadow. An icon never carries meaning alone: a label or an
@@ -322,8 +314,9 @@ its core is adoptable under the app's licence. Verified at 9.0.0
 
 1. Import only `@rogieking/figui3/fig.css` and `@rogieking/figui3/fig.js`,
    pinned at 9.0.0; a CI grep refuses any `fig-editor` or `fig-lab` import.
-   For a select control, style the native `<select>`; `<fig-select>` is
-   in the editor bundle.
+   The select control is the native `<select>` styled with the tokens
+   (ADR-026); `<fig-select>` is in the editor bundle and is not used.
+   Its popup renders in the platform's own style, which is accepted.
 2. One adapter file, `figui-adapter.css`, maps the semantic tokens of
    section 3 into the Figma names (`--figma-color-bg` from `--surface`,
    `--figma-color-bg-secondary` from `--surface-raised`,
@@ -392,9 +385,11 @@ the size of a tick, blob or diamond.
   stage a hollow diamond, a finished run a filled end mark; a change of
   direction only ever at 45 degrees. This is the app's one signature
   component, on the layout, map and export screens.
-- **The mark.** The app icon and the empty-state glyph: a 45-degree join
-  with an interchange diamond, in the brand's text colour on the sepia
-  ground, or in the accent on warm-dark. Drawn by hand; not a map excerpt.
+- **The mark** (ADR-026). The app icon and the empty-state glyph: a
+  45-degree join with a hollow interchange diamond, in the brand's text
+  colour on the sepia ground, or in the accent on warm-dark. Drawn by
+  hand to the icon grid; not a map excerpt. The app icon is the same
+  drawing on the sepia ground at every platform size.
 - **The ground.** The sepia theme is the cream of the pocket map already.
 - **Ticks as dividers** in timelines and the jobs drawer.
 
@@ -451,16 +446,12 @@ Settled here:
 - Two type tracks, system faces, no bundled fonts.
 - The Beck vocabulary as above and no further.
 
-Awaiting the maintainer's confirmation, then an ADR:
+Decided by the maintainer on 2026-09-07 and recorded in ADR-026:
 
-1. **Icons.** The recommendation is Phosphor over Calcite because of the
-   MLA's clause on GPL combination. Keeping Calcite means asking Esri's
-   licensing contact in writing first. The same question applies to the
-   four Calcite icons in the engine's page.
-2. **FigUI3's select.** Style the native `<select>` (recommended), or pin
-   8.9.23 (the last all-MIT release, with `fig-editor.js`) and record why.
-3. **The mark.** Whether the app icon follows section 10 or a separate
-   brief.
+1. **Icons:** Phosphor, for the reasons in section 6; the engine's page
+   gets an issue to swap its four Calcite icons.
+2. **FigUI3's select:** the native `<select>`, styled with the tokens.
+3. **The mark:** as section 10 draws it.
 
 ## 14. Applying it
 
@@ -472,8 +463,8 @@ interface on the old scaffolding:
    and Library restyled to sections 3 to 5 and 8.2.
 2. FigUI3 core pinned, the adapter, the wrappers for the controls the
    Library and dialogs use, the CI grep, the notices entry.
-3. The icon set decided in section 13 vendored as plain SVG files with its
-   notice; the status line and toolbar take their icons.
+3. Phosphor vendored as plain SVG files with its notice; the status line
+   and toolbar take their icons; the mark drawn.
 4. The progress component (section 10), ready for A3-01.
 
 Every later interface issue cites the sections it applies and adds its

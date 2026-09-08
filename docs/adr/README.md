@@ -55,3 +55,5 @@ already cites the number you mean to use.
 | 022 | Reserved: a decision about the project, recorded outside this repository | - |
 | 023 | [Determinism is per project; the layout is computed once and stored](023-per-project-determinism.md) | Accepted |
 | 024 | Reserved: the capture path, written when spike A0-07 ends | - |
+| 025 | Reserved: a decision about the project, recorded outside this repository | - |
+| 026 | [The design system's icons, select control and mark](026-design-system-choices.md) | Accepted |
