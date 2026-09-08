@@ -107,8 +107,11 @@ describe('the checkout is read from the environment or the local file', () => {
     expect(where({}, "LEGIBLE_ENGINE_CHECKOUT='/e/f'")).toBe('/e/f')
   })
 
+  // Compared with `resolve`'s own answer, not with a literal: a path
+  // written POSIX-style resolves against the current drive on Windows, so
+  // a hard-coded '/engine' is a test that only passes on three platforms.
   it('resolves a relative path against the repository', () => {
-    expect(where({}, 'LEGIBLE_ENGINE_CHECKOUT=../engine')).toBe('/engine')
+    expect(where({}, 'LEGIBLE_ENGINE_CHECKOUT=../engine')).toBe(resolve(root, '../engine'))
   })
 
   // The app's own parser is the one used here, so a file naming the key
