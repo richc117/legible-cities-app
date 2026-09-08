@@ -64,8 +64,8 @@
 ## Phase 7: Polish
 
 - [x] T020 Update `docs/ARCHITECTURE.md` (design tokens section: the three files, the adapter, the guard, the icons) and `CLAUDE.md`'s commands if any changed
-- [ ] T021 Run `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`, `npm run test:e2e`; the reviewer over the branch; fix what it finds
-- [ ] T022 Screenshots of the Library, the project view and each dialog in both themes for the pull request; the manual checks (the app icon, VoiceOver) recorded; open the pull request closing #45
+- [x] T021 Run `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`, `npm run test:e2e`; the reviewer over the branch; fix what it finds
+- [x] T022 Screenshots of the Library, the project view and each dialog in both themes for the pull request; the manual checks (the app icon, VoiceOver) recorded; open the pull request closing #45
 
 ## Dependencies
 
@@ -84,5 +84,15 @@ chooses the theme with Playwright's media emulation, because
 `nativeTheme.themeSource` does not reach a page the driver has already
 emulated (T012, research section 4); and the dialogs' text fields are the
 kit's large size, 32px, as the design document's dialog density says,
-while the toolbar's controls are 28px (T015). T021 and T022 close with the
-pull request.
+while the toolbar's controls are 28px (T015). T021 and T022 closed with the
+pull request (#47).
+
+T021's reviewer pass found one thing worth recording here, because no test
+could have seen it and every later interface issue inherits it: the control
+kit was a production dependency, and electron-builder copies every
+production dependency into the app whole, so packaging placed the kit's
+PolyForm-licensed editor and lab bundles inside the asar even though the
+build guard refused every import of them. A guard on imports cannot see a
+copy. The kit is a build-time dependency now, the renderer bundle inlines
+it, and a unit test asserts both that the guard is registered for the
+renderer and that the kit stays out of `dependencies`.
