@@ -130,7 +130,9 @@ jobs:
 
   # The Python sidecar runtime. ADR-020 chose python-build-standalone over
   # PyInstaller; scripts/vendor-python.sh verifies the pinned checksum and
-  # fails rather than continuing if the asset changed. NOT YET RUN either.
+  # fails rather than continuing if the asset changed. The engine it
+  # installs is the pinned one (A1-02 added the block); the job goes green
+  # once that tag is published, which is what closes A0-06.
   python:
     name: python (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
@@ -141,8 +143,42 @@ jobs:
           - { os: macos-15, target: darwin-arm64 }
     steps:
       - uses: actions/checkout@v6
+      - name: Read the engine's pin
+        id: engine
+        shell: bash
+        run: |
+          # actions/checkout wants owner/repo, not the URL the pin stores
+          # for the tools that clone with git.
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          engine = json.load(open('vendor/pins.json'))['engine']
+          owner_repo = engine['repo'].removeprefix('https://github.com/').removesuffix('.git')
+          if owner_repo.count('/') != 1:
+              raise SystemExit(f"engine.repo is not a GitHub URL: {engine['repo']}")
+          print(f"repo={owner_repo}")
+          print(f"tag={engine['tag']}")
+          print(f"version={engine['version']}")
+          PY
       - name: Check out the engine at its pin
-        run: echo "The engine pin lands with A1-02; until then this job needs a path."
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ steps.engine.outputs.repo }}
+          ref: ${{ steps.engine.outputs.tag }}
+          path: engine
+      - name: Refuse an engine that is not the pinned version
+        shell: bash
+        env:
+          PINNED_VERSION: ${{ steps.engine.outputs.version }}
+          PINNED_TAG: ${{ steps.engine.outputs.tag }}
+        run: |
+          # The pin names a tag and a version; a tag that has moved would
+          # otherwise vendor an engine the app was not built against.
+          found=$(grep -oE '__version__ *= *"[^"]+"' engine/src/schematic/__init__.py | head -1 | cut -d'"' -f2)
+          if [ "$found" != "$PINNED_VERSION" ]; then
+            echo "::error::the pin says $PINNED_VERSION, the tag holds $found"
+            exit 1
+          fi
+          echo "engine $found at $PINNED_TAG"
       - name: Fetch, verify and strip the runtime
         run: scripts/vendor-python.sh ${{ matrix.target }} "$ENGINE_PATH"
         env:

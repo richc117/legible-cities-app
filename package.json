@@ -13,12 +13,13 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "start": "electron-vite preview",
-    "lint": "eslint . && prettier --check \"src/**\" \"tests/**\" \"*.{ts,mts,js,mjs,json}\"",
-    "format": "prettier --write \"src/**\" \"tests/**\" \"*.{ts,mts,js,mjs,json}\"",
+    "lint": "eslint . && prettier --check \"src/**\" \"tests/**\" \"scripts/**/*.ts\" \"*.{ts,mts,js,mjs,json}\"",
+    "format": "prettier --write \"src/**\" \"tests/**\" \"scripts/**/*.ts\" \"*.{ts,mts,js,mjs,json}\"",
     "typecheck": "tsc --noEmit -p tsconfig.node.json --composite false && tsc --noEmit -p tsconfig.web.json --composite false && tsc --noEmit -p tsconfig.tests.json --composite false",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "dist": "electron-builder --dir"
+    "dist": "electron-builder --dir",
+    "typegen": "node --experimental-strip-types scripts/protocol.ts"
   },
   "dependencies": {
     "react": "19.2.8",

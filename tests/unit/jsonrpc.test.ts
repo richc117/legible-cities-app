@@ -137,6 +137,34 @@ describe('JsonRpcClient', () => {
     expect((error as EngineError).message).toBe('date is required')
     expect((error as EngineError).data).toEqual(data)
   })
+  // A kind outside the engine's seven cannot come from an engine of the
+  // pinned version. It is read as the engine failing in a way it never
+  // described, and everything it sent is kept where a log will show it.
+  it('refuses a kind the protocol does not define, keeping what arrived', async () => {
+    const { c, reply } = client()
+    const r = c.request('map.build', { key: 'x' })
+    const data = { kind: 'sausage', detail: 'somewhere', hint: 'Try again.', extra: 7 }
+    reply({ jsonrpc: '2.0', id: 1, error: { code: -32000, message: 'odd', data } })
+    const error = (await r.result.catch((e: unknown) => e)) as EngineError
+    expect(error.data?.kind).toBe('engine')
+    expect(error.data?.hint).toBe('Try again.')
+    expect(error.data?.detail).toContain('sausage')
+    expect(error.data?.detail).toContain('somewhere')
+    expect(error.data?.detail, 'nothing the engine sent is dropped').toContain('7')
+  })
+
+  // The app's own kinds name a failure the engine never saw; an engine
+  // claiming one would be indistinguishable from the supervisor's own.
+  it("refuses one of the app's own kinds arriving from the engine", async () => {
+    const { c, reply } = client()
+    const r = c.request('map.build', { key: 'x' })
+    const data = { kind: 'exit', detail: 'pretending', hint: 'The engine stopped.' }
+    reply({ jsonrpc: '2.0', id: 1, error: { code: -32000, message: 'odd', data } })
+    const error = (await r.result.catch((e: unknown) => e)) as EngineError
+    expect(error.data?.kind).toBe('engine')
+    expect(error.data?.detail).toContain('exit')
+  })
+
   it('keeps unfamiliar error data in the detail and no data as none', async () => {
     const { c, reply } = client()
     const a = c.request('a')
