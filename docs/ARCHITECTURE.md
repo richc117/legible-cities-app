@@ -141,6 +141,56 @@ test's engine home, so the supervisor is proven on runners that have no
 engine. The tests against the real engine run where `.env.local` names a
 checkout with an environment, and skip, saying so, elsewhere.
 
+## The protocol, as types
+
+The engine describes its whole protocol as a JSON Schema and prints it on
+demand. That description is the app's source for every method name, every
+parameter and every result, so that a change on the engine's side the app
+has not followed is a build error rather than a refused request in front of
+a person (constitution, principle II).
+
+| File | What it is |
+|---|---|
+| `vendor/protocol.schema.json` | the engine's description, printed by `python -m schematic.serve --schema` and committed byte for byte |
+| `vendor/pins.json`, `engine.schema_sha256` | its fingerprint, beside the engine's tag and version |
+| `src/shared/protocol.ts` | the types, generated from the description and committed; edits are lost |
+
+`npm run typegen` writes all three from the engine checkout named by
+`LEGIBLE_ENGINE_CHECKOUT`, or stops and changes nothing when there is none.
+The generator is `scripts/protocol.ts`, and it has no dependency: the
+description uses a closed set of sixteen JSON Schema keywords, ten that
+shape a type and six that constrain values and are ignored. An unrecognised
+seventeenth stops the build naming the keyword and its path rather than
+emitting a plausible wrong type. A library was measured and rejected,
+because running the output through a formatter would make the committed
+file depend on that formatter's version
+(`specs/006-typed-engine-client/research.md`, section 2).
+
+Three checks keep the copy honest. Two need no engine and so run on every
+machine that builds the app: the fingerprint must match the committed
+description, and regenerating the module from that description must
+reproduce the committed file byte for byte. The third asks the engine in
+the checkout for its description and fails on any difference, naming the
+first differing line and the command that fixes it; with no checkout it
+reports itself skipped rather than passed.
+
+The renderer will reach the engine through
+`src/renderer/src/engine/client.ts`; the jobs drawer (A1-03) is its first
+caller, and the status line still reads the bridge directly for the one
+thing the client does not carry, the engine's own state.
+The bridge underneath stays untyped on purpose, because transport should not
+know the engine's methods; the client is the layer that does. It takes the
+bridge in its constructor, so its tests need no Electron, and it neither
+tightens nor relaxes the description anywhere. A request hands back a
+handle: the engine's result, that one request's progress and log lines, and
+cancellation by the token the preload minted. Two shapes the bridge carries
+are the engine's with one named difference each: a notification's id is the
+token rather than the engine's numbering, and an error's kind may be one of
+the app's three as well as the engine's seven, for a failure the engine
+never saw. Both are derived from the generated types rather than copied, so
+neither can drift. Contracts:
+`specs/006-typed-engine-client/contracts/client.md` and `generation.md`.
+
 ## Projects
 
 A project is one folder under the engine home, named by its identifier:
@@ -283,8 +333,9 @@ with no interpreter at all. Unit tests cover the traversal matrix,
 configuration parsing, the tokens, the record's validators and versioning,
 the store against a temporary directory, the JSON-RPC framing, the
 interpreter resolution and the environment allowlist, the supervisor
-against the stand-in as a real child process, and the engine bridge's main
-side. The design system's own tests recompute the WCAG contrast of every
+against the stand-in as a real child process, the engine bridge's main
+side, the protocol's fingerprint and the reproducibility of its generated
+types, and the typed client against a stub bridge. The design system's own tests recompute the WCAG contrast of every
 token pair the design document names, in both themes, and check the
 document's stated ratios against the arithmetic; refuse a colour, size or
 duration literal in a component file; prove the build guard refuses the

@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest'
 import { registerEngineHandlers, type EngineSource } from '../../src/main/engine-ipc'
 import type { Notification } from '../../src/main/sidecar'
 import { CHANNELS } from '../../src/shared/api'
-import { EngineError, ERROR_CODES, type EngineState } from '../../src/shared/engine'
+import { EngineError, ERROR_CODES, type EngineState, type ErrorData } from '../../src/shared/engine'
 
 type Handler = (event: IpcMainInvokeEvent, ...args: unknown[]) => Promise<unknown>
 
@@ -132,7 +132,7 @@ describe('registerEngineHandlers', () => {
       method: 'job/progress',
       params: { id: 1, stage: 'topo', fraction: 0.5, message: 'm' },
     })
-    const data = { kind: 'params', detail: 'date is required', hint: 'date is required' }
+    const data: ErrorData = { kind: 'params', detail: 'date is required', hint: 'date is required' }
     requests[0].deferred.reject(new EngineError(-32602, 'date is required', data))
     await tick()
     expect(sent.map((m) => m.channel)).toEqual([CHANNELS.engineProgress, CHANNELS.engineSettled])

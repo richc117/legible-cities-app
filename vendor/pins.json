@@ -29,7 +29,8 @@
     "version": "0.2.0",
     "protocol": 1,
     "note": "The first tag with schematic.serve. The handshake compares version and protocol with engine.info and refuses any other; the vendoring job installs the package at the tag.",
-    "licence": "GPL-3.0-or-later"
+    "licence": "GPL-3.0-or-later",
+    "schema_sha256": "33b19cbbbfd4ecb79925f0571c141083c1d3574c34d0b1608cee8fffe1940edc"
   },
   "python": {
     "source": "https://github.com/astral-sh/python-build-standalone",

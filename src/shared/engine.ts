@@ -2,6 +2,12 @@
 // the state, the pin, the notifications and the one error shape. Imported
 // by all three processes. Contract: specs/004-sidecar-supervisor/data-model.md.
 
+import type {
+  ErrorData as EngineErrorData,
+  JobLog as EngineJobLog,
+  JobProgress as EngineJobProgress,
+} from './protocol'
+
 export interface EnginePin {
   repo: string
   tag: string
@@ -17,23 +23,55 @@ export type EngineState =
   | { state: 'mismatched'; expected: EnginePin; found: { version: string; protocol: number } }
   | { state: 'stopped'; reason: string }
 
-export interface JobProgress {
-  id: string
-  stage: string
-  fraction: number
-  message: string
+// The three shapes below are the engine's, from the generated types
+// (A1-02), with the app's own two differences named rather than copied, so
+// that a change to a stage, a level or a hint on the engine's side reaches
+// the interface as a build error.
+//
+// The first difference: the engine keys a notification by its own JSON-RPC
+// id, and the main process re-keys it to the token the preload minted
+// before the page ever sees it. The page's id is therefore always a string,
+// and never the engine's numbering, which the app does not expose.
+
+export type JobProgress = Omit<EngineJobProgress, 'id'> & { id: string }
+
+export type JobLog = Omit<EngineJobLog, 'id'> & { id: string }
+
+// The second difference: the app produces errors on the engine's behalf,
+// for a request the engine never saw. Those carry a kind of the app's own
+// beside the engine's seven.
+export type AppErrorKind = 'state' | 'inactive' | 'exit'
+
+export type ErrorKind = EngineErrorData['kind'] | AppErrorKind
+
+export type ErrorData = Omit<EngineErrorData, 'kind'> & { kind: ErrorKind }
+
+// The engine's kinds as a value, because a kind arriving over the wire has
+// to be checked before it is trusted as one. The list is hand-written, and
+// tests/unit/protocol-generate.test.ts fails when it stops matching the
+// engine's description, so it cannot drift from the type above.
+export const ENGINE_ERROR_KINDS = [
+  'params',
+  'feed',
+  'loom',
+  'schedule',
+  'export',
+  'io',
+  'engine',
+] as const
+
+export const APP_ERROR_KINDS = ['state', 'inactive', 'exit'] as const
+
+/** One of the engine's own kinds: what may arrive over the wire. */
+export function isEngineErrorKind(value: unknown): value is EngineErrorData['kind'] {
+  return typeof value === 'string' && (ENGINE_ERROR_KINDS as readonly string[]).includes(value)
 }
 
-export interface JobLog {
-  id: string
-  level: 'debug' | 'info' | 'warning' | 'error'
-  line: string
-}
-
-export interface ErrorData {
-  kind: string
-  detail: string
-  hint: string
+/** One of the ten the interface may see, the engine's and the app's. */
+export function isErrorKind(value: unknown): value is ErrorKind {
+  return (
+    isEngineErrorKind(value) || (APP_ERROR_KINDS as readonly string[]).includes(value as string)
+  )
 }
 
 // The app's own codes, in JSON-RPC's reserved server range below the
@@ -82,7 +120,7 @@ export function isEngineErrorShape(value: unknown): value is EngineErrorShape {
 export function engineError(
   code: number,
   message: string,
-  kind: string,
+  kind: ErrorKind,
   hint?: string,
 ): EngineError {
   return new EngineError(code, message, { kind, detail: message, hint: hint ?? message })

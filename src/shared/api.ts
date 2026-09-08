@@ -34,8 +34,11 @@ export interface Api {
     rename(id: string, name: string): Promise<ProjectRecord>
     delete(id: string): Promise<DeleteResult>
   }
-  // Untyped beyond "a method name and an object" on purpose: A1-02
-  // generates the methods from the engine's schema and wraps this.
+  // Untyped beyond "a method name and an object" on purpose: the bridge is
+  // transport and should not know the engine's methods. The typed client
+  // over it is `src/renderer/src/engine/client.ts`, whose types are
+  // generated from the engine's own description (A1-02); app code calls
+  // that, not this.
   engine: {
     state(): Promise<EngineState>
     request(method: string, params?: Record<string, unknown>): EngineRequest

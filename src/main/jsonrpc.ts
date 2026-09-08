@@ -6,7 +6,7 @@
 // import; tested over in-memory streams.
 
 import type { Readable, Writable } from 'node:stream'
-import { EngineError, type ErrorData } from '../shared/engine'
+import { EngineError, isEngineErrorKind, type ErrorData } from '../shared/engine'
 
 export class ProtocolError extends Error {
   constructor(message: string) {
@@ -121,15 +121,21 @@ const isObject = (v: unknown): v is Record<string, unknown> =>
 // The engine's error data has kind, detail and hint. Anything else that
 // arrives as data (a library's traceback, nothing at all) is kept in
 // `detail` so no information is lost and the shape the page reads holds.
+//
+// Only the engine's own seven kinds count here. The app's three (`state`,
+// `inactive`, `exit`) name a failure the engine never saw, and an engine
+// claiming one of those would be indistinguishable from the supervisor's
+// own, which is exactly what keeping the two sets apart prevents. A kind
+// outside the seven cannot come from an engine of the pinned version, so
+// it is read as the engine failing in a way it never described: the kind
+// becomes `engine`, and the whole of what it sent is kept in `detail`.
 function errorData(data: unknown, message: string): ErrorData | undefined {
   if (data === undefined || data === null) return undefined
-  if (
-    isObject(data) &&
-    typeof data.kind === 'string' &&
-    typeof data.detail === 'string' &&
-    typeof data.hint === 'string'
-  ) {
-    return { kind: data.kind, detail: data.detail, hint: data.hint }
+  if (isObject(data) && typeof data.detail === 'string' && typeof data.hint === 'string') {
+    if (isEngineErrorKind(data.kind)) {
+      return { kind: data.kind, detail: data.detail, hint: data.hint }
+    }
+    return { kind: 'engine', detail: JSON.stringify(data), hint: data.hint }
   }
   return { kind: 'engine', detail: JSON.stringify(data), hint: message }
 }
