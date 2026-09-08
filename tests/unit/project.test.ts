@@ -146,7 +146,7 @@ describe('parseRecord', () => {
       defaultColor: 'grey',
       lineOrder: ['A', 2, 'B'],
       theme: 'sepia',
-      layout: 'abc123',
+      layout: '3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f',
     })
     expect('record' in parsed).toBe(true)
     if (!('record' in parsed)) return
@@ -159,9 +159,16 @@ describe('parseRecord', () => {
       defaultColor: DEFAULT_COLOR,
       lineOrder: ['A', 'B'],
       theme: 'sepia',
+      layout: '3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f',
+    })
+    // A layout identifier is the digest A3-01 writes; anything else is not
+    // one this app produced, so it is dropped rather than half-trusted.
+    const badDate = parseRecord({
+      ...full,
+      date: '7 September 2026',
+      theme: 'neon',
       layout: 'abc123',
     })
-    const badDate = parseRecord({ ...full, date: '7 September 2026', theme: 'neon', layout: '' })
     if (!('record' in badDate)) throw new Error(badDate.error)
     expect(badDate.record.date).toBeNull()
     expect(badDate.record.theme).toBe(DEFAULT_THEME)

@@ -6,7 +6,7 @@
 // import; tested over in-memory streams.
 
 import type { Readable, Writable } from 'node:stream'
-import { EngineError, isEngineErrorKind, type ErrorData } from '../shared/engine'
+import { EngineError, isEngineErrorKind, withoutPaths, type ErrorData } from '../shared/engine'
 
 export class ProtocolError extends Error {
   constructor(message: string) {
@@ -133,7 +133,10 @@ function errorData(data: unknown, message: string): ErrorData | undefined {
   if (data === undefined || data === null) return undefined
   if (isObject(data) && typeof data.detail === 'string' && typeof data.hint === 'string') {
     if (isEngineErrorKind(data.kind)) {
-      return { kind: data.kind, detail: data.detail, hint: data.hint }
+      // `hint` is shown; `detail` is logged. The engine puts a filename in
+      // the hint for an I/O failure, so the path comes out of the sentence
+      // here and stays in the detail.
+      return { kind: data.kind, detail: data.detail, hint: withoutPaths(data.hint) }
     }
     return { kind: 'engine', detail: JSON.stringify(data), hint: data.hint }
   }

@@ -2,6 +2,8 @@
 // so the preload, the renderer and the main process share one definition
 // and the unit tests run in Node. Contract: specs/003-project/contracts/record.md.
 
+import { isLayoutId } from './layout'
+
 export const RECORD_VERSION = 1
 
 export interface ProjectStyle {
@@ -102,6 +104,16 @@ export function validateId(id: string): string | null {
   return ID_PATTERN.test(id) ? null : 'invalid id'
 }
 
+/** A service day, YYYY-MM-DD, that names a real calendar day. */
+export function validateServiceDate(date: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return 'the service day must be written YYYY-MM-DD'
+  const parsed = new Date(`${date}T00:00:00Z`)
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
+    return 'that is not a day in the calendar'
+  }
+  return null
+}
+
 type Parsed = { record: ProjectRecord; readOnly: boolean } | { error: string }
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
@@ -156,7 +168,7 @@ export function parseRecord(json: unknown): Parsed {
     defaultColor: isColor(json.defaultColor) ? json.defaultColor : DEFAULT_COLOR,
     lineOrder: Array.isArray(json.lineOrder) ? json.lineOrder.filter(isString) : [],
     theme: json.theme === 'sepia' ? 'sepia' : DEFAULT_THEME,
-    layout: isString(json.layout) && json.layout !== '' ? json.layout : null,
+    layout: isLayoutId(json.layout) ? json.layout : null,
     created: isString(json.created) ? json.created : epoch,
     modified: isString(json.modified) ? json.modified : epoch,
   }

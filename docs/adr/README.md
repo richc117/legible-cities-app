@@ -57,3 +57,4 @@ already cites the number you mean to use.
 | 024 | Reserved: the capture path, written when spike A0-07 ends | - |
 | 025 | Reserved: a decision about the project, recorded outside this repository | - |
 | 026 | [The design system's icons, select control and mark](026-design-system-choices.md) | Accepted |
+| 027 | [The layout a project stores, and what the engine cannot yet promise](027-the-layout-a-project-stores.md) | Accepted |

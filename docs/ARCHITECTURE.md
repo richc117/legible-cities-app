@@ -317,6 +317,75 @@ one line with a tick per pipeline stage, a filled mark for a stage that
 has run, a hollow diamond for the one running, drawn from the tokens and
 described to assistive technology as one sentence.
 
+## The layout run
+
+One action on a project's screen produces a map. The app asks the engine
+for the project's layout, then for its map, and reports each stage as the
+engine finishes it.
+
+Both requests go through the typed client. The layout call answers with the
+four stage graphs' paths and their summaries; the map call writes the page
+into `<SCHEMATIC_HOME>/out/<project id>/`, which is exactly where the
+project origin already serves from, so the viewer (A3-02) needs no copying.
+The map call runs the layout stages itself and therefore repeats the first
+four reports; a repeat for a stage already finished is ignored.
+
+The engine reports a stage when that stage **finishes**, and the sentence
+describes the stage that finished. So a report marks its own stage done and
+sets the next one running, and the sentence on screen always describes the
+last completed stage rather than the one being waited for. The last of
+those sentences is the folder the engine wrote into, which is a path and
+therefore not for a screen; the run replaces that one with what the stage
+did, and leaves every other sentence alone, because a slash is not evidence
+of a path (the schedule stage says "matched 114/114 stops").
+
+When both calls have returned, one bridge call writes the record: the
+service day, the layout's identifier and the modification time, together or
+not at all. A cancelled or failed run writes nothing, and can be run again.
+
+A run belongs to its project rather than to the screen showing it, so a
+person can start a layout, go back to the Library and come back to one still
+running; the renderer keeps one client for all of them.
+
+### What identifies a layout, and why the app derives it
+
+Protocol 1 answers with paths and no identity, and the engine's cache is
+keyed by the feed alone, so every project on a feed shares one layout. The
+app derives an identifier from the four stage graphs' contents: each file's
+stage name, length and bytes, in the engine's stage order, hashed together.
+Two projects drawn from the same layout record the same value, a changed
+layout records a different one, and the value carries no path.
+
+The reading happens in the main process, because the renderer holds no Node
+APIs, and every path is checked to lie under the engine's home before it is
+opened, exactly as the project origin checks. The paths cross the bridge
+inward only, and every failure on the way becomes a sentence, because the
+rejection is shown to a person.
+
+### Where this falls short of principle III, and why
+
+The constitution says renders and exports read the stored layout and never
+re-run the layout stages. The engine at the pinned version rebuilds any
+missing stage during a map build without being asked, so the app cannot
+enforce that; it records what it drew from and reports a difference
+instead. Engine issue E04, which addresses a layout by the hash of its
+inputs, is what closes the gap. ADR-027 records the decision and its cost.
+
+For the same reason there is no forced re-layout. Forcing a rebuild
+rewrites the first three stage files before the fourth runs, so a cancelled
+one leaves a mixed set that a later build reads as a valid cache; that was
+reproduced rather than inferred. "Lay out again" re-runs without forcing,
+which reuses the cache and is safe.
+
+### The service day
+
+The engine never chooses a service day, because its choice would depend on
+the day it was asked (ADR-023). The app resolves one at a project's first
+layout, from the machine's own today, stores it at once, and uses the
+stored day for every later build. Choosing a *good* day, rather than merely
+a fixed one, needs the feed's service window, which arrives with the engine
+issues behind A3-04.
+
 ## Checks
 
 `.github/workflows/ci.yml` runs on Ubuntu, macOS and Windows for every push
@@ -335,7 +404,14 @@ the store against a temporary directory, the JSON-RPC framing, the
 interpreter resolution and the environment allowlist, the supervisor
 against the stand-in as a real child process, the engine bridge's main
 side, the protocol's fingerprint and the reproducibility of its generated
-types, and the typed client against a stub bridge. The design system's own tests recompute the WCAG contrast of every
+types, the typed client against a stub bridge, the layout identifier and the
+paths it refuses, and the layout run's state machine against a stub. A fourth
+Playwright suite drives a layout against the stand-in: the stages on screen,
+what a completed run writes, that a cancelled one writes nothing and can be
+repeated, and that no path reaches the screen. One further test lays a
+project out against the real engine and asserts the eight stage names in
+order; it needs a checkout with a warm layout cache and skips, saying so,
+without one, so it never runs in continuous integration. The design system's own tests recompute the WCAG contrast of every
 token pair the design document names, in both themes, and check the
 document's stated ratios against the arithmetic; refuse a colour, size or
 duration literal in a component file; prove the build guard refuses the
@@ -353,7 +429,6 @@ Escape. The hygiene checks (`gitleaks`, `bin/preflight`) run beside them.
 | A screen for long jobs: progress, cancellation, the engine's log | A1-03 |
 | Settings: the data folder, the export folder, the versions shown | A1-04 |
 | A feed chooser over the engine's registry; the feed key is typed and checked for form | A2-01 |
-| The service day and the stored layout: `date` and `layout` are `null` until the first layout sets both | A3-01 |
 | The viewer iframe | A3-02 |
 | Editing the style, the colours, the line order and the theme; the record holds the engine's defaults | A4-01 to A4-03 |
 | Capture and export | A5-02, after ADR-024 |

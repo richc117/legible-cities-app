@@ -15,7 +15,9 @@ import {
   validateMode,
   validateName,
   type CreateProjectInput,
+  validateServiceDate,
 } from '../shared/project'
+import type { LayoutDone } from '../shared/layout'
 import type { ProjectStore } from './projects'
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
@@ -35,6 +37,22 @@ function readName(raw: unknown): string {
   if (typeof raw !== 'string') throw new Error('name is required')
   check(validateName(raw))
   return raw
+}
+
+/**
+ * What a finished run hands back. The paths are the engine's answer relayed
+ * by the page, so nothing here trusts them beyond their shape; the store
+ * checks each one against the engine's home before it opens anything.
+ */
+function readLayoutDone(raw: unknown): LayoutDone {
+  const input = isObject(raw) ? raw : {}
+  const date = typeof input.date === 'string' ? input.date : ''
+  check(validateServiceDate(date))
+  const paths = input.paths
+  if (!Array.isArray(paths) || paths.some((p) => typeof p !== 'string')) {
+    throw new Error('the layout run did not say which stage graphs it built')
+  }
+  return { date, paths: paths as string[] }
 }
 
 function readCreateInput(raw: unknown): CreateProjectInput {
@@ -72,4 +90,7 @@ export function registerProjectHandlers(
   handle(CHANNELS.projectsCreate, (input) => store.create(readCreateInput(input)))
   handle(CHANNELS.projectsRename, (id, name) => store.rename(readId(id), readName(name)))
   handle(CHANNELS.projectsDelete, (id) => store.delete(readId(id)))
+  handle(CHANNELS.projectsCompleteLayout, (id, done) =>
+    store.completeLayout(readId(id), readLayoutDone(done)),
+  )
 }
