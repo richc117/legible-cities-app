@@ -159,6 +159,22 @@ jobs:
           print(f"tag={engine['tag']}")
           print(f"version={engine['version']}")
           PY
+      - name: Refuse early if the engine's tag is not published
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PINNED_REPO: ${{ steps.engine.outputs.repo }}
+          PINNED_TAG: ${{ steps.engine.outputs.tag }}
+        run: |
+          # Without this the checkout below fails with a bare "couldn't find
+          # ref", which says nothing about what to do. The engine is tagged
+          # in its own repository and pushed by hand; until that happens
+          # this job cannot vendor a runtime with the engine in it.
+          if ! gh api "repos/$PINNED_REPO/git/ref/tags/$PINNED_TAG" >/dev/null 2>&1; then
+            echo "::error::$PINNED_REPO has no tag $PINNED_TAG. The engine's tags are pushed by hand; this job vendors the runtime once that is done."
+            exit 1
+          fi
+          echo "$PINNED_REPO is tagged $PINNED_TAG"
       - name: Check out the engine at its pin
         uses: actions/checkout@v6
         with:

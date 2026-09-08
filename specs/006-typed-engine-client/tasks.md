@@ -170,7 +170,13 @@ environment, as the app's own children do. Three claims in these documents
 were corrected to what the code does: the bridge's shapes are derived from
 the generated types rather than re-exported, the fingerprint test rather
 than the drift test is what catches a half-update, and the emitter knows
-sixteen keywords rather than eleven. Two success criteria were reworded to
+sixteen keywords rather than eleven. The runners then found one more that
+neither the reviewer nor a developer machine could: with the pin wired up,
+`vendor.yml` actually ran and its checkout failed, because the engine's
+repository is on GitHub with no tags on it at all. That is the honest
+outcome and the job stays red until the maintainer pushes the tag, but the
+message was a bare "couldn't find ref", so the job now checks for the tag
+first and fails saying what is needed. Two success criteria were reworded to
 what is provable: the client holds the two casts the untyped bridge forces
 at its edge, and an error's sentence is proven for the kinds a machine
 without the layout tools can provoke.
