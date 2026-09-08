@@ -13,7 +13,9 @@ app is built rather than when a person clicks something. Two checks keep
 the copy honest: a fingerprint that runs everywhere, and a comparison
 against a live engine that runs where a checkout exists and reports itself
 skipped where none does. The vendoring workflow's engine placeholder is
-replaced by the pin, which is what closes A0-06.
+replaced by the pin, which ticks one of A0-06's three boxes. That issue
+stays open: its other two want the engine's tag published and the job green
+on darwin-x64 and win-x64, neither of which this feature can do.
 
 The approach is deliberately small: no new runtime dependency, no change to
 the bridge A1-01 built, and no interface. The generator is short because the

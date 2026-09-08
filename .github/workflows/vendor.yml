@@ -131,8 +131,10 @@ jobs:
   # The Python sidecar runtime. ADR-020 chose python-build-standalone over
   # PyInstaller; scripts/vendor-python.sh verifies the pinned checksum and
   # fails rather than continuing if the asset changed. The engine it
-  # installs is the pinned one (A1-02 added the block); the job goes green
-  # once that tag is published, which is what closes A0-06.
+  # installs is the pinned one (A1-02 wired the block in). Two things stand
+  # between here and closing A0-06: the engine's tag has to be published,
+  # and this matrix has to grow darwin-x64 and win-x64, which is where the
+  # recipe is actually unproven.
   python:
     name: python (${{ matrix.target }})
     runs-on: ${{ matrix.os }}

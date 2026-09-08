@@ -107,8 +107,9 @@ runtime installs that same version rather than a path someone filled in by
 hand.
 
 **Why this priority**: Without it the generated types are a snapshot from
-somebody's machine, and the vendoring job cannot run at all. It is what
-closes A0-06.
+somebody's machine, and the vendoring job cannot run at all. It ticks one
+of A0-06's boxes; the two that remain are the engine's tag being published
+and the job running on the other two targets.
 
 **Independent Test**: Read the pinned version, the description's own
 protocol number and the vendoring job's configuration, and confirm all
@@ -150,7 +151,7 @@ three name the same engine.
 - **FR-013**: The client MUST live where the interface can use it without reaching into the app's privileged process, and MUST reach the engine only through the existing bridge.
 - **FR-014**: The client's behaviour MUST be tested without the engine, against a stand-in bridge: the routing of results, errors, progress and cancellation, and the release of subscriptions.
 - **FR-015**: The app MUST test the client against the real engine where a checkout exists, and MUST skip those tests, saying so, where it does not. The handshake and the shutdown MUST be called for real. The two long-running methods MUST be exercised as far as a machine without the layout tools can reach, which is their refusal of bad parameters: that proves the parameter names, the error's shape and the sentence for a person. Their full runs are not claimed here.
-- **FR-016**: The workflow that vendors the engine's runtime MUST obtain the engine from the pinned repository at the pinned tag, replacing the placeholder that waits for this feature.
+- **FR-016**: The workflow that vendors the engine's runtime MUST obtain the engine from the pinned repository at the pinned tag, replacing the placeholder that waits for this feature. This is one of A0-06's three acceptance boxes, not all of them: that issue also wants the job green on two targets this matrix does not yet carry, so it does not close here.
 - **FR-017**: Nothing in this feature MUST make a network connection of its own, beyond the vendoring workflow obtaining the pinned engine when it runs.
 
 ### Key Entities
