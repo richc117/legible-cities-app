@@ -6,10 +6,15 @@
 // each and one of them is the wrong issue. Three have been closed that way
 // by changes that had nothing to do with them.
 //
-// The trap the last test pins: five commits already in this history carry
+// The trap the last tests pin: five commits already in this history carry
 // one, so the whole-history pass must never gain this check. If it did,
 // `bin/preflight` would fail forever over a mistake that cannot be unmade,
 // and the first person to meet that would reach for `--no-verify`.
+//
+// That is proved against a repository built here rather than against this
+// one, because `ci.yml` checks out shallow and a shallow clone has no
+// history to prove anything about. The check against this repository is
+// kept as well, and skips where the history is not there.
 //
 // The script is bash, so this skips on Windows, where the hooks that run it
 // do not run either.
@@ -161,21 +166,31 @@ describe.skipIf(onWindows)('a range of commits', () => {
   })
 })
 
-describe.skipIf(onWindows)('the whole-history pass', () => {
-  it('does not check closing keywords, because the history already has five', () => {
-    // The precondition, asserted rather than assumed: if the history stopped
-    // carrying one, this test would pass for the wrong reason.
-    const log = spawnSync('git', ['log', '--format=%B', 'HEAD'], {
-      cwd: root,
-      encoding: 'utf8',
-      maxBuffer: 32 * 1024 * 1024,
-    }).stdout
-    expect(log, 'no commit in this history closes an issue').toMatch(/closes #\d+/i)
+/** Whether this checkout can show the history the last test is about. */
+const historyLog = spawnSync('git', ['log', '--format=%B', 'HEAD'], {
+  cwd: root,
+  encoding: 'utf8',
+  maxBuffer: 32 * 1024 * 1024,
+}).stdout
+const historyCarriesOne = /closes #\d+/i.test(historyLog ?? '')
+const WHY = historyCarriesOne ? '' : ' (skipped: a shallow clone has no history to read)'
 
-    const r = preflight([])
+describe.skipIf(onWindows)('the whole-history pass', () => {
+  it('passes a history that carries a closing keyword', () => {
+    // Hermetic, so it holds wherever it runs. Adding the check to pass 2
+    // would turn this repository red for good.
+    const repo = repoWith(['Old and wrong\n\nCloses #22.\n', 'New and clean'])
+    const r = preflight([], repo)
     expect(r.out, 'the history pass must not gain this check').not.toContain(
       'closes an issue by number',
     )
+    expect(r.code, 'a history carrying a closing keyword must still pass').toBe(0)
+  })
+
+  it.skipIf(!historyCarriesOne)(`still passes on this repository${WHY}`, () => {
+    // The claim the comment at the top of this file makes, checked against
+    // the real thing where the real thing is available.
+    expect(preflight([]).out).not.toContain('closes an issue by number')
   })
 })
 
