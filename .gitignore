@@ -22,11 +22,11 @@ vendor/ffmpeg/
 *.key
 *.mobileprovision
 
-# The maintainer's assistant configuration is not part of the repository:
-# the checkout reaches it through symbolic links kept out of the tree.
-CLAUDE.md
+# The assistant's configuration is committed (ADR-029); only what is
+# personal to one machine stays out: private notes and per-machine
+# permission overrides.
 CLAUDE.local.md
-.claude
+.claude/settings.local.json
 
 # OS and editor noise
 .DS_Store
