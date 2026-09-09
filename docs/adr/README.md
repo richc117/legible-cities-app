@@ -54,7 +54,7 @@ already cites the number you mean to use.
 | 021 | [Windows stays in the first release; LOOM is not built from source there](021-windows-in-the-first-release.md) | Accepted |
 | 022 | Reserved: a decision about the project, recorded outside this repository | - |
 | 023 | [Determinism is per project; the layout is computed once and stored](023-per-project-determinism.md) | Accepted |
-| 024 | Reserved: the capture path, written when spike A0-07 ends | - |
+| 024 | [Capture runs in the app, offscreen, through the debugger](024-capture-is-in-process-and-offscreen.md) | Accepted |
 | 025 | Reserved: a decision about the project, recorded outside this repository | - |
 | 026 | [The design system's icons, select control and mark](026-design-system-choices.md) | Accepted |
 | 027 | [The layout a project stores, and what the engine cannot yet promise](027-the-layout-a-project-stores.md) | Accepted |
