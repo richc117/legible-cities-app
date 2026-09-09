@@ -57,3 +57,16 @@ repos:
         entry: bin/preflight --message-file
         language: script
         stages: [commit-msg]
+
+      # The two Claude Code hooks decide whether a command is allowed to
+      # run, and shellcheck cannot tell you that an option pattern assuming
+      # spaces misses `-r=file`. Every case in here is a bug that shipped
+      # or a legitimate command that a fix for one broke. They are committed
+      # again as of ADR-029, so this can run again.
+      - id: hook-tables
+        name: the assistant's allow and refuse tables
+        entry: bin/test-hooks
+        language: script
+        pass_filenames: false
+        files: '^(\.claude/hooks/|bin/test-hooks$)'
+        stages: [pre-commit]

@@ -41,6 +41,13 @@ jobs:
       #
       # Only the commits this pull request adds. The history already carries
       # five, and they cannot now be unmade.
+      # The hooks decide what the assistant may run, so they are tested
+      # like anything else that makes a decision. Committed again as of
+      # ADR-029; before that they lived outside this repository and this
+      # step could not exist.
+      - name: The assistant's allow and refuse tables
+        run: bin/test-hooks
+
       - name: Closing keywords in the commits this pull request adds
         if: github.event_name == 'pull_request'
         run: >-

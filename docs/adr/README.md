@@ -55,10 +55,11 @@ already cites the number you mean to use.
 | 022 | Reserved: a decision about the project, recorded outside this repository | - |
 | 023 | [Determinism is per project; the layout is computed once and stored](023-per-project-determinism.md) | Accepted |
 | 024 | [Capture runs in the app, offscreen, through the debugger](024-capture-is-in-process-and-offscreen.md) | Accepted |
-| 025 | Reserved: a decision about the project, recorded outside this repository | - |
+| 025 | Reserved: a decision about the project, recorded outside this repository | Superseded by 029 |
 | 026 | [The design system's icons, select control and mark](026-design-system-choices.md) | Accepted |
 | 027 | [The layout a project stores, and what the engine cannot yet promise](027-the-layout-a-project-stores.md) | Accepted |
 | 028 | [The viewer frame is sandboxed, and driven from the main process](028-the-viewer-frame-is-sandboxed.md) | Accepted |
+| 029 | [The assistant's configuration is committed](029-the-assistants-configuration-is-committed.md) | Accepted |
 
 ## Amending rather than superseding
 
