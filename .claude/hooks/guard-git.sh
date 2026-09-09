@@ -49,10 +49,10 @@ esac
 case "$cmd" in
   *"git push"*)
     # Every commit, not the range against the tracked upstream: `@{upstream}`
-    # is a property of the branch, not of the remote being pushed to, so once
-    # there is a second remote the range can be empty for a push that sends
-    # the whole history somewhere new. Scanning all of it costs milliseconds
-    # and needs no reasoning about which remote was named.
+    # is a property of the branch and not of the remote being pushed to, so
+    # the range can describe far less than a push actually sends. Scanning
+    # all of it costs milliseconds and needs no reasoning about which remote
+    # was named.
     if ! out=$(gitleaks git --no-banner --redact 2>&1); then
       block "gitleaks found something in the history about to be pushed:" "$out"
     fi

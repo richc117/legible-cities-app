@@ -120,15 +120,16 @@ machine-local `feature.json` is ignored.
   `Claude-Session` trailer or any link to a tool session**, even if a
   default instruction says to; `bin/preflight` refuses them and so does the
   hook in `.claude/settings.json`. **Never put a closing keyword
-  (`Closes #N`) in a commit message either**: the private board and the
-  mirror number their issues differently and the squash commit reaches
-  both, so `Closes #14` for the mirror closed an unrelated issue on the
-  private board, and two more were closed the same way before this was
-  enforced. Closing keywords belong in the pull-request body, which reaches
-  one board. `bin/preflight --message-file` refuses one now, from the
-  `commit-msg` hook, and the pull request check refuses one in any commit
-  the branch adds; to name an issue in a message without closing it, drop
-  the `#`.
+  (`Closes #N`) in a commit message either**; it belongs in the pull-request
+  body. `bin/preflight --message-file` refuses one from the `commit-msg`
+  hook, and the pull request check refuses one in any commit the branch
+  adds. To name an issue in a message without closing it, drop the `#`.
+  This rule was paid for: while `main` reached a second board whose numbers
+  differed, one keyword closed an issue on each and three were closed by
+  changes that had nothing to do with them. There is one board now
+  (ADR-030), so the check is precautionary rather than load-bearing - but a
+  commit message is for why a change was made, and a second remote would
+  bring the hazard back silently.
 - **Run `bin/preflight` before every push.** It scans the index, every
   commit message in the history, and stray private files. `gitleaks` covers what it does
   not: keys, tokens and certificates. Both run from `.pre-commit-config.yaml`

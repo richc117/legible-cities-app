@@ -1,10 +1,13 @@
 // The commit-message half of `bin/preflight`, and one trap in particular.
 //
 // A closing keyword in a *commit* message is not a leak; it is a different
-// mistake caught in the same place. `main` reaches two servers whose boards
-// number the same issues differently, so `Closes #22` closes an issue on
-// each and one of them is the wrong issue. Three have been closed that way
-// by changes that had nothing to do with them.
+// mistake caught in the same place. It was written when `main` reached two
+// servers whose boards numbered the same issues differently, so `Closes #22`
+// closed an issue on each and one of them was the wrong issue; three were
+// closed that way by changes that had nothing to do with them. There is one
+// board now (ADR-030), so the check is precautionary - but a commit message
+// is for why a change was made, and a second remote would bring the hazard
+// back without announcing itself.
 //
 // The trap the last tests pin: five commits already in this history carry
 // one, so the whole-history pass must never gain this check. If it did,
@@ -104,6 +107,8 @@ describe.skipIf(onWindows)('a commit message being written', () => {
     // The advice has to be actionable, or it trains people to bypass.
     expect(r.out).toContain('pull request body')
     expect(r.out).toContain('closes issue 22')
+    // It says what it cost, so nobody deletes it as bureaucracy.
+    expect(r.out).toContain('closed the wrong issue')
     expect(r.out).toContain('nothing has been committed')
   })
 
