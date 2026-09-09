@@ -471,13 +471,13 @@ Escape. The hygiene checks (`gitleaks`, `bin/preflight`) run beside them.
 
 | Not here | Arrives with |
 |---|---|
-| Typed engine methods generated from the engine's schema; contract tests against the real engine in CI | A1-02 (the engine must be vendored first, A0-06) |
+| The contract tests running in continuous integration; they exist and are gated on an engine checkout | the engine's tag reaching the mirror, then A0-06 |
 | A screen for long jobs: progress, cancellation, the engine's log | A1-03 |
 | Settings: the data folder, the export folder, the versions shown | A1-04 |
 | A feed chooser over the engine's registry; the feed key is typed and checked for form | A2-01 |
 | The viewer iframe | A3-02 |
 | Editing the style, the colours, the line order and the theme; the record holds the engine's defaults | A4-01 to A4-03 |
-| Capture and export | A5-02, after ADR-024 |
+| Capture and export | A5-02; the capture path itself is settled (ADR-024) |
 | Vendored Python, LOOM and ffmpeg; installers | A0-10 (`specs/002`) |
 | A log file and "copy diagnostics" | A6-03 |
 | Signing and auto-update | A6-05 |
