@@ -25,10 +25,10 @@
   },
   "engine": {
     "repo": "https://github.com/richc117/legible-cities",
-    "tag": "v0.2.0",
-    "version": "0.2.0",
+    "tag": "v0.2.1",
+    "version": "0.2.1",
     "protocol": 1,
-    "note": "The first tag with schematic.serve. The handshake compares version and protocol with engine.info and refuses any other; the vendoring job installs the package at the tag.",
+    "note": "A patch on v0.2.0, which was the first tag with schematic.serve: it stops a feed's text ending the animation page's data element. The protocol is byte-identical between the two, so schema_sha256 did not move. The handshake compares version and protocol with engine.info and refuses any other; the vendoring job installs the package at the tag.",
     "licence": "GPL-3.0-or-later",
     "schema_sha256": "33b19cbbbfd4ecb79925f0571c141083c1d3574c34d0b1608cee8fffe1940edc"
   },

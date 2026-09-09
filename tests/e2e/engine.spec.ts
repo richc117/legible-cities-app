@@ -15,7 +15,7 @@ import {
   type Page,
 } from '@playwright/test'
 import type { Api } from '../../src/shared/api'
-import { FAKE_ENGINE, findPython } from '../support/python'
+import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 
 // Inside page.evaluate the code runs in the renderer, where the preload
 // put `api` on the window; the test's own scope has no DOM types.
@@ -60,7 +60,12 @@ const alive = (pid: number): boolean => {
 
 function fakeHome(control: Record<string, unknown> = {}): string {
   const home = mkdtempSync(join(tmpdir(), 'legible-cities-engine-e2e-'))
-  writeFileSync(join(home, 'fake-engine.json'), JSON.stringify(control))
+  // The stand-in answers with the pinned version unless a test is about
+  // what happens when it does not.
+  writeFileSync(
+    join(home, 'fake-engine.json'),
+    JSON.stringify({ version: PINNED_ENGINE, ...control }),
+  )
   return home
 }
 
@@ -76,7 +81,7 @@ test('shows the engine ready, answers a request from the page, restarts, and lea
   let pid = 0
   await withApp(env, async (page) => {
     const status = page.getByRole('status', { name: 'Engine' })
-    await expect(status).toHaveText('Engine ready (0.2.0).')
+    await expect(status).toHaveText(`Engine ready (${PINNED_ENGINE}).`)
     await expect.poll(() => existsSync(join(home, 'fake-engine.pid'))).toBe(true)
     pid = pidIn(home)
     expect(alive(pid)).toBe(true)
@@ -86,7 +91,7 @@ test('shows the engine ready, answers a request from the page, restarts, and lea
       const r = (globalThis as unknown as Bridge).api.engine.request('engine.info')
       return (await r.result) as { engine: string; protocol: number }
     })
-    expect(info.engine).toBe('0.2.0')
+    expect(info.engine).toBe(PINNED_ENGINE)
     expect(info.protocol).toBe(1)
     const refused = await page.evaluate(async () => {
       const r = (globalThis as unknown as Bridge).api.engine.request('map.build', {
@@ -122,7 +127,7 @@ test('shows the engine ready, answers a request from the page, restarts, and lea
     // Killed from outside: the line says so, then says ready again (SC-002).
     process.kill(pid, 'SIGKILL')
     await expect(status).toContainText(/restarting/i, { timeout: 2_000 })
-    await expect(status).toHaveText('Engine ready (0.2.0).', { timeout: 10_000 })
+    await expect(status).toHaveText(`Engine ready (${PINNED_ENGINE}).`, { timeout: 10_000 })
     await expect.poll(() => pidIn(home)).not.toBe(pid)
     pid = pidIn(home)
     expect(alive(pid)).toBe(true)
@@ -184,7 +189,7 @@ test('shows the mismatch in a dialog, then on the status line, when the engine i
     // status line still says it afterwards (FR-006, FR-016).
     const dialog = page.getByRole('dialog', { name: 'Engine version mismatch' })
     await expect(dialog).toBeVisible()
-    await expect(dialog).toContainText('needs engine 0.2.0')
+    await expect(dialog).toContainText(`needs engine ${PINNED_ENGINE}`)
     await expect(dialog).toContainText('found engine 0.1.0')
     await expect(dialog.getByRole('button', { name: 'OK' })).toBeFocused()
     await page.keyboard.press('Escape')
