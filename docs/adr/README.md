@@ -60,6 +60,7 @@ already cites the number you mean to use.
 | 027 | [The layout a project stores, and what the engine cannot yet promise](027-the-layout-a-project-stores.md) | Accepted |
 | 028 | [The viewer frame is sandboxed, and driven from the main process](028-the-viewer-frame-is-sandboxed.md) | Accepted |
 | 029 | [The assistant's configuration is committed](029-the-assistants-configuration-is-committed.md) | Accepted |
+| 030 | [One board and one remote, on GitHub](030-one-board-and-one-remote.md) | Accepted |
 
 ## Amending rather than superseding
 

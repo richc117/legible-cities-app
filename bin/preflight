@@ -42,12 +42,17 @@ status=0
 # same shape, caught in the same place.
 #
 # GitHub reads `Closes #12` out of a *commit* message and closes issue 12.
-# This project pushes one `main` to two servers whose boards number the same
-# issues differently, so a single keyword closes an issue on each and one of
-# them is the wrong issue. Three have been closed that way by changes that
-# had nothing to do with them, two of those live work marked done. The rule
-# was written down after the first and then not applied to the next two,
-# which is the whole argument for a check.
+#
+# This was written when one `main` was pushed to two servers whose boards
+# numbered the same issues differently, so a single keyword closed an issue
+# on each and one of them was the wrong issue. Three were closed that way by
+# changes that had nothing to do with them. That hazard is gone: there is one
+# board now, and a keyword in a commit message would close the right issue.
+#
+# The check stays, and is honestly precautionary rather than load-bearing. A
+# commit message is for why a change was made; which issue it settles belongs
+# in the pull request, which is also where the number is unambiguous. And if a
+# second remote ever returns, the hazard returns with it, silently.
 #
 # Deliberately **not** part of pass 2. Five commits already in the history
 # carry one, so scanning all of it would fail forever over a mistake that
@@ -60,12 +65,13 @@ status=0
 closing='(^|[^A-Za-z0-9_/])(close[sd]?|fix(e[sd])?|resolve[sd]?)[[:space:]]*:?[[:space:]]*(#[0-9]+|[A-Za-z0-9._-]+/[A-Za-z0-9._-]+#[0-9]+|https?://[^[:space:]]+/issues/[0-9]+)'
 
 why_closing() {
-  echo "preflight: one \`main\` reaches two boards whose numbers do not" >&2
-  echo "preflight: correspond, so this closes an issue on each and one of" >&2
-  echo "preflight: them is the wrong issue. It has happened three times." >&2
-  echo "preflight: Put the keyword in the pull request body, which reaches" >&2
-  echo "preflight: one board. To name an issue here without closing it," >&2
-  echo "preflight: drop the '#': \"closes issue 22\" is read by nobody." >&2
+  echo "preflight: a commit message says why a change was made; which issue" >&2
+  echo "preflight: it settles belongs in the pull request body, where the" >&2
+  echo "preflight: number is unambiguous. This rule was paid for: a keyword" >&2
+  echo "preflight: here once reached two boards and closed the wrong issue" >&2
+  echo "preflight: on one of them, three times." >&2
+  echo "preflight: To name an issue here without closing it, drop the '#':" >&2
+  echo "preflight: \"closes issue 22\" is read by nobody." >&2
 }
 
 if [ -n "$msgfile" ]; then
@@ -121,10 +127,10 @@ if [ -n "$hits" ]; then
 fi
 
 # 2. Commit message bodies, all of them; author metadata is not scanned.
-#    Not the range against the tracked upstream: that describes the branch,
-#    not the remote a push is going to, so with a second remote it can be
-#    empty for a push that sends the whole history somewhere new. CI scans
-#    everything for the same reason; this way the answer is the same here.
+#    Not the range against the tracked upstream: that describes the branch
+#    and not what a push actually sends, and it was measurably wrong when
+#    this repository had a second remote. CI scans everything for the same
+#    reason; this way the answer is the same in both places.
 if git rev-parse -q --verify HEAD >/dev/null 2>&1; then
   msgs=$(git log --format='%h %B' HEAD 2>/dev/null | grep -nE "$pattern" || true)
   if [ -n "$msgs" ]; then
