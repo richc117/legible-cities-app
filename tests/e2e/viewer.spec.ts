@@ -17,7 +17,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test'
-import { FAKE_ENGINE, findPython } from '../support/python'
+import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 import { VIEWER_SANDBOX } from '../../src/shared/viewer'
 
 const repoRoot = resolve(__dirname, '../..')
@@ -29,7 +29,7 @@ function home(): string {
   const dir = mkdtempSync(join(tmpdir(), 'legible-cities-viewer-'))
   writeFileSync(
     join(dir, 'fake-engine.json'),
-    JSON.stringify({ map_draws: true, progress_delay_ms: 5 }),
+    JSON.stringify({ version: PINNED_ENGINE, map_draws: true, progress_delay_ms: 5 }),
   )
   return dir
 }

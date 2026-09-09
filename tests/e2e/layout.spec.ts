@@ -14,7 +14,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test'
-import { FAKE_ENGINE, findPython } from '../support/python'
+import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 
 const repoRoot = resolve(__dirname, '../..')
 const PYTHON = findPython()
@@ -23,7 +23,12 @@ test.skip(PYTHON === null, 'no python3 or python on the PATH to run the stand-in
 
 function home(control: Record<string, unknown>): string {
   const dir = mkdtempSync(join(tmpdir(), 'legible-cities-layout-'))
-  writeFileSync(join(dir, 'fake-engine.json'), JSON.stringify(control))
+  // The pinned version, or the handshake refuses the stand-in and every
+  // test here fails on a status line rather than on what it is about.
+  writeFileSync(
+    join(dir, 'fake-engine.json'),
+    JSON.stringify({ version: PINNED_ENGINE, ...control }),
+  )
   return dir
 }
 
