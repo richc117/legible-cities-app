@@ -11,10 +11,10 @@ what.
 │  Renderer (React)            Main (Node)                      │      │ Engine (Python)     │
 │  ┌───────────────────┐       ┌──────────────────────────┐     │      │ python -m           │
 │  │ Library           │◄─IPC─►│ window, single instance  │     │      │   schematic.serve   │
-│  │ project view      │       │ app:// protocol handler  │     │ stdio│                     │
+│  │ project run+viewer│       │ app:// protocol handler  │     │ stdio│                     │
 │  │ engine status     │       │ projects:* → the store   │     │◄────►│ JSON-RPC 2.0,       │
 │  │ window.api ───────┼───────┤ engine:*   → the sidecar ├─────┼──────┤ Content-Length      │
-│  └───────────────────┘       │ config + startup log     │     │stderr│ frames; LOOM as its │
+│  └───────────────────┘       │ viewer:* → the frame     │     │stderr│ frames; LOOM as its │
 │   origin: app://local        └──────────────────────────┘     │→ log │ own child processes │
 └───────────────────────────────────────────────────────────────┘      └─────────────────────┘
         userData/engine = SCHEMATIC_HOME
@@ -25,14 +25,17 @@ what.
 
 - **Main** (`src/main/`): the app lifecycle, the one window, the
   single-instance lock, the `app://` protocol handler, the project store
-  and the handlers behind the bridge, configuration and the log, and the
-  engine's supervisor: the one child process the app starts.
+  and the handlers behind the bridge, configuration and the log, the
+  viewer's driver (the project page's frame, held by identity and injected
+  into from here), and the engine's supervisor: the one child process the
+  app starts.
 - **Preload** (`src/preload/`): a `contextBridge` exposing `window.api` and
   nothing else. `contextIsolation` on, `nodeIntegration` off, `sandbox` on.
 - **Renderer** (`src/renderer/`): React. It draws the Library, the create
-  dialog, and a project view with rename and delete; it knows projects by
-  identifier and never sees a path. It will never draw a map: the engine's
-  animation page is the viewer (constitution, principle I).
+  dialog, and a project view with rename, delete, the layout run's progress
+  line and the viewer's sandboxed frame; it knows projects by identifier
+  and never sees a path. It never draws a map: the engine's animation page
+  is the viewer (constitution, principle I).
 
 ## The origin: `app://local`
 
@@ -64,8 +67,8 @@ into it from the privileged side (ADR-028).
 ## The bridge: `window.api`
 
 Typed in `src/shared/api.ts`, which the preload and the renderer both
-import. Five methods under `api.projects`, and the engine under
-`api.engine`:
+import. Six methods under `api.projects`, three under `api.viewer`, and the
+engine under `api.engine`:
 
 | Method | Does |
 |---|---|
@@ -74,6 +77,11 @@ import. Five methods under `api.projects`, and the engine under
 | `create({ name, feed, mode?, agency? })` | a new record, every other field at its default |
 | `rename(id, name)` | changes `name` and `modified` and nothing else |
 | `delete(id)` | removes the project and its output, and reports what could not be removed by folder role |
+| `completeLayout(id, done)` | records the layout identifier and the service day a finished run produced; the main process reads the stage files the engine named and derives the identifier itself (A3-01, ADR-027) |
+
+| `viewer.attach(projectId)` | holds the project page's frame by identity once it has loaded, and answers whether it did (ADR-028) |
+| `viewer.release()` | lets the frame go |
+| `viewer.call(method, ...args)` | one of the page's `__present` methods by name, run in the frame from the main process; a name outside the shared list is refused |
 
 | `engine.state()` | the engine's state: starting, ready, restarting, unavailable, mismatched or stopped, with a reason where there is one |
 | `engine.request(method, params?)` | a request to the engine, as `{ id, result }`: the id is a token the preload mints, the result settles with the engine's answer or its error (`code`, `message`, `data: { kind, detail, hint }`) unchanged |
@@ -93,15 +101,17 @@ Every argument is validated on the main side, with the validators in
 promise whose message is the sentence a person reads, never a path. Every
 handler checks that `event.senderFrame` is the window's top frame and
 refuses any other caller, which is another web contents: a second window,
-a webview. It does not distinguish a same-origin iframe calling
+a webview. It could not distinguish a same-origin iframe calling
 `parent.api`, because the bridge's functions run in the top frame that
-exposed them; the viewer iframe (A3-02) needs its own answer, most likely
-its own web contents. Nothing that crosses the
+exposed them; that is why the viewer's frame is sandboxed to an opaque
+origin and never shares the interface's (ADR-028). Nothing that crosses the
 bridge, in either direction, is a filesystem path the renderer did not ask
 the engine for; the renderer addresses a project by its identifier only.
 Each addition is a reviewed change to the type, the preload and the
-main-side handler together. Contracts: `specs/003-project/contracts/bridge.md`
-and `specs/004-sidecar-supervisor/contracts/bridge.md`.
+main-side handler together. Contracts: `specs/003-project/contracts/bridge.md`,
+`specs/004-sidecar-supervisor/contracts/bridge.md`,
+`specs/007-layout-run/contracts/bridge.md` and
+`specs/008-viewer/contracts/viewer.md`.
 
 ## The engine process
 
@@ -177,10 +187,10 @@ the checkout for its description and fails on any difference, naming the
 first differing line and the command that fixes it; with no checkout it
 reports itself skipped rather than passed.
 
-The renderer will reach the engine through
-`src/renderer/src/engine/client.ts`; the jobs drawer (A1-03) is its first
-caller, and the status line still reads the bridge directly for the one
-thing the client does not carry, the engine's own state.
+The renderer reaches the engine through
+`src/renderer/src/engine/client.ts`; the layout run (A3-01) is its caller,
+and the status line still reads the bridge directly for the one thing the
+client does not carry, the engine's own state.
 The bridge underneath stays untyped on purpose, because transport should not
 know the engine's methods; the client is the layer that does. It takes the
 bridge in its constructor, so its tests need no Electron, and it neither
@@ -232,12 +242,15 @@ Nothing else is touched - not `feeds/`, not another project - and whatever
 could not be removed is reported by role, project or output, never by
 path.
 
-**Before A3-01**, `date` and `layout` are `null`, and the interface says
-"not yet chosen" and "not laid out yet". The service day is resolved once,
-at the project's first layout, when the engine is first asked about the
-feed; it is stored then and never re-resolved silently, because the
-engine's busiest-weekday rule reads today's date. The layout is the stored
-layout's identifier, produced by that same first layout (ADR-023). Until
+**Until the first layout**, `date` and `layout` are `null`, and the
+interface says "not yet chosen" and "not laid out yet". The service day is
+resolved once, at the project's first layout, and stored then; it is never
+re-resolved silently (ADR-031, which amends ADR-023 on the moment). Today
+it is the machine's date; once the engine can report a feed's window it
+becomes the engine's choice, and changing it is an explicit action
+(A3-04). The layout is the stored layout's identifier, produced by that
+same first layout: the app's digest of the four stage graphs until the
+engine addresses layouts itself (ADR-027). Until
 the engine's registry is reachable (A2-01), the feed key is typed into the
 create dialog and validated for form only.
 
@@ -383,7 +396,7 @@ which reuses the cache and is safe.
 ### The service day
 
 The engine never chooses a service day, because its choice would depend on
-the day it was asked (ADR-023). The app resolves one at a project's first
+the day it was asked (ADR-031). The app resolves one at a project's first
 layout, from the machine's own today, stores it at once, and uses the
 stored day for every later build. Choosing a *good* day, rather than merely
 a fixed one, needs the feed's service window, which arrives with the engine
@@ -471,13 +484,12 @@ Escape. The hygiene checks (`gitleaks`, `bin/preflight`) run beside them.
 
 | Not here | Arrives with |
 |---|---|
-| The contract tests running in continuous integration; they exist and are gated on an engine checkout | the engine's tag reaching the mirror, then A0-06 |
-| A screen for long jobs: progress, cancellation, the engine's log | A1-03 |
+| The contract tests running in continuous integration; they exist and are gated on an engine checkout | A0-06 |
+| A screen for long jobs across projects; the layout run draws its own progress on the project screen | A1-03 |
 | Settings: the data folder, the export folder, the versions shown | A1-04 |
 | A feed chooser over the engine's registry; the feed key is typed and checked for form | A2-01 |
-| The viewer iframe | A3-02 |
 | Editing the style, the colours, the line order and the theme; the record holds the engine's defaults | A4-01 to A4-03 |
-| Capture and export | A5-02; the capture path itself is settled (ADR-024) |
+| Capture and export | A5-02a (the capture, on ADR-024's path) and A5-02b (one preset, over the engine's `export.plan` and `export.encode`) |
 | Vendored Python, LOOM and ffmpeg; installers | A0-10 (`specs/002`) |
 | A log file and "copy diagnostics" | A6-03 |
 | Signing and auto-update | A6-05 |

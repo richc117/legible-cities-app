@@ -61,10 +61,13 @@ already cites the number you mean to use.
 | 028 | [The viewer frame is sandboxed, and driven from the main process](028-the-viewer-frame-is-sandboxed.md) | Accepted |
 | 029 | [The assistant's configuration is committed](029-the-assistants-configuration-is-committed.md) | Accepted |
 | 030 | [One board and one remote, on GitHub](030-one-board-and-one-remote.md) | Accepted |
+| 031 | [The service day is resolved once, at the first layout](031-the-service-day-is-resolved-at-the-first-layout.md) | Accepted |
+| 032 | Reserved: a decision about the project, recorded outside this repository | - |
 
 ## Amending rather than superseding
 
 A record whose **decision** still stands but whose **reasoning** turns out to
 be wrong is amended, not superseded: the new record carries `Amends:` and the
 old one gains `Amended by:`, and both stay Accepted. ADR-013 and ADR-028 are
-the first pair. Superseding is for a decision that has been replaced.
+the first pair, ADR-023 and ADR-031 the second. Superseding is for a
+decision that has been replaced.

@@ -3,7 +3,8 @@ import ProgressLine, { type Stage } from './ProgressLine'
 
 // Sample data for the progress line, reached through ?progress-preview on
 // the interface's URL in development and in the end-to-end test; nothing
-// in the app navigates here. A3-01 wires the real stages.
+// in the app navigates here; the layout run (LayoutRun.tsx) drives the
+// real stages.
 const STAGES = ['gtfs2graph', 'topo', 'loom', 'octi']
 
 function sample(states: Stage['state'][], message?: string): Stage[] {

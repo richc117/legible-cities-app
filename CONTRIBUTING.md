@@ -6,10 +6,11 @@ what keeps it coherent as it grows.
 ## Where things stand
 
 The repository holds its charter, the Phase 0 spike reports and decision
-records, and the Electron skeleton: one window, an empty Library, the
-`app://local` origin, and checks on three platforms (`README.md`,
-"Developing"). The roadmap is the milestones on this
-repository, once published, in order: Phase 0 (foundation and spikes),
+records, and the application so far: one window, a Library of projects,
+the `app://local` origin, the engine supervised as a child process, a
+layout run and the viewer, with checks on three platforms (`README.md`,
+"Developing"). The roadmap is the milestones on this repository, in
+order: Phase 0 (foundation and spikes),
 Phase 1 (engine boundary), First reel (one preset feed through layout,
 viewer and export, before anything broadens), then Phases 2 to 6 through
 release readiness. An issue with the `type:spike` label is a timeboxed
@@ -98,8 +99,10 @@ a line in `.gitleaks.toml`, with a comment saying why. See
 
 ## If you use an assistant
 
-The repository does not configure one: `CLAUDE.md` and `.claude/` are
-ignored, and what the maintainer uses stays out of the tree. The rules an
+The repository configures one: `CLAUDE.md` and `.claude/` are committed
+(ADR-029), so a checkout carries the rules, hooks and skills the maintainer
+uses; only `CLAUDE.local.md` and `.claude/settings.local.json` stay personal
+and gitignored. The rules an
 assistant needs are the ones a person needs, and they are here: the
 constitution in `.specify/memory/constitution.md`, the decision records
 under `docs/adr/`, and the specs under `specs/`. Whatever runs on your

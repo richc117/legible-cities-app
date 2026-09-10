@@ -6,10 +6,12 @@ exports them as stills, reels and GIFs. It is the
 [Legible Cities](https://richc117.github.io/legible-cities/) pipeline behind a
 window, for people who do not use a terminal.
 
-**Status: pre-alpha.** This repository currently holds its charter: licence,
-contribution guide, templates and the decision-record conventions. There is
-no application to build yet. Work proceeds through the issues and milestones
-on this repository; Phase 0 is spikes and scaffolding.
+**Status: pre-alpha.** The application exists and shows a map: one window
+opening to a Library of projects, the pinned engine started as a child
+process and spoken to over JSON-RPC, a layout run with per-stage progress,
+and the engine's animation page shown in a sandboxed frame. It exports
+nothing yet; that is the "First reel" milestone. Work proceeds through the
+issues and milestones on this repository.
 
 ## What it will do
 
@@ -30,7 +32,7 @@ on this repository; Phase 0 is spikes and scaffolding.
   shows that page rather than drawing a map of its own.
 - [LOOM](https://github.com/ad-freiburg/loom), the schematisation suite from
   the University of Freiburg, as native binaries built in CI.
-- A bundled FFmpeg for encoding.
+- A bundled FFmpeg for encoding (decided; not vendored yet).
 
 The founding decisions (the shell, the engine boundary, the licence, native
 LOOM, bundled FFmpeg, the page as viewer) were made before this repository
@@ -39,10 +41,11 @@ existed and are being written up as its first decision records under
 
 ## Developing
 
-The skeleton runs today: one window, the Library and its projects, the
-`app://local` origin, the pinned engine started as a child process and
-spoken to over JSON-RPC, and a check on three platforms. It draws no map
-yet; `docs/ARCHITECTURE.md` says what exists and what each later issue adds.
+What runs today: one window, the Library and its projects, the `app://local`
+origin, the pinned engine started as a child process and spoken to over
+JSON-RPC, a layout run drawn stage by stage, the engine's page as the
+viewer, and checks on three platforms. Nothing exports yet;
+`docs/ARCHITECTURE.md` says what exists and what each later issue adds.
 
 You need Node.js 22 or later. Optionally, for the development loop and the
 tokens test, check out the engine beside this repository and point
@@ -62,7 +65,7 @@ Ubuntu, macOS and Windows for every change:
 ```
 npm run lint          # eslint and prettier
 npm run typecheck     # tsc, both projects
-npm test              # vitest: path validation, configuration, tokens drift
+npm test              # vitest: the supervisor, the client, the layout run and the design system, against a stand-in engine
 npm run build         # electron-vite build into out/
 npm run test:e2e      # Playwright launches the built app and quits it
 ```

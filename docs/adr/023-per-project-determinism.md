@@ -4,6 +4,11 @@
 - **Date:** 2026-09-07
 - **Supersedes:** none
 - **Superseded by:** none
+- **Amended by:** [ADR-031](031-the-service-day-is-resolved-at-the-first-layout.md),
+  which corrects this record's sentence that the service date is resolved
+  when a project is created: it is resolved once, at the first layout. The
+  decision here, that the layout is computed once and stored and that the
+  engine is always told the date, stands.
 
 ## Context
 

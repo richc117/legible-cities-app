@@ -1,7 +1,7 @@
 # Legible Cities (desktop app)
 
 An Electron + React + TypeScript shell around the `schematic` Python engine
-from `legible-cities`, which will run as a JSON-RPC sidecar over stdio. The
+from `legible-cities`, which runs as a JSON-RPC sidecar over stdio. The
 engine is the source of truth; its generated animation page is the viewer;
 this app never draws a map of its own.
 
@@ -22,7 +22,12 @@ against the sibling engine, and CI on three platforms - and the design
 system's foundations (A2-00: the tokens of `docs/DESIGN.md` in four
 stylesheets, FigUI3's MIT core behind wrappers and a build guard that
 refuses its PolyForm half, Phosphor icons, the Beck progress line, every
-screen restyled). It draws no map.
+screen restyled), the typed client generated from the engine's own schema
+(A1-02), the layout run (A3-01: one button runs the engine's stages behind
+a progress line and records the layout the project was drawn from,
+ADR-027) and the viewer (A3-02: the engine's page in a frame sandboxed to
+an opaque origin and driven from the main process, ADR-028). It exports
+nothing yet.
 
 Work proceeds phase by phase; `CONTRIBUTING.md` explains the flow, the
 labels, the milestones and the `A0-05`-style issue codes. The four Phase 0
@@ -30,14 +35,16 @@ spikes have run: LOOM ships without its optional solvers (ADR-019), the
 sidecar is a pinned python-build-standalone runtime (ADR-020), Windows
 stays in the first release (ADR-021), and a project's layout is stored
 rather than recomputed because `topo` is not reproducible on macOS
-(ADR-023). Two spikes wait on continuous integration to measure the
-platforms a developer machine cannot; the offscreen-capture spike is
-finished, and ADR-024 puts capture in the app's own process, in an
-offscreen window driven through the Chrome DevTools Protocol. Next is the Electron
-skeleton, then a "First reel" milestone that drives one preset feed through
-layout, viewer and export before the phases broaden. The skeleton
-landed the `ci` check on 2026-09-07 and branch protection with it: `main`
-changes only through pull requests now, one issue, one branch, one pull
+(ADR-023), with the service day resolved once at the first layout
+(ADR-031). One spike (A0-06) still waits on the Intel and Windows runners
+for its last two targets; the offscreen-capture spike is finished, and
+ADR-024 puts capture in the app's own process, in an offscreen window
+driven through the Chrome DevTools Protocol. Next is the "First reel"
+milestone, one preset feed through layout, viewer and export before the
+phases broaden: layout and viewer are done, and what remains is the app's
+capture (A5-02a), the engine's export halves (E10, E09b) and one preset
+exported (A5-02b). Since 2026-09-07 `main` changes only through pull
+requests with the `ci` check green: one issue, one branch, one pull
 request, the maintainer included.
 
 Personal settings and private pointers (sibling checkouts, planning notes)
@@ -162,9 +169,9 @@ machine-local `feature.json` is ignored.
   hostnames or addresses, keys, or planning notes in any committed file,
   commit message, issue or screenshot.
 
-## Rules that will matter once there is code
+## Rules that matter now there is code
 
-Stated now so the first implementation does not have to rediscover them.
+Stated before the first implementation, and kept since.
 
 - **One renderer.** The engine emits a self-contained animation page; the
   app embeds it in an iframe and drives it only through `window.__present`.
