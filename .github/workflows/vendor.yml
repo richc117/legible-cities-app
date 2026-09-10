@@ -35,7 +35,7 @@ jobs:
           - { os: macos-15-intel, target: darwin-x64   }
           - { os: ubuntu-22.04, target: linux-x64    }
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Read the pin
         id: pin
@@ -145,7 +145,7 @@ jobs:
         include:
           - { os: macos-15, target: darwin-arm64 }
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Read the engine's pin
         id: engine
         shell: bash
@@ -179,7 +179,7 @@ jobs:
           fi
           echo "$PINNED_REPO is tagged $PINNED_TAG"
       - name: Check out the engine at its pin
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: ${{ steps.engine.outputs.repo }}
           ref: ${{ steps.engine.outputs.tag }}
@@ -230,7 +230,7 @@ jobs:
     name: loom (win-x64)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       # Runner labels: macos-13 was retired and macos-14 is deprecated in
       # GitHub's runner-images table (checked 2026-09-07); macos-15 and
       # macos-15-intel are the current arm64 and x64 images.
