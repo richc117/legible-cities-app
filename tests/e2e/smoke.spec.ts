@@ -250,7 +250,7 @@ test('creates, opens, renames and deletes a project, and serves its output', asy
     await expect(renamed).toBeVisible()
 
     // The project's output is served under its identifier and nowhere
-    // else (User Story 3). The file stands in for what A3-01 will write.
+    // else (User Story 3). The file stands in for what a layout run writes.
     mkdirSync(join(home, 'out', id), { recursive: true })
     writeFileSync(join(home, 'out', id, 'index.html'), '<!doctype html><title>output</title>')
     const served = await probe(window, `/projects/${id}/index.html`)

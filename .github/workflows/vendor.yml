@@ -2,9 +2,9 @@
 # artefacts. Never on every push: the pins change rarely and the build is
 # minutes, so it runs when vendor/pins.json changes or when asked.
 #
-# NOT YET RUN. Written during the A0-05 spike, which had no CI to run it on;
-# see docs/adr/spikes/loom-native.md. macOS arm64 is the only target measured
-# so far, and it was measured on a developer machine.
+# Written during the A0-05 spike and first run on 2026-09-07, once the
+# repository had runners; see docs/adr/spikes/loom-native.md. LOOM is green
+# on all four targets. The python job covers darwin-arm64 only (A0-06).
 #
 # The configure flags are the spike's finding, not a preference: LOOM's
 # optional dependencies (GLPK, COIN-OR, Gurobi, libzip) are never called at
@@ -131,10 +131,11 @@ jobs:
   # The Python sidecar runtime. ADR-020 chose python-build-standalone over
   # PyInstaller; scripts/vendor-python.sh verifies the pinned checksum and
   # fails rather than continuing if the asset changed. The engine it
-  # installs is the pinned one (A1-02 wired the block in). Two things stand
-  # between here and closing A0-06: the engine's tag has to be published,
-  # and this matrix has to grow darwin-x64 and win-x64, which is where the
-  # recipe is actually unproven.
+  # installs is the pinned one (A1-02 wired the block in). What stands
+  # between here and closing A0-06 is this matrix growing darwin-x64 and
+  # win-x64, which is where the recipe is actually unproven; the engine's
+  # tags are public since 2026-09-08, and the refuse-early step below
+  # guards that.
   python:
     name: python (${{ matrix.target }})
     runs-on: ${{ matrix.os }}

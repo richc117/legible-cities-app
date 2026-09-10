@@ -22,14 +22,14 @@ export interface ProjectRecord {
   feed: string
   mode: string
   agency: string | null
-  /** The service day, YYYY-MM-DD; null until the first layout resolves it (ADR-023). */
+  /** The service day, YYYY-MM-DD; null until the first layout resolves it (ADR-031). */
   date: string | null
   style: ProjectStyle
   colors: Record<string, string>
   defaultColor: string
   lineOrder: string[]
   theme: Theme
-  /** The stored layout's identifier; null until A3-01 produces one. */
+  /** The stored layout's identifier; null until the first layout produces one (ADR-027). */
   layout: string | null
   created: string
   modified: string
