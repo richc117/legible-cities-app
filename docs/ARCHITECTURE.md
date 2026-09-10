@@ -480,6 +480,40 @@ design end-to-end test reads the computed sizes and the focus ring of the
 kit's controls in both themes, tabs through a dialog and closes it with
 Escape. The hygiene checks (`gitleaks`, `bin/preflight`) run beside them.
 
+## The capture
+
+The export path's middle, built before its ends (A5-02a; ADR-024). A
+project page is loaded as the top-level document of a hidden offscreen
+`BrowserWindow` with no preload, no node integration, the sandbox on, and a
+session of its own - the in-memory partition `capture`, which serves
+project pages and nothing else and refuses every permission. Nothing the
+interface's session holds reaches it, and a persisted per-host zoom level,
+which scaled every frame of spike A0-07's first two sessions, is the reason
+it is not the default session.
+
+The order is the spike's and every step of it was paid for: navigate
+first, because emulating a web contents that has never navigated is a null
+dereference that takes the process down; then attach the debugger and
+`Emulation.setDeviceMetricsOverride` to the job's size and scale factor,
+which wins over the display's in both directions; `setCapture(true)` before
+any wait, so the page's own clock stops before the fonts and the settle;
+`bounds()` and `state()`, and a clock with no trains refused with the
+recorder's sentence; the stage's rect in CSS pixels; `settle()`; then per
+frame `advance(1/fps)` or a `seek` along a sweep, two animation frames, and
+`Page.captureScreenshot` at that clip with `scale: 1` - never
+`capturePage()`, which ignores the emulation and follows the window.
+
+`src/main/capture.ts` is the order, behind a `CapturePage` interface, so
+`tests/unit/capture.test.ts` asserts every step against a fake page;
+`src/main/capture-window.ts` is the Electron half, and a second build
+entry, so `tests/e2e/capture-harness.cjs` can load it into a bare Electron
+and `tests/e2e/capture.spec.ts` can prove in a real window that two
+captures of one job are byte-identical, that a zoom level seeded in the
+default session changes nothing, and that a cancel leaves no window and no
+frames. The job's shape is the engine's recorder's (`src/shared/capture.ts`),
+so `export.plan`'s answer will map onto it. A quit destroys any capture
+window before the engine is stopped.
+
 ## Deliberately absent
 
 | Not here | Arrives with |
@@ -489,7 +523,7 @@ Escape. The hygiene checks (`gitleaks`, `bin/preflight`) run beside them.
 | Settings: the data folder, the export folder, the versions shown | A1-04 |
 | A feed chooser over the engine's registry; the feed key is typed and checked for form | A2-01 |
 | Editing the style, the colours, the line order and the theme; the record holds the engine's defaults | A4-01 to A4-03 |
-| Capture and export | A5-02a (the capture, on ADR-024's path) and A5-02b (one preset, over the engine's `export.plan` and `export.encode`) |
+| Export | A5-02b: one preset, over the engine's `export.plan` and `export.encode`, with the capture below in the middle |
 | Vendored Python, LOOM and ffmpeg; installers | A0-10 (`specs/002`) |
 | A log file and "copy diagnostics" | A6-03 |
 | Signing and auto-update | A6-05 |

@@ -89,7 +89,8 @@ for:
   follows the window, and its rect is in device-independent pixels while the
   DOM measures in CSS pixels - a correctly *sized* image of the wrong
   region.
-- **A `userData` path the export controls.** Electron persists a per-host
+- **A session the export controls: an in-memory partition, never the
+  interface's default session.** Electron persists a per-host
   zoom level into the profile. One stray `zoomFactor` leaves every later
   capture of that origin silently scaled, with no error anywhere; it cost
   spike A0-07 two sessions.

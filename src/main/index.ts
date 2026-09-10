@@ -5,9 +5,10 @@
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { app, BrowserWindow, ipcMain, protocol, session } from 'electron'
+import { app, BrowserWindow, ipcMain, session } from 'electron'
 import pins from '../../vendor/pins.json'
 import { CHANNELS } from '../shared/api'
+import { abortCaptures, configureCapture } from './capture-window'
 import { describeConfig, resolveConfig, type Config } from './config'
 import { registerEngineHandlers } from './engine-ipc'
 import { engineCommand, engineEnvironment, resolveInterpreter } from './interpreter'
@@ -16,18 +17,13 @@ import { log } from './log'
 import { ProjectStore } from './projects'
 import { Viewer } from './viewer'
 import { registerAppProtocol } from './protocol'
+import { registerAppScheme } from './scheme'
 import { Sidecar } from './sidecar'
 
 export const PRODUCT_NAME = 'Legible Cities'
 
-// Before the app is ready, and exactly once: a standard, secure origin that
-// supports fetch and streamed bodies (research.md section 1).
-protocol.registerSchemesAsPrivileged([
-  {
-    scheme: 'app',
-    privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true },
-  },
-])
+// Before the app is ready, and exactly once (research.md section 1).
+registerAppScheme()
 
 let mainWindow: BrowserWindow | null = null
 let sidecar: Sidecar | null = null
@@ -218,6 +214,9 @@ if (!hasLock) {
       engineHome: config.home,
       log: (message) => log.warn('protocol', message),
     })
+    // The export's window has a session of its own, serving project pages
+    // and nothing else (ADR-024).
+    configureCapture({ engineHome: config.home })
     mainWindow = createWindow()
 
     app.on('activate', () => {
@@ -231,6 +230,8 @@ if (!hasLock) {
   app.on('before-quit', (event) => {
     if (quitting) return
     quitting = true
+    // A capture window is created for its export and must not outlive the app.
+    abortCaptures()
     if (sidecar === null) return
     event.preventDefault()
     const stopping = sidecar.stop()
