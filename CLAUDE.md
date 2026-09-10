@@ -26,8 +26,11 @@ screen restyled), the typed client generated from the engine's own schema
 (A1-02), the layout run (A3-01: one button runs the engine's stages behind
 a progress line and records the layout the project was drawn from,
 ADR-027) and the viewer (A3-02: the engine's page in a frame sandboxed to
-an opaque origin and driven from the main process, ADR-028). It exports
-nothing yet.
+an opaque origin and driven from the main process, ADR-028), and the
+capture (A5-02a: an offscreen window in its own session takes a page's
+frames through the DevTools protocol, byte-identical run to run,
+`src/main/capture.ts`). It exports nothing yet: the export flow over the
+engine's `export.plan` and `export.encode` is A5-02b.
 
 Work proceeds phase by phase; `CONTRIBUTING.md` explains the flow, the
 labels, the milestones and the `A0-05`-style issue codes. The four Phase 0
@@ -41,9 +44,8 @@ for its last two targets; the offscreen-capture spike is finished, and
 ADR-024 puts capture in the app's own process, in an offscreen window
 driven through the Chrome DevTools Protocol. Next is the "First reel"
 milestone, one preset feed through layout, viewer and export before the
-phases broaden: layout and viewer are done, and what remains is the app's
-capture (A5-02a), the engine's export halves (E10, E09b) and one preset
-exported (A5-02b). Since 2026-09-07 `main` changes only through pull
+phases broaden: layout, viewer and capture are done, and what remains is
+the engine's export halves (E10, E09b) and one preset exported (A5-02b). Since 2026-09-07 `main` changes only through pull
 requests with the `ci` check green: one issue, one branch, one pull
 request, the maintainer included.
 
@@ -202,8 +204,9 @@ Stated before the first implementation, and kept since.
   has never navigated crashes the process; take the frame with
   `Page.captureScreenshot` at a CSS-pixel clip, never `capturePage()`,
   whose rect is in device-independent pixels and which ignores the
-  emulated scale factor; give the export a `userData` of its own, because
-  a persisted per-host zoom level scales every capture silently.
+  emulated scale factor; give the export a session of its own (an
+  in-memory partition, never the interface's default session), because a
+  persisted per-host zoom level scales every capture silently.
 - **Renderer**: no Node APIs; everything goes through the preload bridge.
   `contextIsolation` on, `nodeIntegration` off, `sandbox` on.
 
