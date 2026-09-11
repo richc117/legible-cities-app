@@ -30,6 +30,7 @@ function realInterpreter(): string | null {
     env: process.env,
     userData: tmpdir(),
     desktop: tmpdir(),
+    loomPin: '',
     baseDir: repo,
   })
   const resolution = resolveInterpreter({
@@ -51,7 +52,7 @@ describe.skipIf(INTERPRETER === null)('Sidecar against the real engine', () => {
     const sidecar = new Sidecar({
       command: engineCommand(INTERPRETER as string),
       env: engineEnvironment({
-        config: { home, loomBin: null, ffmpeg: null },
+        config: { home, loomBin: null, loomCommit: null, ffmpeg: null },
         base: process.env,
         development: true,
       }),

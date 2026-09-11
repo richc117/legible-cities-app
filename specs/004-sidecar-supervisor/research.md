@@ -61,13 +61,14 @@ version is unknown and the engine package would not be there); `uv run`
 `PATH`, `HOME`, `USERPROFILE`, `TMPDIR`, `TEMP`, `TMP`, `SYSTEMROOT`,
 `SystemRoot`, `LANG`, `LC_ALL`, every variable starting `DOCKER_` (the
 development backend), plus `SCHEMATIC_HOME`, `SCHEMATIC_LOOM_BIN`,
-`SCHEMATIC_FFMPEG` and `SCHEMATIC_LOG` from the configuration, and
+`SCHEMATIC_LOOM_COMMIT`, `SCHEMATIC_FFMPEG` and `SCHEMATIC_LOG` from the
+configuration, and
 `PYTHONUNBUFFERED=1` and `PYTHONIOENCODING=utf-8` so lines arrive as they
 are written and survive any locale. In development only, `PYTHONPATH` passes
 through: it is how the tests put the stand-in in front of the engine, and
 how a developer could too.
 
-**Rationale**: the engine reads four variables; everything else in the app's
+**Rationale**: the engine reads five variables; everything else in the app's
 environment is either noise or a secret (a proxy password, a token from the
 shell) that has no business in a child we did not write. The Docker
 variables are the one development concession, since the layout tools run in
