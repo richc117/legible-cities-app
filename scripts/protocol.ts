@@ -8,16 +8,17 @@
 //
 // The description is a static file in the engine, printed with a two-space
 // indent, so its bytes are already canonical and nothing here reformats
-// them. The emitter knows sixteen JSON Schema keywords: ten it acts on and
-// six that constrain values rather than shapes, which it reads and ignores.
-// A seventeenth stops the build naming the keyword and its path, so an
-// engine that outgrows this script cannot receive a plausible wrong type.
+// them. The emitter knows nineteen JSON Schema keywords: ten it acts on and
+// nine that constrain values rather than shapes, which it reads and ignores.
+// A twentieth stops the build naming the keyword and its path, so an engine
+// that outgrows this script cannot receive a plausible wrong type.
 //
 // Contract: specs/006-typed-engine-client/contracts/generation.md.
 
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { format, resolveConfig } from 'prettier'
 import { isAbsolute, join, resolve } from 'node:path'
 import { parseEnvFile } from '../src/main/config.ts'
 
@@ -105,6 +106,9 @@ interface Node {
   format?: string
   default?: unknown
   additionalProperties?: boolean
+  minLength?: number
+  minItems?: number
+  maxItems?: number
 }
 
 interface Description {
@@ -134,6 +138,9 @@ const KNOWN = new Set([
   'format',
   'default',
   'additionalProperties',
+  'minLength',
+  'minItems',
+  'maxItems',
 ])
 
 const PRIMITIVES: Record<string, string> = {
@@ -277,12 +284,27 @@ export function emit(description: Description, tag: string): string {
   return out.join('\n')
 }
 
+/**
+ * The module as committed: `emit`'s text through the repository's own
+ * formatter, so what the generator writes is what `npm run lint` checks. A
+ * long enumeration wraps the way prettier wraps it, and nobody has to teach
+ * the generator prettier's rules one case at a time.
+ */
+export async function emitFormatted(
+  description: Description,
+  tag: string,
+  repoRoot: string,
+): Promise<string> {
+  const options = (await resolveConfig(join(repoRoot, 'src', 'shared', 'protocol.ts'))) ?? {}
+  return format(emit(description, tag), { ...options, parser: 'typescript' })
+}
+
 export const fingerprint = (text: string): string =>
   createHash('sha256').update(text, 'utf8').digest('hex')
 
 // --------------------------------------------------------------- writing
 
-function main(): void {
+async function main(): Promise<void> {
   const repoRoot = resolve(import.meta.dirname, '..')
   const envFile = existsSync(join(repoRoot, '.env.local'))
     ? readFileSync(join(repoRoot, '.env.local'), 'utf8')
@@ -304,7 +326,7 @@ function main(): void {
 
   const schemaText = readDescription(checkout)
   const description = JSON.parse(schemaText) as Description
-  const module = emit(description, pins.engine.tag)
+  const module = await emitFormatted(description, pins.engine.tag, repoRoot)
 
   writeFileSync(join(repoRoot, 'vendor', 'protocol.schema.json'), schemaText)
   pins.engine.schema_sha256 = fingerprint(schemaText)
@@ -319,4 +341,9 @@ function main(): void {
   )
 }
 
-if (process.argv[1] !== undefined && import.meta.filename === resolve(process.argv[1])) main()
+if (process.argv[1] !== undefined && import.meta.filename === resolve(process.argv[1])) {
+  main().catch((error: Error) => {
+    console.error(error.message)
+    process.exit(1)
+  })
+}

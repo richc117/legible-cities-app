@@ -42,7 +42,13 @@ function local() {
   } catch {
     fileText = undefined
   }
-  return resolveConfig({ fileText, env: process.env, userData: tmpdir(), baseDir: repo })
+  return resolveConfig({
+    fileText,
+    env: process.env,
+    userData: tmpdir(),
+    desktop: tmpdir(),
+    baseDir: repo,
+  })
 }
 
 const CHECKOUT = local().engineCheckout

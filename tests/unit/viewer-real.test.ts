@@ -32,8 +32,13 @@ function checkout(): string | null {
   } catch {
     fileText = undefined
   }
-  return resolveConfig({ fileText, env: process.env, userData: tmpdir(), baseDir: repo })
-    .engineCheckout
+  return resolveConfig({
+    fileText,
+    env: process.env,
+    userData: tmpdir(),
+    desktop: tmpdir(),
+    baseDir: repo,
+  }).engineCheckout
 }
 
 const CHECKOUT = checkout()

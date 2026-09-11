@@ -1,7 +1,7 @@
 // Generated from the engine's own description of its protocol.
 // Run `npm run typegen` to regenerate; edits here are lost.
 //
-// Engine: v0.2.1, protocol 1.
+// Engine: v0.3.0, protocol 1.
 // Source: vendor/protocol.schema.json, printed by the engine's
 // `python -m schematic.serve --schema` and committed verbatim.
 
@@ -215,6 +215,295 @@ export interface CancelParams {
 }
 
 /**
+ * A preset's name; export.presets describes each. Held equal to the engine's
+ * table by a test.
+ */
+export type PresetName =
+  | 'instagram-post'
+  | 'instagram-square'
+  | 'instagram-story'
+  | 'linkedin'
+  | 'linkedin-link'
+  | 'bluesky'
+  | 'x'
+  | 'instagram-reel'
+  | 'bluesky-video'
+  | 'linkedin-video'
+  | 'instagram-reel-gif'
+  | 'linkedin-gif'
+  | 'bluesky-gif'
+  | 'portfolio-svg'
+  | 'portfolio-mp4'
+  | 'portfolio-gif'
+
+/**
+ * A storyboard's name; export.storyboards describes each. Held equal to the
+ * engine's table by a test.
+ */
+export type StoryboardName =
+  'transform' | 'transform-loop' | 'essay-loop' | 'tour' | 'reveal' | 'morph' | 'day' | 'run'
+
+/**
+ * A view the page can show.
+ */
+export type View = 'geographic' | 'map' | 'linear' | 'time'
+
+/**
+ * A time of day, HH:MM or HH:MM:SS; past midnight stays past midnight (25:44
+ * is 1:44 the next morning).
+ */
+export type Clock = string
+
+/**
+ * The page's own address, with its scheme. The desktop app serves a
+ * project's page on its own origin and passes that; the engine's default is
+ * the site's file.
+ */
+export type PageUrl = string
+
+/**
+ * A path the client owns, absolute, never inside the engine's own
+ * repository.
+ */
+export type AbsolutePath = string
+
+/**
+ * One destination, with the dimensions and limits that destination has.
+ */
+export interface Preset {
+  name: string
+  platform: string
+  width: number
+  height: number
+  kind: 'still' | 'video' | 'vector'
+  format: 'png' | 'jpg' | 'mp4' | 'gif' | 'svg'
+  view: View
+  labels: boolean
+  /**
+   * Video only: the storyboard the preset plays unless told otherwise.
+   */
+  storyboard: string | null
+  fps: number
+  /**
+   * The platform's upload limit, where it has one.
+   */
+  max_bytes: number | null
+  frame_top: number
+  /**
+   * Whether the platform draws its own interface over the image.
+   */
+  safe_zones: boolean
+  note: string
+}
+
+export interface ExportPresets {
+  presets: Preset[]
+}
+
+/**
+ * A stretch of video with one set of state, as the storyboard is written. A
+ * field left null carries over from the beat before.
+ */
+export interface StoryboardBeat {
+  secs: number
+  view: View | null
+  labels: boolean | null
+  at: Clock | null
+  speed: number | null
+  sweep: boolean
+  hours: number | null
+  span: Clock[] | null
+  tween: number | null
+}
+
+export interface Storyboard {
+  name: string
+  /**
+   * The views it visits, in order, as a sentence fragment; empty for one
+   * view.
+   */
+  views: string
+  seconds: number
+  /**
+   * Whether any beat needs the feed's geographic geometry.
+   */
+  geographic: boolean
+  beats: StoryboardBeat[]
+}
+
+export interface ExportStoryboards {
+  storyboards: Storyboard[]
+}
+
+/**
+ * The dressing of an export; every field optional and defaulted as
+ * bin/export defaults it.
+ */
+export interface ExportOptions {
+  view?: View
+  labels?: boolean
+  /**
+   * The city and network over the map.
+   */
+  title?: boolean
+  clock?: boolean
+  theme?: 'dark' | 'light'
+  /**
+   * The clock to start at; a still is taken here.
+   */
+  at?: Clock
+  /**
+   * Line labels to keep; the rest are hidden.
+   */
+  lines?: string[]
+  storyboard?: StoryboardName
+  /**
+   * draft: 1x and fast; standard: 2x, resampled to the preset's size; high:
+   * 2x, kept.
+   */
+  quality?: 'draft' | 'standard' | 'high'
+  fade?: number
+  /**
+   * A filename suffix, so two dressings of one preset can share a folder.
+   */
+  tag?: Token
+  /**
+   * Draw the platform's safe zones; never for a deliverable.
+   */
+  safe?: boolean
+}
+
+/**
+ * Describe an export: what to capture and how to encode it. Pure and
+ * instant; nothing is written. A vector preset is refused (it is resolved
+ * from the built map, not captured).
+ */
+export interface ExportPlanParams {
+  key: FeedKey
+  preset: PresetName
+  page?: PageUrl
+  /**
+   * The service day the title names, when the caller knows it (the app's
+   * project does).
+   */
+  date?: ServiceDate
+  options?: ExportOptions
+}
+
+/**
+ * A beat as the recorder takes it: times in seconds of the service day, the
+ * span resolved.
+ */
+export interface BeatPayload {
+  secs: number
+  view: View | null
+  labels: boolean | null
+  at: number | null
+  speed: number | null
+  sweep: boolean
+  hours: number | null
+  lo: number | null
+  hi: number | null
+  tween: number | null
+}
+
+/**
+ * One export, described: the capture half is the job the engine's own
+ * recorder takes (url, width, height in CSS pixels, scale, fps, format,
+ * settle, beats, at); the rest is what export.encode needs afterwards.
+ * Handed back to export.encode unchanged.
+ */
+export interface CaptureJob {
+  key: FeedKey
+  preset: PresetName
+  mode: 'still' | 'video'
+  url: PageUrl
+  width: number
+  height: number
+  scale: number
+  fps: number
+  format: 'png' | 'jpg' | 'mp4' | 'gif'
+  /**
+   * Milliseconds to wait, with the clock stopped, for the page's first
+   * geometry pass and its fonts.
+   */
+  settle: number
+  beats: BeatPayload[]
+  /**
+   * Deliver the captured pixels as they are rather than resampling to the
+   * preset's size.
+   */
+  keep: boolean
+  crf: number
+  fade: number
+  stem: string
+  theme: 'dark' | 'light'
+  view: View
+  /**
+   * Empty for a still.
+   */
+  storyboard: StoryboardName | ''
+  /**
+   * The clock, in seconds, a still is taken at; a video's beats seek for
+   * themselves.
+   */
+  at: number | null
+  /**
+   * What a person should hear before the capture, such as a sweep too fast
+   * to read.
+   */
+  notes: string[]
+  /**
+   * stem plus the format's extension; the plan's convenience.
+   */
+  filename: string
+}
+
+/**
+ * What the caller knows about the map that the atlas's data would not; it
+ * goes into the sidecar over the atlas's, field by field.
+ */
+export interface Provenance {
+  service_date?: ServiceDate
+  trips?: number
+  stations?: number
+  lines?: number
+  caveats?: string[]
+}
+
+/**
+ * The frames the client captured (a directory of 000000.png onwards), or its
+ * still, to the deliverable at dest with its sidecar beside it. The source
+ * is read and never touched; a cancel, a failure or a file over the
+ * platform's limit leaves nothing at dest.
+ */
+export interface ExportEncodeParams {
+  plan: CaptureJob
+  /**
+   * The frames directory for a video plan, the captured still for a still
+   * plan.
+   */
+  source: AbsolutePath
+  /**
+   * The file to write; its folder is created.
+   */
+  dest: AbsolutePath
+  provenance?: Provenance
+}
+
+export interface ExportEncodeResult {
+  files: {
+    path: string
+    bytes: number
+  }[]
+  /**
+   * The sidecar as written beside the file: what it is, the network's
+   * caveats, alt text.
+   */
+  sidecar: Record<string, unknown>
+}
+
+/**
  * The `data` of an error response. `hint` is a sentence for a person and is
  * what a UI shows; `detail` says where, for a log.
  */
@@ -241,6 +530,22 @@ export interface Methods {
   'map.build': {
     params: MapBuildParams
     result: MapBuildResult
+  }
+  'export.presets': {
+    params: NoParams
+    result: ExportPresets
+  }
+  'export.storyboards': {
+    params: NoParams
+    result: ExportStoryboards
+  }
+  'export.plan': {
+    params: ExportPlanParams
+    result: CaptureJob
+  }
+  'export.encode': {
+    params: ExportEncodeParams
+    result: ExportEncodeResult
   }
 }
 

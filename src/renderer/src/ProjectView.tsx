@@ -3,13 +3,15 @@ import type { DeleteResult, ProjectRecord } from '../../shared/api'
 import { shortLayoutId } from '../../shared/layout'
 import { validateName } from '../../shared/project'
 import ConfirmDialog from './ConfirmDialog'
-import { layoutRunFor } from './engine/runs'
+import { exportRunFor, layoutRunFor } from './engine/runs'
+import ExportRunView from './ExportRun'
 import Viewer from './Viewer'
 import Icon from './icons/Icon'
 import Button from './kit/Button'
 import LayoutRunView from './LayoutRun'
 import TextInput, { type TextInputHandle } from './kit/TextInput'
 import { useEngineState } from './useEngineState'
+import { useSnapshot } from './useSnapshot'
 
 type Project = ProjectRecord & { readOnly: boolean }
 type ViewState =
@@ -58,9 +60,15 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
   // state through refs when it starts, so writing the record at the end of a
   // run does not rebuild the run and discard the outcome it just produced.
 
-  // The run belongs to the project, not to this view: a person can start a
-  // layout, go back to the Library and come back to one still running.
+  // The runs belong to the project, not to this view: a person can start a
+  // layout or an export, go back to the Library and come back to one still
+  // running. Neither may start while the other runs: a layout rewrites the
+  // page an export is reading, and an export reads a page a layout would
+  // replace under it.
   const run = layoutRunFor(id)
+  const exporter = exportRunFor(id)
+  const layingOut = useSnapshot(run).state === 'running'
+  const exporting = useSnapshot(exporter).state === 'running'
 
   // When a run finishes it has written the record; read it back so the
   // screen shows the layout and the day it just stored.
@@ -197,7 +205,12 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
               <Time iso={project.modified} />
             </dd>
           </dl>
-          {!project.readOnly && <LayoutRunView run={run} project={project} engine={engine} />}
+          {!project.readOnly && (
+            <LayoutRunView run={run} project={project} engine={engine} disabled={exporting} />
+          )}
+          {!project.readOnly && project.layout !== null && (
+            <ExportRunView run={exporter} project={project} engine={engine} disabled={layingOut} />
+          )}
           {project.layout !== null && <Viewer project={project} />}
           <div className="toolbar">
             <Button
@@ -209,7 +222,11 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
               <Icon name="edit" />
               Rename
             </Button>
-            <Button variant="destructive" onClick={() => setConfirming(true)}>
+            <Button
+              variant="destructive"
+              disabled={exporting || layingOut}
+              onClick={() => setConfirming(true)}
+            >
               <Icon name="trash" />
               Delete project
             </Button>

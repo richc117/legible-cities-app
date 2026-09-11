@@ -14,6 +14,11 @@ writes before the app starts (every key optional):
                       the engine starts a layout tool; ended on engine.shutdown
     ignore_sigterm    true: ignore SIGTERM (POSIX), so only SIGKILL ends it
     progress_delay_ms wait between the four progress notifications (default 30)
+    map_draws         true: map.build draws (eight stages, three files); else it refuses
+    export_seconds    the one beat's length in the plan export.plan answers (default 1)
+    export_refuses    a sentence: export.plan refuses with it as the hint
+    encode_delay_ms   wait between export.encode's five progress notifications (default 30)
+    encode_fails      true: export.encode fails after its progress, leaving no file
 
 It writes ``fake-engine.pid`` (its process id) and ``fake-engine.received``
 (one JSON line per message it read) into the home so a test can end it from
@@ -34,6 +39,7 @@ from pathlib import Path
 HOME = Path(os.environ.get("SCHEMATIC_HOME", "."))
 OUT = sys.stdout.buffer
 LOCK = threading.Lock()
+PRESETS = {"instagram-reel": (1080, 1920, "mp4")}
 
 
 def load_control() -> dict:
@@ -140,6 +146,20 @@ class Engine:
             else:
                 error(msg_id, -32000, "the stand-in draws nothing", "engine")
             return True
+        if method == "export.plan":
+            params = message.get("params") or {}
+            problem = self.plan_problem(params)
+            if problem is not None:
+                error(msg_id, -32602, problem, "params")
+            elif self.control.get("export_refuses"):
+                error(msg_id, -32000, self.control["export_refuses"], "export")
+            else:
+                write({"jsonrpc": "2.0", "id": msg_id, "result": self.plan(params)})
+            return True
+        if method == "export.encode":
+            threading.Thread(target=self.encode, args=(msg_id, message.get("params") or {}),
+                             daemon=True).start()
+            return True
         write({"jsonrpc": "2.0", "id": msg_id,
                "error": {"code": -32601, "message": f"Method Not Found: {method}"}})
         return True
@@ -215,6 +235,92 @@ class Engine:
                             "trips": {"total": 1, "paths": 1, "unrouted": 0},
                             "degraded": {"borrowed_track": 0, "skipped_calls": 0},
                             "labels_dropped": 0, "peak_concurrent": 1}}})
+
+
+    @staticmethod
+    def plan_problem(params: dict) -> str | None:
+        """The real server's refusals, in shape: a feed key, a preset it has, and
+        a page with a scheme."""
+        if not isinstance(params.get("key"), str) or not params["key"]:
+            return "key must be a feed key"
+        if params.get("preset") not in PRESETS:
+            return "preset must be one of " + ", ".join(PRESETS)
+        page = params.get("page")
+        if page is not None and (not isinstance(page, str) or "://" not in page):
+            return "page must be the page's address, with its scheme"
+        return None
+
+
+    def plan(self, params: dict) -> dict:
+        """export.plan's answer: the recorder's job for the page the app named,
+        at a size the stand-in page draws, plus what export.encode needs back.
+        One beat, pinned to a clock, as every real storyboard opens."""
+        key, preset = params["key"], params["preset"]
+        width, height, fmt = PRESETS[preset]
+        page = params.get("page") or f"file:///maps/{key}.html"
+        url = (f"{page}?present=1&view=map&labels=1&title=1&clock=1&theme=dark"
+               f"&frame={width}:{height}&frametop=0")
+        seconds = float(self.control.get("export_seconds", 1))
+        return {"key": key, "preset": preset, "mode": "video", "url": url,
+                "width": 540, "height": 960, "scale": 1, "fps": 30, "format": fmt,
+                "settle": 300,
+                "beats": [{"secs": seconds, "view": "map", "labels": None, "at": 8 * 3600,
+                           "speed": 120, "sweep": False, "hours": None, "lo": None,
+                           "hi": None, "tween": 0}],
+                "keep": True, "crf": 26, "fade": 0.0, "stem": f"{key}-{preset}",
+                "theme": "dark", "view": "map", "storyboard": "tour", "at": None,
+                "notes": [], "filename": f"{key}-{preset}.{fmt}"}
+
+
+    def encode(self, msg_id, params: dict) -> None:
+        """export.encode, in shape: reads the frames the app captured, reports
+        five steps of progress, writes the file and the sidecar beside it, and
+        answers with what it wrote. A cancel between steps, or a failure asked
+        for by the control file, removes both, as the real encode does."""
+        plan = params.get("plan") or {}
+        source = Path(params.get("source") or "")
+        dest = Path(params.get("dest") or "")
+        if not source.is_dir():
+            error(msg_id, -32000, "the frames directory is not there", "io")
+            return
+        frames = sorted(source.glob("*.png"))
+        sidecar = dest.with_name(dest.name + ".json")
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        delay = self.control.get("encode_delay_ms", 30) / 1000
+        steps = 5
+
+        def remove() -> None:
+            for path in (dest, sidecar):
+                try:
+                    path.unlink()
+                except FileNotFoundError:
+                    pass
+
+        for i in range(1, steps + 1):
+            time.sleep(delay)
+            if msg_id in self.cancelled:
+                remove()
+                write({"jsonrpc": "2.0", "id": msg_id,
+                       "error": {"code": -32800, "message": "Request Cancelled"}})
+                return
+            # A partial file, so a cancel has something to leave no trace of.
+            dest.write_bytes(b"stand-in %s, step %d of %d\n" % (plan.get("format", "").encode(), i, steps))
+            write({"jsonrpc": "2.0", "method": "job/progress",
+                   "params": {"id": msg_id, "stage": "encode", "fraction": i / steps,
+                              "message": f"{len(frames) * i // steps} of {len(frames)} frames"}})
+        if self.control.get("encode_fails"):
+            remove()
+            error(msg_id, -32000, "the stand-in could not encode", "export")
+            return
+        dest.write_bytes(b"stand-in %s: %d frames\n" % (plan.get("format", "").encode(), len(frames)))
+        provenance = params.get("provenance") or {}
+        meta = {"file": dest.name, "bytes": dest.stat().st_size, "feed": plan.get("key"),
+                "preset": plan.get("preset"), "platform": "stand-in",
+                "service_date": provenance.get("service_date"), "frames": len(frames),
+                "caveats": []}
+        sidecar.write_text(json.dumps(meta, indent=2))
+        write({"jsonrpc": "2.0", "id": msg_id, "result": {
+            "files": [{"path": str(dest), "bytes": dest.stat().st_size}], "sidecar": meta}})
 
 
 def main() -> int:
