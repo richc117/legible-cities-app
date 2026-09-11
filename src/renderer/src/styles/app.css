@@ -394,15 +394,6 @@ th .sort:focus-visible {
   vertical-align: middle;
 }
 
-.visually-hidden {
-  position: absolute;
-  width: 0;
-  height: 0;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
 .inspect h2 {
   font-size: var(--font-ui-medium);
   margin: var(--space-4-6) 0 var(--space-4-3);

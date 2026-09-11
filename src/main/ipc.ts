@@ -59,10 +59,12 @@ function readLayoutDone(raw: unknown): LayoutDone {
   check(validateServiceWindow(input.service))
   check(validateMade(input.made))
   const { start, end, busiest, anchor } = input.service as LayoutDone['service']
+  const built = readInputs(input.built)
   return {
     date,
     layout: input.layout,
     made: input.made as string,
+    built,
     service: { start, end, busiest, anchor },
   }
 }

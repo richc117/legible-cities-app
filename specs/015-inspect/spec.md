@@ -71,10 +71,20 @@ sentence is the engine's.
   another project on the same feed reads nothing. The anchor is the
   machine's date, as the first layout's is.
 - A record from before this feature holds the app's defaults (`all`, no
-  agency); the Inspect view shows them, and the next layout passes them.
-  A preset whose registry entry is narrower (Mexico City's subway and its
-  agency) draws every operator until the person chooses; the view says
-  what the registry entry is so they can.
+  agency), and cannot say whether they were chosen. The run passes them,
+  so a project on a preset whose registry entry is narrower (fifteen of
+  the presets name a mode other than `all`; Mexico City names an
+  operator too) draws more than the entry would until the person
+  chooses. The view says what the feed's own entry draws and offers it
+  in one press.
+- "Every operator" is sent to the engine as an empty agency, which means
+  none whatever the entry says; a missing agency would mean the entry's
+  (engine v0.7.1).
+- Opening a project on a feed that is not yet on this machine downloads
+  it first, as laying it out would; the waiting sentence says so.
+- The stored layout is left alone when the inputs change; the run's
+  sentence says the choice has moved since the layout was made, from the
+  mode and agency the engine recorded beside it.
 - A route type LOOM has no name for is shown and never kept by a named
   mode; its numeric code keeps it.
 - Changing mode or agency after a layout does not re-lay out: the next
@@ -93,9 +103,15 @@ sentence is the engine's.
   rules, and the run MUST pass the record's mode and agency to
   `graph.build`.
 - **FR-004**: The histogram MUST mark the types the chosen mode keeps,
-  from the engine's `mode` per type.
+  from the engine's `modes` per type (every name that keeps it) and the
+  type's own number.
 - **FR-005**: The create dialog MUST seed a project's mode and agency
-  from the chosen feed's registry entry when the list is available.
+  from the chosen feed's registry entry when the list is available; the
+  Inspect view MUST say what the entry draws when the record differs,
+  and offer it.
+- **FR-008**: `completeLayout` MUST store the mode and agency the engine
+  made the layout with, and the run's sentence MUST say when the record's
+  have moved since.
 - **FR-006**: Tables MUST follow a rule added to the design document.
 - **FR-007**: The stand-in MUST answer `feeds.inspect` for its presets
   with shapes that exercise every part of the view.

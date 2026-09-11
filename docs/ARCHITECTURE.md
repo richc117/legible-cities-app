@@ -470,7 +470,9 @@ still be made without it.
 ## The Inspect view
 
 Opening a project reads its feed through `feeds.inspect` (engine v0.7.1),
-once per feed per session, from the machine's date as the anchor, and
+once per feed and day per session, from the machine's date as the anchor
+(a feed not yet on this machine is downloaded first, as laying it out
+would), and
 shows what the engine found: the operators, the stops by kind, the trips
 and how many are headway templates, the service window and the day the
 engine would draw, the warnings as sentences, a histogram of route types
@@ -483,14 +485,16 @@ the mode, what LOOM keeps, offered as the modes the engine named per
 route type plus "all" and a typed one for a comma-joined or numeric mode;
 and, when the feed carries more than one operator, the agency. The
 histogram says which types the chosen mode keeps, from the engine's own
-mode per type. The choice is stored on the record through one bridge
-method, validated with the record's rules, and the next "Lay out" passes
-both to `graph.build`, which names a layout for those inputs; the run
-already says when the layout differs from the one recorded. A project
-created from the Library's list starts with its feed's registry entry's
-mode and agency, so a preset draws as the engine's site draws it; a
-record from before holds the app's old defaults, and the view says what
-the feed's own entry draws so the person can choose it.
+list of the mode names that keep each type. The choice is stored on the
+record through one bridge method, validated with the record's rules, and
+the next "Lay out" passes both to `graph.build`, an empty agency meaning
+every operator, which names a layout for those inputs. The record also
+keeps the mode and agency the engine made the stored layout with, from
+its meta, so the run's sentence says when the choice has moved since. A
+project created from the Library's list starts with its feed's registry
+entry's mode and agency, so a preset draws as the engine's site draws
+it; a record from before holds the app's old defaults, and the view says
+what the feed's own entry draws and offers it in one press.
 
 ## The viewer
 

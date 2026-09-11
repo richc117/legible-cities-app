@@ -255,6 +255,7 @@ export class ProjectStore {
       theme: DEFAULT_THEME,
       layout: null,
       made: null,
+      built: null,
       created: now,
       modified: now,
     }
@@ -329,6 +330,8 @@ export class ProjectStore {
     check(validateServiceDate(done.date))
     check(validateServiceWindow(done.service))
     check(validateMade(done.made))
+    check(validateMode(done.built?.mode ?? ''))
+    check(validateAgency(done.built?.agency ?? null))
     const { record, readOnly } = await this.load(id)
     if (readOnly) throw new Error('read-only')
     if (!isLayoutId(done.layout))
@@ -340,6 +343,7 @@ export class ProjectStore {
       version: RECORD_VERSION,
       layout,
       made: done.made,
+      built: { mode: done.built.mode, agency: done.built.agency },
       date: record.date ?? done.date,
       service: { start, end, busiest, anchor },
       modified: new Date().toISOString(),

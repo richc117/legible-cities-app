@@ -47,6 +47,12 @@ export interface ProjectRecord {
   /** The stored layout's identifier; null until the first layout produces one (ADR-027). */
   layout: string | null
   /**
+   * The mode and agency the stored layout was made with, from the engine's
+   * meta, so the screen can say when the record's differ (A2-02). Null
+   * before a layout, and for a record from before this was kept.
+   */
+  built: ProjectInputs | null
+  /**
    * When the stored layout was made, as the engine wrote it beside the set
    * (an ISO timestamp): the same id names the same inputs, and a different
    * `made` under it is a set laid out again since (A3-06). Null before.
@@ -246,10 +252,19 @@ export function parseRecord(json: unknown): Parsed {
     theme: json.theme === 'sepia' ? 'sepia' : DEFAULT_THEME,
     layout: isLayoutId(json.layout) ? json.layout : null,
     made: validateMade(json.made) === null ? (json.made as string) : null,
+    built: readInputs(json.built),
     created: isString(json.created) ? json.created : epoch,
     modified: isString(json.modified) ? json.modified : epoch,
   }
   return { record, readOnly: version > RECORD_VERSION }
+}
+
+/** The inputs a layout was made with, whole, or null. */
+function readInputs(value: unknown): ProjectInputs | null {
+  if (!isObject(value) || !isString(value.mode) || !MODE_PATTERN.test(value.mode)) return null
+  const agency = value.agency == null ? null : isString(value.agency) ? value.agency : undefined
+  if (agency === undefined) return null
+  return { mode: value.mode, agency }
 }
 
 /** The stored window, whole, or null: a half-valid block is not half-trusted. */

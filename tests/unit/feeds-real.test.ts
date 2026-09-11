@@ -17,14 +17,14 @@ const pins = JSON.parse(readFileSync(join(repo, 'vendor/pins.json'), 'utf8')) as
   engine: EnginePin
 }
 
-function realInterpreter(): string | null {
+function localConfig() {
   let fileText: string | undefined
   try {
     fileText = readFileSync(join(repo, '.env.local'), 'utf8')
   } catch {
     fileText = undefined
   }
-  const config = resolveConfig({
+  return resolveConfig({
     fileText,
     env: process.env,
     userData: tmpdir(),
@@ -32,6 +32,16 @@ function realInterpreter(): string | null {
     loomPin: '',
     baseDir: repo,
   })
+}
+
+// The checkout's own feed cache, when the environment names one: the
+// three feeds the Inspect view's issue names are read from it, and each
+// assertion below is skipped where the zip is not cached, so on a runner
+// without a checkout this test asserts nothing about them.
+const CHECKOUT = localConfig().engineCheckout
+
+function realInterpreter(): string | null {
+  const config = localConfig()
   return resolveInterpreter({
     config: { enginePython: null, engineCheckout: config.engineCheckout },
     packaged: false,
@@ -168,7 +178,7 @@ describe.skipIf(INTERPRETER === null)('the registry against the real engine', ()
 
       // The inspection the Inspect view reads, for the three feeds the
       // issue names, where the checkout has them cached (A2-02).
-      const cachedFeeds = join(repo, '..', 'OpenSchematicMaps', 'data', 'feeds')
+      const cachedFeeds = join(CHECKOUT as string, 'data', 'feeds')
       const inspect = async (key: string): Promise<Inspection> => {
         cpSync(join(cachedFeeds, `${key}.zip`), join(home, 'data', 'feeds', `${key}.zip`))
         return (await sidecar.request('feeds.inspect', { key, anchor: '2026-09-11' })

@@ -6,4 +6,4 @@
 - [x] T004 The Inspect component: table, histogram with the controls, facts, warnings; the cache; the design rule.
 - [x] T005 The stand-in's `feeds.inspect`.
 - [x] T006 Unit, real-engine and end-to-end tests; the documents.
-- [ ] T007 Checks, scanners, the reviewer; the pull request; the engine's tag.
+- [x] T007 Checks, scanners, the reviewer; the pull request; the engine's tag.

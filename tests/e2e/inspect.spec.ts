@@ -72,7 +72,7 @@ test('shows what is in the feed, sorts the routes, and marks what the mode keeps
     await openProjectOn(page, 'LA Metro Rail', 'Los Angeles')
     const inspect = page.getByRole('region', { name: 'In the feed' })
     await expect(inspect).toContainText('Los Angeles County MTA')
-    await expect(inspect).toContainText('1,160')
+    await expect(inspect).toContainText((1160).toLocaleString())
     await expect(inspect).toContainText('the engine would draw 2026-06-16')
     await expect(inspect.getByRole('list', { name: 'Warnings' }).getByRole('listitem')).toHaveCount(
       1,
@@ -140,6 +140,90 @@ test('a feed with several operators offers the choice, filters the routes, and s
     await expect.poll(() => readRecord(engineHome).agency).toBe('SUB')
     await expect(inspect.getByRole('combobox', { name: 'Mode' })).toHaveValue('subway')
     await expect(inspect.getByRole('option', { name: /subway.*suggests/ })).toHaveCount(1)
+
+    // Every operator: the engine is asked with an empty agency, which is
+    // its word for none, and the histogram's kept types follow the mode.
+    await operator.selectOption('')
+    await expect.poll(() => readRecord(engineHome).agency).toBeNull()
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    const asked = readFileSync(join(engineHome, 'fake-engine.received'), 'utf8')
+      .split('\n')
+      .filter((l) => l.includes('graph.build'))
+    expect(asked[0]).toContain('"agency": ""')
+    expect(asked[0]).toContain('"mode": "subway"')
+
+    // A change after the layout is said, not drawn: the run's sentence
+    // names what the layout was made with and what the record says now.
+    await operator.selectOption('SUB')
+    await expect(
+      page.getByText(/the choice has changed since, so lay out to draw with subway, SUB/),
+    ).toBeVisible()
+  })
+})
+
+test('a typed mode is written only when submitted, and its aliases keep what the engine says', async () => {
+  const engineHome = home()
+  await withApp(engineHome, async (page) => {
+    await openProjectOn(page, 'LA Metro Rail', 'LA')
+    const inspect = page.getByRole('region', { name: 'In the feed' })
+    await inspect.getByRole('combobox', { name: 'Mode' }).selectOption('other')
+    const field = inspect.getByLabel('Modes, comma-joined, or route_type numbers')
+    await field.fill('metro,streetcar')
+    // Not yet submitted: the record holds what it held.
+    expect(readRecord(engineHome).mode).toBe('all')
+    await inspect.getByRole('button', { name: 'Use this mode' }).click()
+    await expect.poll(() => readRecord(engineHome).mode).toBe('metro,streetcar')
+    const histogram = inspect.getByRole('table', { name: /^Route types/ })
+    await expect(histogram.getByRole('row').nth(1)).toContainText('kept')
+    await expect(histogram.getByRole('row').nth(2)).toContainText('kept')
+    await field.fill('99')
+    await inspect.getByRole('button', { name: 'Use this mode' }).click()
+    await expect(histogram.getByRole('row').nth(1)).toContainText('left out')
+    await expect(histogram.getByRole('row').nth(2)).toContainText('left out')
+  })
+})
+
+test("a record from before says what the feed's own entry draws, and takes it in one press", async () => {
+  const engineHome = home()
+  const id = 'olderinputs1'
+  const { mkdirSync } = await import('node:fs')
+  mkdirSync(join(engineHome, 'projects', id), { recursive: true })
+  const now = new Date().toISOString()
+  writeFileSync(
+    join(engineHome, 'projects', id, 'project.json'),
+    JSON.stringify({
+      version: 1,
+      id,
+      name: 'Older',
+      feed: 'cdmx-metro',
+      mode: 'all',
+      agency: null,
+      created: now,
+      modified: now,
+    }),
+  )
+  await withApp(engineHome, async (page) => {
+    await expect(page.getByRole('status', { name: 'Engine' })).toContainText(/ready/i, {
+      timeout: 20_000,
+    })
+    await page.getByRole('button', { name: 'Open Older' }).click()
+    const inspect = page.getByRole('region', { name: 'In the feed' })
+    await expect(inspect).toContainText("The feed's own entry draws subway for METRO")
+    await inspect.getByRole('button', { name: "Use the feed's entry" }).click()
+    await expect.poll(() => readRecord(engineHome).mode).toBe('subway')
+    expect(readRecord(engineHome).agency).toBe('METRO')
+    await expect(inspect).not.toContainText("The feed's own entry draws")
+  })
+})
+
+test('a refused inspection says so and leaves the rest of the screen working', async () => {
+  const engineHome = home({ inspect_refuses: 'The feed has neither calendar table.' })
+  await withApp(engineHome, async (page) => {
+    await openProjectOn(page, 'LA Metro Rail', 'Los Angeles')
+    const inspect = page.getByRole('region', { name: 'In the feed' })
+    await expect(inspect.getByRole('alert')).toHaveText('The feed has neither calendar table.')
+    await expect(page.getByRole('button', { name: /lay out/i })).toBeEnabled()
   })
 })
 

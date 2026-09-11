@@ -25,7 +25,7 @@
     "protocol": 1,
     "note": "The registry over the protocol (v0.7.0) plus, at v0.7.1, the LOOM mode per route type in feeds.inspect, so the Inspect view can show which types a chosen mode keeps without carrying the engine's table. Additive at protocol 1 by the engine's convention, so the tag is the gate. The handshake compares version and protocol with engine.info and refuses any other; the vendoring job installs the package at the tag.",
     "licence": "GPL-3.0-or-later",
-    "schema_sha256": "a92c9d25cfb55a551abbfb54c8f76c82fa606182d1d9a7c03ce4e0efdd5565eb"
+    "schema_sha256": "da43286f074f119c238cd23f03706bd20d57f70cad727a074556df9d6e3e8e22"
   },
   "python": {
     "source": "https://github.com/astral-sh/python-build-standalone",

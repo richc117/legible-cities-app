@@ -72,7 +72,7 @@ const MADE = '2026-09-10T12:00:00+00:00'
 const BUILT = {
   layout: LAYOUT,
   paths: {},
-  meta: { made: MADE },
+  meta: { made: MADE, mode: 'all', agency: null },
   stages: { octi: { lines: ['A', 'B'] } },
 }
 // What feeds.service answers: the window, the engine's day from the anchor,
@@ -110,6 +110,7 @@ const project = (over: Partial<ProjectRecord> = {}): ProjectRecord =>
     theme: 'warm-dark',
     layout: null,
     made: null,
+    built: null,
     created: '2026-09-01T00:00:00.000Z',
     modified: '2026-09-01T00:00:00.000Z',
     ...over,
@@ -220,6 +221,7 @@ describe('the run asks for the layout, then the day, then the map', () => {
       date: '2026-09-15',
       layout: LAYOUT,
       made: MADE,
+      built: { mode: 'all', agency: null },
       service: WINDOW,
     })
     expect(run.snapshot).toMatchObject({ state: 'done', forced: true, changed: false })
@@ -228,7 +230,7 @@ describe('the run asks for the layout, then the day, then the map', () => {
   it('an ordinary run sends no force', async () => {
     const { calls, begin } = setup()
     begin()
-    expect(Object.keys(calls[0].params).sort()).toEqual(['key', 'mode'])
+    expect(Object.keys(calls[0].params).sort()).toEqual(['agency', 'key', 'mode'])
   })
 
   it("uses the day the project already has rather than the engine's, and still asks for the window", async () => {
@@ -243,6 +245,7 @@ describe('the run asks for the layout, then the day, then the map', () => {
       date: '2026-05-04',
       layout: LAYOUT,
       made: MADE,
+      built: { mode: 'all', agency: null },
       service: WINDOW,
     })
   })
@@ -253,10 +256,11 @@ describe('the run asks for the layout, then the day, then the map', () => {
     await laidOut(calls)
     expect(calls[0].params).toEqual({ key: 'la-metro-rail', mode: 'rail', agency: 'Metro' })
     expect(Object.keys(calls[2].params).sort()).toEqual(['date', 'key', 'layout', 'out'])
-    // No agency is left out, which the engine reads as the registry entry's.
+    // No agency is sent as the empty string, which the engine reads as every
+    // operator; left out, it would read as the registry entry's.
     const none = setup({ mode: 'all', agency: null })
     none.begin()
-    expect(none.calls[0].params).toEqual({ key: 'la-metro-rail', mode: 'all' })
+    expect(none.calls[0].params).toEqual({ key: 'la-metro-rail', mode: 'all', agency: '' })
   })
 
   it("writes the record once, with the engine's layout id and its window", async () => {
@@ -270,6 +274,7 @@ describe('the run asks for the layout, then the day, then the map', () => {
       date: '2026-09-15',
       layout: LAYOUT,
       made: MADE,
+      built: { mode: 'all', agency: null },
       service: WINDOW,
     })
     expect(run.snapshot.state).toBe('done')
@@ -335,6 +340,7 @@ describe('a rebuild for a chosen day', () => {
     const { run, calls, complete, completeRebuild, record } = setup({
       layout: LAYOUT,
       made: null,
+      built: null,
       date: '2026-09-15',
       service: WINDOW,
     })

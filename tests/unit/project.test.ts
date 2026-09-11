@@ -46,6 +46,7 @@ const full: ProjectRecord = {
   theme: 'warm-dark',
   layout: null,
   made: null,
+  built: null,
   created: '2026-09-07T20:00:00.000Z',
   modified: '2026-09-07T20:00:00.000Z',
 }
@@ -190,6 +191,7 @@ describe('parseRecord', () => {
       theme: DEFAULT_THEME,
       layout: null,
       made: null,
+      built: null,
       service: null,
     })
     // Times default to now, in the form every other time uses.
@@ -234,6 +236,7 @@ describe('parseRecord', () => {
       theme: 'neon',
       layout: 'abc123',
       made: null,
+      built: null,
     })
     if (!('record' in badDate)) throw new Error(badDate.error)
     expect(badDate.record.date).toBeNull()

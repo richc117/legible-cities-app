@@ -261,7 +261,9 @@ class Engine:
         key = params.get("key", "x")
         # The id names the inputs, as the real engine's does: the same feed
         # and options give the same id, so two projects on one feed share one.
-        inputs = {"feed": key, "mode": params.get("mode"), "agency": params.get("agency")}
+        # An empty agency is none, as the engine's resolved() reads it.
+        agency = params.get("agency") or None
+        inputs = {"feed": key, "mode": params.get("mode"), "agency": agency}
         layout = hashlib.sha256(json.dumps(inputs, sort_keys=True).encode()).hexdigest()
         if params.get("force") or layout not in self.layouts:
             self.builds += 1
@@ -269,7 +271,7 @@ class Engine:
         paths = {s: str(HOME / "data" / "graphs" / key / layout / f"0{i}_{s}.json")
                  for i, s in enumerate(stages)}
         meta = {"feed": key, "feed_sha256": "0" * 64, "mode": params.get("mode") or "all",
-                "agency": params.get("agency"), "label_pattern": None, "label_strip": None,
+                "agency": agency, "label_pattern": None, "label_strip": None,
                 "loom": None, "stages": [["gtfs2graph", ["-m", params.get("mode") or "all"]],
                                          ["topo", []], ["loom", []], ["octi", []]],
                 "engine": self.control.get("version", "0.2.0"),
@@ -353,8 +355,8 @@ class Engine:
                       route("805", "LACMTA", "", "Metro E Line", "E", 0, "FDB913", 260),
                       route("807", "LACMTA", "", "Metro K Line", "K", 0, "E96BB0", 40)]
             agencies = [{"agency_id": "LACMTA", "agency_name": "Los Angeles County MTA"}]
-            types = [{"route_type": 0, "name": "tram", "mode": "tram", "routes": 4, "trips": 830},
-                     {"route_type": 1, "name": "subway", "mode": "subway", "routes": 2,
+            types = [{"route_type": 0, "name": "tram", "mode": "tram", "modes": ["tram", "streetcar"], "routes": 4, "trips": 830},
+                     {"route_type": 1, "name": "subway", "mode": "subway", "modes": ["subway", "metro"], "routes": 2,
                       "trips": 330}]
             warnings = ["6 of 6 routes have no route_short_name; their labels come from "
                         "route_long_name through the feed's label pattern"]
@@ -371,9 +373,9 @@ class Engine:
             agencies = [{"agency_id": "METRO", "agency_name": "Sistema de Transporte Colectivo"},
                         {"agency_id": "SUB", "agency_name": "Ferrocarriles Suburbanos"},
                         {"agency_id": "RTP", "agency_name": "Red de Transporte de Pasajeros"}]
-            types = [{"route_type": 1, "name": "subway", "mode": "subway", "routes": 2, "trips": 60},
-                     {"route_type": 2, "name": "rail", "mode": "rail", "routes": 1, "trips": 20},
-                     {"route_type": 3, "name": "bus", "mode": "bus", "routes": 1, "trips": 400}]
+            types = [{"route_type": 1, "name": "subway", "mode": "subway", "modes": ["subway", "metro"], "routes": 2, "trips": 60},
+                     {"route_type": 2, "name": "rail", "mode": "rail", "modes": ["rail", "train"], "routes": 1, "trips": 20},
+                     {"route_type": 3, "name": "bus", "mode": "bus", "modes": ["bus", "coach"], "routes": 1, "trips": 400}]
             warnings = ["The timetable is headway-based: 72 of 480 trips are frequency templates "
                         "that are expanded into runs, so a day has more trains than the trip "
                         "count suggests",
@@ -394,7 +396,7 @@ class Engine:
                 "stop_times", "stops", "trips"],
                 "agencies": [{"agency_id": "X", "agency_name": name}],
                 "routes": [route("R1", "X", "1", "Line 1", "1", 1, None, 1)],
-                "route_types": [{"route_type": 1, "name": "subway", "mode": "subway",
+                "route_types": [{"route_type": 1, "name": "subway", "mode": "subway", "modes": ["subway", "metro"],
                                  "routes": 1, "trips": 1}],
                 "stops": stops, "trips": 1, "frequency_trips": 0, "service": service,
                 "suggested_mode": "all", "warnings": []}

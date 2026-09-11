@@ -172,7 +172,8 @@ export interface GraphBuildParams {
    */
   mode?: string
   /**
-   * Keep only this agency_id; the registry entry's when omitted.
+   * Keep only this agency_id; the registry entry's when omitted; empty for
+   * every operator, whatever the entry says.
    */
   agency?: string
   /**
@@ -738,6 +739,12 @@ export interface RouteType {
    * The mode all keeps every type.
    */
   mode: string | null
+  /**
+   * Every -m name that keeps this type, the canonical one first (subway and
+   * metro; tram and streetcar; rail and train); empty for a type LOOM has no
+   * name for. A numeric mode keeps its own code.
+   */
+  modes: string[]
   routes: number
   trips: number
 }

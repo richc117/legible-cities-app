@@ -20,9 +20,23 @@ const route = (over: Partial<Route>): Route => ({
   ...over,
 })
 const TYPES: RouteType[] = [
-  { route_type: 0, name: 'tram', mode: 'tram', routes: 4, trips: 830 },
-  { route_type: 1, name: 'subway', mode: 'subway', routes: 2, trips: 330 },
-  { route_type: 99, name: 'type 99', mode: null, routes: 1, trips: 1 },
+  {
+    route_type: 0,
+    name: 'tram',
+    mode: 'tram',
+    modes: ['tram', 'streetcar'],
+    routes: 4,
+    trips: 830,
+  },
+  {
+    route_type: 1,
+    name: 'subway',
+    mode: 'subway',
+    modes: ['subway', 'metro'],
+    routes: 2,
+    trips: 330,
+  },
+  { route_type: 99, name: 'type 99', mode: null, modes: [], routes: 1, trips: 1 },
 ]
 
 describe('sortRoutes', () => {
@@ -48,6 +62,9 @@ describe('keeps', () => {
     expect(TYPES.map((t) => keeps('all', t))).toEqual([true, true, true])
     expect(TYPES.map((t) => keeps('tram', t))).toEqual([true, false, false])
     expect(TYPES.map((t) => keeps('tram,subway', t))).toEqual([true, true, false])
+    // The engine's aliases keep too: gtfs2graph takes metro for subway.
+    expect(TYPES.map((t) => keeps('metro', t))).toEqual([false, true, false])
+    expect(TYPES.map((t) => keeps('streetcar,metro', t))).toEqual([true, true, false])
     expect(TYPES.map((t) => keeps('99', t))).toEqual([false, false, true])
     expect(TYPES.map((t) => keeps('rail', t))).toEqual([false, false, false])
   })

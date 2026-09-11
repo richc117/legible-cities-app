@@ -32,14 +32,15 @@ export function sortRoutes(routes: Route[], key: SortKey, descending: boolean): 
 }
 
 /**
- * Whether a mode keeps a route type, from the engine's mode per type:
- * "all" keeps every type, a name keeps the types it names, a number keeps
- * its own code; several are comma-joined, as gtfs2graph takes them.
+ * Whether a mode keeps a route type, from the engine's list of the names
+ * that keep it: "all" keeps every type, a name keeps the types it names
+ * (subway and metro alike, as gtfs2graph takes them), a number keeps its
+ * own code; several are comma-joined.
  */
 export function keeps(mode: string, type: RouteType): boolean {
   const parts = mode.split(',').map((p) => p.trim())
   return parts.some(
-    (part) => part === 'all' || part === type.mode || part === String(type.route_type),
+    (part) => part === 'all' || type.modes.includes(part) || part === String(type.route_type),
   )
 }
 
@@ -86,7 +87,11 @@ export default function Inspect({
     key: 'label',
     descending: false,
   })
+  // `mode` and `agency` mirror the record; `draft` is the typed mode until
+  // it is submitted, so a change of operator never writes a half-typed one,
+  // and a write coming back never interrupts a person typing.
   const [mode, setMode] = useState(project.mode)
+  const [draft, setDraft] = useState(project.mode)
   const [custom, setCustom] = useState(false)
   const [agency, setAgency] = useState<string | null>(project.agency)
   const [message, setMessage] = useState<string | null>(null)
@@ -153,6 +158,7 @@ export default function Inspect({
   const chooseMode = (value: string): void => {
     if (value === 'other') {
       setCustom(true)
+      setDraft(mode)
       return
     }
     setCustom(false)
@@ -162,8 +168,20 @@ export default function Inspect({
   const chooseAgency = (value: string): void => {
     const next = value === '' ? null : value
     setAgency(next)
-    void store({ mode, agency: next })
+    void store({ mode: project.mode, agency: next })
   }
+  const useEntry = (): void => {
+    if (registry === null) return
+    setCustom(false)
+    setMode(registry.mode)
+    setAgency(registry.agency)
+    void store(registry)
+  }
+  // A stored agency the feed does not list is shown so it can be cleared.
+  const agencyOptions = [...(inspection?.agencies ?? [])]
+  if (agency !== null && !agencyOptions.some((a) => a.agency_id === agency))
+    agencyOptions.push({ agency_id: agency, agency_name: `${agency} (not in this feed)` })
+  const offerOperator = agency !== null || (inspection !== null && inspection.agencies.length > 1)
 
   const heading = (key: SortKey, label: string): JSX.Element => {
     const active = sort.key === key
@@ -186,7 +204,9 @@ export default function Inspect({
       <h2 id="inspect-heading">In the feed</h2>
       {state.status === 'waiting' && (
         <p className="hint" role="status">
-          {ready ? 'Reading the feed…' : 'The engine is not ready, so the feed cannot be read yet.'}
+          {ready
+            ? 'Reading the feed, and downloading it first if it is not on this machine yet…'
+            : 'The engine is not ready, so the feed cannot be read yet.'}
         </p>
       )}
       {state.status === 'failed' && (
@@ -258,11 +278,17 @@ export default function Inspect({
                   noValidate
                   onSubmit={(event) => {
                     event.preventDefault()
-                    void store({ mode, agency })
+                    setMode(draft)
+                    void store({ mode: draft, agency })
                   }}
                 >
                   <label htmlFor="inspect-mode">Modes, comma-joined, or route_type numbers</label>
-                  <TextInput id="inspect-mode" value={mode} onChange={setMode} spellCheck={false} />
+                  <TextInput
+                    id="inspect-mode"
+                    value={draft}
+                    onChange={setDraft}
+                    spellCheck={false}
+                  />
                   <div className="actions">
                     <Button variant="primary" type="submit" disabled={disabled}>
                       Use this mode
@@ -271,7 +297,7 @@ export default function Inspect({
                 </form>
               )}
             </div>
-            {inspection.agencies.length > 1 && (
+            {offerOperator && (
               <div className="field">
                 <span className="field-label" aria-hidden="true">
                   Operator
@@ -283,7 +309,7 @@ export default function Inspect({
                   disabled={disabled}
                 >
                   <option value="">every operator</option>
-                  {inspection.agencies.map((a) => (
+                  {agencyOptions.map((a) => (
                     <option key={a.agency_id} value={a.agency_id}>
                       {a.agency_name || a.agency_id}
                     </option>
@@ -294,7 +320,10 @@ export default function Inspect({
             {registry !== null && (registry.mode !== mode || registry.agency !== agency) && (
               <p className="hint" role="status">
                 The feed's own entry draws {registry.mode}
-                {registry.agency === null ? '' : ` for ${registry.agency}`}.
+                {registry.agency === null ? ' for every operator' : ` for ${registry.agency}`}.{' '}
+                <Button onClick={useEntry} disabled={disabled}>
+                  Use the feed's entry
+                </Button>
               </p>
             )}
             <p className="message error" role="alert">
@@ -335,9 +364,6 @@ export default function Inspect({
             </caption>
             <thead>
               <tr>
-                <th scope="col">
-                  <span className="visually-hidden">Colour</span>
-                </th>
                 {heading('label', 'Label')}
                 <th scope="col">Name</th>
                 {heading('type', 'Type')}
@@ -352,9 +378,9 @@ export default function Inspect({
                       className="swatch"
                       style={r.color === null ? undefined : { background: `#${r.color}` }}
                       aria-hidden="true"
-                    />
+                    />{' '}
+                    {r.label}
                   </td>
-                  <td>{r.label}</td>
                   <td>{r.long_name || r.short_name}</td>
                   <td>
                     {inspection.route_types.find((t) => t.route_type === r.route_type)?.name ??

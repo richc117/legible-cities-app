@@ -4,7 +4,7 @@ import { shortLayoutId } from '../../shared/layout'
 import { validateName } from '../../shared/project'
 import ConfirmDialog from './ConfirmDialog'
 import { engineClient, exportRunFor, layoutRunFor } from './engine/runs'
-import { inspectionFor } from './engine/inspections'
+import { feedRecordFor, inspectionFor } from './engine/inspections'
 import Inspect from './Inspect'
 import ExportRunView from './ExportRun'
 import Viewer from './Viewer'
@@ -178,6 +178,23 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
     return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
   }
   const inspect = useCallback((key: string) => inspectionFor(engineClient(), key, today()), [])
+  const [registry, setRegistry] = useState<{ mode: string; agency: string | null } | null>(null)
+  const feedKey = project?.feed ?? null
+  const ready = engine?.state === 'ready'
+  useEffect(() => {
+    if (feedKey === null || !ready) return
+    let left = false
+    feedRecordFor(engineClient(), feedKey).then(
+      (record) => {
+        if (!left)
+          setRegistry(record === null ? null : { mode: record.mode, agency: record.agency })
+      },
+      () => undefined,
+    )
+    return () => {
+      left = true
+    }
+  }, [feedKey, ready])
 
   // A rejection stays in the confirm dialog; a result goes back to the
   // Library, with a sentence if some folder remained.
@@ -248,6 +265,7 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
               engine={engine}
               inspect={inspect}
               onInputs={setInputs}
+              registry={registry}
               disabled={layingOut || exporting}
             />
           )}

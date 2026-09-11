@@ -52,6 +52,7 @@ function record(id: string, overrides: Partial<ProjectRecord> = {}): ProjectReco
     theme: DEFAULT_THEME,
     layout: null,
     made: null,
+    built: null,
     created: '2026-09-01T00:00:00.000Z',
     modified: '2026-09-01T00:00:00.000Z',
     ...overrides,
@@ -126,6 +127,7 @@ describe('create', () => {
       theme: 'warm-dark',
       layout: null,
       made: null,
+      built: null,
       created: created.created,
       modified: created.modified,
     }
@@ -366,6 +368,7 @@ const WINDOW = {
   anchor: '2026-09-08',
 }
 const MADE = '2026-09-10T12:00:00+00:00'
+const BUILT = { mode: 'all', agency: null }
 const LATER = '2026-09-11T08:30:00+00:00'
 
 // A run that finished: the layout, the window, the day and the modification
@@ -383,9 +386,11 @@ describe('completeLayout', () => {
       layout: LAYOUT,
       service: WINDOW,
       made: MADE,
+      built: BUILT,
     })
     expect(record.layout, "the engine's id, as answered").toBe(LAYOUT)
     expect(record.made, 'when the engine made it').toBe(MADE)
+    expect(record.built, 'what the engine made it with').toEqual(BUILT)
     expect(record.date).toBe('2026-09-02')
     expect(record.service, "the engine's window and day, as answered").toEqual(WINDOW)
     expect(record.modified >= project.modified).toBe(true)
@@ -402,19 +407,27 @@ describe('completeLayout', () => {
       layout: LAYOUT,
       service: WINDOW,
       made: MADE,
+      built: BUILT,
     })
     const second = await store.completeLayout(project.id, {
       date: '2026-12-25',
       layout: LAYOUT,
       service: WINDOW,
       made: MADE,
+      built: BUILT,
     })
     expect(second.record.date, 'the day is resolved once (ADR-023)').toBe('2026-09-02')
   })
 
   it('reports a layout laid out again since, by the same id and a later made', async () => {
     const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
-    const done = (made: string) => ({ date: '2026-09-02', layout: LAYOUT, service: WINDOW, made })
+    const done = (made: string) => ({
+      date: '2026-09-02',
+      layout: LAYOUT,
+      service: WINDOW,
+      made,
+      built: BUILT,
+    })
     const first = await store.completeLayout(project.id, done(MADE))
     expect(first.relaid, 'nothing to differ from').toBe(false)
     const same = await store.completeLayout(project.id, done(MADE))
@@ -434,6 +447,7 @@ describe('completeLayout', () => {
       layout: LAYOUT,
       service: WINDOW,
       made: LATER,
+      built: BUILT,
     })
     expect(run).toMatchObject({ changed: false, relaid: false })
     expect(run.record.made).toBe(LATER)
@@ -446,6 +460,7 @@ describe('completeLayout', () => {
       layout: LAYOUT,
       service: WINDOW,
       made: MADE,
+      built: BUILT,
     })
     expect(first.changed).toBe(false)
     const same = await store.completeLayout(project.id, {
@@ -453,6 +468,7 @@ describe('completeLayout', () => {
       layout: LAYOUT,
       service: WINDOW,
       made: MADE,
+      built: BUILT,
     })
     expect(same.changed, 'the same id is the same layout').toBe(false)
     const second = await store.completeLayout(project.id, {
@@ -460,6 +476,7 @@ describe('completeLayout', () => {
       layout: OTHER,
       service: WINDOW,
       made: MADE,
+      built: BUILT,
     })
     expect(second.changed).toBe(true)
     expect(second.record.layout).toBe(OTHER)
@@ -472,6 +489,7 @@ describe('completeLayout', () => {
       layout: LAYOUT,
       service: WINDOW,
       made: MADE,
+      built: BUILT,
     })
     const fresh = { ...WINDOW, end: '2027-06-30', busiest: '2026-09-22', anchor: '2026-09-20' }
     const second = await store.completeLayout(project.id, {
@@ -479,6 +497,7 @@ describe('completeLayout', () => {
       layout: LAYOUT,
       service: fresh,
       made: MADE,
+      built: BUILT,
     })
     expect(second.record.service, 'a fresh feed may carry a fresh calendar').toEqual(fresh)
     expect(second.record.date).toBe('2026-09-02')
@@ -487,11 +506,11 @@ describe('completeLayout', () => {
   it('refuses a day, an id or a window that is not the right shape, and writes nothing', async () => {
     const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
     for (const done of [
-      { date: '2026-13-01', layout: LAYOUT, service: WINDOW, made: MADE },
-      { date: 'yesterday', layout: LAYOUT, service: WINDOW, made: MADE },
-      { date: '2026-09-02', layout: 'abc', service: WINDOW, made: MADE },
-      { date: '2026-09-02', layout: 'A'.repeat(64), service: WINDOW, made: MADE },
-      { date: '2026-09-02', layout: '/etc/passwd', service: WINDOW, made: MADE },
+      { date: '2026-13-01', layout: LAYOUT, service: WINDOW, made: MADE, built: BUILT },
+      { date: 'yesterday', layout: LAYOUT, service: WINDOW, made: MADE, built: BUILT },
+      { date: '2026-09-02', layout: 'abc', service: WINDOW, made: MADE, built: BUILT },
+      { date: '2026-09-02', layout: 'A'.repeat(64), service: WINDOW, made: MADE, built: BUILT },
+      { date: '2026-09-02', layout: '/etc/passwd', service: WINDOW, made: MADE, built: BUILT },
       { date: '2026-09-02', layout: LAYOUT, service: { ...WINDOW, end: '2025-12-31' }, made: MADE },
       { date: '2026-09-02', layout: LAYOUT, service: { ...WINDOW, anchor: 'today' }, made: MADE },
       { date: '2026-09-02', layout: LAYOUT, service: { start: '2026-01-01' }, made: MADE },
@@ -501,6 +520,14 @@ describe('completeLayout', () => {
       { date: '2026-09-02', layout: LAYOUT, service: WINDOW, made: 'yesterday' },
       { date: '2026-09-02', layout: LAYOUT, service: WINDOW, made: 'x'.repeat(65) },
       { date: '2026-09-02', layout: LAYOUT, service: WINDOW, made: 1726000000 },
+      { date: '2026-09-02', layout: LAYOUT, service: WINDOW, made: MADE },
+      {
+        date: '2026-09-02',
+        layout: LAYOUT,
+        service: WINDOW,
+        made: MADE,
+        built: { mode: 'Rail!', agency: null },
+      },
     ]) {
       await expect(
         store.completeLayout(project.id, done as never),
@@ -520,6 +547,7 @@ describe('completeLayout', () => {
         layout: LAYOUT,
         service: WINDOW,
         made: MADE,
+        built: BUILT,
       }),
     ).rejects.toThrow('read-only')
   })
@@ -537,6 +565,7 @@ describe('completeRebuild', () => {
       layout: LAYOUT,
       service: WINDOW,
       made: MADE,
+      built: BUILT,
     })
     return project
   }
