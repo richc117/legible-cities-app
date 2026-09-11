@@ -157,6 +157,9 @@ test('lists the presets and lets a project start from one, in two steps from emp
     await expect(dialog.getByRole('combobox', { name: 'Feed' })).toHaveValue('cdmx-metro')
     await dialog.getByLabel('Name', { exact: true }).fill('CDMX')
     await dialog.getByRole('button', { name: 'Create', exact: true }).click()
+    // The Library lists it once the record is on disk; read after that,
+    // not after the click, or a slow rename (Windows) is read mid-write.
+    await expect(page.getByRole('button', { name: 'Open CDMX' })).toBeVisible()
     const records = readdirSync(join(engineHome, 'projects')).map(
       (id) =>
         JSON.parse(readFileSync(join(engineHome, 'projects', id, 'project.json'), 'utf8')).feed,
