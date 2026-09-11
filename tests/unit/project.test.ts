@@ -45,6 +45,7 @@ const full: ProjectRecord = {
   lineOrder: [],
   theme: 'warm-dark',
   layout: null,
+  made: null,
   created: '2026-09-07T20:00:00.000Z',
   modified: '2026-09-07T20:00:00.000Z',
 }
@@ -188,6 +189,7 @@ describe('parseRecord', () => {
       lineOrder: [],
       theme: DEFAULT_THEME,
       layout: null,
+      made: null,
       service: null,
     })
     // Times default to now, in the form every other time uses.
@@ -207,6 +209,7 @@ describe('parseRecord', () => {
       theme: 'sepia',
       layout: '3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f',
       service: { ...WINDOW, extra: 'dropped' },
+      made: '2026-09-10T12:00:00+00:00',
     })
     expect('record' in parsed).toBe(true)
     if (!('record' in parsed)) return
@@ -221,6 +224,7 @@ describe('parseRecord', () => {
       theme: 'sepia',
       layout: '3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f',
       service: WINDOW,
+      made: '2026-09-10T12:00:00+00:00',
     })
     // A layout identifier is 64 hex digits, the engine's id (ADR-033) or the
     // digest the app wrote before; anything else is dropped rather than half-trusted.
@@ -229,11 +233,25 @@ describe('parseRecord', () => {
       date: '7 September 2026',
       theme: 'neon',
       layout: 'abc123',
+      made: null,
     })
     if (!('record' in badDate)) throw new Error(badDate.error)
     expect(badDate.record.date).toBeNull()
     expect(badDate.record.theme).toBe(DEFAULT_THEME)
     expect(badDate.record.layout).toBeNull()
+    for (const made of [
+      'last Tuesday',
+      '',
+      42,
+      'x'.repeat(65),
+      '2026',
+      'Sep 10 2026',
+      '2026-09-10',
+    ]) {
+      const parsed = parseRecord({ ...full, made })
+      if (!('record' in parsed)) throw new Error(parsed.error)
+      expect(parsed.record.made, JSON.stringify(made)).toBeNull()
+    }
     // A window is whole or nothing: a half-valid block is not half-trusted.
     for (const service of [
       { ...WINDOW, end: '2025-01-01' },

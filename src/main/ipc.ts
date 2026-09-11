@@ -16,6 +16,7 @@ import {
   validateName,
   type CreateProjectInput,
   type RebuildDone,
+  validateMade,
   validateServiceDate,
   validateServiceWindow,
 } from '../shared/project'
@@ -55,8 +56,14 @@ function readLayoutDone(raw: unknown): LayoutDone {
     throw new Error('the layout run did not say which layout it drew from')
   }
   check(validateServiceWindow(input.service))
+  check(validateMade(input.made))
   const { start, end, busiest, anchor } = input.service as LayoutDone['service']
-  return { date, layout: input.layout, service: { start, end, busiest, anchor } }
+  return {
+    date,
+    layout: input.layout,
+    made: input.made as string,
+    service: { start, end, busiest, anchor },
+  }
 }
 
 /** What a finished rebuild hands back: the day the map was drawn for. */

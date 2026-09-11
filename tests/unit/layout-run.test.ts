@@ -68,7 +68,13 @@ function stubClient() {
 // layout id and the lines the octi stage drew. The paths it also names are
 // never opened by the app.
 const LAYOUT = 'c'.repeat(64)
-const BUILT = { layout: LAYOUT, paths: {}, stages: { octi: { lines: ['A', 'B'] } } }
+const MADE = '2026-09-10T12:00:00+00:00'
+const BUILT = {
+  layout: LAYOUT,
+  paths: {},
+  meta: { made: MADE },
+  stages: { octi: { lines: ['A', 'B'] } },
+}
 // What feeds.service answers: the window, the engine's day from the anchor,
 // and the anchor echoed (engine v0.6.0).
 const SERVICE = {
@@ -103,6 +109,7 @@ const project = (over: Partial<ProjectRecord> = {}): ProjectRecord =>
     lineOrder: [],
     theme: 'warm-dark',
     layout: null,
+    made: null,
     created: '2026-09-01T00:00:00.000Z',
     modified: '2026-09-01T00:00:00.000Z',
     ...over,
@@ -112,7 +119,7 @@ const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0))
 
 function setup(over: Partial<ProjectRecord> = {}, engine: EngineState | null = READY) {
   const { client, calls } = stubClient()
-  const complete = vi.fn(async () => ({ changed: false }))
+  const complete = vi.fn(async () => ({ changed: false, relaid: false }))
   const completeRebuild = vi.fn(async () => ({}))
   const record = project(over)
   const run = new LayoutRun({ client, complete, completeRebuild, today: () => '2026-09-08' })
@@ -212,6 +219,7 @@ describe('the run asks for the layout, then the day, then the map', () => {
     expect(complete).toHaveBeenCalledWith('p1', {
       date: '2026-09-15',
       layout: LAYOUT,
+      made: MADE,
       service: WINDOW,
     })
     expect(run.snapshot).toMatchObject({ state: 'done', forced: true, changed: false })
@@ -234,6 +242,7 @@ describe('the run asks for the layout, then the day, then the map', () => {
     expect(complete).toHaveBeenCalledWith('p1', {
       date: '2026-05-04',
       layout: LAYOUT,
+      made: MADE,
       service: WINDOW,
     })
   })
@@ -256,15 +265,40 @@ describe('the run asks for the layout, then the day, then the map', () => {
     expect(complete).toHaveBeenCalledWith('p1', {
       date: '2026-09-15',
       layout: LAYOUT,
+      made: MADE,
       service: WINDOW,
     })
     expect(run.snapshot.state).toBe('done')
     expect(run.snapshot.stages.every((s) => s.state === 'done')).toBe(true)
   })
 
+  it('reports a layout laid out again from another project, in words', async () => {
+    const { run, calls, complete, begin } = setup({ layout: LAYOUT, made: '2026-09-01T00:00:00Z' })
+    complete.mockResolvedValueOnce({ changed: false, relaid: true })
+    begin()
+    await laidOut(calls)
+    calls[2].resolve({ files: {} })
+    await tick()
+    expect(run.snapshot).toMatchObject({ state: 'done', changed: false, relaid: true })
+    expect(doneSentence(false, false, true)).toMatch(/laid out again from another project/)
+    // A re-layout from this project moves made too; the store says relaid,
+    // and the run, which knows it forced, does not.
+    const own = setup({ layout: LAYOUT, made: '2026-09-01T00:00:00Z' })
+    own.complete.mockResolvedValueOnce({ changed: false, relaid: true })
+    own.run.start(own.record, READY, { force: true })
+    await laidOut(own.calls)
+    own.calls[2].resolve({ files: {} })
+    await tick()
+    expect(own.run.snapshot).toMatchObject({ state: 'done', forced: true, relaid: false })
+    expect(doneSentence(true, false, true), 'a forced run says so itself').toMatch(
+      /^Laid out again from scratch\./,
+    )
+    expect(doneSentence(false, true, true), 'a different id says more').toMatch(/differs from/)
+  })
+
   it('reports a layout that differs from the one the project stored', async () => {
     const { run, calls, complete, begin } = setup({ layout: 'a'.repeat(64) })
-    complete.mockResolvedValueOnce({ changed: true })
+    complete.mockResolvedValueOnce({ changed: true, relaid: false })
     begin()
     await laidOut(calls)
     calls[2].resolve({ files: {} })
@@ -296,6 +330,7 @@ describe('a rebuild for a chosen day', () => {
   it('draws from the stored layout without a layout call, then writes the day', async () => {
     const { run, calls, complete, completeRebuild, record } = setup({
       layout: LAYOUT,
+      made: null,
       date: '2026-09-15',
       service: WINDOW,
     })
@@ -541,7 +576,7 @@ describe('the run survives the record it writes', () => {
     let record = project()
     const complete = vi.fn(async () => {
       record = project({ layout: 'b'.repeat(64), date: '2026-09-08' })
-      return { changed: false }
+      return { changed: false, relaid: false }
     })
     const run = new LayoutRun({
       client,
@@ -558,7 +593,7 @@ describe('the run survives the record it writes', () => {
 
   it('writes the day it started with, not one the record gained meanwhile', async () => {
     const { client, calls } = stubClient()
-    const complete = vi.fn(async () => ({ changed: false }))
+    const complete = vi.fn(async () => ({ changed: false, relaid: false }))
     const run = new LayoutRun({
       client,
       complete,

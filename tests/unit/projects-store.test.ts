@@ -51,6 +51,7 @@ function record(id: string, overrides: Partial<ProjectRecord> = {}): ProjectReco
     lineOrder: [],
     theme: DEFAULT_THEME,
     layout: null,
+    made: null,
     created: '2026-09-01T00:00:00.000Z',
     modified: '2026-09-01T00:00:00.000Z',
     ...overrides,
@@ -124,6 +125,7 @@ describe('create', () => {
       lineOrder: [],
       theme: 'warm-dark',
       layout: null,
+      made: null,
       created: created.created,
       modified: created.modified,
     }
@@ -363,6 +365,8 @@ const WINDOW = {
   busiest: '2026-09-15',
   anchor: '2026-09-08',
 }
+const MADE = '2026-09-10T12:00:00+00:00'
+const LATER = '2026-09-11T08:30:00+00:00'
 
 // A run that finished: the layout, the window, the day and the modification
 // time go in together or not at all, and the day a project already has is kept.
@@ -378,8 +382,10 @@ describe('completeLayout', () => {
       date: '2026-09-02',
       layout: LAYOUT,
       service: WINDOW,
+      made: MADE,
     })
     expect(record.layout, "the engine's id, as answered").toBe(LAYOUT)
+    expect(record.made, 'when the engine made it').toBe(MADE)
     expect(record.date).toBe('2026-09-02')
     expect(record.service, "the engine's window and day, as answered").toEqual(WINDOW)
     expect(record.modified >= project.modified).toBe(true)
@@ -391,13 +397,46 @@ describe('completeLayout', () => {
 
   it('keeps a service day the project already has', async () => {
     const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
-    await store.completeLayout(project.id, { date: '2026-09-02', layout: LAYOUT, service: WINDOW })
+    await store.completeLayout(project.id, {
+      date: '2026-09-02',
+      layout: LAYOUT,
+      service: WINDOW,
+      made: MADE,
+    })
     const second = await store.completeLayout(project.id, {
       date: '2026-12-25',
       layout: LAYOUT,
       service: WINDOW,
+      made: MADE,
     })
     expect(second.record.date, 'the day is resolved once (ADR-023)').toBe('2026-09-02')
+  })
+
+  it('reports a layout laid out again since, by the same id and a later made', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    const done = (made: string) => ({ date: '2026-09-02', layout: LAYOUT, service: WINDOW, made })
+    const first = await store.completeLayout(project.id, done(MADE))
+    expect(first.relaid, 'nothing to differ from').toBe(false)
+    const same = await store.completeLayout(project.id, done(MADE))
+    expect(same.relaid, 'the same set').toBe(false)
+    const later = await store.completeLayout(project.id, done(LATER))
+    expect(later).toMatchObject({ changed: false, relaid: true })
+    expect(later.record.made).toBe(LATER)
+    // A different id says more than a different time.
+    const other = await store.completeLayout(project.id, { ...done(MADE), layout: OTHER })
+    expect(other).toMatchObject({ changed: true, relaid: false })
+  })
+
+  it('treats a record from before, without made, as unchanged on its first run', async () => {
+    await seed(A, record(A, { layout: LAYOUT, date: '2026-09-02' }))
+    const run = await store.completeLayout(A, {
+      date: '2026-09-02',
+      layout: LAYOUT,
+      service: WINDOW,
+      made: LATER,
+    })
+    expect(run).toMatchObject({ changed: false, relaid: false })
+    expect(run.record.made).toBe(LATER)
   })
 
   it('reports a layout that differs from the one the project was drawn from', async () => {
@@ -406,18 +445,21 @@ describe('completeLayout', () => {
       date: '2026-09-02',
       layout: LAYOUT,
       service: WINDOW,
+      made: MADE,
     })
     expect(first.changed).toBe(false)
     const same = await store.completeLayout(project.id, {
       date: '2026-09-02',
       layout: LAYOUT,
       service: WINDOW,
+      made: MADE,
     })
     expect(same.changed, 'the same id is the same layout').toBe(false)
     const second = await store.completeLayout(project.id, {
       date: '2026-09-02',
       layout: OTHER,
       service: WINDOW,
+      made: MADE,
     })
     expect(second.changed).toBe(true)
     expect(second.record.layout).toBe(OTHER)
@@ -425,12 +467,18 @@ describe('completeLayout', () => {
 
   it('replaces the window on a later run, keeping the day', async () => {
     const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
-    await store.completeLayout(project.id, { date: '2026-09-02', layout: LAYOUT, service: WINDOW })
+    await store.completeLayout(project.id, {
+      date: '2026-09-02',
+      layout: LAYOUT,
+      service: WINDOW,
+      made: MADE,
+    })
     const fresh = { ...WINDOW, end: '2027-06-30', busiest: '2026-09-22', anchor: '2026-09-20' }
     const second = await store.completeLayout(project.id, {
       date: '2026-09-22',
       layout: LAYOUT,
       service: fresh,
+      made: MADE,
     })
     expect(second.record.service, 'a fresh feed may carry a fresh calendar').toEqual(fresh)
     expect(second.record.date).toBe('2026-09-02')
@@ -439,16 +487,20 @@ describe('completeLayout', () => {
   it('refuses a day, an id or a window that is not the right shape, and writes nothing', async () => {
     const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
     for (const done of [
-      { date: '2026-13-01', layout: LAYOUT, service: WINDOW },
-      { date: 'yesterday', layout: LAYOUT, service: WINDOW },
-      { date: '2026-09-02', layout: 'abc', service: WINDOW },
-      { date: '2026-09-02', layout: 'A'.repeat(64), service: WINDOW },
-      { date: '2026-09-02', layout: '/etc/passwd', service: WINDOW },
-      { date: '2026-09-02', layout: LAYOUT, service: { ...WINDOW, end: '2025-12-31' } },
-      { date: '2026-09-02', layout: LAYOUT, service: { ...WINDOW, anchor: 'today' } },
-      { date: '2026-09-02', layout: LAYOUT, service: { start: '2026-01-01' } },
+      { date: '2026-13-01', layout: LAYOUT, service: WINDOW, made: MADE },
+      { date: 'yesterday', layout: LAYOUT, service: WINDOW, made: MADE },
+      { date: '2026-09-02', layout: 'abc', service: WINDOW, made: MADE },
+      { date: '2026-09-02', layout: 'A'.repeat(64), service: WINDOW, made: MADE },
+      { date: '2026-09-02', layout: '/etc/passwd', service: WINDOW, made: MADE },
+      { date: '2026-09-02', layout: LAYOUT, service: { ...WINDOW, end: '2025-12-31' }, made: MADE },
+      { date: '2026-09-02', layout: LAYOUT, service: { ...WINDOW, anchor: 'today' }, made: MADE },
+      { date: '2026-09-02', layout: LAYOUT, service: { start: '2026-01-01' }, made: MADE },
       { date: '2026-09-02', layout: LAYOUT, service: null },
       { date: '2026-09-02', layout: LAYOUT },
+      { date: '2026-09-02', layout: LAYOUT, service: WINDOW },
+      { date: '2026-09-02', layout: LAYOUT, service: WINDOW, made: 'yesterday' },
+      { date: '2026-09-02', layout: LAYOUT, service: WINDOW, made: 'x'.repeat(65) },
+      { date: '2026-09-02', layout: LAYOUT, service: WINDOW, made: 1726000000 },
     ]) {
       await expect(
         store.completeLayout(project.id, done as never),
@@ -463,7 +515,12 @@ describe('completeLayout', () => {
     const file = join(home, 'projects', project.id, 'project.json')
     await writeFile(file, JSON.stringify({ ...project, version: 99 }), 'utf8')
     await expect(
-      store.completeLayout(project.id, { date: '2026-09-02', layout: LAYOUT, service: WINDOW }),
+      store.completeLayout(project.id, {
+        date: '2026-09-02',
+        layout: LAYOUT,
+        service: WINDOW,
+        made: MADE,
+      }),
     ).rejects.toThrow('read-only')
   })
 })
@@ -475,7 +532,12 @@ describe('completeRebuild', () => {
 
   async function laidOut(): Promise<ProjectRecord> {
     const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
-    await store.completeLayout(project.id, { date: '2026-09-15', layout: LAYOUT, service: WINDOW })
+    await store.completeLayout(project.id, {
+      date: '2026-09-15',
+      layout: LAYOUT,
+      service: WINDOW,
+      made: MADE,
+    })
     return project
   }
 

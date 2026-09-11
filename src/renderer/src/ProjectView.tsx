@@ -201,7 +201,17 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
             <dt>Service day</dt>
             <dd>{project.date ?? 'not yet chosen'}</dd>
             <dt>Layout</dt>
-            <dd>{project.layout === null ? 'not laid out yet' : shortLayoutId(project.layout)}</dd>
+            <dd>
+              {project.layout === null ? (
+                'not laid out yet'
+              ) : project.made === null ? (
+                shortLayoutId(project.layout)
+              ) : (
+                <>
+                  {shortLayoutId(project.layout)}, made <Time iso={project.made} />
+                </>
+              )}
+            </dd>
             <dt>Theme</dt>
             <dd>{project.theme}</dd>
             <dt>Created</dt>

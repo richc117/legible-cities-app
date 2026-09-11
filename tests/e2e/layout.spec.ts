@@ -4,6 +4,7 @@
 // does and writes the same three files, so this exercises the whole run
 // without needing Docker or a feed.
 
+import { createHash } from 'node:crypto'
 import {
   mkdtempSync,
   mkdirSync,
@@ -536,5 +537,109 @@ test('the busiest-weekday button stays under the keyboard, and a refusal returns
     await page.keyboard.press('Enter')
     await expect(section.getByText('The feed covers 2026-03-01 to 2026-11-30.')).toBeVisible()
     await expect(control, 'the refusal is read with the control').toBeFocused()
+  })
+})
+
+// A layout laid out again from another project (A3-06): two projects on one
+// feed share the set, and the one that did not press Re-layout is told.
+
+test('a project is told when another re-laid out the layout it draws from', async () => {
+  const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'One')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out\.$/)).toBeVisible({ timeout: 30_000 })
+    await page.getByRole('button', { name: /back to library/i }).click()
+    await openNewProject(page, 'Two')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out\.$/)).toBeVisible({ timeout: 30_000 })
+    const records = () =>
+      Object.fromEntries(
+        readdirSync(join(engineHome, 'projects')).map((id) => {
+          const r = JSON.parse(
+            readFileSync(join(engineHome, 'projects', id, 'project.json'), 'utf8'),
+          )
+          return [r.name, r]
+        }),
+      )
+    const before = records()
+    expect(before.One.layout).toBe(before.Two.layout)
+    expect(before.One.made, 'the same set, made once').toBe(before.Two.made)
+    const shown = page.getByRole('definition').filter({ hasText: /made/ })
+    await expect(shown).toBeVisible()
+    await expect(shown.locator('time'), 'the exact time kept on the element').toHaveAttribute(
+      'datetime',
+      String(before.Two.made),
+    )
+
+    // Two, still open, re-lays out: the shared set is made again.
+    await page.getByRole('button', { name: 'Re-layout' }).click()
+    await page
+      .getByRole('dialog', { name: 'Lay this project out from scratch?' })
+      .getByRole('button', { name: 'Re-layout' })
+      .click()
+    await expect(page.getByText(/^Laid out again from scratch/)).toBeVisible({ timeout: 30_000 })
+    const after = records()
+    expect(after.Two.made).not.toBe(before.Two.made)
+    expect(after.One.made, 'One has not run; its record is as it was').toBe(before.One.made)
+
+    // One lays out again and is told.
+    await page.getByRole('button', { name: /back to library/i }).click()
+    await page.getByRole('button', { name: 'Open One' }).click()
+    await page.getByRole('button', { name: 'Lay out again' }).click()
+    await expect(page.getByText(/laid out again from another project/)).toBeVisible({
+      timeout: 30_000,
+    })
+    expect(records().One.made).toBe(after.Two.made)
+
+    // And once more: nothing has changed since.
+    await page.getByRole('button', { name: /back to library/i }).click()
+    await page.getByRole('button', { name: 'Open One' }).click()
+    await page.getByRole('button', { name: 'Lay out again' }).click()
+    await expect(page.getByText(/^Laid out\.$/)).toBeVisible({ timeout: 30_000 })
+    expect(records().One.made, 'unchanged since').toBe(after.Two.made)
+  })
+})
+
+// The stand-in names a layout by its inputs, as the engine does: this is
+// its id for the default feed with no mode and no agency.
+const STAND_IN_LAYOUT = createHash('sha256')
+  .update('{"agency": null, "feed": "la-metro-rail", "mode": null}')
+  .digest('hex')
+
+test('a record from before made was stored gains it and is told nothing changed', async () => {
+  const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
+  const id = 'oldproject02'
+  mkdirSync(join(engineHome, 'projects', id), { recursive: true })
+  const now = new Date().toISOString()
+  writeFileSync(
+    join(engineHome, 'projects', id, 'project.json'),
+    JSON.stringify({
+      version: 1,
+      id,
+      name: 'Older',
+      feed: 'la-metro-rail',
+      mode: 'all',
+      agency: null,
+      date: '2026-05-04',
+      layout: STAND_IN_LAYOUT,
+      created: now,
+      modified: now,
+    }),
+  )
+  await withApp(engineHome, async (page) => {
+    await page.getByRole('button', { name: 'Open Older' }).click()
+    await page.getByRole('button', { name: 'Lay out again' }).click()
+    // The same id, and no time to compare: nothing changed, as the id's
+    // own first comparison behaves.
+    await expect(page.getByText(/^Laid out\.$/)).toBeVisible({ timeout: 30_000 })
+    const once = readRecord(engineHome)
+    expect(once.layout).toBe(STAND_IN_LAYOUT)
+    expect(typeof once.made).toBe('string')
+    await page.getByRole('button', { name: /back to library/i }).click()
+    await page.getByRole('button', { name: 'Open Older' }).click()
+    await page.getByRole('button', { name: 'Lay out again' }).click()
+    await expect(page.getByText(/^Laid out\.$/)).toBeVisible({ timeout: 30_000 })
+    expect(readRecord(engineHome).made).toBe(once.made)
   })
 })

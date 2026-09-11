@@ -147,8 +147,10 @@ describe.skipIf(INTERPRETER === null || !CACHED)(`the real engine's layout${WHY}
       const built = (await sidecar.request('graph.build', { key: FEED }).result) as {
         layout: string
         paths: Record<string, string>
+        meta: { made: string }
         stages: { octi: { lines: string[] } }
       }
+      expect(Number.isNaN(Date.parse(built.meta.made)), 'made is a time').toBe(false)
       expect(reported, 'the layout call reports the four layout stages').toEqual([...GRAPH_STAGES])
       expect(built.layout, "the engine's own id").toMatch(/^[0-9a-f]{64}$/)
 
@@ -169,8 +171,12 @@ describe.skipIf(INTERPRETER === null || !CACHED)(`the real engine's layout${WHY}
       // The same inputs name the same layout, and asking again runs nothing.
       const again = (await sidecar.request('graph.build', { key: FEED }).result) as {
         layout: string
+        meta: { made: string }
       }
       expect(again.layout, 'reproducible').toBe(built.layout)
+      expect(again.meta.made, 'an unforced answer repeats when the set was made (A3-06)').toBe(
+        built.meta.made,
+      )
 
       // Which day to draw, as the app asks at the first layout: from a
       // fixed anchor and the lines the layout drew. The answer is a day

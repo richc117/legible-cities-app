@@ -27,7 +27,7 @@ export default function LayoutRun({
   /** True while something else, such as an export, is reading the project's page. */
   disabled?: boolean
 }): JSX.Element {
-  const { state, stages, message, error, changed, forced, replaced, rebuilt, day } =
+  const { state, stages, message, error, changed, relaid, forced, replaced, rebuilt, day } =
     useSnapshot(run)
   const [confirming, setConfirming] = useState(false)
   const begin = (): void => run.start(project, engine)
@@ -107,9 +107,18 @@ export default function LayoutRun({
       {state === 'done' && (
         <>
           <p className="prose" role="status">
-            {rebuilt ? drawnSentence(day) : doneSentence(forced, changed)}
+            {rebuilt ? drawnSentence(day) : doneSentence(forced, changed, relaid)}
           </p>
-          <div className="toolbar">{relayoutButton}</div>
+          {/* The run outlives the screen, so this state is what a person
+              comes back to; without the unforced run here, "Lay out again"
+              would be unreachable until the app restarts. */}
+          <div className="toolbar">
+            <Button onClick={begin} disabled={disabled}>
+              <Icon name="map" />
+              Lay out again
+            </Button>
+            {relayoutButton}
+          </div>
         </>
       )}
       {warning}
@@ -122,14 +131,18 @@ export default function LayoutRun({
  * same id, so its map may differ while the id does not; an ordinary run
  * that lands on a different id than the record had was drawn from a layout
  * the engine named anew - a feed that changed, another LOOM, or a record
- * from before the engine named layouts at all.
+ * from before the engine named layouts at all; and an ordinary run whose
+ * id is the record's but whose set was made again since was drawn from a
+ * layout another project on the same inputs re-laid out (A3-06).
  */
-export function doneSentence(forced: boolean, changed: boolean): string {
+export function doneSentence(forced: boolean, changed: boolean, relaid = false): string {
   if (forced && changed)
     return 'Laid out again from scratch, and the project now names this layout in place of the one it had recorded. A new layout may place stations differently.'
   if (forced) return 'Laid out again from scratch. A new layout may place stations differently.'
   if (changed)
     return 'Laid out. The layout differs from the one the project had recorded, so the project now names this one.'
+  if (relaid)
+    return 'Laid out. The layout was laid out again from another project since this one last drew from it, so the map may place stations differently.'
   return 'Laid out.'
 }
 

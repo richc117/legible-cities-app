@@ -29,7 +29,8 @@ the id is the engine's own and "Re-layout" runs every stage again behind a
 warning, ADR-033; A3-04: the service day is the engine's choice from a
 stored anchor, `feeds.service` at every layout run, a date control bounded
 by the stored window, and a chosen day a rebuild from the stored layout,
-never a re-layout) and the viewer (A3-02: the engine's page in a frame sandboxed to
+never a re-layout; A3-06: the layout's `made` beside its id, so a
+project is told when another re-laid out the set it draws from) and the viewer (A3-02: the engine's page in a frame sandboxed to
 an opaque origin and driven from the main process, ADR-028), and the
 capture (A5-02a: an offscreen window in its own session takes a page's
 frames through the DevTools protocol, byte-identical run to run,

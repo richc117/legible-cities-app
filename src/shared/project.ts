@@ -46,6 +46,12 @@ export interface ProjectRecord {
   theme: Theme
   /** The stored layout's identifier; null until the first layout produces one (ADR-027). */
   layout: string | null
+  /**
+   * When the stored layout was made, as the engine wrote it beside the set
+   * (an ISO timestamp): the same id names the same inputs, and a different
+   * `made` under it is a set laid out again since (A3-06). Null before.
+   */
+  made: string | null
   created: string
   modified: string
 }
@@ -157,6 +163,21 @@ export function validateServiceWindow(service: unknown): string | null {
   return null
 }
 
+const MADE_MAX = 64
+// ISO 8601 with a time and an offset, as the engine writes it beside a
+// stored layout (isoformat with seconds, in UTC). Compared as a string, so
+// the shape is pinned before the value is trusted, as a day's is.
+const MADE_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/
+
+/** The engine's `made`: an ISO timestamp a clock could have written. */
+export function validateMade(made: unknown): string | null {
+  if (typeof made !== 'string' || made === '')
+    return 'the layout run did not say when the layout was made'
+  if (made.length > MADE_MAX || !MADE_PATTERN.test(made) || Number.isNaN(Date.parse(made)))
+    return 'the layout run gave a time that is not one'
+  return null
+}
+
 /** Is a day inside the window, inclusive? Both ISO, so strings compare. */
 export function withinWindow(date: string, service: ServiceWindow): boolean {
   return date >= service.start && date <= service.end
@@ -218,6 +239,7 @@ export function parseRecord(json: unknown): Parsed {
     lineOrder: Array.isArray(json.lineOrder) ? json.lineOrder.filter(isString) : [],
     theme: json.theme === 'sepia' ? 'sepia' : DEFAULT_THEME,
     layout: isLayoutId(json.layout) ? json.layout : null,
+    made: validateMade(json.made) === null ? (json.made as string) : null,
     created: isString(json.created) ? json.created : epoch,
     modified: isString(json.modified) ? json.modified : epoch,
   }

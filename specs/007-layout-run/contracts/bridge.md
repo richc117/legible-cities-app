@@ -21,6 +21,8 @@ interface LayoutDone {
   layout: string
   /** Since A3-04: the feed's window and the engine's day, as feeds.service answered them. */
   service: ServiceWindow
+  /** Since A3-06: when the engine made the layout, graph.build's meta.made. */
+  made: string
 }
 ```
 
@@ -34,6 +36,8 @@ interface LayoutResult {
   record: ProjectRecord
   /** True when the project had a different layout stored before this run. */
   changed: boolean
+  /** Since A3-06: the same id, made again since the project last drew from it. */
+  relaid: boolean
 }
 ```
 

@@ -405,6 +405,14 @@ under the same id and may place stations differently, because `octi` is
 not deterministic. What reproduces a map is the stored set, which is why
 the engine keeps it and the app never asks for a layout on the way to a map.
 
+Because two projects with the same inputs share one set, a re-layout from
+one changes what the other draws from. The record therefore keeps the
+engine's `made` beside the id, the time the set was written, which an
+unforced answer repeats and a forced one rewrites. A run that answers the
+project's own id with a later `made` was drawn from a layout laid out
+again from another project, and the screen says so; the project's fields
+show the time beside the id (A3-06).
+
 ### The service day
 
 A map is drawn for one calendar day, and `map.build` never chooses it,
