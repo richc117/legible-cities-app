@@ -194,7 +194,7 @@ describe.skipIf(INTERPRETER === null)(`every method the description names${WHY}`
 
   it('refuses graph.build with a parameter the description does not define', async () => {
     const error = await withEngine((s) =>
-      refusal(s.request('graph.build', { key: 'la-metro-rail', mode: 'rail' }).result),
+      refusal(s.request('graph.build', { key: 'la-metro-rail', sausage: 'rail' }).result),
     )
     expect(error.code).toBe(-32602)
     expect(error.data?.kind).toBe('params')
@@ -202,11 +202,23 @@ describe.skipIf(INTERPRETER === null)(`every method the description names${WHY}`
 
   it('refuses map.build without the service day it requires', async () => {
     const error = await withEngine((s) =>
-      refusal(s.request('map.build', { key: 'la-metro-rail' }).result),
+      refusal(s.request('map.build', { key: 'la-metro-rail', layout: '0'.repeat(64) }).result),
     )
     expect(error.code).toBe(-32602)
     expect(error.data?.kind).toBe('params')
     expect(error.data?.hint).toMatch(/date/i)
+  })
+
+  it('refuses map.build for a layout that is not stored, with its own kind', async () => {
+    const error = await withEngine((s) =>
+      refusal(
+        s.request('map.build', { key: 'la-metro-rail', layout: '0'.repeat(64), date: '2026-09-02' })
+          .result,
+      ),
+    )
+    expect(error.code).toBe(-32000)
+    expect(error.data?.kind).toBe('layout')
+    expect(error.data?.hint).toMatch(/lay the feed out first/)
   })
 
   it('refuses a method the engine does not have', async () => {

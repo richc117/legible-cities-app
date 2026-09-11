@@ -37,18 +37,19 @@ describe('registerProjectHandlers', () => {
     expect([...handlers.keys()].sort()).toEqual(projectChannels.sort())
   })
   // The layout run hands back the engine's answer; the handler checks its
-  // shape before the store checks the paths against the engine's home.
-  it('refuses a finished run whose day or stage graphs are not the right shape', async () => {
+  // shape, and the store checks it again before it writes.
+  it('refuses a finished run whose day or layout id are not the right shape', async () => {
     const { call, calls } = harness()
-    const paths = ['/a/00.json', '/a/01.json', '/a/02.json', '/a/03.json']
+    const layout = 'a'.repeat(64)
     for (const done of [
       undefined,
       {},
-      { date: '2026-13-01', paths },
-      { date: 'yesterday', paths },
+      { date: '2026-13-01', layout },
+      { date: 'yesterday', layout },
       { date: '2026-09-08' },
-      { date: '2026-09-08', paths: 'not a list' },
-      { date: '2026-09-08', paths: [1, 2, 3, 4] },
+      { date: '2026-09-08', layout: 'not an id' },
+      { date: '2026-09-08', layout: ['a'.repeat(64)] },
+      { date: '2026-09-08', layout: '/a/03.json' },
     ]) {
       await expect(
         call(CHANNELS.projectsCompleteLayout, 'abcdefghijk1', done),
@@ -60,10 +61,7 @@ describe('registerProjectHandlers', () => {
 
   it('passes a well-formed finished run to the store', async () => {
     const { call, calls } = harness()
-    const done = {
-      date: '2026-09-08',
-      paths: ['/a/00.json', '/a/01.json', '/a/02.json', '/a/03.json'],
-    }
+    const done = { date: '2026-09-08', layout: 'a'.repeat(64) }
     await call(CHANNELS.projectsCompleteLayout, 'abcdefghijk1', done)
     expect(calls).toEqual([{ method: 'completeLayout', args: ['abcdefghijk1', done] }])
   })

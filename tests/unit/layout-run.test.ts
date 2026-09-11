@@ -11,6 +11,7 @@ import {
   sentenceFor,
   type RunClient,
 } from '../../src/renderer/src/engine/layoutRun'
+import { doneSentence, stoppedSentence } from '../../src/renderer/src/LayoutRun'
 import { LAYOUT_STAGES } from '../../src/shared/layout'
 import { ERROR_CODES, type EngineState } from '../../src/shared/engine'
 import type { ProjectRecord } from '../../src/shared/project'
@@ -63,15 +64,10 @@ function stubClient() {
   return { client, calls }
 }
 
-// Absolute in shape and nobody's machine in fact. The run never opens
-// these; it relays what the engine said to the main process, which is the
-// only thing that touches a filesystem.
-const PATHS = {
-  gtfs2graph: '/engine-home/data/graphs/la/00_gtfs2graph.json',
-  topo: '/engine-home/data/graphs/la/01_topo.json',
-  loom: '/engine-home/data/graphs/la/02_loom.json',
-  octi: '/engine-home/data/graphs/la/03_octi.json',
-}
+// What graph.build answers with, as far as the run reads it: the engine's
+// layout id. The paths it also names are never opened by the app.
+const LAYOUT = 'c'.repeat(64)
+const BUILT = { layout: LAYOUT, paths: {} }
 
 const READY: EngineState = { state: 'ready', version: '0.2.0', protocol: 1 }
 
@@ -105,6 +101,15 @@ function setup(over: Partial<ProjectRecord> = {}, engine: EngineState | null = R
   return { run, calls, complete, record, begin: () => run.start(record, engine) }
 }
 
+describe('the sentences a finished run shows', () => {
+  it('say what a re-layout and a changed id each mean, and both together', () => {
+    expect(doneSentence(false, false)).toBe('Laid out.')
+    expect(doneSentence(false, true)).toMatch(/now names this one/)
+    expect(doneSentence(true, false)).toMatch(/^Laid out again from scratch\./)
+    expect(doneSentence(true, true)).toMatch(/in place of the one it had recorded/)
+  })
+})
+
 describe('advance, the progress rule', () => {
   it('marks the finished stage done and the next one running', () => {
     const after = advance(freshStages(), 'gtfs2graph')
@@ -130,43 +135,72 @@ describe('the run asks for the layout and then the map', () => {
     const { calls, begin } = setup()
     begin()
     expect(calls[0]).toMatchObject({ method: 'graph.build', params: { key: 'la-metro-rail' } })
-    calls[0].resolve({ paths: PATHS })
+    calls[0].resolve(BUILT)
     await tick()
     expect(calls[1]).toMatchObject({
       method: 'map.build',
-      params: { key: 'la-metro-rail', date: '2026-09-08', out: 'p1' },
+      params: { key: 'la-metro-rail', layout: LAYOUT, date: '2026-09-08', out: 'p1' },
     })
+  })
+
+  it('draws the map from the layout the engine just answered, never asking it to lay out', async () => {
+    const { calls, begin } = setup()
+    begin()
+    calls[0].resolve({ layout: 'd'.repeat(64), paths: {} })
+    await tick()
+    expect(calls[1].params.layout).toBe('d'.repeat(64))
+    expect(Object.keys(calls[1].params)).not.toContain('force')
+  })
+
+  it('a re-layout forces every stage and says so when done', async () => {
+    const { run, calls, complete, record } = setup({ layout: LAYOUT })
+    run.start(record, READY, { force: true })
+    expect(calls[0]).toMatchObject({
+      method: 'graph.build',
+      params: { key: 'la-metro-rail', force: true },
+    })
+    expect(run.snapshot.forced).toBe(true)
+    calls[0].resolve(BUILT)
+    await tick()
+    expect(Object.keys(calls[1].params).sort()).toEqual(['date', 'key', 'layout', 'out'])
+    calls[1].resolve({ files: {} })
+    await tick()
+    expect(complete).toHaveBeenCalledWith('p1', { date: '2026-09-08', layout: LAYOUT })
+    expect(run.snapshot).toMatchObject({ state: 'done', forced: true, changed: false })
+  })
+
+  it('an ordinary run sends no force', async () => {
+    const { calls, begin } = setup()
+    begin()
+    expect(Object.keys(calls[0].params)).toEqual(['key'])
   })
 
   it('uses the day the project already has rather than today', async () => {
     const { calls, begin } = setup({ date: '2026-05-04' })
     begin()
-    calls[0].resolve({ paths: PATHS })
+    calls[0].resolve(BUILT)
     await tick()
     expect(calls[1].params).toMatchObject({ date: '2026-05-04' })
   })
 
-  it('sends no parameter the protocol does not define', async () => {
+  it("leaves the registry's mode and agency to the engine until a person can choose them", async () => {
     const { calls, begin } = setup({ mode: 'rail', agency: 'Metro' })
     begin()
-    calls[0].resolve({ paths: PATHS })
+    calls[0].resolve(BUILT)
     await tick()
     expect(Object.keys(calls[0].params).sort()).toEqual(['key'])
-    expect(Object.keys(calls[1].params).sort()).toEqual(['date', 'key', 'out'])
+    expect(Object.keys(calls[1].params).sort()).toEqual(['date', 'key', 'layout', 'out'])
   })
 
-  it('writes the record once, with the paths the engine named, in stage order', async () => {
+  it("writes the record once, with the engine's layout id", async () => {
     const { run, calls, complete, begin } = setup()
     begin()
-    calls[0].resolve({ paths: PATHS })
+    calls[0].resolve(BUILT)
     await tick()
     calls[1].resolve({ files: {} })
     await tick()
     expect(complete).toHaveBeenCalledTimes(1)
-    expect(complete).toHaveBeenCalledWith('p1', {
-      date: '2026-09-08',
-      paths: [PATHS.gtfs2graph, PATHS.topo, PATHS.loom, PATHS.octi],
-    })
+    expect(complete).toHaveBeenCalledWith('p1', { date: '2026-09-08', layout: LAYOUT })
     expect(run.snapshot.state).toBe('done')
     expect(run.snapshot.stages.every((s) => s.state === 'done')).toBe(true)
   })
@@ -175,7 +209,7 @@ describe('the run asks for the layout and then the map', () => {
     const { run, calls, complete, begin } = setup({ layout: 'a'.repeat(64) })
     complete.mockResolvedValueOnce({ changed: true })
     begin()
-    calls[0].resolve({ paths: PATHS })
+    calls[0].resolve(BUILT)
     await tick()
     calls[1].resolve({ files: {} })
     await tick()
@@ -200,7 +234,7 @@ describe('the sentence on screen describes the stage that finished', () => {
     for (const stage of ['gtfs2graph', 'topo', 'loom', 'octi']) {
       calls[0].report(stage, `${stage} finished`)
     }
-    calls[0].resolve({ paths: PATHS })
+    calls[0].resolve(BUILT)
     await tick()
     expect(run.snapshot.stages[4].state).toBe('running')
     calls[1].report('gtfs2graph', 'again')
@@ -211,7 +245,7 @@ describe('the sentence on screen describes the stage that finished', () => {
   it('reaches every stage the engine reports, in order', async () => {
     const { run, calls, begin } = setup()
     begin()
-    calls[0].resolve({ paths: PATHS })
+    calls[0].resolve(BUILT)
     await tick()
     for (const stage of LAYOUT_STAGES) calls[1].report(stage, `${stage} finished`)
     expect(run.snapshot.stages.every((s) => s.state === 'done')).toBe(true)
@@ -238,7 +272,7 @@ describe('a message that is a path never reaches the screen', () => {
   it("replaces the write stage's folder with what it did", async () => {
     const { run, calls, begin } = setup()
     begin()
-    calls[0].resolve({ paths: PATHS })
+    calls[0].resolve(BUILT)
     await tick()
     for (const stage of ['gtfs2graph', 'topo', 'loom', 'octi', 'schedule', 'render', 'animate']) {
       calls[1].report(stage, `${stage} finished`)
@@ -287,10 +321,39 @@ describe('cancelling and failing write nothing', () => {
     expect(run.snapshot.stages.some((s) => s.state === 'failed')).toBe(false)
   })
 
+  it('a forced run stopped after the layout answered says the layout was replaced', async () => {
+    const { run, calls, record } = setup({ layout: LAYOUT })
+    run.start(record, READY, { force: true })
+    expect(run.snapshot.replaced).toBe(false)
+    calls[0].resolve(BUILT)
+    await tick()
+    expect(run.snapshot.replaced, 'the engine has swapped the stored set in').toBe(true)
+    run.cancel()
+    calls[1].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
+    await tick()
+    expect(run.snapshot).toMatchObject({ state: 'cancelled', forced: true, replaced: true })
+    expect(stoppedSentence('cancelled', true)).toMatch(/laid out again, before the map was drawn/)
+    expect(stoppedSentence('failed', true)).toMatch(/but the map was not drawn/)
+    expect(stoppedSentence('cancelled', false)).toBe(
+      'The run was cancelled. The project is as it was.',
+    )
+  })
+
+  it('an unforced run stopped after the layout answered left the stored layout alone', async () => {
+    const { run, calls, begin } = setup({ layout: LAYOUT })
+    begin()
+    calls[0].resolve(BUILT)
+    await tick()
+    run.cancel()
+    calls[1].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
+    await tick()
+    expect(run.snapshot).toMatchObject({ state: 'cancelled', forced: false, replaced: false })
+  })
+
   it('cancels the map call once the layout has finished', async () => {
     const { run, calls, begin } = setup()
     begin()
-    calls[0].resolve({ paths: PATHS })
+    calls[0].resolve(BUILT)
     await tick()
     run.cancel()
     expect(calls[1].cancelled).toBe(true)
@@ -337,7 +400,7 @@ describe('the run survives the record it writes', () => {
     })
     const run = new LayoutRun({ client, complete, today: () => '2026-09-08' })
     run.start(record, READY)
-    calls[0].resolve({ paths: PATHS })
+    calls[0].resolve(BUILT)
     await tick()
     calls[1].resolve({ files: {} })
     await tick()
@@ -352,7 +415,7 @@ describe('the run survives the record it writes', () => {
     // The record is written again while the run is in flight, as another
     // screen might. The run is unmoved: it holds the day it began with.
     project({ date: '2026-12-25' })
-    calls[0].resolve({ paths: PATHS })
+    calls[0].resolve(BUILT)
     await tick()
     calls[1].resolve({ files: {} })
     await tick()

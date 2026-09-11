@@ -49,10 +49,10 @@ export interface Api {
     rename(id: string, name: string): Promise<ProjectRecord>
     delete(id: string): Promise<DeleteResult>
     /**
-     * A layout run finished: the day it was drawn for and the stage graphs
-     * the engine named. The main process reads those files, derives the
-     * layout's identifier and writes the record; the page never sees a path
-     * of its own (specs/007-layout-run/contracts/bridge.md).
+     * A layout run finished: the day it was drawn for and the layout's id,
+     * as the engine answered it. The main process checks the id's shape and
+     * writes the record; nothing is read, and the page never sees a path
+     * (specs/007-layout-run/contracts/bridge.md, ADR-033).
      */
     completeLayout(id: string, done: LayoutDone): Promise<LayoutResult>
   }

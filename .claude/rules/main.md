@@ -57,9 +57,11 @@ method here before the engine has it and the pin has moved. See ADR-010.
 
 ## Capture
 
-A project's layout is computed once and stored with the project; a render
-or an export reads it and never runs the layout stages on its own.
-Re-layout is a button with a warning. See ADR-023.
+A project's layout is computed once and stored with the project under the
+engine's own id, the hash of the layout's inputs; a render or an export
+reads it and never runs the layout stages on its own, and `map.build` is
+always given the id. Re-layout is a button with a warning. See ADR-023 and
+ADR-033.
 
 Every capture, without exception:
 

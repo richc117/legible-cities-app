@@ -109,6 +109,8 @@ interface Node {
   minLength?: number
   minItems?: number
   maxItems?: number
+  prefixItems?: Node[]
+  maxLength?: number
 }
 
 interface Description {
@@ -141,6 +143,8 @@ const KNOWN = new Set([
   'minLength',
   'minItems',
   'maxItems',
+  'prefixItems',
+  'maxLength',
 ])
 
 const PRIMITIVES: Record<string, string> = {
@@ -187,6 +191,13 @@ function typeOf(node: Node, path: string, defs: Set<string>, indent: string): st
     return node.type.map((one) => typeOf({ ...node, type: one }, path, defs, indent)).join(' | ')
   }
   if (node.type === 'array') {
+    // A tuple: each position typed on its own, closed by min and max items.
+    if (node.prefixItems !== undefined) {
+      const parts = node.prefixItems.map((item, i) =>
+        typeOf(item, `${path}.prefixItems[${i}]`, defs, indent),
+      )
+      return `[${parts.join(', ')}]`
+    }
     if (node.items === undefined) throw new Error(`${path}: an array without items`)
     const item = typeOf(node.items, `${path}.items`, defs, indent)
     return /[ |]/.test(item) ? `(${item})[]` : `${item}[]`

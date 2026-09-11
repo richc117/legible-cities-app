@@ -58,6 +58,7 @@ export const ENGINE_ERROR_KINDS = [
   'export',
   'io',
   'engine',
+  'layout',
 ] as const
 
 export const APP_ERROR_KINDS = ['state', 'inactive', 'exit'] as const
@@ -67,7 +68,7 @@ export function isEngineErrorKind(value: unknown): value is EngineErrorData['kin
   return typeof value === 'string' && (ENGINE_ERROR_KINDS as readonly string[]).includes(value)
 }
 
-/** One of the ten the interface may see, the engine's and the app's. */
+/** One of the eleven the interface may see, the engine's and the app's. */
 export function isErrorKind(value: unknown): value is ErrorKind {
   return (
     isEngineErrorKind(value) || (APP_ERROR_KINDS as readonly string[]).includes(value as string)

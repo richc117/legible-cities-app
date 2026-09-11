@@ -17,7 +17,7 @@ import {
   type CreateProjectInput,
   validateServiceDate,
 } from '../shared/project'
-import type { LayoutDone } from '../shared/layout'
+import { isLayoutId, type LayoutDone } from '../shared/layout'
 import type { ProjectStore } from './projects'
 import type { Viewer } from './viewer'
 
@@ -41,19 +41,18 @@ function readName(raw: unknown): string {
 }
 
 /**
- * What a finished run hands back. The paths are the engine's answer relayed
- * by the page, so nothing here trusts them beyond their shape; the store
- * checks each one against the engine's home before it opens anything.
+ * What a finished run hands back: the day and the engine's layout id, as
+ * the page relayed them. Both are checked for shape here; neither is a
+ * path, and nothing is opened.
  */
 function readLayoutDone(raw: unknown): LayoutDone {
   const input = isObject(raw) ? raw : {}
   const date = typeof input.date === 'string' ? input.date : ''
   check(validateServiceDate(date))
-  const paths = input.paths
-  if (!Array.isArray(paths) || paths.some((p) => typeof p !== 'string')) {
-    throw new Error('the layout run did not say which stage graphs it built')
+  if (!isLayoutId(input.layout)) {
+    throw new Error('the layout run did not say which layout it drew from')
   }
-  return { date, paths: paths as string[] }
+  return { date, layout: input.layout }
 }
 
 function readCreateInput(raw: unknown): CreateProjectInput {

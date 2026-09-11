@@ -1,7 +1,7 @@
 // Generated from the engine's own description of its protocol.
 // Run `npm run typegen` to regenerate; edits here are lost.
 //
-// Engine: v0.4.0, protocol 1.
+// Engine: v0.5.0, protocol 1.
 // Source: vendor/protocol.schema.json, printed by the engine's
 // `python -m schematic.serve --schema` and committed verbatim.
 
@@ -68,15 +68,83 @@ export interface EngineInfo {
 }
 
 /**
- * Run gtfs2graph, topo, loom and octi for a registered feed, each stage
- * cached under the home. Mode and agency come from the registry entry;
- * passing them arrives with the native backend and user feeds.
+ * A stored layout's id: the sha256, as 64 hex digits, of everything that
+ * went into it. The same feed, options and LOOM name the same id before
+ * anything runs; the desktop app stores it with a project.
+ */
+export type LayoutId = string
+
+/**
+ * What a stored layout was made from, as written beside it in .meta.json.
+ * The inputs are what its id hashes; engine, made and migrated are not.
+ */
+export interface LayoutMeta {
+  feed: FeedKey
+  /**
+   * The sha256 of the feed zip as downloaded.
+   */
+  feed_sha256: string
+  mode: string
+  agency: string | null
+  label_pattern: string | null
+  label_strip: string | null
+  /**
+   * The LOOM commit the host passed as SCHEMATIC_LOOM_COMMIT; null when it
+   * was not told.
+   */
+  loom: string | null
+  /**
+   * The graph-to-graph stages and their arguments, in order.
+   */
+  stages: [string, string[]][]
+  /**
+   * The engine version that made it.
+   */
+  engine: string
+  /**
+   * When, as an ISO 8601 timestamp in UTC.
+   */
+  made: string
+  /**
+   * True for a set from before layouts had names, moved under its id once;
+   * its inputs are the feed and options as they were at migration.
+   */
+  migrated: boolean
+}
+
+/**
+ * Lay a registered feed out: gtfs2graph, topo, loom and octi, stored under
+ * the home as one layout named by the hash of its inputs (the feed's bytes,
+ * the mode, the agency, the label options, the LOOM build). The same inputs
+ * name the same layout; a layout already stored is answered without running
+ * anything. Mode, agency and the label options default to the registry
+ * entry.
  */
 export interface GraphBuildParams {
   key: FeedKey
   /**
-   * Re-run every stage even if its output is cached. A new layout may place
-   * stations differently.
+   * What gtfs2graph keeps of the feed (LOOM's -m): names such as tram,
+   * subway, rail, bus, ferry or all, or route_type numbers, comma-joined for
+   * several; the registry entry's when omitted.
+   */
+  mode?: string
+  /**
+   * Keep only this agency_id; the registry entry's when omitted.
+   */
+  agency?: string
+  /**
+   * A regular expression applied to route_long_name when route_short_name is
+   * blank; group 1 is the line's label.
+   */
+  label_pattern?: string
+  /**
+   * A regular expression removed from every label.
+   */
+  label_strip?: string
+  /**
+   * Lay the feed out again under the same id. The stored layout stays until
+   * the new set is whole, then is replaced; a new layout may place stations
+   * differently.
    */
   force?: boolean
 }
@@ -95,6 +163,8 @@ export interface StageSummary {
 }
 
 export interface GraphBuildResult {
+  layout: LayoutId
+  meta: LayoutMeta
   stages: {
     gtfs2graph: StageSummary
     topo: StageSummary
@@ -102,7 +172,8 @@ export interface GraphBuildResult {
     octi: StageSummary
   }
   /**
-   * Where each stage's GeoJSON is cached, as absolute paths under the home.
+   * Where each stage's GeoJSON is stored, as absolute paths under the home:
+   * graphs/<key>/<layout>/.
    */
   paths: {
     gtfs2graph: string
@@ -114,10 +185,12 @@ export interface GraphBuildResult {
 
 /**
  * Draw the map and the animation page for a registered feed on one service
- * day, from the cached stages (built first if missing).
+ * day, from a stored layout. Never lays the feed out: a layout that is not
+ * stored is refused, with a hint to lay it out first.
  */
 export interface MapBuildParams {
   key: FeedKey
+  layout: LayoutId
   date: ServiceDate
   /**
    * The folder under the home's out/ to write into. Omitted, the files go
@@ -132,11 +205,6 @@ export interface MapBuildParams {
    * Line labels in the order they stack on shared track; the rest follow.
    */
   line_order?: string[]
-  /**
-   * Re-run the layout stages first. A new layout may place stations
-   * differently.
-   */
-  force?: boolean
 }
 
 /**
@@ -175,6 +243,7 @@ export interface Diagnostics {
 }
 
 export interface MapBuildResult {
+  layout: LayoutId
   date: ServiceDate
   files: {
     svg: string
@@ -508,7 +577,7 @@ export interface ExportEncodeResult {
  * what a UI shows; `detail` says where, for a log.
  */
 export interface ErrorData {
-  kind: 'params' | 'feed' | 'loom' | 'schedule' | 'export' | 'io' | 'engine'
+  kind: 'params' | 'feed' | 'loom' | 'schedule' | 'export' | 'io' | 'engine' | 'layout'
   detail: string
   hint: string
 }
