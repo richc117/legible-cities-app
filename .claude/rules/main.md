@@ -124,6 +124,15 @@ bare name: both arrive from another process. The frames are removed when
 the export ends, whichever way. A layout run and an export of one project
 never overlap: the export reads the page a layout rewrites.
 
+## The hygiene hook and a commit
+
+`.claude/hooks/guard-git.sh` runs the scanners over the *staged* tree
+before any command that commits or pushes, so an edit and its commit
+cannot share one shell command: stage and check first, commit in the
+next. A private address a test needs (the guard in `feeds-ipc.ts` refuses
+the RFC 1918 ranges) is assembled at run time with a comment saying why,
+never written out, or the scanner refuses the file as it should.
+
 ## The preload bridge
 
 The bridge is the whole attack surface between the page and the machine.
