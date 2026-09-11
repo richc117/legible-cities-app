@@ -656,6 +656,10 @@ dialog::backdrop {
   top: 0;
   left: 0;
   border: 0;
+  /* Sized to the drawing, whatever the panel's cap on media: the transform
+     does the fitting. */
+  max-width: none;
+  max-height: none;
   transform-origin: 0 0;
   pointer-events: none;
   background: transparent;
