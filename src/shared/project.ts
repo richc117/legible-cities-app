@@ -77,6 +77,12 @@ export interface RebuildDone {
   date: string
 }
 
+/** The two inputs a person chooses with the feed in view (A2-02): what LOOM keeps, and whose routes. */
+export interface ProjectInputs {
+  mode: string
+  agency: string | null
+}
+
 export interface DeleteResult {
   removed: string[]
   failed: { folder: 'project' | 'output'; reason: string }[]

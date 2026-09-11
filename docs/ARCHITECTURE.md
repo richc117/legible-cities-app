@@ -80,6 +80,7 @@ engine under `api.engine`, and the export under `api.export`:
 | `delete(id)` | removes the project and its output, and reports what could not be removed by folder role |
 | `completeLayout(id, done)` | records the layout's id, the feed's window and the service day a finished run produced; the id is the engine's own, as `graph.build` answered it (A3-01, ADR-033), the window is `feeds.service`'s answer (A3-04, ADR-031) |
 | `completeRebuild(id, done)` | records the day a finished rebuild drew the map for, inside the stored window or not at all (A3-04) |
+| `setInputs(id, { mode, agency })` | stores the mode and agency a person chose with the feed in view; the next layout passes them to the engine, which names a layout for them (A2-02) |
 | `feeds.pickZip()` | opens the platform's file chooser for a GTFS zip and remembers the answer; the one native dialog, since a page cannot choose a file (A2-01) |
 
 | `viewer.attach(projectId)` | holds the project page's frame by identity once it has loaded, and answers whether it did (ADR-028) |
@@ -465,6 +466,31 @@ as bad calls with a sentence, from a guard every engine request passes
 The create dialog offers the listed feeds as a native select, and falls
 back to a typed key when the engine cannot be asked, so a project can
 still be made without it.
+
+## The Inspect view
+
+Opening a project reads its feed through `feeds.inspect` (engine v0.7.1),
+once per feed per session, from the machine's date as the anchor, and
+shows what the engine found: the operators, the stops by kind, the trips
+and how many are headway templates, the service window and the day the
+engine would draw, the warnings as sentences, a histogram of route types
+and a table of routes with the colour the feed gives each, the label the
+map draws, the name, the type and the trips. The app computes none of it
+and draws none of it: the swatch is a coloured square beside a name.
+
+With that in view a person chooses the two inputs a layout is named by:
+the mode, what LOOM keeps, offered as the modes the engine named per
+route type plus "all" and a typed one for a comma-joined or numeric mode;
+and, when the feed carries more than one operator, the agency. The
+histogram says which types the chosen mode keeps, from the engine's own
+mode per type. The choice is stored on the record through one bridge
+method, validated with the record's rules, and the next "Lay out" passes
+both to `graph.build`, which names a layout for those inputs; the run
+already says when the layout differs from the one recorded. A project
+created from the Library's list starts with its feed's registry entry's
+mode and agency, so a preset draws as the engine's site draws it; a
+record from before holds the app's old defaults, and the view says what
+the feed's own entry draws so the person can choose it.
 
 ## The viewer
 

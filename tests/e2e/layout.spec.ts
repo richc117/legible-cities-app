@@ -602,9 +602,10 @@ test('a project is told when another re-laid out the layout it draws from', asyn
 })
 
 // The stand-in names a layout by its inputs, as the engine does: this is
-// its id for the default feed with no mode and no agency.
+// its id for the default feed with the mode the run passes (the record's,
+// all) and no agency.
 const STAND_IN_LAYOUT = createHash('sha256')
-  .update('{"agency": null, "feed": "la-metro-rail", "mode": null}')
+  .update('{"agency": null, "feed": "la-metro-rail", "mode": "all"}')
   .digest('hex')
 
 test('a record from before made was stored gains it and is told nothing changed', async () => {

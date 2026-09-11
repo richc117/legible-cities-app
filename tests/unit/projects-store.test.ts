@@ -601,3 +601,39 @@ describe('completeRebuild', () => {
     )
   })
 })
+
+// The two inputs a person chose with the feed in view (A2-02): validated
+// with the record's rules, written only when they differ.
+describe('setInputs', () => {
+  it('writes mode and agency and the time, trims an empty agency to none', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    const updated = await store.setInputs(project.id, { mode: 'tram,subway', agency: ' METRO ' })
+    expect(updated).toMatchObject({ mode: 'tram,subway', agency: 'METRO' })
+    expect(updated.modified >= project.modified).toBe(true)
+    expect(await store.get(project.id)).toMatchObject({ mode: 'tram,subway', agency: 'METRO' })
+    const none = await store.setInputs(project.id, { mode: 'all', agency: '  ' })
+    expect(none.agency).toBeNull()
+  })
+
+  it('writes nothing when nothing differs', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    const same = await store.setInputs(project.id, { mode: 'all', agency: null })
+    expect(same.modified).toBe(project.modified)
+  })
+
+  it('refuses a mode or an agency the engine would, and a read-only record', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    await expect(store.setInputs(project.id, { mode: 'Zeppelin!', agency: null })).rejects.toThrow(
+      /mode/,
+    )
+    await expect(
+      store.setInputs(project.id, { mode: 'all', agency: 'x'.repeat(65) }),
+    ).rejects.toThrow(/agency/)
+    const file = join(home, 'projects', project.id, 'project.json')
+    const current = await store.get(project.id)
+    await writeFile(file, JSON.stringify({ ...current, version: 99 }), 'utf8')
+    await expect(store.setInputs(project.id, { mode: 'tram', agency: null })).rejects.toThrow(
+      'read-only',
+    )
+  })
+})

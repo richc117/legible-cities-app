@@ -1,7 +1,7 @@
 // Generated from the engine's own description of its protocol.
 // Run `npm run typegen` to regenerate; edits here are lost.
 //
-// Engine: v0.7.0, protocol 1.
+// Engine: v0.7.1, protocol 1.
 // Source: vendor/protocol.schema.json, printed by the engine's
 // `python -m schematic.serve --schema` and committed verbatim.
 
@@ -732,6 +732,12 @@ export interface RouteType {
    * onto.
    */
   name: string
+  /**
+   * The LOOM mode (gtfs2graph -m) that keeps this type, so a client can show
+   * which types a chosen mode draws; null for a type LOOM has no name for.
+   * The mode all keeps every type.
+   */
+  mode: string | null
   routes: number
   trips: number
 }

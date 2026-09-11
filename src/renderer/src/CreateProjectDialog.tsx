@@ -103,7 +103,14 @@ export default function CreateProjectDialog({
 
     setBusy(true)
     try {
-      await onCreate({ name: trimmed, feed })
+      // A project starts with its feed's own inputs when the registry is in
+      // view, so a preset draws as the engine's site draws it (A2-02).
+      const entry = feeds.find((f) => f.key === feed)
+      await onCreate(
+        entry === undefined
+          ? { name: trimmed, feed }
+          : { name: trimmed, feed, mode: entry.mode, agency: entry.agency },
+      )
     } catch (error) {
       // Escape may have closed the dialog while the request was in flight;
       // the message would only surface, stale, on the next opening.

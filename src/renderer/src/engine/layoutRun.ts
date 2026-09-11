@@ -187,12 +187,16 @@ export class LayoutRun {
 
     void (async () => {
       try {
-        // The registry entry's mode and agency apply: choosing them per
-        // project is A2-02's, and until then the record's are placeholders.
-        const layout = client.request(
-          'graph.build',
-          force ? { key: project.feed, force } : { key: project.feed },
-        )
+        // The project's mode and agency are its inputs (A2-02): the engine
+        // names a layout by them, so a change here is a different layout.
+        // An agency of none is left out, which the engine reads as the
+        // registry entry's.
+        const layout = client.request('graph.build', {
+          key: project.feed,
+          mode: project.mode,
+          ...(project.agency === null ? {} : { agency: project.agency }),
+          ...(force ? { force } : {}),
+        })
         this.#inFlight = layout
         layout.onProgress((p) => this.#report(p))
         const built = await layout.result

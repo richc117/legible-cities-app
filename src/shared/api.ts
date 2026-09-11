@@ -11,6 +11,7 @@ import type {
   CreateProjectInput,
   DeleteResult,
   ProjectRecord,
+  ProjectInputs,
   ProjectSummary,
   RebuildDone,
 } from './project'
@@ -18,6 +19,7 @@ import type {
 export type {
   CreateProjectInput,
   DeleteResult,
+  ProjectInputs,
   ProjectRecord,
   ProjectSummary,
   RebuildDone,
@@ -80,6 +82,12 @@ export interface Api {
      * the stored window and writes the day (specs/012-service-date/contracts/bridge.md).
      */
     completeRebuild(id: string, done: RebuildDone): Promise<ProjectRecord>
+    /**
+     * The mode and agency a person chose with the feed in view (A2-02);
+     * validated on the main side with the record's own rules. The next
+     * layout passes them to the engine, which names a layout for them.
+     */
+    setInputs(id: string, inputs: ProjectInputs): Promise<ProjectRecord>
   }
   /**
    * The map on the screen. The page runs in a sandboxed frame at an opaque
@@ -139,6 +147,7 @@ export const CHANNELS = {
   projectsDelete: 'projects:delete',
   projectsCompleteLayout: 'projects:complete-layout',
   projectsCompleteRebuild: 'projects:complete-rebuild',
+  projectsSetInputs: 'projects:set-inputs',
   viewerAttach: 'viewer:attach',
   viewerRelease: 'viewer:release',
   viewerCall: 'viewer:call',

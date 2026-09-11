@@ -112,6 +112,29 @@ describe('registerProjectHandlers', () => {
     ])
   })
 
+  it('checks the two inputs for shape and passes them to the store', async () => {
+    const { call, calls } = harness()
+    for (const inputs of [
+      undefined,
+      {},
+      { mode: 3 },
+      { mode: 'Rail!' },
+      { mode: 'all', agency: 7 },
+    ]) {
+      await expect(
+        call(CHANNELS.projectsSetInputs, 'abcdefghijk1', inputs),
+        JSON.stringify(inputs),
+      ).rejects.toThrow()
+    }
+    expect(calls).toEqual([])
+    await call(CHANNELS.projectsSetInputs, 'abcdefghijk1', { mode: 'tram', agency: null })
+    await call(CHANNELS.projectsSetInputs, 'abcdefghijk1', { mode: 'all', agency: 'M', extra: 1 })
+    expect(calls).toEqual([
+      { method: 'setInputs', args: ['abcdefghijk1', { mode: 'tram', agency: null }] },
+      { method: 'setInputs', args: ['abcdefghijk1', { mode: 'all', agency: 'M' }] },
+    ])
+  })
+
   it('refuses a caller that is not the top frame', async () => {
     const { call, calls } = harness(false)
     await expect(call(CHANNELS.projectsList)).rejects.toThrow('forbidden')

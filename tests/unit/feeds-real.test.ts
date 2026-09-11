@@ -2,7 +2,7 @@
 // added from disk appears, is refused when it lacks a table, and is
 // removed (specs/014 SC-002). Skips without an engine checkout.
 
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -10,7 +10,7 @@ import { resolveConfig } from '../../src/main/config'
 import { engineCommand, engineEnvironment, resolveInterpreter } from '../../src/main/interpreter'
 import { Sidecar } from '../../src/main/sidecar'
 import type { EnginePin } from '../../src/shared/engine'
-import type { FeedRecord, FeedsList } from '../../src/shared/protocol'
+import type { FeedRecord, FeedsList, Inspection } from '../../src/shared/protocol'
 
 const repo = resolve(__dirname, '../..')
 const pins = JSON.parse(readFileSync(join(repo, 'vendor/pins.json'), 'utf8')) as {
@@ -165,6 +165,31 @@ describe.skipIf(INTERPRETER === null)('the registry against the real engine', ()
       })
       const after = (await sidecar.request('feeds.list').result) as FeedsList
       expect(after.feeds.map((f) => f.key)).not.toContain('metro-de-prueba')
+
+      // The inspection the Inspect view reads, for the three feeds the
+      // issue names, where the checkout has them cached (A2-02).
+      const cachedFeeds = join(repo, '..', 'OpenSchematicMaps', 'data', 'feeds')
+      const inspect = async (key: string): Promise<Inspection> => {
+        cpSync(join(cachedFeeds, `${key}.zip`), join(home, 'data', 'feeds', `${key}.zip`))
+        return (await sidecar.request('feeds.inspect', { key, anchor: '2026-09-11' })
+          .result) as Inspection
+      }
+      if (existsSync(join(cachedFeeds, 'la-metro-rail.zip'))) {
+        const la = await inspect('la-metro-rail')
+        expect(la.routes).toHaveLength(6)
+        expect(la.route_types.map((t) => [t.route_type, t.mode])).toEqual([
+          [0, 'tram'],
+          [1, 'subway'],
+        ])
+      }
+      if (existsSync(join(cachedFeeds, 'cdmx-metro.zip'))) {
+        const cdmx = await inspect('cdmx-metro')
+        expect(cdmx.agencies.length).toBeGreaterThan(1)
+        expect(cdmx.warnings.some((w) => w.includes('headway-based'))).toBe(true)
+      }
+      if (existsSync(join(cachedFeeds, 'chicago-l.zip'))) {
+        expect((await inspect('chicago-l')).suggested_mode).toBe('subway')
+      }
     } finally {
       await sidecar.stop()
       rmSync(home, { recursive: true, force: true })

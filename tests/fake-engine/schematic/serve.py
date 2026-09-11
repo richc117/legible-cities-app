@@ -27,6 +27,7 @@ writes before the app starts (every key optional):
     presets_cached    keys of the two stand-in presets whose zip is "on disk" (default both)
     add_delay_ms      wait between the download's ten progress reports for a URL (default 20)
     add_refuses       a sentence: feeds.add from a URL refuses with it, kind feed
+    inspect_refuses   a sentence: feeds.inspect refuses with it, kind feed
 
 It writes ``fake-engine.pid`` (its process id) and ``fake-engine.received``
 (one JSON line per message it read) into the home so a test can end it from
@@ -188,6 +189,18 @@ class Engine:
             threading.Thread(target=self.service, args=(msg_id, message.get("params") or {}),
                              daemon=True).start()
             return True
+        if method == "feeds.inspect":
+            params = message.get("params") or {}
+            key = params.get("key")
+            if key not in FEEDS and key not in self.user_feeds():
+                error(msg_id, -32000, f"{key!r} is not a registered feed", "feed")
+            elif self.control.get("inspect_refuses"):
+                error(msg_id, -32000, self.control["inspect_refuses"], "feed")
+            else:
+                anchor = params.get("anchor") or "2026-06-15"
+                write({"jsonrpc": "2.0", "id": msg_id,
+                       "result": self.inspection(key, anchor)})
+            return True
         if method == "feeds.list":
             write({"jsonrpc": "2.0", "id": msg_id, "result": {"feeds": self.feed_records()}})
             return True
@@ -315,6 +328,76 @@ class Engine:
 
 
     # -- the registry (E09c), in shape
+
+    def inspection(self, key: str, anchor: str) -> dict:
+        """feeds.inspect, in shape: LA with its six routes of two types, CDMX
+        with eight operators and its headway timetable, a user feed with one
+        route; the window is the control file's, as feeds.service answers."""
+        start, end = self.control.get("service_window", ["2026-01-01", "2026-12-31"])
+        service = {"start": start, "end": end,
+                   "busiest_weekday": self.control.get("busiest", "2026-06-16"),
+                   "anchor": anchor}
+        stops = {"stops": 3, "stations": 0, "entrances": 0, "generic_nodes": 0,
+                 "boarding_areas": 0, "total": 3}
+
+        def route(rid, agency, short, long_, label, rtype, color, trips):
+            return {"route_id": rid, "agency_id": agency, "short_name": short,
+                    "long_name": long_, "label": label, "route_type": rtype,
+                    "color": color, "text_color": "FFFFFF" if color else None, "trips": trips}
+
+        if key == "la-metro-rail":
+            routes = [route("801", "LACMTA", "", "Metro A Line", "A", 0, "0072BC", 380),
+                      route("802", "LACMTA", "", "Metro B Line", "B", 1, "E3131B", 210),
+                      route("803", "LACMTA", "", "Metro C Line", "C", 0, "58A738", 150),
+                      route("804", "LACMTA", "", "Metro D Line", "D", 1, "A05DA5", 120),
+                      route("805", "LACMTA", "", "Metro E Line", "E", 0, "FDB913", 260),
+                      route("807", "LACMTA", "", "Metro K Line", "K", 0, "E96BB0", 40)]
+            agencies = [{"agency_id": "LACMTA", "agency_name": "Los Angeles County MTA"}]
+            types = [{"route_type": 0, "name": "tram", "mode": "tram", "routes": 4, "trips": 830},
+                     {"route_type": 1, "name": "subway", "mode": "subway", "routes": 2,
+                      "trips": 330}]
+            warnings = ["6 of 6 routes have no route_short_name; their labels come from "
+                        "route_long_name through the feed's label pattern"]
+            return {"key": key, "name": "LA Metro Rail", "tables": ["agency", "calendar",
+                    "routes", "stop_times", "stops", "trips"], "agencies": agencies,
+                    "routes": routes, "route_types": types, "stops": stops, "trips": 1160,
+                    "frequency_trips": 0, "service": service, "suggested_mode": "all",
+                    "warnings": warnings}
+        if key == "cdmx-metro":
+            routes = [route("L1", "METRO", "1", "Linea 1", "1", 1, "F04E98", 30),
+                      route("L2", "METRO", "2", "Linea 2", "2", 1, "005EB8", 30),
+                      route("S1", "SUB", "1", "Tren Suburbano", "1", 2, "FF0000", 20),
+                      route("B1", "RTP", "10", "Ruta 10", "10", 3, None, 400)]
+            agencies = [{"agency_id": "METRO", "agency_name": "Sistema de Transporte Colectivo"},
+                        {"agency_id": "SUB", "agency_name": "Ferrocarriles Suburbanos"},
+                        {"agency_id": "RTP", "agency_name": "Red de Transporte de Pasajeros"}]
+            types = [{"route_type": 1, "name": "subway", "mode": "subway", "routes": 2, "trips": 60},
+                     {"route_type": 2, "name": "rail", "mode": "rail", "routes": 1, "trips": 20},
+                     {"route_type": 3, "name": "bus", "mode": "bus", "routes": 1, "trips": 400}]
+            warnings = ["The timetable is headway-based: 72 of 480 trips are frequency templates "
+                        "that are expanded into runs, so a day has more trains than the trip "
+                        "count suggests",
+                        "3 operators share this feed (Sistema de Transporte Colectivo, "
+                        "Ferrocarriles Suburbanos, Red de Transporte de Pasajeros); set an "
+                        "agency to keep one, or every operator's routes are drawn together",
+                        "The calendar ended on 2025-12-31, so no day after it has service; the "
+                        "engine picks a day inside the window"]
+            return {"key": key, "name": "Mexico City Metro", "tables": ["agency", "calendar",
+                    "frequencies", "routes", "stop_times", "stops", "trips"],
+                    "agencies": agencies, "routes": routes, "route_types": types,
+                    "stops": stops, "trips": 480, "frequency_trips": 72,
+                    "service": {**service, "start": "2025-01-01", "end": "2025-12-31",
+                                "busiest_weekday": "2025-07-01"},
+                    "suggested_mode": "subway", "warnings": warnings}
+        name = self.user_feeds().get(key, {}).get("name", key)
+        return {"key": key, "name": name, "tables": ["agency", "calendar", "routes",
+                "stop_times", "stops", "trips"],
+                "agencies": [{"agency_id": "X", "agency_name": name}],
+                "routes": [route("R1", "X", "1", "Line 1", "1", 1, None, 1)],
+                "route_types": [{"route_type": 1, "name": "subway", "mode": "subway",
+                                 "routes": 1, "trips": 1}],
+                "stops": stops, "trips": 1, "frequency_trips": 0, "service": service,
+                "suggested_mode": "all", "warnings": []}
 
     def user_feeds(self) -> dict:
         try:

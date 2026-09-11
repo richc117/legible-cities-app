@@ -209,7 +209,7 @@ describe('the run asks for the layout, then the day, then the map', () => {
     run.start(record, READY, { force: true })
     expect(calls[0]).toMatchObject({
       method: 'graph.build',
-      params: { key: 'la-metro-rail', force: true },
+      params: { key: 'la-metro-rail', mode: 'all', force: true },
     })
     expect(run.snapshot.forced).toBe(true)
     await laidOut(calls)
@@ -228,7 +228,7 @@ describe('the run asks for the layout, then the day, then the map', () => {
   it('an ordinary run sends no force', async () => {
     const { calls, begin } = setup()
     begin()
-    expect(Object.keys(calls[0].params)).toEqual(['key'])
+    expect(Object.keys(calls[0].params).sort()).toEqual(['key', 'mode'])
   })
 
   it("uses the day the project already has rather than the engine's, and still asks for the window", async () => {
@@ -247,12 +247,16 @@ describe('the run asks for the layout, then the day, then the map', () => {
     })
   })
 
-  it("leaves the registry's mode and agency to the engine until a person can choose them", async () => {
+  it("passes the project's mode and agency to the layout call, and none to the map's", async () => {
     const { calls, begin } = setup({ mode: 'rail', agency: 'Metro' })
     begin()
     await laidOut(calls)
-    expect(Object.keys(calls[0].params).sort()).toEqual(['key'])
+    expect(calls[0].params).toEqual({ key: 'la-metro-rail', mode: 'rail', agency: 'Metro' })
     expect(Object.keys(calls[2].params).sort()).toEqual(['date', 'key', 'layout', 'out'])
+    // No agency is left out, which the engine reads as the registry entry's.
+    const none = setup({ mode: 'all', agency: null })
+    none.begin()
+    expect(none.calls[0].params).toEqual({ key: 'la-metro-rail', mode: 'all' })
   })
 
   it("writes the record once, with the engine's layout id and its window", async () => {

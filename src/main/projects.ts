@@ -25,6 +25,7 @@ import {
   validateName,
   type CreateProjectInput,
   type DeleteResult,
+  type ProjectInputs,
   type ProjectRecord,
   type ProjectSummary,
   type RebuildDone,
@@ -279,6 +280,31 @@ export class ProjectStore {
       ...record,
       version: RECORD_VERSION,
       name: trimmed,
+      modified: new Date().toISOString(),
+    }
+    await this.writeAtomic(id, updated)
+    return updated
+  }
+
+  /**
+   * The mode and agency a person chose with the feed in view (A2-02). The
+   * engine names a layout by its inputs, so a change here means the next
+   * run draws a different layout, which the run says; nothing is re-laid
+   * out here. An empty agency is none.
+   */
+  async setInputs(id: string, inputs: ProjectInputs): Promise<ProjectRecord> {
+    this.checkId(id)
+    const agency = inputs.agency == null ? null : inputs.agency.trim() || null
+    check(validateMode(inputs.mode))
+    check(validateAgency(agency))
+    const { record, readOnly } = await this.load(id)
+    if (readOnly) throw new Error('read-only')
+    if (record.mode === inputs.mode && record.agency === agency) return record
+    const updated: ProjectRecord = {
+      ...record,
+      version: RECORD_VERSION,
+      mode: inputs.mode,
+      agency,
       modified: new Date().toISOString(),
     }
     await this.writeAtomic(id, updated)
