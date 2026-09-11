@@ -25,10 +25,10 @@
   },
   "engine": {
     "repo": "https://github.com/richc117/legible-cities",
-    "tag": "v0.3.0",
-    "version": "0.3.0",
+    "tag": "v0.4.0",
+    "version": "0.4.0",
     "protocol": 1,
-    "note": "The first tag with the export halves over the protocol: export.presets, export.storyboards, export.plan and export.encode, additive at protocol 1, plus one ffmpeg the engine resolves and reports and a reproducible still. The handshake compares version and protocol with engine.info and refuses any other; the vendoring job installs the package at the tag.",
+    "note": "The first tag with the native LOOM backend: SCHEMATIC_LOOM_BIN runs the app's binaries, SCHEMATIC_LOOM_COMMIT is what engine.info.loom.commit reports, every tool has a timeout, and the container runs under --init so a cancel reaches the tool. The protocol stays at 1 and its schema is byte-identical to 0.3.0's. The handshake compares version and protocol with engine.info and refuses any other; the vendoring job installs the package at the tag.",
     "licence": "GPL-3.0-or-later",
     "schema_sha256": "b2b8accafd525fd634b9ec37d748cc6823709839b99cdcdf78be4d1cc890fe7f"
   },
