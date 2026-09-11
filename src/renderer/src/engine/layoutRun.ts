@@ -249,7 +249,14 @@ export class LayoutRun {
     const { completeRebuild } = this.#options
     const layout = project.layout
     if (layout === null) {
-      this.#set({ state: 'failed', error: 'Lay the project out before choosing a day.' })
+      this.#set({
+        state: 'failed',
+        error: 'Lay the project out before choosing a day.',
+        forced: false,
+        replaced: false,
+        rebuilt: true,
+        day: date,
+      })
       return
     }
     if (!this.#begin(engine, { forced: false, rebuilt: true, day: date })) return
@@ -272,12 +279,16 @@ export class LayoutRun {
     kind: { forced: boolean; rebuilt: boolean; day: string | null },
   ): boolean {
     if (engine === null || engine.state !== 'ready') {
+      // The kind is this attempt's even when it fails to start, or the
+      // sentence for the failure would be the previous run's.
       this.#set({
         state: 'failed',
         error:
           engine === null
             ? 'The engine is still starting. Try again in a moment.'
             : `The engine is not ready to run a layout: ${engine.state}.`,
+        replaced: false,
+        ...kind,
       })
       return false
     }

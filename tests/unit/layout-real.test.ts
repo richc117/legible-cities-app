@@ -80,6 +80,17 @@ const WHY =
       ? ''
       : ` (skipped: the checkout has no cached layout for ${FEED}; run the engine once)`
 
+/** The first day inside [start, end] falling on the given weekday (0 Sunday), or null. */
+function firstWeekdayInside(start: string, end: string, weekday: number): string | null {
+  const day = new Date(`${start}T00:00:00Z`)
+  const last = new Date(`${end}T00:00:00Z`)
+  while (day <= last) {
+    if (day.getUTCDay() === weekday) return day.toISOString().slice(0, 10)
+    day.setUTCDate(day.getUTCDate() + 1)
+  }
+  return null
+}
+
 /** A home seeded from the checkout's caches, so nothing runs LOOM. */
 function seededHome(): string {
   const home = mkdtempSync(join(tmpdir(), 'lc-layout-real-'))
@@ -185,6 +196,32 @@ describe.skipIf(INTERPRETER === null || !CACHED)(`the real engine's layout${WHY}
       expect(twice.busiest_weekday, 'the same feed and anchor give the same day').toBe(
         service.busiest_weekday,
       )
+
+      // A chosen day: the first Saturday inside the window, drawn from the
+      // same layout as the app's rebuild does. The schedule stage's
+      // sentence names the day and its trips; the app shows that sentence
+      // and never touches a time of day (SC-002).
+      const saturday = firstWeekdayInside(service.start, service.end, 6)
+      if (saturday !== null) {
+        const sentences: string[] = []
+        const off = sidecar.onNotification((n) => {
+          if (n.method === 'job/progress') {
+            const p = n.params as { stage: string; message: string }
+            if (p.stage === 'schedule') sentences.push(p.message)
+          }
+        })
+        const drawn = (await sidecar.request('map.build', {
+          key: FEED,
+          layout: built.layout,
+          date: saturday,
+          out: 'a-project',
+        }).result) as { date: string; diagnostics: { trips: { total: number } } }
+        off()
+        expect(drawn.date).toBe(saturday)
+        expect(sentences).toHaveLength(1)
+        expect(sentences[0]).toMatch(/^\d+ trips on Saturday /)
+        expect(drawn.diagnostics.trips.total, 'a Saturday timetable has trips').toBeGreaterThan(0)
+      }
     } finally {
       await sidecar.stop()
       rmSync(home, { recursive: true, force: true })

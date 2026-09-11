@@ -586,6 +586,38 @@ describe('the run refuses when it cannot start', () => {
     expect(run.snapshot.error).toMatch(/not ready/i)
   })
 
+  it("a failure to start is this attempt's, not the previous run's", async () => {
+    // A rebuild finished; the engine restarts; "Lay out again" is pressed
+    // while it is starting. The sentence must be the layout run's.
+    const { run, calls, record } = setup({ layout: LAYOUT, service: WINDOW })
+    run.rebuild(record, READY, '2026-09-12')
+    calls[0].resolve({ files: {} })
+    await tick()
+    expect(run.snapshot).toMatchObject({ state: 'done', rebuilt: true })
+    run.start(record, null)
+    expect(run.snapshot).toMatchObject({
+      state: 'failed',
+      rebuilt: false,
+      day: null,
+      forced: false,
+    })
+    // And the other way round, after a re-layout stopped with the layout replaced.
+    run.start(record, READY, { force: true })
+    calls[1].resolve(BUILT)
+    await tick()
+    run.cancel()
+    calls[2].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
+    await tick()
+    expect(run.snapshot).toMatchObject({ state: 'cancelled', forced: true, replaced: true })
+    run.rebuild(record, null, '2026-09-12')
+    expect(run.snapshot).toMatchObject({
+      state: 'failed',
+      rebuilt: true,
+      forced: false,
+      replaced: false,
+    })
+  })
+
   it('refuses before the engine has said anything', () => {
     const { run, calls, begin } = setup({}, null)
     begin()

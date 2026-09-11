@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type FormEvent, type JSX } from 'react'
+import { useEffect, useId, useRef, useState, type FormEvent, type JSX } from 'react'
 import type { EngineState } from '../../shared/engine'
 import { validateServiceDate, withinWindow, type ProjectRecord } from '../../shared/project'
 import type { LayoutRun as Run } from './engine/layoutRun'
@@ -40,19 +40,22 @@ export default function ServiceDay({
   const [message, setMessage] = useState<string | null>(null)
   const inputId = useId()
   const messageId = useId()
+  const input = useRef<HTMLInputElement>(null)
 
   // The control follows the stored day: the record is read again when a
   // run finishes, and a rebuild that stopped wrote nothing, so the day the
-  // project kept is the one to show.
+  // project kept is the one to show. Keyed on the window's days, not the
+  // record object, which a rename replaces without changing either.
+  const service = project.service
+  const windowKey = service === null ? '' : `${service.start}/${service.end}/${service.busiest}`
   useEffect(() => {
     setValue(project.date ?? '')
     setMessage(null)
-  }, [project.date, project.service])
+  }, [project.id, project.date, windowKey])
   useEffect(() => {
     if (rebuilt && (state === 'cancelled' || state === 'failed')) setValue(project.date ?? '')
   }, [state, rebuilt, project.date])
 
-  const service = project.service
   if (service === null) {
     return (
       <section className="service-day" aria-labelledby="service-day-heading">
@@ -66,29 +69,39 @@ export default function ServiceDay({
   }
 
   const unchanged = value === project.date
+  // A refusal goes back to the control, as the rename form's does, so the
+  // message it references is read out with it.
+  const refuse = (sentence: string): void => {
+    setMessage(sentence)
+    input.current?.focus()
+  }
   const submit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault()
     const invalid = validateServiceDate(value)
-    if (invalid !== null) return setMessage(invalid)
-    if (!withinWindow(value, service)) return setMessage(outsideWindow(service.start, service.end))
+    if (invalid !== null) return refuse(invalid)
+    if (!withinWindow(value, service)) return refuse(outsideWindow(service.start, service.end))
     if (unchanged) return
     setMessage(null)
     run.rebuild(project, engine, value)
   }
+  const covers =
+    service.start === service.end
+      ? `The feed covers one day, ${service.start}`
+      : `The feed covers ${service.start} to ${service.end}`
 
   return (
     <section className="service-day" aria-labelledby="service-day-heading">
       <h2 id="service-day-heading">Service day</h2>
       <p className="prose" role="status">
-        {project.date === null ? 'Not yet chosen.' : `Drawn for ${project.date}.`} The feed covers{' '}
-        {service.start} to {service.end}; the busiest weekday, counted from {service.anchor}, is{' '}
-        {service.busiest}.
+        {project.date === null ? 'Not yet chosen.' : `Drawn for ${project.date}.`} {covers}; the
+        busiest weekday, counted from {service.anchor}, is {service.busiest}.
       </p>
       <form className="inline-form" noValidate onSubmit={submit}>
         <div className="field">
           <label htmlFor={inputId}>Draw for another day</label>
           <input
             id={inputId}
+            ref={input}
             type="date"
             value={value}
             min={service.start}
@@ -106,17 +119,18 @@ export default function ServiceDay({
           </p>
         </div>
         <div className="actions">
-          {value !== service.busiest && (
-            <Button
-              disabled={disabled || running}
-              onClick={() => {
-                setValue(service.busiest)
-                setMessage(null)
-              }}
-            >
-              Use the busiest weekday
-            </Button>
-          )}
+          <Button
+            disabled={disabled || running || value === service.busiest}
+            onClick={() => {
+              setValue(service.busiest)
+              setMessage(null)
+              // The button disables itself once pressed, which drops focus;
+              // the control now holding the day is where focus belongs.
+              input.current?.focus()
+            }}
+          >
+            Use the busiest weekday
+          </Button>
           <Button
             variant="primary"
             type="submit"

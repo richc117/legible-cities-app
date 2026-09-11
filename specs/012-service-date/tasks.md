@@ -8,4 +8,4 @@
 - [x] T006 The stand-in engine answers `feeds.service`.
 - [x] T007 Unit tests (record, store, bridge, run), the real-engine test, the end-to-end scenarios.
 - [x] T008 ARCHITECTURE, CLAUDE.md, spec 003's record contract, spec 007's bridge contract.
-- [ ] T009 Lint, typecheck, unit, build, end to end, the scanners, the reviewer; the pull request.
+- [x] T009 Lint, typecheck, unit, build, end to end, the scanners, the reviewer; the pull request.

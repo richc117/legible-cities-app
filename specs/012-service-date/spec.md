@@ -164,7 +164,7 @@ passes.
   `lines`, and MUST draw the map for the day answered when the project has
   no day. A project that has a day MUST keep it.
 - **FR-003**: The record MUST store the engine's answer, `{start, end,
-  busiest_weekday, anchor}`, beside the day, and MUST write it together
+  busiest, anchor}` (the engine's `busiest_weekday`), beside the day, and MUST write it together
   with the layout's id or not at all. The record version stays at 1: a
   record without it reads as before.
 - **FR-004**: The project screen MUST show the stored day and the window,
