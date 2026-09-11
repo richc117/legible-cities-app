@@ -74,7 +74,12 @@ so a state attribute is mirrored by hand. The kit gives every `<dialog>`
 restore `inset: 0; margin: auto`. Its shadow styles need `style-src
 'unsafe-inline'`; `script-src` stays `'self'`. Playwright emulates the
 colour scheme per page, so an end-to-end test chooses the theme with
-`page.emulateMedia`, never `nativeTheme`.
+`page.emulateMedia`, never `nativeTheme`. A button that disables itself
+on press drops focus, because Chromium blurs a disabled element: hand
+focus somewhere first, as the service day's "Use the busiest weekday"
+hands it to the date control (A3-04). The stand-in engine reads its
+control file once, at start, so a test that needs one slow call has to be
+slow from the first call, not rewrite the file mid-session.
 
 ## Accessibility is not a later pass
 
