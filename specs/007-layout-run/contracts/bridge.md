@@ -19,7 +19,16 @@ interface LayoutDone {
   date: string
   /** The layout's id, as graph.build answered it. */
   layout: string
+  /** Since A3-04: the feed's window and the engine's day, as feeds.service answered them. */
+  service: ServiceWindow
 }
+```
+
+Since A3-04 (`specs/012-service-date/contracts/bridge.md`) the run makes
+three engine calls, the window crosses with the day and the id, and a
+second method, `completeRebuild`, writes a day a person chose.
+
+```ts
 
 interface LayoutResult {
   record: ProjectRecord
@@ -41,6 +50,6 @@ A refusal is a rejected promise whose message is a sentence, never a path.
 ## What it does not do
 
 - It does not talk to the engine. The renderer made those calls and holds their answers.
-- It does not decide the service day. The renderer resolves it once, at the first run, and passes it; the store keeps the day a project already has.
+- It does not decide the service day. The renderer asks the engine once, at the first run, and passes the answer; the store keeps the day a project already has.
 - It does not write anything when the run did not finish. There is no partial call.
 - It does not return a path, and none crosses it either way: the id, the date and the record are all there is (before ADR-033 the four stage paths crossed inward and were hashed; they no longer do).

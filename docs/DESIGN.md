@@ -357,6 +357,7 @@ not used:
 | Errors and hints | the engine's `hint` sentence verbatim in `--error` at 13px beside the control or in the status line; `detail` only in the log; never a toast for something a person must act on |
 | Tooltips | 12px, `--surface-raised`, 1px `--border`, 200ms delay, keyboard-reachable through focus |
 | The viewer | the engine's page in an iframe filling the main region, no chrome of the app's over it; its controls are its own |
+| Date control | the platform's native `<input type="date">`, as the select is native (ADR-026): `--control-height`, the tokens for text, surface and border, `min` and `max` from the data so an impossible day cannot be picked, the message beneath referenced by the control; its popup renders in the platform's own style, which is accepted |
 | Deliverables | an export that finished says the file's name in prose and offers "Reveal", a text button that opens the file's folder in the platform's file browser; the path is never shown, and the folder is the person's own (A1-04) |
 
 ## 9. Layout and window

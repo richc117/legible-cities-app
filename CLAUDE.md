@@ -26,7 +26,10 @@ screen restyled), the typed client generated from the engine's own schema
 (A1-02), the layout run (A3-01: one button runs the engine's stages behind
 a progress line and records the layout the project was drawn from; A3-05:
 the id is the engine's own and "Re-layout" runs every stage again behind a
-warning, ADR-033) and the viewer (A3-02: the engine's page in a frame sandboxed to
+warning, ADR-033; A3-04: the service day is the engine's choice from a
+stored anchor, `feeds.service` at every layout run, a date control bounded
+by the stored window, and a chosen day a rebuild from the stored layout,
+never a re-layout) and the viewer (A3-02: the engine's page in a frame sandboxed to
 an opaque origin and driven from the main process, ADR-028), and the
 capture (A5-02a: an offscreen window in its own session takes a page's
 frames through the DevTools protocol, byte-identical run to run,

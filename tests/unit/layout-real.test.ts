@@ -80,6 +80,17 @@ const WHY =
       ? ''
       : ` (skipped: the checkout has no cached layout for ${FEED}; run the engine once)`
 
+/** The first day inside [start, end] falling on the given weekday (0 Sunday), or null. */
+function firstWeekdayInside(start: string, end: string, weekday: number): string | null {
+  const day = new Date(`${start}T00:00:00Z`)
+  const last = new Date(`${end}T00:00:00Z`)
+  while (day <= last) {
+    if (day.getUTCDay() === weekday) return day.toISOString().slice(0, 10)
+    day.setUTCDate(day.getUTCDate() + 1)
+  }
+  return null
+}
+
 /** A home seeded from the checkout's caches, so nothing runs LOOM. */
 function seededHome(): string {
   const home = mkdtempSync(join(tmpdir(), 'lc-layout-real-'))
@@ -136,6 +147,7 @@ describe.skipIf(INTERPRETER === null || !CACHED)(`the real engine's layout${WHY}
       const built = (await sidecar.request('graph.build', { key: FEED }).result) as {
         layout: string
         paths: Record<string, string>
+        stages: { octi: { lines: string[] } }
       }
       expect(reported, 'the layout call reports the four layout stages').toEqual([...GRAPH_STAGES])
       expect(built.layout, "the engine's own id").toMatch(/^[0-9a-f]{64}$/)
@@ -159,6 +171,57 @@ describe.skipIf(INTERPRETER === null || !CACHED)(`the real engine's layout${WHY}
         layout: string
       }
       expect(again.layout, 'reproducible').toBe(built.layout)
+
+      // Which day to draw, as the app asks at the first layout: from a
+      // fixed anchor and the lines the layout drew. The answer is a day
+      // inside the window, and the same day when asked again (E21).
+      const lines = built.stages.octi.lines
+      const service = (await sidecar.request('feeds.service', {
+        key: FEED,
+        anchor: '2026-09-08',
+        lines,
+      }).result) as { start: string; end: string; busiest_weekday: string; anchor: string }
+      for (const day of [service.start, service.end, service.busiest_weekday]) {
+        expect(day).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+      }
+      expect(service.anchor, 'the anchor is echoed').toBe('2026-09-08')
+      expect(
+        service.start <= service.busiest_weekday && service.busiest_weekday <= service.end,
+      ).toBe(true)
+      const twice = (await sidecar.request('feeds.service', {
+        key: FEED,
+        anchor: '2026-09-08',
+        lines,
+      }).result) as { busiest_weekday: string }
+      expect(twice.busiest_weekday, 'the same feed and anchor give the same day').toBe(
+        service.busiest_weekday,
+      )
+
+      // A chosen day: the first Saturday inside the window, drawn from the
+      // same layout as the app's rebuild does. The schedule stage's
+      // sentence names the day and its trips; the app shows that sentence
+      // and never touches a time of day (SC-002).
+      const saturday = firstWeekdayInside(service.start, service.end, 6)
+      if (saturday !== null) {
+        const sentences: string[] = []
+        const off = sidecar.onNotification((n) => {
+          if (n.method === 'job/progress') {
+            const p = n.params as { stage: string; message: string }
+            if (p.stage === 'schedule') sentences.push(p.message)
+          }
+        })
+        const drawn = (await sidecar.request('map.build', {
+          key: FEED,
+          layout: built.layout,
+          date: saturday,
+          out: 'a-project',
+        }).result) as { date: string; diagnostics: { trips: { total: number } } }
+        off()
+        expect(drawn.date).toBe(saturday)
+        expect(sentences).toHaveLength(1)
+        expect(sentences[0]).toMatch(/^\d+ trips on Saturday /)
+        expect(drawn.diagnostics.trips.total, 'a Saturday timetable has trips').toBeGreaterThan(0)
+      }
     } finally {
       await sidecar.stop()
       rmSync(home, { recursive: true, force: true })

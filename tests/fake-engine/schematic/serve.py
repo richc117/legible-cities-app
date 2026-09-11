@@ -15,6 +15,11 @@ writes before the app starts (every key optional):
     ignore_sigterm    true: ignore SIGTERM (POSIX), so only SIGKILL ends it
     progress_delay_ms wait between the four progress notifications (default 30)
     map_draws         true: map.build draws (eight stages, three files); else it refuses
+    service_window    [start, end] feeds.service answers (default the whole of 2026)
+    busiest           the day feeds.service answers as busiest_weekday (default 2026-06-16)
+    service_delay_ms  wait before feeds.service answers, so a cancel can land (default 30)
+    service_refuses   a sentence: feeds.service refuses with it, kind feed, as the engine
+                      does for a feed with neither calendar table
     export_seconds    the one beat's length in the plan export.plan answers (default 1)
     export_refuses    a sentence: export.plan refuses with it as the hint
     encode_delay_ms   wait between export.encode's five progress notifications (default 30)
@@ -159,6 +164,10 @@ class Engine:
             else:
                 error(msg_id, -32000, "the stand-in draws nothing", "engine")
             return True
+        if method == "feeds.service":
+            threading.Thread(target=self.service, args=(msg_id, message.get("params") or {}),
+                             daemon=True).start()
+            return True
         if method == "export.plan":
             params = message.get("params") or {}
             problem = self.plan_problem(params)
@@ -261,6 +270,33 @@ class Engine:
                             "degraded": {"borrowed_track": 0, "skipped_calls": 0},
                             "labels_dropped": 0, "peak_concurrent": 1}}})
 
+
+    def service(self, msg_id, params: dict) -> None:
+        """feeds.service, in shape: the window and the busiest weekday from
+        the anchor, which is echoed. A long request in the real engine, so
+        it waits and honours a cancel; it sends no progress, as the engine
+        does not."""
+        key = params.get("key")
+        if not isinstance(key, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", key):
+            error(msg_id, -32602, "key must be a feed key", "params")
+            return
+        anchor = params.get("anchor", "2026-06-15")
+        if not isinstance(anchor, str) or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", anchor):
+            error(msg_id, -32602, "anchor must be a day, YYYY-MM-DD", "params")
+            return
+        time.sleep(self.control.get("service_delay_ms", 30) / 1000)
+        if msg_id in self.cancelled:
+            write({"jsonrpc": "2.0", "id": msg_id,
+                   "error": {"code": -32800, "message": "Request Cancelled"}})
+            return
+        if self.control.get("service_refuses"):
+            error(msg_id, -32000, self.control["service_refuses"], "feed")
+            return
+        start, end = self.control.get("service_window", ["2026-01-01", "2026-12-31"])
+        write({"jsonrpc": "2.0", "id": msg_id, "result": {
+            "start": start, "end": end,
+            "busiest_weekday": self.control.get("busiest", "2026-06-16"),
+            "anchor": anchor}})
 
     @staticmethod
     def plan_problem(params: dict) -> str | None:

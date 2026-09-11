@@ -15,10 +15,19 @@ import {
   validateId,
   validateMode,
   validateName,
+  validateServiceWindow,
+  withinWindow,
   type ProjectRecord,
   AGENCY_MAX,
   MODE_PATTERN,
 } from '../../src/shared/project'
+
+const WINDOW = {
+  start: '2026-01-01',
+  end: '2026-12-31',
+  busiest: '2026-09-15',
+  anchor: '2026-09-08',
+}
 
 // The record from contracts/record.md, verbatim.
 const full: ProjectRecord = {
@@ -29,6 +38,7 @@ const full: ProjectRecord = {
   mode: 'all',
   agency: null,
   date: null,
+  service: null,
   style: { lineWidth: 10, stationRadius: 8, interchangeRadius: 11, labelSize: 26 },
   colors: {},
   defaultColor: '#888888',
@@ -132,6 +142,29 @@ describe('validateId', () => {
   })
 })
 
+describe('validateServiceWindow and withinWindow', () => {
+  it('accepts four calendar days in order, a single-day window included', () => {
+    expect(validateServiceWindow(WINDOW)).toBeNull()
+    expect(validateServiceWindow({ ...WINDOW, start: '2026-12-31' })).toBeNull()
+  })
+  it('names what is wrong', () => {
+    expect(validateServiceWindow(null)).toMatch(/four days/)
+    expect(validateServiceWindow({ ...WINDOW, anchor: undefined })).toMatch(/missing its anchor/)
+    expect(validateServiceWindow({ ...WINDOW, end: '2026-02-30' })).toMatch(
+      /end: that is not a day/,
+    )
+    expect(validateServiceWindow({ ...WINDOW, start: '2027-01-01' })).toMatch(
+      /ends before it starts/,
+    )
+  })
+  it('bounds a day inclusively', () => {
+    expect(withinWindow('2026-01-01', WINDOW)).toBe(true)
+    expect(withinWindow('2026-12-31', WINDOW)).toBe(true)
+    expect(withinWindow('2025-12-31', WINDOW)).toBe(false)
+    expect(withinWindow('2027-01-01', WINDOW)).toBe(false)
+  })
+})
+
 describe('parseRecord', () => {
   it('reads a full record as written', () => {
     expect(parseRecord(structuredClone(full))).toEqual({ record: full, readOnly: false })
@@ -155,6 +188,7 @@ describe('parseRecord', () => {
       lineOrder: [],
       theme: DEFAULT_THEME,
       layout: null,
+      service: null,
     })
     // Times default to now, in the form every other time uses.
     expect(parsed.record.created).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
@@ -172,6 +206,7 @@ describe('parseRecord', () => {
       lineOrder: ['A', 2, 'B'],
       theme: 'sepia',
       layout: '3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f',
+      service: { ...WINDOW, extra: 'dropped' },
     })
     expect('record' in parsed).toBe(true)
     if (!('record' in parsed)) return
@@ -185,6 +220,7 @@ describe('parseRecord', () => {
       lineOrder: ['A', 'B'],
       theme: 'sepia',
       layout: '3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f',
+      service: WINDOW,
     })
     // A layout identifier is 64 hex digits, the engine's id (ADR-033) or the
     // digest the app wrote before; anything else is dropped rather than half-trusted.
@@ -198,6 +234,18 @@ describe('parseRecord', () => {
     expect(badDate.record.date).toBeNull()
     expect(badDate.record.theme).toBe(DEFAULT_THEME)
     expect(badDate.record.layout).toBeNull()
+    // A window is whole or nothing: a half-valid block is not half-trusted.
+    for (const service of [
+      { ...WINDOW, end: '2025-01-01' },
+      { ...WINDOW, busiest: 'Tuesday' },
+      { start: '2026-01-01', end: '2026-12-31' },
+      'all year',
+      [WINDOW],
+    ]) {
+      const parsed = parseRecord({ ...full, service })
+      if (!('record' in parsed)) throw new Error(parsed.error)
+      expect(parsed.record.service, JSON.stringify(service)).toBeNull()
+    }
   })
   it('marks a record from a later version read-only without rewriting it', () => {
     const parsed = parseRecord({ ...full, version: 2, future: 'field' })

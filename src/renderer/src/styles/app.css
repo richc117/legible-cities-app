@@ -245,6 +245,33 @@ body {
   background: var(--surface-raised);
 }
 
+/* The date control is the platform's own, at the control height and in
+   the tokens, as the select is (DESIGN.md 8.2); its popup renders in the
+   platform's style, which is accepted. `color-scheme` follows the theme so
+   the popup and the icon match the surface. */
+.field input[type='date'] {
+  box-sizing: border-box;
+  height: var(--control-height);
+  padding: 0 var(--space-2-2);
+  font: inherit;
+  font-size: var(--font-ui);
+  font-variant-numeric: var(--numerals);
+  color: var(--text);
+  background: var(--surface);
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius);
+  color-scheme: inherit;
+}
+
+.field input[type='date']:disabled {
+  color: var(--text-faint);
+}
+
+.service-day h2 {
+  font-size: var(--font-ui-medium);
+  margin: 0 0 var(--space-2-2);
+}
+
 /* The project's fields. */
 
 .fields {

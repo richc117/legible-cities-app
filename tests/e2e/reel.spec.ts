@@ -89,6 +89,7 @@ function home(): { engineHome: string; exportFolder: string; id: string } {
     mode: DEFAULT_MODE,
     agency: null,
     date: '2026-09-08',
+    service: null,
     style: { ...DEFAULT_STYLE },
     colors: {},
     defaultColor: DEFAULT_COLOR,

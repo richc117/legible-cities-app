@@ -4,7 +4,14 @@
 // does and writes the same three files, so this exercises the whole run
 // without needing Docker or a feed.
 
-import { mkdtempSync, readFileSync, readdirSync, existsSync, writeFileSync } from 'node:fs'
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  existsSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import {
@@ -263,5 +270,271 @@ test('two projects on one feed record the same layout', async () => {
     )
     expect(layouts).toHaveLength(2)
     expect(layouts[0], 'the same inputs name the same layout').toBe(layouts[1])
+  })
+})
+
+// The service day (specs/012): the engine's choice stored at the first
+// layout, a day chosen inside the window, and the two things that must not
+// happen: a day outside the window, and a rebuild that re-lays out.
+
+const received = (engineHome: string, method: string): string[] =>
+  readFileSync(join(engineHome, 'fake-engine.received'), 'utf8')
+    .split('\n')
+    .filter((l) => l.includes(`"${method}"`))
+
+test("a first layout stores the engine's day and the feed's window, and shows both", async () => {
+  const engineHome = home({
+    map_draws: true,
+    progress_delay_ms: 10,
+    service_window: ['2026-03-01', '2026-11-30'],
+    busiest: '2026-06-16',
+  })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+
+    const after = readRecord(engineHome)
+    expect(after.date, "the engine's day, not the machine's").toBe('2026-06-16')
+    expect(after.service).toMatchObject({
+      start: '2026-03-01',
+      end: '2026-11-30',
+      busiest: '2026-06-16',
+    })
+    expect(String((after.service as { anchor: string }).anchor)).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    // The engine was asked with the lines the layout drew.
+    const asked = received(engineHome, 'feeds.service')
+    expect(asked).toHaveLength(1)
+    expect(asked[0]).toContain('"lines": ["A"]')
+    // The map was drawn for that day.
+    const maps = received(engineHome, 'map.build')
+    expect(maps[0]).toContain('"date": "2026-06-16"')
+
+    const section = page.getByRole('region', { name: 'Service day' })
+    await expect(section).toContainText('Drawn for 2026-06-16')
+    await expect(section).toContainText('2026-03-01 to 2026-11-30')
+    const control = section.getByLabel('Draw for another day')
+    await expect(control).toHaveValue('2026-06-16')
+    await expect(control).toHaveAttribute('min', '2026-03-01')
+    await expect(control).toHaveAttribute('max', '2026-11-30')
+  })
+})
+
+test('a feed whose window has ended still gets a day inside it, never today', async () => {
+  const engineHome = home({
+    map_draws: true,
+    progress_delay_ms: 10,
+    service_window: ['2024-01-01', '2024-06-30'],
+    busiest: '2024-04-02',
+  })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'Mexico City')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    expect(readRecord(engineHome).date).toBe('2024-04-02')
+    const control = page
+      .getByRole('region', { name: 'Service day' })
+      .getByLabel('Draw for another day')
+    await expect(control).toHaveAttribute('max', '2024-06-30')
+  })
+})
+
+test('a chosen day is drawn from the stored layout alone, and written when the map is', async () => {
+  const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    const before = readRecord(engineHome)
+    expect(before.date).toBe('2026-06-16')
+
+    const section = page.getByRole('region', { name: 'Service day' })
+    const control = section.getByLabel('Draw for another day')
+    await control.fill('2026-06-20')
+    await section.getByRole('button', { name: 'Draw for this day' }).click()
+    await expect(page.getByText(/^Drawn for 2026-06-20 from the stored layout/)).toBeVisible({
+      timeout: 30_000,
+    })
+
+    const after = readRecord(engineHome)
+    expect(after.date).toBe('2026-06-20')
+    expect(after.layout, 'the layout is untouched').toBe(before.layout)
+    expect(after.service).toEqual(before.service)
+    // One layout call in the whole session: the rebuild made none.
+    expect(received(engineHome, 'graph.build')).toHaveLength(1)
+    const maps = received(engineHome, 'map.build')
+    expect(maps).toHaveLength(2)
+    expect(maps[1]).toContain('"date": "2026-06-20"')
+    expect(maps[1]).toContain(`"layout": "${before.layout}"`)
+    await expect(control).toHaveValue('2026-06-20')
+    // The stored day is nothing to draw again.
+    await expect(section.getByRole('button', { name: 'Draw for this day' })).toBeDisabled()
+  })
+})
+
+test('a day outside the window cannot be chosen, and nothing is built', async () => {
+  const engineHome = home({
+    map_draws: true,
+    progress_delay_ms: 10,
+    service_window: ['2026-03-01', '2026-11-30'],
+  })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    const before = JSON.stringify(readRecord(engineHome))
+
+    const section = page.getByRole('region', { name: 'Service day' })
+    const control = section.getByLabel('Draw for another day')
+    await control.fill('2026-12-25')
+    await section.getByRole('button', { name: 'Draw for this day' }).click()
+    await expect(section.getByText('The feed covers 2026-03-01 to 2026-11-30.')).toBeVisible()
+    await expect(control).toHaveAttribute('aria-invalid', 'true')
+    expect(received(engineHome, 'map.build'), 'nothing was asked for').toHaveLength(1)
+    expect(JSON.stringify(readRecord(engineHome))).toBe(before)
+
+    // The engine's day is one press away.
+    await section.getByRole('button', { name: 'Use the busiest weekday' }).click()
+    await expect(control).toHaveValue('2026-06-16')
+  })
+})
+
+test('a cancelled rebuild keeps the day and says so', async () => {
+  // Slow enough that the cancel lands inside the map call; the stand-in
+  // reads its control file once, so the first layout is slow too.
+  const engineHome = home({ map_draws: true, progress_delay_ms: 400 })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    const before = JSON.stringify(readRecord(engineHome))
+    const section = page.getByRole('region', { name: 'Service day' })
+    await section.getByLabel('Draw for another day').fill('2026-06-20')
+    await section.getByRole('button', { name: 'Draw for this day' }).click()
+    await page.getByRole('button', { name: /cancel/i }).click()
+    await expect(page.getByText(/The rebuild was cancelled/)).toBeVisible({ timeout: 20_000 })
+    expect(JSON.stringify(readRecord(engineHome)), 'the record is untouched').toBe(before)
+    await expect(section.getByLabel('Draw for another day')).toHaveValue('2026-06-16')
+  })
+})
+
+test('reopening a laid-out project runs nothing and shows the same day and window', async () => {
+  const engineHome = home({
+    map_draws: true,
+    progress_delay_ms: 10,
+    service_window: ['2026-03-01', '2026-11-30'],
+  })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    const stored = JSON.stringify(readRecord(engineHome))
+    const asked =
+      received(engineHome, 'graph.build').length + received(engineHome, 'map.build').length
+
+    await page.getByRole('button', { name: /back to library/i }).click()
+    await page.getByRole('button', { name: 'Open Los Angeles' }).click()
+    const section = page.getByRole('region', { name: 'Service day' })
+    await expect(section).toContainText('Drawn for 2026-06-16')
+    await expect(section).toContainText('2026-03-01 to 2026-11-30')
+    await expect(section.getByLabel('Draw for another day')).toHaveValue('2026-06-16')
+    expect(JSON.stringify(readRecord(engineHome)), 'nothing was rewritten').toBe(stored)
+    expect(
+      received(engineHome, 'graph.build').length + received(engineHome, 'map.build').length,
+      'nothing ran',
+    ).toBe(asked)
+  })
+})
+
+test('a project from before the window was stored keeps its day and gains the window at its next run', async () => {
+  const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
+  // A record as A3-01 wrote it: a layout and a day, no window.
+  const id = 'oldproject01'
+  mkdirSync(join(engineHome, 'projects', id), { recursive: true })
+  const now = new Date().toISOString()
+  writeFileSync(
+    join(engineHome, 'projects', id, 'project.json'),
+    JSON.stringify(
+      {
+        version: 1,
+        id,
+        name: 'Older',
+        feed: 'la-metro-rail',
+        mode: 'all',
+        agency: null,
+        date: '2026-05-04',
+        layout: 'e'.repeat(64),
+        created: now,
+        modified: now,
+      },
+      null,
+      2,
+    ),
+  )
+  await withApp(engineHome, async (page) => {
+    await page.getByRole('button', { name: 'Open Older' }).click()
+    const section = page.getByRole('region', { name: 'Service day' })
+    await expect(section).toContainText('Drawn for 2026-05-04')
+    await expect(section).toContainText(/Lay the project out again to learn which days/)
+    await expect(section.getByLabel('Draw for another day')).toHaveCount(0)
+
+    await page.getByRole('button', { name: 'Lay out again' }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    const after = readRecord(engineHome)
+    expect(after.date, 'the day it had (ADR-031)').toBe('2026-05-04')
+    expect(after.service).toMatchObject({ busiest: '2026-06-16' })
+    await expect(section.getByLabel('Draw for another day')).toHaveValue('2026-05-04')
+    // The engine's day is offered, not imposed.
+    await expect(section.getByRole('button', { name: 'Use the busiest weekday' })).toBeEnabled()
+  })
+})
+
+test("a feed without a calendar fails the run with the engine's sentence and writes nothing", async () => {
+  const engineHome = home({
+    map_draws: true,
+    progress_delay_ms: 10,
+    service_refuses: 'The feed has neither calendar table.',
+  })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    const before = JSON.stringify(readRecord(engineHome))
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText('The feed has neither calendar table.')).toBeVisible({
+      timeout: 20_000,
+    })
+    expect(received(engineHome, 'map.build'), 'the map was never asked for').toHaveLength(0)
+    expect(JSON.stringify(readRecord(engineHome))).toBe(before)
+  })
+})
+
+test('the busiest-weekday button stays under the keyboard, and a refusal returns focus to the control', async () => {
+  const engineHome = home({
+    map_draws: true,
+    progress_delay_ms: 10,
+    service_window: ['2026-03-01', '2026-11-30'],
+  })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    const section = page.getByRole('region', { name: 'Service day' })
+    const control = section.getByLabel('Draw for another day')
+    const suggest = section.getByRole('button', { name: 'Use the busiest weekday' })
+    await expect(
+      suggest,
+      "the stored day is the engine's, so there is nothing to suggest",
+    ).toBeDisabled()
+    await control.fill('2026-06-20')
+    await suggest.focus()
+    await page.keyboard.press('Enter')
+    await expect(control).toHaveValue('2026-06-16')
+    await expect(control, 'focus moves to the control holding the day').toBeFocused()
+    await expect(suggest, 'still there, nothing more to suggest').toBeDisabled()
+
+    await control.fill('2026-12-25')
+    await section.getByRole('button', { name: 'Draw for this day' }).focus()
+    await page.keyboard.press('Enter')
+    await expect(section.getByText('The feed covers 2026-03-01 to 2026-11-30.')).toBeVisible()
+    await expect(control, 'the refusal is read with the control').toBeFocused()
   })
 })

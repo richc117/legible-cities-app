@@ -1,7 +1,7 @@
 // Generated from the engine's own description of its protocol.
 // Run `npm run typegen` to regenerate; edits here are lost.
 //
-// Engine: v0.5.0, protocol 1.
+// Engine: v0.6.0, protocol 1.
 // Source: vendor/protocol.schema.json, printed by the engine's
 // `python -m schematic.serve --schema` and committed verbatim.
 
@@ -32,8 +32,51 @@ export type FeedKey = string
 export type Token = string
 
 /**
- * A calendar day, YYYY-MM-DD. The engine never picks one: its choice would
- * depend on the day the request was made.
+ * Ask when a feed runs and which day to draw: its service window and the
+ * busiest weekday scanning from an anchor. A long request, like graph.build:
+ * it downloads the feed when it is not cached and reads its calendar and
+ * trips, and sends no progress.
+ */
+export interface FeedsServiceParams {
+  key: FeedKey
+  /**
+   * The day to scan from; the engine's today when omitted, and echoed either
+   * way so a caller can store it. An anchor outside the window scans from
+   * the window's middle.
+   */
+  anchor?: ServiceDate
+  /**
+   * The lines the map draws, as graph.build names them in stages.octi.lines.
+   * Trips are counted on those lines, as the map build counts them, so the
+   * day is the map's; every trip in the feed counts when omitted.
+   */
+  lines?: string[]
+}
+
+export interface FeedsServiceResult {
+  /**
+   * The first day the feed's calendar covers.
+   */
+  start: ServiceDate
+  /**
+   * The last.
+   */
+  end: ServiceDate
+  /**
+   * The weekday in the window with the most trips, scanning from the anchor:
+   * the same feed and anchor give the same day on every machine.
+   */
+  busiest_weekday: ServiceDate
+  /**
+   * The anchor the choice was made from.
+   */
+  anchor: ServiceDate
+}
+
+/**
+ * A calendar day, YYYY-MM-DD. map.build never picks one, because its choice
+ * would depend on the day the request was made; feeds.service picks one from
+ * an anchor the caller gives.
  */
 export type ServiceDate = string
 
@@ -615,6 +658,10 @@ export interface Methods {
   'export.encode': {
     params: ExportEncodeParams
     result: ExportEncodeResult
+  }
+  'feeds.service': {
+    params: FeedsServiceParams
+    result: FeedsServiceResult
   }
 }
 

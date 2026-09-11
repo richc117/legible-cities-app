@@ -15,7 +15,9 @@ import {
   validateMode,
   validateName,
   type CreateProjectInput,
+  type RebuildDone,
   validateServiceDate,
+  validateServiceWindow,
 } from '../shared/project'
 import { isLayoutId, type LayoutDone } from '../shared/layout'
 import type { ProjectStore } from './projects'
@@ -41,9 +43,9 @@ function readName(raw: unknown): string {
 }
 
 /**
- * What a finished run hands back: the day and the engine's layout id, as
- * the page relayed them. Both are checked for shape here; neither is a
- * path, and nothing is opened.
+ * What a finished run hands back: the day, the engine's layout id and the
+ * feed's window, as the page relayed them. All are checked for shape here;
+ * none is a path, and nothing is opened.
  */
 function readLayoutDone(raw: unknown): LayoutDone {
   const input = isObject(raw) ? raw : {}
@@ -52,7 +54,17 @@ function readLayoutDone(raw: unknown): LayoutDone {
   if (!isLayoutId(input.layout)) {
     throw new Error('the layout run did not say which layout it drew from')
   }
-  return { date, layout: input.layout }
+  check(validateServiceWindow(input.service))
+  const { start, end, busiest, anchor } = input.service as LayoutDone['service']
+  return { date, layout: input.layout, service: { start, end, busiest, anchor } }
+}
+
+/** What a finished rebuild hands back: the day the map was drawn for. */
+function readRebuildDone(raw: unknown): RebuildDone {
+  const input = isObject(raw) ? raw : {}
+  const date = typeof input.date === 'string' ? input.date : ''
+  check(validateServiceDate(date))
+  return { date }
 }
 
 function readCreateInput(raw: unknown): CreateProjectInput {
@@ -124,5 +136,8 @@ export function registerProjectHandlers(
   handle(CHANNELS.projectsDelete, (id) => store.delete(readId(id)))
   handle(CHANNELS.projectsCompleteLayout, (id, done) =>
     store.completeLayout(readId(id), readLayoutDone(done)),
+  )
+  handle(CHANNELS.projectsCompleteRebuild, (id, done) =>
+    store.completeRebuild(readId(id), readRebuildDone(done)),
   )
 }

@@ -68,6 +68,7 @@ const project = (over: Partial<ProjectRecord> = {}): ProjectRecord => ({
   mode: 'all',
   agency: null,
   date: '2026-09-08',
+  service: null,
   style: { ...DEFAULT_STYLE },
   colors: {},
   defaultColor: '#888888',

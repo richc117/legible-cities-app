@@ -27,7 +27,8 @@ export default function LayoutRun({
   /** True while something else, such as an export, is reading the project's page. */
   disabled?: boolean
 }): JSX.Element {
-  const { state, stages, message, error, changed, forced, replaced } = useSnapshot(run)
+  const { state, stages, message, error, changed, forced, replaced, rebuilt, day } =
+    useSnapshot(run)
   const [confirming, setConfirming] = useState(false)
   const begin = (): void => run.start(project, engine)
   // The re-layout, behind its warning: every stage runs again, and the
@@ -92,7 +93,7 @@ export default function LayoutRun({
       {(state === 'cancelled' || state === 'failed') && (
         <>
           <p className="prose" role="status">
-            {stoppedSentence(state, replaced)}
+            {stoppedSentence(state, replaced, rebuilt)}
           </p>
           <div className="toolbar">
             <Button variant="primary" onClick={begin} disabled={disabled}>
@@ -106,7 +107,7 @@ export default function LayoutRun({
       {state === 'done' && (
         <>
           <p className="prose" role="status">
-            {doneSentence(forced, changed)}
+            {rebuilt ? drawnSentence(day) : doneSentence(forced, changed)}
           </p>
           <div className="toolbar">{relayoutButton}</div>
         </>
@@ -132,13 +133,26 @@ export function doneSentence(forced: boolean, changed: boolean): string {
   return 'Laid out.'
 }
 
+/** What a rebuild for a chosen day says when the map has been drawn. */
+export function drawnSentence(day: string | null): string {
+  return day === null
+    ? 'Drawn from the stored layout.'
+    : `Drawn for ${day} from the stored layout. The stations have not moved.`
+}
+
 /**
  * What a run that did not finish says. Nothing was written to the record
  * either way; but a re-layout whose layout call had already answered has
  * a new layout stored under the project's id, and the map on screen is the
- * old one until the next run draws the new.
+ * old one until the next run draws the new; and a rebuild that stopped may
+ * have left the page half-drawn for the day it did not record.
  */
-export function stoppedSentence(state: string, replaced: boolean): string {
+export function stoppedSentence(state: string, replaced: boolean, rebuilt = false): string {
+  if (rebuilt) {
+    return state === 'cancelled'
+      ? 'The rebuild was cancelled. The project keeps its day; the map on screen may be the old one until the next build.'
+      : 'The map was not drawn for that day. The project keeps its day; the map on screen may be the old one until the next build.'
+  }
   if (replaced) {
     return state === 'cancelled'
       ? 'The run was cancelled after the layout had been laid out again, before the map was drawn from it. The project keeps its record; lay out to draw the new layout.'

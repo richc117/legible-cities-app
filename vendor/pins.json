@@ -20,12 +20,12 @@
   },
   "engine": {
     "repo": "https://github.com/richc117/legible-cities",
-    "tag": "v0.5.0",
-    "version": "0.5.0",
+    "tag": "v0.6.0",
+    "version": "0.6.0",
     "protocol": 1,
-    "note": "The first tag with layouts addressed by their inputs: graph.build takes the mode, the agency and the label options and answers with the layout's id and meta; map.build takes that id and never lays a feed out; ErrorData.kind gains layout. A client notices, so the protocol stays at 1 by the engine's convention and the tag is the gate. The handshake compares version and protocol with engine.info and refuses any other; the vendoring job installs the package at the tag.",
+    "note": "The first tag with the service day as data: feeds.service takes a feed key, an anchor day and the map's lines and answers the service window and the busiest weekday from that anchor, the same on every machine; the app stores the answer at the first layout (ADR-031) and bounds its date picker by it. Additive at protocol 1 by the engine's convention, so the tag is the gate. The handshake compares version and protocol with engine.info and refuses any other; the vendoring job installs the package at the tag.",
     "licence": "GPL-3.0-or-later",
-    "schema_sha256": "0eeccfbfa7ea97ebccd7dc19927b5fe685e79722abc7082cf193636359b85e89"
+    "schema_sha256": "cd7d148a3f2c5bd8354d72849cd1e1668113593822dac9b61e1b7516d2bc851f"
   },
   "python": {
     "source": "https://github.com/astral-sh/python-build-standalone",
