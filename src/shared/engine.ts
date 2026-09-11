@@ -76,11 +76,13 @@ export function isErrorKind(value: unknown): value is ErrorKind {
 
 // The app's own codes, in JSON-RPC's reserved server range below the
 // engine's -32000, for a request the engine could not be asked or did not
-// answer. -32800 (cancelled) and -32602 (bad parameters) are the engine's.
+// answer, and for the one job the app runs itself, an export, when its own
+// half fails. -32800 (cancelled) and -32602 (bad parameters) are the engine's.
 export const ERROR_CODES = {
   notReady: -32001,
   engineExited: -32002,
   inactive: -32003,
+  exportFailed: -32004,
   badCall: -32600,
   cancelled: -32800,
 } as const

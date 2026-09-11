@@ -9,14 +9,8 @@
 
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { CHANNELS, type EngineAccepted, type EngineSettled } from '../shared/api'
-import {
-  EngineError,
-  ERROR_CODES,
-  type EngineErrorShape,
-  type EngineState,
-  type JobLog,
-  type JobProgress,
-} from '../shared/engine'
+import type { EngineState, JobLog, JobProgress } from '../shared/engine'
+import { badCall, isObject, TOKEN, toShape } from './ipc-shape'
 import type { Notification } from './sidecar'
 
 /** What the handlers need from the supervisor; a test hands in a fake. */
@@ -33,28 +27,7 @@ export interface EngineSource {
 
 export type Send = (channel: string, payload: unknown) => void
 
-const isObject = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v)
-
-const TOKEN = /^[A-Za-z0-9-]{1,64}$/
 const LEVELS = new Set(['debug', 'info', 'warning', 'error'])
-
-function badCall(what: string): EngineAccepted {
-  return {
-    accepted: false,
-    error: new EngineError(ERROR_CODES.badCall, what, {
-      kind: 'params',
-      detail: what,
-      hint: what,
-    }).toJSON(),
-  }
-}
-
-function toShape(error: unknown): EngineErrorShape {
-  if (error instanceof EngineError) return error.toJSON()
-  const message = error instanceof Error ? error.message : String(error)
-  return { code: -32603, message }
-}
 
 export function registerEngineHandlers(
   ipcMain: IpcMain,

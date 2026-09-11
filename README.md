@@ -44,8 +44,9 @@ existed and are being written up as its first decision records under
 What runs today: one window, the Library and its projects, the `app://local`
 origin, the pinned engine started as a child process and spoken to over
 JSON-RPC, a layout run drawn stage by stage, the engine's page as the
-viewer, and checks on three platforms. Nothing exports yet;
-`docs/ARCHITECTURE.md` says what exists and what each later issue adds.
+viewer, one preset exported as a reel with its sidecar into a folder on the
+desktop, and checks on three platforms. `docs/ARCHITECTURE.md` says what
+exists and what each later issue adds.
 
 You need Node.js 22 or later. Optionally, for the development loop and the
 tokens test, check out the engine beside this repository and point

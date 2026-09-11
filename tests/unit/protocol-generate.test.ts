@@ -14,7 +14,7 @@ import {
   isErrorKind,
 } from '../../src/shared/engine'
 import { parseEnvFile } from '../../src/main/config'
-import { emit, engineCheckout, fingerprint } from '../../scripts/protocol'
+import { emit, emitFormatted, engineCheckout, fingerprint } from '../../scripts/protocol'
 
 const repo = resolve(__dirname, '../..')
 const schemaText = readFileSync(resolve(repo, 'vendor/protocol.schema.json'), 'utf8')
@@ -23,9 +23,9 @@ const pins = JSON.parse(readFileSync(resolve(repo, 'vendor/pins.json'), 'utf8'))
 const committed = readFileSync(resolve(repo, 'src/shared/protocol.ts'), 'utf8')
 
 describe('the generated protocol module', () => {
-  it('is reproducible from the committed description, byte for byte', () => {
+  it('is reproducible from the committed description, byte for byte', async () => {
     expect(
-      emit(description, pins.engine.tag),
+      await emitFormatted(description, pins.engine.tag, repo),
       'src/shared/protocol.ts is not what the description produces; run `npm run typegen`',
     ).toBe(committed)
   })

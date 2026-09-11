@@ -29,8 +29,11 @@ ADR-027) and the viewer (A3-02: the engine's page in a frame sandboxed to
 an opaque origin and driven from the main process, ADR-028), and the
 capture (A5-02a: an offscreen window in its own session takes a page's
 frames through the DevTools protocol, byte-identical run to run,
-`src/main/capture.ts`). It exports nothing yet: the export flow over the
-engine's `export.plan` and `export.encode` is A5-02b.
+`src/main/capture.ts`) and the export (A5-02b: one preset, `instagram-reel`,
+from a button on the project screen, over the engine's `export.plan` and
+`export.encode` with the capture in the middle, into a folder on the
+desktop or `LEGIBLE_EXPORT_FOLDER`, the sidecar beside the file;
+`src/main/export.ts`). That is the first reel.
 
 Work proceeds phase by phase; `CONTRIBUTING.md` explains the flow, the
 labels, the milestones and the `A0-05`-style issue codes. The four Phase 0
@@ -42,12 +45,12 @@ rather than recomputed because `topo` is not reproducible on macOS
 (ADR-031). One spike (A0-06) still waits on the Intel and Windows runners
 for its last two targets; the offscreen-capture spike is finished, and
 ADR-024 puts capture in the app's own process, in an offscreen window
-driven through the Chrome DevTools Protocol. Next is the "First reel"
-milestone, one preset feed through layout, viewer and export before the
-phases broaden: layout, viewer and capture are done, and what remains is
-the engine's export halves (E10, E09b) and one preset exported (A5-02b). Since 2026-09-07 `main` changes only through pull
-requests with the `ci` check green: one issue, one branch, one pull
-request, the maintainer included.
+driven through the Chrome DevTools Protocol. The "First reel" milestone -
+one preset feed through layout, viewer and export before the phases
+broaden - is complete: the engine's export halves (E10, E09b) landed at
+v0.3.0 and the app exports the reel (A5-02b). Since 2026-09-07 `main`
+changes only through pull requests with the `ci` check green: one issue,
+one branch, one pull request, the maintainer included.
 
 Personal settings and private pointers (sibling checkouts, planning notes)
 live in `CLAUDE.local.md`, which is gitignored. Read it if it exists.
@@ -186,7 +189,9 @@ Stated before the first implementation, and kept since.
   wrong, and ADR-028 records why.
 - **Never write inside the app bundle.** The engine's home is
   `SCHEMATIC_HOME` under the user-data folder; exports go where the user
-  chooses.
+  chooses (`LEGIBLE_EXPORT_FOLDER`, or a `Legible Cities` folder on the
+  desktop until Settings exist), and an export's frames sit under the
+  engine home only while it runs.
 - **Child processes**: argument arrays, never shell strings; `windowsHide:
   true`; a timeout; stderr captured to the log; a clean shutdown on quit.
 - **The sidecar protocol is a contract.** JSON-RPC 2.0 over stdio, types

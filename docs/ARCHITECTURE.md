@@ -20,6 +20,7 @@ what.
         userData/engine = SCHEMATIC_HOME
           projects/<id>/project.json   written by the store
           out/<id>/                    served read-only; removed on delete
+          frames/<token>/              an export's frames, only while it runs
           feeds/, data/graphs/, out/   the engine's, under the same home
 ```
 
@@ -67,8 +68,8 @@ into it from the privileged side (ADR-028).
 ## The bridge: `window.api`
 
 Typed in `src/shared/api.ts`, which the preload and the renderer both
-import. Six methods under `api.projects`, three under `api.viewer`, and the
-engine under `api.engine`:
+import. Six methods under `api.projects`, three under `api.viewer`, the
+engine under `api.engine`, and the export under `api.export`:
 
 | Method | Does |
 |---|---|
@@ -87,6 +88,11 @@ engine under `api.engine`:
 | `engine.request(method, params?)` | a request to the engine, as `{ id, result }`: the id is a token the preload mints, the result settles with the engine's answer or its error (`code`, `message`, `data: { kind, detail, hint }`) unchanged |
 | `engine.cancel(id)` | `$/cancelRequest` for that request |
 | `engine.onState`, `onProgress`, `onLog` | subscriptions; each returns its unsubscribe |
+
+| `export.run(projectId, preset)` | an export of one preset, as `{ id, result }`: the main process asks the engine for the plan, takes the page's frames itself and asks the engine to encode them; the result is the file's name and size, never its path (A5-02b) |
+| `export.cancel(id)` | stops it wherever it is: the plan or encode request is cancelled, the capture aborted |
+| `export.reveal(id)` | shows a finished export's file in the platform's file browser; the page names the export, the main process knows the file |
+| `export.onProgress` | a subscription; each report names the stage (plan, capture, encode), how far it is, and a sentence |
 
 The engine bridge is deliberately untyped beyond a method name and an
 object of parameters: A1-02 generates the methods from the engine's schema
@@ -268,14 +274,16 @@ it), then defaults:
 | `SCHEMATIC_HOME` | `<userData>/engine` (ADR-016) |
 | `SCHEMATIC_LOOM_BIN` | unset |
 | `SCHEMATIC_FFMPEG` | unset |
+| `LEGIBLE_EXPORT_FOLDER` | `<desktop>/Legible Cities`; where exports go, in a folder per project, until Settings (A1-04) offer a chooser |
 | `LEGIBLE_ENGINE_CHECKOUT` | unset; the tokens test reads the engine page from it, and the engine runs from its `.venv` |
 | `LEGIBLE_ENGINE_PYTHON` | unset; an interpreter named explicitly (a path, or a bare command for PATH), which wins over the checkout |
 
 At startup the main process logs every value with its source, and what is
 unset, before the window opens, so a misconfigured run is diagnosable from
 the terminal. Contract: `specs/001-electron-skeleton/contracts/config.md`.
-The app writes to the engine home only under `projects/`, and removes only
-a project's `out/<id>/` on delete; `feeds/` is the engine's and untouched.
+The app writes to the engine home only under `projects/` and, while an
+export runs, `frames/`; it removes only a project's `out/<id>/` on delete
+and the whole of `frames/` at start; `feeds/` is the engine's and untouched.
 
 The main-process log is stderr for now and may contain paths - the
 configuration lines by contract, and Electron's own report of a failed
@@ -514,16 +522,71 @@ frames. The job's shape is the engine's recorder's (`src/shared/capture.ts`),
 so `export.plan`'s answer will map onto it. A quit destroys any capture
 window before the engine is stopped.
 
+## The export
+
+The first reel (A5-02b): one preset, `instagram-reel`, from one button on
+the project screen, over the engine's `export.plan` and `export.encode`
+with the capture above in the middle. The flow runs in the main process
+(`src/main/export.ts`), because the capture does and is never exposed to
+the page; the page starts it, watches it and can stop it through
+`api.export`, on the same token-and-event pattern as the engine bridge, and
+keeps its own view of it (`src/renderer/src/engine/exportRun.ts`) the way
+it keeps the layout run's.
+
+In order: the project's record is read, and a project that is read-only or
+has no layout is refused before the engine is asked. `export.plan` gets the
+project's feed, the preset, the page's address on the app's origin, the
+project's stored service day (ADR-031) and the record's theme, and answers
+with the recorder's job and what the encode needs back. The capture half of
+that plan goes through the capture's own validator - a page off the origin,
+a scale the capture does not do, a first beat that pins no clock - and is
+refused before a window exists. The frames go to
+`<SCHEMATIC_HOME>/frames/<token>/`, a folder that exists only while the
+export runs; `export.encode` gets the plan back unchanged, that folder, the
+file to write and the project's service day as provenance, and writes the
+file with its sidecar beside it. The frames are removed when the export
+ends, whichever way, and a start of the app removes the whole folder, so a
+crash mid-export leaves nothing a later run reads.
+
+The file goes under the export folder - `LEGIBLE_EXPORT_FOLDER`, or a
+`Legible Cities` folder on the desktop - in a folder named after the
+project, under the engine's own file name; nothing is written inside the
+user-data folder or the bundle (ADR-016). The page is told the file's name
+and never its path; "Reveal" names the export by its token and the main
+process opens the folder it remembers writing to. A second export of the
+same project replaces the first, as the engine's own command line does: the
+pipeline is deterministic, so it is the same file.
+
+Progress is three stages on the progress line - plan, capture, encode -
+with a sentence each: the plan's frame count and rate, then frames captured
+of the total, then frames encoded from the fraction ffmpeg reports through
+the engine. A cancel reaches the export wherever it is: the plan or encode
+request is cancelled, the capture aborted; the engine removes a partial
+file and its sidecar, the app removes the frames. A layout run and an
+export of one project cannot overlap, because the export reads the page a
+layout would rewrite: each button is disabled while the other runs, and so
+is delete.
+
+`tests/unit/export.test.ts` asserts the order, the parameters and the
+cleanup against a fake engine, a fake store and a fake capture, and
+`tests/unit/export-ipc.test.ts` the bridge's checks; `tests/e2e/export.spec.ts`
+drives the built app against the stand-in engine, which plans a short job
+for the animated stand-in page and encodes in shape - five steps of
+progress, a file, a sidecar, a cancel that removes both; and
+`tests/e2e/reel.spec.ts`, opt-in with an engine checkout and ffmpeg,
+exports the real Los Angeles reel twice and compares the two files frame by
+frame in RGB with the tolerance of 8.
+
 ## Deliberately absent
 
 | Not here | Arrives with |
 |---|---|
 | The contract tests running in continuous integration; they exist and are gated on an engine checkout | A0-06 |
-| A screen for long jobs across projects; the layout run draws its own progress on the project screen | A1-03 |
-| Settings: the data folder, the export folder, the versions shown | A1-04 |
+| A screen for long jobs across projects; the layout run and the export draw their own progress on the project screen | A1-03 |
+| Settings: the data folder, the export folder (a configuration key until then), the versions shown | A1-04 |
 | A feed chooser over the engine's registry; the feed key is typed and checked for form | A2-01 |
 | Editing the style, the colours, the line order and the theme; the record holds the engine's defaults | A4-01 to A4-03 |
-| Export | A5-02b: one preset, over the engine's `export.plan` and `export.encode`, with the capture below in the middle |
+| Every other preset, and the export's options: quality, storyboard, theme, the safe zones | A5-01 |
 | Vendored Python, LOOM and ffmpeg; installers | A0-10 (`specs/002`) |
 | A log file and "copy diagnostics" | A6-03 |
 | Signing and auto-update | A6-05 |

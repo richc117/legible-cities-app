@@ -42,8 +42,11 @@ channel and let the preload make the promise.
 
 Never inside the app bundle: it is read-only on macOS and it is wiped on
 update. The engine's home is `SCHEMATIC_HOME` under the user-data folder;
-exports go where the user chose. A path that is not one of those two is a
-bug. See ADR-016.
+exports go where the user chose: `LEGIBLE_EXPORT_FOLDER`, or a `Legible
+Cities` folder on the desktop until Settings exist, in a folder per
+project. An export's frames live under the engine home (`frames/<token>/`)
+only while it runs, and a start removes the folder. A path that is not one
+of those is a bug. See ADR-016.
 
 ## The protocol is a contract
 
@@ -108,6 +111,16 @@ acceptance criterion that compares the app's pixels with another program's
 without naming which binary.
 
 `docs/adr/spikes/offscreen-capture.md` has what was measured and why.
+
+## The export
+
+The flow lives in the main process (`src/main/export.ts`), because the
+capture does; the page starts, watches and stops it through `api.export`
+and is told the file's name, never its path. The engine's plan goes through
+`validateCaptureJob` before a window exists, and its file name must be a
+bare name: both arrive from another process. The frames are removed when
+the export ends, whichever way. A layout run and an export of one project
+never overlap: the export reads the page a layout rewrites.
 
 ## The preload bridge
 

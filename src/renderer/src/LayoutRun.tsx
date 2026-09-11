@@ -1,11 +1,12 @@
-import { useEffect, useState, type JSX } from 'react'
+import type { JSX } from 'react'
 import Button from './kit/Button'
 import Icon from './icons/Icon'
 import ProgressLine from './ProgressLine'
 import type { EngineState } from '../../shared/engine'
 import { shortLayoutId } from '../../shared/layout'
 import type { ProjectRecord } from '../../shared/project'
-import type { LayoutRun as Run, RunSnapshot } from './engine/layoutRun'
+import type { LayoutRun as Run } from './engine/layoutRun'
+import { useSnapshot } from './useSnapshot'
 
 // The layout run on screen: the stages as the engine finishes them, the
 // sentence it wrote for the last one, and a way to stop. The design
@@ -13,23 +14,17 @@ import type { LayoutRun as Run, RunSnapshot } from './engine/layoutRun'
 // makes cancel a text button beside it (section 8.2), which is what this is
 // until the jobs drawer generalises it (A1-03).
 
-function useSnapshot(run: Run): RunSnapshot {
-  const [snapshot, setSnapshot] = useState(run.snapshot)
-  useEffect(() => {
-    setSnapshot(run.snapshot)
-    return run.subscribe(setSnapshot)
-  }, [run])
-  return snapshot
-}
-
 export default function LayoutRun({
   run,
   project,
   engine,
+  disabled = false,
 }: {
   run: Run
   project: ProjectRecord
   engine: EngineState | null
+  /** True while something else, such as an export, is reading the project's page. */
+  disabled?: boolean
 }): JSX.Element {
   const { state, stages, message, error, changed } = useSnapshot(run)
   const begin = (): void => run.start(project, engine)
@@ -44,7 +39,7 @@ export default function LayoutRun({
           </p>
         )}
         <div className="toolbar">
-          <Button variant="primary" onClick={begin}>
+          <Button variant="primary" onClick={begin} disabled={disabled}>
             <Icon name="map" />
             {project.layout === null ? 'Lay out' : 'Lay out again'}
           </Button>
@@ -75,7 +70,7 @@ export default function LayoutRun({
               : 'Nothing was saved. The project is as it was.'}
           </p>
           <div className="toolbar">
-            <Button variant="primary" onClick={begin}>
+            <Button variant="primary" onClick={begin} disabled={disabled}>
               <Icon name="map" />
               Lay out
             </Button>

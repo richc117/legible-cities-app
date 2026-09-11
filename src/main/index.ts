@@ -3,14 +3,16 @@
 // specs/004-sidecar-supervisor/plan.md.
 
 import { existsSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
+import { readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import { app, BrowserWindow, ipcMain, session } from 'electron'
+import { app, BrowserWindow, ipcMain, session, shell } from 'electron'
 import pins from '../../vendor/pins.json'
 import { CHANNELS } from '../shared/api'
-import { abortCaptures, configureCapture } from './capture-window'
+import { abortCaptures, capture, configureCapture } from './capture-window'
 import { describeConfig, resolveConfig, type Config } from './config'
 import { registerEngineHandlers } from './engine-ipc'
+import { Exporter } from './export'
+import { registerExportHandlers } from './export-ipc'
 import { engineCommand, engineEnvironment, resolveInterpreter } from './interpreter'
 import { registerProjectHandlers, registerViewerHandlers } from './ipc'
 import { log } from './log'
@@ -27,7 +29,11 @@ registerAppScheme()
 
 let mainWindow: BrowserWindow | null = null
 let sidecar: Sidecar | null = null
+let exporter: Exporter | null = null
 let quitting = false
+
+/** Where a running export keeps its frames, under the engine home (ADR-016). */
+const FRAMES_FOLDER = 'frames'
 
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
@@ -117,6 +123,7 @@ async function loadConfig(): Promise<Config> {
     fileText,
     env: process.env,
     userData: app.getPath('userData'),
+    desktop: app.getPath('desktop'),
     baseDir,
   })
   for (const line of describeConfig(config, { development })) log.info('config', line)
@@ -217,6 +224,30 @@ if (!hasLock) {
     // The export's window has a session of its own, serving project pages
     // and nothing else (ADR-024).
     configureCapture({ engineHome: config.home })
+    // An export's frames live under the engine home only while it runs; a
+    // crash mid-export leaves them, and nothing else will ever ask for them.
+    const framesRoot = join(config.home, FRAMES_FOLDER)
+    await rm(framesRoot, { recursive: true, force: true }).catch((error: Error) =>
+      log.warn('export', `could not clear the frames folder: ${error.message}`),
+    )
+    exporter = new Exporter({
+      engine,
+      projects: store,
+      capture,
+      framesRoot,
+      exportFolder: config.exportFolder,
+      log: (message) => log.info('export', message),
+    })
+    registerExportHandlers(
+      ipcMain,
+      exporter,
+      isTopFrame,
+      (channel, payload) => {
+        if (mainWindow !== null && !mainWindow.isDestroyed())
+          mainWindow.webContents.send(channel, payload)
+      },
+      (path) => shell.showItemInFolder(path),
+    )
     mainWindow = createWindow()
 
     app.on('activate', () => {
@@ -230,7 +261,9 @@ if (!hasLock) {
   app.on('before-quit', (event) => {
     if (quitting) return
     quitting = true
-    // A capture window is created for its export and must not outlive the app.
+    // An export in flight is cancelled, and its capture window destroyed,
+    // before the engine is asked to stop.
+    exporter?.abortAll()
     abortCaptures()
     if (sidecar === null) return
     event.preventDefault()

@@ -392,22 +392,26 @@ dialog::backdrop {
   color: var(--text-muted);
 }
 
-/* The layout run: the line, then its sentence and the way to stop. */
+/* The layout run and the export: the line, then its sentence and the way
+   to stop. */
 
-.layout-run {
+.layout-run,
+.export-run {
   display: grid;
   gap: var(--space-4-3);
   margin: 0 0 var(--space-4-4);
 }
 
-.layout-run-foot {
+.layout-run-foot,
+.export-run-foot {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-4-3);
 }
 
-.layout-run-foot .progress-message {
+.layout-run-foot .progress-message,
+.export-run-foot .progress-message {
   flex: 1 1 auto;
   min-width: 0;
 }

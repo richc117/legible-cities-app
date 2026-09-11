@@ -34,13 +34,15 @@ describe('parseEnvFile', () => {
 })
 
 describe('resolveConfig', () => {
-  const base = { userData: '/ud', baseDir: '/repo' }
+  const base = { userData: '/ud', desktop: '/desk', baseDir: '/repo' }
 
   it('defaults the home under userData and leaves the binaries unset', () => {
     const c = resolveConfig({ ...base, env: {} })
     expect(c.home).toBe(home)
     expect(c.loomBin).toBeNull()
     expect(c.ffmpeg).toBeNull()
+    expect(c.exportFolder).toBe(join('/desk', 'Legible Cities'))
+    expect(c.sources.LEGIBLE_EXPORT_FOLDER).toBe('default')
     expect(c.engineCheckout).toBeNull()
     expect(c.fileFound).toBe(false)
     expect(c.sources.SCHEMATIC_HOME).toBe('default')
@@ -73,7 +75,7 @@ describe('resolveConfig', () => {
 })
 
 describe('describeConfig', () => {
-  const base = { userData: '/ud', baseDir: '/repo' }
+  const base = { userData: '/ud', desktop: '/desk', baseDir: '/repo' }
 
   it('names every location and its source, and what is unset', () => {
     const c = resolveConfig({ ...base, env: {}, fileText: 'SCHEMATIC_LOOM_BIN=/opt/loom\n' })
@@ -81,6 +83,7 @@ describe('describeConfig', () => {
       `SCHEMATIC_HOME=${home} (default)`,
       'SCHEMATIC_LOOM_BIN=/opt/loom (.env.local)',
       'SCHEMATIC_FFMPEG unset - nothing in this build needs it; set it in .env.local',
+      `LEGIBLE_EXPORT_FOLDER=${join('/desk', 'Legible Cities')} (default)`,
     ])
   })
   it('says when the file is absent in development, and not in a packaged build', () => {
@@ -113,7 +116,7 @@ describe('describeConfig', () => {
 })
 
 describe('LEGIBLE_ENGINE_PYTHON', () => {
-  const base = { userData: '/ud', baseDir: '/repo' }
+  const base = { userData: '/ud', desktop: '/desk', baseDir: '/repo' }
 
   it('is unset by default and absent from the log', () => {
     const c = resolveConfig({ ...base, env: {} })

@@ -1,17 +1,19 @@
-// One run per project, for as long as the app is open, and one client for
-// the whole renderer.
+// One layout run and one export per project, for as long as the app is
+// open, and one client for the whole renderer.
 //
-// Both are here rather than in a component because a run outlives the view
-// that started it: a person can start a layout, go back to the Library, and
-// come back to a project that is still running. A run held in a component
-// would be a second run for the same project, writing the same output
-// folder, and a client made per view would leave its two bridge
+// All are here rather than in a component because a run outlives the view
+// that started it: a person can start a layout or an export, go back to the
+// Library, and come back to a project that is still running. A run held in
+// a component would be a second run for the same project, writing the same
+// output folder, and a client made per view would leave its two bridge
 // subscriptions behind every time (each is an `ipcRenderer.on`).
 //
 // This module reaches for `window.api`, so it is imported only by the
-// renderer. The run itself takes its client as an argument and knows
-// nothing of any of this, which is what lets the tests drive it.
+// renderer. The runs themselves take their client or bridge as an argument
+// and know nothing of any of this, which is what lets the tests drive them.
 
+import { OFFERED_PRESETS, type ExportProgress } from '../../../shared/export'
+import { ExportRun, type ExportBridge } from './exportRun'
 import { LayoutRun } from './layoutRun'
 import { EngineClient } from './client'
 
@@ -46,4 +48,40 @@ export function layoutRunFor(projectId: string): LayoutRun {
 /** Forget a project's run: it was deleted, so nothing will ask again. */
 export function forgetLayoutRun(projectId: string): void {
   runs.delete(projectId)
+}
+
+const exports = new Map<string, ExportRun>()
+
+let exportBridge: ExportBridge | null = null
+
+/**
+ * One bridge subscription for every export run, fanned out to the runs:
+ * a run made per project visited must not cost an `ipcRenderer.on` each,
+ * which is the same reason the engine has one client.
+ */
+const sharedExportBridge = (): ExportBridge => {
+  if (exportBridge !== null) return exportBridge
+  const listeners = new Set<(p: ExportProgress) => void>()
+  window.api.export.onProgress((progress) => {
+    for (const listener of listeners) listener(progress)
+  })
+  exportBridge = {
+    run: (projectId, preset) => window.api.export.run(projectId, preset),
+    cancel: (id) => window.api.export.cancel(id),
+    reveal: (id) => window.api.export.reveal(id),
+    onProgress: (listener) => {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    },
+  }
+  return exportBridge
+}
+
+/** The export for a project, made once and found again on the next visit. */
+export function exportRunFor(projectId: string): ExportRun {
+  const existing = exports.get(projectId)
+  if (existing !== undefined) return existing
+  const run = new ExportRun(sharedExportBridge(), OFFERED_PRESETS[0])
+  exports.set(projectId, run)
+  return run
 }

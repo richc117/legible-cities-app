@@ -357,6 +357,7 @@ not used:
 | Errors and hints | the engine's `hint` sentence verbatim in `--error` at 13px beside the control or in the status line; `detail` only in the log; never a toast for something a person must act on |
 | Tooltips | 12px, `--surface-raised`, 1px `--border`, 200ms delay, keyboard-reachable through focus |
 | The viewer | the engine's page in an iframe filling the main region, no chrome of the app's over it; its controls are its own |
+| Deliverables | an export that finished says the file's name in prose and offers "Reveal", a text button that opens the file's folder in the platform's file browser; the path is never shown, and the folder is the person's own (A1-04) |
 
 ## 9. Layout and window
 

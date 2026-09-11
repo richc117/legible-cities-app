@@ -4,12 +4,14 @@
 // specs/004-sidecar-supervisor/contracts/bridge.md (engine).
 
 import type { EngineErrorShape, EngineState, JobLog, JobProgress } from './engine'
+import type { ExportProgress, ExportResult, OfferedPreset } from './export'
 import type { LayoutDone, LayoutResult } from './layout'
 import type { ViewerMethod } from './viewer'
 import type { CreateProjectInput, DeleteResult, ProjectRecord, ProjectSummary } from './project'
 
 export type { CreateProjectInput, DeleteResult, ProjectRecord, ProjectSummary } from './project'
 export type { EngineState, JobLog, JobProgress } from './engine'
+export type { ExportProgress, ExportResult, OfferedPreset } from './export'
 export type { LayoutDone, LayoutResult } from './layout'
 
 /** A request in flight: the token the page uses for progress and cancel, and the answer. */
@@ -18,16 +20,26 @@ export interface EngineRequest {
   result: Promise<unknown>
 }
 
-/** What `engine:request` answers at once: started, or refused before it started. */
-export type EngineAccepted = { accepted: true } | { accepted: false; error: EngineErrorShape }
+/** What a job's invoke answers at once: started, or refused before it started. */
+export type Accepted = { accepted: true } | { accepted: false; error: EngineErrorShape }
 
 /**
- * How a request ends, sent on the same ordered channel as its progress and
- * log lines, so the page never sees the answer before the last notification
+ * How a job ends, sent on the same ordered channel as its progress and log
+ * lines, so the page never sees the answer before the last notification
  * (an invoke reply is not ordered against events; see specs/004 research.md).
+ * The engine's requests and the app's exports both end this way.
  */
-export type EngineSettled =
-  { id: string; ok: true; result: unknown } | { id: string; ok: false; error: EngineErrorShape }
+export type Settled<T> =
+  { id: string; ok: true; result: T } | { id: string; ok: false; error: EngineErrorShape }
+
+export type EngineAccepted = Accepted
+export type EngineSettled = Settled<unknown>
+
+/** An export in flight: the token the page uses for progress and cancel, and the outcome. */
+export interface ExportRequest {
+  id: string
+  result: Promise<ExportResult>
+}
 
 export interface Api {
   projects: {
@@ -69,6 +81,20 @@ export interface Api {
     onProgress(listener: (progress: JobProgress) => void): () => void
     onLog(listener: (line: JobLog) => void): () => void
   }
+  /**
+   * An export of one preset, run in the main process because the capture
+   * lives there (ADR-024): the engine plans it, the app takes the frames,
+   * the engine encodes them. The page names a project and a preset, and
+   * gets back a file's name; the folder is the export folder from the
+   * configuration, and `reveal` opens it (specs/010-export/contracts/bridge.md).
+   */
+  export: {
+    run(projectId: string, preset: OfferedPreset): ExportRequest
+    cancel(id: string): Promise<void>
+    /** Show a finished export's file in the platform's file browser. */
+    reveal(id: string): Promise<void>
+    onProgress(listener: (progress: ExportProgress) => void): () => void
+  }
 }
 
 export const CHANNELS = {
@@ -88,4 +114,9 @@ export const CHANNELS = {
   engineSettled: 'engine:settled',
   engineProgress: 'engine:progress',
   engineLog: 'engine:log',
+  exportRun: 'export:run',
+  exportCancel: 'export:cancel',
+  exportReveal: 'export:reveal',
+  exportProgress: 'export:progress',
+  exportSettled: 'export:settled',
 } as const

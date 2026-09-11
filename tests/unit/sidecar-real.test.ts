@@ -25,7 +25,13 @@ function realInterpreter(): string | null {
   } catch {
     fileText = undefined
   }
-  const config = resolveConfig({ fileText, env: process.env, userData: tmpdir(), baseDir: repo })
+  const config = resolveConfig({
+    fileText,
+    env: process.env,
+    userData: tmpdir(),
+    desktop: tmpdir(),
+    baseDir: repo,
+  })
   const resolution = resolveInterpreter({
     config: { enginePython: null, engineCheckout: config.engineCheckout },
     packaged: false,
