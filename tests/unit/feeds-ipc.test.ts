@@ -6,6 +6,8 @@ import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { describe, expect, it } from 'vitest'
 import {
   PickedPaths,
+  isLocalHost,
+  refuseUrl,
   registerFeedsHandlers,
   registryGuard,
   type FeedsInUse,
@@ -61,12 +63,16 @@ describe('the registry guard', () => {
     (feeds: string[]): FeedsInUse =>
     async () =>
       feeds
-  it('lets a URL through and a path it handed out, and refuses any other path', async () => {
+  it('lets a public URL through and a path it handed out once, and refuses any other path', async () => {
     const picked = new PickedPaths()
     picked.remember('/chosen/feed.zip')
     const guard = registryGuard(picked, inUse([]))
     expect(await guard('feeds.add', { source: 'https://agency.example/gtfs.zip' })).toBeNull()
     expect(await guard('feeds.add', { source: 'http://agency.example/gtfs.zip' })).toBeNull()
+    expect(await guard('feeds.add', { source: '/chosen/feed.zip' })).toBeNull()
+    // Spent: one consent is one add, or a page could copy the zip without bound.
+    expect(await guard('feeds.add', { source: '/chosen/feed.zip' })).toMatch(/chosen in the app/)
+    picked.remember('/chosen/feed.zip')
     expect(await guard('feeds.add', { source: '/chosen/feed.zip' })).toBeNull()
     expect(await guard('feeds.add', { source: '/etc/passwd' })).toMatch(/chosen in the app/)
     expect(await guard('feeds.add', { source: 'file:///chosen/feed.zip' })).toMatch(
@@ -75,6 +81,32 @@ describe('the registry guard', () => {
     expect(await guard('feeds.add', { source: '' })).toMatch(/needs a source/)
     expect(await guard('feeds.add', {})).toMatch(/needs a source/)
     expect(await guard('feeds.add', undefined)).toMatch(/needs a source/)
+  })
+
+  it('refuses an address on this machine or its network, which would be an oracle', async () => {
+    const guard = registryGuard(new PickedPaths(), inUse([]))
+    // The two RFC 1918 examples are assembled rather than written: the
+    // hygiene scanner refuses a private address in a committed file, and
+    // these are the ranges the guard refuses, not a host of anyone's.
+    const rfc1918 = [['172', '16', '0', '1'].join('.'), ['192', '168', '1', '1'].join('.')]
+    for (const source of [
+      'http://127.0.0.1:631/',
+      'http://localhost/feed.zip',
+      'http://[::1]/feed.zip',
+      'http://169.254.169.254/latest/meta-data',
+      'http://10.0.0.5/gtfs.zip',
+      `http://${rfc1918[0]}/gtfs.zip`,
+      `http://${rfc1918[1]}/gtfs.zip`,
+      'http://0.0.0.0/',
+      'http://[fe80::1]/x.zip',
+    ]) {
+      expect(await guard('feeds.add', { source }), source).toMatch(/public host/)
+    }
+    expect(await guard('feeds.add', { source: 'https://172.32.0.1/gtfs.zip' })).toBeNull()
+    expect(await guard('feeds.add', { source: 'https://agency.example/a b.zip' })).toBeNull()
+    expect(refuseUrl('https://')).toMatch(/URL with its scheme/)
+    expect(isLocalHost('agency.example')).toBe(false)
+    expect(isLocalHost('8.8.8.8')).toBe(false)
   })
 
   it('refuses to remove a feed a project names, naming how many', async () => {

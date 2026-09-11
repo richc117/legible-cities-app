@@ -34,5 +34,5 @@ src/renderer/src/Library.tsx, FeedList.tsx, AddFeedDialog.tsx, CreateProjectDial
 src/renderer/src/styles/app.css
 tests/fake-engine/schematic/serve.py          # feeds.list/add/remove
 tests/unit/{feeds-ipc,engine-ipc,feed-add,project}.test.ts; tests/e2e/feeds.spec.ts
-docs/ARCHITECTURE.md, specs/003 spec's typed-key note, CLAUDE.md
+docs/ARCHITECTURE.md, CLAUDE.md
 ```

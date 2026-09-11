@@ -36,7 +36,7 @@ constraints; `.claude/rules/main.md`). The page never draws a map.
 
 The Library shows every feed the engine knows: the presets with their
 city and network, the feeds a person added, and whether each is
-downloaded. "New project" on a feed opens the create dialog with that
+downloaded. "Start a project" on a feed opens the create dialog with that
 feed chosen; the dialog's feed control is a select over the same list.
 
 **Acceptance Scenarios**:
@@ -44,9 +44,9 @@ feed chosen; the dialog's feed control is a select over the same list.
 1. **Given** the engine ready, **When** the Library opens, **Then** the
    feeds are listed with name, city and network, whether preset or added,
    and whether downloaded; a screen reader names each row.
-2. **Given** a feed's "New project", **When** pressed, **Then** the create
-   dialog opens with that feed chosen and the name focused; Create makes
-   a project on it.
+2. **Given** a feed's "Start a project", **When** pressed, **Then** the
+   create dialog opens with that feed chosen and the name focused; Create
+   makes a project on it.
 3. **Given** the engine not ready, **When** the dialog opens, **Then** the
    feed is typed as before, with the sentence saying why, so a project
    can still be made.
@@ -71,8 +71,11 @@ finishes the feed is in the list and the dialog closes.
 3. **Given** a zip with no stop_times, **When** added, **Then** the
    dialog shows the engine's sentence under the source, nothing is
    listed, and the dialog stays open.
-4. **Given** an add in progress, **When** cancelled, **Then** the engine
-   is told, the list is unchanged, and the dialog says so.
+4. **Given** a download in progress, **When** cancelled, **Then** the
+   engine is told, nothing is kept, and the dialog says so. A cancel that
+   lands after the download cannot interrupt the engine's check (engine
+   issue E23), so the Library lists again and the dialog says the list
+   decides.
 5. **Given** a path that no dialog of the app's handed out, **When** a
    page asks `feeds.add` with it, **Then** the main process refuses it
    before the engine sees it.
@@ -109,16 +112,17 @@ Remove. A feed a project still names is refused, naming how many.
   regenerated; the five feed methods MUST be reachable through the typed
   client.
 - **FR-002**: The Library MUST list `feeds.list`'s answer with name, city
-  and network, source and cached, and offer "New project" per feed and
-  "Remove" per added feed.
+  and network, source and cached, and offer "Start a project" per feed
+  and "Remove" per added feed.
 - **FR-003**: The create dialog MUST offer the feeds as a native select
   when they are listed, and a typed key otherwise.
 - **FR-004**: A zip MUST be chosen through a native file dialog opened by
   the main process, which hands the page the path and remembers it; the
   page MUST show the file's name only.
 - **FR-005**: The main process MUST refuse a `feeds.add` whose source is
-  neither an http(s) URL nor a path it handed out, and a `feeds.remove`
-  of a feed any project names, before the engine sees either.
+  neither an http(s) URL naming a public host nor a path it handed out
+  and has not spent, and a `feeds.remove` of a feed any project names,
+  before the engine sees either. A path is spent by one accepted add.
 - **FR-006**: The add MUST run as a job through the typed client with its
   progress on a progress line and a Cancel; a refusal MUST show the
   engine's hint verbatim.

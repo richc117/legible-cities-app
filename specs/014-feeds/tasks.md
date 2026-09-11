@@ -7,4 +7,4 @@
 - [x] T005 The stand-in's `feeds.list`, `feeds.add`, `feeds.remove`.
 - [x] T006 Unit tests (guard, dialog handler, run, dialog field rules), the real-engine list, the end-to-end scenarios.
 - [x] T007 ARCHITECTURE, CLAUDE.md, the bridge contract.
-- [ ] T008 Checks, scanners, the reviewer; the pull request.
+- [x] T008 Checks, scanners, the reviewer; the pull request.

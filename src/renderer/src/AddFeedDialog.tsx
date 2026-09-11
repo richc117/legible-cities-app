@@ -47,6 +47,8 @@ export default function AddFeedDialog({
   const [url, setUrl] = useState('')
   const [file, setFile] = useState<PickedZip | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+  const [picking, setPicking] = useState(false)
+  const cancelRef = useRef<HTMLElement>(null)
   const snapshot = useSnapshot(run)
   const running = snapshot.state === 'running'
 
@@ -61,10 +63,24 @@ export default function AddFeedDialog({
     }
   }, [open])
 
-  // The feed is in: the Library lists again and the dialog goes.
+  // The feed is in: the Library lists again and the dialog goes. A cancel
+  // may have landed after the engine kept the feed (its check cannot be
+  // interrupted), so the Library lists again then too.
   useEffect(() => {
     if (snapshot.state === 'done') onAdded()
   }, [snapshot.state, onAdded])
+
+  // A file is spent by one add, accepted or not: the main process forgets
+  // the path once it has let it through, so the next try picks again.
+  useEffect(() => {
+    if (snapshot.state === 'failed' || snapshot.state === 'cancelled') setFile(null)
+  }, [snapshot.state])
+
+  // Submitting disables the controls, and a disabled element drops focus;
+  // the one control left is where a person would go next.
+  useEffect(() => {
+    if (running) cancelRef.current?.focus()
+  }, [running])
 
   const reset = (): void => {
     setUrl('')
@@ -73,12 +89,26 @@ export default function AddFeedDialog({
     run.reset()
   }
 
-  const choose = async (): Promise<void> => {
-    const picked = await pickZip()
-    if (picked === null) return
-    setFile(picked)
-    setUrl('')
+  // The engine's last refusal is cleared by the next edit, as a typed
+  // message is, so an old sentence does not sit under a new choice.
+  const edited = (): void => {
     setMessage(null)
+    if (snapshot.state === 'failed' || snapshot.state === 'cancelled') run.reset()
+  }
+
+  const choose = async (): Promise<void> => {
+    if (picking) return
+    setPicking(true)
+    try {
+      const picked = await pickZip()
+      // Escape may have closed the dialog while the chooser was up.
+      if (picked === null || !dialogRef.current?.open) return
+      setFile(picked)
+      setUrl('')
+      edited()
+    } finally {
+      setPicking(false)
+    }
   }
 
   const submit = (event: FormEvent<HTMLFormElement>): void => {
@@ -100,13 +130,21 @@ export default function AddFeedDialog({
   }
 
   // Escape while a run is going cancels the run and keeps the dialog: a
-  // person who changes their mind should see that nothing was kept.
+  // person who changes their mind should see what happened. The platform
+  // may close the dialog anyway on a second Escape (a cancel event is only
+  // cancelable while the window holds an unspent activation), so the close
+  // handler tells the parent whenever the element closed on its own.
   const cancel = (): void => {
     if (running) {
       run.cancel()
       return
     }
     onCancel()
+  }
+  const closed = (): void => {
+    if (running) run.cancel()
+    reset()
+    if (open) onCancel()
   }
 
   const shown = snapshot.error ?? message
@@ -119,7 +157,7 @@ export default function AddFeedDialog({
         event.preventDefault()
         cancel()
       }}
-      onClose={reset}
+      onClose={closed}
     >
       <form noValidate onSubmit={submit}>
         <h2 id="add-feed-title">Add a feed</h2>
@@ -135,13 +173,13 @@ export default function AddFeedDialog({
             <Button
               ref={chooseRef}
               onClick={() => void choose()}
-              disabled={running}
-              aria-describedby="add-feed-file-name"
+              disabled={running || picking}
+              aria-describedby="add-feed-file-name add-feed-message"
             >
               <Icon name="layers" />
               Choose a zip
             </Button>
-            <span id="add-feed-file-name" className="hint">
+            <span id="add-feed-file-name" className="hint" aria-live="polite">
               {file === null ? 'No file chosen.' : file.name}
             </span>
           </div>
@@ -156,7 +194,7 @@ export default function AddFeedDialog({
             onChange={(value) => {
               setUrl(value)
               if (value !== '') setFile(null)
-              setMessage(null)
+              edited()
             }}
             placeholder="https://"
             spellCheck={false}
@@ -184,13 +222,15 @@ export default function AddFeedDialog({
             />
             <p className="progress-message" role="status" aria-live="polite">
               {snapshot.state === 'cancelled'
-                ? 'Cancelled. Nothing was kept.'
+                ? 'Cancelled. A download stopped keeps nothing; a check already finished may have kept the feed, and the list says which.'
                 : (snapshot.message ?? 'Starting.')}
             </p>
           </section>
         )}
         <div className="actions">
-          <Button onClick={cancel}>{running ? 'Cancel the add' : 'Close'}</Button>
+          <Button ref={cancelRef} onClick={cancel}>
+            {running ? 'Cancel the add' : 'Close'}
+          </Button>
           <Button
             variant="primary"
             type="submit"

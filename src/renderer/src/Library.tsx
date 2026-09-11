@@ -97,6 +97,16 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
     void refreshFeeds()
   }, [refreshFeeds])
 
+  // A cancelled add may still have kept the feed (the engine's check cannot
+  // be interrupted once its download is done), so the list is read again.
+  useEffect(() => {
+    let previous = adder.snapshot.state
+    return adder.subscribe((snapshot) => {
+      if (snapshot.state === 'cancelled' && previous !== 'cancelled') void refreshFeeds()
+      previous = snapshot.state
+    })
+  }, [adder, refreshFeeds])
+
   // The engine forgets the feed, its zip and its layouts; the main process
   // refuses first when a project names it, and that sentence is shown.
   const remove = async (): Promise<void> => {
@@ -125,7 +135,13 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
             New project
           </Button>
         )}
-        <Button onClick={() => setAdding(true)} disabled={!ready}>
+        <Button
+          onClick={() => {
+            setFeedNotice(null)
+            setAdding(true)
+          }}
+          disabled={!ready}
+        >
           <Icon name="layers" />
           Add feed
         </Button>
@@ -178,8 +194,14 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
       {feeds.length > 0 && (
         <FeedList
           feeds={feeds}
-          onNewProject={(feed) => setCreating({ feed: feed.key })}
-          onRemove={(feed) => setRemoving(feed)}
+          onNewProject={(feed) => {
+            setFeedNotice(null)
+            setCreating({ feed: feed.key })
+          }}
+          onRemove={(feed) => {
+            setFeedNotice(null)
+            setRemoving(feed)
+          }}
         />
       )}
       <CreateProjectDialog

@@ -50,6 +50,13 @@ export default function CreateProjectDialog({
   const [feed, setFeed] = useState(() => startingFeed(feeds, initialFeed))
   const listed = feeds.length > 0
   const [messages, setMessages] = useState<Messages>({})
+
+  // The list can arrive while the dialog is open (the engine became ready):
+  // the typed key gives way to the select, and a key the list does not
+  // hold is not sent to a feed that does not exist.
+  useEffect(() => {
+    if (open) setFeed((current) => startingFeed(feeds, listed ? current : undefined))
+  }, [open, feeds, listed])
   const [busy, setBusy] = useState(false)
 
   // showModal() makes the browser own modality, the focus trap, Escape and
@@ -174,7 +181,7 @@ export default function CreateProjectDialog({
               />
             </>
           )}
-          <p id="create-feed-message" className="message error">
+          <p id="create-feed-message" className="message error" role={listed ? 'alert' : undefined}>
             {messages.feed}
           </p>
         </div>

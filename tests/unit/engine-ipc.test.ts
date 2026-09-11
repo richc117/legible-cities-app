@@ -243,6 +243,33 @@ describe('registerEngineHandlers', () => {
 })
 
 describe('the guard in front of the engine', () => {
+  it('holds the token while the guard thinks, so a second invoke with it is refused', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((r) => {
+      release = r
+    })
+    const h = harness(true, async () => {
+      await gate
+      return null
+    })
+    const first = h.call(CHANNELS.engineRequest, 'tok1', 'feeds.remove', { key: 'x' })
+    const second = (await h.call(CHANNELS.engineRequest, 'tok1', 'feeds.remove', {
+      key: 'x',
+    })) as { accepted: boolean; error?: { data?: { hint: string } } }
+    expect(second.accepted).toBe(false)
+    expect(second.error?.data?.hint).toMatch(/already running/)
+    release()
+    expect((await first) as { accepted: boolean }).toEqual({ accepted: true })
+    expect(h.requests.map((r) => r.method)).toEqual(['feeds.remove'])
+    // A refusal frees the token for the next attempt.
+    const refusing = harness(true, async (method) => (method === 'feeds.remove' ? 'no' : null))
+    await refusing.call(CHANNELS.engineRequest, 'tok2', 'feeds.remove', { key: 'x' })
+    const again = (await refusing.call(CHANNELS.engineRequest, 'tok2', 'feeds.list')) as {
+      accepted: boolean
+    }
+    expect(again.accepted).toBe(true)
+  })
+
   it('refuses a request the guard names, as a bad call, before the engine sees it', async () => {
     const h = harness(true, async (method) =>
       method === 'feeds.remove' ? 'One project uses this feed; delete the project first.' : null,

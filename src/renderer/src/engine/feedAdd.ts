@@ -1,4 +1,9 @@
-import { isEngineErrorShape, ERROR_CODES, type EngineState } from '../../../shared/engine'
+import {
+  isEngineErrorShape,
+  ERROR_CODES,
+  withoutPaths,
+  type EngineState,
+} from '../../../shared/engine'
 import type { FeedRecord, Methods } from '../../../shared/protocol'
 import type { Stage } from '../ProgressLine'
 
@@ -40,9 +45,13 @@ export type AddSource = { file: string } | { url: string }
 export const freshStages = (): Stage[] =>
   ADD_STAGES.map((label) => ({ id: label, label, state: 'pending' as const }))
 
-/** The sentence a person reads for a failure: the engine's, never a path. */
+/**
+ * The sentence a person reads for a failure: the engine's, never a path.
+ * A feed refusal names the file by its name already; an I/O failure's hint
+ * is "reason: path" (the engine's classify), so the path is taken out.
+ */
 export function sentenceFor(reason: unknown): string {
-  if (isEngineErrorShape(reason)) return reason.data?.hint ?? reason.message
+  if (isEngineErrorShape(reason)) return withoutPaths(reason.data?.hint ?? reason.message)
   return reason instanceof Error ? reason.message : 'The feed could not be added.'
 }
 

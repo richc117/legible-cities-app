@@ -207,11 +207,10 @@ if (!hasLock) {
           properties: ['openFile'],
           filters: [{ name: 'GTFS feed', extensions: ['zip'] }],
         }
-        // Parented to the window, so it is modal to it (rules/main.md).
-        const answer =
-          mainWindow !== null && !mainWindow.isDestroyed()
-            ? await dialog.showOpenDialog(mainWindow, options)
-            : await dialog.showOpenDialog(options)
+        // Parented to the window, so it is modal to it (rules/main.md); only
+        // the window's own top frame can ask, so the window is there.
+        if (mainWindow === null || mainWindow.isDestroyed()) return null
+        const answer = await dialog.showOpenDialog(mainWindow, options)
         return answer.canceled || answer.filePaths.length === 0 ? null : answer.filePaths[0]
       },
       picked,

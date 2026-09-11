@@ -175,8 +175,10 @@ test('adds a feed from a file, and it survives a relaunch', async () => {
     await expect(dialog.getByRole('button', { name: 'Choose a zip' })).toBeFocused()
     await dialog.getByRole('button', { name: 'Choose a zip' }).click()
     await expect(dialog).toContainText('Metro de Prueba.zip')
+    await expect(dialog, 'the name, never the folder').not.toContainText(engineHome)
     await dialog.getByRole('button', { name: 'Add feed' }).click()
     await expect(dialog).toBeHidden({ timeout: 20_000 })
+    expect(await page.locator('body').innerText()).not.toContain(engineHome)
     const added = page.getByRole('list', { name: 'Added' })
     await expect(added.getByRole('listitem', { name: 'Metro de Prueba' })).toBeVisible()
     await expect(feedRow(page, 'Metro de Prueba')).toContainText('downloaded')
@@ -206,6 +208,19 @@ test("a zip without a timetable is refused with the engine's sentence, and nothi
     await expect(dialog, 'the dialog stays, to try again').toBeVisible()
     await expect(page.getByRole('list', { name: 'Added' })).toHaveCount(0)
     expect(readdirSync(join(engineHome, 'data', 'feeds'))).toEqual([])
+  })
+})
+
+test('a feed address on this machine is refused before the engine sees it', async () => {
+  const engineHome = home()
+  await withApp(engineHome, async (page) => {
+    await page.getByRole('button', { name: 'Add feed' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Add a feed' })
+    await dialog.getByLabel('Or from an address').fill('http://127.0.0.1:631/')
+    await dialog.getByRole('button', { name: 'Add feed' }).click()
+    await expect(dialog.getByRole('alert')).toContainText('must name a public host')
+    const received = readFileSync(join(engineHome, 'fake-engine.received'), 'utf8')
+    expect(received.includes('feeds.add')).toBe(false)
   })
 })
 
@@ -244,16 +259,27 @@ test('adds a feed from a URL with its download on the line, and a cancel keeps n
     const run = dialog.getByRole('region', { name: 'Adding the feed' })
     await expect(run.getByText('download', { exact: true })).toBeVisible()
     await expect(run.getByRole('status')).toContainText(/downloaded [\d,]+ of 10,240 bytes/)
+    await expect(dialog.getByRole('button', { name: 'Cancel the add' })).toBeFocused()
     await dialog.getByRole('button', { name: 'Cancel the add' }).click()
-    await expect(run.getByRole('status')).toContainText('Cancelled. Nothing was kept.')
+    await expect(run.getByRole('status')).toContainText(/^Cancelled\./)
     await expect(dialog).toBeVisible()
     await expect(page.getByRole('list', { name: 'Added' })).toHaveCount(0)
+    // The engine was told, and kept nothing.
+    const received = readFileSync(join(engineHome, 'fake-engine.received'), 'utf8')
+    expect(received).toContain('$/cancelRequest')
+    expect(
+      readdirSync(join(engineHome, 'data', 'feeds')).filter((f) => f.endsWith('.zip')),
+    ).toEqual([])
 
-    // Again, to the end.
+    // Again, to the end: the feed carries the address it came from.
     await dialog.getByRole('button', { name: 'Add feed' }).click()
     await expect(dialog).toBeHidden({ timeout: 20_000 })
     await expect(feedRow(page, 'Remote Transit')).toBeVisible()
     await expect(feedRow(page, 'Remote Transit')).toContainText('downloaded')
+    const records = JSON.parse(
+      readFileSync(join(engineHome, 'data', 'feeds', 'user-feeds.json'), 'utf8'),
+    ) as { url: string }[]
+    expect(records.map((r) => r.url)).toEqual(['https://agency.example/gtfs.zip'])
   })
 })
 

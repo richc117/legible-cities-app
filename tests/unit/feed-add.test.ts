@@ -148,6 +148,16 @@ describe('FeedAdd', () => {
     expect(run.snapshot.error).toMatch(/not ready/)
   })
 
+  it("keeps a path out of an I/O failure's sentence", () => {
+    const io = {
+      code: -32000,
+      message: 'x',
+      data: { kind: 'io', detail: 'x', hint: 'Permission denied: /var/feeds/someone/feed.zip' },
+    }
+    expect(sentenceFor(io)).not.toContain('/var')
+    expect(sentenceFor(io)).toMatch(/Permission denied/)
+  })
+
   it('falls back to the message without a hint', () => {
     expect(sentenceFor({ code: -32000, message: 'plain' })).toBe('plain')
     expect(sentenceFor(new Error('thrown'))).toBe('thrown')

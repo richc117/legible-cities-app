@@ -12,8 +12,6 @@ interface Props {
   feeds: FeedRecord[]
   onNewProject: (feed: FeedRecord) => void
   onRemove: (feed: FeedRecord) => void
-  /** True while an add or a remove is in flight, or an export holds the engine. */
-  disabled?: boolean
 }
 
 /** What the row says about where a feed runs, when the registry knows. */
@@ -22,12 +20,7 @@ export function placeOf(feed: FeedRecord): string | null {
   return parts.length === 0 ? null : parts.join(' · ')
 }
 
-export default function FeedList({
-  feeds,
-  onNewProject,
-  onRemove,
-  disabled = false,
-}: Props): JSX.Element {
+export default function FeedList({ feeds, onNewProject, onRemove }: Props): JSX.Element {
   const presets = feeds.filter((f) => f.source === 'preset')
   const added = feeds.filter((f) => f.source === 'user')
   const group = (title: string, rows: FeedRecord[]): JSX.Element | null =>
@@ -47,7 +40,6 @@ export default function FeedList({
                 <span className="feed-actions">
                   <Button
                     onClick={() => onNewProject(feed)}
-                    disabled={disabled}
                     aria-label={`Start a project on ${feed.name}`}
                   >
                     <Icon name="add" />
@@ -57,7 +49,6 @@ export default function FeedList({
                     <Button
                       variant="ghost"
                       onClick={() => onRemove(feed)}
-                      disabled={disabled}
                       aria-label={`Remove ${feed.name}`}
                     >
                       <Icon name="trash" />
