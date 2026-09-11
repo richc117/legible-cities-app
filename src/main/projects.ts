@@ -343,7 +343,7 @@ export class ProjectStore {
       version: RECORD_VERSION,
       layout,
       made: done.made,
-      built: { mode: done.built.mode, agency: done.built.agency },
+      built: { mode: done.built.mode, agency: done.built.agency?.trim() || null },
       date: record.date ?? done.date,
       service: { start, end, busiest, anchor },
       modified: new Date().toISOString(),

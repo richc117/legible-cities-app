@@ -59,6 +59,8 @@ function readLayoutDone(raw: unknown): LayoutDone {
   check(validateServiceWindow(input.service))
   check(validateMade(input.made))
   const { start, end, busiest, anchor } = input.service as LayoutDone['service']
+  if (!isObject(input.built))
+    throw new Error('the layout run did not say what the layout was made with')
   const built = readInputs(input.built)
   return {
     date,

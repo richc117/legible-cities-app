@@ -261,18 +261,21 @@ class Engine:
         key = params.get("key", "x")
         # The id names the inputs, as the real engine's does: the same feed
         # and options give the same id, so two projects on one feed share one.
-        # An empty agency is none, as the engine's resolved() reads it.
-        agency = params.get("agency") or None
-        inputs = {"feed": key, "mode": params.get("mode"), "agency": agency}
+        # A missing mode or agency is the registry entry's and an empty
+        # agency is none, as the engine's resolved() reads them.
+        entry = FEEDS.get(key, {})
+        mode = params.get("mode", entry.get("mode") or "all")
+        agency = params.get("agency", entry.get("agency")) or None
+        inputs = {"feed": key, "mode": mode, "agency": agency}
         layout = hashlib.sha256(json.dumps(inputs, sort_keys=True).encode()).hexdigest()
         if params.get("force") or layout not in self.layouts:
             self.builds += 1
             self.layouts[layout] = "2026-09-10T00:%02d:%02d+00:00" % divmod(self.builds, 60)
         paths = {s: str(HOME / "data" / "graphs" / key / layout / f"0{i}_{s}.json")
                  for i, s in enumerate(stages)}
-        meta = {"feed": key, "feed_sha256": "0" * 64, "mode": params.get("mode") or "all",
+        meta = {"feed": key, "feed_sha256": "0" * 64, "mode": mode,
                 "agency": agency, "label_pattern": None, "label_strip": None,
-                "loom": None, "stages": [["gtfs2graph", ["-m", params.get("mode") or "all"]],
+                "loom": None, "stages": [["gtfs2graph", ["-m", mode]],
                                          ["topo", []], ["loom", []], ["octi", []]],
                 "engine": self.control.get("version", "0.2.0"),
                 "made": self.layouts[layout], "migrated": False}

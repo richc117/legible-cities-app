@@ -259,12 +259,12 @@ export function parseRecord(json: unknown): Parsed {
   return { record, readOnly: version > RECORD_VERSION }
 }
 
-/** The inputs a layout was made with, whole, or null. */
+/** The inputs a layout was made with, whole, or null; an empty agency is none, as the record's is. */
 function readInputs(value: unknown): ProjectInputs | null {
   if (!isObject(value) || !isString(value.mode) || !MODE_PATTERN.test(value.mode)) return null
   const agency = value.agency == null ? null : isString(value.agency) ? value.agency : undefined
   if (agency === undefined) return null
-  return { mode: value.mode, agency }
+  return { mode: value.mode, agency: agency === null ? null : agency.trim() || null }
 }
 
 /** The stored window, whole, or null: a half-valid block is not half-trusted. */

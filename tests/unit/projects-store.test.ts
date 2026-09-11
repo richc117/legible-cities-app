@@ -419,6 +419,18 @@ describe('completeLayout', () => {
     expect(second.record.date, 'the day is resolved once (ADR-023)').toBe('2026-09-02')
   })
 
+  it('stores an empty built agency as none, as the record does its own', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    const { record } = await store.completeLayout(project.id, {
+      date: '2026-09-02',
+      layout: LAYOUT,
+      service: WINDOW,
+      made: MADE,
+      built: { mode: 'all', agency: ' ' },
+    })
+    expect(record.built).toEqual({ mode: 'all', agency: null })
+  })
+
   it('reports a layout laid out again since, by the same id and a later made', async () => {
     const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
     const done = (made: string) => ({

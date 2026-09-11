@@ -19,6 +19,7 @@
 | `theme` | `'warm-dark' \| 'sepia'` | `'warm-dark'` | A4-03 |
 | `layout` | string or `null` | `null` (the stored layout's hash, A3-01) | A3-01 |
 | `made` | ISO 8601 or `null` | `null` (when the engine made the layout, A3-06) | A3-06 |
+| `built` | `{ mode, agency }` or `null` | `null` (what the engine made the layout with, A2-02) | A2-02 |
 | `created` | ISO 8601 UTC | now | this feature |
 | `modified` | ISO 8601 UTC | now | every write |
 

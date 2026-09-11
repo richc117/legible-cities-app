@@ -4,7 +4,14 @@
 
 import { describe, expect, it } from 'vitest'
 import { keeps, modeOptions, routesOf, sortRoutes } from '../../src/renderer/src/Inspect'
-import { forgetAllInspections, inspectionFor } from '../../src/renderer/src/engine/inspections'
+import {
+  feedRecordFor,
+  forgetAllInspections,
+  forgetFeedList,
+  forgetInspection,
+  inspectionFor,
+} from '../../src/renderer/src/engine/inspections'
+import type { FeedRecord } from '../../src/shared/protocol'
 import type { Inspection, Route, RouteType } from '../../src/shared/protocol'
 
 const route = (over: Partial<Route>): Route => ({
@@ -112,5 +119,53 @@ describe('the inspection cache', () => {
     forgetAllInspections()
     await inspectionFor(client, 'la', '2026-09-11')
     expect(asked).toBe(4)
+  })
+})
+
+describe('forgetting one feed, and the feed list', () => {
+  it('forgets every day of one feed and no other', async () => {
+    forgetAllInspections()
+    let asked = 0
+    const client = {
+      request: (_m: 'feeds.inspect', params: { key: string }) => {
+        asked += 1
+        return { result: Promise.resolve({ key: params.key } as Inspection) }
+      },
+    }
+    await inspectionFor(client, 'la', '2026-09-11')
+    await inspectionFor(client, 'la', '2026-09-12')
+    await inspectionFor(client, 'la-metro', '2026-09-11')
+    expect(asked).toBe(3)
+    forgetInspection('la')
+    await inspectionFor(client, 'la-metro', '2026-09-11')
+    expect(asked, 'the other feed is still held').toBe(3)
+    await inspectionFor(client, 'la', '2026-09-11')
+    await inspectionFor(client, 'la', '2026-09-12')
+    expect(asked).toBe(5)
+  })
+
+  it('reads the feed list once, forgets it on demand, and does not keep a refusal', async () => {
+    forgetAllInspections()
+    let asked = 0
+    let refuse = true
+    const client = {
+      request: () => {
+        asked += 1
+        return {
+          result: refuse
+            ? Promise.reject(new Error('away'))
+            : Promise.resolve({ feeds: [{ key: 'la', mode: 'all' } as FeedRecord] }),
+        }
+      },
+    }
+    await expect(feedRecordFor(client, 'la')).rejects.toThrow('away')
+    await new Promise((r) => setTimeout(r, 0))
+    refuse = false
+    expect((await feedRecordFor(client, 'la'))?.mode).toBe('all')
+    expect(await feedRecordFor(client, 'nope')).toBeNull()
+    expect(asked).toBe(2)
+    forgetFeedList()
+    await feedRecordFor(client, 'la')
+    expect(asked).toBe(3)
   })
 })
