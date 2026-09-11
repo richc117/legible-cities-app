@@ -80,7 +80,13 @@ export interface RunOptions {
   client: RunClient
   complete(
     id: string,
-    done: { date: string; layout: string; made: string; service: ServiceWindow },
+    done: {
+      date: string
+      layout: string
+      made: string
+      built: { mode: string; agency: string | null }
+      service: ServiceWindow
+    },
   ): Promise<{ changed: boolean; relaid: boolean }>
   /** A rebuild for a chosen day finished: the day is written, inside the window or not at all. */
   completeRebuild(id: string, done: { date: string }): Promise<unknown>
@@ -187,12 +193,20 @@ export class LayoutRun {
 
     void (async () => {
       try {
-        // The registry entry's mode and agency apply: choosing them per
-        // project is A2-02's, and until then the record's are placeholders.
-        const layout = client.request(
-          'graph.build',
-          force ? { key: project.feed, force } : { key: project.feed },
-        )
+        // The project's mode and agency are its inputs (A2-02): the engine
+        // names a layout by them, so a change here is a different layout.
+        // An agency of none is left out, which the engine reads as the
+        // registry entry's.
+        // An agency of none is sent as the empty string, which the engine
+        // reads as every operator; left out, it would read as the registry
+        // entry's, and a feed whose entry names one could never be drawn
+        // whole (engine v0.7.1).
+        const layout = client.request('graph.build', {
+          key: project.feed,
+          mode: project.mode,
+          agency: project.agency ?? '',
+          ...(force ? { force } : {}),
+        })
         this.#inFlight = layout
         layout.onProgress((p) => this.#report(p))
         const built = await layout.result
@@ -229,6 +243,9 @@ export class LayoutRun {
           date,
           layout: built.layout,
           made: built.meta.made,
+          // What the engine made the layout with, as its meta records it;
+          // the screen says when the record's inputs have moved since.
+          built: { mode: built.meta.mode, agency: built.meta.agency || null },
           service: {
             start: window.start,
             end: window.end,

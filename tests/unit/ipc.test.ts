@@ -17,6 +17,7 @@ const WINDOW = {
   anchor: '2026-09-08',
 }
 const MADE = '2026-09-10T12:00:00+00:00'
+const BUILT = { mode: 'all', agency: null }
 
 function harness(topFrame = true) {
   const handlers = new Map<string, Handler>()
@@ -51,23 +52,24 @@ describe('registerProjectHandlers', () => {
     const layout = 'a'.repeat(64)
     const service = WINDOW
     const made = MADE
+    const built = BUILT
     for (const done of [
       undefined,
       {},
-      { date: '2026-13-01', layout, service, made },
+      { date: '2026-13-01', layout, service, made, built },
       { date: 'yesterday', layout, service, made },
       { date: '2026-09-08', service, made },
-      { date: '2026-09-08', layout: 'not an id', service, made },
-      { date: '2026-09-08', layout: ['a'.repeat(64)], service, made },
-      { date: '2026-09-08', layout: '/a/03.json', service, made },
+      { date: '2026-09-08', layout: 'not an id', service, made, built },
+      { date: '2026-09-08', layout: ['a'.repeat(64)], service, made, built },
+      { date: '2026-09-08', layout: '/a/03.json', service, made, built },
       { date: '2026-09-08', layout, made },
-      { date: '2026-09-08', layout, service: 'whenever', made },
+      { date: '2026-09-08', layout, service: 'whenever', made, built },
       { date: '2026-09-08', layout, service: { ...WINDOW, busiest: 42 }, made },
       { date: '2026-09-08', layout, service: { ...WINDOW, end: '2025-01-01' }, made },
       { date: '2026-09-08', layout, service },
-      { date: '2026-09-08', layout, service, made: 'never' },
-      { date: '2026-09-08', layout, service, made: '' },
-      { date: '2026-09-08', layout, service, made: 42 },
+      { date: '2026-09-08', layout, service, made: 'never', built },
+      { date: '2026-09-08', layout, service, made: '', built },
+      { date: '2026-09-08', layout, service, made: 42, built },
     ]) {
       await expect(
         call(CHANNELS.projectsCompleteLayout, 'abcdefghijk1', done),
@@ -84,6 +86,7 @@ describe('registerProjectHandlers', () => {
       layout: 'a'.repeat(64),
       service: { ...WINDOW, extra: 1 },
       made: MADE,
+      built: { ...BUILT, extra: 1 },
     }
     await call(CHANNELS.projectsCompleteLayout, 'abcdefghijk1', done)
     expect(calls).toEqual([
@@ -91,7 +94,13 @@ describe('registerProjectHandlers', () => {
         method: 'completeLayout',
         args: [
           'abcdefghijk1',
-          { date: '2026-09-08', layout: 'a'.repeat(64), made: MADE, service: WINDOW },
+          {
+            date: '2026-09-08',
+            layout: 'a'.repeat(64),
+            made: MADE,
+            built: BUILT,
+            service: WINDOW,
+          },
         ],
       },
     ])
@@ -109,6 +118,29 @@ describe('registerProjectHandlers', () => {
     await call(CHANNELS.projectsCompleteRebuild, 'abcdefghijk1', { date: '2026-09-12', extra: 1 })
     expect(calls).toEqual([
       { method: 'completeRebuild', args: ['abcdefghijk1', { date: '2026-09-12' }] },
+    ])
+  })
+
+  it('checks the two inputs for shape and passes them to the store', async () => {
+    const { call, calls } = harness()
+    for (const inputs of [
+      undefined,
+      {},
+      { mode: 3 },
+      { mode: 'Rail!' },
+      { mode: 'all', agency: 7 },
+    ]) {
+      await expect(
+        call(CHANNELS.projectsSetInputs, 'abcdefghijk1', inputs),
+        JSON.stringify(inputs),
+      ).rejects.toThrow()
+    }
+    expect(calls).toEqual([])
+    await call(CHANNELS.projectsSetInputs, 'abcdefghijk1', { mode: 'tram', agency: null })
+    await call(CHANNELS.projectsSetInputs, 'abcdefghijk1', { mode: 'all', agency: 'M', extra: 1 })
+    expect(calls).toEqual([
+      { method: 'setInputs', args: ['abcdefghijk1', { mode: 'tram', agency: null }] },
+      { method: 'setInputs', args: ['abcdefghijk1', { mode: 'all', agency: 'M' }] },
     ])
   })
 

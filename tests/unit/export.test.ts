@@ -94,6 +94,7 @@ const project = (over: Partial<ProjectRecord & { readOnly: boolean }> = {}) => (
   theme: 'warm-dark' as const,
   layout: 'a'.repeat(64),
   made: null,
+  built: null,
   created: '2026-09-10T00:00:00.000Z',
   modified: '2026-09-10T00:00:00.000Z',
   readOnly: false,

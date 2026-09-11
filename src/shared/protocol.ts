@@ -1,7 +1,7 @@
 // Generated from the engine's own description of its protocol.
 // Run `npm run typegen` to regenerate; edits here are lost.
 //
-// Engine: v0.7.0, protocol 1.
+// Engine: v0.7.1, protocol 1.
 // Source: vendor/protocol.schema.json, printed by the engine's
 // `python -m schematic.serve --schema` and committed verbatim.
 
@@ -172,7 +172,8 @@ export interface GraphBuildParams {
    */
   mode?: string
   /**
-   * Keep only this agency_id; the registry entry's when omitted.
+   * Keep only this agency_id; the registry entry's when omitted; empty for
+   * every operator, whatever the entry says.
    */
   agency?: string
   /**
@@ -732,6 +733,18 @@ export interface RouteType {
    * onto.
    */
   name: string
+  /**
+   * The LOOM mode (gtfs2graph -m) that keeps this type, so a client can show
+   * which types a chosen mode draws; null for a type LOOM has no name for.
+   * The mode all keeps every type.
+   */
+  mode: string | null
+  /**
+   * Every -m name that keeps this type, the canonical one first (subway and
+   * metro; tram and streetcar; rail and train); empty for a type LOOM has no
+   * name for. A numeric mode keeps its own code.
+   */
+  modes: string[]
   routes: number
   trips: number
 }

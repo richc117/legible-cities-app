@@ -13,9 +13,12 @@ filesystem path.
 | `projects.create({ name, feed, mode?, agency? })` | as `data-model.md` | the new `ProjectRecord` | `name is required`; `name is too long`; `feed key must be lowercase letters, digits and hyphens`; `mode …`; `agency …` |
 | `projects.rename(id, name)` | | the updated `ProjectRecord` | as above, plus `not found`, `read-only` |
 | `projects.delete(id)` | | `{ removed: string[]; failed: { folder: 'project' \| 'output'; reason: string }[] }` | `not found`; `invalid id` |
+| `projects.setInputs(id, { mode, agency })` (A2-02) | the mode by the engine's rule; an agency id or none | the updated `ProjectRecord`, unchanged when nothing differs | `mode …`; `agency …`; `not found`; `read-only` |
 
 Channels, constants in `src/shared/api.ts`: `projects:list`, `projects:get`,
-`projects:create`, `projects:rename`, `projects:delete`.
+`projects:create`, `projects:rename`, `projects:delete`; since A3-01
+`projects:complete-layout`, since A3-04 `projects:complete-rebuild`, since
+A2-02 `projects:set-inputs`.
 
 Error messages are the strings a person sees in the form; they never contain
 a path. The `failed` entries of delete name the folder by role, not by path.

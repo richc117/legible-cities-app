@@ -39,6 +39,8 @@ export interface LayoutDone {
   layout: string
   /** When the layout was made, as the engine wrote it beside the set (meta.made). */
   made: string
+  /** The mode and agency the engine made it with (meta.mode, meta.agency). */
+  built: import('./project').ProjectInputs
   /** The feed's window and the engine's day, as feeds.service answered them. */
   service: import('./project').ServiceWindow
 }

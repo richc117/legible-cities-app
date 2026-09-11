@@ -19,6 +19,7 @@ The on-disk form of `ProjectRecord` (`data-model.md`), version 1:
   "theme": "warm-dark",
   "layout": null,
   "made": null,
+  "built": null,
   "created": "2026-09-07T20:00:00.000Z",
   "modified": "2026-09-07T20:00:00.000Z"
 }
@@ -34,6 +35,10 @@ The on-disk form of `ProjectRecord` (`data-model.md`), version 1:
 - `made` (added by A3-06, still version 1) is when the engine made the
   stored layout, its `meta.made` as answered by `graph.build`, or `null`;
   a value that does not parse as a time reads as `null`.
+- `built` (added by A2-02, still version 1) is the mode and agency the
+  engine made the stored layout with, `{ mode, agency }` from
+  `graph.build`'s meta, or `null`; an empty agency reads as none, and a
+  block that is not that shape reads as `null`.
 - `service` (added by A3-04, still version 1) is the engine's answer at
   the last layout run, `{ start, end, busiest, anchor }`, four days
   `YYYY-MM-DD` with `start <= end`, or `null`; a block that is not that

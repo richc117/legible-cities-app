@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState, type FormEvent, type JSX } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent, type JSX } from 'react'
 import type { DeleteResult, ProjectRecord } from '../../shared/api'
 import { shortLayoutId } from '../../shared/layout'
 import { validateName } from '../../shared/project'
 import ConfirmDialog from './ConfirmDialog'
-import { exportRunFor, layoutRunFor } from './engine/runs'
+import { engineClient, exportRunFor, layoutRunFor } from './engine/runs'
+import { feedRecordFor, inspectionFor } from './engine/inspections'
+import Inspect from './Inspect'
 import ExportRunView from './ExportRun'
 import Viewer from './Viewer'
 import Icon from './icons/Icon'
@@ -160,6 +162,40 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
     }
   }
 
+  // The two inputs chosen with the feed in view: the record comes back
+  // written, and the run reads it when it next starts.
+  const setInputs = async (inputs: { mode: string; agency: string | null }): Promise<void> => {
+    const record = await window.api.projects.setInputs(id, inputs)
+    setState((current) =>
+      current.status === 'ready'
+        ? { status: 'ready', project: { ...current.project, ...record } }
+        : current,
+    )
+  }
+  const today = (): string => {
+    const now = new Date()
+    const pad = (n: number): string => String(n).padStart(2, '0')
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+  }
+  const inspect = useCallback((key: string) => inspectionFor(engineClient(), key, today()), [])
+  const [registry, setRegistry] = useState<{ mode: string; agency: string | null } | null>(null)
+  const feedKey = project?.feed ?? null
+  const ready = engine?.state === 'ready'
+  useEffect(() => {
+    if (feedKey === null || !ready) return
+    let left = false
+    feedRecordFor(engineClient(), feedKey).then(
+      (record) => {
+        if (!left)
+          setRegistry(record === null ? null : { mode: record.mode, agency: record.agency })
+      },
+      () => undefined,
+    )
+    return () => {
+      left = true
+    }
+  }, [feedKey, ready])
+
   // A rejection stays in the confirm dialog; a result goes back to the
   // Library, with a sentence if some folder remained.
   const remove = async (): Promise<void> => {
@@ -223,6 +259,16 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
               <Time iso={project.modified} />
             </dd>
           </dl>
+          {!project.readOnly && (
+            <Inspect
+              project={project}
+              engine={engine}
+              inspect={inspect}
+              onInputs={setInputs}
+              registry={registry}
+              disabled={layingOut || exporting}
+            />
+          )}
           {!project.readOnly && (
             <LayoutRunView run={run} project={project} engine={engine} disabled={exporting} />
           )}

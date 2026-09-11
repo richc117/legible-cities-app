@@ -55,6 +55,17 @@ export default function LayoutRun({
     />
   )
 
+  // The record's inputs have moved since the layout was made: the map on
+  // screen is the old choice's until the next run draws the new (A2-02).
+  const moved =
+    project.built !== null &&
+    (project.built.mode !== project.mode || project.built.agency !== project.agency)
+  const movedNotice = moved && (
+    <p className="prose" role="status">
+      This layout was made with {describeInputs(project.built)}; the choice has changed since, so
+      lay out to draw with {describeInputs(project)}.
+    </p>
+  )
   if (state === 'idle') {
     return (
       <>
@@ -64,6 +75,7 @@ export default function LayoutRun({
             {project.date === null ? '' : ` for ${project.date}`}.
           </p>
         )}
+        {movedNotice}
         <div className="toolbar">
           <Button variant="primary" onClick={begin} disabled={disabled}>
             <Icon name="map" />
@@ -109,6 +121,7 @@ export default function LayoutRun({
           <p className="prose" role="status">
             {rebuilt ? drawnSentence(day) : doneSentence(forced, changed, relaid)}
           </p>
+          {movedNotice}
           {/* The run outlives the screen, so this state is what a person
               comes back to; without the unforced run here, "Lay out again"
               would be unreachable until the app restarts. */}
@@ -144,6 +157,14 @@ export function doneSentence(forced: boolean, changed: boolean, relaid = false):
   if (relaid)
     return 'Laid out. The layout was laid out again from another project since this one last drew from it, so the map may place stations differently.'
   return 'Laid out.'
+}
+
+/** A mode and an agency, in words. */
+export function describeInputs(inputs: { mode: string; agency: string | null } | null): string {
+  if (inputs === null) return "the feed's own entry"
+  return inputs.agency === null
+    ? `${inputs.mode}, every operator`
+    : `${inputs.mode}, ${inputs.agency}`
 }
 
 /** What a rebuild for a chosen day says when the map has been drawn. */

@@ -74,6 +74,7 @@ const api: Api = {
     delete: (id) => invoke(CHANNELS.projectsDelete, id),
     completeLayout: (id, done) => invoke(CHANNELS.projectsCompleteLayout, id, done),
     completeRebuild: (id, done) => invoke(CHANNELS.projectsCompleteRebuild, id, done),
+    setInputs: (id, inputs) => invoke(CHANNELS.projectsSetInputs, id, inputs),
   },
   viewer: {
     attach: (projectId) => invoke(CHANNELS.viewerAttach, projectId),

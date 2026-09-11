@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type JSX } from 'react'
 import type { CreateProjectInput, ProjectSummary } from '../../shared/api'
 import type { FeedRecord } from '../../shared/protocol'
 import { sentenceFor } from './engine/feedAdd'
+import { forgetFeedList, forgetInspection } from './engine/inspections'
 import { engineClient, feedAdd } from './engine/runs'
 import AddFeedDialog from './AddFeedDialog'
 import ConfirmDialog from './ConfirmDialog'
@@ -55,6 +56,7 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
   const headingRef = useRef<HTMLHeadingElement>(null)
 
   const refreshFeeds = useCallback(async (): Promise<void> => {
+    forgetFeedList()
     setFeeds(await listFeeds(ready))
   }, [ready])
 
@@ -103,6 +105,8 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
     let previous = adder.snapshot.state
     return adder.subscribe((snapshot) => {
       if (snapshot.state === 'cancelled' && previous !== 'cancelled') void refreshFeeds()
+      // A feed added anew under a key seen before is a new feed to inspect.
+      if (snapshot.state === 'done' && snapshot.feed !== null) forgetInspection(snapshot.feed.key)
       previous = snapshot.state
     })
   }, [adder, refreshFeeds])
@@ -116,6 +120,7 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
     } catch (error) {
       throw new Error(sentenceFor(error), { cause: error })
     }
+    forgetInspection(removing.key)
     setRemoving(null)
     setFeedNotice(`${removing.name} was removed.`)
     await refreshFeeds()

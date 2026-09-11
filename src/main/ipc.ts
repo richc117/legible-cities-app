@@ -15,6 +15,7 @@ import {
   validateMode,
   validateName,
   type CreateProjectInput,
+  type ProjectInputs,
   type RebuildDone,
   validateMade,
   validateServiceDate,
@@ -58,10 +59,14 @@ function readLayoutDone(raw: unknown): LayoutDone {
   check(validateServiceWindow(input.service))
   check(validateMade(input.made))
   const { start, end, busiest, anchor } = input.service as LayoutDone['service']
+  if (!isObject(input.built))
+    throw new Error('the layout run did not say what the layout was made with')
+  const built = readInputs(input.built)
   return {
     date,
     layout: input.layout,
     made: input.made as string,
+    built,
     service: { start, end, busiest, anchor },
   }
 }
@@ -72,6 +77,17 @@ function readRebuildDone(raw: unknown): RebuildDone {
   const date = typeof input.date === 'string' ? input.date : ''
   check(validateServiceDate(date))
   return { date }
+}
+
+/** The two inputs a person chose: a mode by the engine's rule, an agency id or none. */
+function readInputs(raw: unknown): ProjectInputs {
+  const input = isObject(raw) ? raw : {}
+  const mode = typeof input.mode === 'string' ? input.mode : ''
+  check(validateMode(mode))
+  const agency = input.agency == null ? null : input.agency
+  if (typeof agency !== 'string' && agency !== null) throw new Error('agency must be text')
+  check(validateAgency(agency))
+  return { mode, agency }
 }
 
 function readCreateInput(raw: unknown): CreateProjectInput {
@@ -146,5 +162,8 @@ export function registerProjectHandlers(
   )
   handle(CHANNELS.projectsCompleteRebuild, (id, done) =>
     store.completeRebuild(readId(id), readRebuildDone(done)),
+  )
+  handle(CHANNELS.projectsSetInputs, (id, inputs) =>
+    store.setInputs(readId(id), readInputs(inputs)),
   )
 }

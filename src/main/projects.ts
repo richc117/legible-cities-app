@@ -25,6 +25,7 @@ import {
   validateName,
   type CreateProjectInput,
   type DeleteResult,
+  type ProjectInputs,
   type ProjectRecord,
   type ProjectSummary,
   type RebuildDone,
@@ -254,6 +255,7 @@ export class ProjectStore {
       theme: DEFAULT_THEME,
       layout: null,
       made: null,
+      built: null,
       created: now,
       modified: now,
     }
@@ -286,6 +288,31 @@ export class ProjectStore {
   }
 
   /**
+   * The mode and agency a person chose with the feed in view (A2-02). The
+   * engine names a layout by its inputs, so a change here means the next
+   * run draws a different layout, which the run says; nothing is re-laid
+   * out here. An empty agency is none.
+   */
+  async setInputs(id: string, inputs: ProjectInputs): Promise<ProjectRecord> {
+    this.checkId(id)
+    const agency = inputs.agency == null ? null : inputs.agency.trim() || null
+    check(validateMode(inputs.mode))
+    check(validateAgency(agency))
+    const { record, readOnly } = await this.load(id)
+    if (readOnly) throw new Error('read-only')
+    if (record.mode === inputs.mode && record.agency === agency) return record
+    const updated: ProjectRecord = {
+      ...record,
+      version: RECORD_VERSION,
+      mode: inputs.mode,
+      agency,
+      modified: new Date().toISOString(),
+    }
+    await this.writeAtomic(id, updated)
+    return updated
+  }
+
+  /**
    * A run finished: the layout it was drawn from, the feed's window, the
    * day it was drawn for and the modification time go in together, or none
    * of them does. The layout's id is the engine's own, the hash of the
@@ -303,6 +330,8 @@ export class ProjectStore {
     check(validateServiceDate(done.date))
     check(validateServiceWindow(done.service))
     check(validateMade(done.made))
+    check(validateMode(done.built?.mode ?? ''))
+    check(validateAgency(done.built?.agency ?? null))
     const { record, readOnly } = await this.load(id)
     if (readOnly) throw new Error('read-only')
     if (!isLayoutId(done.layout))
@@ -314,6 +343,7 @@ export class ProjectStore {
       version: RECORD_VERSION,
       layout,
       made: done.made,
+      built: { mode: done.built.mode, agency: done.built.agency?.trim() || null },
       date: record.date ?? done.date,
       service: { start, end, busiest, anchor },
       modified: new Date().toISOString(),
