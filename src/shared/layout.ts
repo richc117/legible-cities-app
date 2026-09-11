@@ -37,6 +37,8 @@ export interface LayoutDone {
   date: string
   /** The layout's id, as the engine answered it: the hash of the layout's inputs. */
   layout: string
+  /** When the layout was made, as the engine wrote it beside the set (meta.made). */
+  made: string
   /** The feed's window and the engine's day, as feeds.service answered them. */
   service: import('./project').ServiceWindow
 }
@@ -46,6 +48,11 @@ export interface LayoutResult {
   record: import('./project').ProjectRecord
   /** True when the project had a different layout stored before this run. */
   changed: boolean
+  /**
+   * True when the id is the one the project had but the set was made
+   * again since: another project on the same inputs re-laid out (A3-06).
+   */
+  relaid: boolean
 }
 
 /**

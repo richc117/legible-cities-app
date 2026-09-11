@@ -98,8 +98,11 @@ class Engine:
         self.control = control
         self.cancelled: set = set()
         # The layouts graph.build has answered with, as the real engine stores
-        # them: a map.build for any other id is refused.
-        self.layouts: set = set()
+        # them, each with the time it was made: a map.build for any other id
+        # is refused, an unforced answer repeats `made`, a forced one
+        # rewrites it (A3-06).
+        self.layouts: dict = {}
+        self.builds = 0
         self.child = None
         if control.get("spawn_child"):
             self.child = subprocess.Popen(
@@ -209,7 +212,9 @@ class Engine:
         # and options give the same id, so two projects on one feed share one.
         inputs = {"feed": key, "mode": params.get("mode"), "agency": params.get("agency")}
         layout = hashlib.sha256(json.dumps(inputs, sort_keys=True).encode()).hexdigest()
-        self.layouts.add(layout)
+        if params.get("force") or layout not in self.layouts:
+            self.builds += 1
+            self.layouts[layout] = "2026-09-10T00:00:%02d+00:00" % self.builds
         paths = {s: str(HOME / "data" / "graphs" / key / layout / f"0{i}_{s}.json")
                  for i, s in enumerate(stages)}
         meta = {"feed": key, "feed_sha256": "0" * 64, "mode": params.get("mode") or "all",
@@ -217,7 +222,7 @@ class Engine:
                 "loom": None, "stages": [["gtfs2graph", ["-m", params.get("mode") or "all"]],
                                          ["topo", []], ["loom", []], ["octi", []]],
                 "engine": self.control.get("version", "0.2.0"),
-                "made": "2026-09-10T00:00:00+00:00", "migrated": False}
+                "made": self.layouts[layout], "migrated": False}
         write({"jsonrpc": "2.0", "id": msg_id, "result": {
             "layout": layout, "meta": meta, "stages": stages, "paths": paths}})
 

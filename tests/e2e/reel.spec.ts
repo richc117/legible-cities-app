@@ -97,6 +97,7 @@ function home(): { engineHome: string; exportFolder: string; id: string } {
     theme: DEFAULT_THEME,
     // The page is the checkout's; the identifier only has to be one.
     layout: 'f'.repeat(64),
+    made: null,
     created: now,
     modified: now,
   }

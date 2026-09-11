@@ -33,6 +33,8 @@ export interface RunSnapshot {
   error: string | null
   /** Set when the layout's id differs from the one the project had stored. */
   changed: boolean
+  /** Set when the id is the same but the set was laid out again since, by another project. */
+  relaid: boolean
   /** Set when the run was a re-layout: every stage run again on purpose. */
   forced: boolean
   /**
@@ -78,8 +80,8 @@ export interface RunOptions {
   client: RunClient
   complete(
     id: string,
-    done: { date: string; layout: string; service: ServiceWindow },
-  ): Promise<{ changed: boolean }>
+    done: { date: string; layout: string; made: string; service: ServiceWindow },
+  ): Promise<{ changed: boolean; relaid: boolean }>
   /** A rebuild for a chosen day finished: the day is written, inside the window or not at all. */
   completeRebuild(id: string, done: { date: string }): Promise<unknown>
   /** The anchor the engine's choice is made from: the machine's date, injected so a test can fix it. */
@@ -135,6 +137,7 @@ const IDLE: RunSnapshot = {
   message: null,
   error: null,
   changed: false,
+  relaid: false,
   forced: false,
   replaced: false,
   rebuilt: false,
@@ -225,6 +228,7 @@ export class LayoutRun {
         const written = await complete(project.id, {
           date,
           layout: built.layout,
+          made: built.meta.made,
           service: {
             start: window.start,
             end: window.end,
@@ -232,7 +236,7 @@ export class LayoutRun {
             anchor: window.anchor,
           },
         })
-        this.#finish({ changed: written.changed })
+        this.#finish({ changed: written.changed, relaid: written.relaid })
       } catch (reason) {
         this.#failed(reason)
       }
@@ -266,7 +270,7 @@ export class LayoutRun {
         await this.#draw(project, layout, date)
         if (this.#cancelled) return this.#stopped()
         await completeRebuild(project.id, { date })
-        this.#finish({ changed: false })
+        this.#finish({ changed: false, relaid: false })
       } catch (reason) {
         this.#failed(reason)
       }
@@ -301,6 +305,7 @@ export class LayoutRun {
       message: null,
       error: null,
       changed: false,
+      relaid: false,
       replaced: false,
       ...kind,
     })
@@ -321,11 +326,12 @@ export class LayoutRun {
     this.#inFlight = null
   }
 
-  #finish(outcome: { changed: boolean }): void {
+  #finish(outcome: { changed: boolean; relaid: boolean }): void {
     this.#set({
       state: 'done',
       stages: this.#snapshot.stages.map((s) => ({ ...s, state: 'done' as const })),
       changed: outcome.changed,
+      relaid: outcome.relaid,
       replaced: false,
     })
   }

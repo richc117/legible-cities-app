@@ -538,3 +538,95 @@ test('the busiest-weekday button stays under the keyboard, and a refusal returns
     await expect(control, 'the refusal is read with the control').toBeFocused()
   })
 })
+
+// A layout laid out again from another project (A3-06): two projects on one
+// feed share the set, and the one that did not press Re-layout is told.
+
+test('a project is told when another re-laid out the layout it draws from', async () => {
+  const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'One')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out\.$/)).toBeVisible({ timeout: 30_000 })
+    await page.getByRole('button', { name: /back to library/i }).click()
+    await openNewProject(page, 'Two')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out\.$/)).toBeVisible({ timeout: 30_000 })
+    const records = () =>
+      Object.fromEntries(
+        readdirSync(join(engineHome, 'projects')).map((id) => {
+          const r = JSON.parse(
+            readFileSync(join(engineHome, 'projects', id, 'project.json'), 'utf8'),
+          )
+          return [r.name, r]
+        }),
+      )
+    const before = records()
+    expect(before.One.layout).toBe(before.Two.layout)
+    expect(before.One.made, 'the same set, made once').toBe(before.Two.made)
+    await expect(page.getByRole('definition').filter({ hasText: /made/ })).toBeVisible()
+
+    // Two, still open, re-lays out: the shared set is made again.
+    await page.getByRole('button', { name: 'Re-layout' }).click()
+    await page
+      .getByRole('dialog', { name: 'Lay this project out from scratch?' })
+      .getByRole('button', { name: 'Re-layout' })
+      .click()
+    await expect(page.getByText(/^Laid out again from scratch/)).toBeVisible({ timeout: 30_000 })
+    const after = records()
+    expect(after.Two.made).not.toBe(before.Two.made)
+    expect(after.One.made, 'One has not run; its record is as it was').toBe(before.One.made)
+
+    // One lays out again and is told.
+    await page.getByRole('button', { name: /back to library/i }).click()
+    await page.getByRole('button', { name: 'Open One' }).click()
+    await page.getByRole('button', { name: 'Lay out again' }).click()
+    await expect(page.getByText(/laid out again from another project/)).toBeVisible({
+      timeout: 30_000,
+    })
+    expect(records().One.made).toBe(after.Two.made)
+
+    // And once more: nothing has changed since.
+    await page.getByRole('button', { name: /back to library/i }).click()
+    await page.getByRole('button', { name: 'Open One' }).click()
+    await page.getByRole('button', { name: 'Lay out again' }).click()
+    await expect(page.getByText(/^Laid out\.$/)).toBeVisible({ timeout: 30_000 })
+  })
+})
+
+test('a record from before made was stored gains it and is told nothing changed', async () => {
+  const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
+  const id = 'oldproject02'
+  mkdirSync(join(engineHome, 'projects', id), { recursive: true })
+  const now = new Date().toISOString()
+  writeFileSync(
+    join(engineHome, 'projects', id, 'project.json'),
+    JSON.stringify({
+      version: 1,
+      id,
+      name: 'Older',
+      feed: 'la-metro-rail',
+      mode: 'all',
+      agency: null,
+      date: '2026-05-04',
+      layout: 'e'.repeat(64),
+      created: now,
+      modified: now,
+    }),
+  )
+  await withApp(engineHome, async (page) => {
+    await page.getByRole('button', { name: 'Open Older' }).click()
+    await page.getByRole('button', { name: 'Lay out again' }).click()
+    // The stand-in names the layout by its inputs, so the id differs from
+    // the seeded one and that sentence wins; a second run has the id and
+    // the time both in place and says only that it laid out.
+    await expect(page.getByText(/^Laid out\./)).toBeVisible({ timeout: 30_000 })
+    const once = readRecord(engineHome)
+    expect(typeof once.made).toBe('string')
+    await page.getByRole('button', { name: /back to library/i }).click()
+    await page.getByRole('button', { name: 'Open Older' }).click()
+    await page.getByRole('button', { name: 'Lay out again' }).click()
+    await expect(page.getByText(/^Laid out\.$/)).toBeVisible({ timeout: 30_000 })
+    expect(readRecord(engineHome).made).toBe(once.made)
+  })
+})

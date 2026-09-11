@@ -28,6 +28,7 @@ import {
   type ProjectRecord,
   type ProjectSummary,
   type RebuildDone,
+  validateMade,
   validateServiceDate,
   validateServiceWindow,
   withinWindow,
@@ -252,6 +253,7 @@ export class ProjectStore {
       lineOrder: [],
       theme: DEFAULT_THEME,
       layout: null,
+      made: null,
       created: now,
       modified: now,
     }
@@ -300,6 +302,7 @@ export class ProjectStore {
     this.checkId(id)
     check(validateServiceDate(done.date))
     check(validateServiceWindow(done.service))
+    check(validateMade(done.made))
     const { record, readOnly } = await this.load(id)
     if (readOnly) throw new Error('read-only')
     if (!isLayoutId(done.layout))
@@ -310,12 +313,20 @@ export class ProjectStore {
       ...record,
       version: RECORD_VERSION,
       layout,
+      made: done.made,
       date: record.date ?? done.date,
       service: { start, end, busiest, anchor },
       modified: new Date().toISOString(),
     }
     await this.writeAtomic(id, updated)
-    return { record: updated, changed: record.layout !== null && record.layout !== layout }
+    // A different id is a different layout. The same id with a different
+    // `made` is the same inputs laid out again since this project last drew
+    // from them, by another project sharing the set (A3-06). A record with
+    // no id or no `made` has nothing to differ from.
+    const changed = record.layout !== null && record.layout !== layout
+    const relaid =
+      !changed && record.layout === layout && record.made !== null && record.made !== done.made
+    return { record: updated, changed, relaid }
   }
 
   /**

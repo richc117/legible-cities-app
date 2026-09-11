@@ -16,6 +16,7 @@ const WINDOW = {
   busiest: '2026-09-15',
   anchor: '2026-09-08',
 }
+const MADE = '2026-09-10T12:00:00+00:00'
 
 function harness(topFrame = true) {
   const handlers = new Map<string, Handler>()
@@ -49,19 +50,24 @@ describe('registerProjectHandlers', () => {
     const { call, calls } = harness()
     const layout = 'a'.repeat(64)
     const service = WINDOW
+    const made = MADE
     for (const done of [
       undefined,
       {},
-      { date: '2026-13-01', layout, service },
-      { date: 'yesterday', layout, service },
-      { date: '2026-09-08', service },
-      { date: '2026-09-08', layout: 'not an id', service },
-      { date: '2026-09-08', layout: ['a'.repeat(64)], service },
-      { date: '2026-09-08', layout: '/a/03.json', service },
-      { date: '2026-09-08', layout },
-      { date: '2026-09-08', layout, service: 'whenever' },
-      { date: '2026-09-08', layout, service: { ...WINDOW, busiest: 42 } },
-      { date: '2026-09-08', layout, service: { ...WINDOW, end: '2025-01-01' } },
+      { date: '2026-13-01', layout, service, made },
+      { date: 'yesterday', layout, service, made },
+      { date: '2026-09-08', service, made },
+      { date: '2026-09-08', layout: 'not an id', service, made },
+      { date: '2026-09-08', layout: ['a'.repeat(64)], service, made },
+      { date: '2026-09-08', layout: '/a/03.json', service, made },
+      { date: '2026-09-08', layout, made },
+      { date: '2026-09-08', layout, service: 'whenever', made },
+      { date: '2026-09-08', layout, service: { ...WINDOW, busiest: 42 }, made },
+      { date: '2026-09-08', layout, service: { ...WINDOW, end: '2025-01-01' }, made },
+      { date: '2026-09-08', layout, service },
+      { date: '2026-09-08', layout, service, made: 'never' },
+      { date: '2026-09-08', layout, service, made: '' },
+      { date: '2026-09-08', layout, service, made: 42 },
     ]) {
       await expect(
         call(CHANNELS.projectsCompleteLayout, 'abcdefghijk1', done),
@@ -73,12 +79,20 @@ describe('registerProjectHandlers', () => {
 
   it('passes a well-formed finished run to the store, the window with only its four days', async () => {
     const { call, calls } = harness()
-    const done = { date: '2026-09-08', layout: 'a'.repeat(64), service: { ...WINDOW, extra: 1 } }
+    const done = {
+      date: '2026-09-08',
+      layout: 'a'.repeat(64),
+      service: { ...WINDOW, extra: 1 },
+      made: MADE,
+    }
     await call(CHANNELS.projectsCompleteLayout, 'abcdefghijk1', done)
     expect(calls).toEqual([
       {
         method: 'completeLayout',
-        args: ['abcdefghijk1', { date: '2026-09-08', layout: 'a'.repeat(64), service: WINDOW }],
+        args: [
+          'abcdefghijk1',
+          { date: '2026-09-08', layout: 'a'.repeat(64), made: MADE, service: WINDOW },
+        ],
       },
     ])
   })

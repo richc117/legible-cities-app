@@ -75,6 +75,7 @@ const project = (over: Partial<ProjectRecord> = {}): ProjectRecord => ({
   lineOrder: [],
   theme: 'warm-dark',
   layout: 'a'.repeat(64),
+  made: null,
   created: '2026-09-10T00:00:00.000Z',
   modified: '2026-09-10T00:00:00.000Z',
   ...over,
