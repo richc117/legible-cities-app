@@ -71,7 +71,7 @@ test("draws the two stages in a frame with no permissions, with the engine's cou
     await expect(frame).toHaveAttribute('sandbox', STAGE_SANDBOX)
     await expect(frame).toHaveAttribute('srcdoc', /<svg/)
     expect(await frame.getAttribute('srcdoc')).toContain('gtfs2graph')
-    // The counts are the stand-in's for the stage: three nodes, two lines.
+    // The counts are the engine's for the stage, as graph.build reported them.
     await expect(counts(page).nth(0)).toHaveText('3')
     await expect(counts(page).nth(4)).toHaveText('2')
     await expect(view.getByRole('button', { name: 'gtfs2graph' })).toHaveAttribute(
@@ -82,7 +82,7 @@ test("draws the two stages in a frame with no permissions, with the engine's cou
     await view.getByRole('button', { name: 'loom' }).click()
     await expect(view.getByRole('button', { name: 'loom' })).toHaveAttribute('aria-pressed', 'true')
     await expect(frame).toHaveAttribute('srcdoc', /loom/)
-    await expect(counts(page).nth(0)).toHaveText('2')
+    await expect(counts(page).nth(0)).toHaveText('3')
     // Nothing in the frame runs, and it is not the interface's document.
     const inside = await frame.evaluate((el) => {
       const doc = (el as HTMLIFrameElement).contentDocument
@@ -99,23 +99,94 @@ test('pans and zooms by keyboard on the frame, not inside it', async () => {
   const engineHome = home()
   await withApp(engineHome, async (page) => {
     await laidOutProject(page)
-    const pane = page.getByRole('img', { name: /gtfs2graph stage/ })
+    const pane = page.getByRole('group', { name: /gtfs2graph stage/ })
     const frame = page.locator('iframe.stage-frame')
     await expect(frame).toBeVisible()
-    const before = await frame.evaluate((el) => (el as HTMLElement).style.transform)
+    const transform = () => frame.evaluate((el) => (el as HTMLElement).style.transform)
+    const before = await transform()
+    // The pane sits below the fold of a long screen; the pointer has to be
+    // over it, not over where it was before the scroll.
+    await pane.scrollIntoViewIfNeeded()
+    // The wheel does nothing until the pane has focus. The pointer sits
+    // over the drawing, where the glass takes the event for the pane.
+    const box = (await pane.boundingBox())!
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.wheel(0, -120)
+    await page.waitForTimeout(100)
+    expect(await transform()).toBe(before)
     await pane.focus()
+    await page.mouse.wheel(0, -120)
+    await expect.poll(transform).not.toBe(before)
+    const wheeled = await transform()
     await page.keyboard.press('+')
-    const zoomed = await frame.evaluate((el) => (el as HTMLElement).style.transform)
-    expect(zoomed).not.toBe(before)
+    const zoomed = await transform()
+    expect(zoomed).not.toBe(wheeled)
     expect(zoomed).toMatch(/scale\(/)
     await page.keyboard.press('ArrowRight')
-    const panned = await frame.evaluate((el) => (el as HTMLElement).style.transform)
+    const panned = await transform()
     expect(panned).not.toBe(zoomed)
+    // A drag pans too. Focusing scrolled the pane; the box is read again.
+    const now = (await pane.boundingBox())!
+    await page.mouse.move(now.x + 100, now.y + 100)
+    await page.mouse.down()
+    await page.mouse.move(now.x + 160, now.y + 130, { steps: 4 })
+    await page.mouse.up()
+    await expect.poll(transform).not.toBe(panned)
     await page.keyboard.press('0')
-    await expect
-      .poll(() => frame.evaluate((el) => (el as HTMLElement).style.transform))
-      .toBe(before)
+    await expect.poll(transform).toBe(before)
+    // A toggle keeps the view; only a new set refits.
+    await page.keyboard.press('+')
+    const kept = await transform()
+    await page.getByRole('button', { name: 'loom' }).click()
+    await expect(frame).toHaveAttribute('srcdoc', /loom/)
+    expect(await transform()).toBe(kept)
   })
+})
+
+test('without the engine the view says so, and the rest of the screen works', async () => {
+  const engineHome = home()
+  const id = 'geoprojectx1'
+  const { mkdirSync } = await import('node:fs')
+  mkdirSync(join(engineHome, 'projects', id), { recursive: true })
+  const now = new Date().toISOString()
+  writeFileSync(
+    join(engineHome, 'projects', id, 'project.json'),
+    JSON.stringify({
+      version: 1,
+      id,
+      name: 'Alone',
+      feed: 'la-metro-rail',
+      mode: 'all',
+      agency: null,
+      layout: '0'.repeat(64),
+      date: '2026-06-16',
+      created: now,
+      modified: now,
+    }),
+  )
+  const app = await electron.launch({
+    args: ['.'],
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      SCHEMATIC_HOME: engineHome,
+      LEGIBLE_ENGINE_PYTHON: join(engineHome, 'no-such-python'),
+      LEGIBLE_ENGINE_CHECKOUT: '',
+    } as Record<string, string>,
+    timeout: 30_000,
+  })
+  try {
+    const page = await app.firstWindow()
+    await expect(page.getByRole('status', { name: 'Engine' })).toContainText(/unavailable/i, {
+      timeout: 20_000,
+    })
+    await page.getByRole('button', { name: 'Open Alone' }).click()
+    const view = page.getByRole('region', { name: 'Where the routes run' })
+    await expect(view.getByRole('status')).toContainText('not ready')
+    await expect(page.getByRole('button', { name: 'Rename', exact: true })).toBeEnabled()
+  } finally {
+    await app.close()
+  }
 })
 
 test('a refused stage says so, and the rest of the screen works', async () => {

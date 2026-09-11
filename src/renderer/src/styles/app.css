@@ -645,10 +645,9 @@ dialog::backdrop {
   cursor: grabbing;
 }
 
-.stage-pane > p {
+.stage-glass {
   position: absolute;
-  inset: var(--space-4-3);
-  margin: 0;
+  inset: 0;
 }
 
 .stage-frame {

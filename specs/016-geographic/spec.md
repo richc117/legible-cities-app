@@ -91,8 +91,8 @@ again, the view draws the new layout's stages.
   counts, the toggle, the sandbox's exact value, pan and zoom by keyboard,
   the refused case, and fewer lines after a narrower mode and a re-run.
 - **SC-002**: Against the real engine, Los Angeles's two stages by the
-  sidecar, each under a second, `loom` with no more nodes than
-  `gtfs2graph`, and the counts equal to `graph.build`'s.
+  sidecar, each under a second, the counts equal to `graph.build`'s, and
+  `loom` with no more stations and no fewer junctions than `gtfs2graph`.
 
 ## Dependencies
 

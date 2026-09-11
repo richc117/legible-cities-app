@@ -28,6 +28,7 @@ writes before the app starts (every key optional):
     add_delay_ms      wait between the download's ten progress reports for a URL (default 20)
     add_refuses       a sentence: feeds.add from a URL refuses with it, kind feed
     inspect_refuses   a sentence: feeds.inspect refuses with it, kind feed
+    stage_refuses     a sentence: render.stage refuses with it, kind engine
 
 It writes ``fake-engine.pid`` (its process id) and ``fake-engine.received``
 (one JSON line per message it read) into the home so a test can end it from
@@ -120,7 +121,7 @@ class Engine:
         # is refused, an unforced answer repeats `made`, a forced one
         # rewrites it (A3-06).
         self.layouts: dict = {}
-        self.layout_lines: dict = {}
+        self.layout_stages: dict = {}
         self.builds = 0
         self.child = None
         if control.get("spawn_child"):
@@ -291,7 +292,7 @@ class Engine:
         if params.get("force") or layout not in self.layouts:
             self.builds += 1
             self.layouts[layout] = "2026-09-10T00:%02d:%02d+00:00" % divmod(self.builds, 60)
-        self.layout_lines[layout] = lines
+        self.layout_stages[layout] = stages
         paths = {s: str(HOME / "data" / "graphs" / key / layout / f"0{i}_{s}.json")
                  for i, s in enumerate(stages)}
         meta = {"feed": key, "feed_sha256": "0" * 64, "mode": mode,
@@ -353,13 +354,14 @@ class Engine:
                             "labels_dropped": 0, "peak_concurrent": 1}}})
 
 
-    # -- render.stage (E15), in shape: an SVG naming the stage, and counts
-    # that follow the layout's inputs so a narrower mode shows fewer lines;
-    # loom has fewer nodes than gtfs2graph, as topo's merge leaves it.
+    # -- render.stage (E15), in shape: an SVG naming the stage, and the
+    # counts graph.build reported for the stage, which is what the engine
+    # answers and what the app's real-engine test holds it to.
 
     def stage_drawing(self, key: str, layout: str, stage: str, width) -> dict:
-        lines = self.layout_lines.get(layout, ["A"])
-        nodes = 3 if stage == "gtfs2graph" else 2
+        counts = self.layout_stages.get(layout, {}).get(stage) or {
+            "nodes": 3, "stations": 3, "junctions": 0, "edges": 2, "lines": ["A"]}
+        lines = counts["lines"]
         height = round(float(width) * 0.6)
         svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
                f'viewBox="0 0 {width} {height}"><rect width="100%" height="100%" '
@@ -367,8 +369,7 @@ class Engine:
                f'{", ".join(lines)}</text></svg>')
         return {"layout": layout, "stage": stage, "svg": svg, "width": float(width),
                 "height": float(height),
-                "counts": {"nodes": nodes, "stations": nodes, "junctions": 0,
-                           "edges": nodes - 1, "lines": lines}}
+                "counts": {k: v for k, v in counts.items() if k != "octilinear"}}
 
     # -- the registry (E09c), in shape
 
