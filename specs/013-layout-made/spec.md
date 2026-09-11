@@ -65,6 +65,15 @@ was made, in the person's locale with the exact time kept on the element.
   time, at most 64 characters; nothing is opened.
 - A different id and a different `made` at once is a different layout;
   the id's sentence wins, as it says more.
+- A re-layout from this project moves `made` too; the store answers
+  `relaid` for it, and the run, which knows it forced, clears the flag.
+- Two runs overlapping across projects: if another project's forced
+  layout call answers between this project's layout call and its map
+  call, the map is drawn from the new set while the record stores the
+  `made` this run was answered, and the sentence comes one run late.
+  `map.build` answers the id and not `made`, so the app cannot close
+  this alone; an engine issue would have `map.build` answer the `made` it
+  drew from.
 
 ## Requirements _(mandatory)_
 

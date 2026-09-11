@@ -164,12 +164,16 @@ export function validateServiceWindow(service: unknown): string | null {
 }
 
 const MADE_MAX = 64
+// ISO 8601 with a time and an offset, as the engine writes it beside a
+// stored layout (isoformat with seconds, in UTC). Compared as a string, so
+// the shape is pinned before the value is trusted, as a day's is.
+const MADE_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/
 
-/** The engine's `made`: a timestamp a clock could have written, of a sane length. */
+/** The engine's `made`: an ISO timestamp a clock could have written. */
 export function validateMade(made: unknown): string | null {
   if (typeof made !== 'string' || made === '')
     return 'the layout run did not say when the layout was made'
-  if (made.length > MADE_MAX || Number.isNaN(Date.parse(made)))
+  if (made.length > MADE_MAX || !MADE_PATTERN.test(made) || Number.isNaN(Date.parse(made)))
     return 'the layout run gave a time that is not one'
   return null
 }

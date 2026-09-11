@@ -17,6 +17,8 @@ interface LayoutDone {
   date: string
   layout: string
   service: ServiceWindow
+  /** Since A3-06: when the engine made the layout. */
+  made: string
 }
 ```
 

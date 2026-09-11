@@ -281,6 +281,15 @@ describe('the run asks for the layout, then the day, then the map', () => {
     await tick()
     expect(run.snapshot).toMatchObject({ state: 'done', changed: false, relaid: true })
     expect(doneSentence(false, false, true)).toMatch(/laid out again from another project/)
+    // A re-layout from this project moves made too; the store says relaid,
+    // and the run, which knows it forced, does not.
+    const own = setup({ layout: LAYOUT, made: '2026-09-01T00:00:00Z' })
+    own.complete.mockResolvedValueOnce({ changed: false, relaid: true })
+    own.run.start(own.record, READY, { force: true })
+    await laidOut(own.calls)
+    own.calls[2].resolve({ files: {} })
+    await tick()
+    expect(own.run.snapshot).toMatchObject({ state: 'done', forced: true, relaid: false })
     expect(doneSentence(true, false, true), 'a forced run says so itself').toMatch(
       /^Laid out again from scratch\./,
     )

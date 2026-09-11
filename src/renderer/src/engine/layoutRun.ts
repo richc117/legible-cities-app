@@ -236,7 +236,9 @@ export class LayoutRun {
             anchor: window.anchor,
           },
         })
-        this.#finish({ changed: written.changed, relaid: written.relaid })
+        // The store cannot see `force`: a re-layout from this project moves
+        // `made` too, and that is not another project's doing.
+        this.#finish({ changed: written.changed, relaid: written.relaid && !force })
       } catch (reason) {
         this.#failed(reason)
       }

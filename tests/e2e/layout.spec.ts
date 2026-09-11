@@ -4,6 +4,7 @@
 // does and writes the same three files, so this exercises the whole run
 // without needing Docker or a feed.
 
+import { createHash } from 'node:crypto'
 import {
   mkdtempSync,
   mkdirSync,
@@ -564,7 +565,12 @@ test('a project is told when another re-laid out the layout it draws from', asyn
     const before = records()
     expect(before.One.layout).toBe(before.Two.layout)
     expect(before.One.made, 'the same set, made once').toBe(before.Two.made)
-    await expect(page.getByRole('definition').filter({ hasText: /made/ })).toBeVisible()
+    const shown = page.getByRole('definition').filter({ hasText: /made/ })
+    await expect(shown).toBeVisible()
+    await expect(shown.locator('time'), 'the exact time kept on the element').toHaveAttribute(
+      'datetime',
+      String(before.Two.made),
+    )
 
     // Two, still open, re-lays out: the shared set is made again.
     await page.getByRole('button', { name: 'Re-layout' }).click()
@@ -591,8 +597,15 @@ test('a project is told when another re-laid out the layout it draws from', asyn
     await page.getByRole('button', { name: 'Open One' }).click()
     await page.getByRole('button', { name: 'Lay out again' }).click()
     await expect(page.getByText(/^Laid out\.$/)).toBeVisible({ timeout: 30_000 })
+    expect(records().One.made, 'unchanged since').toBe(after.Two.made)
   })
 })
+
+// The stand-in names a layout by its inputs, as the engine does: this is
+// its id for the default feed with no mode and no agency.
+const STAND_IN_LAYOUT = createHash('sha256')
+  .update('{"agency": null, "feed": "la-metro-rail", "mode": null}')
+  .digest('hex')
 
 test('a record from before made was stored gains it and is told nothing changed', async () => {
   const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
@@ -609,7 +622,7 @@ test('a record from before made was stored gains it and is told nothing changed'
       mode: 'all',
       agency: null,
       date: '2026-05-04',
-      layout: 'e'.repeat(64),
+      layout: STAND_IN_LAYOUT,
       created: now,
       modified: now,
     }),
@@ -617,11 +630,11 @@ test('a record from before made was stored gains it and is told nothing changed'
   await withApp(engineHome, async (page) => {
     await page.getByRole('button', { name: 'Open Older' }).click()
     await page.getByRole('button', { name: 'Lay out again' }).click()
-    // The stand-in names the layout by its inputs, so the id differs from
-    // the seeded one and that sentence wins; a second run has the id and
-    // the time both in place and says only that it laid out.
-    await expect(page.getByText(/^Laid out\./)).toBeVisible({ timeout: 30_000 })
+    // The same id, and no time to compare: nothing changed, as the id's
+    // own first comparison behaves.
+    await expect(page.getByText(/^Laid out\.$/)).toBeVisible({ timeout: 30_000 })
     const once = readRecord(engineHome)
+    expect(once.layout).toBe(STAND_IN_LAYOUT)
     expect(typeof once.made).toBe('string')
     await page.getByRole('button', { name: /back to library/i }).click()
     await page.getByRole('button', { name: 'Open Older' }).click()

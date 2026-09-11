@@ -214,7 +214,7 @@ class Engine:
         layout = hashlib.sha256(json.dumps(inputs, sort_keys=True).encode()).hexdigest()
         if params.get("force") or layout not in self.layouts:
             self.builds += 1
-            self.layouts[layout] = "2026-09-10T00:00:%02d+00:00" % self.builds
+            self.layouts[layout] = "2026-09-10T00:%02d:%02d+00:00" % divmod(self.builds, 60)
         paths = {s: str(HOME / "data" / "graphs" / key / layout / f"0{i}_{s}.json")
                  for i, s in enumerate(stages)}
         meta = {"feed": key, "feed_sha256": "0" * 64, "mode": params.get("mode") or "all",

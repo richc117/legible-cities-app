@@ -239,7 +239,15 @@ describe('parseRecord', () => {
     expect(badDate.record.date).toBeNull()
     expect(badDate.record.theme).toBe(DEFAULT_THEME)
     expect(badDate.record.layout).toBeNull()
-    for (const made of ['last Tuesday', '', 42, 'x'.repeat(65)]) {
+    for (const made of [
+      'last Tuesday',
+      '',
+      42,
+      'x'.repeat(65),
+      '2026',
+      'Sep 10 2026',
+      '2026-09-10',
+    ]) {
       const parsed = parseRecord({ ...full, made })
       if (!('record' in parsed)) throw new Error(parsed.error)
       expect(parsed.record.made, JSON.stringify(made)).toBeNull()
