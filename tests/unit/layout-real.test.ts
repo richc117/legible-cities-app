@@ -47,6 +47,7 @@ function local() {
     env: process.env,
     userData: tmpdir(),
     desktop: tmpdir(),
+    loomPin: '',
     baseDir: repo,
   })
 }
@@ -95,7 +96,7 @@ describe.skipIf(INTERPRETER === null || !CACHED)(`the real engine's layout${WHY}
     const sidecar = new Sidecar({
       command: engineCommand(INTERPRETER as string),
       env: engineEnvironment({
-        config: { home, loomBin: null, ffmpeg: null },
+        config: { home, loomBin: null, loomCommit: null, ffmpeg: null },
         base: process.env,
         development: true,
       }),

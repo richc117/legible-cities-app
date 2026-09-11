@@ -1,4 +1,4 @@
-// Configuration: four locations and one development pointer, from the
+// Configuration: four locations, one pin and one development pointer, from the
 // process environment, then .env.local, then defaults. Pure: no Electron
 // import, so the parsing and the log lines are unit-tested without a
 // window. Contract: specs/001-electron-skeleton/contracts/config.md; the
@@ -9,6 +9,7 @@ import { isAbsolute, join, resolve } from 'node:path'
 export const KEYS = [
   'SCHEMATIC_HOME',
   'SCHEMATIC_LOOM_BIN',
+  'SCHEMATIC_LOOM_COMMIT',
   'SCHEMATIC_FFMPEG',
   'LEGIBLE_EXPORT_FOLDER',
   'LEGIBLE_ENGINE_CHECKOUT',
@@ -24,6 +25,12 @@ export type Source = 'default' | '.env.local' | 'environment'
 export interface Config {
   home: string
   loomBin: string | null
+  /**
+   * The LOOM commit the binaries in `loomBin` were built from, which they
+   * cannot say for themselves; the app's pin unless a person names another.
+   * Null without a LOOM directory: the Docker image's commit is its own.
+   */
+  loomCommit: string | null
   ffmpeg: string | null
   /** Where exports are written: the person's choice, or a folder on the desktop. */
   exportFolder: string
@@ -43,6 +50,8 @@ export interface ConfigInput {
   userData: string
   /** Electron's desktop directory; the export folder defaults beneath it. */
   desktop: string
+  /** The LOOM commit the app's own binaries were built from: `loom.commit` in vendor/pins.json. */
+  loomPin: string
   /** Relative values in the file resolve against this directory. */
   baseDir: string
 }
@@ -92,6 +101,10 @@ export function resolveConfig(input: ConfigInput): Config {
 
   const home = pick('SCHEMATIC_HOME', input.env, file)
   const loomBin = pick('SCHEMATIC_LOOM_BIN', input.env, file)
+  const loomCommit = pick('SCHEMATIC_LOOM_COMMIT', input.env, file)
+  // A value that is only whitespace is no value: the file parser trims, the
+  // environment does not.
+  const namedCommit = loomCommit.value === null ? null : loomCommit.value.trim() || null
   const ffmpeg = pick('SCHEMATIC_FFMPEG', input.env, file)
   const exportFolder = pick('LEGIBLE_EXPORT_FOLDER', input.env, file)
   const checkout = pick('LEGIBLE_ENGINE_CHECKOUT', input.env, file)
@@ -100,6 +113,9 @@ export function resolveConfig(input: ConfigInput): Config {
   return {
     home: home.value === null ? join(input.userData, 'engine') : absolute(home.value),
     loomBin: loomBin.value === null ? null : absolute(loomBin.value),
+    // The pin describes the app's binaries, so it goes with them and with
+    // nothing else; a person running a build of their own says which.
+    loomCommit: namedCommit ?? (loomBin.value === null ? null : input.loomPin),
     ffmpeg: ffmpeg.value === null ? null : absolute(ffmpeg.value),
     exportFolder:
       exportFolder.value === null
@@ -117,6 +133,7 @@ export function resolveConfig(input: ConfigInput): Config {
     sources: {
       SCHEMATIC_HOME: home.source,
       SCHEMATIC_LOOM_BIN: loomBin.source,
+      SCHEMATIC_LOOM_COMMIT: namedCommit === null ? 'default' : loomCommit.source,
       SCHEMATIC_FFMPEG: ffmpeg.source,
       LEGIBLE_EXPORT_FOLDER: exportFolder.source,
       LEGIBLE_ENGINE_CHECKOUT: checkout.source,
@@ -140,6 +157,11 @@ export function describeConfig(config: Config, options: { development: boolean }
       ? unset('SCHEMATIC_LOOM_BIN')
       : `SCHEMATIC_LOOM_BIN=${config.loomBin} (${config.sources.SCHEMATIC_LOOM_BIN})`,
   )
+  if (config.loomCommit !== null) {
+    lines.push(
+      `SCHEMATIC_LOOM_COMMIT=${config.loomCommit} (${config.sources.SCHEMATIC_LOOM_COMMIT})`,
+    )
+  }
   lines.push(
     config.ffmpeg === null
       ? unset('SCHEMATIC_FFMPEG')

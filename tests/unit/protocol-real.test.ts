@@ -25,6 +25,7 @@ import type { EngineInfo, Ok } from '../../src/shared/protocol'
 const repo = resolve(__dirname, '../..')
 const pins = JSON.parse(readFileSync(join(repo, 'vendor/pins.json'), 'utf8')) as {
   engine: EnginePin & { schema_sha256: string }
+  loom: { commit: string }
 }
 const committed = readFileSync(join(repo, 'vendor/protocol.schema.json'), 'utf8')
 
@@ -40,11 +41,16 @@ function localConfig() {
     env: process.env,
     userData: tmpdir(),
     desktop: tmpdir(),
+    loomPin: pins.loom.commit,
     baseDir: repo,
   })
 }
 
-const CHECKOUT = localConfig().engineCheckout
+// The local configuration decides the LOOM backend too: with
+// SCHEMATIC_LOOM_BIN in .env.local the engine runs the app's binaries and
+// must report the app's pin; without it, Docker and no commit.
+const LOCAL = localConfig()
+const CHECKOUT = LOCAL.engineCheckout
 const INTERPRETER = (() => {
   const resolution = resolveInterpreter({
     config: { enginePython: null, engineCheckout: CHECKOUT },
@@ -105,7 +111,7 @@ async function withEngine<T>(run: (sidecar: Sidecar) => Promise<T>): Promise<T> 
   const sidecar = new Sidecar({
     command: engineCommand(INTERPRETER as string),
     env: engineEnvironment({
-      config: { home, loomBin: null, ffmpeg: null },
+      config: { home, loomBin: LOCAL.loomBin, loomCommit: LOCAL.loomCommit, ffmpeg: null },
       base: process.env,
       development: true,
     }),
@@ -148,8 +154,13 @@ describe.skipIf(INTERPRETER === null)(`every method the description names${WHY}`
     expect(typeof info.engine).toBe('string')
     expect(info.protocol).toBe(1)
     expect(typeof info.python).toBe('string')
-    expect(['docker', 'native']).toContain(info.loom.backend)
-    expect(info.loom).toHaveProperty('commit')
+    // The engine reports the backend the configuration chose and the commit
+    // it was told, which is the pin unless .env.local names another; the
+    // default itself is proven in config.test.ts.
+    expect(info.loom).toEqual({
+      backend: LOCAL.loomBin === null ? 'docker' : 'native',
+      commit: LOCAL.loomCommit,
+    })
     expect(info).toHaveProperty('ffmpeg')
   })
 

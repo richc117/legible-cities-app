@@ -124,6 +124,7 @@ async function loadConfig(): Promise<Config> {
     env: process.env,
     userData: app.getPath('userData'),
     desktop: app.getPath('desktop'),
+    loomPin: pins.loom.commit,
     baseDir,
   })
   for (const line of describeConfig(config, { development })) log.info('config', line)

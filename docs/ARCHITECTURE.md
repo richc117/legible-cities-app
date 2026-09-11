@@ -265,14 +265,15 @@ under `projects/`, sorted by modified time, newest first.
 
 ## Configuration and the startup log
 
-Three locations and one development pointer, from the process environment,
-then `.env.local` (development only, gitignored; `.env.example` documents
-it), then defaults:
+Four locations, one pin and one development pointer, from the process
+environment, then `.env.local` (development only, gitignored; `.env.example`
+documents it), then defaults:
 
 | Key | Default |
 |---|---|
 | `SCHEMATIC_HOME` | `<userData>/engine` (ADR-016) |
-| `SCHEMATIC_LOOM_BIN` | unset |
+| `SCHEMATIC_LOOM_BIN` | unset; a directory of native LOOM binaries, which the engine runs instead of its Docker image |
+| `SCHEMATIC_LOOM_COMMIT` | passed when set, or with a LOOM directory, where the default is the app's pin (`loom.commit` in `vendor/pins.json`); the binaries cannot say which LOOM they are, so the engine reports what it is told as `engine.info.loom.commit` |
 | `SCHEMATIC_FFMPEG` | unset |
 | `LEGIBLE_EXPORT_FOLDER` | `<desktop>/Legible Cities`; where exports go, in a folder per project, until Settings (A1-04) offer a chooser |
 | `LEGIBLE_ENGINE_CHECKOUT` | unset; the tokens test reads the engine page from it, and the engine runs from its `.venv` |

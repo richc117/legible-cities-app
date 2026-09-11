@@ -65,15 +65,17 @@ from it and writes nothing.
 
 ## Configuration
 
-Three locations plus one development-only pointer, read at startup
+Four locations, one pin and one development-only pointer, read at startup
 (FR-017 to FR-019). See `contracts/config.md` for the file format and the
 log lines.
 
 | Key | Meaning | Default |
 |---|---|---|
 | `SCHEMATIC_HOME` | The engine home | `<userData>/engine` |
-| `SCHEMATIC_LOOM_BIN` | Directory holding `gtfs2graph`, `topo`, `loom`, `octi` | unset |
+| `SCHEMATIC_LOOM_BIN` | Directory holding `gtfs2graph`, `topo`, `loom`, `octi`; the engine runs them instead of its Docker image | unset |
+| `SCHEMATIC_LOOM_COMMIT` | The LOOM commit those binaries were built from, which they cannot say for themselves; the engine reports it as `engine.info.loom.commit` (A1-06) | the app's pin (`loom.commit` in `vendor/pins.json`) when `SCHEMATIC_LOOM_BIN` is set, else unset |
 | `SCHEMATIC_FFMPEG` | Path to the ffmpeg executable | unset |
+| `LEGIBLE_EXPORT_FOLDER` | Where exports are written, in a folder per project (A5-02b, `specs/010`) | `<desktop>/Legible Cities` |
 | `LEGIBLE_ENGINE_CHECKOUT` | The engine's source checkout, development only: the tokens drift test reads the animation page from it, and the engine runs from its `.venv` (`specs/004`) | unset |
 | `LEGIBLE_ENGINE_PYTHON` | An interpreter to run the engine with, named explicitly: a path, or a bare command name for the spawn to resolve on PATH (added by `specs/004`) | unset |
 

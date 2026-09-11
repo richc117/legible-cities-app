@@ -37,6 +37,7 @@ function checkout(): string | null {
     env: process.env,
     userData: tmpdir(),
     desktop: tmpdir(),
+    loomPin: '',
     baseDir: repo,
   }).engineCheckout
 }

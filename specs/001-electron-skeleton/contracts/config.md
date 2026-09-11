@@ -26,6 +26,7 @@ startup, before the window opens, exactly these lines appear:
 [config] SCHEMATIC_LOOM_BIN=<path>       (.env.local | environment)
    or
 [config] SCHEMATIC_LOOM_BIN unset - nothing in this build needs it; set it in .env.local
+[config] SCHEMATIC_LOOM_COMMIT=<commit>  (default | .env.local | environment)   (when set, or with a LOOM directory, where the default is the app's pin)
 [config] SCHEMATIC_FFMPEG=<path>         (.env.local | environment)
    or
 [config] SCHEMATIC_FFMPEG unset - nothing in this build needs it; set it in .env.local
