@@ -37,9 +37,12 @@ again, the view draws the new layout's stages.
    counts are shown; the toggle draws the `loom` stage, with its own
    counts; the counts are the engine's, never computed by the app.
 2. **Given** Los Angeles against the real engine, **Then** each stage
-   draws in under a second, and the `loom` stage has no more nodes than
-   the `gtfs2graph` stage (a merge, never a literal count: `topo` is not
-   reproducible, ADR-023).
+   draws in under a second, the counts equal `graph.build`'s for the
+   stages, and between the two the `loom` stage has no more stations and
+   no fewer junctions than `gtfs2graph` (topo merges platforms and adds
+   junctions where lines cross; its node count can go either way, and
+   Los Angeles gains four, which is why the issue's "fewer nodes" was
+   the wrong instrument, as a literal count is: ADR-023).
 3. **Given** the pane, **When** the wheel turns or the keys `+`, `-`, the
    arrows and `0` are pressed, **Then** the drawing zooms and pans and
    nothing inside the frame runs; reduced motion means no transition.

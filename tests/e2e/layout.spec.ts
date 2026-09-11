@@ -306,7 +306,7 @@ test("a first layout stores the engine's day and the feed's window, and shows bo
     // The engine was asked with the lines the layout drew.
     const asked = received(engineHome, 'feeds.service')
     expect(asked).toHaveLength(1)
-    expect(asked[0]).toContain('"lines": ["A"]')
+    expect(asked[0]).toContain('"lines": ["A", "B"]')
     // The map was drawn for that day.
     const maps = received(engineHome, 'map.build')
     expect(maps[0]).toContain('"date": "2026-06-16"')

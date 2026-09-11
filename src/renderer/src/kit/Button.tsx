@@ -40,6 +40,8 @@ export interface ButtonProps {
   id?: string
   'aria-label'?: string
   'aria-expanded'?: boolean
+  /** A toggle's state, mirrored onto the kit's inner button by hand as aria-expanded is. */
+  'aria-pressed'?: boolean
   'aria-describedby'?: string
   'aria-controls'?: string
 }
@@ -54,6 +56,7 @@ const Button = forwardRef<HTMLElement, ButtonProps>(function Button(
     icon,
     children,
     'aria-expanded': expanded,
+    'aria-pressed': pressed,
     'aria-controls': controls,
     ...rest
   },
@@ -82,8 +85,9 @@ const Button = forwardRef<HTMLElement, ButtonProps>(function Button(
       else inner.setAttribute(name, value)
     }
     set('aria-expanded', expanded === undefined ? undefined : String(expanded))
+    set('aria-pressed', pressed === undefined ? undefined : String(pressed))
     set('aria-controls', controls)
-  }, [expanded, controls])
+  }, [expanded, pressed, controls])
 
   return (
     <>

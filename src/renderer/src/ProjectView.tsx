@@ -5,6 +5,8 @@ import { validateName } from '../../shared/project'
 import ConfirmDialog from './ConfirmDialog'
 import { engineClient, exportRunFor, layoutRunFor } from './engine/runs'
 import { feedRecordFor, inspectionFor } from './engine/inspections'
+import { stageFor } from './engine/stages'
+import StageView from './StageView'
 import Inspect from './Inspect'
 import ExportRunView from './ExportRun'
 import Viewer from './Viewer'
@@ -178,6 +180,16 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
     return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
   }
   const inspect = useCallback((key: string) => inspectionFor(engineClient(), key, today()), [])
+  const readStage = useCallback(
+    (
+      key: string,
+      layout: string,
+      made: string | null,
+      stage: 'gtfs2graph' | 'topo' | 'loom' | 'octi',
+      width: number,
+    ) => stageFor(engineClient(), key, layout, made, stage, width),
+    [],
+  )
   const [registry, setRegistry] = useState<{ mode: string; agency: string | null } | null>(null)
   const feedKey = project?.feed ?? null
   const ready = engine?.state === 'ready'
@@ -277,6 +289,9 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
           )}
           {!project.readOnly && project.layout !== null && (
             <ExportRunView run={exporter} project={project} engine={engine} disabled={layingOut} />
+          )}
+          {project.layout !== null && (
+            <StageView project={project} engine={engine} read={readStage} />
           )}
           {project.layout !== null && <Viewer key={drawn} project={project} />}
           <div className="toolbar">

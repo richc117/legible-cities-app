@@ -203,6 +203,45 @@ describe.skipIf(INTERPRETER === null || !CACHED)(`the real engine's layout${WHY}
         service.busiest_weekday,
       )
 
+      // The two stages the geographic view draws, by the layout's id: the
+      // engine's SVG and counts, each in under a second, equal to
+      // graph.build's own for the stages. Between the two, topo merges
+      // platforms into stations and adds junctions where lines cross, so
+      // loom has no more stations and no fewer junctions; its node count
+      // can go either way (Los Angeles gains four), and a literal count is
+      // the wrong instrument anyway (ADR-023).
+      const drawn: Record<
+        string,
+        { nodes: number; counts: { stations: number; junctions: number } }
+      > = {}
+      for (const stage of ['gtfs2graph', 'loom'] as const) {
+        const t0 = performance.now()
+        const result = (await sidecar.request('render.stage', {
+          key: FEED,
+          layout: built.layout,
+          stage,
+          width: 1600,
+        }).result) as {
+          svg: string
+          width: number
+          height: number
+          counts: { nodes: number; stations: number; junctions: number }
+        }
+        const took = performance.now() - t0
+        expect(took, `${stage} in under a second`).toBeLessThan(1000)
+        expect(result.svg.trimStart().startsWith('<svg')).toBe(true)
+        // The width sizes the network and the canvas grows for the margin,
+        // so the drawing is at least as wide as asked.
+        expect(result.width).toBeGreaterThanOrEqual(1600)
+        expect(result.height).toBeGreaterThan(0)
+        expect(result.counts).toEqual(
+          (built as unknown as { stages: Record<string, unknown> }).stages[stage],
+        )
+        drawn[stage] = { nodes: result.counts.nodes, counts: result.counts }
+      }
+      expect(drawn.loom.counts.stations).toBeLessThanOrEqual(drawn.gtfs2graph.counts.stations)
+      expect(drawn.loom.counts.junctions).toBeGreaterThanOrEqual(drawn.gtfs2graph.counts.junctions)
+
       // A chosen day: the first Saturday inside the window, drawn from the
       // same layout as the app's rebuild does. The schedule stage's
       // sentence names the day and its trips; the app shows that sentence

@@ -615,6 +615,52 @@ dialog::backdrop {
   border: 0;
 }
 
+/* The geographic view: a pane the size of the viewer's shape, holding the
+   engine's drawing in a frame with no permissions, moved by transforms
+   from here. The frame is sized to the drawing and never scrolls; the
+   pane clips it and is what takes focus and the wheel. */
+
+.stage-view h2 {
+  font-size: var(--font-ui-medium);
+  margin: var(--space-4-6) 0 var(--space-4-3);
+}
+
+.stage-view .counts {
+  grid-template-columns: repeat(5, max-content 1fr);
+}
+
+.stage-pane {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  margin: 0 0 var(--space-4-4);
+}
+
+.stage-pane:active {
+  cursor: grabbing;
+}
+
+.stage-pane > p {
+  position: absolute;
+  inset: var(--space-4-3);
+  margin: 0;
+}
+
+.stage-frame {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border: 0;
+  transform-origin: 0 0;
+  pointer-events: none;
+  background: transparent;
+}
+
 /* Focus and motion, for everything. */
 
 :focus-visible {

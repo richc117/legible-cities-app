@@ -120,6 +120,7 @@ class Engine:
         # is refused, an unforced answer repeats `made`, a forced one
         # rewrites it (A3-06).
         self.layouts: dict = {}
+        self.layout_lines: dict = {}
         self.builds = 0
         self.child = None
         if control.get("spawn_child"):
@@ -201,6 +202,22 @@ class Engine:
                 write({"jsonrpc": "2.0", "id": msg_id,
                        "result": self.inspection(key, anchor)})
             return True
+        if method == "render.stage":
+            params = message.get("params") or {}
+            layout = params.get("layout")
+            stage = params.get("stage")
+            if stage not in ("gtfs2graph", "topo", "loom", "octi"):
+                error(msg_id, -32602, "stage must be one of gtfs2graph, topo, loom, octi", "params")
+            elif not isinstance(layout, str) or layout not in self.layouts:
+                error(msg_id, -32000, f"{params.get('key', 'x')!r} has no stored {stage} graph; "
+                      "lay the feed out first (graph.build)", "layout")
+            elif self.control.get("stage_refuses"):
+                error(msg_id, -32000, self.control["stage_refuses"], "engine")
+            else:
+                write({"jsonrpc": "2.0", "id": msg_id,
+                       "result": self.stage_drawing(params.get("key", "x"), layout, stage,
+                                                    params.get("width", 1200))})
+            return True
         if method == "feeds.list":
             write({"jsonrpc": "2.0", "id": msg_id, "result": {"feeds": self.feed_records()}})
             return True
@@ -255,7 +272,11 @@ class Engine:
             write({"jsonrpc": "2.0", "method": "job/progress",
                    "params": {"id": msg_id, "stage": stage, "fraction": i / 4,
                               "message": f"{stage}: 3 nodes, 2 edges"}})
-        summary = {"nodes": 3, "stations": 3, "junctions": 0, "edges": 2, "lines": ["A"]}
+        # The lines follow the mode, so a narrower choice draws fewer: the
+        # stand-in's feeds carry A (tram) and B (subway) for every key.
+        mode = params.get("mode", FEEDS.get(params.get("key", "x"), {}).get("mode") or "all")
+        lines = ["A", "B"] if mode == "all" else ["A"] if "tram" in mode else ["B"]
+        summary = {"nodes": 3, "stations": 3, "junctions": 0, "edges": 2, "lines": lines}
         stages = {s: dict(summary) for s in ("gtfs2graph", "topo", "loom", "octi")}
         stages["octi"]["octilinear"] = 1.0
         key = params.get("key", "x")
@@ -264,13 +285,13 @@ class Engine:
         # A missing mode or agency is the registry entry's and an empty
         # agency is none, as the engine's resolved() reads them.
         entry = FEEDS.get(key, {})
-        mode = params.get("mode", entry.get("mode") or "all")
         agency = params.get("agency", entry.get("agency")) or None
         inputs = {"feed": key, "mode": mode, "agency": agency}
         layout = hashlib.sha256(json.dumps(inputs, sort_keys=True).encode()).hexdigest()
         if params.get("force") or layout not in self.layouts:
             self.builds += 1
             self.layouts[layout] = "2026-09-10T00:%02d:%02d+00:00" % divmod(self.builds, 60)
+        self.layout_lines[layout] = lines
         paths = {s: str(HOME / "data" / "graphs" / key / layout / f"0{i}_{s}.json")
                  for i, s in enumerate(stages)}
         meta = {"feed": key, "feed_sha256": "0" * 64, "mode": mode,
@@ -331,6 +352,23 @@ class Engine:
                             "degraded": {"borrowed_track": 0, "skipped_calls": 0},
                             "labels_dropped": 0, "peak_concurrent": 1}}})
 
+
+    # -- render.stage (E15), in shape: an SVG naming the stage, and counts
+    # that follow the layout's inputs so a narrower mode shows fewer lines;
+    # loom has fewer nodes than gtfs2graph, as topo's merge leaves it.
+
+    def stage_drawing(self, key: str, layout: str, stage: str, width) -> dict:
+        lines = self.layout_lines.get(layout, ["A"])
+        nodes = 3 if stage == "gtfs2graph" else 2
+        height = round(float(width) * 0.6)
+        svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
+               f'viewBox="0 0 {width} {height}"><rect width="100%" height="100%" '
+               f'fill="#eee"/><text x="20" y="40" font-size="24">{stage}: '
+               f'{", ".join(lines)}</text></svg>')
+        return {"layout": layout, "stage": stage, "svg": svg, "width": float(width),
+                "height": float(height),
+                "counts": {"nodes": nodes, "stations": nodes, "junctions": 0,
+                           "edges": nodes - 1, "lines": lines}}
 
     # -- the registry (E09c), in shape
 
