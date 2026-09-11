@@ -5,12 +5,13 @@
 import { existsSync } from 'node:fs'
 import { readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import { app, BrowserWindow, ipcMain, session, shell } from 'electron'
+import { BrowserWindow, app, dialog, ipcMain, session, shell } from 'electron'
 import pins from '../../vendor/pins.json'
 import { CHANNELS } from '../shared/api'
 import { abortCaptures, capture, configureCapture } from './capture-window'
 import { describeConfig, resolveConfig, type Config } from './config'
 import { registerEngineHandlers } from './engine-ipc'
+import { PickedPaths, registerFeedsHandlers, registryGuard } from './feeds-ipc'
 import { Exporter } from './export'
 import { registerExportHandlers } from './export-ipc'
 import { engineCommand, engineEnvironment, resolveInterpreter } from './interpreter'
@@ -195,6 +196,26 @@ if (!hasLock) {
       () => (mainWindow === null || mainWindow.isDestroyed() ? null : mainWindow.webContents),
       isTopFrame,
     )
+    // The registry's gate: a zip is chosen in the platform's own dialog and
+    // remembered, and a feed a project names cannot be removed.
+    const picked = new PickedPaths()
+    registerFeedsHandlers(
+      ipcMain,
+      async () => {
+        const options: Electron.OpenDialogOptions = {
+          title: 'Choose a GTFS zip',
+          properties: ['openFile'],
+          filters: [{ name: 'GTFS feed', extensions: ['zip'] }],
+        }
+        // Parented to the window, so it is modal to it (rules/main.md); only
+        // the window's own top frame can ask, so the window is there.
+        if (mainWindow === null || mainWindow.isDestroyed()) return null
+        const answer = await dialog.showOpenDialog(mainWindow, options)
+        return answer.canceled || answer.filePaths.length === 0 ? null : answer.filePaths[0]
+      },
+      picked,
+      isTopFrame,
+    )
     registerEngineHandlers(
       ipcMain,
       engine,
@@ -204,6 +225,7 @@ if (!hasLock) {
           mainWindow.webContents.send(channel, payload)
       },
       (message) => log.warn('engine', message),
+      registryGuard(picked, async () => (await store.list()).map((p) => p.feed)),
     )
     // Electron grants a permission request by default. Nothing this app
     // shows has any business asking for one, and the viewer's page least of

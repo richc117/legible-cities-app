@@ -194,7 +194,11 @@ test('creates, opens, renames and deletes a project, and serves its output', asy
     const name = dialog.getByLabel('Name', { exact: true })
     await expect(name).toBeFocused()
     await name.fill('Los Angeles')
-    await expect(dialog.getByLabel('Feed key')).toHaveValue('la-metro-rail')
+    // A typed key when no engine lists the feeds (as on the runners), the
+    // engine's list as a select when one does (as on a developer's machine).
+    await expect(
+      dialog.getByLabel('Feed key').or(dialog.getByRole('combobox', { name: 'Feed' })),
+    ).toHaveValue('la-metro-rail')
     await dialog.getByRole('button', { name: 'Create', exact: true }).click()
     await expect(dialog).toBeHidden()
 

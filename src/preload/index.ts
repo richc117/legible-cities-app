@@ -89,6 +89,9 @@ const api: Api = {
     onProgress: (listener) => subscribe(CHANNELS.engineProgress, listener),
     onLog: (listener) => subscribe(CHANNELS.engineLog, listener),
   },
+  feeds: {
+    pickZip: () => invoke(CHANNELS.feedsPickZip),
+  },
   export: {
     run: (projectId, preset) =>
       startJob(CHANNELS.exportRun, CHANNELS.exportSettled, projectId, preset),

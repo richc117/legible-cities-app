@@ -27,6 +27,12 @@ export type { EngineState, JobLog, JobProgress } from './engine'
 export type { ExportProgress, ExportResult, OfferedPreset } from './export'
 export type { LayoutDone, LayoutResult } from './layout'
 
+/** A zip the platform's file chooser answered: the path the engine is handed, the name the page shows. */
+export interface PickedZip {
+  path: string
+  name: string
+}
+
 /** A request in flight: the token the page uses for progress and cancel, and the answer. */
 export interface EngineRequest {
   id: string
@@ -107,6 +113,15 @@ export interface Api {
    * gets back a file's name; the folder is the export folder from the
    * configuration, and `reveal` opens it (specs/010-export/contracts/bridge.md).
    */
+  /**
+   * The one thing a page cannot do for a feed: choose a file. The main
+   * process opens the platform's chooser, remembers the answer, and refuses
+   * a feeds.add that names any other path (specs/014-feeds/contracts/bridge.md).
+   */
+  feeds: {
+    /** Null when the person cancelled the chooser. */
+    pickZip(): Promise<PickedZip | null>
+  }
   export: {
     run(projectId: string, preset: OfferedPreset): ExportRequest
     cancel(id: string): Promise<void>
@@ -139,4 +154,5 @@ export const CHANNELS = {
   exportReveal: 'export:reveal',
   exportProgress: 'export:progress',
   exportSettled: 'export:settled',
+  feedsPickZip: 'feeds:pick-zip',
 } as const

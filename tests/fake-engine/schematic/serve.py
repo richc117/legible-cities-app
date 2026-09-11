@@ -24,6 +24,9 @@ writes before the app starts (every key optional):
     export_refuses    a sentence: export.plan refuses with it as the hint
     encode_delay_ms   wait between export.encode's five progress notifications (default 30)
     encode_fails      true: export.encode fails after its progress, leaving no file
+    presets_cached    keys of the two stand-in presets whose zip is "on disk" (default both)
+    add_delay_ms      wait between the download's ten progress reports for a URL (default 20)
+    add_refuses       a sentence: feeds.add from a URL refuses with it, kind feed
 
 It writes ``fake-engine.pid`` (its process id) and ``fake-engine.received``
 (one JSON line per message it read) into the home so a test can end it from
@@ -47,6 +50,20 @@ HOME = Path(os.environ.get("SCHEMATIC_HOME", "."))
 OUT = sys.stdout.buffer
 LOCK = threading.Lock()
 PRESETS = {"instagram-reel": (1080, 1920, "mp4")}
+# The stand-in's registry: two presets, and whatever a test added, kept in
+# the home so a new process sees it, as the engine's user-feeds.json is.
+FEEDS = {
+    "la-metro-rail": {"key": "la-metro-rail", "name": "LA Metro Rail", "city": "Los Angeles",
+                      "network": "Metro Rail", "url": "https://example.test/la.zip",
+                      "mode": "all", "label_pattern": "^Metro (.+) Line$", "label_strip": None,
+                      "agency": None, "geographic": True, "notes": [], "source": "preset"},
+    "cdmx-metro": {"key": "cdmx-metro", "name": "Mexico City Metro", "city": "Mexico City",
+                   "network": "Metro", "url": "https://example.test/cdmx.zip",
+                   "mode": "subway", "label_pattern": None, "label_strip": None,
+                   "agency": "METRO", "geographic": True,
+                   "notes": ["This is a 2025 snapshot."], "source": "preset"},
+}
+REQUIRED = ("stops", "routes", "trips", "stop_times")
 
 
 def load_control() -> dict:
@@ -171,6 +188,27 @@ class Engine:
             threading.Thread(target=self.service, args=(msg_id, message.get("params") or {}),
                              daemon=True).start()
             return True
+        if method == "feeds.list":
+            write({"jsonrpc": "2.0", "id": msg_id, "result": {"feeds": self.feed_records()}})
+            return True
+        if method == "feeds.add":
+            threading.Thread(target=self.add, args=(msg_id, message.get("params") or {}),
+                             daemon=True).start()
+            return True
+        if method == "feeds.remove":
+            key = (message.get("params") or {}).get("key")
+            if key in FEEDS:
+                error(msg_id, -32000, f"{key!r} is a built-in feed and cannot be removed", "feed")
+            elif key not in self.user_feeds():
+                error(msg_id, -32000, f"{key!r} is not a registered feed", "feed")
+            else:
+                users = self.user_feeds()
+                del users[key]
+                self.write_user_feeds(users)
+                for path in (HOME / "data" / "feeds").glob(f"{key}.*zip"):
+                    path.unlink()
+                write({"jsonrpc": "2.0", "id": msg_id, "result": {"ok": True}})
+            return True
         if method == "export.plan":
             params = message.get("params") or {}
             problem = self.plan_problem(params)
@@ -275,6 +313,115 @@ class Engine:
                             "degraded": {"borrowed_track": 0, "skipped_calls": 0},
                             "labels_dropped": 0, "peak_concurrent": 1}}})
 
+
+    # -- the registry (E09c), in shape
+
+    def user_feeds(self) -> dict:
+        try:
+            records = json.loads((HOME / "data" / "feeds" / "user-feeds.json").read_text())
+        except (OSError, ValueError):
+            return {}
+        return {r["key"]: r for r in records}
+
+    def write_user_feeds(self, records: dict) -> None:
+        folder = HOME / "data" / "feeds"
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "user-feeds.json").write_text(json.dumps(list(records.values()), indent=2))
+
+    def feed_records(self) -> list:
+        cached = set(self.control.get("presets_cached", list(FEEDS)))
+        out = [dict(f, cached=k in cached) for k, f in FEEDS.items()]
+        out += [dict(f, cached=(HOME / "data" / "feeds" / f"{f['key']}.zip").exists())
+                for f in self.user_feeds().values()]
+        return out
+
+    def add(self, msg_id, params: dict) -> None:
+        """feeds.add, in shape: a URL is "downloaded" in ten reported steps
+        (a cancel between them leaves nothing), a file is copied; the zip is
+        checked for the tables the engine requires, with the engine's own
+        sentences; the record is kept in the home."""
+        import shutil
+        import zipfile
+        source = params.get("source")
+        if not isinstance(source, str) or not source:
+            error(msg_id, -32602, "source must be a URL with its scheme, or an absolute path "
+                  "to a zip the client owns", "params")
+            return
+        folder = HOME / "data" / "feeds"
+        folder.mkdir(parents=True, exist_ok=True)
+        staging = folder / ".adding.zip"
+        delay = self.control.get("add_delay_ms", 20) / 1000
+        if source.startswith(("http://", "https://")):
+            if self.control.get("add_refuses"):
+                error(msg_id, -32000, self.control["add_refuses"], "feed")
+                return
+            total = 10240
+            for i in range(1, 11):
+                time.sleep(delay)
+                if msg_id in self.cancelled:
+                    write({"jsonrpc": "2.0", "id": msg_id,
+                           "error": {"code": -32800, "message": "Request Cancelled"}})
+                    return
+                write({"jsonrpc": "2.0", "method": "job/progress",
+                       "params": {"id": msg_id, "stage": "download", "fraction": i / 10,
+                                  "message": f"downloaded {i * 1024:,} of {total:,} bytes"}})
+            # A URL yields a well-formed feed, named after its file.
+            with zipfile.ZipFile(staging, "w") as z:
+                for name in REQUIRED + ("calendar", "agency"):
+                    body = ("agency_id,agency_name\nX,Remote Transit\n" if name == "agency"
+                            else f"{name}_id\n1\n")
+                    z.writestr(f"{name}.txt", body)
+            url, what = source, source.rsplit("/", 1)[-1]
+        else:
+            src = Path(source)
+            if not src.is_file():
+                error(msg_id, -32000, f"{src.name} is not a file", "feed")
+                return
+            shutil.copyfile(src, staging)
+            url, what = "", src.name
+        write({"jsonrpc": "2.0", "method": "job/progress",
+               "params": {"id": msg_id, "stage": "check", "fraction": 1.0,
+                          "message": "checked the feed's tables"}})
+        if not zipfile.is_zipfile(staging):
+            staging.unlink()
+            error(msg_id, -32000, f"{what} is not a zip file, so it is not a GTFS feed", "feed")
+            return
+        with zipfile.ZipFile(staging) as z:
+            stems = {Path(n).stem for n in z.namelist() if n.endswith(".txt")}
+            agency = None
+            if "agency.txt" in z.namelist():
+                lines = z.read("agency.txt").decode().splitlines()
+                if len(lines) > 1:
+                    cols = lines[0].split(",")
+                    if "agency_name" in cols:
+                        agency = lines[1].split(",")[cols.index("agency_name")].strip() or None
+        for stem in REQUIRED:
+            if stem not in stems:
+                staging.unlink()
+                why = ("so there is no timetable to animate" if stem == "stop_times"
+                       else "so there is no network to draw")
+                error(msg_id, -32000, f"{what} has no {stem}.txt, {why}", "feed")
+                return
+        if not ({"calendar", "calendar_dates"} & stems):
+            staging.unlink()
+            error(msg_id, -32000, f"{what} has neither calendar.txt nor calendar_dates.txt, "
+                  "so there is no service day to draw", "feed")
+            return
+        name = params.get("name") or agency or Path(what).stem
+        key = params.get("key") or re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+        users = self.user_feeds()
+        if key in FEEDS or key in users:
+            staging.unlink()
+            error(msg_id, -32000, f"{key!r} is already a feed; choose another key", "feed")
+            return
+        staging.replace(folder / f"{key}.zip")
+        record = {"key": key, "name": name, "city": "", "network": "", "url": url,
+                  "mode": params.get("mode") or "all", "label_pattern": None,
+                  "label_strip": None, "agency": params.get("agency"), "geographic": True,
+                  "notes": [], "source": "user"}
+        users[key] = record
+        self.write_user_feeds(users)
+        write({"jsonrpc": "2.0", "id": msg_id, "result": dict(record, cached=True)})
 
     def service(self, msg_id, params: dict) -> None:
         """feeds.service, in shape: the window and the busiest weekday from

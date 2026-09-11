@@ -1,7 +1,7 @@
 // Generated from the engine's own description of its protocol.
 // Run `npm run typegen` to regenerate; edits here are lost.
 //
-// Engine: v0.6.0, protocol 1.
+// Engine: v0.7.0, protocol 1.
 // Source: vendor/protocol.schema.json, printed by the engine's
 // `python -m schematic.serve --schema` and committed verbatim.
 
@@ -616,6 +616,216 @@ export interface ExportEncodeResult {
 }
 
 /**
+ * A registry entry, preset or added by a person: what the engine knows about
+ * a feed before it reads it. `cached` says whether its zip is on disk.
+ */
+export interface FeedRecord {
+  key: FeedKey
+  name: string
+  city: string
+  network: string
+  /**
+   * Where the zip came from; empty for a feed added from a file.
+   */
+  url: string
+  mode: string
+  label_pattern: string | null
+  label_strip: string | null
+  agency: string | null
+  geographic: boolean
+  notes: string[]
+  /**
+   * Which half of the registry: a preset is curated in the engine and cannot
+   * be removed; a user feed was added through feeds.add.
+   */
+  source: 'preset' | 'user'
+  cached: boolean
+}
+
+export interface FeedsList {
+  feeds: FeedRecord[]
+}
+
+/**
+ * Add a feed a person chose, from a URL or a zip the client owns, and keep
+ * it across restarts. A long request: the download reports its bytes as
+ * job/progress (stage download), then the check reports once (stage check).
+ * The zip must carry stops, routes, trips, stop_times and a calendar in one
+ * of its two forms; a refusal names the missing table and leaves nothing
+ * behind. The name defaults to the feed's first agency, the key to a slug of
+ * the name made unique.
+ */
+export interface FeedsAddParams {
+  /**
+   * A URL with its scheme, or an absolute path to a zip the client owns.
+   */
+  source: string
+  key?: FeedKey
+  name?: string
+  /**
+   * What gtfs2graph keeps of the feed (LOOM's -m); all when omitted.
+   * feeds.inspect suggests one.
+   */
+  mode?: string
+  /**
+   * Keep only this agency_id; every operator when omitted.
+   */
+  agency?: string
+}
+
+/**
+ * Forget a feed a person added, with its zips and its stored layouts. A
+ * preset is refused with kind feed.
+ */
+export interface FeedsRemoveParams {
+  key: FeedKey
+}
+
+/**
+ * What is in a feed, as data, before anything is laid out: read from the raw
+ * zip, never the agency-filtered copy, so the answer is what a choice of
+ * mode and agency is made from. A long request when the feed is not cached;
+ * a few seconds for a large one. Never reads stop_times.
+ */
+export interface FeedsInspectParams {
+  key: FeedKey
+  /**
+   * The day the service choice scans from, as feeds.service takes it; the
+   * engine's today when omitted, and echoed.
+   */
+  anchor?: ServiceDate
+}
+
+export interface Agency {
+  agency_id: string
+  agency_name: string
+}
+
+export interface Route {
+  route_id: string
+  agency_id: string
+  short_name: string
+  long_name: string
+  /**
+   * The label the map would draw: route_short_name, or the long name through
+   * the feed's label pattern, then the strip.
+   */
+  label: string
+  /**
+   * GTFS route_type as published; -1 when missing.
+   */
+  route_type: number
+  color: string | null
+  text_color: string | null
+  /**
+   * Rows in trips.txt; a headway-based trip is a template that expands into
+   * runs.
+   */
+  trips: number
+}
+
+export interface RouteType {
+  route_type: number
+  /**
+   * The GTFS name: tram, subway, rail, bus, ferry, cable tram, aerial lift,
+   * funicular, trolleybus, monorail; an extended code says which it folds
+   * onto.
+   */
+  name: string
+  routes: number
+  trips: number
+}
+
+/**
+ * Rows of stops.txt by location_type, and the total.
+ */
+export interface StopCounts {
+  stops: number
+  stations: number
+  entrances: number
+  generic_nodes: number
+  boarding_areas: number
+  total: number
+}
+
+/**
+ * A feed as the Inspect screen shows it.
+ */
+export interface Inspection {
+  key: FeedKey
+  name: string
+  /**
+   * The GTFS tables present, by stem.
+   */
+  tables: string[]
+  agencies: Agency[]
+  routes: Route[]
+  route_types: RouteType[]
+  stops: StopCounts
+  trips: number
+  /**
+   * Trips with frequencies.txt windows: templates, expanded into runs when
+   * the day is built.
+   */
+  frequency_trips: number
+  /**
+   * The window and the engine's day from the anchor, as feeds.service
+   * answers them; null when the feed has no calendar, with a warning saying
+   * so.
+   */
+  service: FeedsServiceResult | null
+  /**
+   * A LOOM mode from the route types: all for a feed with nothing but
+   * rail-like types, else the most common rail-like type, else the most
+   * common. The app shows it; the person decides.
+   */
+  suggested_mode: string | null
+  /**
+   * Sentences for a person: a headway-based timetable, an expired or
+   * unstarted calendar, a calendar_dates-only schedule, routes without short
+   * names, several operators in one feed.
+   */
+  warnings: string[]
+}
+
+/**
+ * One of the pipeline's four stages, in order.
+ */
+export type StageName = 'gtfs2graph' | 'topo' | 'loom' | 'octi'
+
+/**
+ * One stored stage graph of a layout, drawn as SVG, with its counts (E15):
+ * what a geographic view shows beside the schematic map. Never lays out; a
+ * stage that is not stored is refused with kind layout.
+ */
+export interface RenderStageParams {
+  key: FeedKey
+  layout: LayoutId
+  stage: StageName
+  /**
+   * The drawing's width in CSS pixels; the canvas grows for labels.
+   */
+  width?: number
+  /**
+   * Draw station names.
+   */
+  labels?: boolean
+}
+
+export interface RenderStageResult {
+  layout: LayoutId
+  stage: StageName
+  /**
+   * A self-contained SVG document, themed through CSS variables with literal
+   * fallbacks.
+   */
+  svg: string
+  width: number
+  height: number
+  counts: StageSummary
+}
+
+/**
  * The `data` of an error response. `hint` is a sentence for a person and is
  * what a UI shows; `detail` says where, for a log.
  */
@@ -662,6 +872,26 @@ export interface Methods {
   'feeds.service': {
     params: FeedsServiceParams
     result: FeedsServiceResult
+  }
+  'feeds.list': {
+    params: NoParams
+    result: FeedsList
+  }
+  'feeds.add': {
+    params: FeedsAddParams
+    result: FeedRecord
+  }
+  'feeds.remove': {
+    params: FeedsRemoveParams
+    result: Ok
+  }
+  'feeds.inspect': {
+    params: FeedsInspectParams
+    result: Inspection
+  }
+  'render.stage': {
+    params: RenderStageParams
+    result: RenderStageResult
   }
 }
 

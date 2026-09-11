@@ -27,6 +27,12 @@ export interface EngineSource {
 
 export type Send = (channel: string, payload: unknown) => void
 
+/** A refusal before the engine sees a request: null lets it through, a sentence stops it. */
+export type Guard = (
+  method: string,
+  params: Record<string, unknown> | undefined,
+) => Promise<string | null>
+
 const LEVELS = new Set(['debug', 'info', 'warning', 'error'])
 
 export function registerEngineHandlers(
@@ -35,6 +41,7 @@ export function registerEngineHandlers(
   isTopFrame: (event: IpcMainInvokeEvent) => boolean,
   send: Send,
   log: (message: string) => void,
+  guard: Guard = async () => null,
 ): () => void {
   const idOf = new Map<string, number>()
   const tokenOf = new Map<number, string>()
@@ -53,10 +60,24 @@ export function registerEngineHandlers(
     if (typeof method !== 'string' || method === '') return badCall('a request needs a method name')
     if (params !== undefined && !isObject(params)) return badCall('parameters must be an object')
     if (idOf.has(token)) return badCall('a request with this id is already running')
+    // The token is taken before the guard's await, so a second invoke with
+    // the same token during it is refused rather than reaching the engine
+    // twice with one map entry between them.
+    idOf.set(token, 0)
+    // The gate: what may be asked of the registry on a person's behalf is
+    // decided here, with what the main process knows (the paths its own
+    // chooser answered, the feeds its projects name), never on the page.
+    const refused = await guard(method, params as Record<string, unknown> | undefined)
+    if (refused !== null) {
+      idOf.delete(token)
+      return badCall(refused)
+    }
     const { id, result } = engine.request(method, params as Record<string, unknown> | undefined)
     if (id !== 0) {
       idOf.set(token, id)
       tokenOf.set(id, token)
+    } else {
+      idOf.delete(token)
     }
     // Settle on the event channel, after every notification for the id.
     result.then(
