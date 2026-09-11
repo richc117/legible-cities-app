@@ -1,0 +1,7 @@
+# Tasks: The geographic view
+
+- [ ] T001 The stage cache over the typed client; the pane's transform arithmetic.
+- [ ] T002 The `StageView` component: toggle, counts, the sandboxed frame, pan and zoom; on the project screen; styles and the design rule.
+- [ ] T003 The stand-in's `render.stage`.
+- [ ] T004 Unit, real-engine and end-to-end tests; the documents.
+- [ ] T005 Checks, scanners, the reviewer; the pull request.
