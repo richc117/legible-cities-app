@@ -102,7 +102,7 @@ test('lays a project out, reports every stage, and records what it was drawn fro
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
 
     const after = readRecord(engineHome)
-    expect(after.layout, 'the identifier is a SHA-256, as hex').toMatch(/^[0-9a-f]{64}$/)
+    expect(after.layout, "the engine's id: a SHA-256, as hex").toMatch(/^[0-9a-f]{64}$/)
     expect(after.date, 'the service day is resolved once and stored').toMatch(/^\d{4}-\d{2}-\d{2}$/)
     // The page went where the app already serves a project's output.
     const out = join(engineHome, 'out', String(after.id))
@@ -190,6 +190,62 @@ test('quitting during a run leaves no process and an unchanged record', async ()
   expect(() => process.kill(enginePid, 0), 'the engine did not outlive the app').toThrow()
 })
 
+test('a re-layout runs every stage again behind its warning, and cancelling the warning changes nothing', async () => {
+  const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    const before = readRecord(engineHome)
+
+    // The warning first, and its cancel leaves everything as it was.
+    await page.getByRole('button', { name: 'Re-layout' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Lay this project out from scratch?' })
+    await expect(dialog).toBeVisible()
+    await expect(dialog).toContainText(/may place stations differently/)
+    await dialog.getByRole('button', { name: 'Cancel' }).click()
+    await expect(dialog).toBeHidden()
+    expect(JSON.stringify(readRecord(engineHome))).toBe(JSON.stringify(before))
+
+    await page.getByRole('button', { name: 'Re-layout' }).click()
+    await page
+      .getByRole('dialog', { name: 'Lay this project out from scratch?' })
+      .getByRole('button', { name: 'Re-layout' })
+      .click()
+    const run = page.getByRole('region', { name: 'Layout run' })
+    await expect(run).toBeVisible()
+    await expect(page.getByText(/^Laid out again from scratch/)).toBeVisible({ timeout: 30_000 })
+    const after = readRecord(engineHome)
+    expect(after.layout, 'the same inputs name the same layout').toBe(before.layout)
+    expect(after.date).toBe(before.date)
+    // The stand-in saw the force, and nothing on the screen is a path.
+    const received = readFileSync(join(engineHome, 'fake-engine.received'), 'utf8')
+      .split('\n')
+      .filter((l) => l.includes('graph.build'))
+    expect(received.some((l) => l.includes('"force": true'))).toBe(true)
+    expect(await run.innerText()).not.toMatch(/[/\\]/)
+  })
+})
+
+test('a cancelled re-layout leaves the project as it was', async () => {
+  const engineHome = home({ map_draws: true, progress_delay_ms: 400 })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    const before = readRecord(engineHome)
+    await page.getByRole('button', { name: 'Re-layout' }).click()
+    await page
+      .getByRole('dialog', { name: 'Lay this project out from scratch?' })
+      .getByRole('button', { name: 'Re-layout' })
+      .click()
+    await page.getByRole('button', { name: /cancel/i }).click()
+    await expect(page.getByText(/was cancelled/i)).toBeVisible()
+    expect(JSON.stringify(readRecord(engineHome))).toBe(JSON.stringify(before))
+    await expect(page.getByRole('button', { name: 'Re-layout' })).toBeVisible()
+  })
+})
+
 test('two projects on one feed record the same layout', async () => {
   const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
   await withApp(engineHome, async (page) => {
@@ -206,6 +262,6 @@ test('two projects on one feed record the same layout', async () => {
         JSON.parse(readFileSync(join(engineHome, 'projects', id, 'project.json'), 'utf8')).layout,
     )
     expect(layouts).toHaveLength(2)
-    expect(layouts[0], 'drawn from the same four stage graphs').toBe(layouts[1])
+    expect(layouts[0], 'the same inputs name the same layout').toBe(layouts[1])
   })
 })

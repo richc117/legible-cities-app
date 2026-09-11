@@ -27,8 +27,10 @@ outside and see what reached it. Standard library only; any Python 3 runs it.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -90,6 +92,9 @@ class Engine:
     def __init__(self, control: dict) -> None:
         self.control = control
         self.cancelled: set = set()
+        # The layouts graph.build has answered with, as the real engine stores
+        # them: a map.build for any other id is refused.
+        self.layouts: set = set()
         self.child = None
         if control.get("spawn_child"):
             self.child = subprocess.Popen(
@@ -136,10 +141,18 @@ class Engine:
             return True
         if method == "map.build":
             params = message.get("params") or {}
-            if "date" not in params:
+            layout = params.get("layout")
+            if not isinstance(layout, str) or not re.fullmatch(r"[0-9a-f]{64}", layout):
+                error(msg_id, -32602, "layout is required: the id graph.build answered with. "
+                      "A map is drawn from a stored layout and never lays one out itself.",
+                      "params")
+            elif "date" not in params:
                 error(msg_id, -32602, "date is required: the service day to draw, as "
                       "YYYY-MM-DD. The engine never picks one, because its choice "
                       "would depend on the day you asked.", "params")
+            elif layout not in self.layouts:
+                error(msg_id, -32000, f"{params.get('key', 'x')} has no stored layout "
+                      f"{layout[:8]}; lay the feed out first (graph.build)", "layout")
             elif self.control.get("map_draws"):
                 threading.Thread(target=self.draw, args=(msg_id, params),
                                  daemon=True).start()
@@ -183,9 +196,21 @@ class Engine:
         stages = {s: dict(summary) for s in ("gtfs2graph", "topo", "loom", "octi")}
         stages["octi"]["octilinear"] = 1.0
         key = params.get("key", "x")
-        paths = {s: str(HOME / "data" / "graphs" / key / f"0{i}_{s}.json")
+        # The id names the inputs, as the real engine's does: the same feed
+        # and options give the same id, so two projects on one feed share one.
+        inputs = {"feed": key, "mode": params.get("mode"), "agency": params.get("agency")}
+        layout = hashlib.sha256(json.dumps(inputs, sort_keys=True).encode()).hexdigest()
+        self.layouts.add(layout)
+        paths = {s: str(HOME / "data" / "graphs" / key / layout / f"0{i}_{s}.json")
                  for i, s in enumerate(stages)}
-        write({"jsonrpc": "2.0", "id": msg_id, "result": {"stages": stages, "paths": paths}})
+        meta = {"feed": key, "feed_sha256": "0" * 64, "mode": params.get("mode") or "all",
+                "agency": params.get("agency"), "label_pattern": None, "label_strip": None,
+                "loom": None, "stages": [["gtfs2graph", ["-m", params.get("mode") or "all"]],
+                                         ["topo", []], ["loom", []], ["octi", []]],
+                "engine": self.control.get("version", "0.2.0"),
+                "made": "2026-09-10T00:00:00+00:00", "migrated": False}
+        write({"jsonrpc": "2.0", "id": msg_id, "result": {
+            "layout": layout, "meta": meta, "stages": stages, "paths": paths}})
 
 
     def draw(self, msg_id, params: dict) -> None:
@@ -194,7 +219,7 @@ class Engine:
         answers with the same shape, so a test can drive a whole run."""
         key = params.get("key", "x")
         delay = self.control.get("progress_delay_ms", 30) / 1000
-        graphs = HOME / "data" / "graphs" / key
+        graphs = HOME / "data" / "graphs" / key / params["layout"]
         graphs.mkdir(parents=True, exist_ok=True)
         for i, stage in enumerate(("gtfs2graph", "topo", "loom", "octi")):
             path = graphs / f"0{i}_{stage}.json"
@@ -223,7 +248,7 @@ class Engine:
             path.write_text("<svg/>" if suffix == ".svg" else "{}")
             files[name] = str(path)
         write({"jsonrpc": "2.0", "id": msg_id, "result": {
-            "date": params["date"], "files": files,
+            "layout": params["layout"], "date": params["date"], "files": files,
             "summary": "the stand-in drew a map",
             # The shape is the protocol's Diagnostics, not a flat guess: a
             # stand-in that answers a different shape lets a consumer pass

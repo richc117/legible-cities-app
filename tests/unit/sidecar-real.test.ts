@@ -88,7 +88,7 @@ describe.skipIf(INTERPRETER === null)('Sidecar against the real engine', () => {
       expect(info.home).toBe(home)
 
       const error = (await sidecar
-        .request('map.build', { key: 'la-metro-rail' })
+        .request('map.build', { key: 'la-metro-rail', layout: '0'.repeat(64) })
         .result.catch((e: EngineError) => e)) as EngineError
       expect(error.code).toBe(-32602)
       expect(error.data?.kind).toBe('params')

@@ -9,12 +9,7 @@
     "repo": "https://github.com/ad-freiburg/loom",
     "commit": "1e4757838104d1e4d22186c9b77d5fc4b98681a0",
     "note": "Head of master on 2026-09-07. The published maps were built from an unpinned master build; the spike checks whether that output matches this commit.",
-    "binaries": [
-      "gtfs2graph",
-      "topo",
-      "loom",
-      "octi"
-    ],
+    "binaries": ["gtfs2graph", "topo", "loom", "octi"],
     "licence": "GPL-3.0"
   },
   "loom_windows_port": {
@@ -25,12 +20,12 @@
   },
   "engine": {
     "repo": "https://github.com/richc117/legible-cities",
-    "tag": "v0.4.0",
-    "version": "0.4.0",
+    "tag": "v0.5.0",
+    "version": "0.5.0",
     "protocol": 1,
-    "note": "The first tag with the native LOOM backend: SCHEMATIC_LOOM_BIN runs the app's binaries, SCHEMATIC_LOOM_COMMIT is what engine.info.loom.commit reports, every tool has a timeout, and the container runs under --init so a cancel reaches the tool. The protocol stays at 1 and its schema is byte-identical to 0.3.0's. The handshake compares version and protocol with engine.info and refuses any other; the vendoring job installs the package at the tag.",
+    "note": "The first tag with layouts addressed by their inputs: graph.build takes the mode, the agency and the label options and answers with the layout's id and meta; map.build takes that id and never lays a feed out; ErrorData.kind gains layout. A client notices, so the protocol stays at 1 by the engine's convention and the tag is the gate. The handshake compares version and protocol with engine.info and refuses any other; the vendoring job installs the package at the tag.",
     "licence": "GPL-3.0-or-later",
-    "schema_sha256": "b2b8accafd525fd634b9ec37d748cc6823709839b99cdcdf78be4d1cc890fe7f"
+    "schema_sha256": "0eeccfbfa7ea97ebccd7dc19927b5fe685e79722abc7082cf193636359b85e89"
   },
   "python": {
     "source": "https://github.com/astral-sh/python-build-standalone",

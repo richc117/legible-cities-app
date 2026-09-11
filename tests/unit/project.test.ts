@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_COLOR,
@@ -14,6 +16,8 @@ import {
   validateMode,
   validateName,
   type ProjectRecord,
+  AGENCY_MAX,
+  MODE_PATTERN,
 } from '../../src/shared/project'
 
 // The record from contracts/record.md, verbatim.
@@ -65,28 +69,49 @@ describe('validateFeedKey', () => {
   })
 })
 
+describe('the two rules the engine also checks', () => {
+  // graph.build validates mode and agency itself now; the app's rules are
+  // the engine's, read from the committed description rather than repeated.
+  const schema = JSON.parse(
+    readFileSync(resolve(__dirname, '../../vendor/protocol.schema.json'), 'utf8'),
+  ) as {
+    $defs: {
+      GraphBuildParams: { properties: { mode: { pattern: string }; agency: { maxLength: number } } }
+    }
+  }
+  it('match the engine schema', () => {
+    const props = schema.$defs.GraphBuildParams.properties
+    expect(MODE_PATTERN.source).toBe(props.mode.pattern)
+    expect(AGENCY_MAX).toBe(props.agency.maxLength)
+  })
+})
+
 describe('validateMode', () => {
-  it('accepts a short lowercase word', () => {
-    for (const mode of ['all', 'rail', 'a', 'a'.repeat(16)]) {
+  // The engine's rule: what LOOM's -m takes, names or route_type numbers,
+  // comma-joined; the registry's own entries are the proof.
+  it('accepts what gtfs2graph -m takes', () => {
+    for (const mode of ['all', 'rail', 'tram,subway', 'rail,funicular', '1', 'mono-rail']) {
       expect(validateMode(mode), mode).toBeNull()
     }
   })
   it('refuses the rest', () => {
-    for (const mode of ['', 'Rail', 'a'.repeat(17), 'a-b', 'a1', 'a b']) {
-      expect(validateMode(mode), JSON.stringify(mode)).toBe('mode must be a short lowercase word')
+    for (const mode of ['', 'Rail', 'a'.repeat(65), 'a b', 'tram,', ',tram', 'tram,,rail']) {
+      expect(validateMode(mode), JSON.stringify(mode)).toBe(
+        'mode must be one or more of the modes LOOM knows, such as tram or subway, comma-joined',
+      )
     }
   })
 })
 
 describe('validateAgency', () => {
-  it('accepts none, or text up to 120 characters after trimming', () => {
+  it('accepts none, or text up to 64 characters after trimming, as the engine does', () => {
     expect(validateAgency(null)).toBeNull()
     expect(validateAgency('Metro')).toBeNull()
-    expect(validateAgency('x'.repeat(120))).toBeNull()
-    expect(validateAgency(`  ${'x'.repeat(120)}  `)).toBeNull()
+    expect(validateAgency('x'.repeat(64))).toBeNull()
+    expect(validateAgency(`  ${'x'.repeat(64)}  `)).toBeNull()
   })
   it('caps the length', () => {
-    expect(validateAgency('x'.repeat(121))).toBe('agency is too long (120 characters at most)')
+    expect(validateAgency('x'.repeat(65))).toBe('agency is too long (64 characters at most)')
   })
 })
 
@@ -161,8 +186,8 @@ describe('parseRecord', () => {
       theme: 'sepia',
       layout: '3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f',
     })
-    // A layout identifier is the digest A3-01 writes; anything else is not
-    // one this app produced, so it is dropped rather than half-trusted.
+    // A layout identifier is 64 hex digits, the engine's id (ADR-033) or the
+    // digest the app wrote before; anything else is dropped rather than half-trusted.
     const badDate = parseRecord({
       ...full,
       date: '7 September 2026',

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type JSX } from 'react'
+import { useEffect, useId, useRef, useState, type JSX } from 'react'
 import Button from './kit/Button'
 
 interface Props {
@@ -9,6 +9,8 @@ interface Props {
   /** Performs the action; a rejection's message is shown and the dialog stays open. */
   onConfirm: () => Promise<void>
   onCancel: () => void
+  /** The confirm button's look: destructive for a delete, primary for a re-layout. */
+  variant?: 'destructive' | 'primary'
 }
 
 export default function ConfirmDialog({
@@ -18,8 +20,13 @@ export default function ConfirmDialog({
   confirmLabel,
   onConfirm,
   onCancel,
+  variant = 'destructive',
 }: Props): JSX.Element {
   const dialogRef = useRef<HTMLDialogElement>(null)
+  // Ids of this dialog's own: a screen can hold two of these (the delete and
+  // the re-layout), and a shared id would name the wrong one.
+  const titleId = useId()
+  const descriptionId = useId()
   const cancelRef = useRef<HTMLElement>(null)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -57,13 +64,13 @@ export default function ConfirmDialog({
   return (
     <dialog
       ref={dialogRef}
-      aria-labelledby="confirm-title"
-      aria-describedby="confirm-desc"
+      aria-labelledby={titleId}
+      aria-describedby={descriptionId}
       onCancel={() => onCancel()}
       onClose={() => setMessage(null)}
     >
-      <h2 id="confirm-title">{title}</h2>
-      <p id="confirm-desc">{description}</p>
+      <h2 id={titleId}>{title}</h2>
+      <p id={descriptionId}>{description}</p>
       {message && (
         <p className="message error" role="alert">
           {message}
@@ -73,7 +80,7 @@ export default function ConfirmDialog({
         <Button ref={cancelRef} onClick={() => onCancel()}>
           Cancel
         </Button>
-        <Button variant="destructive" disabled={busy} onClick={() => void confirm()}>
+        <Button variant={variant} disabled={busy} onClick={() => void confirm()}>
           {confirmLabel}
         </Button>
       </div>

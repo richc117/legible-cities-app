@@ -78,7 +78,7 @@ engine under `api.engine`, and the export under `api.export`:
 | `create({ name, feed, mode?, agency? })` | a new record, every other field at its default |
 | `rename(id, name)` | changes `name` and `modified` and nothing else |
 | `delete(id)` | removes the project and its output, and reports what could not be removed by folder role |
-| `completeLayout(id, done)` | records the layout identifier and the service day a finished run produced; the main process reads the stage files the engine named and derives the identifier itself (A3-01, ADR-027) |
+| `completeLayout(id, done)` | records the layout's id and the service day a finished run produced; the id is the engine's own, as `graph.build` answered it (A3-01, ADR-033) |
 
 | `viewer.attach(projectId)` | holds the project page's frame by identity once it has loaded, and answers whether it did (ADR-028) |
 | `viewer.release()` | lets the frame go |
@@ -254,11 +254,12 @@ resolved once, at the project's first layout, and stored then; it is never
 re-resolved silently (ADR-031, which amends ADR-023 on the moment). Today
 it is the machine's date; once the engine can report a feed's window it
 becomes the engine's choice, and changing it is an explicit action
-(A3-04). The layout is the stored layout's identifier, produced by that
-same first layout: the app's digest of the four stage graphs until the
-engine addresses layouts itself (ADR-027). Until
-the engine's registry is reachable (A2-01), the feed key is typed into the
-create dialog and validated for form only.
+(A3-04). The layout is the stored layout's id, produced by that same
+first layout: the engine's own, the hash of everything that went into the
+layout (ADR-033; a record from before carries the app's digest of the stage
+graphs, which the next run replaces). Until the engine's registry is
+reachable (A2-01), the feed key is typed into the create dialog and
+validated for form only.
 
 The Library has no record of its own: it is the set of readable records
 under `projects/`, sorted by modified time, newest first.
@@ -349,11 +350,12 @@ for the project's layout, then for its map, and reports each stage as the
 engine finishes it.
 
 Both requests go through the typed client. The layout call answers with the
-four stage graphs' paths and their summaries; the map call writes the page
-into `<SCHEMATIC_HOME>/out/<project id>/`, which is exactly where the
-project origin already serves from, so the viewer (A3-02) needs no copying.
-The map call runs the layout stages itself and therefore repeats the first
-four reports; a repeat for a stage already finished is ignored.
+layout's id, its meta, the four stage graphs' paths and their summaries; the
+map call takes that id and writes the page into
+`<SCHEMATIC_HOME>/out/<project id>/`, which is exactly where the project
+origin already serves from, so the viewer (A3-02) needs no copying. The map
+call reports the four layout stages again as it reads them and never lays
+out on the way to a map; a repeat for a stage already finished is ignored.
 
 The engine reports a stage when that stage **finishes**, and the sentence
 describes the stage that finished. So a report marks its own stage done and
@@ -365,42 +367,38 @@ did, and leaves every other sentence alone, because a slash is not evidence
 of a path (the schedule stage says "matched 114/114 stops").
 
 When both calls have returned, one bridge call writes the record: the
-service day, the layout's identifier and the modification time, together or
-not at all. A cancelled or failed run writes nothing, and can be run again.
+service day, the layout's id and the modification time, together or not at
+all. A cancelled or failed run writes nothing, and can be run again.
+
+"Re-layout" runs the layout call with `force`, behind a warning that the
+layout engine is heuristic and a new layout may place stations differently.
+The engine keeps the stored layout until the new set is whole, so a cancel
+or a failure leaves the project exactly as it was; the record is written
+only when the run finishes, and says the map came from a fresh layout.
+"Lay out again" is the unforced case, which reuses the stored layout.
 
 A run belongs to its project rather than to the screen showing it, so a
 person can start a layout, go back to the Library and come back to one still
 running; the renderer keeps one client for all of them.
 
-### What identifies a layout, and why the app derives it
+### What identifies a layout
 
-Protocol 1 answers with paths and no identity, and the engine's cache is
-keyed by the feed alone, so every project on a feed shares one layout. The
-app derives an identifier from the four stage graphs' contents: each file's
-stage name, length and bytes, in the engine's stage order, hashed together.
-Two projects drawn from the same layout record the same value, a changed
-layout records a different one, and the value carries no path.
+The engine names it. A layout is stored at `data/graphs/<feed>/<id>/` with
+a `.meta.json`, and `<id>` is the sha256 of everything that went into it:
+the feed's bytes, the mode, the agency, the label options, the LOOM build
+and the stage arguments. The same inputs name the same layout before
+anything runs, two projects on one feed name the same layout unless their
+inputs differ, and a layout is never rewritten in place: a forced rebuild
+replaces it only once the new set is whole. The app records the id as
+`graph.build` answered it and passes it to `map.build`, so a map is always
+drawn from the layout the project names. The main process checks the id's
+shape and writes it; it reads no file and needs no path (ADR-033, which
+supersedes ADR-027 and the app's own digest of the stage graphs).
 
-The reading happens in the main process, because the renderer holds no Node
-APIs, and every path is checked to lie under the engine's home before it is
-opened, exactly as the project origin checks. The paths cross the bridge
-inward only, and every failure on the way becomes a sentence, because the
-rejection is shown to a person.
-
-### Where this falls short of principle III, and why
-
-The constitution says renders and exports read the stored layout and never
-re-run the layout stages. The engine at the pinned version rebuilds any
-missing stage during a map build without being asked, so the app cannot
-enforce that; it records what it drew from and reports a difference
-instead. Engine issue E04, which addresses a layout by the hash of its
-inputs, is what closes the gap. ADR-027 records the decision and its cost.
-
-For the same reason there is no forced re-layout. Forcing a rebuild
-rewrites the first three stage files before the fourth runs, so a cancelled
-one leaves a mixed set that a later build reads as a valid cache; that was
-reproduced rather than inferred. "Lay out again" re-runs without forcing,
-which reuses the cache and is safe.
+The id names the inputs, not the output: a re-layout runs every stage again
+under the same id and may place stations differently, because `octi` is
+not deterministic. What reproduces a map is the stored set, which is why
+the engine keeps it and the app never asks for a layout on the way to a map.
 
 ### The service day
 

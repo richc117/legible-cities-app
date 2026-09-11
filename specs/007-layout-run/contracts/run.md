@@ -4,14 +4,12 @@
 
 1. **Refuse early.** If the engine is not ready, the run does not start; the state's own sentence says why. If a run for this project is already in flight, the second is refused, not queued.
 2. **The service day.** A project that has one uses it. A project that has none gets today, on the machine, resolved once; it is stored with the rest when the run completes, and never resolved again.
-3. **Ask for the layout.** `graph.build` with the project's feed key. Four stages report as they finish. The answer carries the stage summaries and the four paths.
-4. **Ask for the map.** `map.build` with the feed key, the service day, and the project's identifier as the output folder, which is where the app already serves a project's output from. Eight stages report; the first four are already finished and their repeats are ignored.
-5. **Write.** One bridge call with the day and the paths. The record comes back written, with whether the layout changed.
+3. **Ask for the layout.** `graph.build` with the project's feed key, and `force` for a re-layout. Four stages report as they finish. The answer carries the layout's id and meta, the stage summaries and the four paths.
+4. **Ask for the map.** `map.build` with the feed key, the layout's id, the service day, and the project's identifier as the output folder, which is where the app already serves a project's output from. Eight stages report; the first four are already finished and their repeats are ignored. The engine never lays out on the way to a map (ADR-033).
+5. **Write.** One bridge call with the day and the id. The record comes back written, with whether the id differs from the one recorded.
 
-Steps 3 and 4 are separate because only the layout call returns the paths
-that identify the layout, and only the map call produces a page. The map
-call would rebuild a missing stage on its own, which is the behaviour this
-feature detects rather than prevents.
+Steps 3 and 4 are separate because only the layout call names the layout,
+and only the map call produces a page.
 
 ## Cancelling
 

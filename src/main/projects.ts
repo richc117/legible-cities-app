@@ -29,8 +29,7 @@ import {
   type ProjectSummary,
   validateServiceDate,
 } from '../shared/project'
-import type { LayoutDone, LayoutResult } from '../shared/layout'
-import { layoutIdentity } from './layout'
+import { isLayoutId, type LayoutDone, type LayoutResult } from '../shared/layout'
 import { isValidProjectId } from './paths'
 
 const RECORD_FILE = 'project.json'
@@ -84,7 +83,7 @@ export class ProjectStore {
 
   /** Both folders derive from the engine home, so neither can be handed a stray path. */
   constructor(
-    private readonly home: string,
+    home: string,
     private readonly log: (message: string) => void,
   ) {
     this.root = join(home, 'projects')
@@ -283,8 +282,8 @@ export class ProjectStore {
   /**
    * A run finished: the layout it was drawn from, the day it was drawn for
    * and the modification time go in together, or none of them does. The
-   * engine named the stage graphs; they are read here, where a path is
-   * allowed to exist, and checked against the engine's home first.
+   * layout's id is the engine's own, the hash of the layout's inputs, as
+   * graph.build answered it (ADR-033); nothing is read from disk here.
    *
    * A project keeps a service day it already has: the day is resolved once
    * and never recomputed, because a day chosen afresh would depend on when
@@ -295,7 +294,9 @@ export class ProjectStore {
     check(validateServiceDate(done.date))
     const { record, readOnly } = await this.load(id)
     if (readOnly) throw new Error('read-only')
-    const layout = await layoutIdentity(done.paths, this.home)
+    if (!isLayoutId(done.layout))
+      throw new Error('the layout run did not say which layout it drew from')
+    const layout = done.layout
     const updated: ProjectRecord = {
       ...record,
       version: RECORD_VERSION,

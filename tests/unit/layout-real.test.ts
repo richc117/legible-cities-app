@@ -24,7 +24,6 @@ import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { resolveConfig } from '../../src/main/config'
 import { engineCommand, engineEnvironment, resolveInterpreter } from '../../src/main/interpreter'
-import { layoutIdentity } from '../../src/main/layout'
 import { Sidecar } from '../../src/main/sidecar'
 import type { EnginePin } from '../../src/shared/engine'
 import { GRAPH_STAGES, LAYOUT_STAGES } from '../../src/shared/layout'
@@ -62,9 +61,17 @@ const INTERPRETER = resolveInterpreter({
 }).interpreter
 
 // The engine's own home is its checkout, so that is where a developer's
-// cached stage graphs are.
+// stored layouts are: one folder per layout id under the feed's, each with
+// its four stage graphs and a .meta.json (engine v0.5.0).
 const CACHED =
-  CHECKOUT !== null && existsSync(join(CHECKOUT, 'data', 'graphs', FEED, '03_octi.json'))
+  CHECKOUT !== null &&
+  existsSync(join(CHECKOUT, 'data', 'graphs', FEED)) &&
+  readdirSync(join(CHECKOUT, 'data', 'graphs', FEED)).some(
+    (name) =>
+      /^[0-9a-f]{64}$/.test(name) &&
+      existsSync(join(CHECKOUT, 'data', 'graphs', FEED, name, '03_octi.json')) &&
+      existsSync(join(CHECKOUT, 'data', 'graphs', FEED, name, '.meta.json')),
+  )
 
 const WHY =
   INTERPRETER === null
@@ -81,9 +88,11 @@ function seededHome(): string {
   cpSync(join(CHECKOUT as string, 'data', 'graphs', FEED), join(home, 'data', 'graphs', FEED), {
     recursive: true,
   })
+  // The feed's zip and its normalised copies; the id hashes the zip's bytes,
+  // so the copy names the same layout the checkout stored.
   const feeds = join(CHECKOUT as string, 'data', 'feeds')
   for (const file of readdirSync(feeds).filter((f) => f.startsWith(FEED))) {
-    cpSync(join(feeds, file), join(home, 'data', 'feeds', file))
+    cpSync(join(feeds, file), join(home, 'data', 'feeds', file), { recursive: true })
   }
   return home
 }
@@ -125,27 +134,31 @@ describe.skipIf(INTERPRETER === null || !CACHED)(`the real engine's layout${WHY}
       })
 
       const built = (await sidecar.request('graph.build', { key: FEED }).result) as {
+        layout: string
         paths: Record<string, string>
       }
       expect(reported, 'the layout call reports the four layout stages').toEqual([...GRAPH_STAGES])
+      expect(built.layout, "the engine's own id").toMatch(/^[0-9a-f]{64}$/)
 
       const map = (await sidecar.request('map.build', {
         key: FEED,
+        layout: built.layout,
         date: '2026-09-02',
         out: 'a-project',
-      }).result) as { files: { html: string }; date: string }
+      }).result) as { files: { html: string }; date: string; layout: string }
 
       // The map call repeats the four and adds its own four, which is the
       // whole sequence the app declares.
       expect(reported.slice(GRAPH_STAGES.length)).toEqual([...LAYOUT_STAGES])
       expect(map.date).toBe('2026-09-02')
+      expect(map.layout, 'the map names the layout it was drawn from').toBe(built.layout)
       expect(existsSync(join(home, 'out', 'a-project', `${FEED}.html`))).toBe(true)
 
-      // The identifier is derived from what the engine actually named.
-      const paths = GRAPH_STAGES.map((stage) => built.paths[stage])
-      const identity = await layoutIdentity(paths, home)
-      expect(identity).toMatch(/^[0-9a-f]{64}$/)
-      expect(await layoutIdentity(paths, home), 'reproducible').toBe(identity)
+      // The same inputs name the same layout, and asking again runs nothing.
+      const again = (await sidecar.request('graph.build', { key: FEED }).result) as {
+        layout: string
+      }
+      expect(again.layout, 'reproducible').toBe(built.layout)
     } finally {
       await sidecar.stop()
       rmSync(home, { recursive: true, force: true })

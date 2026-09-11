@@ -70,9 +70,12 @@ export const DEFAULT_FEED = 'la-metro-rail'
 
 export const ID_PATTERN = /^[a-z][a-z0-9]{11}$/
 const FEED_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/
-const MODE_PATTERN = /^[a-z]{1,16}$/
+// The engine's own rules for the two it validates: a mode is what LOOM's -m
+// takes, names or route_type numbers, comma-joined; an agency_id is at most
+// 64 characters. Held to the engine's schema by tests/unit/project.test.ts.
+export const MODE_PATTERN = /^[a-z0-9-]+(,[a-z0-9-]+)*$/
 const NAME_MAX = 120
-const AGENCY_MAX = 120
+export const AGENCY_MAX = 64
 
 export function validateName(name: string): string | null {
   const trimmed = name.trim()
@@ -89,7 +92,8 @@ export function validateFeedKey(feed: string): string | null {
 }
 
 export function validateMode(mode: string): string | null {
-  if (!MODE_PATTERN.test(mode)) return 'mode must be a short lowercase word'
+  if (mode.length > 64 || !MODE_PATTERN.test(mode))
+    return 'mode must be one or more of the modes LOOM knows, such as tram or subway, comma-joined'
   return null
 }
 
