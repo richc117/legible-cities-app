@@ -496,6 +496,23 @@ entry's mode and agency, so a preset draws as the engine's site draws
 it; a record from before holds the app's old defaults, and the view says
 what the feed's own entry draws and offers it in one press.
 
+## The geographic view
+
+A project with a layout shows two of its stages drawn where they run: as
+the feed draws its routes (`gtfs2graph`) and after LOOM has sorted the
+lines onto shared track (`loom`), before anything is straightened. The
+drawing is the engine's, asked for by the layout's id through
+`render.stage` (engine v0.7.0) and kept per layout, set, stage and width
+for the session; the counts beside it are the engine's, shown as sent,
+and never a number the app worked out (ADR-023: `topo` is not
+reproducible, so a literal count is the wrong instrument). The SVG goes
+into an iframe with an empty `sandbox`, no permission at all, through
+`srcdoc`: nothing in it runs, it has no origin, and it is never inline
+in the interface's document. Pan and zoom are the interface's transforms
+on the frame, from the wheel, a drag, and the keys on a focusable pane
+named for a screen reader. A narrower mode chosen in the Inspect view and
+a new layout draw fewer lines here, from the new layout's set.
+
 ## The viewer
 
 A project that has a layout shows the page the engine wrote for it, in a

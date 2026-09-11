@@ -39,7 +39,9 @@ names; the create dialog offers the list, and a typed key when the engine
 is away; A2-02: the Inspect view reads the feed through `feeds.inspect`
 and a person chooses mode and agency with the route types in view, the
 histogram saying which the mode keeps, and the layout run passes both to
-the engine) and the viewer (A3-02: the engine's page in a frame sandboxed to
+the engine; A2-03: two layout stages drawn where they run, the engine's
+SVG over `render.stage` in a frame with an empty sandbox, panned and
+zoomed from outside, the counts the engine's) and the viewer (A3-02: the engine's page in a frame sandboxed to
 an opaque origin and driven from the main process, ADR-028), and the
 capture (A5-02a: an offscreen window in its own session takes a page's
 frames through the DevTools protocol, byte-identical run to run,
