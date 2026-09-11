@@ -14,12 +14,13 @@
 
 import { OFFERED_PRESETS, type ExportProgress } from '../../../shared/export'
 import { ExportRun, type ExportBridge } from './exportRun'
+import { FeedAdd } from './feedAdd'
 import { LayoutRun } from './layoutRun'
 import { EngineClient } from './client'
 
 let client: EngineClient | null = null
 
-const engineClient = (): EngineClient => {
+export const engineClient = (): EngineClient => {
   client ??= new EngineClient(window.api.engine)
   return client
 }
@@ -49,6 +50,14 @@ export function layoutRunFor(projectId: string): LayoutRun {
 /** Forget a project's run: it was deleted, so nothing will ask again. */
 export function forgetLayoutRun(projectId: string): void {
   runs.delete(projectId)
+}
+
+let adder: FeedAdd | null = null
+
+/** The one feed add at a time, over the shared client. */
+export function feedAdd(): FeedAdd {
+  adder ??= new FeedAdd(engineClient())
+  return adder
 }
 
 const exports = new Map<string, ExportRun>()

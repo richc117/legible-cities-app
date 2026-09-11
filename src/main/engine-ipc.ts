@@ -27,6 +27,12 @@ export interface EngineSource {
 
 export type Send = (channel: string, payload: unknown) => void
 
+/** A refusal before the engine sees a request: null lets it through, a sentence stops it. */
+export type Guard = (
+  method: string,
+  params: Record<string, unknown> | undefined,
+) => Promise<string | null>
+
 const LEVELS = new Set(['debug', 'info', 'warning', 'error'])
 
 export function registerEngineHandlers(
@@ -35,6 +41,7 @@ export function registerEngineHandlers(
   isTopFrame: (event: IpcMainInvokeEvent) => boolean,
   send: Send,
   log: (message: string) => void,
+  guard: Guard = async () => null,
 ): () => void {
   const idOf = new Map<string, number>()
   const tokenOf = new Map<number, string>()
@@ -53,6 +60,11 @@ export function registerEngineHandlers(
     if (typeof method !== 'string' || method === '') return badCall('a request needs a method name')
     if (params !== undefined && !isObject(params)) return badCall('parameters must be an object')
     if (idOf.has(token)) return badCall('a request with this id is already running')
+    // The gate: what may be asked of the registry on a person's behalf is
+    // decided here, with what the main process knows (the paths its own
+    // chooser answered, the feeds its projects name), never on the page.
+    const refused = await guard(method, params as Record<string, unknown> | undefined)
+    if (refused !== null) return badCall(refused)
     const { id, result } = engine.request(method, params as Record<string, unknown> | undefined)
     if (id !== 0) {
       idOf.set(token, id)

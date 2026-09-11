@@ -135,7 +135,9 @@ test('the create dialog is the kit at the document density, keyboard first', asy
     expect(inputBox?.height).toBe(32)
 
     await page.keyboard.press('Tab')
-    await expect(dialog.getByLabel('Feed key')).toBeFocused()
+    await expect(
+      dialog.getByLabel('Feed key').or(dialog.getByRole('combobox', { name: 'Feed' })),
+    ).toBeFocused()
     await page.keyboard.press('Tab')
     await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeFocused()
     await page.keyboard.press('Tab')

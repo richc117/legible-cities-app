@@ -30,7 +30,13 @@ warning, ADR-033; A3-04: the service day is the engine's choice from a
 stored anchor, `feeds.service` at every layout run, a date control bounded
 by the stored window, and a chosen day a rebuild from the stored layout,
 never a re-layout; A3-06: the layout's `made` beside its id, so a
-project is told when another re-laid out the set it draws from) and the viewer (A3-02: the engine's page in a frame sandboxed to
+project is told when another re-laid out the set it draws from), the feeds
+(A2-01: the Library lists the engine's registry, adds a feed from a zip
+chosen in the platform's dialog or from a URL over `feeds.add` with its
+download on a progress line, and removes an added feed; a guard in the
+main process refuses a path no dialog answered and a feed a project
+names; the create dialog offers the list, and a typed key when the engine
+is away) and the viewer (A3-02: the engine's page in a frame sandboxed to
 an opaque origin and driven from the main process, ADR-028), and the
 capture (A5-02a: an offscreen window in its own session takes a page's
 frames through the DevTools protocol, byte-identical run to run,

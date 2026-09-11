@@ -1,14 +1,29 @@
 import { useEffect, useRef, useState, type FormEvent, type JSX } from 'react'
 import type { CreateProjectInput } from '../../shared/api'
+import type { FeedRecord } from '../../shared/protocol'
 import { DEFAULT_FEED, validateFeedKey, validateName } from '../../shared/project'
+import { placeOf } from './FeedList'
 import Button from './kit/Button'
+import Select from './kit/Select'
 import TextInput, { type TextInputHandle } from './kit/TextInput'
 
 interface Props {
   open: boolean
+  /** The feeds the engine listed; empty when it could not be asked, and the key is typed. */
+  feeds: FeedRecord[]
+  /** The feed to start on: the row's, or the default. */
+  initialFeed?: string
   /** Creates the project; a rejection's message is shown under the field it concerns. */
   onCreate: (input: CreateProjectInput) => Promise<void>
   onCancel: () => void
+}
+
+/** The feed the dialog opens on: the one asked for when the list has it, else the first listed, else the default key. */
+export function startingFeed(feeds: FeedRecord[], wanted: string | undefined): string {
+  if (wanted !== undefined && (feeds.length === 0 || feeds.some((f) => f.key === wanted)))
+    return wanted
+  if (feeds.some((f) => f.key === DEFAULT_FEED)) return DEFAULT_FEED
+  return feeds.length > 0 ? feeds[0].key : DEFAULT_FEED
 }
 
 type Field = 'name' | 'feed'
@@ -21,12 +36,19 @@ function fieldFor(message: string): Field {
   return message.startsWith('feed') ? 'feed' : 'name'
 }
 
-export default function CreateProjectDialog({ open, onCreate, onCancel }: Props): JSX.Element {
+export default function CreateProjectDialog({
+  open,
+  feeds,
+  initialFeed,
+  onCreate,
+  onCancel,
+}: Props): JSX.Element {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const nameRef = useRef<TextInputHandle>(null)
   const feedRef = useRef<TextInputHandle>(null)
   const [name, setName] = useState('')
-  const [feed, setFeed] = useState(DEFAULT_FEED)
+  const [feed, setFeed] = useState(() => startingFeed(feeds, initialFeed))
+  const listed = feeds.length > 0
   const [messages, setMessages] = useState<Messages>({})
   const [busy, setBusy] = useState(false)
 
@@ -36,19 +58,22 @@ export default function CreateProjectDialog({ open, onCreate, onCancel }: Props)
     const dialog = dialogRef.current
     if (!dialog) return
     if (open && !dialog.open) {
+      // The feed the opener asked for, read at opening: a row's "New
+      // project" names its feed, the toolbar's names none.
+      setFeed(startingFeed(feeds, initialFeed))
       dialog.showModal()
       // React's autoFocus only acts at mount, when the dialog is still hidden.
       nameRef.current?.focus()
     } else if (!open && dialog.open) {
       dialog.close()
     }
-  }, [open])
+  }, [open, feeds, initialFeed])
 
   // The close event follows every way out (Escape, Cancel, a finished
   // create), so the next opening starts from a blank form.
   const reset = (): void => {
     setName('')
-    setFeed(DEFAULT_FEED)
+    setFeed(startingFeed(feeds, undefined))
     setMessages({})
     setBusy(false)
   }
@@ -96,7 +121,9 @@ export default function CreateProjectDialog({ open, onCreate, onCancel }: Props)
       <form noValidate onSubmit={submit}>
         <h2 id="create-title">New project</h2>
         <p id="create-desc" className="hint">
-          The list of feeds arrives with a later release, so the feed is typed for now.
+          {listed
+            ? 'A project draws one feed. Add a feed to the Library to see it here.'
+            : 'The engine is not ready to list the feeds, so the feed key is typed.'}
         </p>
         <div className="field">
           <label htmlFor="create-name">Name</label>
@@ -115,17 +142,38 @@ export default function CreateProjectDialog({ open, onCreate, onCancel }: Props)
           </p>
         </div>
         <div className="field">
-          <label htmlFor="create-feed">Feed key</label>
-          <TextInput
-            id="create-feed"
-            ref={feedRef}
-            size="large"
-            value={feed}
-            onChange={setFeed}
-            spellCheck={false}
-            aria-describedby="create-feed-message"
-            aria-invalid={messages.feed ? true : undefined}
-          />
+          {listed ? (
+            <>
+              {/* The kit names the native select itself; this is the visible word. */}
+              <span className="field-label" aria-hidden="true">
+                Feed
+              </span>
+              <Select label="Feed" value={feed} onChange={setFeed} className="feed-select">
+                {feeds.map((f) => {
+                  const place = placeOf(f)
+                  return (
+                    <option key={f.key} value={f.key}>
+                      {place === null ? f.name : `${f.name} (${place})`}
+                    </option>
+                  )
+                })}
+              </Select>
+            </>
+          ) : (
+            <>
+              <label htmlFor="create-feed">Feed key</label>
+              <TextInput
+                id="create-feed"
+                ref={feedRef}
+                size="large"
+                value={feed}
+                onChange={setFeed}
+                spellCheck={false}
+                aria-describedby="create-feed-message"
+                aria-invalid={messages.feed ? true : undefined}
+              />
+            </>
+          )}
           <p id="create-feed-message" className="message error">
             {messages.feed}
           </p>

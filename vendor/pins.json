@@ -20,12 +20,12 @@
   },
   "engine": {
     "repo": "https://github.com/richc117/legible-cities",
-    "tag": "v0.6.0",
-    "version": "0.6.0",
+    "tag": "v0.7.0",
+    "version": "0.7.0",
     "protocol": 1,
-    "note": "The first tag with the service day as data: feeds.service takes a feed key, an anchor day and the map's lines and answers the service window and the busiest weekday from that anchor, the same on every machine; the app stores the answer at the first layout (ADR-031) and bounds its date picker by it. Additive at protocol 1 by the engine's convention, so the tag is the gate. The handshake compares version and protocol with engine.info and refuses any other; the vendoring job installs the package at the tag.",
+    "note": "The first tag with the registry over the protocol: feeds.list (every feed, preset or added, with whether its zip is cached), feeds.add (a URL or an absolute path the client owns; the download's bytes as progress, then the check; a refusal names the missing table and leaves nothing), feeds.remove (a preset is refused), feeds.inspect and render.stage. Additive at protocol 1 by the engine's convention, so the tag is the gate. The handshake compares version and protocol with engine.info and refuses any other; the vendoring job installs the package at the tag.",
     "licence": "GPL-3.0-or-later",
-    "schema_sha256": "cd7d148a3f2c5bd8354d72849cd1e1668113593822dac9b61e1b7516d2bc851f"
+    "schema_sha256": "c3f3cc428d6f424a7c628e10305945d085d8c3f99da9cec35972f2cf09966744"
   },
   "python": {
     "source": "https://github.com/astral-sh/python-build-standalone",

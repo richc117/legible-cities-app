@@ -80,6 +80,7 @@ engine under `api.engine`, and the export under `api.export`:
 | `delete(id)` | removes the project and its output, and reports what could not be removed by folder role |
 | `completeLayout(id, done)` | records the layout's id, the feed's window and the service day a finished run produced; the id is the engine's own, as `graph.build` answered it (A3-01, ADR-033), the window is `feeds.service`'s answer (A3-04, ADR-031) |
 | `completeRebuild(id, done)` | records the day a finished rebuild drew the map for, inside the stored window or not at all (A3-04) |
+| `feeds.pickZip()` | opens the platform's file chooser for a GTFS zip and remembers the answer; the one native dialog, since a page cannot choose a file (A2-01) |
 
 | `viewer.attach(projectId)` | holds the project page's frame by identity once it has loaded, and answers whether it did (ADR-028) |
 | `viewer.release()` | lets the frame go |
@@ -437,6 +438,33 @@ cancelled or failed rebuild keeps the day, and says the page on screen may
 be the old map until the next build. The app parses and shows no time of
 day: a trip past midnight keeps its `25:44`-style time in the page, which
 is the engine's (`specs/012-service-date`).
+
+## The feeds
+
+The Library lists the feeds the engine knows (`feeds.list`, engine
+v0.7.0): the presets curated in the engine, then the ones a person added,
+each with whether its zip is downloaded, which is the engine's `cached`
+and never the app's guess. A feed is added from a zip on disk or from a
+URL through `feeds.add`, run from the page through the typed client with
+the download's bytes and then the check on a progress line; a cancel
+lands between the download's chunks and the engine keeps nothing; a
+refusal is the engine's own sentence, which names the missing table. A
+feed a person added is removed through `feeds.remove` behind a
+confirmation; a preset has no Remove, and the engine refuses one anyway.
+
+Two things only the main process can do sit in front of this. The file
+chooser is the platform's, opened by the main process and parented to the
+window, the one native dialog the rules keep; the path it answers is
+remembered, and a `feeds.add` that names any other path is refused before
+the engine sees it. And a `feeds.remove` of a feed any project still
+names is refused, naming how many, because the engine would take the
+zip and the layouts those projects draw from. Both refusals are answered
+as bad calls with a sentence, from a guard every engine request passes
+(`src/main/feeds-ipc.ts`, `specs/014-feeds/contracts/bridge.md`).
+
+The create dialog offers the listed feeds as a native select, and falls
+back to a typed key when the engine cannot be asked, so a project can
+still be made without it.
 
 ## The viewer
 
