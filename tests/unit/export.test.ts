@@ -462,10 +462,14 @@ describe('failing', () => {
     await settle()
     expect(h.cap.calls, 'a different folder is not in the way').toHaveLength(2)
 
+    // Both outcomes are awaited together: a rejection settles a macrotask
+    // after the cancel (the frames are removed first), so a handler attached
+    // one await later can miss it on a fast machine.
+    const ends = [first.result, third.result].map((r) => r.catch((reason: unknown) => reason))
     h.exporter.cancel('tok-1')
     h.exporter.cancel('tok-3')
-    await expect(first.result).rejects.toMatchObject({ code: ERROR_CODES.cancelled })
-    await expect(third.result).rejects.toMatchObject({ code: ERROR_CODES.cancelled })
+    for (const end of await Promise.all(ends))
+      expect(end).toMatchObject({ code: ERROR_CODES.cancelled })
     // The file is free again once the first has ended.
     const again = h.exporter.start('tok-4', 'abcdefghijk2', 'instagram-reel')
     await settle()
