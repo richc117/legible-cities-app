@@ -9,6 +9,7 @@ import Viewer from './Viewer'
 import Icon from './icons/Icon'
 import Button from './kit/Button'
 import LayoutRunView from './LayoutRun'
+import ServiceDay from './ServiceDay'
 import TextInput, { type TextInputHandle } from './kit/TextInput'
 import { useEngineState } from './useEngineState'
 import { useSnapshot } from './useSnapshot'
@@ -53,6 +54,10 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
   const [renameMessage, setRenameMessage] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [confirming, setConfirming] = useState(false)
+  // How many runs have drawn the page while this view is open. The viewer
+  // is keyed by it, so the frame loads the page a run just wrote instead of
+  // keeping the one it had: its address does not change between the two.
+  const [drawn, setDrawn] = useState(0)
   const engine = useEngineState()
   const headingRef = useRef<HTMLHeadingElement>(null)
 
@@ -77,7 +82,10 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
     return run.subscribe((snapshot) => {
       if (snapshot.state === 'done' && previous !== 'done') {
         window.api.projects.get(id).then(
-          (project) => setState({ status: 'ready', project }),
+          (project) => {
+            setState({ status: 'ready', project })
+            setDrawn((n) => n + 1)
+          },
           () => undefined,
         )
       }
@@ -209,9 +217,12 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
             <LayoutRunView run={run} project={project} engine={engine} disabled={exporting} />
           )}
           {!project.readOnly && project.layout !== null && (
+            <ServiceDay run={run} project={project} engine={engine} disabled={exporting} />
+          )}
+          {!project.readOnly && project.layout !== null && (
             <ExportRunView run={exporter} project={project} engine={engine} disabled={layingOut} />
           )}
-          {project.layout !== null && <Viewer project={project} />}
+          {project.layout !== null && <Viewer key={drawn} project={project} />}
           <div className="toolbar">
             <Button
               ref={renameButtonRef}

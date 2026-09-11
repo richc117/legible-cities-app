@@ -11,6 +11,7 @@ The on-disk form of `ProjectRecord` (`data-model.md`), version 1:
   "mode": "all",
   "agency": null,
   "date": null,
+  "service": null,
   "style": { "lineWidth": 10, "stationRadius": 8, "interchangeRadius": 11, "labelSize": 26 },
   "colors": {},
   "defaultColor": "#888888",
@@ -29,6 +30,10 @@ The on-disk form of `ProjectRecord` (`data-model.md`), version 1:
   and are copied here as data; the numbers are re-checked against the engine
   when A4-02 exposes them.
 - Readers accept a missing optional field and refuse a `version` above 1.
+- `service` (added by A3-04, still version 1) is the engine's answer at
+  the last layout run, `{ start, end, busiest, anchor }`, four days
+  `YYYY-MM-DD` with `start <= end`, or `null`; a block that is not that
+  reads as `null`.
 - A write stores the record as the reader normalised it, stamped with the
   current `version`: unknown keys are dropped, an invalid colour, theme or
   date falls back to its default, and a missing timestamp becomes the epoch.

@@ -78,7 +78,8 @@ engine under `api.engine`, and the export under `api.export`:
 | `create({ name, feed, mode?, agency? })` | a new record, every other field at its default |
 | `rename(id, name)` | changes `name` and `modified` and nothing else |
 | `delete(id)` | removes the project and its output, and reports what could not be removed by folder role |
-| `completeLayout(id, done)` | records the layout's id and the service day a finished run produced; the id is the engine's own, as `graph.build` answered it (A3-01, ADR-033) |
+| `completeLayout(id, done)` | records the layout's id, the feed's window and the service day a finished run produced; the id is the engine's own, as `graph.build` answered it (A3-01, ADR-033), the window is `feeds.service`'s answer (A3-04, ADR-031) |
+| `completeRebuild(id, done)` | records the day a finished rebuild drew the map for, inside the stored window or not at all (A3-04) |
 
 | `viewer.attach(projectId)` | holds the project page's frame by identity once it has loaded, and answers whether it did (ADR-028) |
 | `viewer.release()` | lets the frame go |
@@ -366,9 +367,13 @@ therefore not for a screen; the run replaces that one with what the stage
 did, and leaves every other sentence alone, because a slash is not evidence
 of a path (the schedule stage says "matched 114/114 stops").
 
-When both calls have returned, one bridge call writes the record: the
-service day, the layout's id and the modification time, together or not at
-all. A cancelled or failed run writes nothing, and can be run again.
+Between the two, the run asks the engine which day to draw
+(`feeds.service`, with the machine's date as the anchor and the lines the
+layout drew): a short call once the feed is cached, reporting no stage; the
+sentence on screen says the day is being chosen. When every call has
+returned, one bridge call writes the record: the service day, the layout's
+id, the feed's window and the modification time, together or not at all.
+A cancelled or failed run writes nothing, and can be run again.
 
 "Re-layout" runs the layout call with `force`, behind a warning that the
 layout engine is heuristic and a new layout may place stations differently.
@@ -402,12 +407,28 @@ the engine keeps it and the app never asks for a layout on the way to a map.
 
 ### The service day
 
-The engine never chooses a service day, because its choice would depend on
-the day it was asked (ADR-031). The app resolves one at a project's first
-layout, from the machine's own today, stores it at once, and uses the
-stored day for every later build. Choosing a *good* day, rather than merely
-a fixed one, needs the feed's service window, which arrives with the engine
-issues behind A3-04.
+A map is drawn for one calendar day, and `map.build` never chooses it,
+because its choice would depend on the day it was asked (ADR-031). The app
+resolves the day once, at a project's first layout, and stores it: the run
+asks `feeds.service` with the machine's date as the anchor and the lines
+the layout drew, and the engine answers the feed's service window, the
+busiest weekday scanning from that anchor, and the anchor itself, the same
+on every machine (engine E21, v0.6.0). The record stores all four beside
+the day, and every later build, capture and export is told the stored day.
+A project keeps the day it has; the window is replaced at every layout
+run, because a fresh feed may carry a fresh calendar; a record from before
+the window was stored gains it at its next run.
+
+Changing the day is a person's explicit action, on the project screen: a
+native date control bounded by the stored window, with the engine's day
+one press away. A chosen day is a rebuild, `map.build` from the stored
+layout's id, never `graph.build`, so the stations do not move; the day is
+written only when the map has been drawn, through a bridge call of its own
+that refuses a day outside the window again in the main process. A
+cancelled or failed rebuild keeps the day, and says the page on screen may
+be the old map until the next build. The app parses and shows no time of
+day: a trip past midnight keeps its `25:44`-style time in the page, which
+is the engine's (`specs/012-service-date`).
 
 ## The viewer
 

@@ -44,6 +44,7 @@ function record(id: string, overrides: Partial<ProjectRecord> = {}): ProjectReco
     mode: 'all',
     agency: null,
     date: null,
+    service: null,
     style: { ...DEFAULT_STYLE },
     colors: {},
     defaultColor: DEFAULT_COLOR,
@@ -116,6 +117,7 @@ describe('create', () => {
       mode: 'all',
       agency: null,
       date: null,
+      service: null,
       style: { lineWidth: 10, stationRadius: 8, interchangeRadius: 11, labelSize: 26 },
       colors: {},
       defaultColor: '#888888',
@@ -355,8 +357,15 @@ describe('delete when a folder cannot be removed', () => {
   )
 })
 
-// A run that finished: the layout, the day and the modification time go in
-// together or not at all, and the day a project already has is kept.
+const WINDOW = {
+  start: '2026-01-01',
+  end: '2026-12-31',
+  busiest: '2026-09-15',
+  anchor: '2026-09-08',
+}
+
+// A run that finished: the layout, the window, the day and the modification
+// time go in together or not at all, and the day a project already has is kept.
 describe('completeLayout', () => {
   const LAYOUT = 'a'.repeat(64)
   const OTHER = 'b'.repeat(64)
@@ -368,9 +377,11 @@ describe('completeLayout', () => {
     const { record, changed } = await store.completeLayout(project.id, {
       date: '2026-09-02',
       layout: LAYOUT,
+      service: WINDOW,
     })
     expect(record.layout, "the engine's id, as answered").toBe(LAYOUT)
     expect(record.date).toBe('2026-09-02')
+    expect(record.service, "the engine's window and day, as answered").toEqual(WINDOW)
     expect(record.modified >= project.modified).toBe(true)
     expect(changed, 'a first layout has nothing to differ from').toBe(false)
     const onDisk = await store.get(project.id)
@@ -380,32 +391,69 @@ describe('completeLayout', () => {
 
   it('keeps a service day the project already has', async () => {
     const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
-    await store.completeLayout(project.id, { date: '2026-09-02', layout: LAYOUT })
-    const second = await store.completeLayout(project.id, { date: '2026-12-25', layout: LAYOUT })
+    await store.completeLayout(project.id, { date: '2026-09-02', layout: LAYOUT, service: WINDOW })
+    const second = await store.completeLayout(project.id, {
+      date: '2026-12-25',
+      layout: LAYOUT,
+      service: WINDOW,
+    })
     expect(second.record.date, 'the day is resolved once (ADR-023)').toBe('2026-09-02')
   })
 
   it('reports a layout that differs from the one the project was drawn from', async () => {
     const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
-    const first = await store.completeLayout(project.id, { date: '2026-09-02', layout: LAYOUT })
+    const first = await store.completeLayout(project.id, {
+      date: '2026-09-02',
+      layout: LAYOUT,
+      service: WINDOW,
+    })
     expect(first.changed).toBe(false)
-    const same = await store.completeLayout(project.id, { date: '2026-09-02', layout: LAYOUT })
+    const same = await store.completeLayout(project.id, {
+      date: '2026-09-02',
+      layout: LAYOUT,
+      service: WINDOW,
+    })
     expect(same.changed, 'the same id is the same layout').toBe(false)
-    const second = await store.completeLayout(project.id, { date: '2026-09-02', layout: OTHER })
+    const second = await store.completeLayout(project.id, {
+      date: '2026-09-02',
+      layout: OTHER,
+      service: WINDOW,
+    })
     expect(second.changed).toBe(true)
     expect(second.record.layout).toBe(OTHER)
   })
 
-  it('refuses a day or an id that is not the right shape, and writes nothing', async () => {
+  it('replaces the window on a later run, keeping the day', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    await store.completeLayout(project.id, { date: '2026-09-02', layout: LAYOUT, service: WINDOW })
+    const fresh = { ...WINDOW, end: '2027-06-30', busiest: '2026-09-22', anchor: '2026-09-20' }
+    const second = await store.completeLayout(project.id, {
+      date: '2026-09-22',
+      layout: LAYOUT,
+      service: fresh,
+    })
+    expect(second.record.service, 'a fresh feed may carry a fresh calendar').toEqual(fresh)
+    expect(second.record.date).toBe('2026-09-02')
+  })
+
+  it('refuses a day, an id or a window that is not the right shape, and writes nothing', async () => {
     const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
     for (const done of [
-      { date: '2026-13-01', layout: LAYOUT },
-      { date: 'yesterday', layout: LAYOUT },
-      { date: '2026-09-02', layout: 'abc' },
-      { date: '2026-09-02', layout: 'A'.repeat(64) },
-      { date: '2026-09-02', layout: '/etc/passwd' },
+      { date: '2026-13-01', layout: LAYOUT, service: WINDOW },
+      { date: 'yesterday', layout: LAYOUT, service: WINDOW },
+      { date: '2026-09-02', layout: 'abc', service: WINDOW },
+      { date: '2026-09-02', layout: 'A'.repeat(64), service: WINDOW },
+      { date: '2026-09-02', layout: '/etc/passwd', service: WINDOW },
+      { date: '2026-09-02', layout: LAYOUT, service: { ...WINDOW, end: '2025-12-31' } },
+      { date: '2026-09-02', layout: LAYOUT, service: { ...WINDOW, anchor: 'today' } },
+      { date: '2026-09-02', layout: LAYOUT, service: { start: '2026-01-01' } },
+      { date: '2026-09-02', layout: LAYOUT, service: null },
+      { date: '2026-09-02', layout: LAYOUT },
     ]) {
-      await expect(store.completeLayout(project.id, done), JSON.stringify(done)).rejects.toThrow()
+      await expect(
+        store.completeLayout(project.id, done as never),
+        JSON.stringify(done),
+      ).rejects.toThrow()
     }
     expect((await store.get(project.id)).layout).toBeNull()
   })
@@ -415,7 +463,79 @@ describe('completeLayout', () => {
     const file = join(home, 'projects', project.id, 'project.json')
     await writeFile(file, JSON.stringify({ ...project, version: 99 }), 'utf8')
     await expect(
-      store.completeLayout(project.id, { date: '2026-09-02', layout: LAYOUT }),
+      store.completeLayout(project.id, { date: '2026-09-02', layout: LAYOUT, service: WINDOW }),
     ).rejects.toThrow('read-only')
+  })
+})
+
+// A day a person chose, after the map was drawn for it: written only inside
+// the window the engine answered, and only for a project with a layout.
+describe('completeRebuild', () => {
+  const LAYOUT = 'a'.repeat(64)
+
+  async function laidOut(): Promise<ProjectRecord> {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    await store.completeLayout(project.id, { date: '2026-09-15', layout: LAYOUT, service: WINDOW })
+    return project
+  }
+
+  it('writes the day and the time, and nothing else', async () => {
+    const project = await laidOut()
+    const before = await store.get(project.id)
+    const after = await store.completeRebuild(project.id, { date: '2026-09-12' })
+    expect(after.date).toBe('2026-09-12')
+    expect(after.layout).toBe(LAYOUT)
+    expect(after.service).toEqual(WINDOW)
+    expect(after.modified >= before.modified).toBe(true)
+    expect(await store.get(project.id)).toEqual({ ...after, readOnly: false })
+  })
+
+  it("accepts the window's first and last day", async () => {
+    const project = await laidOut()
+    expect((await store.completeRebuild(project.id, { date: '2026-01-01' })).date).toBe(
+      '2026-01-01',
+    )
+    expect((await store.completeRebuild(project.id, { date: '2026-12-31' })).date).toBe(
+      '2026-12-31',
+    )
+  })
+
+  it('refuses a day outside the window, naming the window, and writes nothing', async () => {
+    const project = await laidOut()
+    for (const date of ['2025-12-31', '2027-01-01']) {
+      await expect(store.completeRebuild(project.id, { date })).rejects.toThrow(
+        'the feed covers 2026-01-01 to 2026-12-31',
+      )
+    }
+    expect((await store.get(project.id)).date).toBe('2026-09-15')
+  })
+
+  it('refuses a malformed day', async () => {
+    const project = await laidOut()
+    for (const date of ['2026-02-30', 'Saturday', '']) {
+      await expect(store.completeRebuild(project.id, { date })).rejects.toThrow()
+    }
+  })
+
+  it('refuses a project without a layout, or without a window', async () => {
+    const fresh = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    await expect(store.completeRebuild(fresh.id, { date: '2026-09-12' })).rejects.toThrow(
+      'lay the project out first',
+    )
+    // A record from before the window was stored: a layout and a day, no window.
+    await seed(A, record(A, { layout: LAYOUT, date: '2026-09-02' }))
+    await expect(store.completeRebuild(A, { date: '2026-09-12' })).rejects.toThrow(
+      /lay the project out again/,
+    )
+  })
+
+  it('refuses a read-only project', async () => {
+    const project = await laidOut()
+    const file = join(home, 'projects', project.id, 'project.json')
+    const current = await store.get(project.id)
+    await writeFile(file, JSON.stringify({ ...current, version: 99 }), 'utf8')
+    await expect(store.completeRebuild(project.id, { date: '2026-09-12' })).rejects.toThrow(
+      'read-only',
+    )
   })
 })

@@ -27,7 +27,10 @@ import {
   type DeleteResult,
   type ProjectRecord,
   type ProjectSummary,
+  type RebuildDone,
   validateServiceDate,
+  validateServiceWindow,
+  withinWindow,
 } from '../shared/project'
 import { isLayoutId, type LayoutDone, type LayoutResult } from '../shared/layout'
 import { isValidProjectId } from './paths'
@@ -242,6 +245,7 @@ export class ProjectStore {
       mode,
       agency,
       date: null,
+      service: null,
       style: { ...DEFAULT_STYLE },
       colors: {},
       defaultColor: DEFAULT_COLOR,
@@ -280,32 +284,64 @@ export class ProjectStore {
   }
 
   /**
-   * A run finished: the layout it was drawn from, the day it was drawn for
-   * and the modification time go in together, or none of them does. The
-   * layout's id is the engine's own, the hash of the layout's inputs, as
-   * graph.build answered it (ADR-033); nothing is read from disk here.
+   * A run finished: the layout it was drawn from, the feed's window, the
+   * day it was drawn for and the modification time go in together, or none
+   * of them does. The layout's id is the engine's own, the hash of the
+   * layout's inputs, as graph.build answered it (ADR-033); the window and
+   * the engine's day are feeds.service's answer (ADR-031); nothing is read
+   * from disk here.
    *
    * A project keeps a service day it already has: the day is resolved once
    * and never recomputed, because a day chosen afresh would depend on when
-   * the person asked (ADR-023).
+   * the person asked. The window is replaced every run, because a fresh
+   * feed may carry a fresh calendar.
    */
   async completeLayout(id: string, done: LayoutDone): Promise<LayoutResult> {
     this.checkId(id)
     check(validateServiceDate(done.date))
+    check(validateServiceWindow(done.service))
     const { record, readOnly } = await this.load(id)
     if (readOnly) throw new Error('read-only')
     if (!isLayoutId(done.layout))
       throw new Error('the layout run did not say which layout it drew from')
     const layout = done.layout
+    const { start, end, busiest, anchor } = done.service
     const updated: ProjectRecord = {
       ...record,
       version: RECORD_VERSION,
       layout,
       date: record.date ?? done.date,
+      service: { start, end, busiest, anchor },
       modified: new Date().toISOString(),
     }
     await this.writeAtomic(id, updated)
     return { record: updated, changed: record.layout !== null && record.layout !== layout }
+  }
+
+  /**
+   * A rebuild for a chosen day finished: the map was drawn from the stored
+   * layout for that day, so the day is written. This is the gate the spec
+   * puts in the trusted process: the day must lie inside the window the
+   * engine answered, and there must be a layout to have drawn from.
+   */
+  async completeRebuild(id: string, done: RebuildDone): Promise<ProjectRecord> {
+    this.checkId(id)
+    check(validateServiceDate(done.date))
+    const { record, readOnly } = await this.load(id)
+    if (readOnly) throw new Error('read-only')
+    if (record.layout === null) throw new Error('lay the project out first')
+    if (record.service === null)
+      throw new Error('lay the project out again to learn which days the feed covers')
+    if (!withinWindow(done.date, record.service))
+      throw new Error(`the feed covers ${record.service.start} to ${record.service.end}`)
+    const updated: ProjectRecord = {
+      ...record,
+      version: RECORD_VERSION,
+      date: done.date,
+      modified: new Date().toISOString(),
+    }
+    await this.writeAtomic(id, updated)
+    return updated
   }
 
   async delete(id: string): Promise<DeleteResult> {

@@ -136,6 +136,7 @@ describe.skipIf(INTERPRETER === null || !CACHED)(`the real engine's layout${WHY}
       const built = (await sidecar.request('graph.build', { key: FEED }).result) as {
         layout: string
         paths: Record<string, string>
+        stages: { octi: { lines: string[] } }
       }
       expect(reported, 'the layout call reports the four layout stages').toEqual([...GRAPH_STAGES])
       expect(built.layout, "the engine's own id").toMatch(/^[0-9a-f]{64}$/)
@@ -159,6 +160,31 @@ describe.skipIf(INTERPRETER === null || !CACHED)(`the real engine's layout${WHY}
         layout: string
       }
       expect(again.layout, 'reproducible').toBe(built.layout)
+
+      // Which day to draw, as the app asks at the first layout: from a
+      // fixed anchor and the lines the layout drew. The answer is a day
+      // inside the window, and the same day when asked again (E21).
+      const lines = built.stages.octi.lines
+      const service = (await sidecar.request('feeds.service', {
+        key: FEED,
+        anchor: '2026-09-08',
+        lines,
+      }).result) as { start: string; end: string; busiest_weekday: string; anchor: string }
+      for (const day of [service.start, service.end, service.busiest_weekday]) {
+        expect(day).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+      }
+      expect(service.anchor, 'the anchor is echoed').toBe('2026-09-08')
+      expect(
+        service.start <= service.busiest_weekday && service.busiest_weekday <= service.end,
+      ).toBe(true)
+      const twice = (await sidecar.request('feeds.service', {
+        key: FEED,
+        anchor: '2026-09-08',
+        lines,
+      }).result) as { busiest_weekday: string }
+      expect(twice.busiest_weekday, 'the same feed and anchor give the same day').toBe(
+        service.busiest_weekday,
+      )
     } finally {
       await sidecar.stop()
       rmSync(home, { recursive: true, force: true })

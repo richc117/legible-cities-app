@@ -31,12 +31,14 @@ export type StageState = 'pending' | 'running' | 'done' | 'failed'
 
 export type RunState = 'idle' | 'running' | 'done' | 'failed' | 'cancelled'
 
-/** What the renderer hands the main process when a run has finished. */
+/** What the renderer hands the main process when a layout run has finished. */
 export interface LayoutDone {
   /** The service day the map was built for, YYYY-MM-DD. */
   date: string
   /** The layout's id, as the engine answered it: the hash of the layout's inputs. */
   layout: string
+  /** The feed's window and the engine's day, as feeds.service answered them. */
+  service: import('./project').ServiceWindow
 }
 
 /** What the main process answers with once a run's record is written. */

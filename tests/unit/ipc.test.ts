@@ -10,6 +10,13 @@ import { CHANNELS } from '../../src/shared/api'
 
 type Handler = (event: IpcMainInvokeEvent, ...args: unknown[]) => Promise<unknown>
 
+const WINDOW = {
+  start: '2026-01-01',
+  end: '2026-12-31',
+  busiest: '2026-09-15',
+  anchor: '2026-09-08',
+}
+
 function harness(topFrame = true) {
   const handlers = new Map<string, Handler>()
   const ipc = {
@@ -38,18 +45,23 @@ describe('registerProjectHandlers', () => {
   })
   // The layout run hands back the engine's answer; the handler checks its
   // shape, and the store checks it again before it writes.
-  it('refuses a finished run whose day or layout id are not the right shape', async () => {
+  it('refuses a finished run whose day, layout id or window are not the right shape', async () => {
     const { call, calls } = harness()
     const layout = 'a'.repeat(64)
+    const service = WINDOW
     for (const done of [
       undefined,
       {},
-      { date: '2026-13-01', layout },
-      { date: 'yesterday', layout },
-      { date: '2026-09-08' },
-      { date: '2026-09-08', layout: 'not an id' },
-      { date: '2026-09-08', layout: ['a'.repeat(64)] },
-      { date: '2026-09-08', layout: '/a/03.json' },
+      { date: '2026-13-01', layout, service },
+      { date: 'yesterday', layout, service },
+      { date: '2026-09-08', service },
+      { date: '2026-09-08', layout: 'not an id', service },
+      { date: '2026-09-08', layout: ['a'.repeat(64)], service },
+      { date: '2026-09-08', layout: '/a/03.json', service },
+      { date: '2026-09-08', layout },
+      { date: '2026-09-08', layout, service: 'whenever' },
+      { date: '2026-09-08', layout, service: { ...WINDOW, busiest: 42 } },
+      { date: '2026-09-08', layout, service: { ...WINDOW, end: '2025-01-01' } },
     ]) {
       await expect(
         call(CHANNELS.projectsCompleteLayout, 'abcdefghijk1', done),
@@ -59,11 +71,31 @@ describe('registerProjectHandlers', () => {
     expect(calls, 'nothing reached the store').toEqual([])
   })
 
-  it('passes a well-formed finished run to the store', async () => {
+  it('passes a well-formed finished run to the store, the window with only its four days', async () => {
     const { call, calls } = harness()
-    const done = { date: '2026-09-08', layout: 'a'.repeat(64) }
+    const done = { date: '2026-09-08', layout: 'a'.repeat(64), service: { ...WINDOW, extra: 1 } }
     await call(CHANNELS.projectsCompleteLayout, 'abcdefghijk1', done)
-    expect(calls).toEqual([{ method: 'completeLayout', args: ['abcdefghijk1', done] }])
+    expect(calls).toEqual([
+      {
+        method: 'completeLayout',
+        args: ['abcdefghijk1', { date: '2026-09-08', layout: 'a'.repeat(64), service: WINDOW }],
+      },
+    ])
+  })
+
+  it("checks a finished rebuild's day for shape, and leaves the window to the store", async () => {
+    const { call, calls } = harness()
+    for (const done of [undefined, {}, { date: '2026-02-30' }, { date: 20260908 }]) {
+      await expect(
+        call(CHANNELS.projectsCompleteRebuild, 'abcdefghijk1', done),
+        JSON.stringify(done),
+      ).rejects.toThrow()
+    }
+    expect(calls).toEqual([])
+    await call(CHANNELS.projectsCompleteRebuild, 'abcdefghijk1', { date: '2026-09-12', extra: 1 })
+    expect(calls).toEqual([
+      { method: 'completeRebuild', args: ['abcdefghijk1', { date: '2026-09-12' }] },
+    ])
   })
 
   it('refuses a caller that is not the top frame', async () => {

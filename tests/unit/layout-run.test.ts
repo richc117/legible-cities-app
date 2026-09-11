@@ -11,7 +11,7 @@ import {
   sentenceFor,
   type RunClient,
 } from '../../src/renderer/src/engine/layoutRun'
-import { doneSentence, stoppedSentence } from '../../src/renderer/src/LayoutRun'
+import { doneSentence, drawnSentence, stoppedSentence } from '../../src/renderer/src/LayoutRun'
 import { LAYOUT_STAGES } from '../../src/shared/layout'
 import { ERROR_CODES, type EngineState } from '../../src/shared/engine'
 import type { ProjectRecord } from '../../src/shared/project'
@@ -65,9 +65,25 @@ function stubClient() {
 }
 
 // What graph.build answers with, as far as the run reads it: the engine's
-// layout id. The paths it also names are never opened by the app.
+// layout id and the lines the octi stage drew. The paths it also names are
+// never opened by the app.
 const LAYOUT = 'c'.repeat(64)
-const BUILT = { layout: LAYOUT, paths: {} }
+const BUILT = { layout: LAYOUT, paths: {}, stages: { octi: { lines: ['A', 'B'] } } }
+// What feeds.service answers: the window, the engine's day from the anchor,
+// and the anchor echoed (engine v0.6.0).
+const SERVICE = {
+  start: '2026-01-01',
+  end: '2026-12-31',
+  busiest_weekday: '2026-09-15',
+  anchor: '2026-09-08',
+}
+// The same, as the record stores it.
+const WINDOW = {
+  start: '2026-01-01',
+  end: '2026-12-31',
+  busiest: '2026-09-15',
+  anchor: '2026-09-08',
+}
 
 const READY: EngineState = { state: 'ready', version: '0.2.0', protocol: 1 }
 
@@ -80,6 +96,7 @@ const project = (over: Partial<ProjectRecord> = {}): ProjectRecord =>
     mode: 'all',
     agency: null,
     date: null,
+    service: null,
     style: {},
     colors: {},
     defaultColor: '#888888',
@@ -96,9 +113,18 @@ const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0))
 function setup(over: Partial<ProjectRecord> = {}, engine: EngineState | null = READY) {
   const { client, calls } = stubClient()
   const complete = vi.fn(async () => ({ changed: false }))
+  const completeRebuild = vi.fn(async () => ({}))
   const record = project(over)
-  const run = new LayoutRun({ client, complete, today: () => '2026-09-08' })
-  return { run, calls, complete, record, begin: () => run.start(record, engine) }
+  const run = new LayoutRun({ client, complete, completeRebuild, today: () => '2026-09-08' })
+  return { run, calls, complete, completeRebuild, record, begin: () => run.start(record, engine) }
+}
+
+/** The layout answered and the day chosen: the map call is next. */
+async function laidOut(calls: Pending[], built = BUILT): Promise<void> {
+  calls[0].resolve(built)
+  await tick()
+  calls[1].resolve(SERVICE)
+  await tick()
 }
 
 describe('the sentences a finished run shows', () => {
@@ -130,26 +156,45 @@ describe('advance, the progress rule', () => {
   })
 })
 
-describe('the run asks for the layout and then the map', () => {
-  it('sends the feed key, the day and the project as the output folder', async () => {
+describe('the run asks for the layout, then the day, then the map', () => {
+  it('sends the feed key, then asks which day with the lines the layout drew, then draws for it', async () => {
     const { calls, begin } = setup()
     begin()
     expect(calls[0]).toMatchObject({ method: 'graph.build', params: { key: 'la-metro-rail' } })
     calls[0].resolve(BUILT)
     await tick()
+    // The anchor is the machine's date; the lines are the octi stage's, so
+    // the day counts trips the way the map does (ADR-031).
     expect(calls[1]).toMatchObject({
-      method: 'map.build',
-      params: { key: 'la-metro-rail', layout: LAYOUT, date: '2026-09-08', out: 'p1' },
+      method: 'feeds.service',
+      params: { key: 'la-metro-rail', anchor: '2026-09-08', lines: ['A', 'B'] },
     })
+    calls[1].resolve(SERVICE)
+    await tick()
+    // A project without a day is drawn for the engine's, not for today.
+    expect(calls[2]).toMatchObject({
+      method: 'map.build',
+      params: { key: 'la-metro-rail', layout: LAYOUT, date: '2026-09-15', out: 'p1' },
+    })
+  })
+
+  it('says what it is waiting for while the day is chosen', async () => {
+    const { run, calls, begin } = setup()
+    begin()
+    for (const stage of ['gtfs2graph', 'topo', 'loom', 'octi'])
+      calls[0].report(stage, `${stage} finished`)
+    calls[0].resolve(BUILT)
+    await tick()
+    expect(run.snapshot.message).toMatch(/Choosing the service day/)
+    expect(run.snapshot.stages[4].state, 'the schedule tick waits').toBe('running')
   })
 
   it('draws the map from the layout the engine just answered, never asking it to lay out', async () => {
     const { calls, begin } = setup()
     begin()
-    calls[0].resolve({ layout: 'd'.repeat(64), paths: {} })
-    await tick()
-    expect(calls[1].params.layout).toBe('d'.repeat(64))
-    expect(Object.keys(calls[1].params)).not.toContain('force')
+    await laidOut(calls, { ...BUILT, layout: 'd'.repeat(64) })
+    expect(calls[2].params.layout).toBe('d'.repeat(64))
+    expect(Object.keys(calls[2].params)).not.toContain('force')
   })
 
   it('a re-layout forces every stage and says so when done', async () => {
@@ -160,12 +205,15 @@ describe('the run asks for the layout and then the map', () => {
       params: { key: 'la-metro-rail', force: true },
     })
     expect(run.snapshot.forced).toBe(true)
-    calls[0].resolve(BUILT)
+    await laidOut(calls)
+    expect(Object.keys(calls[2].params).sort()).toEqual(['date', 'key', 'layout', 'out'])
+    calls[2].resolve({ files: {} })
     await tick()
-    expect(Object.keys(calls[1].params).sort()).toEqual(['date', 'key', 'layout', 'out'])
-    calls[1].resolve({ files: {} })
-    await tick()
-    expect(complete).toHaveBeenCalledWith('p1', { date: '2026-09-08', layout: LAYOUT })
+    expect(complete).toHaveBeenCalledWith('p1', {
+      date: '2026-09-15',
+      layout: LAYOUT,
+      service: WINDOW,
+    })
     expect(run.snapshot).toMatchObject({ state: 'done', forced: true, changed: false })
   })
 
@@ -175,32 +223,41 @@ describe('the run asks for the layout and then the map', () => {
     expect(Object.keys(calls[0].params)).toEqual(['key'])
   })
 
-  it('uses the day the project already has rather than today', async () => {
-    const { calls, begin } = setup({ date: '2026-05-04' })
+  it("uses the day the project already has rather than the engine's, and still asks for the window", async () => {
+    const { calls, complete, begin } = setup({ date: '2026-05-04' })
     begin()
-    calls[0].resolve(BUILT)
+    await laidOut(calls)
+    expect(calls[1].method).toBe('feeds.service')
+    expect(calls[2].params).toMatchObject({ date: '2026-05-04' })
+    calls[2].resolve({ files: {} })
     await tick()
-    expect(calls[1].params).toMatchObject({ date: '2026-05-04' })
+    expect(complete).toHaveBeenCalledWith('p1', {
+      date: '2026-05-04',
+      layout: LAYOUT,
+      service: WINDOW,
+    })
   })
 
   it("leaves the registry's mode and agency to the engine until a person can choose them", async () => {
     const { calls, begin } = setup({ mode: 'rail', agency: 'Metro' })
     begin()
-    calls[0].resolve(BUILT)
-    await tick()
+    await laidOut(calls)
     expect(Object.keys(calls[0].params).sort()).toEqual(['key'])
-    expect(Object.keys(calls[1].params).sort()).toEqual(['date', 'key', 'layout', 'out'])
+    expect(Object.keys(calls[2].params).sort()).toEqual(['date', 'key', 'layout', 'out'])
   })
 
-  it("writes the record once, with the engine's layout id", async () => {
+  it("writes the record once, with the engine's layout id and its window", async () => {
     const { run, calls, complete, begin } = setup()
     begin()
-    calls[0].resolve(BUILT)
-    await tick()
-    calls[1].resolve({ files: {} })
+    await laidOut(calls)
+    calls[2].resolve({ files: {} })
     await tick()
     expect(complete).toHaveBeenCalledTimes(1)
-    expect(complete).toHaveBeenCalledWith('p1', { date: '2026-09-08', layout: LAYOUT })
+    expect(complete).toHaveBeenCalledWith('p1', {
+      date: '2026-09-15',
+      layout: LAYOUT,
+      service: WINDOW,
+    })
     expect(run.snapshot.state).toBe('done')
     expect(run.snapshot.stages.every((s) => s.state === 'done')).toBe(true)
   })
@@ -209,11 +266,84 @@ describe('the run asks for the layout and then the map', () => {
     const { run, calls, complete, begin } = setup({ layout: 'a'.repeat(64) })
     complete.mockResolvedValueOnce({ changed: true })
     begin()
-    calls[0].resolve(BUILT)
-    await tick()
-    calls[1].resolve({ files: {} })
+    await laidOut(calls)
+    calls[2].resolve({ files: {} })
     await tick()
     expect(run.snapshot.changed).toBe(true)
+  })
+
+  it("a refused day fails the run with the engine's sentence and writes nothing", async () => {
+    const { run, calls, complete, begin } = setup()
+    begin()
+    calls[0].resolve(BUILT)
+    await tick()
+    calls[1].reject({
+      code: -32000,
+      message: 'no calendar',
+      data: { kind: 'feed', detail: 'x', hint: 'The feed has no calendar.' },
+    })
+    await tick()
+    expect(run.snapshot.state).toBe('failed')
+    expect(run.snapshot.error).toBe('The feed has no calendar.')
+    expect(calls, 'the map was never asked for').toHaveLength(2)
+    expect(complete).not.toHaveBeenCalled()
+  })
+})
+
+// A day a person chose: the map alone, from the stored layout, and the day
+// written only once the map is drawn (specs/012, constitution III).
+describe('a rebuild for a chosen day', () => {
+  it('draws from the stored layout without a layout call, then writes the day', async () => {
+    const { run, calls, complete, completeRebuild, record } = setup({
+      layout: LAYOUT,
+      date: '2026-09-15',
+      service: WINDOW,
+    })
+    run.rebuild(record, READY, '2026-09-12')
+    expect(run.snapshot).toMatchObject({ state: 'running', rebuilt: true, day: '2026-09-12' })
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toMatchObject({
+      method: 'map.build',
+      params: { key: 'la-metro-rail', layout: LAYOUT, date: '2026-09-12', out: 'p1' },
+    })
+    for (const stage of LAYOUT_STAGES) calls[0].report(stage, `${stage} finished`)
+    calls[0].resolve({ files: {} })
+    await tick()
+    expect(completeRebuild).toHaveBeenCalledWith('p1', { date: '2026-09-12' })
+    expect(complete, 'the layout record is not rewritten').not.toHaveBeenCalled()
+    expect(run.snapshot).toMatchObject({ state: 'done', rebuilt: true, changed: false })
+    expect(drawnSentence('2026-09-12')).toMatch(/Drawn for 2026-09-12 from the stored layout/)
+  })
+
+  it('refuses a project without a layout and calls nothing', () => {
+    const { run, calls, record } = setup()
+    run.rebuild(record, READY, '2026-09-12')
+    expect(calls).toHaveLength(0)
+    expect(run.snapshot.state).toBe('failed')
+    expect(run.snapshot.error).toMatch(/Lay the project out/)
+  })
+
+  it('writes nothing when cancelled, and says the day is kept', async () => {
+    const { run, calls, completeRebuild, record } = setup({ layout: LAYOUT, service: WINDOW })
+    run.rebuild(record, READY, '2026-09-12')
+    run.cancel()
+    expect(calls[0].cancelled).toBe(true)
+    calls[0].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
+    await tick()
+    expect(run.snapshot).toMatchObject({ state: 'cancelled', rebuilt: true })
+    expect(completeRebuild).not.toHaveBeenCalled()
+    expect(stoppedSentence('cancelled', false, true)).toMatch(/keeps its day/)
+    expect(stoppedSentence('failed', false, true)).toMatch(/was not drawn for that day/)
+  })
+
+  it("shows the main process's refusal of a day outside the window", async () => {
+    const { run, calls, completeRebuild, record } = setup({ layout: LAYOUT, service: WINDOW })
+    completeRebuild.mockRejectedValueOnce(new Error('the feed covers 2026-01-01 to 2026-12-31'))
+    run.rebuild(record, READY, '2027-01-01')
+    calls[0].resolve({ files: {} })
+    await tick()
+    expect(run.snapshot.state).toBe('failed')
+    expect(run.snapshot.error).toMatch(/the feed covers/)
   })
 })
 
@@ -234,20 +364,20 @@ describe('the sentence on screen describes the stage that finished', () => {
     for (const stage of ['gtfs2graph', 'topo', 'loom', 'octi']) {
       calls[0].report(stage, `${stage} finished`)
     }
-    calls[0].resolve(BUILT)
-    await tick()
+    await laidOut(calls)
     expect(run.snapshot.stages[4].state).toBe('running')
-    calls[1].report('gtfs2graph', 'again')
+    calls[2].report('gtfs2graph', 'again')
     expect(run.snapshot.stages[4].state, 'the map has not moved past schedule').toBe('running')
-    expect(run.snapshot.message, 'a repeat does not replace the sentence').toBe('octi finished')
+    expect(run.snapshot.message, 'a repeat does not replace the sentence').toMatch(
+      /Choosing the service day/,
+    )
   })
 
   it('reaches every stage the engine reports, in order', async () => {
     const { run, calls, begin } = setup()
     begin()
-    calls[0].resolve(BUILT)
-    await tick()
-    for (const stage of LAYOUT_STAGES) calls[1].report(stage, `${stage} finished`)
+    await laidOut(calls)
+    for (const stage of LAYOUT_STAGES) calls[2].report(stage, `${stage} finished`)
     expect(run.snapshot.stages.every((s) => s.state === 'done')).toBe(true)
     expect(run.snapshot.message, 'the write stage never shows its folder').toBe(
       'Wrote the map and its page.',
@@ -272,12 +402,11 @@ describe('a message that is a path never reaches the screen', () => {
   it("replaces the write stage's folder with what it did", async () => {
     const { run, calls, begin } = setup()
     begin()
-    calls[0].resolve(BUILT)
-    await tick()
+    await laidOut(calls)
     for (const stage of ['gtfs2graph', 'topo', 'loom', 'octi', 'schedule', 'render', 'animate']) {
-      calls[1].report(stage, `${stage} finished`)
+      calls[2].report(stage, `${stage} finished`)
     }
-    calls[1].report('write', '/engine-home/out/p1')
+    calls[2].report('write', '/engine-home/out/p1')
     expect(run.snapshot.message).toBe('Wrote the map and its page.')
     expect(run.snapshot.message).not.toContain('/')
   })
@@ -328,7 +457,10 @@ describe('cancelling and failing write nothing', () => {
     calls[0].resolve(BUILT)
     await tick()
     expect(run.snapshot.replaced, 'the engine has swapped the stored set in').toBe(true)
+    // The cancel lands while the day is being chosen.
     run.cancel()
+    expect(calls[1].method).toBe('feeds.service')
+    expect(calls[1].cancelled).toBe(true)
     calls[1].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
     await tick()
     expect(run.snapshot).toMatchObject({ state: 'cancelled', forced: true, replaced: true })
@@ -350,14 +482,27 @@ describe('cancelling and failing write nothing', () => {
     expect(run.snapshot).toMatchObject({ state: 'cancelled', forced: false, replaced: false })
   })
 
-  it('cancels the map call once the layout has finished', async () => {
+  it('cancels the map call once the layout has finished and the day is chosen', async () => {
     const { run, calls, begin } = setup()
     begin()
-    calls[0].resolve(BUILT)
-    await tick()
+    await laidOut(calls)
     run.cancel()
-    expect(calls[1].cancelled).toBe(true)
+    expect(calls[2].cancelled).toBe(true)
     expect(calls[0].cancelled, 'the finished call is not cancelled again').toBe(false)
+    expect(calls[1].cancelled).toBe(false)
+  })
+
+  it('a cancel that lands between the layout and the day stops before the map is asked for', async () => {
+    const { run, calls, complete, begin } = setup()
+    begin()
+    calls[0].resolve(BUILT)
+    // Cancelled before the microtask that sends feeds.service has run: the
+    // run notices when it wakes and asks for nothing more.
+    run.cancel()
+    await tick()
+    expect(run.snapshot.state).toBe('cancelled')
+    expect(calls, 'no further call').toHaveLength(1)
+    expect(complete).not.toHaveBeenCalled()
   })
 
   it("marks the running stage failed and shows the engine's sentence, not its detail", async () => {
@@ -398,11 +543,15 @@ describe('the run survives the record it writes', () => {
       record = project({ layout: 'b'.repeat(64), date: '2026-09-08' })
       return { changed: false }
     })
-    const run = new LayoutRun({ client, complete, today: () => '2026-09-08' })
+    const run = new LayoutRun({
+      client,
+      complete,
+      completeRebuild: async () => ({}),
+      today: () => '2026-09-08',
+    })
     run.start(record, READY)
-    calls[0].resolve(BUILT)
-    await tick()
-    calls[1].resolve({ files: {} })
+    await laidOut(calls)
+    calls[2].resolve({ files: {} })
     await tick()
     expect(run.snapshot.state, 'the outcome is still there to be read').toBe('done')
   })
@@ -410,16 +559,20 @@ describe('the run survives the record it writes', () => {
   it('writes the day it started with, not one the record gained meanwhile', async () => {
     const { client, calls } = stubClient()
     const complete = vi.fn(async () => ({ changed: false }))
-    const run = new LayoutRun({ client, complete, today: () => '2026-09-08' })
+    const run = new LayoutRun({
+      client,
+      complete,
+      completeRebuild: async () => ({}),
+      today: () => '2026-09-08',
+    })
     run.start(project({ date: '2026-01-01' }), READY)
     // The record is written again while the run is in flight, as another
     // screen might. The run is unmoved: it holds the day it began with.
     project({ date: '2026-12-25' })
-    calls[0].resolve(BUILT)
+    await laidOut(calls)
+    calls[2].resolve({ files: {} })
     await tick()
-    calls[1].resolve({ files: {} })
-    await tick()
-    expect(calls[1].params).toMatchObject({ date: '2026-01-01' })
+    expect(calls[2].params).toMatchObject({ date: '2026-01-01' })
     expect(complete).toHaveBeenCalledWith('p1', expect.objectContaining({ date: '2026-01-01' }))
   })
 })

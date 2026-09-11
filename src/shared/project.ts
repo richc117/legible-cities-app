@@ -15,6 +15,19 @@ export interface ProjectStyle {
 
 export type Theme = 'warm-dark' | 'sepia'
 
+/**
+ * What the engine answered when the project was laid out: the days its
+ * feed's calendar covers, the busiest weekday scanning from the anchor,
+ * and the anchor, so the choice can be reproduced (ADR-031, engine E21).
+ * Four calendar days, YYYY-MM-DD.
+ */
+export interface ServiceWindow {
+  start: string
+  end: string
+  busiest: string
+  anchor: string
+}
+
 export interface ProjectRecord {
   version: number
   id: string
@@ -24,6 +37,8 @@ export interface ProjectRecord {
   agency: string | null
   /** The service day, YYYY-MM-DD; null until the first layout resolves it (ADR-031). */
   date: string | null
+  /** The feed's window and the engine's choice, stored at a layout run; null before one. */
+  service: ServiceWindow | null
   style: ProjectStyle
   colors: Record<string, string>
   defaultColor: string
@@ -49,6 +64,11 @@ export interface CreateProjectInput {
   feed: string
   mode?: string
   agency?: string | null
+}
+
+/** What a rebuild for a chosen day hands back once the map is drawn. */
+export interface RebuildDone {
+  date: string
 }
 
 export interface DeleteResult {
@@ -118,6 +138,30 @@ export function validateServiceDate(date: string): string | null {
   return null
 }
 
+/**
+ * A window as the engine answered it: four calendar days, the first no
+ * later than the last. The days are ISO, so they order as strings.
+ */
+export function validateServiceWindow(service: unknown): string | null {
+  if (typeof service !== 'object' || service === null || Array.isArray(service))
+    return 'the service window must be the four days the engine answered'
+  const days = service as Record<string, unknown>
+  for (const field of ['start', 'end', 'busiest', 'anchor'] as const) {
+    const value = days[field]
+    if (typeof value !== 'string') return `the service window is missing its ${field}`
+    const problem = validateServiceDate(value)
+    if (problem !== null) return `the service window's ${field}: ${problem}`
+  }
+  if ((days.start as string) > (days.end as string))
+    return 'the service window ends before it starts'
+  return null
+}
+
+/** Is a day inside the window, inclusive? Both ISO, so strings compare. */
+export function withinWindow(date: string, service: ServiceWindow): boolean {
+  return date >= service.start && date <= service.end
+}
+
 type Parsed = { record: ProjectRecord; readOnly: boolean } | { error: string }
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
@@ -162,6 +206,7 @@ export function parseRecord(json: unknown): Parsed {
     mode: isString(json.mode) && MODE_PATTERN.test(json.mode) ? json.mode : DEFAULT_MODE,
     agency: isString(json.agency) && json.agency.trim() !== '' ? json.agency : null,
     date: isString(json.date) && /^\d{4}-\d{2}-\d{2}$/.test(json.date) ? json.date : null,
+    service: readServiceWindow(json.service),
     style: {
       lineWidth: num(style.lineWidth, DEFAULT_STYLE.lineWidth),
       stationRadius: num(style.stationRadius, DEFAULT_STYLE.stationRadius),
@@ -177,6 +222,13 @@ export function parseRecord(json: unknown): Parsed {
     modified: isString(json.modified) ? json.modified : epoch,
   }
   return { record, readOnly: version > RECORD_VERSION }
+}
+
+/** The stored window, whole, or null: a half-valid block is not half-trusted. */
+function readServiceWindow(value: unknown): ServiceWindow | null {
+  if (validateServiceWindow(value) !== null) return null
+  const { start, end, busiest, anchor } = value as ServiceWindow
+  return { start, end, busiest, anchor }
 }
 
 export function summarise(record: ProjectRecord, readOnly: boolean): ProjectSummary {

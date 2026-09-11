@@ -7,9 +7,22 @@ import type { EngineErrorShape, EngineState, JobLog, JobProgress } from './engin
 import type { ExportProgress, ExportResult, OfferedPreset } from './export'
 import type { LayoutDone, LayoutResult } from './layout'
 import type { ViewerMethod } from './viewer'
-import type { CreateProjectInput, DeleteResult, ProjectRecord, ProjectSummary } from './project'
+import type {
+  CreateProjectInput,
+  DeleteResult,
+  ProjectRecord,
+  ProjectSummary,
+  RebuildDone,
+} from './project'
 
-export type { CreateProjectInput, DeleteResult, ProjectRecord, ProjectSummary } from './project'
+export type {
+  CreateProjectInput,
+  DeleteResult,
+  ProjectRecord,
+  ProjectSummary,
+  RebuildDone,
+  ServiceWindow,
+} from './project'
 export type { EngineState, JobLog, JobProgress } from './engine'
 export type { ExportProgress, ExportResult, OfferedPreset } from './export'
 export type { LayoutDone, LayoutResult } from './layout'
@@ -55,6 +68,12 @@ export interface Api {
      * (specs/007-layout-run/contracts/bridge.md, ADR-033).
      */
     completeLayout(id: string, done: LayoutDone): Promise<LayoutResult>
+    /**
+     * A rebuild for a chosen day finished: the map was drawn from the
+     * stored layout for that day. The main process refuses a day outside
+     * the stored window and writes the day (specs/012-service-date/contracts/bridge.md).
+     */
+    completeRebuild(id: string, done: RebuildDone): Promise<ProjectRecord>
   }
   /**
    * The map on the screen. The page runs in a sandboxed frame at an opaque
@@ -104,6 +123,7 @@ export const CHANNELS = {
   projectsRename: 'projects:rename',
   projectsDelete: 'projects:delete',
   projectsCompleteLayout: 'projects:complete-layout',
+  projectsCompleteRebuild: 'projects:complete-rebuild',
   viewerAttach: 'viewer:attach',
   viewerRelease: 'viewer:release',
   viewerCall: 'viewer:call',

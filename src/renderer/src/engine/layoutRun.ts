@@ -1,6 +1,6 @@
 import { LAYOUT_STAGES, type RunState } from '../../../shared/layout'
 import { isEngineErrorShape, ERROR_CODES, type EngineState } from '../../../shared/engine'
-import type { ProjectRecord } from '../../../shared/project'
+import type { ProjectRecord, ServiceWindow } from '../../../shared/project'
 import type { Methods } from '../../../shared/protocol'
 import type { Stage } from '../ProgressLine'
 
@@ -9,14 +9,20 @@ import type { Stage } from '../ProgressLine'
 // what that buys (.claude/rules/renderer.md).
 //
 // The sequence is contracts/run.md's. Ask the engine for the layout, which
-// answers with the layout's id and the stage graphs' paths; then for the
-// map from that id, which writes the page where the app already serves a
-// project's output. Both report a stage only when it has finished, so a
-// report marks its own stage done and the next one running, and the
-// sentence on screen always describes the last stage to finish rather than
-// the one being waited for. The map call repeats the four layout stages; a
-// repeat for a stage already done is ignored. Nothing is written until
-// both calls have returned, and what is written is the engine's id.
+// answers with the layout's id and the stage graphs' paths; then which day
+// to draw, from the machine's date and the lines the layout drew (ADR-031,
+// specs/012); then for the map from that id, which writes the page where
+// the app already serves a project's output. The two long calls report a
+// stage only when it has finished, so a report marks its own stage done
+// and the next one running, and the sentence on screen always describes
+// the last stage to finish rather than the one being waited for. The map
+// call repeats the four layout stages; a repeat for a stage already done is
+// ignored. Nothing is written until every call has returned, and what is
+// written is the engine's id, the engine's window and the day.
+//
+// A rebuild is the map call alone, from the stored layout, for a day a
+// person chose: the layout stages are never run, and the day is written
+// only when the map has been drawn.
 
 export interface RunSnapshot {
   state: RunState
@@ -36,6 +42,10 @@ export interface RunSnapshot {
    * the old map until the next run draws it.
    */
   replaced: boolean
+  /** Set when the run is a rebuild for a chosen day: the map call alone. */
+  rebuilt: boolean
+  /** The day a rebuild drew for; null for a layout run. */
+  day: string | null
 }
 
 interface Handle<T> {
@@ -50,7 +60,7 @@ interface Handle<T> {
  * cannot send the engine something the protocol does not define, and a test
  * can pass a stub without an Electron bridge behind it.
  */
-export type RunMethod = 'graph.build' | 'map.build'
+export type RunMethod = 'graph.build' | 'feeds.service' | 'map.build'
 
 export interface RunClient {
   request<M extends RunMethod>(
@@ -66,8 +76,13 @@ export interface RunClient {
  */
 export interface RunOptions {
   client: RunClient
-  complete(id: string, done: { date: string; layout: string }): Promise<{ changed: boolean }>
-  /** The day a project without one is given; injected so a test can fix it. */
+  complete(
+    id: string,
+    done: { date: string; layout: string; service: ServiceWindow },
+  ): Promise<{ changed: boolean }>
+  /** A rebuild for a chosen day finished: the day is written, inside the window or not at all. */
+  completeRebuild(id: string, done: { date: string }): Promise<unknown>
+  /** The anchor the engine's choice is made from: the machine's date, injected so a test can fix it. */
   today(): string
 }
 
@@ -122,6 +137,8 @@ const IDLE: RunSnapshot = {
   changed: false,
   forced: false,
   replaced: false,
+  rebuilt: false,
+  day: null,
 }
 
 export class LayoutRun {
@@ -163,32 +180,8 @@ export class LayoutRun {
     if (this.#snapshot.state === 'running') return
     const { client, complete, today } = this.#options
     const force = options.force === true
+    if (!this.#begin(engine, { forced: force, rebuilt: false, day: null })) return
 
-    if (engine === null || engine.state !== 'ready') {
-      this.#set({
-        state: 'failed',
-        error:
-          engine === null
-            ? 'The engine is still starting. Try again in a moment.'
-            : `The engine is not ready to run a layout: ${engine.state}.`,
-      })
-      return
-    }
-
-    this.#cancelled = false
-    const started = freshStages()
-    started[0] = { ...started[0], state: 'running' }
-    this.#set({
-      state: 'running',
-      stages: started,
-      message: null,
-      error: null,
-      changed: false,
-      forced: force,
-      replaced: false,
-    })
-
-    const date = project.date ?? today()
     void (async () => {
       try {
         // The registry entry's mode and agency apply: choosing them per
@@ -204,51 +197,146 @@ export class LayoutRun {
         // stored set; whatever happens from here, the screen must say so.
         if (force) this.#set({ replaced: true })
         // The handle's cancel is a no-op once its request has settled, so a
-        // cancel that lands between the two calls, or while the record is
-        // being written, is caught here instead.
+        // cancel that lands between the calls, or while the record is being
+        // written, is caught here instead.
         if (this.#cancelled) return this.#stopped()
+
+        // Which day to draw: the engine's rule from the machine's date as the
+        // anchor, counting trips on the lines the layout drew, so the day is
+        // the map's (ADR-031). The feed is cached by now, so this is short,
+        // and it reports no stage; the sentence says what is being waited for.
+        this.#set({ message: 'Choosing the service day from the timetable.' })
+        const service = client.request('feeds.service', {
+          key: project.feed,
+          anchor: today(),
+          lines: built.stages.octi.lines,
+        })
+        this.#inFlight = service
+        const window = await service.result
+        if (this.#cancelled) return this.#stopped()
+        // A project keeps the day it has; the engine's day is for one without.
+        const date = project.date ?? window.busiest_weekday
 
         // The map is drawn from the layout just answered, by its id; the
         // engine never lays out on the way to a map.
-        const map = client.request('map.build', {
-          key: project.feed,
-          layout: built.layout,
-          date,
-          out: project.id,
-        })
-        this.#inFlight = map
-        map.onProgress((p) => this.#report(p))
-        await map.result
-        this.#inFlight = null
+        await this.#draw(project, built.layout, date)
         if (this.#cancelled) return this.#stopped()
 
-        const written = await complete(project.id, { date, layout: built.layout })
-        this.#set({
-          state: 'done',
-          stages: this.#snapshot.stages.map((s) => ({ ...s, state: 'done' as const })),
-          changed: written.changed,
-          replaced: false,
+        const written = await complete(project.id, {
+          date,
+          layout: built.layout,
+          service: {
+            start: window.start,
+            end: window.end,
+            busiest: window.busiest_weekday,
+            anchor: window.anchor,
+          },
         })
+        this.#finish({ changed: written.changed })
       } catch (reason) {
-        this.#inFlight = null
-        if (isEngineErrorShape(reason) && reason.code === ERROR_CODES.cancelled) {
-          this.#set({
-            state: 'cancelled',
-            stages: this.#snapshot.stages.map((s) =>
-              s.state === 'running' ? { ...s, state: 'pending' as const } : s,
-            ),
-          })
-          return
-        }
-        this.#set({
-          state: 'failed',
-          error: sentenceFor(reason),
-          stages: this.#snapshot.stages.map((s) =>
-            s.state === 'running' ? { ...s, state: 'failed' as const } : s,
-          ),
-        })
+        this.#failed(reason)
       }
     })()
+  }
+
+  /**
+   * The map alone, from the stored layout, for a day a person chose. The
+   * layout stages never run; the day is written only when the map has been
+   * drawn, and the main process refuses a day outside the stored window.
+   */
+  rebuild(project: ProjectRecord, engine: EngineState | null, date: string): void {
+    if (this.#snapshot.state === 'running') return
+    const { completeRebuild } = this.#options
+    const layout = project.layout
+    if (layout === null) {
+      this.#set({ state: 'failed', error: 'Lay the project out before choosing a day.' })
+      return
+    }
+    if (!this.#begin(engine, { forced: false, rebuilt: true, day: date })) return
+
+    void (async () => {
+      try {
+        await this.#draw(project, layout, date)
+        if (this.#cancelled) return this.#stopped()
+        await completeRebuild(project.id, { date })
+        this.#finish({ changed: false })
+      } catch (reason) {
+        this.#failed(reason)
+      }
+    })()
+  }
+
+  /** The engine ready, the line reset, the snapshot running; false when it cannot start. */
+  #begin(
+    engine: EngineState | null,
+    kind: { forced: boolean; rebuilt: boolean; day: string | null },
+  ): boolean {
+    if (engine === null || engine.state !== 'ready') {
+      this.#set({
+        state: 'failed',
+        error:
+          engine === null
+            ? 'The engine is still starting. Try again in a moment.'
+            : `The engine is not ready to run a layout: ${engine.state}.`,
+      })
+      return false
+    }
+    this.#cancelled = false
+    const started = freshStages()
+    started[0] = { ...started[0], state: 'running' }
+    this.#set({
+      state: 'running',
+      stages: started,
+      message: null,
+      error: null,
+      changed: false,
+      replaced: false,
+      ...kind,
+    })
+    return true
+  }
+
+  /** The map call, from a layout by its id, for a day; its stages reported as they finish. */
+  async #draw(project: ProjectRecord, layout: string, date: string): Promise<void> {
+    const map = this.#options.client.request('map.build', {
+      key: project.feed,
+      layout,
+      date,
+      out: project.id,
+    })
+    this.#inFlight = map
+    map.onProgress((p) => this.#report(p))
+    await map.result
+    this.#inFlight = null
+  }
+
+  #finish(outcome: { changed: boolean }): void {
+    this.#set({
+      state: 'done',
+      stages: this.#snapshot.stages.map((s) => ({ ...s, state: 'done' as const })),
+      changed: outcome.changed,
+      replaced: false,
+    })
+  }
+
+  #failed(reason: unknown): void {
+    this.#inFlight = null
+    if (isEngineErrorShape(reason) && reason.code === ERROR_CODES.cancelled) {
+      this.#set({
+        state: 'cancelled',
+        stages: this.#snapshot.stages.map((s) =>
+          s.state === 'running' ? { ...s, state: 'pending' as const } : s,
+        ),
+      })
+      return
+    }
+    this.#set({
+      state: 'failed',
+      error: sentenceFor(reason),
+      stages: this.#snapshot.stages.map((s) =>
+        s.state === 'running' ? { ...s, state: 'failed' as const } : s,
+      ),
+    })
   }
 
   /** Cancelled between the awaits: nothing was written, and nothing is. */

@@ -11,6 +11,7 @@
 | `mode` | string, `^[a-z]{1,16}$` | `all` | A2-02 |
 | `agency` | string or `null`, ≤ 120 | `null` | A2-02 |
 | `date` | ISO date `YYYY-MM-DD` or `null` | `null` (resolved at first layout, A3-01) | A3-01, A3-04 |
+| `service` | `{ start, end, busiest, anchor }` ISO dates or `null` | `null` (stored at a layout run, A3-04) | A3-04 |
 | `style` | `{ lineWidth, stationRadius, interchangeRadius, labelSize }` numbers | the engine's `Style` defaults | A4-02 (backlog) |
 | `colors` | `Record<string, string>` of line label → `#rrggbb` | `{}` | A4-01 |
 | `defaultColor` | `#rrggbb` | `#888888` (the engine's) | A4-01 |

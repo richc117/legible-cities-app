@@ -39,6 +39,7 @@ export function layoutRunFor(projectId: string): LayoutRun {
   const run = new LayoutRun({
     client: engineClient(),
     complete: (id, done) => window.api.projects.completeLayout(id, done),
+    completeRebuild: (id, done) => window.api.projects.completeRebuild(id, done),
     today,
   })
   runs.set(projectId, run)
