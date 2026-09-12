@@ -63,6 +63,9 @@
   --border-width: 1px;
   --focus-ring-width: 2px;
   --focus-ring-offset: 2px;
+  /* The colour picker's square: the one size the app sets on a
+     third-party control, so it sits in a panel rather than filling it. */
+  --picker-size: 200px;
   --dialog-width: 28rem;
   --dialog-width-wide: 40rem;
   --measure: 40rem;

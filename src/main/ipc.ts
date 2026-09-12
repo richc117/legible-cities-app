@@ -14,7 +14,9 @@ import {
   validateId,
   validateMode,
   validateName,
+  validatePalette,
   type CreateProjectInput,
+  type Palette,
   type ProjectInputs,
   type RebuildDone,
   validateMade,
@@ -88,6 +90,18 @@ function readInputs(raw: unknown): ProjectInputs {
   if (typeof agency !== 'string' && agency !== null) throw new Error('agency must be text')
   check(validateAgency(agency))
   return { mode, agency }
+}
+
+/**
+ * The line colours a person chose, as the page relayed them once the map
+ * was drawn with them. Every label and every colour is checked here, and
+ * only the two fields are taken: a palette with anything else on it loses
+ * the rest before the store sees it.
+ */
+function readPalette(raw: unknown): Palette {
+  check(validatePalette(raw))
+  const { colors, defaultColor } = raw as Palette
+  return { colors: { ...colors }, defaultColor }
 }
 
 function readCreateInput(raw: unknown): CreateProjectInput {
@@ -194,5 +208,8 @@ export function registerProjectHandlers(
   )
   handle(CHANNELS.projectsSetInputs, (id, inputs) =>
     store.setInputs(readId(id), readInputs(inputs)),
+  )
+  handle(CHANNELS.projectsCompleteColors, (id, palette) =>
+    store.completeColors(readId(id), readPalette(palette)),
   )
 }

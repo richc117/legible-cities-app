@@ -1,6 +1,11 @@
 import { LAYOUT_STAGES, type RunState } from '../../../shared/layout'
 import { isEngineErrorShape, ERROR_CODES, type EngineState } from '../../../shared/engine'
-import type { ProjectRecord, ServiceWindow } from '../../../shared/project'
+import {
+  paletteOf,
+  type Palette,
+  type ProjectRecord,
+  type ServiceWindow,
+} from '../../../shared/project'
 import type { Diagnostics, MapBuildResult, Methods } from '../../../shared/protocol'
 import type { Stage } from '../ProgressLine'
 
@@ -22,7 +27,11 @@ import type { Stage } from '../ProgressLine'
 //
 // A rebuild is the map call alone, from the stored layout, for a day a
 // person chose: the layout stages are never run, and the day is written
-// only when the map has been drawn.
+// only when the map has been drawn. A recolour is the same shape for a
+// palette a person chose (A4-01): the stored day, the stored layout, and
+// the palette written only once the map carries it. Every draw, whichever
+// started it, sends the palette the project is being drawn with, so the
+// map on screen and the record never disagree.
 
 export interface RunSnapshot {
   state: RunState
@@ -46,6 +55,8 @@ export interface RunSnapshot {
   replaced: boolean
   /** Set when the run is a rebuild for a chosen day: the map call alone. */
   rebuilt: boolean
+  /** Set when the run is a redraw for chosen colours: the map call alone (A4-01). */
+  recoloured: boolean
   /** The day a rebuild drew for; null for a layout run. */
   day: string | null
   /** What the map call said about the map it drew; null until one has. */
@@ -174,6 +185,8 @@ export interface RunOptions {
   ): Promise<{ changed: boolean; relaid: boolean }>
   /** A rebuild for a chosen day finished: the day is written, inside the window or not at all. */
   completeRebuild(id: string, done: { date: string }): Promise<unknown>
+  /** A redraw for chosen colours finished: the palette is written, never before the map is drawn. */
+  completeColors(id: string, palette: Palette): Promise<unknown>
   /** The anchor the engine's choice is made from: the machine's date, injected so a test can fix it. */
   today(): string
 }
@@ -231,6 +244,7 @@ const IDLE: RunSnapshot = {
   forced: false,
   replaced: false,
   rebuilt: false,
+  recoloured: false,
   day: null,
   report: null,
 }
@@ -274,7 +288,8 @@ export class LayoutRun {
     if (this.#snapshot.state === 'running') return
     const { client, complete, today } = this.#options
     const force = options.force === true
-    if (!this.#begin(engine, { forced: force, rebuilt: false, day: null })) return
+    if (!this.#begin(engine, { forced: force, rebuilt: false, recoloured: false, day: null }))
+      return
 
     void (async () => {
       try {
@@ -321,7 +336,7 @@ export class LayoutRun {
 
         // The map is drawn from the layout just answered, by its id; the
         // engine never lays out on the way to a map.
-        const report = await this.#draw(project, built.layout, date)
+        const report = await this.#draw(project, built.layout, date, paletteOf(project))
         if (this.#cancelled) return this.#stopped()
 
         const written = await complete(project.id, {
@@ -363,17 +378,56 @@ export class LayoutRun {
         forced: false,
         replaced: false,
         rebuilt: true,
+        recoloured: false,
         day: date,
       })
       return
     }
-    if (!this.#begin(engine, { forced: false, rebuilt: true, day: date })) return
+    if (!this.#begin(engine, { forced: false, rebuilt: true, recoloured: false, day: date })) return
 
     void (async () => {
       try {
-        const report = await this.#draw(project, layout, date)
+        const report = await this.#draw(project, layout, date, paletteOf(project))
         if (this.#cancelled) return this.#stopped()
         await completeRebuild(project.id, { date })
+        this.#finish({ changed: false, relaid: false }, report)
+      } catch (reason) {
+        this.#failed(reason)
+      }
+    })()
+  }
+
+  /**
+   * The map alone, from the stored layout, for the stored day, in a palette
+   * a person chose (A4-01). The layout stages never run and the day never
+   * moves: a colour is a render, not a layout (ADR-023). The palette is
+   * written only when the map has been drawn, as a chosen day is, so the
+   * record never claims a colour the page on screen does not show.
+   */
+  recolour(project: ProjectRecord, engine: EngineState | null, palette: Palette): void {
+    if (this.#snapshot.state === 'running') return
+    const { completeColors } = this.#options
+    const layout = project.layout
+    const date = project.date
+    if (layout === null || date === null) {
+      this.#set({
+        state: 'failed',
+        error: 'Lay the project out before choosing colours.',
+        forced: false,
+        replaced: false,
+        rebuilt: false,
+        recoloured: true,
+        day: date,
+      })
+      return
+    }
+    if (!this.#begin(engine, { forced: false, rebuilt: false, recoloured: true, day: date })) return
+
+    void (async () => {
+      try {
+        const report = await this.#draw(project, layout, date, palette)
+        if (this.#cancelled) return this.#stopped()
+        await completeColors(project.id, palette)
         this.#finish({ changed: false, relaid: false }, report)
       } catch (reason) {
         this.#failed(reason)
@@ -384,7 +438,7 @@ export class LayoutRun {
   /** The engine ready, the line reset, the snapshot running; false when it cannot start. */
   #begin(
     engine: EngineState | null,
-    kind: { forced: boolean; rebuilt: boolean; day: string | null },
+    kind: { forced: boolean; rebuilt: boolean; recoloured: boolean; day: string | null },
   ): boolean {
     if (engine === null || engine.state !== 'ready') {
       // The kind is this attempt's even when it fails to start, or the
@@ -420,19 +474,33 @@ export class LayoutRun {
   }
 
   /**
-   * The map call, from a layout by its id, for a day; its stages reported
-   * as they finish. It answers what the engine measured rather than
-   * setting it: the figures belong to a finished run, beside the sentence
-   * that says it finished, so they never appear on screen before the map
-   * they describe and never go again because the record could not be
-   * written (spec 017).
+   * The map call, from a layout by its id, for a day, in a palette; its
+   * stages reported as they finish. The palette is an argument rather than
+   * the project's, because a colour change draws before it is stored, as a
+   * chosen day is drawn before it is stored (A3-04, A4-01).
+   *
+   * It answers what the engine measured rather than setting it: the figures
+   * belong to a finished run, beside the sentence that says it finished, so
+   * they never appear on screen before the map they describe and never go
+   * again because the record could not be written (spec 017).
    */
-  async #draw(project: ProjectRecord, layout: string, date: string): Promise<RunReport | null> {
+  async #draw(
+    project: ProjectRecord,
+    layout: string,
+    date: string,
+    palette: Palette,
+  ): Promise<RunReport | null> {
     const map = this.#options.client.request('map.build', {
       key: project.feed,
       layout,
       date,
       out: project.id,
+      // Sent on every draw, so a layout, a re-layout, a chosen day and a
+      // colour change all draw the colours the project has chosen. The
+      // engine ignores a colour for a label its layout does not carry, so
+      // an override outlives a narrower mode.
+      colors: palette.colors,
+      default_color: palette.defaultColor,
     })
     this.#inFlight = map
     map.onProgress((p) => this.#report(p))

@@ -68,7 +68,7 @@ into it from the privileged side (ADR-028).
 ## The bridge: `window.api`
 
 Typed in `src/shared/api.ts`, which the preload and the renderer both
-import. Six methods under `api.projects`, three under `api.viewer`, the
+import. Nine methods under `api.projects`, three under `api.viewer`, the
 engine under `api.engine`, and the export under `api.export`:
 
 | Method | Does |
@@ -81,6 +81,7 @@ engine under `api.engine`, and the export under `api.export`:
 | `completeLayout(id, done)` | records the layout's id, the feed's window and the service day a finished run produced; the id is the engine's own, as `graph.build` answered it (A3-01, ADR-033), the window is `feeds.service`'s answer (A3-04, ADR-031) |
 | `completeRebuild(id, done)` | records the day a finished rebuild drew the map for, inside the stored window or not at all (A3-04) |
 | `setInputs(id, { mode, agency })` | stores the mode and agency a person chose with the feed in view; the next layout passes them to the engine, which names a layout for them (A2-02) |
+| `completeColors(id, palette)` | records the line colours a person chose, once the map has been drawn with them; every label and every colour is checked on the main side first (A4-01) |
 | `feeds.pickZip()` | opens the platform's file chooser for a GTFS zip and remembers the answer; the one native dialog, since a page cannot choose a file (A2-01) |
 
 | `viewer.attach(projectId)` | holds the project page's frame by identity once it has loaded, and answers whether it did (ADR-028) |
@@ -474,6 +475,31 @@ keyboard alike; "Copy as text" hands over what the panel shows, through
 the bridge's one clipboard method, because the app refuses every
 permission request and Chromium's own clipboard write is one
 (`specs/017-diagnostics`).
+### Line colours
+
+A line is drawn in the colour its feed publishes as `route_color`, and a
+line whose feed publishes none is drawn in one default. Since engine
+v0.8.0 both are the caller's to set: `map.build` takes `colors`, a colour
+per line label over the feed's own, and `default_color`, and the engine
+resolves each line once (`render.line_colors`, E06) so the map, the chips
+over it and the time chart all draw from one table.
+
+The project record has carried `colors` and `defaultColor` since A1-05 and
+the Colours panel is what writes them. It lists one row per line label the
+feed offers under the layout's own mode and agency, read from
+`feeds.inspect` - the labels and the feed's colours are the engine's, and
+the panel draws a swatch beside a name and nothing else. A change is
+debounced into one `map.build` from the stored layout's id and the stored
+day: a colour is a render, never a layout, so the stations do not move
+(ADR-023). The palette is written only when the map has been drawn,
+through `completeColors`, as a chosen day is; a cancelled or failed build
+leaves the record alone and the panel goes back to it. Every draw the run
+makes carries the record's palette, so a layout, a re-layout and a chosen
+day all draw the colours the project chose (`specs/018-colours`).
+
+The engine ignores a colour for a label its stored layout does not carry,
+which is why the panel can list the feed's labels rather than the layout's
+and why an override outlives a narrower mode.
 
 ## The feeds
 

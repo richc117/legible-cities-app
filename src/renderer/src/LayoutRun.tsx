@@ -27,8 +27,19 @@ export default function LayoutRun({
   /** True while something else, such as an export, is reading the project's page. */
   disabled?: boolean
 }): JSX.Element {
-  const { state, stages, message, error, changed, relaid, forced, replaced, rebuilt, day } =
-    useSnapshot(run)
+  const {
+    state,
+    stages,
+    message,
+    error,
+    changed,
+    relaid,
+    forced,
+    replaced,
+    rebuilt,
+    recoloured,
+    day,
+  } = useSnapshot(run)
   const [confirming, setConfirming] = useState(false)
   const begin = (): void => run.start(project, engine)
   // The re-layout, behind its warning: every stage runs again, and the
@@ -105,7 +116,7 @@ export default function LayoutRun({
       {(state === 'cancelled' || state === 'failed') && (
         <>
           <p className="prose" role="status">
-            {stoppedSentence(state, replaced, rebuilt)}
+            {stoppedSentence(state, replaced, rebuilt, recoloured)}
           </p>
           <div className="toolbar">
             <Button variant="primary" onClick={begin} disabled={disabled}>
@@ -119,7 +130,11 @@ export default function LayoutRun({
       {state === 'done' && (
         <>
           <p className="prose" role="status">
-            {rebuilt ? drawnSentence(day) : doneSentence(forced, changed, relaid)}
+            {recoloured
+              ? recolouredSentence()
+              : rebuilt
+                ? drawnSentence(day)
+                : doneSentence(forced, changed, relaid)}
           </p>
           {movedNotice}
           {/* The run outlives the screen, so this state is what a person
@@ -174,6 +189,11 @@ export function drawnSentence(day: string | null): string {
     : `Drawn for ${day} from the stored layout. The stations have not moved.`
 }
 
+/** What a redraw for chosen colours says when the map has been drawn. */
+export function recolouredSentence(): string {
+  return 'Drawn in the colours you chose, from the stored layout. The stations have not moved.'
+}
+
 /**
  * What a run that did not finish says. Nothing was written to the record
  * either way; but a re-layout whose layout call had already answered has
@@ -181,7 +201,17 @@ export function drawnSentence(day: string | null): string {
  * old one until the next run draws the new; and a rebuild that stopped may
  * have left the page half-drawn for the day it did not record.
  */
-export function stoppedSentence(state: string, replaced: boolean, rebuilt = false): string {
+export function stoppedSentence(
+  state: string,
+  replaced: boolean,
+  rebuilt = false,
+  recoloured = false,
+): string {
+  if (recoloured) {
+    return state === 'cancelled'
+      ? 'The redraw was cancelled. The project keeps the colours it had; the map on screen may be the old one until the next build.'
+      : 'The map was not drawn in those colours. The project keeps the colours it had; the map on screen may be the old one until the next build.'
+  }
   if (rebuilt) {
     return state === 'cancelled'
       ? 'The rebuild was cancelled. The project keeps its day; the map on screen may be the old one until the next build.'

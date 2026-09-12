@@ -49,7 +49,11 @@ frames through the DevTools protocol, byte-identical run to run,
 from a button on the project screen, over the engine's `export.plan` and
 `export.encode` with the capture in the middle, into a folder on the
 desktop or `LEGIBLE_EXPORT_FOLDER`, the sidecar beside the file;
-`src/main/export.ts`). That is the first reel.
+`src/main/export.ts`) and the line colours (A4-01: the project's lines with
+the colour their feed publishes, an override per line, a reset per line and
+for all, and one default for the lines the feed leaves blank, debounced into
+a `map.build` from the stored layout and written only once the map carries
+them; `src/renderer/src/LineColours.tsx`). That is the first reel.
 
 Work proceeds phase by phase; `CONTRIBUTING.md` explains the flow, the
 labels, the milestones and the `A0-05`-style issue codes. The four Phase 0

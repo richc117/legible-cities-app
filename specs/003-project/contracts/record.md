@@ -43,6 +43,15 @@ The on-disk form of `ProjectRecord` (`data-model.md`), version 1:
   the last layout run, `{ start, end, busiest, anchor }`, four days
   `YYYY-MM-DD` with `start <= end`, or `null`; a block that is not that
   reads as `null`.
+- `colors` and `defaultColor` (defined by A1-05, first written by A4-01,
+  still version 1) are the line colours a person chose: a line label to a
+  `#rrggbb` colour, and what a line the feed leaves uncoloured is drawn in.
+  They are what `map.build` takes as `colors` and `default_color`; the app
+  resolves nothing and stores no feed colour. An entry whose colour is not
+  six hex digits, or whose label is empty, over 64 characters or carrying a
+  control character, is dropped on read and refused on write; so is the
+  label `__proto__`, which a plain object cannot hold as a property and
+  which the record could therefore store and never read back.
 - A write stores the record as the reader normalised it, stamped with the
   current `version`: unknown keys are dropped, an invalid colour, theme or
   date falls back to its default, and a missing timestamp becomes the epoch.

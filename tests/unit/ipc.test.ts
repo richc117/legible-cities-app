@@ -14,6 +14,10 @@ import { CHANNELS } from '../../src/shared/api'
 
 type Handler = (event: IpcMainInvokeEvent, ...args: unknown[]) => Promise<unknown>
 
+/** More overrides than the record's cap, so the handler refuses the lot. */
+const bigPalette = (): [string, string][] =>
+  Array.from({ length: 513 }, (_unused, i) => [`line-${i}`, '#0072bc'] as [string, string])
+
 const WINDOW = {
   start: '2026-01-01',
   end: '2026-12-31',
@@ -145,6 +149,65 @@ describe('registerProjectHandlers', () => {
     expect(calls).toEqual([
       { method: 'setInputs', args: ['abcdefghijk1', { mode: 'tram', agency: null }] },
       { method: 'setInputs', args: ['abcdefghijk1', { mode: 'all', agency: 'M' }] },
+    ])
+  })
+
+  // The line colours a person chose, relayed by the page after the map was
+  // drawn with them. Every label and every colour is checked here, because
+  // the argument came from another process (A4-01).
+  it('refuses a malformed colour map before the store sees it', async () => {
+    const { call, calls } = harness()
+    for (const palette of [
+      undefined,
+      null,
+      42,
+      'grey',
+      [],
+      {},
+      { colors: {} },
+      { defaultColor: '#888888' },
+      { colors: [], defaultColor: '#888888' },
+      { colors: null, defaultColor: '#888888' },
+      { colors: {}, defaultColor: '888888' },
+      { colors: {}, defaultColor: 'grey' },
+      { colors: {}, defaultColor: '#88888' },
+      { colors: { A: '0072bc' }, defaultColor: '#888888' },
+      { colors: { A: '#0072b' }, defaultColor: '#888888' },
+      { colors: { A: 'red' }, defaultColor: '#888888' },
+      { colors: { A: null }, defaultColor: '#888888' },
+      { colors: { A: 42 }, defaultColor: '#888888' },
+      { colors: { '': '#0072bc' }, defaultColor: '#888888' },
+      { colors: { ['A\nB']: '#0072bc' }, defaultColor: '#888888' },
+      { colors: { ['a'.repeat(65)]: '#0072bc' }, defaultColor: '#888888' },
+      // A key a plain object cannot hold as a property: the record
+      // would write it and never read it back.
+      { colors: { ['__proto__']: '#0072bc' }, defaultColor: '#888888' },
+      { colors: Object.fromEntries(bigPalette()), defaultColor: '#888888' },
+    ]) {
+      await expect(
+        call(CHANNELS.projectsCompleteColors, 'abcdefghijk1', palette),
+        JSON.stringify(palette) ?? 'undefined',
+      ).rejects.toThrow()
+    }
+    expect(calls, 'nothing reached the store').toEqual([])
+  })
+
+  it('passes a palette the panel would send, and only its two fields', async () => {
+    const { call, calls } = harness()
+    await expect(call(CHANNELS.projectsCompleteColors, '../x', {})).rejects.toThrow('invalid id')
+    await call(CHANNELS.projectsCompleteColors, 'abcdefghijk1', {
+      colors: { A: '#0072bc', 'Rapid 720': '#FFFFFF' },
+      defaultColor: '#888888',
+      lineOrder: ['A'],
+    })
+    expect(calls).toEqual([
+      {
+        method: 'completeColors',
+        args: [
+          'abcdefghijk1',
+          { colors: { A: '#0072bc', 'Rapid 720': '#FFFFFF' }, defaultColor: '#888888' },
+        ],
+      },
     ])
   })
 

@@ -75,6 +75,7 @@ const api: Api = {
     completeLayout: (id, done) => invoke(CHANNELS.projectsCompleteLayout, id, done),
     completeRebuild: (id, done) => invoke(CHANNELS.projectsCompleteRebuild, id, done),
     setInputs: (id, inputs) => invoke(CHANNELS.projectsSetInputs, id, inputs),
+    completeColors: (id, palette) => invoke(CHANNELS.projectsCompleteColors, id, palette),
   },
   viewer: {
     attach: (projectId) => invoke(CHANNELS.viewerAttach, projectId),
