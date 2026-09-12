@@ -14,6 +14,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -164,6 +165,58 @@ test('the map keeps its own theme whatever the interface is wearing', async () =
   })
 })
 
+test('the switch is out of reach while a run is going, because the page is being rewritten', async () => {
+  const h = home({ progress_delay_ms: 400 })
+  await withApp(h, async (page) => {
+    await project(page, 'Los Angeles')
+    const sepia = switchOf(page).getByRole('button', { name: 'Sepia' })
+    await expect(sepia).toBeEnabled()
+
+    await page.getByRole('button', { name: /lay out/i }).click()
+    // `map.build` writes the project's page in place, and a theme change
+    // reloads the frame that reads it: a press now would show half a
+    // document and an alert saying the map is gone.
+    await expect(sepia).toBeDisabled()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    await expect(sepia).toBeEnabled()
+  })
+})
+
+test('two presses inside one write end where the second asked, not the first', async () => {
+  const h = home()
+  await withApp(h, async (page) => {
+    await project(page, 'Los Angeles')
+    const group = switchOf(page).getByRole('group', { name: 'The theme this map is drawn in' })
+    await group.getByRole('button', { name: 'Sepia' }).click()
+    await group.getByRole('button', { name: 'Warm dark' }).click()
+    await expect(group.getByRole('button', { name: 'Warm dark' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    await expect.poll(() => readRecord(h).theme).toBe('warm-dark')
+  })
+})
+
+test('a write that fails says so where the switch is, and changes nothing', async () => {
+  const h = home()
+  await withApp(h, async (page) => {
+    await project(page, 'Los Angeles')
+    // The project's folder goes while it is open, which is the shape of
+    // every write that cannot land: a disk that has gone, a permission that
+    // has changed, a record removed from under the app.
+    const [id] = readdirSync(join(h.engineHome, 'projects'))
+    rmSync(join(h.engineHome, 'projects', id), { recursive: true, force: true })
+
+    await switchOf(page).getByRole('button', { name: 'Sepia' }).click()
+    await expect(switchOf(page).getByRole('alert')).toBeVisible()
+    // And the switch still shows what the project actually is.
+    await expect(switchOf(page).getByRole('button', { name: 'Warm dark' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+  })
+})
+
 test('an export is planned in the theme the project is drawn in', async () => {
   const h = home()
   await withApp(h, async (page) => {
@@ -189,5 +242,9 @@ test('an export is planned in the theme the project is drawn in', async () => {
     // The engine's own word for it, and the page the capture drives carries
     // the page's own word.
     expect(plans[plans.length - 1]).toContain('"theme": "light"')
+    // And the switch is out of reach while the export runs: the theme it
+    // was planned with is the theme the reel will have, whatever is pressed
+    // now (FR-008).
+    await expect(switchOf(page).getByRole('button', { name: 'Warm dark' })).toBeDisabled()
   })
 })

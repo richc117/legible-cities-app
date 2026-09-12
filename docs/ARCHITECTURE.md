@@ -884,8 +884,8 @@ frame in RGB with the tolerance of 8.
 |---|---|
 | The contract tests running in continuous integration; they exist and are gated on an engine checkout | A0-06 |
 | A screen for long jobs across projects; the layout run and the export draw their own progress on the project screen | A1-03 |
-| Settings: the data folder, the export folder (a configuration key until then), the versions shown | A1-04 |
-| A feed chooser over the engine's registry; the feed key is typed and checked for form | A2-01 |
+| Nothing: Settings holds the two folders, the interface's theme and the versions since A1-04 | landed |
+| Nothing: the Library lists, adds and removes the engine's feeds since A2-01, and the create dialog offers them | landed |
 | Editing the numeric style fields; the record holds the engine's defaults, and the colours, the order and the theme are a person's since A4-01, A4-02 and A4-03 | post-MVP |
 | Every other preset, and the export's options: quality, storyboard, theme, the safe zones | A5-01 |
 | Vendored Python, LOOM and ffmpeg; installers | A0-10 (`specs/002`) |

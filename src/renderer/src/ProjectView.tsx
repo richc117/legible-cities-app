@@ -275,8 +275,7 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
                 </>
               )}
             </dd>
-            <dt>Theme</dt>
-            <dd>{project.theme}</dd>
+
             <dt>Created</dt>
             <dd>
               <Time iso={project.created} />
@@ -327,7 +326,7 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
             />
           )}
           {!project.readOnly && (
-            <ThemeSwitch project={project} onChange={setTheme} disabled={exporting} />
+            <ThemeSwitch project={project} onChange={setTheme} disabled={exporting || layingOut} />
           )}
           {!project.readOnly && project.layout !== null && (
             <ExportRunView run={exporter} project={project} engine={engine} disabled={layingOut} />

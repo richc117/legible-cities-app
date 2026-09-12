@@ -109,11 +109,23 @@ warm-dark project, and read the frame's address.
   has already made changes appearance.
 - **A record naming a theme the app does not know** reads as warm-dark, as
   it already does, and the switch shows warm-dark.
-- **A run or an export in flight.** A theme change writes the record and
-  reloads the page. An export reads the page it is capturing, so the switch
-  is disabled while one runs - unlike the colour and order panels, whose
-  changes can wait on a timer, this one is a reload of the very frame the
-  capture drives, and there is nothing to gain by queueing it.
+- **A run in flight.** A layout run, a re-layout and a chosen day all end
+  in `map.build`, which writes the project's page **in place** rather than
+  into a scratch file and renaming: `animate.write` is a plain
+  `write_text`. A theme change reloads the frame that reads that page, so a
+  press mid-run can load half a document, and the viewer then says the map
+  is not there - which is false and alarming, and clears itself when the
+  run finishes. The switch is disabled while a run is going.
+- **An export in flight.** The switch is disabled then too, for a different
+  reason: the export read the record's theme when it planned, so a change
+  now could not reach the reel being made. The capture never reads the
+  viewer's frame - it drives a window of its own in its own session
+  (ADR-024) - so it is not the frame that is at stake here, only the
+  agreement between what a person sees and what they get.
+- **Two presses inside one write.** The second is kept and applied when the
+  first settles, rather than dropped: a press a person cannot see refused
+  is indistinguishable from a dead button, and the button that would undo
+  it already reads as chosen.
 - **A read-only record**, written by a newer version of the app: the switch
   is absent, as the rest of the project's editing is.
 
@@ -133,7 +145,11 @@ warm-dark project, and read the frame's address.
 - **FR-007**: The switch MUST be keyboard-reachable, named, and say which
   option is chosen to a screen reader; both themes MUST hold their contrast,
   which the token tests already assert.
-- **FR-008**: The switch MUST be disabled while an export is running.
+- **FR-008**: The switch MUST be disabled while a run or an export is
+  going, and MUST say nothing about it: the run's own panel is already
+  saying what is happening.
+- **FR-009**: A press that arrives while a write is in flight MUST be
+  applied when that write settles, not dropped.
 
 ## Success Criteria _(mandatory)_
 

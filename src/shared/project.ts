@@ -20,11 +20,15 @@ export interface ProjectStyle {
  */
 export type Theme = 'warm-dark' | 'sepia'
 
-/** The two, and nothing else; a record that names another is drawn warm-dark. */
-export const THEMES: readonly Theme[] = ['warm-dark', 'sepia']
+/**
+ * The two, and nothing else; a record that names another is drawn
+ * warm-dark. One list, which the switch offers and the validator checks, so
+ * a third theme cannot be half-added.
+ */
+export const THEMES = ['warm-dark', 'sepia'] as const satisfies readonly Theme[]
 
 export function isTheme(value: unknown): value is Theme {
-  return value === 'warm-dark' || value === 'sepia'
+  return THEMES.some((theme) => theme === value)
 }
 
 /**
