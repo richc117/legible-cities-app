@@ -53,10 +53,15 @@ function home(control: Record<string, unknown> = {}): Home {
 
 const deliverable = (h: Home): string => join(h.exportFolder, 'Los Angeles', REEL)
 
-/** What a running export leaves under the engine home, if anything. */
+/**
+ * What a running export leaves under the engine home, if anything. The
+ * marker that says the folder is the app's is not a leftover: it is what
+ * lets the sweep empty this folder and refuse one it did not make
+ * (src/main/frames.ts).
+ */
 const framesLeft = (h: Home): string[] => {
   const dir = join(h.engineHome, 'frames')
-  return existsSync(dir) ? readdirSync(dir) : []
+  return existsSync(dir) ? readdirSync(dir).filter((name) => name !== '.legible-frames') : []
 }
 
 function launch(h: Home): Promise<ElectronApplication> {
@@ -211,6 +216,8 @@ test('a quit mid-export leaves nothing, and a start clears what a crash would ha
   expect(existsSync(deliverable(h))).toBe(false)
 
   // What a crash would leave: a frames folder nobody will ask for again.
+  // The app made this one - an export has run against this home - so the
+  // marker is there and the sweep may empty it.
   mkdirSync(join(h.engineHome, 'frames', 'stale'), { recursive: true })
   writeFileSync(join(h.engineHome, 'frames', 'stale', '000000.png'), 'png')
   await withApp(h, async () => {
