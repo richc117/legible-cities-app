@@ -628,6 +628,14 @@ placeholder: a theme belongs to the map, which is exported and published,
 rather than to the room the person making it is sitting in. The interface
 keeps its own theme in Settings and the two move independently.
 
+A theme press is not free, though it is cheap: the theme rides on the
+address, so the frame navigates rather than restyles. The page starts again
+- its clock back at the hour it opens on, its chosen view, its scrub
+position and its line toggles gone - and a large network's data is parsed
+again. The app cannot do better today: it drives the page through
+`window.__present` from the main process (ADR-028) and that seam has no
+theme method, which is an engine issue rather than an app one.
+
 Nothing is rebuilt for a theme, and no engine request is made at all: the
 SVG carries its furniture's colours as CSS variables with literal
 fallbacks, so the page restyles itself and the line colours do not move.
@@ -884,8 +892,6 @@ frame in RGB with the tolerance of 8.
 |---|---|
 | The contract tests running in continuous integration; they exist and are gated on an engine checkout | A0-06 |
 | A screen for long jobs across projects; the layout run and the export draw their own progress on the project screen | A1-03 |
-| Nothing: Settings holds the two folders, the interface's theme and the versions since A1-04 | landed |
-| Nothing: the Library lists, adds and removes the engine's feeds since A2-01, and the create dialog offers them | landed |
 | Editing the numeric style fields; the record holds the engine's defaults, and the colours, the order and the theme are a person's since A4-01, A4-02 and A4-03 | post-MVP |
 | Every other preset, and the export's options: quality, storyboard, theme, the safe zones | A5-01 |
 | Vendored Python, LOOM and ffmpeg; installers | A0-10 (`specs/002`) |

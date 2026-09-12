@@ -9,5 +9,5 @@
 - [x] T006 Unit tests (the record, the store, the bridge) and the
       end-to-end scenarios, the export among them.
 - [x] T007 ARCHITECTURE, CLAUDE.md, spec 003's record contract.
-- [ ] T008 Lint, typecheck, unit and the build; the scanners; the reviewer;
+- [x] T008 Lint, typecheck, unit and the build; the scanners; the reviewer;
       then the pull request.

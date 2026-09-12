@@ -122,6 +122,13 @@ warm-dark project, and read the frame's address.
   viewer's frame - it drives a window of its own in its own session
   (ADR-024) - so it is not the frame that is at stake here, only the
   agreement between what a person sees and what they get.
+- **What a theme press costs.** The theme rides on the page's address, so
+  the press is a navigation rather than a restyle: the page starts again,
+  with its clock back at the hour it opens on and the view, the scrub
+  position and the line toggles a person had chosen gone with it. It is
+  cheap next to a build and it is not nothing. The seam the app drives the
+  page through has no theme method, so there is no cheaper route today;
+  that is engine issue 29, filed, and not this feature's to fix.
 - **Two presses inside one write.** The second is kept and applied when the
   first settles, rather than dropped: a press a person cannot see refused
   is indistinguishable from a dead button, and the button that would undo
@@ -146,8 +153,12 @@ warm-dark project, and read the frame's address.
   option is chosen to a screen reader; both themes MUST hold their contrast,
   which the token tests already assert.
 - **FR-008**: The switch MUST be disabled while a run or an export is
-  going, and MUST say nothing about it: the run's own panel is already
-  saying what is happening.
+  going, and MUST say so where the switch is. The run's own panel is
+  elsewhere on the screen and is tied to this section by nothing an
+  assistive technology can follow, so a person who arrives here during a
+  debounced rebuild would otherwise meet two dead buttons and no reason.
+  Focus MUST be handed to the section's heading before the buttons go,
+  because a run can start from a timer rather than a press.
 - **FR-009**: A press that arrives while a write is in flight MUST be
   applied when that write settles, not dropped.
 

@@ -1,6 +1,7 @@
-import { useRef, useState, type JSX } from 'react'
+import { useEffect, useRef, useState, type JSX } from 'react'
 import { THEMES, type ProjectRecord, type Theme } from '../../shared/project'
 import Button from './kit/Button'
+import { nextWrite, writeThrough } from './themeWrites'
 
 // The theme a project's map is drawn in (A4-03, specs/021-theme).
 //
@@ -36,43 +37,64 @@ interface Props {
 
 export default function ThemeSwitch({ project, onChange, disabled = false }: Props): JSX.Element {
   const [problem, setProblem] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
-  // The last theme asked for while a write was in flight. A press that
-  // arrives then is kept rather than dropped: dropping it silently leaves a
-  // person looking at the theme they did not choose, with the button that
-  // would fix it already showing as chosen.
-  const waiting = useRef<Theme | null>(null)
+  // Whether a write is in flight, and the theme pressed while it was: refs
+  // rather than state, because a press reads them in the same tick it
+  // arrives. As state, the flag would still read true through the render
+  // after the last write settled, and a press landing in that gap would be
+  // kept by a loop that had already ended - the silent drop this exists to
+  // stop, in a narrower window.
+  const writing = useRef(false)
+  const kept = useRef<Theme | null>(null)
+  const section = useRef<HTMLElement>(null)
+  const headingRef = useRef<HTMLHeadingElement>(null)
+
+  // A run can start from a timer rather than a press: a colour or an order
+  // change is debounced, so the way closes with nobody touching anything.
+  // Chromium blurs a disabled element, so focus is handed to the heading
+  // before the buttons go, and a press kept from before is forgotten -
+  // applying it after the way closed is what the closing is for.
+  useEffect(() => {
+    if (!disabled) return
+    kept.current = null
+    const active = document.activeElement
+    if (active !== null && section.current?.contains(active) === true) {
+      headingRef.current?.focus()
+    }
+  }, [disabled])
 
   const choose = async (theme: Theme): Promise<void> => {
-    if (saving) {
-      waiting.current = theme
+    const step = nextWrite(theme, project.theme, writing.current)
+    if (step === 'none') return
+    if (step === 'keep') {
+      kept.current = theme
       return
     }
-    if (theme === project.theme) return
     setProblem(null)
-    setSaving(true)
+    writing.current = true
     try {
-      // Whatever was pressed last is what a person is asking for. A press
-      // that only repeats what has just been written asks for nothing.
-      let next: Theme | null = theme
-      let written: Theme | null = null
-      while (next !== null && next !== written) {
-        await onChange(next)
-        written = next
-        next = waiting.current
-        waiting.current = null
-      }
+      await writeThrough(theme, onChange, () => {
+        const next = kept.current
+        kept.current = null
+        return next
+      })
     } catch (error) {
-      waiting.current = null
+      kept.current = null
       setProblem(error instanceof Error ? error.message : String(error))
     } finally {
-      setSaving(false)
+      writing.current = false
     }
   }
 
   return (
-    <section className="theme-switch" aria-labelledby="theme-switch-heading">
-      <h2 id="theme-switch-heading">Theme</h2>
+    <section
+      className="theme-switch"
+      aria-labelledby="theme-switch-heading"
+      aria-busy={disabled}
+      ref={section}
+    >
+      <h2 id="theme-switch-heading" tabIndex={-1} ref={headingRef}>
+        Theme
+      </h2>
       <p className="prose">
         The map is drawn in one of the engine&rsquo;s two themes, and so is every export of it. The
         interface has its own theme in Settings; neither follows the other.
@@ -94,6 +116,12 @@ export default function ThemeSwitch({ project, onChange, disabled = false }: Pro
           </Button>
         ))}
       </div>
+      {disabled && (
+        <p className="hint" role="status">
+          The theme waits until the run that is going has finished: it changes what the map on
+          screen is loaded from, and an export is made in the theme it was planned with.
+        </p>
+      )}
       {problem !== null && (
         <p className="message error" role="alert">
           {problem}

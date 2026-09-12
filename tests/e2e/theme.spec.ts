@@ -177,8 +177,38 @@ test('the switch is out of reach while a run is going, because the page is being
     // reloads the frame that reads it: a press now would show half a
     // document and an alert saying the map is gone.
     await expect(sepia).toBeDisabled()
+    // And it says why, where the switch is: the run's own panel is
+    // elsewhere on the screen and tied to this section by nothing a screen
+    // reader can follow (FR-008).
+    await expect(switchOf(page).getByRole('status')).toContainText(/waits until the run/)
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     await expect(sepia).toBeEnabled()
+  })
+})
+
+test('focus is handed over before the buttons go, when a timer closes the way', async () => {
+  const h = home({ progress_delay_ms: 400 })
+  await withApp(h, async (page) => {
+    await project(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+
+    // A colour change is debounced, so its build starts from a timer with
+    // nobody pressing anything - and Chromium blurs a disabled element, so
+    // the buttons going would take the focus to the body.
+    const colours = page.getByRole('region', { name: 'Line colours' })
+    await colours.getByRole('button', { name: /^Choose the colour of line A/ }).click()
+    const picker = colours.getByRole('group', { name: 'Colour for line A' })
+    await picker.getByLabel('Hex value').fill('#ff0000')
+    await picker.getByRole('button', { name: 'Use this colour' }).click()
+
+    // Inside the debounce, with focus moved into the theme switch.
+    const sepia = switchOf(page).getByRole('button', { name: 'Sepia' })
+    await sepia.focus()
+    await expect(sepia).toBeFocused()
+
+    await expect(sepia).toBeDisabled({ timeout: 30_000 })
+    await expect(switchOf(page).getByRole('heading', { name: 'Theme' })).toBeFocused()
   })
 })
 
