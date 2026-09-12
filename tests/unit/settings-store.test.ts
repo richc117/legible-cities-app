@@ -9,7 +9,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   folderSize,
   refuseReset,
-  resetFolder,
+  resetContents,
+  RESET_FOLDERS,
   SETTINGS_FILE,
   SettingsStore,
 } from '../../src/main/settings'
@@ -159,6 +160,8 @@ describe('refuseReset', () => {
     expect(refuseReset(join(guards.userData, 'engine'), guards)).toBeNull()
   })
 
+  // A folder somewhere else entirely is allowed, and safe, because the
+  // reset takes only the four folders under it and never the folder itself.
   it('allows a folder a person chose somewhere else entirely', () => {
     expect(refuseReset(join(tmpdir(), 'legible-cities-disk', 'engine'), guards)).toBeNull()
   })
@@ -182,22 +185,69 @@ describe('refuseReset', () => {
   })
 })
 
-describe('resetFolder', () => {
-  it('removes everything under the folder and leaves it there, empty', async () => {
-    const home = join(dir, 'engine')
-    await mkdir(join(home, 'projects', 'p1'), { recursive: true })
-    await writeFile(join(home, 'projects', 'p1', 'project.json'), '{}')
-    await writeFile(join(dir, 'keep.txt'), 'untouched')
-    await resetFolder(home)
-    expect(await readdir(home)).toEqual([])
-    expect(await readFile(join(dir, 'keep.txt'), 'utf8'), 'nothing outside was touched').toBe(
-      'untouched',
-    )
+// The engine home is a folder a person can point at anything in one click,
+// so the reset takes what the app and the engine put there and nothing
+// else. The four names come from the engine's own config.py (data, out) and
+// from this app (projects, out, frames).
+describe('resetContents', () => {
+  it('names the four folders the app and the engine keep', () => {
+    expect([...RESET_FOLDERS].sort()).toEqual(['data', 'frames', 'out', 'projects'])
   })
 
-  it('makes the folder when it was not there', async () => {
+  it("removes those four and leaves everything else in the person's folder", async () => {
+    const home = join(dir, 'engine')
+    // What the app and the engine keep.
+    await mkdir(join(home, 'projects', 'p1'), { recursive: true })
+    await writeFile(join(home, 'projects', 'p1', 'project.json'), '{}')
+    await mkdir(join(home, 'data', 'feeds'), { recursive: true })
+    await writeFile(join(home, 'data', 'feeds', 'user-feeds.json'), '[]')
+    await mkdir(join(home, 'out', 'p1'), { recursive: true })
+    await mkdir(join(home, 'frames'), { recursive: true })
+    // What a person had in the folder before they ever pointed the app at
+    // it. This is the whole point: taking the folder whole would take these.
+    await writeFile(join(home, 'tax-return.pdf'), 'mine')
+    await mkdir(join(home, 'Photos'), { recursive: true })
+    await writeFile(join(home, 'Photos', 'trip.jpg'), 'mine')
+
+    const outcome = await resetContents(home)
+    expect(outcome.removed.sort()).toEqual(['data', 'frames', 'out', 'projects'])
+    expect(outcome.failed).toEqual([])
+    expect((await readdir(home)).sort()).toEqual(['Photos', 'tax-return.pdf'])
+    expect(await readFile(join(home, 'Photos', 'trip.jpg'), 'utf8')).toBe('mine')
+  })
+
+  it('says nothing about a folder that was not there, and removes the rest', async () => {
+    const home = join(dir, 'engine')
+    await mkdir(join(home, 'projects'), { recursive: true })
+    const outcome = await resetContents(home)
+    expect(outcome.removed).toEqual(['projects'])
+    expect(outcome.failed).toEqual([])
+  })
+
+  it('makes the home when it was not there, and removes nothing', async () => {
     const home = join(dir, 'never-existed')
-    await resetFolder(home)
+    const outcome = await resetContents(home)
+    expect(outcome).toEqual({ removed: [], failed: [] })
     expect(await readdir(home)).toEqual([])
+  })
+
+  // Removing a link unlinks it: the screen would say the data was gone
+  // while it sat where the link pointed, and the size line would drop to
+  // nothing. So a link is left where it is and reported.
+  it('leaves a folder that is a symbolic link, and says so', async () => {
+    const home = join(dir, 'engine')
+    const elsewhere = join(dir, 'elsewhere')
+    await mkdir(join(elsewhere, 'p1'), { recursive: true })
+    await writeFile(join(elsewhere, 'p1', 'project.json'), '{}')
+    await mkdir(home, { recursive: true })
+    try {
+      await symlink(elsewhere, join(home, 'projects'), 'dir')
+    } catch {
+      return // a locked-down Windows account cannot make one
+    }
+    const outcome = await resetContents(home)
+    expect(outcome.removed).not.toContain('projects')
+    expect(outcome.failed).toEqual([{ folder: 'projects', reason: expect.stringMatching(/link/) }])
+    expect(await readFile(join(elsewhere, 'p1', 'project.json'), 'utf8')).toBe('{}')
   })
 })

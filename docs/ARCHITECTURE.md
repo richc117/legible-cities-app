@@ -106,7 +106,7 @@ write under `api.clipboard`, and the app's own settings under
 | `settings.useDefaultEngineFolder()`, `useDefaultExportFolder()` | forgets the stored folder and takes the default again |
 | `settings.engineSize()` | walks the engine's home, bounded and never through a symbolic link |
 | `settings.openLogsFolder()` | makes the platform's log folder for this app if it is missing, and opens it |
-| `settings.resetEngineData()` | removes the engine's home and makes it again, empty; refused while an export or an engine request is in flight |
+| `settings.resetEngineData()` | removes `projects`, `out`, `data` and `frames` beneath the engine's home, never the home itself; answers what went and what would not; refused while anything is writing under it |
 
 The engine bridge is deliberately untyped beyond a method name and an
 object of parameters: A1-02 generates the methods from the engine's schema
@@ -303,9 +303,9 @@ the terminal. Contract: `specs/001-electron-skeleton/contracts/config.md`.
 The app writes to the engine home only under `projects/` and, while an
 export runs, `frames/`; it removes only a project's `out/<id>/` on delete
 and the whole of `frames/` at start; `feeds/` is the engine's and untouched.
-The one exception is "Reset engine data" in Settings, which removes the
-home whole, having been told what it holds and refused while anything is
-running (A1-04).
+The one exception is "Reset engine data" in Settings, which removes
+`projects/`, `out/`, `data/` and `frames/` beneath the home - never the
+home itself, and never anything else in it (A1-04).
 
 ## Settings
 
@@ -332,15 +332,27 @@ threaded through the sidecar, the project store, the served roots, the
 capture's session and the frames root before the window existed, so it
 takes effect at the next start and the screen says so.
 
-The reset is the one destructive act and its gate is the trusted side's,
-not the screen's: refused while an export is running or the engine is
-answering a request (a layout run is one), refused for a home that is a
-root, the person's home folder or an ancestor of the user-data folder, and
-refused when the export folder sits inside the home, because the
-confirmation promises that exported files are not touched. While the
-removal runs, a flag on the settings service refuses every engine request
-through the same guard the registry uses, and every export through the
-exporter's own, so nothing starts writing into a folder being walked away.
+The reset is the one destructive act. It removes four folders beneath the
+home - `projects`, `out`, `data` and `frames`, which is everything this app
+and the engine put there - and never the home itself: that is a folder a
+person can point at `~/Documents` in one click, so whatever else is in it
+is theirs and stays. A folder that turns out to be a symbolic link is left
+alone and reported, because removing one unlinks it rather than empties it.
+The engine's own `config.py` is where the list comes from.
+
+Its gate is split, because the two sides know different things. The main
+process refuses while an export is running, the engine is answering a
+request, or a record is being written - it counts all three - and for a
+home so high up that those four names would mean something else. It does
+not claim to know whether a multi-step layout run is open: that run is
+`graph.build`, then `feeds.service`, then `map.build`, then a record write,
+and nothing is in flight between them. The renderer holds the runs, and
+outlives the views that started them, so the screen is what disables the
+button while one is going. While the removal runs, a flag on the settings
+service refuses every engine request through the same guard the registry
+uses, every export through the exporter's own, and every write to a project
+record through the project handlers', so nothing lands in a folder being
+walked away.
 
 `LEGIBLE_USER_DATA` moves Electron's user-data folder. It is not a setting:
 it is how the end-to-end suite keeps its settings file out of a person's

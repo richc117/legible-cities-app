@@ -190,12 +190,17 @@ function harness(
     project?: Partial<ProjectRecord & { readOnly: boolean }>
     /** Records by identifier, for a test with more than one project. */
     projects?: Record<string, Partial<ProjectRecord & { readOnly: boolean }>>
+    /** Why no export may start: Settings sets this while it removes the home. */
+    blocked?: string | null
+    /** The export folder, changed between calls, to prove when it is read. */
+    folder?: { now: string }
   } = {},
 ) {
   const root = mkdtempSync(join(tmpdir(), 'legible-cities-export-'))
   dirs.push(root)
   const framesRoot = join(root, 'frames')
-  const exportFolder = join(root, 'exports')
+  const folder = over.folder ?? { now: join(root, 'exports') }
+  const exportFolder = folder.now
   const eng = fakeEngine(over.ready ?? true)
   const cap = fakeCapture()
   const progress: ExportProgress[] = []
@@ -207,11 +212,12 @@ function harness(
     framesRoot,
     // Asked at each export, so a folder changed in Settings applies
     // without a restart (A1-04).
-    exportFolder: () => exportFolder,
+    exportFolder: () => folder.now,
+    blocked: () => over.blocked ?? null,
     log: (m) => log.push(m),
   })
   exporter.onProgress((p) => progress.push(p))
-  return { exporter, eng, cap, progress, log, framesRoot, exportFolder }
+  return { exporter, eng, cap, progress, log, framesRoot, exportFolder, folder }
 }
 
 const settle = async (times = 6): Promise<void> => {
@@ -535,5 +541,42 @@ describe('the small functions', () => {
     )
     const engine = new EngineError(-32000, 'x')
     expect(normalise(engine)).toBe(engine)
+  })
+})
+
+// The frames live under the engine's home while an export runs, and the
+// file's folder is read once at the start: both are things Settings can
+// pull out from under a running export (A1-04).
+describe('the export and the settings screen', () => {
+  it('refuses to start at all while the engine data is being reset', () => {
+    const why = 'The engine data is being reset; wait for it to finish.'
+    const h = harness({ blocked: why })
+    expect(() => h.exporter.start('tok-1', 'abcdefghijk1', 'instagram-reel')).toThrow(why)
+    expect(h.exporter.live, 'nothing was begun').toBe(0)
+    expect(h.eng.requests, 'the engine was never asked for a plan').toHaveLength(0)
+  })
+
+  // The plan is a round trip to the engine. A folder changed while it is in
+  // flight must not redirect an export that was already under way.
+  it('writes to the folder in force when it started, not when it finished', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'legible-cities-export-'))
+    dirs.push(root)
+    const folder = { now: join(root, 'first') }
+    const h = harness({ folder })
+    const { result } = h.exporter.start('tok-1', 'abcdefghijk1', 'instagram-reel')
+    // Changed the instant the export is under way, while the plan is out.
+    folder.now = join(root, 'second')
+    await settle()
+
+    h.eng.requests[0].resolve(plan())
+    await settle()
+    h.cap.calls[0].finish(60)
+    await settle()
+
+    const dest = join(root, 'first', 'Los Angeles', 'la-metro-rail-instagram-reel.mp4')
+    expect(h.eng.requests[1].method).toBe('export.encode')
+    expect((h.eng.requests[1].params as { dest: string }).dest).toBe(dest)
+    h.eng.requests[1].resolve({ files: [{ path: dest, bytes: 1234 }], sidecar: {} })
+    await expect(result).resolves.toBeTruthy()
   })
 })

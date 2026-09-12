@@ -50,10 +50,35 @@ export interface SettingsView {
 export interface FolderSize {
   bytes: number
   files: number
-  /** The walk stopped at its cap, so what is reported is a floor. */
+  /** The walk stopped at its cap, or could not read a folder: what is reported is a floor. */
   partial: boolean
   /** The folder is not there yet. Not an error: it is made when something writes. */
   missing: boolean
+}
+
+/**
+ * What a reset did, by folder role. The home itself is never removed, so
+ * this says which of the folders the app and the engine keep under it went
+ * and which stayed, and why; never a path.
+ */
+export interface ResetOutcome {
+  removed: string[]
+  failed: { folder: string; reason: string }[]
+}
+
+/** What a finished reset says, for the screen. */
+export function describeReset(outcome: ResetOutcome): string {
+  const kept =
+    outcome.failed.length === 0
+      ? ''
+      : ` The ${outcome.failed.map((f) => `${f.folder} folder is still there (${f.reason})`).join(', and the ')}.`
+  if (outcome.removed.length === 0) {
+    return `There was nothing to remove.${kept}`
+  }
+  return (
+    `The engine's data is gone: ${outcome.removed.join(', ')}.` +
+    `${kept} Start the app again so the engine reads its folder afresh.`
+  )
 }
 
 export function isAppTheme(value: unknown): value is AppTheme {
@@ -151,9 +176,15 @@ export function formatBytes(bytes: number): string {
   return `${value.toFixed(1)} ${UNITS[unit]}`
 }
 
-/** A folder's size and count in one sentence, for the screen. */
+/**
+ * A folder's size and count in one sentence, for the screen. A walk that
+ * was cut short is said before a count of nothing is: a folder the app
+ * could not read reports zero files and would otherwise read as "empty",
+ * which is a lie about a folder that may be full.
+ */
 export function describeSize(size: FolderSize): string {
   if (size.missing) return 'empty (the folder is not there yet)'
+  if (size.partial && size.files === 0) return 'could not be measured'
   if (size.files === 0) return 'empty'
   const files = size.files === 1 ? '1 file' : `${size.files} files`
   const measured = `${formatBytes(size.bytes)} in ${files}`

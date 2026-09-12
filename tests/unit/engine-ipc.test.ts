@@ -287,4 +287,42 @@ describe('the guard in front of the engine', () => {
     expect(allowed.accepted).toBe(true)
     expect(h.requests.map((r) => r.method)).toEqual(['feeds.list'])
   })
+
+  // How the main process composes the two gates (src/main/index.ts): a
+  // reset of the engine's home refuses everything, and only when nothing is
+  // being reset does the registry's own gate get a say. Every engine
+  // request writes under that home, not just the registry's two (A1-04).
+  it('refuses every method while the engine data is being reset, registry or not', async () => {
+    let resetting: string | null = 'The engine data is being reset; wait for it to finish.'
+    const registry = async (method: string): Promise<string | null> =>
+      method === 'feeds.remove' ? 'One project uses this feed; delete the project first.' : null
+    const h = harness(true, async (method) => resetting ?? (await registry(method)))
+
+    for (const [token, method] of [
+      ['tok1', 'graph.build'],
+      ['tok2', 'map.build'],
+      ['tok3', 'feeds.list'],
+    ] as const) {
+      const answer = (await h.call(CHANNELS.engineRequest, token, method)) as {
+        accepted: boolean
+        error?: { data?: { hint: string } }
+      }
+      expect(answer.accepted, method).toBe(false)
+      expect(answer.error?.data?.hint).toMatch(/being reset/)
+    }
+    expect(h.requests, 'nothing reached the engine').toEqual([])
+
+    // The reset finished: the registry's gate is the only one left.
+    resetting = null
+    const after = (await h.call(CHANNELS.engineRequest, 'tok4', 'graph.build')) as {
+      accepted: boolean
+    }
+    expect(after.accepted).toBe(true)
+    const refused = (await h.call(CHANNELS.engineRequest, 'tok5', 'feeds.remove', {
+      key: 'mine',
+    })) as { accepted: boolean; error?: { data?: { hint: string } } }
+    expect(refused.accepted).toBe(false)
+    expect(refused.error?.data?.hint).toMatch(/One project uses this feed/)
+    expect(h.requests.map((r) => r.method)).toEqual(['graph.build'])
+  })
 })

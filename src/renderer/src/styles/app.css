@@ -624,8 +624,15 @@ th .sort:focus-visible {
   overflow-wrap: anywhere;
 }
 
-/* A folder chosen but not yet in force: the one thing on this screen that
-   is a state rather than a fact. */
+/* The folders the reset removes, named in the prose: the monospaced track
+   at the surrounding size, so the four names read as names. */
+.settings code {
+  font-family: var(--font-mono);
+  font-size: 1em;
+}
+
+/* A folder chosen but not yet in force, and a run the reset must wait for:
+   the two things on this screen that are a state rather than a fact. */
 .settings .pending {
   color: var(--warning);
 }

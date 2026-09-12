@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type JSX } from 'react'
 import {
   APP_THEMES,
+  describeReset,
   describeSize,
   isAppTheme,
   THEME_LABELS,
@@ -11,7 +12,7 @@ import {
 import type { EngineState } from '../../shared/engine'
 import type { EngineInfo } from '../../shared/protocol'
 import ConfirmDialog from './ConfirmDialog'
-import { engineClient } from './engine/runs'
+import { engineClient, runsInProgress, subscribeToRuns } from './engine/runs'
 import Icon from './icons/Icon'
 import Button from './kit/Button'
 import Select from './kit/Select'
@@ -54,6 +55,14 @@ export default function Settings({ settings, onChanged, engine, onBack }: Props)
   const [notice, setNotice] = useState<string | null>(null)
   const [confirming, setConfirming] = useState(false)
   const ready = engine?.state === 'ready'
+
+  // A layout run or an export is four steps with gaps between them, and the
+  // main process cannot see the gaps; the runs live in this process and
+  // outlive the view that started them, so this is where the question is
+  // answered. A run that finishes while the screen is open re-enables the
+  // button (A1-04).
+  const [going, setGoing] = useState(() => runsInProgress())
+  useEffect(() => subscribeToRuns(() => setGoing(runsInProgress())), [])
 
   // Focus the heading when the screen appears, so a screen reader says
   // where the person is.
@@ -106,13 +115,17 @@ export default function Settings({ settings, onChanged, engine, onBack }: Props)
 
   // A refusal - something running, or a folder the app will not remove -
   // stays in the dialog, which is what ConfirmDialog does with a rejection.
+  // The folder is measured again whichever way it went: a removal that got
+  // part of the way through would otherwise leave the size line showing a
+  // figure that is no longer true.
   const reset = async (): Promise<void> => {
-    await window.api.settings.resetEngineData()
-    setConfirming(false)
-    setNotice(
-      'The engine data folder was emptied: every project, feed and layout is gone. Start the app again so the engine reads it afresh.',
-    )
-    await measure()
+    try {
+      const outcome = await window.api.settings.resetEngineData()
+      setConfirming(false)
+      setNotice(describeReset(outcome))
+    } finally {
+      await measure()
+    }
   }
 
   const folder = (which: 'engine' | 'export', view: FolderView, label: string): JSX.Element => (
@@ -282,15 +295,27 @@ export default function Settings({ settings, onChanged, engine, onBack }: Props)
 
       <section aria-labelledby="settings-reset">
         <h2 id="settings-reset">Engine data</h2>
+        {/* Exactly what goes, by name. The folder itself is a folder a
+            person can point anywhere in one click, so what it holds
+            besides the engine's four folders is theirs and stays. */}
         <p className="message" id="reset-description">
-          Resetting removes everything the engine keeps: every project, every downloaded feed and
-          every stored layout. It cannot be undone, and it will not run while a layout or an export
-          is going.
+          Resetting removes the four folders the app and the engine keep in the folder above:{' '}
+          <code>projects</code>, <code>out</code>, <code>data</code> and <code>frames</code> — every
+          project, every downloaded feed, every stored layout and everything drawn from them.
+          Anything else in that folder is left alone, and exported files are not touched. It cannot
+          be undone.
         </p>
+        {going > 0 && (
+          <p className="message pending" role="status" id="reset-running">
+            {going === 1 ? 'A run is going' : `${going} runs are going`}; resetting would pull the
+            folder out from under it.
+          </p>
+        )}
         <div className="toolbar">
           <Button
             variant="destructive"
-            aria-describedby="reset-description"
+            disabled={going > 0}
+            aria-describedby={going > 0 ? 'reset-running' : 'reset-description'}
             onClick={() => {
               setMessage(null)
               setNotice(null)
@@ -306,7 +331,7 @@ export default function Settings({ settings, onChanged, engine, onBack }: Props)
       <ConfirmDialog
         open={confirming}
         title="Reset the engine's data?"
-        description="This removes every project, every downloaded feed and every stored layout, and makes the folder again, empty. Exported files are not touched. It cannot be undone."
+        description="This removes the projects, out, data and frames folders from the engine's data folder: every project, every downloaded feed and every stored layout. Anything else in that folder stays, and exported files are not touched. It cannot be undone."
         confirmLabel="Reset"
         onConfirm={reset}
         onCancel={() => setConfirming(false)}

@@ -27,7 +27,7 @@ const WINDOW = {
 const MADE = '2026-09-10T12:00:00+00:00'
 const BUILT = { mode: 'all', agency: null }
 
-function harness(topFrame = true) {
+function harness(topFrame = true, blocked: string | null = null) {
   const handlers = new Map<string, Handler>()
   const ipc = {
     handle: (channel: string, h: Handler) => handlers.set(channel, h),
@@ -41,7 +41,12 @@ function harness(topFrame = true) {
         return { ok: method }
       },
   })
-  registerProjectHandlers(ipc, store, () => topFrame)
+  registerProjectHandlers(
+    ipc,
+    store,
+    () => topFrame,
+    () => blocked,
+  )
   const event = {} as IpcMainInvokeEvent
   const call = (channel: string, ...args: unknown[]) => handlers.get(channel)!(event, ...args)
   return { call, calls, handlers }
@@ -52,6 +57,38 @@ describe('registerProjectHandlers', () => {
     const { handlers } = harness()
     const projectChannels = Object.values(CHANNELS).filter((c) => c.startsWith('projects:'))
     expect([...handlers.keys()].sort()).toEqual(projectChannels.sort())
+  })
+
+  // Every record and every output folder lives under the engine's home, so
+  // a write during a reset of that home would land in a folder being walked
+  // away. Reading is still allowed: it answers what is there, or that there
+  // is nothing (A1-04).
+  it('holds every write while the engine data is being reset, and still reads', async () => {
+    const why = 'The engine data is being reset; wait for it to finish.'
+    const h = harness(true, why)
+    const writes = [
+      [CHANNELS.projectsCreate, { name: 'A', feed: 'la-metro-rail' }],
+      [CHANNELS.projectsRename, 'aaaaaaaaaaaa', 'B'],
+      [CHANNELS.projectsDelete, 'aaaaaaaaaaaa'],
+      [CHANNELS.projectsSetInputs, 'aaaaaaaaaaaa', { mode: 'all', agency: null }],
+      [CHANNELS.projectsCompleteLayout, 'aaaaaaaaaaaa', {}],
+      [CHANNELS.projectsCompleteRebuild, 'aaaaaaaaaaaa', { date: '2026-09-15' }],
+      [CHANNELS.projectsCompleteColors, 'aaaaaaaaaaaa', { colors: {}, defaultColor: '#888888' }],
+    ] as const
+    for (const [channel, ...args] of writes) {
+      await expect(h.call(channel, ...args), channel).rejects.toThrow(why)
+    }
+    expect(h.calls, 'the store was never reached').toEqual([])
+
+    await h.call(CHANNELS.projectsList)
+    await h.call(CHANNELS.projectsGet, 'aaaaaaaaaaaa')
+    expect(h.calls.map((c) => c.method)).toEqual(['list', 'get'])
+  })
+
+  it('lets every write through when nothing is being reset', async () => {
+    const h = harness()
+    await h.call(CHANNELS.projectsRename, 'aaaaaaaaaaaa', 'B')
+    expect(h.calls.map((c) => c.method)).toEqual(['rename'])
   })
   // The layout run hands back the engine's answer; the handler checks its
   // shape, and the store checks it again before it writes.

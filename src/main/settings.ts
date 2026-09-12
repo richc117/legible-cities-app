@@ -10,7 +10,7 @@
 // and an error thrown here is what the renderer shows.
 
 import { randomBytes } from 'node:crypto'
-import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { isAbsolute, join, parse, resolve, sep } from 'node:path'
 import {
   DEFAULT_SETTINGS,
@@ -191,12 +191,33 @@ export interface ResetGuards {
 }
 
 /**
- * Why the engine's home may not be removed, or null. The folder itself is
- * the configuration's own, never a path from the page, so this is not a
- * check on a caller: it is a check on a *setting*, which a person or an
+ * What the app and the engine keep under the home, and the only things a
+ * reset removes. The engine's are `data/` (`data/feeds`, which also holds
+ * `user-feeds.json`, and `data/graphs`) and `out/`, from its own
+ * `config.py`; the app's are `projects/` and, while an export runs,
+ * `frames/`, and its output shares the engine's `out/`.
+ *
+ * The home is a folder a person can point anywhere in one click, so
+ * everything else in it is somebody's and is left alone. Read the engine's
+ * `config.py` before adding to this list, not this comment.
+ */
+export const RESET_FOLDERS = ['data', 'out', 'projects', 'frames'] as const
+
+/** What a reset did, by folder role; no path, because this is shown to a person. */
+export interface ResetOutcome {
+  removed: string[]
+  /** A folder that would not go, and why: a filesystem code, or a link the app will not follow. */
+  failed: { folder: string; reason: string }[]
+}
+
+/**
+ * Why the engine's home may not be reset, or null. The folder itself is the
+ * configuration's own, never a path from the page, so this is not a check
+ * on a caller: it is a check on a *setting*, which a person or an
  * environment variable can point anywhere, including at their whole home
- * folder. A reset removes a folder whole, so it is refused for anything
- * that has more than the engine's data under it (FR-009).
+ * folder. The reset removes only `RESET_FOLDERS` beneath the home, so what
+ * is left to refuse is a home so high up that those names mean something
+ * else entirely - `/data` and `/out` at the root of a disk, say (FR-009).
  */
 export function refuseReset(home: string, guards: ResetGuards): string | null {
   if (!isAbsolute(home)) return 'the engine data folder is not a folder the app can reset'
@@ -217,23 +238,51 @@ export function refuseReset(home: string, guards: ResetGuards): string | null {
 }
 
 /**
- * Remove the folder and make it again, empty. The caller has already asked
- * `refuseReset`; this does the work and reports a failure by its code,
- * because the message would name the path.
+ * Remove what the app and the engine keep under the home, and nothing else.
+ *
+ * The home itself is never removed. A person can point it at `~/Documents`
+ * or an external drive in one click, and weeks later press a button whose
+ * confirmation talks about projects and feeds; taking the folder whole
+ * would take everything else in it with them. So the four folders go and
+ * the home stays, with whatever else is in it.
+ *
+ * A folder that is a symbolic link is left alone and reported: removing it
+ * would unlink it rather than empty it, so the screen would say the data
+ * was gone while it sat where the link pointed.
+ *
+ * Each folder is attempted whatever happened to the last, so the reset gets
+ * as far as it can and the person hears about the rest, as a project's
+ * delete does. A failure is reported by its code; the message would name
+ * the path.
  */
-export async function resetFolder(home: string): Promise<void> {
-  try {
-    await rm(home, { recursive: true, force: true })
-  } catch (error) {
-    throw new Error(`the engine data folder could not be removed (${reasonOf(error)})`, {
-      cause: error,
-    })
-  }
+export async function resetContents(home: string): Promise<ResetOutcome> {
+  const outcome: ResetOutcome = { removed: [], failed: [] }
   try {
     await mkdir(home, { recursive: true })
   } catch (error) {
-    throw new Error(`the engine data folder could not be made again (${reasonOf(error)})`, {
+    throw new Error(`the engine data folder could not be made (${reasonOf(error)})`, {
       cause: error,
     })
   }
+  for (const folder of RESET_FOLDERS) {
+    const path = join(home, folder)
+    let info
+    try {
+      info = await lstat(path)
+    } catch {
+      // Not there: nothing to remove, and not worth saying.
+      continue
+    }
+    if (info.isSymbolicLink()) {
+      outcome.failed.push({ folder, reason: 'a symbolic link, which the app will not follow' })
+      continue
+    }
+    try {
+      await rm(path, { recursive: true, force: true })
+      outcome.removed.push(folder)
+    } catch (error) {
+      outcome.failed.push({ folder, reason: reasonOf(error) })
+    }
+  }
+  return outcome
 }

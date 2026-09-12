@@ -6,7 +6,7 @@
 import type { EngineErrorShape, EngineState, JobLog, JobProgress } from './engine'
 import type { ExportProgress, ExportResult, OfferedPreset } from './export'
 import type { LayoutDone, LayoutResult } from './layout'
-import type { AppTheme, FolderSize, SettingsView } from './settings'
+import type { AppTheme, FolderSize, ResetOutcome, SettingsView } from './settings'
 import type { ViewerMethod } from './viewer'
 import type {
   CreateProjectInput,
@@ -31,7 +31,7 @@ export type {
 export type { EngineState, JobLog, JobProgress } from './engine'
 export type { ExportProgress, ExportResult, OfferedPreset } from './export'
 export type { LayoutDone, LayoutResult } from './layout'
-export type { AppTheme, FolderSize, FolderView, SettingsView } from './settings'
+export type { AppTheme, FolderSize, FolderView, ResetOutcome, SettingsView } from './settings'
 
 /** A zip the platform's file chooser answered: the path the engine is handed, the name the page shows. */
 export interface PickedZip {
@@ -176,8 +176,13 @@ export interface Api {
     /** Walk the engine's home. Bounded, and never through a symbolic link. */
     engineSize(): Promise<FolderSize>
     openLogsFolder(): Promise<void>
-    /** Remove the engine's home and make it again, empty. Rejects when it may not run. */
-    resetEngineData(): Promise<void>
+    /**
+     * Remove what the app and the engine keep under the engine's home -
+     * `projects`, `out`, `data` and `frames` - and nothing else; the home
+     * itself and anything a person put in it stay. Answers what went and
+     * what would not. Rejects when it may not run.
+     */
+    resetEngineData(): Promise<ResetOutcome>
   }
 }
 

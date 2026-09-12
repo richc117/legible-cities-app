@@ -15,6 +15,7 @@
 // layout run is.
 
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
+import { join } from 'node:path'
 import { CHANNELS } from '../shared/api'
 import {
   isAppTheme,
@@ -28,8 +29,10 @@ import {
   contains,
   folderSize,
   refuseReset,
-  resetFolder,
+  resetContents,
+  RESET_FOLDERS,
   type ResetGuards,
+  type ResetOutcome,
   type SettingsStore,
 } from './settings'
 
@@ -214,34 +217,49 @@ export class SettingsService {
   }
 
   /**
-   * Remove the engine's home and make it again, empty. The folder is the
-   * configuration's own; nothing from the page reaches it. Refused while
-   * anything is running, for a home with more than the engine's data under
-   * it, and for a home that holds the export folder - because the
-   * confirmation promises that exported files are not touched, and a
-   * removal of the folder whole would take them.
+   * Remove what the app and the engine keep under the home. The home itself
+   * stays, and so does anything else in it: a person can point it at a
+   * folder of their own in one click, and the button's confirmation talks
+   * about projects and feeds, not about that folder's other contents.
    *
-   * The flag is raised for the length of the removal, so an export or an
-   * engine request cannot begin writing into a folder being walked away.
+   * The folder is the configuration's own; nothing from the page reaches
+   * it. Refused while anything is writing under the home, for a home so
+   * high up that these folder names would mean something else, and for an
+   * export folder inside one of the folders being removed - because the
+   * confirmation promises that exported files are not touched.
+   *
+   * The flag is raised for the length of the removal, so no engine request,
+   * no export and no write to a project record can begin while it runs.
    */
-  async resetEngineData(): Promise<void> {
+  async resetEngineData(): Promise<ResetOutcome> {
     const running = this.#deps.busy()
     if (running !== null) throw new Error(running)
     const home = this.#deps.engineHome
     const refusal = refuseReset(home, this.#deps.guards)
     if (refusal !== null) throw new Error(refusal)
-    if (contains(home, this.#exportFolder)) {
-      throw new Error(
-        'your export folder is inside the engine data folder; choose another one first, or the reset would take your exports with it',
-      )
+    // Narrow, and only what the promise needs: exports under the home are
+    // fine, exports under a folder the reset takes are not.
+    for (const folder of RESET_FOLDERS) {
+      if (contains(join(home, folder), this.#exportFolder)) {
+        throw new Error(
+          `your export folder is inside the ${folder} folder, which the reset removes; choose another one first`,
+        )
+      }
     }
     this.#resetting = true
+    let outcome: ResetOutcome
     try {
-      await resetFolder(home)
+      outcome = await resetContents(home)
     } finally {
       this.#resetting = false
     }
-    this.#deps.log('the engine data folder was removed and made again')
+    this.#deps.log(
+      `reset removed ${outcome.removed.join(', ') || 'nothing'}` +
+        (outcome.failed.length > 0
+          ? `; kept ${outcome.failed.map((f) => `${f.folder} (${f.reason})`).join(', ')}`
+          : ''),
+    )
+    return outcome
   }
 
   #folderOf(which: Which): string {
@@ -281,7 +299,5 @@ export function registerSettingsHandlers(
   handle(CHANNELS.settingsOpenLogs, async () => {
     await settings.openLogsFolder()
   })
-  handle(CHANNELS.settingsResetEngineData, async () => {
-    await settings.resetEngineData()
-  })
+  handle(CHANNELS.settingsResetEngineData, async () => settings.resetEngineData())
 }

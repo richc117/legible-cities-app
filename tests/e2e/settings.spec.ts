@@ -244,6 +244,12 @@ test('resets the engine data behind a confirmation, and leaves the Library empty
     expect(readdirSync(join(home, 'projects'))).toHaveLength(1)
 
     await open(page)
+    // A setting changed first, because the file is written when something
+    // changes and not before: without one there is no file for the reset to
+    // spare, and the assertion below would pass for the wrong reason.
+    await page.getByRole('combobox', { name: 'Theme' }).selectOption('sepia')
+    await expect.poll(() => existsSync(join(userData, 'settings.json'))).toBe(true)
+
     await page.getByRole('button', { name: 'Reset engine data' }).click()
     const confirm = page.getByRole('dialog')
     await expect(confirm.getByRole('heading', { level: 2 })).toHaveText("Reset the engine's data?")
@@ -256,11 +262,16 @@ test('resets the engine data behind a confirmation, and leaves the Library empty
     await page.getByRole('button', { name: 'Reset engine data' }).click()
     await confirm.getByRole('button', { name: 'Reset', exact: true }).click()
     await expect(confirm).toBeHidden()
-    await expect(page.getByRole('status').filter({ hasText: /emptied/ })).toBeVisible()
+    await expect(
+      page.getByRole('status').filter({ hasText: /engine's data is gone/ }),
+    ).toBeVisible()
 
-    // The folder is there and empty; the settings file beside it survived.
+    // The four folders went. The home itself is still there, and so is
+    // everything in it the app and the engine did not put there - the
+    // stand-in's own control file stands in for a person's own files, which
+    // is the whole reason the reset does not take the folder whole.
     expect(existsSync(home)).toBe(true)
-    expect(readdirSync(home)).toEqual([])
+    expect(readdirSync(home)).toEqual(['fake-engine.json'])
     expect(readdirSync(userData)).toContain('settings.json')
 
     await page.getByRole('button', { name: 'Back to Library' }).click()

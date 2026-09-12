@@ -118,17 +118,21 @@ goes with it.
    "Reset engine data" is pressed, **Then** a confirmation names what goes -
    every project, every downloaded feed, every stored layout and every
    export still being made - with Cancel focused; Cancel changes nothing.
-2. **Given** the confirmation, **When** confirmed, **Then** the folder is
-   removed and made again empty, the Library shows no projects, and the
-   screen says the app should be restarted so the engine reads its empty
-   home.
-3. **Given** a layout run or an export in flight, **When** the reset is
-   confirmed, **Then** the main process refuses with a sentence saying what
-   is running, the folder is untouched, and the dialog stays open.
+2. **Given** the confirmation, **When** confirmed, **Then** the four
+   folders are removed, the folder itself and everything else in it stay,
+   the Library shows no projects, and the screen says what went and that
+   the app should be restarted so the engine reads its folder afresh.
+3. **Given** a layout run or an export going, **When** Settings is opened,
+   **Then** the reset is offered but disabled, and says which. A reset
+   confirmed while the main process can see work in flight is refused with a
+   sentence saying what, the folders are untouched, and the dialog stays
+   open.
 4. **Given** an engine home that is the user's home folder, a filesystem
    root, or a folder containing the user-data folder, **When** a reset is
-   asked for, **Then** the main process refuses it. Nothing outside the
-   engine's home is ever removed.
+   asked for, **Then** the main process refuses it.
+5. **Given** an engine data folder a person pointed at a folder of their
+   own, **When** it is reset, **Then** their files are still there: only
+   the four folders the app and the engine wrote are removed.
 
 ### User Story 5 - Find the logs (Priority: P3)
 
@@ -160,8 +164,12 @@ in the platform's own file browser.
 - A reset while the engine is running leaves the engine with an empty home.
   It is told nothing (the supervisor has no restart), so the screen says to
   start the app again. On Windows a file the engine still holds open can
-  make the removal fail part-way; the app reports the failure by its code
-  and the folder is left as the removal got to. Unmeasured on Windows.
+  make one folder's removal fail; each folder is attempted whatever
+  happened to the last, and the screen says which stayed and why.
+  Unmeasured on Windows.
+- A reset that fails part way must not leave the size line showing the
+  figure from before it: the folder is measured again whichever way the
+  reset went.
 - Reduced motion: nothing on this screen animates.
 
 ## Requirements _(mandatory)_
@@ -196,13 +204,22 @@ in the platform's own file browser.
   the system's shows for a frame before it is applied; removing that would
   mean the served document carrying the attribute, which is out of scope
   here.
-- **FR-009**: "Reset engine data" MUST be behind a confirmation naming what
-  goes; the main process MUST refuse it while any export or engine request
-  is in flight, MUST refuse a home that is a root, the user's home folder or
-  an ancestor of the user-data folder, MUST refuse a home that holds the
-  export folder, and MUST remove nothing but the engine home, which it
-  takes from its own configuration and never from the page. While the
-  removal runs, no export and no engine request may start.
+- **FR-009**: "Reset engine data" MUST remove only the folders the app and
+  the engine keep under the home - `projects`, `out`, `data` and `frames` -
+  and MUST NOT remove the home itself or anything else in it, because the
+  home is a folder a person can point anywhere in one click. A folder that
+  is a symbolic link MUST be left alone and reported. It MUST be behind a
+  confirmation naming exactly what goes. The main process MUST refuse it
+  while an export, an engine request or a record write is in flight, MUST
+  refuse a home that is a root, the user's home folder or an ancestor of
+  the user-data folder, and MUST refuse an export folder inside one of the
+  four; the home it works on comes from its own configuration and never
+  from the page. While the removal runs, no export, no engine request and no
+  write to a project record may start.
+- **FR-013**: A layout run is four steps with nothing in flight between
+  them, so the main process MUST NOT claim to know one is open. The screen,
+  where the runs live, MUST refuse the reset while any run or export is
+  going.
 - **FR-010**: "Open logs folder" MUST open the platform's log folder for
   this app, making it if it is missing.
 - **FR-012**: A folder inside the app's own bundle MUST be refused even
@@ -215,10 +232,13 @@ in the platform's own file browser.
 
 - **SC-001**: Unit: the settings shape and its defensive reader; the store
   against a temporary user-data folder, including a corrupt file and an
-  atomic rewrite; the folder walk; the reset's own guard, its export-folder
-  rule and the gate it raises while it runs; the main-side refusal of a path
-  no dialog answered and of a folder inside the bundle; the logs folder;
-  the handlers' top-frame rule.
+  atomic rewrite; the folder walk; the reset removing its four folders and
+  leaving a person's own files, its symbolic-link refusal, its own guard,
+  its export-folder rule and the gate it raises while it runs over the
+  engine's requests, the exporter and the project store; the project
+  store's count of writes in flight; the main-side refusal of a path no
+  dialog answered and of a folder inside the bundle; the logs folder; the
+  handlers' top-frame rule.
 - **SC-002**: End to end: the screen's three blocks against the stand-in
   engine, a theme that survives a relaunch, a chosen export folder that
   survives a relaunch, an environment-named folder that offers no change,

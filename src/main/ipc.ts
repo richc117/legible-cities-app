@@ -181,22 +181,41 @@ export function registerClipboardHandler(
   })
 }
 
+/**
+ * Why the store may not be written to right now, or null. Settings sets
+ * this while it is removing the folders under the engine's home: every
+ * record and every output folder lives there, so a write during the
+ * removal would land in a folder being walked away (A1-04).
+ */
+export type StoreBlocked = () => string | null
+
 export function registerProjectHandlers(
   ipcMain: IpcMain,
   store: ProjectStore,
   isTopFrame: (event: IpcMainInvokeEvent) => boolean,
+  blocked: StoreBlocked = () => null,
 ): void {
-  const handle = (channel: string, handler: (...args: unknown[]) => Promise<unknown>): void => {
+  const handle = (
+    channel: string,
+    handler: (...args: unknown[]) => Promise<unknown>,
+    writes = true,
+  ): void => {
     ipcMain.handle(channel, async (event, ...args: unknown[]) => {
       // Only the interface's own top frame reaches the store: a project page
       // in an iframe shares the origin but must not have the bridge.
       if (!isTopFrame(event)) throw new Error('forbidden')
+      // Reading during a reset is harmless - it answers what is there, or
+      // that there is nothing - so only the writes are held.
+      if (writes) {
+        const why = blocked()
+        if (why !== null) throw new Error(why)
+      }
       return handler(...args)
     })
   }
 
-  handle(CHANNELS.projectsList, () => store.list())
-  handle(CHANNELS.projectsGet, (id) => store.get(readId(id)))
+  handle(CHANNELS.projectsList, () => store.list(), false)
+  handle(CHANNELS.projectsGet, (id) => store.get(readId(id)), false)
   handle(CHANNELS.projectsCreate, (input) => store.create(readCreateInput(input)))
   handle(CHANNELS.projectsRename, (id, name) => store.rename(readId(id), readName(name)))
   handle(CHANNELS.projectsDelete, (id) => store.delete(readId(id)))

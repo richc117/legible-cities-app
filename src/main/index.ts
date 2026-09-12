@@ -2,7 +2,7 @@
 // here draws; see specs/001-electron-skeleton/plan.md and
 // specs/004-sidecar-supervisor/plan.md.
 
-import { existsSync } from 'node:fs'
+import { existsSync, mkdirSync } from 'node:fs'
 import { mkdir, readFile, rm } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
@@ -38,20 +38,41 @@ export const PRODUCT_NAME = 'Legible Cities'
 // Before the app is ready, and exactly once (research.md section 1).
 registerAppScheme()
 
-// The user-data folder, moved for a test run. The end-to-end suite must not
-// write a person's settings file into their own profile, and Electron
-// derives this path from the platform rather than from anything the suite
-// can set; `app.setPath` is the only way, and it has to happen before the
-// app is ready. Not a setting: a switch for the suite (specs/019, A-006).
-const movedUserData = process.env.LEGIBLE_USER_DATA
+// The user-data folder, moved for a test run: the end-to-end suite must not
+// write a person's settings file into their own profile. Development only -
+// a packaged build loses nothing, because Chromium's own `--user-data-dir`
+// is there, and a switch that silently relocates a whole profile is not
+// something to ship. Not a setting: a switch for the suite (specs/019,
+// A-006). `app.getPath('logs')` does not follow this on macOS.
+//
+// It has to happen before the app is ready, and `setPath` throws for a
+// folder that is not there, so the folder is made first and the whole thing
+// is guarded: a bad value must cost the switch, not the launch.
+const movedUserData = !app.isPackaged ? process.env.LEGIBLE_USER_DATA : undefined
+let userDataMoved = false
 if (movedUserData !== undefined && movedUserData !== '' && isAbsolute(movedUserData)) {
-  app.setPath('userData', movedUserData)
+  try {
+    mkdirSync(movedUserData, { recursive: true })
+    app.setPath('userData', movedUserData)
+    userDataMoved = true
+  } catch (error) {
+    log.error(
+      'config',
+      `LEGIBLE_USER_DATA could not be used: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
 }
 
 let mainWindow: BrowserWindow | null = null
 let sidecar: Sidecar | null = null
 let exporter: Exporter | null = null
+// Held at this scope because the handlers registered before it exists ask
+// it whether a reset is under way; it is assigned once, during startup.
+let settings: SettingsService | null = null
 let quitting = false
+
+/** Why nothing may write under the engine's home right now, or null. */
+const resetInProgress = (): string | null => settings?.refuseWhileResetting() ?? null
 
 /** Where a running export keeps its frames, under the engine home (ADR-016). */
 const FRAMES_FOLDER = 'frames'
@@ -164,7 +185,7 @@ async function loadConfig(stored: AppSettings): Promise<Config> {
   // Not one of the configuration's keys, so it is said here: a support
   // conversation about a profile that is not where it should be starts with
   // knowing this was set.
-  if (movedUserData !== undefined && movedUserData !== '') {
+  if (userDataMoved) {
     log.info('config', `LEGIBLE_USER_DATA=${app.getPath('userData')} (environment)`)
   }
   return config
@@ -230,7 +251,9 @@ if (!hasLock) {
     const store = new ProjectStore(config.home, (m) => log.warn('projects', m))
     const isTopFrame = (event: Electron.IpcMainInvokeEvent): boolean =>
       mainWindow !== null && event.senderFrame === mainWindow.webContents.mainFrame
-    registerProjectHandlers(ipcMain, store, isTopFrame)
+    // Every record and every output folder lives under the engine's home, so
+    // the store's writes are held while a reset is removing it (A1-04).
+    registerProjectHandlers(ipcMain, store, isTopFrame, resetInProgress)
     // Text on the clipboard, one way: the diagnostics panel's "Copy as
     // text" (A3-03). The permission handlers below refuse Chromium's own
     // clipboard write, deliberately, so the page asks for this instead.
@@ -265,7 +288,7 @@ if (!hasLock) {
     // What the app decides for itself. The export folder is asked at each
     // export, so a change here needs no restart; the engine's home was
     // resolved above and moves at the next start (specs/019-settings).
-    const settings = new SettingsService({
+    const settingsService = new SettingsService({
       store: settingsStore,
       engineHome: config.home,
       exportFolder: config.exportFolder,
@@ -288,12 +311,20 @@ if (!hasLock) {
         })
         return answer.canceled || answer.filePaths.length === 0 ? null : answer.filePaths[0]
       },
-      // The reset's gate, from what only this side knows. A layout run is
-      // an engine request, so both kinds of work are covered.
+      // What this side actually knows: whether anything is *writing* under
+      // the home at this moment - an export, a request the engine is
+      // answering, or a record being renamed into place. It deliberately
+      // does not claim to know whether a multi-step layout run is open:
+      // that run is driven from the page, which issues graph.build, then
+      // feeds.service, then map.build, then the record write, and nothing
+      // is in flight between them. The page knows, so the page's Reset
+      // button is the one that refuses a run in progress; the flag raised
+      // for the length of the removal is what makes the gap safe.
       busy: () => {
         if (exporter !== null && exporter.live > 0)
           return 'An export is running; wait for it to finish.'
-        if (engine.inFlight > 0) return 'The engine is working; wait for it to finish.'
+        if (engine.inFlight > 0) return 'The engine is answering a request; wait for it to finish.'
+        if (store.writing > 0) return 'A project is being saved; try again in a moment.'
         return null
       },
       openFolder: async (path) => {
@@ -313,7 +344,9 @@ if (!hasLock) {
       guards: { userData: app.getPath('userData'), homeDir: homedir() },
       log: (message) => log.info('settings', message),
     })
-    registerSettingsHandlers(ipcMain, settings, isTopFrame)
+    // Held where the handlers registered above it can ask it.
+    settings = settingsService
+    registerSettingsHandlers(ipcMain, settingsService, isTopFrame)
 
     // The registry's gate, and in front of it the reset's: while the engine
     // home is being removed, nothing may ask the engine to write into it.
@@ -327,7 +360,7 @@ if (!hasLock) {
           mainWindow.webContents.send(channel, payload)
       },
       (message) => log.warn('engine', message),
-      async (method, params) => settings.refuseWhileResetting() ?? (await registry(method, params)),
+      async (method, params) => resetInProgress() ?? (await registry(method, params)),
     )
     // Electron grants a permission request by default. Nothing this app
     // shows has any business asking for one, and the viewer's page least of
@@ -360,10 +393,10 @@ if (!hasLock) {
       projects: store,
       capture,
       framesRoot,
-      exportFolder: () => settings.exportFolderNow(),
+      exportFolder: () => settingsService.exportFolderNow(),
       // The frames live under the engine home, so no export may begin while
       // that folder is being removed.
-      blocked: () => settings.refuseWhileResetting(),
+      blocked: resetInProgress,
       log: (message) => log.info('export', message),
     })
     registerExportHandlers(

@@ -36,6 +36,13 @@ interface SettingsView {
   export: FolderView
 }
 
+interface ResetOutcome {
+  /** Folder roles that were removed: some of projects, out, data, frames. */
+  removed: string[]
+  /** A folder that would not go, and why: a filesystem code, or a link the app will not follow. */
+  failed: { folder: string; reason: string }[]
+}
+
 interface FolderSize {
   bytes: number
   files: number
@@ -63,8 +70,12 @@ settings: {
   engineSize(): Promise<FolderSize>
   /** Make the platform's log folder for this app if it is missing, and open it. */
   openLogsFolder(): Promise<void>
-  /** Remove the engine home and make it again, empty. Rejects with a sentence when it may not run. */
-  resetEngineData(): Promise<void>
+  /**
+   * Remove the four folders the app and the engine keep under the engine's
+   * home; the home itself and anything else in it stay. Answers what went
+   * and what would not. Rejects with a sentence when it may not run.
+   */
+  resetEngineData(): Promise<ResetOutcome>
 }
 ```
 
@@ -84,13 +95,27 @@ settings: {
 - **A folder the environment names** is not changeable: "`SCHEMATIC_HOME`
   names this folder; the app does not change it here", and the same for
   `LEGIBLE_EXPORT_FOLDER`.
-- **The reset** is refused while any export is running or any engine
-  request is in flight, with a sentence saying which; refused for a home
-  that is not absolute, is a filesystem root, is the user's home folder, or
-  contains the user-data folder; and refused when the export folder sits
-  inside the home, because the confirmation promises that exported files
-  are not touched and removing the folder whole would take them. The folder
-  it removes is the configuration's own `home`, never anything the page
-  sent. While the removal runs, every engine request and every export is
-  refused with "The engine data is being reset; wait for it to finish.", so
-  nothing starts writing into a folder being walked away.
+- **The reset** removes four folders beneath the home - `projects`, `out`,
+  `data` and `frames` - and never the home itself. Those are everything the
+  app and the engine put there; the home is a folder a person can point
+  anywhere in one click, so anything else in it is theirs and stays. A
+  folder that is a symbolic link is left alone and reported, because
+  removing it would unlink it rather than empty it.
+
+  It is refused while an export is running, an engine request is in flight
+  or a record is being written, with a sentence saying which; refused for a
+  home that is not absolute, is a filesystem root, is the user's home
+  folder, or contains the user-data folder; and refused when the export
+  folder sits inside one of the four, because the confirmation promises that
+  exported files are not touched. The home it works on is the
+  configuration's own, never anything the page sent.
+
+  While the removal runs, every engine request, every export and every write
+  to a project record is refused with "The engine data is being reset; wait
+  for it to finish.", so nothing lands in a folder being walked away. A
+  multi-step layout run has gaps in which nothing is in flight, so the main
+  process does not claim to know one is open; the screen, where the runs
+  live, disables the button instead.
+
+  The answer says which folders went and which would not, by role. Never a
+  path.
