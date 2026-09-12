@@ -207,6 +207,108 @@ test('the default colour is offered and reaches the engine as default_color', as
   })
 })
 
+test('the picker stays open through a drag, and closes when it is dismissed', async () => {
+  const engineHome = home()
+  await withApp(engineHome, async (page) => {
+    await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
+    const panel = page.getByRole('region', { name: 'Line colours' })
+    const choose = panel.getByRole('button', { name: 'Choose the colour of line A' })
+    const drawnBefore = received(engineHome, 'map.build').length
+    await choose.click()
+    const picker = panel.getByRole('group', { name: 'Colour for line A' })
+    await expect(picker).toBeVisible()
+
+    // A press inside the picker is a colour, not a dismissal. It used to be
+    // both, so a drag through a hue ended on the pointer event that began
+    // it (issue 87).
+    const [saturation, hue] = [
+      picker.getByRole('slider').first(),
+      picker.getByRole('slider').last(),
+    ]
+    await saturation.click({ position: { x: 20, y: 20 } })
+    await expect(picker).toBeVisible()
+    await hue.click({ position: { x: 10, y: 5 } })
+    await expect(picker).toBeVisible()
+    // And each of those was a colour: the field beside it follows the
+    // picker, so it no longer reads what the feed published.
+    await expect(picker.getByLabel('Hex value')).not.toHaveValue('#0072bc')
+    // A real drag, which is the gesture the panel is built around: down in
+    // the square, across it, and up well outside the row. The release
+    // outside is part of the colour, not a dismissal - without that the
+    // picker would close mid-drag, which is issue 87 in its narrower form.
+    const square = (await saturation.boundingBox())!
+    await page.mouse.move(square.x + 20, square.y + 20)
+    await page.mouse.down()
+    await page.mouse.move(square.x + 120, square.y + 60, { steps: 10 })
+    await page.mouse.move(square.x + square.width + 120, square.y + square.height + 160)
+    await page.mouse.up()
+    await expect(picker).toBeVisible()
+
+    // Every colour of it is one build, and the test leaves none in flight
+    // to be cut off by the app closing.
+    await expect(page.getByText(/Drawn in the colours you chose/)).toBeVisible({ timeout: 30_000 })
+    expect(
+      received(engineHome, 'map.build'),
+      'one build for the whole gesture, not one per colour',
+    ).toHaveLength(drawnBefore + 1)
+
+    // A press outside the row dismisses it.
+    await panel.getByRole('heading', { name: 'Line colours' }).click()
+    await expect(picker).toBeHidden()
+  })
+})
+
+test('one press opens another row’s picker while one is already open', async () => {
+  const engineHome = home()
+  await withApp(engineHome, async (page) => {
+    await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
+    const panel = page.getByRole('region', { name: 'Line colours' })
+
+    // The default row is the first, so its picker sits above every line.
+    await panel
+      .getByRole('button', { name: 'Choose the colour of lines the feed leaves uncoloured' })
+      .click()
+    await expect(
+      panel.getByRole('group', { name: 'Colour for lines the feed leaves uncoloured' }),
+    ).toBeVisible()
+
+    // One press, not two. Dismissing on the press would take the open
+    // picker out of the flow before this button was released, everything
+    // below would move up by its height, and the click would land on the
+    // nearest common ancestor of the two rather than on the button.
+    await panel.getByRole('button', { name: 'Choose the colour of line A' }).click()
+    await expect(panel.getByRole('group', { name: 'Colour for line A' })).toBeVisible()
+    await expect(
+      panel.getByRole('group', { name: 'Colour for lines the feed leaves uncoloured' }),
+    ).toBeHidden()
+  })
+})
+
+test('Escape dismisses the picker and hands focus back, and so does the toggle', async () => {
+  const engineHome = home()
+  await withApp(engineHome, async (page) => {
+    await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
+    const panel = page.getByRole('region', { name: 'Line colours' })
+    const choose = panel.getByRole('button', { name: 'Choose the colour of line A' })
+    const picker = panel.getByRole('group', { name: 'Colour for line A' })
+
+    await choose.click()
+    await expect(picker).toBeVisible()
+    await picker.getByRole('slider').first().focus()
+    await page.keyboard.press('Escape')
+    await expect(picker).toBeHidden()
+    // Focus was inside the row, so it goes back to the control that
+    // revealed the picker rather than falling to the body.
+    await expect(choose).toBeFocused()
+
+    // The toggle closes what it opened, as a disclosure does.
+    await choose.click()
+    await expect(picker).toBeVisible()
+    await choose.click()
+    await expect(picker).toBeHidden()
+  })
+})
+
 test('a colour that is not one is refused beside the field, and nothing is built', async () => {
   const engineHome = home()
   await withApp(engineHome, async (page) => {

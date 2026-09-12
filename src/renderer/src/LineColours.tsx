@@ -1,4 +1,14 @@
-import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type JSX } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type JSX,
+  type RefObject,
+} from 'react'
 import { HexColorPicker } from 'react-colorful'
 import type { EngineState } from '../../shared/engine'
 import { withoutPaths } from '../../shared/engine'
@@ -170,6 +180,11 @@ export default function LineColours({
     commitRef.current = commit
   })
 
+  // Made once: it is a dependency of every open picker's dismissal effect,
+  // and a fresh closure per render would re-subscribe the document's
+  // listeners on every frame of a drag.
+  const closePicker = useCallback(() => setOpen(null), [])
+
   const change = (next: Palette): void => {
     setPalette(next)
     schedule(next)
@@ -221,10 +236,8 @@ export default function LineColours({
             colour={palette.defaultColor}
             open={open === DEFAULT_ROW}
             onToggle={() => setOpen(open === DEFAULT_ROW ? null : DEFAULT_ROW)}
-            onPick={(hex) => {
-              setOpen(null)
-              change(withDefault(palette, hex))
-            }}
+            onPick={(hex) => change(withDefault(palette, hex))}
+            onDone={closePicker}
           />
           {lines.length === 0 ? (
             <p className="hint" role="status">
@@ -241,10 +254,8 @@ export default function LineColours({
                   overridden={hasOverride(palette, line.label)}
                   open={open === line.label}
                   onToggle={() => setOpen(open === line.label ? null : line.label)}
-                  onPick={(hex) => {
-                    setOpen(null)
-                    change(withOverride(palette, line.label, hex))
-                  }}
+                  onPick={(hex) => change(withOverride(palette, line.label, hex))}
+                  onDone={closePicker}
                   onReset={() => changeAndKeepFocus(withoutOverride(palette, line.label))}
                 />
               ))}
@@ -270,21 +281,107 @@ export default function LineColours({
 /** The default row's key in the one-picker-at-a-time state; no line can be called this. */
 const DEFAULT_ROW = ''
 
+/**
+ * A picker stays open until it is dismissed: a click outside its row, or
+ * Escape. It used to close on the first colour it was given, which is the
+ * first pointer event the square or the slider sees - so dragging through a
+ * hue, which is what the picker is for, ended the moment it began (issue
+ * 87). Applying a colour and dismissing the picker are two different
+ * things now.
+ *
+ * The row, not the picker, is what counts as inside: the toggle that
+ * revealed it sits beside it, and a click on that is its own business. The
+ * dismissal is on the click and not the press, and a gesture that began
+ * inside the row is a colour however far outside it ends; both are
+ * explained where they are done, below.
+ */
+function useDismiss(
+  open: boolean,
+  row: RefObject<HTMLElement | null>,
+  toggle: RefObject<HTMLElement | null>,
+  dismiss: () => void,
+): void {
+  useEffect(() => {
+    if (!open) return undefined
+    // What the press that is under way began as. Read and cleared by the
+    // click it belongs to, so a gesture cannot speak for the next one: a
+    // press with no click (a right-click, a cancelled touch) and a click
+    // with no press (Enter on a control elsewhere, a screen reader's own
+    // activation) would otherwise be judged by whoever pressed last.
+    let began = false
+    let hadFocus = false
+    const inside = (target: EventTarget | null): boolean =>
+      target instanceof Node && row.current?.contains(target) === true
+    const leave = (handBack: boolean): void => {
+      if (handBack) toggle.current?.focus()
+      dismiss()
+    }
+    const onPointerDown = (event: PointerEvent): void => {
+      began = inside(event.target)
+      // Asked now rather than at the click: the press has already moved
+      // focus by then, so this is the only moment that can say whether the
+      // picker held it.
+      hadFocus = row.current?.contains(document.activeElement) === true
+    }
+    const onClick = (event: MouseEvent): void => {
+      const startedInside = began
+      const held = hadFocus
+      began = false
+      hadFocus = false
+      // A drag that starts in the picker and ends outside it is a colour,
+      // not a dismissal.
+      if (startedInside || inside(event.target)) return
+      // Hand focus back only if the press put it nowhere. A press on
+      // another control has already taken focus and it is theirs; a press
+      // on prose or a margin leaves it on the body, which is where a
+      // screen reader would be stranded when the picker goes.
+      const active = document.activeElement
+      leave(held && (active === null || active === document.body))
+    }
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return
+      leave(row.current?.contains(document.activeElement) === true)
+    }
+    // The click, not the press. Dismissing on the press takes this row's
+    // picker out of the flow before the button is released, and everything
+    // below it moves up by the picker's height - so the click is delivered
+    // to the nearest common ancestor of where the press began and where it
+    // ended, and the button a person pressed never hears it. One press on
+    // another row's Choose then did nothing at all.
+    //
+    // Capture, so the picker is dismissed before anything in the row that
+    // is being pressed acts on it; the click still reaches its own target,
+    // which is what makes the press count.
+    document.addEventListener('pointerdown', onPointerDown, true)
+    document.addEventListener('click', onClick, true)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown, true)
+      document.removeEventListener('click', onClick, true)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [open, row, toggle, dismiss])
+}
+
 function DefaultColour({
   colour,
   open,
   onToggle,
   onPick,
+  onDone,
 }: {
   colour: string
   open: boolean
   onToggle: () => void
   onPick: (hex: string) => void
+  onDone: () => void
 }): JSX.Element {
   const panelId = useId()
   const chooseRef = useRef<HTMLElement>(null)
+  const rowRef = useRef<HTMLDivElement>(null)
+  useDismiss(open, rowRef, chooseRef, onDone)
   return (
-    <div className="line-row-group">
+    <div className="line-row-group" ref={rowRef}>
       <div className="line-row">
         <span className="swatch" style={swatch(colour)} aria-hidden="true" />
         <span className="line-name">Lines with no colour in the feed</span>
@@ -306,12 +403,13 @@ function DefaultColour({
           id={panelId}
           name="Colour for lines the feed leaves uncoloured"
           colour={colour}
-          onPick={(hex) => {
+          onPick={onPick}
+          onDone={() => {
             // The picker goes with the press, so focus goes back to the
             // control that revealed it, as the rename form's does. Moved
             // before the parent unmounts it, or focus would fall to the body.
             chooseRef.current?.focus()
-            onPick(hex)
+            onDone()
           }}
         />
       )}
@@ -326,6 +424,7 @@ function LineRow({
   open,
   onToggle,
   onPick,
+  onDone,
   onReset,
 }: {
   line: Line
@@ -334,12 +433,15 @@ function LineRow({
   open: boolean
   onToggle: () => void
   onPick: (hex: string) => void
+  onDone: () => void
   onReset: () => void
 }): JSX.Element {
   const panelId = useId()
   const chooseRef = useRef<HTMLElement>(null)
+  const rowRef = useRef<HTMLLIElement>(null)
+  useDismiss(open, rowRef, chooseRef, onDone)
   return (
-    <li className="line-row-group">
+    <li className="line-row-group" ref={rowRef}>
       <div className="line-row">
         <span className="swatch" style={swatch(shown.color)} aria-hidden="true" />
         <span className="line-name">{line.label}</span>
@@ -372,12 +474,13 @@ function LineRow({
           id={panelId}
           name={`Colour for line ${line.label}`}
           colour={shown.color}
-          onPick={(hex) => {
+          onPick={onPick}
+          onDone={() => {
             // The picker goes with the press, so focus goes back to the
             // control that revealed it, as the rename form's does. Moved
             // before the parent unmounts it, or focus would fall to the body.
             chooseRef.current?.focus()
-            onPick(hex)
+            onDone()
           }}
         />
       )}
@@ -391,6 +494,12 @@ function LineRow({
  * right (its two areas are sliders that take the arrow keys), and the field
  * beside it is the path that needs no pointing device at all.
  *
+ * `onPick` is every colour the picker is given, including each step of a
+ * drag; `onDone` is a person saying they have finished, which only the
+ * typed field's own button means. The two were one callback until issue 87,
+ * and the row closed on the first colour - so a drag ended on the pointer
+ * event that began it.
+ *
  * It stays live while something else is reading the project's page. Turning
  * it off would take the focus with it, and refusing its changes would lose
  * a colour moved by an arrow key without a word; `commit` holds the change
@@ -401,11 +510,13 @@ function ColourPicker({
   name,
   colour,
   onPick,
+  onDone,
 }: {
   id: string
   name: string
   colour: string
   onPick: (hex: string) => void
+  onDone: () => void
 }): JSX.Element {
   const [text, setText] = useState(colour)
   const [message, setMessage] = useState<string | null>(null)
@@ -428,6 +539,7 @@ function ColourPicker({
     }
     setMessage(null)
     onPick(hex)
+    onDone()
   }
 
   return (
