@@ -282,7 +282,7 @@ export default function LineColours({
 const DEFAULT_ROW = ''
 
 /**
- * A picker stays open until it is dismissed: a press outside its row, or
+ * A picker stays open until it is dismissed: a click outside its row, or
  * Escape. It used to close on the first colour it was given, which is the
  * first pointer event the square or the slider sees - so dragging through a
  * hue, which is what the picker is for, ended the moment it began (issue
@@ -290,10 +290,10 @@ const DEFAULT_ROW = ''
  * things now.
  *
  * The row, not the picker, is what counts as inside: the toggle that
- * revealed it sits beside it, and a press on that is its own business.
- * Focus is handed back to the toggle only when it was inside the row, so a
- * person who clicked somewhere else is left where they clicked (and
- * Chromium would otherwise drop it to the body when the picker goes).
+ * revealed it sits beside it, and a click on that is its own business. The
+ * dismissal is on the click and not the press, and a gesture that began
+ * inside the row is a colour however far outside it ends; both are
+ * explained where they are done, below.
  */
 function useDismiss(
   open: boolean,
@@ -303,28 +303,44 @@ function useDismiss(
 ): void {
   useEffect(() => {
     if (!open) return undefined
+    // What the press that is under way began as. Read and cleared by the
+    // click it belongs to, so a gesture cannot speak for the next one: a
+    // press with no click (a right-click, a cancelled touch) and a click
+    // with no press (Enter on a control elsewhere, a screen reader's own
+    // activation) would otherwise be judged by whoever pressed last.
     let began = false
+    let hadFocus = false
     const inside = (target: EventTarget | null): boolean =>
       target instanceof Node && row.current?.contains(target) === true
-    const leave = (): void => {
-      // Only when focus is in the row: a person who pressed somewhere else
-      // is left where they pressed, and Chromium would otherwise drop it to
-      // the body along with the picker.
-      const active = document.activeElement
-      if (active !== null && row.current?.contains(active) === true) toggle.current?.focus()
+    const leave = (handBack: boolean): void => {
+      if (handBack) toggle.current?.focus()
       dismiss()
     }
     const onPointerDown = (event: PointerEvent): void => {
       began = inside(event.target)
+      // Asked now rather than at the click: the press has already moved
+      // focus by then, so this is the only moment that can say whether the
+      // picker held it.
+      hadFocus = row.current?.contains(document.activeElement) === true
     }
     const onClick = (event: MouseEvent): void => {
+      const startedInside = began
+      const held = hadFocus
+      began = false
+      hadFocus = false
       // A drag that starts in the picker and ends outside it is a colour,
       // not a dismissal.
-      if (began || inside(event.target)) return
-      leave()
+      if (startedInside || inside(event.target)) return
+      // Hand focus back only if the press put it nowhere. A press on
+      // another control has already taken focus and it is theirs; a press
+      // on prose or a margin leaves it on the body, which is where a
+      // screen reader would be stranded when the picker goes.
+      const active = document.activeElement
+      leave(held && (active === null || active === document.body))
     }
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') leave()
+      if (event.key !== 'Escape') return
+      leave(row.current?.contains(document.activeElement) === true)
     }
     // The click, not the press. Dismissing on the press takes this row's
     // picker out of the flow before the button is released, and everything

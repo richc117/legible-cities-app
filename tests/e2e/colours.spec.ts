@@ -232,12 +232,25 @@ test('the picker stays open through a drag, and closes when it is dismissed', as
     // And each of those was a colour: the field beside it follows the
     // picker, so it no longer reads what the feed published.
     await expect(picker.getByLabel('Hex value')).not.toHaveValue('#0072bc')
-    // The whole thing is one build, as it would be for a drag, and the
-    // test leaves none in flight to be cut off by the app closing.
+    // A real drag, which is the gesture the panel is built around: down in
+    // the square, across it, and up well outside the row. The release
+    // outside is part of the colour, not a dismissal - without that the
+    // picker would close mid-drag, which is issue 87 in its narrower form.
+    const square = (await saturation.boundingBox())!
+    await page.mouse.move(square.x + 20, square.y + 20)
+    await page.mouse.down()
+    await page.mouse.move(square.x + 120, square.y + 60, { steps: 10 })
+    await page.mouse.move(square.x + square.width + 120, square.y + square.height + 160)
+    await page.mouse.up()
+    await expect(picker).toBeVisible()
+
+    // Every colour of it is one build, and the test leaves none in flight
+    // to be cut off by the app closing.
     await expect(page.getByText(/Drawn in the colours you chose/)).toBeVisible({ timeout: 30_000 })
-    expect(received(engineHome, 'map.build'), 'one build, not one per press').toHaveLength(
-      drawnBefore + 1,
-    )
+    expect(
+      received(engineHome, 'map.build'),
+      'one build for the whole gesture, not one per colour',
+    ).toHaveLength(drawnBefore + 1)
 
     // A press outside the row dismisses it.
     await panel.getByRole('heading', { name: 'Line colours' }).click()
