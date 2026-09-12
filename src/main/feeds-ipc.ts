@@ -26,27 +26,11 @@ export type Guard = (
 // Anything with a web scheme is judged as an address, whatever follows.
 const URL_PATTERN = /^https?:\/\//i
 
-/**
- * Hosts a feed address may not name: the machine itself and the networks
- * around it. The engine fetches what it is told and answers whether it got
- * a zip and how big, which is an oracle on the local network for a page
- * that has gone hostile; a person's feed is published on a public host.
- */
-export function isLocalHost(hostname: string): boolean {
-  const host = hostname.replace(/^\[|\]$/g, '').toLowerCase()
-  if (host === 'localhost' || host.endsWith('.localhost') || host === '' || host === '0.0.0.0')
-    return true
-  if (
-    host === '::1' ||
-    host === '::' ||
-    host.startsWith('fe80:') ||
-    host.startsWith('fc') ||
-    host.startsWith('fd')
-  )
-    return true
-  const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host)
-  if (v4 === null) return false
-  const [a, b] = [Number(v4[1]), Number(v4[2])]
+const IPV4_DOTTED = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/
+const HEX_GROUP = /^[0-9a-f]{1,4}$/
+
+/** Whether an IPv4 address, given its two leading octets, is this machine's or its network's. */
+function isPrivateIPv4(a: number, b: number): boolean {
   return (
     a === 127 ||
     a === 10 ||
@@ -55,6 +39,73 @@ export function isLocalHost(hostname: string): boolean {
     (a === 172 && b >= 16 && b <= 31) ||
     (a === 192 && b === 168)
   )
+}
+
+/**
+ * Parse an IPv6 literal, already bracket-stripped and lowercased the way
+ * `URL.hostname` hands one back, into its eight 16-bit groups. Expands one
+ * `::` run and a trailing embedded IPv4 address alike (`::ffff:127.0.0.1`,
+ * mapped or the deprecated compatible form), because that is the shape an
+ * IPv4-mapped address keeps even after `new URL()` has normalised it to
+ * hex groups. Null for anything that is not a well-formed IPv6 literal;
+ * this parses `URL.hostname`'s own output, not arbitrary text.
+ */
+function parseIPv6(host: string): number[] | null {
+  if (!host.includes(':')) return null
+  const sides = host.split('::')
+  if (sides.length > 2) return null
+  const side = (text: string): number[] | null => {
+    if (text === '') return []
+    const parts = text.split(':')
+    const last = parts[parts.length - 1]
+    if (parts.slice(0, -1).some((p) => p.includes('.'))) return null
+    if (last.includes('.')) {
+      const v4 = IPV4_DOTTED.exec(last)
+      if (v4 === null) return null
+      const octets = v4.slice(1).map(Number)
+      if (octets.some((n) => n > 255)) return null
+      const [a, b, c, d] = octets
+      parts.splice(-1, 1, ((a << 8) | b).toString(16), ((c << 8) | d).toString(16))
+    }
+    if (parts.some((p) => !HEX_GROUP.test(p))) return null
+    return parts.map((p) => parseInt(p, 16))
+  }
+  const head = side(sides[0])
+  const tail = sides.length === 2 ? side(sides[1]) : []
+  if (head === null || tail === null) return null
+  const missing = 8 - head.length - tail.length
+  if (sides.length === 1 ? missing !== 0 : missing < 0) return null
+  return [...head, ...Array(missing).fill(0), ...tail]
+}
+
+/**
+ * Hosts a feed address may not name: the machine itself and the networks
+ * around it. The engine fetches what it is told and answers whether it got
+ * a zip and how big, which is an oracle on the local network for a page
+ * that has gone hostile; a person's feed is published on a public host.
+ *
+ * An IPv6 literal is resolved to its full address rather than matched by
+ * prefix, because an IPv4-mapped address names the same machine a plain
+ * IPv4 one does, in every private range this guards, not only loopback -
+ * and `new URL()` normalises a written-out mapped address into exactly
+ * that hex form on its own, unasked.
+ */
+export function isLocalHost(hostname: string): boolean {
+  const host = hostname.replace(/^\[|\]$/g, '').toLowerCase()
+  if (host === 'localhost' || host.endsWith('.localhost') || host === '' || host === '0.0.0.0')
+    return true
+  const v4 = IPV4_DOTTED.exec(host)
+  if (v4 !== null) return isPrivateIPv4(Number(v4[1]), Number(v4[2]))
+  const groups = parseIPv6(host)
+  if (groups === null) return false
+  const zero = (n: number): boolean => n === 0
+  if (groups.slice(0, 7).every(zero) && groups[7] <= 1) return true // :: and ::1
+  if ((groups[0] & 0xfe00) === 0xfc00) return true // fc00::/7, unique local
+  if ((groups[0] & 0xffc0) === 0xfe80) return true // fe80::/10, link-local
+  const mapped = groups.slice(0, 5).every(zero) && groups[5] === 0xffff
+  const compatible = groups.slice(0, 6).every(zero)
+  if (mapped || compatible) return isPrivateIPv4(groups[6] >> 8, groups[6] & 0xff)
+  return false
 }
 
 /** What is wrong with a feed address, or null. */
