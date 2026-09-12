@@ -350,6 +350,13 @@ if (!hasLock) {
 
     // The registry's gate, and in front of it the reset's: while the engine
     // home is being removed, nothing may ask the engine to write into it.
+    //
+    // Asked on both sides of the registry's own check. Before, so a refusal
+    // never spends the path the zip chooser remembered. And after, because
+    // the registry reads the project list from disk for a feeds.remove and
+    // the loop turns while it does: a reset confirmed in that window would
+    // otherwise be answered with the null from before it started, and the
+    // remove would unlink inside data/feeds while the removal walks data/.
     const registry = registryGuard(picked, async () => (await store.list()).map((p) => p.feed))
     registerEngineHandlers(
       ipcMain,
@@ -360,7 +367,8 @@ if (!hasLock) {
           mainWindow.webContents.send(channel, payload)
       },
       (message) => log.warn('engine', message),
-      async (method, params) => resetInProgress() ?? (await registry(method, params)),
+      async (method, params) =>
+        resetInProgress() ?? (await registry(method, params)) ?? resetInProgress(),
     )
     // Electron grants a permission request by default. Nothing this app
     // shows has any business asking for one, and the viewer's page least of

@@ -28,9 +28,11 @@ import { PickedPaths } from './picked'
 import {
   contains,
   folderSize,
+  realOrResolved,
   refuseReset,
   resetContents,
   RESET_FOLDERS,
+  resolveHome,
   type ResetGuards,
   type ResetOutcome,
   type SettingsStore,
@@ -223,36 +225,66 @@ export class SettingsService {
    * about projects and feeds, not about that folder's other contents.
    *
    * The folder is the configuration's own; nothing from the page reaches
-   * it. Refused while anything is writing under the home, for a home so
-   * high up that these folder names would mean something else, and for an
-   * export folder inside one of the folders being removed - because the
-   * confirmation promises that exported files are not touched.
+   * it. Every comparison is made on real paths, because the checks are
+   * textual and a home that is a link would pass all of them and then
+   * remove four folders from wherever it points.
+   *
+   * Refused while a reset is already running, while anything else is
+   * writing under the home, for a home so high up that these folder names
+   * would mean something else, and for an export folder that a reset would
+   * reach - because the confirmation promises that exported files are not
+   * touched.
    *
    * The flag is raised for the length of the removal, so no engine request,
    * no export and no write to a project record can begin while it runs.
    */
   async resetEngineData(): Promise<ResetOutcome> {
-    const running = this.#deps.busy()
+    // A reset already running is the first thing asked. Two at once both
+    // pass every other check, and the first to finish lowers the flag while
+    // the second is still walking the folders - letting every writer back
+    // in, after the screen has said the data is gone. The renderer disables
+    // the button, which is exactly what this side may not rely on.
+    const running = this.refuseWhileResetting() ?? this.#deps.busy()
     if (running !== null) throw new Error(running)
-    const home = this.#deps.engineHome
-    const refusal = refuseReset(home, this.#deps.guards)
+    // Raised here, before the first await and before any check that needs
+    // one, because a second call arriving while this one resolves paths
+    // would find the flag still down and there is no other moment that is
+    // safe. It covers the checks as well as the removal, which costs a few
+    // refused requests in the milliseconds a refusal takes to decide.
+    this.#resetting = true
+    try {
+      return await this.#reset()
+    } finally {
+      this.#resetting = false
+    }
+  }
+
+  async #reset(): Promise<ResetOutcome> {
+    const home = await resolveHome(this.#deps.engineHome)
+    const guards = {
+      userData: await realOrResolved(this.#deps.guards.userData),
+      homeDir: await realOrResolved(this.#deps.guards.homeDir),
+    }
+    const refusal = refuseReset(home, guards)
     if (refusal !== null) throw new Error(refusal)
-    // Narrow, and only what the promise needs: exports under the home are
-    // fine, exports under a folder the reset takes are not.
+    // Only what the promise needs. An export folder that holds the home, or
+    // is it, is refused too: an export writes to <folder>/<project name>/,
+    // so a project called "out" under a folder that is the home would land
+    // in one of the four.
+    const exportFolder = await realOrResolved(this.#exportFolder)
+    if (contains(exportFolder, home)) {
+      throw new Error(
+        'your export folder holds the engine data folder; choose another one first, or the reset would reach your exports',
+      )
+    }
     for (const folder of RESET_FOLDERS) {
-      if (contains(join(home, folder), this.#exportFolder)) {
+      if (contains(join(home, folder), exportFolder)) {
         throw new Error(
           `your export folder is inside the ${folder} folder, which the reset removes; choose another one first`,
         )
       }
     }
-    this.#resetting = true
-    let outcome: ResetOutcome
-    try {
-      outcome = await resetContents(home)
-    } finally {
-      this.#resetting = false
-    }
+    const outcome = await resetContents(home)
     this.#deps.log(
       `reset removed ${outcome.removed.join(', ') || 'nothing'}` +
         (outcome.failed.length > 0

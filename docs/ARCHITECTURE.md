@@ -340,19 +340,28 @@ is theirs and stays. A folder that turns out to be a symbolic link is left
 alone and reported, because removing one unlinks it rather than empties it.
 The engine's own `config.py` is where the list comes from.
 
+The home is resolved through `realpath` before any of this, and so is
+everything it is compared against: the guards are textual, and a home that
+is itself a link would pass every one of them and then remove four folders
+from wherever it points.
+
 Its gate is split, because the two sides know different things. The main
-process refuses while an export is running, the engine is answering a
-request, or a record is being written - it counts all three - and for a
-home so high up that those four names would mean something else. It does
+process refuses while a reset is already running, while an export is
+running, while the engine is answering a request, or while a record is
+being written - it counts all four - and for a home so high up that those
+four names would mean something else. It does
 not claim to know whether a multi-step layout run is open: that run is
 `graph.build`, then `feeds.service`, then `map.build`, then a record write,
 and nothing is in flight between them. The renderer holds the runs, and
 outlives the views that started them, so the screen is what disables the
-button while one is going. While the removal runs, a flag on the settings
-service refuses every engine request through the same guard the registry
-uses, every export through the exporter's own, and every write to a project
-record through the project handlers', so nothing lands in a folder being
-walked away.
+button while one is going. A flag on the settings service goes up before the
+first `await`, since a second reset arriving while the first resolves paths
+would otherwise find it down; while it is up it refuses every engine
+request through the same guard the registry uses - asked on both sides of
+the registry's own check, which reads the project list from disk - every
+export through the exporter's own, and every write to a project record
+through the project handlers', so nothing lands in a folder being walked
+away.
 
 `LEGIBLE_USER_DATA` moves Electron's user-data folder. It is not a setting:
 it is how the end-to-end suite keeps its settings file out of a person's

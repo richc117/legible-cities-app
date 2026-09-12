@@ -2,15 +2,26 @@
 // user-data folder: nothing here touches the developer's own profile, and
 // every root is removed afterwards.
 
-import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, parse } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   folderSize,
+  realOrResolved,
   refuseReset,
   resetContents,
   RESET_FOLDERS,
+  resolveHome,
   SETTINGS_FILE,
   SettingsStore,
 } from '../../src/main/settings'
@@ -224,11 +235,53 @@ describe('resetContents', () => {
     expect(outcome.failed).toEqual([])
   })
 
-  it('makes the home when it was not there, and removes nothing', async () => {
-    const home = join(dir, 'never-existed')
-    const outcome = await resetContents(home)
+  it('removes nothing from a home that is not there', async () => {
+    const outcome = await resetContents(join(dir, 'never-existed'))
     expect(outcome).toEqual({ removed: [], failed: [] })
-    expect(await readdir(home)).toEqual([])
+  })
+})
+
+// The guards compare text, so the home has to be a real path before any of
+// them looks at it: a home that is a link would pass every one and then
+// reach through to whatever it points at.
+describe('resolveHome', () => {
+  it('makes the folder when it was not there, and answers its real path', async () => {
+    const home = join(dir, 'never-existed')
+    const resolved = await resolveHome(home)
+    expect(await readdir(resolved)).toEqual([])
+    expect(resolved).toBe(await realpath(home))
+  })
+
+  it('follows a link, so the guards judge where it really points', async () => {
+    const real = join(dir, 'somebody')
+    await mkdir(real, { recursive: true })
+    const link = join(dir, 'cities')
+    try {
+      await symlink(real, link, 'dir')
+    } catch {
+      return // a locked-down Windows account cannot make one
+    }
+    expect(await resolveHome(link)).toBe(await realpath(real))
+
+    // And this is why it matters. refuseReset compares text, so every guard
+    // is given a real path: the link's own text looks like an ordinary
+    // folder and passes all of them, while what it points at is refused.
+    const guards = { userData: await realpath(real), homeDir: await realpath(real) }
+    expect(refuseReset(link, guards), 'the link itself passes every guard').toBeNull()
+    expect(refuseReset(await resolveHome(link), guards), 'what it points at does not').toMatch(
+      /your home folder/,
+    )
+  })
+})
+
+describe('realOrResolved', () => {
+  it('resolves the nearest ancestor that exists and joins the rest back on', async () => {
+    const deep = join(dir, 'not', 'there', 'yet')
+    expect(await realOrResolved(deep)).toBe(join(await realpath(dir), 'not', 'there', 'yet'))
+  })
+
+  it('answers a real path unchanged', async () => {
+    expect(await realOrResolved(dir)).toBe(await realpath(dir))
   })
 
   // Removing a link unlinks it: the screen would say the data was gone

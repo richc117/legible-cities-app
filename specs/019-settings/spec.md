@@ -170,6 +170,12 @@ in the platform's own file browser.
 - A reset that fails part way must not leave the size line showing the
   figure from before it: the folder is measured again whichever way the
   reset went.
+- A home that is a symbolic link, or reached through one, resolves to what
+  it points at before any guard judges it; a home that is not there yet is
+  made first, because a folder with no real path cannot be judged.
+- Two resets confirmed at once: the second is refused. Both would otherwise
+  pass every check, and the first to finish would lower the gate while the
+  second was still removing.
 - Reduced motion: nothing on this screen animates.
 
 ## Requirements _(mandatory)_
@@ -209,13 +215,17 @@ in the platform's own file browser.
   and MUST NOT remove the home itself or anything else in it, because the
   home is a folder a person can point anywhere in one click. A folder that
   is a symbolic link MUST be left alone and reported. It MUST be behind a
-  confirmation naming exactly what goes. The main process MUST refuse it
-  while an export, an engine request or a record write is in flight, MUST
-  refuse a home that is a root, the user's home folder or an ancestor of
-  the user-data folder, and MUST refuse an export folder inside one of the
-  four; the home it works on comes from its own configuration and never
-  from the page. While the removal runs, no export, no engine request and no
-  write to a project record may start.
+  confirmation naming exactly what goes. Every comparison MUST be made on
+  real paths, because a home that is itself a symbolic link would pass every
+  textual guard and then reach through to what it points at. The main
+  process MUST refuse it while a reset is already running, and while an
+  export, an engine request or a record write is in flight; MUST refuse a
+  home that is a root, the user's home folder or an ancestor of the
+  user-data folder; and MUST refuse an export folder inside one of the four,
+  or that is the home, or holds it. The home it works on comes from its own
+  configuration and never from the page. While the removal runs, no export,
+  no engine request and no write to a project record may start, and the flag
+  that says so MUST be raised before the first `await`.
 - **FR-013**: A layout run is four steps with nothing in flight between
   them, so the main process MUST NOT claim to know one is open. The screen,
   where the runs live, MUST refuse the reset while any run or export is

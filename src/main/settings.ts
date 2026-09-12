@@ -10,8 +10,18 @@
 // and an error thrown here is what the renderer shows.
 
 import { randomBytes } from 'node:crypto'
-import { lstat, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
-import { isAbsolute, join, parse, resolve, sep } from 'node:path'
+import {
+  lstat,
+  mkdir,
+  readdir,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from 'node:fs/promises'
+import { basename, dirname, isAbsolute, join, parse, resolve, sep } from 'node:path'
 import {
   DEFAULT_SETTINGS,
   parseSettings,
@@ -219,6 +229,59 @@ export interface ResetOutcome {
  * is left to refuse is a home so high up that those names mean something
  * else entirely - `/data` and `/out` at the root of a disk, say (FR-009).
  */
+/**
+ * The engine home as the filesystem really sees it: the folder made if it
+ * is not there, and every symbolic link in the path followed.
+ *
+ * This has to happen before anything judges the home, because `refuseReset`
+ * compares text. A home of `<somewhere>/cities` where `cities` links to the
+ * person's own home folder passes every one of those comparisons and then
+ * removes `projects`, `data`, `out` and `frames` from the other end of the
+ * link - the very loss the reset exists to prevent, one level up. The
+ * platform's dialog usually answers a resolved path, but `SCHEMATIC_HOME`
+ * and a hand-edited settings file reach the app unfiltered.
+ */
+export async function resolveHome(home: string): Promise<string> {
+  try {
+    // Creating the folder is harmless wherever it points, and a home that
+    // does not exist yet has no real path to read.
+    await mkdir(home, { recursive: true })
+    return await realpath(home)
+  } catch (error) {
+    throw new Error(`the engine data folder could not be read (${reasonOf(error)})`, {
+      cause: error,
+    })
+  }
+}
+
+/**
+ * A path as the filesystem really sees it. For the things the home is
+ * compared *against*: a folder that is not there is not a reason to refuse,
+ * but a link anywhere in one of them would make the comparison miss.
+ *
+ * A path that does not exist has no real form, so the nearest ancestor that
+ * does is resolved and the rest joined back on. That is not fussiness: on
+ * macOS the temporary directory every test builds under is reached through
+ * `/var`, which is a link to `/private/var`, so comparing a folder that
+ * exists with one that does not would otherwise never match.
+ */
+export async function realOrResolved(path: string): Promise<string> {
+  let current = resolve(path)
+  const tail: string[] = []
+  for (;;) {
+    try {
+      const real = await realpath(current)
+      return tail.length === 0 ? real : join(real, ...tail.reverse())
+    } catch {
+      const parent = dirname(current)
+      // The root itself could not be read: nothing more to try.
+      if (parent === current) return resolve(path)
+      tail.push(basename(current))
+      current = parent
+    }
+  }
+}
+
 export function refuseReset(home: string, guards: ResetGuards): string | null {
   if (!isAbsolute(home)) return 'the engine data folder is not a folder the app can reset'
   const resolved = resolve(home)
@@ -254,16 +317,13 @@ export function refuseReset(home: string, guards: ResetGuards): string | null {
  * as far as it can and the person hears about the rest, as a project's
  * delete does. A failure is reported by its code; the message would name
  * the path.
+ *
+ * `home` must already be a real path: `resolveHome` follows the links, and
+ * `refuseReset` judges what it finds. This joins names onto what it is
+ * given and nothing more.
  */
 export async function resetContents(home: string): Promise<ResetOutcome> {
   const outcome: ResetOutcome = { removed: [], failed: [] }
-  try {
-    await mkdir(home, { recursive: true })
-  } catch (error) {
-    throw new Error(`the engine data folder could not be made (${reasonOf(error)})`, {
-      cause: error,
-    })
-  }
   for (const folder of RESET_FOLDERS) {
     const path = join(home, folder)
     let info

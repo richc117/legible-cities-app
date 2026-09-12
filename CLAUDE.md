@@ -72,15 +72,19 @@ the engine put there (the engine's `config.py` names `data/feeds`,
 `data/graphs` and `out`; read it before adding to the list). The home is a
 folder a person can point at `~/Documents` in one click, so whatever else
 is in it is theirs and stays, and a folder that turns out to be a symbolic
-link is left alone and reported rather than unlinked. Before it starts, the
-main process refuses while an export, an engine request or a record write
-is in flight, and for a home so high up that those four names would mean
-something else; the screen refuses separately while a layout run or an
+link is left alone and reported rather than unlinked. **The home is
+resolved through `realpath` before any guard judges it**, and so is
+everything it is compared against: the guards are textual, and a home that
+is itself a link would pass every one of them and then remove four folders
+from wherever it points. Before it starts, the main process refuses while a
+reset is already running, while an export, an engine request or a record
+write is in flight, and for a home so high up that those four names would
+mean something else; the screen refuses separately while a layout run or an
 export is open, because a run is four steps with gaps between them and only
-the renderer can see the gaps. While the removal runs, every engine
-request, every export and every write to a project record is refused, so
-nothing lands in a folder being walked away (`src/main/settings.ts`,
-`src/main/settings-ipc.ts`).
+the renderer can see the gaps. The flag goes up before the first `await`,
+and while it is up every engine request, every export and every write to a
+project record is refused, so nothing lands in a folder being walked away
+(`src/main/settings.ts`, `src/main/settings-ipc.ts`).
 
 Work proceeds phase by phase; `CONTRIBUTING.md` explains the flow, the
 labels, the milestones and the `A0-05`-style issue codes. The four Phase 0

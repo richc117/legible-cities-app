@@ -102,20 +102,36 @@ settings: {
   folder that is a symbolic link is left alone and reported, because
   removing it would unlink it rather than empty it.
 
-  It is refused while an export is running, an engine request is in flight
-  or a record is being written, with a sentence saying which; refused for a
-  home that is not absolute, is a filesystem root, is the user's home
-  folder, or contains the user-data folder; and refused when the export
-  folder sits inside one of the four, because the confirmation promises that
-  exported files are not touched. The home it works on is the
-  configuration's own, never anything the page sent.
+  Every comparison is made on real paths: the home is resolved through
+  `realpath` before any guard looks at it, and so is everything it is
+  compared against. The guards are textual, so a home that is itself a
+  symbolic link would pass all of them and then remove four folders from
+  wherever it points - the same loss, one level up. The dialog usually
+  answers a resolved path; `SCHEMATIC_HOME` and a hand-edited settings file
+  do not.
 
-  While the removal runs, every engine request, every export and every write
-  to a project record is refused with "The engine data is being reset; wait
-  for it to finish.", so nothing lands in a folder being walked away. A
-  multi-step layout run has gaps in which nothing is in flight, so the main
-  process does not claim to know one is open; the screen, where the runs
-  live, disables the button instead.
+  It is refused while a reset is already running, while an export is
+  running, an engine request is in flight or a record is being written, with
+  a sentence saying which; refused for a home that is not absolute, is a
+  filesystem root, is the user's home folder, or contains the user-data
+  folder; and refused when the export folder sits inside one of the four, or
+  is the home, or holds it - because an export writes to
+  `<folder>/<project name>/`, so a project named `out` would land in a
+  folder the reset removes, and the confirmation promises that exported
+  files are not touched. The home it works on is the configuration's own,
+  never anything the page sent.
+
+  The flag goes up before the first `await` - before even the checks that
+  need one - because a second reset arriving while the first resolves paths
+  would otherwise find it down, and the first to finish would lower it while
+  the second was still walking. While it is up, every engine request, every
+  export and every write to a project record is refused with "The engine
+  data is being reset; wait for it to finish.", so nothing lands in a folder
+  being walked away. The engine's gate asks on both sides of the registry's
+  own check, because that check reads the project list from disk and the
+  loop turns while it does. A multi-step layout run has gaps in which
+  nothing is in flight, so the main process does not claim to know one is
+  open; the screen, where the runs live, disables the button instead.
 
   The answer says which folders went and which would not, by role. Never a
   path.

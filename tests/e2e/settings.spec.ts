@@ -271,7 +271,12 @@ test('resets the engine data behind a confirmation, and leaves the Library empty
     // stand-in's own control file stands in for a person's own files, which
     // is the whole reason the reset does not take the folder whole.
     expect(existsSync(home)).toBe(true)
-    expect(readdirSync(home)).toEqual(['fake-engine.json'])
+    const left = readdirSync(home)
+    for (const folder of ['data', 'out', 'projects', 'frames']) expect(left).not.toContain(folder)
+    // Named rather than counted: the stand-in writes more than one file of
+    // its own, and what is being proved is that a file the app did not put
+    // there is still there, not how many the stand-in happens to keep.
+    expect(left).toContain('fake-engine.json')
     expect(readdirSync(userData)).toContain('settings.json')
 
     await page.getByRole('button', { name: 'Back to Library' }).click()

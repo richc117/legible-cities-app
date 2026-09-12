@@ -4,7 +4,7 @@
 // interface's own top frame can ask at all.
 
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
-import { mkdtemp, readdir, rm, writeFile, mkdir } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -16,7 +16,7 @@ import {
   type Which,
 } from '../../src/main/settings-ipc'
 import { CHANNELS } from '../../src/shared/api'
-import type { FolderSource } from '../../src/shared/settings'
+import type { FolderSource, ResetOutcome } from '../../src/shared/settings'
 
 type Handler = (event: IpcMainInvokeEvent, ...args: unknown[]) => Promise<unknown>
 
@@ -38,13 +38,17 @@ async function harness(
     topFrame?: boolean
     /** The export folder in force, for the reset's "not inside the home" rule. */
     exportFolder?: (root: string) => string
+    /** The engine home, for a home that is a link rather than a folder. */
+    engineHome?: (root: string) => string
+    /** The person's own folder, which the reset must never reach. */
+    homeDir?: (root: string) => string
   } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), 'legible-cities-settings-ipc-'))
   roots.push(root)
   const userData = join(root, 'userData')
   await mkdir(userData, { recursive: true })
-  const engineHome = join(userData, 'engine')
+  const engineHome = over.engineHome?.(root) ?? join(userData, 'engine')
   const exportFolder = over.exportFolder?.(root) ?? join(root, 'desktop', 'Legible Cities')
   const bundle = bundleOf(root)
   const logsFolder = join(root, 'logs')
@@ -70,7 +74,7 @@ async function harness(
     },
     logsFolder: () => logsFolder,
     bundleRoots: [bundle],
-    guards: { userData, homeDir: root },
+    guards: { userData, homeDir: over.homeDir?.(root) ?? root },
     log: (m) => logs.push(m),
   }
   const settings = new SettingsService(deps)
@@ -297,18 +301,62 @@ describe('the theme', () => {
 })
 
 describe('resetting the engine data', () => {
-  it('removes the folder and makes it again, empty', async () => {
+  it("removes the four folders and leaves the home and a person's own files", async () => {
     const h = await harness()
     // The default home sits under the user-data folder, beside the settings
     // file: the reset must take the one and leave the other.
     await h.call(CHANNELS.settingsSetTheme, 'sepia')
     await mkdir(join(h.engineHome, 'projects', 'p1'), { recursive: true })
     await writeFile(join(h.engineHome, 'projects', 'p1', 'project.json'), '{}')
-    await h.call(CHANNELS.settingsResetEngineData)
-    expect(await readdir(h.engineHome)).toEqual([])
+    // A file the app never put there. Without it this test passes just as
+    // well when the home is removed whole, which is the bug it exists for.
+    await writeFile(join(h.engineHome, 'notes.txt'), 'mine')
+
+    const outcome = (await h.call(CHANNELS.settingsResetEngineData)) as ResetOutcome
+    expect(outcome.removed).toEqual(['projects'])
+    expect(await readdir(h.engineHome), 'the home stayed, and so did the file').toEqual([
+      'notes.txt',
+    ])
+    expect(await readFile(join(h.engineHome, 'notes.txt'), 'utf8')).toBe('mine')
     expect(await readdir(h.userData), 'the settings file is not inside it').toContain(
       'settings.json',
     )
+  })
+
+  // The guards compare text, so a home that is itself a link passes every
+  // one of them and then reaches through to whatever it points at. The
+  // reset resolves the home first and judges what it really is.
+  it('refuses a home that is a symbolic link to the person’s own folder', async () => {
+    // The home is a link; the person's own folder is at the other end, with
+    // a projects folder of their own in it.
+    const h = await harness({
+      engineHome: (root) => join(root, 'cities'),
+      homeDir: (root) => join(root, 'somebody'),
+    })
+    const real = join(h.root, 'somebody')
+    await mkdir(join(real, 'projects'), { recursive: true })
+    await writeFile(join(real, 'projects', 'work.txt'), 'mine')
+    try {
+      await symlink(real, join(h.root, 'cities'), 'dir')
+    } catch {
+      return // a locked-down Windows account cannot make one
+    }
+    await expect(h.call(CHANNELS.settingsResetEngineData)).rejects.toThrow(/your home folder/)
+    expect(await readdir(join(real, 'projects')), 'nothing was removed').toEqual(['work.txt'])
+  })
+
+  // Two at once both pass every check; the first to finish lowers the flag
+  // while the second is still walking, letting every writer back into a
+  // folder being removed.
+  it('refuses a second reset while the first is still running', async () => {
+    const h = await harness()
+    await mkdir(join(h.engineHome, 'projects'), { recursive: true })
+    const first = h.call(CHANNELS.settingsResetEngineData)
+    await expect(h.call(CHANNELS.settingsResetEngineData)).rejects.toThrow(/being reset/)
+    await first
+    expect(h.settings.resetting, 'the flag came down once, not twice').toBe(false)
+    // And a reset is possible again afterwards.
+    await expect(h.call(CHANNELS.settingsResetEngineData)).resolves.toBeTruthy()
   })
 
   it('refuses while an export or an engine request is running, and touches nothing', async () => {
