@@ -167,9 +167,11 @@ and back; then VoiceOver over the list.
   clears it.
 - **A move waiting on the timer when the project is left.** The run outlives
   the screen and the debounce does not: a move still waiting - which is what
-  a move made during an export is, since it re-arms until the way is clear -
-  is dropped when the panel goes, with nothing said. Inherited from the
-  Colours panel, and named here so it is a decision rather than a surprise.
+  a move made during an export is, since it re-arms until the way is clear,
+  and an export is minutes - is dropped when the panel goes. The panel says
+  it is waiting while it waits, so the move does not look as though it has
+  landed; that it is lost on leaving is inherited from the Colours panel and
+  named here so it is a decision rather than a surprise.
 - **A build that is cancelled or fails.** Nothing is written, and the panel
   goes back to the record's order, as the Colours panel does.
 - **A read-only record**, written by a newer version of the app: the panel
@@ -212,6 +214,8 @@ and back; then VoiceOver over the list.
   hold, no duplicates, and no more of them than a feed could draw. A feed
   with more lines than that MUST be refused in the panel, with a word, and
   never drawn and then refused on the way to disk.
+- **FR-015**: A move the record could not hold MUST leave the panel showing
+  the record, not the refused arrangement, and say which it kept.
 - **FR-014**: The list MUST be in the order the engine would draw when it is
   told nothing, which sorts labels by code point, and not the numeric order
   a person would write: `10` before `2`. The Colours panel's list sorts the

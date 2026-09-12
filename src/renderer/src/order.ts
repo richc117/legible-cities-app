@@ -20,8 +20,12 @@ import type { Line } from './colours'
 
 /**
  * The order the engine draws a project's lines in when it is told nothing:
- * the labels sorted, and sorted the way Python's `sorted` sorts them, by
- * code point.
+ * the labels sorted, and sorted as Python's `sorted` sorts them rather than
+ * as a person would write them. JavaScript compares UTF-16 code units where
+ * Python compares code points, which differ only when one label starts
+ * above the basic plane and another in the private-use range; no feed is
+ * expected to do both, and the cost if one did is a row out of place in a
+ * line the order does not name.
  *
  * `linesOf` sorts for a person instead, numerically, so it reads `2, 4, 10`
  * where the engine draws `10, 2, 4`. That is right for the Colours panel,

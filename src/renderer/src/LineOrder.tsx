@@ -81,6 +81,10 @@ export default function LineOrder({
   const [state, setState] = useState<State>({ status: 'waiting' })
   const [order, setOrder] = useState<Order>(() => orderOf(project))
   const [said, setSaid] = useState<string | null>(null)
+  // A move made while a run or an export is reading the page waits on the
+  // timer until the way is clear, which for an export is minutes. Saying so
+  // is the difference between a move waiting and a move that looks done.
+  const [waiting, setWaiting] = useState(false)
   // Which button to leave focus on after a move has landed: the one that
   // made it, or its opposite when the line has reached an end and that
   // button is now disabled, because Chromium blurs a disabled element and
@@ -137,6 +141,7 @@ export default function LineOrder({
   useEffect(() => {
     if (reordered && (runState === 'cancelled' || runState === 'failed')) {
       schedule.cancel()
+      setWaiting(false)
       setOrder(project.lineOrder)
     }
   }, [runState, reordered, project.lineOrder, schedule])
@@ -147,6 +152,10 @@ export default function LineOrder({
     // to disk, once per move, with the panel springing back each time.
     const refused = validateLineOrder(next)
     if (refused !== null) {
+      // Back to the record, as a stopped build is: a panel that says the
+      // order was not kept while showing it is worse than either.
+      setWaiting(false)
+      setOrder(project.lineOrder)
       setSaid(`The order was not kept: ${refused}.`)
       return
     }
@@ -160,9 +169,15 @@ export default function LineOrder({
     )
     // A layout, a rebuild or an export is reading the page this would
     // rewrite. Wait rather than refuse: the same delay again, and again,
-    // until the way is clear.
-    if (step === 'wait') schedule(next)
-    else if (step === 'build') run.reorder(project, engine, next)
+    // until the way is clear. An export is minutes, not milliseconds, so
+    // the wait is said rather than left to look like a move that landed.
+    if (step === 'wait') {
+      setWaiting(true)
+      schedule(next)
+    } else {
+      setWaiting(false)
+      if (step === 'build') run.reorder(project, engine, next)
+    }
   }
   useEffect(() => {
     commitRef.current = commit
@@ -288,7 +303,9 @@ export default function LineOrder({
               ))}
             </ol>
             <p className="hint" role="status" aria-live="polite">
-              {said}
+              {waiting
+                ? 'Waiting for the map to be free, then the lines are drawn in this order.'
+                : said}
             </p>
             <div className="toolbar">
               <Button disabled={nothingToPutBack} onClick={putBack}>
