@@ -292,6 +292,11 @@
       "type": "string",
       "pattern": "^[0-9a-f]{64}$"
     },
+    "HexColor": {
+      "description": "A colour a client chooses, written #rrggbb. The feed's own route_color arrives without the hash and is the feed's, not the client's.",
+      "type": "string",
+      "pattern": "^#[0-9a-fA-F]{6}$"
+    },
     "LayoutMeta": {
       "description": "What a stored layout was made from, as written beside it in .meta.json. The inputs are what its id hashes; engine, made and migrated are not.",
       "type": "object",
@@ -549,6 +554,17 @@
           "default": 1800,
           "description": "The SVG's width in CSS pixels."
         },
+        "colors": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/HexColor"
+          },
+          "description": "A colour per line label, over the feed's own route_color. A label the layout does not carry is ignored, so a client can keep colours for lines a narrower mode dropped."
+        },
+        "default_color": {
+          "$ref": "#/$defs/HexColor",
+          "description": "The colour of a line the feed leaves uncoloured, on the map and in the page's chips, dots and chart alike; #888888 when omitted."
+        },
         "line_order": {
           "type": "array",
           "items": {
@@ -741,6 +757,18 @@
         },
         "diagnostics": {
           "$ref": "#/$defs/Diagnostics"
+        },
+        "caveats": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "What the build had to fudge, as sentences a person can read: the atlas's caveats, from the same numbers."
+        },
+        "issues": {
+          "type": "number",
+          "minimum": 0,
+          "description": "How much of the network the build had to fudge, as one weighted proportion; 0 is clean. What the atlas is ordered by."
         }
       },
       "required": [
@@ -748,7 +776,9 @@
         "date",
         "files",
         "summary",
-        "diagnostics"
+        "diagnostics",
+        "caveats",
+        "issues"
       ],
       "additionalProperties": false
     },
