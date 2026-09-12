@@ -43,11 +43,24 @@ function profile(control: Record<string, unknown> = {}): string {
   const dir = mkdtempSync(join(tmpdir(), 'legible-cities-settings-'))
   const home = join(dir, 'engine')
   mkdirSync(home, { recursive: true })
+  seedControl(home, control)
+  return dir
+}
+
+/**
+ * The stand-in's control file, in whichever home the app will run against.
+ * Any home it starts in needs one: without it the stand-in reports its own
+ * default version, the handshake refuses it and the mismatch dialog covers
+ * the screen. That bites the moment a test moves the engine folder, and it
+ * hides on a machine whose `.env.local` names a real engine checkout, which
+ * answers the pinned version whatever the home holds.
+ */
+function seedControl(home: string, control: Record<string, unknown> = {}): void {
+  mkdirSync(home, { recursive: true })
   writeFileSync(
     join(home, 'fake-engine.json'),
     JSON.stringify({ version: PINNED_ENGINE, ...control }),
   )
-  return dir
 }
 
 async function withApp(
@@ -183,6 +196,9 @@ test('says the engine folder waits for a restart, and takes it at the next start
   test.slow()
   const userData = profile()
   const chosen = mkdtempSync(join(tmpdir(), 'legible-cities-engine-'))
+  // The second launch runs against this folder, so the stand-in needs its
+  // control file here as much as in the default home.
+  seedControl(chosen)
 
   await withApp(userData, async (page, app) => {
     await open(page)
