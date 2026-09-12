@@ -371,7 +371,7 @@ describe('cancelling', () => {
     const { result } = h.exporter.start('tok-1', 'abcdefghijk1', 'instagram-reel')
     await settle()
     h.eng.requests[0].resolve(plan())
-    await settle()
+    await until('the capture', () => h.cap.calls.length === 1)
     expect(h.cap.calls).toHaveLength(1)
     h.exporter.cancel('tok-1')
     await expect(result).rejects.toMatchObject({ code: ERROR_CODES.cancelled })
@@ -386,7 +386,7 @@ describe('cancelling', () => {
     const { result } = h.exporter.start('tok-1', 'abcdefghijk1', 'instagram-reel')
     await settle()
     h.eng.requests[0].resolve(plan())
-    await settle()
+    await until('the capture', () => h.cap.calls.length === 1)
     h.cap.calls[0].finish()
     await settle()
     expect(h.eng.requests[1].method).toBe('export.encode')
@@ -414,7 +414,7 @@ describe('cancelling', () => {
     const { result } = h.exporter.start('tok-1', 'abcdefghijk1', 'instagram-reel')
     await settle()
     h.eng.requests[0].resolve(plan())
-    await settle()
+    await until('the capture', () => h.cap.calls.length === 1)
     h.exporter.abortAll()
     await expect(result).rejects.toMatchObject({ code: ERROR_CODES.cancelled })
     expect(h.exporter.live).toBe(0)
@@ -433,7 +433,7 @@ describe('failing', () => {
     const { result } = h.exporter.start('tok-1', 'abcdefghijk1', 'instagram-reel')
     await settle()
     h.eng.requests[0].resolve(plan())
-    await settle()
+    await until('the capture', () => h.cap.calls.length === 1)
     h.cap.calls[0].finish()
     await settle()
     h.eng.requests[1].reject(
@@ -456,7 +456,7 @@ describe('failing', () => {
     const { result } = h.exporter.start('tok-1', 'abcdefghijk1', 'instagram-reel')
     await settle()
     h.eng.requests[0].resolve(plan())
-    await settle()
+    await until('the capture', () => h.cap.calls.length === 1)
     h.cap.calls[0].fail(new CaptureError('the page never exposed __present (page)'))
     await expect(result).rejects.toMatchObject({
       code: ERROR_CODES.exportFailed,
@@ -511,7 +511,7 @@ describe('failing', () => {
     const first = h.exporter.start('tok-1', 'abcdefghijk1', 'instagram-reel')
     await settle()
     h.eng.requests[0].resolve(plan())
-    await settle()
+    await until('the capture', () => h.cap.calls.length === 1)
     expect(h.cap.calls, 'the first is capturing').toHaveLength(1)
 
     const second = h.exporter.start('tok-2', 'abcdefghijk2', 'instagram-reel')
@@ -523,7 +523,8 @@ describe('failing', () => {
     const third = h.exporter.start('tok-3', 'abcdefghijk3', 'instagram-reel')
     await settle()
     h.eng.requests[2].resolve(plan())
-    await settle()
+    // Two, not three: the second was refused the file and never captured.
+    await until('the third capture', () => h.cap.calls.length === 2)
     expect(h.cap.calls, 'a different folder is not in the way').toHaveLength(2)
 
     // Both outcomes are awaited together: a rejection settles a macrotask
@@ -538,7 +539,7 @@ describe('failing', () => {
     const again = h.exporter.start('tok-4', 'abcdefghijk2', 'instagram-reel')
     await settle()
     h.eng.requests[3].resolve(plan())
-    await settle()
+    await until('the fourth capture', () => h.cap.calls.length === 3)
     expect(h.cap.calls).toHaveLength(3)
     h.exporter.cancel('tok-4')
     await expect(again.result).rejects.toMatchObject({ code: ERROR_CODES.cancelled })
@@ -622,7 +623,7 @@ describe('the export and the settings screen', () => {
     await settle()
 
     h.eng.requests[0].resolve(plan())
-    await settle()
+    await until('the capture', () => h.cap.calls.length === 1)
     h.cap.calls[0].finish(60)
     await settle()
 
