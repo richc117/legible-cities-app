@@ -163,9 +163,14 @@ runs, the other's button is disabled, and so is delete.
   start of the app MUST empty a frames folder the app itself made, MUST
   leave any other exactly as found, and MUST NOT remove the folder itself.
   The engine home is a setting and can name anybody's directory, so the app
-  marks a frames folder it creates and sweeps only a marked one; an earlier
-  version removed the folder whole and would have taken a person's own with
-  it.
+  marks a frames folder it creates and sweeps only a marked one. The app
+  MUST mark a folder whenever it creates one, at a start and before each
+  export, because "Reset engine data" removes the frames folder and its mark
+  with it and the capture makes the folder again on its way to writing. A
+  link where the frames folder should be MUST be refused rather than
+  followed. An earlier version removed the folder whole and would have taken
+  a person's own with it; a later one marked only at a start, so one reset
+  turned the sweep off for good.
 - **FR-005**: `export.encode` MUST be given the plan unchanged, the frames
   folder, the destination under the export folder in a folder named after
   the project with the plan's file name, and the project's service day as

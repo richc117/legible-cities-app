@@ -32,7 +32,7 @@ const MARKER_TEXT = [
 ].join('\n')
 
 /** The code of a filesystem failure, never its message, which names the path. */
-function reasonOf(error: unknown): string {
+export function reasonOf(error: unknown): string {
   const code = (error as NodeJS.ErrnoException).code
   return typeof code === 'string' ? code : 'unknown error'
 }
@@ -65,9 +65,10 @@ export type FramesSweep =
 /**
  * Empty the frames root of everything an export left, and nothing else.
  *
- * The path is resolved through every symbolic link first, for the same
- * reason the reset resolves the home: a link at the root would otherwise
- * carry the removal somewhere the app never looked at. A root that is not
+ * Every folder above the root is resolved through its symbolic links, for
+ * the same reason the reset resolves the home; a link *at* the root is
+ * refused outright rather than followed, as the reset refuses one, because
+ * the app never makes one where it keeps its own folder. A root that is not
  * there, or is not the app's, is left exactly as it is.
  */
 export async function clearFrames(root: string): Promise<FramesSweep> {
@@ -117,9 +118,11 @@ export function describeSweep(sweep: FramesSweep): string {
       return 'the frames folder is a symbolic link, which the app will not follow'
     return 'the frames folder could not be read, so it was left alone'
   }
-  const cleared =
-    sweep.swept === 0
+  if (sweep.swept === 0) {
+    return sweep.failed === undefined
       ? 'the frames folder held nothing to clear'
-      : `cleared ${sweep.swept} left-over export folder${sweep.swept === 1 ? '' : 's'}`
+      : `nothing in the frames folder could be cleared (${sweep.failed})`
+  }
+  const cleared = `cleared ${sweep.swept} left-over export folder${sweep.swept === 1 ? '' : 's'}`
   return sweep.failed === undefined ? cleared : `${cleared}; some would not go (${sweep.failed})`
 }

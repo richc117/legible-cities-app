@@ -3,7 +3,7 @@
 // the export. The engine, the store and the capture are fakes that record
 // what they were asked; a cancel is delivered wherever the export is.
 
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -225,9 +225,21 @@ function harness(
 // where a resolved promise takes one. Generous on purpose - the whole file
 // runs in under a fifth of a second either way, and a budget that is too
 // tight fails as "the step did not happen", which reads like a bug in the
-// step.
+// step rather than in the waiting.
 const settle = async (times = 24): Promise<void> => {
   for (let i = 0; i < times; i++) await tick()
+}
+
+/**
+ * Wait for something to become true rather than for a number of turns. A
+ * budget is a race whatever its size - an immediate does not wait for a
+ * filesystem call to land, it only gives it another chance - so anything
+ * that follows real I/O waits on the thing itself and says so when it never
+ * arrives.
+ */
+const until = async (what: string, ok: () => boolean, turns = 2000): Promise<void> => {
+  for (let i = 0; i < turns && !ok(); i++) await tick()
+  if (!ok()) throw new Error(`${what} never happened`)
 }
 
 describe('the export, step by step', () => {
@@ -247,13 +259,21 @@ describe('the export, step by step', () => {
       options: { theme: 'dark' },
     })
     h.eng.requests[0].resolve(plan())
-    await settle()
+    // The claim touches the filesystem on the way, so this waits for the
+    // capture itself rather than for a number of turns.
+    await until('the capture', () => h.cap.calls.length === 1)
 
     // The capture: the plan's job, into this export's own frames directory.
-    expect(h.cap.calls).toHaveLength(1)
     expect(h.cap.calls[0].job).toEqual(jobOf(plan()))
     expect(h.cap.calls[0].options.frames).toBe(join(h.framesRoot, 'tok-1'))
     expect(h.exporter.live).toBe(1)
+
+    // The frames folder carries the mark that lets a later start clear what
+    // a crash leaves. Claimed here and not only at a start, because "Reset
+    // engine data" removes the folder and its mark together, and without
+    // this one reset turned the sweep off for good.
+    expect(readdirSync(h.framesRoot)).toContain('.legible-frames')
+
     h.cap.calls[0].finish(60)
     await settle()
 
@@ -315,6 +335,33 @@ describe('the export, step by step', () => {
       'Planned la-metro-rail-instagram-reel.mp4: 60 frames at 30 frames per second. this sweep advances 90 simulated seconds per frame. see a file',
     )
     h.exporter.cancel('tok-1')
+  })
+
+  // The mark is what lets a later start clear what a crash leaves, and
+  // "Reset engine data" removes the frames folder and the mark together
+  // while the app runs. Claiming only at a start therefore turned the sweep
+  // off for the life of the install after one reset, and nothing saw it.
+  it('marks the frames folder again after it has been taken away', async () => {
+    const h = harness()
+    const first = h.exporter.start('tok-1', 'abcdefghijk1', 'instagram-reel')
+    await until('the plan', () => h.eng.requests.length === 1)
+    h.eng.requests[0].resolve(plan())
+    await until('the capture', () => h.cap.calls.length === 1)
+    expect(readdirSync(h.framesRoot)).toContain('.legible-frames')
+    h.exporter.cancel('tok-1')
+    await first.result.catch(() => undefined)
+
+    // The reset's shape: the folder goes whole, marker and all.
+    rmSync(h.framesRoot, { recursive: true, force: true })
+    expect(existsSync(h.framesRoot)).toBe(false)
+
+    const second = h.exporter.start('tok-2', 'abcdefghijk1', 'instagram-reel')
+    await until('the second plan', () => h.eng.requests.length === 2)
+    h.eng.requests[1].resolve(plan())
+    await until('the second capture', () => h.cap.calls.length === 2)
+    expect(readdirSync(h.framesRoot)).toContain('.legible-frames')
+    h.exporter.cancel('tok-2')
+    await second.result.catch(() => undefined)
   })
 })
 
