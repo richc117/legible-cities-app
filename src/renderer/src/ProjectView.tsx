@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type JSX } from 'react'
 import type { DeleteResult, ProjectRecord } from '../../shared/api'
 import { shortLayoutId } from '../../shared/layout'
-import { validateName } from '../../shared/project'
+import { validateName, type Theme } from '../../shared/project'
 import ConfirmDialog from './ConfirmDialog'
 import DiagnosticsView from './Diagnostics'
 import { engineClient, exportRunFor, layoutRunFor } from './engine/runs'
@@ -16,6 +16,7 @@ import Button from './kit/Button'
 import LayoutRunView from './LayoutRun'
 import LineColours from './LineColours'
 import LineOrderPanel from './LineOrder'
+import ThemeSwitch from './ThemeSwitch'
 import ServiceDay from './ServiceDay'
 import TextInput, { type TextInputHandle } from './kit/TextInput'
 import { useEngineState } from './useEngineState'
@@ -177,6 +178,17 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
         : current,
     )
   }
+  // The theme is written at once and nothing is rebuilt for it: the page
+  // takes it on its address and restyles itself, so the record coming back
+  // is all the viewer needs to reload in it (A4-03).
+  const setTheme = async (theme: Theme): Promise<void> => {
+    const record = await window.api.projects.setTheme(id, theme)
+    setState((current) =>
+      current.status === 'ready'
+        ? { status: 'ready', project: { ...current.project, ...record } }
+        : current,
+    )
+  }
   const today = (): string => {
     const now = new Date()
     const pad = (n: number): string => String(n).padStart(2, '0')
@@ -313,6 +325,9 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
               disabled={exporting}
               busyNow={() => exporter.snapshot.state === 'running'}
             />
+          )}
+          {!project.readOnly && (
+            <ThemeSwitch project={project} onChange={setTheme} disabled={exporting} />
           )}
           {!project.readOnly && project.layout !== null && (
             <ExportRunView run={exporter} project={project} engine={engine} disabled={layingOut} />

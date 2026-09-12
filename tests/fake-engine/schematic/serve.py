@@ -625,7 +625,13 @@ class Engine:
         key, preset = params["key"], params["preset"]
         width, height, fmt = PRESETS[preset]
         page = params.get("page") or f"file:///maps/{key}.html"
-        url = (f"{page}?present=1&view=map&labels=1&title=1&clock=1&theme=dark"
+        # Echoed, not assumed: the engine's options say dark or light and its
+        # page says warm-dark or sepia, and a double that ignored the input
+        # could not show the app's theme arriving at all (A4-03).
+        options = params.get("options") or {}
+        theme = "dark" if options.get("theme", "dark") == "dark" else "light"
+        url = (f"{page}?present=1&view=map&labels=1&title=1&clock=1"
+               f"&theme={'dark' if theme == 'dark' else 'sepia'}"
                f"&frame={width}:{height}&frametop=0")
         seconds = float(self.control.get("export_seconds", 1))
         return {"key": key, "preset": preset, "mode": "video", "url": url,
@@ -635,7 +641,7 @@ class Engine:
                            "speed": 120, "sweep": False, "hours": None, "lo": None,
                            "hi": None, "tween": 0}],
                 "keep": True, "crf": 26, "fade": 0.0, "stem": f"{key}-{preset}",
-                "theme": "dark", "view": "map", "storyboard": "tour", "at": None,
+                "theme": theme, "view": "map", "storyboard": "tour", "at": None,
                 "notes": [], "filename": f"{key}-{preset}.{fmt}"}
 
 

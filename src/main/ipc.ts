@@ -16,9 +16,11 @@ import {
   validateName,
   validateLineOrder,
   validatePalette,
+  validateTheme,
   type CreateProjectInput,
   type LineOrder,
   type Palette,
+  type Theme,
   type ProjectInputs,
   type RebuildDone,
   validateMade,
@@ -109,6 +111,11 @@ function readPalette(raw: unknown): Palette {
 function readLineOrder(raw: unknown): LineOrder {
   check(validateLineOrder(raw))
   return [...(raw as LineOrder)]
+}
+
+function readTheme(raw: unknown): Theme {
+  check(validateTheme(raw))
+  return raw as Theme
 }
 
 function readCreateInput(raw: unknown): CreateProjectInput {
@@ -241,4 +248,5 @@ export function registerProjectHandlers(
   handle(CHANNELS.projectsCompleteOrder, (id, order) =>
     store.completeOrder(readId(id), readLineOrder(order)),
   )
+  handle(CHANNELS.projectsSetTheme, (id, theme) => store.setTheme(readId(id), readTheme(theme)))
 }

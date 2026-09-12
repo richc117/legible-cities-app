@@ -57,7 +57,12 @@ them; `src/renderer/src/LineColours.tsx`) and the line order (A4-02: the
 project's lines in the order the map stacks them, moved one place at a time
 from two named buttons rather than a drag, the whole arrangement debounced
 into the same rebuild and written only once the map carries it;
-`src/renderer/src/LineOrder.tsx`). That is the first reel.
+`src/renderer/src/LineOrder.tsx`) and the theme (A4-03: the project's map
+drawn in one of the engine page's two themes, chosen per project and
+written at once, since a theme is neither a layout nor a render - the page
+takes it on its address and restyles itself - and the interface's own theme
+in Settings is a separate thing that neither follows;
+`src/renderer/src/ThemeSwitch.tsx`). That is the first reel.
 
 Settings (A1-04) came after it: one file under the user-data folder holding
 the two folders a person chose and the interface's theme, read before the

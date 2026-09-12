@@ -75,6 +75,7 @@ describe('registerProjectHandlers', () => {
       [CHANNELS.projectsCompleteRebuild, 'aaaaaaaaaaaa', { date: '2026-09-15' }],
       [CHANNELS.projectsCompleteColors, 'aaaaaaaaaaaa', { colors: {}, defaultColor: '#888888' }],
       [CHANNELS.projectsCompleteOrder, 'aaaaaaaaaaaa', ['A']],
+      [CHANNELS.projectsSetTheme, 'aaaaaaaaaaaa', 'sepia'],
     ] as const
     for (const [channel, ...args] of writes) {
       await expect(h.call(channel, ...args), channel).rejects.toThrow(why)
@@ -268,6 +269,25 @@ describe('registerProjectHandlers', () => {
     order[0] = 'B'
     expect(calls).toEqual([
       { method: 'completeOrder', args: ['abcdefghijk1', ['K', 'A', 'Rapid 720']] },
+    ])
+  })
+
+  it('refuses a theme the page does not draw, and passes the two it does', async () => {
+    const { call, calls } = harness()
+    for (const theme of [undefined, null, 42, '', 'dark', 'light', 'system', ['sepia'], {}]) {
+      await expect(
+        call(CHANNELS.projectsSetTheme, 'abcdefghijk1', theme),
+        JSON.stringify(theme) ?? 'undefined',
+      ).rejects.toThrow()
+    }
+    expect(calls, 'nothing reached the store').toEqual([])
+
+    await expect(call(CHANNELS.projectsSetTheme, '../x', 'sepia')).rejects.toThrow('invalid id')
+    await call(CHANNELS.projectsSetTheme, 'abcdefghijk1', 'sepia')
+    await call(CHANNELS.projectsSetTheme, 'abcdefghijk1', 'warm-dark')
+    expect(calls).toEqual([
+      { method: 'setTheme', args: ['abcdefghijk1', 'sepia'] },
+      { method: 'setTheme', args: ['abcdefghijk1', 'warm-dark'] },
     ])
   })
 

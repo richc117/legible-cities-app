@@ -568,6 +568,13 @@ describe('failing', () => {
 })
 
 describe('the small functions', () => {
+  it('plans a sepia project in the engine’s word for it', async () => {
+    const h = harness({ project: { theme: 'sepia' } })
+    h.exporter.start('tok-1', 'abcdefghijk1', 'instagram-reel')
+    await settle()
+    expect(h.eng.requests[0].params).toMatchObject({ options: { theme: 'light' } })
+  })
+
   it('maps the record theme to the engine theme', () => {
     expect(themeFor('warm-dark')).toBe('dark')
     expect(themeFor('sepia')).toBe('light')

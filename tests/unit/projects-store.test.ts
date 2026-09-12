@@ -864,6 +864,50 @@ describe('completeOrder', () => {
   })
 })
 
+// The theme a project's map is drawn in (A4-03), written the moment it is
+// pressed: it is neither a layout nor a render, so there is nothing to wait
+// for and no project needs a layout to have one.
+describe('setTheme', () => {
+  it('writes the theme and the time, and nothing else', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    const before = await store.get(project.id)
+    expect(before.theme, 'every project starts in the engine’s own default').toBe('warm-dark')
+    const after = await store.setTheme(project.id, 'sepia')
+    expect(after.theme).toBe('sepia')
+    expect(after.colors).toEqual(before.colors)
+    expect(after.lineOrder).toEqual(before.lineOrder)
+    expect(after.layout, 'a theme is not a build of any kind').toBe(before.layout)
+    expect(after.modified >= before.modified).toBe(true)
+    expect(await store.get(project.id), 'and it is on disk').toEqual({ ...after, readOnly: false })
+  })
+
+  it('needs no layout: there is nothing to draw yet and the theme still holds', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    expect((await store.setTheme(project.id, 'sepia')).layout).toBeNull()
+    const fresh = new ProjectStore(home, (message) => lines.push(message))
+    expect((await fresh.get(project.id)).theme).toBe('sepia')
+  })
+
+  it('refuses a theme the page does not draw', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    for (const theme of ['dark', 'light', 'system', '', 42, null]) {
+      await expect(
+        store.setTheme(project.id, theme as never),
+        JSON.stringify(theme) ?? 'undefined',
+      ).rejects.toThrow(/warm-dark or sepia/)
+    }
+    expect((await store.get(project.id)).theme, 'nothing was written').toBe('warm-dark')
+  })
+
+  it('refuses a record a newer version of the app wrote', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    const file = join(home, 'projects', project.id, 'project.json')
+    const current = await store.get(project.id)
+    await writeFile(file, JSON.stringify({ ...current, version: 99 }), 'utf8')
+    await expect(store.setTheme(project.id, 'sepia')).rejects.toThrow('read-only')
+  })
+})
+
 // Both folders are under the engine's home, so the settings screen asks
 // before it removes that home's contents: a record being renamed into place
 // is a write the reset must not walk through (A1-04).
