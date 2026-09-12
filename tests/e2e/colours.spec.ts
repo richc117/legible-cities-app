@@ -249,5 +249,13 @@ test('every control is reachable by keyboard and named for its line', async () =
     await expect(
       panel.getByRole('group', { name: 'Colour for line A' }).getByRole('slider'),
     ).toHaveCount(2)
+    // Committing takes the picker away, so the focus it held goes back to
+    // the control that revealed it rather than falling to the body.
+    const group = panel.getByRole('group', { name: 'Colour for line A' })
+    await group.getByLabel('Hex value').fill('#123456')
+    await group.getByRole('button', { name: 'Use this colour' }).click()
+    await expect(group).toBeHidden()
+    await expect(choose).toHaveAttribute('aria-expanded', 'false')
+    await expect(choose).toBeFocused()
   })
 })

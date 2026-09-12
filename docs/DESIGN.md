@@ -228,6 +228,7 @@ platform is):
 | `--dialog-width` | 28rem (existing), `--dialog-width-wide` 40rem |
 | `--measure` | 40rem for prose panels |
 | `--tooltip-width` | 20rem: a tooltip's measure, a sentence or two |
+| `--picker-size` | 200px: the colour picker's square, big enough to aim in |
 
 **Layers** (z-index tokens): `--layer-base` 0, `--layer-raised` 10 (sticky
 headers), `--layer-overlay` 100 (drawers), `--layer-dialog` 1000 (native

@@ -300,6 +300,7 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
               engine={engine}
               inspect={inspect}
               disabled={exporting}
+              busyNow={() => exporter.snapshot.state === 'running'}
             />
           )}
           {!project.readOnly && project.layout !== null && (

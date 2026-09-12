@@ -442,7 +442,6 @@ be the old map until the next build. The app parses and shows no time of
 day: a trip past midnight keeps its `25:44`-style time in the page, which
 is the engine's (`specs/012-service-date`).
 
-<<<<<<< HEAD
 ### What the build had to fudge
 
 `map.build` answers three things beside its files, and A3-03 keeps them:
@@ -476,7 +475,6 @@ keyboard alike; "Copy as text" hands over what the panel shows, through
 the bridge's one clipboard method, because the app refuses every
 permission request and Chromium's own clipboard write is one
 (`specs/017-diagnostics`).
-=======
 ### Line colours
 
 A line is drawn in the colour its feed publishes as `route_color`, and a
@@ -502,7 +500,6 @@ day all draw the colours the project chose (`specs/018-colours`).
 The engine ignores a colour for a label its stored layout does not carry,
 which is why the panel can list the feed's labels rather than the layout's
 and why an override outlives a narrower mode.
->>>>>>> 1c1965a (Let a project choose the colour of each of its lines)
 
 ## The feeds
 

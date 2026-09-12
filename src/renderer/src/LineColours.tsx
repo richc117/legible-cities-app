@@ -59,6 +59,14 @@ interface Props {
   inspect: (key: string) => Promise<Inspection>
   /** True while something else, such as an export, is reading the project's page. */
   disabled?: boolean
+  /**
+   * The same question at this instant rather than at the last render. An
+   * export can start inside the debounce window, and a rendered prop is one
+   * render behind it: a build begun in that gap would rewrite the page the
+   * capture is reading, which is the one thing a run and an export may
+   * never do to each other (.claude/rules/main.md).
+   */
+  busyNow?: () => boolean
 }
 
 export default function LineColours({
@@ -67,6 +75,7 @@ export default function LineColours({
   engine,
   inspect,
   disabled = false,
+  busyNow,
 }: Props): JSX.Element {
   const ready = engine?.state === 'ready'
   const { state: runState, recoloured } = useSnapshot(run)
@@ -131,18 +140,26 @@ export default function LineColours({
   }, [project.id, project.colors, project.defaultColor, schedule])
 
   // A build that stopped wrote nothing, so the colours on screen must go
-  // back to the record's; the run's own panel says why.
+  // back to the record's; the run's own panel says why. A stop stops
+  // everything: a change made while the build ran is waiting on the same
+  // timer, and letting it through would build the colours a person had
+  // just been told the project did not keep.
   useEffect(() => {
     if (recoloured && (runState === 'cancelled' || runState === 'failed')) {
+      schedule.cancel()
       setPalette({ colors: project.colors, defaultColor: project.defaultColor })
     }
-  }, [runState, recoloured, project.colors, project.defaultColor])
+  }, [runState, recoloured, project.colors, project.defaultColor, schedule])
 
   const commit = (next: Palette): void => {
     // `busy` is what the last render saw; the run's own state is what is
     // true at this moment, and a run can start between the two. Without it
     // a colour would be handed to a run that refuses it, silently.
-    const step = nextStep(next, paletteOf(project), busy || run.snapshot.state === 'running')
+    const step = nextStep(
+      next,
+      paletteOf(project),
+      busy || run.snapshot.state === 'running' || busyNow?.() === true,
+    )
     // A layout, a rebuild or an export is reading the page this would
     // rewrite. Wait rather than refuse: the same delay again, and again,
     // until the way is clear.
@@ -204,7 +221,10 @@ export default function LineColours({
             colour={palette.defaultColor}
             open={open === DEFAULT_ROW}
             onToggle={() => setOpen(open === DEFAULT_ROW ? null : DEFAULT_ROW)}
-            onPick={(hex) => change(withDefault(palette, hex))}
+            onPick={(hex) => {
+              setOpen(null)
+              change(withDefault(palette, hex))
+            }}
           />
           {lines.length === 0 ? (
             <p className="hint" role="status">
@@ -221,7 +241,10 @@ export default function LineColours({
                   overridden={hasOverride(palette, line.label)}
                   open={open === line.label}
                   onToggle={() => setOpen(open === line.label ? null : line.label)}
-                  onPick={(hex) => change(withOverride(palette, line.label, hex))}
+                  onPick={(hex) => {
+                    setOpen(null)
+                    change(withOverride(palette, line.label, hex))
+                  }}
                   onReset={() => changeAndKeepFocus(withoutOverride(palette, line.label))}
                 />
               ))}
@@ -259,6 +282,7 @@ function DefaultColour({
   onPick: (hex: string) => void
 }): JSX.Element {
   const panelId = useId()
+  const chooseRef = useRef<HTMLElement>(null)
   return (
     <div className="line-row-group">
       <div className="line-row">
@@ -266,6 +290,7 @@ function DefaultColour({
         <span className="line-name">Lines with no colour in the feed</span>
         <span className="line-source">drawn in {colour}</span>
         <Button
+          ref={chooseRef}
           aria-expanded={open}
           /* Only while it is there: a control named by aria-controls must exist. */
           aria-controls={open ? panelId : undefined}
@@ -281,7 +306,13 @@ function DefaultColour({
           id={panelId}
           name="Colour for lines the feed leaves uncoloured"
           colour={colour}
-          onPick={onPick}
+          onPick={(hex) => {
+            // The picker goes with the press, so focus goes back to the
+            // control that revealed it, as the rename form's does. Moved
+            // before the parent unmounts it, or focus would fall to the body.
+            chooseRef.current?.focus()
+            onPick(hex)
+          }}
         />
       )}
     </div>
@@ -306,6 +337,7 @@ function LineRow({
   onReset: () => void
 }): JSX.Element {
   const panelId = useId()
+  const chooseRef = useRef<HTMLElement>(null)
   return (
     <li className="line-row-group">
       <div className="line-row">
@@ -314,6 +346,7 @@ function LineRow({
         <span className="line-feed">{feedWords(line)}</span>
         <span className="line-source">{sourceWords(shown)}</span>
         <Button
+          ref={chooseRef}
           aria-expanded={open}
           aria-controls={open ? panelId : undefined}
           aria-label={`Choose the colour of line ${line.label}`}
@@ -339,7 +372,13 @@ function LineRow({
           id={panelId}
           name={`Colour for line ${line.label}`}
           colour={shown.color}
-          onPick={onPick}
+          onPick={(hex) => {
+            // The picker goes with the press, so focus goes back to the
+            // control that revealed it, as the rename form's does. Moved
+            // before the parent unmounts it, or focus would fall to the body.
+            chooseRef.current?.focus()
+            onPick(hex)
+          }}
         />
       )}
     </li>

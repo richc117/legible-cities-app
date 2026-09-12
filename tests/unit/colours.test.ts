@@ -308,7 +308,7 @@ describe('validatePalette: the gate the main process runs', () => {
     expect(validatePalette({ colors: {}, defaultColor: 'grey' })).not.toBeNull()
   })
   it('refuses a label that is empty, too long or carries a control character', () => {
-    const bad = [' ', 'a'.repeat(LABEL_MAX + 1), 'A\nB', 'A B']
+    const bad = [' ', 'a'.repeat(LABEL_MAX + 1), 'A\nB', 'A\u0000B']
     for (const label of bad.slice(1))
       expect(
         validatePalette({ colors: { [label]: '#0072bc' }, defaultColor: DEFAULT_COLOR }),
@@ -341,7 +341,7 @@ describe('the record keeps a palette and reads one back', () => {
       id: 'abcdefghijk1',
       name: 'LA',
       feed: 'la-metro-rail',
-      colors: { A: '#0072bc', B: 'teal', '': '#ffffff', 'C ': '#ffffff' },
+      colors: { A: '#0072bc', B: 'teal', '': '#ffffff', 'C\u0000': '#ffffff' },
       defaultColor: '#FF0000',
     })
     expect('record' in parsed).toBe(true)
