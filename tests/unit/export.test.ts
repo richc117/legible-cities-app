@@ -205,7 +205,9 @@ function harness(
     projects: { get: async (id) => project({ id, ...(over.projects?.[id] ?? over.project) }) },
     capture: cap.capture,
     framesRoot,
-    exportFolder,
+    // Asked at each export, so a folder changed in Settings applies
+    // without a restart (A1-04).
+    exportFolder: () => exportFolder,
     log: (m) => log.push(m),
   })
   exporter.onProgress((p) => progress.push(p))

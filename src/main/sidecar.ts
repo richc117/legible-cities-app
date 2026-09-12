@@ -108,6 +108,15 @@ export class Sidecar {
     return this.child?.pid
   }
 
+  /**
+   * How many requests the engine is answering right now. A layout run is
+   * one of these, which is how the main process knows not to throw the
+   * engine's data away under it (specs/019-settings, FR-009).
+   */
+  get inFlight(): number {
+    return this.client?.inFlight.length ?? 0
+  }
+
   start(): void {
     if (this.started) return
     this.started = true

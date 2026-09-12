@@ -104,6 +104,20 @@ const api: Api = {
     reveal: (id) => invoke(CHANNELS.exportReveal, id),
     onProgress: (listener) => subscribe(CHANNELS.exportProgress, listener),
   },
+  // Only the theme crosses inward. The two folder choosers take nothing:
+  // the main process opens the dialog and applies its own answer, so there
+  // is no path here for a page to invent (specs/019-settings).
+  settings: {
+    read: () => invoke(CHANNELS.settingsRead),
+    setTheme: (theme) => invoke(CHANNELS.settingsSetTheme, theme),
+    chooseEngineFolder: () => invoke(CHANNELS.settingsChooseEngineFolder),
+    chooseExportFolder: () => invoke(CHANNELS.settingsChooseExportFolder),
+    useDefaultEngineFolder: () => invoke(CHANNELS.settingsDefaultEngineFolder),
+    useDefaultExportFolder: () => invoke(CHANNELS.settingsDefaultExportFolder),
+    engineSize: () => invoke(CHANNELS.settingsEngineSize),
+    openLogsFolder: () => invoke(CHANNELS.settingsOpenLogs),
+    resetEngineData: () => invoke(CHANNELS.settingsResetEngineData),
+  },
 }
 
 contextBridge.exposeInMainWorld('api', api)

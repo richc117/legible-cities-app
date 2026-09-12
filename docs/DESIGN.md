@@ -365,6 +365,7 @@ not used:
 | Date control | the platform's native `<input type="date">`, as the select is native (ADR-026): `--control-height`, the tokens for text, surface and border, `min` and `max` from the data so an impossible day cannot be picked, the message beneath referenced by the control; its popup renders in the platform's own style, which is accepted |
 | Colour control (A4-01) | one row per line: a `--space-4-3` swatch in the line's own colour as an inline style from the record, the label at 13px, what the feed publishes and where the colour came from in `--text-muted` at 12px, then Choose and Reset; the picker is a disclosure under its row, `--surface-raised` with a 1px `--border`, holding react-colorful's square at `--picker-size` and a hex field from the kit beside it, so a colour can be set without a pointing device; every control names the line it acts on; nothing is disabled while another run reads the project's page - the change waits and builds once the way is clear, because a control that disables itself under a person's hands takes the focus with it and a refused change is a lost one |
 | Deliverables | an export that finished says the file's name in prose and offers "Reveal", a text button that opens the file's folder in the platform's file browser; the path is never shown, and the folder is the person's own (A1-04) |
+| Folder and version rows (Settings) | a folder's path is the one place a path is shown, because it is the person's own choice: the monospaced track at 12px, `--text` on `--surface-sunken`, wrapped rather than cut, under a 13px label, with its source beneath as a message ("the default", "chosen here", "set in the environment") and the actions under that; a folder waiting for a restart reads in `--warning`; a folder the environment names carries no action at all. Versions are a definition list, the term in `--text-muted`, the value as the engine sent it; a field the engine reports as null reads as a sentence saying so, never as a blank (A1-04) |
 
 ## 9. Layout and window
 
@@ -374,7 +375,9 @@ for the Library and navigation (`--space-4-16` wide collapsed, 240px
 open), the main region (the viewer or a screen), and a right inspector
 for the project's fields, diagnostics and jobs (A1-03, A3-03; 320px,
 collapsible). The header holds the screen title at 20px, the status line
-and the theme control. Minimum window 640 by 480 as today; below 900px the
+and the way into Settings, which is where the theme control went: it is a
+choice made once, not a switch to flick, and it sits with the other things
+the app decides for itself (A1-04). Minimum window 640 by 480 as today; below 900px the
 inspector collapses first. The prose measure applies inside panels;
 lists and tables fill their region.
 

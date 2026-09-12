@@ -55,6 +55,20 @@ for all, and one default for the lines the feed leaves blank, debounced into
 a `map.build` from the stored layout and written only once the map carries
 them; `src/renderer/src/LineColours.tsx`). That is the first reel.
 
+Settings (A1-04) came after it: one file under the user-data folder holding
+the two folders a person chose and the interface's theme, read before the
+configuration resolves so a stored folder sits between `.env.local` and the
+default, and written the way a project record is. A folder is chosen in the
+platform's own dialog, which the main process opens and whose answer it
+applies itself, so no path crosses the bridge inward at all; the export
+folder moves at once and the engine's home at the next start, which the
+screen says. The screen also shows the engine home's size, the versions
+from `engine.info`, a way into the platform's log folder, and "Reset engine
+data", which the main process refuses while an export or an engine request
+is in flight and for any home that is a root, the person's home folder or
+an ancestor of the user-data folder (`src/main/settings.ts`,
+`src/main/settings-ipc.ts`).
+
 Work proceeds phase by phase; `CONTRIBUTING.md` explains the flow, the
 labels, the milestones and the `A0-05`-style issue codes. The four Phase 0
 spikes have run: LOOM ships without its optional solvers (ADR-019), the

@@ -1,8 +1,10 @@
-// Configuration: four locations, one pin and one development pointer, from the
-// process environment, then .env.local, then defaults. Pure: no Electron
-// import, so the parsing and the log lines are unit-tested without a
-// window. Contract: specs/001-electron-skeleton/contracts/config.md; the
-// export folder, specs/010-export/contracts/bridge.md.
+// Configuration: four locations, one pin and one development pointer, from
+// the process environment, then .env.local, then the two folders a person
+// chose in Settings, then defaults. Pure: no Electron import, so the
+// parsing and the log lines are unit-tested without a window. Contract:
+// specs/001-electron-skeleton/contracts/config.md; the export folder,
+// specs/010-export/contracts/bridge.md; the stored tier,
+// specs/019-settings/contracts/bridge.md.
 
 import { isAbsolute, join, resolve } from 'node:path'
 
@@ -20,7 +22,7 @@ export const KEYS = [
 export const EXPORT_FOLDER_NAME = 'Legible Cities'
 
 export type Key = (typeof KEYS)[number]
-export type Source = 'default' | '.env.local' | 'environment'
+export type Source = 'default' | 'settings' | '.env.local' | 'environment'
 
 export interface Config {
   home: string
@@ -54,6 +56,13 @@ export interface ConfigInput {
   loomPin: string
   /** Relative values in the file resolve against this directory. */
   baseDir: string
+  /**
+   * The two folders a person chose in Settings (A1-04), each null when they
+   * chose none. They sit below the environment and the file, so a developer
+   * or the end-to-end suite still steers the app with either, and above the
+   * defaults. Both are absolute; the store refuses anything else.
+   */
+  settings?: { engineFolder: string | null; exportFolder: string | null }
 }
 
 /** KEY=value per line; `#` starts a comment; matching quotes are stripped; no interpolation. */
@@ -82,11 +91,14 @@ function pick(
   key: Key,
   env: ConfigInput['env'],
   file: Record<string, string>,
+  /** What a person chose in Settings for this key, where the key has such a setting. */
+  stored: string | null = null,
 ): { value: string | null; source: Source } {
   const fromEnv = env[key]
   if (fromEnv !== undefined && fromEnv !== '') return { value: fromEnv, source: 'environment' }
   const fromFile = file[key]
   if (fromFile !== undefined && fromFile !== '') return { value: fromFile, source: '.env.local' }
+  if (stored !== null && stored !== '') return { value: stored, source: 'settings' }
   return { value: null, source: 'default' }
 }
 
@@ -99,14 +111,19 @@ export function resolveConfig(input: ConfigInput): Config {
   const absolute = (value: string): string =>
     isAbsolute(value) ? value : resolve(input.baseDir, value)
 
-  const home = pick('SCHEMATIC_HOME', input.env, file)
+  const home = pick('SCHEMATIC_HOME', input.env, file, input.settings?.engineFolder ?? null)
   const loomBin = pick('SCHEMATIC_LOOM_BIN', input.env, file)
   const loomCommit = pick('SCHEMATIC_LOOM_COMMIT', input.env, file)
   // A value that is only whitespace is no value: the file parser trims, the
   // environment does not.
   const namedCommit = loomCommit.value === null ? null : loomCommit.value.trim() || null
   const ffmpeg = pick('SCHEMATIC_FFMPEG', input.env, file)
-  const exportFolder = pick('LEGIBLE_EXPORT_FOLDER', input.env, file)
+  const exportFolder = pick(
+    'LEGIBLE_EXPORT_FOLDER',
+    input.env,
+    file,
+    input.settings?.exportFolder ?? null,
+  )
   const checkout = pick('LEGIBLE_ENGINE_CHECKOUT', input.env, file)
   const python = pick('LEGIBLE_ENGINE_PYTHON', input.env, file)
 

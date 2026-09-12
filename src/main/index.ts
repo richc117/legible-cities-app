@@ -3,13 +3,21 @@
 // specs/004-sidecar-supervisor/plan.md.
 
 import { existsSync } from 'node:fs'
-import { readFile, rm } from 'node:fs/promises'
-import { join } from 'node:path'
+import { mkdir, readFile, rm } from 'node:fs/promises'
+import { homedir } from 'node:os'
+import { isAbsolute, join } from 'node:path'
 import { BrowserWindow, app, clipboard, dialog, ipcMain, session, shell } from 'electron'
 import pins from '../../vendor/pins.json'
 import { CHANNELS } from '../shared/api'
+import type { AppSettings, FolderSource } from '../shared/settings'
 import { abortCaptures, capture, configureCapture } from './capture-window'
-import { describeConfig, resolveConfig, type Config } from './config'
+import {
+  describeConfig,
+  EXPORT_FOLDER_NAME,
+  resolveConfig,
+  type Config,
+  type Source,
+} from './config'
 import { registerEngineHandlers } from './engine-ipc'
 import { PickedPaths, registerFeedsHandlers, registryGuard } from './feeds-ipc'
 import { Exporter } from './export'
@@ -18,6 +26,8 @@ import { engineCommand, engineEnvironment, resolveInterpreter } from './interpre
 import { registerClipboardHandler, registerProjectHandlers, registerViewerHandlers } from './ipc'
 import { log } from './log'
 import { ProjectStore } from './projects'
+import { SettingsStore } from './settings'
+import { registerSettingsHandlers, SettingsService } from './settings-ipc'
 import { Viewer } from './viewer'
 import { registerAppProtocol } from './protocol'
 import { registerAppScheme } from './scheme'
@@ -28,6 +38,16 @@ export const PRODUCT_NAME = 'Legible Cities'
 // Before the app is ready, and exactly once (research.md section 1).
 registerAppScheme()
 
+// The user-data folder, moved for a test run. The end-to-end suite must not
+// write a person's settings file into their own profile, and Electron
+// derives this path from the platform rather than from anything the suite
+// can set; `app.setPath` is the only way, and it has to happen before the
+// app is ready. Not a setting: a switch for the suite (specs/019, A-006).
+const movedUserData = process.env.LEGIBLE_USER_DATA
+if (movedUserData !== undefined && movedUserData !== '' && isAbsolute(movedUserData)) {
+  app.setPath('userData', movedUserData)
+}
+
 let mainWindow: BrowserWindow | null = null
 let sidecar: Sidecar | null = null
 let exporter: Exporter | null = null
@@ -35,6 +55,16 @@ let quitting = false
 
 /** Where a running export keeps its frames, under the engine home (ADR-016). */
 const FRAMES_FOLDER = 'frames'
+
+/**
+ * How a folder's origin reads on the Settings screen. `.env.local` is the
+ * environment, in development: either way it is a decision from outside the
+ * app, and the screen must not offer to change it.
+ */
+function sourceOf(source: Source): FolderSource {
+  if (source === 'environment' || source === '.env.local') return 'environment'
+  return source
+}
 
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
@@ -106,7 +136,7 @@ function createWindow(): BrowserWindow {
   return window
 }
 
-async function loadConfig(): Promise<Config> {
+async function loadConfig(stored: AppSettings): Promise<Config> {
   const development = !app.isPackaged
   // Relative values resolve against the repository in development; a
   // packaged app's own path is inside the bundle, so use the working
@@ -127,8 +157,16 @@ async function loadConfig(): Promise<Config> {
     desktop: app.getPath('desktop'),
     loomPin: pins.loom.commit,
     baseDir,
+    // Below the environment and .env.local, above the defaults (A1-04).
+    settings: { engineFolder: stored.engineFolder, exportFolder: stored.exportFolder },
   })
   for (const line of describeConfig(config, { development })) log.info('config', line)
+  // Not one of the configuration's keys, so it is said here: a support
+  // conversation about a profile that is not where it should be starts with
+  // knowing this was set.
+  if (movedUserData !== undefined && movedUserData !== '') {
+    log.info('config', `LEGIBLE_USER_DATA=${app.getPath('userData')} (environment)`)
+  }
   return config
 }
 
@@ -181,7 +219,11 @@ if (!hasLock) {
   })
 
   app.whenReady().then(async () => {
-    const config = await loadConfig()
+    // The settings are read first: a folder a person chose is one of the
+    // things the configuration resolves, below the environment.
+    const settingsStore = new SettingsStore(app.getPath('userData'), (m) => log.warn('settings', m))
+    const stored = await settingsStore.load()
+    const config = await loadConfig(stored)
     const engine = createSidecar(config)
     sidecar = engine
     engine.start()
@@ -220,6 +262,62 @@ if (!hasLock) {
       picked,
       isTopFrame,
     )
+    // What the app decides for itself. The export folder is asked at each
+    // export, so a change here needs no restart; the engine's home was
+    // resolved above and moves at the next start (specs/019-settings).
+    const settings = new SettingsService({
+      store: settingsStore,
+      engineHome: config.home,
+      exportFolder: config.exportFolder,
+      sources: {
+        engine: sourceOf(config.sources.SCHEMATIC_HOME),
+        export: sourceOf(config.sources.LEGIBLE_EXPORT_FOLDER),
+      },
+      defaults: {
+        engine: join(app.getPath('userData'), 'engine'),
+        export: join(app.getPath('desktop'), EXPORT_FOLDER_NAME),
+      },
+      chooseFolder: async (which, current) => {
+        // Parented to the window, so it is modal to it (rules/main.md);
+        // only the window's own top frame can ask, so the window is there.
+        if (mainWindow === null || mainWindow.isDestroyed()) return null
+        const answer = await dialog.showOpenDialog(mainWindow, {
+          title: which === 'engine' ? 'Choose the engine data folder' : 'Choose the export folder',
+          defaultPath: current,
+          properties: ['openDirectory', 'createDirectory'],
+        })
+        return answer.canceled || answer.filePaths.length === 0 ? null : answer.filePaths[0]
+      },
+      // The reset's gate, from what only this side knows. A layout run is
+      // an engine request, so both kinds of work are covered.
+      busy: () => {
+        if (exporter !== null && exporter.live > 0)
+          return 'An export is running; wait for it to finish.'
+        if (engine.inFlight > 0) return 'The engine is working; wait for it to finish.'
+        return null
+      },
+      openFolder: async (path) => {
+        await mkdir(path, { recursive: true }).catch((error: Error) =>
+          log.warn('settings', `could not make the log folder: ${error.message}`),
+        )
+        const failure = await shell.openPath(path)
+        if (failure !== '') log.warn('settings', `could not open the log folder: ${failure}`)
+      },
+      // Asked for when it is wanted: a path Electron cannot answer must
+      // cost one dead button, not the whole startup.
+      logsFolder: () => app.getPath('logs'),
+      // Nothing may be kept inside the app itself, whoever chose it. In
+      // development that is the checkout; packaged, the bundle and the
+      // resources beside it.
+      bundleRoots: app.isPackaged ? [app.getAppPath(), process.resourcesPath] : [app.getAppPath()],
+      guards: { userData: app.getPath('userData'), homeDir: homedir() },
+      log: (message) => log.info('settings', message),
+    })
+    registerSettingsHandlers(ipcMain, settings, isTopFrame)
+
+    // The registry's gate, and in front of it the reset's: while the engine
+    // home is being removed, nothing may ask the engine to write into it.
+    const registry = registryGuard(picked, async () => (await store.list()).map((p) => p.feed))
     registerEngineHandlers(
       ipcMain,
       engine,
@@ -229,7 +327,7 @@ if (!hasLock) {
           mainWindow.webContents.send(channel, payload)
       },
       (message) => log.warn('engine', message),
-      registryGuard(picked, async () => (await store.list()).map((p) => p.feed)),
+      async (method, params) => settings.refuseWhileResetting() ?? (await registry(method, params)),
     )
     // Electron grants a permission request by default. Nothing this app
     // shows has any business asking for one, and the viewer's page least of
@@ -262,7 +360,10 @@ if (!hasLock) {
       projects: store,
       capture,
       framesRoot,
-      exportFolder: config.exportFolder,
+      exportFolder: () => settings.exportFolderNow(),
+      // The frames live under the engine home, so no export may begin while
+      // that folder is being removed.
+      blocked: () => settings.refuseWhileResetting(),
       log: (message) => log.info('export', message),
     })
     registerExportHandlers(

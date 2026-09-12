@@ -10,6 +10,7 @@
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { basename } from 'node:path'
 import { CHANNELS, type PickedZip } from '../shared/api'
+import { PickedPaths } from './picked'
 
 /** What the handler needs from Electron's dialog; a test hands in a fake. */
 export type OpenZipDialog = () => Promise<string | null>
@@ -126,24 +127,12 @@ export function refuseUrl(source: string): string | null {
 /**
  * The paths the chooser answered, each good for one accepted add: a page
  * that repeats the add with a fresh key each time would otherwise copy the
- * zip into the engine's home without bound on one consent.
+ * zip into the engine's home without bound on one consent. The class moved
+ * to `./picked` when Settings needed the same discipline for its two
+ * folders (A1-04); it is re-exported here because it arrived with the
+ * feeds and is imported from here.
  */
-export class PickedPaths {
-  readonly #paths = new Set<string>()
-
-  remember(path: string): void {
-    this.#paths.add(path)
-  }
-
-  has(path: string): boolean {
-    return this.#paths.has(path)
-  }
-
-  /** Spend the path: true when it was remembered, and now is not. */
-  take(path: string): boolean {
-    return this.#paths.delete(path)
-  }
-}
+export { PickedPaths }
 
 /**
  * The gate for the registry methods. Everything else passes untouched:
