@@ -112,9 +112,12 @@ settings: {
 
   It is refused while a reset is already running, while an export is
   running, an engine request is in flight or a record is being written, with
-  a sentence saying which; refused for a home that is not absolute, is a
-  filesystem root, is the user's home folder, or contains the user-data
-  folder; and refused when the export folder sits inside one of the four, or
+  a sentence saying which. The home is resolved through every symbolic link
+  before anything judges it, so the guards read the folder the reset would
+  really reach; resolving it reads and never creates, because a press that
+  is about to be refused must not write to the disk. It is then refused for
+  a home that is a filesystem root, is the user's home folder, or contains
+  the user-data folder; and refused when the export folder sits inside one of the four, or
   is the home, or holds it - because an export writes to
   `<folder>/<project name>/`, so a project named `out` would land in a
   folder the reset removes, and the confirmation promises that exported

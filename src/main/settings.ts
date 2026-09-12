@@ -230,40 +230,26 @@ export interface ResetOutcome {
  * else entirely - `/data` and `/out` at the root of a disk, say (FR-009).
  */
 /**
- * The engine home as the filesystem really sees it: the folder made if it
- * is not there, and every symbolic link in the path followed.
- *
- * This has to happen before anything judges the home, because `refuseReset`
- * compares text. A home of `<somewhere>/cities` where `cities` links to the
- * person's own home folder passes every one of those comparisons and then
- * removes `projects`, `data`, `out` and `frames` from the other end of the
- * link - the very loss the reset exists to prevent, one level up. The
+ * A path as the filesystem really sees it: every symbolic link in it
+ * followed. Used for the home and for the folders the home is compared
+ * against, because `refuseReset` compares text and a link would make every
+ * one of those comparisons miss. A home of `<somewhere>/cities` where
+ * `cities` links to the person's own home folder passes all of them and
+ * then removes `projects`, `data`, `out` and `frames` from the other end of
+ * the link - the very loss the reset exists to prevent, one level up. The
  * platform's dialog usually answers a resolved path, but `SCHEMATIC_HOME`
  * and a hand-edited settings file reach the app unfiltered.
- */
-export async function resolveHome(home: string): Promise<string> {
-  try {
-    // Creating the folder is harmless wherever it points, and a home that
-    // does not exist yet has no real path to read.
-    await mkdir(home, { recursive: true })
-    return await realpath(home)
-  } catch (error) {
-    throw new Error(`the engine data folder could not be read (${reasonOf(error)})`, {
-      cause: error,
-    })
-  }
-}
-
-/**
- * A path as the filesystem really sees it. For the things the home is
- * compared *against*: a folder that is not there is not a reason to refuse,
- * but a link anywhere in one of them would make the comparison miss.
  *
  * A path that does not exist has no real form, so the nearest ancestor that
  * does is resolved and the rest joined back on. That is not fussiness: on
  * macOS the temporary directory every test builds under is reached through
  * `/var`, which is a link to `/private/var`, so comparing a folder that
- * exists with one that does not would otherwise never match.
+ * exists with one that does not would otherwise never match. Reading is all
+ * this does - a folder that is not there is not made, because asking whether
+ * a reset may run must not write to the disk: a home on an unmounted volume
+ * would otherwise be created on the boot disk by the very press that is
+ * about to be refused, and on macOS a non-empty mount point then keeps the
+ * real volume from mounting.
  */
 export async function realOrResolved(path: string): Promise<string> {
   let current = resolve(path)
@@ -318,8 +304,8 @@ export function refuseReset(home: string, guards: ResetGuards): string | null {
  * delete does. A failure is reported by its code; the message would name
  * the path.
  *
- * `home` must already be a real path: `resolveHome` follows the links, and
- * `refuseReset` judges what it finds. This joins names onto what it is
+ * `home` must already be a real path: `realOrResolved` follows the links,
+ * and `refuseReset` judges what it finds. This joins names onto what it is
  * given and nothing more.
  */
 export async function resetContents(home: string): Promise<ResetOutcome> {

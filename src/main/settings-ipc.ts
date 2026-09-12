@@ -32,7 +32,6 @@ import {
   refuseReset,
   resetContents,
   RESET_FOLDERS,
-  resolveHome,
   type ResetGuards,
   type ResetOutcome,
   type SettingsStore,
@@ -260,7 +259,7 @@ export class SettingsService {
   }
 
   async #reset(): Promise<ResetOutcome> {
-    const home = await resolveHome(this.#deps.engineHome)
+    const home = await realOrResolved(this.#deps.engineHome)
     const guards = {
       userData: await realOrResolved(this.#deps.guards.userData),
       homeDir: await realOrResolved(this.#deps.guards.homeDir),

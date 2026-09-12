@@ -21,7 +21,6 @@ import {
   refuseReset,
   resetContents,
   RESET_FOLDERS,
-  resolveHome,
   SETTINGS_FILE,
   SettingsStore,
 } from '../../src/main/settings'
@@ -244,12 +243,15 @@ describe('resetContents', () => {
 // The guards compare text, so the home has to be a real path before any of
 // them looks at it: a home that is a link would pass every one and then
 // reach through to whatever it points at.
-describe('resolveHome', () => {
-  it('makes the folder when it was not there, and answers its real path', async () => {
+describe('the home is judged by its real path', () => {
+  it('leaves a folder that is not there alone rather than making it', async () => {
+    // Asking whether a reset may run must not write to the disk. A home on
+    // a volume that is not mounted would otherwise be made on the boot disk
+    // by the press that is about to refuse it, and a non-empty mount point
+    // keeps the real volume from mounting afterwards.
     const home = join(dir, 'never-existed')
-    const resolved = await resolveHome(home)
-    expect(await readdir(resolved)).toEqual([])
-    expect(resolved).toBe(await realpath(home))
+    expect(await realOrResolved(home)).toBe(join(await realpath(dir), 'never-existed'))
+    await expect(readdir(home)).rejects.toThrow()
   })
 
   it('follows a link, so the guards judge where it really points', async () => {
@@ -261,14 +263,14 @@ describe('resolveHome', () => {
     } catch {
       return // a locked-down Windows account cannot make one
     }
-    expect(await resolveHome(link)).toBe(await realpath(real))
+    expect(await realOrResolved(link)).toBe(await realpath(real))
 
     // And this is why it matters. refuseReset compares text, so every guard
     // is given a real path: the link's own text looks like an ordinary
     // folder and passes all of them, while what it points at is refused.
     const guards = { userData: await realpath(real), homeDir: await realpath(real) }
     expect(refuseReset(link, guards), 'the link itself passes every guard').toBeNull()
-    expect(refuseReset(await resolveHome(link), guards), 'what it points at does not').toMatch(
+    expect(refuseReset(await realOrResolved(link), guards), 'what it points at does not').toMatch(
       /your home folder/,
     )
   })
