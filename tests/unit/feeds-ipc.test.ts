@@ -109,6 +109,37 @@ describe('the registry guard', () => {
     expect(isLocalHost('8.8.8.8')).toBe(false)
   })
 
+  it('resolves an IPv6 literal to its full address, not a string prefix', async () => {
+    // The RFC 1918 octets are assembled rather than written for the same
+    // reason as above: these are addresses the guard refuses, named by
+    // their arithmetic, not a host of anyone's.
+    const mapped = (a: number, b: number, c: number, d: number): string =>
+      `::ffff:${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`
+    const compatible = (a: number, b: number, c: number, d: number): string =>
+      `::${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`
+    const octetSets: ReadonlyArray<readonly [number, number, number, number]> = [
+      [127, 0, 0, 1],
+      [10, 0, 0, 1],
+    ]
+    for (const octets of octetSets) {
+      // An IPv4-mapped IPv6 literal names the same machine the plain
+      // dotted address does; `new URL()` normalises a written-out
+      // `::ffff:a.b.c.d` into exactly this hex-group form on its own, so
+      // this is the shape isLocalHost actually has to judge.
+      expect(isLocalHost(`[${mapped(...octets)}]`)).toBe(true)
+      expect(isLocalHost(mapped(...octets))).toBe(true)
+      // The deprecated IPv4-compatible form embeds the same address a
+      // different way; still the same machine.
+      expect(isLocalHost(compatible(...octets))).toBe(true)
+    }
+    // fe80::/10 is a range, not the one literal address `fe80::`; a host
+    // elsewhere in the range must not slip past a prefix check.
+    expect(isLocalHost('fe95::1')).toBe(true)
+    expect(isLocalHost('febf::1')).toBe(true)
+    // A public IPv6 host - Google's public resolver - must still pass.
+    expect(isLocalHost('2001:4860:4860::8888')).toBe(false)
+  })
+
   it('refuses to remove a feed a project names, naming how many', async () => {
     const guard = registryGuard(new PickedPaths(), inUse(['mine', 'mine', 'other']))
     expect(await guard('feeds.remove', { key: 'mine' })).toBe(
