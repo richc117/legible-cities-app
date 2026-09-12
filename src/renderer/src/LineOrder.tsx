@@ -252,6 +252,10 @@ export default function LineOrder({
               {arranged.map((line, index) => (
                 <li className="line-row-group" key={line.label}>
                   <div className="line-row">
+                    {/* The figure a person scans. A screen reader is told
+                        the place by the list itself - an ordered list says
+                        "3 of 6" - and after a move by the status below, so
+                        saying it a third time in the row would be noise. */}
                     <span className="line-place" aria-hidden="true">
                       {index + 1}
                     </span>
@@ -261,23 +265,24 @@ export default function LineOrder({
                       aria-hidden="true"
                     />
                     <span className="line-name">{line.label}</span>
-                    <span className="line-source">{positionWords(index, arranged.length)}</span>
-                    <Button
-                      ref={keep(buttons.current, `${line.label}:-1`)}
-                      disabled={index === 0}
-                      aria-label={`Move line ${line.label} up`}
-                      onClick={() => moveLine(line, -1)}
-                    >
-                      Up
-                    </Button>
-                    <Button
-                      ref={keep(buttons.current, `${line.label}:1`)}
-                      disabled={index === arranged.length - 1}
-                      aria-label={`Move line ${line.label} down`}
-                      onClick={() => moveLine(line, 1)}
-                    >
-                      Down
-                    </Button>
+                    <span className="line-actions">
+                      <Button
+                        ref={keep(buttons.current, `${line.label}:-1`)}
+                        disabled={index === 0}
+                        aria-label={`Move line ${line.label} up`}
+                        onClick={() => moveLine(line, -1)}
+                      >
+                        Up
+                      </Button>
+                      <Button
+                        ref={keep(buttons.current, `${line.label}:1`)}
+                        disabled={index === arranged.length - 1}
+                        aria-label={`Move line ${line.label} down`}
+                        onClick={() => moveLine(line, 1)}
+                      >
+                        Down
+                      </Button>
+                    </span>
                   </div>
                 </li>
               ))}

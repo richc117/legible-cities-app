@@ -308,6 +308,14 @@ body {
   text-align: end;
 }
 
+/* The two moves sit at the end of the row, where the colour control's
+   Choose and Reset are, so the two panels read as one family. */
+.line-actions {
+  display: flex;
+  gap: var(--space-4-2);
+  margin-left: auto;
+}
+
 .line-list {
   list-style: none;
   margin: 0 0 var(--space-4-4);

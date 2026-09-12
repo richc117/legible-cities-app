@@ -88,8 +88,10 @@ test('lists every line in the order it is drawn, alphabetical until someone says
     const rows = rowsOf(page)
     await expect(rows).toHaveCount(6)
     await expect(rows.nth(0)).toContainText('A')
-    await expect(rows.nth(0)).toContainText('1 of 6')
-    await expect(rows.nth(5)).toContainText('6 of 6')
+    // The place is said once in the row, as a figure; the list itself tells
+    // a screen reader the position, and the status line says it after a move.
+    await expect(rows.nth(0)).toContainText('1')
+    await expect(rows.nth(5)).toContainText('6')
     // Nothing to put back yet, and no line can leave the list it is at the
     // end of.
     await expect(panelOf(page).getByRole('button', { name: 'Back to alphabetical' })).toBeDisabled()
@@ -106,6 +108,9 @@ test('a move redraws the map once, is stored, and is there on the next open', as
     const drawnBefore = received(engineHome, 'map.build').length
 
     await panel.getByRole('button', { name: 'Move line A down' }).click()
+    // The move is said politely, because the button's own name does not
+    // change and a screen reader would otherwise hear nothing happen.
+    await expect(panel.getByRole('status')).toContainText('A is now 2 of 6')
     await expect(page.getByText(/Drawn with the lines in the order you chose/)).toBeVisible({
       timeout: 30_000,
     })
