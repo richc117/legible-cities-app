@@ -302,7 +302,13 @@ unset, before the window opens, so a misconfigured run is diagnosable from
 the terminal. Contract: `specs/001-electron-skeleton/contracts/config.md`.
 The app writes to the engine home only under `projects/` and, while an
 export runs, `frames/`; it removes only a project's `out/<id>/` on delete
-and the whole of `frames/` at start; `feeds/` is the engine's and untouched.
+and, at start, what is inside `frames/`; `feeds/` is the engine's and
+untouched. The frames sweep empties a folder the app made and no other: the
+home is a setting and can name anyone's directory, so the app marks a frames
+folder it creates and refuses to empty one carrying no mark. Every folder
+above it is resolved through its symbolic links, and a link where the frames
+folder should be is refused rather than followed, as the reset refuses one.
+It never removes the frames folder itself.
 The one exception is "Reset engine data" in Settings, which removes
 `projects/`, `out/`, `data/` and `frames/` beneath the home - never the
 home itself, and never anything else in it (A1-04).

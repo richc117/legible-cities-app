@@ -159,8 +159,18 @@ runs, the other's button is disabled, and so is delete.
   capture's validator before a window exists, and the plan's file name MUST
   be a bare name.
 - **FR-004**: The frames MUST go under the engine home, in a folder of the
-  export's own, and MUST be removed when the export ends, whichever way;
-  a start of the app MUST remove the whole frames folder.
+  export's own, and MUST be removed when the export ends, whichever way. A
+  start of the app MUST empty a frames folder the app itself made, MUST
+  leave any other exactly as found, and MUST NOT remove the folder itself.
+  The engine home is a setting and can name anybody's directory, so the app
+  marks a frames folder it creates and sweeps only a marked one. The app
+  MUST mark a folder whenever it creates one, at a start and before each
+  export, because "Reset engine data" removes the frames folder and its mark
+  with it and the capture makes the folder again on its way to writing. A
+  link where the frames folder should be MUST be refused rather than
+  followed. An earlier version removed the folder whole and would have taken
+  a person's own with it; a later one marked only at a start, so one reset
+  turned the sweep off for good.
 - **FR-005**: `export.encode` MUST be given the plan unchanged, the frames
   folder, the destination under the export folder in a folder named after
   the project with the plan's file name, and the project's service day as
@@ -206,7 +216,8 @@ runs, the other's button is disabled, and so is delete.
 - **SC-002**: A cancel during the capture and a cancel during the encode
   each leave no file, no sidecar and no frames; a failed encode shows the
   engine's sentence and leaves the same nothing; a quit mid-export and a
-  start with a stale frames folder leave the folder empty.
+  start with a stale frames folder leave the folder holding nothing but its
+  mark; an unmarked frames folder is left with its contents untouched.
 - **SC-003**: The Los Angeles reel exported twice on a machine with the
   engine checkout and ffmpeg decodes to the same number of frames with no
   channel differing by more than 8; the run's timings and whether the two

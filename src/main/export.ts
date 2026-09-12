@@ -14,6 +14,7 @@
 
 import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
+import { claimFramesRoot, reasonOf } from './frames'
 import { frameTotal, type CaptureJob } from '../shared/capture'
 import { EngineError, ERROR_CODES, engineError, withoutPaths } from '../shared/engine'
 import type { ExportProgress, ExportResult, ExportStage, OfferedPreset } from '../shared/export'
@@ -322,6 +323,18 @@ export class Exporter {
         'Another export is writing this file; wait for it to finish.',
         'params',
       )
+    // Claimed before every export, not only at startup: "Reset engine data"
+    // removes the frames folder and its mark with it, and the capture makes
+    // the folder again on its way to `<root>/<token>`, unmarked. Without
+    // this, one reset would turn the sweep off for the life of the install.
+    // Safe to repeat, because a claim never adopts a folder it did not make.
+    //
+    // Before the file is claimed below, not after: everything between that
+    // claim and the `try` has to reach the `finally` that releases it, and
+    // this does not have to be inside it.
+    await claimFramesRoot(framesRoot).catch(() =>
+      log('the frames folder could not be claimed; leftovers will not be cleared'),
+    )
     this.#writing.add(dest)
 
     const frames = join(framesRoot, token)
@@ -363,8 +376,10 @@ export class Exporter {
       this.#writing.delete(dest)
       // The frames never outlive the export, whichever way it ended. The
       // capture removes them itself on its own failure; this covers the rest.
-      await rm(frames, { recursive: true, force: true }).catch((error: Error) =>
-        log(`could not remove the frames: ${error.message}`),
+      // The code, never the message: a filesystem error's message carries
+      // the path, and nothing this module logs may.
+      await rm(frames, { recursive: true, force: true }).catch((error: unknown) =>
+        log(`could not remove the frames (${reasonOf(error)})`),
       )
     }
   }

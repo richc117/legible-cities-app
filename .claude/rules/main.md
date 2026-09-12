@@ -45,7 +45,15 @@ update. The engine's home is `SCHEMATIC_HOME` under the user-data folder;
 exports go where the user chose: `LEGIBLE_EXPORT_FOLDER`, or a `Legible
 Cities` folder on the desktop until Settings exist, in a folder per
 project. An export's frames live under the engine home (`frames/<token>/`)
-only while it runs, and a start removes the folder. A path that is not one
+only while it runs, and a start empties that folder - **but only if the app
+made it**. The home is a setting and can name anybody's directory, so a
+`frames` folder the app did not create carries no mark and is left alone.
+Every folder above it is resolved through its links, and a link where the
+frames folder should be is refused rather than followed, as the reset
+refuses one. The folder itself is never removed, and the app marks a folder
+whenever it makes one - at start and before each export, because the reset
+takes the mark with the folder. Removing it outright, on the home as configured,
+was a real bug (`src/main/frames.ts`). A path that is not one
 of those is a bug. See ADR-016.
 
 ## The protocol is a contract

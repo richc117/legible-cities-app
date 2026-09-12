@@ -3,7 +3,7 @@
 // specs/004-sidecar-supervisor/plan.md.
 
 import { existsSync, mkdirSync } from 'node:fs'
-import { mkdir, readFile, rm } from 'node:fs/promises'
+import { mkdir, readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 import { BrowserWindow, app, clipboard, dialog, ipcMain, session, shell } from 'electron'
@@ -21,6 +21,7 @@ import {
 import { registerEngineHandlers } from './engine-ipc'
 import { PickedPaths, registerFeedsHandlers, registryGuard } from './feeds-ipc'
 import { Exporter } from './export'
+import { claimFramesRoot, clearFrames, describeSweep, FRAMES_FOLDER } from './frames'
 import { registerExportHandlers } from './export-ipc'
 import { engineCommand, engineEnvironment, resolveInterpreter } from './interpreter'
 import { registerClipboardHandler, registerProjectHandlers, registerViewerHandlers } from './ipc'
@@ -73,9 +74,6 @@ let quitting = false
 
 /** Why nothing may write under the engine's home right now, or null. */
 const resetInProgress = (): string | null => settings?.refuseWhileResetting() ?? null
-
-/** Where a running export keeps its frames, under the engine home (ADR-016). */
-const FRAMES_FOLDER = 'frames'
 
 /**
  * How a folder's origin reads on the Settings screen. `.env.local` is the
@@ -392,10 +390,13 @@ if (!hasLock) {
     configureCapture({ engineHome: config.home })
     // An export's frames live under the engine home only while it runs; a
     // crash mid-export leaves them, and nothing else will ever ask for them.
+    // Only a folder the app made is swept, and never the folder itself: the
+    // home is a setting and can name anybody's directory (src/main/frames.ts).
     const framesRoot = join(config.home, FRAMES_FOLDER)
-    await rm(framesRoot, { recursive: true, force: true }).catch((error: Error) =>
-      log.warn('export', `could not clear the frames folder: ${error.message}`),
+    await claimFramesRoot(framesRoot).catch(() =>
+      log.warn('export', 'the frames folder could not be claimed'),
     )
+    log.info('export', describeSweep(await clearFrames(framesRoot)))
     exporter = new Exporter({
       engine,
       projects: store,
