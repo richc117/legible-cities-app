@@ -393,7 +393,9 @@ if (!hasLock) {
     // Only a folder the app made is swept, and never the folder itself: the
     // home is a setting and can name anybody's directory (src/main/frames.ts).
     const framesRoot = join(config.home, FRAMES_FOLDER)
-    await claimFramesRoot(framesRoot).catch(() => false)
+    await claimFramesRoot(framesRoot).catch(() =>
+      log.warn('export', 'the frames folder could not be claimed'),
+    )
     log.info('export', describeSweep(await clearFrames(framesRoot)))
     exporter = new Exporter({
       engine,

@@ -14,6 +14,7 @@
 
 import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
+import { claimFramesRoot } from './frames'
 import { frameTotal, type CaptureJob } from '../shared/capture'
 import { EngineError, ERROR_CODES, engineError, withoutPaths } from '../shared/engine'
 import type { ExportProgress, ExportResult, ExportStage, OfferedPreset } from '../shared/export'
@@ -324,6 +325,14 @@ export class Exporter {
       )
     this.#writing.add(dest)
 
+    // Claimed before every export, not only at startup: "Reset engine data"
+    // removes the frames folder and its mark with it, and the capture makes
+    // the folder again on its way to `<root>/<token>`, unmarked. Without
+    // this, one reset would turn the sweep off for the life of the install.
+    // Safe to repeat, because a claim never adopts a folder it did not make.
+    await claimFramesRoot(framesRoot).catch(() =>
+      log(`the frames folder could not be claimed; leftovers will not be cleared`),
+    )
     const frames = join(framesRoot, token)
     try {
       this.#emit(token, 'capture', 0, `Capturing ${total} frames.`)

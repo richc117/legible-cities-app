@@ -91,11 +91,13 @@ describe('clearFrames refuses a folder the app did not make', () => {
     expect(await clearFrames(root)).toEqual({ refused: 'not a folder' })
   })
 
-  // A link at the root would otherwise carry the removal somewhere the app
-  // never looked at, which is the same hole the engine home's reset had.
-  it('judges what a link points at, not the link', async () => {
+  // The app never makes a link where it keeps its own folder, so one here is
+  // somebody's arrangement. The engine home's reset refuses that outright
+  // and this refuses it the same way, marker or no marker.
+  it('refuses a link where it expects its own folder', async () => {
     const real = join(dir, 'somebody-elses')
     await folderWith(join(real, 'holiday-2024'), 'photo.jpg')
+    await writeFile(join(real, FRAMES_MARKER), 'x')
     const link = join(dir, 'frames')
     try {
       await symlink(real, link, 'dir')
@@ -103,14 +105,27 @@ describe('clearFrames refuses a folder the app did not make', () => {
       return // a locked-down Windows account cannot make one
     }
 
-    expect(await clearFrames(link)).toEqual({ refused: 'no marker' })
+    expect(await clearFrames(link)).toEqual({ refused: 'a link' })
     expect(await readdir(join(real, 'holiday-2024'))).toEqual(['photo.jpg'])
+  })
 
-    // And the link is genuinely followed: mark the folder at the other end,
-    // as the app would have done had it made it, and the sweep reaches it.
-    await writeFile(join(real, FRAMES_MARKER), 'x')
-    expect(await clearFrames(link)).toEqual({ swept: 1 })
-    expect(await readdir(real)).toEqual([FRAMES_MARKER])
+  // The removal's own behaviour, which this module leans on: `rm` unlinks a
+  // link rather than following it, so a link inside a folder the app does
+  // own cannot carry the removal out of it.
+  it('unlinks a link inside the folder without touching what it points at', async () => {
+    const root = join(dir, 'frames')
+    await claimFramesRoot(root)
+    const elsewhere = join(dir, 'elsewhere')
+    await folderWith(elsewhere, 'keep-me.txt')
+    try {
+      await symlink(elsewhere, join(root, 'looks-like-a-token'), 'dir')
+    } catch {
+      return // a locked-down Windows account cannot make one
+    }
+
+    expect(await clearFrames(root)).toEqual({ swept: 1 })
+    expect(await readdir(root)).toEqual([FRAMES_MARKER])
+    expect(await readdir(elsewhere)).toEqual(['keep-me.txt'])
   })
 })
 
@@ -119,9 +134,10 @@ describe('describeSweep', () => {
     [{ swept: 0 }, /nothing to clear/],
     [{ swept: 1 }, /1 left-over export folder$/],
     [{ swept: 3 }, /3 left-over export folders$/],
+    [{ swept: 2, failed: 'EACCES' }, /some would not go \(EACCES\)/],
     [{ refused: 'no marker' }, /not one the app made/],
+    [{ refused: 'a link' }, /symbolic link/],
     [{ refused: 'not a folder' }, /could not be read/],
-    [{ failed: 'EACCES' }, /\(EACCES\)/],
   ]
 
   it('says what happened without naming a path', () => {

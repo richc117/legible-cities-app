@@ -14,7 +14,7 @@
 // is never removed, only what is inside it, which is also what keeps the
 // marker from having to be rewritten on every run.
 
-import { mkdir, readdir, rm, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, readdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { realOrResolved } from './settings'
 
@@ -60,7 +60,7 @@ export async function claimFramesRoot(root: string): Promise<boolean> {
 
 /** What a sweep did, for the log: never a path. */
 export type FramesSweep =
-  { swept: number } | { refused: 'no marker' | 'not a folder' } | { failed: string }
+  { swept: number; failed?: string } | { refused: 'no marker' | 'not a folder' | 'a link' }
 
 /**
  * Empty the frames root of everything an export left, and nothing else.
@@ -74,6 +74,11 @@ export async function clearFrames(root: string): Promise<FramesSweep> {
   let real: string
   let entries: string[]
   try {
+    // A link where the app expects its own folder is somebody's arrangement,
+    // because the app never makes one. The reset refuses that outright and
+    // this refuses it the same way: one policy, or the exception becomes the
+    // thing a later change reasons from.
+    if ((await lstat(root)).isSymbolicLink()) return { refused: 'a link' }
     real = await realOrResolved(root)
     entries = await readdir(real)
   } catch (error) {
@@ -85,27 +90,36 @@ export async function clearFrames(root: string): Promise<FramesSweep> {
   if (!entries.includes(FRAMES_MARKER)) return { refused: 'no marker' }
 
   let swept = 0
+  let failed: string | undefined
   for (const entry of entries) {
     if (entry === FRAMES_MARKER) continue
     try {
+      // `rm` unlinks a link rather than following it, so a link an export
+      // never made cannot carry the removal out of this folder.
       await rm(join(real, entry), { recursive: true, force: true })
       swept += 1
     } catch (error) {
-      return { failed: reasonOf(error) }
+      // Every entry is attempted whatever happened to the last, as the
+      // reset's folders are: one that will not go must not pin the rest
+      // here forever, since the next start would stop at the same place.
+      failed ??= reasonOf(error)
     }
   }
-  return { swept }
+  return failed === undefined ? { swept } : { swept, failed }
 }
 
 /** The sweep as a sentence for the log, naming folders and codes, never a path. */
 export function describeSweep(sweep: FramesSweep): string {
   if ('refused' in sweep) {
-    return sweep.refused === 'no marker'
-      ? 'the frames folder is not one the app made, so it was left alone'
-      : 'the frames folder could not be read, so it was left alone'
+    if (sweep.refused === 'no marker')
+      return 'the frames folder is not one the app made, so it was left alone'
+    if (sweep.refused === 'a link')
+      return 'the frames folder is a symbolic link, which the app will not follow'
+    return 'the frames folder could not be read, so it was left alone'
   }
-  if ('failed' in sweep) return `the frames folder could not be cleared (${sweep.failed})`
-  return sweep.swept === 0
-    ? 'the frames folder held nothing to clear'
-    : `cleared ${sweep.swept} left-over export folder${sweep.swept === 1 ? '' : 's'}`
+  const cleared =
+    sweep.swept === 0
+      ? 'the frames folder held nothing to clear'
+      : `cleared ${sweep.swept} left-over export folder${sweep.swept === 1 ? '' : 's'}`
+  return sweep.failed === undefined ? cleared : `${cleared}; some would not go (${sweep.failed})`
 }

@@ -220,7 +220,13 @@ function harness(
   return { exporter, eng, cap, progress, log, framesRoot, exportFolder, folder }
 }
 
-const settle = async (times = 6): Promise<void> => {
+// Turns of the event loop, not promise flushes: steps of the export touch
+// the filesystem, and a real read or write takes several turns to come back
+// where a resolved promise takes one. Generous on purpose - the whole file
+// runs in under a fifth of a second either way, and a budget that is too
+// tight fails as "the step did not happen", which reads like a bug in the
+// step.
+const settle = async (times = 24): Promise<void> => {
   for (let i = 0; i < times; i++) await tick()
 }
 
