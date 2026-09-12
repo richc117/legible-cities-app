@@ -17,6 +17,7 @@ import type {
   ProjectInputs,
   ProjectSummary,
   RebuildDone,
+  Theme,
 } from './project'
 
 export type {
@@ -108,6 +109,13 @@ export interface Api {
      * (specs/020-line-order/contracts/bridge.md).
      */
     completeOrder(id: string, order: LineOrder): Promise<ProjectRecord>
+    /**
+     * The theme a person chose for this project's map (A4-03), written the
+     * moment it is pressed: a theme is neither a layout nor a render, so
+     * there is nothing to finish first. The page restyles itself from its
+     * own address (specs/021-theme/contracts/bridge.md).
+     */
+    setTheme(id: string, theme: Theme): Promise<ProjectRecord>
   }
   /**
    * The map on the screen. The page runs in a sandboxed frame at an opaque
@@ -205,6 +213,7 @@ export const CHANNELS = {
   projectsSetInputs: 'projects:set-inputs',
   projectsCompleteColors: 'projects:complete-colors',
   projectsCompleteOrder: 'projects:complete-order',
+  projectsSetTheme: 'projects:set-theme',
   viewerAttach: 'viewer:attach',
   viewerRelease: 'viewer:release',
   viewerCall: 'viewer:call',

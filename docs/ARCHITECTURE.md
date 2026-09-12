@@ -85,6 +85,7 @@ write under `api.clipboard`, and the app's own settings under
 | `setInputs(id, { mode, agency })` | stores the mode and agency a person chose with the feed in view; the next layout passes them to the engine, which names a layout for them (A2-02) |
 | `completeColors(id, palette)` | records the line colours a person chose, once the map has been drawn with them; every label and every colour is checked on the main side first (A4-01) |
 | `completeOrder(id, order)` | records the order a person arranged the lines in, once the map has been drawn in it; every label is checked on the main side first, and the same line twice is refused (A4-02) |
+| `setTheme(id, theme)` | records the theme the project's map is drawn in, at once rather than after a build: a theme is neither a layout nor a render, and the page restyles itself from its own address (A4-03) |
 | `feeds.pickZip()` | opens the platform's file chooser for a GTFS zip and remembers the answer; the one native dialog, since a page cannot choose a file (A2-01) |
 
 | `viewer.attach(projectId)` | holds the project page's frame by identity once it has loaded, and answers whether it did (ADR-028) |
@@ -613,6 +614,38 @@ defect until engine issue 28 - `line_order` drew the labels it named and no
 others, so an order naming two lines of six drew two - which is why the app
 pins the release that fixed it.
 
+### The theme
+
+The engine's page draws itself in one of two themes, warm-dark and sepia,
+and reads which from `theme=` on its own address before its first paint, so
+a frame never shows one and then the other. The record has carried `theme`
+since A1-05 and the theme switch on the project screen is what writes it
+(A4-03).
+
+It is the project's theme, not the interface's. The map followed the
+interface until this landed, which the viewer's own comment called a
+placeholder: a theme belongs to the map, which is exported and published,
+rather than to the room the person making it is sitting in. The interface
+keeps its own theme in Settings and the two move independently.
+
+A theme press is not free, though it is cheap: the theme rides on the
+address, so the frame navigates rather than restyles. The page starts again
+- its clock back at the hour it opens on, its chosen view, its scrub
+position and its line toggles gone - and a large network's data is parsed
+again. The app cannot do better today: it drives the page through
+`window.__present` from the main process (ADR-028) and that seam has no
+theme method, which is an engine issue rather than an app one.
+
+Nothing is rebuilt for a theme, and no engine request is made at all: the
+SVG carries its furniture's colours as CSS variables with literal
+fallbacks, so the page restyles itself and the line colours do not move.
+The record is written the moment the switch is pressed, through
+`setTheme`, and the viewer reloads the page at the new address. An export
+passes the same choice in the engine's own vocabulary - `themeFor` maps the
+record's two onto `dark` and `light` in `export.plan`'s options, and the
+engine turns anything that is not `dark` into `theme=sepia` on the page it
+drives (`specs/021-theme`).
+
 ## The feeds
 
 The Library lists the feeds the engine knows (`feeds.list`, engine
@@ -859,9 +892,7 @@ frame in RGB with the tolerance of 8.
 |---|---|
 | The contract tests running in continuous integration; they exist and are gated on an engine checkout | A0-06 |
 | A screen for long jobs across projects; the layout run and the export draw their own progress on the project screen | A1-03 |
-| Settings: the data folder, the export folder (a configuration key until then), the versions shown | A1-04 |
-| A feed chooser over the engine's registry; the feed key is typed and checked for form | A2-01 |
-| Editing the style and the theme; the record holds the engine's defaults, and the colours and the order are a person's since A4-01 and A4-02 | A4-03 |
+| Editing the numeric style fields; the record holds the engine's defaults, and the colours, the order and the theme are a person's since A4-01, A4-02 and A4-03 | post-MVP |
 | Every other preset, and the export's options: quality, storyboard, theme, the safe zones | A5-01 |
 | Vendored Python, LOOM and ffmpeg; installers | A0-10 (`specs/002`) |
 | A log file and "copy diagnostics" | A6-03 |

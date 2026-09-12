@@ -13,7 +13,32 @@ export interface ProjectStyle {
   labelSize: number
 }
 
+/**
+ * The two themes the engine's page draws itself in: warm-dark, which is
+ * what it draws without being told, and sepia, the cream of the pocket map.
+ * They are the page's own names and travel to it on its address (A4-03).
+ */
 export type Theme = 'warm-dark' | 'sepia'
+
+/**
+ * The two, and nothing else; a record that names another is drawn
+ * warm-dark. One list, which the switch offers and the validator checks, so
+ * a third theme cannot be half-added.
+ */
+export const THEMES = ['warm-dark', 'sepia'] as const satisfies readonly Theme[]
+
+export function isTheme(value: unknown): value is Theme {
+  return THEMES.some((theme) => theme === value)
+}
+
+/**
+ * A theme a person chose (A4-03). Checked in the main-side handler because
+ * it arrived from another process, and in the store because the store is
+ * the trusted layer; the switch itself can only send one of the two.
+ */
+export function validateTheme(theme: unknown): string | null {
+  return isTheme(theme) ? null : 'the theme must be warm-dark or sepia'
+}
 
 /**
  * What the engine answered when the project was laid out: the days its
@@ -369,7 +394,7 @@ export function parseRecord(json: unknown): Parsed {
     colors,
     defaultColor: isColor(json.defaultColor) ? json.defaultColor : DEFAULT_COLOR,
     lineOrder: readLineOrder(json.lineOrder),
-    theme: json.theme === 'sepia' ? 'sepia' : DEFAULT_THEME,
+    theme: isTheme(json.theme) ? json.theme : DEFAULT_THEME,
     layout: isLayoutId(json.layout) ? json.layout : null,
     made: validateMade(json.made) === null ? (json.made as string) : null,
     built: readInputs(json.built),

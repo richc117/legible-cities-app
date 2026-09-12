@@ -25,6 +25,7 @@ import {
   validateName,
   validateLineOrder,
   validatePalette,
+  validateTheme,
   type CreateProjectInput,
   type DeleteResult,
   type LineOrder,
@@ -33,6 +34,7 @@ import {
   type ProjectRecord,
   type ProjectSummary,
   type RebuildDone,
+  type Theme,
   validateMade,
   validateServiceDate,
   validateServiceWindow,
@@ -488,6 +490,31 @@ export class ProjectStore {
       ...record,
       version: RECORD_VERSION,
       lineOrder: [...order],
+      modified: new Date().toISOString(),
+    }
+    await this.writeAtomic(id, updated)
+    return updated
+  }
+
+  /**
+   * The theme a person chose for this project's map (A4-03). Written the
+   * moment it is pressed rather than after a build, because a theme is
+   * neither a layout nor a render: the engine's page carries its furniture's
+   * colours as CSS variables and restyles itself from its own address.
+   */
+  async setTheme(id: string, theme: Theme): Promise<ProjectRecord> {
+    return this.#track(() => this.#setThemeTracked(id, theme))
+  }
+
+  async #setThemeTracked(id: string, theme: Theme): Promise<ProjectRecord> {
+    this.checkId(id)
+    check(validateTheme(theme))
+    const { record, readOnly } = await this.load(id)
+    if (readOnly) throw new Error('read-only')
+    const updated: ProjectRecord = {
+      ...record,
+      version: RECORD_VERSION,
+      theme,
       modified: new Date().toISOString(),
     }
     await this.writeAtomic(id, updated)

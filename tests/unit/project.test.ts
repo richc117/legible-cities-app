@@ -17,6 +17,7 @@ import {
   validateName,
   validateLineOrder,
   validateServiceWindow,
+  validateTheme,
   withinWindow,
   type ProjectRecord,
   AGENCY_MAX,
@@ -196,6 +197,20 @@ describe('validateLineOrder', () => {
     expect(validateLineOrder(Array.from({ length: 513 }, (_u, i) => `line-${i}`))).toMatch(
       /more than 512/,
     )
+  })
+})
+
+describe('validateTheme', () => {
+  it('takes the two the engine’s page draws', () => {
+    expect(validateTheme('warm-dark')).toBeNull()
+    expect(validateTheme('sepia')).toBeNull()
+  })
+
+  it('refuses anything else, including the interface’s third option', () => {
+    for (const value of [undefined, null, 42, '', 'dark', 'light', 'system', ['sepia']])
+      expect(validateTheme(value), JSON.stringify(value) ?? 'undefined').toMatch(
+        /warm-dark or sepia/,
+      )
   })
 })
 

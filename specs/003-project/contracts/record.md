@@ -62,6 +62,12 @@ The on-disk form of `ProjectRecord` (`data-model.md`), version 1:
   over itself and another's place would be ambiguous. A label the layout
   does not carry is harmless, because the engine ignores it and draws every
   line an order leaves out (engine issue 28).
+- `theme` (defined by A1-05, first written by A4-03, still version 1) is
+  the theme the project's map is drawn in: `warm-dark` or `sepia`, the
+  engine page's own names, which reach it as `theme=` on its address and
+  the export as `dark` or `light`. Anything else reads as `warm-dark` and
+  is refused on write. It is the project's theme and not the interface's,
+  which is a setting of its own (A1-04).
 - A write stores the record as the reader normalised it, stamped with the
   current `version`: unknown keys are dropped, an invalid colour, theme or
   date falls back to its default, and a missing timestamp becomes the epoch.

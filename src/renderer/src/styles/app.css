@@ -287,6 +287,16 @@ body {
   outline-offset: var(--focus-ring-offset);
 }
 
+.theme-switch h2 {
+  font-size: var(--font-ui-medium);
+  margin: var(--space-4-6) 0 var(--space-2-2);
+}
+
+.theme-switch h2:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus);
+  outline-offset: var(--focus-ring-offset);
+}
+
 .line-order h2 {
   font-size: var(--font-ui-medium);
   margin: var(--space-4-6) 0 var(--space-2-2);
