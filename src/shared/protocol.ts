@@ -1,7 +1,7 @@
 // Generated from the engine's own description of its protocol.
 // Run `npm run typegen` to regenerate; edits here are lost.
 //
-// Engine: v0.8.0, protocol 1.
+// Engine: v0.8.2, protocol 1.
 // Source: vendor/protocol.schema.json, printed by the engine's
 // `python -m schematic.serve --schema` and committed verbatim.
 
@@ -263,7 +263,10 @@ export interface MapBuildParams {
    */
   default_color?: HexColor
   /**
-   * Line labels in the order they stack on shared track; the rest follow.
+   * Line labels in the order they stack on shared track, the later over the
+   * earlier. A line the list leaves out follows the ones it names, and a
+   * label the layout does not carry is ignored, so a partial or stale order
+   * never drops a line.
    */
   line_order?: string[]
 }
@@ -680,8 +683,11 @@ export interface FeedsList {
  * job/progress (stage download), then the check reports once (stage check).
  * The zip must carry stops, routes, trips, stop_times and a calendar in one
  * of its two forms; a refusal names the missing table and leaves nothing
- * behind. The name defaults to the feed's first agency, the key to a slug of
- * the name made unique.
+ * behind. A cancel is honoured until the moment the feed is kept, and
+ * answers with the cancelled error (-32800): the feed is then in neither the
+ * registry nor the cache, so a client told an add was cancelled need not go
+ * looking for one. The name defaults to the feed's first agency, the key to
+ * a slug of the name made unique.
  */
 export interface FeedsAddParams {
   /**
@@ -743,7 +749,15 @@ export interface Route {
    * GTFS route_type as published; -1 when missing.
    */
   route_type: number
+  /**
+   * route_color as the spec asks for it: six hex digits, upper case, without
+   * the hash. Null when the feed leaves it out or writes something that is
+   * not a colour, which a client must not paint with.
+   */
   color: string | null
+  /**
+   * route_text_color on the same terms as color.
+   */
   text_color: string | null
   /**
    * Rows in trips.txt; a headway-based trip is a template that expands into

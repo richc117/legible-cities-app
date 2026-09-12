@@ -84,6 +84,7 @@ write under `api.clipboard`, and the app's own settings under
 | `completeRebuild(id, done)` | records the day a finished rebuild drew the map for, inside the stored window or not at all (A3-04) |
 | `setInputs(id, { mode, agency })` | stores the mode and agency a person chose with the feed in view; the next layout passes them to the engine, which names a layout for them (A2-02) |
 | `completeColors(id, palette)` | records the line colours a person chose, once the map has been drawn with them; every label and every colour is checked on the main side first (A4-01) |
+| `completeOrder(id, order)` | records the order a person arranged the lines in, once the map has been drawn in it; every label is checked on the main side first, and the same line twice is refused (A4-02) |
 | `feeds.pickZip()` | opens the platform's file chooser for a GTFS zip and remembers the answer; the one native dialog, since a page cannot choose a file (A2-01) |
 
 | `viewer.attach(projectId)` | holds the project page's frame by identity once it has loaded, and answers whether it did (ADR-028) |
@@ -586,6 +587,32 @@ The engine ignores a colour for a label its stored layout does not carry,
 which is why the panel can list the feed's labels rather than the layout's
 and why an override outlives a narrower mode.
 
+### Line order
+
+One list decides two things on the engine's page: where two lines share
+track the later of them is drawn over the earlier, and the page lists the
+lines in rows in that same order. `map.build` takes it as `line_order`,
+and without one the engine draws the lines alphabetically by label.
+
+The record has carried `lineOrder` since A1-05 and the Line order panel is
+what writes it. It lists the same lines the Colours panel does, arranged by
+the record's order first and the rest as they came, with Move up and Move
+down on each: two named buttons rather than a drag, so the feature is
+reachable from the keyboard. A move is debounced into one `map.build` from
+the stored layout and the stored day, and the arrangement is written
+through `completeOrder` only once the map has been drawn in it. Every draw
+the run makes carries the record's order, as it carries the palette, so a
+layout, a re-layout, a chosen day and a colour change all keep the
+arrangement (`specs/020-line-order`).
+
+The order the app sends is the whole arrangement a person was looking at,
+and the engine treats it as a preference rather than a list of what to
+draw: the lines it names come first and every other line the layout carries
+follows, while a label the layout does not carry is ignored. That was a
+defect until engine issue 28 - `line_order` drew the labels it named and no
+others, so an order naming two lines of six drew two - which is why the app
+pins the release that fixed it.
+
 ## The feeds
 
 The Library lists the feeds the engine knows (`feeds.list`, engine
@@ -834,7 +861,7 @@ frame in RGB with the tolerance of 8.
 | A screen for long jobs across projects; the layout run and the export draw their own progress on the project screen | A1-03 |
 | Settings: the data folder, the export folder (a configuration key until then), the versions shown | A1-04 |
 | A feed chooser over the engine's registry; the feed key is typed and checked for form | A2-01 |
-| Editing the style, the colours, the line order and the theme; the record holds the engine's defaults | A4-01 to A4-03 |
+| Editing the style and the theme; the record holds the engine's defaults, and the colours and the order are a person's since A4-01 and A4-02 | A4-03 |
 | Every other preset, and the export's options: quality, storyboard, theme, the safe zones | A5-01 |
 | Vendored Python, LOOM and ffmpeg; installers | A0-10 (`specs/002`) |
 | A log file and "copy diagnostics" | A6-03 |

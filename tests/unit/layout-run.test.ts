@@ -17,6 +17,7 @@ import {
   doneSentence,
   drawnSentence,
   recolouredSentence,
+  reorderedSentence,
   stoppedSentence,
 } from '../../src/renderer/src/LayoutRun'
 import { LAYOUT_STAGES } from '../../src/shared/layout'
@@ -165,12 +166,14 @@ function setup(over: Partial<ProjectRecord> = {}, engine: EngineState | null = R
   const complete = vi.fn(async () => ({ changed: false, relaid: false }))
   const completeRebuild = vi.fn(async () => ({}))
   const completeColors = vi.fn(async () => ({}))
+  const completeOrder = vi.fn(async () => ({}))
   const record = project(over)
   const run = new LayoutRun({
     client,
     complete,
     completeRebuild,
     completeColors,
+    completeOrder,
     today: () => '2026-09-08',
   })
   return {
@@ -179,6 +182,7 @@ function setup(over: Partial<ProjectRecord> = {}, engine: EngineState | null = R
     complete,
     completeRebuild,
     completeColors,
+    completeOrder,
     record,
     begin: () => run.start(record, engine),
   }
@@ -785,6 +789,7 @@ describe('the run survives the record it writes', () => {
       complete,
       completeRebuild: async () => ({}),
       completeColors: async () => ({}),
+      completeOrder: async () => ({}),
       today: () => '2026-09-08',
     })
     run.start(record, READY)
@@ -802,6 +807,7 @@ describe('the run survives the record it writes', () => {
       complete,
       completeRebuild: async () => ({}),
       completeColors: async () => ({}),
+      completeOrder: async () => ({}),
       today: () => '2026-09-08',
     })
     run.start(project({ date: '2026-01-01' }), READY)
@@ -986,5 +992,147 @@ describe('recolour', () => {
 
   it('says, when it has finished, that the stations have not moved', () => {
     expect(recolouredSentence()).toMatch(/stations have not moved/)
+  })
+})
+
+describe('reorder', () => {
+  const stored = { layout: LAYOUT, date: '2026-09-15', service: WINDOW }
+  const chosen = ['C', 'A']
+
+  it('draws the stored layout for the stored day in the chosen order, and never lays out', async () => {
+    const { run, calls, completeOrder, record } = setup(stored)
+    run.reorder(record, READY, chosen)
+    await tick()
+    expect(calls).toHaveLength(1)
+    expect(calls[0].method, 'the map alone: an order is a render').toBe('map.build')
+    expect(calls[0].params).toMatchObject({
+      key: 'la-metro-rail',
+      layout: LAYOUT,
+      date: '2026-09-15',
+      out: 'p1',
+      line_order: ['C', 'A'],
+    })
+    expect(run.snapshot.state).toBe('running')
+    expect(run.snapshot.reordered).toBe(true)
+    expect(completeOrder, 'nothing is written until the map is drawn').not.toHaveBeenCalled()
+
+    calls[0].resolve({ files: {} })
+    await tick()
+    expect(completeOrder).toHaveBeenCalledWith('p1', chosen)
+    expect(run.snapshot.state).toBe('done')
+    expect(run.snapshot.reordered).toBe(true)
+  })
+
+  it('sends no order at all for a project nobody has arranged', async () => {
+    const { run, calls, record } = setup(stored)
+    run.reorder(record, READY, [])
+    await tick()
+    expect(
+      'line_order' in calls[0].params,
+      'the request is the one it made before the panel existed',
+    ).toBe(false)
+  })
+
+  it('writes nothing when the build fails, and says so', async () => {
+    const { run, calls, completeOrder, record } = setup(stored)
+    run.reorder(record, READY, chosen)
+    await tick()
+    calls[0].reject({ code: -32000, message: 'the stand-in draws nothing' })
+    await tick()
+    expect(completeOrder).not.toHaveBeenCalled()
+    expect(run.snapshot.state).toBe('failed')
+    expect(stoppedSentence('failed', false, false, false, true)).toMatch(/keeps the order it had/)
+  })
+
+  it('writes nothing when it is cancelled', async () => {
+    const { run, calls, completeOrder, record } = setup(stored)
+    run.reorder(record, READY, chosen)
+    await tick()
+    run.cancel()
+    expect(calls[0].cancelled).toBe(true)
+    calls[0].resolve({ files: {} })
+    await tick()
+    expect(completeOrder).not.toHaveBeenCalled()
+    expect(run.snapshot.state).toBe('cancelled')
+    expect(stoppedSentence('cancelled', false, false, false, true)).toMatch(
+      /keeps the order it had/,
+    )
+  })
+
+  it('refuses a project that has not been laid out, and starts nothing', async () => {
+    const { run, calls, completeOrder, record } = setup()
+    run.reorder(record, READY, chosen)
+    await tick()
+    expect(calls).toEqual([])
+    expect(completeOrder).not.toHaveBeenCalled()
+    expect(run.snapshot.state).toBe('failed')
+    expect(run.snapshot.reordered).toBe(true)
+    expect(run.snapshot.error).toMatch(/Lay the project out/)
+  })
+
+  it('refuses while another run is going: the two would rewrite one page', async () => {
+    const { run, calls, record, begin } = setup(stored)
+    begin()
+    await tick()
+    run.reorder(record, READY, chosen)
+    await tick()
+    expect(calls, 'only the layout call is out').toHaveLength(1)
+    expect(calls[0].method).toBe('graph.build')
+    expect(run.snapshot.reordered).toBe(false)
+  })
+
+  it('says, when it has finished, that the stations have not moved', () => {
+    expect(reorderedSentence()).toMatch(/stations have not moved/)
+  })
+})
+
+describe('the arrangement on every other draw', () => {
+  const arranged = { lineOrder: ['C', 'A'] }
+
+  it('goes with a layout run', async () => {
+    const { calls, begin } = setup({ ...arranged })
+    begin()
+    await laidOut(calls)
+    expect(calls[2].method).toBe('map.build')
+    expect(calls[2].params).toMatchObject({ line_order: ['C', 'A'] })
+  })
+
+  it('goes with a chosen day', async () => {
+    const { run, calls, record } = setup({
+      ...arranged,
+      layout: LAYOUT,
+      date: '2026-09-15',
+      service: WINDOW,
+    })
+    run.rebuild(record, READY, '2026-09-16')
+    await tick()
+    expect(calls[0].params).toMatchObject({ date: '2026-09-16', line_order: ['C', 'A'] })
+  })
+
+  it('goes with a colour change', async () => {
+    const { run, calls, record } = setup({
+      ...arranged,
+      layout: LAYOUT,
+      date: '2026-09-15',
+      service: WINDOW,
+    })
+    run.recolour(record, READY, { colors: { A: '#ff0000' }, defaultColor: '#00ff00' })
+    await tick()
+    expect(calls[0].params).toMatchObject({
+      colors: { A: '#ff0000' },
+      line_order: ['C', 'A'],
+    })
+  })
+
+  it("is the record's, not the one being tried, when a colour changes", async () => {
+    const { run, calls, record } = setup({
+      ...arranged,
+      layout: LAYOUT,
+      date: '2026-09-15',
+      service: WINDOW,
+    })
+    run.recolour(record, READY, { colors: {}, defaultColor: '#888888' })
+    await tick()
+    expect(calls[0].params).toMatchObject({ line_order: ['C', 'A'] })
   })
 })

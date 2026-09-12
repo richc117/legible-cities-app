@@ -53,7 +53,11 @@ desktop or `LEGIBLE_EXPORT_FOLDER`, the sidecar beside the file;
 the colour their feed publishes, an override per line, a reset per line and
 for all, and one default for the lines the feed leaves blank, debounced into
 a `map.build` from the stored layout and written only once the map carries
-them; `src/renderer/src/LineColours.tsx`). That is the first reel.
+them; `src/renderer/src/LineColours.tsx`) and the line order (A4-02: the
+project's lines in the order the map stacks them, moved one place at a time
+from two named buttons rather than a drag, the whole arrangement debounced
+into the same rebuild and written only once the map carries it;
+`src/renderer/src/LineOrder.tsx`). That is the first reel.
 
 Settings (A1-04) came after it: one file under the user-data folder holding
 the two folders a person chose and the interface's theme, read before the

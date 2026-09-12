@@ -15,6 +15,7 @@ import Icon from './icons/Icon'
 import Button from './kit/Button'
 import LayoutRunView from './LayoutRun'
 import LineColours from './LineColours'
+import LineOrderPanel from './LineOrder'
 import ServiceDay from './ServiceDay'
 import TextInput, { type TextInputHandle } from './kit/TextInput'
 import { useEngineState } from './useEngineState'
@@ -295,6 +296,16 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
           )}
           {!project.readOnly && project.layout !== null && (
             <LineColours
+              run={run}
+              project={project}
+              engine={engine}
+              inspect={inspect}
+              disabled={exporting}
+              busyNow={() => exporter.snapshot.state === 'running'}
+            />
+          )}
+          {!project.readOnly && project.layout !== null && (
+            <LineOrderPanel
               run={run}
               project={project}
               engine={engine}

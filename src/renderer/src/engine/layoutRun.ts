@@ -1,7 +1,9 @@
 import { LAYOUT_STAGES, type RunState } from '../../../shared/layout'
 import { isEngineErrorShape, ERROR_CODES, type EngineState } from '../../../shared/engine'
 import {
+  orderOf,
   paletteOf,
+  type LineOrder,
   type Palette,
   type ProjectRecord,
   type ServiceWindow,
@@ -57,6 +59,8 @@ export interface RunSnapshot {
   rebuilt: boolean
   /** Set when the run is a redraw for chosen colours: the map call alone (A4-01). */
   recoloured: boolean
+  /** Set when the run is a redraw for a chosen line order: the map call alone (A4-02). */
+  reordered: boolean
   /** The day a rebuild drew for; null for a layout run. */
   day: string | null
   /** What the map call said about the map it drew; null until one has. */
@@ -187,6 +191,8 @@ export interface RunOptions {
   completeRebuild(id: string, done: { date: string }): Promise<unknown>
   /** A redraw for chosen colours finished: the palette is written, never before the map is drawn. */
   completeColors(id: string, palette: Palette): Promise<unknown>
+  /** A redraw for a chosen line order finished: the order is written, never before the map is drawn. */
+  completeOrder(id: string, order: LineOrder): Promise<unknown>
   /** The anchor the engine's choice is made from: the machine's date, injected so a test can fix it. */
   today(): string
 }
@@ -245,6 +251,7 @@ const IDLE: RunSnapshot = {
   replaced: false,
   rebuilt: false,
   recoloured: false,
+  reordered: false,
   day: null,
   report: null,
 }
@@ -288,7 +295,15 @@ export class LayoutRun {
     if (this.#snapshot.state === 'running') return
     const { client, complete, today } = this.#options
     const force = options.force === true
-    if (!this.#begin(engine, { forced: force, rebuilt: false, recoloured: false, day: null }))
+    if (
+      !this.#begin(engine, {
+        forced: force,
+        rebuilt: false,
+        recoloured: false,
+        reordered: false,
+        day: null,
+      })
+    )
       return
 
     void (async () => {
@@ -336,7 +351,13 @@ export class LayoutRun {
 
         // The map is drawn from the layout just answered, by its id; the
         // engine never lays out on the way to a map.
-        const report = await this.#draw(project, built.layout, date, paletteOf(project))
+        const report = await this.#draw(
+          project,
+          built.layout,
+          date,
+          paletteOf(project),
+          orderOf(project),
+        )
         if (this.#cancelled) return this.#stopped()
 
         const written = await complete(project.id, {
@@ -379,15 +400,25 @@ export class LayoutRun {
         replaced: false,
         rebuilt: true,
         recoloured: false,
+        reordered: false,
         day: date,
       })
       return
     }
-    if (!this.#begin(engine, { forced: false, rebuilt: true, recoloured: false, day: date })) return
+    if (
+      !this.#begin(engine, {
+        forced: false,
+        rebuilt: true,
+        recoloured: false,
+        reordered: false,
+        day: date,
+      })
+    )
+      return
 
     void (async () => {
       try {
-        const report = await this.#draw(project, layout, date, paletteOf(project))
+        const report = await this.#draw(project, layout, date, paletteOf(project), orderOf(project))
         if (this.#cancelled) return this.#stopped()
         await completeRebuild(project.id, { date })
         this.#finish({ changed: false, relaid: false }, report)
@@ -417,17 +448,74 @@ export class LayoutRun {
         replaced: false,
         rebuilt: false,
         recoloured: true,
+        reordered: false,
         day: date,
       })
       return
     }
-    if (!this.#begin(engine, { forced: false, rebuilt: false, recoloured: true, day: date })) return
+    if (
+      !this.#begin(engine, {
+        forced: false,
+        rebuilt: false,
+        recoloured: true,
+        reordered: false,
+        day: date,
+      })
+    )
+      return
 
     void (async () => {
       try {
-        const report = await this.#draw(project, layout, date, palette)
+        const report = await this.#draw(project, layout, date, palette, orderOf(project))
         if (this.#cancelled) return this.#stopped()
         await completeColors(project.id, palette)
+        this.#finish({ changed: false, relaid: false }, report)
+      } catch (reason) {
+        this.#failed(reason)
+      }
+    })()
+  }
+
+  /**
+   * The map alone, from the stored layout, for the stored day, with the
+   * lines arranged as a person put them (A4-02). The same shape as a
+   * recolour: the layout stages never run, the day never moves, and the
+   * order is written only when the map has been drawn in it.
+   */
+  reorder(project: ProjectRecord, engine: EngineState | null, order: LineOrder): void {
+    if (this.#snapshot.state === 'running') return
+    const { completeOrder } = this.#options
+    const layout = project.layout
+    const date = project.date
+    if (layout === null || date === null) {
+      this.#set({
+        state: 'failed',
+        error: 'Lay the project out before arranging the lines.',
+        forced: false,
+        replaced: false,
+        rebuilt: false,
+        recoloured: false,
+        reordered: true,
+        day: date,
+      })
+      return
+    }
+    if (
+      !this.#begin(engine, {
+        forced: false,
+        rebuilt: false,
+        recoloured: false,
+        reordered: true,
+        day: date,
+      })
+    )
+      return
+
+    void (async () => {
+      try {
+        const report = await this.#draw(project, layout, date, paletteOf(project), order)
+        if (this.#cancelled) return this.#stopped()
+        await completeOrder(project.id, order)
         this.#finish({ changed: false, relaid: false }, report)
       } catch (reason) {
         this.#failed(reason)
@@ -438,7 +526,13 @@ export class LayoutRun {
   /** The engine ready, the line reset, the snapshot running; false when it cannot start. */
   #begin(
     engine: EngineState | null,
-    kind: { forced: boolean; rebuilt: boolean; recoloured: boolean; day: string | null },
+    kind: {
+      forced: boolean
+      rebuilt: boolean
+      recoloured: boolean
+      reordered: boolean
+      day: string | null
+    },
   ): boolean {
     if (engine === null || engine.state !== 'ready') {
       // The kind is this attempt's even when it fails to start, or the
@@ -489,6 +583,7 @@ export class LayoutRun {
     layout: string,
     date: string,
     palette: Palette,
+    order: LineOrder,
   ): Promise<RunReport | null> {
     const map = this.#options.client.request('map.build', {
       key: project.feed,
@@ -501,6 +596,12 @@ export class LayoutRun {
       // an override outlives a narrower mode.
       colors: palette.colors,
       default_color: palette.defaultColor,
+      // The arrangement, the same way (A4-02). Left out when there is none,
+      // so a project nobody has arranged asks for exactly what it asked for
+      // before the panel existed. The engine draws the lines an order names
+      // first and every other line after them, so a stale arrangement can
+      // neither drop a line nor draw one twice (engine issue 28).
+      ...(order.length === 0 ? {} : { line_order: order }),
     })
     this.#inFlight = map
     map.onProgress((p) => this.#report(p))

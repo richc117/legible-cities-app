@@ -15,6 +15,7 @@ import {
   validateId,
   validateMode,
   validateName,
+  validateLineOrder,
   validateServiceWindow,
   withinWindow,
   type ProjectRecord,
@@ -167,6 +168,37 @@ describe('validateServiceWindow and withinWindow', () => {
   })
 })
 
+describe('validateLineOrder', () => {
+  it('takes a list of the labels a record can hold', () => {
+    expect(validateLineOrder([])).toBeNull()
+    expect(validateLineOrder(['A', 'K', 'Rapid 720'])).toBeNull()
+  })
+
+  it('refuses anything that is not a list of text', () => {
+    for (const value of [undefined, null, 42, 'A', {}, [42], [null]])
+      expect(validateLineOrder(value), JSON.stringify(value) ?? 'undefined').toMatch(
+        /list of lines/,
+      )
+  })
+
+  it('refuses a label the record could not hold', () => {
+    expect(validateLineOrder([''])).toMatch(/needs a label/)
+    expect(validateLineOrder(['__proto__'])).toMatch(/__proto__/)
+    expect(validateLineOrder(['a'.repeat(65)])).toMatch(/too long/)
+    expect(validateLineOrder(['A\u0007'])).toMatch(/control character/)
+  })
+
+  it("refuses the same line twice: its place, and another line's, would be ambiguous", () => {
+    expect(validateLineOrder(['A', 'B', 'A'])).toMatch(/twice/)
+  })
+
+  it('refuses more lines than a feed could draw', () => {
+    expect(validateLineOrder(Array.from({ length: 513 }, (_u, i) => `line-${i}`))).toMatch(
+      /more than 512/,
+    )
+  })
+})
+
 describe('parseRecord', () => {
   it('reads a full record as written', () => {
     expect(parseRecord(structuredClone(full))).toEqual({ record: full, readOnly: false })
@@ -228,6 +260,23 @@ describe('parseRecord', () => {
       service: WINDOW,
       made: '2026-09-10T12:00:00+00:00',
     })
+    // An order is read the way the store would write it: a label it could
+    // not hold, and a second mention of one it could, are both dropped, so
+    // what a person sees is what the record keeps. A line dropped here still
+    // draws, because the engine draws every line an order leaves out.
+    const orders = parseRecord({
+      ...full,
+      lineOrder: ['A', '__proto__', 'B', 'A', '', 'a'.repeat(65), 'K'],
+    })
+    expect('record' in orders && orders.record.lineOrder).toEqual(['A', 'B', 'K'])
+    const notAList = parseRecord({ ...full, lineOrder: 'A' })
+    expect('record' in notAList && notAList.record.lineOrder).toEqual([])
+    const tooMany = parseRecord({
+      ...full,
+      lineOrder: Array.from({ length: 600 }, (_u, i) => `line-${i}`),
+    })
+    expect('record' in tooMany && tooMany.record.lineOrder.length).toBe(512)
+
     // A layout identifier is 64 hex digits, the engine's id (ADR-033) or the
     // digest the app wrote before; anything else is dropped rather than half-trusted.
     const badDate = parseRecord({

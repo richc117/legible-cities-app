@@ -778,6 +778,92 @@ describe('completeColors', () => {
   })
 })
 
+// The order a person arranged the lines in (A4-02), written once the map
+// has been drawn in it, as the colours are.
+describe('completeOrder', () => {
+  const LAYOUT = 'a'.repeat(64)
+
+  async function laidOut(): Promise<ProjectRecord> {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    await store.completeLayout(project.id, {
+      date: '2026-09-15',
+      layout: LAYOUT,
+      service: WINDOW,
+      made: MADE,
+      built: BUILT,
+    })
+    return project
+  }
+
+  it('writes the order and the time, and nothing else', async () => {
+    const project = await laidOut()
+    const before = await store.get(project.id)
+    const after = await store.completeOrder(project.id, ['K', 'A'])
+    expect(after.lineOrder).toEqual(['K', 'A'])
+    expect(after.layout, 'an order is a render, never a layout').toBe(LAYOUT)
+    expect(after.date).toBe(before.date)
+    expect(after.colors).toEqual(before.colors)
+    expect(after.modified >= before.modified).toBe(true)
+    expect(await store.get(project.id), 'and it is on disk').toEqual({ ...after, readOnly: false })
+  })
+
+  it('reads the same order back on the next open, which is the whole point', async () => {
+    const project = await laidOut()
+    await store.completeOrder(project.id, ['K', 'A'])
+    const fresh = new ProjectStore(home, (message) => lines.push(message))
+    expect((await fresh.get(project.id)).lineOrder).toEqual(['K', 'A'])
+  })
+
+  it('replaces the order rather than merging it, so the way back really goes back', async () => {
+    const project = await laidOut()
+    await store.completeOrder(project.id, ['K', 'A'])
+    expect((await store.completeOrder(project.id, [])).lineOrder).toEqual([])
+  })
+
+  it('keeps no reference to the order it was handed', async () => {
+    const project = await laidOut()
+    const order = ['K', 'A']
+    const after = await store.completeOrder(project.id, order)
+    order[0] = 'B'
+    expect(after.lineOrder[0]).toBe('K')
+    expect((await store.get(project.id)).lineOrder[0]).toBe('K')
+  })
+
+  it('refuses a label the record could not hold, and the same line twice', async () => {
+    const project = await laidOut()
+    for (const order of [
+      'A',
+      [''],
+      ['a'.repeat(65)],
+      ['__proto__'],
+      ['A', 'A'],
+      [1],
+      ['A\u0007'],
+    ]) {
+      await expect(
+        store.completeOrder(project.id, order as never),
+        JSON.stringify(order),
+      ).rejects.toThrow()
+    }
+    expect((await store.get(project.id)).lineOrder, 'nothing was written').toEqual([])
+  })
+
+  it('refuses a project with no layout: there is nothing to draw in that order', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    await expect(store.completeOrder(project.id, ['A'])).rejects.toThrow(
+      'lay the project out first',
+    )
+  })
+
+  it('refuses a record a newer version of the app wrote', async () => {
+    const project = await laidOut()
+    const file = join(home, 'projects', project.id, 'project.json')
+    const current = await store.get(project.id)
+    await writeFile(file, JSON.stringify({ ...current, version: 99 }), 'utf8')
+    await expect(store.completeOrder(project.id, ['A'])).rejects.toThrow('read-only')
+  })
+})
+
 // Both folders are under the engine's home, so the settings screen asks
 // before it removes that home's contents: a record being renamed into place
 // is a write the reset must not walk through (A1-04).

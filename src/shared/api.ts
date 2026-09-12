@@ -11,6 +11,7 @@ import type { ViewerMethod } from './viewer'
 import type {
   CreateProjectInput,
   DeleteResult,
+  LineOrder,
   Palette,
   ProjectRecord,
   ProjectInputs,
@@ -100,6 +101,13 @@ export interface Api {
      * (specs/018-colours/contracts/bridge.md).
      */
     completeColors(id: string, palette: Palette): Promise<ProjectRecord>
+    /**
+     * The order a person arranged the lines in (A4-02), written once the
+     * map has been drawn in it, as the colours are. The main process checks
+     * every label before the store sees it
+     * (specs/020-line-order/contracts/bridge.md).
+     */
+    completeOrder(id: string, order: LineOrder): Promise<ProjectRecord>
   }
   /**
    * The map on the screen. The page runs in a sandboxed frame at an opaque
@@ -196,6 +204,7 @@ export const CHANNELS = {
   projectsCompleteRebuild: 'projects:complete-rebuild',
   projectsSetInputs: 'projects:set-inputs',
   projectsCompleteColors: 'projects:complete-colors',
+  projectsCompleteOrder: 'projects:complete-order',
   viewerAttach: 'viewer:attach',
   viewerRelease: 'viewer:release',
   viewerCall: 'viewer:call',

@@ -287,6 +287,22 @@ body {
   outline-offset: var(--focus-ring-offset);
 }
 
+.line-order h2 {
+  font-size: var(--font-ui-medium);
+  margin: var(--space-4-6) 0 var(--space-2-2);
+}
+
+/* The place a line stands in the order, beside its swatch: a figure, quiet,
+   and the same width whatever the digit, so the names line up. */
+.line-place {
+  flex: none;
+  min-width: var(--space-4-3);
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  font-variant-numeric: var(--numerals);
+  text-align: end;
+}
+
 .line-list {
   list-style: none;
   margin: 0 0 var(--space-4-4);

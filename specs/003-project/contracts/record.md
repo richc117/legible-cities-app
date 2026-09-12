@@ -52,6 +52,16 @@ The on-disk form of `ProjectRecord` (`data-model.md`), version 1:
   control character, is dropped on read and refused on write; so is the
   label `__proto__`, which a plain object cannot hold as a property and
   which the record could therefore store and never read back.
+- `lineOrder` (defined by A1-05, first written by A4-02, still version 1)
+  is the order the lines are drawn in, the later over the earlier where
+  they share track and the same order the page lists them in. It is what
+  `map.build` takes as `line_order`, and it is left out of the request
+  entirely when it is empty, which is the engine's own alphabetical order.
+  Its labels are held to the same rules `colors`' are, and a label in it
+  twice is dropped on read and refused on write: one line would be drawn
+  over itself and another's place would be ambiguous. A label the layout
+  does not carry is harmless, because the engine ignores it and draws every
+  line an order leaves out (engine issue 28).
 - A write stores the record as the reader normalised it, stamped with the
   current `version`: unknown keys are dropped, an invalid colour, theme or
   date falls back to its default, and a missing timestamp becomes the epoch.

@@ -74,6 +74,7 @@ describe('registerProjectHandlers', () => {
       [CHANNELS.projectsCompleteLayout, 'aaaaaaaaaaaa', {}],
       [CHANNELS.projectsCompleteRebuild, 'aaaaaaaaaaaa', { date: '2026-09-15' }],
       [CHANNELS.projectsCompleteColors, 'aaaaaaaaaaaa', { colors: {}, defaultColor: '#888888' }],
+      [CHANNELS.projectsCompleteOrder, 'aaaaaaaaaaaa', ['A']],
     ] as const
     for (const [channel, ...args] of writes) {
       await expect(h.call(channel, ...args), channel).rejects.toThrow(why)
@@ -227,6 +228,47 @@ describe('registerProjectHandlers', () => {
       ).rejects.toThrow()
     }
     expect(calls, 'nothing reached the store').toEqual([])
+  })
+
+  it('refuses an order the record could not hold, and reaches the store with none of it', async () => {
+    const { call, calls } = harness()
+    for (const order of [
+      undefined,
+      null,
+      42,
+      'A',
+      {},
+      { 0: 'A' },
+      [42],
+      [null],
+      [''],
+      ['A\nB'],
+      ['a'.repeat(65)],
+      // A label a plain object cannot hold as a key: the record would
+      // write it and never read it back.
+      ['__proto__'],
+      // The same line twice: one would be drawn over itself and another
+      // line's place would be ambiguous.
+      ['A', 'B', 'A'],
+      Array.from({ length: 513 }, (_unused, i) => `line-${i}`),
+    ]) {
+      await expect(
+        call(CHANNELS.projectsCompleteOrder, 'abcdefghijk1', order),
+        JSON.stringify(order) ?? 'undefined',
+      ).rejects.toThrow()
+    }
+    expect(calls, 'nothing reached the store').toEqual([])
+  })
+
+  it('passes an order the panel would send, and keeps no reference to it', async () => {
+    const { call, calls } = harness()
+    await expect(call(CHANNELS.projectsCompleteOrder, '../x', ['A'])).rejects.toThrow('invalid id')
+    const order = ['K', 'A', 'Rapid 720']
+    await call(CHANNELS.projectsCompleteOrder, 'abcdefghijk1', order)
+    order[0] = 'B'
+    expect(calls).toEqual([
+      { method: 'completeOrder', args: ['abcdefghijk1', ['K', 'A', 'Rapid 720']] },
+    ])
   })
 
   it('passes a palette the panel would send, and only its two fields', async () => {

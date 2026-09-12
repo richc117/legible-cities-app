@@ -570,7 +570,7 @@
           "items": {
             "type": "string"
           },
-          "description": "Line labels in the order they stack on shared track; the rest follow."
+          "description": "Line labels in the order they stack on shared track, the later over the earlier. A line the list leaves out follows the ones it names, and a label the layout does not carry is ignored, so a partial or stale order never drops a line."
         }
       },
       "required": [
@@ -1623,7 +1623,7 @@
       "additionalProperties": false
     },
     "FeedsAddParams": {
-      "description": "Add a feed a person chose, from a URL or a zip the client owns, and keep it across restarts. A long request: the download reports its bytes as job/progress (stage download), then the check reports once (stage check). The zip must carry stops, routes, trips, stop_times and a calendar in one of its two forms; a refusal names the missing table and leaves nothing behind. The name defaults to the feed's first agency, the key to a slug of the name made unique.",
+      "description": "Add a feed a person chose, from a URL or a zip the client owns, and keep it across restarts. A long request: the download reports its bytes as job/progress (stage download), then the check reports once (stage check). The zip must carry stops, routes, trips, stop_times and a calendar in one of its two forms; a refusal names the missing table and leaves nothing behind. A cancel is honoured until the moment the feed is kept, and answers with the cancelled error (-32800): the feed is then in neither the registry nor the cache, so a client told an add was cancelled need not go looking for one. The name defaults to the feed's first agency, the key to a slug of the name made unique.",
       "type": "object",
       "properties": {
         "source": {
@@ -1729,13 +1729,17 @@
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "pattern": "^[0-9A-F]{6}$",
+          "description": "route_color as the spec asks for it: six hex digits, upper case, without the hash. Null when the feed leaves it out or writes something that is not a colour, which a client must not paint with."
         },
         "text_color": {
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "pattern": "^[0-9A-F]{6}$",
+          "description": "route_text_color on the same terms as color."
         },
         "trips": {
           "type": "integer",
