@@ -64,7 +64,12 @@ same and look at the page.
    `colors` holds the override, `modified` moves, and the viewer reloads
    the page the build just wrote.
 4. **Given** a person dragging through a range of colours, **When** they
-   stop, **Then** one build runs, not one per frame.
+   stop, **Then** one build runs, not one per frame. The picker stays open
+   throughout and until it is dismissed - a press outside its row, Escape,
+   or its own toggle again. **Corrected on 2026-09-12 (issue 87)**: applying
+   a colour and dismissing the picker were one callback, so the disclosure
+   closed on the first pointer event the square or the slider saw and this
+   scenario could not be performed at all.
 5. **Given** an override, **When** the project is closed and opened again,
    **Then** the panel shows the same colours and nothing is rebuilt.
 

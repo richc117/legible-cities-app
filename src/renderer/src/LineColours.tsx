@@ -1,4 +1,13 @@
-import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type JSX } from 'react'
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type JSX,
+  type RefObject,
+} from 'react'
 import { HexColorPicker } from 'react-colorful'
 import type { EngineState } from '../../shared/engine'
 import { withoutPaths } from '../../shared/engine'
@@ -221,10 +230,8 @@ export default function LineColours({
             colour={palette.defaultColor}
             open={open === DEFAULT_ROW}
             onToggle={() => setOpen(open === DEFAULT_ROW ? null : DEFAULT_ROW)}
-            onPick={(hex) => {
-              setOpen(null)
-              change(withDefault(palette, hex))
-            }}
+            onPick={(hex) => change(withDefault(palette, hex))}
+            onDone={() => setOpen(null)}
           />
           {lines.length === 0 ? (
             <p className="hint" role="status">
@@ -241,10 +248,8 @@ export default function LineColours({
                   overridden={hasOverride(palette, line.label)}
                   open={open === line.label}
                   onToggle={() => setOpen(open === line.label ? null : line.label)}
-                  onPick={(hex) => {
-                    setOpen(null)
-                    change(withOverride(palette, line.label, hex))
-                  }}
+                  onPick={(hex) => change(withOverride(palette, line.label, hex))}
+                  onDone={() => setOpen(null)}
                   onReset={() => changeAndKeepFocus(withoutOverride(palette, line.label))}
                 />
               ))}
@@ -270,21 +275,70 @@ export default function LineColours({
 /** The default row's key in the one-picker-at-a-time state; no line can be called this. */
 const DEFAULT_ROW = ''
 
+/**
+ * A picker stays open until it is dismissed: a press outside its row, or
+ * Escape. It used to close on the first colour it was given, which is the
+ * first pointer event the square or the slider sees - so dragging through a
+ * hue, which is what the picker is for, ended the moment it began (issue
+ * 87). Applying a colour and dismissing the picker are two different
+ * things now.
+ *
+ * The row, not the picker, is what counts as inside: the toggle that
+ * revealed it sits beside it, and a press on that is its own business.
+ * Focus is handed back to the toggle only when it was inside the row, so a
+ * person who clicked somewhere else is left where they clicked (and
+ * Chromium would otherwise drop it to the body when the picker goes).
+ */
+function useDismiss(
+  open: boolean,
+  row: RefObject<HTMLElement | null>,
+  toggle: RefObject<HTMLElement | null>,
+  dismiss: () => void,
+): void {
+  useEffect(() => {
+    if (!open) return undefined
+    const inside = (target: EventTarget | null): boolean =>
+      target instanceof Node && row.current?.contains(target) === true
+    const leave = (): void => {
+      const active = document.activeElement
+      if (active !== null && row.current?.contains(active) === true) toggle.current?.focus()
+      dismiss()
+    }
+    const onPointerDown = (event: PointerEvent): void => {
+      if (!inside(event.target)) dismiss()
+    }
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') leave()
+    }
+    // Capture, so a press is answered before anything inside the row eats it.
+    document.addEventListener('pointerdown', onPointerDown, true)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown, true)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [open, row, toggle, dismiss])
+}
+
 function DefaultColour({
   colour,
   open,
   onToggle,
   onPick,
+  onDone,
 }: {
   colour: string
   open: boolean
   onToggle: () => void
   onPick: (hex: string) => void
+  onDone: () => void
 }): JSX.Element {
   const panelId = useId()
   const chooseRef = useRef<HTMLElement>(null)
+  const rowRef = useRef<HTMLDivElement>(null)
+  useDismiss(open, rowRef, chooseRef, onDone)
   return (
-    <div className="line-row-group">
+    <div className="line-row-group" ref={rowRef}>
       <div className="line-row">
         <span className="swatch" style={swatch(colour)} aria-hidden="true" />
         <span className="line-name">Lines with no colour in the feed</span>
@@ -306,12 +360,13 @@ function DefaultColour({
           id={panelId}
           name="Colour for lines the feed leaves uncoloured"
           colour={colour}
-          onPick={(hex) => {
+          onPick={onPick}
+          onDone={() => {
             // The picker goes with the press, so focus goes back to the
             // control that revealed it, as the rename form's does. Moved
             // before the parent unmounts it, or focus would fall to the body.
             chooseRef.current?.focus()
-            onPick(hex)
+            onDone()
           }}
         />
       )}
@@ -326,6 +381,7 @@ function LineRow({
   open,
   onToggle,
   onPick,
+  onDone,
   onReset,
 }: {
   line: Line
@@ -334,12 +390,15 @@ function LineRow({
   open: boolean
   onToggle: () => void
   onPick: (hex: string) => void
+  onDone: () => void
   onReset: () => void
 }): JSX.Element {
   const panelId = useId()
   const chooseRef = useRef<HTMLElement>(null)
+  const rowRef = useRef<HTMLLIElement>(null)
+  useDismiss(open, rowRef, chooseRef, onDone)
   return (
-    <li className="line-row-group">
+    <li className="line-row-group" ref={rowRef}>
       <div className="line-row">
         <span className="swatch" style={swatch(shown.color)} aria-hidden="true" />
         <span className="line-name">{line.label}</span>
@@ -372,12 +431,13 @@ function LineRow({
           id={panelId}
           name={`Colour for line ${line.label}`}
           colour={shown.color}
-          onPick={(hex) => {
+          onPick={onPick}
+          onDone={() => {
             // The picker goes with the press, so focus goes back to the
             // control that revealed it, as the rename form's does. Moved
             // before the parent unmounts it, or focus would fall to the body.
             chooseRef.current?.focus()
-            onPick(hex)
+            onDone()
           }}
         />
       )}
@@ -391,6 +451,12 @@ function LineRow({
  * right (its two areas are sliders that take the arrow keys), and the field
  * beside it is the path that needs no pointing device at all.
  *
+ * `onPick` is every colour the picker is given, including each step of a
+ * drag; `onDone` is a person saying they have finished, which only the
+ * typed field's own button means. The two were one callback until issue 87,
+ * and the row closed on the first colour - so a drag ended on the pointer
+ * event that began it.
+ *
  * It stays live while something else is reading the project's page. Turning
  * it off would take the focus with it, and refusing its changes would lose
  * a colour moved by an arrow key without a word; `commit` holds the change
@@ -401,11 +467,13 @@ function ColourPicker({
   name,
   colour,
   onPick,
+  onDone,
 }: {
   id: string
   name: string
   colour: string
   onPick: (hex: string) => void
+  onDone: () => void
 }): JSX.Element {
   const [text, setText] = useState(colour)
   const [message, setMessage] = useState<string | null>(null)
@@ -428,6 +496,7 @@ function ColourPicker({
     }
     setMessage(null)
     onPick(hex)
+    onDone()
   }
 
   return (

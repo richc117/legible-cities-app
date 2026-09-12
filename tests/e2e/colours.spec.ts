@@ -207,6 +207,62 @@ test('the default colour is offered and reaches the engine as default_color', as
   })
 })
 
+test('the picker stays open through a drag, and closes when it is dismissed', async () => {
+  const engineHome = home()
+  await withApp(engineHome, async (page) => {
+    await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
+    const panel = page.getByRole('region', { name: 'Line colours' })
+    const choose = panel.getByRole('button', { name: 'Choose the colour of line A' })
+    await choose.click()
+    const picker = panel.getByRole('group', { name: 'Colour for line A' })
+    await expect(picker).toBeVisible()
+
+    // A press inside the picker is a colour, not a dismissal. It used to be
+    // both, so a drag through a hue ended on the pointer event that began
+    // it (issue 87).
+    const [saturation, hue] = [
+      picker.getByRole('slider').first(),
+      picker.getByRole('slider').last(),
+    ]
+    await saturation.click({ position: { x: 20, y: 20 } })
+    await expect(picker).toBeVisible()
+    await hue.click({ position: { x: 10, y: 5 } })
+    await expect(picker).toBeVisible()
+    // And each of those was a colour: the field beside it follows the
+    // picker, so it no longer reads what the feed published.
+    await expect(picker.getByLabel('Hex value')).not.toHaveValue('#0072bc')
+
+    // A press outside the row dismisses it.
+    await panel.getByRole('heading', { name: 'Line colours' }).click()
+    await expect(picker).toBeHidden()
+  })
+})
+
+test('Escape dismisses the picker and hands focus back, and so does the toggle', async () => {
+  const engineHome = home()
+  await withApp(engineHome, async (page) => {
+    await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
+    const panel = page.getByRole('region', { name: 'Line colours' })
+    const choose = panel.getByRole('button', { name: 'Choose the colour of line A' })
+    const picker = panel.getByRole('group', { name: 'Colour for line A' })
+
+    await choose.click()
+    await expect(picker).toBeVisible()
+    await picker.getByRole('slider').first().focus()
+    await page.keyboard.press('Escape')
+    await expect(picker).toBeHidden()
+    // Focus was inside the row, so it goes back to the control that
+    // revealed the picker rather than falling to the body.
+    await expect(choose).toBeFocused()
+
+    // The toggle closes what it opened, as a disclosure does.
+    await choose.click()
+    await expect(picker).toBeVisible()
+    await choose.click()
+    await expect(picker).toBeHidden()
+  })
+})
+
 test('a colour that is not one is refused beside the field, and nothing is built', async () => {
   const engineHome = home()
   await withApp(engineHome, async (page) => {
