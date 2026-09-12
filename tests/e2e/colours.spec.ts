@@ -213,6 +213,7 @@ test('the picker stays open through a drag, and closes when it is dismissed', as
     await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
     const panel = page.getByRole('region', { name: 'Line colours' })
     const choose = panel.getByRole('button', { name: 'Choose the colour of line A' })
+    const drawnBefore = received(engineHome, 'map.build').length
     await choose.click()
     const picker = panel.getByRole('group', { name: 'Colour for line A' })
     await expect(picker).toBeVisible()
@@ -231,10 +232,42 @@ test('the picker stays open through a drag, and closes when it is dismissed', as
     // And each of those was a colour: the field beside it follows the
     // picker, so it no longer reads what the feed published.
     await expect(picker.getByLabel('Hex value')).not.toHaveValue('#0072bc')
+    // The whole thing is one build, as it would be for a drag, and the
+    // test leaves none in flight to be cut off by the app closing.
+    await expect(page.getByText(/Drawn in the colours you chose/)).toBeVisible({ timeout: 30_000 })
+    expect(received(engineHome, 'map.build'), 'one build, not one per press').toHaveLength(
+      drawnBefore + 1,
+    )
 
     // A press outside the row dismisses it.
     await panel.getByRole('heading', { name: 'Line colours' }).click()
     await expect(picker).toBeHidden()
+  })
+})
+
+test('one press opens another row’s picker while one is already open', async () => {
+  const engineHome = home()
+  await withApp(engineHome, async (page) => {
+    await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
+    const panel = page.getByRole('region', { name: 'Line colours' })
+
+    // The default row is the first, so its picker sits above every line.
+    await panel
+      .getByRole('button', { name: 'Choose the colour of lines the feed leaves uncoloured' })
+      .click()
+    await expect(
+      panel.getByRole('group', { name: 'Colour for lines the feed leaves uncoloured' }),
+    ).toBeVisible()
+
+    // One press, not two. Dismissing on the press would take the open
+    // picker out of the flow before this button was released, everything
+    // below would move up by its height, and the click would land on the
+    // nearest common ancestor of the two rather than on the button.
+    await panel.getByRole('button', { name: 'Choose the colour of line A' }).click()
+    await expect(panel.getByRole('group', { name: 'Colour for line A' })).toBeVisible()
+    await expect(
+      panel.getByRole('group', { name: 'Colour for lines the feed leaves uncoloured' }),
+    ).toBeHidden()
   })
 })
 

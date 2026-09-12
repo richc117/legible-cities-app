@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useId,
   useMemo,
@@ -179,6 +180,11 @@ export default function LineColours({
     commitRef.current = commit
   })
 
+  // Made once: it is a dependency of every open picker's dismissal effect,
+  // and a fresh closure per render would re-subscribe the document's
+  // listeners on every frame of a drag.
+  const closePicker = useCallback(() => setOpen(null), [])
+
   const change = (next: Palette): void => {
     setPalette(next)
     schedule(next)
@@ -231,7 +237,7 @@ export default function LineColours({
             open={open === DEFAULT_ROW}
             onToggle={() => setOpen(open === DEFAULT_ROW ? null : DEFAULT_ROW)}
             onPick={(hex) => change(withDefault(palette, hex))}
-            onDone={() => setOpen(null)}
+            onDone={closePicker}
           />
           {lines.length === 0 ? (
             <p className="hint" role="status">
@@ -249,7 +255,7 @@ export default function LineColours({
                   open={open === line.label}
                   onToggle={() => setOpen(open === line.label ? null : line.label)}
                   onPick={(hex) => change(withOverride(palette, line.label, hex))}
-                  onDone={() => setOpen(null)}
+                  onDone={closePicker}
                   onReset={() => changeAndKeepFocus(withoutOverride(palette, line.label))}
                 />
               ))}
@@ -297,24 +303,45 @@ function useDismiss(
 ): void {
   useEffect(() => {
     if (!open) return undefined
+    let began = false
     const inside = (target: EventTarget | null): boolean =>
       target instanceof Node && row.current?.contains(target) === true
     const leave = (): void => {
+      // Only when focus is in the row: a person who pressed somewhere else
+      // is left where they pressed, and Chromium would otherwise drop it to
+      // the body along with the picker.
       const active = document.activeElement
       if (active !== null && row.current?.contains(active) === true) toggle.current?.focus()
       dismiss()
     }
     const onPointerDown = (event: PointerEvent): void => {
-      if (!inside(event.target)) dismiss()
+      began = inside(event.target)
+    }
+    const onClick = (event: MouseEvent): void => {
+      // A drag that starts in the picker and ends outside it is a colour,
+      // not a dismissal.
+      if (began || inside(event.target)) return
+      leave()
     }
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') leave()
     }
-    // Capture, so a press is answered before anything inside the row eats it.
+    // The click, not the press. Dismissing on the press takes this row's
+    // picker out of the flow before the button is released, and everything
+    // below it moves up by the picker's height - so the click is delivered
+    // to the nearest common ancestor of where the press began and where it
+    // ended, and the button a person pressed never hears it. One press on
+    // another row's Choose then did nothing at all.
+    //
+    // Capture, so the picker is dismissed before anything in the row that
+    // is being pressed acts on it; the click still reaches its own target,
+    // which is what makes the press count.
     document.addEventListener('pointerdown', onPointerDown, true)
+    document.addEventListener('click', onClick, true)
     document.addEventListener('keydown', onKeyDown)
     return () => {
       document.removeEventListener('pointerdown', onPointerDown, true)
+      document.removeEventListener('click', onClick, true)
       document.removeEventListener('keydown', onKeyDown)
     }
   }, [open, row, toggle, dismiss])
