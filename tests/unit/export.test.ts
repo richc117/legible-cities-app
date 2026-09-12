@@ -233,12 +233,19 @@ const settle = async (times = 24): Promise<void> => {
 /**
  * Wait for something to become true rather than for a number of turns. A
  * budget is a race whatever its size - an immediate does not wait for a
- * filesystem call to land, it only gives it another chance - so anything
- * that follows real I/O waits on the thing itself and says so when it never
- * arrives.
+ * filesystem call to land, it only gives it another chance - so the wait is
+ * a deadline in real time, and it says what never arrived.
+ *
+ * It counted turns until 2026-09-12, which read as a deadline and was not
+ * one: two thousand immediates are however long two thousand immediates
+ * take, and on a Windows runner that is less than the mkdir and the two
+ * writes this waits for. The suite then failed a different test on each
+ * run, each time saying a step of the export never happened when what had
+ * not happened was the waiting.
  */
-const until = async (what: string, ok: () => boolean, turns = 2000): Promise<void> => {
-  for (let i = 0; i < turns && !ok(); i++) await tick()
+const until = async (what: string, ok: () => boolean, ms = 30_000): Promise<void> => {
+  const deadline = Date.now() + ms
+  while (!ok() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 1))
   if (!ok()) throw new Error(`${what} never happened`)
 }
 

@@ -107,6 +107,23 @@ export function paletteOf(record: Pick<ProjectRecord, 'colors' | 'defaultColor'>
   return { colors: record.colors, defaultColor: record.defaultColor }
 }
 
+/**
+ * Line labels in the order they are drawn, the later over the earlier where
+ * they share track, and the same order the page lists them in. Exactly the
+ * record's `lineOrder` and exactly `map.build`'s `line_order`.
+ *
+ * Empty is the engine's own order, alphabetical by label; the request then
+ * carries no `line_order` at all. A partial order is safe: the engine draws
+ * the lines it names first and every other line after them, and ignores a
+ * label the layout does not carry (engine issue 28).
+ */
+export type LineOrder = string[]
+
+/** The order a record holds, as the field the engine takes. */
+export function orderOf(record: Pick<ProjectRecord, 'lineOrder'>): LineOrder {
+  return record.lineOrder
+}
+
 export interface DeleteResult {
   removed: string[]
   failed: { folder: 'project' | 'output'; reason: string }[]
@@ -222,6 +239,30 @@ export function validatePalette(palette: unknown): string | null {
   return null
 }
 
+/**
+ * The order a person arranged (A4-02): line labels the record can hold,
+ * each once. Checked in the panel so no move is made that the store would
+ * reject, in the main-side handler because it arrived from another process,
+ * and in the store because the store is the trusted layer.
+ *
+ * A label twice would draw one line over itself and leave another line's
+ * place ambiguous, so it is refused rather than quietly deduplicated: the
+ * app only ever sends an arrangement it has just shown someone.
+ */
+export function validateLineOrder(order: unknown): string | null {
+  if (!Array.isArray(order)) return 'the order must be a list of lines'
+  if (order.length > COLORS_MAX) return `that is more than ${COLORS_MAX} lines`
+  const seen = new Set<string>()
+  for (const label of order) {
+    if (typeof label !== 'string') return 'the order must be a list of lines'
+    const problem = validateLineLabel(label)
+    if (problem !== null) return problem
+    if (seen.has(label)) return `${label} is in the order twice`
+    seen.add(label)
+  }
+  return null
+}
+
 /** A service day, YYYY-MM-DD, that names a real calendar day. */
 export function validateServiceDate(date: string): string | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return 'the service day must be written YYYY-MM-DD'
@@ -327,7 +368,7 @@ export function parseRecord(json: unknown): Parsed {
     },
     colors,
     defaultColor: isColor(json.defaultColor) ? json.defaultColor : DEFAULT_COLOR,
-    lineOrder: Array.isArray(json.lineOrder) ? json.lineOrder.filter(isString) : [],
+    lineOrder: readLineOrder(json.lineOrder),
     theme: json.theme === 'sepia' ? 'sepia' : DEFAULT_THEME,
     layout: isLayoutId(json.layout) ? json.layout : null,
     made: validateMade(json.made) === null ? (json.made as string) : null,
@@ -336,6 +377,26 @@ export function parseRecord(json: unknown): Parsed {
     modified: isString(json.modified) ? json.modified : epoch,
   }
   return { record, readOnly: version > RECORD_VERSION }
+}
+
+/**
+ * The order as the store would have written it: labels it could hold, each
+ * once, no more than the cap. A record the app would refuse to write is not
+ * one it reads back either, so what a person sees is what the store keeps -
+ * and a line dropped here still draws, because the engine draws every line
+ * an order leaves out.
+ */
+function readLineOrder(value: unknown): LineOrder {
+  if (!Array.isArray(value)) return []
+  const order: string[] = []
+  const seen = new Set<string>()
+  for (const label of value) {
+    if (!isString(label) || validateLineLabel(label) !== null || seen.has(label)) continue
+    seen.add(label)
+    order.push(label)
+    if (order.length === COLORS_MAX) break
+  }
+  return order
 }
 
 /** The inputs a layout was made with, whole, or null; an empty agency is none, as the record's is. */

@@ -42,6 +42,7 @@ export function layoutRunFor(projectId: string): LayoutRun {
     complete: (id, done) => window.api.projects.completeLayout(id, done),
     completeRebuild: (id, done) => window.api.projects.completeRebuild(id, done),
     completeColors: (id, palette) => window.api.projects.completeColors(id, palette),
+    completeOrder: (id, order) => window.api.projects.completeOrder(id, order),
     today,
   })
   runs.set(projectId, run)

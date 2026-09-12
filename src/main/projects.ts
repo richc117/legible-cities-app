@@ -23,9 +23,11 @@ import {
   validateFeedKey,
   validateMode,
   validateName,
+  validateLineOrder,
   validatePalette,
   type CreateProjectInput,
   type DeleteResult,
+  type LineOrder,
   type Palette,
   type ProjectInputs,
   type ProjectRecord,
@@ -460,6 +462,32 @@ export class ProjectStore {
       version: RECORD_VERSION,
       colors: { ...palette.colors },
       defaultColor: palette.defaultColor,
+      modified: new Date().toISOString(),
+    }
+    await this.writeAtomic(id, updated)
+    return updated
+  }
+
+  /**
+   * The order a person arranged the lines in (A4-02), written once the map
+   * has been drawn in it, as the colours are. The order is the whole
+   * arrangement the panel showed, not a change to the one stored, so what
+   * is written is what was seen.
+   */
+  async completeOrder(id: string, order: LineOrder): Promise<ProjectRecord> {
+    return this.#track(() => this.#completeOrderTracked(id, order))
+  }
+
+  async #completeOrderTracked(id: string, order: LineOrder): Promise<ProjectRecord> {
+    this.checkId(id)
+    check(validateLineOrder(order))
+    const { record, readOnly } = await this.load(id)
+    if (readOnly) throw new Error('read-only')
+    if (record.layout === null) throw new Error('lay the project out first')
+    const updated: ProjectRecord = {
+      ...record,
+      version: RECORD_VERSION,
+      lineOrder: [...order],
       modified: new Date().toISOString(),
     }
     await this.writeAtomic(id, updated)

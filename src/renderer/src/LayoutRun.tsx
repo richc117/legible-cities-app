@@ -38,6 +38,7 @@ export default function LayoutRun({
     replaced,
     rebuilt,
     recoloured,
+    reordered,
     day,
   } = useSnapshot(run)
   const [confirming, setConfirming] = useState(false)
@@ -116,7 +117,7 @@ export default function LayoutRun({
       {(state === 'cancelled' || state === 'failed') && (
         <>
           <p className="prose" role="status">
-            {stoppedSentence(state, replaced, rebuilt, recoloured)}
+            {stoppedSentence(state, replaced, rebuilt, recoloured, reordered)}
           </p>
           <div className="toolbar">
             <Button variant="primary" onClick={begin} disabled={disabled}>
@@ -130,11 +131,13 @@ export default function LayoutRun({
       {state === 'done' && (
         <>
           <p className="prose" role="status">
-            {recoloured
-              ? recolouredSentence()
-              : rebuilt
-                ? drawnSentence(day)
-                : doneSentence(forced, changed, relaid)}
+            {reordered
+              ? reorderedSentence()
+              : recoloured
+                ? recolouredSentence()
+                : rebuilt
+                  ? drawnSentence(day)
+                  : doneSentence(forced, changed, relaid)}
           </p>
           {movedNotice}
           {/* The run outlives the screen, so this state is what a person
@@ -194,6 +197,11 @@ export function recolouredSentence(): string {
   return 'Drawn in the colours you chose, from the stored layout. The stations have not moved.'
 }
 
+/** What a redraw for a chosen line order says when the map has been drawn. */
+export function reorderedSentence(): string {
+  return 'Drawn with the lines in the order you chose, from the stored layout. The stations have not moved.'
+}
+
 /**
  * What a run that did not finish says. Nothing was written to the record
  * either way; but a re-layout whose layout call had already answered has
@@ -206,7 +214,13 @@ export function stoppedSentence(
   replaced: boolean,
   rebuilt = false,
   recoloured = false,
+  reordered = false,
 ): string {
+  if (reordered) {
+    return state === 'cancelled'
+      ? 'The redraw was cancelled. The project keeps the order it had; the map on screen may be the old one until the next build.'
+      : 'The map was not drawn in that order. The project keeps the order it had; the map on screen may be the old one until the next build.'
+  }
   if (recoloured) {
     return state === 'cancelled'
       ? 'The redraw was cancelled. The project keeps the colours it had; the map on screen may be the old one until the next build.'

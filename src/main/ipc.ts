@@ -14,8 +14,10 @@ import {
   validateId,
   validateMode,
   validateName,
+  validateLineOrder,
   validatePalette,
   type CreateProjectInput,
+  type LineOrder,
   type Palette,
   type ProjectInputs,
   type RebuildDone,
@@ -102,6 +104,11 @@ function readPalette(raw: unknown): Palette {
   check(validatePalette(raw))
   const { colors, defaultColor } = raw as Palette
   return { colors: { ...colors }, defaultColor }
+}
+
+function readLineOrder(raw: unknown): LineOrder {
+  check(validateLineOrder(raw))
+  return [...(raw as LineOrder)]
 }
 
 function readCreateInput(raw: unknown): CreateProjectInput {
@@ -230,5 +237,8 @@ export function registerProjectHandlers(
   )
   handle(CHANNELS.projectsCompleteColors, (id, palette) =>
     store.completeColors(readId(id), readPalette(palette)),
+  )
+  handle(CHANNELS.projectsCompleteOrder, (id, order) =>
+    store.completeOrder(readId(id), readLineOrder(order)),
   )
 }
