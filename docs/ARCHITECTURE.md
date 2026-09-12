@@ -119,8 +119,9 @@ the engine for; the renderer addresses a project by its identifier only.
 Each addition is a reviewed change to the type, the preload and the
 main-side handler together. Contracts: `specs/003-project/contracts/bridge.md`,
 `specs/004-sidecar-supervisor/contracts/bridge.md`,
-`specs/007-layout-run/contracts/bridge.md` and
-`specs/008-viewer/contracts/viewer.md`.
+`specs/007-layout-run/contracts/bridge.md`,
+`specs/008-viewer/contracts/viewer.md` and
+`specs/017-diagnostics/contracts/bridge.md`.
 
 ## The engine process
 
@@ -439,6 +440,40 @@ cancelled or failed rebuild keeps the day, and says the page on screen may
 be the old map until the next build. The app parses and shows no time of
 day: a trip past midnight keeps its `25:44`-style time in the page, which
 is the engine's (`specs/012-service-date`).
+
+### What the build had to fudge
+
+`map.build` answers three things beside its files, and A3-03 keeps them:
+`diagnostics`, the build's numbers as data; `caveats`, the same numbers as
+sentences; and `issues`, one weighted proportion where 0 is clean. All
+three are built once in the engine's `schematic/diagnostics.py`, so the
+terminal, the site and this app say the same thing.
+
+They live on the run's snapshot and nowhere else, set with the sentence
+that says the run finished: never while it is still running, so the
+figures cannot reach the screen before the map they describe, and never
+for a run whose record could not be written. The panel describes the build
+that just ran, which is why a failed, cancelled or never-run project has
+none, and why a rebuild for another day replaces the figures with that
+day's. The block is read rather than assumed, to the depth the panel
+reaches into it: the renderer has no error boundary, so a block that is
+not whole would take the window blank after the map had been drawn, and is
+simply not shown instead. They are deliberately not written to the record: `parseRecord`
+drops what it does not know and `RECORD_VERSION` is 1, so a new field
+would make a record read-only to an older app, for numbers that go stale
+the moment another project re-lays out the set this one draws from.
+
+The app formats and never computes. Two of the engine's names are worth
+reading twice: `degraded.skipped_calls` counts *trips* that skip an
+unmatched stop rather than calls, and `stops.unmatched` is the first few
+ids only, so the number that did not match is not in the block - the
+caveat sentences carry it, which is why they are shown word for word. The
+figures are a table under the design document's table rule, each row
+offering its explanation on a control that answers a pointer and the
+keyboard alike; "Copy as text" hands over what the panel shows, through
+the bridge's one clipboard method, because the app refuses every
+permission request and Chromium's own clipboard write is one
+(`specs/017-diagnostics`).
 
 ## The feeds
 

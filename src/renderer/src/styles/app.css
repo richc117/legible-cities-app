@@ -410,6 +410,88 @@ th .sort:focus-visible {
   padding-left: var(--space-4-5);
 }
 
+/* The diagnostics panel (DESIGN.md 8.2): the engine's caveat sentences as
+   prose, its figures as a table, and each row's explanation on a small
+   control that answers a pointer and the keyboard alike. */
+
+.diagnostics h2 {
+  font-size: var(--font-ui-medium);
+  margin: var(--space-4-6) 0 var(--space-4-3);
+}
+
+.caveats {
+  margin: 0 0 var(--space-4-4);
+  padding-left: var(--space-4-5);
+}
+
+.explain {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2-1);
+}
+
+/* The row's own affordance, as the sortable header's is: a real button
+   taking the label's own type, never a control from the kit, whose height
+   is a form's and would stand a control the height of a row's text. */
+
+.explain-trigger {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--target-min);
+  min-height: var(--target-min);
+  border-radius: var(--radius-small);
+  color: var(--text-faint);
+  cursor: help;
+}
+
+.explain-trigger:hover {
+  color: var(--text);
+}
+
+.explain-trigger:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.tooltip {
+  position: absolute;
+  inset-inline-start: 0;
+  top: 100%;
+  z-index: var(--layer-overlay);
+  width: max-content;
+  max-width: var(--tooltip-width);
+  margin-top: var(--space-2-1);
+  padding: var(--space-2-2) var(--space-4-2);
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: var(--font-ui-small);
+  line-height: var(--line-ui);
+  font-weight: normal;
+  text-align: left;
+  white-space: normal;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--duration-fast) var(--easing);
+  transition-delay: var(--duration);
+}
+
+/* A pointer resting on it, focus from the keyboard, or a press: the last
+   is how a touch user asks, and the only one that stays. */
+
+.explain:hover .tooltip,
+.explain:focus-within .tooltip,
+.explain[data-open='true'] .tooltip {
+  visibility: visible;
+  opacity: 1;
+}
+
 /* The project's fields. */
 
 .fields {

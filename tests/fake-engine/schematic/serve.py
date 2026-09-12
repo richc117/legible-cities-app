@@ -15,6 +15,10 @@ writes before the app starts (every key optional):
     ignore_sigterm    true: ignore SIGTERM (POSIX), so only SIGKILL ends it
     progress_delay_ms wait between the four progress notifications (default 30)
     map_draws         true: map.build draws (eight stages, three files); else it refuses
+    map_diagnostics   keys merged over map.build's clean diagnostics block, a level
+                      at a time, so {"stops": {"matched": 2}} keeps the rest of "stops"
+    map_caveats       the sentences map.build answers as "caveats"  (default none)
+    map_issues        the weighted proportion it answers as "issues" (default 0)
     service_window    [start, end] feeds.service answers (default the whole of 2026)
     busiest           the day feeds.service answers as busiest_weekday (default 2026-06-16)
     service_delay_ms  wait before feeds.service answers, so a cancel can land (default 30)
@@ -339,19 +343,42 @@ class Engine:
             path = out / f"{key}{suffix}"
             path.write_text("<svg/>" if suffix == ".svg" else "{}")
             files[name] = str(path)
+        # The shape is the protocol's Diagnostics, not a flat guess: a
+        # stand-in that answers a different shape lets a consumer pass
+        # here and fail against the engine. The default is a clean little
+        # network -- every stop placed, nothing fudged -- which is the case
+        # the panel has to get right; the control file names the rest.
+        diagnostics = {"stations": 3, "junctions": 0, "edges": 2, "lines": ["A"],
+                       "octilinear": 1.0,
+                       "stops": {"matched": 3, "total": 3, "unmatched": [],
+                                 "by": {"station_id": 3, "parent_station": 0, "name": 0}},
+                       "trips": {"total": 1, "paths": 1, "unrouted": 0},
+                       "degraded": {"borrowed_track": 0, "skipped_calls": 0},
+                       "labels_dropped": 0, "peak_concurrent": 1}
+        # Merged a level down, not replaced: a control naming one figure
+        # under "stops" would otherwise drop the rest of the sub-block and
+        # answer a shape the real engine cannot produce, which is the one
+        # thing a stand-in must never do.
+        for key, value in self.control.get("map_diagnostics", {}).items():
+            if isinstance(value, dict) and isinstance(diagnostics.get(key), dict):
+                merged = dict(diagnostics[key])
+                for inner, deep in value.items():
+                    if isinstance(deep, dict) and isinstance(merged.get(inner), dict):
+                        merged[inner] = {**merged[inner], **deep}
+                    else:
+                        merged[inner] = deep
+                diagnostics[key] = merged
+            else:
+                diagnostics[key] = value
         write({"jsonrpc": "2.0", "id": msg_id, "result": {
             "layout": params["layout"], "date": params["date"], "files": files,
             "summary": "the stand-in drew a map",
-            # The shape is the protocol's Diagnostics, not a flat guess: a
-            # stand-in that answers a different shape lets a consumer pass
-            # here and fail against the engine.
-            "diagnostics": {"stations": 3, "junctions": 0, "edges": 2, "lines": ["A"],
-                            "octilinear": 1.0,
-                            "stops": {"matched": 3, "total": 3, "unmatched": [],
-                                      "by": {"station_id": 3, "parent_station": 0, "name": 0}},
-                            "trips": {"total": 1, "paths": 1, "unrouted": 0},
-                            "degraded": {"borrowed_track": 0, "skipped_calls": 0},
-                            "labels_dropped": 0, "peak_concurrent": 1}}})
+            "diagnostics": diagnostics,
+            # Since engine v0.8.0 (E05): the same numbers as sentences, and
+            # the weighted proportion the atlas is ordered by. A clean
+            # network answers no sentences and a score of zero.
+            "caveats": list(self.control.get("map_caveats", [])),
+            "issues": self.control.get("map_issues", 0)}})
 
 
     # -- render.stage (E15), in shape: an SVG naming the stage, and the

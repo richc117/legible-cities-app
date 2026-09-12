@@ -4,7 +4,11 @@
 
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { describe, expect, it } from 'vitest'
-import { registerProjectHandlers } from '../../src/main/ipc'
+import {
+  CLIPBOARD_LIMIT,
+  registerClipboardHandler,
+  registerProjectHandlers,
+} from '../../src/main/ipc'
 import type { ProjectStore } from '../../src/main/projects'
 import { CHANNELS } from '../../src/shared/api'
 
@@ -193,5 +197,61 @@ describe('registerProjectHandlers', () => {
       /too long/,
     )
     expect(calls).toEqual([])
+  })
+})
+
+// The clipboard's one direction (A3-03). The page can put text on it,
+// never take text off, and the handler is the only way it can: Chromium's
+// own clipboard write is a permission, and the app refuses every one.
+describe('registerClipboardHandler', () => {
+  function clipboard(topFrame = true) {
+    const handlers = new Map<string, Handler>()
+    const ipc = {
+      handle: (channel: string, h: Handler) => handlers.set(channel, h),
+    } as unknown as IpcMain
+    const written: string[] = []
+    registerClipboardHandler(
+      ipc,
+      (text) => written.push(text),
+      () => topFrame,
+    )
+    const event = {} as IpcMainInvokeEvent
+    return {
+      written,
+      handlers,
+      call: (...args: unknown[]) => handlers.get(CHANNELS.clipboardWrite)!(event, ...args),
+    }
+  }
+
+  it('registers one channel and writes the text it is given', async () => {
+    const { call, written, handlers } = clipboard()
+    expect([...handlers.keys()]).toEqual([CHANNELS.clipboardWrite])
+    await expect(call('Los Angeles — the map drawn for 2026-09-15')).resolves.toBeUndefined()
+    expect(written).toEqual(['Los Angeles — the map drawn for 2026-09-15'])
+  })
+
+  it('refuses anything that is not text, and text without end', async () => {
+    const { call, written } = clipboard()
+    await expect(call(undefined)).rejects.toThrow('there is nothing to copy')
+    await expect(call({ toString: () => 'x' })).rejects.toThrow('there is nothing to copy')
+    await expect(call('x'.repeat(CLIPBOARD_LIMIT + 1))).rejects.toThrow(/too much text/)
+    // The cap is bytes of UTF-8, which a string's length is not: a euro
+    // sign is one code unit and three bytes, so this is under the length
+    // and over the cap.
+    await expect(call('€'.repeat(CLIPBOARD_LIMIT / 2))).rejects.toThrow(/too much text/)
+    expect(written).toEqual([])
+  })
+
+  it('takes text whose bytes fit, whatever its characters', async () => {
+    const { call, written } = clipboard()
+    const text = '€'.repeat(CLIPBOARD_LIMIT / 4)
+    await call(text)
+    expect(written).toEqual([text])
+  })
+
+  it('refuses a caller that is not the interface top frame', async () => {
+    const { call, written } = clipboard(false)
+    await expect(call('anything')).rejects.toThrow('forbidden')
+    expect(written).toEqual([])
   })
 })

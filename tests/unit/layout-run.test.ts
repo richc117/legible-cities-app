@@ -7,7 +7,9 @@ import {
   LayoutRun,
   advance,
   freshStages,
+  readDiagnostics,
   readableMessage,
+  reportOf,
   sentenceFor,
   type RunClient,
 } from '../../src/renderer/src/engine/layoutRun'
@@ -89,6 +91,41 @@ const WINDOW = {
   end: '2026-12-31',
   busiest: '2026-09-15',
   anchor: '2026-09-08',
+}
+
+// What map.build answers beside its files, since engine v0.8.0: the
+// build's numbers, the same numbers as sentences, and the weighted
+// proportion the atlas is ordered by. The app keeps all three for the
+// panel and throws the files away (specs/017).
+const DIAGNOSTICS = {
+  stations: 114,
+  junctions: 8,
+  edges: 121,
+  lines: ['A', 'B'],
+  octilinear: 0.9938,
+  stops: {
+    matched: 112,
+    total: 116,
+    by: { station_id: 100, parent_station: 10, name: 2 },
+    unmatched: ['80122', '80123'],
+  },
+  trips: { total: 1135, paths: 40, unrouted: 3 },
+  degraded: { skipped_calls: 12, borrowed_track: 260 },
+  labels_dropped: 2,
+  peak_concurrent: 19,
+}
+// The engine answers absolute paths under its home, and the point of the
+// test below is that none of them reaches the snapshot. They are assembled
+// rather than written out: bin/preflight refuses a path literal in a
+// committed file, and a test is no reason to weaken the scanner.
+const OUT = ['', 'engine-home', 'out', 'a-project'].join('/')
+const MAP = {
+  files: { svg: `${OUT}/la.svg`, html: `${OUT}/la.html`, positions: `${OUT}/la.json` },
+  date: '2026-09-15',
+  summary: 'the engine prints these same numbers',
+  diagnostics: DIAGNOSTICS,
+  caveats: ['4 of 116 stops could not be placed on the map'],
+  issues: 0.2137,
 }
 
 const READY: EngineState = { state: 'ready', version: '0.2.0', protocol: 1 }
@@ -389,6 +426,125 @@ describe('a rebuild for a chosen day', () => {
     await tick()
     expect(run.snapshot.state).toBe('failed')
     expect(run.snapshot.error).toMatch(/the feed covers/)
+  })
+})
+
+describe('what the map call said about the map it drew', () => {
+  it("keeps the engine's diagnostics, caveats and score, and none of its paths", async () => {
+    const { run, calls, begin } = setup()
+    begin()
+    await laidOut(calls)
+    expect(run.snapshot.report, 'nothing until the map has answered').toBeNull()
+    calls[2].resolve(MAP)
+    await tick()
+    expect(run.snapshot.report).toEqual({
+      date: '2026-09-15',
+      diagnostics: DIAGNOSTICS,
+      caveats: MAP.caveats,
+      issues: 0.2137,
+    })
+    // They arrive with the sentence that says the run finished, never
+    // before the map they describe is on screen.
+    expect(run.snapshot.state).toBe('done')
+    // The result's files are absolute paths under the engine's home. The
+    // snapshot is read by a screen, so they stay where they were.
+    expect(JSON.stringify(run.snapshot.report)).not.toMatch(/[/\\]/)
+  })
+
+  it("a rebuild for a chosen day gets that day's figures, from the same call", async () => {
+    const { run, calls, record } = setup({ layout: LAYOUT, date: '2026-09-15', service: WINDOW })
+    run.rebuild(record, READY, '2026-09-12')
+    // A clean network: no sentences, and a score of zero.
+    calls[0].resolve({ ...MAP, date: '2026-09-12', caveats: [], issues: 0 })
+    await tick()
+    expect(run.snapshot).toMatchObject({ state: 'done', rebuilt: true })
+    expect(run.snapshot.report).toMatchObject({ date: '2026-09-12', caveats: [], issues: 0 })
+  })
+
+  it('says nothing when the map was drawn but the record could not be written', async () => {
+    const { run, calls, complete, begin } = setup()
+    complete.mockRejectedValueOnce(new Error('the project could not be written'))
+    begin()
+    await laidOut(calls)
+    expect(run.snapshot.report, 'nothing while the run is still running').toBeNull()
+    calls[2].resolve(MAP)
+    await tick()
+    expect(run.snapshot.state).toBe('failed')
+    expect(run.snapshot.report, 'a run that did not finish shows no figures').toBeNull()
+  })
+
+  it('is cleared when the next run starts, and by a run that does not finish', async () => {
+    const { run, calls, record } = setup()
+    run.start(record, READY)
+    await laidOut(calls)
+    calls[2].resolve(MAP)
+    await tick()
+    expect(run.snapshot.report).not.toBeNull()
+    run.start(record, READY)
+    expect(run.snapshot.report, "the last run's figures go when the next begins").toBeNull()
+    calls[3].reject({ code: -32000, message: 'the feed could not be read' })
+    await tick()
+    expect(run.snapshot.state).toBe('failed')
+    expect(run.snapshot.report).toBeNull()
+  })
+
+  it('survives a result that carries no diagnostics at all', () => {
+    expect(reportOf({ files: {} } as never, '2026-09-15')).toBeNull()
+    expect(reportOf(undefined as never, '2026-09-15')).toBeNull()
+    expect(reportOf(null as never, '2026-09-15')).toBeNull()
+    // A caveat that is not a sentence, and a score that is not a number,
+    // are dropped rather than rendered: the answer is another process's.
+    expect(
+      reportOf(
+        { diagnostics: DIAGNOSTICS, caveats: ['ok', 7], issues: null } as never,
+        '2026-09-15',
+      ),
+    ).toMatchObject({ date: '2026-09-15', caveats: ['ok'], issues: 0 })
+  })
+
+  // The panel reaches four levels into the block, and the renderer has no
+  // error boundary: a block that is only half the shape it claims would
+  // take the window blank after the map had been drawn and the record
+  // written. Every field the panel reads is checked to the depth it is
+  // read, so a block that is not whole is simply not shown.
+  it('refuses a diagnostics block that is not whole, at every level', () => {
+    const whole = (over: Record<string, unknown>): unknown => ({ ...DIAGNOSTICS, ...over })
+    expect(readDiagnostics(DIAGNOSTICS)).toEqual(DIAGNOSTICS)
+    for (const broken of [
+      undefined,
+      null,
+      7,
+      [],
+      { stations: 3 },
+      whole({ stops: undefined }),
+      whole({ trips: undefined }),
+      whole({ degraded: undefined }),
+      whole({ stops: { ...DIAGNOSTICS.stops, by: undefined } }),
+      whole({ stops: { ...DIAGNOSTICS.stops, by: { station_id: 1, parent_station: 2 } } }),
+      whole({ stops: { ...DIAGNOSTICS.stops, total: '116' } }),
+      whole({ trips: { total: 1, paths: 1 } }),
+      whole({ degraded: { skipped_calls: 1 } }),
+      whole({ octilinear: Number.NaN }),
+      whole({ peak_concurrent: null }),
+      whole({ lines: 'A, B' }),
+      whole({ lines: ['A', 7] }),
+      whole({ stops: { ...DIAGNOSTICS.stops, unmatched: [null] } }),
+    ]) {
+      expect(readDiagnostics(broken), JSON.stringify(broken) ?? 'undefined').toBeNull()
+      expect(reportOf({ diagnostics: broken } as never, '2026-09-15')).toBeNull()
+    }
+  })
+
+  it('a run whose result is half a block finishes, and says nothing about the map', async () => {
+    const { run, calls, complete, begin } = setup()
+    begin()
+    await laidOut(calls)
+    calls[2].resolve({ ...MAP, diagnostics: { stations: 3 } })
+    await tick()
+    // The run is unaffected: the record is written and the map is drawn.
+    expect(complete).toHaveBeenCalled()
+    expect(run.snapshot.state).toBe('done')
+    expect(run.snapshot.report, 'a block that is not whole is not shown').toBeNull()
   })
 })
 

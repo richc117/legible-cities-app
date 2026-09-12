@@ -1,7 +1,7 @@
 import { LAYOUT_STAGES, type RunState } from '../../../shared/layout'
 import { isEngineErrorShape, ERROR_CODES, type EngineState } from '../../../shared/engine'
 import type { ProjectRecord, ServiceWindow } from '../../../shared/project'
-import type { Methods } from '../../../shared/protocol'
+import type { Diagnostics, MapBuildResult, Methods } from '../../../shared/protocol'
 import type { Stage } from '../ProgressLine'
 
 // One layout run for one project, with no React in it: the rule is that
@@ -48,6 +48,90 @@ export interface RunSnapshot {
   rebuilt: boolean
   /** The day a rebuild drew for; null for a layout run. */
   day: string | null
+  /** What the map call said about the map it drew; null until one has. */
+  report: RunReport | null
+}
+
+/**
+ * What `map.build` answered about the map it drew, for the panel that
+ * reads it (specs/017). It is the run's, not the record's: it describes
+ * the build that just happened, and a build the app did not watch has
+ * none. The result's file paths are deliberately left behind.
+ */
+export interface RunReport {
+  /** The day the map was drawn for, as the engine echoed it. */
+  date: string
+  /** The build's numbers, exactly as the engine sent them. */
+  diagnostics: Diagnostics
+  /** What the build had to fudge, in the engine's own sentences. */
+  caveats: string[]
+  /** The engine's weighted proportion of the network it fudged; 0 is clean. */
+  issues: number
+}
+
+const isObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v)
+const isFigure = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
+const isLabels = (v: unknown): v is string[] =>
+  Array.isArray(v) && v.every((s) => typeof s === 'string')
+
+/**
+ * The diagnostics block, read rather than assumed. Every field the panel
+ * reaches for is checked here, to the depth it reaches: the panel walks
+ * four levels in (`stops.by.station_id`), the renderer has no error
+ * boundary, and a block half the shape it claims would take the window
+ * blank *after* the map had been drawn and the record written. A block
+ * that is not whole is no block: the panel shows nothing and everything
+ * else about the run is unaffected.
+ */
+export function readDiagnostics(raw: unknown): Diagnostics | null {
+  if (!isObject(raw)) return null
+  const { stops, trips, degraded } = raw
+  if (!isObject(stops) || !isObject(trips) || !isObject(degraded)) return null
+  const by = stops.by
+  if (!isObject(by)) return null
+  const figures = [
+    raw.stations,
+    raw.junctions,
+    raw.edges,
+    raw.octilinear,
+    raw.labels_dropped,
+    raw.peak_concurrent,
+    stops.matched,
+    stops.total,
+    by.station_id,
+    by.parent_station,
+    by.name,
+    trips.total,
+    trips.paths,
+    trips.unrouted,
+    degraded.skipped_calls,
+    degraded.borrowed_track,
+  ]
+  if (!figures.every(isFigure)) return null
+  if (!isLabels(raw.lines) || !isLabels(stops.unmatched)) return null
+  return raw as unknown as Diagnostics
+}
+
+/**
+ * The part of a map result worth keeping, or nothing. The answer crosses
+ * from another process, so its shape is read rather than assumed: an
+ * engine that sent no diagnostics, or a block that is not whole, leaves
+ * the panel with nothing to show, which is what a run whose result the app
+ * cannot read should do.
+ */
+export function reportOf(result: MapBuildResult, date: string): RunReport | null {
+  const answer = result as Partial<MapBuildResult> | null | undefined
+  if (!isObject(answer)) return null
+  const { caveats, issues } = answer
+  const diagnostics = readDiagnostics(answer.diagnostics)
+  if (diagnostics === null) return null
+  return {
+    date: typeof answer.date === 'string' ? answer.date : date,
+    diagnostics,
+    caveats: Array.isArray(caveats) ? caveats.filter((c) => typeof c === 'string') : [],
+    issues: isFigure(issues) ? issues : 0,
+  }
 }
 
 interface Handle<T> {
@@ -148,6 +232,7 @@ const IDLE: RunSnapshot = {
   replaced: false,
   rebuilt: false,
   day: null,
+  report: null,
 }
 
 export class LayoutRun {
@@ -236,7 +321,7 @@ export class LayoutRun {
 
         // The map is drawn from the layout just answered, by its id; the
         // engine never lays out on the way to a map.
-        await this.#draw(project, built.layout, date)
+        const report = await this.#draw(project, built.layout, date)
         if (this.#cancelled) return this.#stopped()
 
         const written = await complete(project.id, {
@@ -255,7 +340,7 @@ export class LayoutRun {
         })
         // The store cannot see `force`: a re-layout from this project moves
         // `made` too, and that is not another project's doing.
-        this.#finish({ changed: written.changed, relaid: written.relaid && !force })
+        this.#finish({ changed: written.changed, relaid: written.relaid && !force }, report)
       } catch (reason) {
         this.#failed(reason)
       }
@@ -286,10 +371,10 @@ export class LayoutRun {
 
     void (async () => {
       try {
-        await this.#draw(project, layout, date)
+        const report = await this.#draw(project, layout, date)
         if (this.#cancelled) return this.#stopped()
         await completeRebuild(project.id, { date })
-        this.#finish({ changed: false, relaid: false })
+        this.#finish({ changed: false, relaid: false }, report)
       } catch (reason) {
         this.#failed(reason)
       }
@@ -326,13 +411,23 @@ export class LayoutRun {
       changed: false,
       relaid: false,
       replaced: false,
+      // The panel describes the build being started, so the last one's
+      // figures go now rather than when this one answers.
+      report: null,
       ...kind,
     })
     return true
   }
 
-  /** The map call, from a layout by its id, for a day; its stages reported as they finish. */
-  async #draw(project: ProjectRecord, layout: string, date: string): Promise<void> {
+  /**
+   * The map call, from a layout by its id, for a day; its stages reported
+   * as they finish. It answers what the engine measured rather than
+   * setting it: the figures belong to a finished run, beside the sentence
+   * that says it finished, so they never appear on screen before the map
+   * they describe and never go again because the record could not be
+   * written (spec 017).
+   */
+  async #draw(project: ProjectRecord, layout: string, date: string): Promise<RunReport | null> {
     const map = this.#options.client.request('map.build', {
       key: project.feed,
       layout,
@@ -341,17 +436,21 @@ export class LayoutRun {
     })
     this.#inFlight = map
     map.onProgress((p) => this.#report(p))
-    await map.result
+    const drawn = await map.result
     this.#inFlight = null
+    // What the engine measured drawing this map: kept for the panel, and
+    // for a rebuild too, which draws the same way for another day.
+    return reportOf(drawn, date)
   }
 
-  #finish(outcome: { changed: boolean; relaid: boolean }): void {
+  #finish(outcome: { changed: boolean; relaid: boolean }, report: RunReport | null): void {
     this.#set({
       state: 'done',
       stages: this.#snapshot.stages.map((s) => ({ ...s, state: 'done' as const })),
       changed: outcome.changed,
       relaid: outcome.relaid,
       replaced: false,
+      report,
     })
   }
 
@@ -363,6 +462,7 @@ export class LayoutRun {
         stages: this.#snapshot.stages.map((s) =>
           s.state === 'running' ? { ...s, state: 'pending' as const } : s,
         ),
+        report: null,
       })
       return
     }
@@ -372,6 +472,7 @@ export class LayoutRun {
       stages: this.#snapshot.stages.map((s) =>
         s.state === 'running' ? { ...s, state: 'failed' as const } : s,
       ),
+      report: null,
     })
   }
 
@@ -382,6 +483,10 @@ export class LayoutRun {
       stages: this.#snapshot.stages.map((s) =>
         s.state === 'running' ? { ...s, state: 'pending' as const } : s,
       ),
+      // A run that did not finish left the record and the page on screen
+      // as they were; the figures of a map nobody is looking at would
+      // describe something else (spec 017).
+      report: null,
     })
   }
 
