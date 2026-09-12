@@ -63,7 +63,11 @@ export function linesOf(
   })
   const lines = new Map<string, Line>()
   for (const route of kept) {
-    if (route.label === '') continue
+    // A label the record could not hold is not offered: choosing a colour
+    // for it would draw the map and then be refused on the way to disk,
+    // and the screen would disagree with the page. `parseRecord` drops the
+    // same labels on read.
+    if (validateLineLabel(route.label) !== null) continue
     const held = lines.get(route.label)
     const feed = feedColour(route.color)
     if (held === undefined) lines.set(route.label, { label: route.label, feed })
@@ -165,6 +169,18 @@ export function sourceWords(shown: Shown): string {
 /** What the feed publishes for this line, in words. */
 export function feedWords(line: Line): string {
   return line.feed === null ? 'no colour in feed' : line.feed
+}
+
+/**
+ * What a change should do at this moment: build it, wait for the way to
+ * clear, or nothing at all because it is not a change. A layout, a rebuild
+ * or an export is reading the page a colour build would rewrite, so a
+ * change made during one waits rather than being refused - no control has
+ * to disable itself under a person's hands (FR-009).
+ */
+export function nextStep(next: Palette, stored: Palette, busy: boolean): 'build' | 'wait' | 'none' {
+  if (samePalette(next, stored)) return 'none'
+  return busy ? 'wait' : 'build'
 }
 
 /** Two palettes with the same overrides and the same default; nothing is rebuilt for a change that is not one. */

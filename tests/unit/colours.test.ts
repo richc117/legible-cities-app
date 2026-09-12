@@ -12,6 +12,7 @@ import {
   hasOverride,
   isReset,
   linesOf,
+  nextStep,
   readHex,
   resetAll,
   samePalette,
@@ -251,6 +252,29 @@ describe('editing the palette', () => {
     expect(
       samePalette(palette({ colors: { A: '#112233' } }), palette({ colors: { B: '#112233' } })),
     ).toBe(false)
+  })
+})
+
+// FR-009: a change made while a layout, a rebuild or an export is reading
+// the project's page waits and builds once - it is never refused and never
+// dropped, so no control has to disable itself under a person's hands.
+describe('nextStep: build, wait, or nothing at all', () => {
+  const stored = palette({ colors: { A: '#0072bc' } })
+  const changed = palette({ colors: { A: '#ff0000' } })
+
+  it('builds a change when the way is clear', () => {
+    expect(nextStep(changed, stored, false)).toBe('build')
+  })
+  it('waits rather than refusing while something else reads the page', () => {
+    expect(nextStep(changed, stored, true)).toBe('wait')
+  })
+  it('does nothing for a change that is not one, busy or not', () => {
+    expect(nextStep(stored, stored, false)).toBe('none')
+    expect(nextStep(palette({ colors: { A: '#0072BC' } }), stored, false)).toBe('build')
+    expect(nextStep(stored, stored, true), 'and does not wait for one either').toBe('none')
+  })
+  it('sees a changed default as a change', () => {
+    expect(nextStep(withDefault(stored, '#112233'), stored, false)).toBe('build')
   })
 })
 

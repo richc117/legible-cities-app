@@ -175,6 +175,15 @@ most likely to fail it.
 - The record's colours are read on open and never asked of the engine, so
   the panel is the same on every machine (principle IV).
 - A read-only record (written by a newer app) shows no panel.
+- Leaving the project screen inside the debounce window abandons the change
+  that was waiting. The run outlives the view on purpose, because it is work
+  already begun; a colour not yet sent is not, and a build started as
+  someone walks away would rewrite a page they are no longer looking at.
+- A feed may publish a line label the record cannot hold - longer than the
+  cap, carrying a control character, or `__proto__`. The panel does not
+  offer such a line at all, rather than drawing the map and then being
+  refused on the way to disk, which would leave the screen disagreeing with
+  the page.
 
 ## Requirements _(mandatory)_
 

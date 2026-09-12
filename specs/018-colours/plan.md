@@ -63,6 +63,10 @@ which of the three it came from: override, feed, default. That is the
 engine's own order (`render.line_colors`), held here so the panel can say
 it in words and the tests can hold it.
 
+**The deferral.** `nextStep(next, stored, busy)`: build, wait, or nothing
+at all. `busy` is the rendered state *or* the run's own at the moment of
+the call, because a run can start between a render and the timer firing.
+
 **The debounce.** `debounce(fn, delay)` in
 `src/renderer/src/debounce.ts`: a plain function with `cancel`, tested
 with fake timers. The panel holds one, made once, cancelled on unmount.
@@ -72,8 +76,10 @@ default-colour row, a list with one row per line - swatch, label, where the
 colour came from, "Choose colour" (a disclosure, one open at a time) and
 "Reset" - and "Reset every line" in a toolbar. The picker is
 `react-colorful`'s `HexColorPicker` in a named group, with the app's own
-`TextInput` beside it for a typed hex. Disabled while a run or an export
-is going; absent without a layout or on a read-only record.
+`TextInput` beside it for a typed hex. Nothing is disabled while a run or
+an export is going: `commit` holds the change and builds once the way is
+clear, so no control disables itself under a person's hands and no change
+is lost. Absent without a layout or on a read-only record.
 
 **The stand-in.** Nothing to add: `map.build` already draws, and the
 `fake-engine.received` log is what the end-to-end test reads the palette

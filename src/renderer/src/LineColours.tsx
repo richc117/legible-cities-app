@@ -9,9 +9,9 @@ import {
   hasOverride,
   isReset,
   linesOf,
+  nextStep,
   readHex,
   resetAll,
-  samePalette,
   shownColour,
   sourceWords,
   withDefault,
@@ -71,15 +71,28 @@ export default function LineColours({
   const ready = engine?.state === 'ready'
   const { state: runState, recoloured } = useSnapshot(run)
   const running = runState === 'running'
-  // Something else is reading or rewriting the project's page. A change
-  // made now is not refused: it waits, and builds once the way is clear,
-  // so no control has to disable itself under a person's hands.
+  // Something else is reading or rewriting the project's page. Nothing here
+  // is disabled for it: a change made now waits and builds once the way is
+  // clear, so no control disables itself under a person's hands and no
+  // change is lost. `aria-busy` says a build is going; `commit` does the
+  // waiting.
   const busy = disabled || running
 
   const [state, setState] = useState<State>({ status: 'waiting' })
   const [palette, setPalette] = useState<Palette>(() => paletteOf(project))
   const [open, setOpen] = useState<string | null>(null)
   const headingRef = useRef<HTMLHeadingElement>(null)
+
+  // The debounce, made once: a person dragging through a hue must not start
+  // a map build per frame. The current project, engine and run are read
+  // through a ref, so the waiting call is never the one from three renders
+  // ago.
+  const commitRef = useRef<(next: Palette) => void>(() => undefined)
+  const schedule = useMemo(
+    () => debounce((next: Palette) => commitRef.current(next), REDRAW_DELAY),
+    [],
+  )
+  useEffect(() => () => schedule.cancel(), [schedule])
 
   useEffect(() => {
     if (!ready) {
@@ -108,10 +121,14 @@ export default function LineColours({
   }, [ready, project.feed, inspect])
 
   // The record is what the panel shows: a build that finished has written
-  // it and the view has read it back, so the two agree again.
+  // it and the view has read it back, so the two agree again. A record that
+  // arrives while an edit is still waiting is not allowed to throw it off
+  // the screen - the view refetches whenever any run finishes, and under a
+  // pointer that would move the picker's thumb under the person's hand.
   useEffect(() => {
+    if (schedule.pending) return
     setPalette({ colors: project.colors, defaultColor: project.defaultColor })
-  }, [project.id, project.colors, project.defaultColor])
+  }, [project.id, project.colors, project.defaultColor, schedule])
 
   // A build that stopped wrote nothing, so the colours on screen must go
   // back to the record's; the run's own panel says why.
@@ -121,26 +138,16 @@ export default function LineColours({
     }
   }, [runState, recoloured, project.colors, project.defaultColor])
 
-  // The debounce, made once: a person dragging through a hue must not start
-  // a map build per frame. The current project, engine and run are read
-  // through a ref, so the waiting call is never the one from three renders
-  // ago.
-  const commitRef = useRef<(next: Palette) => void>(() => undefined)
-  const schedule = useMemo(
-    () => debounce((next: Palette) => commitRef.current(next), REDRAW_DELAY),
-    [],
-  )
-  useEffect(() => () => schedule.cancel(), [schedule])
   const commit = (next: Palette): void => {
-    if (samePalette(next, paletteOf(project))) return
+    // `busy` is what the last render saw; the run's own state is what is
+    // true at this moment, and a run can start between the two. Without it
+    // a colour would be handed to a run that refuses it, silently.
+    const step = nextStep(next, paletteOf(project), busy || run.snapshot.state === 'running')
     // A layout, a rebuild or an export is reading the page this would
     // rewrite. Wait rather than refuse: the same delay again, and again,
     // until the way is clear.
-    if (busy) {
-      schedule(next)
-      return
-    }
-    run.recolour(project, engine, next)
+    if (step === 'wait') schedule(next)
+    else if (step === 'build') run.recolour(project, engine, next)
   }
   useEffect(() => {
     commitRef.current = commit
@@ -198,7 +205,6 @@ export default function LineColours({
             open={open === DEFAULT_ROW}
             onToggle={() => setOpen(open === DEFAULT_ROW ? null : DEFAULT_ROW)}
             onPick={(hex) => change(withDefault(palette, hex))}
-            busy={busy}
           />
           {lines.length === 0 ? (
             <p className="hint" role="status">
@@ -214,7 +220,6 @@ export default function LineColours({
                   shown={shownColour(line, palette)}
                   overridden={hasOverride(palette, line.label)}
                   open={open === line.label}
-                  busy={busy}
                   onToggle={() => setOpen(open === line.label ? null : line.label)}
                   onPick={(hex) => change(withOverride(palette, line.label, hex))}
                   onReset={() => changeAndKeepFocus(withoutOverride(palette, line.label))}
@@ -247,13 +252,11 @@ function DefaultColour({
   open,
   onToggle,
   onPick,
-  busy,
 }: {
   colour: string
   open: boolean
   onToggle: () => void
   onPick: (hex: string) => void
-  busy: boolean
 }): JSX.Element {
   const panelId = useId()
   return (
@@ -264,7 +267,8 @@ function DefaultColour({
         <span className="line-source">drawn in {colour}</span>
         <Button
           aria-expanded={open}
-          aria-controls={panelId}
+          /* Only while it is there: a control named by aria-controls must exist. */
+          aria-controls={open ? panelId : undefined}
           aria-label="Choose the colour of lines the feed leaves uncoloured"
           onClick={onToggle}
         >
@@ -277,7 +281,6 @@ function DefaultColour({
           id={panelId}
           name="Colour for lines the feed leaves uncoloured"
           colour={colour}
-          busy={busy}
           onPick={onPick}
         />
       )}
@@ -290,7 +293,6 @@ function LineRow({
   shown,
   overridden,
   open,
-  busy,
   onToggle,
   onPick,
   onReset,
@@ -299,7 +301,6 @@ function LineRow({
   shown: Shown
   overridden: boolean
   open: boolean
-  busy: boolean
   onToggle: () => void
   onPick: (hex: string) => void
   onReset: () => void
@@ -314,7 +315,7 @@ function LineRow({
         <span className="line-source">{sourceWords(shown)}</span>
         <Button
           aria-expanded={open}
-          aria-controls={panelId}
+          aria-controls={open ? panelId : undefined}
           aria-label={`Choose the colour of line ${line.label}`}
           onClick={onToggle}
         >
@@ -338,7 +339,6 @@ function LineRow({
           id={panelId}
           name={`Colour for line ${line.label}`}
           colour={shown.color}
-          busy={busy}
           onPick={onPick}
         />
       )}
@@ -352,21 +352,20 @@ function LineRow({
  * right (its two areas are sliders that take the arrow keys), and the field
  * beside it is the path that needs no pointing device at all.
  *
- * While something else is reading the project's page the picker is inert
- * rather than removed: a control that vanishes or disables itself under a
- * person's hands takes the focus with it.
+ * It stays live while something else is reading the project's page. Turning
+ * it off would take the focus with it, and refusing its changes would lose
+ * a colour moved by an arrow key without a word; `commit` holds the change
+ * instead and builds once the way is clear.
  */
 function ColourPicker({
   id,
   name,
   colour,
-  busy,
   onPick,
 }: {
   id: string
   name: string
   colour: string
-  busy: boolean
   onPick: (hex: string) => void
 }): JSX.Element {
   const [text, setText] = useState(colour)
@@ -393,14 +392,8 @@ function ColourPicker({
   }
 
   return (
-    <div
-      id={id}
-      className="colour-picker"
-      role="group"
-      aria-label={name}
-      aria-disabled={busy || undefined}
-    >
-      <HexColorPicker color={colour} onChange={(next) => (busy ? undefined : onPick(next))} />
+    <div id={id} className="colour-picker" role="group" aria-label={name}>
+      <HexColorPicker color={colour} onChange={onPick} />
       <form className="inline-form" noValidate onSubmit={submit}>
         <div className="field">
           <label htmlFor={fieldId}>Hex value</label>

@@ -340,13 +340,6 @@ body {
   background: var(--surface-raised);
 }
 
-/* Inert rather than gone while something else is reading the project's
-   page: a control that vanishes under a person's hands takes the focus
-   with it. */
-.colour-picker[aria-disabled='true'] .react-colorful {
-  pointer-events: none;
-}
-
 /* The picker's own sizes are its stylesheet's; only its footprint here is
    the app's, and it never grows past the panel. */
 .colour-picker .react-colorful {
