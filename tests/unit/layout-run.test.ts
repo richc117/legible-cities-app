@@ -1124,6 +1124,24 @@ describe('the arrangement on every other draw', () => {
     })
   })
 
+  it("carries the record's palette when the order changes, the other way round", async () => {
+    const { run, calls, record } = setup({
+      ...arranged,
+      layout: LAYOUT,
+      date: '2026-09-15',
+      service: WINDOW,
+      colors: { A: '#0072bc' },
+      defaultColor: '#112233',
+    })
+    run.reorder(record, READY, ['A', 'C'])
+    await tick()
+    expect(calls[0].params).toMatchObject({
+      colors: { A: '#0072bc' },
+      default_color: '#112233',
+      line_order: ['A', 'C'],
+    })
+  })
+
   it("is the record's, not the one being tried, when a colour changes", async () => {
     const { run, calls, record } = setup({
       ...arranged,

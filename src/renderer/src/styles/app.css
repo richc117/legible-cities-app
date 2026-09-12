@@ -292,6 +292,11 @@ body {
   margin: var(--space-4-6) 0 var(--space-2-2);
 }
 
+.line-order h2:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus);
+  outline-offset: var(--focus-ring-offset);
+}
+
 /* The place a line stands in the order, beside its swatch: a figure, quiet,
    and the same width whatever the digit, so the names line up. */
 .line-place {

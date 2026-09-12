@@ -156,10 +156,20 @@ and back; then VoiceOver over the list.
   same timer and builds once the way is clear, as a colour change does. The
   one thing a draw may never do is rewrite the page a capture is reading.
 - **A colour change and a move in the same few hundred milliseconds.** Both
-  panels debounce separately and the run takes one at a time; whichever
-  builds second carries both, because every draw sends the record's palette
-  and the arrangement being tried, or the arrangement and the record's
-  palette. The two settle in the record either way.
+  panels debounce separately and the run takes one at a time, and each draw
+  sends the record's half beside the one being tried, so the second build
+  normally carries both. There is one window it does not: a draw begun in
+  the milliseconds between the first build's record write and the screen
+  reading that record back sends the half the screen still holds, and the
+  record then names a colour the page does not show until something draws
+  again. It is A4-01's window as much as this feature's, it needs a press
+  inside a few milliseconds of four hundred, and the next draw of any kind
+  clears it.
+- **A move waiting on the timer when the project is left.** The run outlives
+  the screen and the debounce does not: a move still waiting - which is what
+  a move made during an export is, since it re-arms until the way is clear -
+  is dropped when the panel goes, with nothing said. Inherited from the
+  Colours panel, and named here so it is a decision rather than a surprise.
 - **A build that is cancelled or fails.** Nothing is written, and the panel
   goes back to the record's order, as the Colours panel does.
 - **A read-only record**, written by a newer version of the app: the panel
@@ -199,7 +209,13 @@ and back; then VoiceOver over the list.
   announced politely.
 - **FR-012**: The order crossing the bridge MUST be validated in the panel,
   in the main-side handler and in the store: line labels the record can
-  hold, no duplicates, and no more of them than a feed could draw.
+  hold, no duplicates, and no more of them than a feed could draw. A feed
+  with more lines than that MUST be refused in the panel, with a word, and
+  never drawn and then refused on the way to disk.
+- **FR-014**: The list MUST be in the order the engine would draw when it is
+  told nothing, which sorts labels by code point, and not the numeric order
+  a person would write: `10` before `2`. The Colours panel's list sorts the
+  other way on purpose, because there the order is only a list.
 - **FR-013**: The app MUST pin the engine release carrying issue 28's fix,
   because an order that names some lines is safe only there.
 
@@ -225,7 +241,8 @@ and back; then VoiceOver over the list.
 
 - The lines a person can arrange are the ones `feeds.inspect` reports under
   the layout's mode and agency, which is the Colours panel's list and a
-  superset of the labels the stored layout carries.
+  superset of the labels the stored layout carries. A position therefore
+  counts lines the page may not draw, on a feed whose mode drops some.
 - The engine draws later lines over earlier ones, and lists them in the
   same order in the page's rows. Both follow one list, which is why one
   control serves both.

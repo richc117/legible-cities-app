@@ -5,6 +5,7 @@ import type { Inspection } from '../../shared/protocol'
 import {
   orderOf,
   paletteOf,
+  validateLineOrder,
   type LineOrder as Order,
   type ProjectRecord,
 } from '../../shared/project'
@@ -86,6 +87,7 @@ export default function LineOrder({
   // focus would fall to the body (A3-04 learned this).
   const [focusOn, setFocusOn] = useState<string | null>(null)
   const buttons = useRef(new Map<string, HTMLElement>())
+  const headingRef = useRef<HTMLHeadingElement>(null)
 
   const commitRef = useRef<(next: Order) => void>(() => undefined)
   const schedule = useMemo(
@@ -140,6 +142,14 @@ export default function LineOrder({
   }, [runState, reordered, project.lineOrder, schedule])
 
   const commit = (next: Order): void => {
+    // The store's own rule, run here as well: a feed with more lines than a
+    // record may hold would otherwise draw the map and then fail on the way
+    // to disk, once per move, with the panel springing back each time.
+    const refused = validateLineOrder(next)
+    if (refused !== null) {
+      setSaid(`The order was not kept: ${refused}.`)
+      return
+    }
     // `busy` is what the last render saw; the run's own state is what is
     // true at this moment, and a run can start between the two. Without it
     // an arrangement would be handed to a run that refuses it, silently.
@@ -179,19 +189,29 @@ export default function LineOrder({
   }, [focusOn])
 
   const moveLine = (line: Line, by: -1 | 1): void => {
-    const next = move(lines, order, line.label, by)
+    const moved = move(lines, order, line.label, by)
+    // A line moved down and then back up leaves the lines where the engine
+    // would have drawn them anyway, and that is stored as no order at all:
+    // otherwise the record would name every line to say nothing, and the
+    // way back to alphabetical would stay lit with nothing to undo.
+    const next = isAlphabetical(lines, moved) ? alphabetical() : moved
     if (sameOrder(next, order)) return
-    const at = next.indexOf(line.label)
+    const at = arrange(lines, next).findIndex((each) => each.label === line.label)
     setOrder(next)
     schedule(next)
-    setSaid(`${line.label} is now ${positionWords(at, next.length)}.`)
+    setSaid(`${line.label} is now ${positionWords(at, lines.length)}.`)
     // The button pressed, unless the line has just reached the end it was
     // moving towards and that button is about to be disabled.
-    const stillThere = by === -1 ? at > 0 : at < next.length - 1
+    const stillThere = by === -1 ? at > 0 : at < lines.length - 1
     setFocusOn(`${line.label}:${stillThere ? by : -by}`)
   }
 
   const putBack = (): void => {
+    // This button removes the last thing it had to remove and so disables
+    // itself, and Chromium blurs a disabled element; the heading is where
+    // focus goes, so a screen reader stays in the panel (A3-04 learned
+    // this, and the Colours panel's resets do the same).
+    headingRef.current?.focus()
     const next = alphabetical()
     setOrder(next)
     schedule(next)
@@ -200,7 +220,9 @@ export default function LineOrder({
 
   return (
     <section className="line-order" aria-labelledby="line-order-heading" aria-busy={busy}>
-      <h2 id="line-order-heading">Line order</h2>
+      <h2 id="line-order-heading" tabIndex={-1} ref={headingRef}>
+        Line order
+      </h2>
       <p className="prose">
         Where two lines share track the map draws the later of them over the earlier, and the page
         lists them in this order too. The stations do not move: the stored layout is drawn again,

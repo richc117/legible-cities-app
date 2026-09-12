@@ -19,10 +19,24 @@ import type { Line } from './colours'
 // order safe (engine issue 28).
 
 /**
+ * The order the engine draws a project's lines in when it is told nothing:
+ * the labels sorted, and sorted the way Python's `sorted` sorts them, by
+ * code point.
+ *
+ * `linesOf` sorts for a person instead, numerically, so it reads `2, 4, 10`
+ * where the engine draws `10, 2, 4`. That is right for the Colours panel,
+ * whose order is only a list, and wrong here, where the list is a claim
+ * about what the map does.
+ */
+export function drawnFirst(lines: Line[]): Line[] {
+  return [...lines].sort((a, b) => (a.label < b.label ? -1 : a.label > b.label ? 1 : 0))
+}
+
+/**
  * The lines in the order they are drawn: the ones the order names, in that
- * order, then the rest in the order they came, which is `linesOf`'s
- * alphabetical. A label the order names that the feed no longer offers is
- * passed over, so an arrangement made under a wider mode still reads.
+ * order, then the rest in the engine's own order. A label the order names
+ * that the feed no longer offers is passed over, so an arrangement made
+ * under a wider mode still reads.
  */
 export function arrange(lines: Line[], order: LineOrder): Line[] {
   const byLabel = new Map(lines.map((line) => [line.label, line]))
@@ -34,7 +48,7 @@ export function arrange(lines: Line[], order: LineOrder): Line[] {
     taken.add(label)
     named.push(line)
   }
-  return [...named, ...lines.filter((line) => !taken.has(line.label))]
+  return [...named, ...drawnFirst(lines).filter((line) => !taken.has(line.label))]
 }
 
 /**
@@ -68,7 +82,8 @@ export function sameOrder(a: LineOrder, b: LineOrder): boolean {
 export function isAlphabetical(lines: Line[], order: LineOrder): boolean {
   if (order.length === 0) return true
   const arranged = arrange(lines, order)
-  return arranged.every((line, i) => line.label === lines[i]?.label)
+  const engine = drawnFirst(lines)
+  return arranged.every((line, i) => line.label === engine[i]?.label)
 }
 
 /** Nothing arranged: the engine's own order, and no `line_order` in the request. */

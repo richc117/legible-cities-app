@@ -55,11 +55,14 @@ again and writes `lineOrder` and `modified`, refusing a project with no
 layout.
 
 **The arrangement.** `arrange(lines, order)` in
-`src/renderer/src/order.ts`: the named lines that the feed still
-offers, in the order given, then the rest in the order they came - which is
-`linesOf`'s alphabetical. It is the app's copy of the engine's own
-`ordered_labels`, held here so the panel can show what the engine will
-draw.
+`src/renderer/src/order.ts`: the named lines that the feed still offers, in
+the order given, then the rest in `drawnFirst`'s order, which is the
+engine's own - labels sorted by code point, as Python's `sorted` sorts
+them, so `10` comes before `2`. `linesOf` sorts numerically for a person
+instead, which is right for the Colours panel, where the order is only a
+list, and wrong here, where the list is a claim about what the map does.
+`arrange` is the app's copy of the engine's `ordered_labels`, held here so
+the panel can show what the engine will draw.
 
 **The move.** `move(lines, order, label, -1 | 1)` answers the whole
 arrangement after the swap, so the record always holds a complete list of

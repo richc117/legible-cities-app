@@ -9,12 +9,7 @@
     "repo": "https://github.com/ad-freiburg/loom",
     "commit": "1e4757838104d1e4d22186c9b77d5fc4b98681a0",
     "note": "Head of master on 2026-09-07. The published maps were built from an unpinned master build; the spike checks whether that output matches this commit.",
-    "binaries": [
-      "gtfs2graph",
-      "topo",
-      "loom",
-      "octi"
-    ],
+    "binaries": ["gtfs2graph", "topo", "loom", "octi"],
     "licence": "GPL-3.0"
   },
   "loom_windows_port": {

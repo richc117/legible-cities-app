@@ -157,6 +157,25 @@ test('four presses in a row are one build', async () => {
   })
 })
 
+test('a move undone stores nothing at all, because that is the engine’s own order', async () => {
+  const engineHome = home()
+  await withApp(engineHome, async (page) => {
+    await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
+    const panel = panelOf(page)
+    const before = received(engineHome, 'map.build').length
+
+    await panel.getByRole('button', { name: 'Move line A down' }).click()
+    await panel.getByRole('button', { name: 'Move line A up' }).click()
+    await expect(rowsOf(page).nth(0)).toContainText('A')
+    // Nothing to draw and nothing to store: the lines are where the engine
+    // would have put them, and the way back stays disabled.
+    await expect(panel.getByRole('button', { name: 'Back to alphabetical' })).toBeDisabled()
+    await page.waitForTimeout(1500)
+    expect(received(engineHome, 'map.build')).toHaveLength(before)
+    expect(readRecord(engineHome).lineOrder).toEqual([])
+  })
+})
+
 test('back to alphabetical empties the order and disables itself', async () => {
   const engineHome = home()
   await withApp(engineHome, async (page) => {
@@ -181,6 +200,10 @@ test('back to alphabetical empties the order and disables itself', async () => {
     // the engine's own alphabetical order is.
     const maps = received(engineHome, 'map.build')
     expect(maps[maps.length - 1]).not.toContain('line_order')
+    // The button disabled itself under the press, and Chromium blurs a
+    // disabled element: focus is on the panel's heading rather than the
+    // body, so a screen reader is still in the panel.
+    await expect(panel.getByRole('heading', { name: 'Line order' })).toBeFocused()
   })
 })
 

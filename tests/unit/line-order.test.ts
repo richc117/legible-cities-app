@@ -3,6 +3,7 @@ import type { Line } from '../../src/renderer/src/colours'
 import {
   alphabetical,
   arrange,
+  drawnFirst,
   isAlphabetical,
   move,
   nextStep,
@@ -40,6 +41,39 @@ describe('arrange', () => {
 
   it('draws a line named twice once', () => {
     expect(labelsOf(arrange(six, ['C', 'C']))).toEqual(['C', 'A', 'B', 'D', 'E', 'K'])
+  })
+})
+
+describe('drawnFirst', () => {
+  // The engine sorts labels the way Python's sorted does, by code point;
+  // `linesOf` sorts them for a person, numerically. On a rail feed the two
+  // agree, which is why only a bus feed shows the difference.
+  it('is the engine’s order, not the one a person would write', () => {
+    expect(labelsOf(drawnFirst(lines('2', '4', '10', '720')))).toEqual(['10', '2', '4', '720'])
+  })
+
+  it('leaves the lines it was given alone', () => {
+    const given = lines('B', 'A')
+    drawnFirst(given)
+    expect(labelsOf(given)).toEqual(['B', 'A'])
+  })
+})
+
+describe('the tail of an arrangement', () => {
+  const bus = lines('2', '4', '10', '720')
+
+  it('is what the engine would draw, so the panel does not claim otherwise', () => {
+    expect(labelsOf(arrange(bus, []))).toEqual(['10', '2', '4', '720'])
+    expect(labelsOf(arrange(bus, ['720']))).toEqual(['720', '10', '2', '4'])
+  })
+
+  it('is what an untouched arrangement is measured against', () => {
+    expect(isAlphabetical(bus, ['10', '2', '4', '720'])).toBe(true)
+    expect(isAlphabetical(bus, ['2', '4', '10', '720'])).toBe(false)
+  })
+
+  it('is where a move starts from', () => {
+    expect(move(bus, [], '2', -1)).toEqual(['2', '10', '4', '720'])
   })
 })
 

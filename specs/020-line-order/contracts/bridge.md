@@ -29,7 +29,9 @@ It writes `lineOrder` and `modified`, and nothing else. The same validator
 main-side handler and in the store: the panel so a move is never made that
 the store would reject, the handler because the argument came from another
 process, the store because it is the trusted layer and has callers of its
-own.
+own. The cap is the one the panel needs most: a feed with more lines than a
+record may hold would otherwise draw the map and then fail on the way to
+disk, once for every move.
 
 Nothing here talks to the engine, arranges anything, or carries a path.
 
