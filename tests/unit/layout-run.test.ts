@@ -13,7 +13,12 @@ import {
   sentenceFor,
   type RunClient,
 } from '../../src/renderer/src/engine/layoutRun'
-import { doneSentence, drawnSentence, stoppedSentence } from '../../src/renderer/src/LayoutRun'
+import {
+  doneSentence,
+  drawnSentence,
+  recolouredSentence,
+  stoppedSentence,
+} from '../../src/renderer/src/LayoutRun'
 import { LAYOUT_STAGES } from '../../src/shared/layout'
 import { ERROR_CODES, type EngineState } from '../../src/shared/engine'
 import type { ProjectRecord } from '../../src/shared/project'
@@ -159,9 +164,24 @@ function setup(over: Partial<ProjectRecord> = {}, engine: EngineState | null = R
   const { client, calls } = stubClient()
   const complete = vi.fn(async () => ({ changed: false, relaid: false }))
   const completeRebuild = vi.fn(async () => ({}))
+  const completeColors = vi.fn(async () => ({}))
   const record = project(over)
-  const run = new LayoutRun({ client, complete, completeRebuild, today: () => '2026-09-08' })
-  return { run, calls, complete, completeRebuild, record, begin: () => run.start(record, engine) }
+  const run = new LayoutRun({
+    client,
+    complete,
+    completeRebuild,
+    completeColors,
+    today: () => '2026-09-08',
+  })
+  return {
+    run,
+    calls,
+    complete,
+    completeRebuild,
+    completeColors,
+    record,
+    begin: () => run.start(record, engine),
+  }
 }
 
 /** The layout answered and the day chosen: the map call is next. */
@@ -251,7 +271,14 @@ describe('the run asks for the layout, then the day, then the map', () => {
     })
     expect(run.snapshot.forced).toBe(true)
     await laidOut(calls)
-    expect(Object.keys(calls[2].params).sort()).toEqual(['date', 'key', 'layout', 'out'])
+    expect(Object.keys(calls[2].params).sort()).toEqual([
+      'colors',
+      'date',
+      'default_color',
+      'key',
+      'layout',
+      'out',
+    ])
     calls[2].resolve({ files: {} })
     await tick()
     expect(complete).toHaveBeenCalledWith('p1', {
@@ -292,7 +319,16 @@ describe('the run asks for the layout, then the day, then the map', () => {
     begin()
     await laidOut(calls)
     expect(calls[0].params).toEqual({ key: 'la-metro-rail', mode: 'rail', agency: 'Metro' })
-    expect(Object.keys(calls[2].params).sort()).toEqual(['date', 'key', 'layout', 'out'])
+    // The map call takes no mode and no agency: it draws a stored layout,
+    // which was named by them. It does take the project's colours (A4-01).
+    expect(Object.keys(calls[2].params).sort()).toEqual([
+      'colors',
+      'date',
+      'default_color',
+      'key',
+      'layout',
+      'out',
+    ])
     // No agency is sent as the empty string, which the engine reads as every
     // operator; left out, it would read as the registry entry's.
     const none = setup({ mode: 'all', agency: null })
@@ -748,6 +784,7 @@ describe('the run survives the record it writes', () => {
       client,
       complete,
       completeRebuild: async () => ({}),
+      completeColors: async () => ({}),
       today: () => '2026-09-08',
     })
     run.start(record, READY)
@@ -764,6 +801,7 @@ describe('the run survives the record it writes', () => {
       client,
       complete,
       completeRebuild: async () => ({}),
+      completeColors: async () => ({}),
       today: () => '2026-09-08',
     })
     run.start(project({ date: '2026-01-01' }), READY)
@@ -831,5 +869,122 @@ describe('the run refuses when it cannot start', () => {
     begin()
     begin()
     expect(calls).toHaveLength(1)
+  })
+})
+
+// The colours (A4-01): every draw carries the project's palette, and a
+// colour change is the map call alone, from the stored layout, for the
+// stored day, written only once the map has been drawn.
+describe('the palette on every draw', () => {
+  const PALETTE = { colors: { A: '#0072bc' }, defaultColor: '#112233' }
+
+  it("a layout run's map call carries the record's colours", async () => {
+    const { calls, begin } = setup({ colors: PALETTE.colors, defaultColor: PALETTE.defaultColor })
+    begin()
+    await laidOut(calls)
+    expect(calls[2].method).toBe('map.build')
+    expect(calls[2].params).toMatchObject({
+      colors: { A: '#0072bc' },
+      default_color: '#112233',
+    })
+  })
+
+  it('a rebuild for a chosen day carries them too, so a day does not lose them', async () => {
+    const { run, calls, record } = setup({
+      layout: LAYOUT,
+      date: '2026-09-15',
+      service: WINDOW,
+      colors: PALETTE.colors,
+      defaultColor: PALETTE.defaultColor,
+    })
+    run.rebuild(record, READY, '2026-09-12')
+    await tick()
+    expect(calls[0].method).toBe('map.build')
+    expect(calls[0].params).toMatchObject({
+      date: '2026-09-12',
+      colors: { A: '#0072bc' },
+      default_color: '#112233',
+    })
+  })
+})
+
+describe('recolour', () => {
+  const stored = { layout: LAYOUT, date: '2026-09-15', service: WINDOW }
+  const chosen = { colors: { A: '#ff0000' }, defaultColor: '#00ff00' }
+
+  it('draws the stored layout for the stored day in the chosen colours, and never lays out', async () => {
+    const { run, calls, completeColors, record } = setup(stored)
+    run.recolour(record, READY, chosen)
+    await tick()
+    expect(calls).toHaveLength(1)
+    expect(calls[0].method, 'the map alone: a colour is a render').toBe('map.build')
+    expect(calls[0].params).toMatchObject({
+      key: 'la-metro-rail',
+      layout: LAYOUT,
+      date: '2026-09-15',
+      out: 'p1',
+      colors: { A: '#ff0000' },
+      default_color: '#00ff00',
+    })
+    expect(run.snapshot.state).toBe('running')
+    expect(run.snapshot.recoloured).toBe(true)
+    expect(completeColors, 'nothing is written until the map is drawn').not.toHaveBeenCalled()
+
+    calls[0].resolve({ files: {} })
+    await tick()
+    expect(completeColors).toHaveBeenCalledWith('p1', chosen)
+    expect(run.snapshot.state).toBe('done')
+    expect(run.snapshot.recoloured).toBe(true)
+    expect(run.snapshot.stages.every((s) => s.state === 'done')).toBe(true)
+  })
+
+  it('writes nothing when the build fails, and says so', async () => {
+    const { run, calls, completeColors, record } = setup(stored)
+    run.recolour(record, READY, chosen)
+    await tick()
+    calls[0].reject({ code: -32000, message: 'the stand-in draws nothing' })
+    await tick()
+    expect(completeColors).not.toHaveBeenCalled()
+    expect(run.snapshot.state).toBe('failed')
+    expect(stoppedSentence('failed', false, false, true)).toMatch(/keeps the colours it had/)
+  })
+
+  it('writes nothing when it is cancelled', async () => {
+    const { run, calls, completeColors, record } = setup(stored)
+    run.recolour(record, READY, chosen)
+    await tick()
+    run.cancel()
+    expect(calls[0].cancelled).toBe(true)
+    calls[0].resolve({ files: {} })
+    await tick()
+    expect(completeColors).not.toHaveBeenCalled()
+    expect(run.snapshot.state).toBe('cancelled')
+    expect(stoppedSentence('cancelled', false, false, true)).toMatch(/keeps the colours it had/)
+  })
+
+  it('refuses a project that has not been laid out, and starts nothing', async () => {
+    const { run, calls, completeColors, record } = setup()
+    run.recolour(record, READY, chosen)
+    await tick()
+    expect(calls).toEqual([])
+    expect(completeColors).not.toHaveBeenCalled()
+    expect(run.snapshot.state).toBe('failed')
+    expect(run.snapshot.recoloured).toBe(true)
+    expect(run.snapshot.error).toMatch(/Lay the project out/)
+  })
+
+  it('refuses while another run is going: the two would rewrite one page', async () => {
+    const { run, calls, record, begin } = setup(stored)
+    begin()
+    await tick()
+    run.recolour(record, READY, chosen)
+    await tick()
+    expect(calls, 'only the layout call is out').toHaveLength(1)
+    expect(calls[0].method).toBe('graph.build')
+    expect(run.snapshot.recoloured).toBe(false)
+  })
+
+  it('says, when it has finished, that the stations have not moved', () => {
+    expect(recolouredSentence()).toMatch(/stations have not moved/)
   })
 })

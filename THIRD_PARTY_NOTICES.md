@@ -26,7 +26,7 @@ intended build.
 | requests (planned) | Feed download in the engine | Apache-2.0 | https://requests.readthedocs.io/ |
 | vscode-jsonrpc (planned) | JSON-RPC over stdio, app side | MIT | https://github.com/microsoft/vscode-languageserver-node |
 | python-lsp-jsonrpc (planned) | JSON-RPC over stdio, engine side | MIT | https://github.com/python-lsp/python-lsp-jsonrpc |
-| react-colorful (planned) | Colour picker | MIT | https://github.com/omgovich/react-colorful |
+| react-colorful | The colour picker in the Line colours panel (A4-01): **5.8.1**, pinned exactly, no dependencies of its own. A build-time dependency for the same reason the control kit is: the renderer's packages are bundled by Vite, and the packager copies every production dependency whole | MIT | https://github.com/omgovich/react-colorful |
 | Spec Kit | Spec templates and scripts, committed under `.specify/` (its agent skills are installed outside the repository). Development tooling: present in this repository, not shipped in the app | MIT | https://github.com/github/spec-kit |
 | Contributor Covenant 2.1 | The code of conduct text | CC BY 4.0 | https://www.contributor-covenant.org/ |
 
@@ -37,17 +37,19 @@ intended build.
   binaries, together with the build scripts and the FFmpeg configure line
   used. The installed app ships `LICENSE` and this file and shows them in
   its Licences screen.
-- **FigUI3 core and Phosphor Icons** (MIT): the kit is compiled into the
-  interface and the icons are inlined into it, so neither licence file
-  reaches the built app on its own; this file, which the installed app
-  ships and its Licences screen shows, carries the notices instead. The
-  kit is a build-time dependency on purpose: the packager copies every
-  production dependency whole, and the package's other half is not ours to
-  ship.
+- **FigUI3 core, Phosphor Icons and react-colorful** (MIT): the kit and the
+  picker are compiled into the interface and the icons are inlined into it,
+  so no licence file reaches the built app on its own; this file, which the
+  installed app ships and its Licences screen shows, carries the notices
+  instead. All three are build-time dependencies on purpose: the packager
+  copies every production dependency whole, and in the kit's case the
+  package's other half is not ours to ship.
 
   > FigUI3 core: Copyright (c) 2026 Rogie King
   >
   > Phosphor Icons: Copyright (c) 2023 Phosphor Icons
+  >
+  > react-colorful: Copyright (c) 2020-present Vlad Shilov
   >
   > Permission is hereby granted, free of charge, to any person obtaining a
   > copy of this software and associated documentation files (the

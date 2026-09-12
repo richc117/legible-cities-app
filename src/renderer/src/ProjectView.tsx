@@ -14,6 +14,7 @@ import Viewer from './Viewer'
 import Icon from './icons/Icon'
 import Button from './kit/Button'
 import LayoutRunView from './LayoutRun'
+import LineColours from './LineColours'
 import ServiceDay from './ServiceDay'
 import TextInput, { type TextInputHandle } from './kit/TextInput'
 import { useEngineState } from './useEngineState'
@@ -291,6 +292,15 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
           {!project.readOnly && <DiagnosticsView run={run} project={project} />}
           {!project.readOnly && project.layout !== null && (
             <ServiceDay run={run} project={project} engine={engine} disabled={exporting} />
+          )}
+          {!project.readOnly && project.layout !== null && (
+            <LineColours
+              run={run}
+              project={project}
+              engine={engine}
+              inspect={inspect}
+              disabled={exporting}
+            />
           )}
           {!project.readOnly && project.layout !== null && (
             <ExportRunView run={exporter} project={project} engine={engine} disabled={layingOut} />

@@ -23,8 +23,10 @@ import {
   validateFeedKey,
   validateMode,
   validateName,
+  validatePalette,
   type CreateProjectInput,
   type DeleteResult,
+  type Palette,
   type ProjectInputs,
   type ProjectRecord,
   type ProjectSummary,
@@ -379,6 +381,30 @@ export class ProjectStore {
       ...record,
       version: RECORD_VERSION,
       date: done.date,
+      modified: new Date().toISOString(),
+    }
+    await this.writeAtomic(id, updated)
+    return updated
+  }
+
+  /**
+   * The line colours a person chose (A4-01), written once the map has been
+   * drawn with them, as a chosen day is: nothing is stored that the page on
+   * screen does not already show. The engine resolves an override over the
+   * feed's own colour over the default, so only the two fields are kept
+   * here; the app resolves nothing and stores no feed colour.
+   */
+  async completeColors(id: string, palette: Palette): Promise<ProjectRecord> {
+    this.checkId(id)
+    check(validatePalette(palette))
+    const { record, readOnly } = await this.load(id)
+    if (readOnly) throw new Error('read-only')
+    if (record.layout === null) throw new Error('lay the project out first')
+    const updated: ProjectRecord = {
+      ...record,
+      version: RECORD_VERSION,
+      colors: { ...palette.colors },
+      defaultColor: palette.defaultColor,
       modified: new Date().toISOString(),
     }
     await this.writeAtomic(id, updated)

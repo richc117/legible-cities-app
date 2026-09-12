@@ -10,6 +10,7 @@ import type { ViewerMethod } from './viewer'
 import type {
   CreateProjectInput,
   DeleteResult,
+  Palette,
   ProjectRecord,
   ProjectInputs,
   ProjectSummary,
@@ -19,6 +20,7 @@ import type {
 export type {
   CreateProjectInput,
   DeleteResult,
+  Palette,
   ProjectInputs,
   ProjectRecord,
   ProjectSummary,
@@ -88,6 +90,14 @@ export interface Api {
      * layout passes them to the engine, which names a layout for them.
      */
     setInputs(id: string, inputs: ProjectInputs): Promise<ProjectRecord>
+    /**
+     * The line colours a person chose (A4-01), written once the map has
+     * been drawn with them, as a chosen day is: the record and the page on
+     * screen always agree. The main process checks every label and every
+     * colour before the store sees them
+     * (specs/018-colours/contracts/bridge.md).
+     */
+    completeColors(id: string, palette: Palette): Promise<ProjectRecord>
   }
   /**
    * The map on the screen. The page runs in a sandboxed frame at an opaque
@@ -157,6 +167,7 @@ export const CHANNELS = {
   projectsCompleteLayout: 'projects:complete-layout',
   projectsCompleteRebuild: 'projects:complete-rebuild',
   projectsSetInputs: 'projects:set-inputs',
+  projectsCompleteColors: 'projects:complete-colors',
   viewerAttach: 'viewer:attach',
   viewerRelease: 'viewer:release',
   viewerCall: 'viewer:call',

@@ -272,6 +272,89 @@ body {
   margin: 0 0 var(--space-2-2);
 }
 
+/* Line colours (A4-01): one row per line the feed offers, each a swatch, a
+   name, where its colour came from and its two controls; the picker is a
+   disclosure under the row it belongs to. A line's own colour is data and
+   arrives as an inline style from the record, never from here. */
+
+.line-colours h2 {
+  font-size: var(--font-ui-medium);
+  margin: var(--space-4-6) 0 var(--space-2-2);
+}
+
+.line-colours h2:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.line-list {
+  list-style: none;
+  margin: 0 0 var(--space-4-4);
+  padding: 0;
+}
+
+.line-row-group + .line-row-group {
+  border-top: var(--border-width) solid var(--border);
+}
+
+.line-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4-2);
+  min-height: var(--control-height-large);
+  padding: var(--space-2-2) 0;
+}
+
+.line-row .swatch {
+  flex: none;
+  border: var(--border-width) solid var(--border);
+}
+
+.line-name {
+  font-weight: var(--weight-strong);
+  font-variant-numeric: var(--numerals);
+}
+
+/* What the feed publishes, and what the line is drawn in: the quiet half of
+   the row, and the last to be pushed out when the window is narrow. */
+.line-feed,
+.line-source {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  font-variant-numeric: var(--numerals);
+}
+
+.line-source {
+  margin-left: auto;
+}
+
+.colour-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-4-4);
+  margin: 0 0 var(--space-4-3);
+  padding: var(--space-4-3);
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+}
+
+/* Inert rather than gone while something else is reading the project's
+   page: a control that vanishes under a person's hands takes the focus
+   with it. */
+.colour-picker[aria-disabled='true'] .react-colorful {
+  pointer-events: none;
+}
+
+/* The picker's own sizes are its stylesheet's; only its footprint here is
+   the app's, and it never grows past the panel. */
+.colour-picker .react-colorful {
+  width: var(--picker-size);
+  height: var(--picker-size);
+  max-width: 100%;
+}
+
 /* The feeds on the Library: two groups, each a dense list; a row carries
    its actions at the end rather than being a button itself. */
 

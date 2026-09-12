@@ -89,6 +89,24 @@ export interface ProjectInputs {
   agency: string | null
 }
 
+/**
+ * What a project chooses for its lines (A4-01): the overrides a person set,
+ * by line label, and what a line the feed leaves uncoloured is drawn in.
+ * Exactly the record's two fields, and exactly what `map.build` takes as
+ * `colors` and `default_color`. The engine resolves an override over the
+ * feed's own `route_color` over the default, once, so the map, the chips
+ * and the time chart agree (engine E06).
+ */
+export interface Palette {
+  colors: Record<string, string>
+  defaultColor: string
+}
+
+/** The palette a record holds, as the two fields the engine takes. */
+export function paletteOf(record: Pick<ProjectRecord, 'colors' | 'defaultColor'>): Palette {
+  return { colors: record.colors, defaultColor: record.defaultColor }
+}
+
 export interface DeleteResult {
   removed: string[]
   failed: { folder: 'project' | 'output'; reason: string }[]
@@ -146,6 +164,64 @@ export function validateId(id: string): string | null {
   return ID_PATTERN.test(id) ? null : 'invalid id'
 }
 
+/**
+ * A line label is the engine's own: `route_short_name`, or the long name
+ * through the feed's label pattern and strip. The protocol puts no rule on
+ * it beyond being a string, so the rule here is the app's own and is about
+ * what a record and a screen can hold, not about what a feed may publish.
+ */
+export const LABEL_MAX = 64
+/**
+ * More overrides than any feed could draw lines. A cap so a call from
+ * another process cannot make the record grow without bound; no real feed
+ * comes near it.
+ */
+export const COLORS_MAX = 512
+
+/** A colour a person or a feed chose, written `#rrggbb`. */
+export function isHexColor(value: unknown): value is string {
+  return typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value)
+}
+
+export function validateLineLabel(label: string): string | null {
+  if (label === '') return 'a line needs a label'
+  // Assigning this key on a plain object writes the prototype rather than a
+  // property, so a record could store it and never read it back. Refusing
+  // it here is what keeps the write and the read agreeing.
+  if (label === '__proto__') return 'a line cannot be called __proto__'
+  if (label.length > LABEL_MAX) return `a line label is too long (${LABEL_MAX} characters at most)`
+  for (const character of label) {
+    const code = character.codePointAt(0) ?? 0
+    if (code < 0x20 || code === 0x7f) return 'a line label cannot carry a control character'
+  }
+  return null
+}
+
+/**
+ * The palette a person chose (A4-01): overrides by line label and the
+ * colour a line the feed leaves uncoloured takes. Checked in the form for
+ * a sentence, in the main-side handler because it arrived from another
+ * process, and in the store because the store is the trusted layer.
+ */
+export function validatePalette(palette: unknown): string | null {
+  if (typeof palette !== 'object' || palette === null || Array.isArray(palette))
+    return 'the colours must be a line for each colour'
+  const { colors, defaultColor } = palette as Record<string, unknown>
+  if (!isHexColor(defaultColor))
+    return 'the default colour must be written #rrggbb, six hexadecimal digits'
+  if (typeof colors !== 'object' || colors === null || Array.isArray(colors))
+    return 'the colours must be a line for each colour'
+  const entries = Object.entries(colors as Record<string, unknown>)
+  if (entries.length > COLORS_MAX) return `that is more than ${COLORS_MAX} lines`
+  for (const [label, colour] of entries) {
+    const problem = validateLineLabel(label)
+    if (problem !== null) return problem
+    if (!isHexColor(colour))
+      return `the colour for ${label} must be written #rrggbb, six hexadecimal digits`
+  }
+  return null
+}
+
 /** A service day, YYYY-MM-DD, that names a real calendar day. */
 export function validateServiceDate(date: string): string | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return 'the service day must be written YYYY-MM-DD'
@@ -200,7 +276,7 @@ type Parsed = { record: ProjectRecord; readOnly: boolean } | { error: string }
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
 const isString = (v: unknown): v is string => typeof v === 'string'
-const isColor = (v: unknown): v is string => isString(v) && /^#[0-9a-fA-F]{6}$/.test(v)
+const isColor = isHexColor
 
 /**
  * Read a record from parsed JSON. Missing optional fields take their
@@ -225,7 +301,10 @@ export function parseRecord(json: unknown): Parsed {
     typeof v === 'number' && Number.isFinite(v) ? v : d
   const colors: Record<string, string> = {}
   if (isObject(json.colors)) {
-    for (const [k, v] of Object.entries(json.colors)) if (isColor(v)) colors[k] = v
+    // A label the app would refuse to write is a label it does not read
+    // back either, so what a person sees is what the store would keep.
+    for (const [k, v] of Object.entries(json.colors))
+      if (isColor(v) && validateLineLabel(k) === null) colors[k] = v
   }
   // A record without a timestamp gets a fixed one, so it sorts last and
   // reads the same on every open; every write sets both.

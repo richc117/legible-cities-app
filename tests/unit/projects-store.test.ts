@@ -678,3 +678,102 @@ describe('setInputs', () => {
     )
   })
 })
+
+// The line colours a person chose (A4-01), written once the map has been
+// drawn with them, as a chosen day is.
+describe('completeColors', () => {
+  const LAYOUT = 'a'.repeat(64)
+
+  async function laidOut(): Promise<ProjectRecord> {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    await store.completeLayout(project.id, {
+      date: '2026-09-15',
+      layout: LAYOUT,
+      service: WINDOW,
+      made: MADE,
+      built: BUILT,
+    })
+    return project
+  }
+
+  it('writes the palette and the time, and nothing else', async () => {
+    const project = await laidOut()
+    const before = await store.get(project.id)
+    const after = await store.completeColors(project.id, {
+      colors: { A: '#0072bc', 'Rapid 720': '#FFFFFF' },
+      defaultColor: '#112233',
+    })
+    expect(after.colors).toEqual({ A: '#0072bc', 'Rapid 720': '#FFFFFF' })
+    expect(after.defaultColor).toBe('#112233')
+    expect(after.layout, 'a colour is a render, never a layout').toBe(LAYOUT)
+    expect(after.date).toBe(before.date)
+    expect(after.service).toEqual(before.service)
+    expect(after.modified >= before.modified).toBe(true)
+    expect(await store.get(project.id), 'and it is on disk').toEqual({ ...after, readOnly: false })
+  })
+
+  it('reads the same palette back on the next open, which is the whole point', async () => {
+    const project = await laidOut()
+    await store.completeColors(project.id, { colors: { A: '#0072bc' }, defaultColor: '#112233' })
+    const fresh = new ProjectStore(home, (message) => lines.push(message))
+    const reopened = await fresh.get(project.id)
+    expect(reopened.colors).toEqual({ A: '#0072bc' })
+    expect(reopened.defaultColor).toBe('#112233')
+  })
+
+  it('replaces the palette rather than merging it, so a reset really resets', async () => {
+    const project = await laidOut()
+    await store.completeColors(project.id, {
+      colors: { A: '#0072bc', B: '#e3131b' },
+      defaultColor: '#112233',
+    })
+    const reset = await store.completeColors(project.id, {
+      colors: {},
+      defaultColor: DEFAULT_COLOR,
+    })
+    expect(reset.colors).toEqual({})
+    expect(reset.defaultColor).toBe(DEFAULT_COLOR)
+  })
+
+  it('keeps no reference to the palette it was handed', async () => {
+    const project = await laidOut()
+    const palette = { colors: { A: '#0072bc' }, defaultColor: DEFAULT_COLOR }
+    const after = await store.completeColors(project.id, palette)
+    palette.colors.A = '#ffffff'
+    expect(after.colors.A).toBe('#0072bc')
+    expect((await store.get(project.id)).colors.A).toBe('#0072bc')
+  })
+
+  it('refuses a colour or a label the record could not hold', async () => {
+    const project = await laidOut()
+    for (const palette of [
+      { colors: {}, defaultColor: 'grey' },
+      { colors: { A: '0072bc' }, defaultColor: DEFAULT_COLOR },
+      { colors: { '': '#0072bc' }, defaultColor: DEFAULT_COLOR },
+      { colors: { ['a'.repeat(65)]: '#0072bc' }, defaultColor: DEFAULT_COLOR },
+    ]) {
+      await expect(
+        store.completeColors(project.id, palette as never),
+        JSON.stringify(palette),
+      ).rejects.toThrow()
+    }
+    expect((await store.get(project.id)).colors, 'nothing was written').toEqual({})
+  })
+
+  it('refuses a project with no layout: there is nothing to draw the colours on', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    await expect(
+      store.completeColors(project.id, { colors: {}, defaultColor: '#112233' }),
+    ).rejects.toThrow('lay the project out first')
+  })
+
+  it('refuses a record a newer version of the app wrote', async () => {
+    const project = await laidOut()
+    const file = join(home, 'projects', project.id, 'project.json')
+    const current = await store.get(project.id)
+    await writeFile(file, JSON.stringify({ ...current, version: 99 }), 'utf8')
+    await expect(
+      store.completeColors(project.id, { colors: {}, defaultColor: '#112233' }),
+    ).rejects.toThrow('read-only')
+  })
+})
