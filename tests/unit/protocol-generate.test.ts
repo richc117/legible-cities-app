@@ -93,6 +93,70 @@ describe('the emitter refuses what it does not understand', () => {
   })
 })
 
+// An open object is a map, and the node under `additionalProperties` says
+// what it maps to. The emitter used to read the keyword only in its `false`
+// form and type everything else `Record<string, unknown>`, silently, which
+// is how the engine's colour map arrived in the app untyped (E06).
+describe('an object that carries extras keeps their type', () => {
+  const base = { protocol: 1, $defs: {}, methods: {}, notifications: {} }
+  const hex = { type: 'string', pattern: '^#[0-9a-f]{6}$' }
+
+  it('types a map by the node its values follow', () => {
+    const schema = {
+      ...base,
+      $defs: { HexColor: hex, Colors: { type: 'object', additionalProperties: hex } },
+    }
+    expect(emit(schema as never, 'v0.0.0')).toContain('export type Colors = Record<string, string>')
+  })
+
+  it('follows a reference under the keyword rather than losing it', () => {
+    const schema = {
+      ...base,
+      $defs: {
+        HexColor: hex,
+        Colors: { type: 'object', additionalProperties: { $ref: '#/$defs/HexColor' } },
+      },
+    }
+    expect(emit(schema as never, 'v0.0.0')).toContain(
+      'export type Colors = Record<string, HexColor>',
+    )
+  })
+
+  it('gives named members an index signature beside them', () => {
+    const schema = {
+      ...base,
+      $defs: {
+        Bag: {
+          type: 'object',
+          properties: { name: { type: 'string' } },
+          required: ['name'],
+          additionalProperties: { type: 'string' },
+        },
+      },
+    }
+    const out = emit(schema as never, 'v0.0.0')
+    expect(out).toContain('name: string')
+    expect(out).toContain('[key: string]: string')
+  })
+
+  it('keeps a closed object closed and an open one a bag', () => {
+    const closed = { ...base, $defs: { Nothing: { type: 'object', additionalProperties: false } } }
+    expect(emit(closed as never, 'v0.0.0')).toContain('export type Nothing = Record<string, never>')
+    const open = { ...base, $defs: { Anything: { type: 'object', additionalProperties: true } } }
+    expect(emit(open as never, 'v0.0.0')).toContain(
+      'export type Anything = Record<string, unknown>',
+    )
+  })
+
+  it('names a reference under the keyword that the description does not define', () => {
+    const schema = {
+      ...base,
+      $defs: { Colors: { type: 'object', additionalProperties: { $ref: '#/$defs/Absent' } } },
+    }
+    expect(() => emit(schema as never, 'v0.0.0')).toThrow(/Absent/)
+  })
+})
+
 describe('the checkout is read from the environment or the local file', () => {
   const root = '/repo'
   const where = (env: NodeJS.ProcessEnv, file: string | null): string | null =>

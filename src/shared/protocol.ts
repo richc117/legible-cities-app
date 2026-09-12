@@ -1,7 +1,7 @@
 // Generated from the engine's own description of its protocol.
 // Run `npm run typegen` to regenerate; edits here are lost.
 //
-// Engine: v0.7.1, protocol 1.
+// Engine: v0.8.0, protocol 1.
 // Source: vendor/protocol.schema.json, printed by the engine's
 // `python -m schematic.serve --schema` and committed verbatim.
 
@@ -116,6 +116,12 @@ export interface EngineInfo {
  * anything runs; the desktop app stores it with a project.
  */
 export type LayoutId = string
+
+/**
+ * A colour a client chooses, written #rrggbb. The feed's own route_color
+ * arrives without the hash and is the feed's, not the client's.
+ */
+export type HexColor = string
 
 /**
  * What a stored layout was made from, as written beside it in .meta.json.
@@ -246,6 +252,17 @@ export interface MapBuildParams {
    */
   width?: number
   /**
+   * A colour per line label, over the feed's own route_color. A label the
+   * layout does not carry is ignored, so a client can keep colours for lines
+   * a narrower mode dropped.
+   */
+  colors?: Record<string, HexColor>
+  /**
+   * The colour of a line the feed leaves uncoloured, on the map and in the
+   * page's chips, dots and chart alike; #888888 when omitted.
+   */
+  default_color?: HexColor
+  /**
    * Line labels in the order they stack on shared track; the rest follow.
    */
   line_order?: string[]
@@ -302,6 +319,16 @@ export interface MapBuildResult {
    */
   summary: string
   diagnostics: Diagnostics
+  /**
+   * What the build had to fudge, as sentences a person can read: the atlas's
+   * caveats, from the same numbers.
+   */
+  caveats: string[]
+  /**
+   * How much of the network the build had to fudge, as one weighted
+   * proportion; 0 is clean. What the atlas is ordered by.
+   */
+  issues: number
 }
 
 /**

@@ -105,7 +105,10 @@ interface Node {
   pattern?: string
   format?: string
   default?: unknown
-  additionalProperties?: boolean
+  // `false` closes the object, `true` opens it, and a node types the values
+  // an open object carries: `{"additionalProperties": {"$ref": ...}}` is a
+  // map, not a bag, and typing it as one is the point.
+  additionalProperties?: boolean | Node
   minLength?: number
   minItems?: number
   maxItems?: number
@@ -206,11 +209,24 @@ function typeOf(node: Node, path: string, defs: Set<string>, indent: string): st
     if (node.properties !== undefined) return objectBody(node, path, defs, indent)
     // No properties and no extras allowed: an empty object, not a bag.
     if (node.additionalProperties === false) return 'Record<string, never>'
+    // No properties but a node for the extras: a map, keyed by whatever the
+    // client holds. `Record<string, unknown>` would lose the value's type
+    // silently, which is how a colour map reached the app untyped.
+    const extra = extraNode(node)
+    if (extra !== null) {
+      return `Record<string, ${typeOf(extra, `${path}.additionalProperties`, defs, indent)}>`
+    }
   }
   const primitive = PRIMITIVES[node.type]
   if (primitive === undefined)
     throw new Error(`${path}: this script does not know the type "${node.type}"`)
   return primitive
+}
+
+/** The node typing an open object's values, or null if there is none. */
+function extraNode(node: Node): Node | null {
+  const extra = node.additionalProperties
+  return typeof extra === 'object' && extra !== null ? extra : null
 }
 
 /** An object's members, braced, one per line. */
@@ -223,6 +239,14 @@ function objectBody(node: Node, path: string, defs: Set<string>, indent: string)
     const key = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) ? name : `'${name}'`
     const optional = required.has(name) ? '' : '?'
     lines.push(`${inner}${key}${optional}: ${typeOf(child, `${path}.${name}`, defs, inner)}`)
+  }
+  // Named members and a node for the rest: an index signature beside them,
+  // so the extras keep their type instead of disappearing.
+  const extra = extraNode(node)
+  if (extra !== null) {
+    lines.push(
+      `${inner}[key: string]: ${typeOf(extra, `${path}.additionalProperties`, defs, inner)}`,
+    )
   }
   return `{\n${lines.join('\n')}\n${indent}}`
 }
