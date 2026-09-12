@@ -68,6 +68,8 @@
   --measure: 40rem;
   /* What the viewer takes: wider than prose, because a map is not read. */
   --measure-wide: 64rem;
+  /* A tooltip's measure: a sentence or two, never a column of prose. */
+  --tooltip-width: 20rem;
   --backdrop-opacity: 0.6;
 
   /* Layers. */

@@ -27,6 +27,8 @@ import { engineCommand, engineEnvironment, resolveInterpreter } from '../../src/
 import { Sidecar } from '../../src/main/sidecar'
 import type { EnginePin } from '../../src/shared/engine'
 import { GRAPH_STAGES, LAYOUT_STAGES } from '../../src/shared/layout'
+import { reportOf } from '../../src/renderer/src/engine/layoutRun'
+import { copyText, metrics, score } from '../../src/renderer/src/engine/diagnostics'
 
 const repo = resolve(__dirname, '../..')
 const pins = JSON.parse(readFileSync(join(repo, 'vendor/pins.json'), 'utf8')) as {
@@ -167,6 +169,41 @@ describe.skipIf(INTERPRETER === null || !CACHED)(`the real engine's layout${WHY}
       expect(map.date).toBe('2026-09-02')
       expect(map.layout, 'the map names the layout it was drawn from').toBe(built.layout)
       expect(existsSync(join(home, 'out', 'a-project', `${FEED}.html`))).toBe(true)
+
+      // What the diagnostics panel reads, against the engine that has it
+      // (A3-03, engine v0.8.0). The block's own arithmetic is the engine's:
+      // every matched stop is matched one way, and the ways add up to the
+      // matched figure the panel shows above them. The app checks that
+      // relation here rather than computing it on a screen.
+      const report = reportOf(map as never, '2026-09-02')
+      expect(report, 'v0.8.0 answers diagnostics beside the files').not.toBeNull()
+      const diagnostics = report!.diagnostics
+      const { matched, total, by } = diagnostics.stops
+      expect(by.station_id + by.parent_station + by.name, 'one way each').toBe(matched)
+      expect(matched).toBeLessThanOrEqual(total)
+      expect(
+        diagnostics.stops.unmatched.length,
+        'the first few, never the whole list',
+      ).toBeLessThan(9)
+      expect(diagnostics.octilinear).toBeGreaterThan(0)
+      expect(diagnostics.octilinear).toBeLessThanOrEqual(1)
+      expect(diagnostics.lines.length, 'the lines the layout drew').toBeGreaterThan(0)
+      // The sentences are the engine's, and the app shows them as they
+      // are: each is a sentence and none is a path (constitution V).
+      for (const caveat of report!.caveats) {
+        expect(caveat.length).toBeGreaterThan(10)
+        expect(caveat, 'no path in a caveat').not.toMatch(
+          /(^|[\s(])(?:[A-Za-z]:[\\/]|[\\/][^\s\\/])/,
+        )
+      }
+      expect(report!.issues).toBeGreaterThanOrEqual(0)
+      // And the panel's own rendering of a real network: a figure in every
+      // row, and a copied block that carries them all.
+      const rows = metrics(diagnostics)
+      for (const metric of rows) expect(metric.value, metric.id).not.toBe('')
+      const text = copyText('Los Angeles', report!)
+      expect(text).toContain(`Issues score: ${score(report!.issues)}`)
+      expect(text).toContain('the map drawn for 2026-09-02')
 
       // The same inputs name the same layout, and asking again runs nothing.
       const again = (await sidecar.request('graph.build', { key: FEED }).result) as {

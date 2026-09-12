@@ -93,6 +93,9 @@ const api: Api = {
   feeds: {
     pickZip: () => invoke(CHANNELS.feedsPickZip),
   },
+  clipboard: {
+    write: (text) => invoke(CHANNELS.clipboardWrite, text),
+  },
   export: {
     run: (projectId, preset) =>
       startJob(CHANNELS.exportRun, CHANNELS.exportSettled, projectId, preset),

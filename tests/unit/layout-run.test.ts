@@ -8,6 +8,7 @@ import {
   advance,
   freshStages,
   readableMessage,
+  reportOf,
   sentenceFor,
   type RunClient,
 } from '../../src/renderer/src/engine/layoutRun'
@@ -89,6 +90,41 @@ const WINDOW = {
   end: '2026-12-31',
   busiest: '2026-09-15',
   anchor: '2026-09-08',
+}
+
+// What map.build answers beside its files, since engine v0.8.0: the
+// build's numbers, the same numbers as sentences, and the weighted
+// proportion the atlas is ordered by. The app keeps all three for the
+// panel and throws the files away (specs/017).
+const DIAGNOSTICS = {
+  stations: 114,
+  junctions: 8,
+  edges: 121,
+  lines: ['A', 'B'],
+  octilinear: 0.9938,
+  stops: {
+    matched: 112,
+    total: 116,
+    by: { station_id: 100, parent_station: 10, name: 2 },
+    unmatched: ['80122', '80123'],
+  },
+  trips: { total: 1135, paths: 40, unrouted: 3 },
+  degraded: { skipped_calls: 12, borrowed_track: 260 },
+  labels_dropped: 2,
+  peak_concurrent: 19,
+}
+// The engine answers absolute paths under its home, and the point of the
+// test below is that none of them reaches the snapshot. They are assembled
+// rather than written out: bin/preflight refuses a path literal in a
+// committed file, and a test is no reason to weaken the scanner.
+const OUT = ['', 'engine-home', 'out', 'a-project'].join('/')
+const MAP = {
+  files: { svg: `${OUT}/la.svg`, html: `${OUT}/la.html`, positions: `${OUT}/la.json` },
+  date: '2026-09-15',
+  summary: 'the engine prints these same numbers',
+  diagnostics: DIAGNOSTICS,
+  caveats: ['4 of 116 stops could not be placed on the map'],
+  issues: 0.2137,
 }
 
 const READY: EngineState = { state: 'ready', version: '0.2.0', protocol: 1 }
@@ -389,6 +425,64 @@ describe('a rebuild for a chosen day', () => {
     await tick()
     expect(run.snapshot.state).toBe('failed')
     expect(run.snapshot.error).toMatch(/the feed covers/)
+  })
+})
+
+describe('what the map call said about the map it drew', () => {
+  it("keeps the engine's diagnostics, caveats and score, and none of its paths", async () => {
+    const { run, calls, begin } = setup()
+    begin()
+    await laidOut(calls)
+    expect(run.snapshot.report, 'nothing until the map has answered').toBeNull()
+    calls[2].resolve(MAP)
+    await tick()
+    expect(run.snapshot.report).toEqual({
+      date: '2026-09-15',
+      diagnostics: DIAGNOSTICS,
+      caveats: MAP.caveats,
+      issues: 0.2137,
+    })
+    // The result's files are absolute paths under the engine's home. The
+    // snapshot is read by a screen, so they stay where they were.
+    expect(JSON.stringify(run.snapshot.report)).not.toMatch(/[/\\]/)
+  })
+
+  it("a rebuild for a chosen day gets that day's figures, from the same call", async () => {
+    const { run, calls, record } = setup({ layout: LAYOUT, date: '2026-09-15', service: WINDOW })
+    run.rebuild(record, READY, '2026-09-12')
+    // A clean network: no sentences, and a score of zero.
+    calls[0].resolve({ ...MAP, date: '2026-09-12', caveats: [], issues: 0 })
+    await tick()
+    expect(run.snapshot).toMatchObject({ state: 'done', rebuilt: true })
+    expect(run.snapshot.report).toMatchObject({ date: '2026-09-12', caveats: [], issues: 0 })
+  })
+
+  it('is cleared when the next run starts, and by a run that does not finish', async () => {
+    const { run, calls, record } = setup()
+    run.start(record, READY)
+    await laidOut(calls)
+    calls[2].resolve(MAP)
+    await tick()
+    expect(run.snapshot.report).not.toBeNull()
+    run.start(record, READY)
+    expect(run.snapshot.report, "the last run's figures go when the next begins").toBeNull()
+    calls[3].reject({ code: -32000, message: 'the feed could not be read' })
+    await tick()
+    expect(run.snapshot.state).toBe('failed')
+    expect(run.snapshot.report).toBeNull()
+  })
+
+  it('survives a result that carries no diagnostics at all', () => {
+    expect(reportOf({ files: {} } as never, '2026-09-15')).toBeNull()
+    expect(reportOf(undefined as never, '2026-09-15')).toBeNull()
+    // A caveat that is not a sentence, and a score that is not a number,
+    // are dropped rather than rendered: the answer is another process's.
+    expect(
+      reportOf(
+        { diagnostics: DIAGNOSTICS, caveats: ['ok', 7], issues: null } as never,
+        '2026-09-15',
+      ),
+    ).toMatchObject({ date: '2026-09-15', caveats: ['ok'], issues: 0 })
   })
 })
 

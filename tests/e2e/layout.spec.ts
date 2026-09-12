@@ -136,6 +136,109 @@ test('shows no path on the screen, whatever the engine says', async () => {
   })
 })
 
+// The diagnostics panel (A3-03): the engine's numbers, its caveat
+// sentences and its score, for the build that just ran. The stand-in
+// answers a fudged network here and its clean default below, which are the
+// two cases the panel has to get right.
+const FUDGED = {
+  map_draws: true,
+  progress_delay_ms: 10,
+  map_diagnostics: {
+    stations: 114,
+    junctions: 8,
+    edges: 121,
+    lines: ['A', 'B'],
+    octilinear: 0.9938,
+    stops: {
+      matched: 112,
+      total: 116,
+      by: { station_id: 100, parent_station: 10, name: 2 },
+      unmatched: ['80122', '80123'],
+    },
+    trips: { total: 135, paths: 40, unrouted: 3 },
+    degraded: { skipped_calls: 12, borrowed_track: 26 },
+    labels_dropped: 2,
+    peak_concurrent: 19,
+  },
+  map_caveats: [
+    '4 of 116 stops could not be placed on the map, so trains pass straight through them',
+  ],
+  map_issues: 0.2137,
+}
+
+test("shows what the build had to fudge, in the engine's own words and figures", async () => {
+  const engineHome = home(FUDGED)
+  await withApp(engineHome, async (page, app) => {
+    await openNewProject(page, 'Los Angeles')
+    const panel = page.getByRole('region', { name: 'What the build had to fudge' })
+    // Nothing to say about a build that has not happened.
+    await expect(panel).toHaveCount(0)
+
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    await expect(panel).toBeVisible()
+
+    // The caveat is the engine's sentence, word for word, and the score is
+    // the number it sent.
+    await expect(
+      panel.getByText('4 of 116 stops could not be placed on the map', { exact: false }),
+    ).toBeVisible()
+    await expect(panel).toContainText('issues score of 0.2137')
+    // Every figure is the block's, formatted and never derived.
+    await expect(panel).toContainText('99.4%')
+    await expect(panel).toContainText('112 of 116 (97%)')
+    await expect(panel).toContainText('80122, 80123')
+    for (const figure of ['114', '121', '135', '40', '26', '19']) {
+      await expect(panel).toContainText(figure)
+    }
+
+    // An explanation is reachable from the keyboard, and says what the
+    // engine's word means.
+    const trigger = panel.getByRole('button', { name: 'What trips on borrowed track means' })
+    await trigger.focus()
+    await expect(panel.getByText(/neighbouring line's track/)).toBeVisible()
+
+    // "Copy as text" hands over what is on the screen.
+    await panel.getByRole('button', { name: 'Copy as text' }).click()
+    await expect(panel.getByText(/on the clipboard/)).toBeVisible()
+    const copied = await app.evaluate(({ clipboard }) => clipboard.readText())
+    expect(copied).toContain('Los Angeles — the map drawn for')
+    expect(copied).toContain('Trips on borrowed track: 26')
+    expect(copied).toContain('Issues score: 0.2137 (0 is clean)')
+    expect(copied).toContain(
+      '- 4 of 116 stops could not be placed on the map, so trains pass straight through them',
+    )
+    // The result's files are paths under the engine home; none reaches the
+    // screen or the clipboard (constitution V).
+    expect(await panel.innerText()).not.toMatch(/[/\\]/)
+  })
+})
+
+test('a clean network says there are no caveats and a score of 0', async () => {
+  const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    const panel = page.getByRole('region', { name: 'What the build had to fudge' })
+    await expect(panel).toContainText('No caveats')
+    await expect(panel).toContainText('the issues score is 0.')
+    await expect(panel).toContainText('100.0%')
+    await expect(panel).toContainText('3 of 3 (100%)')
+  })
+})
+
+test('a run that did not finish leaves no figures on the screen', async () => {
+  const engineHome = home({ ...FUDGED, progress_delay_ms: 400 })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /cancel/i }).click()
+    await expect(page.getByText(/was cancelled/i)).toBeVisible({ timeout: 20_000 })
+    await expect(page.getByRole('region', { name: 'What the build had to fudge' })).toHaveCount(0)
+  })
+})
+
 test('a cancelled run writes nothing and says so', async () => {
   const engineHome = home({ map_draws: true, progress_delay_ms: 400 })
   await withApp(engineHome, async (page) => {

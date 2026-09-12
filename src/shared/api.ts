@@ -137,6 +137,15 @@ export interface Api {
     reveal(id: string): Promise<void>
     onProgress(listener: (progress: ExportProgress) => void): () => void
   }
+  /**
+   * Put text on the system clipboard, and nothing else: the page may write
+   * it, never read it. A page cannot do this for itself, because the app
+   * answers every permission request with false and Chromium's own
+   * clipboard write is one (specs/017-diagnostics/contracts/bridge.md).
+   */
+  clipboard: {
+    write(text: string): Promise<void>
+  }
 }
 
 export const CHANNELS = {
@@ -164,4 +173,5 @@ export const CHANNELS = {
   exportProgress: 'export:progress',
   exportSettled: 'export:settled',
   feedsPickZip: 'feeds:pick-zip',
+  clipboardWrite: 'clipboard:write',
 } as const

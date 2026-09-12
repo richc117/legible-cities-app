@@ -1,7 +1,7 @@
 import { LAYOUT_STAGES, type RunState } from '../../../shared/layout'
 import { isEngineErrorShape, ERROR_CODES, type EngineState } from '../../../shared/engine'
 import type { ProjectRecord, ServiceWindow } from '../../../shared/project'
-import type { Methods } from '../../../shared/protocol'
+import type { Diagnostics, MapBuildResult, Methods } from '../../../shared/protocol'
 import type { Stage } from '../ProgressLine'
 
 // One layout run for one project, with no React in it: the rule is that
@@ -48,6 +48,44 @@ export interface RunSnapshot {
   rebuilt: boolean
   /** The day a rebuild drew for; null for a layout run. */
   day: string | null
+  /** What the map call said about the map it drew; null until one has. */
+  report: RunReport | null
+}
+
+/**
+ * What `map.build` answered about the map it drew, for the panel that
+ * reads it (specs/017). It is the run's, not the record's: it describes
+ * the build that just happened, and a build the app did not watch has
+ * none. The result's file paths are deliberately left behind.
+ */
+export interface RunReport {
+  /** The day the map was drawn for, as the engine echoed it. */
+  date: string
+  /** The build's numbers, exactly as the engine sent them. */
+  diagnostics: Diagnostics
+  /** What the build had to fudge, in the engine's own sentences. */
+  caveats: string[]
+  /** The engine's weighted proportion of the network it fudged; 0 is clean. */
+  issues: number
+}
+
+/**
+ * The part of a map result worth keeping, or nothing. The answer crosses
+ * from another process, so its shape is read rather than assumed: an
+ * engine that sent no diagnostics leaves the panel with nothing to show,
+ * which is what a run whose result the app cannot read should do.
+ */
+export function reportOf(result: MapBuildResult, date: string): RunReport | null {
+  const answer = result as Partial<MapBuildResult> | null | undefined
+  if (answer === null || typeof answer !== 'object') return null
+  const { diagnostics, caveats, issues } = answer
+  if (diagnostics === undefined || diagnostics === null) return null
+  return {
+    date: typeof answer.date === 'string' ? answer.date : date,
+    diagnostics,
+    caveats: Array.isArray(caveats) ? caveats.filter((c) => typeof c === 'string') : [],
+    issues: typeof issues === 'number' ? issues : 0,
+  }
 }
 
 interface Handle<T> {
@@ -148,6 +186,7 @@ const IDLE: RunSnapshot = {
   replaced: false,
   rebuilt: false,
   day: null,
+  report: null,
 }
 
 export class LayoutRun {
@@ -326,6 +365,9 @@ export class LayoutRun {
       changed: false,
       relaid: false,
       replaced: false,
+      // The panel describes the build being started, so the last one's
+      // figures go now rather than when this one answers.
+      report: null,
       ...kind,
     })
     return true
@@ -341,8 +383,11 @@ export class LayoutRun {
     })
     this.#inFlight = map
     map.onProgress((p) => this.#report(p))
-    await map.result
+    const drawn = await map.result
     this.#inFlight = null
+    // What the engine measured drawing this map: kept for the panel, and
+    // for a rebuild too, which draws the same way for another day.
+    this.#set({ report: reportOf(drawn, date) })
   }
 
   #finish(outcome: { changed: boolean; relaid: boolean }): void {
@@ -363,6 +408,7 @@ export class LayoutRun {
         stages: this.#snapshot.stages.map((s) =>
           s.state === 'running' ? { ...s, state: 'pending' as const } : s,
         ),
+        report: null,
       })
       return
     }
@@ -372,6 +418,7 @@ export class LayoutRun {
       stages: this.#snapshot.stages.map((s) =>
         s.state === 'running' ? { ...s, state: 'failed' as const } : s,
       ),
+      report: null,
     })
   }
 
@@ -382,6 +429,10 @@ export class LayoutRun {
       stages: this.#snapshot.stages.map((s) =>
         s.state === 'running' ? { ...s, state: 'pending' as const } : s,
       ),
+      // A run that did not finish left the record and the page on screen
+      // as they were; the figures of a map nobody is looking at would
+      // describe something else (spec 017).
+      report: null,
     })
   }
 

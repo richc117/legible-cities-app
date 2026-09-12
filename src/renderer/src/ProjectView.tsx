@@ -3,6 +3,7 @@ import type { DeleteResult, ProjectRecord } from '../../shared/api'
 import { shortLayoutId } from '../../shared/layout'
 import { validateName } from '../../shared/project'
 import ConfirmDialog from './ConfirmDialog'
+import DiagnosticsView from './Diagnostics'
 import { engineClient, exportRunFor, layoutRunFor } from './engine/runs'
 import { feedRecordFor, inspectionFor } from './engine/inspections'
 import { stageFor } from './engine/stages'
@@ -284,6 +285,10 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
           {!project.readOnly && (
             <LayoutRunView run={run} project={project} engine={engine} disabled={exporting} />
           )}
+          {/* What the build that just ran had to fudge. The panel draws
+              nothing until a map has been drawn in this session, and the
+              numbers are never stored (A3-03, specs/017). */}
+          {!project.readOnly && <DiagnosticsView run={run} project={project} />}
           {!project.readOnly && project.layout !== null && (
             <ServiceDay run={run} project={project} engine={engine} disabled={exporting} />
           )}

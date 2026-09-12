@@ -227,6 +227,7 @@ platform is):
 | `--focus-ring` | 2px solid `--focus`, offset 2px, radius follows the element |
 | `--dialog-width` | 28rem (existing), `--dialog-width-wide` 40rem |
 | `--measure` | 40rem for prose panels |
+| `--tooltip-width` | 20rem: a tooltip's measure, a sentence or two |
 
 **Layers** (z-index tokens): `--layer-base` 0, `--layer-raised` 10 (sticky
 headers), `--layer-overlay` 100 (drawers), `--layer-dialog` 1000 (native
@@ -359,6 +360,7 @@ not used:
 | The viewer | the engine's page in an iframe filling the main region, no chrome of the app's over it; its controls are its own |
 | Tables (routes, route types) | a real `<table>` with a `<caption>` and `<th scope>`; the UI track at 12px, rules in `--border` under the header and between rows, numbers in `--numerals` aligned in their column, a header that sorts is a button styled as its label with `aria-sort` on the cell; a row the choice leaves out reads in `--text-faint`; a colour swatch is a `--space-4-3` square beside a name, never a drawing (A2-02) |
 | The geographic pane | the engine's stage drawing (SVG) in an iframe with an empty `sandbox`, sized to the drawing and moved by transforms on the frame from the interface: wheel and drag, `+`, `-`, the arrows and `0` on a focusable pane named for a screen reader; the pane the viewer's shape, `--surface-sunken`, clipped; the two stages a pressed-state pair of buttons with the engine's stage names; counts as the engine sent them; no transition under reduced motion (A2-03) |
+| The diagnostics panel | what the build had to fudge (A3-03): the engine's caveat sentences as prose, verbatim and in its order, with the issue score in the same line; the figures under the table rule above, two columns, measure and figure; each row's explanation on a `--target-min` text button carrying the info icon, shown on hover and on focus and named by `aria-describedby` so a screen reader reads it without a pointer, in the tooltip's own style; "Copy as text" a text button that copies exactly what is on screen |
 | Date control | the platform's native `<input type="date">`, as the select is native (ADR-026): `--control-height`, the tokens for text, surface and border, `min` and `max` from the data so an impossible day cannot be picked, the message beneath referenced by the control; its popup renders in the platform's own style, which is accepted |
 | Deliverables | an export that finished says the file's name in prose and offers "Reveal", a text button that opens the file's folder in the platform's file browser; the path is never shown, and the folder is the person's own (A1-04) |
 

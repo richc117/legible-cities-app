@@ -5,7 +5,7 @@
 import { existsSync } from 'node:fs'
 import { readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import { BrowserWindow, app, dialog, ipcMain, session, shell } from 'electron'
+import { BrowserWindow, app, clipboard, dialog, ipcMain, session, shell } from 'electron'
 import pins from '../../vendor/pins.json'
 import { CHANNELS } from '../shared/api'
 import { abortCaptures, capture, configureCapture } from './capture-window'
@@ -15,7 +15,7 @@ import { PickedPaths, registerFeedsHandlers, registryGuard } from './feeds-ipc'
 import { Exporter } from './export'
 import { registerExportHandlers } from './export-ipc'
 import { engineCommand, engineEnvironment, resolveInterpreter } from './interpreter'
-import { registerProjectHandlers, registerViewerHandlers } from './ipc'
+import { registerClipboardHandler, registerProjectHandlers, registerViewerHandlers } from './ipc'
 import { log } from './log'
 import { ProjectStore } from './projects'
 import { Viewer } from './viewer'
@@ -189,6 +189,10 @@ if (!hasLock) {
     const isTopFrame = (event: Electron.IpcMainInvokeEvent): boolean =>
       mainWindow !== null && event.senderFrame === mainWindow.webContents.mainFrame
     registerProjectHandlers(ipcMain, store, isTopFrame)
+    // Text on the clipboard, one way: the diagnostics panel's "Copy as
+    // text" (A3-03). The permission handlers below refuse Chromium's own
+    // clipboard write, deliberately, so the page asks for this instead.
+    registerClipboardHandler(ipcMain, (text) => clipboard.writeText(text), isTopFrame)
     const viewer = new Viewer((m) => log.warn('viewer', m))
     registerViewerHandlers(
       ipcMain,
