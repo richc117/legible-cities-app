@@ -230,6 +230,15 @@ test('every control is named for its line, and focus follows the line that moved
     await expect(rowsOf(page).nth(1)).toContainText('A')
     await expect(down).toBeFocused()
 
+    // And it is still there once the build has run and the record has come
+    // back, which draws the list twice more, moving the row the button is
+    // in. macOS's runner caught this and this machine, which finishes the
+    // build between one press and the next, did not.
+    await expect(page.getByText(/Drawn with the lines in the order you chose/)).toBeVisible({
+      timeout: 30_000,
+    })
+    await expect(down).toBeFocused()
+
     // Back to the top, where that button disables itself. Chromium blurs a
     // disabled element, so focus goes to the one that can still move the
     // line rather than falling to the body.
@@ -238,6 +247,10 @@ test('every control is named for its line, and focus follows the line that moved
     await page.keyboard.press('Enter')
     await expect(rowsOf(page).nth(0)).toContainText('A')
     await expect(up).toBeDisabled()
-    await expect(panel.getByRole('button', { name: 'Move line A down' })).toBeFocused()
+    await expect(down).toBeFocused()
+    // That move put the lines back where the engine draws them, so nothing
+    // is built and nothing redraws; focus stays where it was handed.
+    await page.waitForTimeout(1500)
+    await expect(down).toBeFocused()
   })
 })

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type JSX } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from 'react'
 import type { EngineState } from '../../shared/engine'
 import { withoutPaths } from '../../shared/engine'
 import type { Inspection } from '../../shared/protocol'
@@ -85,11 +85,17 @@ export default function LineOrder({
   // timer until the way is clear, which for an export is minutes. Saying so
   // is the difference between a move waiting and a move that looks done.
   const [waiting, setWaiting] = useState(false)
-  // Which button to leave focus on after a move has landed: the one that
-  // made it, or its opposite when the line has reached an end and that
-  // button is now disabled, because Chromium blurs a disabled element and
-  // focus would fall to the body (A3-04 learned this).
-  const [focusOn, setFocusOn] = useState<string | null>(null)
+  // Which button the line that moved left focus on: the one that made the
+  // move, or its opposite when the line has reached an end and that button
+  // is now disabled, because Chromium blurs a disabled element and focus
+  // would fall to the body (A3-04 learned this).
+  //
+  // It is a ref rather than state because it outlives the move. The list is
+  // drawn again when the build starts and again when the record comes back,
+  // and a row moving in the DOM takes focus off the button inside it, half
+  // a second after the press - which macOS's runner caught and this
+  // machine, finishing sooner, did not.
+  const focusOn = useRef<string | null>(null)
   const buttons = useRef(new Map<string, HTMLElement>())
   const headingRef = useRef<HTMLHeadingElement>(null)
 
@@ -196,12 +202,17 @@ export default function LineOrder({
   const palette = paletteOf(project)
   const nothingToPutBack = isAlphabetical(lines, order)
 
-  // Focus follows the line that moved, once the list has been drawn again.
-  useEffect(() => {
-    if (focusOn === null) return
-    buttons.current.get(focusOn)?.focus()
-    setFocusOn(null)
-  }, [focusOn])
+  // Focus follows the line that moved, through every redraw of the list -
+  // but only while nothing else holds it, so a person who has tabbed on is
+  // never pulled back.
+  useLayoutEffect(() => {
+    const key = focusOn.current
+    if (key === null) return
+    const target = buttons.current.get(key)
+    if (target === undefined || target === document.activeElement) return
+    const active = document.activeElement
+    if (active === null || active === document.body) target.focus()
+  })
 
   const moveLine = (line: Line, by: -1 | 1): void => {
     const moved = move(lines, order, line.label, by)
@@ -216,12 +227,18 @@ export default function LineOrder({
     schedule(next)
     setSaid(`${line.label} is now ${positionWords(at, lines.length)}.`)
     // The button pressed, unless the line has just reached the end it was
-    // moving towards and that button is about to be disabled.
+    // moving towards and that button is about to be disabled. Handed over
+    // now, before React disables anything, and held by the effect above
+    // through the redraws that follow.
     const stillThere = by === -1 ? at > 0 : at < lines.length - 1
-    setFocusOn(`${line.label}:${stillThere ? by : -by}`)
+    const key = `${line.label}:${stillThere ? by : -by}`
+    focusOn.current = key
+    buttons.current.get(key)?.focus()
   }
 
   const putBack = (): void => {
+    // Nothing is following a line any more.
+    focusOn.current = null
     // This button removes the last thing it had to remove and so disables
     // itself, and Chromium blurs a disabled element; the heading is where
     // focus goes, so a screen reader stays in the panel (A3-04 learned

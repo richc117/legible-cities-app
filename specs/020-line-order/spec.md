@@ -128,7 +128,10 @@ and back; then VoiceOver over the list.
 2. **Given** a line moved with the keyboard, **When** the move lands,
    **Then** focus stays with that line - on the button that moved it, or on
    its opposite when the line has reached an end and that button is now
-   disabled - and a polite status says the line's new position.
+   disabled - and a polite status says the line's new position. It stays
+   there through the redraws that follow: the list is drawn again when the
+   build starts and again when the record comes back, and a row moving in
+   the page takes focus off the button inside it.
 3. **Given** the first line, **When** the panel is read, **Then** its "Move
    up" is disabled, and so is the last line's "Move down".
 
