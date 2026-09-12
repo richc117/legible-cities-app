@@ -69,22 +69,68 @@ export interface RunReport {
   issues: number
 }
 
+const isObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v)
+const isFigure = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
+const isLabels = (v: unknown): v is string[] =>
+  Array.isArray(v) && v.every((s) => typeof s === 'string')
+
+/**
+ * The diagnostics block, read rather than assumed. Every field the panel
+ * reaches for is checked here, to the depth it reaches: the panel walks
+ * four levels in (`stops.by.station_id`), the renderer has no error
+ * boundary, and a block half the shape it claims would take the window
+ * blank *after* the map had been drawn and the record written. A block
+ * that is not whole is no block: the panel shows nothing and everything
+ * else about the run is unaffected.
+ */
+export function readDiagnostics(raw: unknown): Diagnostics | null {
+  if (!isObject(raw)) return null
+  const { stops, trips, degraded } = raw
+  if (!isObject(stops) || !isObject(trips) || !isObject(degraded)) return null
+  const by = stops.by
+  if (!isObject(by)) return null
+  const figures = [
+    raw.stations,
+    raw.junctions,
+    raw.edges,
+    raw.octilinear,
+    raw.labels_dropped,
+    raw.peak_concurrent,
+    stops.matched,
+    stops.total,
+    by.station_id,
+    by.parent_station,
+    by.name,
+    trips.total,
+    trips.paths,
+    trips.unrouted,
+    degraded.skipped_calls,
+    degraded.borrowed_track,
+  ]
+  if (!figures.every(isFigure)) return null
+  if (!isLabels(raw.lines) || !isLabels(stops.unmatched)) return null
+  return raw as unknown as Diagnostics
+}
+
 /**
  * The part of a map result worth keeping, or nothing. The answer crosses
  * from another process, so its shape is read rather than assumed: an
- * engine that sent no diagnostics leaves the panel with nothing to show,
- * which is what a run whose result the app cannot read should do.
+ * engine that sent no diagnostics, or a block that is not whole, leaves
+ * the panel with nothing to show, which is what a run whose result the app
+ * cannot read should do.
  */
 export function reportOf(result: MapBuildResult, date: string): RunReport | null {
   const answer = result as Partial<MapBuildResult> | null | undefined
-  if (answer === null || typeof answer !== 'object') return null
-  const { diagnostics, caveats, issues } = answer
-  if (diagnostics === undefined || diagnostics === null) return null
+  if (!isObject(answer)) return null
+  const { caveats, issues } = answer
+  const diagnostics = readDiagnostics(answer.diagnostics)
+  if (diagnostics === null) return null
   return {
     date: typeof answer.date === 'string' ? answer.date : date,
     diagnostics,
     caveats: Array.isArray(caveats) ? caveats.filter((c) => typeof c === 'string') : [],
-    issues: typeof issues === 'number' ? issues : 0,
+    issues: isFigure(issues) ? issues : 0,
   }
 }
 
@@ -275,7 +321,7 @@ export class LayoutRun {
 
         // The map is drawn from the layout just answered, by its id; the
         // engine never lays out on the way to a map.
-        await this.#draw(project, built.layout, date)
+        const report = await this.#draw(project, built.layout, date)
         if (this.#cancelled) return this.#stopped()
 
         const written = await complete(project.id, {
@@ -294,7 +340,7 @@ export class LayoutRun {
         })
         // The store cannot see `force`: a re-layout from this project moves
         // `made` too, and that is not another project's doing.
-        this.#finish({ changed: written.changed, relaid: written.relaid && !force })
+        this.#finish({ changed: written.changed, relaid: written.relaid && !force }, report)
       } catch (reason) {
         this.#failed(reason)
       }
@@ -325,10 +371,10 @@ export class LayoutRun {
 
     void (async () => {
       try {
-        await this.#draw(project, layout, date)
+        const report = await this.#draw(project, layout, date)
         if (this.#cancelled) return this.#stopped()
         await completeRebuild(project.id, { date })
-        this.#finish({ changed: false, relaid: false })
+        this.#finish({ changed: false, relaid: false }, report)
       } catch (reason) {
         this.#failed(reason)
       }
@@ -373,8 +419,15 @@ export class LayoutRun {
     return true
   }
 
-  /** The map call, from a layout by its id, for a day; its stages reported as they finish. */
-  async #draw(project: ProjectRecord, layout: string, date: string): Promise<void> {
+  /**
+   * The map call, from a layout by its id, for a day; its stages reported
+   * as they finish. It answers what the engine measured rather than
+   * setting it: the figures belong to a finished run, beside the sentence
+   * that says it finished, so they never appear on screen before the map
+   * they describe and never go again because the record could not be
+   * written (spec 017).
+   */
+  async #draw(project: ProjectRecord, layout: string, date: string): Promise<RunReport | null> {
     const map = this.#options.client.request('map.build', {
       key: project.feed,
       layout,
@@ -387,16 +440,17 @@ export class LayoutRun {
     this.#inFlight = null
     // What the engine measured drawing this map: kept for the panel, and
     // for a rebuild too, which draws the same way for another day.
-    this.#set({ report: reportOf(drawn, date) })
+    return reportOf(drawn, date)
   }
 
-  #finish(outcome: { changed: boolean; relaid: boolean }): void {
+  #finish(outcome: { changed: boolean; relaid: boolean }, report: RunReport | null): void {
     this.#set({
       state: 'done',
       stages: this.#snapshot.stages.map((s) => ({ ...s, state: 'done' as const })),
       changed: outcome.changed,
       relaid: outcome.relaid,
       replaced: false,
+      report,
     })
   }
 

@@ -10,8 +10,8 @@ clipboard: {
 ```
 
 Channel `clipboard:write`. The main side refuses a caller that is not the
-interface's top frame, anything that is not a string, and text longer
-than 64 KiB; it writes with Electron's own `clipboard.writeText` and
+interface's top frame, anything that is not a string, and text whose
+UTF-8 is longer than 64 KiB (bytes, not code units); it writes with Electron's own `clipboard.writeText` and
 answers nothing. Nothing is read back: the page may put text on the
 clipboard, never take it off, so a project page that somehow reached the
 bridge could not read what a person had copied from elsewhere.

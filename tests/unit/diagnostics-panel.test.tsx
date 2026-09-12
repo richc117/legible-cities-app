@@ -5,9 +5,14 @@
 
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { metrics } from '../../src/renderer/src/engine/diagnostics'
+import { copyText, metrics } from '../../src/renderer/src/engine/diagnostics'
 import type { RunReport } from '../../src/renderer/src/engine/layoutRun'
-import { DiagnosticsReport } from '../../src/renderer/src/Diagnostics'
+import {
+  COPIED,
+  DiagnosticsReport,
+  NOT_COPIED,
+  copyReport,
+} from '../../src/renderer/src/Diagnostics'
 import type { Diagnostics } from '../../src/shared/protocol'
 
 const DIAGNOSTICS: Diagnostics = {
@@ -87,5 +92,40 @@ describe('the panel itself', () => {
   it('offers the copy, and shows nothing said until it is pressed', () => {
     expect(markup()).toContain('Copy as text')
     expect(markup()).toContain('class="message"')
+  })
+
+  // A row's explanation answers a press as well as a pointer and the
+  // keyboard: pressing is how a touch user asks, and the button says
+  // whether the explanation it controls is showing.
+  it('offers each explanation as a control that can be pressed', () => {
+    const html = markup()
+    const expanded = html.match(/aria-expanded="false"/g) ?? []
+    expect(expanded.length).toBe(metrics(DIAGNOSTICS).length)
+  })
+})
+
+describe('the copy, which can be refused', () => {
+  it('hands the clipboard what the panel shows, and says so', async () => {
+    const written: string[] = []
+    const said = await copyReport(
+      async (text) => {
+        written.push(text)
+      },
+      'Los Angeles',
+      report(),
+    )
+    expect(said).toBe(COPIED)
+    expect(written).toEqual([copyText('Los Angeles', report())])
+  })
+
+  // The clipboard is the platform's: it can refuse, and a refusal is a
+  // sentence on the panel rather than an error thrown inside a click.
+  it('says so when the clipboard refuses, and throws nothing', async () => {
+    const said = await copyReport(
+      () => Promise.reject(new Error('the clipboard is not available')),
+      'Los Angeles',
+      report(),
+    )
+    expect(said).toBe(NOT_COPIED)
   })
 })

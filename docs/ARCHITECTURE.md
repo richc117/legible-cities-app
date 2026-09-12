@@ -449,10 +449,16 @@ sentences; and `issues`, one weighted proportion where 0 is clean. All
 three are built once in the engine's `schematic/diagnostics.py`, so the
 terminal, the site and this app say the same thing.
 
-They live on the run's snapshot and nowhere else. The panel describes the
-build that just ran, which is why a failed, cancelled or never-run project
-has none, and why a rebuild for another day replaces the figures with that
-day's. They are deliberately not written to the record: `parseRecord`
+They live on the run's snapshot and nowhere else, set with the sentence
+that says the run finished: never while it is still running, so the
+figures cannot reach the screen before the map they describe, and never
+for a run whose record could not be written. The panel describes the build
+that just ran, which is why a failed, cancelled or never-run project has
+none, and why a rebuild for another day replaces the figures with that
+day's. The block is read rather than assumed, to the depth the panel
+reaches into it: the renderer has no error boundary, so a block that is
+not whole would take the window blank after the map had been drawn, and is
+simply not shown instead. They are deliberately not written to the record: `parseRecord`
 drops what it does not know and `RECORD_VERSION` is 1, so a new field
 would make a record read-only to an older app, for numbers that go stale
 the moment another project re-lays out the set this one draws from.

@@ -482,8 +482,12 @@ th .sort:focus-visible {
   transition-delay: var(--duration);
 }
 
+/* A pointer resting on it, focus from the keyboard, or a press: the last
+   is how a touch user asks, and the only one that stays. */
+
 .explain:hover .tooltip,
-.explain:focus-within .tooltip {
+.explain:focus-within .tooltip,
+.explain[data-open='true'] .tooltip {
   visibility: visible;
   opacity: 1;
 }

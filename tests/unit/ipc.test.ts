@@ -235,7 +235,18 @@ describe('registerClipboardHandler', () => {
     await expect(call(undefined)).rejects.toThrow('there is nothing to copy')
     await expect(call({ toString: () => 'x' })).rejects.toThrow('there is nothing to copy')
     await expect(call('x'.repeat(CLIPBOARD_LIMIT + 1))).rejects.toThrow(/too much text/)
+    // The cap is bytes of UTF-8, which a string's length is not: a euro
+    // sign is one code unit and three bytes, so this is under the length
+    // and over the cap.
+    await expect(call('€'.repeat(CLIPBOARD_LIMIT / 2))).rejects.toThrow(/too much text/)
     expect(written).toEqual([])
+  })
+
+  it('takes text whose bytes fit, whatever its characters', async () => {
+    const { call, written } = clipboard()
+    const text = '€'.repeat(CLIPBOARD_LIMIT / 4)
+    await call(text)
+    expect(written).toEqual([text])
   })
 
   it('refuses a caller that is not the interface top frame', async () => {

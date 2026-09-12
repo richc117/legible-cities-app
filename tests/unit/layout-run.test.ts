@@ -7,6 +7,7 @@ import {
   LayoutRun,
   advance,
   freshStages,
+  readDiagnostics,
   readableMessage,
   reportOf,
   sentenceFor,
@@ -442,6 +443,9 @@ describe('what the map call said about the map it drew', () => {
       caveats: MAP.caveats,
       issues: 0.2137,
     })
+    // They arrive with the sentence that says the run finished, never
+    // before the map they describe is on screen.
+    expect(run.snapshot.state).toBe('done')
     // The result's files are absolute paths under the engine's home. The
     // snapshot is read by a screen, so they stay where they were.
     expect(JSON.stringify(run.snapshot.report)).not.toMatch(/[/\\]/)
@@ -455,6 +459,18 @@ describe('what the map call said about the map it drew', () => {
     await tick()
     expect(run.snapshot).toMatchObject({ state: 'done', rebuilt: true })
     expect(run.snapshot.report).toMatchObject({ date: '2026-09-12', caveats: [], issues: 0 })
+  })
+
+  it('says nothing when the map was drawn but the record could not be written', async () => {
+    const { run, calls, complete, begin } = setup()
+    complete.mockRejectedValueOnce(new Error('the project could not be written'))
+    begin()
+    await laidOut(calls)
+    expect(run.snapshot.report, 'nothing while the run is still running').toBeNull()
+    calls[2].resolve(MAP)
+    await tick()
+    expect(run.snapshot.state).toBe('failed')
+    expect(run.snapshot.report, 'a run that did not finish shows no figures').toBeNull()
   })
 
   it('is cleared when the next run starts, and by a run that does not finish', async () => {
@@ -475,6 +491,7 @@ describe('what the map call said about the map it drew', () => {
   it('survives a result that carries no diagnostics at all', () => {
     expect(reportOf({ files: {} } as never, '2026-09-15')).toBeNull()
     expect(reportOf(undefined as never, '2026-09-15')).toBeNull()
+    expect(reportOf(null as never, '2026-09-15')).toBeNull()
     // A caveat that is not a sentence, and a score that is not a number,
     // are dropped rather than rendered: the answer is another process's.
     expect(
@@ -483,6 +500,51 @@ describe('what the map call said about the map it drew', () => {
         '2026-09-15',
       ),
     ).toMatchObject({ date: '2026-09-15', caveats: ['ok'], issues: 0 })
+  })
+
+  // The panel reaches four levels into the block, and the renderer has no
+  // error boundary: a block that is only half the shape it claims would
+  // take the window blank after the map had been drawn and the record
+  // written. Every field the panel reads is checked to the depth it is
+  // read, so a block that is not whole is simply not shown.
+  it('refuses a diagnostics block that is not whole, at every level', () => {
+    const whole = (over: Record<string, unknown>): unknown => ({ ...DIAGNOSTICS, ...over })
+    expect(readDiagnostics(DIAGNOSTICS)).toEqual(DIAGNOSTICS)
+    for (const broken of [
+      undefined,
+      null,
+      7,
+      [],
+      { stations: 3 },
+      whole({ stops: undefined }),
+      whole({ trips: undefined }),
+      whole({ degraded: undefined }),
+      whole({ stops: { ...DIAGNOSTICS.stops, by: undefined } }),
+      whole({ stops: { ...DIAGNOSTICS.stops, by: { station_id: 1, parent_station: 2 } } }),
+      whole({ stops: { ...DIAGNOSTICS.stops, total: '116' } }),
+      whole({ trips: { total: 1, paths: 1 } }),
+      whole({ degraded: { skipped_calls: 1 } }),
+      whole({ octilinear: Number.NaN }),
+      whole({ peak_concurrent: null }),
+      whole({ lines: 'A, B' }),
+      whole({ lines: ['A', 7] }),
+      whole({ stops: { ...DIAGNOSTICS.stops, unmatched: [null] } }),
+    ]) {
+      expect(readDiagnostics(broken), JSON.stringify(broken) ?? 'undefined').toBeNull()
+      expect(reportOf({ diagnostics: broken } as never, '2026-09-15')).toBeNull()
+    }
+  })
+
+  it('a run whose result is half a block finishes, and says nothing about the map', async () => {
+    const { run, calls, complete, begin } = setup()
+    begin()
+    await laidOut(calls)
+    calls[2].resolve({ ...MAP, diagnostics: { stations: 3 } })
+    await tick()
+    // The run is unaffected: the record is written and the map is drawn.
+    expect(complete).toHaveBeenCalled()
+    expect(run.snapshot.state).toBe('done')
+    expect(run.snapshot.report, 'a block that is not whole is not shown').toBeNull()
   })
 })
 

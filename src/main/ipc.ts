@@ -146,6 +146,7 @@ export function registerViewerHandlers(
  * be tested without an Electron session
  * (specs/017-diagnostics/contracts/bridge.md).
  */
+/** The most text one copy may carry, in bytes of UTF-8. */
 export const CLIPBOARD_LIMIT = 64 * 1024
 
 export function registerClipboardHandler(
@@ -157,8 +158,11 @@ export function registerClipboardHandler(
     if (!isTopFrame(event)) throw new Error('forbidden')
     if (typeof raw !== 'string') throw new Error('there is nothing to copy')
     // A cap, because the argument comes from another process and the
-    // clipboard is the platform's, not ours to fill.
-    if (raw.length > CLIPBOARD_LIMIT) throw new Error('that is too much text to copy')
+    // clipboard is the platform's, not ours to fill. Measured in bytes of
+    // UTF-8, which is what the contract says and what a string's length is
+    // not: a code unit is not a byte.
+    if (Buffer.byteLength(raw, 'utf8') > CLIPBOARD_LIMIT)
+      throw new Error('that is too much text to copy')
     writeText(raw)
   })
 }

@@ -28,6 +28,30 @@ export default function Diagnostics({
   return <DiagnosticsReport name={project.name} report={report} />
 }
 
+/** What the panel says after a copy, either way. */
+export const COPIED = 'The figures and the caveats are on the clipboard.'
+export const NOT_COPIED = 'The figures could not be copied. Nothing was changed.'
+
+/**
+ * The copy, as a function that can be called without rendering: what is on
+ * the screen goes to the clipboard, and the sentence that comes back is
+ * what the panel says. A clipboard can refuse - it is the platform's, not
+ * ours - and a refusal is a sentence, never a thrown error in a click
+ * handler.
+ */
+export async function copyReport(
+  write: (text: string) => Promise<void>,
+  name: string,
+  report: RunReport,
+): Promise<string> {
+  try {
+    await write(copyText(name, report))
+    return COPIED
+  } catch {
+    return NOT_COPIED
+  }
+}
+
 /**
  * The panel itself, given a report: a component with nothing behind it, so
  * a test can render it. `write` is the clipboard, injected for the same
@@ -45,17 +69,13 @@ export function DiagnosticsReport({
   write?: (text: string) => Promise<void>
 }): JSX.Element {
   const [said, setSaid] = useState<string | null>(null)
+  // The explanation a person asked for by pressing, which is the only way
+  // a touch user can ask: hover and focus show one too, in the stylesheet.
+  const [asked, setAsked] = useState<string | null>(null)
   const base = useId()
   const rows = metrics(report.diagnostics)
 
-  const copy = async (): Promise<void> => {
-    try {
-      await write(copyText(name, report))
-      setSaid('The figures and the caveats are on the clipboard.')
-    } catch {
-      setSaid('The figures could not be copied.')
-    }
-  }
+  const copy = async (): Promise<void> => setSaid(await copyReport(write, name, report))
 
   return (
     <section className="diagnostics" aria-labelledby="diagnostics-heading">
@@ -86,13 +106,15 @@ export function DiagnosticsReport({
             return (
               <tr key={metric.id}>
                 <th scope="row">
-                  <span className="explain">
+                  <span className="explain" data-open={asked === metric.id ? 'true' : undefined}>
                     {metric.label}{' '}
                     <button
                       type="button"
                       className="explain-trigger"
                       aria-label={`What ${metric.label.toLowerCase()} means`}
                       aria-describedby={explainId}
+                      aria-expanded={asked === metric.id}
+                      onClick={() => setAsked(asked === metric.id ? null : metric.id)}
                     >
                       <Icon name="info" />
                     </button>

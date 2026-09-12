@@ -15,7 +15,8 @@ writes before the app starts (every key optional):
     ignore_sigterm    true: ignore SIGTERM (POSIX), so only SIGKILL ends it
     progress_delay_ms wait between the four progress notifications (default 30)
     map_draws         true: map.build draws (eight stages, three files); else it refuses
-    map_diagnostics   keys merged over map.build's clean diagnostics block
+    map_diagnostics   keys merged over map.build's clean diagnostics block, a level
+                      at a time, so {"stops": {"matched": 2}} keeps the rest of "stops"
     map_caveats       the sentences map.build answers as "caveats"  (default none)
     map_issues        the weighted proportion it answers as "issues" (default 0)
     service_window    [start, end] feeds.service answers (default the whole of 2026)
@@ -354,7 +355,21 @@ class Engine:
                        "trips": {"total": 1, "paths": 1, "unrouted": 0},
                        "degraded": {"borrowed_track": 0, "skipped_calls": 0},
                        "labels_dropped": 0, "peak_concurrent": 1}
-        diagnostics.update(self.control.get("map_diagnostics", {}))
+        # Merged a level down, not replaced: a control naming one figure
+        # under "stops" would otherwise drop the rest of the sub-block and
+        # answer a shape the real engine cannot produce, which is the one
+        # thing a stand-in must never do.
+        for key, value in self.control.get("map_diagnostics", {}).items():
+            if isinstance(value, dict) and isinstance(diagnostics.get(key), dict):
+                merged = dict(diagnostics[key])
+                for inner, deep in value.items():
+                    if isinstance(deep, dict) and isinstance(merged.get(inner), dict):
+                        merged[inner] = {**merged[inner], **deep}
+                    else:
+                        merged[inner] = deep
+                diagnostics[key] = merged
+            else:
+                diagnostics[key] = value
         write({"jsonrpc": "2.0", "id": msg_id, "result": {
             "layout": params["layout"], "date": params["date"], "files": files,
             "summary": "the stand-in drew a map",

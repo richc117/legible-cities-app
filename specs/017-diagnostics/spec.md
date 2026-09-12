@@ -59,10 +59,11 @@ day's numbers for free.
 **Acceptance Scenarios**:
 
 1. **Given** the row "Trips on borrowed track", **When** the pointer
-   rests on its explanation control or the control is focused from the
-   keyboard, **Then** the explanation appears; it is the control's
-   accessible description either way, so a screen reader reads it without
-   the pointer.
+   rests on its explanation control, the control is focused from the
+   keyboard, or it is pressed - which is the only way a touch user can
+   ask - **Then** the explanation appears and the control says so; it is
+   the control's accessible description in every case, so a screen reader
+   reads it without a pointer.
 2. **Given** reduced motion, **Then** the explanation appears without a
    transition.
 
@@ -98,9 +99,11 @@ day's numbers for free.
 ## Requirements _(mandatory)_
 
 - **FR-001**: The run MUST keep `map.build`'s `diagnostics`, `caveats`,
-  `issues` and `date` on its snapshot, set when the map call answers, in
-  `#draw`, so a layout run and a rebuild both produce them; and MUST
-  clear them when a run begins.
+  `issues` and `date` on its snapshot, taken from the map call's answer
+  and set when the run finishes, so a layout run and a rebuild both
+  produce them and neither shows figures before the map they describe or
+  for a run whose record could not be written; and MUST clear them when a
+  run begins.
 - **FR-002**: The snapshot MUST NOT carry the result's file paths, and
   the record MUST NOT gain a field: the panel is ephemeral.
 - **FR-003**: Every figure the panel shows MUST come from the
@@ -110,21 +113,28 @@ day's numbers for free.
 - **FR-004**: The figures MUST be a real `<table>` with a `<caption>`,
   `<th scope>` and the tabular-figures token, per the design document's
   table rule.
-- **FR-005**: Each row MUST offer an explanation reachable by pointer and
-  by keyboard, exposed as the control's accessible description, with no
-  transition under reduced motion.
+- **FR-005**: Each row MUST offer an explanation reachable by pointer, by
+  keyboard and by a press, exposed as the control's accessible
+  description and its pressed state as `aria-expanded`, with no transition
+  under reduced motion.
 - **FR-006**: "Copy as text" MUST put what the panel shows on the
   clipboard through a narrow bridge method, because the app refuses every
   permission request and a page's own clipboard write is one.
 - **FR-007**: The stand-in engine MUST answer `map.build` with `caveats`
   and `issues` beside `diagnostics`, and MUST let a test choose them, so
-  the clean case and the fudged case are both reachable end to end.
+  the clean case and the fudged case are both reachable end to end. A
+  chosen figure MUST merge into the block a level at a time: a stand-in
+  that answers a shape the engine cannot produce is worse than no
+  stand-in.
 
 ## Success Criteria _(mandatory)_
 
-- **SC-001**: Unit: the map call's answer reaches the snapshot for a
-  layout run and for a rebuild, is cleared by a new run, and survives a
-  result that carries no diagnostics at all without throwing.
+- **SC-001**: Unit: the map call's answer reaches the snapshot, with the
+  finished run, for a layout run and for a rebuild; is cleared by a new
+  run, by a run that fails or is cancelled, and by a record that could not
+  be written; and a result whose block is absent or not whole at any level
+  leaves the panel empty and the run unharmed, because the panel reads
+  four levels in and the renderer has no error boundary.
 - **SC-002**: Unit: the formatting helpers - percentage, matching method,
   the rows, the copy block - hold their output, and the panel's markup
   carries no colour, size or duration.

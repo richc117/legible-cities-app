@@ -198,6 +198,16 @@ test("shows what the build had to fudge, in the engine's own words and figures",
     await trigger.focus()
     await expect(panel.getByText(/neighbouring line's track/)).toBeVisible()
 
+    // And to a press, which is how a touch user asks; the control says
+    // whether the explanation it controls is showing.
+    const pressed = panel.getByRole('button', { name: 'What labels dropped means' })
+    await expect(pressed).toHaveAttribute('aria-expanded', 'false')
+    await pressed.click()
+    await expect(pressed).toHaveAttribute('aria-expanded', 'true')
+    await expect(panel.getByText(/nowhere to sit without overlapping/)).toBeVisible()
+    await pressed.click()
+    await expect(pressed).toHaveAttribute('aria-expanded', 'false')
+
     // "Copy as text" hands over what is on the screen.
     await panel.getByRole('button', { name: 'Copy as text' }).click()
     await expect(panel.getByText(/on the clipboard/)).toBeVisible()
@@ -215,8 +225,15 @@ test("shows what the build had to fudge, in the engine's own words and figures",
 })
 
 test('a clean network says there are no caveats and a score of 0', async () => {
-  const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
-  await withApp(engineHome, async (page) => {
+  // One figure named, and the stand-in keeps the rest of its clean block:
+  // a control that replaced a whole sub-block would answer a shape the
+  // engine cannot produce.
+  const engineHome = home({
+    map_draws: true,
+    progress_delay_ms: 10,
+    map_diagnostics: { trips: { total: 9 } },
+  })
+  await withApp(engineHome, async (page, app) => {
     await openNewProject(page, 'Los Angeles')
     await page.getByRole('button', { name: /lay out/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
@@ -225,6 +242,18 @@ test('a clean network says there are no caveats and a score of 0', async () => {
     await expect(panel).toContainText('the issues score is 0.')
     await expect(panel).toContainText('100.0%')
     await expect(panel).toContainText('3 of 3 (100%)')
+    // The named figure, and the rest of its sub-block as the stand-in has
+    // it: merged a level down rather than replaced, or the stand-in would
+    // answer a shape the engine cannot produce. The copied block says
+    // which figure is which without guessing at a row.
+    await panel.getByRole('button', { name: 'Copy as text' }).click()
+    await expect(panel.getByText(/on the clipboard/)).toBeVisible()
+    const copied = await app.evaluate(({ clipboard }) => clipboard.readText())
+    expect(copied).toContain('Trips: 9')
+    expect(copied).toContain('Distinct paths: 1')
+    expect(copied).toContain('Trips not traced: 0')
+    expect(copied).toContain('Stops matched: 3 of 3 (100%)')
+    expect(copied).toContain('No caveats.')
   })
 })
 
