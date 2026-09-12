@@ -87,6 +87,7 @@ type ReadResult = Loaded | { missing: true } | { reason: string }
 export class ProjectStore {
   private readonly root: string
   private readonly output: string
+  #writing = 0
 
   /** Both folders derive from the engine home, so neither can be handed a stray path. */
   constructor(
@@ -95,6 +96,26 @@ export class ProjectStore {
   ) {
     this.root = join(home, 'projects')
     this.output = join(home, 'out')
+  }
+
+  /**
+   * How many writes are part-way through. Both folders are under the engine
+   * home, so this is what the settings screen's reset asks before it starts
+   * removing that home's contents: a record being renamed into place is a
+   * write it must not interrupt (A1-04).
+   */
+  get writing(): number {
+    return this.#writing
+  }
+
+  /** Count a write for as long as it is touching the disk. */
+  async #track<T>(work: () => Promise<T>): Promise<T> {
+    this.#writing += 1
+    try {
+      return await work()
+    } finally {
+      this.#writing -= 1
+    }
   }
 
   private dir(id: string): string {
@@ -157,14 +178,16 @@ export class ProjectStore {
   private async writeAtomic(id: string, record: ProjectRecord): Promise<void> {
     const text = JSON.stringify(record, null, 2) + '\n'
     const temp = join(this.dir(id), tempFile())
-    try {
-      await writeFile(temp, text, 'utf8')
-      await rename(temp, this.file(id))
-    } catch (error) {
-      await rm(temp, { force: true }).catch(() => undefined)
-      this.log(`projects/${id}: write failed (${reasonOf(error)})`)
-      throw new Error('the project could not be saved', { cause: error })
-    }
+    await this.#track(async () => {
+      try {
+        await writeFile(temp, text, 'utf8')
+        await rename(temp, this.file(id))
+      } catch (error) {
+        await rm(temp, { force: true }).catch(() => undefined)
+        this.log(`projects/${id}: write failed (${reasonOf(error)})`)
+        throw new Error('the project could not be saved', { cause: error })
+      }
+    })
   }
 
   /** A folder for a new identifier; a collision, however unlikely, draws again. */
@@ -239,6 +262,18 @@ export class ProjectStore {
     check(validateMode(mode))
     check(validateAgency(agency))
 
+    // Counted from the folder's creation, not from the record's write: the
+    // gap between the two is a folder on disk with nothing in it, which a
+    // reset must not walk through either.
+    return this.#track(() => this.#createTracked(input, name, mode, agency))
+  }
+
+  async #createTracked(
+    input: CreateProjectInput,
+    name: string,
+    mode: string,
+    agency: string | null,
+  ): Promise<ProjectRecord> {
     const id = await this.claimFolder()
     const now = new Date().toISOString()
     const record: ProjectRecord = {
@@ -272,6 +307,10 @@ export class ProjectStore {
   }
 
   async rename(id: string, name: string): Promise<ProjectRecord> {
+    return this.#track(() => this.#renameTracked(id, name))
+  }
+
+  async #renameTracked(id: string, name: string): Promise<ProjectRecord> {
     this.checkId(id)
     const trimmed = name.trim()
     check(validateName(trimmed))
@@ -296,6 +335,10 @@ export class ProjectStore {
    * out here. An empty agency is none.
    */
   async setInputs(id: string, inputs: ProjectInputs): Promise<ProjectRecord> {
+    return this.#track(() => this.#setInputsTracked(id, inputs))
+  }
+
+  async #setInputsTracked(id: string, inputs: ProjectInputs): Promise<ProjectRecord> {
     this.checkId(id)
     const agency = inputs.agency == null ? null : inputs.agency.trim() || null
     check(validateMode(inputs.mode))
@@ -328,6 +371,10 @@ export class ProjectStore {
    * feed may carry a fresh calendar.
    */
   async completeLayout(id: string, done: LayoutDone): Promise<LayoutResult> {
+    return this.#track(() => this.#completeLayoutTracked(id, done))
+  }
+
+  async #completeLayoutTracked(id: string, done: LayoutDone): Promise<LayoutResult> {
     this.checkId(id)
     check(validateServiceDate(done.date))
     check(validateServiceWindow(done.service))
@@ -368,6 +415,10 @@ export class ProjectStore {
    * engine answered, and there must be a layout to have drawn from.
    */
   async completeRebuild(id: string, done: RebuildDone): Promise<ProjectRecord> {
+    return this.#track(() => this.#completeRebuildTracked(id, done))
+  }
+
+  async #completeRebuildTracked(id: string, done: RebuildDone): Promise<ProjectRecord> {
     this.checkId(id)
     check(validateServiceDate(done.date))
     const { record, readOnly } = await this.load(id)
@@ -395,6 +446,10 @@ export class ProjectStore {
    * here; the app resolves nothing and stores no feed colour.
    */
   async completeColors(id: string, palette: Palette): Promise<ProjectRecord> {
+    return this.#track(() => this.#completeColorsTracked(id, palette))
+  }
+
+  async #completeColorsTracked(id: string, palette: Palette): Promise<ProjectRecord> {
     this.checkId(id)
     check(validatePalette(palette))
     const { record, readOnly } = await this.load(id)
@@ -413,6 +468,10 @@ export class ProjectStore {
 
   async delete(id: string): Promise<DeleteResult> {
     this.checkId(id)
+    return this.#track(() => this.#deleteTracked(id))
+  }
+
+  async #deleteTracked(id: string): Promise<DeleteResult> {
     if (!(await this.exists(this.dir(id)))) throw new Error('not found')
     const result: DeleteResult = { removed: [], failed: [] }
     const targets = [

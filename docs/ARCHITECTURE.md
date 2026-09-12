@@ -69,7 +69,9 @@ into it from the privileged side (ADR-028).
 
 Typed in `src/shared/api.ts`, which the preload and the renderer both
 import. Nine methods under `api.projects`, three under `api.viewer`, the
-engine under `api.engine`, and the export under `api.export`:
+engine under `api.engine`, the export under `api.export`, one clipboard
+write under `api.clipboard`, and the app's own settings under
+`api.settings`:
 
 | Method | Does |
 |---|---|
@@ -98,6 +100,14 @@ engine under `api.engine`, and the export under `api.export`:
 | `export.reveal(id)` | shows a finished export's file in the platform's file browser; the page names the export, the main process knows the file |
 | `export.onProgress` | a subscription; each report names the stage (plan, capture, encode), how far it is, and a sentence |
 
+| `settings.read()` | the two folders in force, where each came from, whether the environment names it, any folder waiting for a restart, and the theme (A1-04) |
+| `settings.setTheme(theme)` | one of system, warm-dark and sepia; anything else is refused |
+| `settings.chooseEngineFolder()`, `chooseExportFolder()` | opens the platform's folder chooser and applies its own answer; no path crosses the bridge inward |
+| `settings.useDefaultEngineFolder()`, `useDefaultExportFolder()` | forgets the stored folder and takes the default again |
+| `settings.engineSize()` | walks the engine's home, bounded and never through a symbolic link |
+| `settings.openLogsFolder()` | makes the platform's log folder for this app if it is missing, and opens it |
+| `settings.resetEngineData()` | removes `projects`, `out`, `data` and `frames` beneath the engine's home, never the home itself; answers what went and what would not; refused while anything is writing under it |
+
 The engine bridge is deliberately untyped beyond a method name and an
 object of parameters: A1-02 generates the methods from the engine's schema
 and wraps it. An engine error crosses as a plain object rather than an
@@ -122,7 +132,8 @@ main-side handler together. Contracts: `specs/003-project/contracts/bridge.md`,
 `specs/004-sidecar-supervisor/contracts/bridge.md`,
 `specs/007-layout-run/contracts/bridge.md`,
 `specs/008-viewer/contracts/viewer.md` and
-`specs/017-diagnostics/contracts/bridge.md`.
+`specs/017-diagnostics/contracts/bridge.md` and
+`specs/019-settings/contracts/bridge.md`.
 
 ## The engine process
 
@@ -273,15 +284,16 @@ under `projects/`, sorted by modified time, newest first.
 
 Four locations, one pin and one development pointer, from the process
 environment, then `.env.local` (development only, gitignored; `.env.example`
-documents it), then defaults:
+documents it), then the two folders a person chose in Settings, then
+defaults:
 
 | Key | Default |
 |---|---|
-| `SCHEMATIC_HOME` | `<userData>/engine` (ADR-016) |
+| `SCHEMATIC_HOME` | the folder chosen in Settings, else `<userData>/engine` (ADR-016) |
 | `SCHEMATIC_LOOM_BIN` | unset; a directory of native LOOM binaries, which the engine runs instead of its Docker image |
 | `SCHEMATIC_LOOM_COMMIT` | passed when set, or with a LOOM directory, where the default is the app's pin (`loom.commit` in `vendor/pins.json`); the binaries cannot say which LOOM they are, so the engine reports what it is told as `engine.info.loom.commit` |
 | `SCHEMATIC_FFMPEG` | unset |
-| `LEGIBLE_EXPORT_FOLDER` | `<desktop>/Legible Cities`; where exports go, in a folder per project, until Settings (A1-04) offer a chooser |
+| `LEGIBLE_EXPORT_FOLDER` | the folder chosen in Settings, else `<desktop>/Legible Cities`; where exports go, in a folder per project |
 | `LEGIBLE_ENGINE_CHECKOUT` | unset; the tokens test reads the engine page from it, and the engine runs from its `.venv` |
 | `LEGIBLE_ENGINE_PYTHON` | unset; an interpreter named explicitly (a path, or a bare command for PATH), which wins over the checkout |
 
@@ -291,6 +303,70 @@ the terminal. Contract: `specs/001-electron-skeleton/contracts/config.md`.
 The app writes to the engine home only under `projects/` and, while an
 export runs, `frames/`; it removes only a project's `out/<id>/` on delete
 and the whole of `frames/` at start; `feeds/` is the engine's and untouched.
+The one exception is "Reset engine data" in Settings, which removes
+`projects/`, `out/`, `data/` and `frames/` beneath the home - never the
+home itself, and never anything else in it (A1-04).
+
+## Settings
+
+The app's own settings are one file, `settings.json`, directly under the
+user-data folder: the two folders a person chose and the interface's theme.
+It is written the way a project record is - a fresh temporary name, then a
+rename over the old file - and read the way a record is read, so a file
+that is half written, hand edited or from a newer app starts the app with
+the defaults it cannot use rather than stopping it. It is read before the
+configuration resolves, because a stored folder is one of the things the
+configuration decides.
+
+Two rules hold the screen together. The environment still wins, so the
+development loop and the end-to-end suite steer the app as they did, and a
+folder the environment names is shown with its source and no way to change
+it. And no path crosses the bridge inward: the main process opens the
+folder chooser, remembers its own answer, applies it through the
+remembered-path guard A2-01 built for the feeds, and hands back the whole
+view. A folder inside the app's own bundle is refused even though the
+dialog answered it, because the chooser will make one anywhere and the
+bundle is read-only on macOS and wiped on update. The export folder is read
+at each export, so a change takes effect at once; the engine's home was
+threaded through the sidecar, the project store, the served roots, the
+capture's session and the frames root before the window existed, so it
+takes effect at the next start and the screen says so.
+
+The reset is the one destructive act. It removes four folders beneath the
+home - `projects`, `out`, `data` and `frames`, which is everything this app
+and the engine put there - and never the home itself: that is a folder a
+person can point at `~/Documents` in one click, so whatever else is in it
+is theirs and stays. A folder that turns out to be a symbolic link is left
+alone and reported, because removing one unlinks it rather than empties it.
+The engine's own `config.py` is where the list comes from.
+
+The home is resolved through `realpath` before any of this, and so is
+everything it is compared against: the guards are textual, and a home that
+is itself a link would pass every one of them and then remove four folders
+from wherever it points.
+
+Its gate is split, because the two sides know different things. The main
+process refuses while a reset is already running, while an export is
+running, while the engine is answering a request, or while a record is
+being written - it counts all four - and for a home so high up that those
+four names would mean something else. It does
+not claim to know whether a multi-step layout run is open: that run is
+`graph.build`, then `feeds.service`, then `map.build`, then a record write,
+and nothing is in flight between them. The renderer holds the runs, and
+outlives the views that started them, so the screen is what disables the
+button while one is going. A flag on the settings service goes up before the
+first `await`, since a second reset arriving while the first resolves paths
+would otherwise find it down; while it is up it refuses every engine
+request through the same guard the registry uses - asked on both sides of
+the registry's own check, which reads the project list from disk - every
+export through the exporter's own, and every write to a project record
+through the project handlers', so nothing lands in a folder being walked
+away.
+
+`LEGIBLE_USER_DATA` moves Electron's user-data folder. It is not a setting:
+it is how the end-to-end suite keeps its settings file out of a person's
+own profile, and the app reads it before it is ready or not at all.
+Contract: `specs/019-settings/contracts/bridge.md`.
 
 The main-process log is stderr for now and may contain paths - the
 configuration lines by contract, and Electron's own report of a failed
@@ -312,8 +388,11 @@ each building on the one before; the design system they implement is
 | `styles/figui-adapter.css` | the mapping from the app's tokens onto the control kit's own variables, so a kit control is drawn in the app's colours and at the app's sizes without a rule of its own |
 
 The theme attribute is the engine's: `data-theme="sepia"` for light, no
-attribute for warm-dark, following the operating system's preference until
-a switch arrives with A4-03. Two unit tests keep the system honest: one
+attribute for warm-dark. It follows the operating system's preference
+unless a person chose one of the two by name in Settings, which is applied
+as soon as the settings are read (A1-04, `src/renderer/src/theme.ts`); a
+project's own theme, which its page wears, is a different field and is
+A4-03's. Two unit tests keep the system honest: one
 recomputes the WCAG contrast of every text and control pair named in the
 design document in both themes and fails under the thresholds; the other
 scans the renderer's sources and fails on a colour, size or duration

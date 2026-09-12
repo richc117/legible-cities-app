@@ -50,8 +50,18 @@ export interface ExporterOptions {
   capture: (job: CaptureJob, options: CaptureOptions) => Promise<CaptureResult>
   /** Where a running export's frames go: `<framesRoot>/<token>/`. */
   framesRoot: string
-  /** Where the file goes: `<exportFolder>/<project>/<filename>`. */
-  exportFolder: string
+  /**
+   * Where the file goes: `<exportFolder()>/<project>/<filename>`. Asked at
+   * each export rather than held, so a folder changed in Settings takes
+   * effect without a restart (specs/019-settings, FR-005).
+   */
+  exportFolder: () => string
+  /**
+   * Why no export may start at all, or null. Settings sets this while it is
+   * removing the engine's home: an export begun during that `rm` would be
+   * writing its frames into a folder being walked away (A1-04).
+   */
+  blocked?: () => string | null
   log: (message: string) => void
 }
 
@@ -144,6 +154,8 @@ export class Exporter {
     projectId: string,
     preset: OfferedPreset,
   ): { result: Promise<ExportResult> } {
+    const blocked = this.#options.blocked?.() ?? null
+    if (blocked !== null) throw engineError(ERROR_CODES.badCall, blocked, 'params')
     if (this.#live.has(token))
       throw engineError(ERROR_CODES.badCall, 'an export with this id is already running', 'params')
     if (this.#busy.has(projectId))
@@ -240,6 +252,10 @@ export class Exporter {
     control: Control,
   ): Promise<{ result: ExportResult; path: string }> {
     const { projects, capture, framesRoot, exportFolder, log } = this.#options
+    // Read once, at the start, and held: an export that was planned for one
+    // folder must not be written to another because the plan's round trip
+    // to the engine gave someone time to change it in Settings (A1-04).
+    const destination = exportFolder()
     const project = await projects.get(projectId)
     if (project.readOnly)
       throw engineError(
@@ -299,7 +315,7 @@ export class Exporter {
     // export replaces an earlier one, as it does for a single project; two
     // at once would have two encodes writing the same file, so the second
     // is refused until the first has finished.
-    const dest = join(exportFolder, folderName(project.name, project.id), plan.filename)
+    const dest = join(destination, folderName(project.name, project.id), plan.filename)
     if (this.#writing.has(dest))
       throw engineError(
         ERROR_CODES.badCall,

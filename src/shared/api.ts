@@ -6,6 +6,7 @@
 import type { EngineErrorShape, EngineState, JobLog, JobProgress } from './engine'
 import type { ExportProgress, ExportResult, OfferedPreset } from './export'
 import type { LayoutDone, LayoutResult } from './layout'
+import type { AppTheme, FolderSize, ResetOutcome, SettingsView } from './settings'
 import type { ViewerMethod } from './viewer'
 import type {
   CreateProjectInput,
@@ -30,6 +31,7 @@ export type {
 export type { EngineState, JobLog, JobProgress } from './engine'
 export type { ExportProgress, ExportResult, OfferedPreset } from './export'
 export type { LayoutDone, LayoutResult } from './layout'
+export type { AppTheme, FolderSize, FolderView, ResetOutcome, SettingsView } from './settings'
 
 /** A zip the platform's file chooser answered: the path the engine is handed, the name the page shows. */
 export interface PickedZip {
@@ -156,6 +158,32 @@ export interface Api {
   clipboard: {
     write(text: string): Promise<void>
   }
+  /**
+   * What the app decides for itself: where the engine keeps its data, where
+   * exports go, which theme the interface wears. No method takes a path.
+   * A folder is chosen in the platform's own dialog, which only the main
+   * process can open, and applied there; the page asks for the dialog and
+   * is told the new state (specs/019-settings/contracts/bridge.md).
+   */
+  settings: {
+    read(): Promise<SettingsView>
+    setTheme(theme: AppTheme): Promise<SettingsView>
+    /** Opens the chooser and applies the answer; the view is unchanged when it was cancelled. */
+    chooseEngineFolder(): Promise<SettingsView>
+    chooseExportFolder(): Promise<SettingsView>
+    useDefaultEngineFolder(): Promise<SettingsView>
+    useDefaultExportFolder(): Promise<SettingsView>
+    /** Walk the engine's home. Bounded, and never through a symbolic link. */
+    engineSize(): Promise<FolderSize>
+    openLogsFolder(): Promise<void>
+    /**
+     * Remove what the app and the engine keep under the engine's home -
+     * `projects`, `out`, `data` and `frames` - and nothing else; the home
+     * itself and anything a person put in it stay. Answers what went and
+     * what would not. Rejects when it may not run.
+     */
+    resetEngineData(): Promise<ResetOutcome>
+  }
 }
 
 export const CHANNELS = {
@@ -185,4 +213,13 @@ export const CHANNELS = {
   exportSettled: 'export:settled',
   feedsPickZip: 'feeds:pick-zip',
   clipboardWrite: 'clipboard:write',
+  settingsRead: 'settings:read',
+  settingsSetTheme: 'settings:set-theme',
+  settingsChooseEngineFolder: 'settings:choose-engine-folder',
+  settingsChooseExportFolder: 'settings:choose-export-folder',
+  settingsDefaultEngineFolder: 'settings:default-engine-folder',
+  settingsDefaultExportFolder: 'settings:default-export-folder',
+  settingsEngineSize: 'settings:engine-size',
+  settingsOpenLogs: 'settings:open-logs',
+  settingsResetEngineData: 'settings:reset-engine-data',
 } as const

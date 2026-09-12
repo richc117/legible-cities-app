@@ -55,6 +55,37 @@ for all, and one default for the lines the feed leaves blank, debounced into
 a `map.build` from the stored layout and written only once the map carries
 them; `src/renderer/src/LineColours.tsx`). That is the first reel.
 
+Settings (A1-04) came after it: one file under the user-data folder holding
+the two folders a person chose and the interface's theme, read before the
+configuration resolves so a stored folder sits between `.env.local` and the
+default, and written the way a project record is. A folder is chosen in the
+platform's own dialog, which the main process opens and whose answer it
+applies itself, so no path crosses the bridge inward at all; a folder
+inside the app's own bundle is refused even so. The export folder moves at
+once and the engine's home at the next start, which the screen says. The
+screen also shows the engine home's size, the versions from `engine.info`,
+a way into the platform's log folder, and "Reset engine data".
+
+**The reset removes four folders and never the engine's home itself**:
+`projects`, `out`, `data` and `frames`, which is everything this app and
+the engine put there (the engine's `config.py` names `data/feeds`,
+`data/graphs` and `out`; read it before adding to the list). The home is a
+folder a person can point at `~/Documents` in one click, so whatever else
+is in it is theirs and stays, and a folder that turns out to be a symbolic
+link is left alone and reported rather than unlinked. **The home is
+resolved through `realpath` before any guard judges it**, and so is
+everything it is compared against: the guards are textual, and a home that
+is itself a link would pass every one of them and then remove four folders
+from wherever it points. Before it starts, the main process refuses while a
+reset is already running, while an export, an engine request or a record
+write is in flight, and for a home so high up that those four names would
+mean something else; the screen refuses separately while a layout run or an
+export is open, because a run is four steps with gaps between them and only
+the renderer can see the gaps. The flag goes up before the first `await`,
+and while it is up every engine request, every export and every write to a
+project record is refused, so nothing lands in a folder being walked away
+(`src/main/settings.ts`, `src/main/settings-ipc.ts`).
+
 Work proceeds phase by phase; `CONTRIBUTING.md` explains the flow, the
 labels, the milestones and the `A0-05`-style issue codes. The four Phase 0
 spikes have run: LOOM ships without its optional solvers (ADR-019), the

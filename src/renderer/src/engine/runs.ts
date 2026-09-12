@@ -96,3 +96,28 @@ export function exportRunFor(projectId: string): ExportRun {
   exports.set(projectId, run)
   return run
 }
+
+/**
+ * How many runs are going, across every project this session has opened.
+ *
+ * The main process cannot answer this. A layout run is four steps in a row -
+ * `graph.build`, `feeds.service`, `map.build`, then the record write - and
+ * nothing is in flight between them, so "is the engine busy" says no in the
+ * gaps. The runs live here and outlive the views that started them, so this
+ * is the one place that knows. Settings asks before it offers to throw the
+ * engine's data away (A1-04).
+ */
+export function runsInProgress(): number {
+  let going = 0
+  for (const run of runs.values()) if (run.snapshot.state === 'running') going += 1
+  for (const run of exports.values()) if (run.snapshot.state === 'running') going += 1
+  return going
+}
+
+/** Every known run's changes, fanned into one listener. */
+export function subscribeToRuns(listener: () => void): () => void {
+  const offs = [...runs.values(), ...exports.values()].map((run) => run.subscribe(() => listener()))
+  return () => {
+    for (const off of offs) off()
+  }
+}

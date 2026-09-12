@@ -777,3 +777,41 @@ describe('completeColors', () => {
     ).rejects.toThrow('read-only')
   })
 })
+
+// Both folders are under the engine's home, so the settings screen asks
+// before it removes that home's contents: a record being renamed into place
+// is a write the reset must not walk through (A1-04).
+describe('writes in flight', () => {
+  it('counts nothing when the store is idle', () => {
+    expect(store.writing).toBe(0)
+  })
+
+  it('counts a create from the folder it makes to the record it writes', async () => {
+    const during: number[] = []
+    const creating = store.create({ name: 'Los Angeles', feed: 'la-metro-rail' })
+    during.push(store.writing)
+    await creating
+    expect(during[0], 'counted while it was happening').toBeGreaterThan(0)
+    expect(store.writing, 'and released when it finished').toBe(0)
+  })
+
+  it('counts a rename, and releases it even when the write fails', async () => {
+    const project = await store.create({ name: 'Los Angeles', feed: 'la-metro-rail' })
+    const renaming = store.rename(project.id, 'LA Metro')
+    expect(store.writing).toBeGreaterThan(0)
+    await renaming
+    expect(store.writing).toBe(0)
+
+    await rm(join(root, project.id), { recursive: true, force: true })
+    await expect(store.rename(project.id, 'Gone')).rejects.toThrow()
+    expect(store.writing, 'a failure releases the count too').toBe(0)
+  })
+
+  it('counts a delete', async () => {
+    const project = await store.create({ name: 'Los Angeles', feed: 'la-metro-rail' })
+    const deleting = store.delete(project.id)
+    expect(store.writing).toBeGreaterThan(0)
+    await deleting
+    expect(store.writing).toBe(0)
+  })
+})

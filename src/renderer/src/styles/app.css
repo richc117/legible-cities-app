@@ -586,6 +586,66 @@ th .sort:focus-visible {
   font-variant-numeric: var(--numerals);
 }
 
+/* Settings: one column of groups, each a 15px heading over rows of a
+   label, the value and the controls (DESIGN.md 8.2, "Panels and settings"
+   and "Folder and version rows"). A folder's path is the person's own and
+   is shown in full, in the monospaced track so a space or a separator can
+   be read, and wrapped rather than cut. */
+
+.settings section {
+  margin: 0 0 var(--space-4-6);
+}
+
+.settings h2 {
+  font-size: var(--font-ui-medium);
+  line-height: var(--line-ui);
+  margin: 0 0 var(--space-4-3);
+}
+
+.setting {
+  display: grid;
+  gap: var(--space-2-2);
+  margin: 0 0 var(--space-4-3);
+}
+
+.setting .toolbar {
+  margin: var(--space-2-2) 0 0;
+}
+
+.settings .path {
+  margin: 0;
+  padding: var(--space-2-3) var(--space-4-2);
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--font-ui-small);
+  line-height: var(--line-ui-tight);
+  overflow-wrap: anywhere;
+}
+
+/* The folders the reset removes, named in the prose: the monospaced track
+   at the surrounding size, so the four names read as names. */
+.settings code {
+  font-family: var(--font-mono);
+  font-size: 1em;
+}
+
+/* A folder chosen but not yet in force, and a run the reset must wait for:
+   the two things on this screen that are a state rather than a fact. */
+.settings .pending {
+  color: var(--warning);
+}
+
+.settings .notice.error {
+  color: var(--error);
+}
+
+.settings .theme-select {
+  width: 100%;
+  max-width: var(--dialog-width);
+}
+
 /* Dialogs: the native element, opened with showModal(). */
 
 /* The kit's stylesheet gives every dialog `inset: auto` for its own
