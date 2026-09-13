@@ -195,3 +195,23 @@ and wrote the same files, with the helper copied into `build/`.
 
 **ls-remote.** Three attempts, three seconds apart; tested with stand-ins
 that fail twice and then answer, that always fail, and that cannot spawn.
+
+## 8. The first Windows run (vendor run 34753501625, at 777acdb)
+
+The version gate passed on the runner (`zlib 1.3.2-2`, `bzip2 1.0.8-4`), and
+`pacman-key --verify` then stopped with `==> ERROR: You do not have
+sufficient permissions to run this command.` and `==> Use 'pacman-key
+--init' to correct the keyring permissions.` The runner's keyring under
+`/etc/pacman.d/gnupg` is not writable by the job, and initialising or
+changing it is not this job's to do. §7's stand-in for `pacman-key` had
+been plain gpg in a keyring of its own, which is why it passed.
+
+So each source package is now checked by `signed()`, like every other
+signature here: its key is fetched from keyserver.ubuntu.com into a
+temporary keyring and must be the pinned primary fingerprint
+`5F944B027F7FE2091985AA2EFA11531AA0AA7F57`, which is in `msys2.gpg` of
+`msys2-keyring-1~20260814-1` (§7). Run in `ubuntu:22.04` on 2026-09-13:
+the keyserver answered with that key (`IMPORT_OK`), and both source
+packages verified with `VALIDSIG` naming it and gpg exiting 0. The step's
+failure annotation is kept, and `signed()` prints gpg's status lines and its
+reason before it.

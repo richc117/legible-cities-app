@@ -404,23 +404,32 @@ jobs:
           done
           [ "$status" -eq 0 ] || exit 1
 
+          # signed() checks the signature in a keyring of its own, against
+          # the pinned primary fingerprint: pacman-key --verify needs write
+          # access to the runner's keyring, and that keyring is not ours to
+          # initialise or change. The pinned key was checked to be in MSYS2's
+          # own keyring (vendor/pins.json says when).
+          . scripts/vendor-signature.sh
           out=loom-windows-toolchain
           mkdir -p "$out/msys2-sources"
           sources=
           for lib in zlib bzip2; do
             url=$(static_pin "$lib" msys2_source.url)
             sha=$(static_pin "$lib" msys2_source.sha256)
+            sig_url=$(static_pin "$lib" msys2_source.signature)
+            key_url=$(static_pin "$lib" msys2_source.signing_key.url)
+            want=$(static_pin "$lib" msys2_source.signing_key.fingerprint)
             file="$out/msys2-sources/${url##*/}"
             curl -fsSL --retry 3 --connect-timeout 30 --max-time 300 -o "$file" "$url"
-            curl -fsSL --retry 3 --connect-timeout 30 --max-time 120 -o "$file.sig" "$url.sig"
             got=$(sha256sum "$file" | cut -d' ' -f1)
             if [ "$got" != "$sha" ]; then
               echo "::error::${file##*/} is sha256 $got, and the pin says $sha"
               exit 1
             fi
-            # The keyring pacman trusts for the packages it just installed.
-            if ! pacman-key --verify "$file.sig" "$file"; then
-              echo "::error::${file##*/} has no good signature by a key MSYS2's keyring trusts"
+            # Ends the step on a refusal, printing gpg's status lines (never
+            # a user ID) and the reason; the annotation says which file.
+            if ! (signed "$file" "$sig_url" "$key_url" "$want"); then
+              echo "::error::${file##*/} has no good signature by MSYS2's key $want"
               exit 1
             fi
             echo "checksum and signature ok: ${file##*/}"
@@ -441,7 +450,7 @@ jobs:
             echo "MSYS2's source packages for the zlib and bzip2 revisions above, each with"
             echo "its PKGBUILD, the patches MSYS2 applies and the upstream tarball, as"
             echo "fetched from repo.msys2.org, checked against the sha256 in the pins, and"
-            echo "with a signature pacman-key verified against MSYS2's keyring:"
+            echo "with a good signature by the MSYS2 key the pins name:"
             printf '%s' "$sources"
             echo "windows-static/ holds the upstream release tarballs, verified against"
             echo "their publishers' signatures."

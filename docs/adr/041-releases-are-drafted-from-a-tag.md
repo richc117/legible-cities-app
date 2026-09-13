@@ -135,8 +135,9 @@ full package revision (`1.3.2-2`, `1.0.8-4`) is not the one pinned, which
 makes a new revision, a new patch included, fail loudly with the pin to
 move; then it fetches MSYS2's source package for each pinned revision (its
 PKGBUILD, patches and upstream tarball) from `repo.msys2.org`, checks it
-against the sha256 in the pins and its signature with `pacman-key` against
-MSYS2's keyring, and uploads `loom-windows-toolchain`: those source
+against the sha256 in the pins and its signature with the shared
+`signed()` against the pinned fingerprint of the MSYS2 key that made it,
+and uploads `loom-windows-toolchain`: those source
 packages and a `pacman -Q` record of the zlib, bzip2, GCC runtime, CRT,
 headers and winpthreads packages it linked. The release job puts both
 inside LOOM's source archive (`msys2-sources/`, `TOOLCHAIN-win-x64.txt`).
@@ -181,10 +182,12 @@ only when the draft is deleted and the job run again.
 until `msys2_revision` and `msys2_source` under `loom_windows_static` are
 moved, with the upstream tarball's pin too when its version moved; that is
 the price of attaching the source of what is linked, patches included. The
-source package's signature is judged by the keyring pacman already trusts
-on the runner, not by a pinned fingerprint, and its sha256 is pinned; the
-`pacman-key` step was proven against a stand-in over MSYS2's keyring
-package, not yet on the Windows runner. GCC's runtime and `libstdc++` are under
+source package's signature is judged against a pinned fingerprint, checked
+on 2026-09-13 to be a key in MSYS2's own keyring, and not by that keyring:
+`pacman-key --verify` needs write access to the runner's keyring, which the
+first CI run refused, and this job does not initialise or change it. A new
+revision signed by another MSYS2 key needs its fingerprint moved with the
+revision. GCC's runtime and `libstdc++` are under
 the GCC Runtime Library Exception and mingw-w64's CRT and winpthreads under
 permissive licences, so their notices, not their sources, are carried
 (`THIRD_PARTY_NOTICES.md`).
