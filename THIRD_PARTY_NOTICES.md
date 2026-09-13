@@ -11,10 +11,10 @@ the runtime, the engine, LOOM and ffmpeg for their target and carry
 records each component's pin: the runtime's release, asset and checksum,
 the engine's tag, the name and version of every Python package installed
 in the runtime, LOOM's commit (and the Windows port's), and FFmpeg's
-version, configure line, archive URLs and checksums and build scripts. It
-does not record the versions of the libraries linked into FFmpeg or into
-the Python runtime and wheels; those are in each builder's scripts. The
-ffmpeg they carry is replaced before a release (issue 95), and the GPL
+version and configure line with the checksums of the FFmpeg, x264 and
+(on Windows) zlib sources it was built from. It does not record the
+versions of the libraries linked into the Python runtime and wheels. The
+ffmpeg they carry is built in this repository (ADR-040), and the GPL
 sources are attached with the release (A6-01).
 
 | Component | Role | Licence | Source |
@@ -25,11 +25,10 @@ sources are attached with the release (A6-01).
 | Esri Calcite UI icons | Four view-switcher icons inside the engine's animation page, which the app embeds; the engine redistributes them **unmodified** with the agreement's notice, and its issue E16 replaces them with Phosphor (ADR-026). The app's own tree carries none | Esri Master License Agreement | https://github.com/Esri/calcite-ui-icons |
 | FigUI3 core | The interface's control kit: `fig.css` and `fig.js` of `@rogieking/figui3` **9.0.0**, pinned exactly. The package is split-licensed and its `package.json` says only "SEE LICENSE IN LICENSE": the core is MIT; the editor and lab bundles are PolyForm Shield 1.0.0 and are never imported (the build refuses them, `scripts/figui-guard.ts`; ADR-026). The core vendors `@ungap/custom-elements-builtin` (ISC) | MIT (core); ISC (the vendored polyfill) | https://github.com/rogie/figui3 |
 | Phosphor Icons | The interface's icons, vendored unmodified from `@phosphor-icons/core` **2.1.1** under `src/renderer/src/icons/phosphor/` with the licence beside them; the light weight at 16px, the regular at 24px, the fill weight for toggled states | MIT | https://github.com/phosphor-icons/core |
-| FFmpeg (ADR-012; in the test installers, replaced before a release by issue 95) | Encoding MP4 and GIF exports, bundled under `ffmpeg/` in the app's resources: `ffmpeg` and `ffprobe` from **FFmpeg 9.0**, prebuilt static GPL builds pinned by URL, sha256 and configure line in `vendor/pins.json` and proven by `scripts/vendor-ffmpeg.sh`. macOS arm64 and x64: the **9.0.1** release builds of https://ffmpeg.martin-riedl.de, whose build scripts are https://git.martin-riedl.de/ffmpeg/build-script, most likely at `f63b8aab8f` (the build does not record it). Windows x64: a snapshot of https://github.com/BtbN/FFmpeg-Builds, release `autobuild-2026-08-31-13-27`, the release/9.0 branch at `n9.0.1-11-ge47273f4d9`, built by the scripts at https://github.com/BtbN/FFmpeg-Builds/tree/autobuild-2026-08-31-13-27 (commit `8267213e26`), which pin every library it links. The rows for FFmpeg's libraries below cover the three shipped builds, darwin-arm64, darwin-x64 and win-x64; the vendoring job also proves a Linux x64 build of the same BtbN snapshot for tests, and neither ships nor uploads it. Every configure line carries `--enable-gpl` and `--enable-version3` and none carries `--enable-nonfree`; the script refuses either binary otherwise, or one whose `-L` calls it not legally redistributable. **The export needs no freetype**, because the page draws every word in it (ADR-012), **but these builds include it**: all of them configure `--enable-libfreetype`, `--enable-fontconfig`, `--enable-libharfbuzz` and `--enable-libass`, so their `drawtext` and `subtitles` filters exist and nothing calls them | GPL-3.0-or-later (`--enable-gpl --enable-version3`) | macOS: https://ffmpeg.org/releases/ffmpeg-9.0.1.tar.xz (tag `n9.0.1`, commit `bf1b838f2a`). Windows: commit `e47273f4d9` of https://git.ffmpeg.org/ffmpeg.git, with BtbN's scripts at `8267213e26` |
-| x264 | H.264 encoder statically linked into every FFmpeg build above: commit `0480cb05fa` on Windows, as BtbN's `scripts.d/50-x264.sh` pins it; on macOS the build fetched x264's `master` tarball, so it reports only `0.165.x`, and `master` has been `0480cb05fa` since 2025-09-10, so it is almost certainly the same commit | GPL-2.0-or-later | https://code.videolan.org/videolan/x264 |
-| Libraries statically linked into the shipped FFmpeg builds, under GPL terms besides x264 | Both: x265 (macOS 4.2). Windows also: Xvid, Rubber Band and FFTW (which Rubber Band uses), vid.stab, davs2, xavs2, libdvdread, libdvdnav and libdvdcss; the AviSynth+ and frei0r headers, whose plugins are loaded at run time only if installed; GCC's OpenMP runtime, `libgomp`, from `--extra-libs=-lgomp`, and GCC's `libstdc++` and `libgcc`, which the C++ libraries bring; glslang, inside shaderc, which libplacebo links, of which parts are GPL-3.0-or-later with the Bison exception. **libdvdcss** is among them: libdvdread is built with it (`-Dlibdvdcss=enabled` in `scripts.d/50-dvd/40-libdvdread.sh`) and FFmpeg with `--enable-libdvdread`. Its purpose is reading copy-protected DVDs, which carries a legal risk under anti-circumvention law separate from its licence; the export never uses it, and ADR-012 records the decision owed | GPL-2.0-or-later (each library); GPL-2.0-or-later with its linking exception (AviSynth+); GPL-3.0-or-later WITH GCC-exception-3.1 (libgomp, libstdc++, libgcc); BSD-3-Clause, MIT and Apache-2.0 for most of glslang, with parts GPL-3.0-or-later WITH Bison-exception-2.2 | Each project's own repository; on Windows at the commit BtbN's `scripts.d` pins |
-| Libraries statically linked into the shipped FFmpeg builds, under weak copyleft | Both: libbluray, FriBidi, LAME, zvbi, SRT. macOS also: libklvanc. Windows also: libudfread, libssh, GMP, Game_Music_Emu, OpenAL Soft, libiconv, ZeroMQ, libaribb24, libplacebo, SoX Resampler, TwoLAME, and the FFmpeg resampler code Chromaprint bundles. The macOS list is the build's own `versions.txt` and configure line; the Windows list is its configure line and the dependencies `scripts.d` builds for it. Neither build ships these libraries' licence texts, and the licences given are each project's own | LGPL-2.0-or-later (LAME, zvbi, OpenAL Soft); LGPL-2.1-or-later (libbluray, FriBidi, libklvanc, libudfread, libssh, Game_Music_Emu, libiconv, libplacebo, SoX Resampler, TwoLAME, Chromaprint's bundled resampler); LGPL-3.0-or-later (libaribb24); LGPL-3.0-or-later OR GPL-2.0-or-later (GMP); MPL-2.0 (SRT, ZeroMQ) | Each project's own repository, at the version the build lists or the commit BtbN's scripts pin |
-| Libraries statically linked into the shipped FFmpeg builds, under permissive terms | Both: libaom, dav1d, rav1e (with the Rust standard library and the crates it builds with), SVT-AV1, VVenC, OpenH264, OpenJPEG, libvpx, libwebp, libtheora, libvorbis, libogg, Opus, libvmaf, zimg, Snappy, libxml2, FreeType, fontconfig, HarfBuzz, libass, zlib, OpenSSL. Windows also: libunibreak, Kvazaar, uavs3d, OpenAPV, LCEVCdec, libjxl with Highway, Brotli and Little CMS, librist with Mbed TLS, libopenmpt, opencore-amr, Chromaprint, libaribcaption, LV2 with serd, sord, sratom, zix and lilv, libsamplerate, libpng, xz, SDL2, the OpenCL ICD loader, BtbN's Vulkan shim loader, shaderc with SPIRV-Tools, SPIRV-Cross, libva, oneVPL, the AMF and nv-codec-headers headers, and mingw-w64's CRT and winpthreads. OpenH264 here is built from source, so Cisco's patent licence, which covers only Cisco's own binaries, does not reach it; patent licensing for H.264 and AAC is not assessed in this repository | BSD-2-Clause (dav1d, rav1e, OpenH264, OpenJPEG, librist, libsamplerate); BSD-3-Clause (libvpx, libwebp, libtheora, libvorbis, libogg, Opus, Snappy, Kvazaar, uavs3d, OpenAPV, libjxl, libopenmpt); BSD-3-Clause-Clear (SVT-AV1, VVenC, LCEVCdec); BSD-2-Clause-Patent (libvmaf); MIT (libxml2, Brotli, Little CMS, Chromaprint, libaribcaption, libva, oneVPL, the Vulkan shim loader, and the AMF and nv-codec-headers headers); MIT OR Apache-2.0 (the Rust standard library and rav1e's crates); Apache-2.0 OR BSD-3-Clause (Highway); MIT, ZPL-2.1 and public domain (mingw-w64's CRT and winpthreads); MIT-Modern-Variant (HarfBuzz); HPND-sell-variant (fontconfig); ISC (libass, LV2, serd, sord, sratom, zix, lilv); Zlib (zlib, SDL2, libunibreak); libpng-2.0 (libpng); WTFPL (zimg); 0BSD, with parts in the public domain (xz); FTL, dual with GPL-2.0-or-later (FreeType); Apache-2.0 (OpenSSL, opencore-amr, the OpenCL ICD loader, shaderc, SPIRV-Tools, SPIRV-Cross); Apache-2.0 OR GPL-2.0-or-later (Mbed TLS); BSD-2-Clause (libaom) with, for libaom, rav1e and SVT-AV1, the Alliance for Open Media Patent License 1.0. The Windows build first chosen, gyan.dev's, also carried bzip2 (bzip2-1.0.6) and GSM (TU-Berlin-1.0); this one does not | Each project's own repository, at the version the build lists or the commit BtbN's scripts pin |
+| FFmpeg (ADR-012, ADR-040) | Encoding MP4 and GIF exports, bundled under `ffmpeg/` in the app's resources: `ffmpeg` and `ffprobe` of **FFmpeg 9.0.1**, built in this repository by `scripts/vendor-ffmpeg.sh` in the `ffmpeg` jobs of `.github/workflows/vendor.yml`, natively on each target, from the release tarball pinned by URL and sha256 in `vendor/pins.json`, whose signature by FFmpeg's release signing key the vendor workflow verifies, and proven by the same script before it is vendored. Configured `--enable-gpl --enable-version3` with `--disable-everything --disable-autodetect --disable-network`, and only the codecs, formats, filters and protocols the engine's export uses enabled back, with three more that the checks use: the `testsrc` filter the vendoring proof makes frames with, and the `rawvideo` encoder and muxer and `gif` decoder the determinism test reads exports back with; the configure line of every target is in the pins and printed by `ffmpeg -version`. The only external libraries are x264 and zlib (the operating system's on macOS; linked statically on Windows), and the vendor jobs refuse any other. **No freetype, fontconfig, HarfBuzz, libass, libdvdread or libdvdcss**: the export needs none, because the page draws every word in it. The vendor job also builds a Linux x64 binary for tests, and neither ships nor uploads it. Patent licensing for H.264 and AAC encoders is not assessed in this repository | GPL-3.0-or-later (`--enable-gpl --enable-version3`) | https://ffmpeg.org/releases/ffmpeg-9.0.1.tar.xz (tag `n9.0.1`, commit `bf1b838f2a`), and the `ffmpeg-source` artefact on each release |
+| x264 | H.264 encoder statically linked into both FFmpeg binaries on every target: commit `0480cb05fa`, pinned with the sha256 of its `git archive` tar in `vendor/pins.json`, configured 8-bit 4:2:0 without its command-line tool, OpenCL or input libraries | GPL-2.0-or-later | https://code.videolan.org/videolan/x264, and the `ffmpeg-source` artefact on each release |
+| zlib | Compression for FFmpeg's PNG encoder and decoder. Linked statically into the Windows binaries from the **1.3.2** release tarball pinned in `vendor/pins.json`; on macOS FFmpeg links the operating system's `/usr/lib/libz.1.dylib`, which is not shipped | Zlib | https://github.com/madler/zlib, and the `ffmpeg-source` artefact on each release |
+| GCC runtime library and mingw-w64 runtime, with winpthreads | Linked statically into the Windows FFmpeg binaries by MSYS2 UCRT64's GCC with `-static`: GCC's `libgcc`, mingw-w64's CRT startup code and import libraries, and mingw-w64's winpthreads, which the toolchain brings in although FFmpeg and x264 use Win32 threads (the Windows binaries carry its source file names). They import only Windows' own DLLs, the Universal CRT among them, which the vendor job checks. The notices of both are below, from mingw-w64 at commit `9c1abbbf55`, which MSYS2's crt, headers and winpthreads packages `14.0.0.r375.g9c1abbbf5` in the build were made from | GPL-3.0-or-later WITH GCC-exception-3.1 (libgcc); the mingw-w64 runtime's own terms, with parts under the BSD-style, MIT and permissive notices its licence file lists, all quoted below (mingw-w64's CRT); MIT, with parts derived from Lockless Inc.'s Posix Threads library under BSD-3-Clause (winpthreads) | https://gcc.gnu.org/ and https://www.mingw-w64.org/ |
 | Electron | Application shell; includes Chromium and Node.js under their own licences. Pinned in `package.json` | MIT | https://www.electronjs.org/ |
 | React | User interface | MIT | https://react.dev/ |
 | electron-vite, Vite, Vitest, Playwright, TypeScript, ESLint, Prettier, electron-builder | Development tooling: build, test, style. Present in the repository, not shipped in the app | MIT (electron-vite, Vite, Vitest, ESLint, Prettier, electron-builder); Apache-2.0 (Playwright, TypeScript) | package.json |
@@ -54,19 +53,348 @@ sources are attached with the release (A6-01).
   attaches source archives for the exact versions it bundles, beside the
   binaries, together with the build scripts and the FFmpeg configure line
   used. The installed app ships `LICENSE` and this file and shows them in
-  its Licences screen. FFmpeg is a build this project did not compile.
-  GPLv3's Corresponding Source for it is FFmpeg's source at the pinned
-  commit, the source of every library statically linked into it, and the
-  scripts that built it. Both builders publish their scripts, which is what
-  makes the obligation possible to meet, not what meets it: a pointer to
-  some eighty upstream servers is not a promise that the source stays
-  available. A6-01 attaches to each release the source of FFmpeg and of
-  every bundled library at the exact versions, with the scripts: the
-  manifest names FFmpeg's pin, archives and build scripts, and the
-  libraries' versions are read from those scripts. For macOS the script's commit is
-  inferred rather than recorded, and x264 was fetched from a branch; issue
-  95 replaces these builds with one of this project's own before a release
-  (ADR-012, ADR-035).
+  its Licences screen. FFmpeg is built in this repository (ADR-040), so its
+  Corresponding Source is FFmpeg's release tarball, x264 at its pinned
+  commit, zlib's release tarball for the Windows binaries, and
+  `scripts/vendor-ffmpeg.sh` with every configure line: the vendor workflow
+  that builds the binaries uploads exactly those, verified against the
+  pins, as the `ffmpeg-source` artefact of the same run, with a `BUILD.txt`
+  naming the repository commit, and A6-01 attaches that artefact to each
+  release. The manifest names the same sources by hash.
+- **mingw-w64 runtime**, linked into the Windows ffmpeg and ffprobe. Its
+  `COPYING.MinGW-w64-runtime.txt` at commit `9c1abbbf55`, verbatim but for
+  one e-mail address this public repository does not reproduce (the file
+  itself carries it:
+  https://github.com/mingw-w64/mingw-w64/blob/9c1abbbf55a3de2febee4d1f685b1bda20774c5e/COPYING.MinGW-w64-runtime/COPYING.MinGW-w64-runtime.txt):
+
+  ```text
+  MinGW-w64 runtime licensing
+  ***************************
+
+  This program or library was built using MinGW-w64 and statically
+  linked against the MinGW-w64 runtime. Some parts of the runtime
+  are under licenses which require that the copyright and license
+  notices are included when distributing the code in binary form.
+  These notices are listed below.
+
+
+  ========================
+  Overall copyright notice
+  ========================
+
+  Copyright (c) 2009, 2010, 2011, 2012, 2013 by the mingw-w64 project
+
+  This license has been certified as open source. It has also been designated
+  as GPL compatible by the Free Software Foundation (FSF).
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+     1. Redistributions in source code must retain the accompanying copyright
+        notice, this list of conditions, and the following disclaimer.
+     2. Redistributions in binary form must reproduce the accompanying
+        copyright notice, this list of conditions, and the following disclaimer
+        in the documentation and/or other materials provided with the
+        distribution.
+     3. Names of the copyright holders must not be used to endorse or promote
+        products derived from this software without prior written permission
+        from the copyright holders.
+     4. The right to distribute this software or to use it for any purpose does
+        not give you the right to use Servicemarks (sm) or Trademarks (tm) of
+        the copyright holders.  Use of them is covered by separate agreement
+        with the copyright holders.
+     5. If any files are modified, you must cause the modified files to carry
+        prominent notices stating that you changed the files and the date of
+        any change.
+
+  Disclaimer
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS ``AS IS'' AND ANY EXPRESSED
+  OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+  OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO
+  EVENT SHALL THE COPYRIGHT HOLDERS BE LIABLE FOR ANY DIRECT, INDIRECT,
+  INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA,
+  OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+  LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+  NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
+  EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+  ========================================
+  getopt, getopt_long, and getop_long_only
+  ========================================
+
+  Copyright (c) 2002 Todd C. Miller [address omitted]
+
+  Permission to use, copy, modify, and distribute this software for any
+  purpose with or without fee is hereby granted, provided that the above
+  copyright notice and this permission notice appear in all copies.
+
+  THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+  WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+  MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+  ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+  WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+  ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+  OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+  Sponsored in part by the Defense Advanced Research Projects
+  Agency (DARPA) and Air Force Research Laboratory, Air Force
+  Materiel Command, USAF, under agreement number F39502-99-1-0512.
+
+          *       *       *       *       *       *       *
+
+  Copyright (c) 2000 The NetBSD Foundation, Inc.
+  All rights reserved.
+
+  This code is derived from software contributed to The NetBSD Foundation
+  by Dieter Baron and Thomas Klausner.
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions
+  are met:
+   1. Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+   2. Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE NETBSD FOUNDATION, INC. AND CONTRIBUTORS
+  ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
+  TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+  PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE FOUNDATION OR CONTRIBUTORS
+  BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+  CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+  SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+  INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+  CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+  POSSIBILITY OF SUCH DAMAGE.
+
+
+  ===============================================================
+  gdtoa: Converting between IEEE floating point numbers and ASCII
+  ===============================================================
+
+  The author of this software is David M. Gay.
+
+  Copyright (C) 1997, 1998, 1999, 2000, 2001 by Lucent Technologies
+  All Rights Reserved
+
+  Permission to use, copy, modify, and distribute this software and
+  its documentation for any purpose and without fee is hereby
+  granted, provided that the above copyright notice appear in all
+  copies and that both that the copyright notice and this
+  permission notice and warranty disclaimer appear in supporting
+  documentation, and that the name of Lucent or any of its entities
+  not be used in advertising or publicity pertaining to
+  distribution of the software without specific, written prior
+  permission.
+
+  LUCENT DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+  INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.
+  IN NO EVENT SHALL LUCENT OR ANY OF ITS ENTITIES BE LIABLE FOR ANY
+  SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+  WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER
+  IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
+  ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
+  THIS SOFTWARE.
+
+          *       *       *       *       *       *       *
+
+  The author of this software is David M. Gay.
+
+  Copyright (C) 2005 by David M. Gay
+  All Rights Reserved
+
+  Permission to use, copy, modify, and distribute this software and its
+  documentation for any purpose and without fee is hereby granted,
+  provided that the above copyright notice appear in all copies and that
+  both that the copyright notice and this permission notice and warranty
+  disclaimer appear in supporting documentation, and that the name of
+  the author or any of his current or former employers not be used in
+  advertising or publicity pertaining to distribution of the software
+  without specific, written prior permission.
+
+  THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+  INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN
+  NO EVENT SHALL THE AUTHOR OR ANY OF HIS CURRENT OR FORMER EMPLOYERS BE
+  LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY
+  DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS,
+  WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
+  ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS
+  SOFTWARE.
+
+          *       *       *       *       *       *       *
+
+  The author of this software is David M. Gay.
+
+  Copyright (C) 2004 by David M. Gay.
+  All Rights Reserved
+  Based on material in the rest of /netlib/fp/gdota.tar.gz,
+  which is copyright (C) 1998, 2000 by Lucent Technologies.
+
+  Permission to use, copy, modify, and distribute this software and
+  its documentation for any purpose and without fee is hereby
+  granted, provided that the above copyright notice appear in all
+  copies and that both that the copyright notice and this
+  permission notice and warranty disclaimer appear in supporting
+  documentation, and that the name of Lucent or any of its entities
+  not be used in advertising or publicity pertaining to
+  distribution of the software without specific, written prior
+  permission.
+
+  LUCENT DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+  INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.
+  IN NO EVENT SHALL LUCENT OR ANY OF ITS ENTITIES BE LIABLE FOR ANY
+  SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+  WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER
+  IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
+  ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
+  THIS SOFTWARE.
+
+
+  =========================
+  Parts of the math library
+  =========================
+
+  Copyright (C) 1993 by Sun Microsystems, Inc. All rights reserved.
+
+  Developed at SunSoft, a Sun Microsystems, Inc. business.
+  Permission to use, copy, modify, and distribute this
+  software is freely granted, provided that this notice
+  is preserved.
+
+          *       *       *       *       *       *       *
+
+  Copyright (C) 1993 by Sun Microsystems, Inc. All rights reserved.
+
+  Developed at SunPro, a Sun Microsystems, Inc. business.
+  Permission to use, copy, modify, and distribute this
+  software is freely granted, provided that this notice
+  is preserved.
+
+          *       *       *       *       *       *       *
+
+  FIXME: Cephes math lib
+  Copyright (C) 1984-1998 Stephen L. Moshier
+
+  It sounds vague, but as to be found at
+  <http://lists.debian.org/debian-legal/2004/12/msg00295.html>, it gives an
+  impression that the author could be willing to give an explicit
+  permission to distribute those files e.g. under a BSD style license. So
+  probably there is no problem here, although it could be good to get a
+  permission from the author and then add a license into the Cephes files
+  in MinGW runtime. At least on follow-up it is marked that debian sees the
+  version a-like BSD one. As MinGW.org (where those cephes parts are coming
+  from) distributes them now over 6 years, it should be fine.
+
+  =================================================
+  Some string, memory and time conversion functions
+  =================================================
+
+  Copyright © 2005-2020 Rich Felker, et al.
+
+  Permission is hereby granted, free of charge, to any person obtaining
+  a copy of this software and associated documentation files (the
+  "Software"), to deal in the Software without restriction, including
+  without limitation the rights to use, copy, modify, merge, publish,
+  distribute, sublicense, and/or sell copies of the Software, and to
+  permit persons to whom the Software is furnished to do so, subject to
+  the following conditions:
+
+  The above copyright notice and this permission notice shall be
+  included in all copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+  CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+  TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+  SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+  ===================================
+  Headers and IDLs imported from Wine
+  ===================================
+
+  Some header and IDL files were imported from the Wine project. These files
+  are prominent maked in source. Their copyright belongs to contributors and
+  they are distributed under LGPL license.
+
+  Disclaimer
+
+  This library is free software; you can redistribute it and/or
+  modify it under the terms of the GNU Lesser General Public
+  License as published by the Free Software Foundation; either
+  version 2.1 of the License, or (at your option) any later version.
+
+  This library is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+  Lesser General Public License for more details.
+  ```
+- **winpthreads** (MIT, with parts BSD-3-Clause), linked into the Windows
+  ffmpeg and ffprobe. Its `COPYING`, verbatim, identical at commit
+  `9c1abbbf55`:
+
+  > Copyright (c) 2011 mingw-w64 project
+  >
+  > Permission is hereby granted, free of charge, to any person obtaining a
+  > copy of this software and associated documentation files (the "Software"),
+  > to deal in the Software without restriction, including without limitation
+  > the rights to use, copy, modify, merge, publish, distribute, sublicense,
+  > and/or sell copies of the Software, and to permit persons to whom the
+  > Software is furnished to do so, subject to the following conditions:
+  >
+  > The above copyright notice and this permission notice shall be included in
+  > all copies or substantial portions of the Software.
+  >
+  > THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  > IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  > FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  > AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  > LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+  > FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+  > DEALINGS IN THE SOFTWARE.
+  >
+  >
+  > /*
+  >  * Parts of this library are derived by:
+  >  *
+  >  * Posix Threads library for Microsoft Windows
+  >  *
+  >  * Use at own risk, there is no implied warranty to this code.
+  >  * It uses undocumented features of Microsoft Windows that can change
+  >  * at any time in the future.
+  >  *
+  >  * (C) 2010 Lockless Inc.
+  >  * All rights reserved.
+  >  *
+  >  * Redistribution and use in source and binary forms, with or without modification,
+  >  * are permitted provided that the following conditions are met:
+  >  *
+  >  *
+  >  *  * Redistributions of source code must retain the above copyright notice,
+  >  *    this list of conditions and the following disclaimer.
+  >  *  * Redistributions in binary form must reproduce the above copyright notice,
+  >  *    this list of conditions and the following disclaimer in the documentation
+  >  *    and/or other materials provided with the distribution.
+  >  *  * Neither the name of Lockless Inc. nor the names of its contributors may be
+  >  *    used to endorse or promote products derived from this software without
+  >  *    specific prior written permission.
+  >  *
+  >  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AN
+  >  * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+  >  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+  >  * IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+  >  * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+  >  * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+  >  * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+  >  * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
+  >  * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
+  >  * OF THE POSSIBILITY OF SUCH DAMAGE.
+  >  */
 - **FigUI3 core, Phosphor Icons and react-colorful** (MIT): the kit and the
   picker are compiled into the interface and the icons are inlined into it,
   so no licence file reaches the built app on its own; this file, which the

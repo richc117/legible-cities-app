@@ -29,7 +29,12 @@ const PINS = JSON.parse(PINS_TEXT) as {
   python: { version: string }
   engine: { version: string }
   loom: { commit: string }
-  ffmpeg: { targets: Record<string, { reports: string; configure: string }> }
+  ffmpeg: {
+    source: { sha256: string }
+    x264: { commit: string }
+    zlib: { sha256: string }
+    targets: Record<string, { reports: string; configure: string; x264_configure: string }>
+  }
 }
 
 type Target = 'darwin-arm64' | 'darwin-x64' | 'win-x64'
@@ -98,6 +103,7 @@ interface TreeOptions {
   pythonVersion?: string
   ffmpegHeader?: Buffer
   ffmpegReports?: string
+  ffmpegConfigure?: string
   skip?: 'python' | 'loom' | 'ffmpeg'
   bytecodeFlags?: number
 }
@@ -150,7 +156,7 @@ function tree(
     const pin = PINS.ffmpeg.targets[target]
     for (const name of ['ffmpeg', 'ffprobe']) {
       const strings = Buffer.from(
-        `\0ffmpeg version ${options.ffmpegReports ?? pin.reports}\0${pin.configure}\0`,
+        `\0ffmpeg version ${options.ffmpegReports ?? pin.reports}\0${options.ffmpegConfigure ?? pin.configure}\0`,
         'utf8',
       )
       put(
@@ -210,6 +216,19 @@ describe('check-vendored.mjs, as the build runs it', () => {
       expect(manifest.components.engine.version).toBe(PINS.engine.version)
       expect(manifest.components.loom.commit).toBe(PINS.loom.commit)
       expect(manifest.components.ffmpeg.reports).toBe(PINS.ffmpeg.targets[target].reports)
+      // What a release needs to name the Corresponding Source: the source
+      // archives by hash, and zlib's only where it is linked.
+      expect(manifest.components.ffmpeg.source.sha256).toBe(PINS.ffmpeg.source.sha256)
+      expect(manifest.components.ffmpeg.x264.commit).toBe(PINS.ffmpeg.x264.commit)
+      expect(manifest.components.ffmpeg.x264.configure).toBe(
+        PINS.ffmpeg.targets[target].x264_configure,
+      )
+      expect(manifest.components.ffmpeg.zlib.linked, target).toBe(
+        target === 'win-x64' ? 'static' : 'system',
+      )
+      expect(manifest.components.ffmpeg.zlib.sha256 ?? null, target).toBe(
+        target === 'win-x64' ? PINS.ffmpeg.zlib.sha256 : null,
+      )
       expect(manifest.components.python_packages).toEqual([
         { name: 'openschematicmaps', version: PINS.engine.version },
         { name: 'python_dateutil', version: '2.9.0.post0' },
@@ -269,6 +288,21 @@ describe('check-vendored.mjs, as the build runs it', () => {
     expect(python.stderr).toContain('win-x64: python is 3.11.0;')
     const ffmpeg = check('darwin-arm64', vendorTree('darwin-arm64', { ffmpegReports: '8.0' }))
     expect(ffmpeg.stderr).toContain('darwin-arm64: ffmpeg has ffmpeg without the pinned version')
+    // The same version from another build, as the third-party 9.0.1 builds
+    // were: only the configure line tells it from this repository's own.
+    const other = check(
+      'win-x64',
+      vendorTree('win-x64', {
+        ffmpegConfigure: '--prefix=/ffbuild/prefix --enable-gpl --enable-version3 --enable-libx264',
+      }),
+    )
+    expect(other.status).toBe(1)
+    expect(other.stderr).toContain(
+      'win-x64: ffmpeg has ffmpeg.exe without the pinned configure line, so it is stale',
+    )
+    expect(other.stderr).toContain(
+      'win-x64: ffmpeg has ffprobe.exe without the pinned configure line, so it is stale',
+    )
     // The pins moved and the tree did not.
     const pins = join(scratch(), 'pins.json')
     const moved = JSON.parse(PINS_TEXT)

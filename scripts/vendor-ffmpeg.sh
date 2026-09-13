@@ -1,56 +1,144 @@
 #!/usr/bin/env bash
-# Fetch the pinned static FFmpeg build for one target, verify every archive
-# against the checksum in vendor/pins.json, take ffmpeg and ffprobe out of it,
-# and prove the pair can do what the engine's export asks of it before
-# putting them in place.
+# Build ffmpeg and ffprobe for one target from the sources pinned in
+# vendor/pins.json, prove the pair can do what the engine's export asks of
+# it, and only then put it in place (ADR-012, ADR-040).
 #
-#   scripts/vendor-ffmpeg.sh <target> [outdir]
-#   scripts/vendor-ffmpeg.sh darwin-arm64 vendor/ffmpeg
+#   scripts/vendor-ffmpeg.sh <target> [outdir]               build, prove, put in place
+#   scripts/vendor-ffmpeg.sh --build-only <target> <dir>     build into <dir>, prove nothing
+#   scripts/vendor-ffmpeg.sh --from <dir> <target> [outdir]  prove a pair built earlier, put it in place
+#   scripts/vendor-ffmpeg.sh --sources <dir>                 fetch and verify the Corresponding Source
 #
-# Targets are the keys of ffmpeg.targets: darwin-arm64, darwin-x64, win-x64
-# and linux-x64 (for tests only). The result is <outdir>/<target>/ holding
+# Targets: darwin-arm64, darwin-x64, win-x64 and linux-x64 (for tests only).
+# The result is <outdir>/<target>/ (vendor/ffmpeg by default) holding
 # exactly ffmpeg and ffprobe, with .exe on Windows: the engine reads
 # SCHEMATIC_FFMPEG and finds ffprobe beside it by replacing "ffmpeg" in the
 # file name (export.ffprobe_path), so both names matter.
 #
-# VENDOR_FFMPEG_PINS names another pins file, so a wrong checksum can be
-# tried without editing the committed one.
+# The build is native, never cross: each target on its own kind of machine,
+# and win-x64 inside an MSYS2 UCRT64 shell. The proof needs no compiler, so
+# on Windows the vendor job builds under MSYS2 with --build-only and proves
+# under Git Bash with --from, where the proof has always run.
 #
-# On Windows it runs under Git Bash, so as in vendor-python.sh every hash is
-# taken, and every archive opened, by the build machine's Python rather than
-# by shasum, unzip or tar, which the three runners do not agree on.
+# What is built: FFmpeg from its release tarball and x264 from a pinned
+# commit, both checked against the sha256 in the pins before anything is
+# opened; on Windows also zlib from its release tarball, because the PNG
+# codecs need it and Windows has none of its own. macOS and Linux use the
+# operating system's zlib. Nothing else is linked: FFmpeg is configured
+# with --disable-everything --disable-autodetect and only the components
+# below enabled back, and x264 without its command-line tool, OpenCL or any
+# input library. Each configure line the script composes is compared with
+# the one recorded in the pins before the build runs, and FFmpeg's own record
+# of it after configure, so the pins cannot drift from what is built. What
+# each target needs on the machine (a C compiler, make, pkg-config, git,
+# curl, tar with xz, and nasm on x86-64) is checked before anything is
+# fetched; nothing is installed.
+#
+# --sources writes what A6-01 attaches to a release as the Corresponding
+# Source: the three source archives as fetched and verified, with FFmpeg's
+# and zlib's signatures checked by gpg against the signing keys whose
+# fingerprints the pins record, copies of this script, the pins and the
+# vendor workflow, and BUILD.txt with every configure line and the
+# repository commit they came from. The vendor job uploads it as the
+# ffmpeg-source artefact, and builds no binary until it has.
+#
+# VENDOR_FFMPEG_PINS names another pins file, so a wrong checksum can be
+# tried without editing the committed one. VENDOR_FFMPEG_WORK names a folder
+# to build in and keep (sources already there that match their pins are not
+# fetched again); by default the work is in a temporary folder removed at
+# exit.
+#
+# On Windows the proof runs under Git Bash, so as in vendor-python.sh every
+# hash is taken, and every pin read, by the build machine's Python rather
+# than by tools the runners do not agree on.
 #
 # The proof is what export.py uses at the pinned engine tag, not a list of
 # what FFmpeg can do: the encoders, decoders, filters, muxers, demuxers,
-# input devices and protocols its four invocations and its ffprobe call
+# input devices and protocols its five invocations and its ffprobe call
 # name, then a real encode of a one-second synthetic sequence through the
 # same filter graphs into MP4 and GIF, each read back with ffprobe.
 #
-# See docs/adr/012-ffmpeg-is-bundled-and-encoding-stays-in-python.md.
+# See docs/adr/012-ffmpeg-is-bundled-and-encoding-stays-in-python.md and
+# docs/adr/040-ffmpeg-is-built-from-pinned-sources.md.
 set -euo pipefail
 
-target=${1:-}
-outdir=${2:-vendor/ffmpeg}
-case "$target" in
-  darwin-arm64|darwin-x64|win-x64|linux-x64) ;;
-  *) echo "usage: $0 <darwin-arm64|darwin-x64|win-x64|linux-x64> [outdir]" >&2; exit 2 ;;
+usage() {
+  cat >&2 <<'EOF'
+usage: vendor-ffmpeg.sh <target> [outdir]
+       vendor-ffmpeg.sh --build-only <target> <dir>
+       vendor-ffmpeg.sh --from <dir> <target> [outdir]
+       vendor-ffmpeg.sh --sources <dir>
+targets: darwin-arm64 darwin-x64 win-x64 linux-x64
+EOF
+  exit 2
+}
+
+mode=vendor
+from=
+case "${1:-}" in
+  --build-only) mode=build; shift ;;
+  --from) [ -n "${2:-}" ] || usage; mode=prove; from=$2; shift 2 ;;
+  --sources) mode=sources; shift ;;
+  -*) usage ;;
 esac
 
-# absolute <dir>: the directory's absolute path in the form the build
-# machine's Python can read (Git Bash's `pwd -W` on Windows).
-absolute() { (cd "$1" && { pwd -W 2>/dev/null || pwd; }); }
+target=
+outdir=
+if [ "$mode" = sources ]; then
+  [ $# -eq 1 ] && [ -n "$1" ] || usage
+  outdir=$1
+else
+  target=${1:-}
+  case "$target" in
+    darwin-arm64|darwin-x64|win-x64|linux-x64) ;;
+    *) usage ;;
+  esac
+  if [ "$mode" = build ]; then
+    [ $# -eq 2 ] && [ -n "$2" ] || usage
+    outdir=$2
+  else
+    [ $# -le 2 ] || usage
+    outdir=${2:-}
+  fi
+fi
 
-# Resolved before the cd below, so a relative path means relative to where
-# the script was called.
+# absolute <dir>: the directory's absolute path in the form the build
+# machine's Python can read (`pwd -W` on Windows, under Git Bash or MSYS2).
+absolute() { (cd "$1" && { pwd -W 2>/dev/null || pwd; }); }
+# posix <dir>: the directory's absolute path in the shell's own form.
+posix() { (cd "$1" && pwd); }
+
+# Every path given is resolved before the cd below, so a relative path means
+# relative to where the script was called.
 pins=${VENDOR_FFMPEG_PINS:-}
 if [ -n "$pins" ]; then
   [ -f "$pins" ] || { echo "VENDOR_FFMPEG_PINS names no file: $pins" >&2; exit 2; }
-  pins="$(absolute "$(dirname "$pins")")/$(basename "$pins")"
+  pins="$(posix "$(dirname "$pins")")/$(basename "$pins")"
+fi
+if [ -n "$from" ]; then
+  [ -d "$from" ] || { echo "--from names no folder: $from" >&2; exit 2; }
+  from=$(posix "$from")
+fi
+if [ -n "$outdir" ]; then
+  mkdir -p "$outdir"
+  outdir=$(posix "$outdir")
+fi
+keep=${VENDOR_FFMPEG_WORK:-}
+if [ -n "$keep" ]; then
+  mkdir -p "$keep"
+  keep=$(posix "$keep")
 fi
 
-root=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
+# From the script's own place rather than from git: under MSYS2 on the
+# Windows runner, git may refuse a checkout another user's git made.
+root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
-pins=${pins:-vendor/pins.json}
+pins=${pins:-$root/vendor/pins.json}
+# Made whichever way it was named: in a fresh checkout the default,
+# vendor/ffmpeg, does not exist (it is ignored), and the staging folder
+# below is made inside it. The first CI run of this script failed there on
+# every target but Windows, whose build step had already made it.
+outdir=${outdir:-$root/vendor/ffmpeg}
+mkdir -p "$outdir"
 
 host_py=
 for candidate in python3 python; do
@@ -59,9 +147,43 @@ for candidate in python3 python; do
   fi
 done
 [ -n "$host_py" ] || { echo "no Python 3.9 or later on PATH to read $pins" >&2; exit 2; }
+pins_for_py="$(absolute "$(dirname "$pins")")/$(basename "$pins")"
 
 sha256() {
   "$host_py" -c 'import hashlib, sys; sys.stdout.write(hashlib.sha256(sys.stdin.buffer.read()).hexdigest())' < "$1"
+}
+
+# pin <field> [<target>]: one line from the ffmpeg block of the pins, by a
+# dotted path; with a target, from that target's entry. A missing field, or
+# one that is not a single line, ends the script (or, inside a command
+# substitution, the subshell, with Python's message on stderr).
+pin() {
+  local value
+  value=$("$host_py" - "$pins_for_py" "$1" "${2:-}" <<'PY'
+import json, sys
+pins, field, target = sys.argv[1:4]
+node = json.load(open(pins, encoding="utf-8"))["ffmpeg"]
+where = "ffmpeg"
+if target:
+    node = node["targets"].get(target)
+    where += f".targets.{target}"
+    if node is None:
+        sys.exit(f"no ffmpeg pin for target {target}")
+for part in field.split("."):
+    where += "." + part
+    if not isinstance(node, dict) or part not in node:
+        sys.exit(f"{where} is missing from the pins")
+    node = node[part]
+if not isinstance(node, str) or not node or "\n" in node or "\r" in node:
+    sys.exit(f"{where} must be one non-empty line")
+# Bytes, not text: a Windows Python's text-mode stdout writes every "\n" as
+# "\r\n", in sys.stdout.write as much as in print. The first win-x64 run of
+# the previous script did exactly that.
+sys.stdout.buffer.write(node.encode("utf-8"))
+PY
+  ) || exit 1
+  # And stripped all the same, so no Python on no runner can bring one back.
+  printf '%s' "${value//$'\r'/}"
 }
 
 case "$target" in
@@ -69,108 +191,539 @@ case "$target" in
   *)     exe= ;;
 esac
 
-# The pin, one line per field: what -version must report, the configure line
-# it must print, then each archive as "<sha256> <url>". The names inside must be exactly ffmpeg and ffprobe
-# (with .exe on Windows), so a pin cannot quietly vendor a third binary or
-# only one of the two.
-plan=$("$host_py" - "$pins" "$target" "$exe" <<'PY'
-import json, sys
-pins, target, exe = sys.argv[1:4]
-d = json.load(open(pins))["ffmpeg"]
-t = d["targets"].get(target)
-if not t:
-    sys.exit(f"no ffmpeg pin for target {target}; known: {', '.join(d['targets'])}")
-names = sorted(n for a in t["archives"] for n in a["extract"])
-want = sorted(["ffmpeg" + exe, "ffprobe" + exe])
-if names != want:
-    sys.exit(f"ffmpeg.targets.{target} extracts {names}; it must extract exactly {want}")
-for field in ("reports", "configure"):
-    if not t.get(field) or "\n" in t[field] or "\r" in t[field]:
-        sys.exit(f"ffmpeg.targets.{target}.{field} must be one non-empty line")
-lines = [t["reports"], t["configure"]] + [f"{a['sha256']} {a['url']}" for a in t["archives"]]
-# Bytes, not text: a Windows Python's text-mode stdout writes every "\n" as
-# "\r\n", in sys.stdout.write as much as in print, so every field but the
-# last would arrive ending in \r. The first win-x64 run did exactly that.
-sys.stdout.buffer.write("\n".join(lines).encode("utf-8"))
-PY
-)
-# And stripped all the same, so no Python on no runner can bring one back.
-plan=${plan//$'\r'/}
-reports=${plan%%$'\n'*}
-rest=${plan#*$'\n'}
-configure=${rest%%$'\n'*}
-archives=${rest#*$'\n'}
-if [ -z "$reports" ] || [ -z "$configure" ] || [ "$archives" = "$rest" ]; then
-  echo "could not read the ffmpeg pin for $target" >&2
-  exit 1
-fi
-
-work=$(mktemp -d)
+work=${keep:-$(mktemp -d)}
 stage=
 # Back to the root first: the encode below runs inside $work, and Windows
 # will not remove a folder that is some process's working directory.
-trap 'cd "$root"; rm -rf "$work" ${stage:+"$stage"}' EXIT
+cleanup() {
+  cd "$root"
+  [ -n "$keep" ] || rm -rf "$work"
+  [ -z "$stage" ] || rm -rf "$stage"
+}
+trap cleanup EXIT
 
-# Every archive is fetched and checked before anything is opened.
-i=0
-while read -r want url; do
-  i=$((i + 1))
-  file="$work/$i-${url##*/}"
-  echo "fetching $url"
-  curl -fsSL --retry 3 --connect-timeout 30 --max-time 900 -o "$file" "$url"
-  got=$(sha256 "$file")
-  if [ "$got" != "$want" ]; then
-    echo "checksum mismatch for $url" >&2
-    echo "  expected $want" >&2
-    echo "  got      $got ($(wc -c < "$file" | tr -d ' ') bytes)" >&2
-    echo "Either the pinned archive changed, or the server answered with something" >&2
+# ---------------------------------------------------------------------------
+# The sources
+# ---------------------------------------------------------------------------
+
+version=$(pin version)
+ffmpeg_url=$(pin source.url)
+ffmpeg_sha=$(pin source.sha256)
+ffmpeg_tarball=${ffmpeg_url##*/}
+x264_repo=$(pin x264.repo)
+x264_commit=$(pin x264.commit)
+x264_sha=$(pin x264.sha256)
+x264_tarball="x264-$x264_commit.tar"
+zlib_version=$(pin zlib.version)
+zlib_url=$(pin zlib.url)
+zlib_sha=$(pin zlib.sha256)
+zlib_tarball=${zlib_url##*/}
+
+# verify <file> <sha256>: the file is exactly the pinned bytes, or it fails.
+verify() {
+  local got
+  got=$(sha256 "$1")
+  if [ "$got" != "$2" ]; then
+    echo "checksum mismatch for $(basename "$1")" >&2
+    echo "  expected $2" >&2
+    echo "  got      $got ($(wc -c < "$1" | tr -d ' ') bytes)" >&2
+    echo "Either the pinned source changed, or the server answered with something" >&2
     echo "else, such as a challenge or interstitial page; a size far below the" >&2
     echo "archive's says which. Do not update the pin without reading why." >&2
+    return 1
+  fi
+  echo "checksum ok: $(basename "$1") $got"
+}
+
+# fetch <url> <sha256> <dir>: the release archive at <url> in <dir>, verified.
+fetch() {
+  local file="$3/${1##*/}"
+  if [ -f "$file" ] && verify "$file" "$2" 2>/dev/null; then return 0; fi
+  echo "fetching $1"
+  curl -fsSL --retry 3 --connect-timeout 30 --max-time 900 -o "$file.part" "$1"
+  mv "$file.part" "$file"
+  verify "$file" "$2"
+}
+
+# fetch_x264 <dir>: x264 at the pinned commit, as `git archive` writes it.
+# The commit is fetched by its id, which git verifies object by object, and
+# the tar is then checked against the pinned sha256; it is also the tar
+# VideoLAN's GitLab serves inside its .tar.bz2 of the commit. No line-ending
+# conversion, whatever git's configuration on the machine says.
+fetch_x264() {
+  local file="$1/$x264_tarball" repo="$work/x264.git" i
+  if [ -f "$file" ] && verify "$file" "$x264_sha" 2>/dev/null; then return 0; fi
+  rm -rf "$repo"
+  git init -q "$repo"
+  for i in 1 2 3; do
+    echo "fetching x264 $x264_commit from $x264_repo"
+    if git -C "$repo" fetch -q --depth 1 "$x264_repo" "$x264_commit"; then break; fi
+    [ "$i" -lt 3 ] || { echo "could not fetch x264 $x264_commit" >&2; exit 1; }
+    sleep 10
+  done
+  if [ "$(git -C "$repo" rev-parse FETCH_HEAD)" != "$x264_commit" ]; then
+    echo "x264: fetched $(git -C "$repo" rev-parse FETCH_HEAD), not $x264_commit" >&2
     exit 1
   fi
-  echo "checksum ok: $got"
-done <<< "$archives"
+  git -C "$repo" -c core.autocrlf=false -c core.eol=lf \
+    archive --format=tar --prefix="x264-$x264_commit/" -o "$file.part" FETCH_HEAD
+  mv "$file.part" "$file"
+  rm -rf "$repo"
+  verify "$file" "$x264_sha"
+}
+
+# signed <file> <signature url> <key url> <fingerprint>: the file carries a
+# good signature by the key with that primary fingerprint. The key is
+# fetched at run time and trusted only for its fingerprint, which the pins
+# record; a key file names its owner's address, so none is committed. The
+# sha256 in the pins was taken on first download; this is what ties those
+# bytes to their publisher.
+signed() {
+  local file=$1 sig_url=$2 key_url=$3 want=$4 home status primary revoked
+  command -v gpg >/dev/null 2>&1 || { echo "verifying $(basename "$file") needs gpg" >&2; exit 2; }
+  home=$(mktemp -d)
+  chmod 700 "$home"
+  echo "fetching $sig_url"
+  curl -fsSL --retry 3 --connect-timeout 30 --max-time 120 -o "$file.asc" "$sig_url"
+  echo "fetching the signing key $want"
+  curl -fsSL --retry 3 --connect-timeout 30 --max-time 120 -o "$home/key.asc" "$key_url"
+  # gpg's own messages, and the GOODSIG, BADSIG and IMPORTED status lines,
+  # carry the key's user ID and so its owner's e-mail address, into a public
+  # log. Only fingerprints and key ids are ever printed.
+  if ! status=$(gpg --homedir "$home" --batch --status-fd 1 --import "$home/key.asc" 2> /dev/null); then
+    awk '$2 ~ /^(IMPORT_OK|IMPORT_PROBLEM|IMPORT_RES|NODATA|FAILURE|ERROR)$/' <<< "$status" >&2
+    echo "the signing key from $key_url did not import" >&2
+    exit 1
+  fi
+  if ! status=$(gpg --homedir "$home" --batch --status-fd 1 --verify "$file.asc" "$file" 2> /dev/null); then
+    signature_status "$status" >&2
+    echo "$(basename "$file") has no good signature by $want" >&2
+    exit 1
+  fi
+  # A signature by a revoked key verifies, with REVKEYSIG where GOODSIG
+  # would be and VALIDSIG naming the key all the same, and gpg exits 0.
+  # Revocation means the key is not to be trusted, so it is refused. An
+  # expired key (EXPKEYSIG) is not: a release outlives the key that signed
+  # it, and expiry says nothing about the signature made before it.
+  revoked=$(awk '$2 == "REVKEYSIG" || $2 == "KEYREVOKED"' <<< "$status")
+  if [ -n "$revoked" ]; then
+    signature_status "$status" >&2
+    echo "$(basename "$file") is signed by a revoked key" >&2
+    exit 1
+  fi
+  # VALIDSIG's last field is the primary key's fingerprint, whichever
+  # subkey signed.
+  primary=$(awk '$2 == "VALIDSIG" { print $NF }' <<< "$status")
+  if [ "$primary" != "$want" ]; then
+    signature_status "$status" >&2
+    echo "$(basename "$file") is signed by ${primary:-no valid key}, not $want" >&2
+    exit 1
+  fi
+  rm -rf "$home"
+  echo "signature ok: $(basename "$file") by $want"
+}
+
+# signature_status <gpg status>: the lines that say what was found, without
+# a user ID: VALIDSIG, ERRSIG, NO_PUBKEY and KEYREVOKED whole, and BADSIG,
+# REVKEYSIG, EXPKEYSIG and GOODSIG up to their key id.
+signature_status() {
+  awk '$2 ~ /^(VALIDSIG|ERRSIG|NO_PUBKEY|KEYREVOKED|KEYEXPIRED)$/ { print; next }
+       $2 ~ /^(BADSIG|REVKEYSIG|EXPKEYSIG|EXPSIG|GOODSIG)$/ { print $1, $2, $3 }' <<< "$1"
+}
+
+# ---------------------------------------------------------------------------
+# What is configured
+# ---------------------------------------------------------------------------
+
+# Only what export.py runs, what the proof below and the determinism test
+# (tests/support/frames.ts) run, and what those need inside FFmpeg:
+#   encoders   libx264 and aac (MP4), gif, png and mjpeg (stills, posters);
+#              rawvideo, which the determinism test decodes frames into
+#   decoders   png (the captured frames), h264 (a poster from the MP4), mjpeg,
+#              gif (the determinism test reads the GIF back); wrapped_avframe
+#              and the packed PCM formats are what the lavfi device hands
+#              ffmpeg for testsrc and anullsrc
+#   parsers    gif: the gif demuxer asks for one, and without it no frame
+#              after the first decodes
+#   filters    the export's scale, format, fade, palettegen, paletteuse and
+#              anullsrc; the proof's testsrc; null, anull, aformat, aresample,
+#              trim, atrim and crop, which the ffmpeg program inserts itself
+#              (crop for an H.264 whose height is not a multiple of 16, as a
+#              1080x1920 reel's is, when a poster is taken from it)
+#   muxers     mp4, gif, image2, and rawvideo for the determinism test
+#   demuxers   image2 (frame sequences, stills), mov (the MP4), gif
+#   devices    lavfi; protocols file and pipe (-progress pipe:1)
+# The ffmpeg program adds hflip, vflip, transpose and rotate on its own.
+# The commas are FFmpeg's own list syntax, one argument per kind.
+# shellcheck disable=SC2054
+components=(
+  --enable-encoder=libx264,aac,gif,png,mjpeg,rawvideo
+  --enable-decoder=png,h264,mjpeg,gif,wrapped_avframe,pcm_u8,pcm_s16le,pcm_s32le,pcm_f32le,pcm_f64le
+  --enable-parser=gif
+  --enable-muxer=mp4,gif,image2,rawvideo
+  --enable-demuxer=image2,mov,gif
+  --enable-filter=scale,format,fade,palettegen,paletteuse,anullsrc,testsrc,null,anull,aformat,aresample,trim,atrim,crop
+  --enable-indev=lavfi
+  --enable-protocol=file,pipe
+)
+
+# Electron's own minimum macOS: LSMinimumSystemVersion in the pinned
+# Electron's Info.plist. A binary built for a newer one would not start on
+# a Mac the app itself supports.
+macos_min=13.0
+
+x264_args=(--enable-static --disable-cli --disable-opencl --disable-avs --disable-swscale
+  --disable-lavf --disable-ffms --disable-gpac --disable-lsmash --bit-depth=8 --chroma-format=420)
+zlib_args=()
+ffmpeg_args=(--disable-everything --disable-autodetect --disable-doc --disable-debug
+  --disable-network --disable-ffplay --enable-gpl --enable-version3 --enable-zlib
+  --enable-libx264 --pkg-config-flags=--static)
+zlib_mode=system
+case "$target" in
+  darwin-*)
+    x264_args+=("--extra-cflags=-mmacosx-version-min=$macos_min" "--extra-ldflags=-mmacosx-version-min=$macos_min")
+    # -dead_strip_dylibs: FFmpeg's configure adds CoreFoundation, CoreMedia
+    # and CoreVideo to libavutil whether or not anything enabled uses them,
+    # and nothing here does.
+    ffmpeg_args+=("--extra-cflags=-mmacosx-version-min=$macos_min"
+      "--extra-ldflags=-mmacosx-version-min=$macos_min -Wl,-dead_strip_dylibs")
+    ;;
+  win-x64)
+    zlib_mode=static
+    zlib_args=(--static)
+    # -static: GCC's own runtime, and anything else of the toolchain's, goes
+    # into the executable and never beside it as a DLL.
+    ffmpeg_args+=(--extra-ldflags=-static)
+    ;;
+esac
+ffmpeg_args+=("${components[@]}")
+
+# ffmpeg_line: the configuration FFmpeg records for these arguments, quoted
+# as its configure quotes it (sh_quote: a value after the first = holding
+# anything but letters, digits and _ / . + - is put in single quotes).
+ffmpeg_line() {
+  local out='' arg l r
+  for arg in "${ffmpeg_args[@]}"; do
+    r=${arg#*=}
+    l=${arg%"$r"}
+    case "$r" in
+      *[!A-Za-z0-9_/.+-]*) r="'$r'" ;;
+    esac
+    out="$out $l$r"
+  done
+  printf '%s' "${out# }"
+}
+
+# same <what> <this> <pinned>: the two lines agree, or the script ends
+# printing both.
+same() {
+  if [ "$2" != "$3" ]; then
+    printf '%s is\n  %q\nthe pin says\n  %q\n' "$1" "$2" "$3" >&2
+    exit 1
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# --sources
+# ---------------------------------------------------------------------------
+
+if [ "$mode" = sources ]; then
+  # Every pinned line is read into a variable before it is used: a pin read
+  # inside an echo or an argument that fails would pass a blank and carry on.
+  ffmpeg_signature=$(pin source.signature)
+  ffmpeg_key_url=$(pin source.signing_key.url)
+  ffmpeg_key=$(pin source.signing_key.fingerprint)
+  ffmpeg_tag=$(pin source.tag)
+  ffmpeg_commit=$(pin source.commit)
+  zlib_signature=$(pin zlib.signature)
+  zlib_key_url=$(pin zlib.signing_key.url)
+  zlib_key=$(pin zlib.signing_key.fingerprint)
+  per_target=
+  for t in darwin-arm64 darwin-x64 win-x64 linux-x64; do
+    t_runner=$(pin runner "$t")
+    t_zlib=$(pin zlib "$t")
+    t_zlib_configure=
+    if [ "$t_zlib" = static ]; then t_zlib_configure=$(pin zlib_configure "$t"); fi
+    t_x264=$(pin x264_configure "$t")
+    t_configure=$(pin configure "$t")
+    t_reports=$(pin reports "$t")
+    per_target="$per_target
+$t, on $t_runner
+  zlib: $t_zlib${t_zlib_configure:+
+  zlib configure: $t_zlib_configure}
+  x264 configure: $t_x264
+  FFmpeg configure: $t_configure
+  ffmpeg -version reports: $t_reports
+"
+  done
+
+  fetch "$ffmpeg_url" "$ffmpeg_sha" "$outdir"
+  signed "$outdir/$ffmpeg_tarball" "$ffmpeg_signature" "$ffmpeg_key_url" "$ffmpeg_key"
+  fetch_x264 "$outdir"
+  fetch "$zlib_url" "$zlib_sha" "$outdir"
+  signed "$outdir/$zlib_tarball" "$zlib_signature" "$zlib_key_url" "$zlib_key"
+  mkdir -p "$outdir/build"
+  cp scripts/vendor-ffmpeg.sh .github/workflows/vendor.yml "$outdir/build/"
+  cp "$pins" "$outdir/build/pins.json"
+  commit=${GITHUB_SHA:-$(git rev-parse HEAD 2>/dev/null || echo unknown)}
+  changed=$(git status --porcelain -- scripts/vendor-ffmpeg.sh .github/workflows/vendor.yml vendor/pins.json 2>/dev/null || true)
+  repository="this repository"
+  if [ -n "${GITHUB_REPOSITORY:-}" ]; then
+    repository="${GITHUB_SERVER_URL:-https://github.com}/$GITHUB_REPOSITORY"
+  fi
+  {
+    echo "The Corresponding Source of the ffmpeg and ffprobe that Legible Cities ships."
+    echo
+    echo "Built by scripts/vendor-ffmpeg.sh, run by .github/workflows/vendor.yml, of"
+    echo "$repository at commit $commit."
+    if [ -n "$changed" ]; then
+      echo "These files differed from that commit when this was written:"
+      printf '%s\n' "$changed"
+    fi
+    echo "Copies of both files, and of vendor/pins.json, as they were then are in build/."
+    echo
+    echo "Sources, each verified against the sha256 in the pins before use:"
+    echo "  $ffmpeg_tarball  sha256 $ffmpeg_sha"
+    echo "    FFmpeg $version, from $ffmpeg_url"
+    echo "    (tag $ffmpeg_tag, commit $ffmpeg_commit), with a good signature,"
+    echo "    $ffmpeg_tarball.asc, by FFmpeg's release signing key $ffmpeg_key"
+    echo "  $x264_tarball  sha256 $x264_sha"
+    echo "    x264 at commit $x264_commit of $x264_repo, as"
+    echo "    git archive --format=tar --prefix=x264-$x264_commit/ writes it"
+    echo "  $zlib_tarball  sha256 $zlib_sha"
+    echo "    zlib $zlib_version, from $zlib_url, with a good signature,"
+    echo "    $zlib_tarball.asc, by $zlib_key; linked statically into the Windows"
+    echo "    binaries only, since macOS and Linux have the operating system's own"
+    echo
+    echo "Each target is built natively. On Windows, zlib is configured with --prefix"
+    echo "naming the build's own dependency folder, then made and installed. x264 is"
+    echo "configured with --prefix naming that folder, then \`make\` and"
+    echo "\`make install-lib-static\`. FFmpeg is configured in its own source tree"
+    echo "with PKG_CONFIG_LIBDIR naming that folder's lib/pkgconfig and"
+    echo "PKG_CONFIG_PATH empty, then \`make\`; ffmpeg and ffprobe are the two"
+    echo "programs it leaves. On macOS MACOSX_DEPLOYMENT_TARGET is $macos_min throughout."
+    echo
+    echo "The toolchains are the runners': Xcode's clang on macOS, with Homebrew's"
+    echo "nasm on Intel; Ubuntu's gcc with nasm on Linux; and on Windows MSYS2's"
+    echo "UCRT64 environment, a rolling distribution whose GCC, binutils, mingw-w64"
+    echo "runtime and nasm are what MSYS2 shipped on the day. FFmpeg is linked there"
+    echo "with -static, so GCC's libgcc and mingw-w64's CRT startup code and"
+    echo "winpthreads are inside the executables, which import only Windows' own"
+    echo "DLLs. The exact version of each tool, and on Windows the pacman packages,"
+    echo "are in the summary and log of each ffmpeg job of the same run."
+    printf '%s' "$per_target"
+  } > "$outdir/BUILD.txt"
+  echo "wrote the Corresponding Source to $outdir:"
+  ls -l "$outdir"
+  exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# The build
+# ---------------------------------------------------------------------------
+
+# build <dir>: ffmpeg and ffprobe for $target, into <dir>.
+build() {
+  local bindir=$1 jobs missing='' tool host_os host_arch srcdir deps fbuild recorded banner toolchain
+  local cc=cc started=$SECONDS
+
+  host_os=$(uname -s)
+  host_arch=$(uname -m)
+  case "$target" in
+    darwin-arm64) [ "$host_os" = Darwin ] && [ "$host_arch" = arm64 ] ;;
+    darwin-x64)   [ "$host_os" = Darwin ] && [ "$host_arch" = x86_64 ] ;;
+    linux-x64)    [ "$host_os" = Linux ] && [ "$host_arch" = x86_64 ] ;;
+    win-x64)      [ "${MSYSTEM:-}" = UCRT64 ] && [ "$host_arch" = x86_64 ] ;;
+  esac || {
+    echo "$target is built natively, and this is $host_os $host_arch${MSYSTEM:+ ($MSYSTEM)}." >&2
+    [ "$target" != win-x64 ] || echo "win-x64 builds in an MSYS2 UCRT64 shell." >&2
+    exit 2
+  }
+
+  [ "$target" != win-x64 ] || cc=gcc
+  for tool in "$cc" make pkg-config git curl tar xz; do
+    command -v "$tool" >/dev/null 2>&1 || missing="$missing $tool"
+  done
+  if [ "$host_arch" = x86_64 ]; then
+    command -v nasm >/dev/null 2>&1 || missing="$missing nasm"
+  fi
+  if [ -n "$missing" ]; then
+    echo "building ffmpeg for $target needs:$missing" >&2
+    exit 2
+  fi
+
+  # The composed lines are the pinned ones, before a minute is spent.
+  same "the zlib this target links" "$zlib_mode" "$(pin zlib "$target")"
+  if [ "$zlib_mode" = static ]; then
+    same "the zlib configure line" "${zlib_args[*]}" "$(pin zlib_configure "$target")"
+  fi
+  same "the x264 configure line" "${x264_args[*]}" "$(pin x264_configure "$target")"
+  same "the FFmpeg configure line" "$(ffmpeg_line)" "$(pin configure "$target")"
+
+  jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
+  srcdir="$work/sources"
+  mkdir -p "$srcdir"
+  fetch "$ffmpeg_url" "$ffmpeg_sha" "$srcdir"
+  fetch_x264 "$srcdir"
+  if [ "$zlib_mode" = static ]; then fetch "$zlib_url" "$zlib_sha" "$srcdir"; fi
+
+  # Fresh every time, so nothing stale is configured or linked.
+  rm -rf "$work/build"
+  mkdir -p "$work/build"
+  deps="$work/build/deps"
+  tar -xJf "$srcdir/$ffmpeg_tarball" -C "$work/build"
+  tar -xf "$srcdir/$x264_tarball" -C "$work/build"
+
+  # Each tool's first line, taken from its captured output: piped into head,
+  # a tool that writes more than one line dies of SIGPIPE under pipefail, as
+  # GNU make 4.3 did on the first Linux run ("make: write error: stdout").
+  # Each tool's first line, taken from its captured output: piped into head,
+  # a tool that writes more than one line dies of SIGPIPE under pipefail, as
+  # GNU make 4.3 did on the first Linux run ("make: write error: stdout").
+  banner=$("$cc" --version); toolchain=${banner%%$'\n'*}
+  banner=$(make --version); toolchain="$toolchain"$'\n'"${banner%%$'\n'*}"
+  banner=$(pkg-config --version); toolchain="$toolchain"$'\n'"pkg-config $banner"
+  if [ "$host_arch" = x86_64 ]; then
+    banner=$(nasm -v); toolchain="$toolchain"$'\n'"${banner%%$'\n'*}"
+  fi
+  if [ "$target" = win-x64 ] && command -v pacman >/dev/null 2>&1; then
+    banner=$(pacman -Q)
+    banner=$(grep -E '^(make|mingw-w64-ucrt-x86_64-(gcc|gcc-libs|binutils|crt|crt-git|headers|headers-git|winpthreads|winpthreads-git|libwinpthread|libwinpthread-git|nasm|pkgconf)) ' <<< "$banner" || true)
+    toolchain="$toolchain"$'\n'"$banner"
+  fi
+  printf 'toolchain:\n%s\n' "$toolchain"
+  # Into the run's summary too, which BUILD.txt points to.
+  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+    printf '### ffmpeg %s toolchain\n\n%s\n%s\n%s\n' "$target" '~~~' "$toolchain" '~~~' >> "$GITHUB_STEP_SUMMARY"
+  fi
+
+  case "$target" in
+    darwin-*) export MACOSX_DEPLOYMENT_TARGET=$macos_min ;;
+  esac
+  # Only the build's own folder is searched for .pc files: a Homebrew or
+  # MSYS2 zlib.pc would otherwise put its library on the link line.
+  export PKG_CONFIG_LIBDIR="$deps/lib/pkgconfig"
+  export PKG_CONFIG_PATH=
+
+  if [ "$zlib_mode" = static ]; then
+    tar -xzf "$srcdir/$zlib_tarball" -C "$work/build"
+    echo "building zlib $zlib_version"
+    (cd "$work/build/zlib-$zlib_version" &&
+      CC=$cc ./configure "${zlib_args[@]}" --prefix="$deps" &&
+      make -j"$jobs" && make install) > "$work/build/zlib.log" 2>&1 || {
+      tail -n 40 "$work/build/zlib.log" >&2
+      echo "zlib did not build" >&2
+      exit 1
+    }
+  fi
+
+  echo "building x264 $x264_commit"
+  (cd "$work/build/x264-$x264_commit" &&
+    ./configure --prefix="$deps" "${x264_args[@]}" &&
+    make -j"$jobs" && make install-lib-static) > "$work/build/x264.log" 2>&1 || {
+    tail -n 40 "$work/build/x264.log" >&2
+    echo "x264 did not build" >&2
+    exit 1
+  }
+
+  # In its own tree: configured from elsewhere, FFmpeg compiles each file by
+  # a path through a `src` link, or, where no link can be made (MSYS2 on the
+  # Windows runner), by its absolute path, which __FILE__ then carries into
+  # the executables; the first Windows build held the runner's temporary
+  # folder 164 times. In the tree, every path is relative.
+  echo "configuring FFmpeg $version"
+  fbuild="$work/build/ffmpeg-$version"
+  (cd "$fbuild" && ./configure "${ffmpeg_args[@]}") \
+    > "$work/build/ffmpeg-configure.log" 2>&1 || {
+    tail -n 40 "$work/build/ffmpeg-configure.log" >&2
+    if [ -f "$fbuild/ffbuild/config.log" ]; then tail -n 40 "$fbuild/ffbuild/config.log" >&2; fi
+    echo "FFmpeg did not configure" >&2
+    exit 1
+  }
+  # What FFmpeg itself recorded, which is what -version will print.
+  recorded=$(sed -n 's/^#define FFMPEG_CONFIGURATION "\(.*\)"$/\1/p' "$fbuild/config.h")
+  same "FFmpeg's recorded configuration" "${recorded//$'\r'/}" "$(pin configure "$target")"
+  sed -n '/^External libraries:/,/^Programs:/p' "$work/build/ffmpeg-configure.log"
+  if [ "$zlib_mode" = static ]; then
+    # zlib resolved from the build's own folder, not from a libz.a of the
+    # toolchain's, which could carry the same version string: every library
+    # line that links zlib names the pinned build's folder.
+    local zlib_libdir zlib_lines
+    zlib_libdir=$(pkg-config --variable=libdir zlib)
+    zlib_lines=$(grep -E '^EXTRALIBS' "$fbuild/ffbuild/config.mak" || true)
+    zlib_lines=$(grep -E -- '-lz( |$)' <<< "$zlib_lines" || true)
+    if [ -z "$zlib_libdir" ] || [ -z "$zlib_lines" ] ||
+      [ -n "$(grep -vF -- "-L$zlib_libdir" <<< "$zlib_lines" || true)" ]; then
+      echo "FFmpeg did not take zlib from ${zlib_libdir:-the dependency folder}:" >&2
+      printf '%s\n' "${zlib_lines:-no library line links zlib}" >&2
+      exit 1
+    fi
+    echo "zlib from $zlib_libdir"
+  fi
+
+  echo "building FFmpeg"
+  (cd "$fbuild" && make -j"$jobs") > "$work/build/ffmpeg-make.log" 2>&1 || {
+    tail -n 60 "$work/build/ffmpeg-make.log" >&2
+    echo "FFmpeg did not build" >&2
+    exit 1
+  }
+
+  # No path of this machine's build folder in either binary, in the shell's
+  # form or Windows': a package would carry it, and bytes would differ from
+  # run to run for nothing. A compiler may have spelt the path with back
+  # slashes, another drive letter's case or a short name, so the temporary
+  # folder's random name, which is in every spelling, is searched for too,
+  # whatever its case. A folder named by VENDOR_FFMPEG_WORK has no such name.
+  local b where
+  for b in "ffmpeg$exe" "ffprobe$exe"; do
+    for where in "$work/build" "$(absolute "$work")/build"; do
+      if grep -aqF -- "$where" "$fbuild/$b"; then
+        echo "$b carries the build folder's path, $where" >&2
+        exit 1
+      fi
+    done
+    if [ -z "$keep" ] && grep -aqiF -- "${work##*/}" "$fbuild/$b"; then
+      echo "$b carries the build folder's name, ${work##*/}" >&2
+      exit 1
+    fi
+  done
+
+  mkdir -p "$bindir"
+  cp "$fbuild/ffmpeg$exe" "$fbuild/ffprobe$exe" "$bindir/"
+  echo "built ffmpeg and ffprobe for $target in $((SECONDS - started)) s"
+}
+
+if [ "$mode" = build ]; then
+  build "$outdir"
+  exit 0
+fi
 
 # Staged beside the destination, as vendor-python.sh does, so the final move
 # is a rename on one filesystem, and a failed proof leaves nothing at the
 # path the upload and a developer read.
 dest="$outdir/$target"
-mkdir -p "$outdir"
 stage=$(mktemp -d "$outdir/.staging-$target.XXXXXX")
 
-# Only the named members are read, and each is written to a fixed name, so
-# nothing else in the archive (ffplay, documentation, a path with ..) lands.
-"$host_py" - "$pins" "$target" "$(absolute "$work")" "$(absolute "$stage")" <<'PY'
-import json, os, shutil, sys, tarfile, zipfile
-pins, target, work, stage = sys.argv[1:5]
-t = json.load(open(pins))["ffmpeg"]["targets"][target]
-for i, a in enumerate(t["archives"], start=1):
-    path = os.path.join(work, f"{i}-{a['url'].rsplit('/', 1)[1]}")
-    wanted = {member: name for name, member in a["extract"].items()}
-    if path.endswith(".zip"):
-        with zipfile.ZipFile(path) as z:
-            for member, name in wanted.items():
-                with z.open(member) as src, open(os.path.join(stage, name), "wb") as dst:
-                    shutil.copyfileobj(src, dst)
-    elif path.endswith((".tar.xz", ".tar.gz")):
-        found = set()
-        with tarfile.open(path, "r|*") as tf:
-            for m in tf:
-                if m.name in wanted and m.isfile():
-                    with tf.extractfile(m) as src, open(os.path.join(stage, wanted[m.name]), "wb") as dst:
-                        shutil.copyfileobj(src, dst)
-                    found.add(m.name)
-        missing = set(wanted) - found
-        if missing:
-            sys.exit(f"{a['url']} has no {', '.join(sorted(missing))}")
-    else:
-        sys.exit(f"cannot open {a['url']}: not a .zip, .tar.xz or .tar.gz")
-PY
+if [ "$mode" = prove ]; then
+  for name in "ffmpeg$exe" "ffprobe$exe"; do
+    [ -f "$from/$name" ] || { echo "--from $from has no $name" >&2; exit 1; }
+    cp "$from/$name" "$stage/$name"
+  done
+else
+  build "$stage"
+fi
 chmod +x "$stage/ffmpeg$exe" "$stage/ffprobe$exe"
+
+reports=$(pin reports "$target")
+configure=$(pin configure "$target")
 
 bin=$(cd "$stage" && pwd)
 ff="$bin/ffmpeg$exe"
 fp="$bin/ffprobe$exe"
+
+# ---------------------------------------------------------------------------
+# The proof
+# ---------------------------------------------------------------------------
 
 # run <what> <command...>: the command's stdout without carriage returns, or
 # the script ends saying what failed. Output is captured and tested as text
@@ -217,8 +770,7 @@ licensed() {
       *) echo "$program's configure line has no $flag" >&2; exit 1 ;;
     esac
   done
-  # A nonfree build may not be redistributed at all; martin-riedl.de's
-  # Linux build of the same release is one.
+  # A nonfree build may not be redistributed at all.
   case " $config " in
     *" --enable-nonfree "*)
       echo "$program's configure line has --enable-nonfree; this build cannot be shipped" >&2
@@ -280,6 +832,7 @@ licensed ffprobe "$fp"
 
 # A real encode, in the work folder, with relative paths only: nothing that
 # Git Bash would rewrite as a path crosses to a Windows ffmpeg.
+rm -rf "$work/encode"
 mkdir -p "$work/encode/frames"
 cd "$work/encode"
 ffrun() { run "ffmpeg $*" "$ff" -hide_banner -nostdin -loglevel error -y "$@" > /dev/null; }

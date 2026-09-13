@@ -5,6 +5,9 @@
   sources A0-08 chose and measured
 - **Supersedes:** none
 - **Superseded by:** none
+- **Amended by:** [ADR-040](040-ffmpeg-is-built-from-pinned-sources.md): the
+  binaries are built in this repository from pinned sources, not taken from
+  third-party builders
 
 ## Context
 

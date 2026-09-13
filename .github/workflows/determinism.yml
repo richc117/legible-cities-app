@@ -188,11 +188,59 @@ jobs:
           path: vendor/ffmpeg/${{ matrix.target }}
           key: determinism-ffmpeg-${{ matrix.target }}-${{ hashFiles('vendor/pins.json', 'scripts/vendor-*.sh') }}
 
-      - name: Vendor ffmpeg
-        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+      # ffmpeg is built from the pinned sources by the script the vendor
+      # workflow runs (ADR-040), so a cache miss needs the same toolchain:
+      # nasm, pkg-config and zlib's headers on Linux, pkg-config on the Mac,
+      # and MSYS2 UCRT64 on Windows, where the build runs in MSYS2's shell
+      # and the proof in Git Bash, as in vendor.yml.
+      - name: Build tools for ffmpeg (Linux)
+        if: runner.os == 'Linux' && steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y nasm pkgconf zlib1g-dev
+
+      - name: Build tools for ffmpeg (macOS)
+        if: runner.os == 'macOS' && steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+        run: command -v pkg-config >/dev/null || brew install pkgconf
+
+      - name: Vendor ffmpeg (Linux, macOS)
+        if: runner.os != 'Windows' && steps.ffmpeg-cache.outputs.cache-hit != 'true'
         env:
           TARGET: ${{ matrix.target }}
         run: bash scripts/vendor-ffmpeg.sh "$TARGET"
+
+      - name: Build tools for ffmpeg (Windows)
+        if: runner.os == 'Windows' && steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            make
+            diffutils
+            git
+            curl
+            tar
+            xz
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-nasm
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-python
+
+      - name: Build ffmpeg (Windows)
+        if: runner.os == 'Windows' && steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        shell: msys2 {0}
+        env:
+          TARGET: ${{ matrix.target }}
+        run: bash scripts/vendor-ffmpeg.sh --build-only "$TARGET" vendor/ffmpeg/.built-win-x64
+
+      - name: Vendor ffmpeg (Windows)
+        if: runner.os == 'Windows' && steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        env:
+          TARGET: ${{ matrix.target }}
+        run: bash scripts/vendor-ffmpeg.sh --from vendor/ffmpeg/.built-win-x64 "$TARGET"
 
       - name: Point the test at ffmpeg
         env:
