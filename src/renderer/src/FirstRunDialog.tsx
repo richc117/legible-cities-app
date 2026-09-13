@@ -48,6 +48,24 @@ export function anotherDialogOpen(
   return Array.from(root.querySelectorAll('dialog[open]')).some((dialog) => dialog !== own)
 }
 
+/**
+ * What the dialog element should do now: show when it is wanted, not shown
+ * and no other dialog is open; close when it is no longer wanted; otherwise
+ * nothing. Once shown it stays, since a dialog a person opens over it is
+ * theirs to close. `another` must be read from the page at the moment of
+ * deciding, never from state: this component mounts with the result, and on
+ * that first render no state has yet caught up with a dialog already open.
+ */
+export function nextStep(state: {
+  wanted: boolean
+  shown: boolean
+  another: boolean
+}): 'show' | 'close' | 'none' {
+  if (state.wanted && !state.shown && !state.another) return 'show'
+  if (!state.wanted && state.shown) return 'close'
+  return 'none'
+}
+
 /** The dialog's title: the tools that will not run, by name. */
 export function firstRunTitle(result: FirstRunResult): string {
   const names = failedTools(result).map((tool) => TOOL_NAMES[tool])
@@ -76,8 +94,9 @@ export default function FirstRunDialog({
   // must come first has not been seen.
   const closingItself = useRef(false)
   const [said, setSaid] = useState<string | null>(null)
-  // Another dialog open in the page, watched for as long as this is mounted,
-  // so this one opens when that one closes.
+  // Whether another dialog is open in the page, watched for as long as this
+  // is mounted. Only a trigger to decide again when that changes, so this one
+  // opens when that one closes; the decision itself reads the page.
   const [waiting, setWaiting] = useState(false)
   useEffect(() => {
     const update = (): void => setWaiting(anotherDialogOpen(document, dialogRef.current))
@@ -95,11 +114,15 @@ export default function FirstRunDialog({
   useEffect(() => {
     const dialog = dialogRef.current
     if (!dialog) return
-    // Once shown it stays: a dialog a person opens over it is theirs to close.
-    if (open && !waiting && !dialog.open) {
+    const step = nextStep({
+      wanted: open,
+      shown: dialog.open,
+      another: anotherDialogOpen(dialog.ownerDocument, dialog),
+    })
+    if (step === 'show') {
       dialog.showModal()
       okRef.current?.focus()
-    } else if (!open && dialog.open) {
+    } else if (step === 'close') {
       closingItself.current = true
       dialog.close()
     }

@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest'
 import FirstRunDialog, {
   anotherDialogOpen,
   firstRunTitle,
+  nextStep,
 } from '../../src/renderer/src/FirstRunDialog'
 import { failureSentence, type FirstRunResult } from '../../src/shared/first-run'
 
@@ -95,5 +96,29 @@ describe('waiting for another dialog', () => {
       own,
     )
     expect(asked).toEqual(['dialog[open]'])
+  })
+})
+
+describe('what the dialog element does', () => {
+  it('shows only when wanted, not yet shown, and no other dialog is open', () => {
+    expect(nextStep({ wanted: true, shown: false, another: false })).toBe('show')
+    // The case the end-to-end suite caught: mounted while New project was open.
+    expect(nextStep({ wanted: true, shown: false, another: true })).toBe('none')
+  })
+
+  it('stays once shown, whatever opens over it, and closes when no longer wanted', () => {
+    expect(nextStep({ wanted: true, shown: true, another: true })).toBe('none')
+    expect(nextStep({ wanted: true, shown: true, another: false })).toBe('none')
+    expect(nextStep({ wanted: false, shown: true, another: false })).toBe('close')
+    expect(nextStep({ wanted: false, shown: false, another: true })).toBe('none')
+  })
+
+  it('reads the page when it decides, not a state that has not caught up', async () => {
+    const { readFileSync } = await import('node:fs')
+    const source = readFileSync(
+      new URL('../../src/renderer/src/FirstRunDialog.tsx', import.meta.url),
+      'utf8',
+    )
+    expect(source).toMatch(/another: anotherDialogOpen\(dialog\.ownerDocument, dialog\)/)
   })
 })
