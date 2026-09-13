@@ -380,8 +380,11 @@ it does.
   temporary `file://` URL, and the console scripts pip generates carry an
   absolute shebang (on darwin-arm64: `f2py`, `idna`, `normalizer`,
   `numpy-config`, pointing at the staging folder, so they are dangling after
-  the rename; upstream's own `pip`, `pydoc3.12` and the rest use `#!/bin/sh`
-  and are relocatable). On Windows the equivalents are the `Scripts\*.exe`
+  the rename). Upstream's own scripts (`pip`, `pydoc3.12` and the rest) use
+  `#!/bin/sh` and are relocatable only while `pip install --upgrade pip`
+  changes nothing, as it did here, where the asset's pip was already the
+  latest; once it upgrades pip, the new `pip`, `pip3` and `pip3.12` carry
+  the staging path too. On Windows the equivalents are the `Scripts\*.exe`
   launchers. The sidecar runs `python -m` and uses none of them, but they
   leak a build path into what ships.
 - **For A0-10: the artefact is not the tree.** `actions/upload-artifact`

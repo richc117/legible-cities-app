@@ -240,32 +240,54 @@ jobs:
           fi
           echo "no GDBM or GNU readline by name"
           # By link, on macOS: a name says nothing about what a binary loads.
-          # The interpreter's readline module is built into libpython there
-          # and links the system's libedit; _dbm links libSystem's ndbm.
           # Every Mach-O in the tree is read, wheels' included, and any
-          # library whose path names readline or gdbm fails the build. The
-          # symbol check catches a readline compiled into libpython itself,
-          # which no link list shows: with libedit, rl_library_version is
-          # imported, never defined.
+          # library whose path names readline or gdbm fails the build; so
+          # does finding no Mach-O at all, which would mean the find is wrong
+          # and nothing was checked.
+          #
+          # Then what is known to be there is required, not only what must
+          # not be: the interpreter's readline module is built into libpython
+          # and uses the system's libedit, so libpython must link libedit and
+          # must import rl_library_version from libedit rather than define
+          # it (nm -m names the library an undefined symbol binds to). A
+          # readline compiled into libpython would show in no link list; it
+          # would show as that import going missing.
           if [ "$RUNNER_OS" = "macOS" ]; then
             links=$(find vendor/python -type f \( -name '*.so' -o -name '*.dylib' \
               -o \( -path '*/python/bin/python3.[0-9]*' ! -name '*-config' \) \) \
               -exec otool -L {} +)
-            linked=$(printf '%s\n' "$links" | grep -iE '^[[:space:]].*(readline|gdbm)' || true)
+            files=$(grep -c ':$' <<< "$links" || true)
+            if [ "${files:-0}" -eq 0 ]; then
+              echo "::error::the link check found no Mach-O file under vendor/python; nothing was checked"
+              exit 1
+            fi
+            linked=$(grep -iE '^[[:space:]].*(readline|gdbm)' <<< "$links" || true)
             if [ -n "$linked" ]; then
               echo "::error::a binary in the vendored runtime links GNU readline or GDBM"
               printf '%s\n' "$linked"
               exit 1
             fi
-            echo "no binary links readline or gdbm ($(printf '%s\n' "$links" | grep -c ':$') Mach-O files read)"
-            for lib in vendor/python/*/python/lib/libpython3.*.dylib; do
-              defined=$(nm -gU "$lib")
-              if grep -qE ' _rl_library_version$' <<< "$defined"; then
-                echo "::error::$lib defines readline itself; check which readline it is"
+            echo "no link to readline or gdbm in $files Mach-O files"
+            libs=$(find vendor/python -type f -path '*/python/lib/libpython3.*.dylib')
+            if [ -z "$libs" ]; then
+              echo "::error::no libpython under vendor/python to check readline against"
+              exit 1
+            fi
+            while IFS= read -r lib; do
+              lib_links=$(otool -L "$lib")
+              if [ -z "$(grep -E '^[[:space:]]+/usr/lib/libedit\.' <<< "$lib_links" || true)" ]; then
+                echo "::error::$lib does not link the system's libedit"
+                printf '%s\n' "$lib_links"
                 exit 1
               fi
-            done
-            echo "libpython imports readline's symbols rather than defining them"
+              undefined=$(nm -m -gu "$lib")
+              if [ -z "$(grep -E '[[:space:]]_rl_library_version \(from libedit\)$' <<< "$undefined" || true)" ]; then
+                echo "::error::$lib does not import rl_library_version from libedit; its readline may be another"
+                grep -E '_rl_library_version' <<< "$undefined" || true
+                exit 1
+              fi
+              echo "$lib links /usr/lib/libedit and imports rl_library_version from it"
+            done <<< "$libs"
           fi
           # The shared libraries it does carry, by name, so a new one shows
           # up in the log of the run that brought it.

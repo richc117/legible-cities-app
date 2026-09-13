@@ -90,12 +90,17 @@ A0-10 has to change.
 The recipe is `scripts/vendor-python.sh` on three targets. It builds in a
 staging folder and renames into place only after the schema check, installs
 with `--only-binary :all:`, and logs pip's freeze; the gate in `vendor.yml`
-refuses GDBM and GNU readline by name everywhere and by link on macOS.
+refuses GDBM and GNU readline by name everywhere and by link on macOS, where
+it also requires libpython to link libedit and import readline's symbols
+from it. The measurements above predate these gates. The link check, the
+`--only-binary` install and the frozen list were exercised on a developer
+Mac (arm64), each refusal against a planted failure, and by vendor run
+<id> on the three runners.
 
 A0-10 inherits four things this record makes visible:
 
 - **Bytecode.** A runtime with no bytecode starts in 1.5 to 3.5 s on the
-  runners; with bytecode, 0.3 to 0.8 s. Shipping compiled bytecode, or
+  runners; with bytecode, 0.3 to 0.84 s. Shipping compiled bytecode, or
   letting the first start write it somewhere outside a signed bundle, is a
   packaging decision, and the handshake's timeout should be read against the
   slow column until it is made.
@@ -113,8 +118,8 @@ A0-10 inherits four things this record makes visible:
   symbolic links. An installer is built from the artefact with both
   restored, or strips them.
 
-Windows' runtime has 1831 more files than macOS's. In the run's artefacts,
-1703 of the difference is the interpreter's Tcl/Tk data and the `tzdata`
-package pandas requires only on Windows. The strip removes `tkinter` but not
-the Tcl/Tk data, which the sidecar never loads either; that is a size lever
-left for A0-10.
+Windows' runtime has 1831 more files than macOS's; 1703 of the 1822 in the
+artefacts are the interpreter's Tcl/Tk data and the `tzdata` package pandas
+requires only on Windows. The strip removes `tkinter` but not the Tcl/Tk
+data, which the sidecar never loads either; that is a size lever left for
+A0-10.
