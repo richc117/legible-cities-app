@@ -4,11 +4,18 @@ The app is licensed under the GNU General Public License v3.0 or later (see
 `LICENSE`). It is built from, and ships with, the components below. Each
 keeps its own licence; the table is kept current as components are added or
 removed. **The installers `.github/workflows/build.yml` makes are test
-artefacts until a release** (ADR-035): they bundle the runtime, the engine,
-LOOM and ffmpeg for their target, list each component's exact version in
-`vendor-manifest.json` inside the app, and carry `LICENSE` and this file
-beside it. The ffmpeg they carry is replaced before a release (issue 95),
-and the GPL sources are attached with the release (A6-01).
+builds until a release** (ADR-035), though as artefacts of this public
+repository they are downloadable for 30 days, and so conveyed. They bundle
+the runtime, the engine, LOOM and ffmpeg for their target and carry
+`LICENSE` and this file beside them. `vendor-manifest.json` inside the app
+records each component's pin: the runtime's release, asset and checksum,
+the engine's tag, the name and version of every Python package installed
+in the runtime, LOOM's commit (and the Windows port's), and FFmpeg's
+version, configure line, archive URLs and checksums and build scripts. It
+does not record the versions of the libraries linked into FFmpeg or into
+the Python runtime and wheels; those are in each builder's scripts. The
+ffmpeg they carry is replaced before a release (issue 95), and the GPL
+sources are attached with the release (A6-01).
 
 | Component | Role | Licence | Source |
 |---|---|---|---|
@@ -34,7 +41,8 @@ and the GPL sources are attached with the release (A6-01).
 | vscode-jsonrpc (planned) | JSON-RPC over stdio, app side | MIT | https://github.com/microsoft/vscode-languageserver-node |
 | python-lsp-jsonrpc | JSON-RPC over stdio, engine side; one of the engine's three declared dependencies, installed into the vendored runtime by `scripts/vendor-python.sh` since A0-06 | MIT | https://github.com/python-lsp/python-lsp-jsonrpc |
 | ujson | Dependency of python-lsp-jsonrpc: a compiled JSON encoder and decoder, installed into the vendored runtime with it | BSD-3-Clause AND TCL (its package metadata and `LICENSE.txt`: the numeric decoder is derived from Tcl's, and portions from stringencoders are BSD-3-Clause too) | https://github.com/ultrajson/ultrajson |
-| certifi, charset-normalizer, idna, urllib3, python-dateutil, six, tzdata, pip | What the engine's three dependencies bring into the bundled runtime, installed by `scripts/vendor-python.sh` at the versions `vendor-manifest.json` records for each build: certifi's CA bundle, charset-normalizer, idna and urllib3 for requests; python-dateutil and six for pandas; tzdata for pandas on Windows only; pip, the installer, left in the runtime | MPL-2.0 (certifi); MIT (charset-normalizer, urllib3, six, pip, and the packages pip vendors under their own notices); BSD-3-Clause (idna); Apache-2.0 AND BSD-3-Clause (python-dateutil: changes since 2017 under Apache-2.0, and its licence file applies BSD-3-Clause to all of it); Apache-2.0 (tzdata) | Each package's page on https://pypi.org/ |
+| certifi, charset-normalizer, idna, urllib3, python-dateutil, six, tzdata | What the engine's three dependencies bring into the bundled runtime, installed by `scripts/vendor-python.sh` at the versions `vendor-manifest.json` records for each build: certifi's CA bundle, charset-normalizer, idna and urllib3 for requests; python-dateutil and six for pandas; tzdata for pandas on Windows only | MPL-2.0 (certifi); MIT (charset-normalizer, urllib3, six); BSD-3-Clause (idna); Apache-2.0 AND BSD-3-Clause (python-dateutil: changes since 2017 under Apache-2.0, and its licence file applies BSD-3-Clause to all of it); Apache-2.0 (tzdata) | Each package's page on https://pypi.org/ |
+| pip | The installer, left in the bundled runtime by `scripts/vendor-python.sh`, at the version the manifest records. It vendors, each with its licence file in pip's `.dist-info/licenses/`: CacheControl, certifi, distlib, distro, idna, msgpack, packaging, pkg_resources, platformdirs, Pygments, pyproject-hooks, requests, resolvelib, rich, tomli, tomli-w, truststore and urllib3 | MIT (pip, platformdirs, pkg_resources, pyproject-hooks, rich, tomli, tomli-w, truststore, urllib3); Apache-2.0 (CacheControl, distro, msgpack, requests); Apache-2.0 OR BSD-2-Clause (packaging); MPL-2.0 (certifi); PSF-2.0 (distlib); BSD-3-Clause (idna); BSD-2-Clause (Pygments); ISC (resolvelib) | https://pip.pypa.io/ |
 | react-colorful | The colour picker in the Line colours panel (A4-01): **5.8.1**, pinned exactly, no dependencies of its own. A build-time dependency for the same reason the control kit is: the renderer's packages are bundled by Vite, and the packager copies every production dependency whole | MIT | https://github.com/omgovich/react-colorful |
 | Spec Kit | Spec templates and scripts, committed under `.specify/` (its agent skills are installed outside the repository). Development tooling: present in this repository, not shipped in the app | MIT | https://github.com/github/spec-kit |
 | Contributor Covenant 2.1 | The code of conduct text | CC BY 4.0 | https://www.contributor-covenant.org/ |
@@ -52,8 +60,9 @@ and the GPL sources are attached with the release (A6-01).
   makes the obligation possible to meet, not what meets it: a pointer to
   some eighty upstream servers is not a promise that the source stays
   available. A6-01 attaches to each release the source of FFmpeg and of
-  every bundled library at the exact versions, with the scripts, from the
-  versions `vendor-manifest.json` records. For macOS the script's commit is
+  every bundled library at the exact versions, with the scripts: the
+  manifest names FFmpeg's pin, archives and build scripts, and the
+  libraries' versions are read from those scripts. For macOS the script's commit is
   inferred rather than recorded, and x264 was fetched from a branch; issue
   95 replaces these builds with one of this project's own before a release
   (ADR-012, ADR-035).

@@ -19,13 +19,18 @@
       - download the artefacts, restore the executable bits, check, compile
         bytecode with `unchecked-hash`, package, upload `installer-<target>`;
       - `contents: read`, `persist-credentials: false`, `timeout-minutes`.
-- [x] T007 `scripts/launch-packaged.mjs`: launch the unpacked build once with a
-      temporary `LEGIBLE_USER_DATA`, wait for the engine ready, quit, check
-      the bundle's file list is unchanged and the log names the bundled
-      origins. Run it in each packaging job before upload.
+- [x] T007 `scripts/launch-packaged.mjs`: launch the unpacked build once with
+      Chromium's `--user-data-dir` in a temporary folder (a packaged app
+      ignores `LEGIBLE_USER_DATA`) and the bundle as its working directory,
+      wait for the engine ready, check `engine.info`, quit; check the log
+      names the bundled origins; run each bundled LOOM tool, ffmpeg and
+      ffprobe from inside the bundle; check the bundle's files and folders
+      are unchanged. Run it in each packaging job before upload, then
+      `codesign --verify` on macOS.
 - [x] T008 `package.json` `dist:check`; no dependency changes.
-- [ ] T009 ADR-035 and its row; `THIRD_PARTY_NOTICES.md` rows for what is now
-      bundled; ARCHITECTURE and CLAUDE.md.
+- [x] T009 ADR-035 and its row; `THIRD_PARTY_NOTICES.md` rows for what is now
+      bundled; ARCHITECTURE and CLAUDE.md. (CLAUDE.md's `dist:check` line,
+      and its permission in `.claude/settings.json`, are the maintainer's.)
 - [x] T010 Lint, typecheck, unit and the build; `actionlint` if installed;
       the check script run locally against a hand-made darwin-arm64 tree
       (the vendor scripts can produce python and ffmpeg locally; LOOM from

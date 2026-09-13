@@ -50,7 +50,7 @@ A maintainer can name, for every executable inside a shipped package, the exact 
 2. **Given** a pin changes, **When** the change is pushed, **Then** the vendoring workflow runs for the affected component on every target and publishes fresh artefacts keyed by the pins file's hash.
 3. **Given** a vendored runtime, **When** it is inspected, **Then** it carries no GNU readline, no GDBM and no library from the build host's package manager; the workflow fails if one appears.
 4. **Given** the Windows layout binaries, **When** their directory is inspected, **Then** it contains no Microsoft system library; the workflow fails if one appears.
-5. **Given** the shipped package, **When** `THIRD_PARTY_NOTICES.md` is read, **Then** every bundled component has a row with its licence and the obligation it places on distribution, and the runtime's own licence files are inside it.
+5. **Given** the shipped package, **When** `THIRD_PARTY_NOTICES.md` is read, **Then** every bundled component has a row with its licence and the obligation it places on distribution, and the runtime's own licence files are inside it. *(Corrected 2026-09-12: the pinned runtime asset carries only CPython's `LICENSE.txt`, not python-build-standalone's `licenses/` folder for the libraries it links statically; those texts are deferred to A6-01's Licences screen.)*
 
 ---
 
@@ -76,7 +76,7 @@ A build for a target whose vendored components are missing, stale or the wrong p
 - The vendoring workflow's upstream publishes no checksum (python-build-standalone publishes none): the checksum in the pins file is one this repository computed on first download, and a later mismatch is treated as the asset having changed, which is the point.
 - A layout binary links a library from the build host's package manager (Homebrew, MSYS2): it will not run on a clean machine, and the workflow's link check fails the build.
 - The third party's Windows patches drift from the pinned commit: the build applies the documented changes to this repository's pinned tree, so drift shows as a failed patch, not a silently different binary.
-- The installer is large: the runtime is about 110 MB stripped, the layout binaries a few MB, the encoder 132-290 MB unpacked depending on the target (ADR-012); the download page states the size. *(Corrected 2026-09-13: this line said the encoder was tens of MB.)*
+- The installer is large: the runtime is about 110 MB stripped, the layout binaries a few MB, the encoder 132-290 MB unpacked depending on the target (ADR-012); the download page states the size. *(Corrected 2026-09-12: this line said the encoder was tens of MB.)*
 - The pins file is edited by hand with a typo in a checksum: the workflow fails on the first download and says which pin.
 
 ## Requirements *(mandatory)*
@@ -90,7 +90,7 @@ A build for a target whose vendored components are missing, stale or the wrong p
 - **FR-003**: The build MUST bundle, per platform and processor family, the engine's runtime, the four layout binaries, the media encoder and the engine package, placed under one directory laid out by platform and processor family where the application can find and execute them at run time.
 - **FR-004**: The build MUST fail, naming the component and the target, if any vendored component for a target it is building is missing, stale relative to the pins file, or built for another processor family.
 - **FR-005**: Packages are unsigned in this feature; the download page MUST carry the steps for getting past each operating system's warning. Signing and notarisation are decided at the release-readiness gate (planned issue A6-05); until then the build MUST NOT require a signing identity, and MUST accept one without a change to its layout when the gate opens.
-- **FR-006**: Every bundled third-party component MUST be listed in `THIRD_PARTY_NOTICES.md` with its licence and the obligations that licence places on distribution, and the runtime's own licence files MUST ship inside the bundle.
+- **FR-006**: Every bundled third-party component MUST be listed in `THIRD_PARTY_NOTICES.md` with its licence and the obligations that licence places on distribution, and the runtime's own licence files MUST ship inside the bundle. *(Corrected 2026-09-12: what ships inside the bundle is CPython's `LICENSE.txt`, which is all the pinned `install_only` asset carries; the licence texts of the libraries python-build-standalone links statically, in its full archive's `licenses/` folder, are deferred to A6-01's Licences screen.)*
 
 **Vendoring**
 
@@ -102,7 +102,7 @@ A build for a target whose vendored components are missing, stale or the wrong p
 
 **Not in this feature**
 
-- **FR-012**: This feature changes nothing about how the engine is started; it puts the components where the supervisor already looks. *(Corrected 2026-09-13: this line said the application must not start the engine, which it has done since the sidecar supervisor, A1-01.)*
+- **FR-012**: This feature changes nothing about how the engine is started; it puts the components where the supervisor already looks. *(Corrected 2026-09-12: this line said the application must not start the engine, which it has done since the sidecar supervisor, A1-01.)*
 - **FR-013**: No component is downloaded at first run, ever. Everything the engine needs is inside the package (ADR-011).
 
 ### Key Entities
@@ -130,8 +130,8 @@ A build for a target whose vendored components are missing, stale or the wrong p
 - **A-002**: The vendored directory is not committed. *Why*: binaries in a git repository are a size and licensing problem; the pins file and the workflow are the reproducible thing.
 - **A-003**: The layout binaries are built without their optional solvers and fed an unpacked feed directory, per ADR-019; the engine unpacks before calling them. *Why*: it is what makes them self-contained.
 - **A-004**: The Windows layout binaries are built in the workflow from the documented compatibility patches applied to this repository's pinned tree, not taken prebuilt, per ADR-021. *Why*: the prebuilt directory carries Microsoft system libraries that must not be redistributed.
-- **A-005**: The engine is installed at a pinned git tag with the dependencies it declares, from wheels (`--only-binary :all:`). *Why*: since E02 the declared list is exactly what the sidecar imports, and installing without it left a runtime that could not start `schematic.serve` (ADR-038). *(Corrected 2026-09-13: this line said the engine was installed without its dependencies, which was true until A0-06.)*
-- **A-006**: Every vendoring job is green on all three shipped targets, Windows included, so no target is expected to lag; the build still fails a target whose components are missing and completes the others. *(Corrected 2026-09-13: this line said the Windows target might lag, before any Windows vendoring job had run.)*
+- **A-005**: The engine is installed at a pinned git tag with the dependencies it declares, from wheels (`--only-binary :all:`). *Why*: since E02 the declared list is exactly what the sidecar imports, and installing without it left a runtime that could not start `schematic.serve` (ADR-038). *(Corrected 2026-09-12: this line said the engine was installed without its dependencies, which was true until A0-06.)*
+- **A-006**: Every vendoring job is green on all three shipped targets, Windows included, so no target is expected to lag; the build still fails a target whose components are missing and completes the others. *(Corrected 2026-09-12: this line said the Windows target might lag, before any Windows vendoring job had run.)*
 
 ## Dependencies
 

@@ -304,9 +304,9 @@ packaged app carries (reported as `bundled`), then defaults:
 | Key | Default |
 |---|---|
 | `SCHEMATIC_HOME` | the folder chosen in Settings, else `<userData>/engine` (ADR-016) |
-| `SCHEMATIC_LOOM_BIN` | in a packaged app, `loom/` under its resources when all four tools are there; otherwise unset. A directory of native LOOM binaries, which the engine runs instead of its Docker image |
+| `SCHEMATIC_LOOM_BIN` | in a packaged app, `loom/` under its resources whenever that folder exists, so a missing tool is the engine's error and never a fall back to Docker; otherwise unset. A directory of native LOOM binaries, which the engine runs instead of its Docker image |
 | `SCHEMATIC_LOOM_COMMIT` | passed when set, or with a LOOM directory, where the default is the app's pin (`loom.commit` in `vendor/pins.json`); the binaries cannot say which LOOM they are, so the engine reports what it is told as `engine.info.loom.commit` |
-| `SCHEMATIC_FFMPEG` | in a packaged app, `ffmpeg/ffmpeg` (`.exe` on Windows) under its resources when it is there; otherwise unset, and the engine takes the first on `PATH` |
+| `SCHEMATIC_FFMPEG` | in a packaged app, `ffmpeg/ffmpeg` (`.exe` on Windows) under its resources whenever the `ffmpeg/` folder exists; otherwise unset, and the engine takes the first on `PATH` |
 | `LEGIBLE_EXPORT_FOLDER` | the folder chosen in Settings, else `<desktop>/Legible Cities`; where exports go, in a folder per project |
 | `LEGIBLE_ENGINE_CHECKOUT` | unset; the tokens test reads the engine page from it, and the engine runs from its `.venv` |
 | `LEGIBLE_ENGINE_PYTHON` | unset; an interpreter named explicitly (a path, or a bare command for PATH), which wins over the checkout |
@@ -1143,13 +1143,18 @@ they landed, every module's bytecode, and the manifest's hash against the
 pins being built, and with `LEGIBLE_VENDOR_TARGET` set a missing component
 fails the package, where electron-builder alone would skip it with a
 warning. Last, `scripts/launch-packaged.mjs` launches the unpacked app once
-with a temporary `--user-data-dir`, waits for the engine to be ready, asks
-it `engine.info` for its LOOM backend and commit and its ffmpeg, quits, reads
-the log for the bundled origins and the engine's clean end, and compares
-every file in the bundle before and after the session.
+with a temporary `--user-data-dir` and the bundle as its working directory,
+waits for the engine to be ready, asks it `engine.info` (which, at the
+pinned engine, reports configuration rather than proving execution), quits,
+and reads the log for the bundled origins and the engine's clean end. It
+then runs each bundled LOOM tool with `--help` and ffmpeg and ffprobe with
+`-version` from inside the bundle, and compares every file and folder in the
+bundle with the list taken before the launch. It runs no layout or export;
+ADR-035 says what that would take. On macOS the job then verifies the app's
+signature with `codesign --verify --deep --strict`.
 
-The Mac app is signed ad hoc and nothing is signed with an identity until
-A6-05. A local `npm run dist` builds an unpacked app with whatever is
+The Mac app is signed ad hoc, with `forceCodeSigning`, and nothing is
+signed with an identity until A6-05. A local `npm run dist` builds an unpacked app with whatever is
 vendored: with nothing, the hook lets it through and says it is not an
 installer; with anything, it holds the build to the same check.
 
