@@ -140,10 +140,22 @@ can confirm the app sends nothing.
 - **A burst of engine output** (LOOM can print thousands of lines) is
   written through a stream, not a synchronous append per line, and never
   holds up the supervisor.
-- **A secret in a log line.** The app does not log feed URLs' query strings
-  or any header; this feature adds no new line with user content, and the
-  copy's home-folder replacement is not a scrubber for anything else. The
-  copied text is shown to nobody until the person pastes it.
+- **A secret in a log line.** The app's own lines carry no feed URL and no
+  header, but the engine's do: at v0.8.2 a failed download raises an error
+  naming the whole URL, query string included, and the engine logs it with
+  a traceback on the stderr the supervisor writes to `engine.log` (engine
+  issue 32 redacts it at source). So every line is passed through one
+  redaction before it is written, to either log and to standard error in
+  development, and the copy is passed through it again, because a log
+  written before this rule still holds whole addresses. For each `http` and
+  `https` address, plain or percent-encoded, it keeps the scheme, the host,
+  the path and the query's parameter names, and replaces the user
+  information, every query value and the fragment with `<redacted>`.
+  **A token carried as a path segment is not redacted**: nothing in the
+  text says which segment is a secret, and the app does not guess from how
+  random one looks. Beyond addresses, neither the redaction nor the
+  home-folder replacement is a scrubber for anything else. The copied text
+  is shown to nobody until the person pastes it.
 - **Paths outside the home folder** (an export folder on another volume)
   are left as they are: they are the person's choice, and they can see the
   text before they paste it.

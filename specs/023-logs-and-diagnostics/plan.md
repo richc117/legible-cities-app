@@ -74,6 +74,7 @@ existing ones.
 src/main/log.ts                      # route by tag; setSink unchanged
 src/main/log-file.ts                 # the rotating file sink (new)
 src/main/diagnostics-text.ts         # compose, tail, shortenHome, containsHome (new)
+src/main/redact.ts                   # URLs' user information, query values and fragments (new, review)
 src/main/index.ts                    # open and close the two files; logs path beside moved user data
 src/main/settings-ipc.ts             # copyDiagnostics
 src/shared/api.ts, src/preload/index.ts   # settings.copyDiagnostics, its channel

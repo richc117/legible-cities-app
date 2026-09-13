@@ -116,11 +116,15 @@ tag, each capped at 5 MB with one `.old.log` kept and no dependency
 (`src/main/log-file.ts`); the logs follow `LEGIBLE_USER_DATA`, which macOS
 would not do on its own, and in development `LEGIBLE_LOGS` names a folder
 for them, which the end-to-end suite sets for every launch
-(`tests/e2e/global-setup.ts`) so no run writes a person's own log. "Copy diagnostics" in Settings puts the versions,
-`engine.info`, the end of both logs and the session's map reports on the
-clipboard, composed in the main process with the home folder written as `~`
-(its 8.3 short form on Windows included) and checked for afterwards (`src/main/diagnostics-text.ts`). Nothing is
-sent anywhere.
+(`tests/e2e/global-setup.ts`) so no run writes a person's own log.
+"Copy diagnostics" in Settings puts the versions, `engine.info`, the end of
+both logs and the session's map reports on the clipboard, composed in the
+main process with the home folder written as `~` (its 8.3 short form on
+Windows included) and checked for afterwards
+(`src/main/diagnostics-text.ts`). Every log line, and the copy again, has
+its URLs' user information, query values and fragments redacted
+(`src/main/redact.ts`); a token in a URL's path is not. Nothing is sent
+anywhere.
 
 Work proceeds phase by phase; `CONTRIBUTING.md` explains the flow, the
 labels, the milestones and the `A0-05`-style issue codes. The four Phase 0

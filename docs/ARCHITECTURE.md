@@ -403,9 +403,20 @@ before; nothing else is ever removed, and the reset does not touch the
 logs, which are not under the engine's home. A rename the platform refuses
 (Windows, while another program holds the file) does not stop the log: the
 file is reopened and appended to, standard error is told once, and the
-rename is tried again when another 5 MB has been written. On POSIX the
-file is opened with `O_NOFOLLOW`, so a link planted in its place is not
+rename is tried again when another 5 MB has been written. While a reader
+holds the file and the rename is refused, the log grows past 5 MB until
+that retry succeeds. On POSIX the file is opened with `O_NOFOLLOW`, for
+writing and for the copy's reading, so a link planted in its place is not
 followed.
+
+Every line has its web addresses redacted before it is written, to either
+file and to standard error in development (`src/main/redact.ts`): the
+engine prints a feed's whole URL when a download fails, and a URL can
+carry a key. The scheme, the host, the path and the query's parameter
+names stay; the user information, every query value and the fragment
+become `<redacted>`, for plain and percent-encoded addresses alike. A
+token carried as a path segment is not redacted, because nothing says
+which segment is one.
 
 Lines logged before the app is ready are held in memory, two thousand at
 most, and written first once the files open, which is the first thing the
@@ -441,8 +452,12 @@ a name carries on after it. The composed text is checked for the home
 folder afterwards, percent-decoded as well, and a copy that still names it
 is refused.
 A path outside the home folder, such as an export folder on another
-volume, is left as it is. The replacement is not a scrubber for anything
-else; the person reads the text before they paste it.
+volume, is left as it is. The copy redacts web addresses again, since a
+log written before the redaction existed still holds them whole. Neither
+is a scrubber for anything else; the person reads the text before they
+paste it. The home folders are found when the copy is made, asynchronously,
+and a temporary folder on a network share is not asked, so a share that
+does not answer holds neither the window nor the copy.
 
 ## Design tokens
 
