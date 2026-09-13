@@ -175,11 +175,12 @@ runs before any of them.
 |---|---|---|---|
 | darwin-arm64 | 132.5 MB | **11.8 MB** (11,849,680 bytes) | 1 min 29 s on `macos-15`; 30 s for the build alone on a ten-core developer Mac, sources cached |
 | darwin-x64 | 189.2 MB | **14.2 MB** (14,203,784 bytes) | 6 min 39 s on `macos-15-intel`, with Homebrew's nasm; the same job took 3 min 27 s in run 34746980746 |
-| win-x64 | 289.5 MB | **16.5 MB** (16,497,664 bytes) | 7 min 40 s on `windows-latest`, MSYS2's setup included |
+| win-x64 | 289.5 MB | **16.5 MB** (16,479,232 bytes; 16,497,664 before FFmpeg was configured in its own tree) | 7 min 40 s on `windows-latest`, MSYS2's setup included |
 | linux-x64 (tests) | 291.5 MB | **13.2 MB** (13,224,096 bytes) | 2 min 01 s on `ubuntu-22.04` |
 
-Sizes and times are from vendor workflow run 34747632147 (2026-09-13, at
-commit `9333adf`), the first in which all five ffmpeg jobs passed: every
+Sizes are from vendor workflow run 34748791939 (at `266bb6b`) and times from
+run 34747632147 (2026-09-13, at commit `9333adf`), the first in which all
+five ffmpeg jobs passed; the other three sizes were the same in both: every
 target built from the pinned sources, passed the unchanged proof, the link
 checks (no library beyond the system's, and on Windows only Windows' own
 DLLs and the pinned zlib) and the configure-flag check, and the
@@ -197,9 +198,10 @@ release tarball for the Windows binaries, and `scripts/vendor-ffmpeg.sh`
 with the configure lines. Nothing is inferred. macOS and Linux link the
 operating system's zlib, and the Windows binaries carry, as MinGW
 executables linked `-static` do, GCC's `libgcc` under the GCC Runtime
-Library Exception, mingw-w64's CRT startup code, and winpthreads, whose MIT
-and BSD-3-Clause terms ask for their notice in the documentation, which
-`THIRD_PARTY_NOTICES.md` gives. The macOS binaries link only the system's
+Library Exception, and mingw-w64's runtime and winpthreads, whose terms ask
+for their notices in the documentation of a binary: `THIRD_PARTY_NOTICES.md`
+quotes both files, from mingw-w64 at the commit MSYS2's packages were built
+from (`9c1abbbf55`, crt 14.0.0.r375). The macOS binaries link only the system's
 libraries, and what clang adds from compiler-rt is under Apache-2.0 with the
 LLVM exception, which asks for no notice in object code; the Linux build is
 not shipped. `THIRD_PARTY_NOTICES.md` shrinks from some eighty libraries to

@@ -279,7 +279,7 @@ fetch_x264() {
 # sha256 in the pins was taken on first download; this is what ties those
 # bytes to their publisher.
 signed() {
-  local file=$1 sig_url=$2 key_url=$3 want=$4 home status primary
+  local file=$1 sig_url=$2 key_url=$3 want=$4 home status primary revoked
   command -v gpg >/dev/null 2>&1 || { echo "verifying $(basename "$file") needs gpg" >&2; exit 2; }
   home=$(mktemp -d)
   chmod 700 "$home"
@@ -287,26 +287,48 @@ signed() {
   curl -fsSL --retry 3 --connect-timeout 30 --max-time 120 -o "$file.asc" "$sig_url"
   echo "fetching the signing key $want"
   curl -fsSL --retry 3 --connect-timeout 30 --max-time 120 -o "$home/key.asc" "$key_url"
-  gpg --homedir "$home" --batch --quiet --import "$home/key.asc" 2> "$home/import.log" || {
-    cat "$home/import.log" >&2
+  # gpg's own messages, and the GOODSIG, BADSIG and IMPORTED status lines,
+  # carry the key's user ID and so its owner's e-mail address, into a public
+  # log. Only fingerprints and key ids are ever printed.
+  if ! status=$(gpg --homedir "$home" --batch --status-fd 1 --import "$home/key.asc" 2> /dev/null); then
+    awk '$2 ~ /^(IMPORT_OK|IMPORT_PROBLEM|IMPORT_RES|NODATA|FAILURE|ERROR)$/' <<< "$status" >&2
     echo "the signing key from $key_url did not import" >&2
     exit 1
-  }
-  if ! status=$(gpg --homedir "$home" --batch --status-fd 1 --verify "$file.asc" "$file" 2> "$home/verify.log"); then
-    cat "$home/verify.log" >&2
+  fi
+  if ! status=$(gpg --homedir "$home" --batch --status-fd 1 --verify "$file.asc" "$file" 2> /dev/null); then
+    signature_status "$status" >&2
     echo "$(basename "$file") has no good signature by $want" >&2
+    exit 1
+  fi
+  # A signature by a revoked key verifies, with REVKEYSIG where GOODSIG
+  # would be and VALIDSIG naming the key all the same, and gpg exits 0.
+  # Revocation means the key is not to be trusted, so it is refused. An
+  # expired key (EXPKEYSIG) is not: a release outlives the key that signed
+  # it, and expiry says nothing about the signature made before it.
+  revoked=$(awk '$2 == "REVKEYSIG" || $2 == "KEYREVOKED"' <<< "$status")
+  if [ -n "$revoked" ]; then
+    signature_status "$status" >&2
+    echo "$(basename "$file") is signed by a revoked key" >&2
     exit 1
   fi
   # VALIDSIG's last field is the primary key's fingerprint, whichever
   # subkey signed.
   primary=$(awk '$2 == "VALIDSIG" { print $NF }' <<< "$status")
   if [ "$primary" != "$want" ]; then
-    printf '%s\n' "$status" >&2
+    signature_status "$status" >&2
     echo "$(basename "$file") is signed by ${primary:-no valid key}, not $want" >&2
     exit 1
   fi
   rm -rf "$home"
   echo "signature ok: $(basename "$file") by $want"
+}
+
+# signature_status <gpg status>: the lines that say what was found, without
+# a user ID: VALIDSIG, ERRSIG, NO_PUBKEY and KEYREVOKED whole, and BADSIG,
+# REVKEYSIG, EXPKEYSIG and GOODSIG up to their key id.
+signature_status() {
+  awk '$2 ~ /^(VALIDSIG|ERRSIG|NO_PUBKEY|KEYREVOKED|KEYEXPIRED)$/ { print; next }
+       $2 ~ /^(BADSIG|REVKEYSIG|EXPKEYSIG|EXPSIG|GOODSIG)$/ { print $1, $2, $3 }' <<< "$1"
 }
 
 # ---------------------------------------------------------------------------
@@ -648,7 +670,10 @@ build() {
 
   # No path of this machine's build folder in either binary, in the shell's
   # form or Windows': a package would carry it, and bytes would differ from
-  # run to run for nothing.
+  # run to run for nothing. A compiler may have spelt the path with back
+  # slashes, another drive letter's case or a short name, so the temporary
+  # folder's random name, which is in every spelling, is searched for too,
+  # whatever its case. A folder named by VENDOR_FFMPEG_WORK has no such name.
   local b where
   for b in "ffmpeg$exe" "ffprobe$exe"; do
     for where in "$work/build" "$(absolute "$work")/build"; do
@@ -657,6 +682,10 @@ build() {
         exit 1
       fi
     done
+    if [ -z "$keep" ] && grep -aqiF -- "${work##*/}" "$fbuild/$b"; then
+      echo "$b carries the build folder's name, ${work##*/}" >&2
+      exit 1
+    fi
   done
 
   mkdir -p "$bindir"
