@@ -141,3 +141,41 @@ The alternative, shipping the folder with no agreement check, satisfies
 "every statically linked library has its text in the installer" today
 (the folder carries every text found owed above, and more) but not the issue's
 "a check fails if the pinned runtime and the shipped texts disagree".
+
+## Decided, and built (2026-09-13)
+
+The coordinator took the proposal above as it stands: the three lists per
+target, the Windows strings re-checked on every run, and a new release
+failing until the lists are reread. Two additions came with it: CPython's
+`Doc/license.rst` at `v3.12.14`, and a check for `zstd` on the runners.
+ADR-042 records it.
+
+### What the build found locally
+
+- `scripts/vendor-python.sh darwin-arm64` against the engine at `v0.8.3`
+  built the runtime in 15 s with the texts in place and the agreement
+  passing; the Windows lists pass against a runtime-shaped folder made
+  from the real Windows `full` archive's `python312.dll`, `pyexpat.pyd`
+  and `_decimal.pyd`.
+- The strings used as evidence, each found once in its file: `incorrect
+header check`, `invalid distance too far back` and `1.3.2` in
+  `python312.dll`; `expat_2.8.3` in `DLLs/pyexpat.pyd` (not in
+  `_elementtree.pyd`, which uses pyexpat's); `libmpdec: internal error`
+  and `2.5.1` in `DLLs/_decimal.pyd`.
+- CPython's `Doc/license.rst` at commit `2abcf904b8` (the tag `v3.12.14`
+  resolves to it) is 54,130 bytes, sha256
+  `341832873fd316a37927e79385093fbbfd40a467428480835fe435a80cadf4e5`;
+  the `full` archives do not carry it.
+
+### Electron's and Chromium's licences
+
+Found by issue 109's research and added to this issue: electron-builder
+26.15.3 deletes `LICENSE` and `LICENSES.chromium.html` from a Mac app
+(`app-builder-lib/out/electron/electronMac.js`, the `unlinkIfExists` pair
+beside the executable's rename). On Windows it renames `LICENSE` to
+`LICENSE.electron.txt` and keeps both beside the executable. That was
+checked by listing the `installer-win-x64` artefact of build run
+34758104565 (`v0.1.0-rc.2`): the 7z inside the NSIS installer holds
+`LICENSE.electron.txt` and `LICENSES.chromium.html` at its root.
+`LICENSES.chromium.html` at Electron 44.2.0 is 20,111,209 bytes and does
+not carry Electron's own MIT licence, which is 1,096 bytes.

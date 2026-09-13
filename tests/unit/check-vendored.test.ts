@@ -526,7 +526,11 @@ describe('the afterPack hook, where the packaged app will look', () => {
   const productFilename = 'Legible Cities'
   function packaged(
     target: Target,
-    options: TreeOptions & { manifest?: 'current' | 'stale' | 'none' } = {},
+    options: TreeOptions & {
+      manifest?: 'current' | 'stale' | 'none'
+      /** Leave out Electron's and Chromium's licences, as electron-builder does on a Mac. */
+      electronLicences?: false
+    } = {},
   ) {
     const appOutDir = scratch()
     const darwin = target !== 'win-x64'
@@ -534,6 +538,12 @@ describe('the afterPack hook, where the packaged app will look', () => {
       ? join(appOutDir, `${productFilename}.app`, 'Contents', 'Resources')
       : join(appOutDir, 'resources')
     mkdirSync(resources, { recursive: true })
+    if (options.electronLicences !== false) {
+      // Beside the executable on Windows, in the resources on a Mac.
+      const folder = darwin ? resources : appOutDir
+      writeFileSync(join(folder, 'LICENSE.electron.txt'), 'Copyright (c) Electron contributors\n')
+      writeFileSync(join(folder, 'LICENSES.chromium.html'), '<title>Credits</title>\n')
+    }
     tree(
       target,
       {
@@ -588,6 +598,17 @@ describe('the afterPack hook, where the packaged app will look', () => {
     )
   })
 
+  it("refuses an app without Electron's and Chromium's licences, on either system", async () => {
+    const { afterPack } = await load()
+    for (const target of ['darwin-x64', 'win-x64'] as const) {
+      await expect(
+        afterPack(packaged(target, { bytecodeFlags: 1, electronLicences: false }), {
+          LEGIBLE_VENDOR_TARGET: target,
+        }),
+      ).rejects.toThrow(`${target}: electron is missing LICENSES.chromium.html`)
+    }
+  })
+
   it('refuses a partial app even when no target is required', async () => {
     const { afterPack } = await load()
     await expect(
@@ -629,5 +650,13 @@ describe('electron-builder.yml', () => {
         `- from: vendor/manifest-${os}-\${arch}.json\n      to: vendor-manifest.json`,
       )
     }
+    // electron-builder deletes these from a Mac app; the Mac entries put them back.
+    const mac = config.slice(config.indexOf('\nmac:'), config.indexOf('\nwin:'))
+    expect(mac).toContain(
+      '- from: node_modules/electron/dist/LICENSE\n      to: LICENSE.electron.txt',
+    )
+    expect(mac).toContain(
+      '- from: node_modules/electron/dist/LICENSES.chromium.html\n      to: LICENSES.chromium.html',
+    )
   })
 })

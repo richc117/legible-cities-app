@@ -131,6 +131,7 @@ listed below for filing. *engine's*: inside the engine's page.
 | Theme select | pass | pass | pass | pass | fixed (C2) | fixed (C2) | not yet run: a person's | not yet run: a person's |
 | Versions | n/a | pass (a definition list; a null said in words) | n/a | n/a | pass | pass | not yet run: a person's | not yet run: a person's |
 | Reset engine data and its confirmation | fixed (D8) | pass | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
+| Licences section (issue 108) | asserted in the sweep, written, not run (three buttons `aria-disabled` in a development run, kept in the Tab order) | asserted in the sweep, written, not run (a named region; a definition list; each unavailable button described by its reason; a polite `role="status"` line) | asserted in the sweep, written, not run | asserted in the sweep, written, not run | pass (existing pairs: `--text-muted` and `--text` on `--surface`; the unavailable button's look is the kit's existing one) | pass (the same pairs) | not yet run: a person's | not yet run: a person's |
 | Bundled tools rows (A6-02) | n/a (no control; the screen's walk is swept with the rows present: asserted in the sweep, written, not run) | pass (a named region; the summary a polite `role="status"`; a definition list, "LOOM tools" and "ffmpeg and ffprobe"): asserted in the sweep, written, not run | n/a | asserted in the sweep, written, not run | pass (existing pairs: `--text-muted` and `--text` on `--surface`) | pass (the same pairs) | not yet run: a person's | not yet run: a person's |
 
 ### Jobs inspector
@@ -639,6 +640,16 @@ a table).
   It cannot be stopped." if it is long enough to hear (D8), then the status
   "The engine's data is gone: `<folders>`. Start the app again so the engine
   reads its folder afresh."
+- **Licences section (issue 108).** Listen for the heading "Licences", the
+  sentence naming the GNU General Public License, and a description list
+  of components and their licences, "The legible-cities engine",
+  "GPL-3.0-or-later" first. Then the buttons "Open the notices", "Show the
+  licence texts" and "Open Chromium's licences". In an installed app, press
+  each: the notices open in the platform's viewer (or are shown in its file
+  browser), the licence texts' folder opens in the file browser, and
+  Chromium's licences open in the browser. In a development run each is
+  read dimmed with "not bundled in a development run", and a press says it
+  again.
 - **Bundled tools rows (A6-02).** Listen for the heading "Bundled tools",
   the status "The bundled LOOM and ffmpeg ran.", and a description list:
   "LOOM tools", "ran (`<n>` ms)."; "ffmpeg and ffprobe", "ran (`<n>` ms)."

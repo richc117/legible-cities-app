@@ -105,6 +105,13 @@ jobs:
       - name: Install
         run: npm ci
 
+      # The Mac app's copies of Electron's and Chromium's licences come from
+      # the Electron binary in node_modules, which npm ci no longer fetches;
+      # electron-builder deletes its own from a Mac app (electron-builder.yml).
+      - name: Fetch Electron, for its licences
+        if: runner.os == 'macOS'
+        run: npx install-electron --no
+
       - name: Build the app
         run: npm run build
 

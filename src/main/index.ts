@@ -22,6 +22,7 @@ import {
 import { registerEngineHandlers } from './engine-ipc'
 import { FIXTURE_FOLDER, FirstRunCheck, LOG_TAG as FIRST_RUN_TAG } from './first-run'
 import { registerFirstRunHandlers } from './first-run-ipc'
+import { LicencesService, registerLicencesHandlers } from './licences-ipc'
 import { PickedPaths, registerFeedsHandlers, registryGuard } from './feeds-ipc'
 import { Exporter, keptFramesFolder } from './export'
 import { claimFramesRoot, clearFrames, describeSweep, FRAMES_FOLDER } from './frames'
@@ -550,6 +551,21 @@ if (!hasLock) {
         openExternal: (url) => shell.openExternal(url),
         log: (message) => log.info(FIRST_RUN_TAG, message),
       },
+      isTopFrame,
+    )
+    // The Licences section (issue 108): three fixed places in the app,
+    // opened by the platform; nothing from the page names them.
+    registerLicencesHandlers(
+      ipcMain,
+      new LicencesService({
+        packaged: app.isPackaged,
+        resourcesPath: process.resourcesPath,
+        platform: process.platform,
+        exists: existsSync,
+        openPath: (path) => shell.openPath(path),
+        showItemInFolder: (path) => shell.showItemInFolder(path),
+        log: (message) => log.info('licences', message),
+      }),
       isTopFrame,
     )
     // "Copy log" on a job (A1-03): the same home lookup and the same

@@ -135,6 +135,13 @@ const api: Api = {
     onChanged: (listener) => subscribe(CHANNELS.firstRunChanged, listener),
     openInstallGuide: () => invoke(CHANNELS.firstRunOpenInstallGuide),
   },
+  // Nothing crosses inward: the two files are the main process's to name.
+  licences: {
+    read: () => invoke(CHANNELS.licencesRead),
+    openNotices: () => invoke(CHANNELS.licencesOpenNotices),
+    showTexts: () => invoke(CHANNELS.licencesShowTexts),
+    openChromium: () => invoke(CHANNELS.licencesOpenChromium),
+  },
 }
 
 contextBridge.exposeInMainWorld('api', api)

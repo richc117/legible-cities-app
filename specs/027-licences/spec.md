@@ -19,6 +19,13 @@ Answered by the maintainer on 2026-09-13:
 - **A Licences section in Settings**, not a new screen and not only a correction of the claim. It lists the app's licence and each bundled component and opens `THIRD_PARTY_NOTICES.md` and the licence folders from the app's resources in the platform's own viewer. Read-only.
 - **Vendor the `licenses/` folder.** The python job also fetches the `full` archive of the same python-build-standalone release for each target, pinned by checksum, extracts only its licence texts and the build's own record of what it links, ships them under the runtime, and fails if they disagree.
 
+Taken on 2026-09-13 while building, by the coordinator, after the research in `research.md` found the metadata incomplete:
+
+- **Reviewed lists beside the metadata.** The build metadata is held to three lists per target in `vendor/pins.json` (`unlisted`, `named_absent`, `not_linked`), and the check fails whenever the metadata, the folder and the lists disagree; a new python-build-standalone release failing until the lists are reread is the intended cost. The three Windows libraries the metadata does not name are proved present by strings in their DLLs on every run.
+- **CPython's incorporated software.** CPython's `Doc/license.rst` at the pinned version's tag ships beside the texts, fetched by commit and pinned by sha256.
+- **zstd on the runners** is checked for, with an error naming the runner.
+- **Electron's and Chromium's licences.** electron-builder deletes `LICENSES.chromium.html` and Electron's `LICENSE` from a Mac app; the Mac app carries them in its resources, the packaging check refuses an app on either system without them, and the Licences section opens Chromium's. Nothing about Electron's own FFmpeg library, which is issue 109.
+
 And from the repository's rules: never write inside the app bundle; child processes and file opens from the main process only; nothing crosses the bridge inward as a path.
 
 ## User Scenarios & Testing _(mandatory)_
@@ -28,7 +35,7 @@ And from the repository's rules: never write inside the app bundle; child proces
 **Acceptance Scenarios**:
 
 1. **Given** an installer for any of the three targets, **When** its resources are listed, **Then** the Python runtime carries a folder of licence texts from the pinned release's `full` archive, one per statically linked library named in that build's own metadata.
-2. **Given** `vendor/pins.json` names a python-build-standalone release, **When** the python job runs, **Then** it fetches the matching `full` archive for the target, verifies it against a checksum recorded in the pins, extracts only the licence texts and the build's link metadata, and fails if a library the build links has no text or a text names a library the build does not link.
+2. **Given** `vendor/pins.json` names a python-build-standalone release, **When** the python job runs, **Then** it fetches the matching `full` archive for the target, verifies it against a checksum recorded in the pins, extracts only `licenses/` and `PYTHON.json`, adds CPython's `Doc/license.rst` checked against its pinned sha256, and fails, naming the text, if: the metadata is not for the pinned version and target; a text the metadata names is neither carried nor listed as `named_absent`; a text carried is not named by the metadata, `unlisted` or `not_linked`, or is on more than one of them; a `named_absent` entry is carried or no longer named; an `unlisted` or `not_linked` entry is named now or not carried; or an `unlisted` entry's file no longer contains the strings that proved the library is compiled into it.
 3. **Given** the pin moves to a new release, **When** the checksums are not updated, **Then** the job fails naming the archive.
 4. **Given** `scripts/check-vendored.mjs` and the afterPack check, **When** a package lacks the licence texts, **Then** the build refuses it, naming them.
 
@@ -37,7 +44,7 @@ And from the repository's rules: never write inside the app bundle; child proces
 **Acceptance Scenarios**:
 
 1. **Given** Settings, **When** it is read, **Then** a Licences section says the app is free software under GPL-3.0-or-later and lists each bundled component (the engine, LOOM, FFmpeg with x264, Python and its libraries, Electron and Chromium) with its licence, from one list the main process holds.
-2. **Given** the Licences section, **When** "Open the notices" is pressed, **Then** `THIRD_PARTY_NOTICES.md` from the app's resources opens in the platform's default viewer; **When** "Show the licence texts" is pressed, **Then** the folder holding the licence texts is shown in the platform's file browser. Neither takes a path from the page.
+2. **Given** the Licences section, **When** "Open the notices" is pressed, **Then** `THIRD_PARTY_NOTICES.md` from the app's resources opens in the platform's default viewer (or, where none takes a Markdown file, is shown in the file browser); **When** "Show the licence texts" is pressed, **Then** the folder holding the licence texts is shown in the platform's file browser; **When** "Open Chromium's licences" is pressed, **Then** `LICENSES.chromium.html` opens in the platform's browser. None takes a path from the page.
 3. **Given** a development run with nothing vendored, **When** the section is read, **Then** the buttons say the files are not bundled in development and are unavailable, rather than failing.
 4. **Given** keyboard and screen reader, **When** the section is walked, **Then** it passes A6-07's sweep (names, Tab order, focus, reduced motion) and has a row in `docs/accessibility.md`.
 
@@ -49,12 +56,13 @@ And from the repository's rules: never write inside the app bundle; child proces
 ## Requirements _(mandatory)_
 
 - **FR-001**: The python job MUST fetch the `full` archive for each target at the pinned release, verify a checksum recorded in `vendor/pins.json`, and extract only licence texts and link metadata into the vendored runtime.
-- **FR-002**: The job MUST refuse a mismatch between the build's linked libraries and the shipped texts.
+- **FR-002**: The job MUST refuse any disagreement between the build metadata's licence paths, the shipped folder and the three reviewed lists per target in `vendor/pins.json`, as US1 scenario 2 enumerates, and MUST look for each `unlisted` entry's strings in its file on every run; a new release MUST fail until the lists are reread.
 - **FR-003**: The packaged app MUST carry the texts; `check-vendored.mjs` MUST refuse a package without them.
-- **FR-004**: Settings MUST gain a Licences section as in US2, with the component list held in the main process or `src/shared/`, and two bridge methods that take no argument.
+- **FR-004**: Settings MUST gain a Licences section as in US2, with the component list held in the main process or `src/shared/`, and bridge methods that take no argument: one to read what can be opened and one per opening (three, since Chromium's licences were added).
 - **FR-005**: Opening files MUST go through `shell.openPath` / `shell.showItemInFolder` on fixed paths under `process.resourcesPath`; nothing is written.
 - **FR-006**: The section MUST be in the design system (no literals), the contrast test and `docs/DESIGN.md` 8.2 if it adds a component, and the accessibility sweep.
 - **FR-007**: `THIRD_PARTY_NOTICES.md`, a decision record, `docs/ARCHITECTURE.md` and `CLAUDE.md` MUST be updated.
+- **FR-008**: A packaged app MUST carry Electron's `LICENSE` and `LICENSES.chromium.html` (beside the executable on Windows, in the resources on a Mac), and the afterPack check MUST refuse one without them.
 
 ## Success Criteria _(mandatory)_
 

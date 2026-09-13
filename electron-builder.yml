@@ -66,6 +66,17 @@ mac:
       to: ffmpeg
     - from: vendor/manifest-darwin-${arch}.json
       to: vendor-manifest.json
+    # Electron's and Chromium's licences. electron-builder deletes both from
+    # a Mac app (app-builder-lib's electronMac.js) and keeps them beside the
+    # executable on Windows, as LICENSE.electron.txt and
+    # LICENSES.chromium.html; these put them back in the Mac app's
+    # resources under the same names, from the Electron `npm ci` pinned,
+    # which the build fetches with `npx install-electron` (issue 108).
+    # The afterPack hook refuses a package on either system without them.
+    - from: node_modules/electron/dist/LICENSE
+      to: LICENSE.electron.txt
+    - from: node_modules/electron/dist/LICENSES.chromium.html
+      to: LICENSES.chromium.html
 win:
   target:
     - nsis

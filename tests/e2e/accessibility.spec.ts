@@ -815,6 +815,15 @@ test('Settings, its reset confirmation, and focus after "Use the default"', asyn
     await page.getByRole('button', { name: 'Settings' }).click()
     await expect(heading(page)).toHaveText('Settings')
     await expect(page.locator('#engine-folder-size')).not.toHaveText('Measuring…')
+    // The Licences section (issue 108) is in the walk: a named region, a
+    // definition list, and three buttons unavailable in a development run
+    // that keep their place in the Tab order and are described by why.
+    const licences = page.getByRole('region', { name: 'Licences' })
+    await expect(licences.locator('dt').first()).toBeVisible()
+    for (const name of ['Open the notices', 'Show the licence texts', "Open Chromium's licences"]) {
+      await expect(licences.getByRole('button', { name })).toHaveAttribute('aria-disabled', 'true')
+    }
+    await expect(licences.getByRole('status')).toHaveAttribute('aria-live', 'polite')
     await sweep(page, 'Settings')
 
     await chooserAnswers(app, chosen)

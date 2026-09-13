@@ -7,6 +7,7 @@ import type { EngineErrorShape, EngineState, JobLog, JobProgress } from './engin
 import type { ExportChoice, ExportPreview, ExportProgress, ExportResult } from './export'
 import type { FirstRunResult } from './first-run'
 import type { LayoutDone, LayoutResult } from './layout'
+import type { LicencesView } from './licences'
 import type { AppTheme, FolderSize, ResetOutcome, SettingsView } from './settings'
 import type { ViewerMethod } from './viewer'
 import type {
@@ -41,6 +42,7 @@ export type {
 } from './export'
 export type { FirstRunResult, ToolCheck } from './first-run'
 export type { LayoutDone, LayoutResult } from './layout'
+export type { LicenceFileState, LicencesView } from './licences'
 export type { AppTheme, FolderSize, FolderView, ResetOutcome, SettingsView } from './settings'
 
 /** A zip the platform's file chooser answered: the path the engine is handed, the name the page shows. */
@@ -254,6 +256,21 @@ export interface Api {
     /** Open the install document in the platform's browser. Takes no address: the main process holds it. */
     openInstallGuide(): Promise<void>
   }
+  /**
+   * The Licences section of Settings (issue 108): whether the notices file,
+   * the folder of licence texts and Chromium's licences are there to open,
+   * and the three openings. None takes an argument: both are fixed paths under the app's
+   * resources, held by the main process (specs/027-licences, FR-004).
+   */
+  licences: {
+    read(): Promise<LicencesView>
+    /** `THIRD_PARTY_NOTICES.md` in the platform's default viewer, or shown in its file browser. */
+    openNotices(): Promise<void>
+    /** The runtime's folder of licence texts in the platform's file browser. */
+    showTexts(): Promise<void>
+    /** Chromium's licences, as Electron ships them, in the platform's browser. */
+    openChromium(): Promise<void>
+  }
 }
 
 /**
@@ -308,4 +325,8 @@ export const CHANNELS = {
   firstRunGet: 'first-run:get',
   firstRunChanged: 'first-run:changed',
   firstRunOpenInstallGuide: 'first-run:open-install-guide',
+  licencesRead: 'licences:read',
+  licencesOpenNotices: 'licences:open-notices',
+  licencesShowTexts: 'licences:show-texts',
+  licencesOpenChromium: 'licences:open-chromium',
 } as const

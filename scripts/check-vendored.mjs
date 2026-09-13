@@ -696,6 +696,13 @@ export function checkResources({ target, resources, pinsFile, bytecode = true })
   const pins = JSON.parse(readFileSync(pinsFile, 'utf8'))
   const paths = layout('resources', resources, target)
   const { problems } = checkTree({ target, paths, pins, bytecode })
+  for (const path of Object.values(electronLicencePaths(resources, target))) {
+    if (!isFile(path)) {
+      problems.push(
+        `${target}: electron is missing ${basename(path)}, Electron's or Chromium's licences (looked for ${path})`,
+      )
+    }
+  }
   if (!isFile(paths.manifest)) {
     problems.push(
       `${target}: manifest is missing (looked for ${MANIFEST_IN_RESOURCES} in the resources)`,
@@ -720,6 +727,20 @@ export function checkResources({ target, resources, pinsFile, bytecode = true })
     }
   }
   return problems
+}
+
+/**
+ * Where a packaged app keeps Electron's and Chromium's licences. On Windows
+ * electron-builder leaves them beside the executable, one folder above the
+ * resources; from a Mac app it deletes them, and electron-builder.yml puts
+ * them back in the resources under the same names (issue 108).
+ */
+export function electronLicencePaths(resources, target) {
+  const folder = target.startsWith('win-') ? dirname(resources) : resources
+  return {
+    electron: join(folder, 'LICENSE.electron.txt'),
+    chromium: join(folder, 'LICENSES.chromium.html'),
+  }
 }
 
 /** The target an electron-builder platform and arch build, or null. */

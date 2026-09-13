@@ -392,3 +392,49 @@ test('keeps main.log and engine.log, and copies diagnostics without the home fol
       .sort(),
   ).toEqual(['engine.log', 'main.log'])
 })
+
+// The Licences section (issue 108, specs/027, US2): the app's licence and the
+// components it carries, and three buttons that in a development run say
+// there is nothing bundled to open and open nothing. Written, not run by the
+// lane that wrote it.
+test('names the licences, and says a development run bundles nothing to open', async () => {
+  const userData = profile()
+  await withApp(userData, async (page, app) => {
+    // Anything the handlers would open is recorded rather than opened.
+    await app.evaluate(({ shell }) => {
+      const opened: string[] = []
+      ;(globalThis as { openedForTest?: string[] }).openedForTest = opened
+      shell.openPath = (async (path: string) => {
+        opened.push(path)
+        return ''
+      }) as never
+      shell.showItemInFolder = ((path: string) => {
+        opened.push(path)
+      }) as never
+    })
+    await open(page)
+    const licences = page.getByRole('region', { name: 'Licences' })
+    await expect(licences).toContainText('GNU General Public License, version 3 or later')
+    await expect(licences.locator('dt').first()).toHaveText('The legible-cities engine')
+    for (const term of ['LOOM', 'FFmpeg', 'Electron', 'Chromium, inside Electron']) {
+      await expect(licences.locator('dt', { hasText: new RegExp(`^${term}$`) })).toHaveCount(1)
+    }
+
+    for (const [name, sentence] of [
+      ['Open the notices', 'The notices file is not bundled in a development run'],
+      ['Show the licence texts', 'The licence texts are not bundled in a development run'],
+      ["Open Chromium's licences", "Chromium's licences are not bundled in a development run"],
+    ] as const) {
+      const button = licences.getByRole('button', { name })
+      await expect(button).toHaveAttribute('aria-disabled', 'true')
+      await expect(licences.getByText(sentence, { exact: false }).first()).toBeVisible()
+      // Forced: Playwright waits for an aria-disabled button to be enabled.
+      await button.click({ force: true })
+      await expect(licences.getByRole('status')).toContainText(sentence)
+    }
+    const opened = await app.evaluate(
+      () => (globalThis as { openedForTest?: string[] }).openedForTest ?? [],
+    )
+    expect(opened).toEqual([])
+  })
+})

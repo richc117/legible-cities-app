@@ -386,6 +386,16 @@ export through the exporter's own, and every write to a project record
 through the project handlers', so nothing lands in a folder being walked
 away.
 
+The Licences section (issue 108, ADR-042) names the app's licence and every
+component the installers carry, from `src/shared/licences.ts`, which a unit
+test holds to `THIRD_PARTY_NOTICES.md`'s table in both directions. Its three
+buttons open the notices, the runtime's licence texts and Chromium's
+licences through `api.licences`, whose four methods take nothing: the main
+process holds the paths under `process.resourcesPath`
+(`src/main/licences-ipc.ts`) and opens them with `shell.openPath`, showing
+the notices in the file browser where no viewer takes a Markdown file. In a
+development run there is nothing to open, and each button says so.
+
 `LEGIBLE_USER_DATA` moves Electron's user-data folder. It is not a setting:
 it is how the end-to-end suite keeps its settings file out of a person's
 own profile, and the app reads it before it is ready or not at all.
@@ -1203,11 +1213,13 @@ outside the asar, in the same shape on every target
 | Path under the resources | What | Found by |
 |---|---|---|
 | `python/` | the python-build-standalone runtime with the engine installed, its bytecode compiled | `src/main/interpreter.ts` |
+| `python/licenses/`, `python/PYTHON.json` | the licence texts of the libraries linked into the runtime and CPython's `Doc/license.rst`, with the build metadata they are checked against (ADR-042) | a person, through Settings › Licences |
 | `loom/` | `gtfs2graph`, `topo`, `loom`, `octi` | `src/main/config.ts`, as `SCHEMATIC_LOOM_BIN` |
 | `ffmpeg/` | `ffmpeg` and `ffprobe`, built by the vendor workflow from pinned FFmpeg and x264 sources with only what the export uses (ADR-040) | `src/main/config.ts`, as `SCHEMATIC_FFMPEG` |
 | `vendor-manifest.json` | the pins' sha256 and every component's exact version, the runtime's Python packages included | a person, and the release job, which checks each installer's against the run drafting the Release |
 | `first-run-gtfs/` | a GTFS folder of three stops and one subway trip, 588 bytes | `src/main/first-run.ts`, the first-run check |
-| `LICENSE`, `THIRD_PARTY_NOTICES.md` | the app's licence and the notices | a person, and the Licences screen |
+| `LICENSE`, `THIRD_PARTY_NOTICES.md` | the app's licence and the notices | a person, and Settings › Licences |
+| `LICENSE.electron.txt`, `LICENSES.chromium.html` | Electron's and Chromium's licences: in the resources on a Mac, where `electron-builder.yml` puts them back after electron-builder deletes them, and one folder up, beside the executable, on Windows | a person, and Settings › Licences |
 
 `.github/workflows/build.yml` builds the installers - a dmg on each Mac
 runner and an nsis installer on Windows - from the vendor artefacts of its
@@ -1218,14 +1230,17 @@ the artefact zip dropped, and runs `scripts/check-vendored.mjs <target>`
 target, anything missing, stale against `vendor/pins.json` (the runtime's
 version, the engine's, and the version string and configure line inside
 ffmpeg and ffprobe) or built for another architecture, which it reads from
-each executable's Mach-O or PE header; then it writes the manifest. The job
+each executable's Mach-O or PE header, and a runtime whose licence texts,
+build metadata and the pins' reviewed lists disagree (ADR-042); then it
+writes the manifest. The job
 compiles the runtime's bytecode with `compileall -f --invalidation-mode
 unchecked-hash`, because a timestamped file stops matching the moment the
 packager copies its source and the first start rewrites it inside the
 bundle, breaking a Mac bundle's signature (ADR-035). The same script is
 electron-builder's `afterPack` hook: it checks the components again where
 they landed, every module's bytecode, and the manifest's hash against the
-pins being built, and with `LEGIBLE_VENDOR_TARGET` set a missing component
+pins being built, and Electron's and Chromium's licences where the app
+looks for them, and with `LEGIBLE_VENDOR_TARGET` set a missing component
 fails the package, where electron-builder alone would skip it with a
 warning. Last, `scripts/launch-packaged.mjs` launches the unpacked app once
 with a temporary `--user-data-dir` and the bundle as its working directory,
