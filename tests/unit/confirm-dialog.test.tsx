@@ -1,12 +1,12 @@
 // A confirmation, rendered without a browser (A6-07): idle it offers Cancel
-// and says nothing; while its action runs the secondary button closes rather
-// than cancels, because the action cannot be taken back. The running states
-// - the refused second press, the sentence, closing while busy - are driven
-// in the built app (tests/e2e/accessibility.spec.ts).
+// and says nothing; while its action runs Cancel takes no press, because the
+// action cannot be taken back. The running states - the refused presses and
+// Escape, the sentence, the platform closing it - are driven in the built
+// app (tests/e2e/accessibility.spec.ts).
 
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import ConfirmDialog, { BUSY_SENTENCE, secondaryPress } from '../../src/renderer/src/ConfirmDialog'
+import ConfirmDialog, { BUSY_SENTENCE, cancelPress } from '../../src/renderer/src/ConfirmDialog'
 
 describe('ConfirmDialog', () => {
   const markup = renderToStaticMarkup(
@@ -28,8 +28,8 @@ describe('ConfirmDialog', () => {
     expect(markup).not.toContain(BUSY_SENTENCE)
   })
 
-  it('cancels before the action and only closes while it runs', () => {
-    expect(secondaryPress(false)).toBe('cancel')
-    expect(secondaryPress(true)).toBe('close')
+  it('cancels before the action, and refuses the press while it runs', () => {
+    expect(cancelPress(false)).toBe('cancel')
+    expect(cancelPress(true)).toBe('refuse')
   })
 })

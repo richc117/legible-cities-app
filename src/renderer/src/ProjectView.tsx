@@ -80,6 +80,13 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
   const [confirming, setConfirming] = useState(false)
   // A delete refused after its confirmation was closed while it ran (A6-07).
   const [deleteProblem, setDeleteProblem] = useState<string | null>(null)
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
   // How many runs have drawn the page while this view is open. The viewer
   // is keyed by it, so the frame loads the page a run just wrote instead of
   // keeping the one it had: its address does not change between the two.
@@ -271,7 +278,9 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
     // Deleted: its finished jobs leave the inspector. Only on this signal,
     // never because a list read happened to miss the record (A1-03).
     forgetProjectJobs(id)
-    onBack(describeFailures(result.failed))
+    // Back to the Library only from this screen: if a person has left it
+    // while the delete ran, they are somewhere else now (A6-07).
+    if (mounted.current) onBack(describeFailures(result.failed))
   }
 
   return (

@@ -529,38 +529,70 @@ test('the Library, its empty state and its three dialogs', async () => {
   })
 })
 
-test('a confirmation refuses a second press while its action runs, and says so', async () => {
+/** A token's colour as the computed style writes it, `#15120f` as `rgb(21, 18, 15)`. */
+async function tokenRgb(page: Page, token: string): Promise<string> {
+  const hex = await page.evaluate(
+    (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim(),
+    token,
+  )
+  const n = Number.parseInt(hex.slice(1), 16)
+  return `rgb(${n >> 16}, ${(n >> 8) & 255}, ${n & 255})`
+}
+
+test('a confirmation takes nothing while its action runs, and says so', async () => {
   test.setTimeout(120_000)
-  // Slow enough that the second press lands while the first is out.
-  const p = profile({ remove_delay_ms: 2_000 })
+  // Slow enough that the presses land while the removal is out.
+  const p = profile({ remove_delay_ms: 3_000 })
   addedFeed(p)
   await withApp(p, async (page) => {
     await page.getByRole('button', { name: 'Remove Metro de Prueba' }).click()
     const confirm = page.getByRole('dialog', { name: 'Remove Metro de Prueba?' })
     const remove = confirm.getByRole('button', { name: 'Remove' })
+    const cancel = confirm.getByRole('button', { name: 'Cancel' })
     await remove.focus()
     await page.keyboard.press('Enter')
-    // Running: the button keeps focus and says it is unavailable, the
-    // sentence says what is happening, and the other button closes.
+
+    // Running: both buttons keep their names, say they are unavailable and
+    // look it, the pressed one keeps focus, and a sentence says what is
+    // happening.
     await expect(remove).toHaveAttribute('aria-disabled', 'true')
+    await expect(cancel).toHaveAttribute('aria-disabled', 'true')
     await expect(remove).toBeFocused()
     await expect(confirm.getByRole('status')).toHaveText(
-      /^Removing Metro de Prueba… It cannot be stopped/,
+      'Removing Metro de Prueba… It cannot be stopped.',
     )
-    await expect(confirm.getByRole('button', { name: 'Close' })).toBeVisible()
-    // A held Enter's repeat: refused, not a second removal, not a cancel.
+    // The kit paints a button's fill on its host and its label on the inner
+    // button, which inherits it: read both, the label through the shadow root.
+    const host = confirm.locator('fig-button[data-unavailable]', { hasText: 'Remove' })
+    expect(await host.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(
+      await tokenRgb(page, '--surface-sunken'),
+    )
+    expect(
+      await host.evaluate((el) => {
+        const inner = el.shadowRoot?.querySelector('button')
+        return inner ? getComputedStyle(inner).color : 'no inner button'
+      }),
+    ).toBe(await tokenRgb(page, '--text-faint'))
+
+    // A held Enter's repeat, a press on Cancel and the first Escape: all
+    // refused, the dialog stays with its sentence.
     await page.keyboard.press('Enter')
-    await expect(remove).toHaveAttribute('aria-disabled', 'true')
+    // Forced: Playwright waits for an aria-disabled button to be enabled.
+    await cancel.click({ force: true })
+    await page.keyboard.press('Escape')
     await expect(confirm).toBeVisible()
+    await expect(confirm.getByRole('status')).toHaveText(/It cannot be stopped\.$/)
+    await expect(remove).toHaveAttribute('aria-disabled', 'true')
+
     await expect(confirm).toBeHidden({ timeout: 20_000 })
     await expect(page.getByRole('listitem', { name: 'Metro de Prueba' })).toHaveCount(0)
     expect(requests(p, 'feeds.remove'), 'one removal, whatever the presses').toBe(1)
   })
 })
 
-test('a confirmation closed while its action runs lets the next one open, and keeps it open', async () => {
+test('a confirmation the platform closes while its action runs lets the next one open, idle', async () => {
   test.setTimeout(120_000)
-  const p = profile({ remove_delay_ms: 2_000 })
+  const p = profile({ remove_delay_ms: 3_000 })
   addedFeed(p, ['Metro de Prueba', 'Tranvia de Prueba'])
   await withApp(p, async (page) => {
     await page.getByRole('button', { name: 'Remove Metro de Prueba' }).click()
@@ -569,18 +601,22 @@ test('a confirmation closed while its action runs lets the next one open, and ke
     await remove.focus()
     await page.keyboard.press('Enter')
     await expect(remove).toHaveAttribute('aria-disabled', 'true')
-    // Closed while the removal is out, as the platform closes a modal on
-    // Escape: the Library is told at once.
+    // The first Escape is refused; the second closes a modal whatever its
+    // cancel event says, and the Library is told at once.
+    await page.keyboard.press('Escape')
     await page.keyboard.press('Escape')
     await expect(first).toBeHidden()
 
-    // The next confirmation opens, idle, and the first removal finishing
-    // does not close it.
+    // The next confirmation opens idle, and the first removal finishing does
+    // not close it.
     await page.getByRole('button', { name: 'Remove Tranvia de Prueba' }).click()
     const second = page.getByRole('dialog', { name: 'Remove Tranvia de Prueba?' })
     await expect(second).toBeVisible()
-    await expect(second.getByRole('button', { name: 'Cancel' })).toBeVisible()
     await expect(second.getByRole('button', { name: 'Remove' })).not.toHaveAttribute(
+      'aria-disabled',
+      'true',
+    )
+    await expect(second.getByRole('button', { name: 'Cancel' })).not.toHaveAttribute(
       'aria-disabled',
       'true',
     )

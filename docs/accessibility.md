@@ -183,20 +183,23 @@ was thrown to the top of the document with nothing said.
 - **D8. A confirmation while its action runs.** The confirm button disabled
   itself, which inside a modal left focus nowhere, so a refusal's alert was
   heard with no control under the keyboard. Now, while the action runs, the
-  confirm button keeps focus, says `aria-disabled`, takes no press - a held
-  Enter's repeats included - and is drawn as the kit draws a disabled
-  button; a status line in the dialog says what is running ("Removing Metro
-  de Prueba… It cannot be stopped; closing this leaves it running."); and
-  the other button reads Close, never Cancel. Close and Escape close the
-  dialog and tell its screen at once, the action carries on, and a refusal
-  that arrives afterwards is said on that screen (the Library's notice,
-  Settings' alert, the project's alert under Delete). A dialog closed while
-  busy and opened again for another feed is not closed by the first
-  removal finishing (`ConfirmDialog.tsx`, `kit/Button.tsx`, `Library.tsx`).
-  The busy window is exercised only by two tests with a slow stand-in
-  removal (`remove_delay_ms`): a second press refused with one
-  `feeds.remove` sent, and a dialog closed mid-removal letting the next one
-  open and stay open.
+  dialog stays modal and takes nothing: both buttons keep their names and
+  focus, say `aria-disabled`, refuse every press - a held Enter's repeats
+  included - and are drawn unavailable; the first Escape is refused; and a
+  status line in the dialog says what is running ("Removing Metro de
+  Prueba… It cannot be stopped."). If the platform closes it anyway (a
+  second Escape), its screen is told at once, a dialog opened again for
+  another feed is not closed by the first removal finishing, and a refusal
+  that arrives afterwards is said on the screen only while that screen is
+  still open; the project screen's delete goes back to the Library only if
+  the person is still on it (`ConfirmDialog.tsx`, `kit/Button.tsx`,
+  `figui-adapter.css`, `Library.tsx`, `ProjectView.tsx`). The busy window
+  is exercised only by two tests with a slow stand-in removal
+  (`remove_delay_ms`): the refused presses and Escape with one
+  `feeds.remove` sent and the unavailable look read from the kit's host and
+  inner button, and a dialog closed by two Escapes mid-removal letting the
+  next one open idle and stay open. A stalled request holding the dialog is
+  a finding for filing, below.
 
 The rest:
 
@@ -273,6 +276,14 @@ or a design decision.
   meets:* every control of the engine's page before Rename; Shift+Tab from
   the end of the screen is the only shorter way. A skip past the map, or the
   toolbar moved above it, is a new control or a layout change.
+
+- **F4. A stalled engine request holds a destructive confirmation.**
+  *Screen:* the Library's feed removal (and any confirmation whose action
+  waits on the engine). *Steps:* remove a feed while the engine is stalled.
+  *What a person meets:* a dialog that says the removal is running and
+  cannot be stopped, with both buttons unavailable, for as long as the
+  sidecar's 600 s inactivity bound; `feeds.remove` has no request deadline
+  of its own. Two presses of Escape close it, and nothing else does.
 
 ## Left for a person
 

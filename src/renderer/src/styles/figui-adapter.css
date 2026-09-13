@@ -141,6 +141,29 @@ fig-input-text:not(:focus-within):not(:hover) {
   border-radius: var(--shape-radius-small);
 }
 
+/* A kit button unavailable but keeping its focus (`aria-disabled`, which
+   the wrapper mirrors on the host as data-unavailable): the kit draws a
+   button's fill and label on the host from its variant's tokens, so those
+   tokens are pointed at the disabled look here, for every variant and
+   under the pointer and pressed too. The pointer's events stay, since the
+   component refuses the press and focus must stay where it is (A6-07). */
+fig-button[data-unavailable] {
+  --figma-color-bg-brand: var(--surface-sunken);
+  --figma-color-bg-brand-hover: var(--surface-sunken);
+  --figma-color-bg-brand-pressed: var(--surface-sunken);
+  --figma-color-bg-danger: var(--surface-sunken);
+  --figma-color-bg-danger-hover: var(--surface-sunken);
+  --figma-color-bg-danger-pressed: var(--surface-sunken);
+  --figma-color-bg-secondary: var(--surface-sunken);
+  --figma-color-bg-transparent-pressed: var(--surface-sunken);
+  --figma-color-text: var(--text-faint);
+  --figma-color-text-onbrand: var(--text-faint);
+  --figma-color-text-onbrand-secondary: var(--text-faint);
+  --figma-color-text-ondanger: var(--text-faint);
+  --figma-color-text-ondanger-secondary: var(--text-faint);
+  cursor: progress;
+}
+
 /* The same resting edge for the two other controls whose extent is only
    an edge: the native select the kit wraps draws --border (1.4 on the
    ground), and its checkbox a translucent white or black at a tenth, both

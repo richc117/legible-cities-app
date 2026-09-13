@@ -67,6 +67,11 @@ from pathlib import Path
 HOME = Path(os.environ.get("SCHEMATIC_HOME", "."))
 OUT = sys.stdout.buffer
 LOCK = threading.Lock()
+# user-feeds.json is read, changed and written by feeds.add and feeds.remove
+# on threads of their own, and read by feeds.list on the main one: one lock
+# around each read-change-write, and every write a rename, so no reader sees
+# half a file and two removals of one key cannot both find it.
+FEEDS_LOCK = threading.RLock()
 # The stand-in's registry: two presets, and whatever a test added, kept in
 # the home so a new process sees it, as the engine's user-feeds.json is.
 FEEDS = {
@@ -332,16 +337,18 @@ class Engine:
             write({"jsonrpc": "2.0", "id": msg_id, "result": {"feeds": self.feed_records()}})
             return True
         if method == "feeds.add":
-            threading.Thread(target=self.add, args=(msg_id, message.get("params") or {}),
+            threading.Thread(target=self.replying, args=(msg_id, self.add, msg_id,
+                                                         message.get("params") or {}),
                              daemon=True).start()
             return True
         if method == "feeds.remove":
             key = (message.get("params") or {}).get("key")
             if self.control.get("remove_delay_ms"):
-                threading.Thread(target=self.remove_feed, args=(msg_id, key),
+                threading.Thread(target=self.replying,
+                                 args=(msg_id, self.remove_feed, msg_id, key),
                                  daemon=True).start()
             else:
-                self.remove_feed(msg_id, key)
+                self.replying(msg_id, self.remove_feed, msg_id, key)
             return True
         if method == "export.presets":
             write({"jsonrpc": "2.0", "id": msg_id, "result": {"presets": EXPORT_PRESETS}})
@@ -655,34 +662,49 @@ class Engine:
                 "stops": stops, "trips": 1, "frequency_trips": 0, "service": service,
                 "suggested_mode": "all", "warnings": []}
 
+    @staticmethod
+    def replying(msg_id, work, *args) -> None:
+        """Run a request's work, and answer with an error if it raises, so a
+        failure on a thread is a reply rather than a request never answered."""
+        try:
+            work(*args)
+        except Exception as exc:  # noqa: BLE001 - any failure is the reply
+            error(msg_id, -32603, f"the stand-in failed: {exc}", "engine")
+
     def remove_feed(self, msg_id, key) -> None:
         """feeds.remove, in shape: a built-in feed is refused, an unknown one
         too, and a user feed is forgotten with its zip; after remove_delay_ms,
         so a test can act while the request is out."""
         time.sleep(self.control.get("remove_delay_ms", 0) / 1000)
-        if key in FEEDS:
-            error(msg_id, -32000, f"{key!r} is a built-in feed and cannot be removed", "feed")
-        elif key not in self.user_feeds():
-            error(msg_id, -32000, f"{key!r} is not a registered feed", "feed")
-        else:
+        with FEEDS_LOCK:
             users = self.user_feeds()
+            if key in FEEDS:
+                error(msg_id, -32000, f"{key!r} is a built-in feed and cannot be removed", "feed")
+                return
+            if key not in users:
+                error(msg_id, -32000, f"{key!r} is not a registered feed", "feed")
+                return
             del users[key]
             self.write_user_feeds(users)
             for path in (HOME / "data" / "feeds").glob(f"{key}.*zip"):
                 path.unlink()
-            write({"jsonrpc": "2.0", "id": msg_id, "result": {"ok": True}})
+        write({"jsonrpc": "2.0", "id": msg_id, "result": {"ok": True}})
 
     def user_feeds(self) -> dict:
-        try:
-            records = json.loads((HOME / "data" / "feeds" / "user-feeds.json").read_text())
-        except (OSError, ValueError):
-            return {}
+        with FEEDS_LOCK:
+            try:
+                records = json.loads((HOME / "data" / "feeds" / "user-feeds.json").read_text())
+            except (OSError, ValueError):
+                return {}
         return {r["key"]: r for r in records}
 
     def write_user_feeds(self, records: dict) -> None:
         folder = HOME / "data" / "feeds"
         folder.mkdir(parents=True, exist_ok=True)
-        (folder / "user-feeds.json").write_text(json.dumps(list(records.values()), indent=2))
+        with FEEDS_LOCK:
+            staging = folder / "user-feeds.json.writing"
+            staging.write_text(json.dumps(list(records.values()), indent=2))
+            staging.replace(folder / "user-feeds.json")
 
     def feed_records(self) -> list:
         cached = set(self.control.get("presets_cached", list(FEEDS)))
@@ -765,18 +787,19 @@ class Engine:
             return
         name = params.get("name") or agency or Path(what).stem
         key = params.get("key") or re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
-        users = self.user_feeds()
-        if key in FEEDS or key in users:
-            staging.unlink()
-            error(msg_id, -32000, f"{key!r} is already a feed; choose another key", "feed")
-            return
-        staging.replace(folder / f"{key}.zip")
-        record = {"key": key, "name": name, "city": "", "network": "", "url": url,
-                  "mode": params.get("mode") or "all", "label_pattern": None,
-                  "label_strip": None, "agency": params.get("agency"), "geographic": True,
-                  "notes": [], "source": "user"}
-        users[key] = record
-        self.write_user_feeds(users)
+        with FEEDS_LOCK:
+            users = self.user_feeds()
+            if key in FEEDS or key in users:
+                staging.unlink()
+                error(msg_id, -32000, f"{key!r} is already a feed; choose another key", "feed")
+                return
+            staging.replace(folder / f"{key}.zip")
+            record = {"key": key, "name": name, "city": "", "network": "", "url": url,
+                      "mode": params.get("mode") or "all", "label_pattern": None,
+                      "label_strip": None, "agency": params.get("agency"), "geographic": True,
+                      "notes": [], "source": "user"}
+            users[key] = record
+            self.write_user_feeds(users)
         write({"jsonrpc": "2.0", "id": msg_id, "result": dict(record, cached=True)})
 
     def service(self, msg_id, params: dict) -> None:
