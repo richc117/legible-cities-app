@@ -139,15 +139,14 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
   }, [id, run])
   const renameButtonRef = useRef<HTMLElement>(null)
   const deleteButtonRef = useRef<HTMLElement>(null)
-  const actionsRef = useRef<HTMLDivElement>(null)
   const newNameRef = useRef<TextInputHandle>(null)
 
   // Past the map to the project's own toolbar (issue 106): its first button
-  // that can take focus, or the toolbar itself when neither can.
+  // that can take focus, or the screen's heading when neither can.
   const skipPastMap = (): void => {
     skipTarget<HTMLElement>(
       [renameButtonRef.current, deleteButtonRef.current],
-      actionsRef.current,
+      headingRef.current,
     )?.focus()
   }
 
@@ -432,15 +431,7 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
           {project.layout !== null && (
             <Viewer key={drawn} project={project} address={tab === 'export' ? preview : null} />
           )}
-          {/* A group a person can be sent to, named for what it acts on;
-              not a Tab stop of its own. */}
-          <div
-            className="toolbar"
-            ref={actionsRef}
-            role="group"
-            aria-label="This project"
-            tabIndex={-1}
-          >
+          <div className="toolbar">
             <Button
               ref={renameButtonRef}
               aria-expanded={renaming}

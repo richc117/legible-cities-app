@@ -108,7 +108,7 @@ listed below for filing. *engine's*: inside the engine's page.
 | Line order | pass | pass | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
 | Theme switch | pass | pass (`aria-pressed`, a named group) | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
 | Geographic view | pass (`+`, `-`, arrows, `0`) | pass (pane named, the counts); finding (F2) | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
-| Viewer frame | fixed (F3, issue 106: a "Skip past the map" button just before the frame, shown on focus, sends focus to Rename; Tab without it still walks into the map; asserted in the sweep with a page of forty controls in the frame) | pass (the frame's title; the skip a native button named by its text) | engine's (F1) | engine's (F1) | engine's (F1) | engine's (F1) | not yet run: a person's | not yet run: a person's |
+| Viewer frame | fixed (F3, issue 106: a "Skip past the map" button just before the frame, shown on focus, sends focus to Rename; Tab without it still walks into the map; asserted in `accessibility.spec.ts`, "the project screen: one press skips past the map…", with a page of forty controls in the frame) | pass (the frame's title; the skip a native button named by its text) | engine's (F1) | engine's (F1) | engine's (F1) | engine's (F1) | not yet run: a person's | not yet run: a person's |
 | Rename form | pass (focus returns to Rename) | pass | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
 | Delete confirmation | fixed (D8) | pass | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
 
@@ -120,7 +120,7 @@ listed below for filing. *engine's*: inside the engine's page.
 | Frame switches, lines to keep | pass | pass (`fieldset` and `legend`) | pass | pass | fixed (C3) | fixed (C3) | not yet run: a person's | not yet run: a person's |
 | Start time, filename tag | pass | pass | pass | pass | fixed (C5) | fixed (C5) | not yet run: a person's | not yet run: a person's |
 | Export, its progress line, Cancel, Reveal | fixed (D2) | pass | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
-| Preview in the viewer's frame | fixed (F3, issue 106: the same skip, before the same frame; asserted in the sweep) | pass | engine's (F1) | engine's (F1) | engine's (F1) | engine's (F1) | not yet run: a person's | not yet run: a person's |
+| Preview in the viewer's frame | fixed (F3, issue 106: the same skip, before the same frame; asserted in `accessibility.spec.ts`, "the project screen: one press skips past the map…") | pass | engine's (F1) | engine's (F1) | engine's (F1) | engine's (F1) | not yet run: a person's | not yet run: a person's |
 
 ### Settings
 
@@ -296,8 +296,10 @@ or a design decision.
   button that can take it (DESIGN.md 8.2), without reaching into the frame;
   from the tab panel Rename is one Tab and Enter away whatever the page
   holds, and Tab without the skip still reaches the map.
-  `accessibility.spec.ts` asserts both on both tabs, with forty controls in
-  the frame. Going backwards is unchanged: Shift+Tab from the toolbar walks
+  `accessibility.spec.ts` ("the project screen: one press skips past the
+  map…") asserts both on both tabs, with forty controls in the frame, and
+  that the map does not move when the skip appears; it passed in a full
+  end-to-end run on macOS (2026-09-13), and CI runs it on three platforms. Going backwards is unchanged: Shift+Tab from the toolbar walks
   back through the map. The VoiceOver and Narrator columns are still a
   person's.
 
@@ -611,7 +613,9 @@ a table).
 - **Skip past the map.** Tab past the panels. Listen for a button "Skip
   past the map" and look for it appearing over the top edge of the map.
   Press it: listen for focus on **Rename** (or **Delete project** on a
-  read-only project), with the map not read. Shift+Tab from **Rename**
+  read-only project), with the map not read. Look for the focus ring on a
+  band of the interface's ground, clear against the map in either of the
+  project's themes. Shift+Tab from **Rename**
   walks back through the map, which is expected (F3, issue 106).
 - **Viewer frame.** From **Skip past the map**, press Tab without pressing
   it. Listen for the frame named "`<project>`, animated" in a region "Map".

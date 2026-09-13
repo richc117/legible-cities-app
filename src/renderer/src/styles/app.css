@@ -265,7 +265,10 @@ body {
    of the map. Absolute with no offsets, so it keeps its place just above
    the viewer and moves nothing when it appears or goes; scrolled clear of
    the sticky header. No transition, at any motion setting. The ring is the
-   one every focusable element has. */
+   one every focusable element has, but it lies over the engine's page, which
+   is drawn in the project's theme and not the interface's (A4-03): a halo of
+   --surface under it, as wide as the offset and twice the ring, gives the
+   ring the interface's own ground on both sides whatever the map shows. */
 .skip-link {
   position: absolute;
   z-index: var(--layer-raised);
@@ -281,6 +284,10 @@ body {
   font-size: var(--font-ui);
   text-decoration: underline;
   cursor: pointer;
+}
+
+.skip-link:focus {
+  box-shadow: 0 0 0 calc(var(--focus-ring-offset) + 2 * var(--focus-ring-width)) var(--surface);
 }
 
 .skip-link:not(:focus) {

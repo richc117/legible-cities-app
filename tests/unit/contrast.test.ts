@@ -124,7 +124,11 @@ const PAIRS: [string, string, number][] = [
   // select's, the checkbox's and the date control's, --border-strong on
   // --surface and --surface-raised, above too. The focus ring is drawn
   // outside the control at an offset, so it always sits on the ground the
-  // control does: --focus on --surface and --surface-raised, above.
+  // control does: --focus on --surface and --surface-raised, above. The one
+  // control whose ring lies over something else is "Skip past the map"
+  // (issue 106), over the engine's page in the project's theme; it carries
+  // a --surface halo under its ring, so the pair is still --focus on
+  // --surface.
   //
   // The inspector (A1-03) adds no pair of its own. Beside the main region
   // it sits on --surface, and over it on a narrow window on

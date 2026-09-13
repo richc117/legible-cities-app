@@ -15,10 +15,14 @@ export type SkipCandidate = Pick<Element, 'hasAttribute' | 'isConnected'>
 
 /**
  * Where focus goes: the first candidate that can take it, in the order the
- * toolbar draws them, or the fallback when none can: a project's Rename is
- * disabled while it is read-only and its Delete while a run or an export
- * goes, and should both be at once, focus still lands after the map rather
- * than nowhere.
+ * toolbar draws them, or the fallback when none can. The project screen's
+ * fallback is its heading. Both buttons disabled at once does not happen in
+ * practice - Rename is disabled only on a read-only project, Delete only
+ * while this project's own run or export goes, and a read-only project
+ * cannot start either - so the fallback exists to keep focus from falling
+ * to nowhere, and the heading, which names the project and is already where
+ * the screen puts focus, is a place a person can go on from; a press that
+ * left focus on the skip would read as a control that did nothing.
  */
 export function skipTarget<T extends SkipCandidate>(
   candidates: readonly (T | null)[],

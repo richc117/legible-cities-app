@@ -27,34 +27,34 @@ describe('SkipPastMap', () => {
 })
 
 describe('skipTarget', () => {
-  const toolbar = candidate('toolbar')
+  const heading = candidate('heading')
 
   it("sends focus to the toolbar's first button when it can take it", () => {
-    expect(skipTarget([candidate('Rename'), candidate('Delete project')], toolbar)?.name).toBe(
+    expect(skipTarget([candidate('Rename'), candidate('Delete project')], heading)?.name).toBe(
       'Rename',
     )
   })
 
   it('passes over a disabled button, as a read-only project has Rename', () => {
     expect(
-      skipTarget([candidate('Rename', { disabled: true }), candidate('Delete project')], toolbar)
+      skipTarget([candidate('Rename', { disabled: true }), candidate('Delete project')], heading)
         ?.name,
     ).toBe('Delete project')
   })
 
   it('passes over a button not yet mounted or already gone', () => {
     expect(
-      skipTarget([null, candidate('Rename', { connected: false }), candidate('Delete')], toolbar)
+      skipTarget([null, candidate('Rename', { connected: false }), candidate('Delete')], heading)
         ?.name,
     ).toBe('Delete')
   })
 
-  it('falls back to the toolbar when no button can take focus, so focus is never lost', () => {
+  it('falls back to the heading when no button can take focus, so focus is never lost', () => {
     expect(
       skipTarget(
         [candidate('Rename', { disabled: true }), candidate('Delete project', { disabled: true })],
-        toolbar,
+        heading,
       )?.name,
-    ).toBe('toolbar')
+    ).toBe('heading')
   })
 })

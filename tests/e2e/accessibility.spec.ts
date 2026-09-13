@@ -871,6 +871,16 @@ test('the project screen: one press skips past the map to its toolbar, and the m
 
       // Out of sight while it does not hold focus, and in the document.
       await expect.poll(width, { message: `${tab}: hidden at rest` }).toBeLessThanOrEqual(1)
+      // Where the map sits, from the top of the screen's own region rather
+      // than the viewport, so a scroll that brings the focused skip into
+      // view is not read as the map moving.
+      const mapAt = (): Promise<{ top: number; height: number }> =>
+        page.locator('section.viewer').evaluate((el) => {
+          const map = el.getBoundingClientRect()
+          const screen = (el.closest('main') as HTMLElement).getBoundingClientRect()
+          return { top: map.top - screen.top, height: map.height }
+        })
+      const atRest = await mapAt()
 
       // From the tab panel, the next Tab stop is the skip, before the frame.
       await skip.focus()
@@ -891,7 +901,15 @@ test('the project screen: one press skips past the map to its toolbar, and the m
       expect(box?.width ?? 0, `${tab}: shown when focused`).toBeGreaterThan(24)
       expect(box?.height ?? 0, `${tab}: a target when focused`).toBeGreaterThanOrEqual(24)
       expect(await skip.evaluate((el) => getComputedStyle(el).clipPath)).toBe('none')
-      expect(await skip.evaluate((el) => getComputedStyle(el).outlineStyle)).not.toBe('none')
+      expect(await skip.evaluate((el) => getComputedStyle(el).outlineStyle)).toBe('solid')
+      // And it moves nothing: the map is where it was before the skip appeared.
+      // Within half a pixel: a scroll can land on a fraction of one.
+      const shown = await mapAt()
+      expect(shown.top, `${tab}: the map does not move when the skip appears`).toBeCloseTo(
+        atRest.top,
+        0,
+      )
+      expect(shown.height, `${tab}: the map keeps its size`).toBeCloseTo(atRest.height, 0)
 
       // Not used, the next Tab goes into the map: its first control, whatever
       // else the page holds.
