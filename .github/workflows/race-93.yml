@@ -1,0 +1,91 @@
+# TEMPORARY - issue 93. Remove this file before the pull request.
+#
+# Runs the two end-to-end tests that lost a select's change on the Windows
+# runner, many times over, against the retried rename, and prints every log
+# line in which a record's rename was refused, so the run says whether the
+# retry was needed as well as whether the tests passed. Pushes to the issue's
+# own branch only.
+name: race-93
+
+on:
+  push:
+    branches: [93-record-write-race]
+
+permissions:
+  contents: read
+
+jobs:
+  race:
+    name: race-93 (windows-latest)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      CI: 'true'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Fetch the Electron binary
+        run: npx install-electron --no
+
+      - name: Build
+        run: npm run build
+
+      # The two tests from the issue, fifteen times each. The logs go to a
+      # folder of the run's own (the suite's teardown leaves a LEGIBLE_LOGS
+      # set by hand alone), and the temporary folder is moved under the
+      # runner's so the engine homes and the export tab's profiles, whose
+      # logs follow them, can be collected.
+      - name: The two tests from the issue, repeated
+        shell: bash
+        env:
+          LEGIBLE_LOGS: ${{ runner.temp }}/e2e-logs
+          TMP: ${{ runner.temp }}
+          TEMP: ${{ runner.temp }}
+        run: >-
+          npx playwright test tests/e2e/inspect.spec.ts tests/e2e/export-tab.spec.ts
+          --repeat-each=15
+          --grep "several operators offers the choice|a storyboard chosen for a video"
+
+      # The rest of both files, which make back-to-back writes of one record
+      # too, three times each. The nine-export test is left out: it takes
+      # minutes a run and would not fit fifteen, or three, in the hour.
+      - name: The rest of both files, repeated
+        if: success() || failure()
+        shell: bash
+        env:
+          LEGIBLE_LOGS: ${{ runner.temp }}/e2e-logs
+          TMP: ${{ runner.temp }}
+          TEMP: ${{ runner.temp }}
+        run: >-
+          npx playwright test tests/e2e/inspect.spec.ts tests/e2e/export-tab.spec.ts
+          --repeat-each=3
+          --grep-invert "several operators offers the choice|a storyboard chosen for a video|a still, a video and a GIF"
+
+      - name: Every refused rename the logs recorded
+        if: always()
+        shell: bash
+        run: |
+          grep -rh --include='*.log' -e 'attempts (' -e 'write failed (' "$RUNNER_TEMP" || echo 'no rename was refused'
+
+      - name: Keep the failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: race-93-evidence
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            test-results/
+            ${{ runner.temp }}/e2e-logs/
+            ${{ runner.temp }}/legible-cities-*/**/logs/
+            ${{ runner.temp }}/legible-cities-*/**/project.json
