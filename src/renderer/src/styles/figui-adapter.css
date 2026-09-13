@@ -86,9 +86,12 @@ fig-separator {
   --figma-color-border-disabled: var(--border);
   --figma-color-border-menu: var(--border);
   --figma-color-border-brand: var(--accent);
-  --figma-color-border-brand-strong: var(--accent);
+  /* The strong edges are drawn on a brand fill - a checked checkbox's
+     inset edge - so they are the fill's own colour, --accent-text, rather
+     than a lighter ring inside a darker fill in sepia (A6-07). */
+  --figma-color-border-brand-strong: var(--accent-text);
   --figma-color-border-selected: var(--accent);
-  --figma-color-border-selected-strong: var(--accent);
+  --figma-color-border-selected-strong: var(--accent-text);
   --figma-color-border-danger: var(--error);
   --figma-color-border-danger-strong: var(--error);
   --figma-color-border-onbrand-strong: var(--on-accent);

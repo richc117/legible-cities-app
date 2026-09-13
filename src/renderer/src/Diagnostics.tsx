@@ -64,11 +64,14 @@ export interface Explained {
   dismissed: readonly string[]
 }
 
-/** Escape: every explanation showing - pressed, pointed at or focused - is sent away. */
+/**
+ * Escape: every explanation showing is sent away. One that is pointed at or
+ * focused is dismissed until the pointer and the focus leave its row; one
+ * that was only pressed open, with neither on its row any more, is simply
+ * put away - nothing would ever clear a dismissal of it.
+ */
 export function explainedAfterEscape(now: Explained, showing: readonly string[]): Explained {
-  const gone = new Set([...now.dismissed, ...showing])
-  if (now.asked !== null) gone.add(now.asked)
-  return { asked: null, dismissed: [...gone] }
+  return { asked: null, dismissed: [...new Set([...now.dismissed, ...showing])] }
 }
 
 /** A press on a row's control: its explanation is asked for, or put away, and never dismissed. */
@@ -116,7 +119,9 @@ export function DiagnosticsReport({
   // wherever it was.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape') return
+      // An Escape something else has taken - the inspector closing - is not
+      // this panel's.
+      if (event.key !== 'Escape' || event.defaultPrevented) return
       const showing: string[] = []
       if (hovered.current !== null) showing.push(hovered.current)
       const focused = document.activeElement?.closest('[data-metric]')

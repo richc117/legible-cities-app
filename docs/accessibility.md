@@ -32,11 +32,18 @@ the release tag, and its two columns are left for it.
    at rest; with reduced motion emulated, and the emulation asserted to
    take effect, no element or open shadow root has a running animation or
    a transition that lasts. It also asserts each fix below where a person
-   meets it. **Written in this pass and not run by it**: the lane that
-   wrote it does not launch Electron, and the sweep's first run is the
-   coordinator's. Until then the Keyboard, Focus and Reduced motion columns
-   below rest on the audit, and a failure in the first run is a finding
-   against this record.
+   meets it. **Its first runs** (macOS, 2026-09-13, by the coordinator, not
+   by the lane that wrote it) passed every screen's names, walk and motion
+   checks; the removed feed's focus (D5) and the one-control dialog's walk
+   failed and were changed. The confirmation's second press (D8), the
+   confirmed re-layout (D1) and focus a person moved being left alone were
+   added after, and have not run yet. Where a defect below says
+   "asserted in the sweep", that is the test that covers it; until a green
+   run of the whole spec it is written, not proven. The sweep searches the
+   light tree: of the kit's elements in use, a button is counted by its
+   host and a select's and text field's focusable parts are ordinary
+   children, so no kit control focusable only inside a shadow root is on
+   screen, and one added later would be outside it.
 3. **Contrast** is arithmetic, not a screenshot: `tests/unit/contrast.test.ts`
    recomputes every text and control pair the stylesheets use, in both
    themes, now including the kit's filled buttons at rest, under the
@@ -131,7 +138,7 @@ listed below for filing. *engine's*: inside the engine's page.
 |---|---|---|---|---|---|---|---|---|
 | Toggle, heading, Close, Escape | pass | pass | pass | pass (no slide at any setting) | pass | pass | not yet run: a person's | not yet run: a person's |
 | Jobs: progress line, Cancel, Copy log, Details | pass | pass (each names its job) | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
-| Below 900px, over the main region | pass (the main region `inert`) | pass | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
+| Below 900px, over the main region | audit only (the main region `inert`; not in the sweep) | audit only | audit only | audit only | pass | pass | not yet run: a person's | not yet run: a person's |
 
 ### Mismatch dialog
 
@@ -146,43 +153,56 @@ focused element is removed or disabled, so a keyboard or screen reader user
 was thrown to the top of the document with nothing said.
 
 - **D1. The layout run.** "Lay out" gives way to Cancel, Cancel to "Lay out
-  again" when the run ends, and a confirmed re-layout unmounts its button.
-  Focus is now handed to the control that took the pressed one's place,
-  only when it had nowhere else to be (`src/renderer/src/focusHandback.ts`,
-  `LayoutRun.tsx`). Asserted end to end and in
+  again" when the run ends, and a confirmed re-layout closes its warning
+  onto a Re-layout button the run has removed. The region remembers the
+  element that last took focus in it; when that element can no longer hold
+  focus (removed, in a closed dialog, disabled, not drawn) and focus has
+  nowhere else to be, focus goes to the control that took its place,
+  without scrolling. A press on prose forgets it, so a person who clicked
+  away and scrolled to read is not pulled back when a run ends
+  (`src/renderer/src/focusHandback.ts`, `LayoutRun.tsx`). Asserted in the sweep and in
   `tests/unit/focus-handback.test.ts`.
 - **D2. The export.** The same for Export, Cancel and Reveal (`ExportRun.tsx`).
-  Asserted end to end.
+  Asserted in the sweep.
 - **D3. The service day.** "Draw for this day" and the date control disable
   themselves for the rebuild; the section's heading takes focus first
-  (`ServiceDay.tsx`). Asserted end to end.
+  (`ServiceDay.tsx`). Asserted in the sweep.
 - **D4. A project made from the Library's empty state.** The button that
   opened the dialog goes with the empty state; focus lands on the new
-  project's row (`Library.tsx`). Asserted end to end.
+  project's row (`Library.tsx`). Asserted in the sweep.
 - **D5. A removed feed.** Its row takes its Remove with it; focus goes to the
-  Feeds heading (`Library.tsx`, `FeedList.tsx`). Asserted end to end.
+  Feeds heading once the confirmation has closed and the list has been
+  drawn, in either order, checked on every render and once more after the
+  browser's next rendering update, since Chromium may move focus off the
+  removed button only then (`Library.tsx`, `FeedList.tsx`). Asserted in the sweep.
 - **D6. "Use the default" in Settings.** It goes once the folder is the
   default; focus goes to the row's "Choose folder" (`Settings.tsx`).
-  Asserted end to end.
+  Asserted in the sweep.
 - **D7. "Use the feed's entry" in Inspect.** It goes once the choice is the
-  entry's; focus goes to the mode it set (`Inspect.tsx`). Asserted end to end.
-- **D8. A confirmation while its action runs.** The confirm button disables
+  entry's; focus goes to the mode it set (`Inspect.tsx`). Asserted in the sweep.
+- **D8. A confirmation while its action runs.** The confirm button disabled
   itself, which inside a modal left focus nowhere, so a refusal's alert was
-  heard with no control under the keyboard; Cancel holds focus now
-  (`ConfirmDialog.tsx`). Asserted end to end on a refused feed removal.
+  heard with no control under the keyboard. Both buttons now stay focusable
+  and say `aria-disabled` while the action runs, and neither a press nor
+  Escape's cancel is taken then, so a repeated Enter cannot land on Cancel
+  and close the dialog as cancelled over a project already deleted
+  (`ConfirmDialog.tsx`, `kit/Button.tsx`). Asserted in the sweep with two
+  Enters on a refused feed removal.
 
 The rest:
 
 - **D9. Diagnostics explanations could not be dismissed** without moving the
   pointer or the focus (WCAG 1.4.13). Escape sends every showing one away,
   and each comes back once the pointer and the focus have left its row, or
-  on a press (`Diagnostics.tsx`, `app.css`). Asserted in
+  on a press; one only pressed open, with nothing on its row, is put away
+  rather than dismissed, and an Escape something else took (the inspector
+  closing) is left alone (`Diagnostics.tsx`, `app.css`). Asserted in
   `tests/unit/diagnostics-panel.test.tsx` and end to end.
 - **D10. The colour picker's sliders marked focus only by growing the thumb
   a tenth**: `react-colorful` removes the outline. The app's ring is back
-  (`app.css`). Asserted end to end.
+  (`app.css`). Asserted in the sweep.
 - **D11. Sortable table headers were 16px targets**, under the design's 24.
-  They are at least `--target-min` high (`app.css`). Asserted end to end.
+  They are at least `--target-min` high (`app.css`). Asserted in the sweep.
 
 Contrast, all in the token stylesheets and asserted in
 `tests/unit/contrast.test.ts`:
@@ -191,7 +211,12 @@ Contrast, all in the token stylesheets and asserted in
   `--accent` at the kit's 13px and 500 weight, which is not large text. The
   kit's brand fill is `--accent-text` now, 5.74 at rest and higher under
   the pointer and pressed; in warm-dark the two tokens are one colour and
-  nothing changed (`figui-adapter.css`, DESIGN.md 3.1 and 8.1). **This
+  nothing changed (`figui-adapter.css`, DESIGN.md 3.1 and 8.1). A checked
+  checkbox's inset edge (the kit's `--figma-color-border-selected-strong`)
+  takes the same token, so it is not a lighter ring inside the darker fill;
+  a primary button draws no edge. The tab strip's underline and the progress
+  line's running mark stay `--accent`: they are graphics on the ground, at
+  3.0 or more in both themes. **This
   changes how the sepia primary button looks** - a darker blue - and is the
   one fix here the maintainer may want to see before it merges.
 - **C2. A select's edge was `--border`**, 1.3 to 1.7 against the ground, short

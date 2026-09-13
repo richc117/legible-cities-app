@@ -8,7 +8,7 @@ import AddFeedDialog from './AddFeedDialog'
 import ConfirmDialog from './ConfirmDialog'
 import CreateProjectDialog from './CreateProjectDialog'
 import FeedList, { FEEDS_HEADING_ID } from './FeedList'
-import { focusLost } from './focusHandback'
+import { afterRendering, focusLost } from './focusHandback'
 import Icon from './icons/Icon'
 import Button from './kit/Button'
 import { useEngineState } from './useEngineState'
@@ -66,7 +66,10 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
   // opened it, and the list has been drawn without that control. Judged
   // before both, focus is still in the dialog or on the opener and looks
   // held; the opener then goes and focus falls to the body with nobody
-  // left to pick it up. So the check waits for both, on every render.
+  // left to pick it up. The last step can come with no render of ours
+  // after it - Chromium moves focus off a removed element at its next
+  // rendering update - so the check runs on every render and once more
+  // after the rendering has caught up with the action.
   const handBack = useRef<{ project: string } | { feed: string } | null>(null)
   const rows = useRef(new Map<string, HTMLButtonElement>())
 
@@ -108,23 +111,38 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
     handBack.current = { project: record.id }
     setCreating(null)
     setLibrary({ status: 'ready', projects: await listProjects() })
+    afterRendering(() => settleRef.current())
   }
 
+  // The check, reading the state as last rendered so it can run outside a
+  // render. Before the dialog has closed and the list been drawn it does
+  // nothing. After, focus that is lost goes to the target; focus that looks
+  // held is looked at once more after the rendering has caught up, and
+  // only then left where it is, as a person's.
+  const settleRef = useRef<(final?: boolean) => void>(() => undefined)
   useEffect(() => {
-    const target = handBack.current
-    if (target === null) return
-    if ('project' in target) {
-      if (creating !== null) return
-      const row = rows.current.get(target.project)
-      if (row === undefined) return
-      handBack.current = null
-      if (focusLost(document.activeElement, document.body)) row.focus()
-      return
+    settleRef.current = (final = false) => {
+      const target = handBack.current
+      if (target === null) return
+      let focusTarget: HTMLElement | null
+      if ('project' in target) {
+        if (creating !== null) return
+        focusTarget = rows.current.get(target.project) ?? null
+        if (focusTarget === null) return
+      } else {
+        if (removing !== null || feeds.some((feed) => feed.key === target.feed)) return
+        focusTarget = document.getElementById(FEEDS_HEADING_ID) ?? headingRef.current
+      }
+      if (focusLost(document.activeElement, document.body)) {
+        handBack.current = null
+        focusTarget?.focus()
+      } else if (final) {
+        handBack.current = null
+      } else {
+        afterRendering(() => settleRef.current(true))
+      }
     }
-    if (removing !== null || feeds.some((feed) => feed.key === target.feed)) return
-    handBack.current = null
-    if (focusLost(document.activeElement, document.body))
-      (document.getElementById(FEEDS_HEADING_ID) ?? headingRef.current)?.focus()
+    settleRef.current()
   })
 
   const added = useCallback((): void => {
@@ -158,6 +176,7 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
     setRemoving(null)
     setFeedNotice(`${removing.name} was removed.`)
     await refreshFeeds()
+    afterRendering(() => settleRef.current())
   }
 
   return (

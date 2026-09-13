@@ -30,6 +30,19 @@ export default function ConfirmDialog({
   const cancelRef = useRef<HTMLElement>(null)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  // While the action runs, neither button takes a press and Escape does not
+  // cancel: the action cannot be taken back, and a dialog that closed
+  // saying "cancelled" over a project already deleted would be a lie. Read
+  // in the same tick as a press, so a held Enter's repeats are refused too.
+  // Both buttons stay focusable (`aria-disabled`, not `disabled`), because
+  // Chromium blurs a disabled element and a modal would be left with focus
+  // nowhere for a refusal's alert to be read against (A6-07).
+  const busyRef = useRef(false)
+  const closedWhileBusy = useRef(false)
+  const openRef = useRef(open)
+  useEffect(() => {
+    openRef.current = open
+  })
 
   // showModal() makes the browser own modality, the focus trap, Escape and
   // the return of focus to the opener; the open prop only drives it.
@@ -47,23 +60,32 @@ export default function ConfirmDialog({
   }, [open])
 
   const confirm = async (): Promise<void> => {
-    // The confirm button disables itself while the action runs, and
-    // Chromium blurs a disabled element; inside a modal that leaves focus
-    // nowhere, so a refusal's alert would be heard with no control under
-    // the keyboard. Cancel, the safe action, holds it instead (A6-07).
-    cancelRef.current?.focus()
+    if (busyRef.current) return
+    busyRef.current = true
+    closedWhileBusy.current = false
     setBusy(true)
     setMessage(null)
     try {
       await onConfirm()
     } catch (error) {
-      // Escape may have closed the dialog while the request was in flight.
+      // The platform may have closed the dialog while the request was in
+      // flight (a second Escape closes a modal whatever its cancel says).
       if (dialogRef.current?.open) {
         setMessage(error instanceof Error ? error.message : String(error))
       }
     } finally {
+      busyRef.current = false
       setBusy(false)
+      // Closed on its own while the action ran, and the parent still holds
+      // it open: now that the action has finished, the parent is told, so
+      // its state and the element agree again.
+      if (closedWhileBusy.current && openRef.current && dialogRef.current?.open !== true) onCancel()
+      closedWhileBusy.current = false
     }
+  }
+
+  const cancel = (): void => {
+    if (!busyRef.current) onCancel()
   }
 
   return (
@@ -71,8 +93,17 @@ export default function ConfirmDialog({
       ref={dialogRef}
       aria-labelledby={titleId}
       aria-describedby={descriptionId}
-      onCancel={() => onCancel()}
-      onClose={() => setMessage(null)}
+      onCancel={(event) => {
+        if (busyRef.current) {
+          event.preventDefault()
+          return
+        }
+        onCancel()
+      }}
+      onClose={() => {
+        setMessage(null)
+        if (busyRef.current) closedWhileBusy.current = true
+      }}
     >
       <h2 id={titleId}>{title}</h2>
       <p id={descriptionId}>{description}</p>
@@ -82,10 +113,10 @@ export default function ConfirmDialog({
         </p>
       )}
       <div className="actions">
-        <Button ref={cancelRef} onClick={() => onCancel()}>
+        <Button ref={cancelRef} aria-disabled={busy} onClick={cancel}>
           Cancel
         </Button>
-        <Button variant={variant} disabled={busy} onClick={() => void confirm()}>
+        <Button variant={variant} aria-disabled={busy} onClick={() => void confirm()}>
           {confirmLabel}
         </Button>
       </div>

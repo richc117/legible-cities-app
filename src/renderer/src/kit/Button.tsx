@@ -42,6 +42,13 @@ export interface ButtonProps {
   'aria-expanded'?: boolean
   /** A toggle's state, mirrored onto the kit's inner button by hand as aria-expanded is. */
   'aria-pressed'?: boolean
+  /**
+   * Unavailable but still focusable, mirrored by hand too: for a button that
+   * must not take its press again yet and must not drop the focus it holds,
+   * which `disabled` would (Chromium blurs a disabled element). The press is
+   * the caller's to refuse.
+   */
+  'aria-disabled'?: boolean
   'aria-describedby'?: string
   'aria-controls'?: string
 }
@@ -57,6 +64,7 @@ const Button = forwardRef<HTMLElement, ButtonProps>(function Button(
     children,
     'aria-expanded': expanded,
     'aria-pressed': pressed,
+    'aria-disabled': unavailable,
     'aria-controls': controls,
     ...rest
   },
@@ -86,8 +94,9 @@ const Button = forwardRef<HTMLElement, ButtonProps>(function Button(
     }
     set('aria-expanded', expanded === undefined ? undefined : String(expanded))
     set('aria-pressed', pressed === undefined ? undefined : String(pressed))
+    set('aria-disabled', unavailable === true ? 'true' : undefined)
     set('aria-controls', controls)
-  }, [expanded, pressed, controls])
+  }, [expanded, pressed, unavailable, controls])
 
   return (
     <>

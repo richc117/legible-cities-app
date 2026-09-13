@@ -122,9 +122,17 @@ describe('an explanation that can be dismissed', () => {
   })
 
   it('sends away what is pointed at or focused, and what was pressed open', () => {
-    const after = explainedAfterEscape({ asked: 'edges', dismissed: [] }, ['stations'])
+    const after = explainedAfterEscape({ asked: 'edges', dismissed: [] }, ['stations', 'edges'])
     expect(after.asked).toBeNull()
     expect([...after.dismissed].sort()).toEqual(['edges', 'stations'])
+  })
+
+  // Pressed open on one row, then an Escape elsewhere (a colour picker
+  // closing): the explanation is put away, and not dismissed, since no
+  // pointer or focus is left on its row to clear a dismissal by leaving.
+  it('puts away one pressed open whose row nothing is on, without dismissing it', () => {
+    const after = explainedAfterEscape({ asked: 'crossings', dismissed: [] }, [])
+    expect(after).toEqual({ asked: null, dismissed: [] })
   })
 
   it('changes nothing it was not showing', () => {

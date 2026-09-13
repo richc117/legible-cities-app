@@ -196,6 +196,12 @@ function installProbe(): void {
    * What a person can reach with Tab: in the open modal dialog if there is
    * one, else the page. Not a frame: what a frame holds is its page's, the
    * engine's, and a frame with nothing focusable in it is not a stop at all.
+   *
+   * The light tree only. Of the kit's elements the app uses, a button's
+   * focusable part is in its shadow root and the button is counted by its
+   * host; a select's and a text field's are ordinary children of theirs.
+   * A kit control focusable only inside a shadow root would be missed
+   * here, and none is used (docs/accessibility.md).
    */
   const expected = (): Element[] => {
     const scope: ParentNode = document.querySelector('dialog[open]') ?? document
@@ -282,10 +288,14 @@ function installProbe(): void {
         // A frame's page is its own; the engine draws its focus.
         if (stop.control.tagName === 'IFRAME' || !stop.control.isConnected) continue
         const rest = stop.chain.map(ring)
+        // An outline the control did not have at rest, or a shadow where it
+        // had none: a shadow that merely changes does not count, because a
+        // kit text field drops its resting edge on focus and would pass
+        // with no ring at all.
         const shows = stop.focused.some(
           (focused, i) =>
             (focused.outline !== 'none' && focused.outline !== rest[i].outline) ||
-            (focused.shadow !== 'none' && focused.shadow !== rest[i].shadow),
+            (focused.shadow !== 'none' && rest[i].shadow === 'none'),
         )
         if (!shows) unringed.push(describe(stop.control))
       }
@@ -359,7 +369,7 @@ async function expectTabWalk(page: Page, where: string): Promise<void> {
   // control, which is the walk's whole cycle, and is complete. Anywhere
   // with more than one control, staying put means a date control's fields
   // or a frame's own controls, and the walk goes on.
-  const deadline = Date.now() + 45_000
+  const deadline = Date.now() + 20_000
   let ended = false
   const trace: string[] = []
   while (Date.now() < deadline) {
@@ -503,7 +513,8 @@ test('the Library, its empty state and its three dialogs', async () => {
   })
 })
 
-test('a confirmation that is refused keeps focus on its Cancel', async () => {
+test('a confirmation keeps focus on its button while it runs, and a second press is not a cancel', async () => {
+  test.setTimeout(120_000)
   const p = profile()
   addedFeed(p)
   await withApp(p, async (page) => {
@@ -519,14 +530,75 @@ test('a confirmation that is refused keeps focus on its Cancel', async () => {
 
     await page.getByRole('button', { name: 'Remove Metro de Prueba' }).click()
     const confirm = page.getByRole('dialog', { name: 'Remove Metro de Prueba?' })
-    await pressWithKeyboard(confirm.getByRole('button', { name: 'Remove' }))
+    const remove = confirm.getByRole('button', { name: 'Remove' })
+    // Enter twice, as a held key repeats: the second press lands on the
+    // button the first one pressed, never on Cancel, so the dialog does not
+    // close as cancelled while the action is out or after it is refused.
+    await remove.focus()
+    await page.keyboard.press('Enter')
+    await page.keyboard.press('Enter')
     await expect(confirm.getByRole('alert')).toBeVisible()
-    await expect(confirm.getByRole('button', { name: 'Cancel' })).toBeFocused()
+    await expect(confirm).toBeVisible()
+    await expect(remove).toBeFocused()
+    await confirm.getByRole('button', { name: 'Cancel' }).click()
+    await expect(confirm).toBeHidden()
+    await expect(page.getByRole('listitem', { name: 'Metro de Prueba' })).toBeVisible()
+  })
+})
+
+test('focus through a layout run and a confirmed re-layout, and left where a person put it', async () => {
+  test.setTimeout(180_000)
+  // Slow enough that a run is still going when focus is looked at.
+  const p = profile({ progress_delay_ms: 150 })
+  await withApp(p, async (page) => {
+    await newProjectFromLibrary(page, 'Los Angeles')
+    await page.getByRole('button', { name: 'Open Los Angeles' }).click()
+    await expect(heading(page)).toHaveText('Los Angeles')
+    const run = page.getByRole('region', { name: 'Layout run' })
+    const cancel = run.getByRole('button', { name: 'Cancel', exact: true })
+    const again = page.getByRole('button', { name: 'Lay out again', exact: true })
+
+    // From the keyboard: Lay out gives way to Cancel, Cancel to Lay out again.
+    await pressWithKeyboard(page.getByRole('button', { name: 'Lay out', exact: true }))
+    await expect(cancel).toBeFocused()
+    await expect(again).toBeFocused({ timeout: 30_000 })
+
+    // A re-layout confirmed from the keyboard: the warning closes onto a
+    // Re-layout button the run has removed, and focus goes to the run's
+    // Cancel, then to Lay out again.
+    await pressWithKeyboard(page.getByRole('button', { name: 'Re-layout', exact: true }))
+    const warning = page.getByRole('dialog', { name: 'Lay this project out from scratch?' })
+    await pressWithKeyboard(warning.getByRole('button', { name: 'Re-layout', exact: true }))
+    await expect(warning).toBeHidden()
+    await expect(cancel).toBeFocused()
+    await expect(again).toBeFocused({ timeout: 30_000 })
+
+    // Focus moved elsewhere while the run goes stays there when it ends.
+    await pressWithKeyboard(again)
+    await expect(cancel).toBeFocused()
+    const dayHeading = page
+      .getByRole('region', { name: 'Service day' })
+      .getByRole('heading', { name: 'Service day' })
+    await dayHeading.focus()
+    await expect(again).toBeVisible({ timeout: 30_000 })
+    await expect(dayHeading).toBeFocused()
+
+    // A press on prose while the run goes leaves focus nowhere, and the
+    // run's end does not pull it back.
+    await again.click()
+    await expect(cancel).toBeVisible()
+    await run.locator('.layout-run-foot .progress-message').click()
+    await expect(again).toBeVisible({ timeout: 30_000 })
+    await expect
+      .poll(() => page.evaluate(() => document.activeElement?.tagName.toLowerCase() ?? 'nothing'))
+      .toBe('body')
   })
 })
 
 test('the project screen: its Map tab, Inspect, the geographic view, the inspector and its dialogs', async () => {
-  test.setTimeout(300_000)
+  // Seven walks of at most 20 s each, a layout run and a rebuild: a stuck
+  // walk reports its own message well before the test's time runs out.
+  test.setTimeout(420_000)
   const p = profile({ map_caveats: ['4 of 116 stops could not be placed on the map'] })
   await withApp(p, async (page) => {
     await openLaidOut(page, 'Los Angeles')
