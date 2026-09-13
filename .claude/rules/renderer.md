@@ -69,7 +69,11 @@ by listing the asar; a unit test now keeps it out). Use the wrappers in
 element declares the field, and the kit reads attributes, so `type`,
 `disabled`, `placeholder` and the value go through refs; the kit forwards
 only `aria-label`, `-labelledby` and `-describedby` to its inner button,
-so a state attribute is mirrored by hand. The kit gives every `<dialog>`
+so a state attribute is mirrored by hand. An id reference set on the kit's
+inner button resolves inside its shadow root, so `aria-describedby` is
+mirrored as `aria-description` text by `kit/Button.tsx` (issue 113), and
+`aria-labelledby` and `aria-controls` do not work there
+(`docs/accessibility.md`, F6). The kit gives every `<dialog>`
 `inset: auto`, which parks a modal in the corner unless the app's rules
 restore `inset: 0; margin: auto`. Its shadow styles need `style-src
 'unsafe-inline'`; `script-src` stays `'self'`. Playwright emulates the
