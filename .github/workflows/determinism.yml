@@ -1,7 +1,9 @@
 # The constitution's third principle, tested where it has to hold: the same
-# project, exported twice by the app, decodes to the same frames within a
+# project, exported twice by the app, captures the same frames within a
 # channel tolerance of 8 in RGB, from the same stored layout, with no layout
-# requested (A5-04, tests/e2e/determinism.spec.ts). The committed BART fixture
+# requested, and delivers two well-formed GIFs (A5-04,
+# tests/e2e/determinism.spec.ts). The GIFs' pixels are reported, not judged:
+# the engine's GIF palette does not preserve the tolerance (engine issue 33). The committed BART fixture
 # is exported as a draft instagram-reel-gif against the real engine at its
 # pin and the vendored ffmpeg, on the three platforms the app ships for.
 #
@@ -231,7 +233,20 @@ jobs:
           CI: 'true'
           LEGIBLE_DETERMINISM_TEST: '1'
 
-      # The two GIFs and the frames that differed, when there are any.
+      # The per-frame report, from every run: what the two captures and the
+      # two GIFs measured, passing or not, so a trend is visible before a
+      # failure is.
+      - name: Keep the captured-frame report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: determinism-report-${{ matrix.os }}-run${{ matrix.run }}
+          path: test-results/**/captured-frames.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+      # Everything, when it fails: the report, the two GIFs, and the captured
+      # frames that differed.
       - name: Keep the failure evidence
         if: failure()
         uses: actions/upload-artifact@v7

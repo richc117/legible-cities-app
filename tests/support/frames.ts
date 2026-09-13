@@ -6,7 +6,7 @@
 // determinism test, so the two measure the same thing.
 
 import { spawn } from 'node:child_process'
-import { mkdirSync, readdirSync, readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import type { Readable } from 'node:stream'
 
@@ -263,53 +263,6 @@ export async function decodedEnds(
   } catch (error) {
     d.kill()
     throw error
-  }
-}
-
-/**
- * The named frames of a file as PNGs in `dir`, `<prefix>-<frame>.png`: the
- * evidence a failed comparison leaves for a person to look at. At most
- * `limit` frames, so a file that differs everywhere does not fill a disk.
- */
-export async function extractFrames(
-  file: string,
-  frames: number[],
-  dir: string,
-  prefix: string,
-  options: { ffmpeg?: string; limit?: number } = {},
-): Promise<void> {
-  const ffmpeg = options.ffmpeg ?? 'ffmpeg'
-  mkdirSync(dir, { recursive: true })
-  for (const frame of frames.slice(0, options.limit ?? 12)) {
-    const out = join(dir, `${prefix}-${String(frame).padStart(4, '0')}.png`)
-    await new Promise<void>((resolve, reject) => {
-      const child = spawn(
-        ffmpeg,
-        [
-          '-v',
-          'error',
-          '-y',
-          '-i',
-          file,
-          '-vf',
-          `select=eq(n\\,${frame})`,
-          '-fps_mode',
-          'passthrough',
-          '-frames:v',
-          '1',
-          out,
-        ],
-        { windowsHide: true, stdio: ['ignore', 'ignore', 'inherit'], timeout: 60_000 },
-      )
-      child.on('error', reject)
-      child.on('close', (code, signal) =>
-        code === 0
-          ? resolve()
-          : reject(
-              new Error(`ffmpeg ended with ${signal ?? `code ${code}`} extracting frame ${frame}`),
-            ),
-      )
-    })
   }
 }
 

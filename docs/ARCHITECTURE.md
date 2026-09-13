@@ -943,56 +943,63 @@ committed BART fixture - the feed's zip and one stored layout, whose id
 `tests/unit/determinism-real.test.ts` checks is the one the pinned engine
 addresses - has the real engine draw the project's page from it, and
 exports the project's draft `instagram-reel-gif` through the Export tab
-twice. The GIFs are decoded with the vendored ffmpeg, each frame once, and
-compared frame by frame in RGB at a channel tolerance of 8
-(`tests/support/frames.ts`, which the reel test shares); a decoder that
-does not exit cleanly fails the comparison. Agreement alone would pass two
-blank exports, so the page must carry trips and the first export's first
-and last frames must differ by more than the tolerance. The record's layout
-id and `made`, and the stored set's meta and the sha256 of its four stage
-files, must not move between the exports (`layoutDrift` in
+twice. The app keeps each export's captured frames for the test
+(`LEGIBLE_KEEP_FRAMES`, which the test sets and which `keptFramesFolder` in
+`src/main/export.ts` ignores in a packaged app), and **the verdict is the
+capture's**: the two captures must have the same number of frames, every
+frame within a channel tolerance of 8 in RGB, and must move - the first and
+last captured frames differ by more than the tolerance, since two blank
+captures agree perfectly, and the page must carry trips. The record's
+layout id and `made`, and the stored set's meta and the sha256 of its four
+stage files, must not move between the exports (`layoutDrift` in
 `tests/support/determinism.ts`), and a `sitecustomize` on the engine's
 `PYTHONPATH`, which the app passes in development only, records each
-request's method so the test can assert no `graph.build` was sent. The
-pinned engine's sidecar carries no layout id, so the record and the stored
-set are what name the layout. `.github/workflows/determinism.yml` proves
-the fixture's id against the engine it installed and then runs the test on
-Ubuntu, macOS and Windows, once per pull request that touches what the
-export is made of and five times on a weekly schedule, and keeps the two
-GIFs and the differing frames for a week when it fails; it is not a
-required check.
+request's method so the test can assert two `export.encode` and no
+`graph.build`. The pinned engine's sidecar carries no layout id, so the
+record and the stored set are what name the layout. The delivered GIFs are
+checked for structure only: both there, at the preset's size, holding the
+captured number of frames, not trivially small, and moving. Their pixels
+are compared and written down, never asserted. Everything goes into
+`captured-frames.json` among the test's results: per captured frame, the
+pixels over the tolerance, the box they lie in and whether the frame is
+the other run's frame before or after it, and the GIF comparison beside
+it. `.github/workflows/determinism.yml` proves the fixture's id against the
+engine it installed and then runs the test on Ubuntu, macOS and Windows,
+once per pull request that touches what the export is made of and five
+times on a weekly schedule; it keeps that report from every run, and the
+two GIFs and the differing captured frames for a week when a run fails. It
+is not a required check.
 
-The test was shown to catch what it is for, on macOS against the real
-engine, before it was merged. The unaltered app exported two
+Why the GIFs are not the verdict was measured. Five unaltered runs on one
+macOS machine, while other work loaded it, captured the same frames every
+time: in one run all 108 PNG files were byte-identical, and in the other
+four 93 were, with the other 15 differing below the tolerance and no frame
+with a pixel over 8. Four of those five runs' GIFs nonetheless differed
+past the tolerance in all 108 frames, by up to 221 levels, along whole line
+colours, in files whose sizes fell into two values. The engine's GIF encode
+builds one palette from every captured frame
+(`palettegen=stats_mode=diff`), and differences below the tolerance move
+palette entries, and with them colours in every frame, by far more than
+it. ffmpeg itself is steady: the engine's two GIF commands, run by the
+pinned ffmpeg on one folder of frames, gave byte-identical files five times
+in a row, five times at once and once on a single thread, while one 10x10
+box added to one frame of 108 moved colours past the tolerance in all 108.
+So the capture meets principle III and the GIF encode does not preserve
+its tolerance; that is the engine's to fix (engine issue 33).
+
+The rules the test exists for were shown to be load-bearing, on the same
+machine against the real engine, before the verdict moved to the capture;
+these measurements are of the GIFs. The unaltered app exported two
 byte-identical GIFs of 108 frames, a maximum channel difference of 0. With
 the paint wait before each capture removed, one run of three still passed
 (a maximum difference of 7) and two failed (32, with 24 channels over 8 in
-6 frames): the rule is load-bearing, and one agreeing pair is not evidence
-that it holds. With the page's `setCapture` doing nothing, and separately
-with `capture.ts` never calling `setCapture(true)`, every one of the 108
-frames differed, by up to 254. Removing only the `cancelAnimationFrame` in
-the page's `setCapture` was not run: it drops the one frame already queued,
-which fires during the settle, before `settle()` snaps the transitions and
-the first beat sets the clock, so it is not expected to change a frame.
-
-Then the unaltered test, run five times on the same machine while other
-work loaded it, failed three: the GIFs differed in every frame, by up to 221
-levels, in a file whose size fell into one of two values. The pixels over
-the tolerance in the first frame of one failure lay along one line only, a
-palette colour moved rather than geometry: the engine's GIF encode builds
-one palette from every captured frame (`palettegen=stats_mode=diff`), so a
-difference in any captured frame can move a colour in all of them. ffmpeg
-itself is not the cause: the engine's two GIF commands, run by the pinned
-ffmpeg on one folder of frames, gave byte-identical files five times in a
-row, five times at once, and once on a single thread, while one 10x10 box
-added to one frame of 108 moved colours by more than the tolerance in all
-108. Whether the captured frames themselves differ, and where, is what
-`LEGIBLE_KEEP_FRAMES` is for: in development only, the export copies each
-export's frames to that folder before removing them
-(`keptFramesFolder` in `src/main/export.ts`), and the test then compares
-the two captures frame by frame, with the pixels, the box they lie in and
-whether a frame is the other run's frame before or after it, in
-`captured-frames.json`.
+6 frames): one agreeing pair is not evidence that the rule holds. With the
+page's `setCapture` doing nothing, and separately with `capture.ts` never
+calling `setCapture(true)`, every one of the 108 frames differed, by up to
+254. Removing only the `cancelAnimationFrame` in the page's `setCapture` was
+not run: it drops the one frame already queued, which fires during the
+settle, before `settle()` snaps the transitions and the first beat sets the
+clock, so it is not expected to change a frame.
 
 The test never runs LOOM, by design (ADR-023): it reads a stored layout.
 So whether a layout made on Windows is reproducible, which ADR-021 expected
