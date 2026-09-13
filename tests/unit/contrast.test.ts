@@ -116,6 +116,9 @@ const PAIRS: [string, string, number][] = [
   // is 4.40 in sepia and the kit's label is 13px at 500 weight, which is
   // not large text. The hover and pressed fills are checked below.
   ['--on-accent', '--accent-text', 4.5],
+  // A kit button unavailable while a confirmation's action runs keeps its
+  // label readable: the kit's disabled text on its disabled fill.
+  ['--text-faint', '--surface-sunken', 4.5],
   // A kit text field's placeholder, on the field's raised fill, is
   // --text-faint on --surface-raised, above; its resting edge, and the
   // select's, the checkbox's and the date control's, --border-strong on

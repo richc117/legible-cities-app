@@ -869,13 +869,27 @@ th .sort:focus-visible {
   color: var(--warning);
 }
 
-.settings .notice.error {
+.notice.error {
   color: var(--error);
 }
 
 .settings .theme-select {
   width: 100%;
   max-width: var(--dialog-width);
+}
+
+/* A kit button that is unavailable but keeps its focus (`aria-disabled`,
+   mirrored on the host as data-unavailable): drawn as the kit draws a
+   disabled one, without taking the pointer's events away, since the press
+   is refused by the component and focus must stay (A6-07). */
+fig-button[data-unavailable],
+fig-button[data-unavailable]:hover,
+fig-button[data-unavailable]:active,
+fig-button[data-unavailable]:hover:active {
+  background-color: var(--figma-color-bg-disabled);
+  color: var(--figma-color-text-disabled);
+  box-shadow: none;
+  cursor: progress;
 }
 
 /* Dialogs: the native element, opened with showModal(). */

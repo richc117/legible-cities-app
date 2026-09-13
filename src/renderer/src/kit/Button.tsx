@@ -95,6 +95,9 @@ const Button = forwardRef<HTMLElement, ButtonProps>(function Button(
     set('aria-expanded', expanded === undefined ? undefined : String(expanded))
     set('aria-pressed', pressed === undefined ? undefined : String(pressed))
     set('aria-disabled', unavailable === true ? 'true' : undefined)
+    // And on the host, where the app's stylesheet can draw it unavailable.
+    if (unavailable === true) host.current?.setAttribute('data-unavailable', '')
+    else host.current?.removeAttribute('data-unavailable')
     set('aria-controls', controls)
   }, [expanded, pressed, unavailable, controls])
 

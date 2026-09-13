@@ -77,6 +77,7 @@ export default function LayoutRun({
       variant="primary"
       onConfirm={relayout}
       onCancel={() => setConfirming(false)}
+      busyLabel="Starting the re-layout…"
     />
   )
 

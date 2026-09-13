@@ -436,6 +436,8 @@ export default function Settings({ settings, onChanged, engine, onBack }: Props)
         confirmLabel="Reset"
         onConfirm={reset}
         onCancel={() => setConfirming(false)}
+        busyLabel="Resetting the engine's data…"
+        onLateError={(problem) => setMessage(problem)}
       />
     </main>
   )

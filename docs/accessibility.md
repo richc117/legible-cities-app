@@ -35,11 +35,11 @@ the release tag, and its two columns are left for it.
    meets it. **Its first runs** (macOS, 2026-09-13, by the coordinator, not
    by the lane that wrote it) passed every screen's names, walk and motion
    checks; the removed feed's focus (D5) and the one-control dialog's walk
-   failed and were changed. The confirmation's second press (D8), the
-   confirmed re-layout (D1) and focus a person moved being left alone were
-   added after, and have not run yet. Where a defect below says
-   "asserted in the sweep", that is the test that covers it; until a green
-   run of the whole spec it is written, not proven. The sweep searches the
+   failed and were changed; a later full run after those changes passed
+   (119 passed, 2 skipped). The confirmation's busy state (D8) was changed
+   again after that run, and its two slow tests have not run yet. Where a
+   defect below says "asserted in the sweep", that green run covered it,
+   except D8's busy window. The sweep searches the
    light tree: of the kit's elements in use, a button is counted by its
    host and a select's and text field's focusable parts are ordinary
    children, so no kit control focusable only inside a shadow root is on
@@ -182,12 +182,21 @@ was thrown to the top of the document with nothing said.
   entry's; focus goes to the mode it set (`Inspect.tsx`). Asserted in the sweep.
 - **D8. A confirmation while its action runs.** The confirm button disabled
   itself, which inside a modal left focus nowhere, so a refusal's alert was
-  heard with no control under the keyboard. Both buttons now stay focusable
-  and say `aria-disabled` while the action runs, and neither a press nor
-  Escape's cancel is taken then, so a repeated Enter cannot land on Cancel
-  and close the dialog as cancelled over a project already deleted
-  (`ConfirmDialog.tsx`, `kit/Button.tsx`). Asserted in the sweep with two
-  Enters on a refused feed removal.
+  heard with no control under the keyboard. Now, while the action runs, the
+  confirm button keeps focus, says `aria-disabled`, takes no press - a held
+  Enter's repeats included - and is drawn as the kit draws a disabled
+  button; a status line in the dialog says what is running ("Removing Metro
+  de Prueba… It cannot be stopped; closing this leaves it running."); and
+  the other button reads Close, never Cancel. Close and Escape close the
+  dialog and tell its screen at once, the action carries on, and a refusal
+  that arrives afterwards is said on that screen (the Library's notice,
+  Settings' alert, the project's alert under Delete). A dialog closed while
+  busy and opened again for another feed is not closed by the first
+  removal finishing (`ConfirmDialog.tsx`, `kit/Button.tsx`, `Library.tsx`).
+  The busy window is exercised only by two tests with a slow stand-in
+  removal (`remove_delay_ms`): a second press refused with one
+  `feeds.remove` sent, and a dialog closed mid-removal letting the next one
+  open and stay open.
 
 The rest:
 

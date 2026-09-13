@@ -173,7 +173,10 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
     }
     forgetInspection(removing.key)
     handBack.current = { feed: removing.key }
-    setRemoving(null)
+    // Only this removal's dialog: it may have been closed while the request
+    // ran and opened again for another feed, which stays.
+    const target = removing
+    setRemoving((current) => (current === target ? null : current))
     setFeedNotice(`${removing.name} was removed.`)
     await refreshFeeds()
     afterRendering(() => settleRef.current())
@@ -289,6 +292,8 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
         confirmLabel="Remove"
         onConfirm={remove}
         onCancel={() => setRemoving(null)}
+        busyLabel={`Removing ${removing?.name ?? 'the feed'}…`}
+        onLateError={(message) => setFeedNotice(message)}
       />
     </main>
   )

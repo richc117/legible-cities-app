@@ -31,7 +31,14 @@
 // stand-in's control file is written before the app starts, because the
 // stand-in reads it once.
 
-import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs'
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import {
@@ -68,16 +75,19 @@ function profile(control: Record<string, unknown> = {}): Profile {
   return { userData, engineHome }
 }
 
-/** A feed a person added, so the Library has a row with Remove on it. */
-function addedFeed(p: Profile): void {
+/** Feeds a person added, so the Library has rows with Remove on them. */
+function addedFeed(p: Profile, names: string[] = ['Metro de Prueba']): void {
   const folder = join(p.engineHome, 'data', 'feeds')
   mkdirSync(folder, { recursive: true })
   writeFileSync(
     join(folder, 'user-feeds.json'),
-    JSON.stringify([
-      {
-        key: 'metro-de-prueba',
-        name: 'Metro de Prueba',
+    JSON.stringify(
+      names.map((name) => ({
+        key: name
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[^a-z0-9]+/g, '-'),
+        name,
         city: '',
         network: '',
         url: null,
@@ -88,10 +98,16 @@ function addedFeed(p: Profile): void {
         geographic: true,
         notes: [],
         source: 'user',
-      },
-    ]),
+      })),
+    ),
   )
 }
+
+/** How many requests of one method the stand-in has read. */
+const requests = (p: Profile, method: string): number =>
+  readFileSync(join(p.engineHome, 'fake-engine.received'), 'utf8')
+    .split('\n')
+    .filter((line) => line.includes(`"${method}"`)).length
 
 async function withApp(
   p: Profile,
@@ -513,36 +529,69 @@ test('the Library, its empty state and its three dialogs', async () => {
   })
 })
 
-test('a confirmation keeps focus on its button while it runs, and a second press is not a cancel', async () => {
+test('a confirmation refuses a second press while its action runs, and says so', async () => {
   test.setTimeout(120_000)
-  const p = profile()
+  // Slow enough that the second press lands while the first is out.
+  const p = profile({ remove_delay_ms: 2_000 })
   addedFeed(p)
   await withApp(p, async (page) => {
-    // A project on the added feed, so the main process refuses the removal.
-    await page
-      .getByRole('listitem', { name: 'Metro de Prueba' })
-      .getByRole('button', { name: /Start a project/ })
-      .click()
-    const create = page.getByRole('dialog', { name: 'New project' })
-    await create.getByLabel('Name', { exact: true }).fill('Prueba')
-    await create.getByRole('button', { name: 'Create', exact: true }).click()
-    await expect(page.getByRole('button', { name: 'Open Prueba' })).toBeVisible()
-
     await page.getByRole('button', { name: 'Remove Metro de Prueba' }).click()
     const confirm = page.getByRole('dialog', { name: 'Remove Metro de Prueba?' })
     const remove = confirm.getByRole('button', { name: 'Remove' })
-    // Enter twice, as a held key repeats: the second press lands on the
-    // button the first one pressed, never on Cancel, so the dialog does not
-    // close as cancelled while the action is out or after it is refused.
     await remove.focus()
     await page.keyboard.press('Enter')
-    await page.keyboard.press('Enter')
-    await expect(confirm.getByRole('alert')).toBeVisible()
-    await expect(confirm).toBeVisible()
+    // Running: the button keeps focus and says it is unavailable, the
+    // sentence says what is happening, and the other button closes.
+    await expect(remove).toHaveAttribute('aria-disabled', 'true')
     await expect(remove).toBeFocused()
-    await confirm.getByRole('button', { name: 'Cancel' }).click()
-    await expect(confirm).toBeHidden()
-    await expect(page.getByRole('listitem', { name: 'Metro de Prueba' })).toBeVisible()
+    await expect(confirm.getByRole('status')).toHaveText(
+      /^Removing Metro de Prueba… It cannot be stopped/,
+    )
+    await expect(confirm.getByRole('button', { name: 'Close' })).toBeVisible()
+    // A held Enter's repeat: refused, not a second removal, not a cancel.
+    await page.keyboard.press('Enter')
+    await expect(remove).toHaveAttribute('aria-disabled', 'true')
+    await expect(confirm).toBeVisible()
+    await expect(confirm).toBeHidden({ timeout: 20_000 })
+    await expect(page.getByRole('listitem', { name: 'Metro de Prueba' })).toHaveCount(0)
+    expect(requests(p, 'feeds.remove'), 'one removal, whatever the presses').toBe(1)
+  })
+})
+
+test('a confirmation closed while its action runs lets the next one open, and keeps it open', async () => {
+  test.setTimeout(120_000)
+  const p = profile({ remove_delay_ms: 2_000 })
+  addedFeed(p, ['Metro de Prueba', 'Tranvia de Prueba'])
+  await withApp(p, async (page) => {
+    await page.getByRole('button', { name: 'Remove Metro de Prueba' }).click()
+    const first = page.getByRole('dialog', { name: 'Remove Metro de Prueba?' })
+    const remove = first.getByRole('button', { name: 'Remove' })
+    await remove.focus()
+    await page.keyboard.press('Enter')
+    await expect(remove).toHaveAttribute('aria-disabled', 'true')
+    // Closed while the removal is out, as the platform closes a modal on
+    // Escape: the Library is told at once.
+    await page.keyboard.press('Escape')
+    await expect(first).toBeHidden()
+
+    // The next confirmation opens, idle, and the first removal finishing
+    // does not close it.
+    await page.getByRole('button', { name: 'Remove Tranvia de Prueba' }).click()
+    const second = page.getByRole('dialog', { name: 'Remove Tranvia de Prueba?' })
+    await expect(second).toBeVisible()
+    await expect(second.getByRole('button', { name: 'Cancel' })).toBeVisible()
+    await expect(second.getByRole('button', { name: 'Remove' })).not.toHaveAttribute(
+      'aria-disabled',
+      'true',
+    )
+    await expect(page.getByRole('listitem', { name: 'Metro de Prueba' })).toHaveCount(0, {
+      timeout: 20_000,
+    })
+    await expect(second).toBeVisible()
+    await second.getByRole('button', { name: 'Cancel' }).click()
+    await expect(second).toBeHidden()
+    await expect(page.getByRole('listitem', { name: 'Tranvia de Prueba' })).toBeVisible()
+    expect(requests(p, 'feeds.remove'), 'only the first removal was sent').toBe(1)
   })
 })
 

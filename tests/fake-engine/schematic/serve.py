@@ -33,6 +33,7 @@ writes before the app starts (every key optional):
     presets_cached    keys of the two stand-in presets whose zip is "on disk" (default both)
     add_delay_ms      wait between the download's ten progress reports for a URL (default 20)
     add_refuses       a sentence: feeds.add from a URL refuses with it, kind feed
+    remove_delay_ms   wait before feeds.remove answers, on a thread of its own (default 0)
     inspect_refuses   a sentence: feeds.inspect refuses with it, kind feed
     stage_refuses     a sentence: render.stage refuses with it, kind engine
     empty_modes       modes graph.build keeps no routes for: after gtfs2graph it refuses with
@@ -336,17 +337,11 @@ class Engine:
             return True
         if method == "feeds.remove":
             key = (message.get("params") or {}).get("key")
-            if key in FEEDS:
-                error(msg_id, -32000, f"{key!r} is a built-in feed and cannot be removed", "feed")
-            elif key not in self.user_feeds():
-                error(msg_id, -32000, f"{key!r} is not a registered feed", "feed")
+            if self.control.get("remove_delay_ms"):
+                threading.Thread(target=self.remove_feed, args=(msg_id, key),
+                                 daemon=True).start()
             else:
-                users = self.user_feeds()
-                del users[key]
-                self.write_user_feeds(users)
-                for path in (HOME / "data" / "feeds").glob(f"{key}.*zip"):
-                    path.unlink()
-                write({"jsonrpc": "2.0", "id": msg_id, "result": {"ok": True}})
+                self.remove_feed(msg_id, key)
             return True
         if method == "export.presets":
             write({"jsonrpc": "2.0", "id": msg_id, "result": {"presets": EXPORT_PRESETS}})
@@ -659,6 +654,23 @@ class Engine:
                                  "routes": 1, "trips": 1}],
                 "stops": stops, "trips": 1, "frequency_trips": 0, "service": service,
                 "suggested_mode": "all", "warnings": []}
+
+    def remove_feed(self, msg_id, key) -> None:
+        """feeds.remove, in shape: a built-in feed is refused, an unknown one
+        too, and a user feed is forgotten with its zip; after remove_delay_ms,
+        so a test can act while the request is out."""
+        time.sleep(self.control.get("remove_delay_ms", 0) / 1000)
+        if key in FEEDS:
+            error(msg_id, -32000, f"{key!r} is a built-in feed and cannot be removed", "feed")
+        elif key not in self.user_feeds():
+            error(msg_id, -32000, f"{key!r} is not a registered feed", "feed")
+        else:
+            users = self.user_feeds()
+            del users[key]
+            self.write_user_feeds(users)
+            for path in (HOME / "data" / "feeds").glob(f"{key}.*zip"):
+                path.unlink()
+            write({"jsonrpc": "2.0", "id": msg_id, "result": {"ok": True}})
 
     def user_feeds(self) -> dict:
         try:
