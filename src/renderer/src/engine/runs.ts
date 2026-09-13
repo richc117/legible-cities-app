@@ -12,7 +12,7 @@
 // renderer. The runs themselves take their client or bridge as an argument
 // and know nothing of any of this, which is what lets the tests drive them.
 
-import { OFFERED_PRESETS, type ExportProgress } from '../../../shared/export'
+import type { ExportProgress } from '../../../shared/export'
 import { ExportRun, type ExportBridge } from './exportRun'
 import { FeedAdd } from './feedAdd'
 import { LayoutRun } from './layoutRun'
@@ -93,7 +93,7 @@ const sharedExportBridge = (): ExportBridge => {
 export function exportRunFor(projectId: string): ExportRun {
   const existing = exports.get(projectId)
   if (existing !== undefined) return existing
-  const run = new ExportRun(sharedExportBridge(), OFFERED_PRESETS[0])
+  const run = new ExportRun(sharedExportBridge())
   exports.set(projectId, run)
   return run
 }

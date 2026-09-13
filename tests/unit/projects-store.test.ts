@@ -50,6 +50,7 @@ function record(id: string, overrides: Partial<ProjectRecord> = {}): ProjectReco
     defaultColor: DEFAULT_COLOR,
     lineOrder: [],
     theme: DEFAULT_THEME,
+    export: { preset: 'instagram-reel', options: {} },
     layout: null,
     made: null,
     built: null,
@@ -125,6 +126,7 @@ describe('create', () => {
       defaultColor: '#888888',
       lineOrder: [],
       theme: 'warm-dark',
+      export: { preset: 'instagram-reel', options: {} },
       layout: null,
       made: null,
       built: null,
@@ -905,6 +907,82 @@ describe('setTheme', () => {
     const current = await store.get(project.id)
     await writeFile(file, JSON.stringify({ ...current, version: 99 }), 'utf8')
     await expect(store.setTheme(project.id, 'sepia')).rejects.toThrow('read-only')
+  })
+})
+
+// What a project was last set to export (A5-01), written the moment it is
+// chosen, as the theme is, and read back with the reel for a record from
+// before the export tab.
+describe('setExport', () => {
+  const LINKEDIN = {
+    preset: 'linkedin-video',
+    storyboard: 'day',
+    options: { clock: false, at: '07:30', lines: ['A', 'B'], quality: 'draft', tag: 'draft-1' },
+  } as const
+
+  it('writes the choice and the time, and nothing else', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    const before = await store.get(project.id)
+    expect(before.export, 'every project starts on the reel').toEqual({
+      preset: 'instagram-reel',
+      options: {},
+    })
+    const after = await store.setExport(project.id, {
+      ...LINKEDIN,
+      options: { ...LINKEDIN.options, lines: [...LINKEDIN.options.lines] },
+    })
+    expect(after.export).toEqual(LINKEDIN)
+    expect(after.theme).toBe(before.theme)
+    expect(after.layout, 'a choice is not a build of any kind').toBe(before.layout)
+    expect(after.modified >= before.modified).toBe(true)
+    const fresh = new ProjectStore(home, (message) => lines.push(message))
+    expect((await fresh.get(project.id)).export, 'and it is on disk').toEqual(LINKEDIN)
+  })
+
+  it('refuses a choice the engine would refuse, and writes nothing', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    for (const choice of [
+      null,
+      { preset: 'portfolio-mp4', options: {} },
+      { preset: 'linkedin-video', storyboard: 'nope', options: {} },
+      { preset: 'linkedin-video', options: { safe: true } },
+      { preset: 'linkedin-video', options: { tag: 'has space' } },
+      { preset: 'linkedin-video', options: { at: '7.30' } },
+    ]) {
+      await expect(
+        store.setExport(project.id, choice as never),
+        JSON.stringify(choice),
+      ).rejects.toThrow()
+    }
+    expect((await store.get(project.id)).export, 'nothing was written').toEqual({
+      preset: 'instagram-reel',
+      options: {},
+    })
+  })
+
+  it('reads a record from before the export tab, or with a broken choice, as the reel', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    const file = join(home, 'projects', project.id, 'project.json')
+    const current = await store.get(project.id)
+    const { export: _dropped, readOnly: _readOnly, ...older } = current
+    void _dropped
+    void _readOnly
+    await writeFile(file, JSON.stringify(older), 'utf8')
+    expect((await store.get(project.id)).export).toEqual({ preset: 'instagram-reel', options: {} })
+    await writeFile(
+      file,
+      JSON.stringify({ ...older, export: { preset: 'portfolio-mp4', options: { clock: false } } }),
+      'utf8',
+    )
+    expect((await store.get(project.id)).export).toEqual({ preset: 'instagram-reel', options: {} })
+  })
+
+  it('refuses a record a newer version of the app wrote', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    const file = join(home, 'projects', project.id, 'project.json')
+    const current = await store.get(project.id)
+    await writeFile(file, JSON.stringify({ ...current, version: 99 }), 'utf8')
+    await expect(store.setExport(project.id, LINKEDIN as never)).rejects.toThrow('read-only')
   })
 })
 

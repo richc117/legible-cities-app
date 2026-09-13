@@ -40,6 +40,12 @@ import {
   validateServiceWindow,
   withinWindow,
 } from '../shared/project'
+import {
+  copyChoice,
+  DEFAULT_CHOICE,
+  validateExportChoice,
+  type ExportChoice,
+} from '../shared/export'
 import { isLayoutId, type LayoutDone, type LayoutResult } from '../shared/layout'
 import { isValidProjectId } from './paths'
 
@@ -294,6 +300,7 @@ export class ProjectStore {
       defaultColor: DEFAULT_COLOR,
       lineOrder: [],
       theme: DEFAULT_THEME,
+      export: copyChoice(DEFAULT_CHOICE),
       layout: null,
       made: null,
       built: null,
@@ -515,6 +522,30 @@ export class ProjectStore {
       ...record,
       version: RECORD_VERSION,
       theme,
+      modified: new Date().toISOString(),
+    }
+    await this.writeAtomic(id, updated)
+    return updated
+  }
+
+  /**
+   * What a person set the project to export (A5-01): the preset, the
+   * storyboard and the options, written the moment they are chosen, as a
+   * theme is. Nothing is built for it; a plan is asked when the export is.
+   */
+  async setExport(id: string, choice: ExportChoice): Promise<ProjectRecord> {
+    return this.#track(() => this.#setExportTracked(id, choice))
+  }
+
+  async #setExportTracked(id: string, choice: ExportChoice): Promise<ProjectRecord> {
+    this.checkId(id)
+    check(validateExportChoice(choice))
+    const { record, readOnly } = await this.load(id)
+    if (readOnly) throw new Error('read-only')
+    const updated: ProjectRecord = {
+      ...record,
+      version: RECORD_VERSION,
+      export: copyChoice(choice),
       modified: new Date().toISOString(),
     }
     await this.writeAtomic(id, updated)

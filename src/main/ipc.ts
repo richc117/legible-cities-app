@@ -27,6 +27,7 @@ import {
   validateServiceDate,
   validateServiceWindow,
 } from '../shared/project'
+import { copyChoice, validateExportChoice, type ExportChoice } from '../shared/export'
 import { isLayoutId, type LayoutDone } from '../shared/layout'
 import type { ProjectStore } from './projects'
 import type { Viewer } from './viewer'
@@ -116,6 +117,12 @@ function readLineOrder(raw: unknown): LineOrder {
 function readTheme(raw: unknown): Theme {
   check(validateTheme(raw))
   return raw as Theme
+}
+
+/** A choice from the export tab, every field held to the engine's rules, and nothing else on it. */
+export function readExportChoice(raw: unknown): ExportChoice {
+  check(validateExportChoice(raw))
+  return copyChoice(raw as ExportChoice)
 }
 
 function readCreateInput(raw: unknown): CreateProjectInput {
@@ -249,4 +256,7 @@ export function registerProjectHandlers(
     store.completeOrder(readId(id), readLineOrder(order)),
   )
   handle(CHANNELS.projectsSetTheme, (id, theme) => store.setTheme(readId(id), readTheme(theme)))
+  handle(CHANNELS.projectsSetExport, (id, choice) =>
+    store.setExport(readId(id), readExportChoice(choice)),
+  )
 }

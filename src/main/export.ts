@@ -17,13 +17,21 @@ import { join } from 'node:path'
 import { claimFramesRoot, reasonOf } from './frames'
 import { frameTotal, type CaptureJob } from '../shared/capture'
 import { EngineError, ERROR_CODES, engineError, withoutPaths } from '../shared/engine'
-import type { ExportProgress, ExportResult, ExportStage, OfferedPreset } from '../shared/export'
+import {
+  planOptions,
+  type ExportChoice,
+  type ExportPreview,
+  type ExportProgress,
+  type ExportResult,
+  type ExportStage,
+} from '../shared/export'
 import type { ProjectRecord, Theme } from '../shared/project'
 import type {
   CaptureJob as PlannedJob,
   ExportEncodeParams,
   ExportEncodeResult,
   ExportPlanParams,
+  ExportPresets,
 } from '../shared/protocol'
 import {
   CaptureError,
@@ -31,7 +39,7 @@ import {
   type CaptureOptions,
   type CaptureResult,
 } from './capture'
-import { isObject } from './ipc-shape'
+import { isObject, toShape } from './ipc-shape'
 import { RESERVED_NAME } from './paths'
 import type { Notification } from './sidecar'
 
@@ -101,8 +109,39 @@ export function folderName(name: string, id: string): string {
 /** The engine's stem plus an extension, and nothing a path could hide in. */
 const FILENAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.[a-z0-9]{2,4}$/
 
-/** The capture's half of the engine's plan: the recorder's job, field for field. */
+/**
+ * The capture's half of the engine's plan: the recorder's job, field for
+ * field.
+ *
+ * A still has no beats: the engine's recorder seeks to the plan's `at` and
+ * takes one screenshot. The app's capture takes frames from beats and
+ * nothing else, so a still becomes one beat one frame long that pins the
+ * clock at `at` and stops it there (speed 0, no tween), and the capture's
+ * own rules - the clock stopped before any wait, the settle, the paint
+ * wait - apply to it unchanged. A still the plan did not pin gets no beat,
+ * and `validateCaptureJob` refuses it: a frame that does not name its time
+ * is not reproducible.
+ */
 export function jobOf(plan: PlannedJob): CaptureJob {
+  const beats =
+    plan.mode === 'still'
+      ? typeof plan.at === 'number'
+        ? [
+            {
+              secs: 1 / plan.fps,
+              view: plan.view,
+              labels: null,
+              at: plan.at,
+              speed: 0,
+              sweep: false,
+              hours: null,
+              lo: null,
+              hi: null,
+              tween: 0,
+            },
+          ]
+        : []
+      : plan.beats
   return {
     url: plan.url,
     width: plan.width,
@@ -110,8 +149,23 @@ export function jobOf(plan: PlannedJob): CaptureJob {
     scale: plan.scale,
     fps: plan.fps,
     settle: plan.settle,
-    beats: plan.beats,
+    beats,
   }
+}
+
+/** The one frame a still's capture writes, which is what `export.encode` takes as its source. */
+export const STILL_FRAME = '000000.png'
+
+/**
+ * Is this address the project's own page, with a query and nothing else
+ * in front of it? The preview's address goes into the map's frame, which
+ * the viewer bridge attaches by the project's prefix (ADR-028), so an
+ * answer that named any other page is refused rather than shown.
+ */
+export function isProjectPage(url: unknown, project: Pick<ProjectRecord, 'id' | 'feed'>): boolean {
+  if (typeof url !== 'string' || /\s/.test(url)) return false
+  const page = pageUrl(project)
+  return url === page || url.startsWith(`${page}?`)
 }
 
 const cancelled = (): EngineError =>
@@ -126,6 +180,13 @@ export function normalise(reason: unknown): EngineError {
   }
   const message = reason instanceof Error ? reason.message : String(reason)
   return engineError(ERROR_CODES.exportFailed, withoutPaths(message), 'io')
+}
+
+/** The engine's advice about the plan; it goes on screen, so it gets the same treatment as a hint. */
+function notesOf(plan: PlannedJob): string[] {
+  return Array.isArray(plan.notes)
+    ? plan.notes.filter((n): n is string => typeof n === 'string').map((n) => withoutPaths(n))
+    : []
 }
 
 export class Exporter {
@@ -150,11 +211,7 @@ export class Exporter {
    * Start an export. Refused synchronously, with an error thrown, for what
    * is known at once; everything later is the result's rejection.
    */
-  start(
-    token: string,
-    projectId: string,
-    preset: OfferedPreset,
-  ): { result: Promise<ExportResult> } {
+  start(token: string, projectId: string, choice: ExportChoice): { result: Promise<ExportResult> } {
     const blocked = this.#options.blocked?.() ?? null
     if (blocked !== null) throw engineError(ERROR_CODES.badCall, blocked, 'params')
     if (this.#live.has(token))
@@ -169,7 +226,7 @@ export class Exporter {
     }
     this.#live.set(token, control)
     this.#busy.add(projectId)
-    const result = this.#run(token, projectId, preset, control)
+    const result = this.#run(token, projectId, choice, control)
       .then(
         (done) => {
           this.#finished.set(token, done.path)
@@ -184,6 +241,72 @@ export class Exporter {
         this.#busy.delete(projectId)
       })
     return { result }
+  }
+
+  /**
+   * The address the map's frame shows while the export tab is open
+   * (specs/022-export-tab): the engine's plan for this choice, on the
+   * project's page, with the platform's safe zones asked for exactly when
+   * the preset has them. Not a job: nothing is captured, written or
+   * reported, and a refusal is answered rather than thrown, in the engine's
+   * own shape, so its sentence reaches the screen.
+   *
+   * The reset's guard applies as it does to an export, because this asks
+   * the engine something while that guard is meant to keep it quiet.
+   */
+  async preview(projectId: string, choice: ExportChoice): Promise<ExportPreview> {
+    try {
+      const blocked = this.#options.blocked?.() ?? null
+      if (blocked !== null) throw engineError(ERROR_CODES.badCall, blocked, 'params')
+      const project = await this.#options.projects.get(projectId)
+      if (project.layout === null || project.date === null)
+        throw engineError(
+          ERROR_CODES.badCall,
+          'Lay the project out before previewing it.',
+          'params',
+        )
+      const { engine } = this.#options
+      // Which presets draw the platform's interface over the picture is the
+      // engine's table, not the app's: asked each time, since both calls are
+      // pure and instant, rather than held across an engine restart.
+      const table = (await engine.request('export.presets').result) as ExportPresets
+      const entry =
+        isObject(table) && Array.isArray(table.presets)
+          ? table.presets.find((p) => isObject(p) && p.name === choice.preset)
+          : undefined
+      if (entry === undefined)
+        throw engineError(ERROR_CODES.badCall, 'The engine no longer offers that preset.', 'params')
+      const params = {
+        key: project.feed,
+        preset: choice.preset,
+        page: pageUrl(project),
+        date: project.date,
+        options: planOptions(choice, themeFor(project.theme), entry.safe_zones === true),
+      } satisfies ExportPlanParams
+      const plan = (await engine.request('export.plan', params).result) as PlannedJob
+      if (!isObject(plan) || !isProjectPage(plan.url, project))
+        throw engineError(
+          ERROR_CODES.exportFailed,
+          "The engine's plan names another page.",
+          'export',
+        )
+      if (
+        !Number.isInteger(plan.width) ||
+        !Number.isInteger(plan.height) ||
+        plan.width < 1 ||
+        plan.height < 1
+      )
+        throw engineError(ERROR_CODES.exportFailed, "The engine's plan has no size.", 'export')
+      return {
+        ok: true,
+        url: plan.url,
+        width: plan.width,
+        height: plan.height,
+        notes: notesOf(plan),
+      }
+    } catch (error) {
+      return { ok: false, error: toShape(normalise(error)) }
+    }
   }
 
   /** Stop an export wherever it is; unknown or finished ids do nothing. */
@@ -249,7 +372,7 @@ export class Exporter {
   async #run(
     token: string,
     projectId: string,
-    preset: OfferedPreset,
+    choice: ExportChoice,
     control: Control,
   ): Promise<{ result: ExportResult; path: string }> {
     const { projects, capture, framesRoot, exportFolder, log } = this.#options
@@ -272,12 +395,15 @@ export class Exporter {
     // the preset's own tables. The page is the project's, on the app's
     // origin, and the service day is the project's stored one (ADR-031).
     this.#emit(token, 'plan', 0, 'Planning the export.')
+    // The options are the person's, from the export tab, and the theme the
+    // project's own. `safe` is never set here, whatever the preview showed:
+    // the safe zones are a preview aid and never a deliverable (FR-006).
     const planParams = {
       key: project.feed,
-      preset,
+      preset: choice.preset,
       page: pageUrl(project),
       date: project.date,
-      options: { theme: themeFor(project.theme) },
+      options: planOptions(choice, themeFor(project.theme)),
     } satisfies ExportPlanParams
     const plan = await this.#request<PlannedJob>('export.plan', planParams, control)
     this.#stopIfCancelled(control)
@@ -298,18 +424,18 @@ export class Exporter {
         'export',
       )
     const total = frameTotal(job.beats, job.fps)
-    // The notes are the engine's advice about the storyboard; they go on
-    // screen, so they get the same treatment as a hint.
-    const notes = Array.isArray(plan.notes)
-      ? plan.notes.filter((n): n is string => typeof n === 'string').map((n) => withoutPaths(n))
-      : []
+    const still = plan.mode === 'still'
+    const notes = notesOf(plan)
     this.#emit(
       token,
       'plan',
       1,
-      [`Planned ${plan.filename}: ${total} frames at ${job.fps} frames per second.`, ...notes].join(
-        ' ',
-      ),
+      [
+        still
+          ? `Planned ${plan.filename}: a still.`
+          : `Planned ${plan.filename}: ${total} frames at ${job.fps} frames per second.`,
+        ...notes,
+      ].join(' '),
     )
 
     // Two projects with one name and one feed resolve to one file. A later
@@ -349,9 +475,11 @@ export class Exporter {
       this.#stopIfCancelled(control)
 
       this.#emit(token, 'encode', 0, `Encoding ${captured.frames} frames.`)
+      // A video is encoded from the folder of frames; a still from its one
+      // frame, which is the file `export.encode` takes for a still plan.
       const encodeParams = {
         plan,
-        source: frames,
+        source: still ? join(frames, STILL_FRAME) : frames,
         dest,
         provenance: { service_date: project.date },
       } satisfies ExportEncodeParams

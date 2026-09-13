@@ -3,6 +3,7 @@ import Button from './kit/Button'
 import Icon from './icons/Icon'
 import ProgressLine from './ProgressLine'
 import type { EngineState } from '../../shared/engine'
+import type { ExportChoice } from '../../shared/export'
 import type { ProjectRecord } from '../../shared/project'
 import type { ExportRun as Run } from './engine/exportRun'
 import { useSnapshot } from './useSnapshot'
@@ -18,20 +19,26 @@ export default function ExportRun({
   run,
   project,
   engine,
+  choice,
   disabled = false,
 }: {
   run: Run
   project: ProjectRecord
   engine: EngineState | null
-  /** True while something else, such as a layout run, is changing the project. */
+  /** What to export, as the export tab holds it at the moment of the press (A5-01). */
+  choice: ExportChoice
+  /**
+   * True while something else, such as a layout run, is changing the
+   * project, or while the choice is one the engine has refused.
+   */
   disabled?: boolean
 }): JSX.Element {
   const { state, stages, message, error, file, left } = useSnapshot(run)
-  const begin = (): void => run.start(project, engine)
+  const begin = (): void => run.start(project, engine, choice)
   const exportButton = (
     <Button variant="primary" onClick={begin} disabled={disabled}>
       <Icon name="export" />
-      Export reel
+      Export
     </Button>
   )
 

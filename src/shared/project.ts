@@ -2,6 +2,7 @@
 // so the preload, the renderer and the main process share one definition
 // and the unit tests run in Node. Contract: specs/003-project/contracts/record.md.
 
+import { copyChoice, DEFAULT_CHOICE, validateExportChoice, type ExportChoice } from './export'
 import { isLayoutId } from './layout'
 
 export const RECORD_VERSION = 1
@@ -69,6 +70,12 @@ export interface ProjectRecord {
   defaultColor: string
   lineOrder: string[]
   theme: Theme
+  /**
+   * What the project was last set to export: the preset, the storyboard and
+   * the options (A5-01). The reel with the engine's defaults for a record
+   * from before the export tab, which is what the one button exported.
+   */
+  export: ExportChoice
   /** The stored layout's identifier; null until the first layout produces one (ADR-027). */
   layout: string | null
   /**
@@ -395,6 +402,12 @@ export function parseRecord(json: unknown): Parsed {
     defaultColor: isColor(json.defaultColor) ? json.defaultColor : DEFAULT_COLOR,
     lineOrder: readLineOrder(json.lineOrder),
     theme: isTheme(json.theme) ? json.theme : DEFAULT_THEME,
+    // Whole or not at all, as the service window is: a half-valid choice
+    // is not half-trusted, and the tab starts from the reel.
+    export:
+      validateExportChoice(json.export) === null
+        ? copyChoice(json.export as ExportChoice)
+        : copyChoice(DEFAULT_CHOICE),
     layout: isLayoutId(json.layout) ? json.layout : null,
     made: validateMade(json.made) === null ? (json.made as string) : null,
     built: readInputs(json.built),

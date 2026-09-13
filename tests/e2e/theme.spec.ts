@@ -261,7 +261,9 @@ test('an export is planned in the theme the project is drawn in', async () => {
     const [id] = readdirSync(join(h.engineHome, 'projects'))
     copyFileSync(fixture, join(h.engineHome, 'out', id, 'la-metro-rail.html'))
 
-    await page.getByRole('button', { name: 'Export reel' }).click()
+    // The export is on its own tab (A5-01).
+    await page.getByRole('tab', { name: 'Export' }).click()
+    await page.getByRole('button', { name: 'Export', exact: true }).click()
     await expect(page.getByText(/Exported|Planning|Capturing|Encoding/)).toBeVisible({
       timeout: 30_000,
     })
@@ -274,7 +276,9 @@ test('an export is planned in the theme the project is drawn in', async () => {
     expect(plans[plans.length - 1]).toContain('"theme": "light"')
     // And the switch is out of reach while the export runs: the theme it
     // was planned with is the theme the reel will have, whatever is pressed
-    // now (FR-008).
+    // now (FR-008). It is on the map tab, and leaving the export tab does
+    // not stop the export.
+    await page.getByRole('tab', { name: 'Map' }).click()
     await expect(switchOf(page).getByRole('button', { name: 'Warm dark' })).toBeDisabled()
   })
 })

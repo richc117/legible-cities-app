@@ -4,7 +4,7 @@
 // specs/004-sidecar-supervisor/contracts/bridge.md (engine).
 
 import type { EngineErrorShape, EngineState, JobLog, JobProgress } from './engine'
-import type { ExportProgress, ExportResult, OfferedPreset } from './export'
+import type { ExportChoice, ExportPreview, ExportProgress, ExportResult } from './export'
 import type { LayoutDone, LayoutResult } from './layout'
 import type { AppTheme, FolderSize, ResetOutcome, SettingsView } from './settings'
 import type { ViewerMethod } from './viewer'
@@ -31,7 +31,13 @@ export type {
   ServiceWindow,
 } from './project'
 export type { EngineState, JobLog, JobProgress } from './engine'
-export type { ExportProgress, ExportResult, OfferedPreset } from './export'
+export type {
+  ExportChoice,
+  ExportPreview,
+  ExportProgress,
+  ExportResult,
+  OfferedPreset,
+} from './export'
 export type { LayoutDone, LayoutResult } from './layout'
 export type { AppTheme, FolderSize, FolderView, ResetOutcome, SettingsView } from './settings'
 
@@ -116,6 +122,14 @@ export interface Api {
      * own address (specs/021-theme/contracts/bridge.md).
      */
     setTheme(id: string, theme: Theme): Promise<ProjectRecord>
+    /**
+     * What a person set the project to export (A5-01): the preset, the
+     * storyboard and the options, written the moment they are chosen, as
+     * the theme is. The main process checks every field against the
+     * engine's own rules before the store sees it
+     * (specs/010-export/contracts/bridge.md, specs/022-export-tab).
+     */
+    setExport(id: string, choice: ExportChoice): Promise<ProjectRecord>
   }
   /**
    * The map on the screen. The page runs in a sandboxed frame at an opaque
@@ -143,13 +157,6 @@ export interface Api {
     onLog(listener: (line: JobLog) => void): () => void
   }
   /**
-   * An export of one preset, run in the main process because the capture
-   * lives there (ADR-024): the engine plans it, the app takes the frames,
-   * the engine encodes them. The page names a project and a preset, and
-   * gets back a file's name; the folder is the export folder from the
-   * configuration, and `reveal` opens it (specs/010-export/contracts/bridge.md).
-   */
-  /**
    * The one thing a page cannot do for a feed: choose a file. The main
    * process opens the platform's chooser, remembers the answer, and refuses
    * a feeds.add that names any other path (specs/014-feeds/contracts/bridge.md).
@@ -158,8 +165,22 @@ export interface Api {
     /** Null when the person cancelled the chooser. */
     pickZip(): Promise<PickedZip | null>
   }
+  /**
+   * An export of one preset, run in the main process because the capture
+   * lives there (ADR-024): the engine plans it, the app takes the frames,
+   * the engine encodes them. The page names a project and what to export,
+   * and gets back a file's name; the folder is the export folder from the
+   * configuration, and `reveal` opens it (specs/010-export/contracts/bridge.md).
+   */
   export: {
-    run(projectId: string, preset: OfferedPreset): ExportRequest
+    run(projectId: string, choice: ExportChoice): ExportRequest
+    /**
+     * The address the map's frame shows while the export tab is open: the
+     * engine's plan for this choice with the platform's safe zones drawn
+     * where the preset has them. Planned, never captured; nothing is
+     * written (specs/022-export-tab).
+     */
+    preview(projectId: string, choice: ExportChoice): Promise<ExportPreview>
     cancel(id: string): Promise<void>
     /** Show a finished export's file in the platform's file browser. */
     reveal(id: string): Promise<void>
@@ -214,6 +235,7 @@ export const CHANNELS = {
   projectsCompleteColors: 'projects:complete-colors',
   projectsCompleteOrder: 'projects:complete-order',
   projectsSetTheme: 'projects:set-theme',
+  projectsSetExport: 'projects:set-export',
   viewerAttach: 'viewer:attach',
   viewerRelease: 'viewer:release',
   viewerCall: 'viewer:call',
@@ -227,6 +249,7 @@ export const CHANNELS = {
   exportRun: 'export:run',
   exportCancel: 'export:cancel',
   exportReveal: 'export:reveal',
+  exportPreview: 'export:preview',
   exportProgress: 'export:progress',
   exportSettled: 'export:settled',
   feedsPickZip: 'feeds:pick-zip',

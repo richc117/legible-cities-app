@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type JSX } from 'react'
 import type { DeleteResult, ProjectRecord } from '../../shared/api'
 import { shortLayoutId } from '../../shared/layout'
+import type { ExportChoice } from '../../shared/export'
 import { validateName, type Theme } from '../../shared/project'
 import ConfirmDialog from './ConfirmDialog'
 import DiagnosticsView from './Diagnostics'
@@ -9,7 +10,8 @@ import { feedRecordFor, inspectionFor } from './engine/inspections'
 import { stageFor } from './engine/stages'
 import StageView from './StageView'
 import Inspect from './Inspect'
-import ExportRunView from './ExportRun'
+import ExportTab from './ExportTab'
+import type { PreviewAddress } from './exportChoice'
 import Viewer from './Viewer'
 import Icon from './icons/Icon'
 import Button from './kit/Button'
@@ -18,6 +20,7 @@ import LineColours from './LineColours'
 import LineOrderPanel from './LineOrder'
 import ThemeSwitch from './ThemeSwitch'
 import ServiceDay from './ServiceDay'
+import Tabs, { TabPanel } from './kit/Tabs'
 import TextInput, { type TextInputHandle } from './kit/TextInput'
 import { useEngineState } from './useEngineState'
 import { useSnapshot } from './useSnapshot'
@@ -50,6 +53,13 @@ function describeFailures(failed: DeleteResult['failed']): string | undefined {
 
 // The record's times are ISO 8601 in UTC; a person reads them in their
 // own locale, with the exact value kept on the element.
+/** The project panel's two tabs (A5-01): what the map is, and how it is exported. */
+type PanelTab = 'map' | 'export'
+const PANEL_TABS = [
+  { id: 'map', label: 'Map' },
+  { id: 'export', label: 'Export' },
+] as const satisfies readonly { id: PanelTab; label: string }[]
+
 function Time({ iso }: { iso: string }): JSX.Element {
   const date = new Date(iso)
   return <time dateTime={iso}>{Number.isNaN(date.getTime()) ? iso : date.toLocaleString()}</time>
@@ -66,6 +76,17 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
   // is keyed by it, so the frame loads the page a run just wrote instead of
   // keeping the one it had: its address does not change between the two.
   const [drawn, setDrawn] = useState(0)
+  // Which tab is open, and the address the export tab last planned for the
+  // map's frame. Neither is stored: the tab is where a person is looking,
+  // and the address is planned again whenever the tab opens.
+  const [tab, setTab] = useState<PanelTab>('map')
+  const [preview, setPreview] = useState<PreviewAddress | null>(null)
+  const chooseTab = (next: PanelTab): void => {
+    // Leaving the export tab puts the plain map back; coming back plans
+    // again, so the frame never shows an address planned for another theme.
+    if (next !== 'export') setPreview(null)
+    setTab(next)
+  }
   const engine = useEngineState()
   const headingRef = useRef<HTMLHeadingElement>(null)
 
@@ -189,6 +210,16 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
         : current,
     )
   }
+  // What to export is written the moment it is chosen, as the theme is;
+  // nothing is built for it (A5-01).
+  const setExport = async (choice: ExportChoice): Promise<void> => {
+    const record = await window.api.projects.setExport(id, choice)
+    setState((current) =>
+      current.status === 'ready'
+        ? { status: 'ready', project: { ...current.project, ...record } }
+        : current,
+    )
+  }
   const today = (): string => {
     const now = new Date()
     const pad = (n: number): string => String(n).padStart(2, '0')
@@ -298,43 +329,71 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
           {!project.readOnly && (
             <LayoutRunView run={run} project={project} engine={engine} disabled={exporting} />
           )}
-          {/* What the build that just ran had to fudge. The panel draws
-              nothing until a map has been drawn in this session, and the
-              numbers are never stored (A3-03, specs/017). */}
-          {!project.readOnly && <DiagnosticsView run={run} project={project} />}
-          {!project.readOnly && project.layout !== null && (
-            <ServiceDay run={run} project={project} engine={engine} disabled={exporting} />
-          )}
-          {!project.readOnly && project.layout !== null && (
-            <LineColours
-              run={run}
+          <Tabs
+            tabs={PANEL_TABS}
+            selected={tab}
+            onSelect={chooseTab}
+            label="The project's map, and its export"
+            idPrefix="project"
+          />
+          <TabPanel idPrefix="project" id="map" selected={tab === 'map'}>
+            {/* What the build that just ran had to fudge. The panel draws
+                nothing until a map has been drawn in this session, and the
+                numbers are never stored (A3-03, specs/017). */}
+            {!project.readOnly && <DiagnosticsView run={run} project={project} />}
+            {!project.readOnly && project.layout !== null && (
+              <ServiceDay run={run} project={project} engine={engine} disabled={exporting} />
+            )}
+            {!project.readOnly && project.layout !== null && (
+              <LineColours
+                run={run}
+                project={project}
+                engine={engine}
+                inspect={inspect}
+                disabled={exporting}
+                busyNow={() => exporter.snapshot.state === 'running'}
+              />
+            )}
+            {!project.readOnly && project.layout !== null && (
+              <LineOrderPanel
+                run={run}
+                project={project}
+                engine={engine}
+                inspect={inspect}
+                disabled={exporting}
+                busyNow={() => exporter.snapshot.state === 'running'}
+              />
+            )}
+            {!project.readOnly && (
+              <ThemeSwitch
+                project={project}
+                onChange={setTheme}
+                disabled={exporting || layingOut}
+              />
+            )}
+            {project.layout !== null && (
+              <StageView project={project} engine={engine} read={readStage} />
+            )}
+          </TabPanel>
+          <TabPanel idPrefix="project" id="export" selected={tab === 'export'}>
+            <ExportTab
               project={project}
               engine={engine}
+              run={exporter}
+              layingOut={layingOut}
+              active={tab === 'export'}
               inspect={inspect}
-              disabled={exporting}
-              busyNow={() => exporter.snapshot.state === 'running'}
+              onChoice={setExport}
+              onPreview={setPreview}
             />
-          )}
-          {!project.readOnly && project.layout !== null && (
-            <LineOrderPanel
-              run={run}
-              project={project}
-              engine={engine}
-              inspect={inspect}
-              disabled={exporting}
-              busyNow={() => exporter.snapshot.state === 'running'}
-            />
-          )}
-          {!project.readOnly && (
-            <ThemeSwitch project={project} onChange={setTheme} disabled={exporting || layingOut} />
-          )}
-          {!project.readOnly && project.layout !== null && (
-            <ExportRunView run={exporter} project={project} engine={engine} disabled={layingOut} />
-          )}
+          </TabPanel>
+          {/* The map's own frame, under both tabs: the plain map with its
+              controls under Map, and the export's frame, planned by the
+              engine, under Export (A5-01, FR-005). One frame, because the
+              viewer's bridge holds one per project. */}
           {project.layout !== null && (
-            <StageView project={project} engine={engine} read={readStage} />
+            <Viewer key={drawn} project={project} address={tab === 'export' ? preview : null} />
           )}
-          {project.layout !== null && <Viewer key={drawn} project={project} />}
           <div className="toolbar">
             <Button
               ref={renameButtonRef}

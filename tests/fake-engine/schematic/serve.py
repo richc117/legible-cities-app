@@ -24,8 +24,10 @@ writes before the app starts (every key optional):
     service_delay_ms  wait before feeds.service answers, so a cancel can land (default 30)
     service_refuses   a sentence: feeds.service refuses with it, kind feed, as the engine
                       does for a feed with neither calendar table
-    export_seconds    the one beat's length in the plan export.plan answers (default 1)
+    export_seconds    the one beat's length in a video plan export.plan answers (default 1)
     export_refuses    a sentence: export.plan refuses with it as the hint
+    no_geographic     true: the feeds carry no geographic geometry, so a plan whose view or
+                      storyboard visits the geographic view is refused, as the engine does
     encode_delay_ms   wait between export.encode's five progress notifications (default 30)
     encode_fails      true: export.encode fails after its progress, leaving no file
     presets_cached    keys of the two stand-in presets whose zip is "on disk" (default both)
@@ -55,7 +57,6 @@ from pathlib import Path
 HOME = Path(os.environ.get("SCHEMATIC_HOME", "."))
 OUT = sys.stdout.buffer
 LOCK = threading.Lock()
-PRESETS = {"instagram-reel": (1080, 1920, "mp4")}
 # The stand-in's registry: two presets, and whatever a test added, kept in
 # the home so a new process sees it, as the engine's user-feeds.json is.
 FEEDS = {
@@ -70,6 +71,91 @@ FEEDS = {
                    "notes": ["This is a 2025 snapshot."], "source": "preset"},
 }
 REQUIRED = ("stops", "routes", "trips", "stop_times")
+
+# The engine's export tables at the pinned tag (v0.8.2), restated from
+# `PRESETS` and `STORYBOARDS` in its export.py in the same shape its
+# `preset_table()` and `storyboard_table()` answer. The names are held equal
+# to the generated `PresetName` and `StoryboardName` unions by
+# tests/unit/export.test.ts, so a pin that moves them fails there first.
+
+
+def _preset(name, platform, width, height, kind, fmt, *, storyboard=None, fps=30,
+            max_bytes=None, safe_zones=False, note=""):
+    return {"name": name, "platform": platform, "width": width, "height": height,
+            "kind": kind, "format": fmt, "view": "map", "labels": True,
+            "storyboard": storyboard, "fps": fps, "max_bytes": max_bytes, "frame_top": 0.46,
+            "safe_zones": safe_zones, "note": note}
+
+
+EXPORT_PRESETS = [
+    _preset("instagram-post", "Instagram", 1080, 1350, "still", "png"),
+    _preset("instagram-square", "Instagram", 1080, 1080, "still", "png"),
+    _preset("instagram-story", "Instagram", 1080, 1920, "still", "png", safe_zones=True),
+    _preset("linkedin", "LinkedIn", 1200, 1200, "still", "png"),
+    _preset("linkedin-link", "LinkedIn", 1200, 627, "still", "png",
+            note="link-preview shape; the map gets very little height"),
+    _preset("bluesky", "Bluesky", 1200, 900, "still", "jpg", max_bytes=976_000),
+    _preset("x", "X", 1600, 900, "still", "png"),
+    _preset("instagram-reel", "Instagram", 1080, 1920, "video", "mp4", storyboard="tour",
+            safe_zones=True),
+    _preset("bluesky-video", "Bluesky", 1080, 1350, "video", "mp4", storyboard="tour",
+            max_bytes=50_000_000),
+    _preset("linkedin-video", "LinkedIn", 1200, 1200, "video", "mp4", storyboard="tour"),
+    _preset("instagram-reel-gif", "Instagram", 630, 1120, "video", "gif", storyboard="morph",
+            fps=12, note="9:16 as GIF; half the mp4's size and rate, or it is unusable"),
+    _preset("linkedin-gif", "LinkedIn", 640, 640, "video", "gif", storyboard="morph", fps=12,
+            note="square GIF"),
+    _preset("bluesky-gif", "Bluesky", 640, 800, "video", "gif", storyboard="morph", fps=12,
+            note="4:5 GIF. Bluesky caps an image at ~1 MB, which nothing this long will "
+                 "meet -- post the mp4 there and keep this for a page"),
+    _preset("portfolio-svg", "Portfolio", 0, 0, "vector", "svg",
+            note="both palettes, at the map's own aspect"),
+    _preset("portfolio-mp4", "Portfolio", 1200, 900, "video", "mp4", storyboard="tour"),
+    _preset("portfolio-gif", "Portfolio", 900, 675, "video", "gif", storyboard="morph", fps=24,
+            note="palette-based GIF; keep it short, they are heavy"),
+]
+PRESETS = {p["name"]: p for p in EXPORT_PRESETS}
+
+
+def _beat(secs, view=None, labels=None, at=None, speed=None, sweep=False, hours=None,
+          span=None, tween=None):
+    return {"secs": secs, "view": view, "labels": labels, "at": at, "speed": speed,
+            "sweep": sweep, "hours": hours, "span": span, "tween": tween}
+
+
+def _storyboard(name, *beats):
+    views = []
+    for b in beats:
+        if b["view"] and b["view"] not in views:
+            views.append(b["view"])
+    return {"name": name, "views": " -> ".join(views), "seconds": sum(b["secs"] for b in beats),
+            "geographic": "geographic" in views, "beats": list(beats)}
+
+
+_HOLD, _MORPH = 2.6, 1.8
+EXPORT_STORYBOARDS = [
+    _storyboard("transform", _beat(4, "geographic", at="08:00", speed=120, tween=0),
+                _beat(5, "map"), _beat(5, "linear"), _beat(4, "time"),
+                _beat(9, sweep=True, hours=3)),
+    _storyboard("transform-loop", _beat(2.5, "geographic", at="08:00", speed=120, tween=0),
+                _beat(3, "map"), _beat(3, "linear"), _beat(3, "geographic")),
+    _storyboard("essay-loop", _beat(_HOLD, "geographic", at="08:00", speed=60, tween=0),
+                _beat(_HOLD + _MORPH, "map", tween=_MORPH),
+                _beat(_HOLD + _MORPH, "linear", tween=_MORPH),
+                _beat(_HOLD + _MORPH, "map", tween=_MORPH),
+                _beat(_HOLD + _MORPH, "geographic", tween=_MORPH)),
+    _storyboard("tour", _beat(6, "map", at="05:30", speed=240), _beat(6, "linear"),
+                _beat(3, "time"), _beat(10, sweep=True, hours=4)),
+    _storyboard("reveal", _beat(4, "map", labels=True, at="05:30", speed=240),
+                _beat(6, labels=False), _beat(6, "linear"), _beat(3, "time"),
+                _beat(10, sweep=True, hours=4)),
+    _storyboard("morph", _beat(1.5, "map", at="08:00", speed=120), _beat(2.5, "linear"),
+                _beat(2.5, "time"), _beat(2.5, "map")),
+    _storyboard("day", _beat(1, "map", at="05:00", speed=0), _beat(18, sweep=True),
+                _beat(1, speed=0)),
+    _storyboard("run", _beat(20, "map", at="07:30", speed=240)),
+]
+STORYBOARDS = {b["name"]: b for b in EXPORT_STORYBOARDS}
 
 
 def load_control() -> dict:
@@ -244,6 +330,13 @@ class Engine:
                     path.unlink()
                 write({"jsonrpc": "2.0", "id": msg_id, "result": {"ok": True}})
             return True
+        if method == "export.presets":
+            write({"jsonrpc": "2.0", "id": msg_id, "result": {"presets": EXPORT_PRESETS}})
+            return True
+        if method == "export.storyboards":
+            write({"jsonrpc": "2.0", "id": msg_id,
+                   "result": {"storyboards": EXPORT_STORYBOARDS}})
+            return True
         if method == "export.plan":
             params = message.get("params") or {}
             problem = self.plan_problem(params)
@@ -251,6 +344,13 @@ class Engine:
                 error(msg_id, -32602, problem, "params")
             elif self.control.get("export_refuses"):
                 error(msg_id, -32000, self.control["export_refuses"], "export")
+            elif PRESETS[params["preset"]]["kind"] == "vector":
+                error(msg_id, -32000, f"{params['preset']} is a vector preset: nothing to "
+                      "capture", "export")
+            elif self.control.get("no_geographic") and self.wants_geographic(params):
+                error(msg_id, -32000, f"{params['key']!r} carries no geographic geometry, so "
+                      "the geographic view would silently render as the schematic map.",
+                      "export")
             else:
                 write({"jsonrpc": "2.0", "id": msg_id, "result": self.plan(params)})
             return True
@@ -606,43 +706,95 @@ class Engine:
 
     @staticmethod
     def plan_problem(params: dict) -> str | None:
-        """The real server's refusals, in shape: a feed key, a preset it has, and
-        a page with a scheme."""
+        """The real server's refusals, in shape: a feed key, a preset it has, a
+        page with a scheme, and options it knows."""
         if not isinstance(params.get("key"), str) or not params["key"]:
             return "key must be a feed key"
         if params.get("preset") not in PRESETS:
-            return "preset must be one of " + ", ".join(PRESETS)
+            return "preset must be the name of an export preset; export.presets lists them"
         page = params.get("page")
         if page is not None and (not isinstance(page, str) or "://" not in page):
             return "page must be the page's address, with its scheme"
+        options = params.get("options") or {}
+        if not isinstance(options, dict):
+            return "options must be an object"
+        known = {"view", "labels", "title", "clock", "theme", "at", "lines", "storyboard",
+                 "quality", "fade", "tag", "safe"}
+        extra = sorted(set(options) - known)
+        if extra:
+            return f"export.plan options does not take {', '.join(extra)}"
+        board = options.get("storyboard")
+        if board is not None and board not in STORYBOARDS:
+            return "storyboard must be the name of a storyboard; export.storyboards lists them"
         return None
 
+    @staticmethod
+    def wants_geographic(params: dict) -> bool:
+        options = params.get("options") or {}
+        preset = PRESETS[params["preset"]]
+        if (options.get("view") or preset["view"]) == "geographic":
+            return True
+        if preset["kind"] != "video":
+            return False
+        board = STORYBOARDS.get(options.get("storyboard") or preset["storyboard"] or "")
+        return bool(board and board["geographic"])
 
     def plan(self, params: dict) -> dict:
         """export.plan's answer: the recorder's job for the page the app named,
-        at a size the stand-in page draws, plus what export.encode needs back.
-        One beat, pinned to a clock, as every real storyboard opens."""
-        key, preset = params["key"], params["preset"]
-        width, height, fmt = PRESETS[preset]
+        at half the preset's size so the stand-in page captures quickly, plus
+        what export.encode needs back. A still is pinned at its `at`, as the
+        engine pins it; a video is one short beat pinned to a clock, as every
+        real storyboard opens.
+
+        The address echoes the options it was asked, in the engine's own
+        spelling (`url_for`), so a test reads what reached the engine from the
+        address the app shows: the theme (A4-03), the view, the flags, the
+        start time, the lines and the safe zones (A5-01)."""
+        from urllib.parse import urlencode
+
+        key, name = params["key"], params["preset"]
+        preset = PRESETS[name]
         page = params.get("page") or f"file:///maps/{key}.html"
-        # Echoed, not assumed: the engine's options say dark or light and its
-        # page says warm-dark or sepia, and a double that ignored the input
-        # could not show the app's theme arriving at all (A4-03).
         options = params.get("options") or {}
         theme = "dark" if options.get("theme", "dark") == "dark" else "light"
-        url = (f"{page}?present=1&view=map&labels=1&title=1&clock=1"
-               f"&theme={'dark' if theme == 'dark' else 'sepia'}"
-               f"&frame={width}:{height}&frametop=0")
+        video = preset["kind"] == "video"
+        view = options.get("view") or preset["view"]
+        labels = options.get("labels", preset["labels"])
+        title = options.get("title", True)
+        clock = options.get("clock", video)
+        query = {"present": "1", "view": view, "labels": "1" if labels else "0",
+                 "title": "1" if title else "0", "clock": "1" if clock else "0",
+                 "theme": "dark" if theme == "dark" else "sepia",
+                 "frame": f"{preset['width']}:{preset['height']}",
+                 "frametop": str(preset["frame_top"])}
+        if options.get("at"):
+            query["at"] = options["at"]
+        if options.get("lines"):
+            query["lines"] = ",".join(options["lines"])
+        if options.get("safe"):
+            query["safe"] = "1"
+        url = page + "?" + urlencode(query)
+        quality = options.get("quality", "standard")
+        tag = options.get("tag") or ""
+        stem = (f"{key}-{name}" + (f"-{theme}" if theme != "dark" else "")
+                + (f"-{tag}" if tag else ""))
+        board = (options.get("storyboard") or preset["storyboard"]) if video else ""
+        at = options.get("at")
+        pinned = None
+        if not video:
+            hms = [int(part) for part in (at or "07:00").split(":")]
+            pinned = hms[0] * 3600 + hms[1] * 60 + (hms[2] if len(hms) > 2 else 0)
         seconds = float(self.control.get("export_seconds", 1))
-        return {"key": key, "preset": preset, "mode": "video", "url": url,
-                "width": 540, "height": 960, "scale": 1, "fps": 30, "format": fmt,
-                "settle": 300,
-                "beats": [{"secs": seconds, "view": "map", "labels": None, "at": 8 * 3600,
-                           "speed": 120, "sweep": False, "hours": None, "lo": None,
-                           "hi": None, "tween": 0}],
-                "keep": True, "crf": 26, "fade": 0.0, "stem": f"{key}-{preset}",
-                "theme": theme, "view": "map", "storyboard": "tour", "at": None,
-                "notes": [], "filename": f"{key}-{preset}.{fmt}"}
+        beats = [] if not video else [
+            {"secs": seconds, "view": view, "labels": None, "at": 8 * 3600, "speed": 120,
+             "sweep": False, "hours": None, "lo": None, "hi": None, "tween": 0}]
+        return {"key": key, "preset": name, "mode": "video" if video else "still", "url": url,
+                "width": max(1, preset["width"] // 2), "height": max(1, preset["height"] // 2),
+                "scale": 1, "fps": preset["fps"], "format": preset["format"], "settle": 300,
+                "beats": beats, "keep": quality != "standard", "crf": 26,
+                "fade": float(options.get("fade", 0.0)), "stem": stem, "theme": theme,
+                "view": view, "storyboard": board, "at": pinned, "notes": [],
+                "filename": f"{stem}.{preset['format']}"}
 
 
     def encode(self, msg_id, params: dict) -> None:
@@ -653,10 +805,18 @@ class Engine:
         plan = params.get("plan") or {}
         source = Path(params.get("source") or "")
         dest = Path(params.get("dest") or "")
-        if not source.is_dir():
+        # A video is encoded from a folder of frames, a still from its one
+        # captured image, as the engine's encode takes them.
+        if plan.get("mode") == "still":
+            if not source.is_file():
+                error(msg_id, -32000, "the captured still is not there", "io")
+                return
+            frames = [source]
+        elif not source.is_dir():
             error(msg_id, -32000, "the frames directory is not there", "io")
             return
-        frames = sorted(source.glob("*.png"))
+        else:
+            frames = sorted(source.glob("*.png"))
         sidecar = dest.with_name(dest.name + ".json")
         dest.parent.mkdir(parents=True, exist_ok=True)
         delay = self.control.get("encode_delay_ms", 30) / 1000
@@ -687,8 +847,12 @@ class Engine:
             return
         dest.write_bytes(b"stand-in %s: %d frames\n" % (plan.get("format", "").encode(), len(frames)))
         provenance = params.get("provenance") or {}
+        preset = PRESETS.get(plan.get("preset"), {})
         meta = {"file": dest.name, "bytes": dest.stat().st_size, "feed": plan.get("key"),
-                "preset": plan.get("preset"), "platform": "stand-in",
+                "preset": plan.get("preset"), "platform": preset.get("platform", "stand-in"),
+                "width": preset.get("width"), "height": preset.get("height"),
+                "format": plan.get("format"), "theme": plan.get("theme"),
+                "view": plan.get("view"), "storyboard": plan.get("storyboard"),
                 "service_date": provenance.get("service_date"), "frames": len(frames),
                 "caveats": []}
         sidecar.write_text(json.dumps(meta, indent=2))

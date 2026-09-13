@@ -100,6 +100,14 @@ async function withApp(
 }
 
 /**
+ * The export's button, on the export tab (A5-01). The tab is opened first;
+ * the button was "Export reel" while the reel was the only thing it made.
+ */
+function exportButton(page: Page) {
+  return page.getByRole('button', { name: 'Export', exact: true })
+}
+
+/**
  * A laid-out project whose page is the stand-in that animates: the layout
  * run writes the stand-in engine's placeholder page, and the fixture goes
  * over it, at the name the export will ask for.
@@ -117,6 +125,10 @@ async function laidOutProject(page: Page, h: Home): Promise<void> {
   await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
   const [id] = readdirSync(join(h.engineHome, 'projects'))
   copyFileSync(fixture, join(h.engineHome, 'out', id, 'la-metro-rail.html'))
+  // The export lives on its own tab of the project panel, and starts on the
+  // reel with the engine's defaults, which is what the one button made.
+  await page.getByRole('tab', { name: 'Export' }).click()
+  await expect(exportButton(page)).toBeVisible({ timeout: 20_000 })
 }
 
 test('exports the reel from one click: three stages, a file, its sidecar, and no path on screen', async () => {
@@ -133,7 +145,7 @@ test('exports the reel from one click: three stages, a file, its sidecar, and no
       }
     })
 
-    await page.getByRole('button', { name: 'Export reel' }).click()
+    await exportButton(page).click()
     const run = page.getByRole('region', { name: 'Export' })
     await expect(run).toBeVisible()
     for (const stage of ['plan', 'capture', 'encode']) {
@@ -167,13 +179,13 @@ test('cancelled during the capture: nothing written, no frames left, and it can 
   const h = home({ export_seconds: 8 })
   await withApp(h, async (page) => {
     await laidOutProject(page, h)
-    await page.getByRole('button', { name: 'Export reel' }).click()
+    await exportButton(page).click()
     await expect(page.getByText(/^Captur/)).toBeVisible({ timeout: 20_000 })
     await page.getByRole('button', { name: 'Cancel' }).click()
     await expect(page.getByText(/was cancelled/i)).toBeVisible({ timeout: 20_000 })
     expect(existsSync(deliverable(h))).toBe(false)
     expect(framesLeft(h)).toEqual([])
-    await expect(page.getByRole('button', { name: 'Export reel' })).toBeVisible()
+    await expect(exportButton(page)).toBeVisible()
   })
 })
 
@@ -181,7 +193,7 @@ test('cancelled during the encode: no partial file and no sidecar', async () => 
   const h = home({ encode_delay_ms: 600 })
   await withApp(h, async (page) => {
     await laidOutProject(page, h)
-    await page.getByRole('button', { name: 'Export reel' }).click()
+    await exportButton(page).click()
     await expect(page.getByText(/^Encod/)).toBeVisible({ timeout: 30_000 })
     await page.getByRole('button', { name: 'Cancel' }).click()
     await expect(page.getByText(/was cancelled/i)).toBeVisible({ timeout: 20_000 })
@@ -195,7 +207,7 @@ test("a failed encode shows the engine's own sentence and leaves nothing", async
   const h = home({ encode_fails: true })
   await withApp(h, async (page) => {
     await laidOutProject(page, h)
-    await page.getByRole('button', { name: 'Export reel' }).click()
+    await exportButton(page).click()
     await expect(page.getByText('the stand-in could not encode')).toBeVisible({
       timeout: 30_000,
     })
@@ -210,7 +222,7 @@ test('a quit mid-export leaves nothing, and a start clears what a crash would ha
   const app = await launch(h)
   const page = await ready(app)
   await laidOutProject(page, h)
-  await page.getByRole('button', { name: 'Export reel' }).click()
+  await exportButton(page).click()
   await expect(page.getByText(/^Captur/)).toBeVisible({ timeout: 20_000 })
   await app.close()
   expect(existsSync(deliverable(h))).toBe(false)

@@ -10,13 +10,15 @@ import {
   type ExportBridge,
 } from '../../src/renderer/src/engine/exportRun'
 import { ERROR_CODES, type EngineState } from '../../src/shared/engine'
-import type { ExportProgress, ExportResult } from '../../src/shared/export'
+import type { ExportChoice, ExportProgress, ExportResult } from '../../src/shared/export'
 import { DEFAULT_STYLE, type ProjectRecord } from '../../src/shared/project'
 
 const tick = (): Promise<void> => new Promise((r) => setImmediate(r))
 
+const REEL: ExportChoice = { preset: 'instagram-reel', options: {} }
+
 function stubBridge() {
-  const runs: { projectId: string; preset: string }[] = []
+  const runs: { projectId: string; choice: ExportChoice }[] = []
   const cancelled: string[] = []
   const revealed: string[] = []
   const listeners = new Set<(p: ExportProgress) => void>()
@@ -24,8 +26,8 @@ function stubBridge() {
   let reject!: (e: unknown) => void
   let next = 1
   const bridge: ExportBridge = {
-    run(projectId, preset) {
-      runs.push({ projectId, preset })
+    run(projectId, choice) {
+      runs.push({ projectId, choice })
       const id = `tok-${next++}`
       return {
         id,
@@ -74,6 +76,7 @@ const project = (over: Partial<ProjectRecord> = {}): ProjectRecord => ({
   defaultColor: '#888888',
   lineOrder: [],
   theme: 'warm-dark',
+  export: { preset: 'instagram-reel', options: {} },
   layout: 'a'.repeat(64),
   made: null,
   built: null,
@@ -85,7 +88,7 @@ const project = (over: Partial<ProjectRecord> = {}): ProjectRecord => ({
 describe('ExportRun', () => {
   it('starts idle with the three stages waiting', () => {
     const { bridge } = stubBridge()
-    const run = new ExportRun(bridge, 'instagram-reel')
+    const run = new ExportRun(bridge)
     expect(run.snapshot.state).toBe('idle')
     expect(run.snapshot.stages.map((s) => s.id)).toEqual(['plan', 'capture', 'encode'])
     expect(run.snapshot.stages.every((s) => s.state === 'pending')).toBe(true)
@@ -93,23 +96,23 @@ describe('ExportRun', () => {
 
   it('refuses to start without a ready engine, or without a layout', () => {
     const { bridge, runs } = stubBridge()
-    const run = new ExportRun(bridge, 'instagram-reel')
-    run.start(project(), null)
+    const run = new ExportRun(bridge)
+    run.start(project(), null, REEL)
     expect(run.snapshot).toMatchObject({ state: 'failed', error: /still starting/ })
-    run.start(project(), { state: 'starting', attempt: 1 })
+    run.start(project(), { state: 'starting', attempt: 1 }, REEL)
     expect(run.snapshot.error).toMatch(/not ready to export: starting/)
-    run.start(project({ layout: null }), READY)
+    run.start(project({ layout: null }), READY, REEL)
     expect(run.snapshot.error).toMatch(/Lay the project out/)
     expect(runs).toEqual([])
   })
 
   it('follows the reports stage by stage and ends done with the file name', async () => {
     const stub = stubBridge()
-    const run = new ExportRun(stub.bridge, 'instagram-reel')
+    const run = new ExportRun(stub.bridge)
     const seen: string[] = []
     run.subscribe((s) => seen.push(s.state))
-    run.start(project(), READY)
-    expect(stub.runs).toEqual([{ projectId: 'abcdefghijk1', preset: 'instagram-reel' }])
+    run.start(project(), READY, REEL)
+    expect(stub.runs).toEqual([{ projectId: 'abcdefghijk1', choice: REEL }])
     expect(run.snapshot.state).toBe('running')
     expect(run.snapshot.stages.map((s) => s.state)).toEqual(['running', 'pending', 'pending'])
 
@@ -145,8 +148,8 @@ describe('ExportRun', () => {
 
   it('cancels through the bridge and ends cancelled with the running stage reverted', async () => {
     const stub = stubBridge()
-    const run = new ExportRun(stub.bridge, 'instagram-reel')
-    run.start(project(), READY)
+    const run = new ExportRun(stub.bridge)
+    run.start(project(), READY, REEL)
     stub.report({
       id: 'tok-1',
       stage: 'capture',
@@ -166,8 +169,8 @@ describe('ExportRun', () => {
 
   it("ends failed with the engine's hint and the running stage marked", async () => {
     const stub = stubBridge()
-    const run = new ExportRun(stub.bridge, 'instagram-reel')
-    run.start(project(), READY)
+    const run = new ExportRun(stub.bridge)
+    run.start(project(), READY, REEL)
     stub.report({ id: 'tok-1', stage: 'encode', fraction: 0, message: 'Encoding 60 frames.' })
     stub.reject({
       code: -32000,
@@ -188,8 +191,8 @@ describe('ExportRun', () => {
 
   it('says a file may have been left only when the engine died during the encode', async () => {
     const stub = stubBridge()
-    const run = new ExportRun(stub.bridge, 'instagram-reel')
-    run.start(project(), READY)
+    const run = new ExportRun(stub.bridge)
+    run.start(project(), READY, REEL)
     stub.report({
       id: 'tok-1',
       stage: 'capture',
@@ -200,7 +203,7 @@ describe('ExportRun', () => {
     await tick()
     expect(run.snapshot).toMatchObject({ state: 'failed', left: false })
 
-    run.start(project(), READY)
+    run.start(project(), READY, REEL)
     stub.report({
       id: 'tok-2',
       stage: 'encode',
@@ -211,7 +214,7 @@ describe('ExportRun', () => {
     await tick()
     expect(run.snapshot).toMatchObject({ state: 'failed', left: true })
 
-    run.start(project(), READY)
+    run.start(project(), READY, REEL)
     stub.report({
       id: 'tok-3',
       stage: 'encode',
@@ -228,14 +231,14 @@ describe('ExportRun', () => {
 
   it('can start again after it ended, and ignores a late answer from the earlier export', async () => {
     const stub = stubBridge()
-    const run = new ExportRun(stub.bridge, 'instagram-reel')
-    run.start(project(), READY)
+    const run = new ExportRun(stub.bridge)
+    run.start(project(), READY, REEL)
     const rejectFirst = stub.reject
     run.cancel()
     rejectFirst({ code: ERROR_CODES.cancelled, message: 'cancelled' })
     await tick()
     expect(run.snapshot.state).toBe('cancelled')
-    run.start(project(), READY)
+    run.start(project(), READY, REEL)
     expect(run.snapshot.state).toBe('running')
     expect(stub.runs).toHaveLength(2)
     stub.resolve({ file: 'y.mp4', bytes: 1, frames: 1 })
@@ -245,9 +248,9 @@ describe('ExportRun', () => {
 
   it('does not start twice while running, and dispose releases the subscription', () => {
     const stub = stubBridge()
-    const run = new ExportRun(stub.bridge, 'instagram-reel')
-    run.start(project(), READY)
-    run.start(project(), READY)
+    const run = new ExportRun(stub.bridge)
+    run.start(project(), READY, REEL)
+    run.start(project(), READY, REEL)
     expect(stub.runs).toHaveLength(1)
     expect(stub.listeners.size).toBe(1)
     run.dispose()
