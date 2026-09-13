@@ -7,9 +7,10 @@ import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SettingsStore } from '../../src/main/settings'
 import {
+  ENGINE_INFO_TIMEOUT_MS,
   registerSettingsHandlers,
   SettingsService,
   type SettingsDeps,
@@ -21,6 +22,13 @@ import type { FolderSource, ResetOutcome } from '../../src/shared/settings'
 type Handler = (event: IpcMainInvokeEvent, ...args: unknown[]) => Promise<unknown>
 
 const roots: string[] = []
+
+/** The facts Electron would give, fixed so the copy's order can be read. */
+const ABOUT = {
+  app: { name: 'Legible Cities', version: '0.0.0' },
+  versions: { electron: '42.0.0', chrome: '140.0.0.0', node: '24.0.0' },
+  os: { type: 'Linux', release: '6.0.0', arch: 'x64' },
+}
 
 /** Where this run's stand-in app bundle sits; nothing may be stored inside it. */
 const bundleOf = (root: string): string => join(root, 'bundle', 'Legible Cities.app')
@@ -42,6 +50,13 @@ async function harness(
     engineHome?: (root: string) => string
     /** The person's own folder, which the reset must never reach. */
     homeDir?: (root: string) => string
+    /** The engine's `engine.info`, for the diagnostics copy. */
+    engineInfo?: () => Promise<unknown>
+    /** The home folders the copy hides, and the platform it reads them for. */
+    homes?: (root: string) => string[]
+    platform?: string
+    /** Where the log files are, for a log folder under the fake home. */
+    logsFolder?: (root: string) => string
   } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), 'legible-cities-settings-ipc-'))
@@ -51,12 +66,13 @@ async function harness(
   const engineHome = over.engineHome?.(root) ?? join(userData, 'engine')
   const exportFolder = over.exportFolder?.(root) ?? join(root, 'desktop', 'Legible Cities')
   const bundle = bundleOf(root)
-  const logsFolder = join(root, 'logs')
+  const logsFolder = over.logsFolder?.(root) ?? join(root, 'logs')
   const store = new SettingsStore(userData, () => undefined)
   await store.load()
   const opened: Which[] = []
   const shown: string[] = []
   const logs: string[] = []
+  const copied: string[] = []
   const deps: SettingsDeps = {
     store,
     engineHome,
@@ -75,6 +91,14 @@ async function harness(
     logsFolder: () => logsFolder,
     bundleRoots: [bundle],
     guards: { userData, homeDir: over.homeDir?.(root) ?? root },
+    diagnostics: {
+      about: () => ABOUT,
+      engineInfo: over.engineInfo ?? (async () => ({ engine: '0.0.0-test', protocol: 1 })),
+      flushLogs: async () => undefined,
+      homes: over.homes?.(root) ?? [root],
+      platform: over.platform ?? 'linux',
+      writeText: (text) => copied.push(text),
+    },
     log: (m) => logs.push(m),
   }
   const settings = new SettingsService(deps)
@@ -91,6 +115,7 @@ async function harness(
     opened,
     shown,
     logs,
+    copied,
     root,
     userData,
     engineHome,
@@ -388,6 +413,14 @@ describe('resetting the engine data', () => {
       logsFolder: () => join(root, 'logs'),
       bundleRoots: [],
       guards: { userData, homeDir: join(root, 'home') },
+      diagnostics: {
+        about: () => ABOUT,
+        engineInfo: async () => ({}),
+        flushLogs: async () => undefined,
+        homes: [root],
+        platform: 'linux',
+        writeText: () => undefined,
+      },
       log: () => undefined,
     })
     await expect(settings.resetEngineData()).rejects.toThrow(/home folder/)
@@ -427,5 +460,94 @@ describe('resetting the engine data', () => {
       files: 1,
       bytes: 4,
     })
+  })
+})
+
+// "Copy diagnostics" (A6-03): the one settings call that takes something
+// from the page, and the one whose output a person pastes in public.
+describe('copying diagnostics', () => {
+  it('puts the versions, the engine, both logs and the reports on the clipboard, in order', async () => {
+    const h = await harness()
+    await mkdir(h.logsFolder, { recursive: true })
+    await writeFile(join(h.logsFolder, 'main.log'), 'a main line\n')
+    await writeFile(join(h.logsFolder, 'engine.log'), 'an engine line\n')
+    await h.call(CHANNELS.settingsCopyDiagnostics, ['Los Angeles — the map drawn for 2026-09-12'])
+    expect(h.copied).toHaveLength(1)
+    const text = h.copied[0]
+    const order = [
+      'Legible Cities 0.0.0',
+      'Electron 42.0.0',
+      'Chromium 140.0.0.0',
+      'Node 24.0.0',
+      'Linux 6.0.0 (x64)',
+      '"engine": "0.0.0-test"',
+      'a main line',
+      'an engine line',
+      'Los Angeles — the map drawn for 2026-09-12',
+    ].map((needle) => text.indexOf(needle))
+    expect(
+      order.every((at) => at >= 0),
+      text,
+    ).toBe(true)
+    expect([...order].sort((a, b) => a - b)).toEqual(order)
+  })
+
+  it('says the engine is not running rather than failing', async () => {
+    const h = await harness({
+      engineInfo: () => Promise.reject({ code: -32002, message: 'The engine is starting.' }),
+    })
+    await h.call(CHANNELS.settingsCopyDiagnostics, [])
+    expect(h.copied[0]).toContain(
+      'The engine did not give its engine.info: The engine is starting.',
+    )
+    expect(h.copied[0]).toContain('There is no main.log yet.')
+    expect(h.copied[0]).toContain('No map has been drawn since the app started.')
+  })
+
+  it('writes the home folder as ~, wherever it appears', async () => {
+    const h = await harness({
+      homes: (root) => [join(root, 'home', 'someone')],
+      logsFolder: (root) => join(root, 'home', 'someone', 'logs'),
+      engineInfo: async () => ({
+        engine: '0.0.0-test',
+        home: join(h.root, 'home', 'someone', 'engine'),
+      }),
+    })
+    const home = join(h.root, 'home', 'someone')
+    await mkdir(h.logsFolder, { recursive: true })
+    await writeFile(join(h.logsFolder, 'main.log'), `[config] SCHEMATIC_HOME=${home}/engine\n`)
+    await h.call(CHANNELS.settingsCopyDiagnostics, [`a report naming ${home}`])
+    const text = h.copied[0]
+    expect(text).not.toContain(home)
+    expect(text).toContain('SCHEMATIC_HOME=~/engine')
+    expect(text).toContain('a report naming ~')
+  })
+
+  it('refuses reports that are not a short list of bounded text, and copies nothing', async () => {
+    const h = await harness()
+    for (const bad of [
+      undefined,
+      'one string',
+      [1, 2],
+      Array.from({ length: 21 }, () => 'a report'),
+      ['x'.repeat(64 * 1024 + 1)],
+    ]) {
+      await expect(h.call(CHANNELS.settingsCopyDiagnostics, bad)).rejects.toThrow(/short list/)
+    }
+    expect(h.copied).toEqual([])
+  })
+
+  it('gives up on an engine that does not answer, and says so', async () => {
+    vi.useFakeTimers()
+    try {
+      const h = await harness({ engineInfo: () => new Promise(() => undefined) })
+      const copying = h.call(CHANNELS.settingsCopyDiagnostics, [])
+      await vi.advanceTimersByTimeAsync(ENGINE_INFO_TIMEOUT_MS)
+      vi.useRealTimers()
+      await copying
+      expect(h.copied[0]).toContain('no answer within 5 s')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

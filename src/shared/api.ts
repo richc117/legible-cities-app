@@ -220,8 +220,24 @@ export interface Api {
      * what would not. Rejects when it may not run.
      */
     resetEngineData(): Promise<ResetOutcome>
+    /**
+     * Put what a bug report needs on the clipboard: the app's and the
+     * engine's versions, the operating system, the last lines of both logs
+     * and the reports given here - each project's diagnostics as its own
+     * panel copies them, at most twenty of at most 64 KB. The main process
+     * composes the text and writes the home folder as `~`; nothing is sent
+     * anywhere (specs/023-logs-and-diagnostics).
+     */
+    copyDiagnostics(reports: string[]): Promise<void>
   }
 }
+
+/**
+ * What `settings.copyDiagnostics` accepts from the page: at most this many
+ * reports, each at most this many bytes of UTF-8. The main side checks it;
+ * the page keeps to it so a long session is not refused outright.
+ */
+export const DIAGNOSTICS_REPORTS = { count: 20, bytes: 64 * 1024 } as const
 
 export const CHANNELS = {
   projectsList: 'projects:list',
@@ -263,4 +279,5 @@ export const CHANNELS = {
   settingsEngineSize: 'settings:engine-size',
   settingsOpenLogs: 'settings:open-logs',
   settingsResetEngineData: 'settings:reset-engine-data',
+  settingsCopyDiagnostics: 'settings:copy-diagnostics',
 } as const

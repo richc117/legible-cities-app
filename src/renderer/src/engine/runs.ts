@@ -13,6 +13,7 @@
 // and know nothing of any of this, which is what lets the tests drive them.
 
 import type { ExportProgress } from '../../../shared/export'
+import { copyText } from './diagnostics'
 import { ExportRun, type ExportBridge } from './exportRun'
 import { FeedAdd } from './feedAdd'
 import { LayoutRun } from './layoutRun'
@@ -121,4 +122,21 @@ export function subscribeToRuns(listener: () => void): () => void {
   return () => {
     for (const off of offs) off()
   }
+}
+
+/**
+ * The diagnostics of every map drawn this session, as each project's own
+ * panel copies them: one block per project whose run holds a report, in the
+ * order the projects were first opened. A run that has not drawn a map, or
+ * whose last attempt failed, has none. The name comes from the caller,
+ * because a run knows its project only by id; an id nobody can name is
+ * used as it is. "Copy diagnostics" in Settings sends these (A6-03).
+ */
+export function reportsInSession(nameOf: (projectId: string) => string | undefined): string[] {
+  const reports: string[] = []
+  for (const [projectId, run] of runs) {
+    const { report } = run.snapshot
+    if (report !== null) reports.push(copyText(nameOf(projectId) ?? projectId, report))
+  }
+  return reports
 }

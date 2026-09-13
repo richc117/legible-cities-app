@@ -2,9 +2,9 @@
 // here draws; see specs/001-electron-skeleton/plan.md and
 // specs/004-sidecar-supervisor/plan.md.
 
-import { existsSync, mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync, realpathSync } from 'node:fs'
 import { mkdir, readFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
+import { homedir, release, type } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 import { BrowserWindow, app, clipboard, dialog, ipcMain, session, shell } from 'electron'
 import pins from '../../vendor/pins.json'
@@ -25,7 +25,8 @@ import { claimFramesRoot, clearFrames, describeSweep, FRAMES_FOLDER } from './fr
 import { registerExportHandlers } from './export-ipc'
 import { engineCommand, engineEnvironment, resolveInterpreter } from './interpreter'
 import { registerClipboardHandler, registerProjectHandlers, registerViewerHandlers } from './ipc'
-import { log } from './log'
+import { byTag, holdingSink, log, setSink, toStderr } from './log'
+import { openLogFile, type LogFile } from './log-file'
 import { ProjectStore } from './projects'
 import { SettingsStore } from './settings'
 import { registerSettingsHandlers, SettingsService } from './settings-ipc'
@@ -35,6 +36,21 @@ import { registerAppScheme } from './scheme'
 import { Sidecar } from './sidecar'
 
 export const PRODUCT_NAME = 'Legible Cities'
+
+// The log, from the first line. Until the app knows where its log folder
+// is, lines are held in memory - the first lines of a launch that goes
+// wrong are the ones worth having - and, in development, mirrored to
+// standard error as they always were. Once the folder is known they go to
+// main.log and engine.log (specs/023-logs-and-diagnostics).
+const development = !app.isPackaged
+const earlyLines = holdingSink(2_000)
+setSink((line, tag) => {
+  if (development) toStderr(line, tag)
+  earlyLines.sink(line, tag)
+})
+/** The two files, once open; closed on the way out, after the engine's last line. */
+let logFiles: { main: LogFile; engine: LogFile } | null = null
+let logsClosed = false
 
 // Before the app is ready, and exactly once (research.md section 1).
 registerAppScheme()
@@ -61,6 +77,64 @@ if (movedUserData !== undefined && movedUserData !== '' && isAbsolute(movedUserD
       'config',
       `LEGIBLE_USER_DATA could not be used: ${error instanceof Error ? error.message : String(error)}`,
     )
+  }
+}
+// The logs follow the moved profile. On Windows and Linux Electron keeps
+// them inside the user-data folder already; on macOS it does not, and the
+// suite must never write a person's own log (specs/023, FR-009).
+if (userDataMoved && movedUserData !== undefined) {
+  try {
+    app.setAppLogsPath(join(movedUserData, 'logs'))
+  } catch (error) {
+    log.error(
+      'config',
+      `the logs could not follow LEGIBLE_USER_DATA: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
+}
+
+/**
+ * Open main.log and engine.log in the platform's log folder and send every
+ * line there from now on, the held ones first. A folder Electron cannot
+ * name leaves the log on standard error, and says so there; a folder that
+ * cannot be written is found at the first write, and the file says so
+ * once and falls back the same way.
+ */
+async function openLogs(): Promise<void> {
+  let folder: string
+  try {
+    folder = app.getPath('logs')
+    await mkdir(folder, { recursive: true })
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code ?? 'no log folder'
+    setSink(toStderr)
+    if (!development) earlyLines.release(toStderr)
+    log.warn('log', `the log folder could not be used (${code}); logging to standard error`)
+    return
+  }
+  const options = { mirrored: development }
+  const main = openLogFile(folder, 'main', options)
+  const engine = openLogFile(folder, 'engine', options)
+  logFiles = { main, engine }
+  const toFiles = byTag(
+    (line) => main.write(line),
+    (line) => engine.write(line),
+  )
+  setSink((line, tag) => {
+    if (development) toStderr(line, tag)
+    toFiles(line, tag)
+  })
+  earlyLines.release(toFiles)
+}
+
+/** The home folder as the copy should hide it: as the platform names it, and through its links. */
+function homeFolders(): string[] {
+  const home = homedir()
+  try {
+    const real = realpathSync.native(home)
+    return real === home ? [home] : [home, real]
+  } catch {
+    return [home]
   }
 }
 
@@ -238,6 +312,9 @@ if (!hasLock) {
   })
 
   app.whenReady().then(async () => {
+    // The log files before anything worth logging, the engine above all:
+    // its first lines are how a launch that failed is diagnosed.
+    await openLogs()
     // The settings are read first: a folder a person chose is one of the
     // things the configuration resolves, below the environment.
     const settingsStore = new SettingsStore(app.getPath('userData'), (m) => log.warn('settings', m))
@@ -340,6 +417,27 @@ if (!hasLock) {
       // resources beside it.
       bundleRoots: app.isPackaged ? [app.getAppPath(), process.resourcesPath] : [app.getAppPath()],
       guards: { userData: app.getPath('userData'), homeDir: homedir() },
+      // "Copy diagnostics": everything from this process, and the engine's
+      // own answer; the clipboard is written in the main process, as the
+      // diagnostics panel's handler writes it. Nothing leaves the machine.
+      diagnostics: {
+        about: () => ({
+          app: { name: PRODUCT_NAME, version: app.getVersion() },
+          versions: {
+            electron: process.versions.electron,
+            chrome: process.versions.chrome,
+            node: process.versions.node,
+          },
+          os: { type: type(), release: release(), arch: process.arch },
+        }),
+        engineInfo: () => engine.request('engine.info').result,
+        flushLogs: async () => {
+          await Promise.all([logFiles?.main.flush(), logFiles?.engine.flush()])
+        },
+        homes: homeFolders(),
+        platform: process.platform,
+        writeText: (text) => clipboard.writeText(text),
+      },
       log: (message) => log.info('settings', message),
     })
     // Held where the handlers registered above it can ask it.
@@ -440,6 +538,17 @@ if (!hasLock) {
     const stopping = sidecar.stop()
     stopping.catch((error: Error) => log.error('engine', `stop failed: ${error.message}`))
     void stopping.finally(() => app.quit())
+  })
+
+  // The files close last: the engine's shutdown lines are written by then,
+  // because this runs only once the quit above has let Electron go. Lines
+  // logged after this reach standard error in development and nowhere else.
+  app.on('will-quit', (event) => {
+    if (logFiles === null || logsClosed) return
+    event.preventDefault()
+    logsClosed = true
+    const files = logFiles
+    void Promise.all([files.main.close(), files.engine.close()]).finally(() => app.quit())
   })
 
   app.on('window-all-closed', () => {

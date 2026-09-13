@@ -24,6 +24,7 @@ import {
   type FolderSource,
   type SettingsView,
 } from '../shared/settings'
+import { areReports, diagnosticsText, tailLog, type DiagnosticsInput } from './diagnostics-text'
 import { PickedPaths } from './picked'
 import {
   contains,
@@ -73,7 +74,26 @@ export interface SettingsDeps {
   bundleRoots: string[]
   /** What a reset must never remove: these come from Electron, not from the page. */
   guards: ResetGuards
+  /** What "Copy diagnostics" gathers, injected so the whole copy is asserted in a unit test. */
+  diagnostics: DiagnosticsDeps
   log: (message: string) => void
+}
+
+/** How long the copy waits for the engine's `engine.info` before saying it did not answer. */
+export const ENGINE_INFO_TIMEOUT_MS = 5_000
+
+export interface DiagnosticsDeps {
+  /** The app's version, the runtime's versions and the operating system. */
+  about: () => Pick<DiagnosticsInput, 'app' | 'versions' | 'os'>
+  /** The engine's `engine.info`; rejects with the engine's own sentence when it is not ready. */
+  engineInfo: () => Promise<unknown>
+  /** Every line logged so far on disk, so the tail read next is current. */
+  flushLogs: () => Promise<void>
+  /** The home folder, and its real path when that differs: each is written as `~`. */
+  homes: string[]
+  platform: string
+  /** The system clipboard, the same writer the diagnostics panel's handler uses. */
+  writeText: (text: string) => void
 }
 
 /**
@@ -218,6 +238,64 @@ export class SettingsService {
   }
 
   /**
+   * Put what a bug report needs on the clipboard: the versions, the
+   * engine's own answer, the end of both logs and the reports of the maps
+   * drawn this session, with the home folder written as `~` and checked for
+   * afterwards. The reports come from the page, so they are checked first;
+   * everything else is this process's own. Nothing is sent anywhere
+   * (specs/023, FR-005 to FR-008).
+   */
+  async copyDiagnostics(reports: unknown): Promise<void> {
+    if (!areReports(reports)) {
+      throw new Error('the reports to copy are not a short list of text')
+    }
+    const d = this.#deps.diagnostics
+    const engine = await this.#engineInfo()
+    await d.flushLogs().catch(() => undefined)
+    let folder: string | null
+    try {
+      folder = this.#deps.logsFolder()
+    } catch {
+      folder = null
+    }
+    const [mainLog, engineLog] =
+      folder === null
+        ? ['The log folder could not be found.', 'The log folder could not be found.']
+        : await Promise.all([tailLog(folder, 'main'), tailLog(folder, 'engine')])
+    const text = diagnosticsText(
+      { ...d.about(), engine, mainLog, engineLog, reports },
+      d.homes,
+      d.platform,
+    )
+    d.writeText(text)
+    this.#deps.log(`copied diagnostics (${Buffer.byteLength(text, 'utf8')} bytes) to the clipboard`)
+  }
+
+  async #engineInfo(): Promise<DiagnosticsInput['engine']> {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error(`no answer within ${ENGINE_INFO_TIMEOUT_MS / 1000} s`)),
+        ENGINE_INFO_TIMEOUT_MS,
+      )
+    })
+    try {
+      const info = await Promise.race([this.#deps.diagnostics.engineInfo(), timeout])
+      return { info }
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : typeof error === 'object' && error !== null && 'message' in error
+            ? String((error as { message: unknown }).message)
+            : String(error)
+      return { absent: `The engine did not give its engine.info: ${message}` }
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
+  /**
    * Remove what the app and the engine keep under the home. The home itself
    * stays, and so does anything else in it: a person can point it at a
    * folder of their own in one click, and the button's confirmation talks
@@ -306,7 +384,8 @@ function refusalForLocked(which: Which): string {
 /**
  * The handlers. Each is registered for the interface's own top frame only,
  * and each ignores whatever arguments it is given: no settings call takes
- * one except the theme, whose value is checked against the three names.
+ * one except the theme, whose value is checked against the three names,
+ * and the diagnostics copy, whose reports are checked as bounded text.
  */
 export function registerSettingsHandlers(
   ipcMain: IpcMain,
@@ -331,4 +410,9 @@ export function registerSettingsHandlers(
     await settings.openLogsFolder()
   })
   handle(CHANNELS.settingsResetEngineData, async () => settings.resetEngineData())
+  // The one settings call that takes something from the page: the reports
+  // of the maps it drew, as text, checked in the service before use.
+  handle(CHANNELS.settingsCopyDiagnostics, async (reports) => {
+    await settings.copyDiagnostics(reports)
+  })
 }
