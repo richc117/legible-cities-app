@@ -1,6 +1,6 @@
 # Tasks: The licence texts the installers owe
 
-- [ ] T001 Research: the `full` archive for release 20260901 on each target (asset names, sizes, sha256), its `licenses/` folder and the metadata naming linked libraries and their licence files; `research.md`
+- [x] T001 Research: the `full` archive for release 20260901 on each target (asset names, sizes, sha256), its `licenses/` folder and the metadata naming linked libraries and their licence files; `research.md`
 - [ ] T002 Pins: the `full` archive checksums per target
 - [ ] T003 `scripts/vendor-python.sh`: fetch, verify, extract texts and metadata, agreement check, delete the archive
 - [ ] T004 `vendor.yml` python job and `scripts/check-vendored.mjs` (+ unit test) refuse a package without the texts
