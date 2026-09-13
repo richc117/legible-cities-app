@@ -72,11 +72,19 @@ jobs:
           --repeat-each=2
           --grep-invert "several operators offers the choice|a storyboard chosen for a video|it is there when the project is opened again|a still, a video and a GIF"
 
+      # The store logs only what went wrong (a refused or retried write, an
+      # unreadable record), never a write that landed first time, so a zero
+      # for the store is a clean run, not an empty search. Every launch logs
+      # its [config] lines, and that count is the witness that the logs
+      # were there to search.
       - name: Every refused rename the logs recorded
         if: always()
         shell: bash
         run: |
-          grep -rh --include='*.log' -e 'attempts (' -e 'write failed (' "$RUNNER_TEMP" || echo 'no rename was refused'
+          echo "log files searched: $(find "$RUNNER_TEMP" -name '*.log' | wc -l)"
+          echo "launches' config lines: $(grep -rh --include='*.log' -e '\[config\]' "$RUNNER_TEMP" | wc -l)"
+          echo "project store lines: $(grep -rh --include='*.log' -e '\[projects\]' "$RUNNER_TEMP" | wc -l)"
+          grep -rh --include='*.log' -e '\[projects\]' -e '\[settings\] warning' "$RUNNER_TEMP" || echo 'no rename was refused'
 
       - name: Keep the failure evidence
         if: failure()
