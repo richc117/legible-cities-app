@@ -42,7 +42,7 @@ already cites the number you mean to use.
 | 009 | electron-vite + React + TypeScript, packaged by electron-builder | Accepted, not yet written up |
 | 010 | JSON-RPC 2.0 over stdio, using existing LSP libraries | Accepted, not yet written up |
 | 011 | LOOM ships as native binaries built in CI from a pinned commit | Accepted, not yet written up |
-| 012 | FFmpeg is bundled and encoding stays in Python | Accepted, not yet written up |
+| 012 | [FFmpeg is bundled and encoding stays in Python](012-ffmpeg-is-bundled-and-encoding-stays-in-python.md) | Accepted |
 | 013 | [The generated animation page is the viewer, served same-origin](013-the-generated-page-is-the-viewer.md) | Accepted |
 | 014 | [Spec Kit for specs; decision records for decisions; spikes end in a record](014-spec-kit-for-specs.md) | Accepted |
 | 015 | [Public-repo hygiene is enforced by tools, not attention](015-hygiene-enforced-by-tools.md) | Accepted |

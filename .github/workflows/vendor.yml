@@ -7,6 +7,8 @@
 # on all four targets. The python job covers darwin-arm64, darwin-x64 and
 # win-x64 with one script and one licence gate (A0-06); Linux has no python
 # target because the app ships on macOS and Windows first (ADR-021).
+# The ffmpeg job takes a prebuilt static GPL FFmpeg for four targets, the
+# fourth, linux-x64, only for tests (ADR-012).
 #
 # The configure flags are the spike's finding, not a preference: LOOM's
 # optional dependencies (GLPK, COIN-OR, Gurobi, libzip) are never called at
@@ -19,7 +21,7 @@ name: vendor
 
 on:
   push:
-    paths: ['vendor/pins.json', '.github/workflows/vendor.yml', 'scripts/vendor-python.sh']
+    paths: ['vendor/pins.json', '.github/workflows/vendor.yml', 'scripts/vendor-python.sh', 'scripts/vendor-ffmpeg.sh']
   workflow_dispatch:
 
 permissions:
@@ -417,5 +419,63 @@ jobs:
             loom-src/build/topo.exe
             loom-src/build/loom.exe
             loom-src/build/octi.exe
+          if-no-files-found: error
+          retention-days: 30
+
+  # FFmpeg and ffprobe, prebuilt rather than built: ADR-012 has the sources
+  # and why. scripts/vendor-ffmpeg.sh verifies every pinned archive against
+  # its checksum and fails on a mismatch, refuses a build whose configure
+  # line lacks --enable-gpl, --enable-version3 or --enable-libx264 or carries
+  # --enable-nonfree, requires every component export.py names, and encodes
+  # a one-second MP4 and GIF the way the engine does, reading both back with
+  # ffprobe, before anything reaches vendor/ffmpeg/<target>. linux-x64 is
+  # for tests and is not shipped.
+  ffmpeg:
+    name: ffmpeg (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-15,       target: darwin-arm64 }
+          - { os: macos-15-intel, target: darwin-x64   }
+          - { os: windows-latest, target: win-x64      }
+          - { os: ubuntu-22.04,   target: linux-x64    }
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Fetch, verify and prove ffmpeg and ffprobe
+        shell: bash
+        run: bash scripts/vendor-ffmpeg.sh ${{ matrix.target }}
+      - name: Refuse a macOS binary that links anything outside the system
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          # ADR-020's reason for refusing a build-host library, applied to a
+          # binary somebody else built: a Homebrew or /usr/local dylib would
+          # load on the builder's machine and on no user's. Only /usr/lib and
+          # /System may appear. Output is captured and tested as text, as in
+          # the python job, and a check that read no Mach-O file fails.
+          links=$(find "vendor/ffmpeg/$TARGET" -type f -exec otool -L {} +)
+          printf '%s\n' "$links"
+          files=$(grep -c ':$' <<< "$links" || true)
+          if [ "${files:-0}" -ne 2 ]; then
+            echo "::error::the link check read ${files:-0} Mach-O files under vendor/ffmpeg/$TARGET, not ffmpeg and ffprobe"
+            exit 1
+          fi
+          outside=$(grep -E '^[[:space:]]' <<< "$links" | grep -vE '^[[:space:]]+/(usr/lib|System/Library)/' || true)
+          if [ -n "$outside" ]; then
+            echo "::error::ffmpeg or ffprobe links a library outside /usr/lib and /System"
+            printf '%s\n' "$outside"
+            exit 1
+          fi
+          echo "ffmpeg and ffprobe link only /usr/lib and /System"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ffmpeg-${{ matrix.target }}
+          path: vendor/ffmpeg/${{ matrix.target }}
           if-no-files-found: error
           retention-days: 30

@@ -48,5 +48,83 @@
     },
     "licence": "PSF-2.0 (CPython); MPL-2.0 (the project's build scripts)",
     "licence_check": "Verified 2026-09-07: the interpreter links libedit, not GNU readline, and _dbm links only libSystem - no GDBM. Both are GPL components that must stay out; see THIRD_PARTY_NOTICES.md. The Windows asset, listed 2026-09-12, has no readline and no _dbm or _gdbm extension; darwin-x64 has the same names as darwin-arm64."
+  },
+  "ffmpeg": {
+    "version": "9.0",
+    "source": {
+      "repo": "https://git.ffmpeg.org/ffmpeg.git",
+      "release": "https://ffmpeg.org/releases/ffmpeg-9.0.1.tar.xz",
+      "tag": "n9.0.1",
+      "commit": "bf1b838f2ab88b4f8fd83443325c782ea0e0f7fa",
+      "linux_commit": "e47273f4d9227152dcbf543cebaf9e2430ddbcc4"
+    },
+    "note": "Prebuilt static GPL builds of FFmpeg 9.0, ffmpeg and ffprobe only (the engine finds ffprobe beside SCHEMATIC_FFMPEG by name). The three shipped targets are the n9.0.1 release from two builders; linux-x64 is for tests only and is BtbN's release/9.0 branch at n9.0.1-11, because martin-riedl.de's Linux build is configured --enable-nonfree --enable-decklink and may not be redistributed. The sha256 of every archive was computed on download on 2026-09-12 and matches what each builder publishes (martin-riedl.de's .sha256 files, GitHub's asset digests, BtbN's checksums.sha256). `reports` is what `ffmpeg -version` must print after 'ffmpeg version '.",
+    "licence": "GPL-3.0-or-later: every target's configure line carries --enable-gpl and --enable-version3, and none carries --enable-nonfree",
+    "targets": {
+      "darwin-arm64": {
+        "origin": "https://ffmpeg.martin-riedl.de",
+        "build_scripts": "https://git.martin-riedl.de/ffmpeg/build-script",
+        "reports": "9.0.1-https://www.martin-riedl.de",
+        "archives": [
+          {
+            "url": "https://ffmpeg.martin-riedl.de/download/macos/arm64/1787073674_9.0.1/ffmpeg.zip",
+            "sha256": "8287a1b2229e05eb41859f073e18e6c52c60a778f2f5e6881070fe51b79407fe",
+            "extract": { "ffmpeg": "ffmpeg" }
+          },
+          {
+            "url": "https://ffmpeg.martin-riedl.de/download/macos/arm64/1787073674_9.0.1/ffprobe.zip",
+            "sha256": "102a26b8940a053298d9929bfaae71e4b6ef65ba5f19a99a88c433108560741a",
+            "extract": { "ffprobe": "ffprobe" }
+          }
+        ]
+      },
+      "darwin-x64": {
+        "origin": "https://ffmpeg.martin-riedl.de",
+        "build_scripts": "https://git.martin-riedl.de/ffmpeg/build-script",
+        "reports": "9.0.1-https://www.martin-riedl.de",
+        "archives": [
+          {
+            "url": "https://ffmpeg.martin-riedl.de/download/macos/amd64/1787081194_9.0.1/ffmpeg.zip",
+            "sha256": "5bdead62ff504ab9b447cc72b212c4fb481e3f7de5877d427a51bee8136dda40",
+            "extract": { "ffmpeg": "ffmpeg" }
+          },
+          {
+            "url": "https://ffmpeg.martin-riedl.de/download/macos/amd64/1787081194_9.0.1/ffprobe.zip",
+            "sha256": "34511bbcf1988ad2886023bf5ace4f44cf62e6defeb3d194d6f7619e5b061f7f",
+            "extract": { "ffprobe": "ffprobe" }
+          }
+        ]
+      },
+      "win-x64": {
+        "origin": "https://www.gyan.dev/ffmpeg/builds/",
+        "build_scripts": "not published; the build's README.txt lists every library and its version",
+        "reports": "9.0.1-essentials_build-www.gyan.dev",
+        "archives": [
+          {
+            "url": "https://github.com/GyanD/codexffmpeg/releases/download/9.0.1/ffmpeg-9.0.1-essentials_build.zip",
+            "sha256": "fec81ae03971d9dd4be3ebe02e263bd2ec1d789483f931bdba5f5715e65da2e9",
+            "extract": {
+              "ffmpeg.exe": "ffmpeg-9.0.1-essentials_build/bin/ffmpeg.exe",
+              "ffprobe.exe": "ffmpeg-9.0.1-essentials_build/bin/ffprobe.exe"
+            }
+          }
+        ]
+      },
+      "linux-x64": {
+        "origin": "https://github.com/BtbN/FFmpeg-Builds",
+        "build_scripts": "https://github.com/BtbN/FFmpeg-Builds (the release autobuild-2026-08-31-13-27; month-end builds are kept for two years)",
+        "reports": "n9.0.1-11-ge47273f4d9-20260831",
+        "archives": [
+          {
+            "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-31-13-27/ffmpeg-n9.0.1-11-ge47273f4d9-linux64-gpl-9.0.tar.xz",
+            "sha256": "182c1b509720e939bb47bfb47dc29cc0c298640401128e3dce8627d10707eb5a",
+            "extract": {
+              "ffmpeg": "ffmpeg-n9.0.1-11-ge47273f4d9-linux64-gpl-9.0/bin/ffmpeg",
+              "ffprobe": "ffmpeg-n9.0.1-11-ge47273f4d9-linux64-gpl-9.0/bin/ffprobe"
+            }
+          }
+        ]
+      }
+    }
   }
 }
