@@ -35,6 +35,7 @@ jobs:
   loom:
     name: loom (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -44,6 +45,8 @@ jobs:
           - { os: ubuntu-22.04, target: linux-x64    }
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Read the pin
         id: pin
@@ -148,6 +151,7 @@ jobs:
   python:
     name: python (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -340,8 +344,11 @@ jobs:
   loom-windows:
     name: loom (win-x64)
     runs-on: windows-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       # Runner labels: macos-13 was retired and macos-14 is deprecated in
       # GitHub's runner-images table (checked 2026-09-07); macos-15 and
       # macos-15-intel are the current arm64 and x64 images.

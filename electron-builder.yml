@@ -26,7 +26,10 @@
 # after Electron's own signature was made, and an Apple-silicon Mac refuses
 # a bundle whose signature is broken where it runs one signed ad hoc once a
 # person allows it. A Developer ID replaces the `identity` line; nothing
-# about the layout changes.
+# about the layout changes. `forceCodeSigning` makes a signature the
+# packager could not make an error rather than a warning; it does not catch
+# every skip (electron-builder skips signing on a pull-request build without
+# saying so to this flag), so build.yml verifies the signature as well.
 appId: com.richardcaballero.legiblecities
 productName: Legible Cities
 directories:
@@ -47,6 +50,7 @@ mac:
     - dmg
   category: public.app-category.graphics-design
   identity: '-'
+  forceCodeSigning: true
   extraResources:
     - from: vendor/python/darwin-${arch}/python
       to: python

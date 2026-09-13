@@ -31,6 +31,10 @@ on:
     paths:
       - 'vendor/pins.json'
       - 'electron-builder.yml'
+      # How the app finds its components, and the packager's own version.
+      - 'src/main/**'
+      - 'package.json'
+      - 'package-lock.json'
       - 'scripts/vendor-python.sh'
       - 'scripts/vendor-ffmpeg.sh'
       - 'scripts/check-vendored.mjs'
@@ -145,6 +149,19 @@ jobs:
         env:
           CI: 'true'
         run: node scripts/launch-packaged.mjs "$TARGET"
+
+      - name: Verify the Mac app's signature
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          # Ad hoc, but whole: every nested binary sealed, nothing changed
+          # since. Run after the launch check, so a write inside the bundle
+          # the snapshot missed still fails here.
+          case "$TARGET" in
+            darwin-arm64) app="release/mac-arm64/Legible Cities.app" ;;
+            *)            app="release/mac/Legible Cities.app" ;;
+          esac
+          codesign --verify --deep --strict --verbose=2 "$app"
 
       - uses: actions/upload-artifact@v7
         with:
