@@ -127,6 +127,23 @@ query values of a scheme-less path as urllib3 prints one
 (`src/main/redact.ts`); a token in a URL's path is not. Nothing is sent
 anywhere.
 
+The jobs (A1-03) followed: a right-hand inspector that is the window's, not
+a project's (ADR-036), rendered from `App.tsx` beside all three screens,
+collapsed until its header toggle is pressed, the toggle carrying the
+running count; below 900px it covers the main region. It lists the
+session's layout runs, rebuilds, exports and feed adds, running first and
+then the last twenty finished, each on its run's own progress line with
+Cancel through the run's own `cancel()`, the engine's hint and its detail
+behind a closed disclosure, and "Copy log", which the main process redacts
+through the diagnostics copy's own home lookup before the clipboard
+(`src/main/jobs-ipc.ts`). **A job is derived from its run's snapshot, never
+kept beside it** (`job()` on each run, `JobRegistry` in `runs.ts`,
+`src/shared/jobs.ts`), so the two views cannot disagree, and **the runs'
+snapshots and behaviour did not change**. Tracking a run is silent, since
+`layoutRunFor` is called during a render; project names are read only when
+one is needed, not on every screen change. A job's end is announced once;
+nothing is written to disk.
+
 Work proceeds phase by phase; `CONTRIBUTING.md` explains the flow, the
 labels, the milestones and the `A0-05`-style issue codes. The four Phase 0
 spikes have run: LOOM ships without its optional solvers (ADR-019), the
