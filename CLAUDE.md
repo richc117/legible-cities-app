@@ -114,10 +114,12 @@ The logs (A6-03) came next: `main.log` and `engine.log` in the platform's
 log folder behind the sink in `src/main/log.ts`, routed by the `engine`
 tag, each capped at 5 MB with one `.old.log` kept and no dependency
 (`src/main/log-file.ts`); the logs follow `LEGIBLE_USER_DATA`, which macOS
-would not do on its own. "Copy diagnostics" in Settings puts the versions,
+would not do on its own, and in development `LEGIBLE_LOGS` names a folder
+for them, which the end-to-end suite sets for every launch
+(`tests/e2e/global-setup.ts`) so no run writes a person's own log. "Copy diagnostics" in Settings puts the versions,
 `engine.info`, the end of both logs and the session's map reports on the
 clipboard, composed in the main process with the home folder written as `~`
-and checked for afterwards (`src/main/diagnostics-text.ts`). Nothing is
+(its 8.3 short form on Windows included) and checked for afterwards (`src/main/diagnostics-text.ts`). Nothing is
 sent anywhere.
 
 Work proceeds phase by phase; `CONTRIBUTING.md` explains the flow, the

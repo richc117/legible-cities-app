@@ -379,6 +379,14 @@ it is how the end-to-end suite keeps its settings file out of a person's
 own profile, and the app reads it before it is ready or not at all.
 Contract: `specs/019-settings/contracts/bridge.md`.
 
+`LEGIBLE_LOGS` moves the log folder on the same terms: development only,
+an absolute path, read before the app is ready, and a bad value costs the
+switch and not the launch. A moved user-data folder wins over it, its logs
+following it. The end-to-end suite sets it for every launch from
+`tests/e2e/global-setup.ts`, to a temporary folder `global-teardown.ts`
+removes, because most launches keep the default profile and would
+otherwise write and rotate a person's own log.
+
 ## The log files
 
 Every line the main process logs goes through `log` in `src/main/log.ts`,
@@ -392,26 +400,46 @@ writes each file from one queue, so a burst of engine output is a handful
 of writes and never holds up the supervisor. A write that would take a
 file past 5 MB first renames it to `<name>.old.log`, replacing the one
 before; nothing else is ever removed, and the reset does not touch the
-logs, which are not under the engine's home.
+logs, which are not under the engine's home. A rename the platform refuses
+(Windows, while another program holds the file) does not stop the log: the
+file is reopened and appended to, standard error is told once, and the
+rename is tried again when another 5 MB has been written. On POSIX the
+file is opened with `O_NOFOLLOW`, so a link planted in its place is not
+followed.
 
 Lines logged before the app is ready are held in memory, two thousand at
 most, and written first once the files open, which is the first thing the
 app does when it is ready and before the engine starts. A folder that
-cannot be written costs the file and never the app: from the first failure
-the lines go to standard error, which is told once why. The files close on
-`will-quit`, after the engine's shutdown has logged its last line. Under
-`LEGIBLE_USER_DATA` the logs move to `<userData>/logs` with
-`app.setAppLogsPath`, because on macOS they would otherwise stay in a
-person's own log folder.
+cannot be opened or written costs the file and never the app: from the first
+failure the lines go to standard error, which is told once why. A held line
+keeps the time it was logged.
+
+The files close on `will-quit`, which comes after the supervisor's stop has
+resolved. That stop waits for the engine's stdio to close as well as for
+its exit, at most a second after the exit, so what the engine printed on
+the way out is normally in `engine.log`; a helper process that holds the
+pipe longer than that loses its last lines. The close is bounded too, at
+two seconds (`LOG_WAIT_MS`), and so is the flush "Copy diagnostics" makes
+before reading the tails, which waits only for the lines queued when it
+was asked, so a steady stream from the engine cannot hold it. Under
+`LEGIBLE_USER_DATA` the logs move to `<userData>/logs`, and under
+`LEGIBLE_LOGS` to the folder it names, with `app.setAppLogsPath`, because
+on macOS they would otherwise stay in a person's own log folder.
 
 The log may contain paths - the configuration lines by contract, and
 Electron's own report of a failed bridge call, which prints the underlying
 error. It stays on the machine. "Copy diagnostics" in Settings
 (`src/main/diagnostics-text.ts`) composes the copy in the main process and
 writes the home folder, and its real path when that differs, as `~`: in
-either separator, doubled backslashes included, and in any case on Windows
-and macOS, matching only a whole folder name. The composed text is checked
-for the home folder afterwards, and a copy that still names it is refused.
+either separator, doubled backslashes included, percent-encoded as in a
+file URL, in any case on Windows and macOS, and on Windows in its 8.3 short
+form, which the temporary folder is usually written in (`RUNNER~1`) and
+which would otherwise leak the start of the user name. The short home is
+derived from the temporary folder's raw and real paths, and matched by
+shape as well. A match is a whole folder name; a full stop ends one unless
+a name carries on after it. The composed text is checked for the home
+folder afterwards, percent-decoded as well, and a copy that still names it
+is refused.
 A path outside the home folder, such as an export folder on another
 volume, is left as it is. The replacement is not a scrubber for anything
 else; the person reads the text before they paste it.
