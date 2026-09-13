@@ -37,9 +37,11 @@
 // go with it. **On macOS they do not**: a packaged app has no switch that
 // moves them, and they are written to the real `~/Library/Logs/Legible
 // Cities`. The script records which of the four log files existed there
-// before the launch, reads only lines stamped after it, and removes the
-// files, and the folder, that the run created; a file that was already
-// there keeps the lines this run appended. The environment is emptied of
+// before the launch, reads only lines stamped after it, and removes a file
+// that did not exist only if its first line is stamped after the launch
+// (a rotation can turn a person's `main.log` into a new `main.old.log`),
+// and the folder if the run created it; a file that was already there
+// keeps the lines this run appended. The environment is emptied of
 // every SCHEMATIC_*, LEGIBLE_* and PYTHON* key, so what is exercised is the
 // app's own defaults.
 //
@@ -180,6 +182,27 @@ function linesSince(logs, name, since) {
 }
 
 /**
+ * Whether a log file that was not there before the launch is this run's to
+ * remove: its first stamped line is at or after `since`, or it holds none.
+ * A file that did not exist can still be a person's history - a `main.log`
+ * near its cap rotates during the run into a `main.old.log` that did not
+ * exist - and its lines then begin before the launch.
+ */
+export function writtenSince(path, since) {
+  let text
+  try {
+    text = readFileSync(path, 'utf8')
+  } catch {
+    return false
+  }
+  for (const line of text.split(/\r?\n/)) {
+    const stamp = Date.parse(line.slice(0, line.indexOf(' ')))
+    if (Number.isFinite(stamp)) return stamp >= since
+  }
+  return true
+}
+
+/**
  * The bundled executables to run after quit, each with the arguments that
  * make it print who it is and exit, and the first line that says so.
  */
@@ -252,6 +275,10 @@ async function run(target, release) {
   say(`${target}: ${before.size} files and folders in the bundle before launch`)
 
   const profile = mkdtempSync(join(tmpdir(), 'lc-launch-packaged-'))
+  // Lines stamped from a second before launch count as this run's, for
+  // reading the log and for removing what the run created; the clocks are
+  // the same machine's.
+  const since = Date.now() - 1_000
   // The macOS log folder, as it was: whether it existed and which files.
   const outsideLogs = predictedLogs()
   const logsBefore =
@@ -266,7 +293,10 @@ async function run(target, release) {
     rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
     if (outsideLogs === null || logsBefore === null) return
     for (const name of LOG_FILES) {
-      if (!logsBefore.files.has(name)) rmSync(join(outsideLogs, name), { force: true })
+      const path = join(outsideLogs, name)
+      if (logsBefore.files.has(name) || !existsSync(path)) continue
+      if (writtenSince(path, since)) rmSync(path, { force: true })
+      else say(`${target}: kept ${path}, which holds lines from before this run`)
     }
     if (!logsBefore.folder) {
       try {
@@ -300,8 +330,6 @@ async function run(target, release) {
     env[key] = value
   }
 
-  // Lines stamped from a second before launch; the clocks are the same machine's.
-  const since = Date.now() - 1_000
   const killer = setTimeout(() => {
     fail(`the run did not finish within ${DEADLINE_MS} ms; the app was killed`)
     try {

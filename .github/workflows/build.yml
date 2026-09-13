@@ -20,9 +20,11 @@
 # test artefacts until then; issue 95 replaces the third-party ffmpeg
 # builds before a release, and A6-01 attaches the GPL sources.
 #
-# The vendor jobs take tens of minutes and change rarely, so this runs on
-# request and when what it packages changes; `npm run dist` stays the
-# everyday unpacked build.
+# This runs on request and on a push to any branch that changes what it
+# packages or how the app finds it, src/main and the npm manifests included,
+# so every Dependabot npm branch builds the installers too (ADR-035). Those
+# built on main are kept 30 days, on any other branch 7. `npm run dist`
+# stays the everyday unpacked build.
 name: build
 
 on:
@@ -170,4 +172,4 @@ jobs:
             ${{ matrix.installer }}
             vendor/manifest-${{ matrix.target }}.json
           if-no-files-found: error
-          retention-days: 30
+          retention-days: ${{ github.ref == 'refs/heads/main' && 30 || 7 }}

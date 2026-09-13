@@ -1153,8 +1153,10 @@ bundle with the list taken before the launch. It runs no layout or export;
 ADR-035 says what that would take. On macOS the job then verifies the app's
 signature with `codesign --verify --deep --strict`.
 
-The Mac app is signed ad hoc, with `forceCodeSigning`, and nothing is
-signed with an identity until A6-05. A local `npm run dist` builds an unpacked app with whatever is
+The Mac app is signed ad hoc, and nothing is signed with an identity until
+A6-05; `forceCodeSigning` is set but only takes effect once a real identity
+replaces the ad-hoc one, so the `codesign --verify` step is what checks the
+signature. A local `npm run dist` builds an unpacked app with whatever is
 vendored: with nothing, the hook lets it through and says it is not an
 installer; with anything, it holds the build to the same check.
 

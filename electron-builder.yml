@@ -26,10 +26,11 @@
 # after Electron's own signature was made, and an Apple-silicon Mac refuses
 # a bundle whose signature is broken where it runs one signed ad hoc once a
 # person allows it. A Developer ID replaces the `identity` line; nothing
-# about the layout changes. `forceCodeSigning` makes a signature the
-# packager could not make an error rather than a warning; it does not catch
-# every skip (electron-builder skips signing on a pull-request build without
-# saying so to this flag), so build.yml verifies the signature as well.
+# about the layout changes. `forceCodeSigning` does nothing while the
+# identity is `-`: electron-builder 26 builds the ad-hoc identity before the
+# only branch that reads the flag. It is kept for when a real identity
+# replaces `-`, where a missing certificate then fails the build. What
+# checks the ad-hoc signature is build.yml's `codesign --verify` step.
 appId: com.richardcaballero.legiblecities
 productName: Legible Cities
 directories:

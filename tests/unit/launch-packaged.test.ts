@@ -26,6 +26,7 @@ interface Module {
   differences(before: Map<string, string>, after: Map<string, string>): string[]
   bundledTools(resources: string, exe: string, pins: unknown, target: string): Tool[]
   unpacked(target: string, release: string): { bundle: string; resources: string } | null
+  writtenSince(path: string, since: number): boolean
 }
 // A URL built at run time, so the type checker does not look for
 // declarations of a plain JavaScript module.
@@ -125,5 +126,37 @@ describe('unpacked', () => {
     expect(unpacked('darwin-x64', '/rel')?.bundle).toBe(join('/rel', 'mac', 'Legible Cities.app'))
     expect(unpacked('win-x64', '/rel')?.resources).toBe(join('/rel', 'win-unpacked', 'resources'))
     expect(unpacked('linux-x64', '/rel')).toBeNull()
+  })
+})
+
+describe('writtenSince, which decides what the macOS log cleanup removes', () => {
+  const launch = Date.parse('2026-09-12T20:00:00.000Z')
+  function log(text: string): string {
+    const dir = mkdtempSync(join(tmpdir(), 'lc-launch-packaged-logs-'))
+    made.push(dir)
+    const path = join(dir, 'main.old.log')
+    writeFileSync(path, text)
+    return path
+  }
+
+  it("keeps a file rotated from a person's log, whose lines begin before the launch", async () => {
+    const { writtenSince } = await load()
+    const rotated = log(
+      '2026-09-01T08:00:00.000Z [config] SCHEMATIC_HOME=/somewhere (default)\n' +
+        '2026-09-12T20:00:05.000Z [engine] state: Engine ready (x).\n',
+    )
+    expect(writtenSince(rotated, launch)).toBe(false)
+  })
+  it('removes a file whose first stamped line is at or after the launch', async () => {
+    const { writtenSince } = await load()
+    expect(writtenSince(log('2026-09-12T20:00:00.000Z [config] a line\n'), launch)).toBe(true)
+    expect(
+      writtenSince(log('\nnot a stamp\n2026-09-12T20:01:00.000Z [engine] later\n'), launch),
+    ).toBe(true)
+  })
+  it('removes a file with no stamped line, which holds no history, and not a file that is gone', async () => {
+    const { writtenSince } = await load()
+    expect(writtenSince(log(''), launch)).toBe(true)
+    expect(writtenSince(join(tmpdir(), 'lc-no-such-log', 'main.log'), launch)).toBe(false)
   })
 })

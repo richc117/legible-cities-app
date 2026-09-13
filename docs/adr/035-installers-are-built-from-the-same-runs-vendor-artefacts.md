@@ -124,9 +124,11 @@ It runs no layout and no export, so LOOM and ffmpeg do no real work inside
 the app here. On macOS the job then runs `codesign --verify --deep
 --strict` on the app.
 
-The Mac app is signed ad hoc (`identity: '-'`, with `forceCodeSigning`, so a
-signature the packager cannot make is an error), and nothing is signed with
-an identity until A6-05.
+The Mac app is signed ad hoc (`identity: '-'`), and nothing is signed with
+an identity until A6-05. `forceCodeSigning` is set but does nothing with
+the ad-hoc identity, which electron-builder 26.15.3 builds before the only
+branch that reads the flag; it matters once a real identity replaces `-`.
+The `codesign --verify` step is what checks the ad-hoc signature.
 
 ## Consequences
 
@@ -134,8 +136,14 @@ Every build waits for the vendor jobs, including the LOOM builds and the
 Linux test jobs no installer needs, and a push that changes the pins runs
 the vendor jobs twice, once through `vendor.yml`'s own trigger and once
 through the build. That is the price of never shipping an artefact from
-another run, and it is paid only when the build runs: on request, and on a
-push that changes what it packages.
+another run. The build runs on request and on a push to any branch that
+changes the pins, the packaging configuration, the vendor and check
+scripts, `src/main/`, `package.json` or `package-lock.json`. The last three
+are there so a change to how the app finds its components, or an
+electron-builder bump, is packaged and launched before it merges; they also
+mean every Dependabot npm branch runs the full build, about 720 MB of
+installers each time. Installers built on `main` are kept 30 days and those
+built on any other branch 7.
 
 A target fails alone. The packaging jobs run whatever the vendor jobs'
 result, a missing artefact is named by the check rather than by the
