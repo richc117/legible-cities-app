@@ -76,8 +76,9 @@ Never run anything that launches Electron: `npm run test:e2e`, `dev`,
 
 ## Commits
 
-Commit as `cd <absolute path> && git commit`, never `git -C`, which the
-repository's command guard does not see. Imperative subject under 72
+Commit as `cd <absolute path> && git commit`, never `git -C`. The
+repository's command guard protects neither form in a worktree; the
+commit-time hooks do, so never skip them. Imperative subject under 72
 characters; the body says why. End with
 `Co-Authored-By: <the model> <noreply@anthropic.com>` and nothing else: no
 session trailer, no link to a tool session, no closing keyword. Never
@@ -89,7 +90,8 @@ session trailer, no link to a tool session, no closing keyword. Never
    Electron exits at once and breaks the other lane's run. (Nothing
    enforces this: `settings.json` allows `test:e2e` because step 6 needs
    it. It rests on the agent.)
-2. Never rebase, merge, reset or force; never touch `main`.
+2. Never rebase, merge, reset or force; never push and never open a pull
+   request; never touch `main`.
 3. End-to-end tests are written, not run; list them so. A test that changes
    a setting sets `LEGIBLE_USER_DATA`; waits are deadlines, never turn
    counts.

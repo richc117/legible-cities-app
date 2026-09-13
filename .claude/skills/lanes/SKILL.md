@@ -43,10 +43,13 @@ Lane code is the issue code. The branch is `<CODE>-<slug>`, the worktree
    `/speckit-plan`, `/speckit-tasks`. Spec Kit finds its root by walking up
    from the working directory, which is this checkout, and keeps its
    current feature in a per-checkout `.specify/feature.json`, so every one
-   of its scripts runs with `SPECIFY_INIT_DIR=<absolute worktree path>` and
-   `SPECIFY_FEATURE_DIRECTORY=specs/<NNN-name>`. Without them the spec lands
-   untracked on `main`, and the second lane's spec repoints the first's
-   plan. Every `[NEEDS CLARIFICATION]` is
+   of its steps is given `SPECIFY_INIT_DIR=<absolute worktree path>` and
+   `SPECIFY_FEATURE_DIRECTORY=<absolute worktree path>/specs/<NNN-name>`.
+   Absolute, because `/speckit-specify` runs no script: it makes the
+   directory itself, and a relative one lands untracked on `main`. The
+   scripts strip the root back off before they record it. Without both,
+   the second lane's spec repoints the first's plan. Every
+   `[NEEDS CLARIFICATION]` is
    answered, or explicitly allowed to survive, before the brief is written.
    The agent never resolves one.
 
@@ -66,8 +69,9 @@ Run by the main session from the main checkout unless a step says "agent".
    background, every lane's dispatch in one message.
 3. **Read the report against the diff.** `git -C ../lc-<CODE> diff
    main...HEAD --stat`; rerun lint, typecheck and unit tests yourself; read
-   `git log main..HEAD --format=%B` for a session trailer or a closing
-   keyword; look for probe files left behind.
+   `git log main..<branch> --format=%B` for a session trailer or a closing
+   keyword (`HEAD` here is `main`, so `main..HEAD` is empty and silent);
+   look for probe files left behind.
 4. **Reviewer, pass one.** The project's `reviewer`, from the main checkout,
    given the branch name for `git diff main...` and `git log main..`, the
    worktree's absolute path for Read and Grep, the spec's path, and the
@@ -87,25 +91,40 @@ Run by the main session from the main checkout unless a step says "agent".
    green over a broken control.
 7. **Rebase only when needed, and only here.** After each merge, a lane
    still open rebases only if GitHub says it is behind or it touched a file
-   that merged. Then `git diff --check` for conflict markers, the three
-   checks again, the reviewer over the resolution if it touched code, the
-   end-to-end suite if it touched behaviour.
+   that merged. Rebase in the worktree onto the fetched `origin/main`, never
+   with `gh pr update-branch`: that makes a merge commit authored by
+   whoever runs it, and GitHub's squash then adds their name and address
+   as a `Co-authored-by` trailer to the commit on `main`, which preflight
+   fails on every branch forever after. Then `git diff --check` for
+   conflict markers, the three checks again, the reviewer over the
+   resolution if it touched code, the end-to-end suite if it touched
+   behaviour, and `git push --force-with-lease`, the one forced push in
+   this procedure and the coordinator's alone.
 8. **Hygiene and the pull request.** In the worktree, each as
    `cd <worktree> && ...`: `bin/preflight`, `gitleaks git --redact`,
-   `pre-commit run --all-files`. Push the same way, never with `git -C`.
-   The body is written to a scratch file with `Closes #N` there and only
-   there, ending with the Claude Code line and no session link, and is
-   scanned before it goes anywhere, because nothing else reads a
-   pull-request body and an agent's report is full of absolute paths:
-   `grep -v '^Closes #[0-9]*$' <body> | bin/preflight --message-file
-   /dev/stdin`. Then `gh pr create --body-file` and the five checks green.
+   `pre-commit run --all-files`. Push the same way, never with `git -C`:
+   `cd <worktree> && git push -u origin <branch>`. The body is written to
+   a scratch file with `Closes #N` there and only there, ending with the
+   Claude Code line and no session link. Nothing else reads a pull-request
+   body or title, and an agent's report is full of absolute paths, so both
+   are scanned first, from a file and not a pipe (preflight reads its file
+   twice, and a pipe is empty the second time): put the title on the first
+   line of `<scratch>/scan.txt`, append `grep -av '^Closes #[0-9]*$'
+   <body>`, and run `bin/preflight --message-file <scratch>/scan.txt`.
+   Then `gh pr create --head <branch> --title <title> --body-file <body>`
+   and the five checks green.
 9. **Merge, clean up and record, from this checkout.** `gh pr merge <N>
-   --squash`, without `--delete-branch`: git will not delete a branch
-   another worktree has checked out, and run from the worktree `gh` tries
-   to check out `main`, which this checkout holds. Then `git pull`, `git
-   worktree remove ../lc-<CODE>`, `git worktree prune`, `git branch -D
-   <branch>` (a squash merge is not an ancestor, so `-d` refuses), and
-   `git push origin --delete <branch>`. If `worktree remove` refuses, look
+   --squash --subject <title> --body-file <scanned message>`, so the
+   commit on `main` says what was scanned and GitHub composes no trailers
+   of its own; without `--delete-branch`, because git will not delete a
+   branch another worktree has checked out, and run from the worktree `gh`
+   tries to check out `main`, which this checkout holds. **Before any
+   cleanup**, `gh pr view <N> --json state,headRefOid` must say `MERGED`
+   and a `headRefOid` equal to `git rev-parse <branch>`; if either is not
+   so, stop, because every step after this one assumes it. Then `git
+   pull`, `git worktree remove ../lc-<CODE>`, `git worktree prune`, `git
+   branch -D <branch>` (a squash merge is not an ancestor, so `-d`
+   refuses), and `git push origin --delete <branch>`. If `worktree remove` refuses, look
    at what is left before anything else; never `--force` it. Any trap the
    lane taught goes into `.claude/rules/` and, if it is short enough to
    matter everywhere, into `CLAUDE.md`.
@@ -116,9 +135,10 @@ Run by the main session from the main checkout unless a step says "agent".
 ../lc-X commit` does not match its pattern and is not scanned at all;
 `cd ../lc-X && git commit` is matched, but scanned against this checkout's
 index. The pre-commit hooks (installed once per clone, in the shared git
-directory) and CI still cover both, so every commit and push in a lane is
-made as `cd <worktree> && git ...`, and step 8's three commands are not
-optional.
+directory, and only at commit time: there is no pre-push hook) cover both;
+CI covers both only once a branch is already public. So agents never push,
+every commit in a lane is made as `cd <worktree> && git ...`, and step 8's
+three commands are not optional.
 
 ## Plugins
 
@@ -158,7 +178,8 @@ These go into every brief verbatim; the template carries them.
    Electron exits at once and breaks the other lane's run. (Nothing
    enforces this: `settings.json` allows `test:e2e` because step 6 needs
    it. It rests on the agent.)
-2. Never rebase, merge, reset or force; never touch `main`.
+2. Never rebase, merge, reset or force; never push and never open a pull
+   request; never touch `main`.
 3. End-to-end tests are written, not run; list them so. A test that changes
    a setting sets `LEGIBLE_USER_DATA`; waits are deadlines, never turn
    counts.
