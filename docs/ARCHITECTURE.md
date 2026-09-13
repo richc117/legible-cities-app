@@ -418,12 +418,19 @@ the scheme, the host, the path and the query's parameter names stay; the
 user information, every query value (after `?`, `&` or `;`), a nameless
 query part and the fragment become `<redacted>`. A percent-encoded address
 is decoded leniently and redacted up to a raw `&`. A path with a query and
-no scheme, which is how urllib3 and `requests` word a failed connection
-(`Max retries exceeded with url: /gtfs.zip?api_key=…`), keeps each `name=`
-and loses its value. Not covered: a token carried as a path segment,
-because nothing says which segment is one; a query on a word with no `/`
-before its `?`; and a secret split across words. The text is cut into
-words and each is looked at once, so a long line costs linear time.
+no scheme, or an `http(s)` one, which is how urllib3 and `requests` word a
+failed connection (`Max retries exceeded with url: /gtfs.zip?api_key=…`),
+keeps each `name=` and loses its value; another scheme's query, like the
+app's own `app://local/…?theme=dark`, is kept. An address runs to the next
+whitespace, quotes and parentheses included, since the engine prints a URL
+as given; only closing punctuation at its end is set aside. Not covered: a
+token carried as a path segment, because nothing says which segment is
+one; a secret in a parameter's name position, where a value holds an
+unencoded `&` before it (`?key=a&SECRET=1`); a query on a run with no `/`
+before its `?`; and a URL with whitespace inside it. Each run of text is
+looked at once, and percent-encoded addresses are walked with a cursor, so
+a long line costs linear time. `tests/unit/redact-generated.test.ts` puts
+600 seeded URLs through the engine's message shapes.
 
 Lines logged before the app is ready are held in memory, two thousand at
 most, and written first once the files open, which is the first thing the
@@ -463,10 +470,11 @@ volume, is left as it is. The copy redacts web addresses again, since a
 log written before the redaction existed still holds them whole. Neither
 is a scrubber for anything else; the person reads the text before they
 paste it. The home folders are found when the copy is made, asynchronously,
-a temporary folder on a network share is not asked, and the whole search
-is bounded at two seconds (`HOMES_TIMEOUT_MS`), after which the home as the
-platform names it is what the copy hides; a drive that does not answer
-holds neither the window nor the copy.
+and a temporary folder on a network share is not asked. The home's own
+real path is bounded at two seconds (`HOMES_TIMEOUT_MS`) and fails closed:
+if it does not answer, the copy is refused, since a home reached through a
+link could otherwise survive in the text. The short forms are bounded the
+same way, separately, and whichever answered are used.
 
 ## Design tokens
 

@@ -56,10 +56,12 @@ async function harness(
     engineInfo?: () => Promise<unknown>
     /** The logs' flush before the copy reads their tails. */
     flushLogs?: () => Promise<void>
-    /** The home folders the copy hides, and the platform it reads them for. */
+    /** The home folders the copy hides: the home as named first, then a real path if it differs. */
     homes?: (root: string) => string[]
-    /** How the home folders are found, for one that never answers. */
-    findHomes?: () => Promise<string[]>
+    /** The home through its links, for one that never answers. */
+    realHome?: () => Promise<string>
+    /** The short-form lookups, for one that never answers. */
+    shortHomes?: () => Promise<string | null>[]
     platform?: string
     /** Where the log files are, for a log folder under the fake home. */
     logsFolder?: (root: string) => string
@@ -101,8 +103,10 @@ async function harness(
       about: () => ABOUT,
       engineInfo: over.engineInfo ?? (async () => ({ engine: '0.0.0-test', protocol: 1 })),
       flushLogs: over.flushLogs ?? (async () => undefined),
-      homes: over.findHomes ?? (async () => over.homes?.(root) ?? [root]),
       home: over.homes?.(root)[0] ?? root,
+      realHome:
+        over.realHome ?? (async () => over.homes?.(root)[1] ?? over.homes?.(root)[0] ?? root),
+      shortHomes: over.shortHomes ?? (() => []),
       platform: over.platform ?? 'linux',
       writeText: (text) => copied.push(text),
     },
@@ -424,8 +428,9 @@ describe('resetting the engine data', () => {
         about: () => ABOUT,
         engineInfo: async () => ({}),
         flushLogs: async () => undefined,
-        homes: async () => [root],
         home: root,
+        realHome: async () => root,
+        shortHomes: () => [],
         platform: 'linux',
         writeText: () => undefined,
       },
@@ -573,21 +578,39 @@ describe('copying diagnostics', () => {
     }
   })
 
-  it('hides the home as named when finding its other forms does not answer in time', async () => {
+  it('refuses the copy when the home through its links does not answer in time', async () => {
+    vi.useFakeTimers()
+    try {
+      const h = await harness({ realHome: () => new Promise(() => undefined) })
+      const copying = h.call(CHANNELS.settingsCopyDiagnostics, [])
+      const refused = expect(copying).rejects.toThrow(
+        'the home folder did not answer in time, so nothing was copied',
+      )
+      await vi.advanceTimersByTimeAsync(HOMES_TIMEOUT_MS)
+      vi.useRealTimers()
+      await refused
+      expect(h.copied).toEqual([])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('hides the real home and the short forms that answered, when another never does', async () => {
     vi.useFakeTimers()
     try {
       const h = await harness({
-        homes: (root) => [join(root, 'home', 'someone')],
-        findHomes: () => new Promise(() => undefined),
-        logsFolder: (root) => join(root, 'home', 'someone', 'logs'),
+        homes: (root) => [join(root, 'home', 'someone'), join(root, 'net', 'export', 'someone')],
+        shortHomes: () => [new Promise(() => undefined), Promise.resolve('SOMEON~1-short-form')],
       })
-      const home = join(h.root, 'home', 'someone')
-      const copying = h.call(CHANNELS.settingsCopyDiagnostics, [`a report naming ${home}`])
+      const real = join(h.root, 'net', 'export', 'someone')
+      const copying = h.call(CHANNELS.settingsCopyDiagnostics, [
+        `a report naming ${real} and SOMEON~1-short-form`,
+      ])
       await vi.advanceTimersByTimeAsync(HOMES_TIMEOUT_MS)
       vi.useRealTimers()
       await copying
-      expect(h.copied[0]).toContain('a report naming ~')
-      expect(h.copied[0]).not.toContain(home)
+      expect(h.copied[0]).toContain('a report naming ~ and ~')
+      expect(h.copied[0]).not.toContain(real)
     } finally {
       vi.useRealTimers()
     }

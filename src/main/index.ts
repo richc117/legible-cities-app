@@ -148,34 +148,20 @@ async function openLogs(): Promise<void> {
 }
 
 /**
- * The home folder as the copy should hide it: as the platform names it,
- * through its links, and on Windows in the 8.3 short form the temporary
- * folder is usually written in (`RUNNER~1` for a longer user name), derived
- * from the temporary folder's raw and real paths. Asked for when a copy is
- * made, and asynchronously, so a slow disk never holds the window; a
- * temporary folder on a network share (`\\server\…`) is not asked at all,
- * because a share that does not answer would hold the copy instead.
+ * The home folder in 8.3 short form, as each temporary folder writes it on
+ * Windows (`RUNNER~1` for a longer user name), derived from the folder's raw
+ * and real paths; one lookup per folder, and none elsewhere. Asked when a
+ * copy is made, asynchronously, so a slow disk never holds the window; a
+ * temporary folder on a network share (`\\server\…`) is not asked at all.
+ * The settings service bounds each lookup.
  */
-async function homeFolders(): Promise<string[]> {
+function shortHomeLookups(): Promise<string | null>[] {
+  if (process.platform !== 'win32') return []
   const home = homedir()
-  const homes = new Set([home])
-  try {
-    homes.add(await realpath(home))
-  } catch {
-    // The home as named is still hidden.
-  }
-  if (process.platform === 'win32') {
-    for (const raw of [process.env.TEMP, process.env.TMP, tmpdir()]) {
-      if (raw === undefined || raw === '' || raw.startsWith('\\\\')) continue
-      try {
-        const short = shortHomeFrom(home, raw, await realpath(raw))
-        if (short !== null) homes.add(short)
-      } catch {
-        // A temporary folder that is not there says nothing about the home.
-      }
-    }
-  }
-  return [...homes]
+  const raws = [process.env.TEMP, process.env.TMP, tmpdir()].filter(
+    (raw): raw is string => raw !== undefined && raw !== '' && !raw.startsWith('\\\\'),
+  )
+  return [...new Set(raws)].map(async (raw) => shortHomeFrom(home, raw, await realpath(raw)))
 }
 
 let mainWindow: BrowserWindow | null = null
@@ -477,8 +463,9 @@ if (!hasLock) {
         flushLogs: async () => {
           await Promise.all([logFiles?.main.flush(), logFiles?.engine.flush()])
         },
-        homes: homeFolders,
         home: homedir(),
+        realHome: () => realpath(homedir()),
+        shortHomes: shortHomeLookups,
         platform: process.platform,
         writeText: (text) => clipboard.writeText(text),
       },

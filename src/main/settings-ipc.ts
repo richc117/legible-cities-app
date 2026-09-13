@@ -93,14 +93,20 @@ export interface DiagnosticsDeps {
   engineInfo: () => Promise<unknown>
   /** Every line logged so far on disk, so the tail read next is current; waited for at most `LOG_WAIT_MS`. */
   flushLogs: () => Promise<void>
-  /**
-   * The home folder in every form the copy must hide - as named, through its
-   * links, and on Windows in 8.3 short form - each written as `~`. Asked for
-   * when a copy is made, not at start, because finding them touches the disk.
-   */
-  homes: () => Promise<string[]>
-  /** The home folder as the platform names it: what the copy hides when `homes` does not answer in time. */
+  /** The home folder as the platform names it. */
   home: string
+  /**
+   * The home folder through its links. Asked when a copy is made, because
+   * it touches the disk; a copy is refused if it does not answer in time,
+   * since a home reached through a link would otherwise survive the copy.
+   */
+  realHome: () => Promise<string>
+  /**
+   * On Windows, the home in 8.3 short form as each temporary folder writes
+   * it, or null where it does not; one lookup each, and whichever answer in
+   * time are used. Elsewhere, none.
+   */
+  shortHomes: () => Promise<string | null>[]
   platform: string
   /** The system clipboard, the same writer the diagnostics panel's handler uses. */
   writeText: (text: string) => void
@@ -284,19 +290,40 @@ export class SettingsService {
   }
 
   /**
-   * The home folders, or the home as named if finding the rest takes longer
-   * than `HOMES_TIMEOUT_MS`: a link or a temporary folder on a drive that
-   * does not answer (a mapped network drive cannot be told from a local one
-   * without asking the disk) must not hold the copy.
+   * Every form of the home folder the copy must hide. The home through its
+   * links is bounded at `HOMES_TIMEOUT_MS` and fails closed: a home that does
+   * not answer in time - on a network mount, say - refuses the copy, because
+   * its real path could be in the text and nothing would find it. A lookup
+   * that answers with an error has answered, and the home as named stands.
+   * The short forms are bounded the same way, separately, and whichever
+   * answered are used.
    */
   async #homes(): Promise<string[]> {
-    const { homes, home } = this.#deps.diagnostics
+    const { home, realHome, shortHomes } = this.#deps.diagnostics
+    const found = new Set([home])
+    const shorts = shortHomes().map((lookup) =>
+      lookup.then(
+        (short) => {
+          if (short !== null) found.add(short)
+        },
+        () => undefined,
+      ),
+    )
     let timer: ReturnType<typeof setTimeout> | undefined
-    const fallback = new Promise<string[]>((resolve) => {
-      timer = setTimeout(() => resolve([home]), HOMES_TIMEOUT_MS)
+    const late = Symbol('late')
+    const deadline = new Promise<typeof late>((resolve) => {
+      timer = setTimeout(() => resolve(late), HOMES_TIMEOUT_MS)
     })
     try {
-      return await Promise.race([homes().catch(() => [home]), fallback])
+      const [real] = await Promise.all([
+        Promise.race([realHome().catch(() => home), deadline]),
+        within(Promise.all(shorts), HOMES_TIMEOUT_MS),
+      ])
+      if (real === late) {
+        throw new Error('the home folder did not answer in time, so nothing was copied')
+      }
+      found.add(real)
+      return [...found]
     } finally {
       clearTimeout(timer)
     }

@@ -180,3 +180,68 @@ describe('a long line', () => {
     }
   })
 })
+
+// An address runs to the next whitespace: the engine prints a URL as it was
+// given and urllib3 leaves quotes and parentheses unencoded, so a query that
+// holds them is still one address.
+describe('an address with quotes, parentheses or braces inside it', () => {
+  const cases: [string, string][] = [
+    ['Socrata', "https://data.example.org/resource/x.zip?$where=route='A'&$$app_token=SECRET"],
+    ['a parenthesised filter', 'https://feeds.example.org/g.zip?filter=(rail)&key=SECRET'],
+    ['a password with a parenthesis', 'https://user:pa(SECRET@feeds.example.org/g.zip'],
+    ['a templated path', 'https://tiles.example.org/{z}/{x}.png?key=SECRET'],
+  ]
+
+  for (const [what, url] of cases) {
+    it(`redacts ${what} inside the FeedError sentence`, () => {
+      const line = `[engine] stderr: schematic.feeds.FeedError: ${url} could not be fetched: 403 Client Error: Forbidden for url: ${url}`
+      const out = redactUrls(line)
+      expect(out).not.toContain('SECRET')
+      expect(redactUrls(out)).toBe(out)
+    })
+
+    it(`redacts ${what} in urllib3's with-url form`, () => {
+      const pathQuery = url.replace(/^https:\/\/[^/]+/, '')
+      const line = `HTTPSConnectionPool(host='feeds.example.org', port=443): Max retries exceeded with url: ${pathQuery} (Caused by NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x10>: Failed to resolve 'feeds.example.org'"))`
+      const out = redactUrls(line)
+      expect(out).not.toContain('SECRET')
+      expect(redactUrls(out)).toBe(out)
+    })
+  }
+
+  it("keeps a leading quote and a closing brace outside the address, in Python's repr", () => {
+    expect(redactUrls("{'url': 'https://example.org/g.zip?key=SECRET'}")).toBe(
+      `{'url': 'https://example.org/g.zip?key=${REDACTED}'}`,
+    )
+  })
+
+  it("leaves the values of the app's own scheme alone", () => {
+    const line = '[protocol] warning: refused app://local/projects/x/index.html?theme=dark&speed=2'
+    expect(redactUrls(line)).toBe(line)
+  })
+})
+
+describe('a long run of letters before a path query', () => {
+  it('is read in linear time', () => {
+    const line = `${'a'.repeat(60_000)}/x?key=SECRET ${'b'.repeat(60_000)}://`
+    const started = performance.now()
+    const out = redactUrls(line)
+    expect(performance.now() - started).toBeLessThan(200)
+    expect(out).not.toContain('SECRET')
+  })
+})
+
+describe('a long run of percent-encoded addresses', () => {
+  it('is walked in one pass, without running out of stack', () => {
+    const line = 'https%3A%2F%2Fa&'.repeat(Math.ceil((256 * 1024) / 16))
+    const started = performance.now()
+    let out = ''
+    expect(() => {
+      out = redactUrls(line)
+    }).not.toThrow()
+    expect(performance.now() - started).toBeLessThan(1_000)
+    expect(out).toBe(line)
+    const secret = `${'https%3A%2F%2Fa&'.repeat(10_000)}${encodeURIComponent('https://h/g?key=SECRET')}`
+    expect(redactUrls(secret)).not.toContain('SECRET')
+  })
+})

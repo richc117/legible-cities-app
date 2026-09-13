@@ -156,14 +156,32 @@ can confirm the app sends nothing.
     with no name, and the fragment become `<redacted>`;
   - the same address percent-encoded, up to a raw `&`, decoded leniently
     so a stray or truncated escape does not hide it;
-  - a path with a query and no scheme, the way urllib3 and `requests`
-    word a failed connection (`Max retries exceeded with url:
-    /gtfs.zip?api_key=…`): each `name=` stays and its value goes.
+  - a path with a query and no scheme (or an `http`/`https` one), the
+    way urllib3 and `requests` word a failed connection (`Max retries
+    exceeded with url: /gtfs.zip?api_key=…`): each `name=` stays, its
+    value goes, and a part with no name goes whole. Another scheme's
+    query, such as the app's own `app://local/…?theme=dark`, is kept.
 
-  **Not covered**: a token carried as a path segment, because nothing in
-  the text says which segment is a secret and the app does not guess from
-  how random one looks; a query on a word with no `/` before its `?`; and
-  a secret split across words. Beyond that, neither the redaction nor the
+  An address or a path query runs to the next whitespace, whatever it
+  holds, because the engine prints a URL as given and urllib3 leaves quotes
+  and parentheses unencoded (`?$where=route='A'&$$app_token=…`); only
+  closing punctuation at its very end, `'")]>},.`, is set aside. A
+  generated test with a fixed seed puts 600 URLs through the engine's
+  message shapes and asserts that no secret survives a line or the copy.
+
+  **Not covered**:
+  - a token carried as a path segment, because nothing in the text says
+    which segment is a secret and the app does not guess from how random
+    one looks;
+  - a secret in the place of a parameter's name, which happens when a
+    value before it holds an unencoded `&` or `;` and an `=` follows it
+    (`?key=a&SECRET=1`): a server reads it as a name too, and names are
+    kept on purpose. The generated test keeps these cases (11 of 600) and
+    waives only the secret assertion for them;
+  - a query on a run of text with no `/` before its `?`;
+  - a URL with whitespace inside it, and a secret split across lines.
+
+  Beyond that, neither the redaction nor the
   home-folder replacement is a scrubber for anything else. The copied text
   is shown to nobody until the person pastes it.
 - **Paths outside the home folder** (an export folder on another volume)
