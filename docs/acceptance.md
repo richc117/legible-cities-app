@@ -53,8 +53,9 @@ LEGIBLE_ACCEPTANCE_APP="/Applications/Legible Cities.app" npm run test:acceptanc
 It launches the app, so never beside another launch of it; it uses a
 temporary profile and export folder, removes both afterwards, and leaves
 the clipboard holding the last thing the app copied. It brings the app's
-window to the front and takes focus, because Chromium stops the map's
-animation in a window hidden behind others; if the window still is not
+window to the front, takes focus and scrolls the map into view before
+watching it, because Chromium stops the map's animation in a window hidden
+behind others and in a frame scrolled out of sight; if the window still is not
 visible, the record says the trains' movement was not checked rather than
 failing it.
 

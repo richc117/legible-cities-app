@@ -1319,24 +1319,48 @@ test('a release, installed, through docs/acceptance.md', async () => {
         const map = window.frameLocator('iframe.viewer-frame')
         const clock = map.locator('#clock')
         await expect(clock).toHaveText(/\d/, { timeout: SHORT_MS })
+        // As a person would watch it: the frame scrolled into view (it sits
+        // below the panels), and the window in front. Chromium throttles
+        // animation frames in a cross-origin frame outside the viewport, and
+        // in a window it reports as hidden. Only the app's page is scrolled;
+        // nothing runs inside the frame.
+        const frameElement = window.locator('iframe.viewer-frame')
+        await frameElement.scrollIntoViewIfNeeded()
         const visibility = await bringToFront(session.app as ElectronApplication, window)
-        const first = await text(clock)
+        await window.waitForTimeout(SECOND)
+        const readings: string[] = [await text(clock)]
+        const first = readings[0]
         const moved = await until(
-          async () => ((await text(clock)) !== first ? true : undefined),
+          async () => {
+            const now = await text(clock)
+            if (now !== readings[readings.length - 1]) readings.push(now)
+            return now !== first ? true : undefined
+          },
           SHORT_MS,
           () => 'the clock did not move',
           250,
         ).catch(() => false)
         const count = await text(map.locator('#count'))
         if (moved) {
-          log.note(`The page's clock moved from ${first}; ${count}.`)
+          log.note(
+            `With the map scrolled into view, the page's clock moved from ${first}; ${count}.`,
+          )
         } else if (visibility !== 'visible') {
           log.notAutomated(
             `whether the trains move: the window was ${visibility} to Chromium even after it was brought to the front, which stops the page's animation frames, and the clock stayed at ${first} (${count}).`,
           )
         } else {
+          const where = await frameElement.evaluate((element) => {
+            const box = element.getBoundingClientRect()
+            return {
+              frame: `${Math.round(box.left)},${Math.round(box.top)} ${Math.round(box.width)}x${Math.round(box.height)}`,
+              viewport: `${document.documentElement.clientWidth}x${document.documentElement.clientHeight}`,
+              focused: document.hasFocus(),
+              visibility: document.visibilityState,
+            }
+          })
           throw new Error(
-            `the page's clock stayed at ${first} for ${SHORT_MS / SECOND} s with the window visible (${count})`,
+            `the page's clock stayed at ${first} for ${SHORT_MS / SECOND} s with the map scrolled into view and the window in front: readings ${readings.join(', ')}; the frame at ${where.frame} in a ${where.viewport} viewport; the page ${where.visibility}, focused ${where.focused}; ${count}`,
           )
         }
         const linear = map.getByRole('button', { name: 'Linear', exact: true })
