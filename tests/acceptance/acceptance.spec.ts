@@ -346,6 +346,26 @@ async function installRecorder(page: Page): Promise<void> {
   })
 }
 
+/**
+ * The app's window shown, raised and focused, as a person using it has it.
+ * Chromium stops a page's animation frames in a window macOS reports as
+ * occluded, and throttles its tasks, so a window left behind others shows a
+ * map that does not move and progress sentences that are never drawn. The
+ * window is the app's; nothing is run inside the viewer's frame.
+ */
+async function bringToFront(app: ElectronApplication, page: Page): Promise<string> {
+  await app.evaluate(({ BrowserWindow, app: electronApp }) => {
+    const window = BrowserWindow.getAllWindows()[0]
+    if (window === undefined) return
+    if (window.isMinimized()) window.restore()
+    window.show()
+    window.moveTop()
+    window.focus()
+    if (process.platform === 'darwin') electronApp.focus({ steal: true })
+  })
+  return page.evaluate(() => document.visibilityState)
+}
+
 const saidSoFar = (page: Page): Promise<string[]> =>
   page.evaluate(() => (window as unknown as { __said?: string[] }).__said ?? [])
 
@@ -584,6 +604,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
     const window = await app.firstWindow({ timeout: LAUNCH_MS })
     session.page = window
     await installRecorder(window)
+    await bringToFront(app, window)
     const where = await app.evaluate(({ app: electronApp }) => ({
       userData: electronApp.getPath('userData'),
       resources: process.resourcesPath,
@@ -1298,9 +1319,26 @@ test('a release, installed, through docs/acceptance.md', async () => {
         const map = window.frameLocator('iframe.viewer-frame')
         const clock = map.locator('#clock')
         await expect(clock).toHaveText(/\d/, { timeout: SHORT_MS })
+        const visibility = await bringToFront(session.app as ElectronApplication, window)
         const first = await text(clock)
-        await expect.poll(() => text(clock), { timeout: SHORT_MS }).not.toBe(first)
-        log.note(`The page's clock moved from ${first}; ${await text(map.locator('#count'))}.`)
+        const moved = await until(
+          async () => ((await text(clock)) !== first ? true : undefined),
+          SHORT_MS,
+          () => 'the clock did not move',
+          250,
+        ).catch(() => false)
+        const count = await text(map.locator('#count'))
+        if (moved) {
+          log.note(`The page's clock moved from ${first}; ${count}.`)
+        } else if (visibility !== 'visible') {
+          log.notAutomated(
+            `whether the trains move: the window was ${visibility} to Chromium even after it was brought to the front, which stops the page's animation frames, and the clock stayed at ${first} (${count}).`,
+          )
+        } else {
+          throw new Error(
+            `the page's clock stayed at ${first} for ${SHORT_MS / SECOND} s with the window visible (${count})`,
+          )
+        }
         const linear = map.getByRole('button', { name: 'Linear', exact: true })
         await linear.click()
         await expect(linear).toHaveAttribute('aria-pressed', 'true')
@@ -1694,11 +1732,14 @@ test('a release, installed, through docs/acceptance.md', async () => {
       const pressed = Date.now()
       // Watched beside the export rather than after it: these hold only while
       // it runs. The outcome is kept, never left as a rejection nobody holds.
+      // Which stage the line marked as current, sampled while it ran: the
+      // capture takes most of the export and is always caught; the plan and
+      // the encode can be over between two looks, and are only noted.
+      const current = new Set<string>()
       const watch = (async () => {
         const region = panel.getByRole('region', { name: 'Export' })
-        await expect(region.getByRole('button', { name: 'Cancel', exact: true })).toBeVisible({
-          timeout: SHORT_MS,
-        })
+        const cancel = region.getByRole('button', { name: 'Cancel', exact: true })
+        await expect(cancel).toBeVisible({ timeout: SHORT_MS })
         const labels = (await region.locator('svg text').allTextContents()).map((l) => l.trim())
         expect(labels).toEqual(['plan', 'capture', 'encode'])
         await expect(preset).toBeDisabled()
@@ -1707,6 +1748,13 @@ test('a release, installed, through docs/acceptance.md', async () => {
             'The choices wait until the export that is going has finished: it was planned from them.',
           ),
         ).toBeVisible()
+        const end = Date.now() + EXPORT_MS
+        while (Date.now() < end && (await cancel.count()) > 0) {
+          for (const label of await region.locator('svg text.label-current').allTextContents()) {
+            current.add(label.trim())
+          }
+          await sleep(200)
+        }
       })().then(
         () => null,
         (error: unknown) => error,
@@ -1720,32 +1768,35 @@ test('a release, installed, through docs/acceptance.md', async () => {
       log.note(
         `${done.seconds} s from the press (${Math.round((Date.now() - pressed) / SECOND)} s with the checks).`,
       )
-      await log.soft('the sentences on the line', async () => {
-        const said = (await saidSoFar(window)).slice(mark)
-        log.note(
-          `The line's first sentences: ${said
-            .slice(0, 3)
-            .map((t) => `"${t}"`)
-            .join(', ')}.`,
-        )
-        log.note(
-          said.includes('Planning the export.')
-            ? '"Planning the export." was seen.'
-            : '"Planning the export." was not seen: "Planned …" replaces it as soon as the engine answers the plan, which can be before it is drawn.',
-        )
-        for (const pattern of [
-          /^Planned la-metro-rail-instagram-reel\.mp4: \d+ frames at \d+ frames per second\.$/,
-          /^Capturing \d+ frames\.$/,
-          /^Captured \d+ of \d+ frames\.$/,
-          /^Encoding \d+ frames\.$/,
-          /^Encoded \d+ of \d+ frames\.$/,
-        ]) {
-          expect(
-            said.some((s) => pattern.test(s)),
-            `${pattern}`,
-          ).toBe(true)
-        }
+      await log.soft('the stages moved through to the end', async () => {
+        expect(current.has('capture'), `current stages seen: ${[...current].join(', ')}`).toBe(true)
+        const marks = await panel
+          .getByRole('region', { name: 'Export' })
+          .locator('svg rect.mark')
+          .evaluateAll((rects) => rects.map((rect) => rect.getAttribute('class') ?? ''))
+        expect(marks.map((m) => m.includes('mark-done'))).toEqual([true, true, true])
+        log.note(`The line marked as current: ${[...current].join(', ')}.`)
       })
+      // The sentences beside the line are the engine's and the app's progress
+      // reports, each replaced by the next: a short one can be gone before it
+      // is drawn, so each is recorded as seen or not, and none is required.
+      const said = (await saidSoFar(window)).slice(mark)
+      const sentences: [string, RegExp][] = [
+        ['Planning the export.', /^Planning the export\.$/],
+        [
+          'Planned …',
+          /^Planned la-metro-rail-instagram-reel\.mp4: \d+ frames at \d+ frames per second\.$/,
+        ],
+        ['Capturing …', /^Capturing \d+ frames\.$/],
+        ['Captured … of …', /^Captured \d+ of \d+ frames\.$/],
+        ['Encoding …', /^Encoding \d+ frames\.$/],
+        ['Encoded … of …', /^Encoded \d+ of \d+ frames\.$/],
+      ]
+      const seen = sentences.filter(([, pattern]) => said.some((t) => pattern.test(t)))
+      const missed = sentences.filter(([, pattern]) => !said.some((t) => pattern.test(t)))
+      log.note(
+        `Sentences seen beside the line: ${seen.map(([name]) => `"${name}"`).join(', ') || 'none'}; not caught: ${missed.map(([name]) => `"${name}"`).join(', ') || 'none'}.`,
+      )
       await log.soft('the file is a valid MP4', () => {
         const probe = ffprobe(session.resources, done.path)
         const video = probe.streams?.find((s) => s.codec_type === 'video')

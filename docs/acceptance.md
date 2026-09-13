@@ -52,7 +52,11 @@ LEGIBLE_ACCEPTANCE_APP="/Applications/Legible Cities.app" npm run test:acceptanc
 
 It launches the app, so never beside another launch of it; it uses a
 temporary profile and export folder, removes both afterwards, and leaves
-the clipboard holding the last thing the app copied.
+the clipboard holding the last thing the app copied. It brings the app's
+window to the front and takes focus, because Chromium stops the map's
+animation in a window hidden behind others; if the window still is not
+visible, the record says the trains' movement was not checked rather than
+failing it.
 
 What it cannot do stays a person's, and the record says so step by step
 ("not automated"), never counting it as passed:
@@ -398,13 +402,15 @@ Result: ____
   makes>`".
 - While the tab is open, the viewer shows the export's tall frame, with the
   parts Instagram covers shaded.
-- A progress line with `plan`, `capture` and `encode`, with the sentences
-  "Planned `<file>`: `<n>` frames at `<fps>` frames per second.",
-  "Capturing `<n>` frames.", "Captured `<n>` of `<n>` frames.",
-  "Encoding `<n>` frames." and "Encoded `<n>` of `<n>` frames.", among
-  others, and **Cancel**. "Planning the export." comes first, but "Planned"
-  replaces it as soon as the engine answers, often before it can be read or
-  even drawn, so not seeing it is not a failure; the choices above are unavailable while it runs,
+- A progress line with `plan`, `capture` and `encode`, the current stage
+  marked as it moves through them and each ticked when done, and
+  **Cancel**. Beside it the sentence changes as the export goes, among
+  them "Planning the export.", "Planned `<file>`: `<n>` frames at `<fps>`
+  frames per second.", "Capturing `<n>` frames.", "Captured `<n>` of `<n>`
+  frames.", "Encoding `<n>` frames." and "Encoded `<n>` of `<n>` frames.";
+  each is replaced by the next, and a short one can be gone before it can
+  be read, so which of them you catch does not matter. "Captured `<n>` of
+  `<n>` frames." counting up is the one that stays long enough to read; the choices above are unavailable while it runs,
   with "The choices wait until the export that is going has finished: it
   was planned from them."
 - It ends with "Exported la-metro-rail-instagram-reel.mp4." and **Reveal**.
