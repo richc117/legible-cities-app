@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type JSX } from 'react'
 import { failedTools, TOOL_NAMES, type FirstRunResult } from '../../shared/first-run'
+import { afterRendering, focusLost } from './focusHandback'
 import Button from './kit/Button'
 
 // The first-run check of the bundled tools (A6-02, specs/026): a tool the
@@ -146,11 +147,22 @@ export default function FirstRunDialog({
     if (applyStep(dialog, open) === 'show') okRef.current?.focus()
   }, [open, waiting])
 
-  /** A person dismissed it: stop watching the page, and tell the parent. */
+  /**
+   * A person dismissed it: stop watching the page, and tell the parent.
+   * The browser hands focus back to what held it when the dialog opened -
+   * at start-up the Library's heading, which focuses itself - and if that has
+   * gone since, focus would be on the body with nothing said, so the open
+   * screen's heading takes it instead (A6-07's rule for focus with nowhere
+   * to be). Checked once the dialog has closed and the browser has moved it.
+   */
   const dismiss = (): void => {
     observerRef.current?.disconnect()
     observerRef.current = null
     onClose()
+    afterRendering(() => {
+      if (!focusLost(document.activeElement, document.body)) return
+      document.querySelector<HTMLElement>('main h1')?.focus({ preventScroll: true })
+    })
   }
 
   const failed = failedTools(result)
