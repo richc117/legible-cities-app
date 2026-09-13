@@ -160,7 +160,7 @@ draft does not overwrite the last good file.
    labels, title, clock, the start time (`at`), the lines to keep, quality
    (draft, standard, high) and a filename tag, each defaulting to what
    `export.plan` does when the option is not sent. View and the start time
-   are offered for still presets only (see "Changed after review").
+   are offered for still presets only (see "Decided during review").
 2. **Given** the lines option, **When** it is opened, **Then** it lists the
    project's own lines by the same labels the line colours use; none chosen
    means every line.
@@ -222,9 +222,9 @@ video, "day".
   It is not offered, and no engine issue is filed yet (see Assumptions).
 - **`fade`** is in `ExportOptions` but not in the issue. It is not offered.
 
-### Changed after review
+### Decided during review
 
-Approved by the maintainer after the first review of the build:
+These were decided while the build was reviewed, and change what the sections above first said:
 
 - **View and the start time are stills-only.** Every storyboard's first
   beat names its own view and clock, and the capture applies them, so

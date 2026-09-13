@@ -97,20 +97,30 @@ const received = (h: Home, method: string): string[] =>
     .filter((line) => line.includes(`"method": "${method}"`))
 
 /**
- * The plan the last export was made from: the last `export.plan` the
- * stand-in read before the last `export.encode`. The preview plans too, so
- * the last plan overall may be a preview's, and would say nothing about the
- * file.
+ * The plan the last export was made from: the nearest `export.plan` before
+ * the last `export.encode` that names this preset and does not ask for the
+ * safe zones. The preview plans too, and cancelling a preview only drops
+ * its answer in the renderer, so a preview's request can still land between
+ * the export's plan and its encode; one for a preset without safe zones
+ * looks like the export's own, which is why each test also waits for its
+ * preview to have answered before it presses Export.
  */
-function lastExportPlan(h: Home): string {
+function lastExportPlan(h: Home, preset: string): string {
   const lines = readFileSync(join(h.engineHome, 'fake-engine.received'), 'utf8').split('\n')
   let encode = -1
   for (let i = lines.length - 1; i >= 0 && encode === -1; i--)
     if (lines[i].includes('"method": "export.encode"')) encode = i
   expect(encode, 'an export reached the encode').toBeGreaterThan(-1)
-  for (let i = encode - 1; i >= 0; i--)
-    if (lines[i].includes('"method": "export.plan"')) return lines[i]
-  throw new Error('the export was never planned')
+  for (let i = encode - 1; i >= 0; i--) {
+    const line = lines[i]
+    if (
+      line.includes('"method": "export.plan"') &&
+      line.includes(`"preset": "${preset}"`) &&
+      !line.includes('"safe"')
+    )
+      return line
+  }
+  throw new Error(`no export of ${preset} was planned`)
 }
 
 /** Each preset's size as the engine's sidecar writes it (its table at v0.8.2). */
@@ -271,7 +281,7 @@ test('every option changes the preview of a still, and a typed one is written on
     // first poll.
     const at = panel.getByLabel('Start time')
     const before = readRecord(h)
-    await at.fill('07:30')
+    await at.pressSequentially('07:30')
     await page.waitForTimeout(1_500)
     expect(readRecord(h).modified, 'typing wrote nothing').toBe(before.modified)
     expect((readRecord(h).export as { options: object }).options).not.toHaveProperty('at')
@@ -338,7 +348,21 @@ test('a still, a video and a GIF for each of Instagram, LinkedIn and Bluesky, fr
       ['bluesky-gif', 'gif'],
     ] as const
     for (const [preset, format] of cases) {
+      // The preview for the preset before is on screen or on its way; the
+      // new one has answered when the frame's address has changed to one
+      // at this preset's frame. Every preset here differs from the one
+      // before it in its frame or its clock, so the address always changes.
+      const before = await frame(page).getAttribute('src')
       await presetSelect(page).selectOption(preset)
+      await expect
+        .poll(
+          async () => {
+            const src = await frame(page).getAttribute('src')
+            return src !== before && (await frameQuery(page)).get('frame')
+          },
+          { timeout: 20_000 },
+        )
+        .toBe(SIZES[preset].replace('x', ':'))
       await expect.poll(() => (readRecord(h).export as { preset: string }).preset).toBe(preset)
       // A JPEG still, as the engine's table says, is standard quality only.
       if (format === 'jpg')
@@ -361,8 +385,7 @@ test('a still, a video and a GIF for each of Instagram, LinkedIn and Bluesky, fr
       // The export's own plan, the last before its encode: this preset, and
       // never the safe zones.
       expect(received(h, 'export.plan').length).toBeGreaterThan(plansBefore)
-      const exported = lastExportPlan(h)
-      expect(exported, name).toContain(`"preset": "${preset}"`)
+      const exported = lastExportPlan(h, preset)
       expect(exported, name).not.toContain('"safe"')
     }
     // Every plan made for a file, across all nine, is without `safe`: the
@@ -390,10 +413,18 @@ test('a storyboard chosen for a video reaches the plan, and the preset’s own i
         storyboard: 'day',
         options: {},
       })
+    // The preview for "day" has been asked for: the address does not carry
+    // a storyboard, so the stand-in's log says so instead. Nothing older can
+    // reach the engine after it, since the renderer sends in order and no
+    // further change is made.
+    await expect
+      .poll(() => received(h, 'export.plan').some((l) => l.includes('"storyboard": "day"')), {
+        timeout: 20_000,
+      })
+      .toBe(true)
     await exportButton(page).click()
     await expect(exportPanel(page).getByText(/^Exported /)).toBeVisible({ timeout: 60_000 })
-    const exported = lastExportPlan(h)
-    expect(exported).toContain('"preset": "linkedin-video"')
+    const exported = lastExportPlan(h, 'linkedin-video')
     expect(exported).toContain('"storyboard": "day"')
   })
 })

@@ -971,6 +971,37 @@ describe('what the export tab chooses', () => {
     expect([...blocked.eng.requests, ...bare.eng.requests]).toHaveLength(0)
   })
 
+  it('previews nothing when a reset begins while the record is being read', async () => {
+    const why = 'The engine data is being reset; wait for it to finish.'
+    let blocked: string | null = null
+    let release!: () => void
+    const read = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const eng = fakeEngine()
+    const exporter = new Exporter({
+      engine: eng.engine,
+      projects: {
+        get: async (id) => {
+          await read
+          return project({ id })
+        },
+      },
+      capture: fakeCapture().capture,
+      framesRoot: join(tmpdir(), 'unused-frames'),
+      exportFolder: () => join(tmpdir(), 'unused-exports'),
+      blocked: () => blocked,
+      log: () => undefined,
+    })
+    const answer = exporter.preview('abcdefghijk1', REEL)
+    await settle()
+    blocked = why
+    release()
+    await expect(answer).resolves.toMatchObject({ ok: false, error: { message: why } })
+    expect(eng.tables, 'the engine was never asked').toHaveLength(0)
+    expect(eng.requests).toHaveLength(0)
+  })
+
   it('knows the project’s own page from any other', () => {
     const project = { id: 'abcdefghijk1', feed: 'la-metro-rail' }
     const page = 'app://local/projects/abcdefghijk1/la-metro-rail.html'

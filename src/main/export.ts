@@ -281,9 +281,15 @@ export class Exporter {
    */
   async preview(projectId: string, choice: ExportChoice): Promise<ExportPreview> {
     try {
-      const blocked = this.#options.blocked?.() ?? null
-      if (blocked !== null) throw engineError(ERROR_CODES.badCall, blocked, 'params')
+      // On both sides of the read: a reset confirmed while the record is
+      // being read must still keep this from asking the engine anything.
+      const refuseIfBlocked = (): void => {
+        const blocked = this.#options.blocked?.() ?? null
+        if (blocked !== null) throw engineError(ERROR_CODES.badCall, blocked, 'params')
+      }
+      refuseIfBlocked()
       const project = await this.#options.projects.get(projectId)
+      refuseIfBlocked()
       if (project.layout === null || project.date === null)
         throw engineError(
           ERROR_CODES.badCall,

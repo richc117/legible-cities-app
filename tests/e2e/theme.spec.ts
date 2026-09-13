@@ -261,8 +261,20 @@ test('an export is planned in the theme the project is drawn in', async () => {
     const [id] = readdirSync(join(h.engineHome, 'projects'))
     copyFileSync(fixture, join(h.engineHome, 'out', id, 'la-metro-rail.html'))
 
-    // The export is on its own tab (A5-01).
+    // The export is on its own tab (A5-01). Its preview plans too, so the
+    // press waits for the preview to have answered - the frame at the
+    // reel's shape - or a late preview's plan could land beside the
+    // export's own.
     await page.getByRole('tab', { name: 'Export' }).click()
+    await expect
+      .poll(
+        async () =>
+          new URL((await frame(page).getAttribute('src')) ?? '').searchParams.get('frame'),
+        {
+          timeout: 20_000,
+        },
+      )
+      .toBe('1080:1920')
     await page.getByRole('button', { name: 'Export', exact: true }).click()
     await expect(page.getByText(/Planning|Capturing|Encoding/)).toBeVisible({
       timeout: 30_000,
@@ -277,13 +289,20 @@ test('an export is planned in the theme the project is drawn in', async () => {
     await expect
       .poll(() => received(h, 'export.encode').length, { timeout: 30_000 })
       .toBeGreaterThan(0)
-    // The export's own plan is the last one before its encode: the export
-    // tab plans previews too, so the last plan overall may be a preview's.
+    // The export's own plan: the export tab plans previews too, so the last
+    // plan overall may be a preview's.
     const lines = readFileSync(join(h.engineHome, 'fake-engine.received'), 'utf8').split('\n')
     const encode = lines.findIndex((line) => line.includes('"method": "export.encode"'))
     let plan: string | undefined
+    // The nearest plan before the encode that is the reel's and does not
+    // ask for the safe zones: a preview of the reel always does.
     for (let i = encode - 1; i >= 0 && plan === undefined; i--)
-      if (lines[i].includes('"method": "export.plan"')) plan = lines[i]
+      if (
+        lines[i].includes('"method": "export.plan"') &&
+        lines[i].includes('"preset": "instagram-reel"') &&
+        !lines[i].includes('"safe"')
+      )
+        plan = lines[i]
     // The engine's own word for it, and the page the capture drives carries
     // the page's own word.
     expect(plan).toContain('"theme": "light"')

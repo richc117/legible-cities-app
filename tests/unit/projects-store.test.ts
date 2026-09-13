@@ -2,7 +2,7 @@
 // developer's own data, and every root is removed afterwards.
 
 import { createHash } from 'node:crypto'
-import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, relative, sep } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -1018,6 +1018,25 @@ describe('writes to one project take turns', () => {
       expect(after.made, `round ${round}`).toBe(done.made)
       expect(after.built, `round ${round}`).toEqual(done.built)
     }
+  })
+
+  it('counts a write that is waiting its turn, so the reset sees it', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    const first = store.setTheme(project.id, 'sepia')
+    const second = store.setExport(project.id, choice as never)
+    expect(store.writing, 'one writing and one waiting behind it').toBe(2)
+    await Promise.all([first, second])
+    expect(store.writing).toBe(0)
+  })
+
+  it('refuses a write queued behind a delete, and writes nothing', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    const removed = store.delete(project.id)
+    const late = store.setExport(project.id, choice as never)
+    await expect(removed).resolves.toMatchObject({ failed: [] })
+    await expect(late).rejects.toThrow('not found')
+    await expect(stat(join(root, project.id)), 'no folder was made again').rejects.toThrow()
+    expect(store.writing).toBe(0)
   })
 
   it('keeps every field when every writer lands at once, and a failure does not stop the next', async () => {

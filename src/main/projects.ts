@@ -125,6 +125,12 @@ export class ProjectStore {
    * was: a choice of export made during a re-layout could put back the old
    * layout, or be put back itself. Chained per identifier, each writer reads
    * what the one before it wrote. Projects do not wait for each other.
+   *
+   * A method running inside the queue must never call another queued
+   * method on the same identifier: that call joins the queue behind the
+   * one making it, and each waits for the other forever. Share a private
+   * helper instead. A queued write counts in `writing` from the moment it
+   * is asked for, so the reset's guard sees writes that are still waiting.
    */
   readonly #queues = new Map<string, Promise<void>>()
 
