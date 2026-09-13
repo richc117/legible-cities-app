@@ -9,6 +9,8 @@
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import {
+  chmodSync,
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -32,12 +34,25 @@ const PINS = JSON.parse(readFileSync(PINS_FILE, 'utf8')) as {
   loom_windows_static: { zlib: { version: string }; bzip2: { version: string } }
   ffmpeg: { version: string; x264: { commit: string }; zlib: { version: string } }
   python: { version: string }
+  electron_ffmpeg: {
+    electron: { version: string; tag: string; commit: string }
+    chromium: { version: string; commit: string }
+    ffmpeg: { commit: string; tree: string }
+    chromium_trees: Record<string, { tree: string }>
+    chromium_deps: Record<string, { repo: string; commit: string; tree: string }>
+    electron_files: Record<string, string>
+  }
 }
 const PKG = JSON.parse(readFileSync(join(repo, 'package.json'), 'utf8')) as {
   version: string
   devDependencies: Record<string, string>
 }
 const PINS_SHA = createHash('sha256').update(readFileSync(PINS_FILE)).digest('hex')
+const LOCK = JSON.parse(readFileSync(join(repo, 'package-lock.json'), 'utf8')) as {
+  packages: Record<string, { version?: string }>
+}
+const ELECTRON = LOCK.packages['node_modules/electron']?.version ?? 'none'
+const ELECTRON_SOURCE = `electron-ffmpeg-${PINS.electron_ffmpeg.electron.version}-source.tar.xz`
 
 type Decision =
   { ok: false; reason: string } | { ok: true; name: string; version: string; prerelease: boolean }
@@ -63,12 +78,14 @@ interface AssembleInput {
   pins: unknown
   pinsSha256: string
   packageVersion: string
+  electronVersion?: string | null
   runId?: string | null
   epoch?: number
   tar?: (archive: string, parent: string, name: string, epoch: number) => void
 }
 interface Module {
   parseTag(tag: string): { version: string; rc: number | null; label: string } | null
+  installedElectron(root: string): string | null
   decide(input: {
     tag: string
     packageVersion: string
@@ -485,6 +502,7 @@ interface Downloads {
   manifest?: (target: Target) => Record<string, unknown>
   emptySource?: string
   noToolchain?: boolean
+  electronSource?: string[]
 }
 
 function manifestFor(target: Target): Record<string, unknown> {
@@ -520,6 +538,11 @@ function downloads(options: Downloads = {}): string {
     mkdirSync(join(root, source), { recursive: true })
     if (source !== options.emptySource) put(join(root, source, 'BUILD.txt'), `${source}\n`)
   }
+  // Packed by its job: one .tar.xz, attached as it is.
+  mkdirSync(join(root, 'electron-ffmpeg-source'), { recursive: true })
+  for (const name of options.electronSource ?? [ELECTRON_SOURCE]) {
+    put(join(root, 'electron-ffmpeg-source', name), `xz of ${name}`)
+  }
   if (!options.noToolchain) {
     put(
       join(root, 'loom-windows-toolchain', 'TOOLCHAIN-win-x64.txt'),
@@ -549,6 +572,7 @@ describe('assemble', () => {
     pins: PINS,
     pinsSha256: PINS_SHA,
     packageVersion: PKG.version,
+    electronVersion: ELECTRON,
     runId: '42',
     epoch: 1789000000,
   })
@@ -569,6 +593,7 @@ describe('assemble', () => {
         `ffmpeg-${PINS.ffmpeg.version}-source.tar`,
         `loom-${loom}-source.tar`,
         `legible-cities-engine-${PINS.engine.version}-source.tar`,
+        ELECTRON_SOURCE,
         SUMS,
       ].sort(),
     )
@@ -585,9 +610,12 @@ describe('assemble', () => {
         [`loom-${loom}-source`, 'BUILD.txt,TOOLCHAIN-win-x64.txt', '1789000000'],
       ].sort(),
     )
+    // The source of Electron's FFmpeg library is attached as its job packed
+    // it, never archived again.
+    expect(readFileSync(join(out, ELECTRON_SOURCE), 'utf8')).toBe(`xz of ${ELECTRON_SOURCE}`)
     const sumsText = readFileSync(join(out, SUMS), 'utf8')
     const sums = parseSums(sumsText)
-    expect(sums.size).toBe(6)
+    expect(sums.size).toBe(7)
     for (const name of result.files.filter((file) => file !== SUMS)) {
       expect(sums.get(name), name).toBe(sha(readFileSync(join(out, name))))
     }
@@ -632,6 +660,42 @@ describe('assemble', () => {
       tar: fakeTar([]),
     })
     expect(result.problems).toEqual([expect.stringContaining('loom-source')])
+  })
+
+  it("refuses without the source of Electron's FFmpeg library, or with one for another Electron", async () => {
+    const { assemble } = await load()
+    const cases: [string[], string][] = [
+      [[], 'electron-ffmpeg-source was not downloaded, or is empty'],
+      [['electron-ffmpeg-44.1.0-source.tar.xz'], `not exactly ${ELECTRON_SOURCE}`],
+      [[ELECTRON_SOURCE, 'BUILD.txt'], `not exactly ${ELECTRON_SOURCE}`],
+    ]
+    for (const [electronSource, says] of cases) {
+      const out = join(scratch(), 'assets')
+      const calls: string[][] = []
+      const result = assemble({
+        ...base(downloads({ electronSource }), out),
+        tar: fakeTar(calls),
+      })
+      expect(result.problems).toEqual([expect.stringContaining(says)])
+      expect(existsSync(out)).toBe(false)
+      expect(calls).toEqual([])
+    }
+  })
+
+  it('refuses when package-lock.json installs another Electron than the pins are for', async () => {
+    const { assemble } = await load()
+    const out = join(scratch(), 'assets')
+    const result = assemble({
+      ...base(downloads(), out),
+      electronVersion: '44.3.0',
+      tar: fakeTar([]),
+    })
+    expect(result.problems).toEqual([
+      expect.stringContaining(
+        `installs Electron 44.3.0, and vendor/pins.json's electron_ffmpeg is for Electron ${PINS.electron_ffmpeg.electron.version}`,
+      ),
+    ])
+    expect(existsSync(out)).toBe(false)
   })
 
   it("refuses LOOM's source without the Windows tools' record", async () => {
@@ -719,6 +783,9 @@ describe('the notes', () => {
       `bzip2 ${PINS.loom_windows_static.bzip2.version}`,
       PINS.python.version,
       PKG.devDependencies.electron,
+      ELECTRON_SOURCE,
+      `Chromium's FFmpeg at commit \`${PINS.electron_ffmpeg.ffmpeg.commit}\`, as Chromium ${PINS.electron_ffmpeg.chromium.version} and Electron ${PINS.electron_ffmpeg.electron.version} build it`,
+      `the FFmpeg library inside Electron ${PINS.electron_ffmpeg.electron.version}:`,
     ]) {
       expect(text).toContain(value)
     }
@@ -936,4 +1003,173 @@ describe('build.yml', () => {
   it("asks where the tag points now, with this run's commit", () => {
     expect(release).toContain('--run-commit "$GITHUB_SHA"')
   })
+
+  it("packages no installer without the source of Electron's FFmpeg library, checked before installing", () => {
+    const pkg = jobs.slice(jobs.indexOf('\n  package:\n'), jobs.indexOf('\n  release:\n'))
+    const download = pkg.indexOf('name: electron-ffmpeg-source')
+    const refuse = pkg.indexOf(
+      "name: Refuse to package without the source of Electron's FFmpeg library",
+    )
+    const install = pkg.indexOf('run: npm ci')
+    expect(download).toBeGreaterThan(0)
+    expect(refuse).toBeGreaterThan(download)
+    expect(install).toBeGreaterThan(refuse)
+    expect(pkg).toContain(
+      'archive="electron-ffmpeg-source/electron-ffmpeg-$electron-source.tar.xz"',
+    )
+    expect(pkg).toContain("packages['node_modules/electron'].version")
+    expect(release).toContain('name: electron-ffmpeg-source')
+    expect(release).toContain('path: downloaded/electron-ffmpeg-source')
+  })
+})
+
+// The source of Electron's FFmpeg library (issue 109, ADR-043): the vendor
+// workflow's job, the pins it verifies against, and the refusal that needs
+// no network.
+describe("the source of Electron's FFmpeg library", () => {
+  const vendor = readFileSync(join(repo, '.github', 'workflows', 'vendor.yml'), 'utf8')
+  const SOURCE_SCRIPT = join(repo, 'scripts', 'electron-ffmpeg-source.sh')
+
+  it('is a vendor job that runs the script and uploads the artefact the release takes', () => {
+    const job = vendor.slice(vendor.indexOf('\n  electron-ffmpeg-source:\n'))
+    expect(job).toContain('runs-on: ubuntu-22.04')
+    expect(job).toContain('run: bash scripts/electron-ffmpeg-source.sh electron-ffmpeg-source')
+    expect(job).toContain('name: electron-ffmpeg-source\n')
+    expect(job).toContain('if-no-files-found: error')
+    expect(vendor).toContain("'scripts/electron-ffmpeg-source.sh'")
+  })
+
+  it('is pinned for the Electron package.json and package-lock.json install, by object id', () => {
+    const pins = PINS.electron_ffmpeg
+    expect(pins.electron.version).toBe(ELECTRON)
+    expect(pins.electron.version).toBe(PKG.devDependencies.electron)
+    expect(pins.electron.tag).toBe(`v${ELECTRON}`)
+    const id = /^[0-9a-f]{40}$/
+    for (const value of [
+      pins.electron.commit,
+      pins.chromium.commit,
+      pins.ffmpeg.commit,
+      pins.ffmpeg.tree,
+      ...Object.values(pins.chromium_trees).map((entry) => entry.tree),
+      ...Object.values(pins.electron_files),
+    ]) {
+      expect(value).toMatch(id)
+    }
+    expect(Object.keys(pins.chromium_trees).sort()).toEqual(
+      ['build', 'media/ffmpeg', 'third_party/opus', 'tools/generate_stubs'].sort(),
+    )
+    expect(Object.keys(pins.chromium_deps)).toEqual(['third_party/nasm'])
+    for (const dep of Object.values(pins.chromium_deps)) {
+      expect(dep.commit).toMatch(id)
+      expect(dep.tree).toMatch(id)
+    }
+    const files = Object.keys(pins.electron_files)
+    for (const required of [
+      'patches/ffmpeg/.patches',
+      'patches/ffmpeg/link_with_loader_path.patch',
+      'build/args/all.gn',
+      'build/args/release.gn',
+      'patches/chromium/.patches',
+    ]) {
+      expect(files).toContain(required)
+    }
+    // Electron's patches to Chromium's build/, eight at Electron 44.2.0.
+    expect(files.filter((file) => /^patches\/chromium\/.+\.patch$/.test(file))).toHaveLength(8)
+  })
+
+  it('reads the Electron package-lock.json installs, and null when it names none', async () => {
+    const { installedElectron } = await load()
+    expect(installedElectron(repo)).toBe(ELECTRON)
+    const dir = scratch()
+    writeFileSync(join(dir, 'package-lock.json'), JSON.stringify({ packages: { '': {} } }))
+    expect(installedElectron(dir)).toBeNull()
+    writeFileSync(join(dir, 'package-lock.json'), JSON.stringify({ lockfileVersion: 3 }))
+    expect(installedElectron(dir)).toBeNull()
+  })
+
+  it.skipIf(process.platform === 'win32')(
+    'takes a tree id no in-tree .gitattributes can change, as git mktree makes it from the bytes',
+    () => {
+      const dir = join(scratch(), 'tree')
+      put(join(dir, '.gitattributes'), '* text eol=crlf\n')
+      put(join(dir, 'crlf.txt'), 'one\r\ntwo\r\n')
+      put(join(dir, 'lf.txt'), 'three\n')
+      put(join(dir, 'sub', 'deeper.txt'), 'four\r\n')
+      put(join(dir, 'run.sh'), '#!/bin/sh\n')
+      chmodSync(join(dir, 'run.sh'), 0o755)
+
+      const bare = join(scratch(), 'objects.git')
+      const env = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' }
+      const git = (args: string[], input?: string): string => {
+        const result = spawnSync('git', ['--git-dir', bare, ...args], {
+          encoding: 'utf8',
+          timeout: 30_000,
+          env,
+          input,
+        })
+        expect(result.status, result.stderr).toBe(0)
+        return result.stdout.trim()
+      }
+      spawnSync('git', ['init', '--quiet', '--bare', bare], { timeout: 30_000, env })
+      const blob = (path: string): string =>
+        git(['hash-object', '-w', '--no-filters', join(dir, path)])
+      const sub = git(['mktree'], `100644 blob ${blob('sub/deeper.txt')}\tdeeper.txt\n`)
+      const expected = git(
+        ['mktree'],
+        [
+          `100644 blob ${blob('.gitattributes')}\t.gitattributes`,
+          `100644 blob ${blob('crlf.txt')}\tcrlf.txt`,
+          `100644 blob ${blob('lf.txt')}\tlf.txt`,
+          `100755 blob ${blob('run.sh')}\trun.sh`,
+          `040000 tree ${sub}\tsub`,
+          '',
+        ].join('\n'),
+      )
+
+      const result = spawnSync('bash', [SOURCE_SCRIPT, '--tree-id', dir], {
+        encoding: 'utf8',
+        timeout: 30_000,
+      })
+      expect(result.stderr).toBe('')
+      expect(result.status).toBe(0)
+      expect(result.stdout.trim()).toBe(expected)
+
+      // A plain git add honours the attribute and stores other bytes, which
+      // is what the script's own attributes rule out.
+      const plain = join(scratch(), 'plain')
+      cpSync(dir, plain, { recursive: true })
+      const plainGit = (args: string[]): string =>
+        spawnSync('git', ['-C', plain, ...args], {
+          encoding: 'utf8',
+          timeout: 30_000,
+          env,
+        }).stdout.trim()
+      plainGit(['init', '--quiet'])
+      plainGit(['add', '--all'])
+      expect(plainGit(['write-tree'])).not.toBe(expected)
+    },
+  )
+
+  it.skipIf(process.platform === 'win32')(
+    'refuses a package-lock.json for another Electron, naming both, before fetching anything',
+    () => {
+      const dir = scratch()
+      const lock = structuredClone(LOCK)
+      lock.packages['node_modules/electron'] = { version: '44.3.0' }
+      const lockFile = join(dir, 'package-lock.json')
+      writeFileSync(lockFile, JSON.stringify(lock))
+      const out = join(dir, 'out')
+      const result = spawnSync('bash', [SOURCE_SCRIPT, out], {
+        encoding: 'utf8',
+        timeout: 30_000,
+        env: { ...process.env, ELECTRON_FFMPEG_LOCK: lockFile },
+      })
+      expect(result.status).toBe(1)
+      expect(result.stderr).toContain(
+        `package-lock.json installs Electron 44.3.0, and vendor/pins.json's electron_ffmpeg is for Electron ${PINS.electron_ffmpeg.electron.version}`,
+      )
+      expect(result.stdout).toBe('')
+      expect(existsSync(out)).toBe(false)
+    },
+  )
 })

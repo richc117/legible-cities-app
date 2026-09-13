@@ -14,8 +14,11 @@
 # A target whose components are missing, stale or the wrong architecture
 # fails, naming the component, and uploads nothing; the other targets go on
 # (SC-005). So the packaging jobs run whatever the vendor jobs' result, and
-# a download that finds no artefact is left for scripts/check-vendored.mjs
-# to name.
+# a download that finds no component is left for scripts/check-vendored.mjs
+# to name. The source of Electron's FFmpeg library is the exception: every
+# installer carries that library, so a packaging job refuses, itself and
+# before anything is installed, a run without the electron-ffmpeg-source
+# artefact, and no target is packaged (ADR-043).
 #
 # Unsigned (FR-005): the Mac app is signed ad hoc and the Windows installer
 # not at all, until the release-readiness gate (A6-05). The ffmpeg they
@@ -42,7 +45,9 @@
 # notes; a published Release for the tag fails the job and is not touched. The
 # assets are the three installers renamed for their machine, one archive of
 # each Corresponding Source artefact (ffmpeg-source, loom-source with the
-# loom-windows-toolchain record inside, engine-source), and SHA256SUMS.txt; the notes are .github/release-notes.md
+# loom-windows-toolchain record inside, engine-source), the source archive of
+# Electron's FFmpeg library as electron-ffmpeg-source made it (ADR-043), and
+# SHA256SUMS.txt; the notes are .github/release-notes.md
 # filled from vendor/pins.json and the tag. `npm run dist` stays the
 # everyday unpacked build.
 name: build
@@ -63,6 +68,7 @@ on:
       - 'scripts/vendor-python.sh'
       - 'scripts/vendor-ffmpeg.sh'
       - 'scripts/vendor-signature.sh'
+      - 'scripts/electron-ffmpeg-source.sh'
       - 'scripts/check-vendored.mjs'
       - 'scripts/launch-packaged.mjs'
       - '.github/workflows/vendor.yml'
@@ -79,7 +85,9 @@ jobs:
     name: package (${{ matrix.target }})
     needs: vendor
     # Every target is packaged whatever the vendor jobs' result: one target's
-    # failure must not cost the others their installers.
+    # failure must not cost the others their installers. The one exception is
+    # the source of Electron's FFmpeg library, which every installer carries:
+    # without it no target is packaged (the first steps below).
     if: ${{ !cancelled() }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
@@ -101,6 +109,30 @@ jobs:
         with:
           node-version: 22
           cache: npm
+
+      # The installers carry Electron's FFmpeg library (libffmpeg.dylib,
+      # ffmpeg.dll), whose source the vendor workflow's electron-ffmpeg-source
+      # job verifies and archives. As the ffmpeg and LOOM jobs need their
+      # source jobs, no installer is packaged without it (issue 109, ADR-043):
+      # the artefact exists only when that job succeeded, and it must be the
+      # archive for the Electron package-lock.json installs. Downloaded first,
+      # so a run without it stops before anything is installed.
+      - name: Download the source of Electron's FFmpeg library
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: electron-ffmpeg-source
+          path: electron-ffmpeg-source
+      - name: Refuse to package without the source of Electron's FFmpeg library
+        shell: bash
+        run: |
+          electron=$(node -p "require('./package-lock.json').packages['node_modules/electron'].version")
+          archive="electron-ffmpeg-source/electron-ffmpeg-$electron-source.tar.xz"
+          if [ ! -s "$archive" ]; then
+            echo "::error::$archive is not in this run: the vendor workflow's electron-ffmpeg-source job failed, or the download did. An installer carrying Electron $electron's FFmpeg library is not packaged without that library's source"
+            exit 1
+          fi
+          echo "the source of Electron $electron's FFmpeg library: $(wc -c < "$archive" | tr -d ' ') bytes"
 
       - name: Install
         run: npm ci
@@ -293,6 +325,11 @@ jobs:
         with:
           name: engine-source
           path: downloaded/engine-source
+      - name: Download the source of Electron's FFmpeg library
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: electron-ffmpeg-source
+          path: downloaded/electron-ffmpeg-source
 
       - name: Assemble the assets and their checksums
         shell: bash

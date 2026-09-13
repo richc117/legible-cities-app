@@ -25,16 +25,18 @@ The Mac app is not signed with an Apple Developer ID or notarised, and the Windo
 | FFmpeg (`ffmpeg` and `ffprobe`), built from source with only what the export uses | {{ffmpeg_version}}, with x264 at commit `{{x264_commit}}`, and zlib {{zlib_version}} on Windows | GPL-3.0-or-later |
 | Python, from python-build-standalone | {{python_version}} (release {{python_release}}) | PSF-2.0 |
 | Electron | {{electron_version}} | MIT |
+| FFmpeg inside Electron (`libffmpeg.dylib`, `ffmpeg.dll`), Chromium's media decoder, which the app does not call; not the `ffmpeg` above | Chromium's FFmpeg at commit `{{electron_ffmpeg_commit}}`, as Chromium {{electron_ffmpeg_chromium}} and Electron {{electron_ffmpeg_electron}} build it, with libopus inside | LGPL-2.1-or-later (libopus BSD-3-Clause) |
 
 Every component and its licence is listed in `THIRD_PARTY_NOTICES.md`, which the app carries beside its own `LICENSE`.
 
 ## Source code
 
-The app is free software under the GNU General Public License, version 3 or later. The engine, LOOM and this build of FFmpeg are under the GPL too, at the versions in the table above, and their Corresponding Source is attached here:
+The app is free software under the GNU General Public License, version 3 or later. The engine, LOOM and this build of FFmpeg are under the GPL too, and the FFmpeg library inside Electron under the LGPL, at the versions in the table above, and their source is attached here:
 
 - **The app**: the "Source code" archives GitHub attaches to this Release, the repository at {{tag}} ({{app_source_url}}).
 - **`{{ffmpeg_source}}`**: FFmpeg {{ffmpeg_version}}'s release tarball and its signature, x264 at its commit, zlib {{zlib_version}}'s release tarball and its signature, each as fetched and verified against the pins; the script that builds them, the pins and the vendor workflow; and `BUILD.txt` with every target's configure lines and the commit they came from.
 - **`{{loom_source}}`**: LOOM at commit `{{loom_commit}}` with its submodules, the Windows port at commit `{{port_commit}}`, `scripts/loom-windows-patch.py`, which applies the port's changes to LOOM for the Windows build, the upstream release tarballs of zlib {{loom_zlib_version}} and bzip2 {{loom_bzip2_version}}, verified by their publishers' signatures, and MSYS2's source packages (recipe and patches) for the exact zlib and bzip2 revisions the Windows tools link statically, the pins and the vendor workflow, `BUILD.txt` saying how each target is built, and `TOOLCHAIN-win-x64.txt` naming the MSYS2 packages the Windows tools were linked with.
 - **`{{engine_source}}`**: the engine at {{engine_tag}}, as installed into the bundled Python, with the script that installs it and `BUILD.txt` naming the commit.
+- **`{{electron_ffmpeg_source}}`**: the source of the FFmpeg library inside Electron {{electron_ffmpeg_electron}}: Chromium's FFmpeg at commit `{{electron_ffmpeg_commit}}` with its build files and generated configuration, libopus, Chromium {{electron_ffmpeg_chromium}}'s scripts, tools and GN configuration that build it, and Electron's patches and gn args, each verified by its git object id against the pins; and `BUILD.txt` saying what each part is and how the library is built.
 
 Maps made with the app derive from each transit agency's published feed and remain subject to that agency's terms.

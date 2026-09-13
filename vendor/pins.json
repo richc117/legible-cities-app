@@ -246,5 +246,79 @@
         "reports": "9.0.1"
       }
     }
+  },
+  "electron_ffmpeg": {
+    "note": "The FFmpeg library Electron ships inside the app (libffmpeg.dylib in Electron Framework.framework/Versions/A/Libraries/ on macOS, ffmpeg.dll beside the executable on Windows): Chromium's media decoder, which the app never calls itself and which is not the ffmpeg above (ADR-043, issue 109). Electron builds it from Chromium's copy of FFmpeg with its release gn args (`ffmpeg_branding = \"Chrome\"`, `proprietary_codecs = true` in build/args/all.gn; `is_component_ffmpeg = true`, `is_official_build = true` in build/args/release.gn) and one patch of its own to FFmpeg's BUILD.gn. Everything is pinned by git object id, so nothing depends on an archive's bytes: googlesource's +archive tarballs carry the download time and differ from one fetch to the next, but the tree they unpack to does not. The electron-ffmpeg-source job refuses a run whose package-lock.json installs another Electron than `electron.version`, checks that Electron's DEPS at `electron.commit` names `chromium.version` and that `electron.tag` still names that commit, that Chromium's DEPS at `chromium.commit` names `ffmpeg.commit` as its ffmpeg_revision and that `chromium.tag` still names that commit, fetches FFmpeg at its commit, each Chromium directory at `chromium.commit` and each of `chromium_deps` at the commit Chromium's tree records for it, and refuses any whose tree id is not the pinned one, both as unpacked and as gitiles lists it at that commit, and each Electron file whose blob id is not. `chromium_trees` and `chromium_deps` are what FFmpeg's BUILD.gn and the files it imports name outside itself (`//build`, `//third_party/opus`, `//third_party/nasm` for the x86-64 assembly, `//tools/generate_stubs` for the Windows exports), with `media/ffmpeg`, whose scripts generate its configuration; `electron_files` holds Electron's FFmpeg patch, its release gn args, and the eight patches in Electron's patches/chromium/ that change files under build/ (each listed in its .patches, checked on 2026-09-13), with that list. An Electron bump moves this whole block: the Chromium version and commit from Electron's DEPS at the new tag, the FFmpeg commit from Chromium's DEPS, and every tree and blob id (`git rev-parse <commit>^{tree}` for FFmpeg; gitiles' `?format=JSON` listing of each directory at the Chromium commit, which for a DEPS entry such as third_party/nasm gives its repository and revision; `gh api repos/electron/electron/contents/<path>?ref=<tag> --jq .sha` for Electron's files). Measured on 2026-09-13 from Electron 44.2.0's own zips, without running them: `FFmpeg version git-2026-07-15-6cfe2122b0` and `libavcodec license: LGPL version 2.1 or later` in the Mac library, and the 29 components under `components` in its symbol table and in Chromium's config for chromium/config/Chrome/{mac,win}; CONFIG_GPL, CONFIG_NONFREE and CONFIG_VERSION3 are 0 there.",
+    "electron": {
+      "version": "44.2.0",
+      "repo": "https://github.com/electron/electron",
+      "tag": "v44.2.0",
+      "commit": "aa650d74597c652878629df0038a50485e156a09"
+    },
+    "chromium": {
+      "version": "152.0.7977.76",
+      "repo": "https://chromium.googlesource.com/chromium/src",
+      "tag": "152.0.7977.76",
+      "commit": "0d89dfa2dd7c1ec4b8a14b9f303f887bb63b6174"
+    },
+    "ffmpeg": {
+      "repo": "https://chromium.googlesource.com/chromium/third_party/ffmpeg",
+      "commit": "2b68d2babae73714846961fb0ee47e3b3d2e39a9",
+      "tree": "c60e6b597c312801ce91d81110442d40fbf4d672",
+      "reports": "git-2026-07-15-6cfe2122b0",
+      "licence": "LGPL-2.1-or-later"
+    },
+    "chromium_trees": {
+      "build": {
+        "tree": "9f0de54ea904b8016003de9821025cbbb03304f1",
+        "what": "Chromium's GN build configuration, which BUILD.gn imports (//build/config/...)",
+        "licence": "BSD-3-Clause"
+      },
+      "media/ffmpeg": {
+        "tree": "4d366049e08f7cd5c35d3fbd4f2e5540d70d3703",
+        "what": "Chromium's scripts that run FFmpeg's configure for each branding and target and generate ffmpeg_generated.gni and chromium/config (scripts/build_ffmpeg.py, scripts/generate_gn.py)",
+        "licence": "BSD-3-Clause"
+      },
+      "third_party/opus": {
+        "tree": "3c15a5719ecbcbbe1178633e7ef0d85677b1c2b2",
+        "what": "libopus, linked statically into the library (FFmpeg's BUILD.gn depends on //third_party/opus), at Opus revision 55513e81d8f606bd75d0ff773d2144e5f2a732f5",
+        "licence": "BSD-3-Clause (Opus-Patent-BSD-3-Clause)"
+      },
+      "tools/generate_stubs": {
+        "tree": "91d98296a6b8da9796d0ae112fd216a584fa7bb6",
+        "what": "the script BUILD.gn runs on Windows to write ffmpeg.def, the list of what ffmpeg.dll exports, from chromium/ffmpeg.sigs",
+        "licence": "BSD-3-Clause"
+      }
+    },
+    "chromium_deps": {
+      "third_party/nasm": {
+        "repo": "https://chromium.googlesource.com/chromium/deps/nasm",
+        "commit": "525a09a813be0f75b646ee93fc2a31c27b87d722",
+        "tree": "d6d4d137fd4e885d7efe55b38308c7b0b4495784",
+        "what": "the Netwide Assembler 3.01, which Chromium builds from source and BUILD.gn assembles FFmpeg's x86-64 assembly with on darwin-x64 and win-x64, through its nasm_assemble.gni",
+        "licence": "BSD-2-Clause"
+      }
+    },
+    "electron_files": {
+      "patches/ffmpeg/.patches": "31dc878c5b29cffe0cc6ec03861f25880f913b80",
+      "patches/ffmpeg/link_with_loader_path.patch": "2b0311ce5bca38db638f54b1ffc29d5325e6d3e7",
+      "build/args/all.gn": "ffd62ac3216519ed7e76bb4b088d5c4223093f17",
+      "build/args/release.gn": "59326deae7980cbbe82e6305eb939e0a668ec20d",
+      "patches/chromium/.patches": "5caa183a2a958a6950129d235620568150418607",
+      "patches/chromium/build_allow_resource_allowlist_generation_for_linux_and_macos.patch": "c9ab5505a6f04697a519da60ea7b2c0d0e832077",
+      "patches/chromium/build_disable_llvm_unroll-add-parallel-reductions_on_apple_targets.patch": "741c4c489ba7c4910800811bf647ee48acd09148",
+      "patches/chromium/build_fix_profile_runtime_resolution_for_pgo_instrumented_builds.patch": "6d7b879ff85b7ae699827e05ccc2ac638f6bb96d",
+      "patches/chromium/build_gn.patch": "1179f0aba3e8104fc3f7bafabd9f943bd8ad61be",
+      "patches/chromium/build_resolve_pgo_profiles_from_electron_state_files.patch": "0b08235bdba4bb526f8ba8d1f8b463b4d1314bc8",
+      "patches/chromium/gtk_visibility.patch": "ac34883fb196d7b209f2359a7f6a4a95f65c2378",
+      "patches/chromium/ignore_rc_check.patch": "0e92b98969025e3c5d9efa8ec51f53051f7cf2a6",
+      "patches/chromium/remove_cr_xcode_build_define_from_build_gn.patch": "abf5ab3dd91897d53777e6bf06df8c1f908762ea"
+    },
+    "components": {
+      "decoders": "h264,aac,flac,mp3,vorbis,libopus,pcm_alaw,pcm_f32le,pcm_mulaw,pcm_s16be,pcm_s16le,pcm_s24be,pcm_s24le,pcm_s32le,pcm_u8",
+      "parsers": "aac,flac,h264,mpegaudio,opus,vorbis,vp9",
+      "demuxers": "aac,flac,matroska,mov,mp3,ogg,wav"
+    },
+    "licence": "LGPL-2.1-or-later (Chromium's FFmpeg as configured: no --enable-gpl, --enable-nonfree or --enable-version3), with libopus (BSD-3-Clause) linked statically inside it"
   }
 }

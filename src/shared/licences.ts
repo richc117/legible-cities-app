@@ -152,6 +152,12 @@ export const BUNDLED_COMPONENTS: readonly BundledComponent[] = [
     identifiers: ['LICENSES.chromium.html'],
     notice: 'Electron',
   },
+  {
+    name: 'FFmpeg library, inside Electron',
+    licence: 'LGPL-2.1-or-later; BSD-3-Clause for the libopus inside it',
+    identifiers: ['LGPL-2.1-or-later', 'BSD-3-Clause'],
+    notice: 'FFmpeg inside Electron',
+  },
   { name: 'React', licence: 'MIT', identifiers: ['MIT'], notice: 'React' },
   {
     name: 'FigUI3 core',
