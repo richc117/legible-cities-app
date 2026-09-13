@@ -71,6 +71,16 @@ onto the inner button too, but for the same reason it resolves to nothing
 and relates the button to no element (docs/accessibility.md, F6); the
 wrapper does not take `aria-labelledby`, which would fail the same way.
 
+The kit observes `disabled` on the host and, inside every change of it,
+re-syncs its inner button synchronously, removing `aria-pressed` from the
+host and the inner button of any button that is not its own toggle. So
+`Button` writes `disabled` and the mirrored attributes (`aria-expanded`,
+`aria-pressed`, `aria-disabled`, `aria-controls`, and `data-unavailable`
+on the host) in one effect that runs whenever any of them changes,
+`disabled` first, so the mirrored state is re-applied after the kit's
+re-sync (`syncKitButton`, issue 124). The re-sync does not touch
+`aria-description`.
+
 Each wrapper: a `ref` to the element; `value` set through the ref in an
 effect (never in JSX); listeners attached in an effect; `forwardRef` so a
 screen can focus the control. Labels stay native `<label htmlFor>` and the
