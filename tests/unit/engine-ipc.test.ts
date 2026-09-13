@@ -5,7 +5,8 @@
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { describe, expect, it } from 'vitest'
 import { registerEngineHandlers, type EngineSource } from '../../src/main/engine-ipc'
-import type { Notification } from '../../src/main/sidecar'
+import { registryDeadline } from '../../src/main/feeds-ipc'
+import type { Notification, RequestOptions } from '../../src/main/sidecar'
 import { CHANNELS } from '../../src/shared/api'
 import { EngineError, ERROR_CODES, type EngineState, type ErrorData } from '../../src/shared/engine'
 
@@ -18,14 +19,24 @@ interface Deferred {
   reject(error: unknown): void
 }
 
-function harness(topFrame = true, guard?: (method: string) => Promise<string | null>) {
+function harness(
+  topFrame = true,
+  guard?: (method: string) => Promise<string | null>,
+  deadline?: (method: string) => number | undefined,
+) {
   const handlers = new Map<string, Handler>()
   const ipc = {
     handle: (channel: string, h: Handler) => handlers.set(channel, h),
   } as unknown as IpcMain
   const sent: { channel: string; payload: unknown }[] = []
   const log: string[] = []
-  const requests: { id: number; method: string; params: unknown; deferred: Deferred }[] = []
+  const requests: {
+    id: number
+    method: string
+    params: unknown
+    options: RequestOptions | undefined
+    deferred: Deferred
+  }[] = []
   const cancelled: number[] = []
   let stateListener: ((s: EngineState) => void) | null = null
   let notificationListener: ((n: Notification) => void) | null = null
@@ -35,7 +46,7 @@ function harness(topFrame = true, guard?: (method: string) => Promise<string | n
     get state() {
       return state
     },
-    request(method, params) {
+    request(method, params, options) {
       if (state.state !== 'ready') {
         return { id: 0, result: Promise.reject(new EngineError(ERROR_CODES.notReady, 'not ready')) }
       }
@@ -44,7 +55,7 @@ function harness(topFrame = true, guard?: (method: string) => Promise<string | n
       const result = new Promise<unknown>((resolve, reject) => {
         deferred = { resolve, reject }
       })
-      requests.push({ id, method, params, deferred })
+      requests.push({ id, method, params, options, deferred })
       return { id, result }
     },
     cancel: (id) => cancelled.push(id),
@@ -64,6 +75,7 @@ function harness(topFrame = true, guard?: (method: string) => Promise<string | n
     (channel, payload) => sent.push({ channel, payload }),
     (m) => log.push(m),
     guard,
+    deadline,
   )
   const event = {} as IpcMainInvokeEvent
   const call = (channel: string, ...args: unknown[]) => handlers.get(channel)!(event, ...args)
@@ -350,5 +362,48 @@ describe('the guard in front of the engine', () => {
     expect(answer.accepted, 'the stale null did not get through').toBe(false)
     expect(answer.error?.data?.hint).toMatch(/being reset/)
     expect(h.requests, 'the engine was never asked').toEqual([])
+  })
+})
+
+describe('a request deadline (issue 107)', () => {
+  it('sends a request with the deadline its method is given, and the rest without one', async () => {
+    const h = harness(true, undefined, (method) => registryDeadline(method, 1_500))
+    await h.call(CHANNELS.engineRequest, 'tok1', 'feeds.remove', { key: 'x' })
+    await h.call(CHANNELS.engineRequest, 'tok2', 'feeds.list')
+    expect(h.requests.map((r) => [r.method, r.options])).toEqual([
+      ['feeds.remove', { deadlineMs: 1_500 }],
+      ['feeds.list', undefined],
+    ])
+  })
+
+  it('settles an expired request to the page as an error with the inactive kind, then frees the token', async () => {
+    const h = harness(true, undefined, (method) => registryDeadline(method))
+    await h.call(CHANNELS.engineRequest, 'tok1', 'feeds.remove', { key: 'x' })
+    expect(h.requests[0].options).toEqual({ deadlineMs: 30_000 })
+    const message = 'No answer within 30 seconds; the request was cancelled.'
+    h.requests[0].deferred.reject(
+      new EngineError(ERROR_CODES.inactive, message, {
+        kind: 'inactive',
+        detail: message,
+        hint: message,
+      }),
+    )
+    await tick()
+    expect(h.sent).toContainEqual({
+      channel: CHANNELS.engineSettled,
+      payload: {
+        id: 'tok1',
+        ok: false,
+        error: {
+          code: ERROR_CODES.inactive,
+          message,
+          data: { kind: 'inactive', detail: message, hint: message },
+        },
+      },
+    })
+    const again = (await h.call(CHANNELS.engineRequest, 'tok1', 'feeds.remove', { key: 'x' })) as {
+      accepted: boolean
+    }
+    expect(again.accepted).toBe(true)
   })
 })

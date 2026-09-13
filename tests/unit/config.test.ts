@@ -1,6 +1,11 @@
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { describeConfig, parseEnvFile, resolveConfig } from '../../src/main/config'
+import {
+  describeConfig,
+  feedsRemoveDeadlineOverride,
+  parseEnvFile,
+  resolveConfig,
+} from '../../src/main/config'
 import { readFileSync } from 'node:fs'
 
 // The app's LOOM pin, read rather than repeated, as the tests read the engine's.
@@ -287,5 +292,24 @@ describe('bundled components (A0-10)', () => {
     const c = resolveConfig({ ...base, env: {} })
     expect(c.loomBin).toBeNull()
     expect(c.ffmpeg).toBeNull()
+  })
+})
+
+describe('LEGIBLE_FEEDS_REMOVE_DEADLINE_MS (issue 107)', () => {
+  const env = (value?: string) => ({ LEGIBLE_FEEDS_REMOVE_DEADLINE_MS: value })
+
+  it('replaces the deadline in development with a positive whole number of milliseconds', () => {
+    expect(feedsRemoveDeadlineOverride(env('1500'), false)).toBe(1_500)
+    expect(feedsRemoveDeadlineOverride(env(' 2000 '), false)).toBe(2_000)
+  })
+
+  it('is refused in a packaged app, whatever its environment says', () => {
+    expect(feedsRemoveDeadlineOverride(env('1500'), true)).toBeNull()
+  })
+
+  it('is ignored when unset or not a positive whole number', () => {
+    for (const value of [undefined, '', '0', '-5', '1.5', '1e3', 'soon', '0100', '9999999999']) {
+      expect(feedsRemoveDeadlineOverride(env(value), false), String(value)).toBeNull()
+    }
   })
 })

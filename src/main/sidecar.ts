@@ -38,6 +38,19 @@ export const DEFAULT_BOUNDS: Bounds = {
   stableMs: 30_000,
 }
 
+/** What one request may ask of the supervisor beyond the method and its parameters. */
+export interface RequestOptions {
+  /**
+   * The longest the request may take from being sent to being answered,
+   * however much progress it reports: past it the engine is sent
+   * `$/cancelRequest` and the request ends with the `inactive` error, as the
+   * inactivity bound ends one. For a request whose work is short and known,
+   * where a person is waiting on the answer and progress is no sign of it
+   * (issue 107). Absent, only the inactivity bound applies.
+   */
+  deadlineMs?: number
+}
+
 export interface Notification {
   method: string
   params: unknown
@@ -87,6 +100,8 @@ export class Sidecar {
   private readonly stateListeners = new Set<(state: EngineState) => void>()
   private readonly notificationListeners = new Set<(n: Notification) => void>()
   private readonly inactivity = new Map<number, NodeJS.Timeout>()
+  /** The requests with a deadline of their own, by id; each timer cleared on any ending. */
+  private readonly deadlines = new Map<number, NodeJS.Timeout>()
   private restartTimer: NodeJS.Timeout | null = null
   private stableTimer: NodeJS.Timeout | null = null
   /** An endChild() in progress, so stop() waits for it rather than passing it. */
@@ -126,6 +141,11 @@ export class Sidecar {
     return this.client?.inFlight.length ?? 0
   }
 
+  /** How many request deadlines are armed: none once every request has ended, and none after a stop. */
+  get deadlinesArmed(): number {
+    return this.deadlines.size
+  }
+
   start(): void {
     if (this.started) return
     this.started = true
@@ -144,6 +164,7 @@ export class Sidecar {
   request(
     method: string,
     params?: Record<string, unknown>,
+    options: RequestOptions = {},
   ): { id: number; result: Promise<unknown> } {
     const client = this.client
     if (this._state.state !== 'ready' || client === null) {
@@ -156,14 +177,17 @@ export class Sidecar {
     }
     const { id, result } = client.request(method, params)
     this.armInactivity(client, id)
+    if (options.deadlineMs !== undefined) this.armDeadline(client, id, method, options.deadlineMs)
     const settled = result.then(
       (value) => {
         this.disarmInactivity(id)
+        this.disarmDeadline(id)
         this.stable()
         return value
       },
       (error: EngineError) => {
         this.disarmInactivity(id)
+        this.disarmDeadline(id)
         // The engine answered, even with an error: it is working.
         if (error.code !== ERROR_CODES.engineExited && error.code !== ERROR_CODES.inactive)
           this.stable()
@@ -174,7 +198,44 @@ export class Sidecar {
   }
 
   cancel(id: number): void {
+    // A cancel already asked the engine to stop: the deadline would only
+    // ask again. The inactivity bound still ends a cancel nobody answers.
+    this.disarmDeadline(id)
     this.client?.cancel(id)
+  }
+
+  private armDeadline(client: JsonRpcClient, id: number, method: string, ms: number): void {
+    this.disarmDeadline(id)
+    const seconds = ms / 1000
+    const timer = setTimeout(() => {
+      this.deadlines.delete(id)
+      this.disarmInactivity(id)
+      const message =
+        ms >= 1000 && Number.isInteger(seconds)
+          ? `No answer within ${seconds} second${seconds === 1 ? '' : 's'}; the request was cancelled.`
+          : `No answer within ${ms} ms; the request was cancelled.`
+      this.log(`request ${id} (${method}): ${message}`)
+      // Asked once, then ended here: an answer that arrives after this is
+      // for an id the client no longer holds, and is dropped with a log line.
+      client.cancel(id)
+      client.fail(
+        id,
+        new EngineError(ERROR_CODES.inactive, message, {
+          kind: 'inactive',
+          detail: message,
+          hint: message,
+        }),
+      )
+    }, ms)
+    this.deadlines.set(id, timer)
+  }
+
+  private disarmDeadline(id: number): void {
+    const timer = this.deadlines.get(id)
+    if (timer !== undefined) {
+      clearTimeout(timer)
+      this.deadlines.delete(id)
+    }
   }
 
   private armInactivity(client: JsonRpcClient, id: number): void {
@@ -312,7 +373,7 @@ export class Sidecar {
           hint: 'The engine stopped before answering.',
         }),
       )
-      this.clearInactivity()
+      this.clearRequestBounds()
       if (this.stopping || this._state.state === 'mismatched') {
         this.log(`process ${describeExit(code, signal)}`)
         return
@@ -443,9 +504,12 @@ export class Sidecar {
     if (this._state.state === 'ready') this.failures = 0
   }
 
-  private clearInactivity(): void {
+  /** Every request's bounds, the inactivity and the deadline alike: the requests went with the child. */
+  private clearRequestBounds(): void {
     for (const timer of this.inactivity.values()) clearTimeout(timer)
     this.inactivity.clear()
+    for (const timer of this.deadlines.values()) clearTimeout(timer)
+    this.deadlines.clear()
   }
 
   // -- shutdown --
@@ -495,7 +559,7 @@ export class Sidecar {
     }
     if (child.exitCode !== null || child.signalCode !== null) return
     const exited = this.exited
-    this.clearInactivity()
+    this.clearRequestBounds()
     const stopped = new EngineError(
       ERROR_CODES.engineExited,
       'The engine stopped before answering.',

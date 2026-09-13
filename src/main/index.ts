@@ -14,6 +14,8 @@ import { abortCaptures, capture, configureCapture } from './capture-window'
 import {
   describeConfig,
   EXPORT_FOLDER_NAME,
+  FEEDS_REMOVE_DEADLINE_KEY,
+  feedsRemoveDeadlineOverride,
   firstRunTargets,
   resolveConfig,
   type Config,
@@ -23,7 +25,7 @@ import { registerEngineHandlers } from './engine-ipc'
 import { FIXTURE_FOLDER, FirstRunCheck, LOG_TAG as FIRST_RUN_TAG } from './first-run'
 import { registerFirstRunHandlers } from './first-run-ipc'
 import { LicencesService, registerLicencesHandlers } from './licences-ipc'
-import { PickedPaths, registerFeedsHandlers, registryGuard } from './feeds-ipc'
+import { PickedPaths, registerFeedsHandlers, registryDeadline, registryGuard } from './feeds-ipc'
 import { Exporter, keptFramesFolder } from './export'
 import { claimFramesRoot, clearFrames, describeSweep, FRAMES_FOLDER } from './frames'
 import { registerExportHandlers } from './export-ipc'
@@ -591,6 +593,12 @@ if (!hasLock) {
     // otherwise be answered with the null from before it started, and the
     // remove would unlink inside data/feeds while the removal walks data/.
     const registry = registryGuard(picked, async () => (await store.list()).map((p) => p.feed))
+    // A feed's removal ends in a sentence if the engine stalls (issue 107);
+    // the suite shortens the wait in development, never in a package.
+    const removeDeadline = feedsRemoveDeadlineOverride(process.env, app.isPackaged)
+    if (removeDeadline !== null) {
+      log.info('config', `${FEEDS_REMOVE_DEADLINE_KEY}=${removeDeadline} (environment)`)
+    }
     registerEngineHandlers(
       ipcMain,
       engine,
@@ -602,6 +610,7 @@ if (!hasLock) {
       (message) => log.warn('engine', message),
       async (method, params) =>
         resetInProgress() ?? (await registry(method, params)) ?? resetInProgress(),
+      (method) => registryDeadline(method, removeDeadline),
     )
     // Electron grants a permission request by default. Nothing this app
     // shows has any business asking for one, and the viewer's page least of

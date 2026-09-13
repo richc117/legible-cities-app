@@ -213,8 +213,8 @@ was thrown to the top of the document with nothing said.
   (`remove_delay_ms`): the refused presses and Escape with one
   `feeds.remove` sent and the unavailable look read from the kit's host and
   inner button, and a dialog closed by two Escapes mid-removal letting the
-  next one open idle and stay open. A stalled request holding the dialog is
-  a finding for filing, below.
+  next one open idle and stay open. A stalled request holding the dialog
+  was a finding, F4 below, closed by issue 107.
 
 The rest:
 
@@ -304,12 +304,25 @@ or a design decision.
   person's.
 
 - **F4. A stalled engine request holds a destructive confirmation.**
-  *Screen:* the Library's feed removal (and any confirmation whose action
-  waits on the engine). *Steps:* remove a feed while the engine is stalled.
-  *What a person meets:* a dialog that says the removal is running and
-  cannot be stopped, with both buttons unavailable, for as long as the
-  sidecar's 600 s inactivity bound; `feeds.remove` has no request deadline
-  of its own. Two presses of Escape close it, and nothing else does.
+  *Closed by issue 107.* *Screen:* the Library's feed removal. *Steps:*
+  remove a feed while the engine is stalled. *What a person met:* a dialog
+  that said the removal was running and could not be stopped, with both
+  buttons unavailable, for as long as the sidecar's 600 s inactivity bound;
+  `feeds.remove` had no request deadline of its own. *Now:* `feeds.remove`
+  is sent with a deadline of 30 seconds (`FEEDS_REMOVE_DEADLINE_MS` in
+  `src/main/feeds-ipc.ts`). Past it the engine is sent `$/cancelRequest`
+  once, the request ends with the `inactive` error, and the dialog stays
+  open with its buttons taking presses again and the alert "The engine did
+  not answer in time, so the feed may or may not have been removed. The
+  list of feeds is read again to show what the engine has now."; the list
+  is read at once, and again when that dialog is closed, since the engine
+  may finish the work after the app stopped waiting (`src/main/sidecar.ts`,
+  `Library.tsx`). No other confirmation waits on the engine: deleting a
+  project and resetting the engine's data are the main process's own file
+  work. Asserted in `tests/unit/sidecar.test.ts` and end to end in
+  `tests/e2e/feeds.spec.ts` with the stand-in's `remove_delay_ms` beyond a
+  deadline shortened through the development-only
+  `LEGIBLE_FEEDS_REMOVE_DEADLINE_MS`.
 
 - **F5. A kit button's `aria-describedby` described nothing. Fixed
   (issue 113).** *Screen:* Settings (the Licences buttons when unavailable,

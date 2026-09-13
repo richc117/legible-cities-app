@@ -11,7 +11,7 @@ import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { CHANNELS, type EngineAccepted, type EngineSettled } from '../shared/api'
 import type { EngineState, JobLog, JobProgress } from '../shared/engine'
 import { badCall, isObject, TOKEN, toShape } from './ipc-shape'
-import type { Notification } from './sidecar'
+import type { Notification, RequestOptions } from './sidecar'
 
 /** What the handlers need from the supervisor; a test hands in a fake. */
 export interface EngineSource {
@@ -19,6 +19,7 @@ export interface EngineSource {
   request(
     method: string,
     params?: Record<string, unknown>,
+    options?: RequestOptions,
   ): { id: number; result: Promise<unknown> }
   cancel(id: number): void
   onState(listener: (state: EngineState) => void): () => void
@@ -33,6 +34,9 @@ export type Guard = (
   params: Record<string, unknown> | undefined,
 ) => Promise<string | null>
 
+/** The deadline a request is sent with, in milliseconds, or undefined for the inactivity bound alone. */
+export type Deadline = (method: string) => number | undefined
+
 const LEVELS = new Set(['debug', 'info', 'warning', 'error'])
 
 export function registerEngineHandlers(
@@ -42,6 +46,7 @@ export function registerEngineHandlers(
   send: Send,
   log: (message: string) => void,
   guard: Guard = async () => null,
+  deadline: Deadline = () => undefined,
 ): () => void {
   const idOf = new Map<string, number>()
   const tokenOf = new Map<number, string>()
@@ -72,7 +77,12 @@ export function registerEngineHandlers(
       idOf.delete(token)
       return badCall(refused)
     }
-    const { id, result } = engine.request(method, params as Record<string, unknown> | undefined)
+    const deadlineMs = deadline(method)
+    const { id, result } = engine.request(
+      method,
+      params as Record<string, unknown> | undefined,
+      deadlineMs === undefined ? undefined : { deadlineMs },
+    )
     if (id !== 0) {
       idOf.set(token, id)
       tokenOf.set(id, token)

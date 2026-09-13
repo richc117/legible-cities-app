@@ -143,6 +143,25 @@ export function firstRunTargets(input: {
   }
 }
 
+/**
+ * `LEGIBLE_FEEDS_REMOVE_DEADLINE_MS`, in development only: a whole number of
+ * milliseconds that replaces a feed removal's deadline, so the end-to-end
+ * suite can watch a stalled removal end without waiting half a minute
+ * (issue 107). Read from the environment and never from `.env.local`, like
+ * `LEGIBLE_USER_DATA`. Null in a packaged app whatever its environment says,
+ * and for anything that is not a positive whole number.
+ */
+export const FEEDS_REMOVE_DEADLINE_KEY = 'LEGIBLE_FEEDS_REMOVE_DEADLINE_MS'
+
+export function feedsRemoveDeadlineOverride(
+  env: Record<string, string | undefined>,
+  packaged: boolean,
+): number | null {
+  const value = env[FEEDS_REMOVE_DEADLINE_KEY]
+  if (packaged || value === undefined || !/^[1-9]\d{0,8}$/.test(value.trim())) return null
+  return Number(value.trim())
+}
+
 /** KEY=value per line; `#` starts a comment; matching quotes are stripped; no interpolation. */
 export function parseEnvFile(text: string): Record<string, string> {
   const out: Record<string, string> = {}
