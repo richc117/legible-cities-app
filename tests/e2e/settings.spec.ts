@@ -307,6 +307,57 @@ test('resets the engine data behind a confirmation, and leaves the Library empty
   })
 })
 
+// Issue 113. The reset's reason while runs are going is the button's
+// description, and it follows the count: from two runs to one, React
+// changes the value of the text node it already has, a characterData
+// mutation that an observer watching only elements arriving and leaving
+// would miss. The stand-in holds each run in octi until it is cancelled,
+// so the count moves when the test says and not when a timer does.
+test("the reset's reason while runs are going is its description, and follows the count", async () => {
+  test.slow()
+  const userData = profile({ octi_child: true, octi_ms: 60_000 })
+
+  await withApp(userData, async (page) => {
+    await expect(page.getByRole('status', { name: 'Engine' })).toContainText(/ready/i, {
+      timeout: 20_000,
+    })
+    for (const name of ['Los Angeles', 'Bart']) {
+      await page.getByRole('button', { name: 'New project' }).click()
+      const dialog = page.getByRole('dialog', { name: 'New project' })
+      await dialog.getByLabel('Name', { exact: true }).fill(name)
+      await dialog.getByRole('button', { name: 'Create', exact: true }).click()
+      const entry = page.getByRole('button', { name: `Open ${name}` })
+      await expect(entry).toBeVisible()
+      await entry.click()
+      await expect(page.getByRole('heading', { level: 1 })).toHaveText(name)
+      await page.getByRole('button', { name: /lay out/i }).click()
+      await page.getByRole('button', { name: 'Back to Library' }).click()
+    }
+    const toggle = page.getByRole('button', { name: /^Jobs, / })
+    await expect(toggle).toHaveAccessibleName('Jobs, 2 running', { timeout: 20_000 })
+
+    await open(page)
+    const reset = page.getByRole('button', { name: 'Reset engine data' })
+    const tail = '; resetting would pull the folder out from under it.'
+    await expect(reset).toBeDisabled()
+    await expect(reset).toHaveAccessibleDescription(`2 runs are going${tail}`)
+
+    await toggle.click()
+    const inspector = page.getByRole('complementary', { name: 'Inspector' })
+    await expect(inspector).toBeVisible()
+    await inspector.getByRole('button', { name: 'Cancel: Layout run, Los Angeles' }).click()
+    await expect(toggle).toHaveAccessibleName('Jobs, 1 running', { timeout: 20_000 })
+    await expect(reset).toHaveAccessibleDescription(`A run is going${tail}`)
+
+    // The last run ends: the reason goes, the prop names the other sentence.
+    await inspector.getByRole('button', { name: 'Cancel: Layout run, Bart' }).click()
+    await expect(toggle).toHaveAccessibleName('Jobs, none running', { timeout: 20_000 })
+    await expect(reset).toBeEnabled()
+    const description = (await page.locator('#reset-description').textContent()) ?? ''
+    await expect(reset).toHaveAccessibleDescription(description.replace(/\s+/g, ' ').trim())
+  })
+})
+
 // A6-03. The logs follow LEGIBLE_USER_DATA into this suite's own profile,
 // on macOS too, where Electron would otherwise keep them in a person's own
 // log folder; nothing here is ever written there.

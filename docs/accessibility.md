@@ -327,6 +327,20 @@ or a design decision.
   folder chooser's path as their descriptions. Still a person's: that
   VoiceOver and Narrator read the reason when the button is focused.
 
+- **F6. A kit button's `aria-controls` relates it to nothing.** *Screen:*
+  the header's Jobs toggle (`App.tsx`) and the line colours' Choose buttons
+  (`LineColours.tsx`, the default colour's and each line's). *Steps:* with
+  a screen reader that reports controlled elements, focus one. *What a
+  person meets:* no relation to the inspector or the colour picker it
+  opens. `kit/Button.tsx` mirrors `aria-controls` onto the `<button>` in
+  the kit's shadow root, where an id resolves within the shadow tree and
+  the page's element is not, as F5 was. Measured on 2026-09-13 in
+  Playwright's Chromium with the kit's `fig.js`: a native `<button
+  aria-controls>` had a `controls` relation to the element and the kit's
+  inner button had none. Low impact: assistive technology rarely uses
+  `aria-controls`, and `aria-expanded` on both still says what the press
+  does. The fix would be the wrapper's, as F5's was; not fixed here.
+
 ## Walking it with a screen reader
 
 The person's half: the VoiceOver (macOS) and Narrator (Windows) columns of

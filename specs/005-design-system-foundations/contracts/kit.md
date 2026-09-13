@@ -60,13 +60,16 @@ doing.
 
 `Button` hands `aria-label` to the kit, which copies it onto the
 `<button>` in its shadow root, and mirrors `aria-expanded`,
-`aria-pressed`, `aria-disabled` and `aria-controls` onto that button
-itself. `aria-describedby` is never given to the kit: an id copied into the
-shadow root resolves to nothing there (docs/accessibility.md, F5). The
-wrapper writes the described elements' text onto the inner button as
-`aria-description` instead, follows it with a `MutationObserver` on the
-button's document, and removes it when the prop goes or the button
-unmounts (issue 113).
+`aria-pressed` and `aria-disabled` onto that button itself. An id
+reference set on that button resolves inside the shadow root, where the
+page's elements are not. So `aria-describedby` is never given to the kit
+(docs/accessibility.md, F5): the wrapper writes the described elements'
+text onto the inner button as `aria-description` instead, follows it with
+a `MutationObserver` on the button's document, and removes it when the
+prop goes or the button unmounts (issue 113). `aria-controls` is mirrored
+onto the inner button too, but for the same reason it resolves to nothing
+and relates the button to no element (docs/accessibility.md, F6); the
+wrapper does not take `aria-labelledby`, which would fail the same way.
 
 Each wrapper: a `ref` to the element; `value` set through the ref in an
 effect (never in JSX); listeners attached in an effect; `forwardRef` so a

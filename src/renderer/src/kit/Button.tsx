@@ -100,7 +100,10 @@ const watchWithObserver: WatchRoot = (root, callback) => {
 /**
  * The text an aria-describedby list names: each element's text with its
  * whitespace collapsed, in the list's order, joined by a space; an id
- * with no element, or an element with no text, adds nothing.
+ * with no element, or an element with no text, adds nothing. It is
+ * `textContent`, not the accessible name computation: it includes hidden
+ * and aria-hidden children of the element and runs adjacent block children
+ * together, so a reason should be plain text.
  */
 export function describedText(root: DescriptionRoot, describedBy: string): string {
   return describedBy
