@@ -102,8 +102,9 @@ sidecar is a pinned python-build-standalone runtime (ADR-020), Windows
 stays in the first release (ADR-021), and a project's layout is stored
 rather than recomputed because `topo` is not reproducible on macOS
 (ADR-023), with the service day resolved once at the first layout
-(ADR-031). One spike (A0-06) still waits on the Intel and Windows runners
-for its last two targets; the offscreen-capture spike is finished, and
+(ADR-031). The sidecar's `python` job in `vendor.yml` vendors all three
+targets (darwin-arm64, darwin-x64, win-x64; A0-06); the offscreen-capture
+spike is finished, and
 ADR-024 puts capture in the app's own process, in an offscreen window
 driven through the Chrome DevTools Protocol. The "First reel" milestone -
 one preset feed through layout, viewer and export before the phases

@@ -36,9 +36,17 @@
       "darwin-arm64": {
         "asset": "cpython-3.12.14+20260901-aarch64-apple-darwin-install_only.tar.gz",
         "sha256": "3ee3ee547cedfeb7c2b16b2b7156039f7b470bb8f857e226fd3d2eb11db83c76"
+      },
+      "darwin-x64": {
+        "asset": "cpython-3.12.14+20260901-x86_64-apple-darwin-install_only.tar.gz",
+        "sha256": "2e31b23f3f1319f707d0e620b48847a0046577541d357276821f9f1b5492e0ba"
+      },
+      "win-x64": {
+        "asset": "cpython-3.12.14+20260901-x86_64-pc-windows-msvc-install_only.tar.gz",
+        "sha256": "e90c1b6419da3bd812dd73bb3de40287a21abf153438147639ec5e20375ea93f"
       }
     },
     "licence": "PSF-2.0 (CPython); MPL-2.0 (the project's build scripts)",
-    "licence_check": "Verified 2026-09-07: the interpreter links libedit, not GNU readline, and _dbm links only libSystem - no GDBM. Both are GPL components that must stay out; see THIRD_PARTY_NOTICES.md."
+    "licence_check": "Verified 2026-09-07: the interpreter links libedit, not GNU readline, and _dbm links only libSystem - no GDBM. Both are GPL components that must stay out; see THIRD_PARTY_NOTICES.md. The Windows asset, listed 2026-09-12, has no readline and no _dbm or _gdbm extension; darwin-x64 has the same names as darwin-arm64."
   }
 }

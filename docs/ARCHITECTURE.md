@@ -890,7 +890,7 @@ frame in RGB with the tolerance of 8.
 
 | Not here | Arrives with |
 |---|---|
-| The contract tests running in continuous integration; they exist and are gated on an engine checkout | A0-06 |
+| The contract tests running in continuous integration; they exist and are gated on an engine checkout. The vendor job's schema check is not them: it proves only that the runtime it builds starts `schematic.serve --schema` and that the output hashes to `engine.schema_sha256` | Open; no issue yet |
 | A screen for long jobs across projects; the layout run and the export draw their own progress on the project screen | A1-03 |
 | Editing the numeric style fields; the record holds the engine's defaults, and the colours, the order and the theme are a person's since A4-01, A4-02 and A4-03 | post-MVP |
 | Every other preset, and the export's options: quality, storyboard, theme, the safe zones | A5-01 |

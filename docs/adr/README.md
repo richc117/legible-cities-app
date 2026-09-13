@@ -65,6 +65,10 @@ already cites the number you mean to use.
 | 032 | Reserved: a decision about the project, recorded outside this repository | - |
 | 033 | [The layout identifier is the engine's, and re-layout is a button](033-the-layout-identifier-is-the-engines.md) | Accepted |
 | 034 | [Assistant plugins are opted in per repository](034-assistant-plugins-are-opted-in-per-repository.md) | Accepted |
+| 035 | Reserved: allocated to A0-10's decision, not yet written | - |
+| 036 | Reserved: allocated to A1-03's decision, not yet written | - |
+| 037 | Reserved: allocated to A6-05's decision, not yet written | - |
+| 038 | [The sidecar runtime, measured on three targets](038-the-sidecar-runtime-measured-on-three-targets.md) | Accepted |
 
 ## Amending rather than superseding
 
