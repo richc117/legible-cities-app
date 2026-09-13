@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Fetch the pinned python-build-standalone runtime for one target, verify it
-# against the checksum in vendor/pins.json, unpack it, install the engine with
-# its declared dependencies, strip what a sidecar never runs, and prove the
-# result starts the sidecar the app runs.
+# against the checksum in vendor/pins.json, unpack it, add the licence texts
+# it owes, install the engine with its declared dependencies, strip what a
+# sidecar never runs, and prove the result starts the sidecar the app runs.
 #
 #   scripts/vendor-python.sh <target> <engine-path> [outdir]
 #   scripts/vendor-python.sh darwin-arm64 ../legible-cities vendor/python
@@ -16,6 +16,16 @@
 # publishes no checksum manifest and no per-asset .sha256 file. The hash in
 # pins.json was computed on first download; every later build is checked
 # against it, so a silently changed asset fails the build instead of shipping.
+#
+# The licence texts (issue 108, ADR-042): the install_only asset carries
+# CPython's LICENSE.txt and nothing for the libraries linked into the
+# interpreter and its extension modules. The same build's `full` archive
+# does, in `licenses/`, with PYTHON.json naming which text each extension
+# owes. Both are taken from it into python/ and checked against the pins'
+# lists by scripts/check-vendored.mjs --licences, beside CPython's own
+# Doc/license.rst, whose incorporated-software notices LICENSE.txt lacks.
+# The full archive is .tar.zst, so this needs a `zstd` on PATH, and Node
+# for the check.
 #
 # See docs/adr/020-sidecar-packaging.md for why this and not PyInstaller.
 set -euo pipefail
@@ -107,6 +117,65 @@ case "$target" in
   *)     py="$stage/python/bin/python3" ;;
 esac
 [ -f "$py" ] || { echo "no interpreter at $py in $asset" >&2; exit 1; }
+
+# The licence texts, before anything slow: a disagreement fails here.
+where="$(uname -s)${RUNNER_OS:+, runner $RUNNER_OS}${ImageOS:+ ($ImageOS)}"
+zstd_bin=$(command -v zstd || command -v zstd.exe || true)
+[ -n "$zstd_bin" ] || {
+  echo "no zstd on PATH on $where: the full archive for $target is .tar.zst and nothing else here reads it" >&2
+  exit 1; }
+node_bin=$(command -v node || command -v node.exe || true)
+[ -n "$node_bin" ] || {
+  echo "no node on PATH on $where: scripts/check-vendored.mjs checks the licence texts" >&2
+  exit 1; }
+echo "zstd: $zstd_bin ($("$zstd_bin" --version 2>&1 | head -1 | tr -d '\r'))"
+
+read -r full_asset full_want notices_url notices_want notices_file <<EOP
+$("$host_py" - "$pins" "$target" <<'PY'
+import json, sys
+p = json.load(open(sys.argv[1]))["python"]
+full = p["targets"][sys.argv[2]]["full"]
+notices = p["licence_texts"]["cpython_incorporated"]
+sys.stdout.write(" ".join([full["asset"], full["sha256"], notices["url"], notices["sha256"], notices["file"]]))
+PY
+)
+EOP
+[ -n "${notices_file:-}" ] || { echo "could not read the licence texts' pins for $target" >&2; exit 1; }
+
+echo "fetching $full_asset, for its licence texts"
+curl -fsSL -o "$work/$full_asset" "https://github.com/astral-sh/python-build-standalone/releases/download/$release/$full_asset"
+got=$(sha256 "$work/$full_asset")
+if [ "$got" != "$full_want" ]; then
+  echo "checksum mismatch for $full_asset" >&2
+  echo "  expected $full_want" >&2
+  echo "  got      $got" >&2
+  echo "The pinned full archive changed. Read why before moving python.targets.$target.full." >&2
+  exit 1
+fi
+mkdir -p "$work/full"
+# Only the two members: the rest of the archive is the build's own tree
+# and objects, and is never written to disk.
+"$zstd_bin" -dc "$work/$full_asset" | tar -xf - -C "$work/full" python/PYTHON.json python/licenses
+rm -f "$work/$full_asset"
+if [ ! -f "$work/full/python/PYTHON.json" ] || [ ! -d "$work/full/python/licenses" ]; then
+  echo "$full_asset has no python/PYTHON.json or python/licenses/" >&2
+  exit 1
+fi
+rm -rf "$stage/python/licenses"
+cp -R "$work/full/python/licenses" "$stage/python/licenses"
+cp "$work/full/python/PYTHON.json" "$stage/python/PYTHON.json"
+
+curl -fsSL -o "$work/$notices_file" "$notices_url"
+got=$(sha256 "$work/$notices_file")
+if [ "$got" != "$notices_want" ]; then
+  echo "checksum mismatch for CPython's $notices_file ($notices_url)" >&2
+  echo "  expected $notices_want" >&2
+  echo "  got      $got" >&2
+  exit 1
+fi
+cp "$work/$notices_file" "$stage/python/licenses/$notices_file"
+
+"$node_bin" scripts/check-vendored.mjs "$target" --licences "$(absolute "$stage/python")"
 
 # The engine with the dependencies it declares, which since E02 are exactly
 # what the sidecar imports (pandas, python-lsp-jsonrpc, requests); nothing is

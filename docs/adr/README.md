@@ -72,6 +72,7 @@ already cites the number you mean to use.
 | 039 | [The determinism gate judges the capture, and the file for its structure](039-the-determinism-gate-judges-the-capture.md) | Accepted |
 | 040 | [FFmpeg is built here, from pinned sources, with only what the export uses](040-ffmpeg-is-built-from-pinned-sources.md) | Accepted |
 | 041 | [Releases are drafted from a tag](041-releases-are-drafted-from-a-tag.md) | Accepted |
+| 042 | [The installers carry the licence texts they owe, and the app opens them](042-the-installers-carry-the-licence-texts-they-owe.md) | Accepted |
 
 ## Amending rather than superseding
 

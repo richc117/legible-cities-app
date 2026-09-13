@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useRef, useState, type JSX } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react'
 import {
   APP_THEMES,
   describeReset,
@@ -17,10 +17,18 @@ import {
   summarize,
   type FirstRunTool,
 } from '../../shared/first-run'
+import {
+  APP_LICENCE,
+  BUNDLED_COMPONENTS,
+  describeUnavailable,
+  type LicenceFile,
+  type LicencesView,
+} from '../../shared/licences'
 import type { EngineInfo } from '../../shared/protocol'
 import ConfirmDialog from './ConfirmDialog'
 import { useFirstRun } from './FirstRunDialog'
 import { focusLost } from './focusHandback'
+import { createAnnouncer } from './Jobs'
 import {
   engineClient,
   forgetAllProjectJobs,
@@ -101,6 +109,55 @@ export async function copyDiagnostics(bridge: {
   }
 }
 
+/**
+ * What the Licences section's status line is told: a sentence, emptied and
+ * written again a frame later as the jobs inspector's announcement is, so a
+ * second press on the same unavailable button is said a second time rather
+ * than being a render React skips; null clears it at once.
+ */
+export function licenceAnnouncer(
+  write: (message: string | null) => void,
+  nextFrame: (then: () => void) => unknown,
+): (message: string | null) => void {
+  const announce = createAnnouncer((text) => write(text === '' ? null : text), nextFrame)
+  return (message) => (message === null ? write(null) : announce(message))
+}
+
+/**
+ * The Licences section's three buttons, as data the screen renders: each
+ * one's label, why it cannot open its file (null when it can), and what a
+ * press does. While the view is still being asked for, both are available
+ * and a press answers with whatever the main process says.
+ */
+export function licenceButtons(
+  view: LicencesView | null,
+  say: (message: string | null) => void,
+  bridge: Pick<Window['api']['licences'], 'openNotices' | 'showTexts' | 'openChromium'> = window.api
+    .licences,
+): { what: LicenceFile; label: string; unavailable: string | null; press: () => void }[] {
+  const button = (what: LicenceFile, label: string, open: () => Promise<void>) => {
+    const unavailable = view === null ? null : describeUnavailable(what, view[what])
+    return {
+      what,
+      label,
+      unavailable,
+      press: () => {
+        if (unavailable !== null) {
+          say(unavailable)
+          return
+        }
+        say(null)
+        open().catch((error: unknown) => say(sentenceOf(error)))
+      },
+    }
+  }
+  return [
+    button('notices', 'Open the notices', () => bridge.openNotices()),
+    button('texts', 'Show the licence texts', () => bridge.showTexts()),
+    button('chromium', "Open Chromium's licences", () => bridge.openChromium()),
+  ]
+}
+
 /** A value the engine reports as null: said in words, never left blank. */
 function reported(value: string | null, absent: string): string {
   return value === null || value === '' ? absent : value
@@ -131,6 +188,28 @@ export default function Settings({ settings, onChanged, engine, onBack }: Props)
   }, [settings])
   // What the first-run check of the bundled tools found, kept current (A6-02).
   const firstRun = useFirstRun()
+  // Whether the notices and the licence texts are there to open (issue 108).
+  const [licences, setLicences] = useState<LicencesView | null>(null)
+  const [licenceMessage, setLicenceMessage] = useState<string | null>(null)
+  const sayLicence = useMemo(
+    () =>
+      licenceAnnouncer(setLicenceMessage, (then) =>
+        requestAnimationFrame(() => requestAnimationFrame(then)),
+      ),
+    [],
+  )
+  useEffect(() => {
+    let left = false
+    window.api.licences.read().then(
+      (view) => {
+        if (!left) setLicences(view)
+      },
+      () => undefined,
+    )
+    return () => {
+      left = true
+    }
+  }, [])
 
   // A layout run or an export is four steps with gaps between them, and the
   // main process cannot see the gaps; the runs live in this process and
@@ -428,6 +507,50 @@ export default function Settings({ settings, onChanged, engine, onBack }: Props)
             ))}
           </dl>
         )}
+      </section>
+
+      <section aria-labelledby="settings-licences">
+        <h2 id="settings-licences">Licences</h2>
+        <p className="message" id="licences-description">
+          Legible Cities is free software under the GNU General Public License, version 3 or later (
+          {APP_LICENCE}). It carries the components below, each under its own licence; the notices
+          say each at length, and the licence texts are the ones the bundled Python&rsquo;s
+          libraries require.
+        </p>
+        <dl className="fields">
+          {BUNDLED_COMPONENTS.map((component) => (
+            <Fragment key={component.name}>
+              <dt>{component.name}</dt>
+              <dd>{component.licence}</dd>
+            </Fragment>
+          ))}
+        </dl>
+        {/* Unavailable rather than disabled, so each keeps its place in the
+            Tab order and is read with why (A6-07); a press says it again. */}
+        {licenceButtons(licences, sayLicence).map((button) => (
+          <Fragment key={button.what}>
+            <div className="toolbar">
+              <Button
+                aria-disabled={button.unavailable !== null}
+                aria-describedby={
+                  button.unavailable === null ? undefined : `licences-${button.what}-unavailable`
+                }
+                onClick={button.press}
+              >
+                <Icon name="info" />
+                {button.label}
+              </Button>
+            </div>
+            {button.unavailable !== null && (
+              <p className="message" id={`licences-${button.what}-unavailable`}>
+                {button.unavailable}
+              </p>
+            )}
+          </Fragment>
+        ))}
+        <p className="message" role="status" aria-live="polite">
+          {licenceMessage}
+        </p>
       </section>
 
       <section aria-labelledby="settings-reset">

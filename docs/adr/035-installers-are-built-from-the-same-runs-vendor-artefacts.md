@@ -6,7 +6,10 @@
 - **Superseded by:** none
 - **Amended by:** [ADR-040](040-ffmpeg-is-built-from-pinned-sources.md): the
   ffmpeg the installers carry is built in this repository, 12 to 17 MB a
-  target rather than the 132 to 290 MB of third-party builds given below
+  target rather than the 132 to 290 MB of third-party builds given below;
+  [ADR-042](042-the-installers-carry-the-licence-texts-they-owe.md): the
+  runtime's licence texts ship inside every installer, and the Licences
+  screen below is a section of Settings
 
 ## Context
 

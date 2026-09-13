@@ -4,7 +4,12 @@
 // (specs/002-vendored-components-and-installers, A0-10, ADR-035).
 //
 //   node scripts/check-vendored.mjs <target> [--vendor <dir>] [--pins <file>] [--out <file>]
+//   node scripts/check-vendored.mjs <target> --licences <python-dir> [--pins <file>]
 //   npm run dist:check darwin-arm64
+//
+// With --licences it checks only one runtime's licence texts against its
+// build metadata and the pins' lists (ADR-042): scripts/vendor-python.sh
+// runs it before a runtime is vendored, as the same check runs here later.
 //
 // Targets: darwin-arm64, darwin-x64, win-x64. The tree it reads is the one
 // .github/workflows/build.yml lays out from the same run's vendor artefacts:
@@ -252,6 +257,146 @@ function bytecodeOf(lib) {
   return { sources, missing, timestamped }
 }
 
+/** Where the runtime keeps the licence texts it owes, beside the interpreter's own tree. */
+export function licencePaths(python) {
+  return { folder: join(python, 'licenses'), metadata: join(python, 'PYTHON.json') }
+}
+
+/**
+ * The licence texts python-build-standalone's metadata names: the runtime's
+ * own and every extension module's, as file names in `licenses/`. A path
+ * outside that folder is kept as it is, so it matches no file and is
+ * reported rather than skipped.
+ *
+ * An extension may list more than one build variant; only the one built
+ * into the runtime counts, which python-build-standalone marks `default`
+ * (and lists first). At release 20260901 no extension on any target has
+ * more than one, so this only keeps a text for a variant that is not
+ * shipped from being required.
+ */
+export function namedLicences(metadata) {
+  const paths = []
+  if (typeof metadata?.license_path === 'string') paths.push(metadata.license_path)
+  const extensions = metadata?.build_info?.extensions
+  if (extensions !== null && typeof extensions === 'object') {
+    for (const variants of Object.values(extensions)) {
+      if (!Array.isArray(variants) || variants.length === 0) continue
+      const installed = variants.find((variant) => variant?.variant === 'default') ?? variants[0]
+      if (Array.isArray(installed?.license_paths)) paths.push(...installed.license_paths)
+    }
+  }
+  return new Set(
+    paths.map((path) => (/^licenses\/[^/]+$/.test(String(path)) ? path.slice(9) : String(path))),
+  )
+}
+
+/**
+ * Whether the runtime's licence texts, the build metadata they came with and
+ * the lists in `python.targets.<target>.licences` agree (issue 108, ADR-042).
+ * The metadata alone is not enough: on macOS it names a zlib-ng text the
+ * archive does not carry, and on Windows it names nothing for the zlib,
+ * Expat and libmpdec compiled into the DLLs. So three reviewed lists say
+ * what the metadata does not, and every entry is held to still being true;
+ * the strings an `unlisted` entry gives are looked for in the file it names,
+ * so the reason for listing it is proved again on every check.
+ *
+ * @param {object} options
+ * @param {string} options.python the runtime's root (`python/`)
+ * @param {string} options.target
+ * @param {any} options.pins the parsed vendor/pins.json
+ * @returns {string[]} the problems, each a phrase to follow "python "
+ */
+export function checkPythonLicences({ python, target, pins }) {
+  const problems = []
+  const pin = pins.python.targets[target]
+  const lists = pin?.licences
+  const incorporated = pins.python.licence_texts?.cpython_incorporated
+  if (lists === undefined || incorporated === undefined) {
+    return [`has no licence lists for ${target} in vendor/pins.json`]
+  }
+  const { folder, metadata: metadataPath } = licencePaths(python)
+  if (!isDirectory(folder)) return [`carries no licence texts (looked for ${folder})`]
+  let metadata
+  try {
+    metadata = JSON.parse(readFileSync(metadataPath, 'utf8'))
+  } catch {
+    return [`carries no readable build metadata (looked for ${metadataPath})`]
+  }
+  if (metadata.python_version !== pins.python.version || metadata.target_triple !== pin.triple) {
+    problems.push(
+      `has build metadata for ${metadata.python_version} ${metadata.target_triple}, not ${pins.python.version} ${pin.triple}`,
+    )
+  }
+
+  const carried = new Set(list(folder).filter((name) => isFile(join(folder, name))))
+  const named = namedLicences(metadata)
+  const unlisted = lists.unlisted ?? {}
+  const absent = lists.named_absent ?? {}
+  const notLinked = new Set(lists.not_linked ?? [])
+  const has = (object, key) => Object.prototype.hasOwnProperty.call(object, key)
+
+  // The one text this repository adds, CPython's own notices, is checked by
+  // its hash and is not python-build-standalone's to account for.
+  const ours = join(folder, incorporated.file)
+  if (!isFile(ours)) {
+    problems.push(`is missing ${incorporated.file}, CPython's incorporated-software notices`)
+  } else if (sha256File(ours) !== incorporated.sha256) {
+    problems.push(`has a ${incorporated.file} that is not the pinned one`)
+  }
+  carried.delete(incorporated.file)
+
+  for (const name of named) {
+    if (has(absent, name)) {
+      if (carried.has(name)) {
+        problems.push(
+          `carries ${name}, which named_absent says the archive lacks; take it off that list`,
+        )
+      }
+    } else if (!carried.has(name)) {
+      problems.push(`has build metadata naming ${name}, which is not among the licence texts`)
+    }
+  }
+  for (const name of Object.keys(absent)) {
+    if (!named.has(name)) {
+      problems.push(`lists ${name} as named_absent, but the build metadata no longer names it`)
+    }
+  }
+  for (const [name, entry] of Object.entries(unlisted)) {
+    if (named.has(name)) {
+      problems.push(`lists ${name} as unlisted, but the build metadata names it now`)
+    }
+    if (notLinked.has(name)) problems.push(`lists ${name} as both unlisted and not_linked`)
+    if (!carried.has(name)) problems.push(`owes ${name} (${entry.library}), which is not carried`)
+    const file = join(python, ...String(entry.file).split('/'))
+    if (!isFile(file)) {
+      problems.push(`lists ${name} for ${entry.file}, which is not in the runtime`)
+      continue
+    }
+    const bytes = readFileSync(file)
+    for (const text of entry.contains ?? []) {
+      if (!bytes.includes(Buffer.from(text, 'utf8'))) {
+        problems.push(
+          `lists ${name} for ${entry.file}, which no longer contains ${JSON.stringify(text)}; read it again`,
+        )
+      }
+    }
+  }
+  for (const name of notLinked) {
+    if (named.has(name)) {
+      problems.push(`lists ${name} as not_linked, but the build metadata names it now`)
+    }
+    if (!carried.has(name)) problems.push(`lists ${name} as not_linked, but it is not carried`)
+  }
+  for (const name of carried) {
+    if (!named.has(name) && !has(unlisted, name) && !notLinked.has(name)) {
+      problems.push(
+        `carries ${name}, which neither the build metadata nor the pins' lists account for`,
+      )
+    }
+  }
+  return problems
+}
+
 /** Each installed distribution's name and version, from its `.dist-info` folder. */
 function installedPackages(sitePackages) {
   return list(sitePackages)
@@ -338,6 +483,12 @@ export function checkTree({ target, paths, pins, bytecode = false, executableBit
     }
     if (!isFile(runtime.licence)) {
       refuse('python', `carries no licence file (looked for ${shown(runtime.licence)})`)
+    }
+    // The texts of the libraries the runtime links, which its own
+    // LICENSE.txt does not carry, agreeing with its build metadata and the
+    // pins' lists (ADR-042).
+    for (const problem of checkPythonLicences({ python: paths.python, target, pins })) {
+      refuse('python', problem)
     }
     packages = installedPackages(runtime.sitePackages)
     const engine = packages.find((p) => p.name === 'openschematicmaps')
@@ -435,6 +586,15 @@ export function buildManifest({ target, pins, pinsSha256, packages, app }) {
         version: python.version,
         asset: python.targets[target].asset,
         sha256: python.targets[target].sha256,
+        // Where the licence texts under python/licenses came from (ADR-042).
+        licence_texts: {
+          full_asset: python.targets[target].full.asset,
+          full_sha256: python.targets[target].full.sha256,
+          cpython_incorporated: {
+            url: python.licence_texts.cpython_incorporated.url,
+            sha256: python.licence_texts.cpython_incorporated.sha256,
+          },
+        },
         licence: python.licence,
         bytecode: 'compiled at build, --invalidation-mode unchecked-hash',
       },
@@ -541,6 +701,13 @@ export function checkResources({ target, resources, pinsFile, bytecode = true })
   const pins = JSON.parse(readFileSync(pinsFile, 'utf8'))
   const paths = layout('resources', resources, target)
   const { problems } = checkTree({ target, paths, pins, bytecode })
+  for (const path of Object.values(electronLicencePaths(resources, target))) {
+    if (!isFile(path)) {
+      problems.push(
+        `${target}: electron is missing ${basename(path)}, Electron's or Chromium's licences (looked for ${path})`,
+      )
+    }
+  }
   if (!isFile(paths.manifest)) {
     problems.push(
       `${target}: manifest is missing (looked for ${MANIFEST_IN_RESOURCES} in the resources)`,
@@ -567,6 +734,20 @@ export function checkResources({ target, resources, pinsFile, bytecode = true })
   return problems
 }
 
+/**
+ * Where a packaged app keeps Electron's and Chromium's licences. On Windows
+ * electron-builder leaves them beside the executable, one folder above the
+ * resources; from a Mac app it deletes them, and electron-builder.yml puts
+ * them back in the resources under the same names (issue 108).
+ */
+export function electronLicencePaths(resources, target) {
+  const folder = target.startsWith('win-') ? dirname(resources) : resources
+  return {
+    electron: join(folder, 'LICENSE.electron.txt'),
+    chromium: join(folder, 'LICENSES.chromium.html'),
+  }
+}
+
 /** The target an electron-builder platform and arch build, or null. */
 export function targetOf(platformName, arch) {
   // builder-util's Arch: ia32 0, x64 1, armv7l 2, arm64 3, universal 4.
@@ -580,8 +761,14 @@ export function targetOf(platformName, arch) {
 /**
  * electron-builder's afterPack hook. `context` is its AfterPackContext:
  * `appOutDir`, `electronPlatformName`, `arch`, and the `packager`.
+ * electron-builder passes only the context; the pins file is a parameter
+ * so the tests can check a tree against pins of their own.
  */
-export async function afterPack(context, env = process.env) {
+export async function afterPack(
+  context,
+  env = process.env,
+  pinsFile = join(repoRoot, 'vendor', 'pins.json'),
+) {
   const target = targetOf(context.electronPlatformName, context.arch)
   const required = env.LEGIBLE_VENDOR_TARGET || null
   if (required !== null && required !== target) {
@@ -616,7 +803,7 @@ export async function afterPack(context, env = process.env) {
   const problems = checkResources({
     target,
     resources,
-    pinsFile: join(repoRoot, 'vendor', 'pins.json'),
+    pinsFile,
   })
   if (problems.length > 0) {
     throw new Error(`the packaged app is not complete:\n  ${problems.join('\n  ')}`)
@@ -629,7 +816,13 @@ export async function afterPack(context, env = process.env) {
 export default afterPack
 
 function parseArgs(argv) {
-  const options = { target: null, vendor: join(repoRoot, 'vendor'), pinsFile: null, out: null }
+  const options = {
+    target: null,
+    vendor: join(repoRoot, 'vendor'),
+    pinsFile: null,
+    out: null,
+    licences: null,
+  }
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]
     const value = () => {
@@ -641,6 +834,7 @@ function parseArgs(argv) {
     if (arg === '--vendor') options.vendor = value()
     else if (arg === '--pins') options.pinsFile = value()
     else if (arg === '--out') options.out = value()
+    else if (arg === '--licences') options.licences = value()
     else if (arg.startsWith('-')) throw new Error(`unknown option ${arg}`)
     else if (options.target === null) options.target = arg
     else throw new Error(`one target at a time; got ${options.target} and ${arg}`)
@@ -659,9 +853,23 @@ function main(argv) {
   }
   if (options.target === null || !TARGETS.includes(options.target)) {
     process.stderr.write(
-      `usage: check-vendored.mjs <${TARGETS.join('|')}> [--vendor <dir>] [--pins <file>] [--out <file>]\n`,
+      `usage: check-vendored.mjs <${TARGETS.join('|')}> [--vendor <dir>] [--pins <file>] [--out <file>]\n` +
+        `       check-vendored.mjs <${TARGETS.join('|')}> --licences <python-dir> [--pins <file>]\n`,
     )
     return 2
+  }
+  if (options.licences !== null) {
+    const pins = JSON.parse(readFileSync(options.pinsFile, 'utf8'))
+    const problems = checkPythonLicences({ python: options.licences, target: options.target, pins })
+    if (problems.length > 0) {
+      process.stderr.write(`the ${options.target} runtime's licence texts do not agree:\n`)
+      for (const problem of problems) process.stderr.write(`  python ${problem}\n`)
+      return 1
+    }
+    process.stdout.write(
+      `${options.target}: the runtime's licence texts agree with its build metadata and the pins\n`,
+    )
+    return 0
   }
   const { problems, manifestPath } = checkVendor(options)
   if (problems.length > 0) {

@@ -19,14 +19,45 @@ import {
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, describe, expect, it } from 'vitest'
 
 const repo = resolve(__dirname, '../..')
 const SCRIPT = join(repo, 'scripts', 'check-vendored.mjs')
-const PINS_FILE = join(repo, 'vendor', 'pins.json')
-const PINS_TEXT = readFileSync(PINS_FILE, 'utf8')
+
+interface LicenceLists {
+  unlisted: Record<string, { library: string; file: string; contains: string[] }>
+  named_absent: Record<string, string>
+  not_linked: string[]
+}
+
+/**
+ * The repository's pins, but for the hash of CPython's incorporated-software
+ * notices, which is the hash of the short text the fixtures write in their
+ * place: the real text is fetched by the vendor job and is not committed.
+ * Written to a file of its own, which the command line and the hook read.
+ */
+const NOTICES_TEXT = 'Licenses and Acknowledgements for Incorporated Software\n'
+const PINS_DIR = mkdtempSync(join(tmpdir(), 'lc-check-vendored-pins-'))
+const PINS_FILE = join(PINS_DIR, 'pins.json')
+const PINS_TEXT = (() => {
+  const pins = JSON.parse(readFileSync(join(repo, 'vendor', 'pins.json'), 'utf8'))
+  pins.python.licence_texts.cpython_incorporated.sha256 = createHash('sha256')
+    .update(NOTICES_TEXT)
+    .digest('hex')
+  return JSON.stringify(pins, null, 2)
+})()
+writeFileSync(PINS_FILE, PINS_TEXT)
+afterAll(() => rmSync(PINS_DIR, { recursive: true, force: true }))
+
 const PINS = JSON.parse(PINS_TEXT) as {
-  python: { version: string }
+  python: {
+    version: string
+    targets: Record<
+      string,
+      { triple: string; full: { asset: string; sha256: string }; licences: LicenceLists }
+    >
+    licence_texts: { cpython_incorporated: { file: string; sha256: string } }
+  }
   engine: { version: string }
   loom: { commit: string }
   ffmpeg: {
@@ -53,11 +84,19 @@ interface Module {
     problems: string[]
     manifestPath: string | null
   }
-  afterPack(context: Context, env: Record<string, string | undefined>): Promise<void>
+  afterPack(
+    context: Context,
+    env: Record<string, string | undefined>,
+    pinsFile?: string,
+  ): Promise<void>
 }
 // A URL built at run time, so the type checker does not look for declarations of a
 // plain JavaScript module; the interface above is the part the tests use.
-const load = (): Promise<Module> => import(pathToFileURL(SCRIPT).href) as Promise<Module>
+// The hook is handed the fixtures' pins, as electron-builder hands it none.
+const load = async (): Promise<Module> => {
+  const module = (await import(pathToFileURL(SCRIPT).href)) as Module
+  return { ...module, afterPack: (context, env) => module.afterPack(context, env, PINS_FILE) }
+}
 
 const posixHost = process.platform !== 'win32'
 
@@ -106,6 +145,86 @@ interface TreeOptions {
   ffmpegConfigure?: string
   skip?: 'python' | 'loom' | 'ffmpeg'
   bytecodeFlags?: number
+  /** Spoil the runtime's licence texts one way. */
+  licences?:
+    | 'text-missing'
+    | 'text-stray'
+    | 'evidence-gone'
+    | 'version-moved'
+    | 'notices-changed'
+    | 'folder-missing'
+    | 'metadata-unreadable'
+    | 'absent-carried'
+    | 'listed-not-carried'
+    | 'unshipped-variant'
+}
+
+/**
+ * The licence texts a runtime carries for `target`, agreeing with the pins'
+ * lists: build metadata naming CPython's text, bzip2's and every
+ * named_absent text; the folder holding what the metadata names but those,
+ * every unlisted and not_linked text, and CPython's notices; and each
+ * unlisted entry's file carrying its strings.
+ */
+function licenceTexts(target: Target, python: string, spoil: TreeOptions['licences']): void {
+  if (spoil === 'folder-missing') return
+  const pin = PINS.python.targets[target]
+  const lists = pin.licences
+  const named = ['LICENSE.bzip2.txt', ...Object.keys(lists.named_absent)]
+  const bz2 = { variant: 'default', license_paths: named.map((name) => `licenses/${name}`) }
+  put(
+    join(python, 'PYTHON.json'),
+    spoil === 'metadata-unreadable'
+      ? '{"python_version": '
+      : JSON.stringify({
+          python_version: PINS.python.version,
+          target_triple: pin.triple,
+          license_path: 'licenses/LICENSE.cpython.txt',
+          build_info: {
+            extensions: {
+              // A variant that is not the one built names a text nobody carries.
+              _bz2:
+                spoil === 'unshipped-variant'
+                  ? [bz2, { variant: 'other', license_paths: ['licenses/LICENSE.unshipped.txt'] }]
+                  : [bz2],
+            },
+          },
+        }),
+  )
+  const folder = join(python, 'licenses')
+  const carried = [
+    'LICENSE.cpython.txt',
+    'LICENSE.bzip2.txt',
+    ...Object.keys(lists.unlisted),
+    ...lists.not_linked,
+  ]
+  // The first unlisted and not_linked entries, which 'listed-not-carried' leaves out.
+  const dropped = [Object.keys(lists.unlisted)[0], lists.not_linked[0]]
+  for (const name of carried) {
+    if (spoil === 'text-missing' && name === 'LICENSE.bzip2.txt') continue
+    if (spoil === 'listed-not-carried' && dropped.includes(name)) continue
+    put(join(folder, name), `the text of ${name}\n`)
+  }
+  if (spoil === 'text-stray') put(join(folder, 'LICENSE.stray.txt'), 'a text nobody names\n')
+  if (spoil === 'absent-carried') {
+    for (const name of Object.keys(lists.named_absent))
+      put(join(folder, name), 'carried after all\n')
+  }
+  put(
+    join(folder, PINS.python.licence_texts.cpython_incorporated.file),
+    spoil === 'notices-changed' ? `${NOTICES_TEXT}and more\n` : NOTICES_TEXT,
+  )
+  for (const entry of Object.values(lists.unlisted)) {
+    // 'version-moved': the same strings with a later version that begins
+    // with the pinned one, as a zlib 1.3.2.1 would read.
+    const strings =
+      spoil === 'evidence-gone'
+        ? []
+        : spoil === 'version-moved'
+          ? entry.contains.map((text) => (endsInVersion(text) ? `${text.slice(0, -1)}.1\0` : text))
+          : entry.contains
+    put(join(python, ...entry.file.split('/')), Buffer.from(`MZ\0${strings.join('')}\0`))
+  }
 }
 
 /** A component tree for one target, laid out as `root` + the python, loom and ffmpeg folders given. */
@@ -125,6 +244,7 @@ function tree(
       `#define PY_VERSION              "${options.pythonVersion ?? PINS.python.version}"\n`,
     )
     put(join(windows ? python : lib, 'LICENSE.txt'), 'PSF\n')
+    licenceTexts(target, python, options.licences)
     const site = join(lib, 'site-packages')
     mkdirSync(
       join(site, `openschematicmaps-${options.engineVersion ?? PINS.engine.version}.dist-info`),
@@ -201,6 +321,17 @@ function check(target: string, vendor: string, pins = PINS_FILE) {
   return { status: run.status, stdout: run.stdout, stderr: run.stderr }
 }
 
+/** A version string as the pins write one: digits last, then the NUL that ends the C string. */
+const endsInVersion = (text: string): boolean =>
+  text.length > 1 && text.endsWith('\0') && /\d$/.test(text.slice(0, -1))
+
+/** The check's refusal of a tree whose licence texts are spoiled one way. */
+function refusal(target: Target, licences: TreeOptions['licences']): string {
+  const result = check(target, vendorTree(target, { licences }))
+  expect(result.status, `${target} ${licences}`).toBe(1)
+  return result.stderr
+}
+
 describe('check-vendored.mjs, as the build runs it', () => {
   it('passes a complete tree and writes the manifest from the pins, with no build path in it', () => {
     for (const target of ['darwin-arm64', 'darwin-x64', 'win-x64'] as const) {
@@ -234,6 +365,13 @@ describe('check-vendored.mjs, as the build runs it', () => {
         { name: 'python_dateutil', version: '2.9.0.post0' },
       ])
       expect(Boolean(manifest.components.loom.windows_port), target).toBe(target === 'win-x64')
+      // Where the runtime's licence texts came from (ADR-042).
+      expect(manifest.components.python.licence_texts.full_sha256).toBe(
+        PINS.python.targets[target].full.sha256,
+      )
+      expect(manifest.components.python.licence_texts.cpython_incorporated.sha256).toBe(
+        PINS.python.licence_texts.cpython_incorporated.sha256,
+      )
       expect(text).not.toContain(vendor)
     }
   })
@@ -328,6 +466,123 @@ describe('check-vendored.mjs, as the build runs it', () => {
     )
   })
 
+  // Issue 108, ADR-042: the texts of the libraries the runtime links, which
+  // its LICENSE.txt does not carry, agree with its build metadata and the
+  // pins' three lists, or nothing is packaged.
+  it("refuses a runtime whose licence texts, build metadata and the pins' lists disagree", () => {
+    expect(refusal('darwin-arm64', 'folder-missing')).toContain(
+      'darwin-arm64: python carries no licence texts',
+    )
+    expect(refusal('darwin-x64', 'text-missing')).toContain(
+      'darwin-x64: python has build metadata naming LICENSE.bzip2.txt, which is not among the licence texts',
+    )
+    expect(refusal('win-x64', 'text-stray')).toContain(
+      "win-x64: python carries LICENSE.stray.txt, which neither the build metadata nor the pins' lists account for",
+    )
+    expect(refusal('darwin-arm64', 'notices-changed')).toContain(
+      'darwin-arm64: python has a CPython-Doc-license.rst that is not the pinned one',
+    )
+    // The Windows DLLs no longer carry what the unlisted entries say they do.
+    const gone = refusal('win-x64', 'evidence-gone')
+    for (const [name, entry] of Object.entries(PINS.python.targets['win-x64'].licences.unlisted)) {
+      expect(gone).toContain(
+        `win-x64: python lists ${name} for ${entry.file}, which no longer contains ${JSON.stringify(entry.contains[0])}`,
+      )
+    }
+  })
+
+  it('refuses a version string that has moved on, however it begins', () => {
+    const moved = refusal('win-x64', 'version-moved')
+    for (const [name, entry] of Object.entries(PINS.python.targets['win-x64'].licences.unlisted)) {
+      const versions = entry.contains.filter(endsInVersion)
+      expect(versions.length, name).toBeGreaterThan(0)
+      for (const text of versions) {
+        expect(moved).toContain(
+          `lists ${name} for ${entry.file}, which no longer contains ${JSON.stringify(text)}`,
+        )
+      }
+    }
+  })
+
+  it('refuses a named_absent text that is carried, a listed text that is not, and unreadable metadata', () => {
+    const mac = PINS.python.targets['darwin-arm64'].licences
+    const carried = refusal('darwin-arm64', 'absent-carried')
+    for (const name of Object.keys(mac.named_absent)) {
+      expect(carried).toContain(
+        `darwin-arm64: python carries ${name}, which named_absent says the archive lacks; take it off that list`,
+      )
+    }
+    const win = PINS.python.targets['win-x64'].licences
+    const missing = refusal('win-x64', 'listed-not-carried')
+    const unlisted = Object.keys(win.unlisted)[0]
+    expect(missing).toContain(
+      `win-x64: python owes ${unlisted} (${win.unlisted[unlisted].library}), which is not carried`,
+    )
+    expect(missing).toContain(
+      `win-x64: python lists ${win.not_linked[0]} as not_linked, but it is not carried`,
+    )
+    expect(refusal('darwin-x64', 'metadata-unreadable')).toContain(
+      'darwin-x64: python carries no readable build metadata',
+    )
+  })
+
+  it('counts only the variant built into the runtime', () => {
+    for (const target of ['darwin-arm64', 'win-x64'] as const) {
+      const result = check(target, vendorTree(target, { licences: 'unshipped-variant' }))
+      expect(result.stderr, target).toBe('')
+      expect(result.status, target).toBe(0)
+    }
+  })
+
+  it('refuses a list entry that is no longer true', () => {
+    const pins = join(scratch(), 'pins.json')
+    const moved = JSON.parse(PINS_TEXT)
+    const mac = moved.python.targets['darwin-arm64'].licences
+    mac.named_absent['LICENSE.gone.txt'] = 'a text nothing names any more'
+    mac.not_linked.push('LICENSE.bzip2.txt')
+    mac.unlisted['LICENSE.cpython.txt'] = { library: 'CPython', file: 'bin/python3', contains: [] }
+    // On two lists at once.
+    const win = moved.python.targets['win-x64'].licences
+    win.unlisted[win.not_linked[0]] = { library: 'twice', file: 'python312.dll', contains: [] }
+    writeFileSync(pins, JSON.stringify(moved))
+    const both = check('win-x64', vendorTree('win-x64'), pins)
+    expect(both.status).toBe(1)
+    expect(both.stderr).toContain(
+      `win-x64: python lists ${win.not_linked[0]} as both unlisted and not_linked`,
+    )
+    // The tree was made from the repository's lists, then checked against these.
+    const result = check('darwin-arm64', vendorTree('darwin-arm64'), pins)
+    expect(result.status).toBe(1)
+    for (const problem of [
+      'lists LICENSE.gone.txt as named_absent, but the build metadata no longer names it',
+      'lists LICENSE.bzip2.txt as not_linked, but the build metadata names it now',
+      'lists LICENSE.cpython.txt as unlisted, but the build metadata names it now',
+    ]) {
+      expect(result.stderr).toContain(`darwin-arm64: python ${problem}`)
+    }
+  })
+
+  it("checks one runtime's licence texts alone, as the vendor job does before vendoring it", () => {
+    const vendor = vendorTree('win-x64')
+    const python = join(vendor, 'python', 'win-x64', 'python')
+    const run = (target: string) =>
+      spawnSync(process.execPath, [SCRIPT, target, '--licences', python, '--pins', PINS_FILE], {
+        encoding: 'utf8',
+        timeout: 30_000,
+        windowsHide: true,
+      })
+    const agreed = run('win-x64')
+    expect(agreed.stderr).toBe('')
+    expect(agreed.status).toBe(0)
+    expect(agreed.stdout).toContain("win-x64: the runtime's licence texts agree")
+    // The same folder is not a Mac runtime's: its metadata names another build.
+    const other = run('darwin-arm64')
+    expect(other.status).toBe(1)
+    expect(other.stderr).toContain(
+      `python has build metadata for ${PINS.python.version} x86_64-pc-windows-msvc, not ${PINS.python.version} aarch64-apple-darwin`,
+    )
+  })
+
   it('says how to call it when the target is not one', () => {
     const result = check('linux-x64', scratch())
     expect(result.status).toBe(2)
@@ -361,7 +616,11 @@ describe('the afterPack hook, where the packaged app will look', () => {
   const productFilename = 'Legible Cities'
   function packaged(
     target: Target,
-    options: TreeOptions & { manifest?: 'current' | 'stale' | 'none' } = {},
+    options: TreeOptions & {
+      manifest?: 'current' | 'stale' | 'none'
+      /** Leave out Electron's and Chromium's licences, as electron-builder does on a Mac. */
+      electronLicences?: false
+    } = {},
   ) {
     const appOutDir = scratch()
     const darwin = target !== 'win-x64'
@@ -369,6 +628,12 @@ describe('the afterPack hook, where the packaged app will look', () => {
       ? join(appOutDir, `${productFilename}.app`, 'Contents', 'Resources')
       : join(appOutDir, 'resources')
     mkdirSync(resources, { recursive: true })
+    if (options.electronLicences !== false) {
+      // Beside the executable on Windows, in the resources on a Mac.
+      const folder = darwin ? resources : appOutDir
+      writeFileSync(join(folder, 'LICENSE.electron.txt'), 'Copyright (c) Electron contributors\n')
+      writeFileSync(join(folder, 'LICENSES.chromium.html'), '<title>Credits</title>\n')
+    }
     tree(
       target,
       {
@@ -423,6 +688,17 @@ describe('the afterPack hook, where the packaged app will look', () => {
     )
   })
 
+  it("refuses an app without Electron's and Chromium's licences, on either system", async () => {
+    const { afterPack } = await load()
+    for (const target of ['darwin-x64', 'win-x64'] as const) {
+      await expect(
+        afterPack(packaged(target, { bytecodeFlags: 1, electronLicences: false }), {
+          LEGIBLE_VENDOR_TARGET: target,
+        }),
+      ).rejects.toThrow(`${target}: electron is missing LICENSES.chromium.html`)
+    }
+  })
+
   it('refuses a partial app even when no target is required', async () => {
     const { afterPack } = await load()
     await expect(
@@ -464,5 +740,13 @@ describe('electron-builder.yml', () => {
         `- from: vendor/manifest-${os}-\${arch}.json\n      to: vendor-manifest.json`,
       )
     }
+    // electron-builder deletes these from a Mac app; the Mac entries put them back.
+    const mac = config.slice(config.indexOf('\nmac:'), config.indexOf('\nwin:'))
+    expect(mac).toContain(
+      '- from: node_modules/electron/dist/LICENSE\n      to: LICENSE.electron.txt',
+    )
+    expect(mac).toContain(
+      '- from: node_modules/electron/dist/LICENSES.chromium.html\n      to: LICENSES.chromium.html',
+    )
   })
 })

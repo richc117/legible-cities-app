@@ -458,7 +458,34 @@ into a plain text editor.
 
 Result: ____
 
-### 19. Reset engine data
+### 19. Licences
+
+**Do.** In Settings, read the **Licences** section. Press **Open the
+notices** and look at what opens; close it. Press **Show the licence
+texts** and look at the folder that opens. Press **Open Chromium's
+licences** and look at the page that opens; close it.
+
+**See.**
+- The section says "Legible Cities is free software under the GNU General
+  Public License, version 3 or later (GPL-3.0-or-later)." and lists the
+  components, starting with "The legible-cities engine",
+  "GPL-3.0-or-later", with LOOM, FFmpeg, Python, Electron and Chromium
+  among them, none with a blank licence.
+- **Open the notices** opens `THIRD_PARTY_NOTICES.md` in the system's
+  viewer for Markdown files, or, where the system has none (Windows, by
+  default), shows the file selected in Finder or File Explorer. Nothing on
+  the screen names a path.
+- **Show the licence texts** opens a folder named `licenses` holding
+  `CPython-Doc-license.rst` and texts named `LICENSE.<library>.txt`, among
+  them `LICENSE.openssl-3.txt`, `LICENSE.libffi.txt` and
+  `LICENSE.zlib.txt`.
+- **Open Chromium's licences** opens `LICENSES.chromium.html` in the
+  browser: a long page of the open-source software in Chromium.
+- No button says it is not bundled or missing.
+
+Result: ____
+
+### 20. Reset engine data
 
 **Do.** In Settings, press **Reset engine data**, then **Cancel**. Press it
 again, then **Reset**. Press **Back to Library**. Quit and open the app
@@ -479,10 +506,10 @@ again.
 
 Result: ____
 
-### 20. Uninstall, and what is left
+### 21. Uninstall, and what is left
 
 **Do.** Follow [Uninstall completely](install.md#uninstall-completely),
-steps 2 and 3 (step 1 was this checklist's step 19). Leave the exports.
+steps 2 and 3 (step 1 was this checklist's step 20). Leave the exports.
 Then look in every place the tables in
 [What the app writes, and where](install.md#what-the-app-writes-and-where)
 name.
@@ -558,8 +585,9 @@ Copy everything in the block below into a new issue titled
 | 16 | The jobs inspector | pass / fail | |
 | 17 | Quit, and reopen the project | pass / fail | |
 | 18 | Copy diagnostics | pass / fail | |
-| 19 | Reset engine data | pass / fail | |
-| 20 | Uninstall, and what is left | pass / fail | |
+| 19 | Licences | pass / fail | |
+| 20 | Reset engine data | pass / fail | |
+| 21 | Uninstall, and what is left | pass / fail | |
 
 ## Versions from Settings
 

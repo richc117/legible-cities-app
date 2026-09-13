@@ -82,19 +82,104 @@
     "targets": {
       "darwin-arm64": {
         "asset": "cpython-3.12.14+20260901-aarch64-apple-darwin-install_only.tar.gz",
-        "sha256": "3ee3ee547cedfeb7c2b16b2b7156039f7b470bb8f857e226fd3d2eb11db83c76"
+        "sha256": "3ee3ee547cedfeb7c2b16b2b7156039f7b470bb8f857e226fd3d2eb11db83c76",
+        "triple": "aarch64-apple-darwin",
+        "full": {
+          "asset": "cpython-3.12.14+20260901-aarch64-apple-darwin-pgo+lto-full.tar.zst",
+          "sha256": "dbefa04d4107b449e17022f9c78d3eacbd37a1aa8c166c6220dbd95addf3f318"
+        },
+        "licences": {
+          "unlisted": {},
+          "named_absent": {
+            "LICENSE.zlib-ng.txt": "Named beside LICENSE.zlib.txt by zlib, binascii, _sqlite3 and _tkinter, each of which links `z` with system: true, the operating system's own libz, which is not shipped; the metadata is shared with the Linux builds, which link zlib-ng. No zlib text is owed on macOS, and LICENSE.zlib.txt ships anyway."
+          },
+          "not_linked": [
+            "LICENSE.bdb.txt",
+            "LICENSE.libX11.txt",
+            "LICENSE.libXau.txt",
+            "LICENSE.libxcb.txt",
+            "LICENSE.tix.txt"
+          ]
+        }
       },
       "darwin-x64": {
         "asset": "cpython-3.12.14+20260901-x86_64-apple-darwin-install_only.tar.gz",
-        "sha256": "2e31b23f3f1319f707d0e620b48847a0046577541d357276821f9f1b5492e0ba"
+        "sha256": "2e31b23f3f1319f707d0e620b48847a0046577541d357276821f9f1b5492e0ba",
+        "triple": "x86_64-apple-darwin",
+        "full": {
+          "asset": "cpython-3.12.14+20260901-x86_64-apple-darwin-pgo+lto-full.tar.zst",
+          "sha256": "47fdddfa61d5f76472b7fc303c38689504d1ccec430d0017c5fa8459d0d567bf"
+        },
+        "licences": {
+          "unlisted": {},
+          "named_absent": {
+            "LICENSE.zlib-ng.txt": "Named beside LICENSE.zlib.txt by zlib, binascii, _sqlite3 and _tkinter, each of which links `z` with system: true, the operating system's own libz, which is not shipped; the metadata is shared with the Linux builds, which link zlib-ng. No zlib text is owed on macOS, and LICENSE.zlib.txt ships anyway."
+          },
+          "not_linked": [
+            "LICENSE.bdb.txt",
+            "LICENSE.libX11.txt",
+            "LICENSE.libXau.txt",
+            "LICENSE.libxcb.txt",
+            "LICENSE.tix.txt"
+          ]
+        }
       },
       "win-x64": {
         "asset": "cpython-3.12.14+20260901-x86_64-pc-windows-msvc-install_only.tar.gz",
-        "sha256": "e90c1b6419da3bd812dd73bb3de40287a21abf153438147639ec5e20375ea93f"
+        "sha256": "e90c1b6419da3bd812dd73bb3de40287a21abf153438147639ec5e20375ea93f",
+        "triple": "x86_64-pc-windows-msvc",
+        "full": {
+          "asset": "cpython-3.12.14+20260901-x86_64-pc-windows-msvc-pgo-full.tar.zst",
+          "sha256": "b7cf8be5cd5222d1e456fbf71257efe558d84fe092757b6892c16584e5df01c2"
+        },
+        "licences": {
+          "unlisted": {
+            "LICENSE.expat.txt": {
+              "library": "Expat 2.8.3, from CPython's Modules/expat, compiled into pyexpat.pyd; the pyexpat entry has no licence",
+              "file": "DLLs/pyexpat.pyd",
+              "contains": ["\u0000expat_2.8.3\u0000"]
+            },
+            "LICENSE.mpdecimal.txt": {
+              "library": "libmpdec 2.5.1, from CPython's Modules/_decimal/libmpdec, compiled into _decimal.pyd; the _decimal entry has no licence",
+              "file": "DLLs/_decimal.pyd",
+              "contains": ["libmpdec: internal error", "\u00002.5.1\u0000"]
+            },
+            "LICENSE.zlib.txt": {
+              "library": "zlib 1.3.2, from CPython's Windows externals, compiled into python312.dll; zlib and binascii are in_core with no licence",
+              "file": "python312.dll",
+              "contains": [
+                "incorrect header check",
+                "invalid distance too far back",
+                "\u00001.3.2\u0000"
+              ]
+            }
+          },
+          "named_absent": {},
+          "not_linked": [
+            "LICENSE.bdb.txt",
+            "LICENSE.libX11.txt",
+            "LICENSE.libXau.txt",
+            "LICENSE.libxcb.txt",
+            "LICENSE.libedit.txt",
+            "LICENSE.ncurses.txt",
+            "LICENSE.openssl-1.1.txt"
+          ]
+        }
       }
     },
     "licence": "PSF-2.0 (CPython); MPL-2.0 (the project's build scripts)",
-    "licence_check": "Verified 2026-09-07: the interpreter links libedit, not GNU readline, and _dbm links only libSystem - no GDBM. Both are GPL components that must stay out; see THIRD_PARTY_NOTICES.md. The Windows asset, listed 2026-09-12, has no readline and no _dbm or _gdbm extension; darwin-x64 has the same names as darwin-arm64."
+    "licence_check": "Verified 2026-09-07: the interpreter links libedit, not GNU readline, and _dbm links only libSystem - no GDBM. Both are GPL components that must stay out; see THIRD_PARTY_NOTICES.md. The Windows asset, listed 2026-09-12, has no readline and no _dbm or _gdbm extension; darwin-x64 has the same names as darwin-arm64.",
+    "licence_texts": {
+      "note": "The licence texts the runtime owes (issue 108, ADR-042). The install_only asset carries CPython's LICENSE.txt only; each target's `full` archive, the same build before python-build-standalone repackaged it, carries a `licenses/` folder and PYTHON.json, whose build metadata names the licence file of each extension module's linked libraries. scripts/vendor-python.sh fetches the full archive, checks `full.sha256` (computed on download on 2026-09-13 and matching the digest GitHub records for the asset), extracts only `licenses/` and PYTHON.json, and ships both under the runtime; scripts/check-vendored.mjs then requires the metadata, the folder and three reviewed lists per target to agree, in the vendor job and again at packaging. `unlisted`: texts owed that the metadata names for nothing, each with the file it is compiled into and strings that prove it, looked for in that file on every run. A version in `contains` is written as the C string it is in the binary, between NUL characters (\\u0000), so a later version that merely begins with it (1.3.2.1) does not pass. `named_absent`: texts the metadata names that the archive does not carry, each with why nothing is owed. `not_linked`: texts carried that no extension names. Every text named must be carried or be named_absent; every text carried must be named, unlisted or not_linked, once; and every entry must still be true. A new python-build-standalone release therefore fails the job until a person rereads these lists against the new metadata: that is the intended cost. Measured in specs/027-licences/research.md.",
+      "cpython_incorporated": {
+        "note": "CPython's Doc/license.rst at the pinned version's tag: its 'Licenses and Acknowledgements for Incorporated Software' (HACL*, BLAKE2, SipHash, dtoa, asyncio's and the other notices) are not in the LICENSE.txt the runtime ships. Fetched by commit, checked against sha256 (computed on download on 2026-09-13), and shipped as `file` inside the runtime's licenses folder.",
+        "tag": "v3.12.14",
+        "commit": "2abcf904b8dac8c999d2b3aac76681abb333798a",
+        "url": "https://raw.githubusercontent.com/python/cpython/2abcf904b8dac8c999d2b3aac76681abb333798a/Doc/license.rst",
+        "sha256": "341832873fd316a37927e79385093fbbfd40a467428480835fe435a80cadf4e5",
+        "file": "CPython-Doc-license.rst"
+      }
+    }
   },
   "ffmpeg": {
     "version": "9.0.1",

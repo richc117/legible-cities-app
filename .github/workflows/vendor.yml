@@ -26,7 +26,9 @@ on:
     # own: GitHub ignores path filters on a tag push, and build.yml already
     # runs these jobs for a tag through workflow_call.
     branches: ['**']
-    paths: ['vendor/pins.json', '.github/workflows/vendor.yml', 'scripts/vendor-python.sh', 'scripts/vendor-ffmpeg.sh', 'scripts/vendor-signature.sh']
+    # check-vendored.mjs is here because the python job runs its licence
+    # agreement (ADR-042).
+    paths: ['vendor/pins.json', '.github/workflows/vendor.yml', 'scripts/vendor-python.sh', 'scripts/vendor-ffmpeg.sh', 'scripts/vendor-signature.sh', 'scripts/check-vendored.mjs']
   workflow_dispatch:
   # .github/workflows/build.yml runs these jobs in its own run, so the
   # installers are packaged from artefacts built from the pins it checked
@@ -231,6 +233,39 @@ jobs:
             exit 1
           fi
           echo "engine $found at $PINNED_TAG"
+      - name: Find zstd and Node for the licence texts
+        shell: bash
+        run: |
+          # The full archive the licence texts come from is .tar.zst, which
+          # no Python before 3.14 reads, and the agreement check is Node
+          # (ADR-042). Neither is proven on these images by anything but
+          # this step. When zstd is not on PATH, the places the runner image
+          # and Git for Windows are known to put one are tried and the first
+          # found is added to PATH; otherwise the job fails naming the runner.
+          where="$RUNNER_OS ${ImageOS:-} ${ImageVersion:-}"
+          if ! command -v zstd >/dev/null 2>&1; then
+            for dir in /mingw64/bin /usr/bin /c/ProgramData/chocolatey/bin \
+              "/c/Program Files/Git/mingw64/bin" "/c/Program Files/Git/usr/bin" \
+              /c/tools/zstd /opt/homebrew/bin /usr/local/bin; do
+              if [ -x "$dir/zstd" ] || [ -x "$dir/zstd.exe" ]; then
+                echo "zstd found in $dir, which is not on PATH; adding it"
+                # GITHUB_PATH takes the runner's own form of the path.
+                if command -v cygpath >/dev/null 2>&1; then cygpath -w "$dir"; else echo "$dir"; fi >> "$GITHUB_PATH"
+                export PATH="$dir:$PATH"
+                break
+              fi
+            done
+          fi
+          if ! command -v zstd >/dev/null 2>&1; then
+            echo "::error::no zstd on the $where runner, on PATH or in any known place; the licence texts' full archive cannot be read"
+            exit 1
+          fi
+          if ! command -v node >/dev/null 2>&1; then
+            echo "::error::no node on the $where runner; scripts/check-vendored.mjs checks the licence texts"
+            exit 1
+          fi
+          echo "zstd $(command -v zstd): $(zstd --version | tr -d '\r')"
+          echo "node $(command -v node): $(node --version | tr -d '\r')"
       - name: Fetch, verify, strip and prove the runtime
         shell: bash
         # A relative engine path, so no backslashed workspace path reaches

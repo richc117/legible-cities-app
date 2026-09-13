@@ -8,13 +8,26 @@ builds until a release** (ADR-035), though as artefacts of this public
 repository they are downloadable for 30 days, and so conveyed; a pushed
 release tag attaches them to a draft GitHub Release (ADR-041). They bundle
 the runtime, the engine, LOOM and ffmpeg for their target and carry
-`LICENSE` and this file beside them. `vendor-manifest.json` inside the app
+`LICENSE` and this file beside them.
+
+**Where the notices are read.** In the installed app, **Settings ›
+Licences** names the app's licence and every component below that ships,
+with its licence, and opens three things from the app itself: this file,
+the folder of the Python runtime's licence texts (`python/licenses/` in
+the app's resources), and Chromium's licences as Electron ships them
+(`LICENSES.chromium.html`, beside Electron's own `LICENSE.electron.txt`:
+in the resources on a Mac, beside the executable on Windows). The same
+files are inside every installer, and a GitHub Release carries this file
+in the app's source archive. `vendor-manifest.json` inside the app
 records each component's pin: the runtime's release, asset and checksum,
 the engine's tag, the name and version of every Python package installed
 in the runtime, LOOM's commit (and the Windows port's), and FFmpeg's
 version and configure line with the checksums of the FFmpeg, x264 and
 (on Windows) zlib sources it was built from. It does not record the
-versions of the libraries linked into the Python runtime and wheels. The
+versions of the libraries linked into the Python runtime and wheels; the
+licence texts of the runtime's are in `python/licenses/`, and every Python
+package installed in the runtime keeps its own licence files in its
+`.dist-info` folder there, as the package ships them. The
 ffmpeg they carry is built in this repository (ADR-040), and every
 Release attaches the GPL components' sources beside them (below).
 
@@ -31,10 +44,12 @@ Release attaches the GPL components' sources beside them (below).
 | zlib | Compression for FFmpeg's PNG encoder and decoder. Linked statically into the Windows binaries from the **1.3.2** release tarball pinned in `vendor/pins.json`; on macOS FFmpeg links the operating system's `/usr/lib/libz.1.dylib`, which is not shipped. Also linked statically into the Windows LOOM tools `topo`, `loom` and `octi`, from MSYS2 UCRT64's zlib package, which the vendor workflow refuses unless it is the revision **1.3.2-2** pinned under `loom_windows_static`, built by MSYS2 from the 1.3.2 release with MSYS2's patches; on macOS LOOM links the system's | Zlib | https://github.com/madler/zlib, and the `ffmpeg-source` and LOOM source archives on each release |
 | bzip2 (libbzip2) | Decompression in the Windows LOOM tools `topo`, `loom` and `octi`, linked statically from MSYS2 UCRT64's bzip2 package, which the vendor workflow refuses unless it is the revision **1.0.8-4** pinned under `loom_windows_static` in `vendor/pins.json`, built by MSYS2 from the 1.0.8 release with MSYS2's patches; its notice is below. On macOS LOOM links the system's `libbz2`, which is not shipped | bzip2-1.0.6 (BSD-style) | https://sourceware.org/bzip2/, and the LOOM source archive on each release |
 | GCC runtime library and mingw-w64 runtime, with winpthreads | Linked statically into the Windows FFmpeg binaries by MSYS2 UCRT64's GCC with `-static`: GCC's `libgcc`, mingw-w64's CRT startup code and import libraries, and mingw-w64's winpthreads, which the toolchain brings in although FFmpeg and x264 use Win32 threads (the Windows binaries carry its source file names). They import only Windows' own DLLs, the Universal CRT among them, which the vendor job checks. The same are linked statically into the four Windows LOOM tools by the same toolchain with `-static` (`scripts/loom-windows-patch.py`), with GCC's C++ library `libstdc++` besides, since LOOM is C++; each release's LOOM source archive names the exact MSYS2 package revisions (`TOOLCHAIN-win-x64.txt`). The notices of both are below, from mingw-w64 at commit `9c1abbbf55`, which MSYS2's crt, headers and winpthreads packages `14.0.0.r375.g9c1abbbf5` in the build were made from | GPL-3.0-or-later WITH GCC-exception-3.1 (libgcc, libstdc++); the mingw-w64 runtime's own terms, with parts under the BSD-style, MIT and permissive notices its licence file lists, all quoted below (mingw-w64's CRT); MIT, with parts derived from Lockless Inc.'s Posix Threads library under BSD-3-Clause (winpthreads) | https://gcc.gnu.org/ and https://www.mingw-w64.org/ |
-| Electron | Application shell; includes Chromium and Node.js under their own licences. Pinned in `package.json` | MIT | https://www.electronjs.org/ |
+| Electron | Application shell; includes Chromium and Node.js under their own licences, which Electron ships in `LICENSES.chromium.html`. Pinned in `package.json`. electron-builder keeps that file and Electron's `LICENSE` (as `LICENSE.electron.txt`) beside the Windows executable and deletes both from a Mac app, so `electron-builder.yml` copies them into the Mac app's resources, and the packaging check refuses an app on either system without them. Electron's own licence is quoted below | MIT (Electron); Chromium's and Node.js's licences as `LICENSES.chromium.html` gives them | https://www.electronjs.org/ |
 | React | User interface | MIT | https://react.dev/ |
 | electron-vite, Vite, Vitest, Playwright, TypeScript, ESLint, Prettier, electron-builder | Development tooling: build, test, style. Present in the repository, not shipped in the app | MIT (electron-vite, Vite, Vitest, ESLint, Prettier, electron-builder); Apache-2.0 (Playwright, TypeScript) | package.json |
-| python-build-standalone (ADR-020, ADR-038) | The bundled Python interpreter, under `python/` in the app's resources: pinned by release and by a checksum this repository records in `vendor/pins.json`, stripped after install, its bytecode compiled at build (ADR-035) | PSF-2.0 (CPython); MPL-2.0 (the project's build code); bundled libraries under their own licences. CPython's `LICENSE.txt` ships inside it; the `install_only` asset this project pins carries no `licenses/` folder for the libraries python-build-standalone links statically (that is in the full archive), so those notices are owed by the Licences screen and the release (ADR-035). Verified 2026-09-07: the interpreter links libedit, not GNU readline, and no GDBM; the Windows asset, listed 2026-09-12, carries no readline and no `_dbm` or `_gdbm` extension at all; `vendor.yml` fails the build if either appears by file name on all three targets, and on the two macOS targets also if any Mach-O in the runtime links a library named for readline or gdbm, or `libpython` defines readline's symbols itself; Windows is checked by name only | https://github.com/astral-sh/python-build-standalone |
+| python-build-standalone (ADR-020, ADR-038) | The bundled Python interpreter, under `python/` in the app's resources: pinned by release and by a checksum this repository records in `vendor/pins.json`, stripped after install, its bytecode compiled at build (ADR-035) | PSF-2.0 (CPython); MPL-2.0 (the project's build code); bundled libraries under their own licences (the next two rows). CPython's `LICENSE.txt` ships inside it; the texts the `install_only` asset lacks ship beside it in `python/licenses/`, taken from the same build's `full` archive (ADR-042). Verified 2026-09-07: the interpreter links libedit, not GNU readline, and no GDBM; the Windows asset, listed 2026-09-12, carries no readline and no `_dbm` or `_gdbm` extension at all; `vendor.yml` fails the build if either appears by file name on all three targets, and on the two macOS targets also if any Mach-O in the runtime links a library named for readline or gdbm, or `libpython` defines readline's symbols itself; Windows is checked by name only | https://github.com/astral-sh/python-build-standalone |
+| Libraries linked into the Python runtime | Linked into the bundled interpreter and its extension modules by python-build-standalone, or compiled in from CPython's own tree: OpenSSL, libffi, xz (liblzma), bzip2, zlib (Windows; macOS links the system's), mpdecimal, Expat, SQLite, Tcl/Tk, Tix (Windows) and libuuid. Their licence texts ship in `python/licenses/` in the app's resources, with python-build-standalone's `PYTHON.json` for the build, both from the pinned release's `full` archive for the target, checked by sha256; the vendor workflow and the packaging check refuse a runtime whose texts, build metadata and the reviewed lists in `vendor/pins.json` disagree, and look in the Windows DLLs for the zlib, Expat and libmpdec the metadata does not name (ADR-042). The folder also carries texts python-build-standalone publishes for libraries these builds do not link: Berkeley DB and the X11 libraries on every target, Tix on macOS, and on Windows libedit, ncurses and OpenSSL 1.1, which the pins list as such. The macOS metadata names OpenSSL 1.1's text beside OpenSSL 3's for `_hashlib` and `_ssl`, whose one build variant links OpenSSL 3's static libraries, so that text ships there as named | OpenSSL: Apache-2.0; libffi, Expat: MIT; xz: 0BSD; bzip2: bzip2-1.0.6; zlib: Zlib; mpdecimal: BSD-2-Clause; SQLite: public domain; Tcl/Tk, Tix: TCL; libuuid: BSD-3-Clause; each as its text in `python/licenses/` says | https://github.com/astral-sh/python-build-standalone |
+| Software incorporated into CPython | Code CPython carries from other projects (the Mersenne Twister, SipHash, `dtoa.c`, HACL* and BLAKE2 among the hash functions, parts of `asyncio`, and the rest CPython's documentation lists), whose notices are not in the `LICENSE.txt` the runtime ships. CPython's `Doc/license.rst` at the tag of the pinned version, fetched by commit and checked by sha256, ships as `python/licenses/CPython-Doc-license.rst` (ADR-042) | Each as `CPython-Doc-license.rst` quotes it | https://github.com/python/cpython/blob/v3.12.14/Doc/license.rst |
 | PyInstaller (measured, not chosen: ADR-020) | Was the alternative way to bundle the interpreter; not used and not shipped | GPL-2.0-or-later with the bootloader exception | https://pyinstaller.org/ |
 | pandas | GTFS tables in the engine | BSD-3-Clause | https://pandas.pydata.org/ |
 | NumPy | Dependency of pandas | BSD-3-Clause. The Windows wheel's `numpy.libs/libscipy_openblas64_*.dll` also carries OpenBLAS (BSD-3-Clause), LAPACK (BSD-3-Clause-Open-MPI) and the GCC runtime library, statically linked, under GPL-3.0-or-later WITH GCC-exception-3.1, as NumPy's own licence file in the wheel states; the macOS wheels carry no OpenBLAS | https://numpy.org/ |
@@ -57,7 +72,7 @@ Release attaches the GPL components' sources beside them (below).
   in the same run as the installers from the same `vendor/pins.json`, and
   refused if the run's pins, app version or run do not match the
   installers' manifests (`scripts/release.mjs`, ADR-041). The installed app
-  ships `LICENSE` and this file and shows them in its Licences screen.
+  ships `LICENSE` and this file, and Settings › Licences opens this file.
   - `ffmpeg-<version>-source.tar`, the `ffmpeg-source` artefact: FFmpeg is
     built in this repository (ADR-040), so its Corresponding Source is
     FFmpeg's release tarball, x264 at its pinned commit, zlib's release
@@ -472,7 +487,7 @@ Release attaches the GPL components' sources beside them (below).
 - **FigUI3 core, Phosphor Icons and react-colorful** (MIT): the kit and the
   picker are compiled into the interface and the icons are inlined into it,
   so no licence file reaches the built app on its own; this file, which the
-  installed app ships and its Licences screen shows, carries the notices
+  installed app ships and Settings › Licences opens, carries the notices
   instead. All three are build-time dependencies on purpose: the packager
   copies every production dependency whole, and in the kit's case the
   package's other half is not ours to ship.
@@ -494,6 +509,34 @@ Release attaches the GPL components' sources beside them (below).
   > portions of the Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT
   > WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
   > THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+  > NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+  > LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+  > OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+  > WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+- **The Python runtime's libraries and CPython's incorporated software**:
+  the texts are files rather than quotations here, in `python/licenses/`
+  inside the app's resources, which Settings › Licences shows (ADR-042).
+- **Electron** (MIT). Its `LICENSE`, verbatim, which the installers also
+  carry as `LICENSE.electron.txt`:
+
+  > Copyright (c) Electron contributors
+  >
+  > Copyright (c) 2013-2020 GitHub Inc.
+  >
+  > Permission is hereby granted, free of charge, to any person obtaining
+  > a copy of this software and associated documentation files (the
+  > "Software"), to deal in the Software without restriction, including
+  > without limitation the rights to use, copy, modify, merge, publish,
+  > distribute, sublicense, and/or sell copies of the Software, and to
+  > permit persons to whom the Software is furnished to do so, subject to
+  > the following conditions:
+  >
+  > The above copyright notice and this permission notice shall be
+  > included in all copies or substantial portions of the Software.
+  >
+  > THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+  > EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+  > MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
   > NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
   > LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
   > OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION

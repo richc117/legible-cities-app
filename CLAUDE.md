@@ -201,6 +201,22 @@ sentences and control names, so changing one means changing them too
 timed run (`docs/acceptance-stranger.md`) and the screen-reader walkthrough
 in `docs/accessibility.md`.
 
+The licence texts (issue 108, ADR-042) followed: every installer carries
+the texts of the libraries linked into the Python runtime, taken from the
+same python-build-standalone build's `full` archive, and CPython's
+`Doc/license.rst`, under `python/licenses/`; **the build metadata is not
+trusted alone** - on macOS it names a text the archive lacks, on Windows it
+names nothing for the zlib, Expat and libmpdec in the DLLs - so three
+reviewed lists per target in `vendor/pins.json` say what it does not, and
+`scripts/check-vendored.mjs` fails the python job and the package whenever
+the metadata, the folder and the lists disagree. **A new
+python-build-standalone release fails until those lists are reread**, on
+purpose. The Mac app gets Electron's and Chromium's licences back, which
+electron-builder deletes from it. Settings has a Licences section: the
+components from `src/shared/licences.ts`, held to the notices file by a
+test, and three buttons to open the notices, the texts and Chromium's
+licences, each saying so when there is nothing bundled to open.
+
 Work proceeds phase by phase; `CONTRIBUTING.md` explains the flow, the
 labels, the milestones and the `A0-05`-style issue codes. The four Phase 0
 spikes have run: LOOM ships without its optional solvers (ADR-019), the
