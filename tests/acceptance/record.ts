@@ -57,9 +57,17 @@ export type Field = (typeof FIELDS)[number]
 /**
  * A step's result. "pass, part not automated" is a step whose every
  * automated check held and which asks for something a machine cannot judge;
- * that part is named in the notes and is never counted as passed.
+ * "pass, part not checked" one that asks for something the release under
+ * test predates. Either part is named in the notes and is never counted as
+ * passed.
  */
-export type Result = 'pass' | 'fail' | 'not automated' | 'pass, part not automated' | 'not run'
+export type Result =
+  | 'pass'
+  | 'fail'
+  | 'not automated'
+  | 'pass, part not automated'
+  | 'pass, part not checked'
+  | 'not run'
 
 export interface Row {
   title: string
@@ -126,6 +134,11 @@ export class RunRecord {
 
   field(name: Field, value: string): void {
     this.#fields.set(name, value)
+  }
+
+  /** A field, unless something (the workflow's prior) has already set it. */
+  fieldUnlessSet(name: Field, value: string): void {
+    if (!this.#fields.has(name)) this.#fields.set(name, value)
   }
 
   step(n: number, result: Result, notes: string, title?: string): void {

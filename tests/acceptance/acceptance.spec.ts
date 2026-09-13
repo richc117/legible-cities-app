@@ -16,6 +16,10 @@
 //                             checkout's)
 //   LEGIBLE_ACCEPTANCE_PRIOR  JSON of what the workflow found before the spec
 //                             ran: the installer, its checksum, steps 1 and 2
+//   LEGIBLE_ACCEPTANCE_TAG    the release's tag, so a check of something that
+//                             landed after it (FEATURES) is written as not
+//                             checked rather than failed; without it such a
+//                             check runs only if the build has the feature
 //
 // Steps 1, 2 and 21 (download, install, uninstall) are the workflow's
 // (.github/workflows/acceptance.yml). What a machine cannot judge - a drag's
@@ -101,6 +105,48 @@ const LAYOUT_STAGES = [
   'write',
 ]
 const LOG_FILES = ['main.log', 'main.old.log', 'engine.log', 'engine.old.log']
+
+/**
+ * What landed on main after some release was tagged, by the commit that
+ * brought it. A check of one runs only against a release whose tag contains
+ * that commit; against an older one it is written into the record as not
+ * checked, with the reason, and never passed. Add a row here whenever a
+ * step of the checklist starts to rely on something newer than a release
+ * that may still be accepted.
+ */
+interface Feature {
+  name: string
+  commit: string
+  landed: string
+}
+
+const FEATURES = {
+  skipPastMap: {
+    name: 'Skip past the map',
+    commit: '55e3b4aa12737cf579ac74ed9f3930dd674e654d',
+    landed: 'pull request 122 (issue 106)',
+  },
+} satisfies Record<string, Feature>
+
+/** The release under test, by its tag; the workflow names it. */
+const TAG = process.env.LEGIBLE_ACCEPTANCE_TAG ?? ''
+
+/**
+ * Whether the tag under test contains a feature's commit: true or false, or
+ * null when no tag was named or git cannot say (a shallow checkout, a tag
+ * this clone does not have).
+ */
+function tagContains(feature: Feature): boolean | null {
+  if (TAG === '') return null
+  const result = spawnSync(
+    'git',
+    ['merge-base', '--is-ancestor', feature.commit, `refs/tags/${TAG}`],
+    { cwd: repoRoot, encoding: 'utf8', timeout: 30 * 1_000, windowsHide: true },
+  )
+  if (result.status === 0) return true
+  if (result.status === 1) return false
+  return null
+}
 
 interface Pins {
   engine: { version: string }
@@ -423,6 +469,7 @@ class StepLog {
   readonly notes: string[] = []
   readonly problems: string[] = []
   readonly unautomated: string[] = []
+  readonly unchecked: string[] = []
   title: string | undefined
 
   note(line: string): void {
@@ -431,6 +478,11 @@ class StepLog {
 
   notAutomated(line: string): void {
     this.unautomated.push(line)
+  }
+
+  /** Something this build does not have, so it was not checked; said, never passed. */
+  notChecked(line: string): void {
+    this.unchecked.push(line)
   }
 
   async soft(what: string, check: () => Promise<unknown> | unknown): Promise<void> {
@@ -447,6 +499,20 @@ test('a release, installed, through docs/acceptance.md', async () => {
   const recordPath = join(OUT, `acceptance-${PLATFORM}.md`)
   const record = new RunRecord(recordPath)
   record.applyPrior(process.env.LEGIBLE_ACCEPTANCE_PRIOR)
+  // What only the workflow knows, said as such in a local run.
+  for (const name of [
+    'Clean machine?',
+    'Installer file name',
+    'Its SHA-256',
+    'Matches SHA256SUMS.txt?',
+  ] as const) {
+    record.fieldUnlessSet(name, 'set by the acceptance workflow; not known to a local run')
+  }
+  record.anythingElse(
+    TAG === ''
+      ? 'No release tag was named (LEGIBLE_ACCEPTANCE_TAG), so a check of something newer than some releases runs only if this build has it, and says so.'
+      : `The release under test: ${TAG}.`,
+  )
   const started = new Date()
   record.field('OS and version', operatingSystem())
   record.field(
@@ -599,13 +665,16 @@ test('a release, installed, through docs/acceptance.md', async () => {
       }
       const result: Result = failed
         ? 'fail'
-        : log.unautomated.length > 0
-          ? 'pass, part not automated'
-          : 'pass'
+        : log.unchecked.length > 0
+          ? 'pass, part not checked'
+          : log.unautomated.length > 0
+            ? 'pass, part not automated'
+            : 'pass'
       const notes = [
         ...(thrown === null ? [] : [`Stopped: ${thrown}`]),
         ...log.problems.map((p) => `Failed: ${p}`),
         ...log.notes,
+        ...log.unchecked.map((u) => `Not checked, not in this build: ${u}`),
         ...log.unautomated.map((u) => `Not automated: ${u}`),
         `(${Math.round((Date.now() - begun) / SECOND)} s)`,
       ]
@@ -1194,16 +1263,34 @@ test('a release, installed, through docs/acceptance.md', async () => {
           'Zoom with the wheel or plus and minus, pan by dragging or with the arrows, 0 to fit.',
         )
       })
-      await log.soft('Skip past the map, then Rename', async () => {
-        await window.keyboard.press('Tab')
-        const skip = window.getByRole('button', { name: 'Skip past the map', exact: true })
-        await expect(skip).toBeFocused()
-        await expect
-          .poll(() => skip.evaluate((el) => el.getBoundingClientRect().width))
-          .toBeGreaterThan(1)
-        await window.keyboard.press('Enter')
-        await expect(window.getByRole('button', { name: 'Rename', exact: true })).toBeFocused()
-      })
+      const skipExpected = tagContains(FEATURES.skipPastMap)
+      const skipPresent = (await window.locator('button.skip-link').count()) > 0
+      const { name: skipName, commit: skipCommit, landed: skipLanded } = FEATURES.skipPastMap
+      if (skipExpected === false) {
+        log.notChecked(
+          `${skipName}: ${TAG} was tagged before ${skipLanded} (${skipCommit.slice(0, 7)})${skipPresent ? ', though the control is on the screen' : ''}.`,
+        )
+      } else if (skipExpected === null && !skipPresent) {
+        log.notChecked(
+          `${skipName}: the control is not in this build, and no tag git could read was named (LEGIBLE_ACCEPTANCE_TAG) to say whether it should be; it landed in ${skipLanded} (${skipCommit.slice(0, 7)}).`,
+        )
+      } else {
+        await log.soft('Skip past the map, then Rename', async () => {
+          if (skipExpected === null) {
+            log.note(
+              `${skipName} checked: no tag git could read was named, and the control is in this build.`,
+            )
+          }
+          await window.keyboard.press('Tab')
+          const skip = window.getByRole('button', { name: 'Skip past the map', exact: true })
+          await expect(skip).toBeFocused()
+          await expect
+            .poll(() => skip.evaluate((el) => el.getBoundingClientRect().width))
+            .toBeGreaterThan(1)
+          await window.keyboard.press('Enter')
+          await expect(window.getByRole('button', { name: 'Rename', exact: true })).toBeFocused()
+        })
+      }
 
       await log.soft('the viewer', async () => {
         const viewer = window.getByRole('region', { name: 'Map' })
@@ -1406,9 +1493,27 @@ test('a release, installed, through docs/acceptance.md', async () => {
       const warm = group.getByRole('button', { name: 'Warm dark' })
       const sepia = group.getByRole('button', { name: 'Sepia' })
       const viewer = window.locator('iframe.viewer-frame')
+      // Both halves of each kit button: the host React renders, and the
+      // button inside its shadow root, which is what the role resolves to.
+      const pressedState = (): Promise<string> =>
+        group
+          .locator('fig-button')
+          .evaluateAll((hosts) =>
+            hosts
+              .map(
+                (host) =>
+                  `${(host.textContent ?? '').trim()}: variant ${host.getAttribute('variant')}, disabled ${host.hasAttribute('disabled')}, aria-pressed on the host ${host.getAttribute('aria-pressed')} and on its inner button ${host.shadowRoot?.querySelector('button')?.getAttribute('aria-pressed') ?? null}`,
+              )
+              .join('; '),
+          )
+      log.note(`Before any press: ${await pressedState()}.`)
       await log.soft('two buttons, Warm dark pressed', async () => {
         await expect(group.getByRole('button')).toHaveCount(2)
-        await expect(warm).toHaveAttribute('aria-pressed', 'true')
+        try {
+          await expect(warm).toHaveAttribute('aria-pressed', 'true', { timeout: 5 * SECOND })
+        } catch {
+          throw new Error(`Warm dark is not announced as pressed: ${await pressedState()}`)
+        }
       })
       const interfaceTheme = await window.locator('html').getAttribute('data-theme')
       const mark = (await saidSoFar(window)).length
@@ -1617,8 +1722,18 @@ test('a release, installed, through docs/acceptance.md', async () => {
       )
       await log.soft('the sentences on the line', async () => {
         const said = (await saidSoFar(window)).slice(mark)
+        log.note(
+          `The line's first sentences: ${said
+            .slice(0, 3)
+            .map((t) => `"${t}"`)
+            .join(', ')}.`,
+        )
+        log.note(
+          said.includes('Planning the export.')
+            ? '"Planning the export." was seen.'
+            : '"Planning the export." was not seen: "Planned …" replaces it as soon as the engine answers the plan, which can be before it is drawn.',
+        )
         for (const pattern of [
-          /^Planning the export\.$/,
           /^Planned la-metro-rail-instagram-reel\.mp4: \d+ frames at \d+ frames per second\.$/,
           /^Capturing \d+ frames\.$/,
           /^Captured \d+ of \d+ frames\.$/,

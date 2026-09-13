@@ -21,7 +21,14 @@ import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
 
-const RESULTS = ['pass', 'fail', 'not automated', 'pass, part not automated', 'not run']
+const RESULTS = [
+  'pass',
+  'fail',
+  'not automated',
+  'pass, part not automated',
+  'pass, part not checked',
+  'not run',
+]
 
 const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 

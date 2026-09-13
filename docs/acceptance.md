@@ -69,6 +69,12 @@ What it cannot do stays a person's, and the record says so step by step
   the system to show or open, and checks those files).
 - **Places**: the profile and export folder are temporary, so the folders
   in `install.md`'s tables are checked only in step 21.
+- **Newer than the release**: a check of something that landed on `main`
+  after the tag under test (the skip past the map in step 8 is newer than
+  `v0.1.0-rc.3`) is written as "not checked, not in this build" with the
+  commit that brought it. The workflow names the tag; a local run names it
+  with `LEGIBLE_ACCEPTANCE_TAG`, or the check runs only if the build has
+  the control.
 - **The stranger's timed run and the screen-reader walkthrough**, which
   are separate documents and entirely a person's.
 
@@ -393,10 +399,12 @@ Result: ____
 - While the tab is open, the viewer shows the export's tall frame, with the
   parts Instagram covers shaded.
 - A progress line with `plan`, `capture` and `encode`, with the sentences
-  "Planning the export.", "Planned `<file>`: `<n>` frames at `<fps>` frames
-  per second.", "Capturing `<n>` frames.", "Captured `<n>` of `<n>`
-  frames.", "Encoding `<n>` frames." and "Encoded `<n>` of `<n>` frames.",
-  among others, and **Cancel**; the choices above are unavailable while it runs,
+  "Planned `<file>`: `<n>` frames at `<fps>` frames per second.",
+  "Capturing `<n>` frames.", "Captured `<n>` of `<n>` frames.",
+  "Encoding `<n>` frames." and "Encoded `<n>` of `<n>` frames.", among
+  others, and **Cancel**. "Planning the export." comes first, but "Planned"
+  replaces it as soon as the engine answers, often before it can be read or
+  even drawn, so not seeing it is not a failure; the choices above are unavailable while it runs,
   with "The choices wait until the export that is going has finished: it
   was planned from them."
 - It ends with "Exported la-metro-rail-instagram-reel.mp4." and **Reveal**.

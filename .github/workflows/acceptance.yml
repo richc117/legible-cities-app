@@ -62,8 +62,11 @@ jobs:
             exit 1
           fi
 
+      # The whole history and every tag: a check of something newer than some
+      # releases asks git whether this tag contains the commit that brought it.
       - uses: actions/checkout@v7
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       # The pins and the version the Release was built from.
@@ -194,6 +197,7 @@ jobs:
         run: |
           export LEGIBLE_ACCEPTANCE_OUT="$OUT"
           export LEGIBLE_ACCEPTANCE_PRIOR="$PRIOR"
+          export LEGIBLE_ACCEPTANCE_TAG="$TAG"
           npm run test:acceptance
 
       - name: Step 21, uninstall on macOS
