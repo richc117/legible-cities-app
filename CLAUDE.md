@@ -92,6 +92,11 @@ since its push, or not on `main`, names the installers for their machine, archiv
 and the notes from `.github/release-notes.md`, and creates or updates a
 **draft, never published**; the maintainer publishes it by hand, and
 `docs/install.md` is what a person follows.
+The source of the FFmpeg library inside Electron (LGPL-2.1-or-later) rides
+with it (ADR-043): `electron-ffmpeg-source` verifies Chromium's FFmpeg,
+libopus and their build files by git object id against `electron_ffmpeg` in
+the pins, which every Electron bump must move, and no installer is packaged
+without it.
 
 Settings (A1-04) came after it: one file under the user-data folder holding
 the two folders a person chose and the interface's theme, read before the

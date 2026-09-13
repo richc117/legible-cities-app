@@ -1334,6 +1334,23 @@ is published: the maintainer reads the draft and publishes it by hand.
 `docs/install.md` is what a person follows with the assets, and the
 first-run dialog's "How to install" opens it on `main`.
 
+The installers also carry a library nothing here builds: Electron's own
+FFmpeg (`libffmpeg.dylib`, `ffmpeg.dll`), Chromium's media decoder, which the
+app never calls, LGPL-2.1-or-later with libopus inside (issue 109, ADR-043).
+Its source is attached as it was packed, as
+`electron-ffmpeg-<electron version>-source.tar.xz`, by the vendor workflow's
+`electron-ffmpeg-source` job (`scripts/electron-ffmpeg-source.sh`): Chromium's
+FFmpeg at the commit Chromium's DEPS pins, Chromium's `third_party/opus`,
+`media/ffmpeg` and `build`, and Electron's FFmpeg patch and gn args, each
+verified by its git object id against `electron_ffmpeg` in
+`vendor/pins.json` - by tree id for the directories, since googlesource's
+archives are never the same bytes twice - and packed reproducibly. The job
+refuses a `package-lock.json` for another Electron, so every Electron bump
+moves that block. Each packaging job refuses, before `npm ci`, to go on
+without the artefact, so no installer is made in a run whose Electron
+library's source did not verify, and `release.mjs` refuses one for another
+Electron than the pins name.
+
 ## Deliberately absent
 
 | Not here | Arrives with |

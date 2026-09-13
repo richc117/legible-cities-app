@@ -32,10 +32,12 @@
 //   maintainer may have edited them; a published Release for the tag, or
 //   more than one draft, is refused and left untouched.
 // - The assets are the three installers, SHA256SUMS.txt over every other
-//   attached file, and one archive of each GPL component's Corresponding
+//   attached file, one archive of each GPL component's Corresponding
 //   Source (ffmpeg-source, loom-source with the loom-windows-toolchain
 //   record inside it, engine-source, all from vendor.yml), archived with
-//   fixed owners and times.
+//   fixed owners and times, and the source of Electron's FFmpeg library as
+//   vendor.yml's electron-ffmpeg-source job packed it, attached as it is
+//   (ADR-043), for the Electron package-lock.json installs.
 //   Each installer artefact's manifest must have been written from this
 //   run's pins, for this app version, in this run.
 //
@@ -299,28 +301,41 @@ export const INSTALLERS = [
 ]
 
 /**
- * The Corresponding Source archives, by the vendor workflow's artefact
- * name, each named with its component's version or commit.
+ * The source archives, by the vendor workflow's artefact name, each named
+ * with its component's version or commit. A folder artefact is archived here
+ * as `<stem>.tar`; a packed one already holds its one archive, `asset`, which
+ * is attached as it is.
+ *
+ * @returns {{ artefact: string, asset: string, key: string, stem?: string, with?: string[], packed?: boolean }[]}
  */
 export function sourceAssets(pins) {
+  const folder = (entry) => ({ ...entry, asset: `${entry.stem}.tar` })
   return [
-    {
+    folder({
       artefact: 'ffmpeg-source',
       stem: `ffmpeg-${pins.ffmpeg.version}-source`,
       key: 'ffmpeg_source',
-    },
-    {
+    }),
+    folder({
       artefact: 'loom-source',
       stem: `loom-${pins.loom.commit.slice(0, 12)}-source`,
       key: 'loom_source',
       // The MSYS2 packages the loom-windows job linked in, recorded by that
       // job in the same run, travel inside LOOM's archive.
       with: ['loom-windows-toolchain'],
-    },
-    {
+    }),
+    folder({
       artefact: 'engine-source',
       stem: `legible-cities-engine-${pins.engine.version}-source`,
       key: 'engine_source',
+    }),
+    {
+      // Packed reproducibly by scripts/electron-ffmpeg-source.sh, which
+      // verified every part by its git object id (ADR-043).
+      artefact: 'electron-ffmpeg-source',
+      asset: `electron-ffmpeg-${pins.electron_ffmpeg.electron.version}-source.tar.xz`,
+      key: 'electron_ffmpeg_source',
+      packed: true,
     },
   ]
 }
@@ -329,7 +344,7 @@ export function sourceAssets(pins) {
 export function assetNames(label, pins) {
   return [
     ...INSTALLERS.map((installer) => installer.asset(label)),
-    ...sourceAssets(pins).map((source) => `${source.stem}.tar`),
+    ...sourceAssets(pins).map((source) => source.asset),
     SUMS,
   ]
 }
@@ -360,12 +375,13 @@ function filesUnder(root) {
  * What to copy and archive, from the artefacts as the release job
  * downloaded them: each into a folder named for the artefact under
  * `downloaded`. An installer artefact holds exactly one installer and its
- * target's manifest; a source artefact is a folder that is not empty.
+ * target's manifest; a source artefact is a folder that is not empty, and a
+ * packed one holds exactly its archive.
  *
  * @returns {{
  *   problems: string[],
  *   installers: { target: string, from: string, asset: string, manifest: string }[],
- *   sources: { artefact: string, from: string, stem: string, with: string[] }[],
+ *   sources: { artefact: string, from: string, asset: string, stem?: string, with: string[], packed: boolean }[],
  * }}
  */
 export function planAssets({ downloaded, label, pins }) {
@@ -403,8 +419,25 @@ export function planAssets({ downloaded, label, pins }) {
   const sources = []
   for (const source of sourceAssets(pins)) {
     const dir = join(downloaded, source.artefact)
-    if (filesUnder(dir).length === 0) {
+    const held = filesUnder(dir)
+    if (held.length === 0) {
       problems.push(`${source.artefact} was not downloaded, or is empty`)
+      continue
+    }
+    if (source.packed) {
+      if (held.length !== 1 || held[0] !== source.asset) {
+        problems.push(
+          `${source.artefact} holds ${held.join(', ')}, not exactly ${source.asset}: it was packed for another Electron than the pins name, or by something else`,
+        )
+        continue
+      }
+      sources.push({
+        artefact: source.artefact,
+        from: join(dir, source.asset),
+        asset: source.asset,
+        with: [],
+        packed: true,
+      })
       continue
     }
     const extras = (source.with ?? []).map((name) => join(downloaded, name))
@@ -413,7 +446,14 @@ export function planAssets({ downloaded, label, pins }) {
       problems.push(`${relative(downloaded, extra)} was not downloaded, or is empty`)
     }
     if (missing.length > 0) continue
-    sources.push({ artefact: source.artefact, from: dir, stem: source.stem, with: extras })
+    sources.push({
+      artefact: source.artefact,
+      from: dir,
+      asset: source.asset,
+      stem: source.stem,
+      with: extras,
+      packed: false,
+    })
   }
   return { problems, installers, sources }
 }
@@ -508,7 +548,10 @@ export function tarFolder(archive, parent, name, epoch) {
 /**
  * The files a Release carries, into `out`: each installer renamed for its
  * machine, each source artefact archived as one tar that unpacks into a
- * folder of the same name, and SHA256SUMS.txt over all of them.
+ * folder of the same name, the packed source of Electron's FFmpeg library
+ * copied as it is, and SHA256SUMS.txt over all of them. `electronVersion`,
+ * the Electron package-lock.json installs, must be the one the pins'
+ * electron_ffmpeg block is for.
  *
  * @returns {{ problems: string[], files: string[] }}
  */
@@ -519,6 +562,7 @@ export function assemble({
   pins,
   pinsSha256,
   packageVersion,
+  electronVersion,
   runId = null,
   epoch = 0,
   tar = tarFolder,
@@ -527,6 +571,12 @@ export function assemble({
   if (parsed === null) return { problems: [`the tag ${tag} is not a release tag`], files: [] }
   const plan = planAssets({ downloaded, label: parsed.label, pins })
   const problems = [...plan.problems]
+  const pinnedElectron = pins.electron_ffmpeg?.electron?.version
+  if (electronVersion !== pinnedElectron) {
+    problems.push(
+      `package-lock.json installs Electron ${electronVersion}, and vendor/pins.json's electron_ffmpeg is for Electron ${pinnedElectron}: the Release would carry one Electron's FFmpeg library and another's source`,
+    )
+  }
   for (const installer of plan.installers) {
     let manifest
     try {
@@ -554,13 +604,17 @@ export function assemble({
   const staging = mkdtempSync(join(tmpdir(), 'lc-release-'))
   try {
     for (const source of plan.sources) {
+      if (source.packed) {
+        copyFileSync(source.from, join(out, source.asset))
+        files.push(source.asset)
+        continue
+      }
       cpSync(source.from, join(staging, source.stem), { recursive: true })
       for (const extra of source.with) {
         cpSync(extra, join(staging, source.stem), { recursive: true })
       }
-      const archive = `${source.stem}.tar`
-      tar(join(resolve(out), archive), staging, source.stem, epoch)
-      files.push(archive)
+      tar(join(resolve(out), source.asset), staging, source.stem, epoch)
+      files.push(source.asset)
     }
   } finally {
     rmSync(staging, { recursive: true, force: true })
@@ -609,10 +663,13 @@ export function notesValues({ tag, pins, pkg, repository }) {
     loom_bzip2_version: pins.loom_windows_static.bzip2.version,
     python_version: pins.python.version,
     python_release: pins.python.release,
+    electron_ffmpeg_electron: pins.electron_ffmpeg.electron.version,
+    electron_ffmpeg_chromium: pins.electron_ffmpeg.chromium.version,
+    electron_ffmpeg_commit: pins.electron_ffmpeg.ffmpeg.commit,
     sums: SUMS,
   }
   for (const installer of INSTALLERS) values[installer.key] = installer.asset(parsed.label)
-  for (const source of sourceAssets(pins)) values[source.key] = `${source.stem}.tar`
+  for (const source of sourceAssets(pins)) values[source.key] = source.asset
   return values
 }
 
@@ -744,6 +801,13 @@ function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'))
 }
 
+/** The Electron package-lock.json installs, or null when it names none. */
+export function installedElectron(root) {
+  return (
+    readJson(join(root, 'package-lock.json')).packages?.['node_modules/electron']?.version ?? null
+  )
+}
+
 function emit(values) {
   const text = formatOutputs(values)
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, text)
@@ -844,6 +908,7 @@ function main(argv) {
       pins,
       pinsSha256: sha256File(pinsFile),
       packageVersion: pkg.version,
+      electronVersion: installedElectron(repoRoot),
       runId: process.env.GITHUB_RUN_ID ?? null,
       epoch: commitTime(repoRoot),
     })

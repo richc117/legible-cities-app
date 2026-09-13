@@ -29,7 +29,8 @@ licence texts of the runtime's are in `python/licenses/`, and every Python
 package installed in the runtime keeps its own licence files in its
 `.dist-info` folder there, as the package ships them. The
 ffmpeg they carry is built in this repository (ADR-040), and every
-Release attaches the GPL components' sources beside them (below).
+Release attaches the GPL components' sources, and the source of the LGPL
+FFmpeg library inside Electron, beside them (below).
 
 | Component | Role | Licence | Source |
 |---|---|---|---|
@@ -45,6 +46,7 @@ Release attaches the GPL components' sources beside them (below).
 | bzip2 (libbzip2) | Decompression in the Windows LOOM tools `topo`, `loom` and `octi`, linked statically from MSYS2 UCRT64's bzip2 package, which the vendor workflow refuses unless it is the revision **1.0.8-4** pinned under `loom_windows_static` in `vendor/pins.json`, built by MSYS2 from the 1.0.8 release with MSYS2's patches; its notice is below. On macOS LOOM links the system's `libbz2`, which is not shipped | bzip2-1.0.6 (BSD-style) | https://sourceware.org/bzip2/, and the LOOM source archive on each release |
 | GCC runtime library and mingw-w64 runtime, with winpthreads | Linked statically into the Windows FFmpeg binaries by MSYS2 UCRT64's GCC with `-static`: GCC's `libgcc`, mingw-w64's CRT startup code and import libraries, and mingw-w64's winpthreads, which the toolchain brings in although FFmpeg and x264 use Win32 threads (the Windows binaries carry its source file names). They import only Windows' own DLLs, the Universal CRT among them, which the vendor job checks. The same are linked statically into the four Windows LOOM tools by the same toolchain with `-static` (`scripts/loom-windows-patch.py`), with GCC's C++ library `libstdc++` besides, since LOOM is C++; each release's LOOM source archive names the exact MSYS2 package revisions (`TOOLCHAIN-win-x64.txt`). The notices of both are below, from mingw-w64 at commit `9c1abbbf55`, which MSYS2's crt, headers and winpthreads packages `14.0.0.r375.g9c1abbbf5` in the build were made from | GPL-3.0-or-later WITH GCC-exception-3.1 (libgcc, libstdc++); the mingw-w64 runtime's own terms, with parts under the BSD-style, MIT and permissive notices its licence file lists, all quoted below (mingw-w64's CRT); MIT, with parts derived from Lockless Inc.'s Posix Threads library under BSD-3-Clause (winpthreads) | https://gcc.gnu.org/ and https://www.mingw-w64.org/ |
 | Electron | Application shell; includes Chromium and Node.js under their own licences, which Electron ships in `LICENSES.chromium.html`. Pinned in `package.json`. electron-builder keeps that file and Electron's `LICENSE` (as `LICENSE.electron.txt`) beside the Windows executable and deletes both from a Mac app, so `electron-builder.yml` copies them into the Mac app's resources, and the packaging check refuses an app on either system without them. Electron's own licence is quoted below | MIT (Electron); Chromium's and Node.js's licences as `LICENSES.chromium.html` gives them | https://www.electronjs.org/ |
+| FFmpeg inside Electron | Chromium's media decoder, which Electron ships as a shared library: `libffmpeg.dylib` in `Electron Framework.framework/Versions/A/Libraries/` on macOS and `ffmpeg.dll` beside the executable on Windows. The app never calls it, and it is not the FFmpeg above. Electron **44.2.0** builds it from Chromium **152.0.7977.76**'s copy of FFmpeg, `chromium/third_party/ffmpeg` at commit `2b68d2babae7` (the `ffmpeg_revision` of Chromium's DEPS; the library reports `git-2026-07-15-6cfe2122b0`), with Chrome branding (`ffmpeg_branding = "Chrome"`, `proprietary_codecs = true`) as a shared library, and one Electron patch to its `BUILD.gn`. Chromium's configuration for that branding has `CONFIG_GPL`, `CONFIG_NONFREE` and `CONFIG_VERSION3` at 0 and enables the decoders h264, aac, flac, mp3, vorbis, libopus and nine PCM formats, the parsers aac, flac, h264, mpegaudio, opus, vorbis and vp9, and the demuxers aac, flac, matroska, mov, mp3, ogg and wav (read from the Mac library's symbol table and Chromium's `codec_list.c`, `parser_list.c` and `demuxer_list.c` on 2026-09-13). libopus, from Chromium's `third_party/opus`, is linked statically inside it. FFmpeg's licence notice and the full LGPL-2.1 text are in Electron's `LICENSES.chromium.html`. Pinned by git object id under `electron_ffmpeg` in `vendor/pins.json` (ADR-043). Patent licensing for the H.264 and AAC decoders is not assessed in this repository | LGPL-2.1-or-later (FFmpeg as configured); BSD-3-Clause (libopus) | https://chromium.googlesource.com/chromium/third_party/ffmpeg at `2b68d2babae73714846961fb0ee47e3b3d2e39a9`, and the `electron-ffmpeg-source` archive on each release |
 | React | User interface | MIT | https://react.dev/ |
 | electron-vite, Vite, Vitest, Playwright, TypeScript, ESLint, Prettier, electron-builder | Development tooling: build, test, style. Present in the repository, not shipped in the app | MIT (electron-vite, Vite, Vitest, ESLint, Prettier, electron-builder); Apache-2.0 (Playwright, TypeScript) | package.json |
 | python-build-standalone (ADR-020, ADR-038) | The bundled Python interpreter, under `python/` in the app's resources: pinned by release and by a checksum this repository records in `vendor/pins.json`, stripped after install, its bytecode compiled at build (ADR-035) | PSF-2.0 (CPython); MPL-2.0 (the project's build code); bundled libraries under their own licences (the next two rows). CPython's `LICENSE.txt` ships inside it; the texts the `install_only` asset lacks ship beside it in `python/licenses/`, taken from the same build's `full` archive (ADR-042). Verified 2026-09-07: the interpreter links libedit, not GNU readline, and no GDBM; the Windows asset, listed 2026-09-12, carries no readline and no `_dbm` or `_gdbm` extension at all; `vendor.yml` fails the build if either appears by file name on all three targets, and on the two macOS targets also if any Mach-O in the runtime links a library named for readline or gdbm, or `libpython` defines readline's symbols itself; Windows is checked by name only | https://github.com/astral-sh/python-build-standalone |
@@ -103,6 +105,26 @@ Release attaches the GPL components' sources beside them (below).
     the commit the tag resolved to.
   - The app's own source is the archive GitHub attaches to every Release of
     its tag.
+- **The FFmpeg library inside Electron** (LGPL-2.1-or-later, with libopus
+  inside): LGPL-2.1 section 4 asks whoever distributes the library in object
+  form to accompany it with its complete corresponding source, or to offer
+  equivalent access to it from the same place, and this project distributes
+  it in every installer. So every GitHub Release also attaches
+  `electron-ffmpeg-<electron version>-source.tar.xz`, the
+  `electron-ffmpeg-source` artefact, attached as that job packed it (ADR-043):
+  Chromium's FFmpeg at the commit Chromium's DEPS pins, with its `BUILD.gn`
+  and generated configuration; Chromium's `third_party/opus`, `media/ffmpeg`
+  (the scripts that generate that configuration) and `build` (the GN
+  configuration it imports) at the Chromium commit Electron's DEPS names;
+  Electron's FFmpeg patch and release gn args; copies of the script, the
+  pins and the vendor workflow; and a `BUILD.txt` saying what each part is
+  and how the library is built. Each part is verified by its git object id
+  against `vendor/pins.json` before it is packed, and the job refuses a run
+  whose `package-lock.json` installs another Electron than the pins are for.
+  No installer is packaged in a run whose archive did not verify
+  (`build.yml`). `v0.1.0-rc.2`, published before this decision, is given
+  the archive after publication, from this change's first CI run; it ships
+  the same Electron 44.2.0.
 - **mingw-w64 runtime**, linked into the Windows ffmpeg and ffprobe and
   the Windows LOOM tools. Its
   `COPYING.MinGW-w64-runtime.txt` at commit `9c1abbbf55`, verbatim but for

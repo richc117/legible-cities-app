@@ -73,6 +73,7 @@ already cites the number you mean to use.
 | 040 | [FFmpeg is built here, from pinned sources, with only what the export uses](040-ffmpeg-is-built-from-pinned-sources.md) | Accepted |
 | 041 | [Releases are drafted from a tag](041-releases-are-drafted-from-a-tag.md) | Accepted |
 | 042 | [The installers carry the licence texts they owe, and the app opens them](042-the-installers-carry-the-licence-texts-they-owe.md) | Accepted |
+| 043 | [The source of Electron's FFmpeg library is attached to every release](043-electrons-ffmpeg-source-is-attached-to-every-release.md) | Accepted |
 
 ## Amending rather than superseding
 

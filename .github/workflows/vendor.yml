@@ -28,7 +28,7 @@ on:
     branches: ['**']
     # check-vendored.mjs is here because the python job runs its licence
     # agreement (ADR-042).
-    paths: ['vendor/pins.json', '.github/workflows/vendor.yml', 'scripts/vendor-python.sh', 'scripts/vendor-ffmpeg.sh', 'scripts/vendor-signature.sh', 'scripts/check-vendored.mjs']
+    paths: ['vendor/pins.json', '.github/workflows/vendor.yml', 'scripts/vendor-python.sh', 'scripts/vendor-ffmpeg.sh', 'scripts/vendor-signature.sh', 'scripts/check-vendored.mjs', 'scripts/electron-ffmpeg-source.sh']
   workflow_dispatch:
   # .github/workflows/build.yml runs these jobs in its own run, so the
   # installers are packaged from artefacts built from the pins it checked
@@ -1132,3 +1132,34 @@ jobs:
           path: engine-source
           if-no-files-found: error
           retention-days: 30
+
+  # The source of the FFmpeg library Electron ships inside the app
+  # (libffmpeg.dylib, ffmpeg.dll): Chromium's FFmpeg at the commit Chromium's
+  # DEPS pins, libopus, which is linked into it, the scripts and GN
+  # configuration that build it, and Electron's patch and gn args, each
+  # verified by its git object id against vendor/pins.json's electron_ffmpeg
+  # block, in one reproducible archive (issue 109, ADR-043). It refuses a run
+  # whose package-lock.json installs another Electron than the block is for.
+  # No binary here needs it, since Electron's library is not built here; the
+  # packaging jobs in build.yml refuse to package without this artefact, so no
+  # installer is made in a run whose Electron library's source did not verify,
+  # and the release job attaches it to each GitHub Release.
+  electron-ffmpeg-source:
+    name: electron ffmpeg (source)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Fetch and verify the source of Electron's FFmpeg library, and archive it
+        shell: bash
+        run: bash scripts/electron-ffmpeg-source.sh electron-ffmpeg-source
+      - uses: actions/upload-artifact@v7
+        with:
+          name: electron-ffmpeg-source
+          path: electron-ffmpeg-source
+          if-no-files-found: error
+          retention-days: 30
+          # Already xz; zipping it again only costs time.
+          compression-level: 0
