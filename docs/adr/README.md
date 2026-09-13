@@ -64,6 +64,7 @@ already cites the number you mean to use.
 | 031 | [The service day is resolved once, at the first layout](031-the-service-day-is-resolved-at-the-first-layout.md) | Accepted |
 | 032 | Reserved: a decision about the project, recorded outside this repository | - |
 | 033 | [The layout identifier is the engine's, and re-layout is a button](033-the-layout-identifier-is-the-engines.md) | Accepted |
+| 034 | [Assistant plugins are opted in per repository](034-assistant-plugins-are-opted-in-per-repository.md) | Accepted |
 
 ## Amending rather than superseding
 

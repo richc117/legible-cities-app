@@ -148,7 +148,10 @@ same time.
 
 `gitleaks` and `pre-commit` are development tools, not dependencies; install
 them from a package manager. Everything they enforce is enforced again in
-CI, so a machine without them can still contribute.
+CI, so a machine without them can still contribute. The language server
+the `typescript-lsp` plugin reads diagnostics from is a development tool
+too (`npm install -g typescript-language-server typescript`); without it
+the plugin does nothing and nothing breaks.
 
 The `gitleaks` pre-commit hook reads only the **staged** changes, which is
 the right scope at commit time and the wrong one for an audit:
@@ -168,7 +171,8 @@ private notes in `CLAUDE.local.md`.
 - `settings.json` - a permission allowlist for the read-only commands, and a
   `PreToolUse` hook on `Bash`.
 - `hooks/guard-git.sh` - runs gitleaks and `bin/preflight` before any
-  `git commit` or `git push` made from here, and blocks on a finding.
+  `git commit` or `git push` made from here, and blocks on a finding. Not
+  in a sibling worktree, which it cannot see; `/lanes` says what covers it.
 - `hooks/reviewer-readonly.sh` - keeps the `reviewer` subagent's `Bash` to
   read-only commands.
 - `rules/renderer.md`, `rules/main.md` - the detailed rules for each
@@ -176,6 +180,10 @@ private notes in `CLAUDE.local.md`.
 - `skills/adr`, `skills/spike`, `skills/spec` - `/adr` writes a numbered
   decision record and indexes it; `/spike` sets up a timeboxed experiment
   and its report; `/spec` scaffolds a feature spec from an issue.
+- `skills/lanes` - `/lanes` builds several issues at once, one branch,
+  worktree and agent each, with the brief every agent is given (ADR-034).
+- `enabledPlugins` in `settings.json` - which plugins run here, on or off,
+  whatever a person has installed (ADR-034).
 - `agents/reviewer.md` - a read-only reviewer for correctness, leaks, a
   second renderer creeping in, and child processes without a timeout.
 - `skills/speckit-*` - installed by Spec Kit, not written here. Leave them
