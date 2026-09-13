@@ -31,6 +31,75 @@ focus.
 Before you start, note the time: the results template asks how long the
 run took.
 
+## The automated run
+
+Most of this checklist is also driven by a machine, against the same
+installers, so a Release has evidence from both systems before a person
+sits down with it. `.github/workflows/acceptance.yml`, run by hand with the
+Release's tag (the Release must be published, a prerelease for an `-rc`
+tag, since the run's token cannot see a draft), does step 1 on a macOS and
+a Windows runner, installs the app, runs
+`tests/acceptance/acceptance.spec.ts` over steps 3 to 20 against the
+installed app, and uninstalls it for step 21. Its record is this
+checklist's [results template](#results-template), filled in, as the job's
+summary and an artefact with a screenshot of each failed step, ready to
+paste into the run's issue. On a machine with the app already installed,
+the spec runs on its own:
+
+```
+LEGIBLE_ACCEPTANCE_APP="/Applications/Legible Cities.app" LEGIBLE_ACCEPTANCE_TAG=v0.1.0-rc.3 npm run test:acceptance
+```
+
+The record and the screenshots go to `acceptance-results/` (ignored by git;
+`LEGIBLE_ACCEPTANCE_OUT` moves them). It launches the app, so never beside
+another launch of it; it uses a temporary profile and export folder,
+removes both afterwards, and leaves the clipboard holding the last thing
+the app copied.
+
+Two things a local run leaves that a runner does not:
+
+- **The screenshots are not redacted.** The record writes your home folder
+  as `~`, but a screenshot of a failed step shows the screen as it was,
+  Settings' folder paths included. On Windows the temporary folder is
+  inside your home, so set `LEGIBLE_ACCEPTANCE_TEMP` to a folder outside
+  it (such as `C:\lc-acceptance`) before a run whose screenshots you mean
+  to share, and look at each before attaching it.
+- **On a Mac, your own logs.** A packaged app writes its logs to
+  `~/Library/Logs/Legible Cities` whatever its profile. The run removes the
+  log files it created, but its lines are appended to a `main.log` or
+  `engine.log` that was already there, and can push one past its 5 MB cap,
+  rotating your existing `main.log` into `main.old.log`; that file is left
+  alone. It brings the app's
+window to the front, takes focus and scrolls the map into view before
+watching it, because Chromium stops the map's animation in a window hidden
+behind others and in a frame scrolled out of sight; if the window still is not
+visible, the record says the trains' movement was not checked rather than
+failing it.
+
+What it cannot do stays a person's, and the record says so step by step
+("not automated"), never counting it as passed:
+
+- **Step 2**: a runner downloads without a quarantine attribute or a mark of
+  the web, so neither Gatekeeper nor SmartScreen warns, and the way past
+  the warning in `install.md` is not exercised. The Mac app is copied from
+  the disk image rather than dragged to Applications; the Windows installer
+  runs silently and so does not open the app.
+- **Judgement**: whether a map, a colour, a theme or a GIF looks right,
+  whether a drag feels right (the spec drags the picker with the mouse and
+  checks it stays open), and whether the Finder or File Explorer came to
+  the front with the file selected (the spec records what the app asked
+  the system to show or open, and checks those files).
+- **Places**: the profile and export folder are temporary, so the folders
+  in `install.md`'s tables are checked only in step 21.
+- **Newer than the release**: a check of something that landed on `main`
+  after the tag under test (the skip past the map in step 8 is newer than
+  `v0.1.0-rc.3`) is written as "not checked, not in this build" with the
+  commit that brought it. The workflow names the tag; a local run names it
+  with `LEGIBLE_ACCEPTANCE_TAG`, or the check runs only if the build has
+  the control.
+- **The stranger's timed run and the screen-reader walkthrough**, which
+  are separate documents and entirely a person's.
+
 ## The steps
 
 ### 1. Download and check the installer
@@ -351,11 +420,15 @@ Result: ____
   makes>`".
 - While the tab is open, the viewer shows the export's tall frame, with the
   parts Instagram covers shaded.
-- A progress line with `plan`, `capture` and `encode`, with the sentences
-  "Planning the export.", "Planned `<file>`: `<n>` frames at `<fps>` frames
-  per second.", "Capturing `<n>` frames.", "Captured `<n>` of `<n>`
-  frames.", "Encoding `<n>` frames." and "Encoded `<n>` of `<n>` frames.",
-  among others, and **Cancel**; the choices above are unavailable while it runs,
+- A progress line with `plan`, `capture` and `encode`, the current stage
+  marked as it moves through them and each ticked when done, and
+  **Cancel**. Beside it the sentence changes as the export goes, among
+  them "Planning the export.", "Planned `<file>`: `<n>` frames at `<fps>`
+  frames per second.", "Capturing `<n>` frames.", "Captured `<n>` of `<n>`
+  frames.", "Encoding `<n>` frames." and "Encoded `<n>` of `<n>` frames.";
+  each is replaced by the next, and a short one can be gone before it can
+  be read, so which of them you catch does not matter. "Captured `<n>` of
+  `<n>` frames." counting up is the one that stays long enough to read; the choices above are unavailable while it runs,
   with "The choices wait until the export that is going has finished: it
   was planned from them."
 - It ends with "Exported la-metro-rail-instagram-reel.mp4." and **Reveal**.

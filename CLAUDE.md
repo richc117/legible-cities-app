@@ -193,6 +193,17 @@ per pull request that touches what an export is made of and five times a
 week
 (`tests/e2e/determinism.spec.ts`, `.github/workflows/determinism.yml`).
 
+The automated acceptance run (A6-04) drives a published Release's own
+installed app through `docs/acceptance.md` on a macOS and a Windows
+runner, dispatched by hand with the tag: the installer checked against
+`SHA256SUMS.txt`, installed, steps 3 to 20 against the real engine, a real
+layout and real exports, then uninstalled; the record is the checklist's
+results template, with whatever a machine cannot judge written as not
+automated, never passed (`tests/acceptance/acceptance.spec.ts`,
+`.github/workflows/acceptance.yml`). It launches the installed app, so
+`npm run test:acceptance` is for a person or a runner, never beside
+another launch.
+
 The accessibility pass's machine half (A6-07) checked every screen and
 dialog for keyboard reach, names, visible focus, reduced motion and
 contrast in both themes, fixed the small defects it found (focus handed on
@@ -268,6 +279,7 @@ npm run build                         # electron-vite build into out/
 npm run test:e2e                      # Playwright launches the built app, with and without the stand-in engine
 npm run dist                          # electron-builder --dir; installers come from build.yml (A0-10)
 npm run dist:check <target>           # are the vendored components for a target present, current and the right architecture
+npm run test:acceptance               # the acceptance checklist over an installed app named by LEGIBLE_ACCEPTANCE_APP (A6-04)
 ```
 
 `.github/workflows/ci.yml` runs lint, typecheck, test, build and the smoke

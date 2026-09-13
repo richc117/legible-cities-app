@@ -1365,6 +1365,17 @@ is published: the maintainer reads the draft and publishes it by hand.
 `docs/install.md` is what a person follows with the assets, and the
 first-run dialog's "How to install" opens it on `main`.
 
+A published Release is accepted by `.github/workflows/acceptance.yml`, on
+request with its tag (A6-04): on `macos-15` and `windows-latest` it
+downloads the Release's installer and `SHA256SUMS.txt` with a read-only
+token and checks the one against the other, installs (the dmg mounted
+read-only and the app copied out; the NSIS installer run silently into
+`%LOCALAPPDATA%\Programs\<package name>`), drives the installed app through
+`docs/acceptance.md`'s steps 3 to 20 with
+`tests/acceptance/acceptance.spec.ts` - a real layout, real exports probed
+with the bundled ffprobe - and uninstalls, recording what is left; the
+record, in the checklist's results template, is the job summary.
+
 The installers also carry a library nothing here builds: Electron's own
 FFmpeg (`libffmpeg.dylib`, `ffmpeg.dll`), Chromium's media decoder, which the
 app never calls, LGPL-2.1-or-later with libopus inside (issue 109, ADR-043).
