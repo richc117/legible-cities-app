@@ -504,14 +504,27 @@ describe('stopping', () => {
     const log: string[] = []
     const sidecar = new Sidecar({
       command: [process.execPath, '-e', script],
-      env: {},
+      // The environment the app gives the engine, not an empty one: Node on
+      // Windows does not start without SystemRoot, and an empty environment
+      // made this stand-in exit at once there, before it had started the
+      // helper at all (120 ms, four log lines, on the Windows runner).
+      env: engineEnvironment({
+        config: { home: tmpdir(), loomBin: null, loomCommit: null, ffmpeg: null },
+        base: process.env,
+        development: true,
+      }),
       pin: PIN,
       log: (m) => log.push(m),
-      bounds: { ...FAST, handshakeMs: 30_000 },
+      // Generous, because a stand-in that has not left by `shutdownMs` is
+      // ended as a tree - `taskkill /T /F` on Windows, the process group on
+      // POSIX - and the helper holding the pipe would go with it. Two Node
+      // starts on a slow runner can take longer than the fast bound.
+      bounds: { ...FAST, handshakeMs: 30_000, shutdownMs: 15_000 },
     })
     sidecar.start()
     // The handshake written at start is what makes it leave.
     await sidecar.stop()
-    expect(log).toContain('stderr: the last line')
+    expect(log, log.join('\n')).toContain('stderr: the last line')
+    expect(log, 'it left on its own, not as a killed tree').toContain('ended on request (quit)')
   }, 20_000)
 })
