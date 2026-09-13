@@ -2,7 +2,8 @@
 
 `src/main/sidecar.ts`, class `Sidecar`. Constructed with the command, the
 environment, the pin, the bounds and a log; started once; exposes `state`,
-`request`, `cancel`, `onState`, `onNotification`, `stop`.
+`request`, `cancel`, `inFlight`, `abandoned`, `onState`, `onNotification`,
+`stop`.
 
 ## The command
 
@@ -30,8 +31,8 @@ Every transition is logged with the reason.
 
 ## Requests
 
-- `request(method, params)` when not `ready` rejects at once with `-32001`
-  carrying the state's sentence; nothing is sent.
+- `request(method, params, options?)` when not `ready` rejects at once with
+  `-32001` carrying the state's sentence; nothing is sent.
 - Otherwise the client sends the request with the next numeric id and
   returns `{ id, result }`; `result` settles with the engine's response.
 - Every request has a bound: the handshake 10 s (fixed); every other request
@@ -39,15 +40,37 @@ Every transition is logged with the reason.
   by each `job/progress` or `job/log` for its id. On expiry the supervisor
   sends `$/cancelRequest`, and the request settles with `-32003` even if the
   engine then answers (its answer is logged and dropped).
+- `options.deadlineMs` (`RequestOptions`, added by issue 107) gives a request
+  a deadline of its own, measured from the send and extended by nothing: not
+  by progress, and not by a cancel. A value that is not a finite, positive
+  number of milliseconds a timer can hold (2 147 483 647 at most) throws a
+  `RangeError` and nothing is sent; the engine bridge answers the page with
+  a `-32600` bad call and frees its token. On expiry the supervisor sends
+  `$/cancelRequest` unless `cancel(id)` already sent one, and the request
+  settles with `-32003` (kind `inactive`, "No answer within N seconds; the
+  engine was asked to cancel the request."). Only `feeds.remove` is given
+  one (30 s, `FEEDS_REMOVE_DEADLINE_MS` in `src/main/feeds-ipc.ts`).
+- A request a bound ended stays counted by `inFlight`, and by `abandoned`,
+  until its late answer arrives (the client reports the dropped response's
+  id) or its process has exited - not when the process begins to be ended,
+  which can take the shutdown bounds - because the engine may still be
+  doing its work. A timeout is not a failure and restarts nothing, so an
+  engine that never answers keeps `abandoned` above zero until a quit. The
+  reset of the engine's data refuses while `inFlight` is above zero, and
+  while `abandoned` is, says "The engine has not finished a request it
+  stopped answering. If it does not, quit and reopen Legible Cities."
+  (`engineWorkRefusal`).
 - `cancel(id)` sends `$/cancelRequest` for an id in flight; the request
-  settles with whatever the engine answers (its `-32800`).
+  settles with whatever the engine answers (its `-32800`), or with its
+  deadline, whichever comes first.
 - Notifications with a known id go to `onNotification` listeners; unknown
   ids are logged and dropped.
 
 ## Shutdown (`stop()`)
 
 1. Set the state to `stopped('quitting')`; reject every request in flight
-   with `-32002`; cancel their timers.
+   with `-32002`; cancel their timers, deadlines included. The requests a
+   bound ended are forgotten when the process has exited.
 2. Send `engine.shutdown`; wait up to 3 s for the process to exit.
 3. If still running: terminate (SIGTERM to the group on POSIX; `taskkill /PID
    <pid> /T /F` on Windows, which is already forceful); wait up to 3 s.

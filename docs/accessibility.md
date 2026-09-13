@@ -213,8 +213,8 @@ was thrown to the top of the document with nothing said.
   (`remove_delay_ms`): the refused presses and Escape with one
   `feeds.remove` sent and the unavailable look read from the kit's host and
   inner button, and a dialog closed by two Escapes mid-removal letting the
-  next one open idle and stay open. A stalled request holding the dialog is
-  a finding for filing, below.
+  next one open idle and stay open. A stalled request holding the dialog
+  was a finding, F4 below, closed by issue 107.
 
 The rest:
 
@@ -304,12 +304,33 @@ or a design decision.
   person's.
 
 - **F4. A stalled engine request holds a destructive confirmation.**
-  *Screen:* the Library's feed removal (and any confirmation whose action
-  waits on the engine). *Steps:* remove a feed while the engine is stalled.
-  *What a person meets:* a dialog that says the removal is running and
-  cannot be stopped, with both buttons unavailable, for as long as the
-  sidecar's 600 s inactivity bound; `feeds.remove` has no request deadline
-  of its own. Two presses of Escape close it, and nothing else does.
+  *Closed by issue 107.* *Screen:* the Library's feed removal. *Steps:*
+  remove a feed while the engine is stalled. *What a person met:* a dialog
+  that said the removal was running and could not be stopped, with both
+  buttons unavailable, for as long as the sidecar's 600 s inactivity bound;
+  `feeds.remove` had no request deadline of its own. *Now:* `feeds.remove`
+  is sent with a deadline of 30 seconds (`FEEDS_REMOVE_DEADLINE_MS` in
+  `src/main/feeds-ipc.ts`). At the deadline the dialog is released: it
+  stays open, its buttons take presses again, and the alert says "The
+  engine did not answer in time, so the feed may or may not have been
+  removed. The list of feeds is read again to show what the engine has
+  now." The pinned engine (v0.8.3) does not stop for that: it runs
+  `feeds.remove` on the one thread that reads requests, so it finishes the
+  removal regardless, reads the app's `$/cancelRequest` only afterwards and
+  ignores it, and answers nothing else meanwhile. The list the app asks for
+  at the deadline is therefore answered once the removal is done and shows
+  it done; closing the dialog reads the list once more. Until the engine
+  answers, the list is left as it was, and a read that fails leaves it
+  too. While the engine is still in the removal the app counts it as
+  running, so "Reset engine data" refuses, and says "The engine has not
+  finished a request it stopped answering. If it does not, quit and reopen
+  Legible Cities.", because an engine that never answers is not restarted
+  for it and only a quit ends it (`src/main/sidecar.ts`, `Library.tsx`). No other confirmation waits on the engine: deleting a
+  project and resetting the engine's data are the main process's own file
+  work. Asserted in `tests/unit/sidecar.test.ts` and end to end in
+  `tests/e2e/feeds.spec.ts`, against a stand-in that blocks its reader for
+  the removal (`remove_blocks_ms`) beyond a deadline shortened through the
+  development-only `LEGIBLE_FEEDS_REMOVE_DEADLINE_MS`.
 
 - **F5. A kit button's `aria-describedby` described nothing. Fixed
   (issue 113).** *Screen:* Settings (the Licences buttons when unavailable,

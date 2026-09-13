@@ -164,6 +164,36 @@ export function registryGuard(picked: PickedPaths, inUse: FeedsInUse): Guard {
   }
 }
 
+/**
+ * How long a feed's removal may take before the app stops waiting (issue
+ * 107). Removing a feed is its registry entry, its zip and its layouts:
+ * seconds of file work, with no download and no layout tool. A person waits
+ * on it inside a confirmation that takes nothing while it runs, so an engine
+ * that stalls must end in a sentence, not in the inactivity bound's ten
+ * minutes.
+ *
+ * Only this request has one. Deleting a project and resetting the engine's
+ * data are the main process's own file work and never wait on the engine;
+ * a layout run, a rebuild, an add from an address and an export report
+ * progress, which keeps the inactivity bound honest for them, and their
+ * length depends on the feed, so no single figure would suit them.
+ */
+export const FEEDS_REMOVE_DEADLINE_MS = 30_000
+
+/**
+ * The deadline a registry request is sent with, in milliseconds, or
+ * undefined for none. `override` is the development-only
+ * `LEGIBLE_FEEDS_REMOVE_DEADLINE_MS`, already refused in a packaged app
+ * (`feedsRemoveDeadlineOverride` in `./config`).
+ */
+export function registryDeadline(
+  method: string,
+  override: number | null = null,
+): number | undefined {
+  if (method === 'feeds.remove') return override ?? FEEDS_REMOVE_DEADLINE_MS
+  return undefined
+}
+
 export function registerFeedsHandlers(
   ipcMain: IpcMain,
   openZip: OpenZipDialog,

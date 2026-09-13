@@ -8,7 +8,9 @@ import {
   PickedPaths,
   isLocalHost,
   refuseUrl,
+  FEEDS_REMOVE_DEADLINE_MS,
   registerFeedsHandlers,
+  registryDeadline,
   registryGuard,
   type FeedsInUse,
 } from '../../src/main/feeds-ipc'
@@ -157,5 +159,17 @@ describe('the registry guard', () => {
     expect(await guard('graph.build', { key: 'x' })).toBeNull()
     expect(await guard('feeds.list', undefined)).toBeNull()
     expect(await guard('feeds.inspect', { key: 'x' })).toBeNull()
+  })
+})
+
+describe('registryDeadline (issue 107)', () => {
+  it('gives a removal thirty seconds, or the development override, and nothing else a deadline', () => {
+    expect(FEEDS_REMOVE_DEADLINE_MS).toBe(30_000)
+    expect(registryDeadline('feeds.remove')).toBe(30_000)
+    expect(registryDeadline('feeds.remove', 1_000)).toBe(1_000)
+    for (const method of ['feeds.add', 'feeds.list', 'graph.build', 'map.build', 'export.encode']) {
+      expect(registryDeadline(method), method).toBeUndefined()
+      expect(registryDeadline(method, 1_000), method).toBeUndefined()
+    }
   })
 })

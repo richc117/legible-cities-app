@@ -167,7 +167,26 @@ The handshake is `engine.info`, bounded at 10 s: the version and the
 protocol must equal the pin, or the page's own dialog names both and the
 state is *mismatched* for the rest of the run. Every other request has an
 inactivity bound (10 min without a `job/progress` or `job/log` line for it),
-after which the app cancels it and says so. An exit nobody asked for
+after which the app cancels it and says so. A request may also be sent with
+a deadline of its own (`request(method, params, { deadlineMs })`), which
+neither progress nor a cancel extends: past it the app sends
+`$/cancelRequest`, unless a cancel already did, and ends the request with
+the same `inactive` error; an answer that comes later is dropped. Ending a
+request is not ending the engine's work, so a request either bound ended
+is still counted as in flight until its late answer arrives or that
+engine's process has exited (not merely begun to be ended), and the reset
+of the engine's data refuses meanwhile. A request that times out is not a
+failure, so nothing restarts an engine that never answers it; the reset's
+refusal then says so and that quitting and reopening the app is the way
+out. The deadline is
+cleared by the answer, and with every request when the engine exits or the
+app quits. Only `feeds.remove` has one, 30 s, because a person waits on it
+inside a confirmation that takes nothing while it runs and its work is
+seconds of files (issue 107); a layout, a rebuild, an add from an address
+and an export report progress and last as long as their feed makes them.
+The pinned engine runs `feeds.remove` on its one reader thread rather than
+as a job, which is why a stalled removal blocks every other request until
+it returns, cancels included. An exit nobody asked for
 rejects the requests in flight, restarts the engine after 1, 2 and 4 s, and
 gives up after three consecutive failures; the count starts afresh once
 the engine has answered a request or been ready for 30 s. On quit the app
@@ -408,6 +427,13 @@ following it. The end-to-end suite sets it for every launch from
 `tests/e2e/global-setup.ts`, to a temporary folder `global-teardown.ts`
 removes, because most launches keep the default profile and would
 otherwise write and rotate a person's own log.
+
+`LEGIBLE_FEEDS_REMOVE_DEADLINE_MS` replaces a feed removal's 30 s deadline
+with a whole number of milliseconds, so the end-to-end suite can watch a
+stalled removal end without waiting half a minute. Development only and
+read from the environment alone; a packaged app ignores it
+(`feedsRemoveDeadlineOverride` in `src/main/config.ts`), and the startup
+log says when it is set.
 
 ## The log files
 
@@ -783,7 +809,12 @@ the engine sees it. And a `feeds.remove` of a feed any project still
 names is refused, naming how many, because the engine would take the
 zip and the layouts those projects draw from. Both refusals are answered
 as bad calls with a sentence, from a guard every engine request passes
-(`src/main/feeds-ipc.ts`, `specs/014-feeds/contracts/bridge.md`).
+(`src/main/feeds-ipc.ts`, `specs/014-feeds/contracts/bridge.md`). A removal
+the engine does not answer within its deadline releases the confirmation
+with a sentence that says the feed may or may not have gone (issue 107).
+The engine finishes the removal regardless, and the list reflects it once
+the engine answers: the read the app sends at the deadline waits behind
+the removal, and closing the confirmation reads the list once more.
 
 The create dialog offers the listed feeds as a native select, and falls
 back to a typed key when the engine cannot be asked, so a project can

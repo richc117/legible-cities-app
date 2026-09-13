@@ -11,7 +11,7 @@ import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { CHANNELS, type EngineAccepted, type EngineSettled } from '../shared/api'
 import type { EngineState, JobLog, JobProgress } from '../shared/engine'
 import { badCall, isObject, TOKEN, toShape } from './ipc-shape'
-import type { Notification } from './sidecar'
+import type { Notification, RequestOptions } from './sidecar'
 
 /** What the handlers need from the supervisor; a test hands in a fake. */
 export interface EngineSource {
@@ -19,6 +19,7 @@ export interface EngineSource {
   request(
     method: string,
     params?: Record<string, unknown>,
+    options?: RequestOptions,
   ): { id: number; result: Promise<unknown> }
   cancel(id: number): void
   onState(listener: (state: EngineState) => void): () => void
@@ -33,6 +34,9 @@ export type Guard = (
   params: Record<string, unknown> | undefined,
 ) => Promise<string | null>
 
+/** The deadline a request is sent with, in milliseconds, or undefined for the inactivity bound alone. */
+export type Deadline = (method: string) => number | undefined
+
 const LEVELS = new Set(['debug', 'info', 'warning', 'error'])
 
 export function registerEngineHandlers(
@@ -42,6 +46,7 @@ export function registerEngineHandlers(
   send: Send,
   log: (message: string) => void,
   guard: Guard = async () => null,
+  deadline: Deadline = () => undefined,
 ): () => void {
   const idOf = new Map<string, number>()
   const tokenOf = new Map<number, string>()
@@ -72,7 +77,24 @@ export function registerEngineHandlers(
       idOf.delete(token)
       return badCall(refused)
     }
-    const { id, result } = engine.request(method, params as Record<string, unknown> | undefined)
+    const deadlineMs = deadline(method)
+    let sent: { id: number; result: Promise<unknown> }
+    try {
+      sent = engine.request(
+        method,
+        params as Record<string, unknown> | undefined,
+        deadlineMs === undefined ? undefined : { deadlineMs },
+      )
+    } catch (error) {
+      // The supervisor refuses what it was handed before sending anything
+      // (a deadline no timer can hold): the token is freed and the page is
+      // answered in the bridge's own shape, not with a thrown message.
+      idOf.delete(token)
+      const what = error instanceof Error ? error.message : String(error)
+      log(`refused ${method} before sending it: ${what}`)
+      return badCall(`the request could not be sent: ${what}`)
+    }
+    const { id, result } = sent
     if (id !== 0) {
       idOf.set(token, id)
       tokenOf.set(id, token)

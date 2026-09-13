@@ -3,12 +3,12 @@
 // the bounds, restart, backoff, shutdown. Needs a Python 3 on the PATH to
 // run the stand-in; skips, saying so, without one.
 
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { engineEnvironment } from '../../src/main/interpreter'
-import { Sidecar, type Bounds } from '../../src/main/sidecar'
+import { engineWorkRefusal, Sidecar, type Bounds } from '../../src/main/sidecar'
 import {
   describeState,
   ERROR_CODES,
@@ -121,6 +121,15 @@ async function eventually(predicate: () => boolean, ms: number, what: string): P
     if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`)
     await sleep(25)
   }
+}
+
+/** A feed a person added, in the stand-in's registry, so a removal of it succeeds. */
+function userFeed(home: string, key: string): void {
+  mkdirSync(join(home, 'data', 'feeds'), { recursive: true })
+  writeFileSync(
+    join(home, 'data', 'feeds', 'user-feeds.json'),
+    JSON.stringify([{ key, name: key, source: 'user' }]),
+  )
 }
 
 afterEach(async () => {
@@ -319,6 +328,200 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
     expect(h.sidecar.state.state).toBe('ready')
   })
 
+  // A request's own deadline (issue 107), on feeds.remove. With
+  // remove_delay_ms the stand-in answers on a thread after the delay and
+  // never stops for a cancel; with remove_blocks_ms it blocks its reader,
+  // as the pinned engine does. The inactivity bound is set well beyond each
+  // deadline so only the deadline can be what ends a request here.
+  const LONG_INACTIVITY: Partial<Bounds> = { inactivityMs: 10_000 }
+  const cancelsFor = (h: Harness, id: number): number =>
+    h
+      .received()
+      .filter((m) => m.method === '$/cancelRequest' && (m.params as { id: number }).id === id)
+      .length
+
+  it('answers a request within its deadline, and leaves no deadline armed', async () => {
+    const h = harness({ remove_delay_ms: 100 }, LONG_INACTIVITY)
+    userFeed(h.home, 'mine')
+    h.sidecar.start()
+    await h.until(ready)
+    const { result } = h.sidecar.request('feeds.remove', { key: 'mine' }, { deadlineMs: 5_000 })
+    expect(h.sidecar.deadlinesArmed).toBe(1)
+    await expect(result).resolves.toEqual({ ok: true })
+    expect(h.sidecar.deadlinesArmed).toBe(0)
+    expect(h.sidecar.inFlight).toBe(0)
+    expect(h.received().some((m) => m.method === '$/cancelRequest')).toBe(false)
+  })
+
+  it('ends a request past its deadline: cancelled once, the inactive error, the late answer dropped', async () => {
+    const h = harness({ remove_delay_ms: 1_000 }, LONG_INACTIVITY)
+    userFeed(h.home, 'mine')
+    h.sidecar.start()
+    await h.until(ready)
+    const started = Date.now()
+    const { id, result } = h.sidecar.request('feeds.remove', { key: 'mine' }, { deadlineMs: 200 })
+    const error = (await result.catch((e: EngineError) => e)) as EngineError
+    expect(Date.now() - started, 'ended by the deadline, not by the answer').toBeLessThan(1_000)
+    expect(error.code).toBe(ERROR_CODES.inactive)
+    const sentence = 'No answer within 200 ms; the engine was asked to cancel the request.'
+    expect(error.data).toEqual({ kind: 'inactive', detail: sentence, hint: sentence })
+    expect(h.sidecar.deadlinesArmed).toBe(0)
+    // The engine finishes the work anyway and answers; the answer is for an
+    // id the client no longer holds.
+    await eventually(
+      () => h.log.some((l) => l === `dropped a response for an unknown request id ${id}`),
+      5_000,
+      'the late answer to be dropped',
+    )
+    await eventually(() => cancelsFor(h, id) === 1, 5_000, 'the cancel to be read')
+    expect(h.sidecar.state.state).toBe('ready')
+    expect(h.log.some((l) => l.includes(`request ${id} (feeds.remove): No answer within`))).toBe(
+      true,
+    )
+  })
+
+  it('counts a request past its deadline as in flight until the engine answers it', async () => {
+    const h = harness({ remove_delay_ms: 1_000 }, LONG_INACTIVITY)
+    userFeed(h.home, 'mine')
+    h.sidecar.start()
+    await h.until(ready)
+    const { id, result } = h.sidecar.request('feeds.remove', { key: 'mine' }, { deadlineMs: 200 })
+    await expect(result).rejects.toMatchObject({ code: ERROR_CODES.inactive })
+    // Settled for the page, still the engine's work: a reset must wait.
+    expect(h.sidecar.inFlight).toBe(1)
+    expect(h.sidecar.abandoned).toBe(1)
+    await eventually(() => h.sidecar.inFlight === 0, 5_000, 'the late answer to release the id')
+    expect(h.sidecar.abandoned).toBe(0)
+    expect(h.log).toContain(`request ${id}: the engine answered after the app stopped waiting`)
+    // And the answer, when it came, was the removal done.
+    expect(
+      JSON.parse(readFileSync(join(h.home, 'data', 'feeds', 'user-feeds.json'), 'utf8')),
+    ).toEqual([])
+  })
+
+  it('says a deadline in whole seconds as seconds', async () => {
+    const h = harness({ remove_delay_ms: 3_000 }, LONG_INACTIVITY)
+    h.sidecar.start()
+    await h.until(ready)
+    const error = (await h.sidecar
+      .request('feeds.remove', { key: 'x' }, { deadlineMs: 1_000 })
+      .result.catch((e: EngineError) => e)) as EngineError
+    expect(error.data?.hint).toBe(
+      'No answer within 1 second; the engine was asked to cancel the request.',
+    )
+  })
+
+  it('refuses a deadline that is not a positive, finite number of milliseconds a timer holds', async () => {
+    const h = harness({}, LONG_INACTIVITY)
+    h.sidecar.start()
+    await h.until(ready)
+    for (const deadlineMs of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, 2 ** 31]) {
+      expect(
+        () => h.sidecar.request('feeds.list', undefined, { deadlineMs }),
+        String(deadlineMs),
+      ).toThrow(RangeError)
+    }
+    expect(h.sidecar.inFlight).toBe(0)
+    expect(h.received().filter((m) => m.method === 'feeds.list')).toEqual([])
+  })
+
+  it('keeps a deadline through a cancel the engine does not honour, and asks it to cancel once', async () => {
+    const h = harness({ remove_delay_ms: 1_000 }, LONG_INACTIVITY)
+    userFeed(h.home, 'mine')
+    h.sidecar.start()
+    await h.until(ready)
+    const started = Date.now()
+    const { id, result } = h.sidecar.request('feeds.remove', { key: 'mine' }, { deadlineMs: 200 })
+    h.sidecar.cancel(id)
+    expect(h.sidecar.deadlinesArmed).toBe(1)
+    // The stand-in does not stop a removal for a cancel; the deadline ends
+    // the request all the same, without sending a second cancel.
+    await expect(result).rejects.toMatchObject({ code: ERROR_CODES.inactive })
+    expect(Date.now() - started).toBeLessThan(1_000)
+    await eventually(() => h.sidecar.inFlight === 0, 5_000, 'the late answer')
+    expect(cancelsFor(h, id)).toBe(1)
+  })
+
+  it('against an engine that blocks on the removal, the deadline still ends it and the rest waits', async () => {
+    const h = harness({ remove_blocks_ms: 1_200 }, LONG_INACTIVITY)
+    userFeed(h.home, 'mine')
+    h.sidecar.start()
+    await h.until(ready)
+    const started = Date.now()
+    const removal = h.sidecar.request('feeds.remove', { key: 'mine' }, { deadlineMs: 200 })
+    const list = h.sidecar.request('feeds.list')
+    await expect(removal.result).rejects.toMatchObject({ code: ERROR_CODES.inactive })
+    expect(Date.now() - started, 'the deadline, not the engine').toBeLessThan(1_200)
+    // Nothing else is read while the engine is in the removal: the list
+    // waits for it, and shows the removal done when it comes.
+    const listed = (await list.result) as { feeds: { key: string }[] }
+    expect(Date.now() - started).toBeGreaterThanOrEqual(1_200)
+    expect(listed.feeds.map((f) => f.key)).not.toContain('mine')
+    await eventually(() => h.sidecar.inFlight === 0, 5_000, 'the late answer')
+    // The cancel was sent after the list, so it is read after the list too.
+    await eventually(() => cancelsFor(h, removal.id) === 1, 5_000, 'the cancel to be read')
+  })
+
+  it('clears every deadline and forgets expired requests when the engine exits and restarts', async () => {
+    const h = harness({ remove_delay_ms: 5_000 }, LONG_INACTIVITY)
+    h.sidecar.start()
+    await h.until(ready)
+    const first = h.pid()
+    const expired = h.sidecar.request('feeds.remove', { key: 'x' }, { deadlineMs: 100 })
+    await expect(expired.result).rejects.toMatchObject({ code: ERROR_CODES.inactive })
+    expect(h.sidecar.inFlight).toBe(1)
+    const { result } = h.sidecar.request('feeds.remove', { key: 'y' }, { deadlineMs: 400 })
+    expect(h.sidecar.deadlinesArmed).toBe(1)
+    process.kill(first, 'SIGKILL')
+    await expect(result).rejects.toMatchObject({ code: ERROR_CODES.engineExited })
+    expect(h.sidecar.deadlinesArmed).toBe(0)
+    expect(h.sidecar.inFlight).toBe(0)
+    await h.until((s) => s.state === 'restarting')
+    await h.until(ready)
+    await sleep(600)
+    expect(h.log.filter((l) => l.includes('No answer within'))).toHaveLength(1)
+    expect(h.sidecar.deadlinesArmed).toBe(0)
+    expect(h.sidecar.inFlight).toBe(0)
+  })
+
+  it('counts a request past its deadline until the process has exited, not while it is being ended', async () => {
+    // Ignores engine.shutdown, so ending it takes the whole shutdown bound.
+    const h = harness(
+      { remove_delay_ms: 10_000, ignore_shutdown: true },
+      { ...LONG_INACTIVITY, shutdownMs: 1_500, terminateMs: 3_000 },
+    )
+    h.sidecar.start()
+    await h.until(ready)
+    const pid = h.pid()
+    const expired = h.sidecar.request('feeds.remove', { key: 'x' }, { deadlineMs: 100 })
+    await expect(expired.result).rejects.toMatchObject({ code: ERROR_CODES.inactive })
+    const stopping = h.sidecar.stop()
+    await sleep(300)
+    expect(alive(pid), 'still being ended').toBe(true)
+    expect(h.sidecar.abandoned).toBe(1)
+    expect(h.sidecar.inFlight).toBe(1)
+    await stopping
+    expect(alive(pid)).toBe(false)
+    expect(h.sidecar.abandoned).toBe(0)
+    expect(h.sidecar.inFlight).toBe(0)
+  })
+
+  it('leaves no deadline armed and nothing counted after a stop', async () => {
+    const h = harness({ remove_delay_ms: 5_000 }, LONG_INACTIVITY)
+    h.sidecar.start()
+    await h.until(ready)
+    const expired = h.sidecar.request('feeds.remove', { key: 'x' }, { deadlineMs: 100 })
+    await expect(expired.result).rejects.toMatchObject({ code: ERROR_CODES.inactive })
+    const { result } = h.sidecar.request('feeds.remove', { key: 'y' }, { deadlineMs: 60_000 })
+    const settled = result.catch((e: EngineError) => e)
+    expect(h.sidecar.deadlinesArmed).toBe(1)
+    expect(h.sidecar.inFlight).toBe(2)
+    await h.sidecar.stop()
+    expect(h.sidecar.deadlinesArmed).toBe(0)
+    expect(h.sidecar.inFlight).toBe(0)
+    expect(((await settled) as EngineError).code).toBe(ERROR_CODES.engineExited)
+  })
+
   it('restarts after an exit nobody asked for, rejecting what was in flight', async () => {
     const h = harness({ silent: true }, { inactivityMs: 5_000 })
     h.sidecar.start()
@@ -458,6 +661,25 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
     await sleep(700)
     expect(h.states.filter((s) => s.state === 'starting')).toHaveLength(1)
     expect(h.sidecar.state.state).toBe('stopped')
+  })
+})
+
+describe('engineWorkRefusal (issue 107)', () => {
+  it('lets a reset through when the engine has nothing to do', () => {
+    expect(engineWorkRefusal({ inFlight: 0, abandoned: 0 })).toBeNull()
+  })
+
+  it('asks to wait for a request the engine is answering', () => {
+    expect(engineWorkRefusal({ inFlight: 2, abandoned: 0 })).toBe(
+      'The engine is answering a request; wait for it to finish.',
+    )
+  })
+
+  it('names the way out for a request the engine stopped answering, which may never end', () => {
+    const said =
+      'The engine has not finished a request it stopped answering. If it does not, quit and reopen Legible Cities.'
+    expect(engineWorkRefusal({ inFlight: 1, abandoned: 1 })).toBe(said)
+    expect(engineWorkRefusal({ inFlight: 3, abandoned: 1 })).toBe(said)
   })
 })
 

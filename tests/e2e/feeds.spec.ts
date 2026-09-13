@@ -1,10 +1,10 @@
 // The Library's feeds, against the stand-in engine: the list, a project
 // from a feed, an add from a file and from a URL, a refused zip, a
-// cancelled add, a remove, a refused remove, and the empty state's two
-// steps. The stand-in keeps what was added in the home, as the engine
+// cancelled add, a remove, a refused remove, a remove the engine does not
+// answer in time, and the empty state's two steps. The stand-in keeps what was added in the home, as the engine
 // does, so a relaunch sees it.
 
-import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import {
@@ -33,6 +33,7 @@ function home(control: Record<string, unknown> = {}): string {
 async function withApp(
   engineHome: string,
   run: (page: Page, app: ElectronApplication) => Promise<void>,
+  env: Record<string, string> = {},
 ): Promise<void> {
   const app = await electron.launch({
     args: ['.'],
@@ -42,6 +43,7 @@ async function withApp(
       SCHEMATIC_HOME: engineHome,
       LEGIBLE_ENGINE_PYTHON: PYTHON as string,
       PYTHONPATH: FAKE_ENGINE,
+      ...env,
     } as Record<string, string>,
     timeout: 30_000,
   })
@@ -335,6 +337,109 @@ test('removes an added feed behind a confirmation, and refuses one a project use
       readdirSync(join(engineHome, 'data', 'feeds')).filter((f) => f.endsWith('.zip')),
     ).toEqual([])
   })
+})
+
+/** A feed a person added, written into the stand-in's registry before the app starts. */
+function addedFeed(engineHome: string, key: string, name: string): void {
+  const folder = join(engineHome, 'data', 'feeds')
+  mkdirSync(folder, { recursive: true })
+  writeFileSync(
+    join(folder, 'user-feeds.json'),
+    JSON.stringify([
+      {
+        key,
+        name,
+        city: '',
+        network: '',
+        url: null,
+        mode: 'all',
+        label_pattern: null,
+        label_strip: null,
+        agency: null,
+        geographic: true,
+        notes: [],
+        source: 'user',
+      },
+    ]),
+  )
+}
+
+/** The keys in the stand-in's registry of added feeds, as it has them on disk now. */
+function addedKeys(engineHome: string): string[] {
+  const records = JSON.parse(
+    readFileSync(join(engineHome, 'data', 'feeds', 'user-feeds.json'), 'utf8'),
+  ) as { key: string }[]
+  return records.map((r) => r.key)
+}
+
+/** How many requests of one method the stand-in has read. */
+function received(engineHome: string, method: string): number {
+  return readFileSync(join(engineHome, 'fake-engine.received'), 'utf8')
+    .split('\n')
+    .filter((line) => line.includes(`"${method}"`)).length
+}
+
+test('a removal the engine does not answer in time ends with a sentence, and the list shows the truth once it does', async () => {
+  test.setTimeout(120_000)
+  // The stand-in blocks on the removal for eight seconds before doing it,
+  // reading nothing else meanwhile, as the pinned engine runs feeds.remove
+  // on its one reader thread; the app stops waiting after one (issue 107).
+  const engineHome = home({ remove_blocks_ms: 8_000 })
+  addedFeed(engineHome, 'metro-de-prueba', 'Metro de Prueba')
+  const userData = mkdtempSync(join(tmpdir(), 'legible-cities-feeds-profile-'))
+  await withApp(
+    engineHome,
+    async (page) => {
+      await feedRow(page, 'Metro de Prueba')
+        .getByRole('button', { name: 'Remove Metro de Prueba' })
+        .click()
+      const confirm = page.getByRole('dialog', { name: 'Remove Metro de Prueba?' })
+      const remove = confirm.getByRole('button', { name: 'Remove' })
+      const cancel = confirm.getByRole('button', { name: 'Cancel' })
+      const listsBefore = received(engineHome, 'feeds.list')
+      await remove.click()
+      await expect(remove).toHaveAttribute('aria-disabled', 'true')
+
+      // The deadline releases the dialog: the sentence, and the buttons
+      // taking presses again, while the engine is still in the removal.
+      await expect(confirm.getByRole('alert')).toHaveText(
+        'The engine did not answer in time, so the feed may or may not have been removed. The list of feeds is read again to show what the engine has now.',
+        { timeout: 6_000 },
+      )
+      expect(addedKeys(engineHome), 'the engine has not done the removal yet').toEqual([
+        'metro-de-prueba',
+      ])
+      await expect(confirm, 'the dialog stays open with its sentence').toBeVisible()
+      await expect(remove).not.toHaveAttribute('aria-disabled', 'true')
+      await expect(cancel).not.toHaveAttribute('aria-disabled', 'true')
+      // The busy line is gone. Located by attribute: an empty status line has
+      // no size, and `getByRole` passes over an element with none.
+      await expect(confirm.locator('[role="status"]')).toHaveText('')
+
+      // The list is unchanged while the engine is in the removal: the read
+      // the app sent waits behind it.
+      await expect(feedRow(page, 'Metro de Prueba')).toHaveCount(1)
+
+      // The engine finishes the removal regardless. The read queued behind
+      // it lands, and closing the dialog reads the list once more; either
+      // way the feed has gone from it.
+      await expect.poll(() => addedKeys(engineHome), { timeout: 20_000 }).toEqual([])
+      await expect
+        .poll(() => received(engineHome, 'feeds.list'), { timeout: 10_000 })
+        .toBeGreaterThan(listsBefore)
+      await cancel.click()
+      await expect(confirm).toBeHidden()
+      await expect(feedRow(page, 'Metro de Prueba')).toHaveCount(0, { timeout: 10_000 })
+      await expect(page.getByRole('list', { name: 'Added' })).toHaveCount(0)
+      // The row whose Remove opened the dialog went with the feed.
+      await expect(page.getByRole('heading', { name: 'Feeds' })).toBeFocused()
+      // The engine read the app's cancel only after the removal, and it
+      // changed nothing; read on a poll, since a slow runner records late.
+      await expect.poll(() => received(engineHome, '$/cancelRequest')).toBe(1)
+      expect(received(engineHome, 'feeds.remove'), 'one removal was sent').toBe(1)
+    },
+    { LEGIBLE_USER_DATA: userData, LEGIBLE_FEEDS_REMOVE_DEADLINE_MS: '1000' },
+  )
 })
 
 test('without an engine the create dialog takes a typed key, as before', async () => {

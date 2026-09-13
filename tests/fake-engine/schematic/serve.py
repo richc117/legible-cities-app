@@ -33,7 +33,12 @@ writes before the app starts (every key optional):
     presets_cached    keys of the two stand-in presets whose zip is "on disk" (default both)
     add_delay_ms      wait between the download's ten progress reports for a URL (default 20)
     add_refuses       a sentence: feeds.add from a URL refuses with it, kind feed
-    remove_delay_ms   wait before feeds.remove answers, on a thread of its own (default 0)
+    remove_delay_ms   wait before feeds.remove answers, on a thread of its own (default 0), so
+                      other requests are read and answered meanwhile
+    remove_blocks_ms  wait before feeds.remove does its work, on the reader itself, as the
+                      engine (v0.8.3) runs feeds.remove on its one reader thread: nothing else
+                      is read, answered or recorded until it has answered, and a cancel read
+                      afterwards changes nothing (default 0)
     inspect_refuses   a sentence: feeds.inspect refuses with it, kind feed
     stage_refuses     a sentence: render.stage refuses with it, kind engine
     empty_modes       modes graph.build keeps no routes for: after gtfs2graph it refuses with
@@ -343,7 +348,10 @@ class Engine:
             return True
         if method == "feeds.remove":
             key = (message.get("params") or {}).get("key")
-            if self.control.get("remove_delay_ms"):
+            if self.control.get("remove_blocks_ms"):
+                time.sleep(self.control["remove_blocks_ms"] / 1000)
+                self.replying(msg_id, self.remove_feed, msg_id, key)
+            elif self.control.get("remove_delay_ms"):
                 threading.Thread(target=self.replying,
                                  args=(msg_id, self.remove_feed, msg_id, key),
                                  daemon=True).start()
