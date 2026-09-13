@@ -148,10 +148,10 @@ same time.
 
 `gitleaks` and `pre-commit` are development tools, not dependencies; install
 them from a package manager. Everything they enforce is enforced again in
-CI, so a machine without them can still contribute. So is the language
-server the `typescript-lsp` plugin reads diagnostics from
-(`npm install -g typescript-language-server typescript`); without it the
-plugin does nothing.
+CI, so a machine without them can still contribute. The language server
+the `typescript-lsp` plugin reads diagnostics from is a development tool
+too (`npm install -g typescript-language-server typescript`); without it
+the plugin does nothing and nothing breaks.
 
 The `gitleaks` pre-commit hook reads only the **staged** changes, which is
 the right scope at commit time and the wrong one for an audit:

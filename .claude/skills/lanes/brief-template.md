@@ -76,7 +76,9 @@ Never run anything that launches Electron: `npm run test:e2e`, `dev`,
 
 ## Commits
 
-Imperative subject under 72 characters; the body says why. End with
+Commit as `cd <absolute path> && git commit`, never `git -C`, which the
+repository's command guard does not see. Imperative subject under 72
+characters; the body says why. End with
 `Co-Authored-By: <the model> <noreply@anthropic.com>` and nothing else: no
 session trailer, no link to a tool session, no closing keyword. Never
 `--no-verify`; if a hook refuses, fix the cause or stop and report it.
@@ -84,15 +86,18 @@ session trailer, no link to a tool session, no closing keyword. Never
 ## The ten hazards
 
 1. The e2e lock: never run `test:e2e`, `dev`, `start` or `dist`; a second
-   Electron exits at once and breaks the other lane's run.
+   Electron exits at once and breaks the other lane's run. (Nothing
+   enforces this: `settings.json` allows `test:e2e` because step 6 needs
+   it. It rests on the agent.)
 2. Never rebase, merge, reset or force; never touch `main`.
 3. End-to-end tests are written, not run; list them so. A test that changes
    a setting sets `LEGIBLE_USER_DATA`; waits are deadlines, never turn
    counts.
 4. Never `npm install`; never add, remove or bump a dependency. Stop and
    report instead.
-5. No `.env*` file can be read or written; the `*-real` tests skip here by
-   design.
+5. Never read or write a `.env*` file (the deny rule does not reach a
+   sibling worktree, so this rests on the agent); the `*-real` tests skip
+   here by design.
 6. `Co-Authored-By` only; no session trailer; no closing keyword; never
    `--no-verify`.
 7. No colour, size or duration literal outside the four token stylesheets;

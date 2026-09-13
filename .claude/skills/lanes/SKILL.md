@@ -3,7 +3,7 @@ name: lanes
 description: Run several issues at once, each on its own branch in its own worktree with one agent, from the main checkout - the worktrees, the briefs, the reviewer passes, the serial end-to-end runs and the merges. Use when a wave of issues with disjoint files is ready to build.
 argument-hint: "<issue codes, e.g. A5-01 A6-03 A0-06>"
 disable-model-invocation: true
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash(git worktree *), Bash(git status *), Bash(git log *), Bash(git diff *), Bash(npm ci), Bash(npx install-electron *), Bash(npm run typecheck*)
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash(git worktree list*), Bash(git worktree add ../lc-*), Bash(git worktree prune)
 ---
 
 # Run a wave of lanes
@@ -13,9 +13,12 @@ Worktrees now: !`git worktree list`
 Lanes for: **$ARGUMENTS**
 
 A lane is one issue: one branch, one worktree, one agent, one pull request.
-The main session is the coordinator. It never writes a lane's code; it
-prepares the lanes, reads what comes back against the diff, runs the
-things only one process at a time can run, and merges. ADR-034 records why
+The main session is the coordinator. It writes the briefs and one-line
+fixes, never a lane's feature; it prepares the lanes, reads what comes
+back against the diff, runs the things only one process at a time can run,
+and merges. Briefs, pull-request bodies and probe output live in the
+session's scratch directory, never in a worktree, where they are one
+`git add -A` from the index. ADR-034 records why
 the procedure is this one and not a plugin's.
 
 Lane code is the issue code. The branch is `<CODE>-<slug>`, the worktree
@@ -34,10 +37,16 @@ Lane code is the issue code. The branch is `<CODE>-<slug>`, the worktree
 4. **Allocate numbers into each brief**: the spec directory and any
    decision record. Two branches both claiming `specs/0NN-` is the one
    conflict git cannot help with.
-5. **The spec stage runs here, per lane, in the lane's worktree**, so the
+5. **The spec stage runs here, per lane, into the lane's worktree**, so the
    spec commits on the lane's branch: `/speckit-specify` with the number
    and name given explicitly, `/speckit-clarify` with the maintainer,
-   `/speckit-plan`, `/speckit-tasks`. Every `[NEEDS CLARIFICATION]` is
+   `/speckit-plan`, `/speckit-tasks`. Spec Kit finds its root by walking up
+   from the working directory, which is this checkout, and keeps its
+   current feature in a per-checkout `.specify/feature.json`, so every one
+   of its scripts runs with `SPECIFY_INIT_DIR=<absolute worktree path>` and
+   `SPECIFY_FEATURE_DIRECTORY=specs/<NNN-name>`. Without them the spec lands
+   untracked on `main`, and the second lane's spec repoints the first's
+   plan. Every `[NEEDS CLARIFICATION]` is
    answered, or explicitly allowed to survive, before the brief is written.
    The agent never resolves one.
 
@@ -81,22 +90,35 @@ Run by the main session from the main checkout unless a step says "agent".
    that merged. Then `git diff --check` for conflict markers, the three
    checks again, the reviewer over the resolution if it touched code, the
    end-to-end suite if it touched behaviour.
-8. **Hygiene and the pull request.** In the worktree: `bin/preflight`,
-   `gitleaks git --redact`, `pre-commit run --all-files`. Push. The body is
-   written to a scratch file with `Closes #N` there and only there, ending
-   with the Claude Code line and no session link. `gh pr create
-   --body-file`, the five checks green, `gh pr merge --squash
-   --delete-branch`, `git pull`.
-9. **Clean up and record.** `git worktree remove ../lc-<CODE> && git
-   worktree prune`. Any trap the lane taught goes into `.claude/rules/` and,
-   if it is short enough to matter everywhere, into `CLAUDE.md`.
+8. **Hygiene and the pull request.** In the worktree, each as
+   `cd <worktree> && ...`: `bin/preflight`, `gitleaks git --redact`,
+   `pre-commit run --all-files`. Push the same way, never with `git -C`.
+   The body is written to a scratch file with `Closes #N` there and only
+   there, ending with the Claude Code line and no session link, and is
+   scanned before it goes anywhere, because nothing else reads a
+   pull-request body and an agent's report is full of absolute paths:
+   `grep -v '^Closes #[0-9]*$' <body> | bin/preflight --message-file
+   /dev/stdin`. Then `gh pr create --body-file` and the five checks green.
+9. **Merge, clean up and record, from this checkout.** `gh pr merge <N>
+   --squash`, without `--delete-branch`: git will not delete a branch
+   another worktree has checked out, and run from the worktree `gh` tries
+   to check out `main`, which this checkout holds. Then `git pull`, `git
+   worktree remove ../lc-<CODE>`, `git worktree prune`, `git branch -D
+   <branch>` (a squash merge is not an ancestor, so `-d` refuses), and
+   `git push origin --delete <branch>`. If `worktree remove` refuses, look
+   at what is left before anything else; never `--force` it. Any trap the
+   lane taught goes into `.claude/rules/` and, if it is short enough to
+   matter everywhere, into `CLAUDE.md`.
 
-## The guard's blind spot
+## The guard's blind spots
 
-`.claude/hooks/guard-git.sh` changes into this checkout before it scans, so
-a commit made in a sibling worktree is scanned against the wrong index. The
-pre-commit hooks in the worktree and the checks in CI still cover it; step
-8's three commands are not optional there.
+`.claude/hooks/guard-git.sh` does not protect a worktree. `git -C
+../lc-X commit` does not match its pattern and is not scanned at all;
+`cd ../lc-X && git commit` is matched, but scanned against this checkout's
+index. The pre-commit hooks (installed once per clone, in the shared git
+directory) and CI still cover both, so every commit and push in a lane is
+made as `cd <worktree> && git ...`, and step 8's three commands are not
+optional.
 
 ## Plugins
 
@@ -133,15 +155,18 @@ Not used here, and why:
 These go into every brief verbatim; the template carries them.
 
 1. The e2e lock: never run `test:e2e`, `dev`, `start` or `dist`; a second
-   Electron exits at once and breaks the other lane's run.
+   Electron exits at once and breaks the other lane's run. (Nothing
+   enforces this: `settings.json` allows `test:e2e` because step 6 needs
+   it. It rests on the agent.)
 2. Never rebase, merge, reset or force; never touch `main`.
 3. End-to-end tests are written, not run; list them so. A test that changes
    a setting sets `LEGIBLE_USER_DATA`; waits are deadlines, never turn
    counts.
 4. Never `npm install`; never add, remove or bump a dependency. Stop and
    report instead.
-5. No `.env*` file can be read or written; the `*-real` tests skip here by
-   design.
+5. Never read or write a `.env*` file (the deny rule does not reach a
+   sibling worktree, so this rests on the agent); the `*-real` tests skip
+   here by design.
 6. `Co-Authored-By` only; no session trailer; no closing keyword; never
    `--no-verify`.
 7. No colour, size or duration literal outside the four token stylesheets;

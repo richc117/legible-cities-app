@@ -25,7 +25,8 @@ nine found three kinds:
   resolve an ambiguous requirement by choosing where the constitution says
   to leave a marker, run `npm install` where this repository runs
   `npm ci`, commit a `.gitignore` change when making a worktree, and offer
-  a local merge to `main`, which branch protection refuses.
+  a local merge to `main`, which leaves a local `main` the protected one
+  on GitHub will never accept.
 - **Three that act on code by their own conventions when invoked or
   suggested.** `frontend-design` chooses a palette and typefaces, which
   the design system's token test refuses. `code-simplifier` applies
@@ -57,9 +58,10 @@ most injects itself on every start.
 but it switches off, for everyone, plugins that are harmless and useful
 elsewhere, and the list goes stale whenever the marketplace grows.
 
-**(c) Name the ones that matter here.** On what the repository relies on,
-off what conflicts with it, and silence on the inert ones, which stay a
-person's choice. A written procedure for parallel work, as a project skill,
+**(c) Name the ones that matter here.** On what the repository relies on
+(including `typescript-lsp`, inert as it is, because `/lanes` counts on its
+diagnostics), off what conflicts with it, and silence on the other inert
+ones, which stay a person's choice. A written procedure for parallel work, as a project skill,
 so the conflicting plugin is not needed for it.
 
 ## Decision

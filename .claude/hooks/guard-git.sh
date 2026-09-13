@@ -22,11 +22,14 @@ case "$cmd" in
   *"git commit"*|*"git push"*) ;;
   *) exit 0 ;;
 esac
-# Known blind spot: this scans the project directory, not the directory the
-# command runs in. A commit made in a sibling worktree (`cd ../lc-X && git
-# commit`, or `git -C ../lc-X commit`) is scanned against this checkout's
-# index. The worktree's own pre-commit hooks and CI still cover it; /lanes
-# makes running them there a step.
+# Known blind spots, both about sibling worktrees. `git -C ../lc-X commit`
+# does not contain "git commit", so the pattern above lets it through with
+# no scan at all. `cd ../lc-X && git commit` is matched, but the scan below
+# runs in the project directory, against this checkout's index and not the
+# worktree's. The pre-commit hooks (when `pre-commit install` has been run;
+# they live in the shared git directory) and CI still cover both. /lanes
+# commits only as `cd <worktree> && git ...` and runs the scanners there as
+# a step.
 root="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null)}"
 cd "$root" || exit 0
 
