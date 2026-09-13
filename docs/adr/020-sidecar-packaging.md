@@ -4,6 +4,7 @@
 - **Date:** 2026-09-07
 - **Supersedes:** none
 - **Superseded by:** none
+- **Amended by:** [ADR-038](038-the-sidecar-runtime-measured-on-three-targets.md)
 
 ## Context
 

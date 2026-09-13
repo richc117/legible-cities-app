@@ -224,6 +224,38 @@ tag (v0.8.2), installed with the three dependencies it declares.
   Git Bash on `windows-latest` as it does on macOS; Python's own output is
   written without a newline, which a Windows Python would end in `\r`.
 
+After the first review, and after the runners' first green run (the
+measurements below are from that run, whose installed versions are the
+same):
+
+- **The runtime is built in a staging folder** beside the destination and
+  renamed into `vendor/python/<target>` only after the schema check passes,
+  so a failed run leaves the previous runtime, or nothing, never a broken
+  one. Tested here with an engine copy whose schema had one field changed:
+  the check refused, the existing runtime kept its 2568 files, and no
+  staging folder was left.
+- **Nothing compiles on a runner**: dependencies install with
+  `--only-binary :all:`, and the engine, a source tree that flag refuses,
+  is built into a wheel first and installed from the file. Each run logs
+  `pip list --format=freeze`.
+- **The gate's refusals refuse.** `find ... | grep -q .` under the
+  `-eo pipefail` GitHub gives bash takes the no-match branch when there are
+  many matches: grep exits at the first line, find dies of SIGPIPE, and the
+  pipeline fails. The name gate and the bytecode guard capture the output
+  and test the text; run here against 20000 matching names and a stray
+  `__pycache__`, both refused.
+- **The gate reads links on macOS, not only names.** The interpreter's
+  `readline` module is built into `libpython3.12.dylib`, which links
+  `/usr/lib/libedit.3.dylib` and imports `rl_library_version` rather than
+  defining it; `_dbm` links only `libSystem`. The gate runs `otool -L` over
+  every Mach-O in the runtime (80 on darwin-arm64, wheels included) and
+  refuses any linked library whose path names readline or gdbm, and refuses
+  a `libpython` that defines `rl_library_version`. Both were exercised here:
+  a copy of `_dbm` relinked with `install_name_tool` to a Homebrew
+  `libreadline.8.dylib`, and a stand-in `libpython` defining the symbol.
+  Windows has no equivalent check; its gate is by name, which the listing
+  below supports.
+
 ### The two assets
 
 Both from release `20260901`, CPython 3.12.14, `install_only`. Upstream
@@ -247,9 +279,8 @@ reproduced the hash already pinned, which is the control.
   build; getting the target's tree there is A0-10's.
 - **No readline of any kind**, and no `_dbm` or `_gdbm` extension: only the
   pure-Python `Lib/dbm/` package, whose `gnu.py` imports an extension that is
-  not there. On macOS both x64 and arm64 carry `_dbm` and no gdbm; arm64's
-  `_dbm` links only libSystem (measured 2026-09-07), and x64's has not been
-  looked at with `otool`.
+  not there. On macOS both x64 and arm64 carry `_dbm` and no gdbm, and
+  the gate now reads what every Mach-O links on both on every run.
 - The DLLs are OpenSSL 3 (`libcrypto-3-x64`, `libssl-3-x64`), `libffi-8`,
   `sqlite3`, Tcl/Tk (`tcl86t`, `tk86t` and three under `tcl/`), the Python
   DLLs and the MSVC runtime. None is GPL. The gate now also refuses a
@@ -294,9 +325,19 @@ it does.
 
 ### Still open
 
-- The runtime's Python packages are resolved by pip at build time, not from
-  the engine's `uv.lock`, so two runs a month apart can vendor different
-  patch versions of pandas or NumPy. The schema check does not notice that.
+- **The runtime's Python packages are not locked.** pip resolves the
+  engine's minimums (`pandas>=2.2`, `python-lsp-jsonrpc>=1.1`,
+  `requests>=2.32`) at build time, and a minimum allows any later version,
+  a new major included, with nothing hashed. pandas 3 is already what ships:
+  its `tzdata; sys_platform == "win32"` requirement is where the Windows
+  runtime's `tzdata` comes from. The engine's `uv.lock` at v0.8.2 agrees
+  today - it pins pandas 3.0.5 and NumPy 2.5.3, the same majors and versions
+  the runner installed (read from the run's artefacts; `tzdata` is 2026.3 in
+  the lock and 2026.4 in the Windows runtime) - but only by coincidence of
+  timing. `--only-binary` and the logged freeze make a drift visible, not
+  impossible. The fix is to install from `uv export --frozen` with
+  `--require-hashes`; that is A0-10's, not done here. The schema check does
+  not notice a drift either.
 - `THIRD_PARTY_NOTICES.md` names pandas, NumPy, requests, python-lsp-jsonrpc
   and ujson, but not the rest of what pip installs (certifi, charset-normalizer,
   idna, urllib3, python-dateutil, six); A0-10's Licences screen needs them.
@@ -326,3 +367,25 @@ it does.
     build" section of python-build-standalone's own `python/LICENSE.txt`,
     which covers the Microsoft Distributable Code linked into the
     interpreter and requires distributors to pass Microsoft's terms on.
+- **Libquadmath, looked for on Windows.** NumPy's macOS licence file names
+  `libquadmath` (LGPL-2.1-or-later, which the GCC exception does not cover);
+  its Windows one does not. `strings` over the Windows OpenBLAS DLL (20 MB)
+  finds no string containing `quadmath`, three `gcc-10.3.0/libgfortran`
+  source paths, and imports only Windows' CRT API sets, `KERNEL32.dll` and
+  `ntdll.dll`. So no libquadmath is linked, and none shows by name; a first
+  look, not a proof.
+- **For A0-10: an installer is built from the CI artefact, or strips pip's
+  build paths.** pip writes the path it installed from and into:
+  `openschematicmaps-*.dist-info/direct_url.json` records the wheel's
+  temporary `file://` URL, and the console scripts pip generates carry an
+  absolute shebang (on darwin-arm64: `f2py`, `idna`, `normalizer`,
+  `numpy-config`, pointing at the staging folder, so they are dangling after
+  the rename; upstream's own `pip`, `pydoc3.12` and the rest use `#!/bin/sh`
+  and are relocatable). On Windows the equivalents are the `Scripts\*.exe`
+  launchers. The sidecar runs `python -m` and uses none of them, but they
+  leak a build path into what ships.
+- **For A0-10: the artefact is not the tree.** `actions/upload-artifact`
+  zips, and the zip keeps no executable bit and follows symbolic links: the
+  darwin-arm64 runtime has 9 links (`bin/python3`, `bin/python`,
+  `bin/pydoc3` and others), and the artefact counted 2576 files against the
+  script's 2568. An installer built from the artefact has to restore both.
