@@ -163,6 +163,12 @@ type the path.
 | The logs: `main.log` and `engine.log`, each started afresh past 5 MB with one older copy kept (`.old.log`) | `%APPDATA%\Legible Cities\logs\` |
 | Your exports, in a folder per project | `Legible Cities` on your desktop, unless you chose another folder in Settings. That is `Desktop\Legible Cities\` in your user folder, or, if OneDrive backs up your desktop, the Desktop folder inside OneDrive |
 
+The installer keeps no copy of itself. The release candidates up to
+0.1.0-rc.3 did: about 160 MB in `%LOCALAPPDATA%\legible-cities-app-updater\`,
+for an automatic updater the app does not have, and their uninstaller left
+it behind. Installing a later version removes that folder, and so does
+uninstalling a later version.
+
 To open one of these folders, paste its path, such as `%APPDATA%\Legible
 Cities`, into the address bar of File Explorer and press Enter.
 
@@ -201,7 +207,9 @@ do these in order.
      Then empty the Trash.
    - **Windows**: `%APPDATA%\Legible Cities\`. The uninstaller removes the
      app's own folder, usually `%LOCALAPPDATA%\Programs\legible-cities-app\`;
-     delete it too if it is still there.
+     delete it too if it is still there. If
+     `%LOCALAPPDATA%\legible-cities-app-updater\` is there, a release
+     candidate up to 0.1.0-rc.3 left it: delete it as well.
    - If you chose your own engine data folder in Settings, it is not inside
      these folders: after step 1, delete it yourself if nothing else of yours
      is in it.

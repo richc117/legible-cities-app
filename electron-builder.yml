@@ -89,3 +89,13 @@ win:
       to: ffmpeg
     - from: vendor/manifest-win-${arch}.json
       to: vendor-manifest.json
+# Only an include: the per-user one-click defaults stay, and with them the
+# install folder, %LOCALAPPDATA%\Programs\<package name>, which
+# .github/workflows/acceptance.yml derives and refuses to guess at if
+# anything else is set here. build/installer.nsh removes the copy of the
+# installer electron-builder's template keeps for an updater this app does
+# not have, right after it is made and again on uninstall (issue 128).
+# build/installer.nsh is also electron-builder's default; it is named so the
+# file is not a surprise.
+nsis:
+  include: build/installer.nsh
