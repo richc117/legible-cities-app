@@ -12,6 +12,7 @@ import { LOG_WAIT_MS } from '../../src/main/log-file'
 import { SettingsStore } from '../../src/main/settings'
 import {
   ENGINE_INFO_TIMEOUT_MS,
+  HOMES_TIMEOUT_MS,
   registerSettingsHandlers,
   SettingsService,
   type SettingsDeps,
@@ -57,6 +58,8 @@ async function harness(
     flushLogs?: () => Promise<void>
     /** The home folders the copy hides, and the platform it reads them for. */
     homes?: (root: string) => string[]
+    /** How the home folders are found, for one that never answers. */
+    findHomes?: () => Promise<string[]>
     platform?: string
     /** Where the log files are, for a log folder under the fake home. */
     logsFolder?: (root: string) => string
@@ -98,7 +101,8 @@ async function harness(
       about: () => ABOUT,
       engineInfo: over.engineInfo ?? (async () => ({ engine: '0.0.0-test', protocol: 1 })),
       flushLogs: over.flushLogs ?? (async () => undefined),
-      homes: async () => over.homes?.(root) ?? [root],
+      homes: over.findHomes ?? (async () => over.homes?.(root) ?? [root]),
+      home: over.homes?.(root)[0] ?? root,
       platform: over.platform ?? 'linux',
       writeText: (text) => copied.push(text),
     },
@@ -421,6 +425,7 @@ describe('resetting the engine data', () => {
         engineInfo: async () => ({}),
         flushLogs: async () => undefined,
         homes: async () => [root],
+        home: root,
         platform: 'linux',
         writeText: () => undefined,
       },
@@ -563,6 +568,26 @@ describe('copying diagnostics', () => {
       vi.useRealTimers()
       await copying
       expect(h.copied).toHaveLength(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('hides the home as named when finding its other forms does not answer in time', async () => {
+    vi.useFakeTimers()
+    try {
+      const h = await harness({
+        homes: (root) => [join(root, 'home', 'someone')],
+        findHomes: () => new Promise(() => undefined),
+        logsFolder: (root) => join(root, 'home', 'someone', 'logs'),
+      })
+      const home = join(h.root, 'home', 'someone')
+      const copying = h.call(CHANNELS.settingsCopyDiagnostics, [`a report naming ${home}`])
+      await vi.advanceTimersByTimeAsync(HOMES_TIMEOUT_MS)
+      vi.useRealTimers()
+      await copying
+      expect(h.copied[0]).toContain('a report naming ~')
+      expect(h.copied[0]).not.toContain(home)
     } finally {
       vi.useRealTimers()
     }

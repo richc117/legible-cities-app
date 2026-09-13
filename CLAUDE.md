@@ -122,7 +122,8 @@ both logs and the session's map reports on the clipboard, composed in the
 main process with the home folder written as `~` (its 8.3 short form on
 Windows included) and checked for afterwards
 (`src/main/diagnostics-text.ts`). Every log line, and the copy again, has
-its URLs' user information, query values and fragments redacted
+its URLs' user information, query values and fragments redacted, and the
+query values of a scheme-less path as urllib3 prints one
 (`src/main/redact.ts`); a token in a URL's path is not. Nothing is sent
 anywhere.
 

@@ -80,6 +80,9 @@ export interface SettingsDeps {
   log: (message: string) => void
 }
 
+/** How long the copy waits for the home folders' real and short forms before hiding the home as named. */
+export const HOMES_TIMEOUT_MS = 2_000
+
 /** How long the copy waits for the engine's `engine.info` before saying it did not answer. */
 export const ENGINE_INFO_TIMEOUT_MS = 5_000
 
@@ -96,6 +99,8 @@ export interface DiagnosticsDeps {
    * when a copy is made, not at start, because finding them touches the disk.
    */
   homes: () => Promise<string[]>
+  /** The home folder as the platform names it: what the copy hides when `homes` does not answer in time. */
+  home: string
   platform: string
   /** The system clipboard, the same writer the diagnostics panel's handler uses. */
   writeText: (text: string) => void
@@ -271,11 +276,30 @@ export class SettingsService {
         : await Promise.all([tailLog(folder, 'main'), tailLog(folder, 'engine')])
     const text = diagnosticsText(
       { ...d.about(), engine, mainLog, engineLog, reports },
-      await d.homes(),
+      await this.#homes(),
       d.platform,
     )
     d.writeText(text)
     this.#deps.log(`copied diagnostics (${Buffer.byteLength(text, 'utf8')} bytes) to the clipboard`)
+  }
+
+  /**
+   * The home folders, or the home as named if finding the rest takes longer
+   * than `HOMES_TIMEOUT_MS`: a link or a temporary folder on a drive that
+   * does not answer (a mapped network drive cannot be told from a local one
+   * without asking the disk) must not hold the copy.
+   */
+  async #homes(): Promise<string[]> {
+    const { homes, home } = this.#deps.diagnostics
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const fallback = new Promise<string[]>((resolve) => {
+      timer = setTimeout(() => resolve([home]), HOMES_TIMEOUT_MS)
+    })
+    try {
+      return await Promise.race([homes().catch(() => [home]), fallback])
+    } finally {
+      clearTimeout(timer)
+    }
   }
 
   async #engineInfo(): Promise<DiagnosticsInput['engine']> {

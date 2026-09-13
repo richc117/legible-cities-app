@@ -4,6 +4,8 @@
 // (specs/023-logs-and-diagnostics). No Electron import, so pure modules and
 // tests can use it.
 
+import { redactUrls } from './redact'
+
 /**
  * A line as it was logged, the tag it was logged under, and - for a line
  * that was held before it could be written - when it was logged.
@@ -20,6 +22,14 @@ export const toStderr: Sink = (line) => {
     // Nowhere left to say it.
   }
 }
+
+/**
+ * Standard error with each line's web addresses redacted, as the log files
+ * have them (src/main/redact.ts): the development mirror, and where the
+ * lines go when the log folder cannot be used. Scrollback is pasted as
+ * readily as a log.
+ */
+export const toStderrRedacted: Sink = (line, tag) => toStderr(redactUrls(line), tag)
 
 let sink: Sink = toStderr
 

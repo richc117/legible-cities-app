@@ -145,15 +145,25 @@ can confirm the app sends nothing.
   naming the whole URL, query string included, and the engine logs it with
   a traceback on the stderr the supervisor writes to `engine.log` (engine
   issue 32 redacts it at source). So every line is passed through one
-  redaction before it is written, to either log and to standard error in
-  development, and the copy is passed through it again, because a log
-  written before this rule still holds whole addresses. For each `http` and
-  `https` address, plain or percent-encoded, it keeps the scheme, the host,
-  the path and the query's parameter names, and replaces the user
-  information, every query value and the fragment with `<redacted>`.
-  **A token carried as a path segment is not redacted**: nothing in the
-  text says which segment is a secret, and the app does not guess from how
-  random one looks. Beyond addresses, neither the redaction nor the
+  redaction before it is written, to either log and to standard error (in
+  development, or when the log folder cannot be used), and the copy is
+  passed through it again, because a log written before
+  this rule still holds whole addresses. What it covers, and nothing more:
+  - an `http` or `https` address, with its slashes plain or JSON-escaped
+    (`https:\/\/`) and its host a name or an IPv6 literal: the scheme,
+    the host, the path and the query's parameter names stay, and the user
+    information, every query value (after `?`, `&` or `;`), a query part
+    with no name, and the fragment become `<redacted>`;
+  - the same address percent-encoded, up to a raw `&`, decoded leniently
+    so a stray or truncated escape does not hide it;
+  - a path with a query and no scheme, the way urllib3 and `requests`
+    word a failed connection (`Max retries exceeded with url:
+    /gtfs.zip?api_key=…`): each `name=` stays and its value goes.
+
+  **Not covered**: a token carried as a path segment, because nothing in
+  the text says which segment is a secret and the app does not guess from
+  how random one looks; a query on a word with no `/` before its `?`; and
+  a secret split across words. Beyond that, neither the redaction nor the
   home-folder replacement is a scrubber for anything else. The copied text
   is shown to nobody until the person pastes it.
 - **Paths outside the home folder** (an export folder on another volume)

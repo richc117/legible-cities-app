@@ -25,9 +25,8 @@ import { claimFramesRoot, clearFrames, describeSweep, FRAMES_FOLDER } from './fr
 import { registerExportHandlers } from './export-ipc'
 import { engineCommand, engineEnvironment, resolveInterpreter } from './interpreter'
 import { registerClipboardHandler, registerProjectHandlers, registerViewerHandlers } from './ipc'
-import { byTag, holdingSink, log, setSink, toStderr } from './log'
+import { byTag, holdingSink, log, setSink, toStderrRedacted } from './log'
 import { LOG_WAIT_MS, openLogFile, within, type LogFile } from './log-file'
-import { redactUrls } from './redact'
 import { shortHomeFrom } from './diagnostics-text'
 import { ProjectStore } from './projects'
 import { SettingsStore } from './settings'
@@ -49,7 +48,7 @@ const development = !app.isPackaged
 // (src/main/redact.ts): terminal scrollback is pasted as readily as a log.
 const earlyLines = holdingSink(2_000)
 setSink((line, tag, at) => {
-  if (development) toStderr(redactUrls(line), tag)
+  if (development) toStderrRedacted(line, tag)
   earlyLines.sink(line, tag, at)
 })
 /** The two files, once open; closed on the way out, after the engine's last line. */
@@ -126,8 +125,10 @@ async function openLogs(): Promise<void> {
     await mkdir(folder, { recursive: true })
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code ?? 'no log folder'
-    setSink(toStderr)
-    if (!development) earlyLines.release((line, tag) => toStderr(redactUrls(line), tag))
+    // Still redacted: a log that falls back to standard error is scrollback
+    // someone can paste.
+    setSink(toStderrRedacted)
+    if (!development) earlyLines.release(toStderrRedacted)
     log.warn('log', `the log folder could not be used (${code}); logging to standard error`)
     return
   }
@@ -140,7 +141,7 @@ async function openLogs(): Promise<void> {
     (line, _tag, at) => engine.write(line, at),
   )
   setSink((line, tag, at) => {
-    if (development) toStderr(redactUrls(line), tag)
+    if (development) toStderrRedacted(line, tag)
     toFiles(line, tag, at)
   })
   earlyLines.release(toFiles)
@@ -477,6 +478,7 @@ if (!hasLock) {
           await Promise.all([logFiles?.main.flush(), logFiles?.engine.flush()])
         },
         homes: homeFolders,
+        home: homedir(),
         platform: process.platform,
         writeText: (text) => clipboard.writeText(text),
       },

@@ -2,8 +2,16 @@
 // the three call shapes, the tag that routes a line to engine.log, lines
 // held until the files open, and a sink that fails never reaching a caller.
 
-import { afterEach, describe, expect, it } from 'vitest'
-import { byTag, ENGINE_TAG, holdingSink, log, setSink, toStderr } from '../../src/main/log'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import {
+  byTag,
+  ENGINE_TAG,
+  holdingSink,
+  log,
+  setSink,
+  toStderr,
+  toStderrRedacted,
+} from '../../src/main/log'
 
 afterEach(() => setSink(toStderr))
 
@@ -53,6 +61,26 @@ describe('the logger', () => {
       '[engine] warning: the interpreter was not found',
     ])
     expect(main).toEqual(['[settings] reset removed nothing', '[engines] not the engine tag'])
+  })
+})
+
+describe('standard error', () => {
+  // The development mirror, and where lines go when the log folder cannot
+  // be used: a feed URL's key must not reach the terminal either.
+  it('gets each line with its URLs redacted', () => {
+    const written: string[] = []
+    const spy = vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      written.push(String(chunk))
+      return true
+    })
+    try {
+      setSink(toStderrRedacted)
+      log.warn(ENGINE_TAG, 'stderr: https://example.org/g.zip?api_key=SECRET could not be fetched')
+    } finally {
+      spy.mockRestore()
+    }
+    expect(written.join('')).not.toContain('SECRET')
+    expect(written.join('')).toContain('api_key=<redacted>')
   })
 })
 

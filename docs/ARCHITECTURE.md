@@ -410,13 +410,20 @@ writing and for the copy's reading, so a link planted in its place is not
 followed.
 
 Every line has its web addresses redacted before it is written, to either
-file and to standard error in development (`src/main/redact.ts`): the
-engine prints a feed's whole URL when a download fails, and a URL can
-carry a key. The scheme, the host, the path and the query's parameter
-names stay; the user information, every query value and the fragment
-become `<redacted>`, for plain and percent-encoded addresses alike. A
-token carried as a path segment is not redacted, because nothing says
-which segment is one.
+file and to standard error, in development and when the log folder cannot
+be used (`src/main/redact.ts`): the engine prints a feed's whole URL when a
+download fails, and a URL can carry a key. For an `http` or `https`
+address - slashes plain or JSON-escaped, host a name or an IPv6 literal -
+the scheme, the host, the path and the query's parameter names stay; the
+user information, every query value (after `?`, `&` or `;`), a nameless
+query part and the fragment become `<redacted>`. A percent-encoded address
+is decoded leniently and redacted up to a raw `&`. A path with a query and
+no scheme, which is how urllib3 and `requests` word a failed connection
+(`Max retries exceeded with url: /gtfs.zip?api_key=…`), keeps each `name=`
+and loses its value. Not covered: a token carried as a path segment,
+because nothing says which segment is one; a query on a word with no `/`
+before its `?`; and a secret split across words. The text is cut into
+words and each is looked at once, so a long line costs linear time.
 
 Lines logged before the app is ready are held in memory, two thousand at
 most, and written first once the files open, which is the first thing the
@@ -456,8 +463,10 @@ volume, is left as it is. The copy redacts web addresses again, since a
 log written before the redaction existed still holds them whole. Neither
 is a scrubber for anything else; the person reads the text before they
 paste it. The home folders are found when the copy is made, asynchronously,
-and a temporary folder on a network share is not asked, so a share that
-does not answer holds neither the window nor the copy.
+a temporary folder on a network share is not asked, and the whole search
+is bounded at two seconds (`HOMES_TIMEOUT_MS`), after which the home as the
+platform names it is what the copy hides; a drive that does not answer
+holds neither the window nor the copy.
 
 ## Design tokens
 

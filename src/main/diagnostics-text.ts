@@ -11,7 +11,7 @@ import { constants } from 'node:fs'
 import { open } from 'node:fs/promises'
 import { join } from 'node:path'
 import { DIAGNOSTICS_REPORTS } from '../shared/api'
-import { redactUrls } from './redact'
+import { lenientDecode, redactUrls } from './redact'
 
 /** Read-only, and on POSIX never through a symbolic link, as the log is written. */
 const READ_FLAGS = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0)
@@ -180,25 +180,12 @@ export function shortenHome(text: string, homes: readonly string[], platform: st
 }
 
 /**
- * The text with every run of percent-escapes decoded where it decodes, so
- * a home encoded some way the replacement did not foresee is still found.
- */
-function percentDecoded(text: string): string {
-  return text.replace(/(?:%[0-9A-Fa-f]{2})+/g, (run) => {
-    try {
-      return decodeURIComponent(run)
-    } catch {
-      return run
-    }
-  })
-}
-
-/**
  * Whether a home folder is still in the text anywhere: written any of the
  * ways the replacement knows, or once the text's percent-escapes are decoded.
  */
 export function containsHome(text: string, homes: readonly string[], platform: string): boolean {
-  const decoded = percentDecoded(text)
+  // Decoded leniently, escape by escape where a run will not decode whole.
+  const decoded = lenientDecode(text)
   const forms = [...homes, ...homes.map((home) => encodeURI(home))]
   return patterns(forms, platform).some((pattern) =>
     [text, decoded].some((candidate) => {
