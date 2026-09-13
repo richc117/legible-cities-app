@@ -8,7 +8,7 @@
 //
 //   LEGIBLE_REEL_TEST=1 npx playwright test tests/e2e/reel.spec.ts
 
-import { spawn, spawnSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import {
   copyFileSync,
   existsSync,
@@ -29,10 +29,10 @@ import {
   RECORD_VERSION,
   type ProjectRecord,
 } from '../../src/shared/project'
+import { compareDecoded, TOLERANCE } from '../support/frames'
 
 const repoRoot = resolve(__dirname, '../..')
 const REEL = 'la-metro-rail-instagram-reel.mp4'
-const TOLERANCE = 8
 
 /** The engine checkout, from the environment or .env.local. */
 function checkout(): string | null {
@@ -106,74 +106,6 @@ function home(): { engineHome: string; exportFolder: string; id: string } {
   writeFileSync(join(engineHome, 'projects', id, 'project.json'), JSON.stringify(record, null, 2))
   copyFileSync(PAGE as string, join(engineHome, 'out', id, 'la-metro-rail.html'))
   return { engineHome, exportFolder: join(dir, 'exports'), id }
-}
-
-/**
- * Decode two files to raw RGB and compare them byte for byte as they
- * stream, so a reel's four gigabytes of pixels never sit in memory.
- */
-async function compareDecoded(
-  a: string,
-  b: string,
-): Promise<{ bytes: number; maxDiff: number; over: number; sameLength: boolean }> {
-  const decode = (file: string) =>
-    spawn('ffmpeg', ['-v', 'error', '-i', file, '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'], {
-      windowsHide: true,
-      stdio: ['ignore', 'pipe', 'inherit'],
-      timeout: 10 * 60_000,
-    })
-  const pa = decode(a)
-  const pb = decode(b)
-  const ia = pa.stdout[Symbol.asyncIterator]() as AsyncIterator<Buffer>
-  const ib = pb.stdout[Symbol.asyncIterator]() as AsyncIterator<Buffer>
-  let bufA: Buffer = Buffer.alloc(0)
-  let bufB: Buffer = Buffer.alloc(0)
-  let doneA = false
-  let doneB = false
-  let bytes = 0
-  let maxDiff = 0
-  let over = 0
-  for (;;) {
-    if (bufA.length === 0 && !doneA) {
-      const next = await ia.next()
-      if (next.done) doneA = true
-      else bufA = next.value
-    }
-    if (bufB.length === 0 && !doneB) {
-      const next = await ib.next()
-      if (next.done) doneB = true
-      else bufB = next.value
-    }
-    const n = Math.min(bufA.length, bufB.length)
-    if (n === 0) {
-      if ((doneA && bufA.length === 0) || (doneB && bufB.length === 0)) break
-      continue
-    }
-    for (let i = 0; i < n; i++) {
-      const d = Math.abs(bufA[i] - bufB[i])
-      if (d > maxDiff) maxDiff = d
-      if (d > TOLERANCE) over++
-    }
-    bytes += n
-    bufA = bufA.subarray(n)
-    bufB = bufB.subarray(n)
-  }
-  // Whatever one stream still holds, the other did not: drain and count it.
-  let leftover = bufA.length + bufB.length
-  for (const [it, done] of [
-    [ia, doneA],
-    [ib, doneB],
-  ] as const) {
-    if (done) continue
-    for (;;) {
-      const next = await it.next()
-      if (next.done) break
-      leftover += next.value.length
-    }
-  }
-  pa.kill()
-  pb.kill()
-  return { bytes, maxDiff, over, sameLength: leftover === 0 }
 }
 
 test('the Los Angeles reel, exported twice, decodes to the same frames within the tolerance', async () => {

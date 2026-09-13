@@ -1,0 +1,33 @@
+{
+  "feed": "bart",
+  "feed_sha256": "affdc4d70cac01f71e54f049c754ba36824a885edcdef2ef8b024820c9e93080",
+  "mode": "all",
+  "agency": null,
+  "label_pattern": null,
+  "label_strip": "-[NSEW]$",
+  "loom": null,
+  "stages": [
+    [
+      "gtfs2graph",
+      [
+        "-m",
+        "all"
+      ]
+    ],
+    [
+      "topo",
+      []
+    ],
+    [
+      "loom",
+      []
+    ],
+    [
+      "octi",
+      []
+    ]
+  ],
+  "engine": "0.4.0",
+  "made": "2026-09-11T04:39:55+00:00",
+  "migrated": true
+}

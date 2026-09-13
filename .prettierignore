@@ -13,3 +13,6 @@ __pycache__/
 # Vendored icons and their licence, not ours to format.
 *.svg
 src/renderer/src/icons/phosphor/LICENSE
+
+# The determinism fixture: the engine's own files, byte for byte (A5-04).
+tests/fixtures/determinism/bart/data/

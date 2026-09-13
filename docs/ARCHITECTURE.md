@@ -937,6 +937,25 @@ frames. The job's shape is the engine's recorder's (`src/shared/capture.ts`),
 so `export.plan`'s answer will map onto it. A quit destroys any capture
 window before the engine is stopped.
 
+Whether that order is enough is measured, not assumed (A5-04).
+`tests/e2e/determinism.spec.ts` seeds a temporary engine home from the
+committed BART fixture - the feed's zip and one stored layout, whose id
+`tests/unit/determinism-real.test.ts` checks is the one the pinned engine
+addresses - has the real engine draw the project's page from it, and
+exports the project's draft `instagram-reel-gif` through the Export tab
+twice. The GIFs are decoded with the vendored ffmpeg and compared frame by
+frame in RGB at a channel tolerance of 8 (`tests/support/frames.ts`, which
+the reel test shares); the record's layout id and `made`, and the stored
+set's meta, must not move between the exports (`layoutDrift` in
+`tests/support/determinism.ts`), and a `sitecustomize` on the engine's
+`PYTHONPATH`, which the app passes in development only, records each
+request's method so the test can assert no `graph.build` was sent. The
+engine's sidecar carries no layout id at v0.8.2, so the record and the
+stored set are what name the layout. `.github/workflows/determinism.yml`
+runs it on Ubuntu, macOS and Windows once per pull request and five times on
+a weekly schedule, and keeps the two GIFs and the differing frames for a
+week when it fails; it is not a required check.
+
 ## The export
 
 The first reel (A5-02b) was one preset, `instagram-reel`, from one button on

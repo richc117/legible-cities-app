@@ -157,6 +157,13 @@ since `layoutRunFor` is called during a render. A job's end is announced
 once, emptied and refilled a frame later so a repeat is spoken; nothing is
 written to disk.
 
+The determinism test (A5-04) exports the committed BART fixture twice
+through the Export tab against the real engine and the vendored ffmpeg, and
+compares the two GIFs frame by frame in RGB at a tolerance of 8 with the
+stored layout checked unmoved and no `graph.build` sent, on three platforms
+once per pull request and five times a week
+(`tests/e2e/determinism.spec.ts`, `.github/workflows/determinism.yml`).
+
 Work proceeds phase by phase; `CONTRIBUTING.md` explains the flow, the
 labels, the milestones and the `A0-05`-style issue codes. The four Phase 0
 spikes have run: LOOM ships without its optional solvers (ADR-019), the
