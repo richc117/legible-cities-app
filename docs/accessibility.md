@@ -108,7 +108,7 @@ listed below for filing. *engine's*: inside the engine's page.
 | Line order | pass | pass | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
 | Theme switch | pass | pass (`aria-pressed`, a named group) | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
 | Geographic view | pass (`+`, `-`, arrows, `0`) | pass (pane named, the counts); finding (F2) | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
-| Viewer frame | finding (F3) | pass (the frame's title) | engine's (F1) | engine's (F1) | engine's (F1) | engine's (F1) | not yet run: a person's | not yet run: a person's |
+| Viewer frame | fixed (F3, issue 106: a "Skip past the map" button just before the frame, shown on focus, sends focus to Rename; Tab without it still walks into the map; asserted in the sweep with a page of forty controls in the frame) | pass (the frame's title; the skip a native button named by its text) | engine's (F1) | engine's (F1) | engine's (F1) | engine's (F1) | not yet run: a person's | not yet run: a person's |
 | Rename form | pass (focus returns to Rename) | pass | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
 | Delete confirmation | fixed (D8) | pass | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
 
@@ -120,7 +120,7 @@ listed below for filing. *engine's*: inside the engine's page.
 | Frame switches, lines to keep | pass | pass (`fieldset` and `legend`) | pass | pass | fixed (C3) | fixed (C3) | not yet run: a person's | not yet run: a person's |
 | Start time, filename tag | pass | pass | pass | pass | fixed (C5) | fixed (C5) | not yet run: a person's | not yet run: a person's |
 | Export, its progress line, Cancel, Reveal | fixed (D2) | pass | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
-| Preview in the viewer's frame | finding (F3) | pass | engine's (F1) | engine's (F1) | engine's (F1) | engine's (F1) | not yet run: a person's | not yet run: a person's |
+| Preview in the viewer's frame | fixed (F3, issue 106: the same skip, before the same frame; asserted in the sweep) | pass | engine's (F1) | engine's (F1) | engine's (F1) | engine's (F1) | not yet run: a person's | not yet run: a person's |
 
 ### Settings
 
@@ -290,7 +290,16 @@ or a design decision.
   the tab panel, press Tab towards Rename and Delete project. *What a person
   meets:* every control of the engine's page before Rename; Shift+Tab from
   the end of the screen is the only shorter way. A skip past the map, or the
-  toolbar moved above it, is a new control or a layout change.
+  toolbar moved above it, is a new control or a layout change. **Closed by
+  issue 106:** a "Skip past the map" button immediately before the frame,
+  out of sight until it takes focus, sends focus to the toolbar's first
+  button that can take it (DESIGN.md 8.2), without reaching into the frame;
+  from the tab panel Rename is one Tab and Enter away whatever the page
+  holds, and Tab without the skip still reaches the map.
+  `accessibility.spec.ts` asserts both on both tabs, with forty controls in
+  the frame. Going backwards is unchanged: Shift+Tab from the toolbar walks
+  back through the map. The VoiceOver and Narrator columns are still a
+  person's.
 
 - **F4. A stalled engine request holds a destructive confirmation.**
   *Screen:* the Library's feed removal (and any confirmation whose action
@@ -599,11 +608,15 @@ a table).
   by dragging or with the arrows, 0 to fit." Press `+`, `-`, an arrow and
   `0` on it; nothing is announced for them, and the drawing itself is not
   read (F2).
-- **Viewer frame.** Tab past the panels. Listen for the frame named
-  "`<project>`, animated" in a region "Map". Going on into it reaches the
-  engine's page and its own controls, which are the engine's (F1) and stand
-  in the Tab order before the project's toolbar (F3); note what is read in
-  the cell, and whether you could get past it.
+- **Skip past the map.** Tab past the panels. Listen for a button "Skip
+  past the map" and look for it appearing over the top edge of the map.
+  Press it: listen for focus on **Rename** (or **Delete project** on a
+  read-only project), with the map not read. Shift+Tab from **Rename**
+  walks back through the map, which is expected (F3, issue 106).
+- **Viewer frame.** From **Skip past the map**, press Tab without pressing
+  it. Listen for the frame named "`<project>`, animated" in a region "Map".
+  Going on into it reaches the engine's page and its own controls, which are
+  the engine's (F1); note what is read in the cell.
 - **Rename form.** Press **Rename**: expanded, focus stays on it; Tab past
   **Delete project** to the text field "New name", required. Empty it and press **Save**: "name is
   required" read with the field. Press **Cancel** and listen for focus back
@@ -650,8 +663,9 @@ a table).
   another export and press **Cancel**: "The export was cancelled. Nothing
   was written." and focus on **Export**.
 - **Preview in the viewer's frame.** With the tab open, listen for the
-  frame now named "`<project>`, as the export will frame it". What is in it
-  is the engine's (F1, F3).
+  frame now named "`<project>`, as the export will frame it", with
+  **Skip past the map** the stop before it, as under the Map tab. What is in
+  it is the engine's (F1).
 
 ### Settings
 

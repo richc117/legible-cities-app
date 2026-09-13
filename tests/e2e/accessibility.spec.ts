@@ -25,7 +25,8 @@
 //
 // Contrast is arithmetic, not a screenshot: tests/unit/contrast.test.ts.
 // The engine's page inside the viewer's frame is the engine's, and is not
-// swept here; a Tab walk passes through its frame and out again.
+// swept here; a Tab walk passes the "Skip past the map" control, then through
+// its frame and out again (issue 106).
 //
 // Every launch has a profile of its own through LEGIBLE_USER_DATA, and the
 // stand-in's control file is written before the app starts, because the
@@ -805,6 +806,113 @@ test('the Export tab, and focus through an export', async () => {
     },
     { env: { LEGIBLE_EXPORT_FOLDER: exportFolder } },
   )
+})
+
+/**
+ * A page for the viewer's frame with many controls of its own, as the
+ * engine's page has: the stand-in's page holds none, so a Tab walk through it
+ * would be no longer than the skip. It says which address it was loaded at,
+ * so a test can wait for the frame to hold the one it expects, and answers
+ * the viewer's `state` so the screen does not report the map missing.
+ */
+function busyMapPage(controls: number): string {
+  const buttons = Array.from(
+    { length: controls },
+    (_, i) => `<button type="button">Map control ${i + 1}</button>`,
+  ).join('\n')
+  return `<!doctype html>
+<meta charset="utf-8" />
+<title>a map with many controls</title>
+<body>
+${buttons}
+<p id="where"></p>
+<script>
+  document.getElementById('where').textContent = location.search
+  window.__present = { state: function () { return {} } }
+</script>
+</body>
+`
+}
+
+test('the project screen: one press skips past the map to its toolbar, and the map stays reachable', async () => {
+  // Issue 106, finding F3 in docs/accessibility.md.
+  test.setTimeout(240_000)
+  const p = profile()
+  await withApp(p, async (page) => {
+    await openLaidOut(page, 'Los Angeles')
+    const controls = 40
+    const [id] = readdirSync(join(p.engineHome, 'projects'))
+    const out = join(p.engineHome, 'out', id)
+    for (const name of readdirSync(out).filter((n) => n.endsWith('.html')))
+      writeFileSync(join(out, name), busyMapPage(controls))
+    // Leave and come back, so the viewer loads the page again.
+    await page.getByRole('button', { name: 'Back to Library' }).click()
+    await page.getByRole('button', { name: 'Open Los Angeles' }).click()
+    await expect(heading(page)).toHaveText('Los Angeles')
+
+    const skip = page.getByRole('button', { name: 'Skip past the map', exact: true })
+    const rename = page.getByRole('button', { name: 'Rename', exact: true })
+    const frame = page.frameLocator('iframe.viewer-frame')
+    const width = (): Promise<number> => skip.evaluate((el) => el.getBoundingClientRect().width)
+    const activeTag = (): Promise<string> =>
+      page.evaluate(() => document.activeElement?.tagName.toLowerCase() ?? 'nothing')
+
+    for (const [tab, address] of [
+      ['Map', 'controls=1'],
+      ['Export', 'safe=1'],
+    ] as const) {
+      await page.getByRole('tab', { name: tab }).click()
+      const panel = page.getByRole('tabpanel', { name: tab })
+      await expect(panel).toBeVisible()
+      // The frame holds the busy page at this tab's address: the plain map
+      // under Map, the planned preview under Export.
+      await expect(frame.locator('#where')).toContainText(address, { timeout: 20_000 })
+      await expect(frame.getByRole('button', { name: `Map control ${controls}` })).toBeAttached()
+
+      // Out of sight while it does not hold focus, and in the document.
+      await expect.poll(width, { message: `${tab}: hidden at rest` }).toBeLessThanOrEqual(1)
+
+      // From the tab panel, the next Tab stop is the skip, before the frame.
+      await skip.focus()
+      await page.keyboard.press('Shift+Tab')
+      expect(
+        await page.evaluate(
+          () => document.activeElement?.closest('[role="tabpanel"]:not([hidden])') != null,
+        ),
+        `${tab}: the stop before the skip is in the tab panel`,
+      ).toBe(true)
+      await page.keyboard.press('Tab')
+      await expect(skip).toBeFocused()
+
+      // Seen once it holds focus: a target of at least 24px, unclipped, in
+      // the viewport, with the focus ring.
+      await expect(skip).toBeInViewport()
+      const box = await skip.boundingBox()
+      expect(box?.width ?? 0, `${tab}: shown when focused`).toBeGreaterThan(24)
+      expect(box?.height ?? 0, `${tab}: a target when focused`).toBeGreaterThanOrEqual(24)
+      expect(await skip.evaluate((el) => getComputedStyle(el).clipPath)).toBe('none')
+      expect(await skip.evaluate((el) => getComputedStyle(el).outlineStyle)).not.toBe('none')
+
+      // Not used, the next Tab goes into the map: its first control, whatever
+      // else the page holds.
+      await page.keyboard.press('Tab')
+      await expect(frame.getByRole('button', { name: 'Map control 1', exact: true })).toBeFocused()
+      expect(await activeTag(), `${tab}: focus is in the frame`).toBe('iframe')
+      await expect(rename).not.toBeFocused()
+      await expect.poll(width, { message: `${tab}: hidden again` }).toBeLessThanOrEqual(1)
+
+      // Back out of the map to the skip, and pressed: the toolbar's first
+      // button, two presses from the tab panel however many controls the
+      // map has.
+      await page.keyboard.press('Shift+Tab')
+      await expect(skip).toBeFocused()
+      await page.keyboard.press('Enter')
+      await expect(rename).toBeFocused()
+      await expect.poll(width, { message: `${tab}: hidden after the skip` }).toBeLessThanOrEqual(1)
+      await page.keyboard.press('Tab')
+      await expect(page.getByRole('button', { name: 'Delete project', exact: true })).toBeFocused()
+    }
+  })
 })
 
 test('Settings, its reset confirmation, and focus after "Use the default"', async () => {
