@@ -31,7 +31,10 @@ set -euo pipefail
 
 target=${1:-}
 outdir=${2:-vendor/ffmpeg}
-[ -n "$target" ] || { echo "usage: $0 <target> [outdir]" >&2; exit 2; }
+case "$target" in
+  darwin-arm64|darwin-x64|win-x64|linux-x64) ;;
+  *) echo "usage: $0 <darwin-arm64|darwin-x64|win-x64|linux-x64> [outdir]" >&2; exit 2 ;;
+esac
 
 # absolute <dir>: the directory's absolute path in the form the build
 # machine's Python can read (Git Bash's `pwd -W` on Windows).
@@ -82,10 +85,14 @@ want = sorted(["ffmpeg" + exe, "ffprobe" + exe])
 if names != want:
     sys.exit(f"ffmpeg.targets.{target} extracts {names}; it must extract exactly {want}")
 lines = [t["reports"]] + [f"{a['sha256']} {a['url']}" for a in t["archives"]]
-# write, not print: a Windows Python ends a printed line in \r\n.
-sys.stdout.write("\n".join(lines))
+# Bytes, not text: a Windows Python's text-mode stdout writes every "\n" as
+# "\r\n", in sys.stdout.write as much as in print, so every field but the
+# last would arrive ending in \r. The first win-x64 run did exactly that.
+sys.stdout.buffer.write("\n".join(lines).encode("utf-8"))
 PY
 )
+# And stripped all the same, so no Python on no runner can bring one back.
+plan=${plan//$'\r'/}
 reports=${plan%%$'\n'*}
 [ -n "$reports" ] || { echo "could not read the ffmpeg pin for $target" >&2; exit 1; }
 
@@ -101,13 +108,15 @@ while read -r want url; do
   i=$((i + 1))
   file="$work/$i-${url##*/}"
   echo "fetching $url"
-  curl -fsSL --retry 3 -o "$file" "$url"
+  curl -fsSL --retry 3 --connect-timeout 30 --max-time 900 -o "$file" "$url"
   got=$(sha256 "$file")
   if [ "$got" != "$want" ]; then
     echo "checksum mismatch for $url" >&2
     echo "  expected $want" >&2
-    echo "  got      $got" >&2
-    echo "The pinned archive changed. Do not update the pin without reading why." >&2
+    echo "  got      $got ($(wc -c < "$file" | tr -d ' ') bytes)" >&2
+    echo "Either the pinned archive changed, or the server answered with something" >&2
+    echo "else, such as a challenge or interstitial page; a size far below the" >&2
+    echo "archive's says which. Do not update the pin without reading why." >&2
     exit 1
   fi
   echo "checksum ok: $got"
@@ -167,26 +176,48 @@ run() {
   printf '%s' "${out//$'\r'/}"
 }
 
-version=$(run "ffmpeg -version" "$ff" -version)
-first=${version%%$'\n'*}
-echo "$first"
-case "$first" in
-  "ffmpeg version $reports "*) ;;
-  *) echo "ffmpeg reports '$first'; the pin says ffmpeg version $reports" >&2; exit 1 ;;
-esac
-config=$(grep -E '^configuration:' <<< "$version" || true)
-echo "$config"
-for flag in --enable-gpl --enable-version3 --enable-libx264; do
+# licensed <program> <binary>: the binary reports the pinned version, is
+# configured GPL version 3 with libx264 and without nonfree parts, and does
+# not call itself not legally redistributable. Run on ffmpeg and on ffprobe:
+# they are separate binaries, and either could be the odd one out.
+licensed() {
+  local program=$1 binary=$2 version first token config flag licence
+  version=$(run "$program -version" "$binary" -version)
+  first=${version%%$'\n'*}
+  echo "$first"
+  # The exact token after "<program> version ", compared whole; both sides
+  # are printed with %q when they differ, so an invisible character shows.
+  token=${first#"$program version "}
+  token=${token%% *}
+  if [ "$token" != "$reports" ]; then
+    printf '%s reports version %q; the pin says %q\n' "$program" "$token" "$reports" >&2
+    exit 1
+  fi
+  config=$(grep -E '^configuration:' <<< "$version" || true)
+  echo "$config"
+  for flag in --enable-gpl --enable-version3 --enable-libx264; do
+    case " $config " in
+      *" $flag "*) ;;
+      *) echo "$program's configure line has no $flag" >&2; exit 1 ;;
+    esac
+  done
+  # A nonfree build may not be redistributed at all; martin-riedl.de's
+  # Linux build of the same release is one.
   case " $config " in
-    *" $flag "*) ;;
-    *) echo "the configure line has no $flag" >&2; exit 1 ;;
+    *" --enable-nonfree "*)
+      echo "$program's configure line has --enable-nonfree; this build cannot be shipped" >&2
+      exit 1 ;;
   esac
-done
-# A nonfree build may not be redistributed at all; martin-riedl.de's Linux
-# build of the same release is one.
-case " $config " in
-  *" --enable-nonfree "*) echo "the configure line has --enable-nonfree; this build cannot be shipped" >&2; exit 1 ;;
-esac
+  licence=$(run "$program -L" "$binary" -hide_banner -L)
+  case "$licence" in
+    *"not legally redistributable"*)
+      echo "$program -L says it is not legally redistributable:" >&2
+      printf '%s\n' "$licence" >&2
+      exit 1 ;;
+  esac
+}
+
+licensed ffmpeg "$ff"
 
 # has <listing> <name>: whether an ffmpeg -encoders, -filters, ... listing
 # names <name> in its first or second column. Demuxers list their aliases
@@ -229,13 +260,7 @@ for name in file pipe; do
 done
 echo "protocols ok: file pipe"
 
-probe_version=$(run "ffprobe -version" "$fp" -version)
-probe_first=${probe_version%%$'\n'*}
-echo "$probe_first"
-case "$probe_first" in
-  "ffprobe version $reports "*) ;;
-  *) echo "ffprobe reports '$probe_first'; the pin says ffprobe version $reports" >&2; exit 1 ;;
-esac
+licensed ffprobe "$fp"
 
 # A real encode, in the work folder, with relative paths only: nothing that
 # Git Bash would rewrite as a path crosses to a Windows ffmpeg.

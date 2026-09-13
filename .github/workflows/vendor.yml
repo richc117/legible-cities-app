@@ -424,15 +424,17 @@ jobs:
 
   # FFmpeg and ffprobe, prebuilt rather than built: ADR-012 has the sources
   # and why. scripts/vendor-ffmpeg.sh verifies every pinned archive against
-  # its checksum and fails on a mismatch, refuses a build whose configure
-  # line lacks --enable-gpl, --enable-version3 or --enable-libx264 or carries
-  # --enable-nonfree, requires every component export.py names, and encodes
+  # its checksum and fails on a mismatch, refuses an ffmpeg or ffprobe whose
+  # configure line lacks --enable-gpl, --enable-version3 or --enable-libx264
+  # or carries --enable-nonfree, or whose -L calls it not legally
+  # redistributable, requires every component export.py names, and encodes
   # a one-second MP4 and GIF the way the engine does, reading both back with
   # ffprobe, before anything reaches vendor/ffmpeg/<target>. linux-x64 is
   # for tests and is not shipped.
   ffmpeg:
     name: ffmpeg (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -447,8 +449,10 @@ jobs:
           persist-credentials: false
       - name: Fetch, verify and prove ffmpeg and ffprobe
         shell: bash
-        run: bash scripts/vendor-ffmpeg.sh ${{ matrix.target }}
-      - name: Refuse a macOS binary that links anything outside the system
+        env:
+          TARGET: ${{ matrix.target }}
+        run: bash scripts/vendor-ffmpeg.sh "$TARGET"
+      - name: Refuse a macOS binary that links anything outside the system, or is another architecture
         if: runner.os == 'macOS'
         shell: bash
         env:
@@ -473,6 +477,22 @@ jobs:
             exit 1
           fi
           echo "ffmpeg and ffprobe link only /usr/lib and /System"
+          # Each binary is exactly the target's architecture: a universal
+          # binary would double the size, and the other architecture would
+          # run on this runner under Rosetta and prove nothing about a user's.
+          case "$TARGET" in
+            darwin-arm64) want=arm64 ;;
+            darwin-x64)   want=x86_64 ;;
+            *) echo "::error::no architecture known for $TARGET"; exit 1 ;;
+          esac
+          for b in ffmpeg ffprobe; do
+            archs=$(lipo -archs "vendor/ffmpeg/$TARGET/$b")
+            if [ "$archs" != "$want" ]; then
+              echo "::error::$b is '$archs', not $want"
+              exit 1
+            fi
+          done
+          echo "ffmpeg and ffprobe are $want only"
       - uses: actions/upload-artifact@v7
         with:
           name: ffmpeg-${{ matrix.target }}
