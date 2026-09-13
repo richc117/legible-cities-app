@@ -95,14 +95,19 @@ export function lenientDecode(text: string): string {
   })
 }
 
-/** A query, without its `?` and without a fragment: every value and every nameless part replaced. */
+/**
+ * A query, without its `?` and without a fragment: every value replaced, and
+ * every part with no name or only `=` padding after its first `=` replaced
+ * whole.
+ */
 function redactQuery(query: string): string {
   return query
     .split(/([&;])/)
     .map((part, i) => {
       if (i % 2 === 1 || part === '') return part
       const equals = part.indexOf('=')
-      if (equals < 0) return REDACTED
+      // No name, or a name that is only a padded token (`QUJDRA==`): all of it goes.
+      if (equals < 0 || /^=+$/.test(part.slice(equals + 1))) return REDACTED
       return equals === part.length - 1 ? part : `${part.slice(0, equals + 1)}${REDACTED}`
     })
     .join('')
@@ -176,7 +181,9 @@ function redactRun(run: string): string {
   // app's, and its values are not secrets.
   if (mark >= 0 && slash >= 0 && slash < mark) {
     const scheme = firstScheme(run.slice(0, mark))
-    const web = scheme === null || /https?$/i.test(scheme)
+    // Every scheme but the app's own: requests names an ftp:// or s3://
+    // redirect in full when it refuses one.
+    const web = scheme?.toLowerCase() !== 'app'
     const addressFirst = (plain >= 0 && plain < mark) || (encoded >= 0 && encoded < mark)
     if (web && !addressFirst) {
       const hash = run.indexOf('#', mark)

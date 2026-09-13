@@ -59,9 +59,15 @@ function inNamePosition(url: string, n: number): boolean {
   const hash = url.indexOf('#')
   const query = url.slice(url.indexOf('?') + 1, hash >= 0 ? hash : url.length)
   const token = `SECRETTOKEN${n}`
-  const part = query.split(/[&;]/).find((p) => p.includes(token)) ?? ''
-  const equals = part.indexOf('=')
-  return equals >= 0 && part.indexOf(token) < equals
+  return query
+    .split(/[&;]/)
+    .filter((part) => part.includes(token))
+    .some((part) => {
+      const equals = part.indexOf('=')
+      // Padding after the name is not a value: the whole part goes.
+      const padded = /^=+$/.test(part.slice(equals + 1))
+      return equals >= 0 && part.indexOf(token) < equals && !padded
+    })
 }
 
 function value(): string {
@@ -81,6 +87,9 @@ function generate(n: number): Case {
     const v = i === secretAt ? `${value()}SECRETTOKEN${n}${value()}` : value()
     params.push(`${name}=${v}`)
   }
+  // Sometimes a bare token padded like base64 comes first, carrying the
+  // secret as well (`?SECRETTOKEN7==&key=…`).
+  if (random() < 0.25) params.unshift(`SECRETTOKEN${n}${pick(['==', '==='])}`)
   let query = params[0]
   for (let i = 1; i < params.length; i += 1) query += pick(['&', ';']) + params[i]
   const pathQuery = `${path}?${query}${pick(FRAGMENTS)}`
@@ -120,6 +129,7 @@ describe('generated addresses in the engine’s message shapes', () => {
     expect(CASES.some((c) => c.url.includes('{z}'))).toBe(true)
     expect(CASES.some((c) => /[;&].*SECRETTOKEN/.test(c.url))).toBe(true)
     expect(CASES.some((c) => c.url.includes("'") && c.url.includes('('))).toBe(true)
+    expect(CASES.some((c) => /\?SECRETTOKEN\d+==/.test(c.url))).toBe(true)
   })
 
   it('never lets the secret through, in a line or in the copy, and is stable on a second pass', () => {

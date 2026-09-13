@@ -215,6 +215,27 @@ describe('an address with quotes, parentheses or braces inside it', () => {
     )
   })
 
+  it('redacts a query on a scheme requests refuses to fetch, as it names it', () => {
+    for (const scheme of ['ftp', 's3']) {
+      const line = `requests.exceptions.InvalidSchema: No connection adapters were found for '${scheme}://feeds.example.org/x.zip?token=SECRET'`
+      const out = redactUrls(line)
+      expect(out, scheme).not.toContain('SECRET')
+      expect(out, scheme).toContain(`${scheme}://feeds.example.org/x.zip?token=${REDACTED}'`)
+    }
+  })
+
+  it('replaces a bare padded token whole, first or later in the query', () => {
+    expect(redactUrls('https://example.org/g.zip?QUJDRA==')).toBe(
+      `https://example.org/g.zip?${REDACTED}`,
+    )
+    expect(redactUrls('https://example.org/g.zip?format=gtfs&dGVzdA==')).toBe(
+      `https://example.org/g.zip?format=${REDACTED}&${REDACTED}`,
+    )
+    expect(redactUrls('with url: /g.zip?QUJDRA==&v=1')).toBe(
+      `with url: /g.zip?${REDACTED}&v=${REDACTED}`,
+    )
+  })
+
   it("leaves the values of the app's own scheme alone", () => {
     const line = '[protocol] warning: refused app://local/projects/x/index.html?theme=dark&speed=2'
     expect(redactUrls(line)).toBe(line)
