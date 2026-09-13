@@ -7,7 +7,8 @@
 - **Timebox:** one weekend. Ends when the question is answered for the
   platforms available, or the timebox closes.
 - **Started:** 2026-09-07
-- **Ended:** 2026-09-07 (macOS measured; Windows not, see Recommendation)
+- **Ended:** 2026-09-07 (macOS measured; Windows not, see Recommendation).
+  The Intel and Windows targets ran on 2026-09-12; see the last section.
 - **Branch:** `spike/sidecar-packaging` (deleted when this lands; the report
   is the deliverable)
 
@@ -267,9 +268,21 @@ virtual machine each and are indicative, not a budget.
 | Target | Size | Files | Cold start, no bytecode | Cold start, cached bytecode | Source |
 |---|---|---|---|---|---|
 | darwin-arm64, this Mac (arm64) | 109 MB | 2568 | 0.79, 0.72, 0.71 s | 0.99 (compiling), 0.18, 0.18 s | local run of the script |
-| darwin-arm64, runner | from run <id> | from run <id> | from run <id> | from run <id> | run <id> |
-| darwin-x64, runner | from run <id> | from run <id> | from run <id> | from run <id> | run <id> |
-| win-x64, runner | from run <id> | from run <id> | from run <id> | from run <id> | run <id> |
+| darwin-arm64, runner (`macos-15`) | 109 MB | 2568 | 1.51, 2.22, 1.83 s | 1.71 (compiling), 0.34, 0.30 s | vendor run 34732070984 |
+| darwin-x64, runner (`macos-15-intel`) | 112 MB | 2568 | 3.46, 3.43, 3.34 s | 3.82 (compiling), 0.84, 0.80 s | vendor run 34732070984 |
+| win-x64, runner (`windows-latest`) | 118 MB | 4399 | 2.67, 2.63, 2.65 s | 3.02 (compiling), 0.67, 0.63 s | vendor run 34732070984 |
+
+**The Windows runner's tree is the larger one**: 4399 files against 2568 on
+both macOS targets. The uploaded artifacts of the same run (which count
+4398 and 2576) say where the difference is. The Windows interpreter's
+Tcl/Tk tree under `python/tcl/` - Tcl and Tk 8.6 and Tix, with their
+encodings and message catalogues - is 1265 files, against 196 in macOS's
+`tcl9.0`, `tk9.0`, `itcl4.3.8` and `thread3.0.6` folders under
+`python/lib/`. And pandas declares `tzdata; sys_platform == "win32"`, so the
+Windows runtime alone carries the `tzdata` package: 634 files. Those two
+account for 1703 of the 1822. The strip removes `tkinter` but not the Tcl/Tk
+data it loads, which the sidecar never uses either; that is a lever for
+A0-10, not changed here.
 
 **The first session's 0.12 s does not carry over.** It timed a stand-in that
 imported `schematic` and `pandas` with bytecode present. The real entry
@@ -287,3 +300,29 @@ it does.
 - `THIRD_PARTY_NOTICES.md` names pandas, NumPy, requests, python-lsp-jsonrpc
   and ujson, but not the rest of what pip installs (certifi, charset-normalizer,
   idna, urllib3, python-dateutil, six); A0-10's Licences screen needs them.
+- **Libraries the wheels bring on Windows only**, listed by the gate's
+  shared-library line in run 34732070984 and found in the run's artifact.
+  Neither is in `THIRD_PARTY_NOTICES.md` yet; both are for A0-10's Licences
+  screen.
+  - `numpy.libs/libscipy_openblas64_-ed4f167a5330424524f45258e7ca2c8d.dll`,
+    NumPy's bundled OpenBLAS. NumPy's own `licenses/LICENSE.txt` in the wheel
+    names three things inside that one DLL: OpenBLAS (BSD-3-Clause), LAPACK
+    (BSD-3-Clause-Open-MPI), and the **GCC runtime library, statically
+    linked, GPL-3.0-or-later WITH GCC-exception-3.1**. The runtime library
+    exception permits distributing code compiled with that runtime under
+    other terms, so this most likely adds a notice rather than a source
+    obligation (A0-10 to confirm); but it is a GPL
+    component the name-based gate cannot see, and the notices should say so.
+    Neither macOS target has it: both NumPy wheels are `macosx_14_0`
+    (arm64 and x86_64) and carry no OpenBLAS, gfortran or quadmath library
+    at all.
+  - `msvcp140-a4c2229bdc2a2a630acdc095b4d86008.dll`, three copies (one each
+    under `numpy.libs/` and `pandas.libs/`, one at the top of
+    `site-packages/` from ujson) with the same SHA-256 in all three wheels'
+    `RECORD`: the MSVC C++ runtime, vendored and renamed by delvewheel, as
+    each wheel's `DELVEWHEEL` file records. None of the three wheels ships a
+    licence file for it. It is Microsoft's redistributable code; the nearest
+    text in the runtime is the "Additional Conditions for this Windows binary
+    build" section of python-build-standalone's own `python/LICENSE.txt`,
+    which covers the Microsoft Distributable Code linked into the
+    interpreter and requires distributors to pass Microsoft's terms on.
