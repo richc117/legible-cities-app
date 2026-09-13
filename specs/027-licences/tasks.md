@@ -6,5 +6,5 @@
 - [x] T004 `vendor.yml` python job and `scripts/check-vendored.mjs` (+ unit test) refuse a package without the texts
 - [x] T005 The component list (shared), `src/main` handlers opening fixed paths, preload bridge, channel table, units for the guard
 - [x] T006 `Settings.tsx` Licences section; design-system rules; contrast pairs if new
-- [x] T007 e2e: the section in development; add it to `tests/e2e/accessibility.spec.ts`; a row in `docs/accessibility.md`; a step in `docs/acceptance.md` (the tests written, not run by the lane)
+- [x] T007 e2e: the section in development; add it to `tests/e2e/accessibility.spec.ts`; a row in `docs/accessibility.md`; a step in `docs/acceptance.md` (run green by the coordinator on macOS)
 - [x] T008 `THIRD_PARTY_NOTICES.md`, ADR-042 amending ADR-035, `docs/ARCHITECTURE.md`, `CLAUDE.md`

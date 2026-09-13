@@ -395,8 +395,7 @@ test('keeps main.log and engine.log, and copies diagnostics without the home fol
 
 // The Licences section (issue 108, specs/027, US2): the app's licence and the
 // components it carries, and three buttons that in a development run say
-// there is nothing bundled to open and open nothing. Written, not run by the
-// lane that wrote it.
+// there is nothing bundled to open and open nothing.
 test('names the licences, and says a development run bundles nothing to open', async () => {
   const userData = profile()
   await withApp(userData, async (page, app) => {
