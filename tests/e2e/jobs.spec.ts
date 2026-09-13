@@ -4,7 +4,9 @@
 // inspector during octi that ends the stand-in's child, the engine's
 // route-type sentence with its detail behind a disclosure, "Copy log" with
 // a feed key and the home folder taken out, twenty finished jobs kept of
-// twenty-one, and the keyboard.
+// twenty-one with each end announced, focus kept when a cancelled job moves
+// below a running one, a rename's name and a delete's removal, and the
+// keyboard.
 //
 // Every test has a profile of its own through LEGIBLE_USER_DATA. The
 // stand-in reads its control file once, at start, so each test that needs
@@ -140,7 +142,11 @@ test('an export started in a project is followed from Settings, to its end', asy
 
     await startExport(page)
     await expect(toggle(page)).toHaveAccessibleName('Jobs, 1 running', { timeout: 20_000 })
-    await expect(toggle(page)).toContainText('1 running')
+    // The count is shown, not only named. The role locator resolves to the
+    // kit's inner button, whose own content is a slot, so the shown text is
+    // read from the slotted span in the header.
+    await expect(page.locator('.app-header .job-count')).toHaveText('1 running')
+    await expect(page.locator('.app-header .job-count')).toBeVisible()
 
     await page.getByRole('button', { name: 'Settings' }).click()
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Settings')
@@ -171,7 +177,7 @@ test('an export started in a project is followed from Settings, to its end', asy
 
 test('jobs in two projects are listed together, running ones first', async () => {
   // A long encode and a long octi, so the two overlap.
-  const h = home({ encode_delay_ms: 1_500, octi_child: true, octi_ms: 1_500 })
+  const h = home({ encode_delay_ms: 1_500, octi_child: true, octi_ms: 4_000 })
   await withApp(h, async (page) => {
     await openNewProject(page, 'Los Angeles')
     await layOutForExport(page, h)
@@ -181,6 +187,8 @@ test('jobs in two projects are listed together, running ones first', async () =>
     await page.getByRole('button', { name: 'Back to Library' }).click()
     await openNewProject(page, 'Bart')
     await page.getByRole('button', { name: /lay out/i }).click()
+    // The two are running at once, not one after the other.
+    await expect(toggle(page)).toHaveAccessibleName('Jobs, 2 running')
     await openInspector(page)
 
     await expect(jobNamed(page, 'Los Angeles Export as instagram-reel')).toBeVisible()
@@ -305,6 +313,18 @@ test('twenty-one finished jobs keep the newest twenty', async () => {
     await openNewProject(page, 'Los Angeles')
     await openInspector(page)
     await expect(inspector(page).getByText('There are no jobs this session.')).toBeVisible()
+    // Every sentence the live region is given, as a screen reader hears
+    // it: the same sentence twenty-one times has to be twenty-one changes.
+    await page.evaluate(() => {
+      const region = document.querySelector('.visually-hidden[role="status"]') as HTMLElement
+      const said: string[] = []
+      ;(window as unknown as { said: string[] }).said = said
+      new MutationObserver(() => {
+        if (region.textContent !== '') said.push(region.textContent ?? '')
+      }).observe(region, { childList: true, characterData: true, subtree: true })
+    })
+    const said = (): Promise<string[]> =>
+      page.evaluate(() => (window as unknown as { said: string[] }).said)
     const layOut = page.getByRole('main').getByRole('button', { name: 'Lay out', exact: true })
     // Each job is told apart by the id its heading carries, so a count that
     // has not moved yet cannot pass for one that has.
@@ -319,7 +339,69 @@ test('twenty-one finished jobs keep the newest twenty', async () => {
       newest = await jobs(page).first().getAttribute('aria-labelledby')
       await expect(toggle(page)).toHaveAccessibleName('Jobs, none running')
       await expect(jobs(page)).toHaveCount(Math.min(i, 20))
+      await expect.poll(async () => (await said()).length).toBe(i)
     }
+    expect(new Set(await said())).toEqual(new Set(['Los Angeles: Layout run, failed.']))
+  })
+})
+
+test('cancelling the newer of two running jobs leaves focus on its heading as it moves down', async () => {
+  const h = home({ octi_child: true, octi_ms: 60_000 })
+  await withApp(h, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(toggle(page)).toHaveAccessibleName('Jobs, 1 running')
+    await page.getByRole('button', { name: 'Back to Library' }).click()
+    await openNewProject(page, 'Bart')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(toggle(page)).toHaveAccessibleName('Jobs, 2 running')
+    await openInspector(page)
+
+    // Running, newest first: Bart above Los Angeles.
+    await expect(jobs(page).nth(0)).toHaveAccessibleName('Bart Layout run')
+    await expect(jobs(page).nth(1)).toHaveAccessibleName('Los Angeles Layout run')
+
+    const bart = jobNamed(page, 'Bart Layout run')
+    await bart.getByRole('button', { name: 'Cancel: Layout run, Bart' }).click()
+    await expect(bart).toHaveAttribute('data-state', 'cancelled', { timeout: 20_000 })
+    // A cancelled job goes below the running one; React moves its item, and
+    // the focus goes with it to the heading rather than to the page.
+    await expect(jobs(page).nth(0)).toHaveAccessibleName('Los Angeles Layout run')
+    await expect(jobs(page).nth(1)).toHaveAccessibleName('Bart Layout run')
+    await expect(bart.getByRole('heading', { level: 3 })).toBeFocused()
+    expect(await page.evaluate(() => document.activeElement === document.body)).toBe(false)
+  })
+})
+
+test("a renamed project's jobs say its new name, and a deleted project's jobs leave the list", async () => {
+  const h = home()
+  await withApp(h, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    // The first end reads the names, so the name is known before the rename.
+    await expect(announcement(page)).toHaveText('Los Angeles: Layout run, finished.', {
+      timeout: 30_000,
+    })
+
+    await page.getByRole('button', { name: 'Rename', exact: true }).click()
+    await page.getByLabel('New name').fill('LA Metro')
+    await page.getByRole('button', { name: 'Save', exact: true }).click()
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('LA Metro')
+
+    await page.getByRole('button', { name: 'Lay out again' }).click()
+    await expect(announcement(page)).toHaveText('LA Metro: Layout run, finished.', {
+      timeout: 30_000,
+    })
+    await openInspector(page)
+    await expect(jobs(page)).toHaveCount(2)
+    await expect(jobNamed(page, 'LA Metro Layout run')).toHaveCount(2)
+
+    // Deleted from its own screen, with the inspector open: its jobs go at once.
+    await page.getByRole('button', { name: 'Delete project' }).click()
+    const confirm = page.getByRole('dialog')
+    await confirm.getByRole('button', { name: 'Delete', exact: true }).click()
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Library')
+    await expect(inspector(page).getByText('There are no jobs this session.')).toBeVisible()
   })
 })
 
@@ -335,6 +417,8 @@ test('the inspector from the keyboard: opened to its heading, closed with Escape
     await expect(inspector(page)).toBeVisible()
     await expect(inspector(page).getByRole('heading', { name: 'Jobs' })).toBeFocused()
     await expect(toggle(page)).toHaveAttribute('aria-expanded', 'true')
+    // Beside the main region, nothing is made inert.
+    await expect(page.locator('.app-main')).not.toHaveAttribute('inert', /.*/)
     await expect(inspector(page).getByText('There are no jobs this session.')).toBeVisible()
 
     // Beside the main region on a wide window.
@@ -355,9 +439,12 @@ test('the inspector from the keyboard: opened to its heading, closed with Escape
     await page.keyboard.press('Enter')
     await expect(inspector(page)).toBeVisible()
     expect(await inspector(page).evaluate((el) => getComputedStyle(el).position)).toBe('fixed')
+    // What it covers cannot be reached while it does; the header can.
+    await expect(page.locator('.app-main')).toHaveAttribute('inert', '')
     await page.keyboard.press('Escape')
     await expect(inspector(page)).toHaveCount(0)
     await expect(toggle(page)).toBeFocused()
+    await expect(page.locator('.app-main')).not.toHaveAttribute('inert', /.*/)
 
     // The close button does the same for a pointer.
     await toggle(page).click()

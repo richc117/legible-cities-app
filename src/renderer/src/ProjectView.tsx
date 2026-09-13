@@ -5,7 +5,13 @@ import type { ExportChoice } from '../../shared/export'
 import { validateName, type Theme } from '../../shared/project'
 import ConfirmDialog from './ConfirmDialog'
 import DiagnosticsView from './Diagnostics'
-import { engineClient, exportRunFor, layoutRunFor } from './engine/runs'
+import {
+  engineClient,
+  exportRunFor,
+  forgetProjectJobs,
+  layoutRunFor,
+  nameProject,
+} from './engine/runs'
 import { feedRecordFor, inspectionFor } from './engine/inspections'
 import { stageFor } from './engine/stages'
 import StageView from './StageView'
@@ -179,6 +185,8 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
     setSaving(true)
     try {
       const record = await window.api.projects.rename(id, trimmed)
+      // The inspector's jobs say the new name from now on (A1-03).
+      nameProject(id, record.name)
       setState({ status: 'ready', project: { ...project, ...record } })
       closeRename()
     } catch (error) {
@@ -258,6 +266,9 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
   // Library, with a sentence if some folder remained.
   const remove = async (): Promise<void> => {
     const result = await window.api.projects.delete(id)
+    // Deleted: its finished jobs leave the inspector. Only on this signal,
+    // never because a list read happened to miss the record (A1-03).
+    forgetProjectJobs(id)
     onBack(describeFailures(result.failed))
   }
 

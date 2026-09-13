@@ -30,20 +30,25 @@ export interface JobSource {
 /**
  * The session's jobs over the runs that exist (A1-03, specs/024-jobs).
  *
- * Each run holds only its latest attempt, so the registry keeps the earlier
- * ones itself: the moment a run's job reaches a final state it is copied
- * into a list, newest first, at most `MAX_FINISHED` long. Running jobs are
- * read from the runs every time and are never dropped. Nothing here is
- * written anywhere; a relaunch starts with an empty list.
+ * Running jobs are derived from the runs every time they are asked for and
+ * are never dropped. Finished jobs are copies: each run holds only its
+ * latest attempt, so the moment a run's job reaches a final state the
+ * registry keeps a copy beside the runs, newest first, at most
+ * `MAX_FINISHED`, and tells whoever listens for ends. The projects' names
+ * are copies too, kept here because a run knows its project only by id;
+ * the screens that learn a name - the list read, a rename - hand it in.
+ * Nothing is written anywhere; a relaunch starts empty.
  *
  * It takes no `window`, so a test drives it with stub runs.
  */
 export class JobRegistry {
   readonly #sources = new Map<JobSource, () => void>()
   readonly #listeners = new Set<() => void>()
+  readonly #endListeners = new Set<(job: Job) => void>()
   #finished: Job[] = []
   /** Every job ever copied into the list, so one pushed out or forgotten never comes back. */
   readonly #recorded = new Set<string>()
+  readonly #names = new Map<string, string>()
 
   /**
    * List a run's jobs from now on. A run tracked twice is tracked once.
@@ -68,27 +73,37 @@ export class JobRegistry {
 
   #changed(source: JobSource): void {
     const job = source.job()
+    let ended: Job | null = null
     if (job !== null && job.state !== 'running' && !this.#recorded.has(job.id)) {
       this.#recorded.add(job.id)
       this.#finished = keepFinished(this.#finished, job)
+      ended = job
     }
     this.#notify()
+    if (ended !== null) {
+      const named = this.#named(ended)
+      for (const listener of this.#endListeners) listener(named)
+    }
   }
 
   #notify(): void {
     for (const listener of this.#listeners) listener()
   }
 
-  /** Running first, newest first; then the finished, newest first; named by the caller. */
-  jobs(nameOf: (projectId: string) => string | undefined = () => undefined): Job[] {
+  #named(job: Job): Job {
+    return job.projectId === null
+      ? job
+      : { ...job, projectName: this.#names.get(job.projectId) ?? null }
+  }
+
+  /** Running first, newest first; then the finished, newest first; each named if a name is known. */
+  jobs(): Job[] {
     const running: Job[] = []
     for (const source of this.#sources.keys()) {
       const job = source.job()
       if (job !== null && job.state === 'running') running.push(job)
     }
-    return orderJobs([...running, ...this.#finished]).map((job) =>
-      job.projectId === null ? job : { ...job, projectName: nameOf(job.projectId) ?? null },
-    )
+    return orderJobs([...running, ...this.#finished]).map((job) => this.#named(job))
   }
 
   runningCount(): number {
@@ -97,11 +112,19 @@ export class JobRegistry {
     return going
   }
 
-  /** Hear every change to any tracked run, and to the list itself. */
+  /** Hear every change to any tracked run, to the list, and to a name. */
   subscribe(listener: () => void): () => void {
     this.#listeners.add(listener)
     return () => {
       this.#listeners.delete(listener)
+    }
+  }
+
+  /** Hear each job once, named, at the moment it ends. */
+  onEnded(listener: (job: Job) => void): () => void {
+    this.#endListeners.add(listener)
+    return () => {
+      this.#endListeners.delete(listener)
     }
   }
 
@@ -116,26 +139,33 @@ export class JobRegistry {
     }
   }
 
-  /** A project was deleted: its finished jobs go. A running one cannot exist. */
-  forgetProject(projectId: string): void {
-    const before = this.#finished.length
-    this.#finished = this.#finished.filter((job) => job.projectId !== projectId)
-    if (this.#finished.length !== before) this.#notify()
+  /** Whether a project's name is known. */
+  hasName(projectId: string): boolean {
+    return this.#names.has(projectId)
+  }
+
+  /** Every project's name, as a list read from the store answered. Nothing is forgotten by it. */
+  setNames(names: Iterable<readonly [string, string]>): void {
+    let moved = false
+    for (const [id, name] of names) {
+      if (this.#names.get(id) === name) continue
+      this.#names.set(id, name)
+      moved = true
+    }
+    if (moved) this.#notify()
   }
 
   /**
-   * Keep only the finished jobs of the projects a list read from the store
-   * names, among those that ended before the read began; a job that ended
-   * after it may be for a project the read could not have seen yet.
+   * A project was deleted: its finished jobs and its name go. A running
+   * one cannot exist, since a project cannot be deleted while it runs. Only
+   * on that positive signal: a list read can miss a record it could not read
+   * at that moment, and must not make a live project's jobs vanish.
    */
-  forgetOutside(ids: ReadonlySet<string>, before: number): void {
-    const kept = this.#finished.filter(
-      (job) =>
-        job.projectId === null || ids.has(job.projectId) || (job.ended ?? job.started) >= before,
-    )
-    if (kept.length === this.#finished.length) return
-    this.#finished = kept
-    this.#notify()
+  forgetProject(projectId: string): void {
+    const before = this.#finished.length
+    this.#finished = this.#finished.filter((job) => job.projectId !== projectId)
+    const hadName = this.#names.delete(projectId)
+    if (this.#finished.length !== before || hadName) this.#notify()
   }
 }
 
@@ -272,15 +302,14 @@ export function reportsInSession(nameOf: (projectId: string) => string | undefin
   return reports
 }
 
-/**
- * The session's jobs, running first and then the finished ones newest
- * first, at most twenty of those; each named by the caller, because a run
- * knows its project only by id (specs/024-jobs, FR-002).
- */
-export const jobs: JobRegistry['jobs'] = (nameOf) => registry.jobs(nameOf)
+/** The session's jobs, running first and then the finished ones newest first, at most twenty of those (FR-002). */
+export const jobs = (): Job[] => registry.jobs()
 
-/** Hear every change to any job, including runs made after this was called. */
+/** Hear every change to any job or name, including runs made after this was called. */
 export const subscribeToJobs: JobRegistry['subscribe'] = (listener) => registry.subscribe(listener)
+
+/** Hear each job once, at the moment it ends. */
+export const onJobEnded: JobRegistry['onEnded'] = (listener) => registry.onEnded(listener)
 
 /** How many jobs are running: layout runs, rebuilds, exports and a feed add. */
 export const runningCount: JobRegistry['runningCount'] = () => registry.runningCount()
@@ -288,10 +317,42 @@ export const runningCount: JobRegistry['runningCount'] = () => registry.runningC
 /** Cancel a running job through its own run's `cancel()`, as its own screen does. */
 export const cancelJob: JobRegistry['cancel'] = (jobId) => registry.cancel(jobId)
 
+/** A project was deleted: its finished jobs and its name go (US4.2). */
+export const forgetProjectJobs: JobRegistry['forgetProject'] = (projectId) =>
+  registry.forgetProject(projectId)
+
+/** A project was renamed: the jobs say its new name from now on. */
+export const nameProject = (projectId: string, name: string): void =>
+  registry.setNames([[projectId, name]])
+
+/** The projects among these jobs whose names are not known yet. */
+export const unnamedProjects = (list: readonly Job[]): string[] => [
+  ...new Set(
+    list
+      .map((job) => job.projectId)
+      .filter((id): id is string => id !== null && !registry.hasName(id)),
+  ),
+]
+
+let reading: Promise<void> | null = null
+
 /**
- * Drop the finished jobs of every project not in a list read from the
- * store, for jobs that ended before the read began: the project was
- * deleted, so its jobs go with it (US4.2).
+ * Read the projects' names from the store, one read at a time. Asked only
+ * when a name is needed - the inspector opening, or a job ending or listed
+ * for a project it cannot name - so a person working on one screen causes
+ * no extra reads. A read that fails costs the names, not the jobs; a read
+ * that misses a project forgets nothing.
  */
-export const forgetJobsOutside: JobRegistry['forgetOutside'] = (ids, before) =>
-  registry.forgetOutside(ids, before)
+export function readProjectNames(): Promise<void> {
+  if (reading !== null) return reading
+  reading = window.api.projects
+    .list()
+    .then(
+      (list) => registry.setNames(list.map((p) => [p.id, p.name] as const)),
+      () => undefined,
+    )
+    .finally(() => {
+      reading = null
+    })
+  return reading
+}

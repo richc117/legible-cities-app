@@ -223,6 +223,9 @@ class Engine:
         self.layout_stages: dict = {}
         self.builds = 0
         self.child = None
+        # The octi stage's children while they run, ended on shutdown or at
+        # the end of input as the engine ends LOOM's, so no test leaves one.
+        self.octi_children: set = set()
         if control.get("spawn_child"):
             self.child = subprocess.Popen(
                 [sys.executable, "-c", "import time; time.sleep(600)"],
@@ -261,6 +264,7 @@ class Engine:
                 return True
             if self.child is not None:
                 self.child.kill()
+            self.end_children()
             return False
         if method == "graph.build":
             threading.Thread(target=self.build, args=(msg_id, message.get("params") or {}),
@@ -379,6 +383,8 @@ class Engine:
         child = subprocess.Popen(
             [sys.executable, "-c", "import time; time.sleep(600)"],
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        with LOCK:
+            self.octi_children.add(child)
         try:
             (HOME / "fake-engine.octi.pid").write_text(str(child.pid))
         except OSError:
@@ -400,6 +406,15 @@ class Engine:
             if child.poll() is None:
                 child.kill()
                 child.wait(timeout=10)
+            with LOCK:
+                self.octi_children.discard(child)
+
+    def end_children(self) -> None:
+        with LOCK:
+            children = list(self.octi_children)
+        for child in children:
+            if child.poll() is None:
+                child.kill()
 
     def build(self, msg_id, params: dict) -> None:
         if self.control.get("silent"):
@@ -971,6 +986,7 @@ def main() -> int:
         message = read_message(stream)
         if message is None:
             sys.stderr.write("fake engine: end of input\n")
+            engine.end_children()
             return 0
         record(message)
         if not engine.handle(message):

@@ -241,7 +241,10 @@ export class ExportRun {
   }
 
   #report(progress: ExportProgress): void {
-    if (progress.message !== '') this.#attempt?.log.push(`${progress.stage}: ${progress.message}`)
+    // One line per stage, the newest report replacing the last: the plan's
+    // sentence survives a capture that reports every frame.
+    if (progress.message !== '')
+      this.#attempt?.log.push(`${progress.stage}: ${progress.message}`, progress.stage)
     this.#set({
       stages: stagesAt(this.#snapshot.stages, progress.stage),
       message: progress.message === '' ? this.#snapshot.message : progress.message,

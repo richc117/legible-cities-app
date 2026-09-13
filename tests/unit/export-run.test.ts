@@ -308,6 +308,21 @@ describe('the export as a job', () => {
     stub.report({ id: 'tok-1', stage: 'capture', fraction: 0.5, message: '' })
     stub.report({ id: 'tok-9', stage: 'encode', fraction: 1, message: 'not ours' })
     expect(run.job()?.log).toEqual(['plan: Planned x.mp4: 60 frames.'])
+    // A capture reports every frame; its line is replaced, so the plan's survives.
+    for (let frame = 1; frame <= 600; frame++)
+      stub.report({
+        id: 'tok-1',
+        stage: 'capture',
+        fraction: frame / 600,
+        message: `Captured ${frame} of 600 frames.`,
+      })
+    stub.report({ id: 'tok-1', stage: 'encode', fraction: 0.5, message: 'Encoded 300 of 600.' })
+    expect(run.job()?.log).toEqual([
+      'plan: Planned x.mp4: 60 frames.',
+      'capture: Captured 600 of 600 frames.',
+      'encode: Encoded 300 of 600.',
+    ])
+    expect(run.job()?.dropped).toBe(0)
     stub.resolve({ file: 'x.mp4', bytes: 10, frames: 60 })
     await tick()
     expect(run.job()).toMatchObject({ state: 'done' })

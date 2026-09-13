@@ -68,7 +68,22 @@ export function nextJobId(): string {
   return `job-${sequence}`
 }
 
-export const isFinished = (state: JobState): boolean => state !== 'running'
+/**
+ * A text cut to at most `max` characters, back to the last whitespace or
+ * path separator before the limit, so a cut never leaves part of a folder
+ * name: the main process writes the home folder as `~` only where the whole
+ * name is there, and a home folder cut part-way through its last name would survive it. A text with no such
+ * place is cut at the limit.
+ */
+export function cutText(text: string, max: number): string {
+  if (text.length <= max) return text
+  const head = text.slice(0, max)
+  const at = head.search(/[\s\\/][^\s\\/]*$/)
+  // No whitespace or separator at all: one word, cut where it must be.
+  // The only one at the very start: a single path too long to keep, so
+  // none of it is kept.
+  return at === -1 ? head : head.slice(0, at)
+}
 
 /** The last lines of a log, and how many came before them. */
 export class LogBuffer {
@@ -80,9 +95,23 @@ export class LogBuffer {
     this.#max = max
   }
 
-  push(line: string): void {
+  /** The key the last line was pushed with, if any. */
+  #lastKey: string | null = null
+
+  /**
+   * Add a line. With a key, a line whose key is the last line's replaces
+   * that line rather than following it: an export's capture reports every
+   * frame, and a log of "Captured 612 of 900 frames" two hundred times over
+   * would push out the plan it began with.
+   */
+  push(line: string, key: string | null = null): void {
     const kept =
-      line.length > MAX_LOG_LINE_CHARS ? `${line.slice(0, MAX_LOG_LINE_CHARS)} [line cut]` : line
+      line.length > MAX_LOG_LINE_CHARS ? `${cutText(line, MAX_LOG_LINE_CHARS)} [line cut]` : line
+    if (key !== null && key === this.#lastKey && this.#lines.length > 0) {
+      this.#lines[this.#lines.length - 1] = kept
+      return
+    }
+    this.#lastKey = key
     this.#lines.push(kept)
     if (this.#lines.length > this.#max) {
       this.#lines.shift()
@@ -159,23 +188,6 @@ export function endSentence(job: Job): string {
   return `${jobSubject(job)}: ${job.label}, ${describeJobState(job.state)}.`
 }
 
-/**
- * The jobs that have ended since the ids in `seen` were noted, oldest end
- * first, and `seen` with them added. A job is announced once, however many
- * times the list is read.
- */
-export function newlyEnded(
-  jobs: readonly Job[],
-  seen: ReadonlySet<string>,
-): { ended: Job[]; seen: Set<string> } {
-  const next = new Set(seen)
-  const ended = jobs
-    .filter((job) => job.state !== 'running' && !seen.has(job.id))
-    .sort((a, b) => (a.ended ?? a.started) - (b.ended ?? b.started))
-  for (const job of ended) next.add(job.id)
-  return { ended, seen: next }
-}
-
 const encoder = new TextEncoder()
 const bytesOf = (text: string): number => encoder.encode(text).length
 
@@ -235,7 +247,7 @@ export function composeJobLog(job: Job): string {
   if (bytesOf(text) > JOB_LOG_BYTES) {
     const marker = '\n[cut to fit]\n'
     const room = JOB_LOG_BYTES - bytesOf(marker)
-    while (bytesOf(text) > room) text = text.slice(0, Math.floor(text.length * 0.9))
+    while (bytesOf(text) > room) text = cutText(text, Math.floor(text.length * 0.9))
     text = `${text}${marker}`
   }
   return text

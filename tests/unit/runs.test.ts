@@ -87,7 +87,7 @@ describe('JobRegistry', () => {
     expect(registry.runningCount()).toBe(1)
   })
 
-  it('lists running jobs first, then finished ones newest first, with names from the caller', () => {
+  it('lists running jobs first, then finished ones newest first, named where a name is known', () => {
     const registry = new JobRegistry()
     const a = new StubRun('pa')
     const b = new StubRun('pb')
@@ -98,11 +98,11 @@ describe('JobRegistry', () => {
     feeds.start(3)
     feeds.end('failed', 4)
     b.start(5)
-    const names = new Map([
+    registry.setNames([
       ['pa', 'Alpha'],
       ['pb', 'Bravo'],
     ])
-    const listed = registry.jobs((id) => names.get(id))
+    const listed = registry.jobs()
     expect(listed.map((j) => [j.projectName, j.state])).toEqual([
       ['Bravo', 'running'],
       [null, 'failed'],
@@ -154,25 +154,68 @@ describe('JobRegistry', () => {
     expect(run.cancelled, 'a finished job is not cancelled again').toBe(1)
   })
 
-  it("forgets a deleted project's finished jobs, and only those that ended before the read", () => {
+  it("forgets a project's finished jobs and name only when told it was deleted", () => {
     const registry = new JobRegistry()
     const kept = new StubRun('kept')
     const gone = new StubRun('gone')
-    const late = new StubRun('late')
     const feeds = new StubRun(null)
-    for (const run of [kept, gone, late, feeds]) registry.track(run)
+    for (const run of [kept, gone, feeds]) registry.track(run)
     for (const run of [kept, gone, feeds]) {
       run.start(1)
       run.end('done', 2)
     }
-    late.start(3)
-    late.end('done', 20)
-    registry.forgetOutside(new Set(['kept']), 10)
+    registry.setNames([
+      ['kept', 'Kept'],
+      ['gone', 'Gone'],
+    ])
+    // A list read that misses a record it could not read forgets nothing.
+    registry.setNames([['kept', 'Kept']])
     const ids = (): (string | null)[] => registry.jobs().map((j) => j.projectId)
-    expect(ids()).toHaveLength(3)
-    expect(new Set(ids())).toEqual(new Set(['late', 'kept', null]))
-    registry.forgetProject('kept')
-    expect(new Set(ids())).toEqual(new Set(['late', null]))
+    expect(new Set(ids())).toEqual(new Set(['kept', 'gone', null]))
+    let heard = 0
+    registry.subscribe(() => {
+      heard += 1
+    })
+    registry.forgetProject('gone')
+    expect(heard, 'an open inspector hears it at once').toBe(1)
+    expect(new Set(ids())).toEqual(new Set(['kept', null]))
+    expect(registry.hasName('gone')).toBe(false)
+    expect(registry.hasName('kept')).toBe(true)
+  })
+
+  it('says a renamed project’s new name, and a name that did not change is no change', () => {
+    const registry = new JobRegistry()
+    const run = new StubRun('p1')
+    registry.track(run)
+    run.start(1)
+    run.end('done', 2)
+    registry.setNames([['p1', 'Los Angeles']])
+    let heard = 0
+    registry.subscribe(() => {
+      heard += 1
+    })
+    registry.setNames([['p1', 'Los Angeles']])
+    expect(heard).toBe(0)
+    registry.setNames([['p1', 'LA Metro']])
+    expect(heard).toBe(1)
+    expect(registry.jobs()[0].projectName).toBe('LA Metro')
+  })
+
+  it('tells an end listener once per job, named, at the moment it ends', () => {
+    const registry = new JobRegistry()
+    const run = new StubRun('p1')
+    registry.track(run)
+    registry.setNames([['p1', 'Los Angeles']])
+    const ended: string[] = []
+    registry.onEnded((job) => ended.push(`${job.projectName}: ${job.state}`))
+    run.start(1)
+    expect(ended).toEqual([])
+    run.end('failed', 2)
+    run.end('failed', 2)
+    run.start(3)
+    run.end('failed', 4)
+    // Two identical ends are two ends.
+    expect(ended).toEqual(['Los Angeles: failed', 'Los Angeles: failed'])
   })
 
   it('does not bring back a job pushed out of the list when its run speaks again', () => {

@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   composeJobLog,
+  cutText,
   endSentence,
   failureOf,
   JOB_LOG_BYTES,
@@ -13,7 +14,6 @@ import {
   MAX_FINISHED,
   MAX_LOG_LINE_CHARS,
   MAX_LOG_LINES,
-  newlyEnded,
   nextJobId,
   orderJobs,
   type Job,
@@ -63,6 +63,33 @@ describe('LogBuffer', () => {
     expect(buffer.dropped).toBe(5)
   })
 
+  it('replaces the last line when a keyed line follows one with the same key', () => {
+    const buffer = new LogBuffer()
+    buffer.push('plan: Planned 900 frames.', 'plan')
+    buffer.push('capture: Captured 1 of 900 frames.', 'capture')
+    buffer.push('capture: Captured 2 of 900 frames.', 'capture')
+    buffer.push('encode: Encoding.', 'encode')
+    buffer.push('a line with no key')
+    buffer.push('another with no key')
+    expect(buffer.lines).toEqual([
+      'plan: Planned 900 frames.',
+      'capture: Captured 2 of 900 frames.',
+      'encode: Encoding.',
+      'a line with no key',
+      'another with no key',
+    ])
+    expect(buffer.dropped).toBe(0)
+  })
+
+  it('cuts a line too long to keep, at a separator, and says so', () => {
+    const buffer = new LogBuffer()
+    const home = ['', 'home', 'someone'].join('/')
+    // The limit falls two letters into "someone".
+    const prefix = 'x '.repeat((MAX_LOG_LINE_CHARS - ['', 'home', 'so'].join('/').length) / 2)
+    buffer.push(`${prefix}${home}/feeds`)
+    expect(buffer.lines[0]).toBe(`${prefix}${['', 'home'].join('/')} [line cut]`)
+  })
+
   it('cuts a line too long to keep, and says so', () => {
     const buffer = new LogBuffer()
     buffer.push('x'.repeat(MAX_LOG_LINE_CHARS + 10))
@@ -75,6 +102,31 @@ describe('LogBuffer', () => {
     buffer.push('a')
     buffer.lines.push('b')
     expect(buffer.lines).toEqual(['a'])
+  })
+})
+
+describe('cutText', () => {
+  it('leaves a text within the limit alone', () => {
+    expect(cutText('short', 10)).toBe('short')
+  })
+
+  it('cuts back to the last separator or space, so no folder name is left in part', () => {
+    const home = ['', 'home', 'someone'].join('/')
+    const line = `reading ${home}/feeds/gtfs.zip`
+    // The limit falls inside "someone": the cut goes back to before it.
+    const inside = line.indexOf('someone') + 3
+    expect(cutText(line, inside)).toBe(`reading ${['', 'home'].join('/')}`)
+    expect(cutText(line, inside)).not.toMatch(/som$/)
+    const windows = ['C:', 'Users', 'someone', 'feeds'].join('\\')
+    expect(cutText(`at ${windows}`, 3 + windows.indexOf('someone') + 4)).toBe(
+      `at ${['C:', 'Users'].join('\\')}`,
+    )
+    expect(cutText('one two three', 9)).toBe('one two')
+  })
+
+  it('cuts a single word where it must, and keeps nothing of a path that is one segment', () => {
+    expect(cutText('abcdefghij', 4)).toBe('abcd')
+    expect(cutText(`${['', 'someone-very-long'].join('/')}`, 6)).toBe('')
   })
 })
 
@@ -146,19 +198,6 @@ describe('the sentence said when a job ends', () => {
     expect(endSentence(job({ projectName: null, state: 'done' }))).toBe(
       'A project: Layout run, finished.',
     )
-  })
-
-  it('is said once per job, however often the list is read', () => {
-    const running = job({ id: 'a' })
-    let seen: ReadonlySet<string> = new Set()
-    let step = newlyEnded([running], seen)
-    expect(step.ended).toEqual([])
-    seen = step.seen
-    const finished = { ...running, state: 'done' as const, ended: 2_000 }
-    step = newlyEnded([finished], seen)
-    expect(step.ended.map((j) => j.id)).toEqual(['a'])
-    step = newlyEnded([finished], step.seen)
-    expect(step.ended).toEqual([])
   })
 })
 
