@@ -63,7 +63,7 @@
     "targets": {
       "darwin-arm64": {
         "origin": "https://ffmpeg.martin-riedl.de",
-        "build_scripts": "https://git.martin-riedl.de/ffmpeg/build-script",
+        "build_scripts": "https://git.martin-riedl.de/ffmpeg/build-script at f63b8aab8f5ce1a067da86ba69e34a36a7e217e5 (the commit on main that moved it to 9.0.1, on 2026-08-17, and main's head ever since; the build, made on 2026-08-18, does not record which commit built it, so this is inferred). Every library is fetched at a released version except x264, fetched as master's tarball, whose head has been 0480cb05fa188d37ae87e8f4fd8f1aea3711f7ee since 2025-09-10",
         "reports": "9.0.1-https://www.martin-riedl.de",
         "configure": "--prefix=/Volumes/ffmpeg_arm64/out --pkg-config-flags=--static --extra-version='https://www.martin-riedl.de' --enable-gray --enable-libxml2 --enable-version3 --enable-gpl --enable-openssl --enable-libfreetype --enable-fontconfig --enable-libharfbuzz --enable-libbluray --enable-libsnappy --enable-libsrt --enable-libvmaf --enable-libass --enable-libklvanc --enable-libzimg --enable-libzvbi --enable-libaom --enable-libdav1d --enable-libopenh264 --enable-libopenjpeg --enable-librav1e --enable-libsvtav1 --enable-libvpx --enable-libvvenc --enable-libwebp --enable-libx264 --enable-libx265 --enable-libmp3lame --enable-libopus --enable-libvorbis --enable-libtheora",
         "archives": [
@@ -81,7 +81,7 @@
       },
       "darwin-x64": {
         "origin": "https://ffmpeg.martin-riedl.de",
-        "build_scripts": "https://git.martin-riedl.de/ffmpeg/build-script",
+        "build_scripts": "https://git.martin-riedl.de/ffmpeg/build-script at f63b8aab8f5ce1a067da86ba69e34a36a7e217e5 (the commit on main that moved it to 9.0.1, on 2026-08-17, and main's head ever since; the build, made on 2026-08-18, does not record which commit built it, so this is inferred). Every library is fetched at a released version except x264, fetched as master's tarball, whose head has been 0480cb05fa188d37ae87e8f4fd8f1aea3711f7ee since 2025-09-10",
         "reports": "9.0.1-https://www.martin-riedl.de",
         "configure": "--prefix=/Volumes/ffmpeg_amd64/out --pkg-config-flags=--static --extra-version='https://www.martin-riedl.de' --enable-gray --enable-libxml2 --enable-version3 --enable-gpl --enable-openssl --enable-libfreetype --enable-fontconfig --enable-libharfbuzz --enable-libbluray --enable-libsnappy --enable-libsrt --enable-libvmaf --enable-libass --enable-libklvanc --enable-libzimg --enable-libzvbi --enable-libaom --enable-libdav1d --enable-libopenh264 --enable-libopenjpeg --enable-librav1e --enable-libsvtav1 --enable-libvpx --enable-libvvenc --enable-libwebp --enable-libx264 --enable-libx265 --enable-libmp3lame --enable-libopus --enable-libvorbis --enable-libtheora",
         "archives": [

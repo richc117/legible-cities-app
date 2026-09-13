@@ -69,8 +69,8 @@ case "$target" in
   *)     exe= ;;
 esac
 
-# The pin, one line per field: what -version must report, then each archive
-# as "<sha256> <url>". The names inside must be exactly ffmpeg and ffprobe
+# The pin, one line per field: what -version must report, the configure line
+# it must print, then each archive as "<sha256> <url>". The names inside must be exactly ffmpeg and ffprobe
 # (with .exe on Windows), so a pin cannot quietly vendor a third binary or
 # only one of the two.
 plan=$("$host_py" - "$pins" "$target" "$exe" <<'PY'
@@ -84,7 +84,10 @@ names = sorted(n for a in t["archives"] for n in a["extract"])
 want = sorted(["ffmpeg" + exe, "ffprobe" + exe])
 if names != want:
     sys.exit(f"ffmpeg.targets.{target} extracts {names}; it must extract exactly {want}")
-lines = [t["reports"]] + [f"{a['sha256']} {a['url']}" for a in t["archives"]]
+for field in ("reports", "configure"):
+    if not t.get(field) or "\n" in t[field] or "\r" in t[field]:
+        sys.exit(f"ffmpeg.targets.{target}.{field} must be one non-empty line")
+lines = [t["reports"], t["configure"]] + [f"{a['sha256']} {a['url']}" for a in t["archives"]]
 # Bytes, not text: a Windows Python's text-mode stdout writes every "\n" as
 # "\r\n", in sys.stdout.write as much as in print, so every field but the
 # last would arrive ending in \r. The first win-x64 run did exactly that.
@@ -94,7 +97,13 @@ PY
 # And stripped all the same, so no Python on no runner can bring one back.
 plan=${plan//$'\r'/}
 reports=${plan%%$'\n'*}
-[ -n "$reports" ] || { echo "could not read the ffmpeg pin for $target" >&2; exit 1; }
+rest=${plan#*$'\n'}
+configure=${rest%%$'\n'*}
+archives=${rest#*$'\n'}
+if [ -z "$reports" ] || [ -z "$configure" ] || [ "$archives" = "$rest" ]; then
+  echo "could not read the ffmpeg pin for $target" >&2
+  exit 1
+fi
 
 work=$(mktemp -d)
 stage=
@@ -120,7 +129,7 @@ while read -r want url; do
     exit 1
   fi
   echo "checksum ok: $got"
-done <<< "${plan#*$'\n'}"
+done <<< "$archives"
 
 # Staged beside the destination, as vendor-python.sh does, so the final move
 # is a rename on one filesystem, and a failed proof leaves nothing at the
@@ -176,10 +185,11 @@ run() {
   printf '%s' "${out//$'\r'/}"
 }
 
-# licensed <program> <binary>: the binary reports the pinned version, is
-# configured GPL version 3 with libx264 and without nonfree parts, and does
-# not call itself not legally redistributable. Run on ffmpeg and on ffprobe:
-# they are separate binaries, and either could be the odd one out.
+# licensed <program> <binary>: the binary reports the pinned version and
+# exactly the pinned configure line, is configured GPL version 3 with libx264
+# and without nonfree parts, and does not call itself not legally
+# redistributable. Run on ffmpeg and on ffprobe: they are separate binaries,
+# and either could be the odd one out.
 licensed() {
   local program=$1 binary=$2 version first token config flag licence
   version=$(run "$program -version" "$binary" -version)
@@ -195,6 +205,12 @@ licensed() {
   fi
   config=$(grep -E '^configuration:' <<< "$version" || true)
   echo "$config"
+  # The pin records the configure line so the notices can be checked against
+  # the repository; this keeps the record true of what actually arrives.
+  if [ "${config#configuration: }" != "$configure" ]; then
+    printf '%s is configured\n  %q\nthe pin says\n  %q\n' "$program" "${config#configuration: }" "$configure" >&2
+    exit 1
+  fi
   for flag in --enable-gpl --enable-version3 --enable-libx264; do
     case " $config " in
       *" $flag "*) ;;

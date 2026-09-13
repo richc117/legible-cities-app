@@ -425,12 +425,16 @@ jobs:
   # FFmpeg and ffprobe, prebuilt rather than built: ADR-012 has the sources
   # and why. scripts/vendor-ffmpeg.sh verifies every pinned archive against
   # its checksum and fails on a mismatch, refuses an ffmpeg or ffprobe whose
-  # configure line lacks --enable-gpl, --enable-version3 or --enable-libx264
-  # or carries --enable-nonfree, or whose -L calls it not legally
+  # configure line is not the pinned one, lacks --enable-gpl,
+  # --enable-version3 or --enable-libx264, or carries --enable-nonfree, or
+  # whose -L calls it not legally
   # redistributable, requires every component export.py names, and encodes
   # a one-second MP4 and GIF the way the engine does, reading both back with
   # ffprobe, before anything reaches vendor/ffmpeg/<target>. linux-x64 is
-  # for tests and is not shipped.
+  # for tests and is not shipped, so it is proven here and not uploaded: an
+  # artefact of this public repository is a conveyed GPL binary, and the
+  # notices cover the three shipped builds only. A5-04 runs the script
+  # directly.
   ffmpeg:
     name: ffmpeg (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
@@ -494,6 +498,7 @@ jobs:
           done
           echo "ffmpeg and ffprobe are $want only"
       - uses: actions/upload-artifact@v7
+        if: matrix.target != 'linux-x64'
         with:
           name: ffmpeg-${{ matrix.target }}
           path: vendor/ffmpeg/${{ matrix.target }}

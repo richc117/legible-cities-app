@@ -106,25 +106,43 @@ the engine calls only to read one duration. These are general-purpose
 builds with AV1, HEVC, VVC, subtitle rendering and network protocols the
 export never touches; a build of our own configured for the components
 above would likely be much smaller (unmeasured), and it would be the only
-way to ship an ffmpeg that truly has no freetype. **These builds have
-freetype**, fontconfig, HarfBuzz and libass, and so the `drawtext` and
-`subtitles` filters: the export needs none of them, because the page draws
-every word, but the engine's docstring saying its ffmpeg has none is not
-true of what ships.
+way to ship an ffmpeg that truly has no freetype, or no libdvdcss. **These
+builds have freetype**, fontconfig, HarfBuzz and libass, and so the
+`drawtext` and `subtitles` filters: the export needs none of them, because
+the page draws every word, but the engine's docstring saying its ffmpeg has
+none is not true of what ships.
+
+**The Windows build includes libdvdcss**, whose purpose is reading
+copy-protected DVDs: BtbN's scripts at `8267213e26` build libdvdread with
+`-Dlibdvdcss=enabled` and FFmpeg with `--enable-libdvdread`. The export
+never uses it and the macOS builds lack it, but shipping it carries a legal
+risk under anti-circumvention law that is separate from the GPL, is not
+assessed here, and is the reason several distributions leave it out; a
+decision on it is owed before A0-10 ships an installer.
 
 **The GPL obligation is wider than FFmpeg.** Every build is
 `--enable-version3`, so FFmpeg as shipped is GPL-3.0-or-later, and each
 statically links x264, x265 and dozens of other libraries under their own
 terms, which `THIRD_PARTY_NOTICES.md` lists. GPLv3's Corresponding Source
 for a binary includes the scripts that built it, which is why only builders
-who publish theirs were kept: a release meets the obligation by pointing at
-martin-riedl.de's build script and at BtbN's scripts at
-`autobuild-2026-08-31-13-27`, which pin every library's commit, and by
-attaching FFmpeg's source at `n9.0.1` and at `e47273f4d9`. Neither build
-ships the libraries' licence texts, so the Licences screen has to. The
-obligation starts before any installer: the vendoring job's artefacts are
+who publish theirs were kept. Published scripts make the obligation
+possible to meet; they do not meet it. Pointing at third-party servers
+satisfies section 6(d) only if their availability is ensured, and nobody
+can ensure it for some eighty upstreams, so A0-10 attaches to each release
+the source of FFmpeg (`n9.0.1` and `e47273f4d9`) and of every bundled
+library at the exact versions, with the scripts. BtbN's scripts at
+`autobuild-2026-08-31-13-27` pin every library's commit. martin-riedl.de's
+do not record which of their commits built 9.0.1; it is most likely
+`f63b8aab8f`, the commit that moved main to 9.0.1 the day before the build,
+and main's head ever since. They fetch every library at a released version
+except x264, which comes from `master`'s tarball; `master` has been
+`0480cb05fa` since 2025-09-10, the commit BtbN pins. Both inferences have to
+become facts before A0-10. Neither build ships the libraries' licence
+texts, so the Licences screen has to. The obligation starts before any
+installer: the vendoring job's artefacts for the three shipped targets are
 downloadable from this public repository for 30 days, which is already
-conveying GPL binaries.
+conveying GPL binaries, and the Linux test build is therefore proven and
+not uploaded.
 
 **Two builders, each with its own lifetime.** martin-riedl.de stops Intel
 release builds in January 2027, so the next darwin-x64 pin after that needs
