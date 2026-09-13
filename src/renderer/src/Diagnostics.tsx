@@ -1,4 +1,4 @@
-import { useId, useState, type JSX } from 'react'
+import { useEffect, useId, useRef, useState, type JSX } from 'react'
 import type { ProjectRecord } from '../../shared/project'
 import { caveatsSentence, copyText, metrics } from './engine/diagnostics'
 import type { LayoutRun as Run, RunReport } from './engine/layoutRun'
@@ -53,6 +53,40 @@ export async function copyReport(
 }
 
 /**
+ * Which explanations a person asked for with a press, and which they sent
+ * away with Escape. A shown explanation is content that appears on hover
+ * and on focus, and WCAG 1.4.13 asks that it can be dismissed without
+ * moving either: Escape hides every one showing, and each comes back once
+ * the pointer and the focus have left its row, or on a press (A6-07).
+ */
+export interface Explained {
+  asked: string | null
+  dismissed: readonly string[]
+}
+
+/** Escape: every explanation showing - pressed, pointed at or focused - is sent away. */
+export function explainedAfterEscape(now: Explained, showing: readonly string[]): Explained {
+  const gone = new Set([...now.dismissed, ...showing])
+  if (now.asked !== null) gone.add(now.asked)
+  return { asked: null, dismissed: [...gone] }
+}
+
+/** A press on a row's control: its explanation is asked for, or put away, and never dismissed. */
+export function explainedAfterPress(now: Explained, id: string): Explained {
+  return {
+    asked: now.asked === id ? null : id,
+    dismissed: now.dismissed.filter((each) => each !== id),
+  }
+}
+
+/** The pointer or the focus has left a row: Escape's dismissal of it is over. */
+export function explainedAfterLeaving(now: Explained, id: string): Explained {
+  return now.dismissed.includes(id)
+    ? { asked: now.asked, dismissed: now.dismissed.filter((each) => each !== id) }
+    : now
+}
+
+/**
  * The panel itself, given a report: a component with nothing behind it, so
  * a test can render it. `write` is the clipboard, injected for the same
  * reason; the bridge's method is the only way a page in this app can put
@@ -71,9 +105,30 @@ export function DiagnosticsReport({
   const [said, setSaid] = useState<string | null>(null)
   // The explanation a person asked for by pressing, which is the only way
   // a touch user can ask: hover and focus show one too, in the stylesheet.
-  const [asked, setAsked] = useState<string | null>(null)
+  const [explained, setExplained] = useState<Explained>({ asked: null, dismissed: [] })
+  const asked = explained.asked
   const base = useId()
   const rows = metrics(report.diagnostics)
+  const table = useRef<HTMLTableElement>(null)
+  const hovered = useRef<string | null>(null)
+
+  // Escape from anywhere, since a pointer resting on a row leaves the focus
+  // wherever it was.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return
+      const showing: string[] = []
+      if (hovered.current !== null) showing.push(hovered.current)
+      const focused = document.activeElement?.closest('[data-metric]')
+      const metric = focused?.getAttribute('data-metric')
+      if (metric && table.current?.contains(focused ?? null)) showing.push(metric)
+      setExplained((now) =>
+        showing.length === 0 && now.asked === null ? now : explainedAfterEscape(now, showing),
+      )
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [])
 
   const copy = async (): Promise<void> => setSaid(await copyReport(write, name, report))
 
@@ -92,7 +147,7 @@ export function DiagnosticsReport({
           ))}
         </ul>
       )}
-      <table className="measures">
+      <table className="measures" ref={table}>
         <caption>What the engine measured drawing the map for {report.date}</caption>
         <thead>
           <tr>
@@ -106,7 +161,24 @@ export function DiagnosticsReport({
             return (
               <tr key={metric.id}>
                 <th scope="row">
-                  <span className="explain" data-open={asked === metric.id ? 'true' : undefined}>
+                  <span
+                    className="explain"
+                    data-metric={metric.id}
+                    data-open={asked === metric.id ? 'true' : undefined}
+                    data-dismissed={explained.dismissed.includes(metric.id) ? 'true' : undefined}
+                    onMouseEnter={() => {
+                      hovered.current = metric.id
+                    }}
+                    onMouseLeave={(event) => {
+                      hovered.current = null
+                      if (!event.currentTarget.contains(document.activeElement))
+                        setExplained((now) => explainedAfterLeaving(now, metric.id))
+                    }}
+                    onBlur={(event) => {
+                      if (!event.currentTarget.contains(event.relatedTarget as Node | null))
+                        setExplained((now) => explainedAfterLeaving(now, metric.id))
+                    }}
+                  >
                     {metric.label}{' '}
                     <button
                       type="button"
@@ -114,7 +186,7 @@ export function DiagnosticsReport({
                       aria-label={`What ${metric.label.toLowerCase()} means`}
                       aria-describedby={explainId}
                       aria-expanded={asked === metric.id}
-                      onClick={() => setAsked(asked === metric.id ? null : metric.id)}
+                      onClick={() => setExplained((now) => explainedAfterPress(now, metric.id))}
                     >
                       <Icon name="info" />
                     </button>

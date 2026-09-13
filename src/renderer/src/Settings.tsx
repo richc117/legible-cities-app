@@ -13,6 +13,7 @@ import { DIAGNOSTICS_REPORTS } from '../../shared/api'
 import type { EngineState } from '../../shared/engine'
 import type { EngineInfo } from '../../shared/protocol'
 import ConfirmDialog from './ConfirmDialog'
+import { focusLost } from './focusHandback'
 import {
   engineClient,
   forgetAllProjectJobs,
@@ -99,6 +100,19 @@ export default function Settings({ settings, onChanged, engine, onBack }: Props)
   const [copied, setCopied] = useState<string | null>(null)
   const copying = useRef(false)
   const ready = engine?.state === 'ready'
+  // "Use the default" goes once the folder is the default again, taking
+  // focus with it; the row's "Choose folder" is where it goes (A6-07).
+  const choosers = useRef<Record<'engine' | 'export', HTMLElement | null>>({
+    engine: null,
+    export: null,
+  })
+  const handBack = useRef<'engine' | 'export' | null>(null)
+  useEffect(() => {
+    const which = handBack.current
+    if (which === null) return
+    handBack.current = null
+    if (focusLost(document.activeElement, document.body)) choosers.current[which]?.focus()
+  }, [settings])
 
   // A layout run or an export is four steps with gaps between them, and the
   // main process cannot see the gaps; the runs live in this process and
@@ -153,7 +167,10 @@ export default function Settings({ settings, onChanged, engine, onBack }: Props)
     setMessage(null)
     ask().then(
       (next) => onChanged(next),
-      (error: unknown) => setMessage(sentenceOf(error)),
+      (error: unknown) => {
+        handBack.current = null
+        setMessage(sentenceOf(error))
+      },
     )
   }
 
@@ -198,6 +215,9 @@ export default function Settings({ settings, onChanged, engine, onBack }: Props)
       {!view.locked && (
         <div className="toolbar">
           <Button
+            ref={(element) => {
+              choosers.current[which] = element
+            }}
             aria-label={`Choose the ${label.toLowerCase()}`}
             aria-describedby={`${which}-folder-path`}
             onClick={() =>
@@ -218,13 +238,14 @@ export default function Settings({ settings, onChanged, engine, onBack }: Props)
           {(view.source === 'settings' || view.pending !== null) && (
             <Button
               aria-label={`Use the default ${label.toLowerCase()}`}
-              onClick={() =>
+              onClick={() => {
+                handBack.current = which
                 change(() =>
                   which === 'engine'
                     ? window.api.settings.useDefaultEngineFolder()
                     : window.api.settings.useDefaultExportFolder(),
                 )
-              }
+              }}
             >
               Use the default
             </Button>

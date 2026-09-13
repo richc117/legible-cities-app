@@ -12,6 +12,9 @@ import {
   DiagnosticsReport,
   NOT_COPIED,
   copyReport,
+  explainedAfterEscape,
+  explainedAfterLeaving,
+  explainedAfterPress,
 } from '../../src/renderer/src/Diagnostics'
 import type { Diagnostics } from '../../src/shared/protocol'
 
@@ -101,6 +104,43 @@ describe('the panel itself', () => {
     const html = markup()
     const expanded = html.match(/aria-expanded="false"/g) ?? []
     expect(expanded.length).toBe(metrics(DIAGNOSTICS).length)
+  })
+})
+
+// An explanation appears on hover and on focus, so it must be possible to
+// send away without moving either (WCAG 1.4.13, A6-07): Escape hides every
+// one showing, and each comes back when the pointer and the focus have
+// left its row, or when its control is pressed.
+describe('an explanation that can be dismissed', () => {
+  const none = { asked: null, dismissed: [] as string[] }
+
+  it('marks each row so Escape can tell which explanation is showing, none dismissed', () => {
+    const html = renderToStaticMarkup(<DiagnosticsReport name="Los Angeles" report={report()} />)
+    for (const metric of metrics(DIAGNOSTICS))
+      expect(html, metric.id).toContain(`data-metric="${metric.id}"`)
+    expect(html).not.toContain('data-dismissed')
+  })
+
+  it('sends away what is pointed at or focused, and what was pressed open', () => {
+    const after = explainedAfterEscape({ asked: 'edges', dismissed: [] }, ['stations'])
+    expect(after.asked).toBeNull()
+    expect([...after.dismissed].sort()).toEqual(['edges', 'stations'])
+  })
+
+  it('changes nothing it was not showing', () => {
+    expect(explainedAfterEscape(none, [])).toEqual(none)
+  })
+
+  it('brings one back when the pointer and the focus have left its row', () => {
+    const dismissed = { asked: null, dismissed: ['edges', 'stations'] }
+    expect(explainedAfterLeaving(dismissed, 'edges').dismissed).toEqual(['stations'])
+    expect(explainedAfterLeaving(none, 'edges')).toBe(none)
+  })
+
+  it('shows one again on a press, and a second press puts it away', () => {
+    const pressed = explainedAfterPress({ asked: null, dismissed: ['edges'] }, 'edges')
+    expect(pressed).toEqual({ asked: 'edges', dismissed: [] })
+    expect(explainedAfterPress(pressed, 'edges')).toEqual({ asked: null, dismissed: [] })
   })
 })
 

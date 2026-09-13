@@ -427,7 +427,9 @@ body {
   font-variant-numeric: var(--numerals);
   color: var(--text);
   background: var(--surface);
-  border: var(--border-width) solid var(--border);
+  /* A control's resting edge is --border-strong (section 3.1, at least 3.0
+     against the ground); --border would leave the field's extent at 1.4. */
+  border: var(--border-width) solid var(--border-strong);
   border-radius: var(--radius);
   color-scheme: inherit;
 }
@@ -556,6 +558,16 @@ body {
   max-width: 100%;
 }
 
+/* The picker's two sliders take focus, and its own stylesheet removes the
+   outline and marks focus only by growing the thumb a tenth: a change a
+   person has to already know to look for. The app's ring goes back on
+   (A6-07). The picker injects its stylesheet after this one, so the rule
+   is one class stronger than its own. */
+.colour-picker .react-colorful__interactive:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus);
+  outline-offset: var(--focus-ring-offset);
+}
+
 /* The feeds on the Library: two groups, each a dense list; a row carries
    its actions at the end rather than being a button itself. */
 
@@ -659,6 +671,11 @@ th:last-child,
 
 th .sort {
   all: unset;
+  display: inline-flex;
+  align-items: center;
+  /* A target at least --target-min high even in a dense table, whose
+     line is shorter (DESIGN.md section 12, A6-07). */
+  min-height: var(--target-min);
   cursor: pointer;
   font: inherit;
   color: inherit;
@@ -774,6 +791,13 @@ th .sort:focus-visible {
 .explain[data-open='true'] .tooltip {
   visibility: visible;
   opacity: 1;
+}
+
+/* Escape dismisses it without moving the pointer or the focus (WCAG
+   1.4.13), until the pointer or the focus leaves the row (A6-07). */
+.explain[data-dismissed='true'] .tooltip {
+  visibility: hidden;
+  opacity: 0;
 }
 
 /* The project's fields. */
@@ -1211,6 +1235,13 @@ dialog::backdrop {
   transform-origin: 0 0;
   pointer-events: none;
   background: transparent;
+}
+
+/* A run's controls, replaced as the run moves, held in one region so focus
+   can be handed from the control that went to the one that came
+   (focusHandback.ts). It draws nothing of its own. */
+.focus-region {
+  display: contents;
 }
 
 /* Focus and motion, for everything. */

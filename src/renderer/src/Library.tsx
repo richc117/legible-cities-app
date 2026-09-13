@@ -7,7 +7,8 @@ import { engineClient, feedAdd } from './engine/runs'
 import AddFeedDialog from './AddFeedDialog'
 import ConfirmDialog from './ConfirmDialog'
 import CreateProjectDialog from './CreateProjectDialog'
-import FeedList from './FeedList'
+import FeedList, { FEEDS_HEADING_ID } from './FeedList'
+import { focusLost } from './focusHandback'
 import Icon from './icons/Icon'
 import Button from './kit/Button'
 import { useEngineState } from './useEngineState'
@@ -54,6 +55,13 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
   const ready = engine?.state === 'ready'
   const adder = feedAdd()
   const headingRef = useRef<HTMLHeadingElement>(null)
+  // Where focus goes once the list has been drawn again, when the control
+  // that held it went with the change: the empty state's "New project"
+  // leaves with the empty state, a removed feed's row takes its Remove with
+  // it. Only if focus did fall to nowhere; otherwise it is a person's
+  // (A6-07).
+  const handBack = useRef<{ project: string } | 'feeds' | null>(null)
+  const rows = useRef(new Map<string, HTMLButtonElement>())
 
   const refreshFeeds = useCallback(async (): Promise<void> => {
     forgetFeedList()
@@ -89,10 +97,25 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
 
   // A rejection propagates to the dialog, which shows the message.
   const create = async (input: CreateProjectInput): Promise<void> => {
-    await window.api.projects.create(input)
+    const record = await window.api.projects.create(input)
     setCreating(null)
+    handBack.current = { project: record.id }
     setLibrary({ status: 'ready', projects: await listProjects() })
   }
+
+  useEffect(() => {
+    const target = handBack.current
+    if (target === null || target === 'feeds') return
+    handBack.current = null
+    if (focusLost(document.activeElement, document.body)) rows.current.get(target.project)?.focus()
+  }, [library])
+
+  useEffect(() => {
+    if (handBack.current !== 'feeds') return
+    handBack.current = null
+    if (!focusLost(document.activeElement, document.body)) return
+    ;(document.getElementById(FEEDS_HEADING_ID) ?? headingRef.current)?.focus()
+  }, [feeds])
 
   const added = useCallback((): void => {
     setAdding(false)
@@ -123,6 +146,7 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
     forgetInspection(removing.key)
     setRemoving(null)
     setFeedNotice(`${removing.name} was removed.`)
+    handBack.current = 'feeds'
     await refreshFeeds()
   }
 
@@ -174,6 +198,10 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
           {library.projects.map((project) => (
             <li key={project.id}>
               <button
+                ref={(element) => {
+                  if (element === null) rows.current.delete(project.id)
+                  else rows.current.set(project.id, element)
+                }}
                 type="button"
                 className="entry"
                 aria-label={`Open ${project.name}`}

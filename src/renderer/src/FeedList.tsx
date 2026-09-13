@@ -14,6 +14,9 @@ interface Props {
   onRemove: (feed: FeedRecord) => void
 }
 
+/** The section's heading, focusable so the Library can hand focus to it when a removed row took it (A6-07). */
+export const FEEDS_HEADING_ID = 'feeds-heading'
+
 /** What the row says about where a feed runs, when the registry knows. */
 export function placeOf(feed: FeedRecord): string | null {
   const parts = [feed.city, feed.network].filter((p) => p !== '')
@@ -63,8 +66,10 @@ export default function FeedList({ feeds, onNewProject, onRemove }: Props): JSX.
       </li>
     )
   return (
-    <section className="feeds" aria-labelledby="feeds-heading">
-      <h2 id="feeds-heading">Feeds</h2>
+    <section className="feeds" aria-labelledby={FEEDS_HEADING_ID}>
+      <h2 id={FEEDS_HEADING_ID} tabIndex={-1}>
+        Feeds
+      </h2>
       <ul className="feed-groups">
         {group('Presets', presets)}
         {group('Added', added)}

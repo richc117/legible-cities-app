@@ -47,6 +47,11 @@ export default function ConfirmDialog({
   }, [open])
 
   const confirm = async (): Promise<void> => {
+    // The confirm button disables itself while the action runs, and
+    // Chromium blurs a disabled element; inside a modal that leaves focus
+    // nowhere, so a refusal's alert would be heard with no control under
+    // the keyboard. Cancel, the safe action, holds it instead (A6-07).
+    cancelRef.current?.focus()
     setBusy(true)
     setMessage(null)
     try {
