@@ -322,8 +322,10 @@ or a design decision.
   it done; closing the dialog reads the list once more. Until the engine
   answers, the list is left as it was, and a read that fails leaves it
   too. While the engine is still in the removal the app counts it as
-  running, so "Reset engine data" waits (`src/main/sidecar.ts`,
-  `Library.tsx`). No other confirmation waits on the engine: deleting a
+  running, so "Reset engine data" refuses, and says "The engine has not
+  finished a request it stopped answering. If it does not, quit and reopen
+  Legible Cities.", because an engine that never answers is not restarted
+  for it and only a quit ends it (`src/main/sidecar.ts`, `Library.tsx`). No other confirmation waits on the engine: deleting a
   project and resetting the engine's data are the main process's own file
   work. Asserted in `tests/unit/sidecar.test.ts` and end to end in
   `tests/e2e/feeds.spec.ts`, against a stand-in that blocks its reader for

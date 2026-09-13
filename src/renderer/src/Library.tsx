@@ -232,7 +232,12 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
     const target = removing
     setRemoving((current) => (current === target ? null : current))
     setFeedNotice(`${removing.name} was removed.`)
-    await refreshFeeds()
+    // The engine said the feed is gone. A read that failed, or was overtaken
+    // by one still on its way, must not leave its row on screen with a
+    // Remove that works, under the sentence that says it went.
+    if ((await refreshFeeds()) === null) {
+      setFeeds((current) => current.filter((feed) => feed.key !== target.key))
+    }
     afterRendering(() => settleRef.current())
   }
 
@@ -351,10 +356,12 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
           setRemoving(null)
           if (key === null || removing?.key !== key) return
           // The truth once more. If the feed has gone, the row whose Remove
-          // opened the dialog went with it, and focus goes to the heading;
-          // a read that failed or was superseded changes nothing here.
+          // opened the dialog went with it, and focus goes to the heading. A
+          // read that failed or was overtaken changes no list, but an earlier
+          // read may already have taken the row, so focus is still looked
+          // after; the check does nothing while the feed is listed.
           void refreshFeeds().then((listed) => {
-            if (listed === null || listed.some((feed) => feed.key === key)) return
+            if (listed !== null && listed.some((feed) => feed.key === key)) return
             handBack.current = { feed: key }
             afterRendering(() => settleRef.current())
           })

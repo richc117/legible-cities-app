@@ -41,7 +41,7 @@ import { registerSettingsHandlers, SettingsService } from './settings-ipc'
 import { Viewer } from './viewer'
 import { registerAppProtocol } from './protocol'
 import { registerAppScheme } from './scheme'
-import { Sidecar } from './sidecar'
+import { engineWorkRefusal, Sidecar } from './sidecar'
 
 export const PRODUCT_NAME = 'Legible Cities'
 
@@ -492,7 +492,8 @@ if (!hasLock) {
       busy: () => {
         if (exporter !== null && exporter.live > 0)
           return 'An export is running; wait for it to finish.'
-        if (engine.inFlight > 0) return 'The engine is answering a request; wait for it to finish.'
+        const engineWork = engineWorkRefusal(engine)
+        if (engineWork !== null) return engineWork
         if (store.writing > 0) return 'A project is being saved; try again in a moment.'
         return null
       },

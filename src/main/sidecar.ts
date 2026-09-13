@@ -88,6 +88,18 @@ const isObject = (v: unknown): v is Record<string, unknown> =>
  */
 export const STDIO_CLOSE_MS = 1_000
 
+/**
+ * Why the engine's data cannot be reset now, as far as the supervisor knows,
+ * or null. A request the engine stopped answering may never end, and only a
+ * quit ends it, so that refusal says how out rather than to wait (issue 107).
+ */
+export function engineWorkRefusal(engine: { inFlight: number; abandoned: number }): string | null {
+  if (engine.abandoned > 0)
+    return 'The engine has not finished a request it stopped answering. If it does not, quit and reopen Legible Cities.'
+  if (engine.inFlight > 0) return 'The engine is answering a request; wait for it to finish.'
+  return null
+}
+
 export function describeExit(code: number | null, signal: NodeJS.Signals | null): string {
   if (signal !== null) return `ended by signal ${signal}`
   return `exited with code ${code ?? 'unknown'}`
@@ -115,10 +127,13 @@ export class Sidecar {
   private readonly cancelSent = new Set<number>()
   /**
    * The requests a bound ended while the engine may still be working on
-   * them, by id: counted by `inFlight` until their late answer arrives or
-   * the connection goes. Ids belong to one connection, so they go with it.
+   * them, by connection and id: counted by `inFlight` until their late
+   * answer arrives or that connection's process has exited. Ids belong to
+   * one connection (the next numbers its own from 1), so they are kept
+   * under it, and go only when its process has gone - not when the process
+   * is merely being ended, which can take seconds (issue 107).
    */
-  private readonly expired = new Set<number>()
+  private readonly expired = new Map<JsonRpcClient, Set<number>>()
   private restartTimer: NodeJS.Timeout | null = null
   private stableTimer: NodeJS.Timeout | null = null
   /** An endChild() in progress, so stop() waits for it rather than passing it. */
@@ -157,7 +172,18 @@ export class Sidecar {
   get inFlight(): number {
     // A request a bound ended is still the engine's work until it answers:
     // a removal past its deadline may be deleting files (issue 107).
-    return (this.client?.inFlight.length ?? 0) + this.expired.size
+    return (this.client?.inFlight.length ?? 0) + this.abandoned
+  }
+
+  /**
+   * How many requests a bound ended that the engine has not answered since.
+   * The engine may never answer one, and a request that times out is not a
+   * failure, so nothing restarts the engine for it: only a quit clears it.
+   */
+  get abandoned(): number {
+    let count = 0
+    for (const ids of this.expired.values()) count += ids.size
+    return count
   }
 
   /** How many request deadlines are armed: none once every request has ended, and none after a stop. */
@@ -248,7 +274,9 @@ export class Sidecar {
     if (!client.inFlight.includes(id)) return
     if (!this.cancelSent.has(id)) client.cancel(id)
     this.cancelSent.delete(id)
-    if (this.client === client) this.expired.add(id)
+    const ids = this.expired.get(client) ?? new Set<number>()
+    ids.add(id)
+    this.expired.set(client, ids)
     client.fail(
       id,
       new EngineError(ERROR_CODES.inactive, message, {
@@ -261,7 +289,9 @@ export class Sidecar {
 
   /** A response for an id the client no longer holds: a request a bound ended has had its answer. */
   private lateAnswer(client: JsonRpcClient, id: number): void {
-    if (this.client !== client || !this.expired.delete(id)) return
+    const ids = this.expired.get(client)
+    if (ids === undefined || !ids.delete(id)) return
+    if (ids.size === 0) this.expired.delete(client)
     this.log(`request ${id}: the engine answered after the app stopped waiting`)
   }
 
@@ -406,6 +436,9 @@ export class Sidecar {
       void this.failed(`The engine ${unexpected}${tail}.`, null)
     }
     child.once('exit', (code, signal) => {
+      // Whatever this connection's engine was still doing has ended with it,
+      // whoever was ending it; before the wait for the exit resolves.
+      this.expired.delete(client)
       exitedResolve()
       if (this.child !== child) return
       this.child = null
@@ -550,8 +583,9 @@ export class Sidecar {
 
   /**
    * Every request's bounds, the inactivity and the deadline alike, and what
-   * is known about their cancels and late answers: the requests went with
-   * the child, and the next connection numbers its own from 1.
+   * is known about their cancels: the requests went with the child. The
+   * requests a bound ended are not cleared here but by the process's exit,
+   * which can come seconds later.
    */
   private clearRequestBounds(): void {
     for (const timer of this.inactivity.values()) clearTimeout(timer)
@@ -559,7 +593,6 @@ export class Sidecar {
     for (const timer of this.deadlines.values()) clearTimeout(timer)
     this.deadlines.clear()
     this.cancelSent.clear()
-    this.expired.clear()
   }
 
   // -- shutdown --

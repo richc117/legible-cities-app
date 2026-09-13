@@ -78,11 +78,23 @@ export function registerEngineHandlers(
       return badCall(refused)
     }
     const deadlineMs = deadline(method)
-    const { id, result } = engine.request(
-      method,
-      params as Record<string, unknown> | undefined,
-      deadlineMs === undefined ? undefined : { deadlineMs },
-    )
+    let sent: { id: number; result: Promise<unknown> }
+    try {
+      sent = engine.request(
+        method,
+        params as Record<string, unknown> | undefined,
+        deadlineMs === undefined ? undefined : { deadlineMs },
+      )
+    } catch (error) {
+      // The supervisor refuses what it was handed before sending anything
+      // (a deadline no timer can hold): the token is freed and the page is
+      // answered in the bridge's own shape, not with a thrown message.
+      idOf.delete(token)
+      const what = error instanceof Error ? error.message : String(error)
+      log(`refused ${method} before sending it: ${what}`)
+      return badCall(`the request could not be sent: ${what}`)
+    }
+    const { id, result } = sent
     if (id !== 0) {
       idOf.set(token, id)
       tokenOf.set(id, token)

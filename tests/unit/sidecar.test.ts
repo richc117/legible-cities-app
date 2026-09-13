@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { engineEnvironment } from '../../src/main/interpreter'
-import { Sidecar, type Bounds } from '../../src/main/sidecar'
+import { engineWorkRefusal, Sidecar, type Bounds } from '../../src/main/sidecar'
 import {
   describeState,
   ERROR_CODES,
@@ -389,7 +389,9 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
     await expect(result).rejects.toMatchObject({ code: ERROR_CODES.inactive })
     // Settled for the page, still the engine's work: a reset must wait.
     expect(h.sidecar.inFlight).toBe(1)
+    expect(h.sidecar.abandoned).toBe(1)
     await eventually(() => h.sidecar.inFlight === 0, 5_000, 'the late answer to release the id')
+    expect(h.sidecar.abandoned).toBe(0)
     expect(h.log).toContain(`request ${id}: the engine answered after the app stopped waiting`)
     // And the answer, when it came, was the removal done.
     expect(
@@ -479,6 +481,28 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
     await sleep(600)
     expect(h.log.filter((l) => l.includes('No answer within'))).toHaveLength(1)
     expect(h.sidecar.deadlinesArmed).toBe(0)
+    expect(h.sidecar.inFlight).toBe(0)
+  })
+
+  it('counts a request past its deadline until the process has exited, not while it is being ended', async () => {
+    // Ignores engine.shutdown, so ending it takes the whole shutdown bound.
+    const h = harness(
+      { remove_delay_ms: 10_000, ignore_shutdown: true },
+      { ...LONG_INACTIVITY, shutdownMs: 1_500, terminateMs: 3_000 },
+    )
+    h.sidecar.start()
+    await h.until(ready)
+    const pid = h.pid()
+    const expired = h.sidecar.request('feeds.remove', { key: 'x' }, { deadlineMs: 100 })
+    await expect(expired.result).rejects.toMatchObject({ code: ERROR_CODES.inactive })
+    const stopping = h.sidecar.stop()
+    await sleep(300)
+    expect(alive(pid), 'still being ended').toBe(true)
+    expect(h.sidecar.abandoned).toBe(1)
+    expect(h.sidecar.inFlight).toBe(1)
+    await stopping
+    expect(alive(pid)).toBe(false)
+    expect(h.sidecar.abandoned).toBe(0)
     expect(h.sidecar.inFlight).toBe(0)
   })
 
@@ -637,6 +661,25 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
     await sleep(700)
     expect(h.states.filter((s) => s.state === 'starting')).toHaveLength(1)
     expect(h.sidecar.state.state).toBe('stopped')
+  })
+})
+
+describe('engineWorkRefusal (issue 107)', () => {
+  it('lets a reset through when the engine has nothing to do', () => {
+    expect(engineWorkRefusal({ inFlight: 0, abandoned: 0 })).toBeNull()
+  })
+
+  it('asks to wait for a request the engine is answering', () => {
+    expect(engineWorkRefusal({ inFlight: 2, abandoned: 0 })).toBe(
+      'The engine is answering a request; wait for it to finish.',
+    )
+  })
+
+  it('names the way out for a request the engine stopped answering, which may never end', () => {
+    const said =
+      'The engine has not finished a request it stopped answering. If it does not, quit and reopen Legible Cities.'
+    expect(engineWorkRefusal({ inFlight: 1, abandoned: 1 })).toBe(said)
+    expect(engineWorkRefusal({ inFlight: 3, abandoned: 1 })).toBe(said)
   })
 })
 

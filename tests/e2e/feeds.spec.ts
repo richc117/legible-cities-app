@@ -412,7 +412,9 @@ test('a removal the engine does not answer in time ends with a sentence, and the
       await expect(confirm, 'the dialog stays open with its sentence').toBeVisible()
       await expect(remove).not.toHaveAttribute('aria-disabled', 'true')
       await expect(cancel).not.toHaveAttribute('aria-disabled', 'true')
-      await expect(confirm.getByRole('status')).toHaveText('')
+      // The busy line is gone. Located by attribute: an empty status line has
+      // no size, and `getByRole` passes over an element with none.
+      await expect(confirm.locator('[role="status"]')).toHaveText('')
 
       // The list is unchanged while the engine is in the removal: the read
       // the app sent waits behind it.

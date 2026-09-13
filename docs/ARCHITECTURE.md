@@ -173,8 +173,12 @@ neither progress nor a cancel extends: past it the app sends
 `$/cancelRequest`, unless a cancel already did, and ends the request with
 the same `inactive` error; an answer that comes later is dropped. Ending a
 request is not ending the engine's work, so a request either bound ended
-is still counted as in flight until its late answer arrives or the engine
-exits, and the reset of the engine's data waits for it. The deadline is
+is still counted as in flight until its late answer arrives or that
+engine's process has exited (not merely begun to be ended), and the reset
+of the engine's data refuses meanwhile. A request that times out is not a
+failure, so nothing restarts an engine that never answers it; the reset's
+refusal then says so and that quitting and reopening the app is the way
+out. The deadline is
 cleared by the answer, and with every request when the engine exits or the
 app quits. Only `feeds.remove` has one, 30 s, because a person waits on it
 inside a confirmation that takes nothing while it runs and its work is

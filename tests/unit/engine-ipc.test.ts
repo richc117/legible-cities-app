@@ -46,18 +46,7 @@ function harness(
     get state() {
       return state
     },
-    request(method, params, options) {
-      if (state.state !== 'ready') {
-        return { id: 0, result: Promise.reject(new EngineError(ERROR_CODES.notReady, 'not ready')) }
-      }
-      const id = nextId++
-      let deferred!: Deferred
-      const result = new Promise<unknown>((resolve, reject) => {
-        deferred = { resolve, reject }
-      })
-      requests.push({ id, method, params, options, deferred })
-      return { id, result }
-    },
+    request: (method, params, options) => engineRequest(method, params, options),
     cancel: (id) => cancelled.push(id),
     onState: (l) => {
       stateListener = l
@@ -68,6 +57,19 @@ function harness(
       return () => {}
     },
   }
+  const defaultRequest: EngineSource['request'] = (method, params, options) => {
+    if (state.state !== 'ready') {
+      return { id: 0, result: Promise.reject(new EngineError(ERROR_CODES.notReady, 'not ready')) }
+    }
+    const id = nextId++
+    let deferred!: Deferred
+    const result = new Promise<unknown>((resolve, reject) => {
+      deferred = { resolve, reject }
+    })
+    requests.push({ id, method, params, options, deferred })
+    return { id, result }
+  }
+  let engineRequest: EngineSource['request'] = defaultRequest
   registerEngineHandlers(
     ipc,
     engine,
@@ -91,6 +93,10 @@ function harness(
       stateListener?.(s)
     },
     notify: (n: Notification) => notificationListener?.(n),
+    engineRequest: defaultRequest,
+    setEngineRequest: (request: EngineSource['request']) => {
+      engineRequest = request
+    },
   }
 }
 
@@ -374,6 +380,32 @@ describe('a request deadline (issue 107)', () => {
       ['feeds.remove', { deadlineMs: 1_500 }],
       ['feeds.list', undefined],
     ])
+  })
+
+  it('answers a request the supervisor refuses to send as a bad call, and frees the token', async () => {
+    const h = harness(true, undefined, (method) => (method === 'feeds.remove' ? -1 : undefined))
+    // The fake supervisor throws as the real one does for a deadline it cannot hold.
+    const original = h.engineRequest
+    h.setEngineRequest((method, params, options) => {
+      if (options?.deadlineMs !== undefined && options.deadlineMs <= 0)
+        throw new RangeError('a request deadline is a positive number of milliseconds')
+      return original(method, params, options)
+    })
+    const answer = (await h.call(CHANNELS.engineRequest, 'tok1', 'feeds.remove', { key: 'x' })) as {
+      accepted: boolean
+      error?: { code: number; data?: { kind: string; hint: string } }
+    }
+    expect(answer.accepted).toBe(false)
+    expect(answer.error?.code).toBe(ERROR_CODES.badCall)
+    expect(answer.error?.data?.kind).toBe('params')
+    expect(answer.error?.data?.hint).toMatch(/could not be sent: a request deadline is a positive/)
+    expect(h.log.some((l) => l.startsWith('refused feeds.remove before sending it'))).toBe(true)
+    // The token is free: the same token sends the next request.
+    const again = (await h.call(CHANNELS.engineRequest, 'tok1', 'feeds.list')) as {
+      accepted: boolean
+    }
+    expect(again.accepted).toBe(true)
+    expect(h.requests.map((r) => r.method)).toEqual(['feeds.list'])
   })
 
   it('settles an expired request to the page as an error with the inactive kind, then frees the token', async () => {
