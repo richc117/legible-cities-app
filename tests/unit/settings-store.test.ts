@@ -205,6 +205,33 @@ describe('SettingsStore, when the platform holds the file', () => {
     expect(await temporaries()).toEqual([])
   })
 
+  it('gives an update the settings every earlier write left, and writes nothing for null', async () => {
+    let olderTries = 0
+    const held = new SettingsStore(dir, (message) => lines.push(message), {
+      rename: async (from, to) => {
+        if (JSON.parse(await readFile(from, 'utf8')).theme === 'sepia' && ++olderTries <= 2)
+          throw Object.assign(new Error(`EBUSY: held, rename '${to}'`), { code: 'EBUSY' })
+        await rename(from, to)
+      },
+      wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      codes: WINDOWS_RETRY_CODES,
+    })
+    await held.load()
+    const seen: string[] = []
+    const writing = held.write({ ...DEFAULT_SETTINGS, theme: 'sepia' })
+    const unchanged = held.update((settings) => {
+      seen.push(settings.theme)
+      return settings.theme === 'sepia' ? null : { ...settings, theme: 'sepia' }
+    })
+    expect(held.current.theme, 'nothing has landed yet').toBe('system')
+    await Promise.all([writing, unchanged])
+    expect(seen, 'the update saw the write queued before it').toEqual(['sepia'])
+    expect(olderTries).toBe(3)
+    const files = await readdir(dir)
+    expect(files.filter((name) => name.endsWith('.tmp'))).toEqual([])
+    expect(JSON.parse(await readFile(file(), 'utf8')).theme).toBe('sepia')
+  })
+
   it('writes the next settings after one that failed', async () => {
     await store.write({ ...DEFAULT_SETTINGS, theme: 'system' })
     const held = new SettingsStore(dir, (message) => lines.push(message), {

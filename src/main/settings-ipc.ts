@@ -189,8 +189,12 @@ export class SettingsService {
 
   async setTheme(theme: unknown): Promise<SettingsView> {
     if (!isAppTheme(theme)) throw new Error('that is not a theme')
-    const stored = this.#deps.store.current
-    if (stored.theme !== theme) await this.#deps.store.write({ ...stored, theme })
+    // Compared in the store's queue, against the theme every earlier press
+    // left, not against `current`, which a press still being written has
+    // not changed yet.
+    await this.#deps.store.update((stored) =>
+      stored.theme === theme ? null : { ...stored, theme },
+    )
     return this.view()
   }
 
@@ -225,8 +229,9 @@ export class SettingsService {
     if (this.#deps.bundleRoots.some((root) => contains(root, path))) {
       throw new Error('that folder is inside the app itself; nothing can be kept there')
     }
-    const stored = this.#deps.store.current
-    await this.#deps.store.write(
+    // Changed in the store's queue, so a theme or the other folder written
+    // at the same moment is kept rather than put back.
+    await this.#deps.store.update((stored) =>
       which === 'engine' ? { ...stored, engineFolder: path } : { ...stored, exportFolder: path },
     )
     // The export folder moves at once; the engine's waits for a start.
@@ -237,8 +242,7 @@ export class SettingsService {
   /** Forget the stored folder and take the default again. */
   async useDefault(which: Which): Promise<SettingsView> {
     if (this.locked(which)) throw new Error(refusalForLocked(which))
-    const stored = this.#deps.store.current
-    await this.#deps.store.write(
+    await this.#deps.store.update((stored) =>
       which === 'engine' ? { ...stored, engineFolder: null } : { ...stored, exportFolder: null },
     )
     if (which === 'export') this.#exportFolder = this.#deps.defaults.export

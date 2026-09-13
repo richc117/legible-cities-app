@@ -51,17 +51,30 @@ export class SettingsStore {
     return join(this.dir, SETTINGS_FILE)
   }
 
-  /** What was last read or written. Defaults before the first load. */
+  /**
+   * What was last read or landed on disk. Defaults before the first load.
+   * A write still waiting in the queue, or still retrying its rename, is
+   * not in it: `current` changes only once that write has landed, so a
+   * reader never sees settings the file does not hold. A change that
+   * depends on the settings goes through `update`, which sees every write
+   * asked for before it.
+   */
   get current(): AppSettings {
     return this.#settings
   }
 
   /**
-   * Read the file. Missing is not a fault: a first run has no settings. A
-   * file that is not JSON, or not an object, or whose fields are wrong, is
-   * one log line and the defaults - never a refusal to start.
+   * Read the file, in the queue, so a read cannot land after a write it
+   * began before and put the older settings back in force. Missing is not
+   * a fault: a first run has no settings. A file that is not JSON, or not
+   * an object, or whose fields are wrong, is one log line and the defaults
+   * - never a refusal to start.
    */
-  async load(): Promise<AppSettings> {
+  load(): Promise<AppSettings> {
+    return this.#serial(() => this.#load())
+  }
+
+  async #load(): Promise<AppSettings> {
     let text: string
     try {
       text = await readFile(this.file, 'utf8')
@@ -105,19 +118,41 @@ export class SettingsStore {
    */
   #queue: Promise<unknown> = Promise.resolve()
 
-  /**
-   * Write the settings, whole, in the current form. The folder is made
-   * first: on a first run the user-data folder exists, but a person who
-   * pointed the app at a fresh one has not made it.
-   */
-  write(next: AppSettings): Promise<AppSettings> {
-    const run = this.#queue.then(() => this.#write(next))
+  #serial<T>(work: () => Promise<T>): Promise<T> {
+    const run = this.#queue.then(work)
     this.#queue = run.catch(() => undefined)
     return run
   }
 
+  /**
+   * Write the settings, whole, in the current form. The folder is made
+   * first: on a first run the user-data folder exists, but a person who
+   * pointed the app at a fresh one has not made it. A write built from
+   * `current` can lose a change still in the queue; use `update` for that.
+   */
+  write(next: AppSettings): Promise<AppSettings> {
+    return this.update(() => next)
+  }
+
+  /**
+   * Read, change and write in one turn of the queue. `change` is given the
+   * settings as every earlier write left them - landed, or failed and so
+   * not in force - and answers the settings to write, or null for no
+   * change, which writes nothing and answers the settings as they are.
+   * A change made from `current` outside the queue would compare against
+   * settings a pending write has not updated yet: a press back to the
+   * stored theme while another theme was retrying would be skipped, and a
+   * folder chosen at the same moment as a theme would be put back.
+   */
+  update(change: (settings: AppSettings) => AppSettings | null): Promise<AppSettings> {
+    return this.#serial(async () => {
+      if (!this.#loaded) await this.#load()
+      const next = change(this.#settings)
+      return next === null ? this.#settings : this.#write(next)
+    })
+  }
+
   async #write(next: AppSettings): Promise<AppSettings> {
-    if (!this.#loaded) await this.load()
     const settings: AppSettings = { ...next, version: SETTINGS_VERSION }
     const text = JSON.stringify(settings, null, 2) + '\n'
     const temp = join(this.dir, tempFile())

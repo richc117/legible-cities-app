@@ -4,11 +4,12 @@
 // interface's own top frame can ask at all.
 
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
-import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { LOG_WAIT_MS } from '../../src/main/log-file'
+import { WINDOWS_RETRY_CODES, type ReplaceOptions } from '../../src/main/replace-file'
 import { SettingsStore } from '../../src/main/settings'
 import {
   ENGINE_INFO_TIMEOUT_MS,
@@ -65,6 +66,8 @@ async function harness(
     platform?: string
     /** Where the log files are, for a log folder under the fake home. */
     logsFolder?: (root: string) => string
+    /** The settings file's rename and its retry, for a file the platform holds. */
+    replace?: ReplaceOptions
   } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), 'legible-cities-settings-ipc-'))
@@ -75,7 +78,7 @@ async function harness(
   const exportFolder = over.exportFolder?.(root) ?? join(root, 'desktop', 'Legible Cities')
   const bundle = bundleOf(root)
   const logsFolder = over.logsFolder?.(root) ?? join(root, 'logs')
-  const store = new SettingsStore(userData, () => undefined)
+  const store = new SettingsStore(userData, () => undefined, over.replace)
   await store.load()
   const opened: Which[] = []
   const shown: string[] = []
@@ -333,6 +336,75 @@ describe('the theme', () => {
     for (const value of ['dark', '', null, 7, { theme: 'sepia' }])
       await expect(h.call(CHANNELS.settingsSetTheme, value)).rejects.toThrow('that is not a theme')
     expect(h.store.current.theme).toBe('system')
+  })
+})
+
+// On Windows a write can retry its rename for over a second (issue 93), so
+// two changes a person makes in that time must each see the other: the check
+// for "has it changed?" and the fields left alone are read in the store's
+// queue, not from settings a pending write has not updated yet.
+describe('two changes while the settings file is held', () => {
+  /** A rename refused `times` times for a file whose written settings match `held`, then the real one. */
+  function holding(held: (written: Record<string, unknown>) => boolean, times = 3, code = 'EPERM') {
+    let refused = 0
+    const replace: ReplaceOptions = {
+      rename: async (from, to) => {
+        const written = JSON.parse(await readFile(from, 'utf8')) as Record<string, unknown>
+        if (held(written) && refused < times) {
+          refused += 1
+          throw Object.assign(new Error(`${code}: held, rename '${to}'`), { code })
+        }
+        await rename(from, to)
+      },
+      wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      codes: WINDOWS_RETRY_CODES,
+    }
+    return { replace, refused: () => refused }
+  }
+
+  const onDisk = async (h: { userData: string }): Promise<Record<string, unknown>> =>
+    JSON.parse(await readFile(join(h.userData, 'settings.json'), 'utf8'))
+
+  it('keeps a press back to the stored theme made while the press before it retries', async () => {
+    const hold = holding((written) => written.theme === 'sepia')
+    const h = await harness({ replace: hold.replace })
+    expect(h.store.current.theme).toBe('system')
+    const first = h.settings.setTheme('sepia')
+    const back = h.settings.setTheme('system')
+    // Still retrying: what is in force is what has landed.
+    expect(h.store.current.theme).toBe('system')
+    await Promise.all([first, back])
+    expect(hold.refused(), 'the first press was held').toBe(3)
+    expect((await onDisk(h)).theme).toBe('system')
+    expect(h.store.current.theme).toBe('system')
+  })
+
+  it('keeps both a folder and a theme chosen at the same moment', async () => {
+    const hold = holding((written) => written.theme === 'sepia')
+    const h = await harness({ replace: hold.replace })
+    const theme = h.settings.setTheme('sepia')
+    const folder = h.settings.choose('export')
+    const [, view] = await Promise.all([theme, folder])
+    expect(hold.refused()).toBe(3)
+    const stored = await onDisk(h)
+    expect(stored.theme).toBe('sepia')
+    expect(stored.exportFolder).toBe(join(h.root, 'chosen'))
+    expect(h.store.current).toMatchObject({ theme: 'sepia', exportFolder: join(h.root, 'chosen') })
+    expect(view.export.path).toBe(join(h.root, 'chosen'))
+  })
+
+  it('writes the next change after one that failed', async () => {
+    const hold = holding((written) => written.theme === 'sepia', Infinity, 'EXDEV')
+    const h = await harness({ replace: hold.replace })
+    await expect(h.settings.setTheme('sepia')).rejects.toThrow('the settings could not be saved')
+    expect(h.store.current.theme, 'a failed write is not in force').toBe('system')
+    const failed = h.settings.setTheme('sepia')
+    const next = h.settings.useDefault('export')
+    const last = h.settings.setTheme('warm-dark')
+    await expect(failed).rejects.toThrow('the settings could not be saved')
+    await expect(next).resolves.toBeDefined()
+    await expect(last).resolves.toMatchObject({ theme: 'warm-dark' })
+    expect((await onDisk(h)).theme).toBe('warm-dark')
   })
 })
 
