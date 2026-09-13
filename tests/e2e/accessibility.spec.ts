@@ -148,6 +148,8 @@ interface StepAnswer {
   state: 'none' | 'same' | 'stop' | 'repeat'
   /** Every control expected has been reached. */
   complete: boolean
+  /** What holds focus, for the message when the walk does not end. */
+  at: string
 }
 
 interface Finding {
@@ -257,17 +259,21 @@ function installProbe(): void {
     step() {
       const complete = (): boolean => want.every((el) => !el.isConnected || visited.has(el))
       const deep = deepActive()
-      if (deep === null || deep === document.body) return { state: 'none', complete: complete() }
+      const where = (): string => (deep === null ? 'nothing' : describe(deep))
+      // The body, or a dialog holding focus itself, is no control: focus is
+      // between two, or has left the page.
+      if (deep === null || deep === document.body || deep.tagName === 'DIALOG')
+        return { state: 'none', complete: complete(), at: where() }
       const control = controlOf(deep)
       // A date control's fields, or a frame's own controls, are several
       // presses on one element of this document.
-      if (control === last) return { state: 'same', complete: complete() }
-      if (visited.has(control)) return { state: 'repeat', complete: complete() }
+      if (control === last) return { state: 'same', complete: complete(), at: where() }
+      if (visited.has(control)) return { state: 'repeat', complete: complete(), at: where() }
       last = control
       visited.add(control)
       const chain = chainOf(deep)
       stops.push({ control, chain, focused: chain.map(ring) })
-      return { state: 'stop', complete: complete() }
+      return { state: 'stop', complete: complete(), at: where() }
     },
     finish() {
       ;(document.activeElement as HTMLElement | null)?.blur?.()
@@ -348,21 +354,35 @@ async function expectTabWalk(page: Page, where: string): Promise<void> {
   // A deadline, not a count of presses: the walk ends when focus comes back
   // round to a control it has already reached, or leaves the document once
   // every control has been reached (where the window's end of the sequence
-  // is, not the page's, is Electron's business).
+  // is, not the page's, is Electron's business). A modal dialog with one
+  // control is the one place Tab has nowhere to go: focus stays on that
+  // control, which is the walk's whole cycle, and is complete. Anywhere
+  // with more than one control, staying put means a date control's fields
+  // or a frame's own controls, and the walk goes on.
   const deadline = Date.now() + 45_000
   let ended = false
+  const trace: string[] = []
   while (Date.now() < deadline) {
     await page.keyboard.press('Tab')
-    const { state, complete } = await page.evaluate(() =>
+    const { state, complete, at } = await page.evaluate(() =>
       (window as unknown as { __a11y: Probe }).__a11y.step(),
     )
-    if (state === 'repeat' || (state === 'none' && complete)) {
+    trace.push(`${state} ${at}`)
+    if (trace.length > 12) trace.shift()
+    if (
+      state === 'repeat' ||
+      (state === 'none' && complete) ||
+      (state === 'same' && complete && wanted === 1)
+    ) {
       ended = true
       break
     }
   }
   const found = await page.evaluate(() => (window as unknown as { __a11y: Probe }).__a11y.finish())
-  expect(ended, `${where}: the Tab walk came back round within the deadline`).toBe(true)
+  expect(
+    ended,
+    `${where}: the Tab walk came back round within the deadline; its last presses:\n${trace.join('\n')}`,
+  ).toBe(true)
   expect(found.missed, `${where}: controls the Tab walk did not reach`).toEqual([])
   expect(found.unringed, `${where}: controls with no visible focus`).toEqual([])
 }
@@ -469,7 +489,17 @@ test('the Library, its empty state and its three dialogs', async () => {
       }),
     )
     await expect(page.getByRole('listitem', { name: 'Metro de Prueba' })).toHaveCount(0)
-    await expect(page.getByRole('heading', { name: 'Feeds', level: 2 })).toBeFocused()
+    // Polled as a description of whatever holds focus, so a failure says
+    // where it went rather than only that the heading does not have it.
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const active = document.activeElement
+          if (active === null) return 'nothing'
+          return active.id !== '' ? `#${active.id}` : active.tagName.toLowerCase()
+        }),
+      )
+      .toBe('#feeds-heading')
   })
 })
 

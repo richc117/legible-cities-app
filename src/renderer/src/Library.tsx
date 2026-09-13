@@ -60,7 +60,14 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
   // leaves with the empty state, a removed feed's row takes its Remove with
   // it. Only if focus did fall to nowhere; otherwise it is a person's
   // (A6-07).
-  const handBack = useRef<{ project: string } | 'feeds' | null>(null)
+  //
+  // Two things have to have happened first, in whichever order they land:
+  // the dialog has closed, which hands focus back to the control that
+  // opened it, and the list has been drawn without that control. Judged
+  // before both, focus is still in the dialog or on the opener and looks
+  // held; the opener then goes and focus falls to the body with nobody
+  // left to pick it up. So the check waits for both, on every render.
+  const handBack = useRef<{ project: string } | { feed: string } | null>(null)
   const rows = useRef(new Map<string, HTMLButtonElement>())
 
   const refreshFeeds = useCallback(async (): Promise<void> => {
@@ -98,24 +105,27 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
   // A rejection propagates to the dialog, which shows the message.
   const create = async (input: CreateProjectInput): Promise<void> => {
     const record = await window.api.projects.create(input)
-    setCreating(null)
     handBack.current = { project: record.id }
+    setCreating(null)
     setLibrary({ status: 'ready', projects: await listProjects() })
   }
 
   useEffect(() => {
     const target = handBack.current
-    if (target === null || target === 'feeds') return
+    if (target === null) return
+    if ('project' in target) {
+      if (creating !== null) return
+      const row = rows.current.get(target.project)
+      if (row === undefined) return
+      handBack.current = null
+      if (focusLost(document.activeElement, document.body)) row.focus()
+      return
+    }
+    if (removing !== null || feeds.some((feed) => feed.key === target.feed)) return
     handBack.current = null
-    if (focusLost(document.activeElement, document.body)) rows.current.get(target.project)?.focus()
-  }, [library])
-
-  useEffect(() => {
-    if (handBack.current !== 'feeds') return
-    handBack.current = null
-    if (!focusLost(document.activeElement, document.body)) return
-    ;(document.getElementById(FEEDS_HEADING_ID) ?? headingRef.current)?.focus()
-  }, [feeds])
+    if (focusLost(document.activeElement, document.body))
+      (document.getElementById(FEEDS_HEADING_ID) ?? headingRef.current)?.focus()
+  })
 
   const added = useCallback((): void => {
     setAdding(false)
@@ -144,9 +154,9 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
       throw new Error(sentenceFor(error), { cause: error })
     }
     forgetInspection(removing.key)
+    handBack.current = { feed: removing.key }
     setRemoving(null)
     setFeedNotice(`${removing.name} was removed.`)
-    handBack.current = 'feeds'
     await refreshFeeds()
   }
 
@@ -233,6 +243,7 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
           }}
           onRemove={(feed) => {
             setFeedNotice(null)
+            handBack.current = null
             setRemoving(feed)
           }}
         />
