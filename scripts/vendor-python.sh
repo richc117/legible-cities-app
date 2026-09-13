@@ -27,11 +27,14 @@ outdir=${3:-vendor/python}
   echo "usage: $0 <target> <engine-path> [outdir]" >&2; exit 2; }
 [ -d "$engine" ] || { echo "no engine checkout at $engine" >&2; exit 2; }
 
-# The engine path is resolved before the cd below, so a relative one means
-# relative to where the script was called. `pwd -W` is Git Bash's Windows
-# form (D:/a/...), which the Windows interpreter's pip can read; elsewhere
+# absolute <dir>: the directory's absolute path in the form the target's own
+# Python can read. `pwd -W` is Git Bash's Windows form (D:/a/...); elsewhere
 # it is not an option and plain pwd answers.
-engine=$(cd "$engine" && { pwd -W 2>/dev/null || pwd; })
+absolute() { (cd "$1" && { pwd -W 2>/dev/null || pwd; }); }
+
+# Resolved before the cd below, so a relative engine path means relative to
+# where the script was called.
+engine=$(absolute "$engine")
 
 root=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
 cd "$root"
@@ -73,7 +76,8 @@ EOP
 
 url="https://github.com/astral-sh/python-build-standalone/releases/download/$release/$asset"
 work=$(mktemp -d)
-trap 'rm -rf "$work"' EXIT
+stage=
+trap 'rm -rf "$work" ${stage:+"$stage"}' EXIT
 
 echo "fetching $asset"
 curl -fsSL -o "$work/$asset" "$url"
@@ -88,29 +92,50 @@ if [ "$got" != "$want" ]; then
 fi
 echo "checksum ok"
 
+# Everything is built in a staging folder and moved to <outdir>/<target> only
+# once the schema check below has passed, so a failed run never leaves a
+# broken runtime at the path the gate, the upload and a developer read. The
+# staging folder sits beside the destination rather than under $work so the
+# move is a rename on one filesystem: on the Windows runner the temporary
+# folder is on C: and the workspace on D:.
 dest="$outdir/$target"
-rm -rf "$dest"
-mkdir -p "$dest"
-tar xzf "$work/$asset" -C "$dest"
+mkdir -p "$outdir"
+stage=$(mktemp -d "$outdir/.staging-$target.XXXXXX")
+tar xzf "$work/$asset" -C "$stage"
 case "$target" in
-  win-*) py="$dest/python/python.exe" ;;   # install_only puts it at the root on Windows
-  *)     py="$dest/python/bin/python3" ;;
+  win-*) py="$stage/python/python.exe" ;;   # install_only puts it at the root on Windows
+  *)     py="$stage/python/bin/python3" ;;
 esac
 [ -f "$py" ] || { echo "no interpreter at $py in $asset" >&2; exit 1; }
 
 # The engine with the dependencies it declares, which since E02 are exactly
 # what the sidecar imports (pandas, python-lsp-jsonrpc, requests); nothing is
 # named here, so the engine's pyproject.toml stays the one list.
+#
+# --only-binary :all: so nothing is compiled on the runner: a dependency with
+# no wheel for the target fails the build rather than building from source
+# with whatever compiler the image has. The engine itself is a source tree,
+# which that flag refuses, so its wheel is built first (pure Python, through
+# its hatchling backend) and installed from the file.
+#
+# This is not a lock: the engine's minimums allow any later version, majors
+# included, and nothing is hashed. The freeze below records what each run
+# shipped; see the spike report's "Still open".
 "$py" -m pip install --quiet --upgrade pip
-"$py" -m pip install --quiet "$engine"
+mkdir -p "$work/wheels"
+"$py" -m pip wheel --quiet --no-deps -w "$(absolute "$work/wheels")" "$engine"
+wheel=$(cd "$work/wheels" && ls openschematicmaps-*.whl)
+"$py" -m pip install --quiet --only-binary :all: "$(absolute "$work/wheels")/$wheel"
+echo "installed, as pip freeze reports it:"
+"$py" -m pip list --format=freeze | tr -d '\r' | sed 's/^/  /'
 
 # Strip what never runs in a sidecar. Measured at 78 MB and 4184 files on
 # macOS arm64; see the spike report. The .pdb files are Windows' debug
 # symbols, 86 MB of the Windows asset, and absent on macOS.
-find "$dest" -type d -name '__pycache__' -prune -exec rm -rf {} + 2>/dev/null || true
-find "$dest" -type d \( -name 'tests' -o -name 'test' -o -name 'idle_test' \) -prune -exec rm -rf {} + 2>/dev/null || true
-find "$dest" -type d \( -name 'idlelib' -o -name 'tkinter' -o -name 'turtledemo' \) -prune -exec rm -rf {} + 2>/dev/null || true
-find "$dest" \( -name '*.pyc' -o -name '*.pdb' \) -type f -delete 2>/dev/null || true
+find "$stage" -type d -name '__pycache__' -prune -exec rm -rf {} + 2>/dev/null || true
+find "$stage" -type d \( -name 'tests' -o -name 'test' -o -name 'idle_test' \) -prune -exec rm -rf {} + 2>/dev/null || true
+find "$stage" -type d \( -name 'idlelib' -o -name 'tkinter' -o -name 'turtledemo' \) -prune -exec rm -rf {} + 2>/dev/null || true
+find "$stage" \( -name '*.pyc' -o -name '*.pdb' \) -type f -delete 2>/dev/null || true
 
 # The check runs what the app runs, and writes no bytecode back into the
 # runtime it has just stripped (the size below is what ships).
@@ -134,6 +159,11 @@ if [ "$schema_got" != "$schema_want" ]; then
   exit 1
 fi
 echo "schema ok: $schema_got"
+
+# Only now is the old runtime removed and the new one put in its place.
+rm -rf "$dest"
+mv "$stage" "$dest"
+stage=
 
 printf 'vendored %s: %s, %s files\n' "$target" \
   "$(du -sh "$dest" | cut -f1)" "$(find "$dest" -type f | wc -l | tr -d ' ')"

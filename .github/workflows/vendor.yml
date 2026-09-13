@@ -19,7 +19,7 @@ name: vendor
 
 on:
   push:
-    paths: ['vendor/pins.json', '.github/workflows/vendor.yml']
+    paths: ['vendor/pins.json', '.github/workflows/vendor.yml', 'scripts/vendor-python.sh']
   workflow_dispatch:
 
 permissions:
@@ -151,6 +151,8 @@ jobs:
           - { os: windows-latest, target: win-x64      }
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Read the engine's pin
         id: engine
         shell: bash
@@ -193,6 +195,7 @@ jobs:
           repository: ${{ steps.engine.outputs.repo }}
           ref: ${{ steps.engine.outputs.tag }}
           path: engine
+          persist-credentials: false
       - name: Refuse an engine that is not the pinned version
         shell: bash
         env:
@@ -217,20 +220,53 @@ jobs:
         run: |
           # THIRD_PARTY_NOTICES.md requires no GNU readline and no GDBM. The
           # spike found PyInstaller collecting readline from the build host;
-          # this is the check that would have caught it. The last two names
-          # are the Windows forms: python-build-standalone ships no readline
-          # there, so a readline DLL or extension could only have come from a
-          # package, and a GNU one would be GPL.
-          gpl() {
-            find vendor/python -iname '*gdbm*' -o -iname 'libreadline*' \
-              -o -iname '*readline*.dll' -o -iname '*readline*.pyd'
-          }
-          if gpl | grep -q .; then
+          # this is the check that would have caught it.
+          #
+          # Every test captures its command's output and then tests the text.
+          # `find ... | grep -q .` is wrong under the -eo pipefail GitHub
+          # gives bash: grep exits at the first line, a find with more to
+          # write dies of SIGPIPE, and the pipeline fails - so the `if` takes
+          # the no-match branch exactly when there are many matches.
+          #
+          # By name, on all three targets. The last two names are the
+          # Windows forms: python-build-standalone ships no readline there,
+          # so a readline DLL or extension could only come from a package.
+          named=$(find vendor/python -iname '*gdbm*' -o -iname 'libreadline*' \
+            -o -iname '*readline*.dll' -o -iname '*readline*.pyd')
+          if [ -n "$named" ]; then
             echo "::error::the vendored runtime carries GDBM or GNU readline"
-            gpl
+            printf '%s\n' "$named"
             exit 1
           fi
-          echo "no GPL readline or GDBM in the vendored runtime"
+          echo "no GDBM or GNU readline by name"
+          # By link, on macOS: a name says nothing about what a binary loads.
+          # The interpreter's readline module is built into libpython there
+          # and links the system's libedit; _dbm links libSystem's ndbm.
+          # Every Mach-O in the tree is read, wheels' included, and any
+          # library whose path names readline or gdbm fails the build. The
+          # symbol check catches a readline compiled into libpython itself,
+          # which no link list shows: with libedit, rl_library_version is
+          # imported, never defined.
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            links=$(find vendor/python -type f \( -name '*.so' -o -name '*.dylib' \
+              -o \( -path '*/python/bin/python3.[0-9]*' ! -name '*-config' \) \) \
+              -exec otool -L {} +)
+            linked=$(printf '%s\n' "$links" | grep -iE '^[[:space:]].*(readline|gdbm)' || true)
+            if [ -n "$linked" ]; then
+              echo "::error::a binary in the vendored runtime links GNU readline or GDBM"
+              printf '%s\n' "$linked"
+              exit 1
+            fi
+            echo "no binary links readline or gdbm ($(printf '%s\n' "$links" | grep -c ':$') Mach-O files read)"
+            for lib in vendor/python/*/python/lib/libpython3.*.dylib; do
+              defined=$(nm -gU "$lib")
+              if grep -qE ' _rl_library_version$' <<< "$defined"; then
+                echo "::error::$lib defines readline itself; check which readline it is"
+                exit 1
+              fi
+            done
+            echo "libpython imports readline's symbols rather than defining them"
+          fi
           # The shared libraries it does carry, by name, so a new one shows
           # up in the log of the run that brought it.
           echo "shared libraries:"
@@ -257,7 +293,7 @@ jobs:
           for i in 1 2 3; do
             time PYTHONPYCACHEPREFIX="$RUNNER_TEMP/pycache" "$py" -m schematic.serve --schema > /dev/null
           done
-          if find "vendor/python/$TARGET" -name __pycache__ | grep -q .; then
+          if [ -n "$(find "vendor/python/$TARGET" -name __pycache__ -print -quit)" ]; then
             echo "::error::timing wrote bytecode into the runtime about to be uploaded"
             exit 1
           fi
