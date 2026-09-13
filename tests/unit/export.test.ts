@@ -22,6 +22,7 @@ import {
   folderName,
   isProjectPage,
   jobOf,
+  keptFramesFolder,
   STILL_FRAME,
   normalise,
   pageUrl,
@@ -241,6 +242,8 @@ function harness(
     folder?: { now: string }
     /** What `export.presets` answers, when not the pinned table. */
     presets?: unknown
+    /** Where a copy of each export's frames goes (LEGIBLE_KEEP_FRAMES). */
+    keepFrames?: string | null
   } = {},
 ) {
   const root = mkdtempSync(join(tmpdir(), 'legible-cities-export-'))
@@ -261,10 +264,11 @@ function harness(
     // without a restart (A1-04).
     exportFolder: () => folder.now,
     blocked: () => over.blocked ?? null,
+    keepFrames: over.keepFrames ?? null,
     log: (m) => log.push(m),
   })
   exporter.onProgress((p) => progress.push(p))
-  return { exporter, eng, cap, progress, log, framesRoot, exportFolder, folder }
+  return { exporter, eng, cap, progress, log, framesRoot, exportFolder, folder, root }
 }
 
 // Turns of the event loop, not promise flushes: steps of the export touch
@@ -295,6 +299,52 @@ const until = async (what: string, ok: () => boolean, ms = 30_000): Promise<void
   while (!ok() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 1))
   if (!ok()) throw new Error(`${what} never happened`)
 }
+
+describe('keeping the frames, for development only (A5-04)', () => {
+  const absolute = join(tmpdir(), 'kept-frames')
+
+  it('reads LEGIBLE_KEEP_FRAMES in development, as an absolute path', () => {
+    expect(keptFramesFolder({ LEGIBLE_KEEP_FRAMES: absolute }, false)).toBe(absolute)
+  })
+
+  it('is ignored when packaged, whatever the environment says', () => {
+    expect(keptFramesFolder({ LEGIBLE_KEEP_FRAMES: absolute }, true)).toBeNull()
+  })
+
+  it('is ignored when unset, empty or relative', () => {
+    expect(keptFramesFolder({}, false)).toBeNull()
+    expect(keptFramesFolder({ LEGIBLE_KEEP_FRAMES: '' }, false)).toBeNull()
+    expect(keptFramesFolder({ LEGIBLE_KEEP_FRAMES: 'frames' }, false)).toBeNull()
+  })
+
+  it("copies each export's frames before they are removed, numbered, and nothing without it", async () => {
+    const kept = mkdtempSync(join(tmpdir(), 'legible-cities-kept-'))
+    dirs.push(kept)
+    const h = harness({ keepFrames: kept })
+    const { result } = h.exporter.start('tok-1', 'abcdefghijk1', REEL)
+    await until('the plan', () => h.eng.requests.length === 1)
+    h.eng.requests[0].resolve(plan())
+    await until('the capture', () => h.cap.calls.length === 1)
+    h.cap.calls[0].finish(60)
+    await until('the encode', () => h.eng.requests.length === 2)
+    h.eng.requests[1].resolve({ files: [], sidecar: {} })
+    await result
+    expect(readFileSync(join(kept, '001-tok-1', '000000.png'), 'utf8')).toBe('png')
+    expect(existsSync(join(h.framesRoot, 'tok-1')), "the export's own frames are gone").toBe(false)
+    expect(h.log.join('\n')).not.toContain(kept)
+
+    const plain = harness()
+    const second = plain.exporter.start('tok-2', 'abcdefghijk1', REEL)
+    await until('the plan', () => plain.eng.requests.length === 1)
+    plain.eng.requests[0].resolve(plan())
+    await until('the capture', () => plain.cap.calls.length === 1)
+    plain.cap.calls[0].finish(60)
+    await until('the encode', () => plain.eng.requests.length === 2)
+    plain.eng.requests[1].resolve({ files: [], sidecar: {} })
+    await second.result
+    expect(readdirSync(plain.root).sort()).toEqual(['frames'])
+  })
+})
 
 describe('the export, step by step', () => {
   it('plans with the engine, captures, encodes, and hands back the file name', async () => {

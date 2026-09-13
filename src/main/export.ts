@@ -12,8 +12,8 @@
 // project, and its name is the engine's. Nothing here writes anywhere else.
 // Contract: specs/010-export/contracts/bridge.md.
 
-import { rm } from 'node:fs/promises'
-import { join } from 'node:path'
+import { cp, rm } from 'node:fs/promises'
+import { isAbsolute, join } from 'node:path'
 import { claimFramesRoot, reasonOf } from './frames'
 import { frameTotal, type CaptureJob } from '../shared/capture'
 import { EngineError, ERROR_CODES, engineError, withoutPaths } from '../shared/engine'
@@ -71,7 +71,29 @@ export interface ExporterOptions {
    * writing its frames into a folder being walked away (A1-04).
    */
   blocked?: () => string | null
+  /**
+   * Where a copy of each export's captured frames goes before they are
+   * removed, as `<keepFrames>/<nnn>-<token>/`, numbered in the order the
+   * exports reached their capture; null, the default, keeps nothing. For development
+   * only: `keptFramesFolder` gives null in a packaged app.
+   */
+  keepFrames?: string | null
   log: (message: string) => void
+}
+
+/**
+ * `LEGIBLE_KEEP_FRAMES`, in development and as an absolute path, or null.
+ * A way to see what a capture took when two exports disagree (A5-04): the
+ * frames are otherwise removed the moment an export ends. A packaged app
+ * never keeps them, whatever its environment says.
+ */
+export function keptFramesFolder(
+  env: Record<string, string | undefined>,
+  packaged: boolean,
+): string | null {
+  const value = env.LEGIBLE_KEEP_FRAMES
+  if (packaged || value === undefined || value === '' || !isAbsolute(value)) return null
+  return value
 }
 
 interface Control {
@@ -222,6 +244,8 @@ export class Exporter {
   readonly #writing = new Set<string>()
   readonly #finished = new Map<string, string>()
   readonly #listeners = new Set<(p: ExportProgress) => void>()
+  /** Exports started, for the kept frames' folder names. */
+  #started = 0
 
   constructor(options: ExporterOptions) {
     this.#options = options
@@ -513,6 +537,7 @@ export class Exporter {
     this.#writing.add(dest)
 
     const frames = join(framesRoot, token)
+    const sequence = ++this.#started
     try {
       this.#emit(token, 'capture', 0, `Capturing ${total} frames.`)
       const captured = await capture(job, {
@@ -551,6 +576,15 @@ export class Exporter {
       return { result: { file: plan.filename, bytes, frames: captured.frames }, path: dest }
     } finally {
       this.#writing.delete(dest)
+      const keep = this.#options.keepFrames ?? null
+      if (keep !== null) {
+        await cp(frames, join(keep, `${String(sequence).padStart(3, '0')}-${token}`), {
+          recursive: true,
+        }).then(
+          () => log(`kept the frames of export ${sequence} (LEGIBLE_KEEP_FRAMES)`),
+          (error: unknown) => log(`could not keep the frames (${reasonOf(error)})`),
+        )
+      }
       // The frames never outlive the export, whichever way it ended. The
       // capture removes them itself on its own failure; this covers the rest.
       // The code, never the message: a filesystem error's message carries
