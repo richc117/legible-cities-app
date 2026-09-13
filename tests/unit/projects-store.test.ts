@@ -2,12 +2,23 @@
 // developer's own data, and every root is removed afterwards.
 
 import { createHash } from 'node:crypto'
-import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, relative, sep } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { isValidProjectId } from '../../src/main/paths'
 import { newId, ProjectStore } from '../../src/main/projects'
+import { RENAME_RETRY_DELAYS_MS, type Rename, type Wait } from '../../src/main/replace-file'
 import {
   DEFAULT_COLOR,
   DEFAULT_STYLE,
@@ -1109,5 +1120,153 @@ describe('writes in flight', () => {
     expect(store.writing).toBeGreaterThan(0)
     await deleting
     expect(store.writing).toBe(0)
+  })
+})
+
+// On Windows a rename over project.json fails while another handle has it
+// open - the scanner looking at the record just renamed into place, or a
+// preview reading it - and a person's choice was lost to that (issue 93).
+// The platform's refusal is made here through the store's seam.
+describe('a record the platform holds', () => {
+  const choice = { preset: 'linkedin-video', storyboard: 'day', options: {} } as const
+
+  /** A store whose renames of project.json are refused while `held()` answers a code. */
+  function heldStore(held: () => string | null, wait: Wait = async () => undefined) {
+    let renames = 0
+    const rename_: Rename = async (from, to) => {
+      renames += 1
+      const code = held()
+      if (code !== null) throw Object.assign(new Error(`${code}: held, rename '${to}'`), { code })
+      await rename(from, to)
+    }
+    const held_ = new ProjectStore(home, (message) => lines.push(message), {
+      rename: rename_,
+      wait,
+    })
+    return { store: held_, renames: () => renames }
+  }
+
+  const leftovers = async (id: string): Promise<string[]> =>
+    (await readdir(join(root, id))).filter((name) => name !== 'project.json')
+
+  for (const code of ['EPERM', 'EACCES', 'EBUSY']) {
+    it(`writes the choice once the record is let go (${code}), and says it waited`, async () => {
+      const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+      let refusals = 3
+      const waits: number[] = []
+      const held = heldStore(
+        () => (refusals-- > 0 ? code : null),
+        async (ms) => void waits.push(ms),
+      )
+      const after = await held.store.setExport(project.id, choice as never)
+      expect(after.export).toEqual(choice)
+      expect(held.renames()).toBe(4)
+      expect(waits, 'within the bound').toEqual(RENAME_RETRY_DELAYS_MS.slice(0, 3))
+      expect((await store.get(project.id)).export, 'and it is on disk').toEqual(choice)
+      expect(await leftovers(project.id), 'no temporary file is left').toEqual([])
+      expect(lines).toContain(`projects/${project.id}: saved after 4 attempts (${code})`)
+      expect(held.store.writing).toBe(0)
+    })
+  }
+
+  it('lands on the last attempt the bound allows', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    let refusals = RENAME_RETRY_DELAYS_MS.length
+    const held = heldStore(() => (refusals-- > 0 ? 'EPERM' : null))
+    await held.store.setInputs(project.id, { mode: 'subway', agency: 'SUB' })
+    expect(await store.get(project.id)).toMatchObject({ mode: 'subway', agency: 'SUB' })
+    expect(held.renames()).toBe(RENAME_RETRY_DELAYS_MS.length + 1)
+  })
+
+  it('gives up after the bound: the previous record stays, the temporary file goes, and the log says why', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    const waits: number[] = []
+    const held = heldStore(
+      () => 'EPERM',
+      async (ms) => void waits.push(ms),
+    )
+    const failure = await held.store
+      .setExport(project.id, choice as never)
+      .catch((error: Error) => error)
+    expect((failure as Error).message, 'no path in what the screen shows').toBe(
+      'the project could not be saved',
+    )
+    expect(held.renames()).toBe(RENAME_RETRY_DELAYS_MS.length + 1)
+    expect(waits).toEqual([...RENAME_RETRY_DELAYS_MS])
+    expect((await store.get(project.id)).export, 'the earlier record is whole').toEqual({
+      preset: 'instagram-reel',
+      options: {},
+    })
+    expect(await leftovers(project.id)).toEqual([])
+    expect(lines).toContain(`projects/${project.id}: write failed (EPERM, 8 attempts)`)
+    expect(held.store.writing, 'the count is released').toBe(0)
+  })
+
+  it('does not wait for a failure other than a held file', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    for (const code of ['ENOENT', 'EXDEV', 'ENOSPC']) {
+      const waits: number[] = []
+      const held = heldStore(
+        () => code,
+        async (ms) => void waits.push(ms),
+      )
+      await expect(held.store.setTheme(project.id, 'sepia')).rejects.toThrow(
+        'the project could not be saved',
+      )
+      expect(held.renames(), code).toBe(1)
+      expect(waits, code).toEqual([])
+      expect(await leftovers(project.id)).toEqual([])
+      expect(lines).toContain(`projects/${project.id}: write failed (${code}, 1 attempt)`)
+    }
+  })
+
+  it.skipIf(process.platform === 'win32')(
+    'does not try a failed write of the temporary file again, and never reaches the rename',
+    async () => {
+      const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+      const held = heldStore(() => null)
+      // A read-and-execute-only folder: the record can be read, and no
+      // temporary file can be made beside it.
+      await chmod(join(root, project.id), 0o500)
+      try {
+        await expect(held.store.setTheme(project.id, 'sepia')).rejects.toThrow(
+          'the project could not be saved',
+        )
+      } finally {
+        await chmod(join(root, project.id), 0o700)
+      }
+      expect(held.renames()).toBe(0)
+      expect(lines).toContain(`projects/${project.id}: write failed (EACCES)`)
+    },
+  )
+
+  it('answers a read made while the rename waits with the previous record, whole', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    let refusals = 2
+    const seen: { export: unknown; tmp: string[]; listed: number }[] = []
+    const held: ReturnType<typeof heldStore> = heldStore(
+      () => (refusals-- > 0 ? 'EBUSY' : null),
+      async () => {
+        // Mid-write: the new record is on disk under its temporary name.
+        const reading = await held.store.get(project.id)
+        const listed = await held.store.list()
+        seen.push({
+          export: reading.export,
+          tmp: (await leftovers(project.id)).filter((name) => name.endsWith('.tmp')),
+          listed: listed.length,
+        })
+      },
+    )
+    await held.store.setExport(project.id, choice as never)
+    expect(seen).toHaveLength(2)
+    for (const reading of seen) {
+      expect(reading.tmp, 'the write was part-way through').toHaveLength(1)
+      expect(reading.export, 'the reader saw the record before it').toEqual({
+        preset: 'instagram-reel',
+        options: {},
+      })
+      expect(reading.listed, 'and the list still has the project').toBe(1)
+    }
+    expect((await store.get(project.id)).export).toEqual(choice)
   })
 })

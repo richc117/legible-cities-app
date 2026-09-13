@@ -167,6 +167,33 @@ async function frameQuery(page: Page): Promise<URLSearchParams> {
   return new URL(src).searchParams
 }
 
+/**
+ * A wait for the record, which on failure says what the screen said beside
+ * it: a write the store refused shows its sentence in an alert, and a change
+ * that never reached the store shows nothing, and the two need telling apart
+ * (issue 93). The assertion itself is the caller's and is not changed.
+ */
+async function withWhatTheScreenSaid(page: Page, wait: () => Promise<void>): Promise<void> {
+  try {
+    await wait()
+  } catch (error) {
+    if (!(error instanceof Error)) throw error
+    const alerts = await page
+      .getByRole('alert')
+      .allInnerTexts()
+      .catch(() => [] as string[])
+    const shown = alerts.map((text) => text.trim()).filter((text) => text !== '')
+    const said =
+      shown.length === 0
+        ? 'The screen showed no message: the change did not reach the record.'
+        : `The screen said: ${shown.join(' | ')}`
+    const before = error.message
+    error.message = `${before}\n\n${said}`
+    if (error.stack !== undefined) error.stack = error.stack.replace(before, error.message)
+    throw error
+  }
+}
+
 test('the tab strip is one tab stop, moved with the arrow keys, and each tab shows its panel', async () => {
   const h = home()
   await withApp(h, async (page) => {
@@ -406,13 +433,15 @@ test('a storyboard chosen for a video reaches the plan, and the preset’s own i
     await expect(storyboard).toHaveValue('tour')
     await expect(exportPanel(page).getByRole('combobox', { name: 'View' })).toHaveCount(0)
     await storyboard.selectOption('day')
-    await expect
-      .poll(() => readRecord(h).export)
-      .toEqual({
-        preset: 'linkedin-video',
-        storyboard: 'day',
-        options: {},
-      })
+    await withWhatTheScreenSaid(page, () =>
+      expect
+        .poll(() => readRecord(h).export)
+        .toEqual({
+          preset: 'linkedin-video',
+          storyboard: 'day',
+          options: {},
+        }),
+    )
     // The preview for "day" has been asked for: the address does not carry
     // a storyboard, so the stand-in's log says so instead. Nothing older can
     // reach the engine after it, since the renderer sends in order and no

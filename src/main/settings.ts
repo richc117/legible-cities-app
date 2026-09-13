@@ -10,17 +10,7 @@
 // and an error thrown here is what the renderer shows.
 
 import { randomBytes } from 'node:crypto'
-import {
-  lstat,
-  mkdir,
-  readdir,
-  readFile,
-  realpath,
-  rename,
-  rm,
-  stat,
-  writeFile,
-} from 'node:fs/promises'
+import { lstat, mkdir, readdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, parse, resolve, sep } from 'node:path'
 import {
   DEFAULT_SETTINGS,
@@ -29,6 +19,7 @@ import {
   type AppSettings,
   type FolderSize,
 } from '../shared/settings'
+import { failedWords, renameOver, retriedWords, type ReplaceOptions } from './replace-file'
 
 export const SETTINGS_FILE = 'settings.json'
 
@@ -46,10 +37,14 @@ export class SettingsStore {
   #settings: AppSettings = { ...DEFAULT_SETTINGS }
   #loaded = false
 
-  /** The folder is Electron's userData; the file sits directly beneath it. */
+  /**
+   * The folder is Electron's userData; the file sits directly beneath it.
+   * `replace` is the rename a write ends with, as the project store's is.
+   */
   constructor(
     private readonly dir: string,
     private readonly log: (message: string) => void,
+    private readonly replace: ReplaceOptions = {},
   ) {}
 
   private get file(): string {
@@ -113,10 +108,15 @@ export class SettingsStore {
     try {
       await mkdir(this.dir, { recursive: true })
       await writeFile(temp, text, 'utf8')
-      await rename(temp, this.file)
+      // Tried again while another handle holds the file, as a record's is
+      // (replace-file.ts): a folder or a theme a person chose is not lost
+      // to a scanner's look at the file.
+      const renamed = await renameOver(temp, this.file, this.replace)
+      const retried = retriedWords(renamed)
+      if (retried !== null) this.log(`settings: ${retried}`)
     } catch (error) {
       await rm(temp, { force: true }).catch(() => undefined)
-      this.log(`settings: write failed (${reasonOf(error)})`)
+      this.log(`settings: ${failedWords(error)}`)
       throw new Error('the settings could not be saved', { cause: error })
     }
     this.#settings = settings

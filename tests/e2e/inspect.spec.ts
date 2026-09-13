@@ -66,6 +66,33 @@ const readRecord = (engineHome: string): Record<string, unknown> => {
   return JSON.parse(readFileSync(join(engineHome, 'projects', id, 'project.json'), 'utf8'))
 }
 
+/**
+ * A wait for the record, which on failure says what the screen said beside
+ * it: a write the store refused shows its sentence in an alert, and a change
+ * that never reached the store shows nothing, and the two need telling apart
+ * (issue 93). The assertion itself is the caller's and is not changed.
+ */
+async function withWhatTheScreenSaid(page: Page, wait: () => Promise<void>): Promise<void> {
+  try {
+    await wait()
+  } catch (error) {
+    if (!(error instanceof Error)) throw error
+    const alerts = await page
+      .getByRole('alert')
+      .allInnerTexts()
+      .catch(() => [] as string[])
+    const shown = alerts.map((text) => text.trim()).filter((text) => text !== '')
+    const said =
+      shown.length === 0
+        ? 'The screen showed no message: the change did not reach the record.'
+        : `The screen said: ${shown.join(' | ')}`
+    const before = error.message
+    error.message = `${before}\n\n${said}`
+    if (error.stack !== undefined) error.stack = error.stack.replace(before, error.message)
+    throw error
+  }
+}
+
 test('shows what is in the feed, sorts the routes, and marks what the mode keeps', async () => {
   const engineHome = home()
   await withApp(engineHome, async (page) => {
@@ -134,17 +161,23 @@ test('a feed with several operators offers the choice, filters the routes, and s
     await expect(routes.getByRole('row')).toHaveCount(3)
     await operator.selectOption('')
     await expect(routes.getByRole('row')).toHaveCount(5)
-    await expect.poll(() => readRecord(engineHome).agency).toBeNull()
+    await withWhatTheScreenSaid(page, () =>
+      expect.poll(() => readRecord(engineHome).agency).toBeNull(),
+    )
     await operator.selectOption('SUB')
     await expect(routes.getByRole('row')).toHaveCount(2)
-    await expect.poll(() => readRecord(engineHome).agency).toBe('SUB')
+    await withWhatTheScreenSaid(page, () =>
+      expect.poll(() => readRecord(engineHome).agency).toBe('SUB'),
+    )
     await expect(inspect.getByRole('combobox', { name: 'Mode' })).toHaveValue('subway')
     await expect(inspect.getByRole('option', { name: /subway.*suggests/ })).toHaveCount(1)
 
     // Every operator: the engine is asked with an empty agency, which is
     // its word for none, and the histogram's kept types follow the mode.
     await operator.selectOption('')
-    await expect.poll(() => readRecord(engineHome).agency).toBeNull()
+    await withWhatTheScreenSaid(page, () =>
+      expect.poll(() => readRecord(engineHome).agency).toBeNull(),
+    )
     await page.getByRole('button', { name: /lay out/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     const asked = readFileSync(join(engineHome, 'fake-engine.received'), 'utf8')

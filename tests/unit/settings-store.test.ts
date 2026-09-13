@@ -8,6 +8,7 @@ import {
   readdir,
   readFile,
   realpath,
+  rename,
   rm,
   symlink,
   writeFile,
@@ -24,6 +25,7 @@ import {
   SETTINGS_FILE,
   SettingsStore,
 } from '../../src/main/settings'
+import { RENAME_RETRY_DELAYS_MS, type Rename } from '../../src/main/replace-file'
 import { DEFAULT_SETTINGS, SETTINGS_VERSION } from '../../src/shared/settings'
 
 let dir: string
@@ -113,6 +115,71 @@ describe('SettingsStore', () => {
     const blocked = new SettingsStore(join(dir, 'blocked'), (m) => lines.push(m))
     const failure = await blocked.write({ ...DEFAULT_SETTINGS }).catch((error: Error) => error)
     expect((failure as Error).message).toBe('the settings could not be saved')
+  })
+})
+
+// Windows refuses a rename over a file another handle has open, the scanner
+// among them; a folder or a theme a person chose must not be lost to that
+// (issue 93). The refusal is made through the store's seam.
+describe('SettingsStore, when the platform holds the file', () => {
+  function heldStore(held: () => string | null): {
+    store: SettingsStore
+    renames: () => number
+    waits: number[]
+  } {
+    let renames = 0
+    const waits: number[] = []
+    const refused: Rename = async (from, to) => {
+      renames += 1
+      const code = held()
+      if (code !== null) throw Object.assign(new Error(`${code}: held, rename '${to}'`), { code })
+      await rename(from, to)
+    }
+    return {
+      store: new SettingsStore(dir, (message) => lines.push(message), {
+        rename: refused,
+        wait: async (ms) => void waits.push(ms),
+      }),
+      renames: () => renames,
+      waits,
+    }
+  }
+
+  const temporaries = async (): Promise<string[]> =>
+    (await readdir(dir)).filter((name) => name.endsWith('.tmp'))
+
+  it('writes the settings once the file is let go, and says it waited', async () => {
+    await store.write({ ...DEFAULT_SETTINGS, theme: 'sepia' })
+    let refusals = 2
+    const held = heldStore(() => (refusals-- > 0 ? 'EBUSY' : null))
+    await held.store.write({ ...DEFAULT_SETTINGS, theme: 'warm-dark' })
+    expect(held.renames()).toBe(3)
+    expect(held.waits).toEqual(RENAME_RETRY_DELAYS_MS.slice(0, 2))
+    expect(JSON.parse(await readFile(file(), 'utf8')).theme).toBe('warm-dark')
+    expect(await temporaries()).toEqual([])
+    expect(lines).toContain('settings: saved after 3 attempts (EBUSY)')
+  })
+
+  it('gives up after the bound, keeping the previous file and removing the temporary one', async () => {
+    await store.write({ ...DEFAULT_SETTINGS, theme: 'sepia' })
+    const held = heldStore(() => 'EPERM')
+    await expect(held.store.write({ ...DEFAULT_SETTINGS, theme: 'warm-dark' })).rejects.toThrow(
+      'the settings could not be saved',
+    )
+    expect(held.renames()).toBe(RENAME_RETRY_DELAYS_MS.length + 1)
+    expect(held.waits).toEqual([...RENAME_RETRY_DELAYS_MS])
+    expect(JSON.parse(await readFile(file(), 'utf8')).theme).toBe('sepia')
+    expect(held.store.current.theme, 'what is in force is what is on disk').not.toBe('warm-dark')
+    expect(await temporaries()).toEqual([])
+    expect(lines).toContain('settings: write failed (EPERM, 8 attempts)')
+  })
+
+  it('does not wait for a failure other than a held file', async () => {
+    const held = heldStore(() => 'EXDEV')
+    await expect(held.store.write({ ...DEFAULT_SETTINGS })).rejects.toThrow()
+    expect(held.renames()).toBe(1)
+    expect(held.waits).toEqual([])
+    expect(await temporaries()).toEqual([])
   })
 })
 

@@ -262,7 +262,12 @@ not a project: the Library skips it and the log names the folder.
 **Writes are atomic.** The store writes `project.json.tmp` beside the
 record and renames it over `project.json`, so a crash mid-write leaves the
 previous record rather than a truncated one; readers ignore a stray
-`.tmp`. Rename changes exactly `name` and `modified`.
+`.tmp`. On Windows that rename is refused (`EPERM`, `EACCES` or `EBUSY`)
+while any other handle has `project.json` open - a scanner, or a read in
+this process - so the rename alone is tried again over about 1.3 seconds
+before the write fails, and the settings file's is too
+(`src/main/replace-file.ts`, issue 93). Rename changes exactly `name` and
+`modified`.
 
 **Delete removes two folders**: `projects/<id>/` and the project's
 generated output under `out/<id>/`, whether or not the latter exists.

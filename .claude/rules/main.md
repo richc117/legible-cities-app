@@ -53,7 +53,11 @@ frames folder should be is refused rather than followed, as the reset
 refuses one. The folder itself is never removed, and the app marks a folder
 whenever it makes one - at start and before each export, because the reset
 takes the mark with the folder. Removing it outright, on the home as configured,
-was a real bug (`src/main/frames.ts`). The logs, `main.log` and
+was a real bug (`src/main/frames.ts`). A file replaced by renaming a
+temporary copy over it goes through `renameOver` in
+`src/main/replace-file.ts`: Windows refuses a rename over a file another
+handle has open, a scanner's or our own reader's, and a plain `rename` lost
+a person's choice to that on CI (issue 93). The logs, `main.log` and
 `engine.log` with one `.old.log` each, go to `app.getPath('logs')`, which
 is the platform's log folder and never the engine's home, so the reset
 does not reach them; in development `LEGIBLE_USER_DATA` or `LEGIBLE_LOGS`

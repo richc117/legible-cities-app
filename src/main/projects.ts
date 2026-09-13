@@ -8,7 +8,7 @@
 
 import { randomBytes } from 'node:crypto'
 import type { Dirent } from 'node:fs'
-import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   DEFAULT_COLOR,
@@ -48,6 +48,7 @@ import {
 } from '../shared/export'
 import { isLayoutId, type LayoutDone, type LayoutResult } from '../shared/layout'
 import { isValidProjectId } from './paths'
+import { failedWords, renameOver, retriedWords, type ReplaceOptions } from './replace-file'
 
 const RECORD_FILE = 'project.json'
 // A fresh temporary name per write, written first and then renamed over the
@@ -99,10 +100,15 @@ export class ProjectStore {
   private readonly output: string
   #writing = 0
 
-  /** Both folders derive from the engine home, so neither can be handed a stray path. */
+  /**
+   * Both folders derive from the engine home, so neither can be handed a
+   * stray path. `replace` is the rename a write ends with, and its wait
+   * between attempts; a test makes the platform refuse it.
+   */
   constructor(
     home: string,
     private readonly log: (message: string) => void,
+    private readonly replace: ReplaceOptions = {},
   ) {
     this.root = join(home, 'projects')
     this.output = join(home, 'out')
@@ -222,10 +228,16 @@ export class ProjectStore {
     await this.#track(async () => {
       try {
         await writeFile(temp, text, 'utf8')
-        await rename(temp, this.file(id))
+        // Only the rename is tried again, and only while the record is held
+        // by another handle, which on Windows refuses it (replace-file.ts).
+        // Readers keep opening project.json meanwhile and read the previous
+        // record whole.
+        const renamed = await renameOver(temp, this.file(id), this.replace)
+        const retried = retriedWords(renamed)
+        if (retried !== null) this.log(`projects/${id}: ${retried}`)
       } catch (error) {
         await rm(temp, { force: true }).catch(() => undefined)
-        this.log(`projects/${id}: write failed (${reasonOf(error)})`)
+        this.log(`projects/${id}: ${failedWords(error)}`)
         throw new Error('the project could not be saved', { cause: error })
       }
     })
