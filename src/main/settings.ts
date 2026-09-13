@@ -115,6 +115,11 @@ export class SettingsStore {
    * newer and the file, `current` and the screen end on the press before
    * the last. Chained, each lands in the order it was asked for, and one
    * that fails does not stop the next.
+   *
+   * Work running inside the queue must never await `load()`, `write()` or
+   * `update()`: each joins the queue behind the work calling it, and each
+   * waits for the other forever. Call the private `#load` and `#write`
+   * instead, as `update` does.
    */
   #queue: Promise<unknown> = Promise.resolve()
 

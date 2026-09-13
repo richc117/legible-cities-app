@@ -60,16 +60,21 @@ export function codeOf(error: unknown): string {
   return typeof code === 'string' ? code : 'unknown error'
 }
 
-/** A rename that did not land, with the last failure's code and how many attempts were made. */
+/**
+ * A rename that did not land, with how many attempts were made and a code:
+ * the last refusal's, which is the cause's own unless a wait between
+ * attempts failed, when it is the refusal that wait followed.
+ */
 export class RenameRefused extends Error {
   readonly code: string
 
   constructor(
     readonly attempts: number,
     cause: unknown,
+    code: string = codeOf(cause),
   ) {
     super('the file could not be replaced', { cause })
-    this.code = codeOf(cause)
+    this.code = code
   }
 }
 
@@ -111,7 +116,9 @@ export async function renameOver(
     try {
       await wait(RENAME_RETRY_DELAYS_MS[attempt - 1])
     } catch (error) {
-      throw new RenameRefused(attempt, error)
+      // The refusal is what failed the write; the wait only stopped it
+      // being tried again, and is kept as the cause.
+      throw new RenameRefused(attempt, error, refused[refused.length - 1])
     }
   }
 }

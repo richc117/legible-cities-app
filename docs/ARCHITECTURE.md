@@ -335,7 +335,10 @@ rename over the old file - and read the way a record is read, so a file
 that is half written, hand edited or from a newer app starts the app with
 the defaults it cannot use rather than stopping it. It is read before the
 configuration resolves, because a stored folder is one of the things the
-configuration decides.
+configuration decides. Its reads and writes run one after another; the
+settings in force change only once a write has landed, and a change that
+depends on the stored settings - the theme, a folder - goes through the
+store's `update`, which reads, changes and writes in one turn.
 
 Two rules hold the screen together. The environment still wins, so the
 development loop and the end-to-end suite steer the app as they did, and a

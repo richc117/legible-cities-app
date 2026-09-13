@@ -30,6 +30,8 @@ describe('logLines', () => {
         '2026-09-12T11:00:01.000Z [projects] warning: projects/b: saved after 3 attempts (EBUSY)',
         '2026-09-12T11:00:02.000Z [settings] warning: settings: write failed (EXDEV, 1 attempt)',
         '2026-09-12T11:00:03.000Z [settings] folder chosen',
+        "2026-09-12T11:00:04.000Z [settings] warning: could not make the log folder: EACCES: permission denied, mkdir 'somewhere'",
+        "2026-09-12T11:00:05.000Z [engine] write failed (see 'somewhere'), saved after 2 attempts",
         '',
       ].join('\n'),
     )
@@ -41,6 +43,23 @@ describe('logLines', () => {
     expect(logLines(dir, RETRY_LINES)[0]).toContain('projects/a: write failed (EPERM, 8 attempts)')
     expect(logLines(dir, RETRY_LINES)).toHaveLength(3)
   })
+
+  it.skipIf(process.platform === 'win32')(
+    'never follows a link planted under a log file’s name',
+    async () => {
+      const away = await mkdtemp(join(tmpdir(), 'legible-cities-store-lines-away-'))
+      try {
+        await writeFile(
+          join(away, 'secret.log'),
+          '2026-09-12T11:00:00.000Z [projects] warning: projects/z: write failed (EPERM, 8 attempts)\n',
+        )
+        await symlink(join(away, 'secret.log'), join(dir, 'main.log'))
+        expect(logLines(dir, RETRY_LINES)).toEqual([])
+      } finally {
+        await rm(away, { recursive: true, force: true })
+      }
+    },
+  )
 
   it('answers nothing for a folder that is not there', () => {
     expect(logLines(join(dir, 'nope'), STORE_LINES)).toEqual([])

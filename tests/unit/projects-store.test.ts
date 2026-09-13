@@ -1221,7 +1221,7 @@ describe('a record the platform holds', () => {
       'the project could not be saved',
     )
     expect(held.renames()).toBe(1)
-    expect(lines).toContain(`projects/${project.id}: write failed (unknown error, 1 attempt)`)
+    expect(lines).toContain(`projects/${project.id}: write failed (EBUSY, 1 attempt)`)
     expect(await leftovers(project.id)).toEqual([])
     expect((await store.get(project.id)).theme).toBe(DEFAULT_THEME)
     expect(held.store.writing).toBe(0)

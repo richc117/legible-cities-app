@@ -201,7 +201,7 @@ describe('renameOver', () => {
     expect(failure).toBeInstanceOf(RenameRefused)
     expect(refused.calls()).toBe(2)
     expect((failure as RenameRefused).attempts).toBe(2)
-    expect(failedWords(failure)).toBe('write failed (unknown error, 2 attempts)')
+    expect(failedWords(failure)).toBe('write failed (EPERM, 2 attempts)')
     expect(await readFile(to, 'utf8')).toBe('before')
   })
 

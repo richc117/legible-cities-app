@@ -11,13 +11,28 @@ import { lstatSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Page } from '@playwright/test'
 
-/** The store's own lines, and the settings store's warnings. */
-export const STORE_LINES = /\[projects\] |\[settings\] warning: /
+/**
+ * The project store's lines, and the settings store's own write lines. Only
+ * the store logs under [projects], and never with a path; the other
+ * [settings] warnings (a log folder that could not be made or opened) carry
+ * a filesystem message, which can name one, so they are left out.
+ */
+export const STORE_LINES =
+  /\[projects\] warning: |\[settings\] warning: settings: (saved after \d+ attempts|write failed \()/
 
-/** The two lines the retry writes: one that landed after a refusal, one that failed. */
-export const RETRY_LINES = /saved after \d+ attempts|write failed \(/
+/**
+ * The two lines the retry writes - one that landed after a refusal, one that
+ * failed - tied to the stores' own tags, so a line from anywhere else (an
+ * engine's standard error, which can name a path) never reaches a CI log.
+ */
+export const RETRY_LINES =
+  /\[(projects|settings)\] warning: .*(saved after \d+ attempts|write failed \()/
 
-/** Every `.log` file directly in `folder`, older rotation first; none when it is not there. */
+/**
+ * Every `.log` file directly in `folder`, older rotation first; none when it
+ * is not there. Only plain files: a link planted under a log's name is never
+ * followed.
+ */
 export function logFiles(folder: string): string[] {
   let names: string[]
   try {
@@ -25,10 +40,18 @@ export function logFiles(folder: string): string[] {
   } catch {
     return []
   }
+  const isFile = (path: string): boolean => {
+    try {
+      return lstatSync(path).isFile()
+    } catch {
+      return false
+    }
+  }
   return names
     .filter((name) => name.endsWith('.log'))
     .sort((a, b) => Number(b.endsWith('.old.log')) - Number(a.endsWith('.old.log')))
     .map((name) => join(folder, name))
+    .filter(isFile)
 }
 
 /**
