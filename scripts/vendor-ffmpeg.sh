@@ -131,7 +131,12 @@ fi
 root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
 pins=${pins:-$root/vendor/pins.json}
+# Made whichever way it was named: in a fresh checkout the default,
+# vendor/ffmpeg, does not exist (it is ignored), and the staging folder
+# below is made inside it. The first CI run of this script failed there on
+# every target but Windows, whose build step had already made it.
 outdir=${outdir:-$root/vendor/ffmpeg}
+mkdir -p "$outdir"
 
 host_py=
 for candidate in python3 python; do
