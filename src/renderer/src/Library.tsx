@@ -7,7 +7,8 @@ import { engineClient, feedAdd } from './engine/runs'
 import AddFeedDialog from './AddFeedDialog'
 import ConfirmDialog from './ConfirmDialog'
 import CreateProjectDialog from './CreateProjectDialog'
-import FeedList from './FeedList'
+import FeedList, { FEEDS_HEADING_ID } from './FeedList'
+import { afterRendering, focusLost } from './focusHandback'
 import Icon from './icons/Icon'
 import Button from './kit/Button'
 import { useEngineState } from './useEngineState'
@@ -54,6 +55,23 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
   const ready = engine?.state === 'ready'
   const adder = feedAdd()
   const headingRef = useRef<HTMLHeadingElement>(null)
+  // Where focus goes once the list has been drawn again, when the control
+  // that held it went with the change: the empty state's "New project"
+  // leaves with the empty state, a removed feed's row takes its Remove with
+  // it. Only if focus did fall to nowhere; otherwise it is a person's
+  // (A6-07).
+  //
+  // Two things have to have happened first, in whichever order they land:
+  // the dialog has closed, which hands focus back to the control that
+  // opened it, and the list has been drawn without that control. Judged
+  // before both, focus is still in the dialog or on the opener and looks
+  // held; the opener then goes and focus falls to the body with nobody
+  // left to pick it up. The last step can come with no render of ours
+  // after it - Chromium moves focus off a removed element at its next
+  // rendering update - so the check runs on every render and once more
+  // after the rendering has caught up with the action.
+  const handBack = useRef<{ project: string } | { feed: string } | null>(null)
+  const rows = useRef(new Map<string, HTMLButtonElement>())
 
   const refreshFeeds = useCallback(async (): Promise<void> => {
     forgetFeedList()
@@ -89,10 +107,43 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
 
   // A rejection propagates to the dialog, which shows the message.
   const create = async (input: CreateProjectInput): Promise<void> => {
-    await window.api.projects.create(input)
+    const record = await window.api.projects.create(input)
+    handBack.current = { project: record.id }
     setCreating(null)
     setLibrary({ status: 'ready', projects: await listProjects() })
+    afterRendering(() => settleRef.current())
   }
+
+  // The check, reading the state as last rendered so it can run outside a
+  // render. Before the dialog has closed and the list been drawn it does
+  // nothing. After, focus that is lost goes to the target; focus that looks
+  // held is looked at once more after the rendering has caught up, and
+  // only then left where it is, as a person's.
+  const settleRef = useRef<(final?: boolean) => void>(() => undefined)
+  useEffect(() => {
+    settleRef.current = (final = false) => {
+      const target = handBack.current
+      if (target === null) return
+      let focusTarget: HTMLElement | null
+      if ('project' in target) {
+        if (creating !== null) return
+        focusTarget = rows.current.get(target.project) ?? null
+        if (focusTarget === null) return
+      } else {
+        if (removing !== null || feeds.some((feed) => feed.key === target.feed)) return
+        focusTarget = document.getElementById(FEEDS_HEADING_ID) ?? headingRef.current
+      }
+      if (focusLost(document.activeElement, document.body)) {
+        handBack.current = null
+        focusTarget?.focus()
+      } else if (final) {
+        handBack.current = null
+      } else {
+        afterRendering(() => settleRef.current(true))
+      }
+    }
+    settleRef.current()
+  })
 
   const added = useCallback((): void => {
     setAdding(false)
@@ -121,9 +172,14 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
       throw new Error(sentenceFor(error), { cause: error })
     }
     forgetInspection(removing.key)
-    setRemoving(null)
+    handBack.current = { feed: removing.key }
+    // Only this removal's dialog: it may have been closed while the request
+    // ran and opened again for another feed, which stays.
+    const target = removing
+    setRemoving((current) => (current === target ? null : current))
     setFeedNotice(`${removing.name} was removed.`)
     await refreshFeeds()
+    afterRendering(() => settleRef.current())
   }
 
   return (
@@ -174,6 +230,10 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
           {library.projects.map((project) => (
             <li key={project.id}>
               <button
+                ref={(element) => {
+                  if (element === null) rows.current.delete(project.id)
+                  else rows.current.set(project.id, element)
+                }}
                 type="button"
                 className="entry"
                 aria-label={`Open ${project.name}`}
@@ -205,6 +265,7 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
           }}
           onRemove={(feed) => {
             setFeedNotice(null)
+            handBack.current = null
             setRemoving(feed)
           }}
         />
@@ -231,6 +292,8 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
         confirmLabel="Remove"
         onConfirm={remove}
         onCancel={() => setRemoving(null)}
+        busyLabel={`Removing ${removing?.name ?? 'the feed'}…`}
+        onLateError={(message) => setFeedNotice(message)}
       />
     </main>
   )

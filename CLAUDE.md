@@ -168,6 +168,14 @@ per pull request that touches what an export is made of and five times a
 week
 (`tests/e2e/determinism.spec.ts`, `.github/workflows/determinism.yml`).
 
+The accessibility pass's machine half (A6-07) checked every screen and
+dialog for keyboard reach, names, visible focus, reduced motion and
+contrast in both themes, fixed the small defects it found (focus handed on
+when a pressed control goes, `src/renderer/src/focusHandback.ts`; control
+edges, placeholders and the sepia primary fill), sweeps them in
+`tests/e2e/accessibility.spec.ts`, and records the result per screen in
+`docs/accessibility.md`, whose VoiceOver and Narrator columns are a person's.
+
 Work proceeds phase by phase; `CONTRIBUTING.md` explains the flow, the
 labels, the milestones and the `A0-05`-style issue codes. The four Phase 0
 spikes have run: LOOM ships without its optional solvers (ADR-019), the

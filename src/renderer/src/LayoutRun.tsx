@@ -1,7 +1,8 @@
-import { useState, type JSX } from 'react'
+import { useRef, useState, type JSX } from 'react'
 import Button from './kit/Button'
 import Icon from './icons/Icon'
 import ConfirmDialog from './ConfirmDialog'
+import { useFocusHandback } from './focusHandback'
 import ProgressLine from './ProgressLine'
 import type { EngineState } from '../../shared/engine'
 import { shortLayoutId } from '../../shared/layout'
@@ -42,6 +43,18 @@ export default function LayoutRun({
     day,
   } = useSnapshot(run)
   const [confirming, setConfirming] = useState(false)
+  // The run's controls are replaced as it moves: "Lay out" gives way to
+  // Cancel, and Cancel to "Lay out again" when the run ends. Focus on the
+  // one that went is handed to the one that came, so a press never leaves
+  // a keyboard user on the body (A6-07).
+  const region = useRef<HTMLDivElement>(null)
+  const cancelRef = useRef<HTMLElement>(null)
+  const layOutRef = useRef<HTMLElement>(null)
+  useFocusHandback(
+    region,
+    () => (state === 'running' ? cancelRef.current : layOutRef.current),
+    state,
+  )
   const begin = (): void => run.start(project, engine)
   // The re-layout, behind its warning: every stage runs again, and the
   // engine keeps the stored layout until the new one is whole (ADR-033).
@@ -64,6 +77,7 @@ export default function LayoutRun({
       variant="primary"
       onConfirm={relayout}
       onCancel={() => setConfirming(false)}
+      busyLabel="Starting the re-layout…"
     />
   )
 
@@ -80,7 +94,7 @@ export default function LayoutRun({
   )
   if (state === 'idle') {
     return (
-      <>
+      <div className="focus-region" ref={region}>
         {project.layout !== null && (
           <p className="prose" role="status">
             Drawn from layout {shortLayoutId(project.layout)}
@@ -89,71 +103,73 @@ export default function LayoutRun({
         )}
         {movedNotice}
         <div className="toolbar">
-          <Button variant="primary" onClick={begin} disabled={disabled}>
+          <Button variant="primary" ref={layOutRef} onClick={begin} disabled={disabled}>
             <Icon name="map" />
             {project.layout === null ? 'Lay out' : 'Lay out again'}
           </Button>
           {relayoutButton}
         </div>
         {warning}
-      </>
+      </div>
     )
   }
 
   return (
-    <section className="layout-run" aria-label="Layout run">
-      <ProgressLine stages={stages} ariaLabel={describe(state, stages.length, message)} />
-      <div className="layout-run-foot">
-        <p className="progress-message" role="status" aria-live="polite">
-          {error ?? message ?? 'Starting the layout.'}
-        </p>
-        {state === 'running' && (
-          <Button onClick={() => run.cancel()}>
-            <Icon name="close" />
-            Cancel
-          </Button>
-        )}
-      </div>
-      {(state === 'cancelled' || state === 'failed') && (
-        <>
-          <p className="prose" role="status">
-            {stoppedSentence(state, replaced, rebuilt, recoloured, reordered)}
+    <div className="focus-region" ref={region}>
+      <section className="layout-run" aria-label="Layout run">
+        <ProgressLine stages={stages} ariaLabel={describe(state, stages.length, message)} />
+        <div className="layout-run-foot">
+          <p className="progress-message" role="status" aria-live="polite">
+            {error ?? message ?? 'Starting the layout.'}
           </p>
-          <div className="toolbar">
-            <Button variant="primary" onClick={begin} disabled={disabled}>
-              <Icon name="map" />
-              Lay out
+          {state === 'running' && (
+            <Button ref={cancelRef} onClick={() => run.cancel()}>
+              <Icon name="close" />
+              Cancel
             </Button>
-            {relayoutButton}
-          </div>
-        </>
-      )}
-      {state === 'done' && (
-        <>
-          <p className="prose" role="status">
-            {reordered
-              ? reorderedSentence()
-              : recoloured
-                ? recolouredSentence()
-                : rebuilt
-                  ? drawnSentence(day)
-                  : doneSentence(forced, changed, relaid)}
-          </p>
-          {movedNotice}
-          {/* The run outlives the screen, so this state is what a person
+          )}
+        </div>
+        {(state === 'cancelled' || state === 'failed') && (
+          <>
+            <p className="prose" role="status">
+              {stoppedSentence(state, replaced, rebuilt, recoloured, reordered)}
+            </p>
+            <div className="toolbar">
+              <Button variant="primary" ref={layOutRef} onClick={begin} disabled={disabled}>
+                <Icon name="map" />
+                Lay out
+              </Button>
+              {relayoutButton}
+            </div>
+          </>
+        )}
+        {state === 'done' && (
+          <>
+            <p className="prose" role="status">
+              {reordered
+                ? reorderedSentence()
+                : recoloured
+                  ? recolouredSentence()
+                  : rebuilt
+                    ? drawnSentence(day)
+                    : doneSentence(forced, changed, relaid)}
+            </p>
+            {movedNotice}
+            {/* The run outlives the screen, so this state is what a person
               comes back to; without the unforced run here, "Lay out again"
               would be unreachable until the app restarts. */}
-          <div className="toolbar">
-            <Button onClick={begin} disabled={disabled}>
-              <Icon name="map" />
-              Lay out again
-            </Button>
-            {relayoutButton}
-          </div>
-        </>
-      )}
-      {warning}
-    </section>
+            <div className="toolbar">
+              <Button ref={layOutRef} onClick={begin} disabled={disabled}>
+                <Icon name="map" />
+                Lay out again
+              </Button>
+              {relayoutButton}
+            </div>
+          </>
+        )}
+        {warning}
+      </section>
+    </div>
   )
 }
 

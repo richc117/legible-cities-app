@@ -41,6 +41,7 @@ export default function ServiceDay({
   const inputId = useId()
   const messageId = useId()
   const input = useRef<HTMLInputElement>(null)
+  const heading = useRef<HTMLHeadingElement>(null)
 
   // The control follows the stored day: the record is read again when a
   // run finishes, and a rebuild that stopped wrote nothing, so the day the
@@ -82,6 +83,10 @@ export default function ServiceDay({
     if (!withinWindow(value, service)) return refuse(outsideWindow(service.start, service.end))
     if (unchanged) return
     setMessage(null)
+    // The rebuild disables the control and the button that asked for it,
+    // and Chromium blurs a disabled element; the heading keeps focus in the
+    // section, as the theme switch's does (A6-07).
+    heading.current?.focus()
     run.rebuild(project, engine, value)
   }
   const covers =
@@ -91,7 +96,9 @@ export default function ServiceDay({
 
   return (
     <section className="service-day" aria-labelledby="service-day-heading">
-      <h2 id="service-day-heading">Service day</h2>
+      <h2 id="service-day-heading" tabIndex={-1} ref={heading}>
+        Service day
+      </h2>
       <p className="prose" role="status">
         {project.date === null ? 'Not yet chosen.' : `Drawn for ${project.date}.`} {covers}; the
         busiest weekday, counted from {service.anchor}, is {service.busiest}.

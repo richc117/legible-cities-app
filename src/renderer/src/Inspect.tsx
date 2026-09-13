@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type JSX } from 'react'
+import { useEffect, useMemo, useRef, useState, type JSX } from 'react'
 import type { EngineState } from '../../shared/engine'
 import { withoutPaths } from '../../shared/engine'
 import type { Inspection, Route, RouteType } from '../../shared/protocol'
@@ -95,6 +95,7 @@ export default function Inspect({
   const [custom, setCustom] = useState(false)
   const [agency, setAgency] = useState<string | null>(project.agency)
   const [message, setMessage] = useState<string | null>(null)
+  const modeRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
     if (!ready) {
@@ -172,6 +173,11 @@ export default function Inspect({
   }
   const useEntry = (): void => {
     if (registry === null) return
+    // The sentence and its button go once the choice is the entry's, and
+    // the button takes focus with it; the mode it just set is where focus
+    // belongs (A6-07). The kit names its native select, which is what
+    // takes focus.
+    modeRef.current?.querySelector('select')?.focus()
     setCustom(false)
     setMode(registry.mode)
     setAgency(registry.agency)
@@ -258,6 +264,7 @@ export default function Inspect({
                 Mode
               </span>
               <Select
+                ref={modeRef}
                 label="Mode"
                 value={custom ? 'other' : mode}
                 onChange={chooseMode}

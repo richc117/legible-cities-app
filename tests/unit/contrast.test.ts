@@ -10,6 +10,8 @@ import { describe, expect, it } from 'vitest'
 const styles = resolve(__dirname, '../../src/renderer/src/styles')
 const tokens = readFileSync(resolve(styles, 'tokens.css'), 'utf8')
 const theme = readFileSync(resolve(styles, 'theme.css'), 'utf8')
+const adapter = readFileSync(resolve(styles, 'figui-adapter.css'), 'utf8')
+const app = readFileSync(resolve(styles, 'app.css'), 'utf8')
 
 type Theme = 'dark' | 'sepia'
 // The token files write the attribute with either quote (prettier prefers
@@ -109,6 +111,21 @@ const PAIRS: [string, string, number][] = [
   // --text-faint for a switch an export holds.
   ['--text-muted', '--surface-hover', 4.5],
   ['--accent', '--surface-hover', 3.0],
+  // The accessibility pass (A6-07). A primary button's text on its fill:
+  // the kit's brand fill is --accent-text, because --on-accent on --accent
+  // is 4.40 in sepia and the kit's label is 13px at 500 weight, which is
+  // not large text. The hover and pressed fills are checked below.
+  ['--on-accent', '--accent-text', 4.5],
+  // A kit button unavailable while a confirmation's action runs keeps its
+  // label readable: the kit's disabled text on its disabled fill.
+  ['--text-faint', '--surface-sunken', 4.5],
+  // A kit text field's placeholder, on the field's raised fill, is
+  // --text-faint on --surface-raised, above; its resting edge, and the
+  // select's, the checkbox's and the date control's, --border-strong on
+  // --surface and --surface-raised, above too. The focus ring is drawn
+  // outside the control at an offset, so it always sits on the ground the
+  // control does: --focus on --surface and --surface-raised, above.
+  //
   // The inspector (A1-03) adds no pair of its own. Beside the main region
   // it sits on --surface, and over it on a narrow window on
   // --surface-raised, and every pair it uses is above on both grounds: a
@@ -117,6 +134,79 @@ const PAIRS: [string, string, number][] = [
   // --text-faint, the hint in --error, the running mark in --accent and the
   // line in --border-strong.
 ]
+
+/**
+ * A colour the adapter mixes, `color-mix(in srgb, var(--a) N%, var(--b))`,
+ * as the six-digit hex Chromium paints for two opaque colours: each channel
+ * interpolated in sRGB and rounded.
+ */
+export function resolveMix(map: Record<string, string>, value: string): string {
+  const m = /^color-mix\(in srgb, var\((--[a-z0-9-]+)\) (\d+)%, var\((--[a-z0-9-]+)\)\)$/.exec(
+    value,
+  )
+  if (!m) return resolveToken({ ...map, __value: value }, '__value')
+  const a = parseInt(resolveToken(map, m[1]).slice(1), 16)
+  const b = parseInt(resolveToken(map, m[3]).slice(1), 16)
+  const p = Number(m[2]) / 100
+  const channel = (shift: number): string =>
+    Math.round(((a >> shift) & 255) * p + ((b >> shift) & 255) * (1 - p))
+      .toString(16)
+      .padStart(2, '0')
+  return `#${channel(16)}${channel(8)}${channel(0)}`
+}
+
+/** One declaration of the adapter's token mapping, which is the same for both themes. */
+function mapping(name: string): string {
+  const m = new RegExp(`^\\s*${name}:\\s*([^;]+);`, 'm').exec(adapter)
+  if (!m) throw new Error(`the adapter does not map ${name}`)
+  return m[1].trim()
+}
+
+/** The declarations of the first rule whose selector list starts with this text. */
+function rule(css: string, selector: string): string {
+  const at = css.indexOf(selector)
+  if (at === -1) throw new Error(`no rule for ${selector}`)
+  return css.slice(css.indexOf('{', at) + 1, css.indexOf('}', at))
+}
+
+describe("the kit's filled buttons hold their text in both themes (A6-07)", () => {
+  const fills: [string, string, string][] = [
+    ['primary', '--figma-color-text-onbrand', '--figma-color-bg-brand'],
+    ['primary under the pointer', '--figma-color-text-onbrand', '--figma-color-bg-brand-hover'],
+    ['primary pressed', '--figma-color-text-onbrand', '--figma-color-bg-brand-pressed'],
+    ['destructive', '--figma-color-text-ondanger', '--figma-color-bg-danger'],
+    [
+      'destructive under the pointer',
+      '--figma-color-text-ondanger',
+      '--figma-color-bg-danger-hover',
+    ],
+    ['destructive pressed', '--figma-color-text-ondanger', '--figma-color-bg-danger-pressed'],
+  ]
+  for (const which of ['dark', 'sepia'] as Theme[]) {
+    const map = tokensFor(which)
+    for (const [what, text, fill] of fills) {
+      it(`${which}: ${what} ≥ 4.5`, () => {
+        const fg = resolveMix(map, mapping(text))
+        const bg = resolveMix(map, mapping(fill))
+        expect(contrast(fg, bg), `${text} ${fg} on ${fill} ${bg}`).toBeGreaterThanOrEqual(4.5)
+      })
+    }
+  }
+})
+
+describe('the resting edges and the placeholder the pairs above assume (A6-07)', () => {
+  it('draws a text field, a select, a checkbox and the date control with --border-strong', () => {
+    expect(rule(adapter, 'fig-input-text:not(:focus-within)')).toContain('var(--border-strong)')
+    expect(rule(adapter, 'fig-dropdown > select')).toContain('var(--border-strong)')
+    expect(rule(adapter, "input[type='checkbox']:not(.switch):not(:checked)")).toContain(
+      'var(--border-strong)',
+    )
+    expect(rule(app, ".field input[type='date'] {")).toContain('var(--border-strong)')
+  })
+  it("gives a kit field's placeholder the faint text token", () => {
+    expect(rule(adapter, 'fig-input-text input::placeholder')).toContain('var(--text-faint)')
+  })
+})
 
 // The document's stated ratios, read from its two tables (docs/DESIGN.md,
 // section 3.1): the ramp against the theme's ground, and the semantic

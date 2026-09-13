@@ -1,5 +1,6 @@
-import type { JSX } from 'react'
+import { useRef, type JSX } from 'react'
 import Button from './kit/Button'
+import { useFocusHandback } from './focusHandback'
 import Icon from './icons/Icon'
 import ProgressLine from './ProgressLine'
 import type { EngineState } from '../../shared/engine'
@@ -35,58 +36,81 @@ export default function ExportRun({
 }): JSX.Element {
   const { state, stages, message, error, file, left } = useSnapshot(run)
   const begin = (): void => run.start(project, engine, choice)
+  // "Export" gives way to Cancel, and Cancel to "Reveal" or "Export" again
+  // when the export ends; focus on the one that went goes to the one that
+  // came (A6-07).
+  const region = useRef<HTMLDivElement>(null)
+  const exportRef = useRef<HTMLElement>(null)
+  const cancelRef = useRef<HTMLElement>(null)
+  const revealRef = useRef<HTMLElement>(null)
+  useFocusHandback(
+    region,
+    () =>
+      state === 'running'
+        ? cancelRef.current
+        : state === 'done'
+          ? revealRef.current
+          : exportRef.current,
+    state,
+  )
   const exportButton = (
-    <Button variant="primary" onClick={begin} disabled={disabled}>
+    <Button variant="primary" ref={exportRef} onClick={begin} disabled={disabled}>
       <Icon name="export" />
       Export
     </Button>
   )
 
   if (state === 'idle') {
-    return <div className="toolbar">{exportButton}</div>
+    return (
+      <div className="focus-region" ref={region}>
+        <div className="toolbar">{exportButton}</div>
+      </div>
+    )
   }
 
   return (
-    <section className="export-run" aria-label="Export">
-      <ProgressLine stages={stages} ariaLabel={describe(state, message)} />
-      <div className="export-run-foot">
-        <p className="progress-message" role="status" aria-live="polite">
-          {error ?? message ?? 'Starting the export.'}
-        </p>
-        {state === 'running' && (
-          <Button onClick={() => run.cancel()}>
-            <Icon name="close" />
-            Cancel
-          </Button>
-        )}
-      </div>
-      {(state === 'cancelled' || state === 'failed') && (
-        <>
-          <p className="prose" role="status">
-            {state === 'cancelled'
-              ? 'The export was cancelled. Nothing was written.'
-              : left
-                ? 'The engine stopped while writing the file. Export again to replace whatever it left.'
-                : 'Nothing was written.'}
+    <div className="focus-region" ref={region}>
+      <section className="export-run" aria-label="Export">
+        <ProgressLine stages={stages} ariaLabel={describe(state, message)} />
+        <div className="export-run-foot">
+          <p className="progress-message" role="status" aria-live="polite">
+            {error ?? message ?? 'Starting the export.'}
           </p>
-          <div className="toolbar">{exportButton}</div>
-        </>
-      )}
-      {state === 'done' && (
-        <>
-          <p className="prose" role="status">
-            Exported {file}.
-          </p>
-          <div className="toolbar">
-            <Button variant="primary" onClick={() => run.reveal()}>
-              <Icon name="forward" />
-              Reveal
+          {state === 'running' && (
+            <Button ref={cancelRef} onClick={() => run.cancel()}>
+              <Icon name="close" />
+              Cancel
             </Button>
-            {exportButton}
-          </div>
-        </>
-      )}
-    </section>
+          )}
+        </div>
+        {(state === 'cancelled' || state === 'failed') && (
+          <>
+            <p className="prose" role="status">
+              {state === 'cancelled'
+                ? 'The export was cancelled. Nothing was written.'
+                : left
+                  ? 'The engine stopped while writing the file. Export again to replace whatever it left.'
+                  : 'Nothing was written.'}
+            </p>
+            <div className="toolbar">{exportButton}</div>
+          </>
+        )}
+        {state === 'done' && (
+          <>
+            <p className="prose" role="status">
+              Exported {file}.
+            </p>
+            <div className="toolbar">
+              <Button variant="primary" ref={revealRef} onClick={() => run.reveal()}>
+                <Icon name="forward" />
+                Reveal
+              </Button>
+              {exportButton}
+            </div>
+          </>
+        )}
+      </section>
+    </div>
   )
 }
 

@@ -35,9 +35,13 @@ fig-separator {
   --figma-color-bg-selected-pressed: var(--surface-selected);
   --figma-color-bg-menu: var(--surface-raised);
   --figma-color-bg-menu-hover: var(--surface-hover);
-  --figma-color-bg-brand: var(--accent);
-  --figma-color-bg-brand-hover: color-mix(in srgb, var(--accent) 88%, var(--text));
-  --figma-color-bg-brand-pressed: color-mix(in srgb, var(--accent) 80%, var(--text));
+  /* A fill behind text is --accent-text, not --accent: in sepia the accent
+     under --on-accent is 4.40, short of 4.5 at the kit's 13px and 500
+     weight, and --accent-text is 5.74. In warm-dark the two are one colour
+     (A6-07; docs/DESIGN.md 3.1). */
+  --figma-color-bg-brand: var(--accent-text);
+  --figma-color-bg-brand-hover: color-mix(in srgb, var(--accent-text) 88%, var(--text));
+  --figma-color-bg-brand-pressed: color-mix(in srgb, var(--accent-text) 80%, var(--text));
   --figma-color-bg-danger: var(--error);
   --figma-color-bg-danger-hover: color-mix(in srgb, var(--error) 88%, var(--text));
   --figma-color-bg-danger-pressed: color-mix(in srgb, var(--error) 80%, var(--text));
@@ -82,9 +86,12 @@ fig-separator {
   --figma-color-border-disabled: var(--border);
   --figma-color-border-menu: var(--border);
   --figma-color-border-brand: var(--accent);
-  --figma-color-border-brand-strong: var(--accent);
+  /* The strong edges are drawn on a brand fill - a checked checkbox's
+     inset edge - so they are the fill's own colour, --accent-text, rather
+     than a lighter ring inside a darker fill in sepia (A6-07). */
+  --figma-color-border-brand-strong: var(--accent-text);
   --figma-color-border-selected: var(--accent);
-  --figma-color-border-selected-strong: var(--accent);
+  --figma-color-border-selected-strong: var(--accent-text);
   --figma-color-border-danger: var(--error);
   --figma-color-border-danger-strong: var(--error);
   --figma-color-border-onbrand-strong: var(--on-accent);
@@ -132,6 +139,51 @@ fig-separator {
 fig-input-text:not(:focus-within):not(:hover) {
   box-shadow: inset 0 0 0 var(--border-width) var(--border-strong);
   border-radius: var(--shape-radius-small);
+}
+
+/* A kit button unavailable but keeping its focus (`aria-disabled`, which
+   the wrapper mirrors on the host as data-unavailable): the kit draws a
+   button's fill and label on the host from its variant's tokens, so those
+   tokens are pointed at the disabled look here, for every variant and
+   under the pointer and pressed too. The pointer's events stay, since the
+   component refuses the press and focus must stay where it is (A6-07). */
+fig-button[data-unavailable] {
+  --figma-color-bg-brand: var(--surface-sunken);
+  --figma-color-bg-brand-hover: var(--surface-sunken);
+  --figma-color-bg-brand-pressed: var(--surface-sunken);
+  --figma-color-bg-danger: var(--surface-sunken);
+  --figma-color-bg-danger-hover: var(--surface-sunken);
+  --figma-color-bg-danger-pressed: var(--surface-sunken);
+  --figma-color-bg-secondary: var(--surface-sunken);
+  --figma-color-bg-transparent-pressed: var(--surface-sunken);
+  --figma-color-text: var(--text-faint);
+  --figma-color-text-onbrand: var(--text-faint);
+  --figma-color-text-onbrand-secondary: var(--text-faint);
+  --figma-color-text-ondanger: var(--text-faint);
+  --figma-color-text-ondanger-secondary: var(--text-faint);
+  cursor: progress;
+}
+
+/* The same resting edge for the two other controls whose extent is only
+   an edge: the native select the kit wraps draws --border (1.4 on the
+   ground), and its checkbox a translucent white or black at a tenth, both
+   short of the 3.0 a control's boundary needs (WCAG 1.4.11). Kept while
+   focused, where the kit would drop it back (A6-07). */
+fig-dropdown > select {
+  box-shadow: inset 0 0 0 var(--border-width) var(--border-strong);
+}
+
+input[type='checkbox']:not(.switch):not(:checked),
+input[type='checkbox']:not(.switch):focus:not(:checked) {
+  box-shadow: inset 0 0 0 var(--border-width) var(--border-strong);
+}
+
+/* The platform's own placeholder grey is not the theme's and falls short
+   of 4.5 on the field's raised fill in sepia; a placeholder is text, so it
+   takes the faint text token, which clears 4.5 on that fill in both
+   themes (A6-07). */
+fig-input-text input::placeholder {
+  color: var(--text-faint);
 }
 
 /* The kit hard-codes the native option popup's colours (its own comment
