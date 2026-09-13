@@ -382,7 +382,9 @@ a table).
   dimmed while Settings is open.
 - **Engine status line.** Turn the reader on **before** opening the app,
   then open it. Listen for the status named "Engine" being announced by
-  itself, without focus moving: "Starting the engine." and then
+  itself, without focus moving: possibly "Checking the engine…" first
+  (what it says before the app has heard from the engine at all, which is
+  not a defect), then "Starting the engine." and then
   "Engine ready (`<version>`)." (`EngineStatus.tsx`). Move the reader's
   cursor onto it and hear the sentence again. The icon beside it is never
   read.
@@ -400,8 +402,10 @@ a table).
   "Library" read first, at level 1 (focus is put there). Tab: **New project**
   and **Add feed**, both buttons; **Add feed** is dimmed until the engine
   is ready.
-- **Empty state.** With no projects (a new install, or after the reset at
-  the end), listen for the status "No projects yet. Pick one of the feeds
+- **Empty state.** This part needs a Library with no projects, which the
+  sitting only has on a new install or after **Reset engine data** at the
+  end of Settings below: if you already have projects, skip it now and come
+  back to it after the reset. Listen for the status "No projects yet. Pick one of the feeds
   below, or add your own, and make a project from it." and a **New project**
   button after it. Create a project from that button: when the dialog
   closes, listen for focus landing on the new project's row,
@@ -463,15 +467,21 @@ a table).
   "The feed's own entry draws `<mode>` for every operator." and a button
   **Use the feed's entry**; press it, and listen for focus landing on
   "Mode" with the entry's value (D7). The "Operator" pop-up button appears
-  only on a feed with several operators (the checklist's Mexico City step).
+  whenever the project has an agency, or its feed names more than one
+  operator: go back to the Library, press **Start a project on Mexico City
+  Metro**, name it `Mexico City`, open it, and listen for "Operator" with
+  "every operator" first among its options. Delete this project afterwards
+  (it can be the throwaway project for **Delete confirmation** below).
 - **Inspect: the two tables.** With T (Narrator) or the rotor (VoiceOver),
   find the tables "Route types, and what the chosen mode keeps" and
   "Routes: `<n>`". Go into each and move across a row and down a column:
   each cell is read with its column header.
 - **Inspect: sortable headers.** In the routes table, Tab to the header
-  buttons "Label", "Type" and "Trips". Press one, and listen for the column
-  read as sorted ascending, then descending on a second press
-  (`aria-sort`); the arrow beside it is not read.
+  buttons "Label", "Type" and "Trips", and listen for "Label" read as sorted
+  ascending when the table opens (`aria-sort`). Press "Label": descending.
+  Press "Trips": sorted descending (most trips first) on its first press;
+  press "Type": ascending on its first press. Every further press on the
+  column already sorted reverses it. The arrow beside it is not read.
 - **Layout run and its progress line.** Press **Lay out again** (or
   **Lay out**). Listen for focus moving to **Cancel** (D1), a region
   "Layout run", an image named "Running: `<sentence>`", and the polite
@@ -513,8 +523,9 @@ a table).
   shown colour comes from ("the colour in the feed, `#rrggbb`"), a button
   "Choose the colour of line `<label>`", collapsed, and a button
   "Reset line `<label>` to the colour in the feed", dimmed until the line
-  has a colour of its own. The first row is "Lines with no colour in the
-  feed", with "Choose the colour of lines the feed leaves uncoloured".
+  has a colour of its own. Before the list, not inside it, is the row
+  "Lines with no colour in the feed", with the button "Choose the colour of
+  lines the feed leaves uncoloured".
 - **Colour picker.** Press **Choose** on a line: listen for expanded, and a
   group "Colour for line `<label>`" holding the sliders "Color" and "Hue",
   each read with its value, and the text field "Hex value" and the button
@@ -551,8 +562,8 @@ a table).
   engine's page and its own controls, which are the engine's (F1) and stand
   in the Tab order before the project's toolbar (F3); note what is read in
   the cell, and whether you could get past it.
-- **Rename form.** Press **Rename**: expanded, focus stays on it; Tab to the
-  text field "New name", required. Empty it and press **Save**: "name is
+- **Rename form.** Press **Rename**: expanded, focus stays on it; Tab past
+  **Delete project** to the text field "New name", required. Empty it and press **Save**: "name is
   required" read with the field. Press **Cancel** and listen for focus back
   on **Rename**, collapsed.
 - **Delete confirmation.** On the throwaway project, press
@@ -579,13 +590,14 @@ a table).
   read with its rule "HH:MM. The still is taken at this time; …". Type
   `7`, Tab away, and listen for "the start time must be written HH:MM, such
   as 07:30" read with the field when you return; clear it. The text field
-  "Filename tag", read with "Added to the file's name, so a draft does not
+  "Filename tag", read with "Added to the file’s name, so a draft does not
   replace the last good export."
 - **Export, its progress line, Cancel, Reveal.** Choose a still preset (it
   is quick) and press **Export**. Listen for focus moving to **Cancel**
   (D2), a region "Export", an image "Running: `<sentence>`", and the
-  polite status "Capturing `<n>` frames.", "Captured `<n>` of `<n>`
-  frames.", "Encoding `<n>` frames."; the choices above are dimmed, with
+  polite status reading the export's sentences, among them "Planning the
+  export.", "Capturing `<n>` frames.", "Captured `<n>` of `<n>` frames.",
+  "Encoding `<n>` frames." and "Encoded `<n>` of `<n>` frames."; the choices above are dimmed, with
   the status "The choices wait until the export that is going has
   finished: it was planned from them." At the end listen for
   "Exported `<file>`.", the job-end announcement, and focus on **Reveal**.
@@ -642,8 +654,9 @@ a table).
   ("Los Angeles Layout run"), with "`<finished>`, started `<time>`", an
   image "`<label>` finished." (or "Running `<stage>`." while it runs), and
   the buttons "Copy log: `<label>`, `<project>`" and, while it runs,
-  "Cancel: `<label>`, `<project>`". A failed job has a collapsed
-  **Details** disclosure. Press **Copy log**: "The log is on the clipboard,
+  "Cancel: `<label>`, `<project>`"; a feed add is named by "Feeds" in
+  place of a project. A failed job whose detail says more than its hint has
+  a collapsed **Details** disclosure; a clean run has none. Press **Copy log**: "The log is on the clipboard,
   with the keys in web addresses taken out and your home folder written as
   ~." Start a layout, open the inspector and press its **Cancel**: listen
   for focus on the job's heading as it moves below the running jobs.
@@ -697,11 +710,13 @@ start the app normally.
 ### Mismatch dialog
 
 - **The dialog and OK.** It opens only when the engine the app starts is
-  not the version the app was built for, and an installed app carries its
-  own engine, so it cannot be produced from an installer. Record
-  `not reachable: an installed app carries the matching engine` in both
-  cells, unless the maintainer sets up a mismatched engine in development;
-  then listen for a dialog "Engine version mismatch" read with its
+  not the version the app was built for. An installed app can be made to
+  start another engine - it honours `LEGIBLE_ENGINE_PYTHON` from the
+  environment before its own bundled runtime - but only with a Python that
+  has a different engine version installed, which a tester will not have.
+  Without one, record `not run: needs a Python with another engine version`
+  in both cells. With one, start the app from a terminal with
+  `LEGIBLE_ENGINE_PYTHON` naming that interpreter, and listen for a dialog "Engine version mismatch" read with its
   description, focus on **OK**, and the engine status line still saying
   the mismatch after it closes.
 

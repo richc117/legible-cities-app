@@ -175,8 +175,11 @@ operator: go back to the Library, press **Start a project** on
   `<day>`".
 - A table captioned "Route types, and what the chosen mode keeps", every
   row "kept" under mode `all`, and a routes table captioned
-  "Routes: `<n>`". Each header press sorts by that column, and a second
-  press reverses it (an arrow beside the header shows the direction).
+  "Routes: `<n>`". The routes open sorted by **Label**, ascending, so the
+  first press on **Label** reverses it; the first press on **Trips** sorts
+  most trips first, and on **Type** ascending; every further press on the
+  column already sorted reverses it (an arrow beside that header shows the
+  direction).
 - The **Mode** select offers "all (every type)", the mode names of the
   feed's route types (the engine's suggestion, if it is one of them, marked
   "(the engine suggests it)") and "other…".
@@ -185,8 +188,8 @@ operator: go back to the Library, press **Start a project** on
   has one (`Inspect.tsx`), and the LA rail feed is expected to name one.
 - For Mexico City: the fields say Agency `METRO`, and **In the feed** has an
   **Operator** select whose first option is "every operator", followed by
-  the feed's operators (the engine's registry notes eight share this feed).
-  **check:** the routes table's caption reads "Routes of METRO: `<n>`".
+  the feed's operators. The routes table's caption reads
+  "Routes of METRO: `<n>`".
 - Do not lay Mexico City out. Delete it now: **Delete project**, then
   **Delete** in the confirmation titled "Delete Mexico City?". The app goes
   back to the Library, and the project is gone from the list.
@@ -208,12 +211,13 @@ to "Laid out.". Then open **Caltrain** and press **Lay out** there too.
   **Re-layout** button.
 - The fields now say Service day `<day>` and Layout `<8 characters>`,
   made `<date and time>`.
-- **What it costs.** On a Mac, the native-LOOM spike measured `gtfs2graph`
-  over LA at about 13 seconds and `topo`, `loom` and `octi` under a second
-  each (`docs/adr/spikes/loom-native.md`); the download of LA's zip
-  happened in step 4, and the last four stages were not measured there.
-  **check:** write down the whole time. On Windows it has not been measured
-  before this run.
+- **What it costs.** Nothing here is a promise. The only figures are from
+  the native-LOOM spike, which ran the LOOM tools by hand on a Mac, not the
+  app's layout run: `gtfs2graph` over LA took about 13 seconds and `topo`,
+  `loom` and `octi` under a second each (`docs/adr/spikes/loom-native.md`).
+  The download of LA's zip happened in step 4, and the last four stages
+  were not measured there. **check:** write down the whole time. On
+  Windows it has not been measured before this run.
 - Caltrain: **check:** the same eight stages and "Laid out.". Caltrain is
   this checklist's choice of feed, not one the engine's tests lay out, so a
   refusal here is recorded with the engine's sentence (it shows under the
@@ -243,9 +247,10 @@ arrow and `0`. Then use the map's own controls inside the viewer.
   drawing the map for `<day>`", and an explanation that appears on the
   press and goes on **Escape**. **Copy as text** says "The figures and the
   caveats are on the clipboard."
-- **Where the routes run**: the two buttons **gtfs2graph** ("as the feed
-  draws its routes") and **loom** ("lines sorted onto shared track"), the
-  pressed one marked as pressed; a drawing that changes between the two
+- **Where the routes run**: the two buttons **gtfs2graph** and **loom**,
+  the pressed one marked as pressed, and beside them the pressed stage's
+  description only ("as the feed draws its routes" for gtfs2graph, "lines
+  sorted onto shared track" for loom); a drawing that changes between the two
   without going blank; the counts **Nodes**, **Stations**, **Junctions**,
   **Edges** and **Lines**; and the drawing zooming, panning and fitting
   again from the keyboard, as the line under it says: "Zoom with the wheel
@@ -342,16 +347,19 @@ Result: ____
   makes>`".
 - While the tab is open, the viewer shows the export's tall frame, with the
   parts Instagram covers shaded.
-- A progress line with `plan`, `capture` and `encode`, with "Capturing
-  `<n>` frames.", "Captured `<n>` of `<n>` frames.", "Encoding `<n>`
-  frames." and **Cancel**; the choices above are unavailable while it runs,
+- A progress line with `plan`, `capture` and `encode`, with the sentences
+  "Planning the export.", "Planned `<file>`: `<n>` frames at `<fps>` frames
+  per second.", "Capturing `<n>` frames.", "Captured `<n>` of `<n>`
+  frames.", "Encoding `<n>` frames." and "Encoded `<n>` of `<n>` frames.",
+  among others, and **Cancel**; the choices above are unavailable while it runs,
   with "The choices wait until the export that is going has finished: it
   was planned from them."
 - It ends with "Exported la-metro-rail-instagram-reel.mp4." and **Reveal**.
   No folder path is shown anywhere.
-- **What it costs.** The same reel took about two minutes on an Apple
-  silicon laptop in development (`specs/010-export/spec.md`, SC-003).
-  **check:** write down the time.
+- **What it costs.** Not a promise: the only figure is from development,
+  where the same reel took about two minutes on an Apple silicon laptop
+  against engine v0.3.0 and a development ffmpeg, not the bundled one
+  (`specs/010-export/spec.md`, SC-003). **check:** write down the time.
 
 Result: ____
 
@@ -390,8 +398,8 @@ Result: ____
 
 ### 16. The jobs inspector
 
-**Do.** Press **Jobs** in the header. Open **Details** on any job that has
-one, and press **Copy log** on one job. Press **Escape**.
+**Do.** Press **Jobs** in the header. If a job has a **Details**
+disclosure, open it, and press **Copy log** on one job. Press **Escape**.
 
 **See.**
 - The toggle is read as "Jobs, none running" when nothing runs.
@@ -400,8 +408,10 @@ one, and press **Copy log** on one job. Press **Escape**.
   "Export as instagram-post", "Export as instagram-reel", the rebuilds
   ("Rebuild for `<day>`", "Redraw in new colours",
   "Redraw in a new line order"), "Layout run" for both projects and the
-  feed add ("Feed add of Caltrain"), each "finished, started `<time>`"
-  with its project's name.
+  feed add ("Feed add of Caltrain"), each "finished, started `<time>`",
+  headed by its project's name, or by "Feeds" for the feed add.
+- **Details** appears only on a failed job whose engine detail says more
+  than its hint; a run where every job finished has none.
 - **Copy log** says "The log is on the clipboard, with the keys in web
   addresses taken out and your home folder written as ~."
 - **Escape** closes it and puts focus back on **Jobs**.

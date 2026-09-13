@@ -106,9 +106,10 @@ the issue's figure as well.
 - Over 15 minutes, or assisted at any point, or stopped: the measure is not
   met. Record the time anyway, and where it went.
 
-For scale, when you judge where the minutes went: the reel alone took about
-two minutes to export on an Apple silicon laptop in development
-(`specs/010-export/spec.md`, SC-003), and the engine has to download its
+For scale, when you judge where the minutes went, and not as a promise:
+the reel alone took about two minutes to export on an Apple silicon laptop
+in development, against engine v0.3.0 and a development ffmpeg rather than
+the bundled one (`specs/010-export/spec.md`, SC-003), and the engine has to download its
 first feed and lay the map out before that (see the acceptance checklist,
 step 7).
 
@@ -135,6 +136,15 @@ unsticks them, and write it down word for word. From then on the run is
 measure is not met. A crash, a hang or anything that stops the app working
 is not a person being stuck: record it, and step in to restart the app if
 they cannot.
+
+If the person opens anything beyond the README, `docs/install.md` and the
+app itself - another page of the repository, a search engine, a video, an
+AI assistant, or a question to someone else in the room - do not stop them.
+Write down the time and what they opened or asked, and count the run as
+**assisted** from that moment, exactly as if you had given a hint. Links
+that the README and the install guide themselves lead to on the same page
+(the Releases page, the install guide's own sections) are within bounds;
+following a link out of them to any other document is not.
 
 ### What to write down
 
