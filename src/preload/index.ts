@@ -128,6 +128,13 @@ const api: Api = {
     resetEngineData: () => invoke(CHANNELS.settingsResetEngineData),
     copyDiagnostics: (reports) => invoke(CHANNELS.settingsCopyDiagnostics, reports),
   },
+  // Nothing crosses inward: a read, the changes, and a request to open the
+  // one address the main process holds.
+  firstRun: {
+    get: () => invoke(CHANNELS.firstRunGet),
+    onChanged: (listener) => subscribe(CHANNELS.firstRunChanged, listener),
+    openInstallGuide: () => invoke(CHANNELS.firstRunOpenInstallGuide),
+  },
 }
 
 contextBridge.exposeInMainWorld('api', api)

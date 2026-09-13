@@ -98,6 +98,51 @@ export function bundledComponents(bundled: NonNullable<ConfigInput['bundled']>):
   }
 }
 
+/**
+ * What the first-run check judges for one tool (A6-02): a path to run, and
+ * whether a person named it; or a reason it is not checked.
+ */
+export type ToolTarget =
+  { kind: 'check'; path: string; named: boolean } | { kind: 'skip'; reason: string }
+
+/**
+ * Where the first-run check looks for LOOM and ffmpeg (specs/026, FR-002 and
+ * FR-004). A packaged app judges its own resources whether or not the
+ * folders are there - a missing `loom/` is exactly what the check is for,
+ * even though `resolveConfig` then falls back to the development default -
+ * unless the environment names another. A development run checks only what
+ * the environment or `.env.local` names, and nothing on PATH or in Docker.
+ */
+export function firstRunTargets(input: {
+  config: Pick<Config, 'loomBin' | 'ffmpeg' | 'sources'>
+  packaged: boolean
+  resourcesPath: string
+  platform: NodeJS.Platform
+}): { loom: ToolTarget; ffmpeg: ToolTarget } {
+  const { config, packaged } = input
+  const exe = input.platform === 'win32' ? '.exe' : ''
+  const named = (source: Source): boolean => source === 'environment' || source === '.env.local'
+  const target = (
+    key: 'SCHEMATIC_LOOM_BIN' | 'SCHEMATIC_FFMPEG',
+    value: string | null,
+    carried: string,
+  ): ToolTarget => {
+    if (named(config.sources[key]) && value !== null) {
+      return { kind: 'check', path: value, named: true }
+    }
+    if (packaged) return { kind: 'check', path: carried, named: false }
+    return { kind: 'skip', reason: `development: ${key} is not named` }
+  }
+  return {
+    loom: target('SCHEMATIC_LOOM_BIN', config.loomBin, join(input.resourcesPath, 'loom')),
+    ffmpeg: target(
+      'SCHEMATIC_FFMPEG',
+      config.ffmpeg,
+      join(input.resourcesPath, 'ffmpeg', `ffmpeg${exe}`),
+    ),
+  }
+}
+
 /** KEY=value per line; `#` starts a comment; matching quotes are stripped; no interpolation. */
 export function parseEnvFile(text: string): Record<string, string> {
   const out: Record<string, string> = {}

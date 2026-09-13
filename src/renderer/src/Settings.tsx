@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type JSX } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState, type JSX } from 'react'
 import {
   APP_THEMES,
   describeReset,
@@ -11,8 +11,15 @@ import {
 } from '../../shared/settings'
 import { DIAGNOSTICS_REPORTS } from '../../shared/api'
 import type { EngineState } from '../../shared/engine'
+import {
+  describeOutcome,
+  FIRST_RUN_TOOLS,
+  summarize,
+  type FirstRunTool,
+} from '../../shared/first-run'
 import type { EngineInfo } from '../../shared/protocol'
 import ConfirmDialog from './ConfirmDialog'
+import { useFirstRun } from './FirstRunDialog'
 import { focusLost } from './focusHandback'
 import {
   engineClient,
@@ -48,6 +55,15 @@ const SOURCE_WORDS: Record<FolderView['source'], string> = {
   default: 'the default',
   settings: 'chosen here',
   environment: 'set in the environment',
+}
+
+/**
+ * The first-run check's rows, named for what was run: distinct from the
+ * versions list's own "ffmpeg", which is the engine's answer, not a check.
+ */
+const TOOL_TERMS: Record<FirstRunTool, string> = {
+  loom: 'LOOM tools',
+  ffmpeg: 'ffmpeg and ffprobe',
 }
 
 /** What the screen says after "Copy diagnostics", either way. */
@@ -113,6 +129,8 @@ export default function Settings({ settings, onChanged, engine, onBack }: Props)
     handBack.current = null
     if (focusLost(document.activeElement, document.body)) choosers.current[which]?.focus()
   }, [settings])
+  // What the first-run check of the bundled tools found, kept current (A6-02).
+  const firstRun = useFirstRun()
 
   // A layout run or an export is four steps with gaps between them, and the
   // main process cannot see the gaps; the runs live in this process and
@@ -390,6 +408,24 @@ export default function Settings({ settings, onChanged, engine, onBack }: Props)
             <dd>{reported(info.loom.commit, 'the host reported no commit')}</dd>
             <dt>ffmpeg</dt>
             <dd>{reported(info.ffmpeg, 'none found')}</dd>
+          </dl>
+        )}
+      </section>
+
+      <section aria-labelledby="settings-tools">
+        <h2 id="settings-tools">Bundled tools</h2>
+        {/* Said again when the check ends, without a reload. */}
+        <p className="message" role="status" aria-live="polite">
+          {firstRun === null ? 'Asking what the check found…' : summarize(firstRun)}
+        </p>
+        {firstRun !== null && (
+          <dl className="fields">
+            {FIRST_RUN_TOOLS.map((tool) => (
+              <Fragment key={tool}>
+                <dt>{TOOL_TERMS[tool]}</dt>
+                <dd>{describeOutcome(firstRun[tool])}</dd>
+              </Fragment>
+            ))}
           </dl>
         )}
       </section>

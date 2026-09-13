@@ -21,6 +21,20 @@ import {
 } from '../../src/main/settings-ipc'
 import { CHANNELS } from '../../src/shared/api'
 import type { FolderSource, ResetOutcome } from '../../src/shared/settings'
+import type { FirstRunResult } from '../../src/shared/first-run'
+
+/** A check that found LOOM missing and ffmpeg running, as the copy says it (A6-02). */
+const FIRST_RUN: FirstRunResult = {
+  finished: true,
+  loom: {
+    outcome: 'failed',
+    kind: 'missing',
+    sentence: 'The bundled LOOM tools are missing, so maps cannot be laid out.',
+    detail: 'There is no LOOM folder at …/loom.',
+    ms: 1,
+  },
+  ffmpeg: { outcome: 'passed', ms: 9 },
+}
 
 type Handler = (event: IpcMainInvokeEvent, ...args: unknown[]) => Promise<unknown>
 
@@ -105,6 +119,7 @@ async function harness(
     diagnostics: {
       about: () => ABOUT,
       engineInfo: over.engineInfo ?? (async () => ({ engine: '0.0.0-test', protocol: 1 })),
+      firstRun: () => FIRST_RUN,
       flushLogs: over.flushLogs ?? (async () => undefined),
       home: over.homes?.(root)[0] ?? root,
       realHome:
@@ -499,6 +514,7 @@ describe('resetting the engine data', () => {
       diagnostics: {
         about: () => ABOUT,
         engineInfo: async () => ({}),
+        firstRun: () => FIRST_RUN,
         flushLogs: async () => undefined,
         home: root,
         realHome: async () => root,
@@ -566,6 +582,8 @@ describe('copying diagnostics', () => {
       'Node 24.0.0',
       'Linux 6.0.0 (x64)',
       '"engine": "0.0.0-test"',
+      'The bundled LOOM tools are missing, so maps cannot be laid out.',
+      'ffmpeg: ran (9 ms).',
       'a main line',
       'an engine line',
       'Los Angeles — the map drawn for 2026-09-12',

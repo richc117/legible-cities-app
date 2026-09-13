@@ -14,11 +14,14 @@ import { abortCaptures, capture, configureCapture } from './capture-window'
 import {
   describeConfig,
   EXPORT_FOLDER_NAME,
+  firstRunTargets,
   resolveConfig,
   type Config,
   type Source,
 } from './config'
 import { registerEngineHandlers } from './engine-ipc'
+import { FIXTURE_FOLDER, FirstRunCheck, LOG_TAG as FIRST_RUN_TAG } from './first-run'
+import { registerFirstRunHandlers } from './first-run-ipc'
 import { PickedPaths, registerFeedsHandlers, registryGuard } from './feeds-ipc'
 import { Exporter, keptFramesFolder } from './export'
 import { claimFramesRoot, clearFrames, describeSweep, FRAMES_FOLDER } from './frames'
@@ -168,6 +171,7 @@ function shortHomeLookups(): Promise<string | null>[] {
 let mainWindow: BrowserWindow | null = null
 let sidecar: Sidecar | null = null
 let exporter: Exporter | null = null
+let firstRun: FirstRunCheck | null = null
 // Held at this scope because the handlers registered before it exists ask
 // it whether a reset is under way; it is assigned once, during startup.
 let settings: SettingsService | null = null
@@ -365,6 +369,45 @@ if (!hasLock) {
     const engine = createSidecar(config)
     sidecar = engine
     engine.start()
+    // The first-run check of the bundled LOOM and ffmpeg (A6-02): made now,
+    // so the bridge and the diagnostics copy can read it, and run once the
+    // engine's first start has settled - ready, unavailable, mismatched or
+    // stopped - so its spawns never compete with the engine's handshake.
+    // Once per start: a later restart of the engine does not run it again.
+    const check = new FirstRunCheck({
+      targets: firstRunTargets({
+        config,
+        packaged: app.isPackaged,
+        resourcesPath: process.resourcesPath,
+        platform: process.platform,
+      }),
+      fixture: app.isPackaged
+        ? join(process.resourcesPath, FIXTURE_FOLDER)
+        : join(app.getAppPath(), 'resources', FIXTURE_FOLDER),
+      log: {
+        info: (m) => log.info(FIRST_RUN_TAG, m),
+        warn: (m) => log.warn(FIRST_RUN_TAG, m),
+      },
+    })
+    firstRun = check
+    const settledStart = (state: { state: string }): boolean =>
+      ['ready', 'unavailable', 'mismatched', 'stopped'].includes(state.state)
+    const runCheck = (): void => {
+      void check
+        .run()
+        .catch((error: Error) =>
+          log.error(FIRST_RUN_TAG, `the check failed to run: ${error.message}`),
+        )
+    }
+    if (settledStart(engine.state)) {
+      runCheck()
+    } else {
+      const off = engine.onState((state) => {
+        if (!settledStart(state)) return
+        off()
+        runCheck()
+      })
+    }
     const store = new ProjectStore(config.home, (m) => log.warn('projects', m))
     const isTopFrame = (event: Electron.IpcMainInvokeEvent): boolean =>
       mainWindow !== null && event.senderFrame === mainWindow.webContents.mainFrame
@@ -473,6 +516,7 @@ if (!hasLock) {
           os: { type: type(), release: release(), arch: process.arch },
         }),
         engineInfo: () => engine.request('engine.info').result,
+        firstRun: () => check.result,
         flushLogs: async () => {
           await Promise.all([logFiles?.main.flush(), logFiles?.engine.flush()])
         },
@@ -487,6 +531,21 @@ if (!hasLock) {
     // Held where the handlers registered above it can ask it.
     settings = settingsService
     registerSettingsHandlers(ipcMain, settingsService, isTopFrame)
+    // The check's result, its changes, and the install document, which only
+    // this side can name and only the platform's browser opens.
+    registerFirstRunHandlers(
+      ipcMain,
+      {
+        check,
+        send: (channel, payload) => {
+          if (mainWindow !== null && !mainWindow.isDestroyed())
+            mainWindow.webContents.send(channel, payload)
+        },
+        openExternal: (url) => shell.openExternal(url),
+        log: (message) => log.info(FIRST_RUN_TAG, message),
+      },
+      isTopFrame,
+    )
     // "Copy log" on a job (A1-03): the same home lookup and the same
     // redaction as "Copy diagnostics", then the same clipboard.
     registerJobsHandlers(
@@ -590,6 +649,8 @@ if (!hasLock) {
     // before the engine is asked to stop.
     exporter?.abortAll()
     abortCaptures()
+    // The first-run check's children, if any are still running, end now.
+    firstRun?.abort()
     if (sidecar === null) return
     event.preventDefault()
     const stopping = sidecar.stop()

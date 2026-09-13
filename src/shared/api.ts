@@ -5,6 +5,7 @@
 
 import type { EngineErrorShape, EngineState, JobLog, JobProgress } from './engine'
 import type { ExportChoice, ExportPreview, ExportProgress, ExportResult } from './export'
+import type { FirstRunResult } from './first-run'
 import type { LayoutDone, LayoutResult } from './layout'
 import type { AppTheme, FolderSize, ResetOutcome, SettingsView } from './settings'
 import type { ViewerMethod } from './viewer'
@@ -38,6 +39,7 @@ export type {
   ExportResult,
   OfferedPreset,
 } from './export'
+export type { FirstRunResult, ToolCheck } from './first-run'
 export type { LayoutDone, LayoutResult } from './layout'
 export type { AppTheme, FolderSize, FolderView, ResetOutcome, SettingsView } from './settings'
 
@@ -240,6 +242,18 @@ export interface Api {
      */
     copyDiagnostics(reports: string[]): Promise<void>
   }
+  /**
+   * The first-run check of the bundled LOOM and ffmpeg (A6-02): run once per
+   * start by the main process, which spawns the tools itself. The page reads
+   * the result and hears each change; nothing it sends reaches a spawn
+   * (specs/026-first-run-check).
+   */
+  firstRun: {
+    get(): Promise<FirstRunResult>
+    onChanged(listener: (result: FirstRunResult) => void): () => void
+    /** Open the install document in the platform's browser. Takes no address: the main process holds it. */
+    openInstallGuide(): Promise<void>
+  }
 }
 
 /**
@@ -291,4 +305,7 @@ export const CHANNELS = {
   settingsOpenLogs: 'settings:open-logs',
   settingsResetEngineData: 'settings:reset-engine-data',
   settingsCopyDiagnostics: 'settings:copy-diagnostics',
+  firstRunGet: 'first-run:get',
+  firstRunChanged: 'first-run:changed',
+  firstRunOpenInstallGuide: 'first-run:open-install-guide',
 } as const

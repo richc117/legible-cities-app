@@ -24,6 +24,7 @@ import {
   type FolderSource,
   type SettingsView,
 } from '../shared/settings'
+import type { FirstRunResult } from '../shared/first-run'
 import { areReports, diagnosticsText, tailLog, type DiagnosticsInput } from './diagnostics-text'
 import { LOG_WAIT_MS, within } from './log-file'
 import { PickedPaths } from './picked'
@@ -91,6 +92,8 @@ export interface DiagnosticsDeps {
   about: () => Pick<DiagnosticsInput, 'app' | 'versions' | 'os'>
   /** The engine's `engine.info`; rejects with the engine's own sentence when it is not ready. */
   engineInfo: () => Promise<unknown>
+  /** The first-run check's result as it stands (A6-02). */
+  firstRun: () => FirstRunResult
   /** Every line logged so far on disk, so the tail read next is current; waited for at most `LOG_WAIT_MS`. */
   flushLogs: () => Promise<void>
   /** The home folder as the platform names it. */
@@ -285,7 +288,7 @@ export class SettingsService {
         ? ['The log folder could not be found.', 'The log folder could not be found.']
         : await Promise.all([tailLog(folder, 'main'), tailLog(folder, 'engine')])
     const text = diagnosticsText(
-      { ...d.about(), engine, mainLog, engineLog, reports },
+      { ...d.about(), engine, firstRun: d.firstRun(), mainLog, engineLog, reports },
       await this.#homes(),
       d.platform,
     )
