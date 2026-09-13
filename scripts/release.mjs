@@ -228,19 +228,35 @@ export function parseLsRemote(text, tag) {
   return peeled ?? plain
 }
 
+/** Blocks for `ms` milliseconds: the script is synchronous, and a retry waits. */
+function pause(ms) {
+  if (ms > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+}
+
 /**
  * Where a tag points on the remote now: a commit, null when it is gone, or
- * a message when the remote could not be asked.
+ * a message when the remote could not be asked. A failed `git ls-remote`
+ * is tried again, three times in all a few seconds apart, before the last
+ * failure's message is given; a network blip should not refuse a release.
  *
+ * @param {object} [options]
+ * @param {number} [options.attempts]
+ * @param {number} [options.delayMs]
+ * @param {(cwd: string, args: string[]) => { error?: Error, status: number | null, stdout: string, stderr: string }} [options.run]
  * @returns {string | null | { error: string }}
  */
-export function remoteTagCommit(cwd, remote, tag) {
-  const result = git(cwd, ['ls-remote', remote, `refs/tags/${tag}`, `refs/tags/${tag}^{}`])
-  if (result.error) return { error: result.error.message }
-  if (result.status !== 0) {
-    return { error: `git ls-remote exited ${result.status}: ${(result.stderr ?? '').trim()}` }
+export function remoteTagCommit(cwd, remote, tag, options = {}) {
+  const { attempts = 3, delayMs = 3000, run = git } = options
+  let failure = 'git ls-remote was not run'
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    if (attempt > 1) pause(delayMs)
+    const result = run(cwd, ['ls-remote', remote, `refs/tags/${tag}`, `refs/tags/${tag}^{}`])
+    if (!result.error && result.status === 0) return parseLsRemote(result.stdout, tag)
+    failure = result.error
+      ? result.error.message
+      : `git ls-remote exited ${result.status}: ${(result.stderr ?? '').trim()}`
   }
-  return parseLsRemote(result.stdout, tag)
+  return { error: `${failure} (after ${attempts} attempts)` }
 }
 
 /**

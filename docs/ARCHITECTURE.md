@@ -1303,9 +1303,9 @@ before anything is downloaded; renames the three installers for their machine
 written from this run's pins, for this version, in this run; archives the
 vendor workflow's three Corresponding Source artefacts, `ffmpeg-source`,
 `loom-source` (LOOM at its commit with its submodules, the Windows port,
-the patch script, and the zlib and bzip2 tarballs the Windows tools link
-statically, with the `loom-windows` job's record of its MSYS2 packages put
-inside) and `engine-source` (the engine at its tag), one tar each, owners
+the patch script, and zlib's and bzip2's upstream tarballs, with the
+`loom-windows` job's MSYS2 source packages for the exact revisions it
+linked, and its record of those packages, put inside) and `engine-source` (the engine at its tag), one tar each, owners
 and times fixed; writes `SHA256SUMS.txt` over them; and fills the notes from
 `.github/release-notes.md` and the pins. Then one step holding the token
 lists the Releases, creates a draft for the tag or updates the one draft

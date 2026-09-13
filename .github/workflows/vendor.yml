@@ -26,7 +26,7 @@ on:
     # own: GitHub ignores path filters on a tag push, and build.yml already
     # runs these jobs for a tag through workflow_call.
     branches: ['**']
-    paths: ['vendor/pins.json', '.github/workflows/vendor.yml', 'scripts/vendor-python.sh', 'scripts/vendor-ffmpeg.sh']
+    paths: ['vendor/pins.json', '.github/workflows/vendor.yml', 'scripts/vendor-python.sh', 'scripts/vendor-ffmpeg.sh', 'scripts/vendor-signature.sh']
   workflow_dispatch:
   # .github/workflows/build.yml runs these jobs in its own run, so the
   # installers are packaged from artefacts built from the pins it checked
@@ -158,6 +158,9 @@ jobs:
   # public since 2026-09-08, and the refuse-early step below guards that.
   python:
     name: python (${{ matrix.target }})
+    # No runtime carrying the GPL engine is uploaded in a run without the
+    # engine's source (ADR-040, ADR-041).
+    needs: engine-source
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -375,44 +378,75 @@ jobs:
             mingw-w64-ucrt-x86_64-bzip2
             mingw-w64-ucrt-x86_64-python
       # zlib and bzip2 are linked into the tools statically from MSYS2's
-      # packages, which move with MSYS2 (update: true above); their sources
-      # travel with LOOM's only for the versions the pins name, so any other
-      # fails here, before a minute is spent. The exact package revisions of
-      # everything linked in go to the release inside LOOM's source archive.
-      - name: Refuse a zlib or bzip2 other than the pinned one, and record what is linked in
+      # packages, which move with MSYS2 (update: true above) and carry
+      # MSYS2's patches. Their sources travel with LOOM's only for the
+      # package revisions the pins name, so any other revision, a new patch
+      # included, fails here before a minute is spent. MSYS2's source
+      # package for each revision (recipe, patches and upstream tarball)
+      # and the exact revisions of everything linked in go to the release
+      # inside LOOM's source archive.
+      - name: Refuse a zlib or bzip2 revision other than the pinned one, and record what is linked in with its sources
         shell: msys2 {0}
         run: |
           set -euo pipefail
+          static_pin() { python -c "import json,sys,functools;print(functools.reduce(lambda n,k:n[k],sys.argv[2].split('.'),json.load(open('vendor/pins.json'))['loom_windows_static'][sys.argv[1]]))" "$1" "$2" | tr -d '\r'; }
           packages=$(pacman -Q)
           status=0
           for lib in zlib bzip2; do
-            want=$(python -c "import json,sys;print(json.load(open('vendor/pins.json'))['loom_windows_static'][sys.argv[1]]['version'])" "$lib")
-            want=${want//$'\r'/}
+            want=$(static_pin "$lib" msys2_revision)
             line=$(grep -E "^mingw-w64-ucrt-x86_64-$lib " <<< "$packages" || true)
             have=${line#* }
-            have=${have%-*}
             echo "$lib: MSYS2 has ${line:-nothing}; the pin is $want"
             if [ -z "$line" ] || [ "$have" != "$want" ]; then
-              echo "::error::MSYS2's $lib is ${have:-missing}, not the pinned $want; move loom_windows_static.$lib in vendor/pins.json, with its tarball's sha256 and signature, to build"
+              echo "::error::MSYS2's $lib is ${have:-missing}, not the pinned revision $want; move loom_windows_static.$lib in vendor/pins.json (msys2_revision and msys2_source, and version, url, sha256 and signature if the upstream version moved) to build"
               status=1
             fi
           done
           [ "$status" -eq 0 ] || exit 1
+
+          out=loom-windows-toolchain
+          mkdir -p "$out/msys2-sources"
+          sources=
+          for lib in zlib bzip2; do
+            url=$(static_pin "$lib" msys2_source.url)
+            sha=$(static_pin "$lib" msys2_source.sha256)
+            file="$out/msys2-sources/${url##*/}"
+            curl -fsSL --retry 3 --connect-timeout 30 --max-time 300 -o "$file" "$url"
+            curl -fsSL --retry 3 --connect-timeout 30 --max-time 120 -o "$file.sig" "$url.sig"
+            got=$(sha256sum "$file" | cut -d' ' -f1)
+            if [ "$got" != "$sha" ]; then
+              echo "::error::${file##*/} is sha256 $got, and the pin says $sha"
+              exit 1
+            fi
+            # The keyring pacman trusts for the packages it just installed.
+            if ! pacman-key --verify "$file.sig" "$file"; then
+              echo "::error::${file##*/} has no good signature by a key MSYS2's keyring trusts"
+              exit 1
+            fi
+            echo "checksum and signature ok: ${file##*/}"
+            sources+="msys2-sources/${file##*/}  sha256 $sha"$'\n'
+          done
+
           record=$(grep -E '^mingw-w64-ucrt-x86_64-(gcc|gcc-libs|binutils|crt|crt-git|headers|headers-git|winpthreads|winpthreads-git|libwinpthread|libwinpthread-git|zlib|bzip2) ' <<< "$packages")
-          mkdir -p loom-windows-toolchain
           {
             echo "The MSYS2 UCRT64 packages the Windows LOOM tools were built with, from"
             echo "the loom-windows job of .github/workflows/vendor.yml, run $GITHUB_RUN_ID of"
             echo "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY at commit $GITHUB_SHA."
             echo
-            echo "Linked in statically: zlib and bzip2 (their release tarballs are in"
-            echo "windows-static/), GCC's libgcc and libstdc++ (gcc-libs), and mingw-w64's CRT"
-            echo "and winpthreads. MSYS2's recipe for each revision is its PKGBUILD in"
-            echo "https://github.com/msys2/MINGW-packages."
+            echo "Linked in statically: zlib and bzip2, GCC's libgcc and libstdc++ (gcc-libs),"
+            echo "and mingw-w64's CRT and winpthreads."
             echo
             printf '%s\n' "$record"
-          } > loom-windows-toolchain/TOOLCHAIN-win-x64.txt
-          cat loom-windows-toolchain/TOOLCHAIN-win-x64.txt
+            echo
+            echo "MSYS2's source packages for the zlib and bzip2 revisions above, each with"
+            echo "its PKGBUILD, the patches MSYS2 applies and the upstream tarball, as"
+            echo "fetched from repo.msys2.org, checked against the sha256 in the pins, and"
+            echo "with a signature pacman-key verified against MSYS2's keyring:"
+            printf '%s' "$sources"
+            echo "windows-static/ holds the upstream release tarballs, verified against"
+            echo "their publishers' signatures."
+          } > "$out/TOOLCHAIN-win-x64.txt"
+          cat "$out/TOOLCHAIN-win-x64.txt"
       - name: Clone LOOM at the pin and the port at its pin
         shell: msys2 {0}
         run: |
@@ -869,13 +903,14 @@ jobs:
           git -C "$work/port" checkout --quiet "$port_commit"
           test "$(git -C "$work/port" rev-parse HEAD)" = "$port_commit"
 
-          # The release tarballs of the libraries the Windows tools link
-          # statically from MSYS2 (loom_windows_static in the pins), each
+          # The upstream release tarballs of the libraries the Windows tools
+          # link statically from MSYS2 (loom_windows_static in the pins), each
           # checked against its sha256 and its signature verified by gpg
-          # against the key with the pinned primary fingerprint, as
-          # ffmpeg-source verifies FFmpeg's and zlib's. The loom-windows job
-          # refuses a package of any other version. A key's user ID carries
-          # its owner's address, so only fingerprints are printed.
+          # against the key with the pinned primary fingerprint, with the
+          # same signed() ffmpeg-source uses. MSYS2 builds its packages from
+          # these with patches; the loom-windows job adds MSYS2's source
+          # packages for the exact revisions it linked.
+          . scripts/vendor-signature.sh
           static_pin() { python3 -c "import json,sys,functools;print(functools.reduce(lambda n,k:n[k],sys.argv[2].split('.'),json.load(open('vendor/pins.json'))['loom_windows_static'][sys.argv[1]]))" "$1" "$2"; }
           mkdir -p "$out/windows-static"
           static_lines=
@@ -895,34 +930,15 @@ jobs:
               echo "::error::${file##*/} is sha256 $got, and the pin says $sha"
               exit 1
             fi
-            curl -fsSL --retry 3 --connect-timeout 30 --max-time 120 -o "$signature" "$sig_url"
-            home=$(mktemp -d)
-            chmod 700 "$home"
-            curl -fsSL --retry 3 --connect-timeout 30 --max-time 120 -o "$home/key.asc" "$key_url"
-            if ! gpg --homedir "$home" --batch --import "$home/key.asc" > /dev/null 2>&1; then
-              echo "::error::the signing key for $lib did not import"
-              exit 1
-            fi
-            status=$(gpg --homedir "$home" --batch --status-fd 1 --verify "$signature" "$file" 2> /dev/null || true)
-            said=$(awk '$2 ~ /^(VALIDSIG|ERRSIG|NO_PUBKEY|KEYREVOKED|KEYEXPIRED)$/ { print; next }
-                        $2 ~ /^(BADSIG|REVKEYSIG|EXPKEYSIG|EXPSIG|GOODSIG)$/ { print $1, $2, $3 }' <<< "$status")
-            # A revoked key's signature verifies with gpg exiting 0; it is
-            # refused. VALIDSIG's last field is the primary key, whichever
-            # subkey signed.
-            revoked=$(awk '$2 == "REVKEYSIG" || $2 == "KEYREVOKED"' <<< "$status")
-            primary=$(awk '$2 == "VALIDSIG" { print $NF }' <<< "$status")
-            if [ -z "$(awk '$2 == "GOODSIG"' <<< "$status")" ] || [ -n "$revoked" ] || [ "$primary" != "$want" ]; then
-              printf '%s\n' "$said"
-              echo "::error::${file##*/} has no good signature by $want"
-              exit 1
-            fi
-            rm -rf "$home"
-            echo "checksum and signature ok: ${file##*/} by $want"
+            # Accepts a good signature by an expired key and refuses a revoked
+            # one, as for FFmpeg's; ends the job on a refusal.
+            signed "$file" "$sig_url" "$key_url" "$want"
+            echo "checksum ok: ${file##*/}"
             static_lines+=$(printf '%s\n' \
               "windows-static/${file##*/}  sha256 $sha" \
               "  $lib $version, from $url," \
               "  with a good signature, ${signature##*/}, by the key $want;" \
-              "  linked into the Windows tools from MSYS2's $package at that version.")$'\n'
+              "  the upstream source of MSYS2's $package, which the Windows tools link.")$'\n'
           done
 
           # archive <folder> <name>: the tree as checked out, submodules
@@ -946,7 +962,7 @@ jobs:
           }
           archive loom "loom-$loom_commit"
           archive port "loom-windows-port-$port_commit"
-          cp scripts/loom-windows-patch.py .github/workflows/vendor.yml "$out/build/"
+          cp scripts/loom-windows-patch.py scripts/vendor-signature.sh .github/workflows/vendor.yml "$out/build/"
           cp vendor/pins.json "$out/build/pins.json"
 
           commit=${GITHUB_SHA:-unknown}
@@ -970,9 +986,11 @@ jobs:
             echo "  build/loom-windows-patch.py <loom> <port>."
             printf '%s' "$static_lines"
             echo
-            echo "TOOLCHAIN-win-x64.txt, which the release adds beside this file from the"
-            echo "loom-windows job of the same run, names the exact MSYS2 package revisions"
-            echo "of zlib, bzip2, GCC's runtime and mingw-w64's CRT and winpthreads linked in."
+            echo "TOOLCHAIN-win-x64.txt and msys2-sources/, which the release adds beside this"
+            echo "file from the loom-windows job of the same run, name the exact MSYS2 package"
+            echo "revisions of zlib, bzip2, GCC's runtime and mingw-w64's CRT and winpthreads"
+            echo "linked in, and carry MSYS2's source packages (recipe, patches and upstream"
+            echo "tarball) for the zlib and bzip2 revisions."
             echo
             echo "How each target is built is the loom job (macOS and Linux) and the"
             echo "loom-windows job (Windows, in MSYS2 UCRT64) of build/vendor.yml: CMake in"

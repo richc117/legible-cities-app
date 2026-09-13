@@ -76,7 +76,19 @@ interface Module {
     tagNow: { run: string; remote: string | null } | string
   }): Decision
   parseLsRemote(text: string, tag: string): string | null
-  remoteTagCommit(cwd: string, remote: string, tag: string): string | null | { error: string }
+  remoteTagCommit(
+    cwd: string,
+    remote: string,
+    tag: string,
+    options?: {
+      attempts?: number
+      delayMs?: number
+      run?: (
+        cwd: string,
+        args: string[],
+      ) => { error?: Error; status: number | null; stdout: string; stderr: string }
+    },
+  ): string | null | { error: string }
   tagCommit(cwd: string, tag: string): { commit: string } | { error: string }
   isOnMain(cwd: string, commit: string, mainRef: string): boolean | string
   assetNames(label: string, pins: unknown): string[]
@@ -380,8 +392,45 @@ describe('the tag, main and the remote, over real repositories', () => {
     expect(remoteTagCommit(dir, 'origin', 'v0.1.0')).toBe(main)
     expect(remoteTagCommit(dir, 'origin', 'v0.1.0-rc.1')).toBe(side)
     expect(remoteTagCommit(dir, 'origin', 'v0.2.0')).toBeNull()
-    expect(remoteTagCommit(dir, 'nowhere', 'v0.1.0')).toEqual({
-      error: expect.stringContaining('ls-remote'),
+    expect(remoteTagCommit(dir, 'nowhere', 'v0.1.0', { delayMs: 0 })).toEqual({
+      error: expect.stringContaining('after 3 attempts'),
+    })
+  })
+
+  it('asks the remote again after a failure, and gives the last message after three', async () => {
+    const { remoteTagCommit } = await load()
+    const commit = '3'.repeat(40)
+    const calls: string[][] = []
+    const flaky = (_cwd: string, args: string[]) => {
+      calls.push(args)
+      return calls.length < 3
+        ? { status: 128, stdout: '', stderr: `fatal: blip ${calls.length}` }
+        : { status: 0, stdout: `${commit}\trefs/tags/v0.1.0\n`, stderr: '' }
+    }
+    expect(remoteTagCommit('.', 'origin', 'v0.1.0', { delayMs: 0, run: flaky })).toBe(commit)
+    expect(calls).toHaveLength(3)
+    expect(calls[0]).toEqual(['ls-remote', 'origin', 'refs/tags/v0.1.0', 'refs/tags/v0.1.0^{}'])
+
+    calls.length = 0
+    const down = (_cwd: string, args: string[]) => {
+      calls.push(args)
+      return { status: 128, stdout: '', stderr: `fatal: unreachable ${calls.length}` }
+    }
+    expect(remoteTagCommit('.', 'origin', 'v0.1.0', { delayMs: 0, run: down })).toEqual({
+      error: 'git ls-remote exited 128: fatal: unreachable 3 (after 3 attempts)',
+    })
+    expect(calls).toHaveLength(3)
+    // A spawn that fails outright is retried the same way.
+    const missing = () => ({
+      error: new Error('spawn git ENOENT'),
+      status: null,
+      stdout: '',
+      stderr: '',
+    })
+    expect(
+      remoteTagCommit('.', 'origin', 'v0.1.0', { delayMs: 0, attempts: 2, run: missing }),
+    ).toEqual({
+      error: 'spawn git ENOENT (after 2 attempts)',
     })
   })
 

@@ -62,6 +62,7 @@ on:
       - 'package-lock.json'
       - 'scripts/vendor-python.sh'
       - 'scripts/vendor-ffmpeg.sh'
+      - 'scripts/vendor-signature.sh'
       - 'scripts/check-vendored.mjs'
       - 'scripts/launch-packaged.mjs'
       - '.github/workflows/vendor.yml'

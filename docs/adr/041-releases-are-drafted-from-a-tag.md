@@ -94,7 +94,9 @@ with the token: it refuses a tag that is neither `v<version>` nor
 names this run's commit on the remote (the checkout forces the local tag
 to the run's commit, so `git ls-remote origin` is asked, and a run for a
 tag moved or deleted since its push drafts nothing), or a commit not
-reachable from `origin/main`, before anything is downloaded; it refuses an
+reachable from `origin/main`, before anything is downloaded (the remote is
+asked three times, a few seconds apart, before a failure to reach it is a
+refusal); it refuses an
 installer artefact that is missing, holds other than one installer, or
 whose manifest was written from other pins, for another version or in
 another run; it names the installers for their machine and archives each
@@ -106,8 +108,7 @@ create a **draft** for the tag with the notes, or update the one draft
 there is (its title, prerelease flag and assets, **not its notes**, which
 the maintainer may have edited) and remove any asset this run does not
 attach; refuse a published Release for the tag, or two drafts, touching
-nothing. It uploads with replacement and
-reads the draft back, and the script compares every asset's name, size and
+nothing. It uploads with replacement and reads the draft back, and the script compares every asset's name, size and
 GitHub's sha256 digest with the files. A `-rc.N` draft is a prerelease. No
 Release is published and none is marked latest by the workflow.
 
@@ -117,24 +118,37 @@ so a pushed tag does not start it a second time beside `build.yml`'s call.
 `loom-source` clones LOOM at the pinned commit with its submodules and
 refuses a checkout at another commit, a submodule not at the commit LOOM's
 tree records, or an unclean tree; clones the Windows port at its pinned
-commit; fetches the release tarballs of zlib and bzip2 at the versions
-`vendor/pins.json` pins under `loom_windows_static`, checking each against
-its sha256 and verifying its signature against the pinned primary key
-fingerprint, as `ffmpeg-source` does; and uploads both trees as tars
+commit; fetches the upstream release tarballs of zlib and bzip2 at the
+versions `vendor/pins.json` pins under `loom_windows_static`, checking each
+against its sha256 and verifying its signature against the pinned primary
+key fingerprint with the same `signed()` `ffmpeg-source` uses, now in
+`scripts/vendor-signature.sh` (a good signature by an expired key is
+accepted, a revoked key refused); and uploads both trees as tars
 without git's metadata, with names sorted and owners and times fixed,
 beside the tarballs and their signatures, `scripts/loom-windows-patch.py`,
 the pins, the workflow and a `BUILD.txt`. **The LOOM jobs need
 `loom-source`**, as the ffmpeg jobs need `ffmpeg-source`: no LOOM binary is
-uploaded in a run whose sources did not verify. `loom-windows` then refuses
-MSYS2 zlib or bzip2 packages whose upstream version is not the pinned one,
-before it builds, and uploads `loom-windows-toolchain`, its `pacman -Q`
-record of the zlib, bzip2, GCC runtime, CRT, headers and winpthreads
-packages it linked; the release job puts that record inside LOOM's source
-archive as `TOOLCHAIN-win-x64.txt`. `engine-source` clones the engine at the pinned tag, refuses a
-tag whose version is not the pinned one or that has submodules, and
-uploads the tree the same way with `scripts/vendor-python.sh` and a
-`BUILD.txt` naming the commit. Both run on every vendor run, so a change
-that breaks them fails on a branch rather than on a tag. The app's own
+uploaded in a run whose sources did not verify. The tools do not link
+upstream's zlib and bzip2 but MSYS2's packages, built with MSYS2's patches,
+so `loom-windows` refuses, before it builds, an MSYS2 zlib or bzip2 whose
+full package revision (`1.3.2-2`, `1.0.8-4`) is not the one pinned, which
+makes a new revision, a new patch included, fail loudly with the pin to
+move; then it fetches MSYS2's source package for each pinned revision (its
+PKGBUILD, patches and upstream tarball) from `repo.msys2.org`, checks it
+against the sha256 in the pins and its signature with `pacman-key` against
+MSYS2's keyring, and uploads `loom-windows-toolchain`: those source
+packages and a `pacman -Q` record of the zlib, bzip2, GCC runtime, CRT,
+headers and winpthreads packages it linked. The release job puts both
+inside LOOM's source archive (`msys2-sources/`, `TOOLCHAIN-win-x64.txt`).
+LOOM's archive therefore carries the upstream tarballs verified by their
+publishers' signatures, and MSYS2's source packages, recipe and patches,
+for the exact revisions linked. `engine-source` clones the engine at the
+pinned tag, refuses a tag whose version is not the pinned one or that has
+submodules, and uploads the tree the same way with
+`scripts/vendor-python.sh` and a `BUILD.txt` naming the commit; the
+`python` jobs need it, so no runtime carrying the engine is uploaded in a
+run without the engine's source. Both source jobs run on every vendor run,
+so a change that breaks them fails on a branch rather than on a tag. The app's own
 source is GitHub's archive of the tag. `docs/install.md` is the document a
 person follows, at the address the first-run dialog opens.
 
@@ -163,12 +177,14 @@ that was green throughout, and a flaky test job costs a rerun.
 rerun keeps the draft's notes, so a change to the template reaches a draft
 only when the draft is deleted and the job run again.
 
-**MSYS2 moving zlib or bzip2 fails the Windows LOOM build** until the pin
-under `loom_windows_static` is moved with the new tarball's sha256 and
-signing key; that is the price of attaching exactly the source of what is
-linked. The attached tarballs are upstream's; MSYS2 builds its packages
-from them with the recipe in `msys2/MINGW-packages` for the revision the
-record names, which is not copied. GCC's runtime and `libstdc++` are under
+**A new MSYS2 revision of zlib or bzip2 fails the Windows LOOM build**
+until `msys2_revision` and `msys2_source` under `loom_windows_static` are
+moved, with the upstream tarball's pin too when its version moved; that is
+the price of attaching the source of what is linked, patches included. The
+source package's signature is judged by the keyring pacman already trusts
+on the runner, not by a pinned fingerprint, and its sha256 is pinned; the
+`pacman-key` step was proven against a stand-in over MSYS2's keyring
+package, not yet on the Windows runner. GCC's runtime and `libstdc++` are under
 the GCC Runtime Library Exception and mingw-w64's CRT and winpthreads under
 permissive licences, so their notices, not their sources, are carried
 (`THIRD_PARTY_NOTICES.md`).
@@ -193,7 +209,14 @@ digest is compared by size and reported as a warning.
 
 **What python-build-standalone's `install_only` asset does not carry** - the
 licence files of the libraries it links statically, which ADR-035 says the
-Licences screen and the release owe - is not attached by this decision.
+Licences screen and the release owe - is not attached by this decision; it
+is issue 108. Electron's own bundled FFmpeg library is issue 109.
+
+**A source job failing now holds back binaries**: `ffmpeg-source` the
+ffmpeg jobs, `loom-source` the LOOM jobs and `engine-source` the runtime,
+so an unreachable upstream (GitHub, sourceware, a keyserver,
+`repo.msys2.org`) fails the vendor run where it once failed only the
+release.
 
 **Unsigned until A6-05.** macOS shows its malware warning and Windows
 SmartScreen its own; `docs/install.md` walks through both, and no person has

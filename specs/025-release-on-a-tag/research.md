@@ -159,3 +159,39 @@ the command line against a clone of it.
 **`vendor.yml` on a tag.** Its push trigger named only paths, which GitHub
 does not evaluate for a tag push, so every tag started it; it names
 branches now.
+
+## 7. After the second review (2026-09-13)
+
+**MSYS2's source packages.** `repo.msys2.org/mingw/sources/` holds
+`mingw-w64-zlib-1.3.2-2.src.tar.zst` (sha256 `eef69dea…8db3`) and
+`mingw-w64-bzip2-1.0.8-4.src.tar.zst` (`fd936091…9e54`), each with a
+`.sig`. zlib's holds its PKGBUILD, six patches and `zlib-1.3.2.tar.xz` with
+its signature; bzip2's its PKGBUILD, three patches and
+`bzip2-1.0.8.tar.gz`. Both signatures verified, `VALIDSIG` by primary key
+`5F944B027F7FE2091985AA2EFA11531AA0AA7F57`, against `msys2.gpg` from
+`msys2-keyring-1~20260814-1`. That key is not one of the five master keys
+in `msys2-trusted`; pacman trusts it through their signatures, which is
+what `pacman-key --verify` judges on the runner. The `loom-windows` step
+ran in `ubuntu:22.04` with stand-ins for `pacman` and for `pacman-key` (gpg
+over that keyring, requiring `VALIDSIG`) and real downloads: it fetched and
+verified both, wrote the record, and refused bzip2 `1.0.8-5`. The real
+`pacman-key` is first exercised by the branch's CI run.
+
+**An expired signing key.** gpg 2.2 on `ubuntu:22.04`, verifying a
+signature by a key that expired a day after signing (`--faked-system-time`
+years later): status `KEYEXPIRED`, `EXPKEYSIG`, `VALIDSIG` with the primary
+fingerprint, exit 0. `signed()` checks gpg's exit, refuses `REVKEYSIG` and
+`KEYREVOKED`, and compares `VALIDSIG`'s primary, so it accepts that
+signature; the first inline copy required `GOODSIG` and would not have.
+`signed()` moved unchanged into `scripts/vendor-signature.sh`, but for
+naming the signature after its URL's extension (`.sig` for bzip2; FFmpeg's
+and zlib's stay `.asc`); `vendor-ffmpeg.sh --sources` ran after the move
+and wrote the same files, with the helper copied into `build/`.
+
+**The order of the python jobs.** `determinism.yml` runs
+`scripts/vendor-python.sh` itself and does not call `vendor.yml`, and
+`build.yml`'s packaging jobs need the called workflow as a whole, so
+`python` needing `engine-source` changes neither.
+
+**ls-remote.** Three attempts, three seconds apart; tested with stand-ins
+that fail twice and then answer, that always fail, and that cannot spawn.
