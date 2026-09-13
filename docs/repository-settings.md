@@ -38,6 +38,20 @@ Applied 2026-09-07, when A0-09 landed the `ci` check. Direct commits to
 - [x] Block force pushes.
 - [x] Block deletions.
 
+## Release tags
+
+Applied 2026-09-13, before the first release: a tag ruleset named
+**Release tags** on `refs/tags/v*`, active. A pushed `v*` tag drafts a
+GitHub Release (ADR-041), so who can make one matters more than the
+workflow's own checks, which stop mistakes and not someone with push
+access.
+
+- [x] Restrict creations, updates and deletions of matching tags.
+- [x] Block force pushes.
+- [x] Bypass list: the **Repository admin** role, always. The maintainer
+      pushes release tags by hand; nothing in a workflow creates, moves or
+      deletes one, so the Actions token needs no bypass.
+
 ## Labels and milestones
 
 The issue templates and `.github/dependabot.yml` apply labels, which have to
