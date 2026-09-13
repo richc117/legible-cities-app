@@ -168,11 +168,11 @@ jobs:
           # The folder a per-user one-click NSIS installer uses is the
           # package's name, sanitised (electron-builder's
           # getWindowsInstallationDirName); a build that sets nsis options
-          # could change that, so it is refused rather than guessed at. The
-          # one option let through is `include`, a script added to the
-          # template's (build/installer.nsh, issue 128), which moves nothing.
-          # Any other line in the nsis section, or an include written in any
-          # shape but a plain `include: path`, is refused.
+          # could change that, so it is refused rather than guessed at. An
+          # include is let through (build/installer.nsh, issue 128); one that
+          # moves the install is caught by the exe check below. Any other
+          # line in the nsis section, or an include written in any shape but
+          # a plain `include: path`, is refused.
           $refused = @()
           $inNsis = $false
           foreach ($line in Get-Content -LiteralPath 'at-tag/electron-builder.yml') {

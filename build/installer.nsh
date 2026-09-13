@@ -48,12 +48,29 @@
 
 ; The template writes the copy with the shell context set to the current
 ; user, even for a per-machine install ("electron always uses per user app
-; data"), so it is removed the same way.
+; data"), so it is removed the same way. Straight after a 160 MB copy a
+; virus scanner can still hold the file, so the removal is tried up to
+; three times a second apart, and a folder still there is said in the
+; details rather than failing the install or the uninstall.
 !macro legibleRemoveUpdaterCache
   ${if} $installMode == "all"
     SetShellVarContext current
   ${endif}
-  RMDir /r "$LOCALAPPDATA\${LEGIBLE_UPDATER_DIR}"
+  Push $R8
+  StrCpy $R8 0
+  ${Do}
+    RMDir /r "$LOCALAPPDATA\${LEGIBLE_UPDATER_DIR}"
+    IntOp $R8 $R8 + 1
+    ${IfNot} ${FileExists} "$LOCALAPPDATA\${LEGIBLE_UPDATER_DIR}\*.*"
+      ${ExitDo}
+    ${EndIf}
+    ${If} $R8 >= 3
+      DetailPrint "Could not remove $LOCALAPPDATA\${LEGIBLE_UPDATER_DIR}, the installer's unused copy of itself"
+      ${ExitDo}
+    ${EndIf}
+    Sleep 1000
+  ${Loop}
+  Pop $R8
   ${if} $installMode == "all"
     SetShellVarContext all
   ${endif}
@@ -64,6 +81,12 @@
   !insertmacro legibleRemoveUpdaterCache
 !macroend
 
+; Not when an installer runs this uninstaller to replace the version it
+; belongs to (installUtil.nsh's uninstallOldVersion passes --updated): with
+; an updater (A6-05) the installer running then could be the one in this
+; folder. The new installer's customInstall removes the folder instead.
 !macro customUnInstall
-  !insertmacro legibleRemoveUpdaterCache
+  ${ifNot} ${isUpdated}
+    !insertmacro legibleRemoveUpdaterCache
+  ${endIf}
 !macroend

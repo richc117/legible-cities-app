@@ -245,6 +245,7 @@ jobs:
       # installer's.
       - name: Install and uninstall the Windows installer, and look for what is left
         if: runner.os == 'Windows'
+        timeout-minutes: 10
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'

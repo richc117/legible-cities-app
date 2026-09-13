@@ -1297,8 +1297,13 @@ an install an older installer made. The folder is the template's own
 `APP_INSTALLER_STORE_FILE` without its file name, and the build fails if
 that stops being one folder name ending in `-updater`, so the removal
 cannot reach another folder. Keeping the copy and documenting it was the
-alternative; it bought nothing, and when an updater arrives it will need
-the copy back, which means deleting `customInstall`'s removal then. On
+alternative; it bought nothing. When an updater arrives it will need the
+copy back, and both removals revisited then: `customInstall`'s, which
+deletes the copy, and `customUnInstall`'s, which already stands aside when
+an installer runs the old uninstaller to replace it (`--updated`), since
+the installer running then could be the one in that folder. A removal
+straight after the copy is tried three times a second apart, in case a
+virus scanner still holds the file. On
 Windows the packaging job then installs the installer silently, checks the
 folder is absent while installed, puts a stand-in copy there, uninstalls
 silently and checks both the install folder and the updater folder are
