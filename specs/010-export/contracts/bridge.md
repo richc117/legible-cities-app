@@ -75,9 +75,13 @@ copy with nothing else on it.
 
 1. Read the record; refuse read-only, no layout, no service day.
 2. `export.plan { key, preset, page: app://local/projects/<id>/<feed>.html, date, options }`,
-   where `options` is the choice's options, its `storyboard` when one is
-   set, and `theme`: `light` for a sepia record and `dark` otherwise.
-   `safe` is never sent for an export.
+   where `options` is the choice's options as far as the preset takes them,
+   its `storyboard` when one is set, and `theme`: `light` for a sepia record
+   and `dark` otherwise. `export.presets` is read first: no `view` or `at`
+   for a video or GIF preset, no `storyboard` for a still, no `quality` for
+   a `jpg` still. `safe` is never sent for an export. A plan whose mode or
+   format disagrees with the preset, or a `jpg` still with `keep`, is
+   refused.
 3. Validate the plan's capture half with `validateCaptureJob`; refuse a
    file name that is not a bare name.
 4. Capture into `<SCHEMATIC_HOME>/frames/<token>/`, progress per frame. A

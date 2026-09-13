@@ -898,7 +898,15 @@ are the engine's `ExportOptions` without the theme (the project's), the
 safe zones (the app's, for a preview only), the storyboard (beside them) and
 the fade (not offered) - is written to the record the moment it is made,
 a typed field when it is committed, through `setExport`. An option set back
-to what the engine does without it is removed rather than sent. A saved
+to what the engine does without it is removed rather than sent. What is
+sent is also narrowed by the preset, from `export.presets`, in the main
+process before every plan (`sentChoice`): a view and a start time are a
+still's only, since a storyboard's first beat names its own and the capture
+applies it; a still the table says is JPEG is made at standard quality only,
+because the capture writes PNG and the engine keeps a capture unchanged at
+draft and high. The record keeps what a person chose. Writes to one record
+take turns through a per-project chain in the store, so a choice made during
+a re-layout cannot write back the old layout. A saved
 preset or storyboard the engine no longer lists falls back to the reel,
 and the tab says which name was dropped.
 

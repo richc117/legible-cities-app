@@ -159,7 +159,8 @@ draft does not overwrite the last good file.
 1. **Given** the tab, **When** it is read, **Then** it offers view,
    labels, title, clock, the start time (`at`), the lines to keep, quality
    (draft, standard, high) and a filename tag, each defaulting to what
-   `export.plan` does when the option is not sent.
+   `export.plan` does when the option is not sent. View and the start time
+   are offered for still presets only (see "Changed after review").
 2. **Given** the lines option, **When** it is opened, **Then** it lists the
    project's own lines by the same labels the line colours use; none chosen
    means every line.
@@ -188,7 +189,8 @@ video, "day".
 3. **Given** a record naming a preset or storyboard the engine no longer
    returns, **When** the tab opens, **Then** it falls back to
    `instagram-reel` and its default storyboard, and says the saved choice
-   is no longer offered.
+   is no longer offered. A record naming a preset outside the app's
+   thirteen is reset to the reel when it is read, without a notice.
 
 ---
 
@@ -212,12 +214,29 @@ video, "day".
   checkboxes) plan once when they stop, not once per change.
 - **The engine is away.** The tab says the engine is not running and offers
   nothing, as the layout panel does.
-- **A read-only record** shows the tab with its choices disabled and the
-  export still offered, as the rest of the project's editing is disabled.
+- **A read-only record** shows the tab with its choices disabled, and is
+  not exportable: the main process refuses to export a record a newer app
+  wrote, and the tab says so rather than offering a button that fails.
 - **`speed`** is in the issue's list of options, but not in the engine's
   `ExportOptions`: the page plays a storyboard at the speed its beats say.
   It is not offered, and no engine issue is filed yet (see Assumptions).
 - **`fade`** is in `ExportOptions` but not in the issue. It is not offered.
+
+### Changed after review
+
+Approved by the maintainer after the first review of the build:
+
+- **View and the start time are stills-only.** Every storyboard's first
+  beat names its own view and clock, and the capture applies them, so
+  either option beside a video or GIF changed the preview and not the file.
+  A record that holds them for a playing preset keeps them; they are not
+  sent.
+- **JPEG stills are standard quality only.** The app captures PNG, and at
+  draft and high the engine keeps the capture unchanged, which would put
+  PNG bytes under a `.jpg` name. Which presets are JPEG is read from
+  `export.presets`.
+- **A read-only project is not exportable**, and **a preset outside the
+  thirteen is reset on read without a notice** (above).
 
 ## Requirements _(mandatory)_
 
@@ -232,7 +251,10 @@ video, "day".
   only, list `export.storyboards`, and default to the preset's own.
 - **FR-004**: The options MUST be view, labels, title, clock, `at`, lines,
   quality and tag, sent as `ExportOptions`, with an option left at its
-  default not sent.
+  default not sent. View and `at` MUST be offered and sent for still
+  presets only; a still the engine's table says is `jpg` MUST be offered
+  and sent at standard quality only. The main process applies both rules
+  when it builds a plan, whatever the record holds.
 - **FR-005**: While the Export tab is open and the project has a page, the
   map's frame MUST show the address `export.plan` returns for the current
   choices with `safe: true`, sized to the preset's aspect ratio. The frame
