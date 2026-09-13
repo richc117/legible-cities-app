@@ -26,6 +26,7 @@ import LineColours from './LineColours'
 import LineOrderPanel from './LineOrder'
 import ThemeSwitch from './ThemeSwitch'
 import ServiceDay from './ServiceDay'
+import SkipPastMap, { skipTarget } from './SkipPastMap'
 import Tabs, { TabPanel } from './kit/Tabs'
 import TextInput, { type TextInputHandle } from './kit/TextInput'
 import { useEngineState } from './useEngineState'
@@ -137,7 +138,17 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
     })
   }, [id, run])
   const renameButtonRef = useRef<HTMLElement>(null)
+  const deleteButtonRef = useRef<HTMLElement>(null)
   const newNameRef = useRef<TextInputHandle>(null)
+
+  // Past the map to the project's own toolbar (issue 106): its first button
+  // that can take focus, or the screen's heading when neither can.
+  const skipPastMap = (): void => {
+    skipTarget<HTMLElement>(
+      [renameButtonRef.current, deleteButtonRef.current],
+      headingRef.current,
+    )?.focus()
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -409,6 +420,10 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
               onPreview={setPreview}
             />
           </TabPanel>
+          {/* Just before the frame in the Tab order, under both tabs, so the
+              engine's page is one press to pass rather than all its
+              controls (issue 106, DESIGN.md 8.2). */}
+          {project.layout !== null && <SkipPastMap onSkip={skipPastMap} />}
           {/* The map's own frame, under both tabs: the plain map with its
               controls under Map, and the export's frame, planned by the
               engine, under Export (A5-01, FR-005). One frame, because the
@@ -427,6 +442,7 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
               Rename
             </Button>
             <Button
+              ref={deleteButtonRef}
               variant="destructive"
               disabled={exporting || layingOut}
               onClick={() => {

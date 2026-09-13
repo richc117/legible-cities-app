@@ -238,7 +238,8 @@ view's two stages); below the tabs, the viewer. Above the tabs sits
 information button beside one measure (a screen reader names it
 "What `<measure>` means"), press **Escape**, and press **Copy as text**. In **Where the routes run**, press **gtfs2graph**, then
 **loom**; press Tab until the drawing has focus, and press `+`, `-`, an
-arrow and `0`. Then use the map's own controls inside the viewer.
+arrow and `0`. Press Tab once more, and then **Enter**. Then use the map's
+own controls inside the viewer.
 
 **See.**
 - The diagnostics open with either "No caveats: nothing was fudged, and
@@ -255,6 +256,9 @@ arrow and `0`. Then use the map's own controls inside the viewer.
   **Edges** and **Lines**; and the drawing zooming, panning and fitting
   again from the keyboard, as the line under it says: "Zoom with the wheel
   or plus and minus, pan by dragging or with the arrows, 0 to fit."
+- The Tab after the drawing shows **Skip past the map** over the top edge
+  of the viewer, and **Enter** on it puts focus on **Rename**, below the
+  map, without passing through the map's own controls.
 - The viewer shows the animated map, its trains moving, with the engine's
   own view switcher and controls, and they respond. **check:** no message
   "This project's map is not there. Lay it out again." under it.
