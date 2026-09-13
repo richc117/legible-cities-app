@@ -5,7 +5,10 @@
 
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import FirstRunDialog, { firstRunTitle } from '../../src/renderer/src/FirstRunDialog'
+import FirstRunDialog, {
+  anotherDialogOpen,
+  firstRunTitle,
+} from '../../src/renderer/src/FirstRunDialog'
 import { failureSentence, type FirstRunResult } from '../../src/shared/first-run'
 
 const LOOM_MISSING: FirstRunResult['loom'] = {
@@ -61,5 +64,36 @@ describe('the first-run dialog', () => {
     expect(html).toContain('maps cannot be laid out')
     expect(html).toContain('The bundled ffmpeg did not answer in time, so exports cannot be made.')
     expect(html).toContain('does not need LOOM or ffmpeg')
+  })
+})
+
+describe('waiting for another dialog', () => {
+  const page = (open: object[]) => ({ querySelectorAll: () => open as unknown as Element[] })
+  const own = {} as Element
+
+  it('waits while a dialog other than its own is open', () => {
+    const creating = {}
+    expect(anotherDialogOpen(page([creating]), own)).toBe(true)
+    expect(anotherDialogOpen(page([own, creating]), own)).toBe(true)
+  })
+
+  it('does not wait for itself, or when nothing is open', () => {
+    expect(anotherDialogOpen(page([own]), own)).toBe(false)
+    expect(anotherDialogOpen(page([]), own)).toBe(false)
+    expect(anotherDialogOpen(page([]), null)).toBe(false)
+  })
+
+  it('asks the page for open dialogs only', () => {
+    const asked: string[] = []
+    anotherDialogOpen(
+      {
+        querySelectorAll: (selector) => {
+          asked.push(selector)
+          return []
+        },
+      },
+      own,
+    )
+    expect(asked).toEqual(['dialog[open]'])
   })
 })

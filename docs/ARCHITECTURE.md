@@ -1230,8 +1230,8 @@ fails the package, where electron-builder alone would skip it with a
 warning. Last, `scripts/launch-packaged.mjs` launches the unpacked app once
 with a temporary `--user-data-dir` and the bundle as its working directory,
 waits for the engine to be ready, asks it `engine.info` (which, at the
-pinned engine, reports configuration rather than proving execution), quits,
-waits for the first-run check to pass for both tools, and reads the log for
+pinned engine, reports configuration rather than proving execution), waits
+for the first-run check to pass for both tools, quits, and reads the log for
 the bundled origins, the check's passing line and the engine's clean end.
 It then runs each bundled LOOM tool with `--help` and ffmpeg and ffprobe with
 `-version` from inside the bundle, and compares every file and folder in the
@@ -1261,11 +1261,19 @@ what `SCHEMATIC_LOOM_BIN` or `SCHEMATIC_FFMPEG` names, and never Docker or
 PATH. Each spawn is an argument array with `windowsHide`, a 15-second
 deadline, its standard output capped and its standard error in `main.log`
 under `first-run`, run in a fresh folder under the temporary folder that is
-removed after, and ended at quit. The result crosses the bridge as one
+removed after, and ended at quit; a killed child is given two seconds to
+close first, because on Windows a terminating process still holds its
+working folder, and a quit during the file checks spawns nothing. The
+outcomes are published together, once the folder is gone and the summary
+line is in the log, so the launch check - which quits the moment the result
+says finished - always finds the line. The result crosses the bridge as one
 read and one change (`api.firstRun`): per tool running, passed, failed with
-a sentence and a detail whose paths are taken out, or skipped with a
-reason. A failure opens one modal dialog per start, never over the mismatch
-dialog, with "Copy diagnostics" (whose text now carries the check) and "How
+a sentence and a detail with no path in it (the check's own paths and the
+app's folder as their names, the home as `~` as "Copy diagnostics" writes
+it, any other drive- or share-rooted path cut to the end of its line), or
+skipped with a reason. A failure opens one modal dialog per start, never
+over another dialog - the mismatch dialog, or one a person has open - and
+opens when that one closes, with "Copy diagnostics" (whose text now carries the check) and "How
 to install", which opens the install document at an address the main
 process holds, in the platform's browser; that press is the check's only
 reach to the network. Settings shows the result for as long as the app

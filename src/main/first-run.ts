@@ -21,7 +21,7 @@
 
 import { spawn as nodeSpawn } from 'node:child_process'
 import { mkdtemp, rm, stat } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import {
   failureSentence,
@@ -34,6 +34,7 @@ import {
   type ToolCheck,
 } from '../shared/first-run'
 import type { ToolTarget } from './config'
+import { shortenHome } from './diagnostics-text'
 
 /**
  * How long one spawn may take. Generous: a first launch on macOS can wait on
@@ -47,6 +48,13 @@ export const MAX_STDOUT_BYTES = 1024 * 1024
 
 /** The most standard error kept for the log. */
 export const MAX_STDERR_BYTES = 16 * 1024
+
+/**
+ * How long a killed child is given to close before the check stops waiting
+ * for it. On Windows a process that is terminating still holds its working
+ * directory, and the temporary folder is removed right after (US3-3).
+ */
+export const CLOSE_GRACE_MS = 2_000
 
 /** The longest detail shown to a person. */
 export const MAX_DETAIL_CHARS = 400
@@ -97,12 +105,14 @@ export type ProcessEnd =
   | { kind: 'error'; code: string; stderr: string }
   | { kind: 'timeout'; stderr: string }
   | { kind: 'overflow'; stderr: string }
+  | { kind: 'aborted'; stderr: string }
 
 /**
  * Run one tool and wait for it, bounded. Resolves once, whichever comes
- * first: the child's close, a spawn error, the deadline (the child is killed
- * and not waited for, since a child that ignores a kill must not hold the
- * check), or more output than the cap (killed too).
+ * first: the child's close, a spawn error, the deadline, or more output than
+ * the cap. On the last two the child is killed and given `closeGraceMs` to
+ * close - long enough for Windows to let go of its working folder - but no
+ * longer, since a child that ignores a kill must not hold the check.
  */
 export function runProcess(
   spawner: Spawner,
@@ -114,6 +124,8 @@ export function runProcess(
     maxStdout: number
     /** Held while the child lives, so a quit can end it. */
     track: (kill: () => void) => () => void
+    /** How long a killed child is waited for; `CLOSE_GRACE_MS` by default. */
+    closeGraceMs?: number
   },
 ): Promise<ProcessEnd> {
   return new Promise((resolve) => {
@@ -145,6 +157,9 @@ export function runProcess(
       }
     }
     const untrack = options.track(kill)
+    let closed = false
+    /** Called on close; set when a killed child is being waited for. */
+    let onClosed: (() => void) | null = null
     const finish = (end: ProcessEnd): void => {
       if (settled) return
       settled = true
@@ -152,16 +167,24 @@ export function runProcess(
       untrack()
       resolve(end)
     }
-    const timer = setTimeout(() => {
+    /** Kill the child, then settle with `end` once it closes or the grace is spent. */
+    const killThen = (end: () => ProcessEnd): void => {
+      if (settled || onClosed !== null) return
+      clearTimeout(timer)
       kill()
-      finish({ kind: 'timeout', stderr })
-    }, options.timeoutMs)
+      if (closed) return finish(end())
+      const grace = setTimeout(() => finish(end()), options.closeGraceMs ?? CLOSE_GRACE_MS)
+      onClosed = () => {
+        clearTimeout(grace)
+        finish(end())
+      }
+    }
+    const timer = setTimeout(() => killThen(() => ({ kind: 'timeout', stderr })), options.timeoutMs)
     child.stdout?.on('data', (chunk: Buffer) => {
-      if (settled) return
+      if (settled || onClosed !== null) return
       stdoutBytes += chunk.length
       if (stdoutBytes > options.maxStdout) {
-        kill()
-        finish({ kind: 'overflow', stderr })
+        killThen(() => ({ kind: 'overflow', stderr }))
         return
       }
       stdout.push(chunk)
@@ -169,16 +192,20 @@ export function runProcess(
     child.stderr?.on('data', (chunk: Buffer) => {
       stderr = (stderr + chunk.toString('utf8')).slice(-MAX_STDERR_BYTES)
     })
-    child.on('error', (error) => finish({ kind: 'error', code: error.code ?? 'unknown', stderr }))
-    child.on('close', (code, signal) =>
+    child.on('error', (error) => {
+      if (onClosed === null) finish({ kind: 'error', code: error.code ?? 'unknown', stderr })
+    })
+    child.on('close', (code, signal) => {
+      closed = true
+      if (onClosed !== null) return onClosed()
       finish({
         kind: 'exit',
         code,
         signal,
         stdout: Buffer.concat(stdout).toString('utf8'),
         stderr,
-      }),
-    )
+      })
+    })
   })
 }
 
@@ -200,28 +227,44 @@ export function firstLine(text: string): string {
   )
 }
 
+/** A path's last folder or file name, in either separator whatever the platform. */
+const lastName = (path: string): string =>
+  path
+    .split(/[\\/]+/)
+    .filter((part) => part !== '')
+    .pop() ?? ''
+
 const escape = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 /**
  * A detail with its absolute paths taken out, since it is shown on screen
  * and copied: each path the check itself knows is written as `…/` and its
- * last folder name, and anything else that looks like an absolute path as
- * `…`. The log keeps the paths; that is a file on this machine.
+ * last folder name; the home folder, in any form the diagnostics copy knows
+ * (its 8.3 short name included), as `~`; a path rooted at a drive or a share
+ * (`C:\`, `\\server\`, `\\?\C:\`) as `…` to the end of its line, since
+ * such a path may hold spaces and colons and nothing reliable ends it; and a
+ * POSIX path as `…`. The log keeps the paths; that is a file on this machine.
  */
-export function withoutPaths(text: string, known: readonly string[]): string {
+export function withoutPaths(
+  text: string,
+  known: readonly string[],
+  homes: readonly string[] = [],
+  platform: string = process.platform,
+): string {
   let out = text
   for (const path of [...new Set(known)]
     .filter((p) => p !== '')
     .sort((a, b) => b.length - a.length)) {
     const forms = [path, path.replace(/\\/g, '/'), path.replace(/\//g, '\\')]
     for (const form of new Set(forms)) {
-      out = out.replace(new RegExp(escape(form), 'gi'), `…/${basename(path)}`)
+      out = out.replace(new RegExp(escape(form), 'gi'), `…/${lastName(path)}`)
     }
   }
+  out = shortenHome(out, homes, platform)
   return (
     out
-      // A drive letter or a UNC share, then anything up to a space, quote or colon.
-      .replace(/(^|[\s'"(=])(?:[A-Za-z]:|\\\\[^\s\\'"():]+)[\\/][^\s'"():]*/g, '$1…')
+      // A drive letter, a share or a device path, and the rest of its line.
+      .replace(/(^|[\s'"(=])(?:[A-Za-z]:[\\/]|\\\\[^\\\s]+[\\/]).*$/gm, '$1…')
       // A POSIX path of two segments or more.
       .replace(/(^|[\s'"(=])\/[^\s'"():/]+\/[^\s'"():]*/g, '$1…')
       .slice(0, MAX_DETAIL_CHARS)
@@ -277,6 +320,20 @@ export interface FirstRunDeps {
   removeTemp?: (dir: string) => Promise<void>
   now?: () => number
   timeoutMs?: number
+  /** How long a killed child is waited for; `CLOSE_GRACE_MS` by default. */
+  closeGraceMs?: number
+  /**
+   * More paths a detail must not show, written as their last folder name:
+   * the app's resources, or the repository in development.
+   */
+  known?: readonly string[]
+  /**
+   * The home folder in every form to write as `~` (the settings service's
+   * lookup, as "Copy diagnostics" uses); on a failure to answer, the home as
+   * the platform names it. Asked only when a tool has failed.
+   */
+  homes?: () => Promise<readonly string[]>
+  platform?: string
   log: { info: (message: string) => void; warn: (message: string) => void }
 }
 
@@ -342,14 +399,6 @@ export class FirstRunCheck {
     if (live.length > 0) this.#deps.log.info(`ended ${live.length} running check(s) at quit`)
   }
 
-  #set(tool: FirstRunTool, check: ToolCheck): void {
-    if (this.#aborted) return
-    const next = { ...this.#result, [tool]: check }
-    next.finished = FIRST_RUN_TOOLS.every((t) => next[t].outcome !== 'running')
-    this.#result = next
-    for (const listener of this.#listeners) listener(next)
-  }
-
   async #run(): Promise<FirstRunResult> {
     const { targets, log } = this.#deps
     for (const tool of FIRST_RUN_TOOLS) {
@@ -365,6 +414,11 @@ export class FirstRunCheck {
     const removeTemp =
       this.#deps.removeTemp ??
       ((dir: string) => rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }))
+    // Every outcome is gathered here and published once, after the
+    // temporary folder is gone and the summary is in the log: `finished` is
+    // what the launch check waits for before it quits, so nothing it looks
+    // for may come after it (specs/026, US2-4).
+    const outcomes: Partial<Record<FirstRunTool, ToolCheck>> = {}
     let cwd: string
     try {
       cwd = await makeTemp()
@@ -374,15 +428,17 @@ export class FirstRunCheck {
       const code = (error as NodeJS.ErrnoException).code ?? 'unknown'
       for (const tool of FIRST_RUN_TOOLS) {
         if (targets[tool].kind !== 'check') continue
-        this.#set(tool, {
+        outcomes[tool] = {
           outcome: 'skipped',
           reason: `the temporary folder could not be made (${code})`,
-        })
+        }
       }
       log.warn(`the temporary folder could not be made (${code}); nothing was checked`)
-      return this.#result
+      return this.#publish(outcomes)
     }
     try {
+      // A quit that came while the folder was being made: nothing is spawned.
+      if (this.#aborted) return this.#result
       await Promise.all(
         FIRST_RUN_TOOLS.map(async (tool) => {
           const target = targets[tool]
@@ -399,22 +455,31 @@ export class FirstRunCheck {
           for (const line of verdict.stderr ?? []) log.info(line)
           if (verdict.outcome === 'passed') {
             log.info(`${TOOL_NAMES[tool]} passed in ${ms} ms`)
-            this.#set(tool, { outcome: 'passed', ms })
+            outcomes[tool] = { outcome: 'passed', ms }
             return
           }
-          // The tool's folder too: ffprobe sits beside ffmpeg, and a path the
-          // replacement does not know is cut at its first space, which on
-          // Windows can leave part of a user's name.
-          const known = [target.path, dirname(target.path), this.#deps.fixture, cwd]
-          const check: ToolCheck = {
+          // The tool's folder too: ffprobe sits beside ffmpeg, and the
+          // resources and the home, so no part of a user's name is left.
+          const known = [
+            target.path,
+            dirname(target.path),
+            this.#deps.fixture,
+            cwd,
+            ...(this.#deps.known ?? []),
+          ]
+          outcomes[tool] = {
             outcome: 'failed',
             kind: verdict.kind,
             sentence: failureSentence(tool, verdict.kind, target.named),
-            detail: withoutPaths(verdict.detail, known),
+            detail: withoutPaths(
+              verdict.detail,
+              known,
+              await this.#homes(),
+              this.#deps.platform ?? process.platform,
+            ),
             ms,
           }
           log.warn(`${TOOL_NAMES[tool]} failed in ${ms} ms (${verdict.kind}): ${verdict.detail}`)
-          this.#set(tool, check)
         }),
       )
     } finally {
@@ -422,8 +487,28 @@ export class FirstRunCheck {
         log.warn(`the temporary folder could not be removed (${error.code ?? 'unknown'})`),
       )
     }
-    if (!this.#aborted) log.info(`finished: ${summaryLine(this.#result)}`)
-    return this.#result
+    return this.#publish(outcomes)
+  }
+
+  /** Log the summary, then publish every outcome at once; nothing after a quit. */
+  #publish(outcomes: Partial<Record<FirstRunTool, ToolCheck>>): FirstRunResult {
+    if (this.#aborted) return this.#result
+    const next: FirstRunResult = { ...this.#result, ...outcomes }
+    next.finished = FIRST_RUN_TOOLS.every((t) => next[t].outcome !== 'running')
+    this.#deps.log.info(`finished: ${summaryLine(next)}`)
+    this.#result = next
+    for (const listener of this.#listeners) listener(next)
+    return next
+  }
+
+  /** The home folder's forms to hide, bounded by the lookup itself; the platform's name for it on a refusal. */
+  async #homes(): Promise<readonly string[]> {
+    if (this.#deps.homes === undefined) return []
+    try {
+      return await this.#deps.homes()
+    } catch {
+      return [homedir()]
+    }
   }
 
   #timeoutMs(): number {
@@ -435,10 +520,13 @@ export class FirstRunCheck {
   }
 
   #spawn(command: string, args: string[], cwd: string): Promise<ProcessEnd> {
+    // A quit that landed during the file checks: no process after it.
+    if (this.#aborted) return Promise.resolve({ kind: 'aborted', stderr: '' })
     return runProcess(this.#deps.spawn ?? (nodeSpawn as unknown as Spawner), command, args, {
       cwd,
       timeoutMs: this.#timeoutMs(),
       maxStdout: MAX_STDOUT_BYTES,
+      closeGraceMs: this.#deps.closeGraceMs,
       track: (kill) => {
         // A quit that came first: nothing new may outlive it.
         if (this.#aborted) kill()
@@ -545,6 +633,13 @@ function judge(
         outcome: 'failed',
         kind: 'timeout',
         detail: `${name} gave no answer within ${timeoutMs / 1000} s and was ended.`,
+        stderr,
+      }
+    case 'aborted':
+      return {
+        outcome: 'failed',
+        kind: 'not-running',
+        detail: `${name} was not started: the app is quitting.`,
         stderr,
       }
     case 'overflow':

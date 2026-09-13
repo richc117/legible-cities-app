@@ -234,14 +234,55 @@ describe('withoutPaths', () => {
     expect(withoutPaths('could not open /var/folders/ab/T/thing: denied', [])).toBe(
       'could not open …: denied',
     )
+    // A drive-rooted path may hold spaces and colons, so it goes to the end of its line.
     expect(withoutPaths(`loading "${['D:', 'a', 'b.dll'].join('\\')}" failed`, [])).toBe(
-      'loading "…" failed',
+      'loading "…',
     )
-    expect(withoutPaths(`at ${drive}`, [])).not.toContain('C:')
+    expect(withoutPaths(`at ${drive}\nnext line`, [])).toBe('at …\nnext line')
     expect(withoutPaths('exited with code 3 after 1/2 of the work', [])).toBe(
       'exited with code 3 after 1/2 of the work',
     )
   })
+  // Every home below is assembled from pieces, so no literal path of that
+  // shape is committed (bin/preflight refuses one).
+  const spaced = ['C:', 'Users', 'Jane Doe'].join('\\')
+
+  it('never leaves part of a Windows user name that has a space in it', () => {
+    const where = `${spaced}\\AppData\\Local\\Temp\\x: Access is denied`
+    // Unknown and with no home given: cut from the drive to the end of the line.
+    expect(withoutPaths(`could not open ${where}`, [], [], 'win32')).toBe('could not open …')
+    // With the home: written as ~, the rest kept.
+    expect(withoutPaths(`could not open ${where}`, [], [spaced], 'win32')).toBe(
+      'could not open ~\\AppData\\Local\\Temp\\x: Access is denied',
+    )
+  })
+
+  it('takes out a device path and a share, and the home in its 8.3 short form', () => {
+    const device = `\\\\?\\${spaced}\\AppData\\thing.dll`
+    expect(withoutPaths(`LoadLibrary ${device}: 126`, [], [], 'win32')).toBe('LoadLibrary …')
+    expect(withoutPaths(`at ${['\\\\server', 'share', 'Jane Doe'].join('\\')}`, [])).toBe('at …')
+    const short = ['C:', 'Users', 'JANEDO~1'].join('\\')
+    expect(withoutPaths(`in ${short}\\AppData\\x`, [], [spaced, short], 'win32')).toBe(
+      'in ~\\AppData\\x',
+    )
+  })
+
+  it('writes the resources folder as its name before anything else is cut', () => {
+    const resources = [
+      'C:',
+      'Users',
+      'Jane Doe',
+      'AppData',
+      'Local',
+      'Programs',
+      'Legible Cities',
+      'resources',
+    ].join('\\')
+    expect(
+      withoutPaths(`no file ${resources}\\loom\\octi.exe`, [resources], [spaced], 'win32'),
+    ).toBe('no file …/resources\\loom\\octi.exe')
+  })
+
   it('is bounded', () => {
     expect(withoutPaths('x'.repeat(10_000), []).length).toBeLessThanOrEqual(400)
   })
@@ -648,6 +689,83 @@ describe('FirstRunCheck', () => {
     expect(summarize(result)).toBe('The tools this run names ran; the others were not checked.')
   })
 
+  it('logs the summary and removes its folder before it publishes finished', async () => {
+    const order: string[] = []
+    const { subject } = check({
+      log: {
+        info: (m) => {
+          if (m.startsWith('finished: ')) order.push('summary logged')
+        },
+        warn: () => undefined,
+      },
+      removeTemp: async () => {
+        order.push('folder removed')
+      },
+    })
+    subject.onChange((r) => {
+      if (r.finished) order.push('finished published')
+    })
+    await subject.run()
+    expect(order).toEqual(['folder removed', 'summary logged', 'finished published'])
+  })
+
+  it('a quit while the folder is being removed publishes nothing, so the launch check never quits past the summary', async () => {
+    let release = (): void => undefined
+    const { subject, seen, lines } = check({
+      removeTemp: () =>
+        new Promise<void>((r) => {
+          release = r
+        }),
+    })
+    const running = subject.run()
+    await new Promise((r) => setTimeout(r, 20))
+    subject.abort()
+    release()
+    await running
+    expect(seen).toEqual([])
+    expect(subject.result.finished).toBe(false)
+    expect(lines.some((l) => l.startsWith('info finished'))).toBe(false)
+  })
+
+  it('spawns nothing when a quit lands during the file checks, and still removes its folder', async () => {
+    let answer = (): void => undefined
+    const gate = new Promise<void>((r) => {
+      answer = r
+    })
+    const healthy = tree()!
+    const { subject, fake, temps, seen } = check({
+      kind: async (path) => {
+        await gate
+        return healthy(path)
+      },
+    })
+    const running = subject.run()
+    await new Promise((r) => setTimeout(r, 20))
+    subject.abort()
+    answer()
+    await running
+    expect(fake.calls).toEqual([])
+    expect(temps.removed).toHaveLength(1)
+    expect(seen).toEqual([])
+  })
+
+  it('spawns nothing when a quit lands while the temporary folder is being made', async () => {
+    let made = (): void => undefined
+    const { subject, fake, temps } = check({
+      makeTemp: () =>
+        new Promise<string>((r) => {
+          made = () => r(join(tmpdir(), 'first-run-test-cwd'))
+        }),
+    })
+    const running = subject.run()
+    await new Promise((r) => setTimeout(r, 20))
+    subject.abort()
+    made()
+    await running
+    expect(fake.calls).toEqual([])
+    expect(temps.removed).toEqual([join(tmpdir(), 'first-run-test-cwd')])
+  })
+
   it('ends every child at quit and publishes nothing after', async () => {
     const { subject, fake, seen, lines } = check({
       scripts: { gtfs2graph: { hang: true }, ffmpeg: { hang: true }, ffprobe: { hang: true } },
@@ -710,6 +828,54 @@ describe('the sentences', () => {
 })
 
 // ---------------------------------------------------------------- a real child
+
+describe('runProcess after a kill', () => {
+  /** A child that closes `closesAfterMs` after it is killed, or never. */
+  function stubborn(closesAfterMs: number | null): { spawner: Spawner; killedAt: number[] } {
+    const killedAt: number[] = []
+    const spawner: Spawner = () => {
+      const child = new EventEmitter() as EventEmitter & ToolProcess
+      Object.assign(child, {
+        stdout: new PassThrough(),
+        stderr: new PassThrough(),
+        kill: () => {
+          killedAt.push(Date.now())
+          if (closesAfterMs !== null) {
+            setTimeout(() => child.emit('close', null, 'SIGKILL'), closesAfterMs)
+          }
+          return true
+        },
+      })
+      return child
+    }
+    return { spawner, killedAt }
+  }
+  const options = { cwd: '.', maxStdout: 1024, track: () => () => undefined }
+
+  it('waits for a killed child to close before it resolves, so its folder can be removed', async () => {
+    const { spawner, killedAt } = stubborn(150)
+    const end = await runProcess(spawner, 'tool', [], {
+      ...options,
+      timeoutMs: 20,
+      closeGraceMs: 5_000,
+    })
+    expect(end.kind).toBe('timeout')
+    expect(Date.now() - killedAt[0]).toBeGreaterThanOrEqual(140)
+  })
+
+  it('gives up waiting after the grace, for a child that ignores the kill', async () => {
+    const { spawner, killedAt } = stubborn(null)
+    const end = await runProcess(spawner, 'tool', [], {
+      ...options,
+      timeoutMs: 20,
+      closeGraceMs: 100,
+    })
+    expect(end.kind).toBe('timeout')
+    const waited = Date.now() - killedAt[0]
+    expect(waited).toBeGreaterThanOrEqual(90)
+    expect(waited).toBeLessThan(2_000)
+  })
+})
 
 describe('runProcess with a real child', () => {
   const made: string[] = []

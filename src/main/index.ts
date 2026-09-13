@@ -384,6 +384,12 @@ if (!hasLock) {
       fixture: app.isPackaged
         ? join(process.resourcesPath, FIXTURE_FOLDER)
         : join(app.getAppPath(), 'resources', FIXTURE_FOLDER),
+      // What a failure's detail must not show: where the app is installed,
+      // and the home folder in every form "Copy diagnostics" hides, from the
+      // same lookup (asked only after a failure, by which time it exists).
+      known: app.isPackaged ? [process.resourcesPath, app.getAppPath()] : [app.getAppPath()],
+      homes: async () => (settings === null ? [homedir()] : settings.homesToHide()),
+      platform: process.platform,
       log: {
         info: (m) => log.info(FIRST_RUN_TAG, m),
         warn: (m) => log.warn(FIRST_RUN_TAG, m),

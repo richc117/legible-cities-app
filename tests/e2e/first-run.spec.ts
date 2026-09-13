@@ -197,6 +197,31 @@ test('waits for the mismatch dialog to close before it opens', async () => {
   })
 })
 
+test('waits for a dialog a person has open, and opens when it closes', async () => {
+  test.slow()
+  // The stand-in exits at once, so the engine's first start takes its three
+  // restarts (about seven seconds) to settle as stopped: time to open the
+  // New project dialog before the check runs.
+  const userData = profile({ exit: 'at-once' })
+  await withApp(userData, { SCHEMATIC_LOOM_BIN: emptyFolder() }, async (page) => {
+    await expect(page.locator('h1')).toHaveText('Library')
+    await page.getByRole('button', { name: 'New project' }).first().click()
+    const creating = page.getByRole('dialog', { name: 'New project' })
+    await expect(creating).toBeVisible()
+    expect((await firstRun(page)).finished, 'the check finished before the dialog opened').toBe(
+      false,
+    )
+    await expect.poll(async () => (await firstRun(page)).finished, { timeout: 30_000 }).toBe(true)
+    const tools = page.getByRole('dialog', { name: /LOOM.* will not run/ })
+    await expect(tools).toBeHidden()
+    await expect(creating).toBeVisible()
+    await creating.getByRole('button', { name: 'Cancel' }).click()
+    await expect(creating).toBeHidden()
+    await expect(tools).toBeVisible()
+    await expect(tools.getByRole('button', { name: 'OK' })).toBeFocused()
+  })
+})
+
 test('shows no dialog and says the check did not run when nothing is named in development', async () => {
   const userData = profile()
   await withApp(userData, {}, async (page) => {

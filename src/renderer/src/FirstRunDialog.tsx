@@ -36,6 +36,18 @@ export function useFirstRun(): FirstRunResult | null {
   return result
 }
 
+/**
+ * Whether a dialog other than `own` is open in the page: a person creating a
+ * project, adding a feed or confirming a removal is in the middle of
+ * something, and this dialog waits for them rather than taking the focus.
+ */
+export function anotherDialogOpen(
+  root: { querySelectorAll(selector: string): ArrayLike<Element> },
+  own: Element | null,
+): boolean {
+  return Array.from(root.querySelectorAll('dialog[open]')).some((dialog) => dialog !== own)
+}
+
 /** The dialog's title: the tools that will not run, by name. */
 export function firstRunTitle(result: FirstRunResult): string {
   const names = failedTools(result).map((tool) => TOOL_NAMES[tool])
@@ -64,18 +76,34 @@ export default function FirstRunDialog({
   // must come first has not been seen.
   const closingItself = useRef(false)
   const [said, setSaid] = useState<string | null>(null)
+  // Another dialog open in the page, watched for as long as this is mounted,
+  // so this one opens when that one closes.
+  const [waiting, setWaiting] = useState(false)
+  useEffect(() => {
+    const update = (): void => setWaiting(anotherDialogOpen(document, dialogRef.current))
+    update()
+    const observer = new MutationObserver(update)
+    observer.observe(document.body, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['open'],
+    })
+    return () => observer.disconnect()
+  }, [])
 
   useEffect(() => {
     const dialog = dialogRef.current
     if (!dialog) return
-    if (open && !dialog.open) {
+    // Once shown it stays: a dialog a person opens over it is theirs to close.
+    if (open && !waiting && !dialog.open) {
       dialog.showModal()
       okRef.current?.focus()
     } else if (!open && dialog.open) {
       closingItself.current = true
       dialog.close()
     }
-  }, [open])
+  }, [open, waiting])
 
   const failed = failedTools(result)
 
