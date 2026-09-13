@@ -168,10 +168,26 @@ jobs:
           # The folder a per-user one-click NSIS installer uses is the
           # package's name, sanitised (electron-builder's
           # getWindowsInstallationDirName); a build that sets nsis options
-          # could change that, so it is refused rather than guessed at.
-          if (Select-String -Path 'at-tag/electron-builder.yml' -Pattern '^nsis:' -Quiet) {
-            node $cli prior $env:PRIOR step 2 fail 'electron-builder.yml at the tag has an nsis section; this workflow assumes the per-user one-click defaults.'
-            throw 'electron-builder.yml at the tag has an nsis section: check where it installs and update this workflow'
+          # could change that, so it is refused rather than guessed at. The
+          # one option let through is `include`, a script added to the
+          # template's (build/installer.nsh, issue 128), which moves nothing.
+          # Any other line in the nsis section, or an include written in any
+          # shape but a plain `include: path`, is refused.
+          $refused = @()
+          $inNsis = $false
+          foreach ($line in Get-Content -LiteralPath 'at-tag/electron-builder.yml') {
+            if ($line -match '^["'']?nsis["'']?\s*:') {
+              $inNsis = $true
+              if ($line -notmatch '^["'']?nsis["'']?\s*:\s*(#.*)?$') { $refused += $line }
+              continue
+            }
+            if (-not $inNsis -or $line -match '^\s*(#.*)?$') { continue }
+            if ($line -notmatch '^\s') { $inNsis = $false; continue }
+            if ($line -notmatch '^\s+include\s*:\s*[^\s#''"{\[&*!|>]\S*\s*(#.*)?$') { $refused += $line.Trim() }
+          }
+          if ($refused.Count -gt 0) {
+            node $cli prior $env:PRIOR step 2 fail "electron-builder.yml at the tag sets nsis options other than include ($($refused -join ' / ')); this workflow assumes the per-user one-click defaults."
+            throw "electron-builder.yml at the tag sets nsis options other than include: $($refused -join ' / '). Check where it installs and update this workflow"
           }
           $name = node -p "require('./at-tag/package.json').name"
           $folder = Join-Path $env:LOCALAPPDATA "Programs\$name"

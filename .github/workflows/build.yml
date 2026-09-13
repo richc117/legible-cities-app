@@ -61,6 +61,9 @@ on:
     paths:
       - 'vendor/pins.json'
       - 'electron-builder.yml'
+      # The packager's build resources: the icon, and the NSIS include that
+      # removes the installer's copy of itself (issue 128).
+      - 'build/**'
       # How the app finds its components, and the packager's own version.
       - 'src/main/**'
       - 'package.json'
@@ -227,6 +230,79 @@ jobs:
             *)            app="release/mac/Legible Cities.app" ;;
           esac
           codesign --verify --deep --strict --verbose=2 "$app"
+
+      # Issue 128: electron-builder's template copies the running installer
+      # into %LOCALAPPDATA%\<package name>-updater, for an updater this app
+      # does not have, and its uninstaller leaves the copy behind.
+      # build/installer.nsh removes it straight after the copy and again on
+      # uninstall. This installs the installer just built, silently, as
+      # acceptance.yml's steps 2 and 21 do, and holds it to both. Any new
+      # folder named *-updater under %LOCALAPPDATA% counts, not only the
+      # expected name, so a change in how electron-builder names the folder
+      # cannot pass the check by having it look in the wrong place. Before
+      # the uninstall a stand-in copy is put where an older installer left
+      # one, so the uninstaller's removal is proved and not only the
+      # installer's.
+      - name: Install and uninstall the Windows installer, and look for what is left
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installers = @(Get-ChildItem -Path release -File | Where-Object { $_.Extension -eq '.exe' })
+          if ($installers.Count -ne 1) {
+            $installers | Format-Table Name | Out-Host
+            throw "expected one installer in release, found $($installers.Count)"
+          }
+          $installer = $installers[0].FullName
+          $name = node -p "require('./package.json').name"
+          $folder = Join-Path $env:LOCALAPPDATA "Programs\$name"
+          $updater = Join-Path $env:LOCALAPPDATA "$name-updater"
+          $exe = Join-Path $folder 'Legible Cities.exe'
+          $uninstaller = Join-Path $folder 'Uninstall Legible Cities.exe'
+          function Get-NewUpdaterFolders([string[]] $Before) {
+            @(Get-ChildItem -Path $env:LOCALAPPDATA -Directory -Filter '*-updater' -ErrorAction SilentlyContinue |
+              ForEach-Object FullName | Where-Object { $Before -notcontains $_ })
+          }
+          function Get-Present([string[]] $Paths) {
+            @($Paths | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -Unique)
+          }
+          foreach ($path in @($folder, $updater)) {
+            if (Test-Path -LiteralPath $path) { throw "$path exists before the install: this runner is not clean" }
+          }
+          $before = @(Get-NewUpdaterFolders @())
+
+          Write-Output "installing $installer"
+          $process = Start-Process -FilePath $installer -ArgumentList '/S' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "the installer exited $($process.ExitCode)" }
+          if (-not (Test-Path -LiteralPath $exe)) {
+            Get-ChildItem (Join-Path $env:LOCALAPPDATA 'Programs') -ErrorAction SilentlyContinue | Format-Table Name | Out-Host
+            throw "the installer exited 0 and there is no $exe"
+          }
+          Write-Output "installed: $exe"
+          $kept = @(Get-Present (@($updater) + @(Get-NewUpdaterFolders $before)))
+          if ($kept.Count -gt 0) {
+            foreach ($path in $kept) { Get-ChildItem -LiteralPath $path -Recurse -Force | Format-Table FullName, Length | Out-Host }
+            throw "while installed, the installer kept a copy of itself in $($kept -join ', '); build/installer.nsh's customInstall should have removed it (issue 128)"
+          }
+          Write-Output "while installed: no $updater, and no other new *-updater folder"
+
+          # What an installer from before issue 128 left, so the uninstaller
+          # has a copy to remove.
+          New-Item -ItemType Directory -Path $updater | Out-Null
+          Set-Content -LiteralPath (Join-Path $updater 'installer.exe') -Value 'a stand-in for an older installer''s copy'
+
+          if (-not (Test-Path -LiteralPath $uninstaller)) { throw "no uninstaller at $uninstaller" }
+          $process = Start-Process -FilePath $uninstaller -ArgumentList '/S' -Wait -PassThru
+          Write-Output "the uninstaller exited $($process.ExitCode)"
+          # An NSIS uninstaller copies itself out of the folder and goes on
+          # from there, so its end is the folders going, within a deadline.
+          $deadline = (Get-Date).AddMinutes(3)
+          while (@(Get-Present @($folder, $updater)).Count -gt 0 -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 2 }
+          $left = @(Get-Present (@($folder, $updater) + @(Get-NewUpdaterFolders $before)))
+          if ($left.Count -gt 0) {
+            throw "after the uninstall, still there: $($left -join ', '); build/installer.nsh's customUnInstall should have removed the updater folder (issue 128)"
+          }
+          Write-Output "after the uninstall: neither $folder nor $updater, and no other new *-updater folder"
 
       - uses: actions/upload-artifact@v7
         with:
