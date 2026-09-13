@@ -74,7 +74,20 @@ so a state attribute is mirrored by hand. The kit gives every `<dialog>`
 restore `inset: 0; margin: auto`. Its shadow styles need `style-src
 'unsafe-inline'`; `script-src` stays `'self'`. Playwright emulates the
 colour scheme per page, so an end-to-end test chooses the theme with
-`page.emulateMedia`, never `nativeTheme`.
+`page.emulateMedia`, never `nativeTheme`. A button that disables itself
+on press drops focus, because Chromium blurs a disabled element: hand
+focus somewhere first, as the service day's "Use the busiest weekday"
+hands it to the date control (A3-04). The stand-in engine reads its
+control file once, at start, so a test that needs one slow call has to be
+slow from the first call, not rewrite the file mid-session. A `<dialog>`'s
+cancel event is cancelable only while the window holds an unspent
+activation: the first Escape spends it and the second closes the dialog
+whatever `preventDefault` says, so a close handler must tell the parent
+whenever the element closed on its own (A2-01). The platform's file
+chooser cannot be driven by a test; replace `dialog.showOpenDialog` in the
+main process through Playwright's `app.evaluate`, so the app's own handler
+runs. A record is read after the Library lists it, never straight after
+Create: Windows renames it into place slowly enough to be read mid-write.
 
 ## Accessibility is not a later pass
 

@@ -1,0 +1,144 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>capture stand-in</title>
+<!--
+  A stand-in for the engine's animation page, with the one property the
+  capture tests need: it animates. A train moves along a line as the page's
+  own clock runs, and the clock runs in real time from load until
+  `setCapture(true)` stops it, exactly as the real page's does. Two captures
+  that do not seek and stop the clock would therefore differ; two that do are
+  byte-identical, which is what tests/e2e/capture.spec.ts asserts. The seam
+  is the real page's `window.__present`, method for method.
+-->
+<style>
+  html,
+  body {
+    margin: 0;
+    background: #111;
+  }
+  #stage {
+    width: 540px;
+    height: 960px;
+    position: relative;
+    overflow: hidden;
+  }
+</style>
+<body>
+  <div id="stage">
+    <svg width="540" height="960" viewBox="0 0 540 960">
+      <line x1="40" y1="480" x2="500" y2="480" stroke="#888" stroke-width="6" />
+      <circle id="train" cx="40" cy="480" r="14" fill="#e8b04a" />
+      <text id="clock" x="20" y="60" fill="#eee" font-size="32px" font-family="monospace">
+        00:00
+      </text>
+      <text id="view" x="20" y="920" fill="#aaa" font-size="24px" font-family="monospace">map</text>
+    </svg>
+  </div>
+  <script>
+    ;(function () {
+      var t0 = 0,
+        t1 = 86400,
+        now = 8 * 3600,
+        speed = 60,
+        playing = true
+      // The page's initial clock comes from the URL, as the engine's does
+      // (`?at=HH:MM`); the capture's preflight reads the state this leaves.
+      var q = new URLSearchParams(location.search).get('at')
+      if (q) {
+        var hm = q.split(':')
+        now = +hm[0] * 3600 + +(hm[1] || 0) * 60
+      }
+      var capture = false,
+        rafId = null,
+        last = performance.now()
+      var view = 'map',
+        labels = true
+      function fmt(s) {
+        var h = Math.floor(s / 3600) % 24,
+          m = Math.floor((s % 3600) / 60)
+        return (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m
+      }
+      function draw() {
+        var p = (now % 3600) / 3600
+        document.getElementById('train').setAttribute('cx', String(40 + 460 * p))
+        document.getElementById('clock').textContent = fmt(now) + (labels ? '' : ' (no labels)')
+        document.getElementById('view').textContent = view
+      }
+      function advance(dt) {
+        if (playing) now = Math.min(t1, now + dt * speed)
+      }
+      function frame(t) {
+        rafId = null
+        var dt = Math.max(0, (t - last) / 1000)
+        last = t
+        advance(dt)
+        draw()
+        if (!capture) rafId = requestAnimationFrame(frame)
+      }
+      window.__present = {
+        advance: function (dt) {
+          advance(dt)
+          draw()
+        },
+        seek: function (sec) {
+          now = Math.max(t0, Math.min(t1, sec))
+          draw()
+        },
+        setCapture: function (on) {
+          capture = on
+          if (on) {
+            if (rafId !== null) {
+              cancelAnimationFrame(rafId)
+              rafId = null
+            }
+          } else {
+            last = performance.now()
+            rafId = requestAnimationFrame(frame)
+          }
+        },
+        setPlaying: function (on) {
+          playing = on
+        },
+        setSpeed: function (x) {
+          speed = x
+        },
+        setView: function (v) {
+          view = v
+          draw()
+        },
+        setGeo: function () {},
+        showView: function (name) {
+          view = name
+          draw()
+        },
+        hasGeo: function () {
+          return false
+        },
+        setLabels: function (on) {
+          labels = !!on
+          draw()
+        },
+        setRoutes: function () {},
+        setFrame: function () {},
+        settle: function () {
+          draw()
+        },
+        bounds: function () {
+          return { t0: t0, t1: t1 }
+        },
+        onDraw: function () {},
+        state: function () {
+          return {
+            now: now,
+            clock: fmt(now),
+            shown: now >= 6 * 3600 && now <= 22 * 3600 ? 1 : 0,
+            viewName: view,
+            labels: labels,
+          }
+        },
+      }
+      draw()
+      rafId = requestAnimationFrame(frame)
+    })()
+  </script>
+</body>

@@ -57,12 +57,13 @@ already cites the number you mean to use.
 | 024 | [Capture runs in the app, offscreen, through the debugger](024-capture-is-in-process-and-offscreen.md) | Accepted |
 | 025 | Reserved: a decision about the project, recorded outside this repository | Superseded by 029 |
 | 026 | [The design system's icons, select control and mark](026-design-system-choices.md) | Accepted |
-| 027 | [The layout a project stores, and what the engine cannot yet promise](027-the-layout-a-project-stores.md) | Accepted |
+| 027 | [The layout a project stores, and what the engine cannot yet promise](027-the-layout-a-project-stores.md) | Superseded by 033 |
 | 028 | [The viewer frame is sandboxed, and driven from the main process](028-the-viewer-frame-is-sandboxed.md) | Accepted |
 | 029 | [The assistant's configuration is committed](029-the-assistants-configuration-is-committed.md) | Accepted |
 | 030 | [One board and one remote, on GitHub](030-one-board-and-one-remote.md) | Accepted |
 | 031 | [The service day is resolved once, at the first layout](031-the-service-day-is-resolved-at-the-first-layout.md) | Accepted |
 | 032 | Reserved: a decision about the project, recorded outside this repository | - |
+| 033 | [The layout identifier is the engine's, and re-layout is a button](033-the-layout-identifier-is-the-engines.md) | Accepted |
 
 ## Amending rather than superseding
 

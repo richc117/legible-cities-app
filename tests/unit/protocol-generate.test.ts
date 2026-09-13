@@ -14,7 +14,7 @@ import {
   isErrorKind,
 } from '../../src/shared/engine'
 import { parseEnvFile } from '../../src/main/config'
-import { emit, engineCheckout, fingerprint } from '../../scripts/protocol'
+import { emit, emitFormatted, engineCheckout, fingerprint } from '../../scripts/protocol'
 
 const repo = resolve(__dirname, '../..')
 const schemaText = readFileSync(resolve(repo, 'vendor/protocol.schema.json'), 'utf8')
@@ -23,9 +23,9 @@ const pins = JSON.parse(readFileSync(resolve(repo, 'vendor/pins.json'), 'utf8'))
 const committed = readFileSync(resolve(repo, 'src/shared/protocol.ts'), 'utf8')
 
 describe('the generated protocol module', () => {
-  it('is reproducible from the committed description, byte for byte', () => {
+  it('is reproducible from the committed description, byte for byte', async () => {
     expect(
-      emit(description, pins.engine.tag),
+      await emitFormatted(description, pins.engine.tag, repo),
       'src/shared/protocol.ts is not what the description produces; run `npm run typegen`',
     ).toBe(committed)
   })
@@ -90,6 +90,70 @@ describe('the emitter refuses what it does not understand', () => {
     expect(() => emit({ ...base, $defs: { A: { type: 'sausage' } } } as never, 'v0.0.0')).toThrow(
       /"sausage"/,
     )
+  })
+})
+
+// An open object is a map, and the node under `additionalProperties` says
+// what it maps to. The emitter used to read the keyword only in its `false`
+// form and type everything else `Record<string, unknown>`, silently, which
+// is how the engine's colour map arrived in the app untyped (E06).
+describe('an object that carries extras keeps their type', () => {
+  const base = { protocol: 1, $defs: {}, methods: {}, notifications: {} }
+  const hex = { type: 'string', pattern: '^#[0-9a-f]{6}$' }
+
+  it('types a map by the node its values follow', () => {
+    const schema = {
+      ...base,
+      $defs: { HexColor: hex, Colors: { type: 'object', additionalProperties: hex } },
+    }
+    expect(emit(schema as never, 'v0.0.0')).toContain('export type Colors = Record<string, string>')
+  })
+
+  it('follows a reference under the keyword rather than losing it', () => {
+    const schema = {
+      ...base,
+      $defs: {
+        HexColor: hex,
+        Colors: { type: 'object', additionalProperties: { $ref: '#/$defs/HexColor' } },
+      },
+    }
+    expect(emit(schema as never, 'v0.0.0')).toContain(
+      'export type Colors = Record<string, HexColor>',
+    )
+  })
+
+  it('gives named members an index signature beside them', () => {
+    const schema = {
+      ...base,
+      $defs: {
+        Bag: {
+          type: 'object',
+          properties: { name: { type: 'string' } },
+          required: ['name'],
+          additionalProperties: { type: 'string' },
+        },
+      },
+    }
+    const out = emit(schema as never, 'v0.0.0')
+    expect(out).toContain('name: string')
+    expect(out).toContain('[key: string]: string')
+  })
+
+  it('keeps a closed object closed and an open one a bag', () => {
+    const closed = { ...base, $defs: { Nothing: { type: 'object', additionalProperties: false } } }
+    expect(emit(closed as never, 'v0.0.0')).toContain('export type Nothing = Record<string, never>')
+    const open = { ...base, $defs: { Anything: { type: 'object', additionalProperties: true } } }
+    expect(emit(open as never, 'v0.0.0')).toContain(
+      'export type Anything = Record<string, unknown>',
+    )
+  })
+
+  it('names a reference under the keyword that the description does not define', () => {
+    const schema = {
+      ...base,
+      $defs: { Colors: { type: 'object', additionalProperties: { $ref: '#/$defs/Absent' } } },
+    }
+    expect(() => emit(schema as never, 'v0.0.0')).toThrow(/Absent/)
   })
 })
 

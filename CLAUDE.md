@@ -24,10 +24,76 @@ stylesheets, FigUI3's MIT core behind wrappers and a build guard that
 refuses its PolyForm half, Phosphor icons, the Beck progress line, every
 screen restyled), the typed client generated from the engine's own schema
 (A1-02), the layout run (A3-01: one button runs the engine's stages behind
-a progress line and records the layout the project was drawn from,
-ADR-027) and the viewer (A3-02: the engine's page in a frame sandboxed to
-an opaque origin and driven from the main process, ADR-028). It exports
-nothing yet.
+a progress line and records the layout the project was drawn from; A3-05:
+the id is the engine's own and "Re-layout" runs every stage again behind a
+warning, ADR-033; A3-04: the service day is the engine's choice from a
+stored anchor, `feeds.service` at every layout run, a date control bounded
+by the stored window, and a chosen day a rebuild from the stored layout,
+never a re-layout; A3-06: the layout's `made` beside its id, so a
+project is told when another re-laid out the set it draws from), the feeds
+(A2-01: the Library lists the engine's registry, adds a feed from a zip
+chosen in the platform's dialog or from a URL over `feeds.add` with its
+download on a progress line, and removes an added feed; a guard in the
+main process refuses a path no dialog answered and a feed a project
+names; the create dialog offers the list, and a typed key when the engine
+is away; A2-02: the Inspect view reads the feed through `feeds.inspect`
+and a person chooses mode and agency with the route types in view, the
+histogram saying which the mode keeps, and the layout run passes both to
+the engine; A2-03: two layout stages drawn where they run, the engine's
+SVG over `render.stage` in a frame with an empty sandbox, panned and
+zoomed from outside, the counts the engine's) and the viewer (A3-02: the engine's page in a frame sandboxed to
+an opaque origin and driven from the main process, ADR-028), and the
+capture (A5-02a: an offscreen window in its own session takes a page's
+frames through the DevTools protocol, byte-identical run to run,
+`src/main/capture.ts`) and the export (A5-02b: one preset, `instagram-reel`,
+from a button on the project screen, over the engine's `export.plan` and
+`export.encode` with the capture in the middle, into a folder on the
+desktop or `LEGIBLE_EXPORT_FOLDER`, the sidecar beside the file;
+`src/main/export.ts`) and the line colours (A4-01: the project's lines with
+the colour their feed publishes, an override per line, a reset per line and
+for all, and one default for the lines the feed leaves blank, debounced into
+a `map.build` from the stored layout and written only once the map carries
+them; `src/renderer/src/LineColours.tsx`) and the line order (A4-02: the
+project's lines in the order the map stacks them, moved one place at a time
+from two named buttons rather than a drag, the whole arrangement debounced
+into the same rebuild and written only once the map carries it;
+`src/renderer/src/LineOrder.tsx`) and the theme (A4-03: the project's map
+drawn in one of the engine page's two themes, chosen per project and
+written at once, since a theme is neither a layout nor a render - the page
+takes it on its address and restyles itself - and the interface's own theme
+in Settings is a separate thing that neither follows;
+`src/renderer/src/ThemeSwitch.tsx`). That is the first reel.
+
+Settings (A1-04) came after it: one file under the user-data folder holding
+the two folders a person chose and the interface's theme, read before the
+configuration resolves so a stored folder sits between `.env.local` and the
+default, and written the way a project record is. A folder is chosen in the
+platform's own dialog, which the main process opens and whose answer it
+applies itself, so no path crosses the bridge inward at all; a folder
+inside the app's own bundle is refused even so. The export folder moves at
+once and the engine's home at the next start, which the screen says. The
+screen also shows the engine home's size, the versions from `engine.info`,
+a way into the platform's log folder, and "Reset engine data".
+
+**The reset removes four folders and never the engine's home itself**:
+`projects`, `out`, `data` and `frames`, which is everything this app and
+the engine put there (the engine's `config.py` names `data/feeds`,
+`data/graphs` and `out`; read it before adding to the list). The home is a
+folder a person can point at `~/Documents` in one click, so whatever else
+is in it is theirs and stays, and a folder that turns out to be a symbolic
+link is left alone and reported rather than unlinked. **The home is
+resolved through `realpath` before any guard judges it**, and so is
+everything it is compared against: the guards are textual, and a home that
+is itself a link would pass every one of them and then remove four folders
+from wherever it points. Before it starts, the main process refuses while a
+reset is already running, while an export, an engine request or a record
+write is in flight, and for a home so high up that those four names would
+mean something else; the screen refuses separately while a layout run or an
+export is open, because a run is four steps with gaps between them and only
+the renderer can see the gaps. The flag goes up before the first `await`,
+and while it is up every engine request, every export and every write to a
+project record is refused, so nothing lands in a folder being walked away
+(`src/main/settings.ts`, `src/main/settings-ipc.ts`).
 
 Work proceeds phase by phase; `CONTRIBUTING.md` explains the flow, the
 labels, the milestones and the `A0-05`-style issue codes. The four Phase 0
@@ -39,13 +105,12 @@ rather than recomputed because `topo` is not reproducible on macOS
 (ADR-031). One spike (A0-06) still waits on the Intel and Windows runners
 for its last two targets; the offscreen-capture spike is finished, and
 ADR-024 puts capture in the app's own process, in an offscreen window
-driven through the Chrome DevTools Protocol. Next is the "First reel"
-milestone, one preset feed through layout, viewer and export before the
-phases broaden: layout and viewer are done, and what remains is the app's
-capture (A5-02a), the engine's export halves (E10, E09b) and one preset
-exported (A5-02b). Since 2026-09-07 `main` changes only through pull
-requests with the `ci` check green: one issue, one branch, one pull
-request, the maintainer included.
+driven through the Chrome DevTools Protocol. The "First reel" milestone -
+one preset feed through layout, viewer and export before the phases
+broaden - is complete: the engine's export halves (E10, E09b) landed at
+v0.3.0 and the app exports the reel (A5-02b). Since 2026-09-07 `main`
+changes only through pull requests with the `ci` check green: one issue,
+one branch, one pull request, the maintainer included.
 
 Personal settings and private pointers (sibling checkouts, planning notes)
 live in `CLAUDE.local.md`, which is gitignored. Read it if it exists.
@@ -184,7 +249,9 @@ Stated before the first implementation, and kept since.
   wrong, and ADR-028 records why.
 - **Never write inside the app bundle.** The engine's home is
   `SCHEMATIC_HOME` under the user-data folder; exports go where the user
-  chooses.
+  chooses (`LEGIBLE_EXPORT_FOLDER`, or a `Legible Cities` folder on the
+  desktop until Settings exist), and an export's frames sit under the
+  engine home only while it runs.
 - **Child processes**: argument arrays, never shell strings; `windowsHide:
   true`; a timeout; stderr captured to the log; a clean shutdown on quit.
 - **The sidecar protocol is a contract.** JSON-RPC 2.0 over stdio, types
@@ -202,8 +269,9 @@ Stated before the first implementation, and kept since.
   has never navigated crashes the process; take the frame with
   `Page.captureScreenshot` at a CSS-pixel clip, never `capturePage()`,
   whose rect is in device-independent pixels and which ignores the
-  emulated scale factor; give the export a `userData` of its own, because
-  a persisted per-host zoom level scales every capture silently.
+  emulated scale factor; give the export a session of its own (an
+  in-memory partition, never the interface's default session), because a
+  persisted per-host zoom level scales every capture silently.
 - **Renderer**: no Node APIs; everything goes through the preload bridge.
   `contextIsolation` on, `nodeIntegration` off, `sandbox` on.
 

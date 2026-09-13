@@ -42,8 +42,19 @@ channel and let the preload make the promise.
 
 Never inside the app bundle: it is read-only on macOS and it is wiped on
 update. The engine's home is `SCHEMATIC_HOME` under the user-data folder;
-exports go where the user chose. A path that is not one of those two is a
-bug. See ADR-016.
+exports go where the user chose: `LEGIBLE_EXPORT_FOLDER`, or a `Legible
+Cities` folder on the desktop until Settings exist, in a folder per
+project. An export's frames live under the engine home (`frames/<token>/`)
+only while it runs, and a start empties that folder - **but only if the app
+made it**. The home is a setting and can name anybody's directory, so a
+`frames` folder the app did not create carries no mark and is left alone.
+Every folder above it is resolved through its links, and a link where the
+frames folder should be is refused rather than followed, as the reset
+refuses one. The folder itself is never removed, and the app marks a folder
+whenever it makes one - at start and before each export, because the reset
+takes the mark with the folder. Removing it outright, on the home as configured,
+was a real bug (`src/main/frames.ts`). A path that is not one
+of those is a bug. See ADR-016.
 
 ## The protocol is a contract
 
@@ -54,9 +65,11 @@ method here before the engine has it and the pin has moved. See ADR-010.
 
 ## Capture
 
-A project's layout is computed once and stored with the project; a render
-or an export reads it and never runs the layout stages on its own.
-Re-layout is a button with a warning. See ADR-023.
+A project's layout is computed once and stored with the project under the
+engine's own id, the hash of the layout's inputs; a render or an export
+reads it and never runs the layout stages on its own, and `map.build` is
+always given the id. Re-layout is a button with a warning. See ADR-023 and
+ADR-033.
 
 Every capture, without exception:
 
@@ -89,7 +102,8 @@ for:
   follows the window, and its rect is in device-independent pixels while the
   DOM measures in CSS pixels - a correctly *sized* image of the wrong
   region.
-- **A `userData` path the export controls.** Electron persists a per-host
+- **A session the export controls: an in-memory partition, never the
+  interface's default session.** Electron persists a per-host
   zoom level into the profile. One stray `zoomFactor` leaves every later
   capture of that origin silently scaled, with no error anywhere; it cost
   spike A0-07 two sessions.
@@ -107,6 +121,25 @@ acceptance criterion that compares the app's pixels with another program's
 without naming which binary.
 
 `docs/adr/spikes/offscreen-capture.md` has what was measured and why.
+
+## The export
+
+The flow lives in the main process (`src/main/export.ts`), because the
+capture does; the page starts, watches and stops it through `api.export`
+and is told the file's name, never its path. The engine's plan goes through
+`validateCaptureJob` before a window exists, and its file name must be a
+bare name: both arrive from another process. The frames are removed when
+the export ends, whichever way. A layout run and an export of one project
+never overlap: the export reads the page a layout rewrites.
+
+## The hygiene hook and a commit
+
+`.claude/hooks/guard-git.sh` runs the scanners over the *staged* tree
+before any command that commits or pushes, so an edit and its commit
+cannot share one shell command: stage and check first, commit in the
+next. A private address a test needs (the guard in `feeds-ipc.ts` refuses
+the RFC 1918 ranges) is assembled at run time with a comment saying why,
+never written out, or the scanner refuses the file as it should.
 
 ## The preload bridge
 

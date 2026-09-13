@@ -245,6 +245,368 @@ body {
   background: var(--surface-raised);
 }
 
+/* The date control is the platform's own, at the control height and in
+   the tokens, as the select is (DESIGN.md 8.2); its popup renders in the
+   platform's style, which is accepted. `color-scheme` follows the theme so
+   the popup and the icon match the surface. */
+.field input[type='date'] {
+  box-sizing: border-box;
+  height: var(--control-height);
+  padding: 0 var(--space-2-2);
+  font: inherit;
+  font-size: var(--font-ui);
+  font-variant-numeric: var(--numerals);
+  color: var(--text);
+  background: var(--surface);
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius);
+  color-scheme: inherit;
+}
+
+.field input[type='date']:disabled {
+  color: var(--text-faint);
+}
+
+.service-day h2 {
+  font-size: var(--font-ui-medium);
+  margin: 0 0 var(--space-2-2);
+}
+
+/* Line colours (A4-01): one row per line the feed offers, each a swatch, a
+   name, where its colour came from and its two controls; the picker is a
+   disclosure under the row it belongs to. A line's own colour is data and
+   arrives as an inline style from the record, never from here. */
+
+.line-colours h2 {
+  font-size: var(--font-ui-medium);
+  margin: var(--space-4-6) 0 var(--space-2-2);
+}
+
+.line-colours h2:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.theme-switch h2 {
+  font-size: var(--font-ui-medium);
+  margin: var(--space-4-6) 0 var(--space-2-2);
+}
+
+.theme-switch h2:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.line-order h2 {
+  font-size: var(--font-ui-medium);
+  margin: var(--space-4-6) 0 var(--space-2-2);
+}
+
+.line-order h2:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* The place a line stands in the order, beside its swatch: a figure, quiet,
+   and the same width whatever the digit, so the names line up. */
+.line-place {
+  flex: none;
+  min-width: var(--space-4-3);
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  font-variant-numeric: var(--numerals);
+  text-align: end;
+}
+
+/* The two moves sit at the end of the row, where the colour control's
+   Choose and Reset are, so the two panels read as one family. */
+.line-actions {
+  display: flex;
+  gap: var(--space-4-2);
+  margin-left: auto;
+}
+
+.line-list {
+  list-style: none;
+  margin: 0 0 var(--space-4-4);
+  padding: 0;
+}
+
+.line-row-group + .line-row-group {
+  border-top: var(--border-width) solid var(--border);
+}
+
+.line-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4-2);
+  min-height: var(--control-height-large);
+  padding: var(--space-2-2) 0;
+}
+
+.line-row .swatch {
+  flex: none;
+  border: var(--border-width) solid var(--border);
+}
+
+.line-name {
+  font-weight: var(--weight-strong);
+  font-variant-numeric: var(--numerals);
+}
+
+/* What the feed publishes, and what the line is drawn in: the quiet half of
+   the row, and the last to be pushed out when the window is narrow. */
+.line-feed,
+.line-source {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  font-variant-numeric: var(--numerals);
+}
+
+.line-source {
+  margin-left: auto;
+}
+
+.colour-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-4-4);
+  margin: 0 0 var(--space-4-3);
+  padding: var(--space-4-3);
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+}
+
+/* The picker's own sizes are its stylesheet's; only its footprint here is
+   the app's, and it never grows past the panel. */
+.colour-picker .react-colorful {
+  width: var(--picker-size);
+  height: var(--picker-size);
+  max-width: 100%;
+}
+
+/* The feeds on the Library: two groups, each a dense list; a row carries
+   its actions at the end rather than being a button itself. */
+
+.feeds h2 {
+  font-size: var(--font-ui-medium);
+  margin: var(--space-4-6) 0 var(--space-4-3);
+}
+
+.feed-groups {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-4-4);
+}
+
+.feed-group h3 {
+  font-size: var(--font-ui);
+  color: var(--text-muted);
+  margin: 0 0 var(--space-2-2);
+}
+
+.entry.feed {
+  flex-wrap: wrap;
+  cursor: default;
+}
+
+.entry.feed:hover {
+  background: transparent;
+}
+
+.entry.feed .entry-meta {
+  margin-left: 0;
+}
+
+.feed-actions {
+  display: flex;
+  gap: var(--space-2-2);
+  margin-left: auto;
+}
+
+.feed-select {
+  width: 100%;
+}
+
+.field-label {
+  font-weight: var(--weight-strong);
+}
+
+.add-run {
+  margin: 0 0 var(--space-4-3);
+}
+
+/* Tables (DESIGN.md 8.2): the UI track at the small size, a rule under the
+   header and between rows in --border, numbers aligned right, a header
+   that sorts is a button that looks like its label. */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-ui-small);
+  line-height: var(--line-ui-tight);
+  margin: 0 0 var(--space-4-4);
+}
+
+caption {
+  text-align: left;
+  color: var(--text-muted);
+  padding: 0 0 var(--space-2-2);
+}
+
+th,
+td {
+  text-align: left;
+  padding: var(--space-2-2) var(--space-2-2);
+  border-bottom: var(--border-width) solid var(--border);
+  vertical-align: baseline;
+}
+
+th {
+  font-weight: var(--weight-strong);
+  color: var(--text-muted);
+}
+
+td:last-child,
+th:last-child,
+.routes td:nth-last-child(1),
+.histogram td:nth-child(2),
+.histogram td:nth-child(3) {
+  font-variant-numeric: var(--numerals);
+}
+
+.histogram tr[data-kept='false'] td {
+  color: var(--text-faint);
+}
+
+.histogram tr[data-kept='true'] td:last-child {
+  color: var(--text);
+  font-weight: var(--weight-strong);
+}
+
+th .sort {
+  all: unset;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+th .sort:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.swatch {
+  display: inline-block;
+  width: var(--space-4-3);
+  height: var(--space-4-3);
+  border-radius: var(--radius-small);
+  background: var(--border);
+  vertical-align: middle;
+}
+
+.inspect h2 {
+  font-size: var(--font-ui-medium);
+  margin: var(--space-4-6) 0 var(--space-4-3);
+}
+
+.inspect .inputs {
+  display: grid;
+  gap: var(--space-2-2);
+  margin: 0 0 var(--space-4-4);
+}
+
+.warnings {
+  margin: 0 0 var(--space-4-4);
+  padding-left: var(--space-4-5);
+}
+
+/* The diagnostics panel (DESIGN.md 8.2): the engine's caveat sentences as
+   prose, its figures as a table, and each row's explanation on a small
+   control that answers a pointer and the keyboard alike. */
+
+.diagnostics h2 {
+  font-size: var(--font-ui-medium);
+  margin: var(--space-4-6) 0 var(--space-4-3);
+}
+
+.caveats {
+  margin: 0 0 var(--space-4-4);
+  padding-left: var(--space-4-5);
+}
+
+.explain {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2-1);
+}
+
+/* The row's own affordance, as the sortable header's is: a real button
+   taking the label's own type, never a control from the kit, whose height
+   is a form's and would stand a control the height of a row's text. */
+
+.explain-trigger {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--target-min);
+  min-height: var(--target-min);
+  border-radius: var(--radius-small);
+  color: var(--text-faint);
+  cursor: help;
+}
+
+.explain-trigger:hover {
+  color: var(--text);
+}
+
+.explain-trigger:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.tooltip {
+  position: absolute;
+  inset-inline-start: 0;
+  top: 100%;
+  z-index: var(--layer-overlay);
+  width: max-content;
+  max-width: var(--tooltip-width);
+  margin-top: var(--space-2-1);
+  padding: var(--space-2-2) var(--space-4-2);
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: var(--font-ui-small);
+  line-height: var(--line-ui);
+  font-weight: normal;
+  text-align: left;
+  white-space: normal;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--duration-fast) var(--easing);
+  transition-delay: var(--duration);
+}
+
+/* A pointer resting on it, focus from the keyboard, or a press: the last
+   is how a touch user asks, and the only one that stays. */
+
+.explain:hover .tooltip,
+.explain:focus-within .tooltip,
+.explain[data-open='true'] .tooltip {
+  visibility: visible;
+  opacity: 1;
+}
+
 /* The project's fields. */
 
 .fields {
@@ -261,6 +623,66 @@ body {
 .fields dd {
   margin: 0;
   font-variant-numeric: var(--numerals);
+}
+
+/* Settings: one column of groups, each a 15px heading over rows of a
+   label, the value and the controls (DESIGN.md 8.2, "Panels and settings"
+   and "Folder and version rows"). A folder's path is the person's own and
+   is shown in full, in the monospaced track so a space or a separator can
+   be read, and wrapped rather than cut. */
+
+.settings section {
+  margin: 0 0 var(--space-4-6);
+}
+
+.settings h2 {
+  font-size: var(--font-ui-medium);
+  line-height: var(--line-ui);
+  margin: 0 0 var(--space-4-3);
+}
+
+.setting {
+  display: grid;
+  gap: var(--space-2-2);
+  margin: 0 0 var(--space-4-3);
+}
+
+.setting .toolbar {
+  margin: var(--space-2-2) 0 0;
+}
+
+.settings .path {
+  margin: 0;
+  padding: var(--space-2-3) var(--space-4-2);
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--font-ui-small);
+  line-height: var(--line-ui-tight);
+  overflow-wrap: anywhere;
+}
+
+/* The folders the reset removes, named in the prose: the monospaced track
+   at the surrounding size, so the four names read as names. */
+.settings code {
+  font-family: var(--font-mono);
+  font-size: 1em;
+}
+
+/* A folder chosen but not yet in force, and a run the reset must wait for:
+   the two things on this screen that are a state rather than a fact. */
+.settings .pending {
+  color: var(--warning);
+}
+
+.settings .notice.error {
+  color: var(--error);
+}
+
+.settings .theme-select {
+  width: 100%;
+  max-width: var(--dialog-width);
 }
 
 /* Dialogs: the native element, opened with showModal(). */
@@ -392,22 +814,26 @@ dialog::backdrop {
   color: var(--text-muted);
 }
 
-/* The layout run: the line, then its sentence and the way to stop. */
+/* The layout run and the export: the line, then its sentence and the way
+   to stop. */
 
-.layout-run {
+.layout-run,
+.export-run {
   display: grid;
   gap: var(--space-4-3);
   margin: 0 0 var(--space-4-4);
 }
 
-.layout-run-foot {
+.layout-run-foot,
+.export-run-foot {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-4-3);
 }
 
-.layout-run-foot .progress-message {
+.layout-run-foot .progress-message,
+.export-run-foot .progress-message {
   flex: 1 1 auto;
   min-width: 0;
 }
@@ -444,6 +870,55 @@ dialog::backdrop {
   width: 100%;
   height: 100%;
   border: 0;
+}
+
+/* The geographic view: a pane the size of the viewer's shape, holding the
+   engine's drawing in a frame with no permissions, moved by transforms
+   from here. The frame is sized to the drawing and never scrolls; the
+   pane clips it and is what takes focus and the wheel. */
+
+.stage-view h2 {
+  font-size: var(--font-ui-medium);
+  margin: var(--space-4-6) 0 var(--space-4-3);
+}
+
+.stage-view .counts {
+  grid-template-columns: repeat(5, max-content 1fr);
+}
+
+.stage-pane {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  margin: 0 0 var(--space-4-4);
+}
+
+.stage-pane:active {
+  cursor: grabbing;
+}
+
+.stage-glass {
+  position: absolute;
+  inset: 0;
+}
+
+.stage-frame {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border: 0;
+  /* Sized to the drawing, whatever the panel's cap on media: the transform
+     does the fitting. */
+  max-width: none;
+  max-height: none;
+  transform-origin: 0 0;
+  pointer-events: none;
+  background: transparent;
 }
 
 /* Focus and motion, for everything. */

@@ -1,6 +1,14 @@
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { describeConfig, parseEnvFile, resolveConfig } from '../../src/main/config'
+import { readFileSync } from 'node:fs'
+
+// The app's LOOM pin, read rather than repeated, as the tests read the engine's.
+const PIN = (
+  JSON.parse(readFileSync(resolve(__dirname, '../../vendor/pins.json'), 'utf8')) as {
+    loom: { commit: string }
+  }
+).loom.commit
 
 // The default home is built with path.join and a relative value with
 // path.resolve, so those expectations are too; an absolute value is kept
@@ -34,13 +42,16 @@ describe('parseEnvFile', () => {
 })
 
 describe('resolveConfig', () => {
-  const base = { userData: '/ud', baseDir: '/repo' }
+  const base = { userData: '/ud', desktop: '/desk', loomPin: PIN, baseDir: '/repo' }
 
   it('defaults the home under userData and leaves the binaries unset', () => {
     const c = resolveConfig({ ...base, env: {} })
     expect(c.home).toBe(home)
     expect(c.loomBin).toBeNull()
     expect(c.ffmpeg).toBeNull()
+    expect(c.loomCommit, 'no LOOM directory, no commit to report').toBeNull()
+    expect(c.exportFolder).toBe(join('/desk', 'Legible Cities'))
+    expect(c.sources.LEGIBLE_EXPORT_FOLDER).toBe('default')
     expect(c.engineCheckout).toBeNull()
     expect(c.fileFound).toBe(false)
     expect(c.sources.SCHEMATIC_HOME).toBe('default')
@@ -66,6 +77,34 @@ describe('resolveConfig', () => {
     const c = resolveConfig({ ...base, env: {}, fileText: 'LEGIBLE_ENGINE_CHECKOUT=../engine\n' })
     expect(c.engineCheckout).toBe(resolve('/repo', '../engine'))
   })
+  it('names the LOOM commit only with a LOOM directory: the pin, unless a person says otherwise', () => {
+    const withBin = resolveConfig({ ...base, env: { SCHEMATIC_LOOM_BIN: '/opt/loom' } })
+    expect(withBin.loomCommit).toBe(PIN)
+    expect(withBin.sources.SCHEMATIC_LOOM_COMMIT).toBe('default')
+    const named = resolveConfig({
+      ...base,
+      env: { SCHEMATIC_LOOM_BIN: '/opt/loom' },
+      fileText: 'SCHEMATIC_LOOM_COMMIT=abcdef0\n',
+    })
+    expect(named.loomCommit).toBe('abcdef0')
+    expect(named.sources.SCHEMATIC_LOOM_COMMIT).toBe('.env.local')
+    // The environment is not trimmed by a parser, so it is trimmed here; a
+    // value that is only whitespace is no value and the pin stands.
+    const spaced = resolveConfig({
+      ...base,
+      env: { SCHEMATIC_LOOM_BIN: '/opt/loom', SCHEMATIC_LOOM_COMMIT: ' abcdef0 ' },
+    })
+    expect(spaced.loomCommit).toBe('abcdef0')
+    expect(spaced.sources.SCHEMATIC_LOOM_COMMIT).toBe('environment')
+    const blank = resolveConfig({
+      ...base,
+      env: { SCHEMATIC_LOOM_BIN: '/opt/loom', SCHEMATIC_LOOM_COMMIT: '   ' },
+    })
+    expect(blank.loomCommit).toBe(PIN)
+    expect(blank.sources.SCHEMATIC_LOOM_COMMIT).toBe('default')
+    const alone = resolveConfig({ ...base, env: { SCHEMATIC_LOOM_COMMIT: 'abcdef0' } })
+    expect(alone.loomCommit, 'a person who names a commit is believed').toBe('abcdef0')
+  })
   it('reports unknown keys', () => {
     const c = resolveConfig({ ...base, env: {}, fileText: 'TYPO_KEY=1\nSCHEMATIC_HOME=/h\n' })
     expect(c.unknownKeys).toEqual(['TYPO_KEY'])
@@ -73,15 +112,27 @@ describe('resolveConfig', () => {
 })
 
 describe('describeConfig', () => {
-  const base = { userData: '/ud', baseDir: '/repo' }
+  const base = { userData: '/ud', desktop: '/desk', loomPin: PIN, baseDir: '/repo' }
 
   it('names every location and its source, and what is unset', () => {
     const c = resolveConfig({ ...base, env: {}, fileText: 'SCHEMATIC_LOOM_BIN=/opt/loom\n' })
     expect(describeConfig(c, { development: true })).toEqual([
       `SCHEMATIC_HOME=${home} (default)`,
       'SCHEMATIC_LOOM_BIN=/opt/loom (.env.local)',
+      `SCHEMATIC_LOOM_COMMIT=${PIN} (default)`,
       'SCHEMATIC_FFMPEG unset - nothing in this build needs it; set it in .env.local',
+      `LEGIBLE_EXPORT_FOLDER=${join('/desk', 'Legible Cities')} (default)`,
     ])
+  })
+  it('names the LOOM commit and its source only when there is one', () => {
+    const c = resolveConfig({ ...base, env: { SCHEMATIC_LOOM_BIN: '/opt/loom' } })
+    expect(describeConfig(c, { development: false })).toContain(
+      `SCHEMATIC_LOOM_COMMIT=${PIN} (default)`,
+    )
+    const without = resolveConfig({ ...base, env: {} })
+    expect(describeConfig(without, { development: false }).join('\n')).not.toContain(
+      'SCHEMATIC_LOOM_COMMIT',
+    )
   })
   it('says when the file is absent in development, and not in a packaged build', () => {
     const c = resolveConfig({ ...base, env: {} })
@@ -113,7 +164,7 @@ describe('describeConfig', () => {
 })
 
 describe('LEGIBLE_ENGINE_PYTHON', () => {
-  const base = { userData: '/ud', baseDir: '/repo' }
+  const base = { userData: '/ud', desktop: '/desk', loomPin: PIN, baseDir: '/repo' }
 
   it('is unset by default and absent from the log', () => {
     const c = resolveConfig({ ...base, env: {} })

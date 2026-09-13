@@ -129,8 +129,8 @@ launch.
 
 ### Key Entities
 
-- **Layout**: the four stage graphs the engine produced for a feed, taken together. It lives in the engine's home, is shared by every project on that feed, and is identified here by a value derived from its contents.
-- **Layout identifier**: what the project stores to say which layout it was drawn from. Derived from the four stage graphs' bytes, so it changes when they do and matches when two projects share them.
+- **Layout**: the four stage graphs the engine produced for a feed, taken together. It lives in the engine's home under the engine's own id, and is shared by every project on that feed with the same inputs.
+- **Layout identifier**: what the project stores to say which layout it was drawn from. Since ADR-033 (A3-05) it is the engine's id, the hash of the layout's inputs, as `graph.build` answers it; before that it was the app's digest of the four stage graphs' bytes.
 - **Service day**: the calendar day the map is drawn for. Resolved once at the first layout and stored; the engine never chooses one.
 - **Run**: one layout and map build for one project. Has a stage list, a current stage, an outcome, and a token that cancels it.
 
@@ -141,7 +141,7 @@ launch.
 - **SC-001**: From a project with a cached layout, a person sees a finished map in under 5 seconds on a developer machine, with every stage reported.
 - **SC-002**: Every stage the engine reports for a run appears on screen exactly once, in the order the engine sent them, and no stage appears that the engine did not report.
 - **SC-003**: Cancelling a run leaves no engine or layout-tool process within 3 seconds, and the project's record is byte-identical to what it was before the run.
-- **SC-004**: Two projects on the same feed, laid out in turn, record the same layout identifier; when a project's stage graphs are then changed on disk, its next run reports that the layout differs from the one it stored.
+- **SC-004**: Two projects on the same feed, laid out in turn, record the same layout identifier. *Amended by ADR-033: the identifier is the engine's and names the layout's inputs, so a change to the stored set under the same id is not reported by this run; a re-layout says so itself.*
 - **SC-005**: A project's service day, once stored, is the same on every later read and is what the engine is told for every later build.
 - **SC-006**: Nothing in this feature sends the engine a parameter outside the protocol's own definition, proven by the types and by a test that asks the engine and reads its refusal.
 - **SC-007**: A screen-reader user hears the run start, hears each stage as it completes, and hears the outcome, each once (checked by a person).

@@ -18,8 +18,12 @@ A cancelled or failed run writes nothing at all.
 
 ## The layout identifier
 
-The engine returns the four stage graphs' paths and no identity of its own.
-The app derives one:
+*Superseded by ADR-033 (A3-05): the engine names its layouts now, and the
+record stores the id `graph.build` answers. What follows is how the app
+derived one before.*
+
+The engine returned the four stage graphs' paths and no identity of its own.
+The app derived one:
 
 > the SHA-256 of the four files' bytes, concatenated in the engine's own
 > stage order, with each file's length written in before its bytes so that

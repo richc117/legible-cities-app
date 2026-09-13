@@ -15,35 +15,21 @@ import { VIEWER_SANDBOX } from '../../shared/viewer'
 // that draws itself. Its own controls are the controls (DESIGN.md 8.2).
 
 /**
- * The theme the page is drawn in.
+ * Where the engine wrote the page: named after the feed, not the project.
  *
- * A record carries a theme, but nothing sets it yet: every project is
- * created warm-dark, and choosing one per project is A4-03's. Until then
- * the map follows the interface, which follows the operating system, so a
- * light interface does not hold a dark map. When A4-03 gives a project a
- * theme of its own, that choice takes precedence over this.
+ * The theme is the project's own (A4-03), not the interface's. It followed
+ * the interface until then, which was always a placeholder: a theme belongs
+ * to the map being made, which is exported and published, rather than to
+ * the room the maker is sitting in. The page reads `theme=` before its
+ * first paint, so the frame never shows one theme and then the other.
  */
-const themeNow = (): string =>
-  document.documentElement.dataset.theme === 'sepia' ? 'sepia' : 'warm-dark'
-
-/** Where the engine wrote the page: named after the feed, not the project. */
-const pageUrl = (project: ProjectRecord, theme: string): string =>
+const pageUrl = (project: ProjectRecord): string =>
   `app://local/projects/${project.id}/${project.feed}.html` +
-  `?present=1&controls=1&theme=${encodeURIComponent(theme)}`
+  `?present=1&controls=1&theme=${encodeURIComponent(project.theme)}`
 
 export default function Viewer({ project }: { project: ProjectRecord }): JSX.Element {
   const frame = useRef<HTMLIFrameElement>(null)
   const [problem, setProblem] = useState<string | null>(null)
-  // The theme rides on the address, so a change reloads the page rather than
-  // restyling it from outside, which the design document forbids.
-  const [theme, setTheme] = useState(themeNow)
-
-  useEffect(() => {
-    const media = window.matchMedia('(prefers-color-scheme: light)')
-    const follow = (): void => setTheme(themeNow())
-    media.addEventListener('change', follow)
-    return () => media.removeEventListener('change', follow)
-  }, [])
 
   // Attaching is what lets the privileged process hold this frame. It is
   // released when the project is left, so nothing is ever injected into a
@@ -75,7 +61,7 @@ export default function Viewer({ project }: { project: ProjectRecord }): JSX.Ele
       element.removeEventListener('load', onLoad)
       void window.api.viewer.release().catch(() => undefined)
     }
-  }, [project.id, project.feed, theme])
+  }, [project.id, project.feed, project.theme])
 
   return (
     <section className="viewer" aria-label="Map">
@@ -84,7 +70,7 @@ export default function Viewer({ project }: { project: ProjectRecord }): JSX.Ele
           ref={frame}
           className="viewer-frame"
           sandbox={VIEWER_SANDBOX}
-          src={pageUrl(project, theme)}
+          src={pageUrl(project)}
           title={`${project.name}, animated`}
         />
       </div>

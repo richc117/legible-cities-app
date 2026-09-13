@@ -10,7 +10,7 @@ export const PROJECT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
 // Windows device names are files everywhere on that platform: opening
 // `<root>\CON` reaches the console and `COM1` can block on hardware. Never
 // a project or a segment, in any case, with or without an extension.
-const RESERVED_NAME = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i
+export const RESERVED_NAME = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i
 
 export function isValidProjectId(id: string): boolean {
   return PROJECT_ID.test(id) && id !== '.' && id !== '..' && !RESERVED_NAME.test(id)

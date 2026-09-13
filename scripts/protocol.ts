@@ -8,16 +8,17 @@
 //
 // The description is a static file in the engine, printed with a two-space
 // indent, so its bytes are already canonical and nothing here reformats
-// them. The emitter knows sixteen JSON Schema keywords: ten it acts on and
-// six that constrain values rather than shapes, which it reads and ignores.
-// A seventeenth stops the build naming the keyword and its path, so an
-// engine that outgrows this script cannot receive a plausible wrong type.
+// them. The emitter knows nineteen JSON Schema keywords: ten it acts on and
+// nine that constrain values rather than shapes, which it reads and ignores.
+// A twentieth stops the build naming the keyword and its path, so an engine
+// that outgrows this script cannot receive a plausible wrong type.
 //
 // Contract: specs/006-typed-engine-client/contracts/generation.md.
 
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { format, resolveConfig } from 'prettier'
 import { isAbsolute, join, resolve } from 'node:path'
 import { parseEnvFile } from '../src/main/config.ts'
 
@@ -104,7 +105,15 @@ interface Node {
   pattern?: string
   format?: string
   default?: unknown
-  additionalProperties?: boolean
+  // `false` closes the object, `true` opens it, and a node types the values
+  // an open object carries: `{"additionalProperties": {"$ref": ...}}` is a
+  // map, not a bag, and typing it as one is the point.
+  additionalProperties?: boolean | Node
+  minLength?: number
+  minItems?: number
+  maxItems?: number
+  prefixItems?: Node[]
+  maxLength?: number
 }
 
 interface Description {
@@ -134,6 +143,11 @@ const KNOWN = new Set([
   'format',
   'default',
   'additionalProperties',
+  'minLength',
+  'minItems',
+  'maxItems',
+  'prefixItems',
+  'maxLength',
 ])
 
 const PRIMITIVES: Record<string, string> = {
@@ -180,6 +194,13 @@ function typeOf(node: Node, path: string, defs: Set<string>, indent: string): st
     return node.type.map((one) => typeOf({ ...node, type: one }, path, defs, indent)).join(' | ')
   }
   if (node.type === 'array') {
+    // A tuple: each position typed on its own, closed by min and max items.
+    if (node.prefixItems !== undefined) {
+      const parts = node.prefixItems.map((item, i) =>
+        typeOf(item, `${path}.prefixItems[${i}]`, defs, indent),
+      )
+      return `[${parts.join(', ')}]`
+    }
     if (node.items === undefined) throw new Error(`${path}: an array without items`)
     const item = typeOf(node.items, `${path}.items`, defs, indent)
     return /[ |]/.test(item) ? `(${item})[]` : `${item}[]`
@@ -188,11 +209,24 @@ function typeOf(node: Node, path: string, defs: Set<string>, indent: string): st
     if (node.properties !== undefined) return objectBody(node, path, defs, indent)
     // No properties and no extras allowed: an empty object, not a bag.
     if (node.additionalProperties === false) return 'Record<string, never>'
+    // No properties but a node for the extras: a map, keyed by whatever the
+    // client holds. `Record<string, unknown>` would lose the value's type
+    // silently, which is how a colour map reached the app untyped.
+    const extra = extraNode(node)
+    if (extra !== null) {
+      return `Record<string, ${typeOf(extra, `${path}.additionalProperties`, defs, indent)}>`
+    }
   }
   const primitive = PRIMITIVES[node.type]
   if (primitive === undefined)
     throw new Error(`${path}: this script does not know the type "${node.type}"`)
   return primitive
+}
+
+/** The node typing an open object's values, or null if there is none. */
+function extraNode(node: Node): Node | null {
+  const extra = node.additionalProperties
+  return typeof extra === 'object' && extra !== null ? extra : null
 }
 
 /** An object's members, braced, one per line. */
@@ -205,6 +239,14 @@ function objectBody(node: Node, path: string, defs: Set<string>, indent: string)
     const key = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) ? name : `'${name}'`
     const optional = required.has(name) ? '' : '?'
     lines.push(`${inner}${key}${optional}: ${typeOf(child, `${path}.${name}`, defs, inner)}`)
+  }
+  // Named members and a node for the rest: an index signature beside them,
+  // so the extras keep their type instead of disappearing.
+  const extra = extraNode(node)
+  if (extra !== null) {
+    lines.push(
+      `${inner}[key: string]: ${typeOf(extra, `${path}.additionalProperties`, defs, inner)}`,
+    )
   }
   return `{\n${lines.join('\n')}\n${indent}}`
 }
@@ -277,12 +319,27 @@ export function emit(description: Description, tag: string): string {
   return out.join('\n')
 }
 
+/**
+ * The module as committed: `emit`'s text through the repository's own
+ * formatter, so what the generator writes is what `npm run lint` checks. A
+ * long enumeration wraps the way prettier wraps it, and nobody has to teach
+ * the generator prettier's rules one case at a time.
+ */
+export async function emitFormatted(
+  description: Description,
+  tag: string,
+  repoRoot: string,
+): Promise<string> {
+  const options = (await resolveConfig(join(repoRoot, 'src', 'shared', 'protocol.ts'))) ?? {}
+  return format(emit(description, tag), { ...options, parser: 'typescript' })
+}
+
 export const fingerprint = (text: string): string =>
   createHash('sha256').update(text, 'utf8').digest('hex')
 
 // --------------------------------------------------------------- writing
 
-function main(): void {
+async function main(): Promise<void> {
   const repoRoot = resolve(import.meta.dirname, '..')
   const envFile = existsSync(join(repoRoot, '.env.local'))
     ? readFileSync(join(repoRoot, '.env.local'), 'utf8')
@@ -304,7 +361,7 @@ function main(): void {
 
   const schemaText = readDescription(checkout)
   const description = JSON.parse(schemaText) as Description
-  const module = emit(description, pins.engine.tag)
+  const module = await emitFormatted(description, pins.engine.tag, repoRoot)
 
   writeFileSync(join(repoRoot, 'vendor', 'protocol.schema.json'), schemaText)
   pins.engine.schema_sha256 = fingerprint(schemaText)
@@ -319,4 +376,9 @@ function main(): void {
   )
 }
 
-if (process.argv[1] !== undefined && import.meta.filename === resolve(process.argv[1])) main()
+if (process.argv[1] !== undefined && import.meta.filename === resolve(process.argv[1])) {
+  main().catch((error: Error) => {
+    console.error(error.message)
+    process.exit(1)
+  })
+}

@@ -17,6 +17,15 @@ default_install_hook_types: [pre-commit, commit-msg]
 minimum_pre_commit_version: "3.2.0"
 
 repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      # A conflict marker committed during a rebase. Nothing else here would
+      # see one: `npm run lint` runs prettier over src, tests and scripts
+      # only, so a marker left in a document under docs/ reached a pull
+      # request with git's own scaffolding in it, commit hash included.
+      - id: check-merge-conflict
+
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.30.1
     hooks:

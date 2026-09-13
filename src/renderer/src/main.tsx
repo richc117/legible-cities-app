@@ -11,17 +11,9 @@ import './styles/scale.css'
 import './kit'
 import './styles/figui-adapter.css'
 import './styles/app.css'
-
-// The engine's two themes follow the operating system's preference: sepia
-// for light, warm-dark (the :root defaults) otherwise. A toggle arrives
-// with A4-03.
-const light = window.matchMedia('(prefers-color-scheme: light)')
-function applyTheme(matches: boolean): void {
-  if (matches) document.documentElement.dataset.theme = 'sepia'
-  else delete document.documentElement.dataset.theme
-}
-applyTheme(light.matches)
-light.addEventListener('change', (event) => applyTheme(event.matches))
+// The theme, applied before anything is drawn: the system's preference
+// until App has read what a person chose in Settings (A1-04).
+import './theme'
 
 // The progress line's sample page, for a person or the end-to-end test to
 // look at; nothing in the app links to it.

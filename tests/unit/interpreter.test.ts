@@ -126,7 +126,7 @@ describe('engineCommand', () => {
 })
 
 describe('engineEnvironment', () => {
-  const config = { home: '/data/engine', loomBin: null, ffmpeg: null }
+  const config = { home: '/data/engine', loomBin: null, loomCommit: null, ffmpeg: null }
   const env = {
     PATH: '/usr/bin',
     HOME: '/u/x',
@@ -177,12 +177,13 @@ describe('engineEnvironment', () => {
   })
   it('adds the optional engine keys when set, and the log level asked for', () => {
     const out = engineEnvironment({
-      config: { home: '/h', loomBin: '/loom', ffmpeg: '/ff/ffmpeg' },
+      config: { home: '/h', loomBin: '/loom', loomCommit: 'abcdef0', ffmpeg: '/ff/ffmpeg' },
       base: {},
       development: false,
       logLevel: 'debug',
     })
     expect(out.SCHEMATIC_LOOM_BIN).toBe('/loom')
+    expect(out.SCHEMATIC_LOOM_COMMIT).toBe('abcdef0')
     expect(out.SCHEMATIC_FFMPEG).toBe('/ff/ffmpeg')
     expect(out.SCHEMATIC_LOG).toBe('debug')
   })

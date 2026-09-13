@@ -1,12 +1,12 @@
 # 027. The layout a project stores, and what the engine cannot yet promise
 
-Status: Accepted
+Status: Superseded by ADR-033
 
 Date: 2026-09-08
 
 Supersedes: -
 
-Superseded by: -
+Superseded by: ADR-033
 
 ## Context
 

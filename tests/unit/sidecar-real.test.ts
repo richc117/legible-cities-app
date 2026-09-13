@@ -25,7 +25,14 @@ function realInterpreter(): string | null {
   } catch {
     fileText = undefined
   }
-  const config = resolveConfig({ fileText, env: process.env, userData: tmpdir(), baseDir: repo })
+  const config = resolveConfig({
+    fileText,
+    env: process.env,
+    userData: tmpdir(),
+    desktop: tmpdir(),
+    loomPin: '',
+    baseDir: repo,
+  })
   const resolution = resolveInterpreter({
     config: { enginePython: null, engineCheckout: config.engineCheckout },
     packaged: false,
@@ -45,7 +52,7 @@ describe.skipIf(INTERPRETER === null)('Sidecar against the real engine', () => {
     const sidecar = new Sidecar({
       command: engineCommand(INTERPRETER as string),
       env: engineEnvironment({
-        config: { home, loomBin: null, ffmpeg: null },
+        config: { home, loomBin: null, loomCommit: null, ffmpeg: null },
         base: process.env,
         development: true,
       }),
@@ -81,7 +88,7 @@ describe.skipIf(INTERPRETER === null)('Sidecar against the real engine', () => {
       expect(info.home).toBe(home)
 
       const error = (await sidecar
-        .request('map.build', { key: 'la-metro-rail' })
+        .request('map.build', { key: 'la-metro-rail', layout: '0'.repeat(64) })
         .result.catch((e: EngineError) => e)) as EngineError
       expect(error.code).toBe(-32602)
       expect(error.data?.kind).toBe('params')

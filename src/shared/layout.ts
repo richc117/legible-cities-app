@@ -1,5 +1,4 @@
-// A layout run: the stages it goes through, what it writes, and the one
-// value the app derives rather than the engine.
+// A layout run: the stages it goes through and what it writes.
 // Contracts: specs/007-layout-run/contracts/run.md and bridge.md.
 
 /**
@@ -32,12 +31,18 @@ export type StageState = 'pending' | 'running' | 'done' | 'failed'
 
 export type RunState = 'idle' | 'running' | 'done' | 'failed' | 'cancelled'
 
-/** What the renderer hands the main process when a run has finished. */
+/** What the renderer hands the main process when a layout run has finished. */
 export interface LayoutDone {
   /** The service day the map was built for, YYYY-MM-DD. */
   date: string
-  /** The stage graphs the engine named, in its own stage order. */
-  paths: string[]
+  /** The layout's id, as the engine answered it: the hash of the layout's inputs. */
+  layout: string
+  /** When the layout was made, as the engine wrote it beside the set (meta.made). */
+  made: string
+  /** The mode and agency the engine made it with (meta.mode, meta.agency). */
+  built: import('./project').ProjectInputs
+  /** The feed's window and the engine's day, as feeds.service answered them. */
+  service: import('./project').ServiceWindow
 }
 
 /** What the main process answers with once a run's record is written. */
@@ -45,9 +50,20 @@ export interface LayoutResult {
   record: import('./project').ProjectRecord
   /** True when the project had a different layout stored before this run. */
   changed: boolean
+  /**
+   * True when the id is the one the project had but the set was made
+   * again since: another project on the same inputs re-laid out (A3-06).
+   */
+  relaid: boolean
 }
 
-/** A layout identifier: the SHA-256 of the stage graphs, as hex. */
+/**
+ * A layout identifier: the engine's, the SHA-256 of everything that went
+ * into the layout (the feed's bytes, the mode, the agency, the label
+ * options, the LOOM build), as hex. Since ADR-033 it is the engine's own;
+ * a record written before that carries the app's digest of the stage
+ * graphs, the same shape and a different value, which the next run replaces.
+ */
 export function isLayoutId(value: unknown): value is string {
   return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value)
 }

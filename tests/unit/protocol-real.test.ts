@@ -25,6 +25,7 @@ import type { EngineInfo, Ok } from '../../src/shared/protocol'
 const repo = resolve(__dirname, '../..')
 const pins = JSON.parse(readFileSync(join(repo, 'vendor/pins.json'), 'utf8')) as {
   engine: EnginePin & { schema_sha256: string }
+  loom: { commit: string }
 }
 const committed = readFileSync(join(repo, 'vendor/protocol.schema.json'), 'utf8')
 
@@ -35,10 +36,21 @@ function localConfig() {
   } catch {
     fileText = undefined
   }
-  return resolveConfig({ fileText, env: process.env, userData: tmpdir(), baseDir: repo })
+  return resolveConfig({
+    fileText,
+    env: process.env,
+    userData: tmpdir(),
+    desktop: tmpdir(),
+    loomPin: pins.loom.commit,
+    baseDir: repo,
+  })
 }
 
-const CHECKOUT = localConfig().engineCheckout
+// The local configuration decides the LOOM backend too: with
+// SCHEMATIC_LOOM_BIN in .env.local the engine runs the app's binaries and
+// must report the app's pin; without it, Docker and no commit.
+const LOCAL = localConfig()
+const CHECKOUT = LOCAL.engineCheckout
 const INTERPRETER = (() => {
   const resolution = resolveInterpreter({
     config: { enginePython: null, engineCheckout: CHECKOUT },
@@ -99,7 +111,7 @@ async function withEngine<T>(run: (sidecar: Sidecar) => Promise<T>): Promise<T> 
   const sidecar = new Sidecar({
     command: engineCommand(INTERPRETER as string),
     env: engineEnvironment({
-      config: { home, loomBin: null, ffmpeg: null },
+      config: { home, loomBin: LOCAL.loomBin, loomCommit: LOCAL.loomCommit, ffmpeg: null },
       base: process.env,
       development: true,
     }),
@@ -142,8 +154,13 @@ describe.skipIf(INTERPRETER === null)(`every method the description names${WHY}`
     expect(typeof info.engine).toBe('string')
     expect(info.protocol).toBe(1)
     expect(typeof info.python).toBe('string')
-    expect(['docker', 'native']).toContain(info.loom.backend)
-    expect(info.loom).toHaveProperty('commit')
+    // The engine reports the backend the configuration chose and the commit
+    // it was told, which is the pin unless .env.local names another; the
+    // default itself is proven in config.test.ts.
+    expect(info.loom).toEqual({
+      backend: LOCAL.loomBin === null ? 'docker' : 'native',
+      commit: LOCAL.loomCommit,
+    })
     expect(info).toHaveProperty('ffmpeg')
   })
 
@@ -177,7 +194,7 @@ describe.skipIf(INTERPRETER === null)(`every method the description names${WHY}`
 
   it('refuses graph.build with a parameter the description does not define', async () => {
     const error = await withEngine((s) =>
-      refusal(s.request('graph.build', { key: 'la-metro-rail', mode: 'rail' }).result),
+      refusal(s.request('graph.build', { key: 'la-metro-rail', sausage: 'rail' }).result),
     )
     expect(error.code).toBe(-32602)
     expect(error.data?.kind).toBe('params')
@@ -185,11 +202,23 @@ describe.skipIf(INTERPRETER === null)(`every method the description names${WHY}`
 
   it('refuses map.build without the service day it requires', async () => {
     const error = await withEngine((s) =>
-      refusal(s.request('map.build', { key: 'la-metro-rail' }).result),
+      refusal(s.request('map.build', { key: 'la-metro-rail', layout: '0'.repeat(64) }).result),
     )
     expect(error.code).toBe(-32602)
     expect(error.data?.kind).toBe('params')
     expect(error.data?.hint).toMatch(/date/i)
+  })
+
+  it('refuses map.build for a layout that is not stored, with its own kind', async () => {
+    const error = await withEngine((s) =>
+      refusal(
+        s.request('map.build', { key: 'la-metro-rail', layout: '0'.repeat(64), date: '2026-09-02' })
+          .result,
+      ),
+    )
+    expect(error.code).toBe(-32000)
+    expect(error.data?.kind).toBe('layout')
+    expect(error.data?.hint).toMatch(/lay the feed out first/)
   })
 
   it('refuses a method the engine does not have', async () => {

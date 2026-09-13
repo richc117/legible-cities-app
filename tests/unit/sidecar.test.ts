@@ -55,7 +55,7 @@ function harness(control: Record<string, unknown> = {}, bounds: Partial<Bounds> 
   const sidecar = new Sidecar({
     command: [PYTHON as string, '-m', 'schematic.serve'],
     env: engineEnvironment({
-      config: { home, loomBin: null, ffmpeg: null },
+      config: { home, loomBin: null, loomCommit: null, ffmpeg: null },
       base: { ...process.env, PYTHONPATH: FAKE_ENGINE },
       development: true,
     }),
@@ -296,7 +296,7 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
     h.sidecar.start()
     await h.until(ready)
     const error = (await h.sidecar
-      .request('map.build', { key: 'x' })
+      .request('map.build', { key: 'x', layout: '0'.repeat(64) })
       .result.catch((e: EngineError) => e)) as EngineError
     expect(error.code).toBe(-32602)
     expect(error.message.startsWith('date is required')).toBe(true)

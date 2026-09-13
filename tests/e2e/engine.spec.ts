@@ -96,6 +96,7 @@ test('shows the engine ready, answers a request from the page, restarts, and lea
     const refused = await page.evaluate(async () => {
       const r = (globalThis as unknown as Bridge).api.engine.request('map.build', {
         key: 'la-metro-rail',
+        layout: '0'.repeat(64),
       })
       try {
         await r.result

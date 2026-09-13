@@ -23,14 +23,24 @@ import {
   validateFeedKey,
   validateMode,
   validateName,
+  validateLineOrder,
+  validatePalette,
+  validateTheme,
   type CreateProjectInput,
   type DeleteResult,
+  type LineOrder,
+  type Palette,
+  type ProjectInputs,
   type ProjectRecord,
   type ProjectSummary,
+  type RebuildDone,
+  type Theme,
+  validateMade,
   validateServiceDate,
+  validateServiceWindow,
+  withinWindow,
 } from '../shared/project'
-import type { LayoutDone, LayoutResult } from '../shared/layout'
-import { layoutIdentity } from './layout'
+import { isLayoutId, type LayoutDone, type LayoutResult } from '../shared/layout'
 import { isValidProjectId } from './paths'
 
 const RECORD_FILE = 'project.json'
@@ -81,14 +91,35 @@ type ReadResult = Loaded | { missing: true } | { reason: string }
 export class ProjectStore {
   private readonly root: string
   private readonly output: string
+  #writing = 0
 
   /** Both folders derive from the engine home, so neither can be handed a stray path. */
   constructor(
-    private readonly home: string,
+    home: string,
     private readonly log: (message: string) => void,
   ) {
     this.root = join(home, 'projects')
     this.output = join(home, 'out')
+  }
+
+  /**
+   * How many writes are part-way through. Both folders are under the engine
+   * home, so this is what the settings screen's reset asks before it starts
+   * removing that home's contents: a record being renamed into place is a
+   * write it must not interrupt (A1-04).
+   */
+  get writing(): number {
+    return this.#writing
+  }
+
+  /** Count a write for as long as it is touching the disk. */
+  async #track<T>(work: () => Promise<T>): Promise<T> {
+    this.#writing += 1
+    try {
+      return await work()
+    } finally {
+      this.#writing -= 1
+    }
   }
 
   private dir(id: string): string {
@@ -151,14 +182,16 @@ export class ProjectStore {
   private async writeAtomic(id: string, record: ProjectRecord): Promise<void> {
     const text = JSON.stringify(record, null, 2) + '\n'
     const temp = join(this.dir(id), tempFile())
-    try {
-      await writeFile(temp, text, 'utf8')
-      await rename(temp, this.file(id))
-    } catch (error) {
-      await rm(temp, { force: true }).catch(() => undefined)
-      this.log(`projects/${id}: write failed (${reasonOf(error)})`)
-      throw new Error('the project could not be saved', { cause: error })
-    }
+    await this.#track(async () => {
+      try {
+        await writeFile(temp, text, 'utf8')
+        await rename(temp, this.file(id))
+      } catch (error) {
+        await rm(temp, { force: true }).catch(() => undefined)
+        this.log(`projects/${id}: write failed (${reasonOf(error)})`)
+        throw new Error('the project could not be saved', { cause: error })
+      }
+    })
   }
 
   /** A folder for a new identifier; a collision, however unlikely, draws again. */
@@ -233,6 +266,18 @@ export class ProjectStore {
     check(validateMode(mode))
     check(validateAgency(agency))
 
+    // Counted from the folder's creation, not from the record's write: the
+    // gap between the two is a folder on disk with nothing in it, which a
+    // reset must not walk through either.
+    return this.#track(() => this.#createTracked(input, name, mode, agency))
+  }
+
+  async #createTracked(
+    input: CreateProjectInput,
+    name: string,
+    mode: string,
+    agency: string | null,
+  ): Promise<ProjectRecord> {
     const id = await this.claimFolder()
     const now = new Date().toISOString()
     const record: ProjectRecord = {
@@ -243,12 +288,15 @@ export class ProjectStore {
       mode,
       agency,
       date: null,
+      service: null,
       style: { ...DEFAULT_STYLE },
       colors: {},
       defaultColor: DEFAULT_COLOR,
       lineOrder: [],
       theme: DEFAULT_THEME,
       layout: null,
+      made: null,
+      built: null,
       created: now,
       modified: now,
     }
@@ -263,6 +311,10 @@ export class ProjectStore {
   }
 
   async rename(id: string, name: string): Promise<ProjectRecord> {
+    return this.#track(() => this.#renameTracked(id, name))
+  }
+
+  async #renameTracked(id: string, name: string): Promise<ProjectRecord> {
     this.checkId(id)
     const trimmed = name.trim()
     check(validateName(trimmed))
@@ -281,34 +333,200 @@ export class ProjectStore {
   }
 
   /**
-   * A run finished: the layout it was drawn from, the day it was drawn for
-   * and the modification time go in together, or none of them does. The
-   * engine named the stage graphs; they are read here, where a path is
-   * allowed to exist, and checked against the engine's home first.
+   * The mode and agency a person chose with the feed in view (A2-02). The
+   * engine names a layout by its inputs, so a change here means the next
+   * run draws a different layout, which the run says; nothing is re-laid
+   * out here. An empty agency is none.
+   */
+  async setInputs(id: string, inputs: ProjectInputs): Promise<ProjectRecord> {
+    return this.#track(() => this.#setInputsTracked(id, inputs))
+  }
+
+  async #setInputsTracked(id: string, inputs: ProjectInputs): Promise<ProjectRecord> {
+    this.checkId(id)
+    const agency = inputs.agency == null ? null : inputs.agency.trim() || null
+    check(validateMode(inputs.mode))
+    check(validateAgency(agency))
+    const { record, readOnly } = await this.load(id)
+    if (readOnly) throw new Error('read-only')
+    if (record.mode === inputs.mode && record.agency === agency) return record
+    const updated: ProjectRecord = {
+      ...record,
+      version: RECORD_VERSION,
+      mode: inputs.mode,
+      agency,
+      modified: new Date().toISOString(),
+    }
+    await this.writeAtomic(id, updated)
+    return updated
+  }
+
+  /**
+   * A run finished: the layout it was drawn from, the feed's window, the
+   * day it was drawn for and the modification time go in together, or none
+   * of them does. The layout's id is the engine's own, the hash of the
+   * layout's inputs, as graph.build answered it (ADR-033); the window and
+   * the engine's day are feeds.service's answer (ADR-031); nothing is read
+   * from disk here.
    *
    * A project keeps a service day it already has: the day is resolved once
    * and never recomputed, because a day chosen afresh would depend on when
-   * the person asked (ADR-023).
+   * the person asked. The window is replaced every run, because a fresh
+   * feed may carry a fresh calendar.
    */
   async completeLayout(id: string, done: LayoutDone): Promise<LayoutResult> {
+    return this.#track(() => this.#completeLayoutTracked(id, done))
+  }
+
+  async #completeLayoutTracked(id: string, done: LayoutDone): Promise<LayoutResult> {
     this.checkId(id)
     check(validateServiceDate(done.date))
+    check(validateServiceWindow(done.service))
+    check(validateMade(done.made))
+    check(validateMode(done.built?.mode ?? ''))
+    check(validateAgency(done.built?.agency ?? null))
     const { record, readOnly } = await this.load(id)
     if (readOnly) throw new Error('read-only')
-    const layout = await layoutIdentity(done.paths, this.home)
+    if (!isLayoutId(done.layout))
+      throw new Error('the layout run did not say which layout it drew from')
+    const layout = done.layout
+    const { start, end, busiest, anchor } = done.service
     const updated: ProjectRecord = {
       ...record,
       version: RECORD_VERSION,
       layout,
+      made: done.made,
+      built: { mode: done.built.mode, agency: done.built.agency?.trim() || null },
       date: record.date ?? done.date,
+      service: { start, end, busiest, anchor },
       modified: new Date().toISOString(),
     }
     await this.writeAtomic(id, updated)
-    return { record: updated, changed: record.layout !== null && record.layout !== layout }
+    // A different id is a different layout. The same id with a different
+    // `made` is the same inputs laid out again since this project last drew
+    // from them, by another project sharing the set (A3-06). A record with
+    // no id or no `made` has nothing to differ from.
+    const changed = record.layout !== null && record.layout !== layout
+    const relaid =
+      !changed && record.layout === layout && record.made !== null && record.made !== done.made
+    return { record: updated, changed, relaid }
+  }
+
+  /**
+   * A rebuild for a chosen day finished: the map was drawn from the stored
+   * layout for that day, so the day is written. This is the gate the spec
+   * puts in the trusted process: the day must lie inside the window the
+   * engine answered, and there must be a layout to have drawn from.
+   */
+  async completeRebuild(id: string, done: RebuildDone): Promise<ProjectRecord> {
+    return this.#track(() => this.#completeRebuildTracked(id, done))
+  }
+
+  async #completeRebuildTracked(id: string, done: RebuildDone): Promise<ProjectRecord> {
+    this.checkId(id)
+    check(validateServiceDate(done.date))
+    const { record, readOnly } = await this.load(id)
+    if (readOnly) throw new Error('read-only')
+    if (record.layout === null) throw new Error('lay the project out first')
+    if (record.service === null)
+      throw new Error('lay the project out again to learn which days the feed covers')
+    if (!withinWindow(done.date, record.service))
+      throw new Error(`the feed covers ${record.service.start} to ${record.service.end}`)
+    const updated: ProjectRecord = {
+      ...record,
+      version: RECORD_VERSION,
+      date: done.date,
+      modified: new Date().toISOString(),
+    }
+    await this.writeAtomic(id, updated)
+    return updated
+  }
+
+  /**
+   * The line colours a person chose (A4-01), written once the map has been
+   * drawn with them, as a chosen day is: nothing is stored that the page on
+   * screen does not already show. The engine resolves an override over the
+   * feed's own colour over the default, so only the two fields are kept
+   * here; the app resolves nothing and stores no feed colour.
+   */
+  async completeColors(id: string, palette: Palette): Promise<ProjectRecord> {
+    return this.#track(() => this.#completeColorsTracked(id, palette))
+  }
+
+  async #completeColorsTracked(id: string, palette: Palette): Promise<ProjectRecord> {
+    this.checkId(id)
+    check(validatePalette(palette))
+    const { record, readOnly } = await this.load(id)
+    if (readOnly) throw new Error('read-only')
+    if (record.layout === null) throw new Error('lay the project out first')
+    const updated: ProjectRecord = {
+      ...record,
+      version: RECORD_VERSION,
+      colors: { ...palette.colors },
+      defaultColor: palette.defaultColor,
+      modified: new Date().toISOString(),
+    }
+    await this.writeAtomic(id, updated)
+    return updated
+  }
+
+  /**
+   * The order a person arranged the lines in (A4-02), written once the map
+   * has been drawn in it, as the colours are. The order is the whole
+   * arrangement the panel showed, not a change to the one stored, so what
+   * is written is what was seen.
+   */
+  async completeOrder(id: string, order: LineOrder): Promise<ProjectRecord> {
+    return this.#track(() => this.#completeOrderTracked(id, order))
+  }
+
+  async #completeOrderTracked(id: string, order: LineOrder): Promise<ProjectRecord> {
+    this.checkId(id)
+    check(validateLineOrder(order))
+    const { record, readOnly } = await this.load(id)
+    if (readOnly) throw new Error('read-only')
+    if (record.layout === null) throw new Error('lay the project out first')
+    const updated: ProjectRecord = {
+      ...record,
+      version: RECORD_VERSION,
+      lineOrder: [...order],
+      modified: new Date().toISOString(),
+    }
+    await this.writeAtomic(id, updated)
+    return updated
+  }
+
+  /**
+   * The theme a person chose for this project's map (A4-03). Written the
+   * moment it is pressed rather than after a build, because a theme is
+   * neither a layout nor a render: the engine's page carries its furniture's
+   * colours as CSS variables and restyles itself from its own address.
+   */
+  async setTheme(id: string, theme: Theme): Promise<ProjectRecord> {
+    return this.#track(() => this.#setThemeTracked(id, theme))
+  }
+
+  async #setThemeTracked(id: string, theme: Theme): Promise<ProjectRecord> {
+    this.checkId(id)
+    check(validateTheme(theme))
+    const { record, readOnly } = await this.load(id)
+    if (readOnly) throw new Error('read-only')
+    const updated: ProjectRecord = {
+      ...record,
+      version: RECORD_VERSION,
+      theme,
+      modified: new Date().toISOString(),
+    }
+    await this.writeAtomic(id, updated)
+    return updated
   }
 
   async delete(id: string): Promise<DeleteResult> {
     this.checkId(id)
+    return this.#track(() => this.#deleteTracked(id))
+  }
+
+  async #deleteTracked(id: string): Promise<DeleteResult> {
     if (!(await this.exists(this.dir(id)))) throw new Error('not found')
     const result: DeleteResult = { removed: [], failed: [] }
     const targets = [

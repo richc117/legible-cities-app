@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_COLOR,
@@ -13,8 +15,21 @@ import {
   validateId,
   validateMode,
   validateName,
+  validateLineOrder,
+  validateServiceWindow,
+  validateTheme,
+  withinWindow,
   type ProjectRecord,
+  AGENCY_MAX,
+  MODE_PATTERN,
 } from '../../src/shared/project'
+
+const WINDOW = {
+  start: '2026-01-01',
+  end: '2026-12-31',
+  busiest: '2026-09-15',
+  anchor: '2026-09-08',
+}
 
 // The record from contracts/record.md, verbatim.
 const full: ProjectRecord = {
@@ -25,12 +40,15 @@ const full: ProjectRecord = {
   mode: 'all',
   agency: null,
   date: null,
+  service: null,
   style: { lineWidth: 10, stationRadius: 8, interchangeRadius: 11, labelSize: 26 },
   colors: {},
   defaultColor: '#888888',
   lineOrder: [],
   theme: 'warm-dark',
   layout: null,
+  made: null,
+  built: null,
   created: '2026-09-07T20:00:00.000Z',
   modified: '2026-09-07T20:00:00.000Z',
 }
@@ -65,28 +83,49 @@ describe('validateFeedKey', () => {
   })
 })
 
+describe('the two rules the engine also checks', () => {
+  // graph.build validates mode and agency itself now; the app's rules are
+  // the engine's, read from the committed description rather than repeated.
+  const schema = JSON.parse(
+    readFileSync(resolve(__dirname, '../../vendor/protocol.schema.json'), 'utf8'),
+  ) as {
+    $defs: {
+      GraphBuildParams: { properties: { mode: { pattern: string }; agency: { maxLength: number } } }
+    }
+  }
+  it('match the engine schema', () => {
+    const props = schema.$defs.GraphBuildParams.properties
+    expect(MODE_PATTERN.source).toBe(props.mode.pattern)
+    expect(AGENCY_MAX).toBe(props.agency.maxLength)
+  })
+})
+
 describe('validateMode', () => {
-  it('accepts a short lowercase word', () => {
-    for (const mode of ['all', 'rail', 'a', 'a'.repeat(16)]) {
+  // The engine's rule: what LOOM's -m takes, names or route_type numbers,
+  // comma-joined; the registry's own entries are the proof.
+  it('accepts what gtfs2graph -m takes', () => {
+    for (const mode of ['all', 'rail', 'tram,subway', 'rail,funicular', '1', 'mono-rail']) {
       expect(validateMode(mode), mode).toBeNull()
     }
   })
   it('refuses the rest', () => {
-    for (const mode of ['', 'Rail', 'a'.repeat(17), 'a-b', 'a1', 'a b']) {
-      expect(validateMode(mode), JSON.stringify(mode)).toBe('mode must be a short lowercase word')
+    for (const mode of ['', 'Rail', 'a'.repeat(65), 'a b', 'tram,', ',tram', 'tram,,rail']) {
+      expect(validateMode(mode), JSON.stringify(mode)).toBe(
+        'mode must be one or more of the modes LOOM knows, such as tram or subway, comma-joined',
+      )
     }
   })
 })
 
 describe('validateAgency', () => {
-  it('accepts none, or text up to 120 characters after trimming', () => {
+  it('accepts none, or text up to 64 characters after trimming, as the engine does', () => {
     expect(validateAgency(null)).toBeNull()
     expect(validateAgency('Metro')).toBeNull()
-    expect(validateAgency('x'.repeat(120))).toBeNull()
-    expect(validateAgency(`  ${'x'.repeat(120)}  `)).toBeNull()
+    expect(validateAgency('x'.repeat(64))).toBeNull()
+    expect(validateAgency(`  ${'x'.repeat(64)}  `)).toBeNull()
   })
   it('caps the length', () => {
-    expect(validateAgency('x'.repeat(121))).toBe('agency is too long (120 characters at most)')
+    expect(validateAgency('x'.repeat(65))).toBe('agency is too long (64 characters at most)')
   })
 })
 
@@ -104,6 +143,74 @@ describe('validateId', () => {
     ]) {
       expect(validateId(id), JSON.stringify(id)).toBe('invalid id')
     }
+  })
+})
+
+describe('validateServiceWindow and withinWindow', () => {
+  it('accepts four calendar days in order, a single-day window included', () => {
+    expect(validateServiceWindow(WINDOW)).toBeNull()
+    expect(validateServiceWindow({ ...WINDOW, start: '2026-12-31' })).toBeNull()
+  })
+  it('names what is wrong', () => {
+    expect(validateServiceWindow(null)).toMatch(/four days/)
+    expect(validateServiceWindow({ ...WINDOW, anchor: undefined })).toMatch(/missing its anchor/)
+    expect(validateServiceWindow({ ...WINDOW, end: '2026-02-30' })).toMatch(
+      /end: that is not a day/,
+    )
+    expect(validateServiceWindow({ ...WINDOW, start: '2027-01-01' })).toMatch(
+      /ends before it starts/,
+    )
+  })
+  it('bounds a day inclusively', () => {
+    expect(withinWindow('2026-01-01', WINDOW)).toBe(true)
+    expect(withinWindow('2026-12-31', WINDOW)).toBe(true)
+    expect(withinWindow('2025-12-31', WINDOW)).toBe(false)
+    expect(withinWindow('2027-01-01', WINDOW)).toBe(false)
+  })
+})
+
+describe('validateLineOrder', () => {
+  it('takes a list of the labels a record can hold', () => {
+    expect(validateLineOrder([])).toBeNull()
+    expect(validateLineOrder(['A', 'K', 'Rapid 720'])).toBeNull()
+  })
+
+  it('refuses anything that is not a list of text', () => {
+    for (const value of [undefined, null, 42, 'A', {}, [42], [null]])
+      expect(validateLineOrder(value), JSON.stringify(value) ?? 'undefined').toMatch(
+        /list of lines/,
+      )
+  })
+
+  it('refuses a label the record could not hold', () => {
+    expect(validateLineOrder([''])).toMatch(/needs a label/)
+    expect(validateLineOrder(['__proto__'])).toMatch(/__proto__/)
+    expect(validateLineOrder(['a'.repeat(65)])).toMatch(/too long/)
+    expect(validateLineOrder(['A\u0007'])).toMatch(/control character/)
+  })
+
+  it("refuses the same line twice: its place, and another line's, would be ambiguous", () => {
+    expect(validateLineOrder(['A', 'B', 'A'])).toMatch(/twice/)
+  })
+
+  it('refuses more lines than a feed could draw', () => {
+    expect(validateLineOrder(Array.from({ length: 513 }, (_u, i) => `line-${i}`))).toMatch(
+      /more than 512/,
+    )
+  })
+})
+
+describe('validateTheme', () => {
+  it('takes the two the engine’s page draws', () => {
+    expect(validateTheme('warm-dark')).toBeNull()
+    expect(validateTheme('sepia')).toBeNull()
+  })
+
+  it('refuses anything else, including the interface’s third option', () => {
+    for (const value of [undefined, null, 42, '', 'dark', 'light', 'system', ['sepia']])
+      expect(validateTheme(value), JSON.stringify(value) ?? 'undefined').toMatch(
+        /warm-dark or sepia/,
+      )
   })
 })
 
@@ -130,6 +237,9 @@ describe('parseRecord', () => {
       lineOrder: [],
       theme: DEFAULT_THEME,
       layout: null,
+      made: null,
+      built: null,
+      service: null,
     })
     // Times default to now, in the form every other time uses.
     expect(parsed.record.created).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
@@ -147,6 +257,8 @@ describe('parseRecord', () => {
       lineOrder: ['A', 2, 'B'],
       theme: 'sepia',
       layout: '3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f',
+      service: { ...WINDOW, extra: 'dropped' },
+      made: '2026-09-10T12:00:00+00:00',
     })
     expect('record' in parsed).toBe(true)
     if (!('record' in parsed)) return
@@ -160,19 +272,65 @@ describe('parseRecord', () => {
       lineOrder: ['A', 'B'],
       theme: 'sepia',
       layout: '3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f',
+      service: WINDOW,
+      made: '2026-09-10T12:00:00+00:00',
     })
-    // A layout identifier is the digest A3-01 writes; anything else is not
-    // one this app produced, so it is dropped rather than half-trusted.
+    // An order is read the way the store would write it: a label it could
+    // not hold, and a second mention of one it could, are both dropped, so
+    // what a person sees is what the record keeps. A line dropped here still
+    // draws, because the engine draws every line an order leaves out.
+    const orders = parseRecord({
+      ...full,
+      lineOrder: ['A', '__proto__', 'B', 'A', '', 'a'.repeat(65), 'K'],
+    })
+    expect('record' in orders && orders.record.lineOrder).toEqual(['A', 'B', 'K'])
+    const notAList = parseRecord({ ...full, lineOrder: 'A' })
+    expect('record' in notAList && notAList.record.lineOrder).toEqual([])
+    const tooMany = parseRecord({
+      ...full,
+      lineOrder: Array.from({ length: 600 }, (_u, i) => `line-${i}`),
+    })
+    expect('record' in tooMany && tooMany.record.lineOrder.length).toBe(512)
+
+    // A layout identifier is 64 hex digits, the engine's id (ADR-033) or the
+    // digest the app wrote before; anything else is dropped rather than half-trusted.
     const badDate = parseRecord({
       ...full,
       date: '7 September 2026',
       theme: 'neon',
       layout: 'abc123',
+      made: null,
+      built: null,
     })
     if (!('record' in badDate)) throw new Error(badDate.error)
     expect(badDate.record.date).toBeNull()
     expect(badDate.record.theme).toBe(DEFAULT_THEME)
     expect(badDate.record.layout).toBeNull()
+    for (const made of [
+      'last Tuesday',
+      '',
+      42,
+      'x'.repeat(65),
+      '2026',
+      'Sep 10 2026',
+      '2026-09-10',
+    ]) {
+      const parsed = parseRecord({ ...full, made })
+      if (!('record' in parsed)) throw new Error(parsed.error)
+      expect(parsed.record.made, JSON.stringify(made)).toBeNull()
+    }
+    // A window is whole or nothing: a half-valid block is not half-trusted.
+    for (const service of [
+      { ...WINDOW, end: '2025-01-01' },
+      { ...WINDOW, busiest: 'Tuesday' },
+      { start: '2026-01-01', end: '2026-12-31' },
+      'all year',
+      [WINDOW],
+    ]) {
+      const parsed = parseRecord({ ...full, service })
+      if (!('record' in parsed)) throw new Error(parsed.error)
+      expect(parsed.record.service, JSON.stringify(service)).toBeNull()
+    }
   })
   it('marks a record from a later version read-only without rewriting it', () => {
     const parsed = parseRecord({ ...full, version: 2, future: 'field' })

@@ -8,16 +8,24 @@ import { access, realpath, stat } from 'node:fs/promises'
 import { constants } from 'node:fs'
 import { join } from 'node:path'
 import { Readable } from 'node:stream'
-import { net, protocol } from 'electron'
+import { net, protocol, type Session } from 'electron'
 import { contentTypeFor, decodeAssetPath, isValidProjectId, resolveInside } from './paths'
 
 export interface AppProtocolOptions {
   /** The Vite dev server, e.g. http://localhost:5173; undefined outside development. */
   devUrl?: string
-  /** electron-vite's renderer output, served in a built app. */
-  uiRoot: string
+  /** electron-vite's renderer output, served in a built app. Unused when `projectsOnly`. */
+  uiRoot?: string
   /** SCHEMATIC_HOME; project output is read from <engineHome>/out/<id>/. */
   engineHome: string
+  /**
+   * Serve project pages and nothing else. The capture window's session
+   * (ADR-024) has no business with the interface, so under it /ui/ does not
+   * exist.
+   */
+  projectsOnly?: boolean
+  /** The session to serve; the default session when omitted. */
+  session?: Session
   /** Refusals are logged with the URL only, never the resolved path. */
   log?: (message: string) => void
 }
@@ -187,6 +195,7 @@ export async function handleAppRequest(
   // The interface. In development every remaining path is the dev server's
   // (Vite emits root-relative URLs), reached through this proxy so the page
   // keeps the app://local origin; only a leading /ui is stripped.
+  if (options.projectsOnly || options.uiRoot === undefined) return notFound()
   if (options.devUrl) {
     const stripped =
       pathname === '/ui' || pathname.startsWith('/ui/') ? pathname.slice(3) || '/' : pathname
@@ -210,7 +219,8 @@ export async function handleAppRequest(
 
 export function registerAppProtocol(options: AppProtocolOptions): void {
   const log = options.log ?? (() => {})
-  protocol.handle('app', async (req) => {
+  const handler = options.session ? options.session.protocol : protocol
+  handler.handle('app', async (req) => {
     try {
       return await handleAppRequest(req, options)
     } catch (error) {

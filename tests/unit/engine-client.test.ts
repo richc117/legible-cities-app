@@ -97,7 +97,11 @@ describe('EngineClient.request', () => {
   it('rejects with the engine error unchanged, code, message and data', async () => {
     const s = stub()
     const client = new EngineClient(s.bridge)
-    const handle = client.request('map.build', { key: 'la', date: '2026-09-07' })
+    const handle = client.request('map.build', {
+      key: 'la',
+      layout: 'a'.repeat(64),
+      date: '2026-09-07',
+    })
     const error = {
       code: -32602,
       message: 'date is required',

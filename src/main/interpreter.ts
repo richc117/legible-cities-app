@@ -108,7 +108,7 @@ const PASS_THROUGH = new Set([
 ])
 
 export interface EnvironmentInput {
-  config: Pick<Config, 'home' | 'loomBin' | 'ffmpeg'>
+  config: Pick<Config, 'home' | 'loomBin' | 'loomCommit' | 'ffmpeg'>
   base: Record<string, string | undefined>
   development: boolean
   logLevel?: string
@@ -135,6 +135,8 @@ export function engineEnvironment(input: EnvironmentInput): Record<string, strin
   }
   env.SCHEMATIC_HOME = input.config.home
   if (input.config.loomBin !== null) env.SCHEMATIC_LOOM_BIN = input.config.loomBin
+  // The binaries cannot say which LOOM they are; the engine reports what it is told.
+  if (input.config.loomCommit !== null) env.SCHEMATIC_LOOM_COMMIT = input.config.loomCommit
   if (input.config.ffmpeg !== null) env.SCHEMATIC_FFMPEG = input.config.ffmpeg
   env.SCHEMATIC_LOG = input.logLevel ?? 'info'
   // Lines arrive as they are written, and survive any locale.

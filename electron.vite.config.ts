@@ -15,6 +15,18 @@ const DEV_PORT = 5173
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
+    build: {
+      rollupOptions: {
+        // Two entries: the app, and the capture on its own, which the
+        // end-to-end harness (tests/e2e/capture-harness.cjs) loads into a
+        // bare Electron so the real window and debugger are exercised
+        // without a test hook in the app itself.
+        input: {
+          index: resolve('src/main/index.ts'),
+          capture: resolve('src/main/capture-window.ts'),
+        },
+      },
+    },
   },
   preload: {
     plugins: [externalizeDepsPlugin()],

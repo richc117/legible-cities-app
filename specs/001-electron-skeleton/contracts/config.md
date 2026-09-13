@@ -26,9 +26,11 @@ startup, before the window opens, exactly these lines appear:
 [config] SCHEMATIC_LOOM_BIN=<path>       (.env.local | environment)
    or
 [config] SCHEMATIC_LOOM_BIN unset - nothing in this build needs it; set it in .env.local
+[config] SCHEMATIC_LOOM_COMMIT=<commit>  (default | .env.local | environment)   (when set, or with a LOOM directory, where the default is the app's pin)
 [config] SCHEMATIC_FFMPEG=<path>         (.env.local | environment)
    or
 [config] SCHEMATIC_FFMPEG unset - nothing in this build needs it; set it in .env.local
+[config] LEGIBLE_EXPORT_FOLDER=<resolved path>  (default | .env.local | environment)   (specs/010; the default is a "Legible Cities" folder on the desktop)
 [config] LEGIBLE_ENGINE_CHECKOUT=<path>  (.env.local | environment)   (development only, when set)
 [config] LEGIBLE_ENGINE_PYTHON=<path or command>  (.env.local | environment)   (when set; specs/004)
 [config] .env.local not found; using defaults   (development only, when absent)

@@ -4,7 +4,15 @@
 // does and writes the same three files, so this exercises the whole run
 // without needing Docker or a feed.
 
-import { mkdtempSync, readFileSync, readdirSync, existsSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  existsSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import {
@@ -102,7 +110,7 @@ test('lays a project out, reports every stage, and records what it was drawn fro
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
 
     const after = readRecord(engineHome)
-    expect(after.layout, 'the identifier is a SHA-256, as hex').toMatch(/^[0-9a-f]{64}$/)
+    expect(after.layout, "the engine's id: a SHA-256, as hex").toMatch(/^[0-9a-f]{64}$/)
     expect(after.date, 'the service day is resolved once and stored').toMatch(/^\d{4}-\d{2}-\d{2}$/)
     // The page went where the app already serves a project's output.
     const out = join(engineHome, 'out', String(after.id))
@@ -125,6 +133,138 @@ test('shows no path on the screen, whatever the engine says', async () => {
     const text = await page.getByRole('region', { name: 'Layout run' }).innerText()
     expect(text).not.toMatch(/[/\\]/)
     expect(text).toContain('Wrote the map')
+  })
+})
+
+// The diagnostics panel (A3-03): the engine's numbers, its caveat
+// sentences and its score, for the build that just ran. The stand-in
+// answers a fudged network here and its clean default below, which are the
+// two cases the panel has to get right.
+const FUDGED = {
+  map_draws: true,
+  progress_delay_ms: 10,
+  map_diagnostics: {
+    stations: 114,
+    junctions: 8,
+    edges: 121,
+    lines: ['A', 'B'],
+    octilinear: 0.9938,
+    stops: {
+      matched: 112,
+      total: 116,
+      by: { station_id: 100, parent_station: 10, name: 2 },
+      unmatched: ['80122', '80123'],
+    },
+    trips: { total: 135, paths: 40, unrouted: 3 },
+    degraded: { skipped_calls: 12, borrowed_track: 26 },
+    labels_dropped: 2,
+    peak_concurrent: 19,
+  },
+  map_caveats: [
+    '4 of 116 stops could not be placed on the map, so trains pass straight through them',
+  ],
+  map_issues: 0.2137,
+}
+
+test("shows what the build had to fudge, in the engine's own words and figures", async () => {
+  const engineHome = home(FUDGED)
+  await withApp(engineHome, async (page, app) => {
+    await openNewProject(page, 'Los Angeles')
+    const panel = page.getByRole('region', { name: 'What the build had to fudge' })
+    // Nothing to say about a build that has not happened.
+    await expect(panel).toHaveCount(0)
+
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    await expect(panel).toBeVisible()
+
+    // The caveat is the engine's sentence, word for word, and the score is
+    // the number it sent.
+    await expect(
+      panel.getByText('4 of 116 stops could not be placed on the map', { exact: false }),
+    ).toBeVisible()
+    await expect(panel).toContainText('issues score of 0.2137')
+    // Every figure is the block's, formatted and never derived.
+    await expect(panel).toContainText('99.4%')
+    await expect(panel).toContainText('112 of 116 (97%)')
+    await expect(panel).toContainText('80122, 80123')
+    for (const figure of ['114', '121', '135', '40', '26', '19']) {
+      await expect(panel).toContainText(figure)
+    }
+
+    // An explanation is reachable from the keyboard, and says what the
+    // engine's word means.
+    const trigger = panel.getByRole('button', { name: 'What trips on borrowed track means' })
+    await trigger.focus()
+    await expect(panel.getByText(/neighbouring line's track/)).toBeVisible()
+
+    // And to a press, which is how a touch user asks; the control says
+    // whether the explanation it controls is showing.
+    const pressed = panel.getByRole('button', { name: 'What labels dropped means' })
+    await expect(pressed).toHaveAttribute('aria-expanded', 'false')
+    await pressed.click()
+    await expect(pressed).toHaveAttribute('aria-expanded', 'true')
+    await expect(panel.getByText(/nowhere to sit without overlapping/)).toBeVisible()
+    await pressed.click()
+    await expect(pressed).toHaveAttribute('aria-expanded', 'false')
+
+    // "Copy as text" hands over what is on the screen.
+    await panel.getByRole('button', { name: 'Copy as text' }).click()
+    await expect(panel.getByText(/on the clipboard/)).toBeVisible()
+    const copied = await app.evaluate(({ clipboard }) => clipboard.readText())
+    expect(copied).toContain('Los Angeles — the map drawn for')
+    expect(copied).toContain('Trips on borrowed track: 26')
+    expect(copied).toContain('Issues score: 0.2137 (0 is clean)')
+    expect(copied).toContain(
+      '- 4 of 116 stops could not be placed on the map, so trains pass straight through them',
+    )
+    // The result's files are paths under the engine home; none reaches the
+    // screen or the clipboard (constitution V).
+    expect(await panel.innerText()).not.toMatch(/[/\\]/)
+  })
+})
+
+test('a clean network says there are no caveats and a score of 0', async () => {
+  // One figure named, and the stand-in keeps the rest of its clean block:
+  // a control that replaced a whole sub-block would answer a shape the
+  // engine cannot produce.
+  const engineHome = home({
+    map_draws: true,
+    progress_delay_ms: 10,
+    map_diagnostics: { trips: { total: 9 } },
+  })
+  await withApp(engineHome, async (page, app) => {
+    await openNewProject(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    const panel = page.getByRole('region', { name: 'What the build had to fudge' })
+    await expect(panel).toContainText('No caveats')
+    await expect(panel).toContainText('the issues score is 0.')
+    await expect(panel).toContainText('100.0%')
+    await expect(panel).toContainText('3 of 3 (100%)')
+    // The named figure, and the rest of its sub-block as the stand-in has
+    // it: merged a level down rather than replaced, or the stand-in would
+    // answer a shape the engine cannot produce. The copied block says
+    // which figure is which without guessing at a row.
+    await panel.getByRole('button', { name: 'Copy as text' }).click()
+    await expect(panel.getByText(/on the clipboard/)).toBeVisible()
+    const copied = await app.evaluate(({ clipboard }) => clipboard.readText())
+    expect(copied).toContain('Trips: 9')
+    expect(copied).toContain('Distinct paths: 1')
+    expect(copied).toContain('Trips not traced: 0')
+    expect(copied).toContain('Stops matched: 3 of 3 (100%)')
+    expect(copied).toContain('No caveats.')
+  })
+})
+
+test('a run that did not finish leaves no figures on the screen', async () => {
+  const engineHome = home({ ...FUDGED, progress_delay_ms: 400 })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /cancel/i }).click()
+    await expect(page.getByText(/was cancelled/i)).toBeVisible({ timeout: 20_000 })
+    await expect(page.getByRole('region', { name: 'What the build had to fudge' })).toHaveCount(0)
   })
 })
 
@@ -190,6 +330,62 @@ test('quitting during a run leaves no process and an unchanged record', async ()
   expect(() => process.kill(enginePid, 0), 'the engine did not outlive the app').toThrow()
 })
 
+test('a re-layout runs every stage again behind its warning, and cancelling the warning changes nothing', async () => {
+  const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    const before = readRecord(engineHome)
+
+    // The warning first, and its cancel leaves everything as it was.
+    await page.getByRole('button', { name: 'Re-layout' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Lay this project out from scratch?' })
+    await expect(dialog).toBeVisible()
+    await expect(dialog).toContainText(/may place stations differently/)
+    await dialog.getByRole('button', { name: 'Cancel' }).click()
+    await expect(dialog).toBeHidden()
+    expect(JSON.stringify(readRecord(engineHome))).toBe(JSON.stringify(before))
+
+    await page.getByRole('button', { name: 'Re-layout' }).click()
+    await page
+      .getByRole('dialog', { name: 'Lay this project out from scratch?' })
+      .getByRole('button', { name: 'Re-layout' })
+      .click()
+    const run = page.getByRole('region', { name: 'Layout run' })
+    await expect(run).toBeVisible()
+    await expect(page.getByText(/^Laid out again from scratch/)).toBeVisible({ timeout: 30_000 })
+    const after = readRecord(engineHome)
+    expect(after.layout, 'the same inputs name the same layout').toBe(before.layout)
+    expect(after.date).toBe(before.date)
+    // The stand-in saw the force, and nothing on the screen is a path.
+    const received = readFileSync(join(engineHome, 'fake-engine.received'), 'utf8')
+      .split('\n')
+      .filter((l) => l.includes('graph.build'))
+    expect(received.some((l) => l.includes('"force": true'))).toBe(true)
+    expect(await run.innerText()).not.toMatch(/[/\\]/)
+  })
+})
+
+test('a cancelled re-layout leaves the project as it was', async () => {
+  const engineHome = home({ map_draws: true, progress_delay_ms: 400 })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    const before = readRecord(engineHome)
+    await page.getByRole('button', { name: 'Re-layout' }).click()
+    await page
+      .getByRole('dialog', { name: 'Lay this project out from scratch?' })
+      .getByRole('button', { name: 'Re-layout' })
+      .click()
+    await page.getByRole('button', { name: /cancel/i }).click()
+    await expect(page.getByText(/was cancelled/i)).toBeVisible()
+    expect(JSON.stringify(readRecord(engineHome))).toBe(JSON.stringify(before))
+    await expect(page.getByRole('button', { name: 'Re-layout' })).toBeVisible()
+  })
+})
+
 test('two projects on one feed record the same layout', async () => {
   const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
   await withApp(engineHome, async (page) => {
@@ -206,6 +402,377 @@ test('two projects on one feed record the same layout', async () => {
         JSON.parse(readFileSync(join(engineHome, 'projects', id, 'project.json'), 'utf8')).layout,
     )
     expect(layouts).toHaveLength(2)
-    expect(layouts[0], 'drawn from the same four stage graphs').toBe(layouts[1])
+    expect(layouts[0], 'the same inputs name the same layout').toBe(layouts[1])
+  })
+})
+
+// The service day (specs/012): the engine's choice stored at the first
+// layout, a day chosen inside the window, and the two things that must not
+// happen: a day outside the window, and a rebuild that re-lays out.
+
+const received = (engineHome: string, method: string): string[] =>
+  readFileSync(join(engineHome, 'fake-engine.received'), 'utf8')
+    .split('\n')
+    .filter((l) => l.includes(`"${method}"`))
+
+test("a first layout stores the engine's day and the feed's window, and shows both", async () => {
+  const engineHome = home({
+    map_draws: true,
+    progress_delay_ms: 10,
+    service_window: ['2026-03-01', '2026-11-30'],
+    busiest: '2026-06-16',
+  })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+
+    const after = readRecord(engineHome)
+    expect(after.date, "the engine's day, not the machine's").toBe('2026-06-16')
+    expect(after.service).toMatchObject({
+      start: '2026-03-01',
+      end: '2026-11-30',
+      busiest: '2026-06-16',
+    })
+    expect(String((after.service as { anchor: string }).anchor)).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    // The engine was asked with the lines the layout drew.
+    const asked = received(engineHome, 'feeds.service')
+    expect(asked).toHaveLength(1)
+    expect(asked[0]).toContain('"lines": ["A", "B"]')
+    // The map was drawn for that day.
+    const maps = received(engineHome, 'map.build')
+    expect(maps[0]).toContain('"date": "2026-06-16"')
+
+    const section = page.getByRole('region', { name: 'Service day' })
+    await expect(section).toContainText('Drawn for 2026-06-16')
+    await expect(section).toContainText('2026-03-01 to 2026-11-30')
+    const control = section.getByLabel('Draw for another day')
+    await expect(control).toHaveValue('2026-06-16')
+    await expect(control).toHaveAttribute('min', '2026-03-01')
+    await expect(control).toHaveAttribute('max', '2026-11-30')
+  })
+})
+
+test('a feed whose window has ended still gets a day inside it, never today', async () => {
+  const engineHome = home({
+    map_draws: true,
+    progress_delay_ms: 10,
+    service_window: ['2024-01-01', '2024-06-30'],
+    busiest: '2024-04-02',
+  })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'Mexico City')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    expect(readRecord(engineHome).date).toBe('2024-04-02')
+    const control = page
+      .getByRole('region', { name: 'Service day' })
+      .getByLabel('Draw for another day')
+    await expect(control).toHaveAttribute('max', '2024-06-30')
+  })
+})
+
+test('a chosen day is drawn from the stored layout alone, and written when the map is', async () => {
+  const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    const before = readRecord(engineHome)
+    expect(before.date).toBe('2026-06-16')
+
+    const section = page.getByRole('region', { name: 'Service day' })
+    const control = section.getByLabel('Draw for another day')
+    await control.fill('2026-06-20')
+    await section.getByRole('button', { name: 'Draw for this day' }).click()
+    await expect(page.getByText(/^Drawn for 2026-06-20 from the stored layout/)).toBeVisible({
+      timeout: 30_000,
+    })
+
+    const after = readRecord(engineHome)
+    expect(after.date).toBe('2026-06-20')
+    expect(after.layout, 'the layout is untouched').toBe(before.layout)
+    expect(after.service).toEqual(before.service)
+    // One layout call in the whole session: the rebuild made none.
+    expect(received(engineHome, 'graph.build')).toHaveLength(1)
+    const maps = received(engineHome, 'map.build')
+    expect(maps).toHaveLength(2)
+    expect(maps[1]).toContain('"date": "2026-06-20"')
+    expect(maps[1]).toContain(`"layout": "${before.layout}"`)
+    await expect(control).toHaveValue('2026-06-20')
+    // The stored day is nothing to draw again.
+    await expect(section.getByRole('button', { name: 'Draw for this day' })).toBeDisabled()
+  })
+})
+
+test('a day outside the window cannot be chosen, and nothing is built', async () => {
+  const engineHome = home({
+    map_draws: true,
+    progress_delay_ms: 10,
+    service_window: ['2026-03-01', '2026-11-30'],
+  })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    const before = JSON.stringify(readRecord(engineHome))
+
+    const section = page.getByRole('region', { name: 'Service day' })
+    const control = section.getByLabel('Draw for another day')
+    await control.fill('2026-12-25')
+    await section.getByRole('button', { name: 'Draw for this day' }).click()
+    await expect(section.getByText('The feed covers 2026-03-01 to 2026-11-30.')).toBeVisible()
+    await expect(control).toHaveAttribute('aria-invalid', 'true')
+    expect(received(engineHome, 'map.build'), 'nothing was asked for').toHaveLength(1)
+    expect(JSON.stringify(readRecord(engineHome))).toBe(before)
+
+    // The engine's day is one press away.
+    await section.getByRole('button', { name: 'Use the busiest weekday' }).click()
+    await expect(control).toHaveValue('2026-06-16')
+  })
+})
+
+test('a cancelled rebuild keeps the day and says so', async () => {
+  // Slow enough that the cancel lands inside the map call; the stand-in
+  // reads its control file once, so the first layout is slow too.
+  const engineHome = home({ map_draws: true, progress_delay_ms: 400 })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    const before = JSON.stringify(readRecord(engineHome))
+    const section = page.getByRole('region', { name: 'Service day' })
+    await section.getByLabel('Draw for another day').fill('2026-06-20')
+    await section.getByRole('button', { name: 'Draw for this day' }).click()
+    await page.getByRole('button', { name: /cancel/i }).click()
+    await expect(page.getByText(/The rebuild was cancelled/)).toBeVisible({ timeout: 20_000 })
+    expect(JSON.stringify(readRecord(engineHome)), 'the record is untouched').toBe(before)
+    await expect(section.getByLabel('Draw for another day')).toHaveValue('2026-06-16')
+  })
+})
+
+test('reopening a laid-out project runs nothing and shows the same day and window', async () => {
+  const engineHome = home({
+    map_draws: true,
+    progress_delay_ms: 10,
+    service_window: ['2026-03-01', '2026-11-30'],
+  })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    const stored = JSON.stringify(readRecord(engineHome))
+    const asked =
+      received(engineHome, 'graph.build').length + received(engineHome, 'map.build').length
+
+    await page.getByRole('button', { name: /back to library/i }).click()
+    await page.getByRole('button', { name: 'Open Los Angeles' }).click()
+    const section = page.getByRole('region', { name: 'Service day' })
+    await expect(section).toContainText('Drawn for 2026-06-16')
+    await expect(section).toContainText('2026-03-01 to 2026-11-30')
+    await expect(section.getByLabel('Draw for another day')).toHaveValue('2026-06-16')
+    expect(JSON.stringify(readRecord(engineHome)), 'nothing was rewritten').toBe(stored)
+    expect(
+      received(engineHome, 'graph.build').length + received(engineHome, 'map.build').length,
+      'nothing ran',
+    ).toBe(asked)
+  })
+})
+
+test('a project from before the window was stored keeps its day and gains the window at its next run', async () => {
+  const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
+  // A record as A3-01 wrote it: a layout and a day, no window.
+  const id = 'oldproject01'
+  mkdirSync(join(engineHome, 'projects', id), { recursive: true })
+  const now = new Date().toISOString()
+  writeFileSync(
+    join(engineHome, 'projects', id, 'project.json'),
+    JSON.stringify(
+      {
+        version: 1,
+        id,
+        name: 'Older',
+        feed: 'la-metro-rail',
+        mode: 'all',
+        agency: null,
+        date: '2026-05-04',
+        layout: 'e'.repeat(64),
+        created: now,
+        modified: now,
+      },
+      null,
+      2,
+    ),
+  )
+  await withApp(engineHome, async (page) => {
+    await page.getByRole('button', { name: 'Open Older' }).click()
+    const section = page.getByRole('region', { name: 'Service day' })
+    await expect(section).toContainText('Drawn for 2026-05-04')
+    await expect(section).toContainText(/Lay the project out again to learn which days/)
+    await expect(section.getByLabel('Draw for another day')).toHaveCount(0)
+
+    await page.getByRole('button', { name: 'Lay out again' }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    const after = readRecord(engineHome)
+    expect(after.date, 'the day it had (ADR-031)').toBe('2026-05-04')
+    expect(after.service).toMatchObject({ busiest: '2026-06-16' })
+    await expect(section.getByLabel('Draw for another day')).toHaveValue('2026-05-04')
+    // The engine's day is offered, not imposed.
+    await expect(section.getByRole('button', { name: 'Use the busiest weekday' })).toBeEnabled()
+  })
+})
+
+test("a feed without a calendar fails the run with the engine's sentence and writes nothing", async () => {
+  const engineHome = home({
+    map_draws: true,
+    progress_delay_ms: 10,
+    service_refuses: 'The feed has neither calendar table.',
+  })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    const before = JSON.stringify(readRecord(engineHome))
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText('The feed has neither calendar table.')).toBeVisible({
+      timeout: 20_000,
+    })
+    expect(received(engineHome, 'map.build'), 'the map was never asked for').toHaveLength(0)
+    expect(JSON.stringify(readRecord(engineHome))).toBe(before)
+  })
+})
+
+test('the busiest-weekday button stays under the keyboard, and a refusal returns focus to the control', async () => {
+  const engineHome = home({
+    map_draws: true,
+    progress_delay_ms: 10,
+    service_window: ['2026-03-01', '2026-11-30'],
+  })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    const section = page.getByRole('region', { name: 'Service day' })
+    const control = section.getByLabel('Draw for another day')
+    const suggest = section.getByRole('button', { name: 'Use the busiest weekday' })
+    await expect(
+      suggest,
+      "the stored day is the engine's, so there is nothing to suggest",
+    ).toBeDisabled()
+    await control.fill('2026-06-20')
+    await suggest.focus()
+    await page.keyboard.press('Enter')
+    await expect(control).toHaveValue('2026-06-16')
+    await expect(control, 'focus moves to the control holding the day').toBeFocused()
+    await expect(suggest, 'still there, nothing more to suggest').toBeDisabled()
+
+    await control.fill('2026-12-25')
+    await section.getByRole('button', { name: 'Draw for this day' }).focus()
+    await page.keyboard.press('Enter')
+    await expect(section.getByText('The feed covers 2026-03-01 to 2026-11-30.')).toBeVisible()
+    await expect(control, 'the refusal is read with the control').toBeFocused()
+  })
+})
+
+// A layout laid out again from another project (A3-06): two projects on one
+// feed share the set, and the one that did not press Re-layout is told.
+
+test('a project is told when another re-laid out the layout it draws from', async () => {
+  const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'One')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out\.$/)).toBeVisible({ timeout: 30_000 })
+    await page.getByRole('button', { name: /back to library/i }).click()
+    await openNewProject(page, 'Two')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out\.$/)).toBeVisible({ timeout: 30_000 })
+    const records = () =>
+      Object.fromEntries(
+        readdirSync(join(engineHome, 'projects')).map((id) => {
+          const r = JSON.parse(
+            readFileSync(join(engineHome, 'projects', id, 'project.json'), 'utf8'),
+          )
+          return [r.name, r]
+        }),
+      )
+    const before = records()
+    expect(before.One.layout).toBe(before.Two.layout)
+    expect(before.One.made, 'the same set, made once').toBe(before.Two.made)
+    const shown = page.getByRole('definition').filter({ hasText: /made/ })
+    await expect(shown).toBeVisible()
+    await expect(shown.locator('time'), 'the exact time kept on the element').toHaveAttribute(
+      'datetime',
+      String(before.Two.made),
+    )
+
+    // Two, still open, re-lays out: the shared set is made again.
+    await page.getByRole('button', { name: 'Re-layout' }).click()
+    await page
+      .getByRole('dialog', { name: 'Lay this project out from scratch?' })
+      .getByRole('button', { name: 'Re-layout' })
+      .click()
+    await expect(page.getByText(/^Laid out again from scratch/)).toBeVisible({ timeout: 30_000 })
+    const after = records()
+    expect(after.Two.made).not.toBe(before.Two.made)
+    expect(after.One.made, 'One has not run; its record is as it was').toBe(before.One.made)
+
+    // One lays out again and is told.
+    await page.getByRole('button', { name: /back to library/i }).click()
+    await page.getByRole('button', { name: 'Open One' }).click()
+    await page.getByRole('button', { name: 'Lay out again' }).click()
+    await expect(page.getByText(/laid out again from another project/)).toBeVisible({
+      timeout: 30_000,
+    })
+    expect(records().One.made).toBe(after.Two.made)
+
+    // And once more: nothing has changed since.
+    await page.getByRole('button', { name: /back to library/i }).click()
+    await page.getByRole('button', { name: 'Open One' }).click()
+    await page.getByRole('button', { name: 'Lay out again' }).click()
+    await expect(page.getByText(/^Laid out\.$/)).toBeVisible({ timeout: 30_000 })
+    expect(records().One.made, 'unchanged since').toBe(after.Two.made)
+  })
+})
+
+// The stand-in names a layout by its inputs, as the engine does: this is
+// its id for the default feed with the mode the run passes (the record's,
+// all) and no agency.
+const STAND_IN_LAYOUT = createHash('sha256')
+  .update('{"agency": null, "feed": "la-metro-rail", "mode": "all"}')
+  .digest('hex')
+
+test('a record from before made was stored gains it and is told nothing changed', async () => {
+  const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
+  const id = 'oldproject02'
+  mkdirSync(join(engineHome, 'projects', id), { recursive: true })
+  const now = new Date().toISOString()
+  writeFileSync(
+    join(engineHome, 'projects', id, 'project.json'),
+    JSON.stringify({
+      version: 1,
+      id,
+      name: 'Older',
+      feed: 'la-metro-rail',
+      mode: 'all',
+      agency: null,
+      date: '2026-05-04',
+      layout: STAND_IN_LAYOUT,
+      created: now,
+      modified: now,
+    }),
+  )
+  await withApp(engineHome, async (page) => {
+    await page.getByRole('button', { name: 'Open Older' }).click()
+    await page.getByRole('button', { name: 'Lay out again' }).click()
+    // The same id, and no time to compare: nothing changed, as the id's
+    // own first comparison behaves.
+    await expect(page.getByText(/^Laid out\.$/)).toBeVisible({ timeout: 30_000 })
+    const once = readRecord(engineHome)
+    expect(once.layout).toBe(STAND_IN_LAYOUT)
+    expect(typeof once.made).toBe('string')
+    await page.getByRole('button', { name: /back to library/i }).click()
+    await page.getByRole('button', { name: 'Open Older' }).click()
+    await page.getByRole('button', { name: 'Lay out again' }).click()
+    await expect(page.getByText(/^Laid out\.$/)).toBeVisible({ timeout: 30_000 })
+    expect(readRecord(engineHome).made).toBe(once.made)
   })
 })
