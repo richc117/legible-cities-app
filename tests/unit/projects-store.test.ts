@@ -986,6 +986,75 @@ describe('setExport', () => {
   })
 })
 
+// Every writer reads the record, changes its field and writes the whole
+// record back. Two on one project at once would each put the other's field
+// back as it was, so they take turns, per project.
+describe('writes to one project take turns', () => {
+  const choice = { preset: 'linkedin-video', storyboard: 'day', options: { clock: false } } as const
+  const done = {
+    date: '2026-09-15',
+    layout: 'c'.repeat(64),
+    service: {
+      start: '2026-01-01',
+      end: '2026-12-31',
+      busiest: '2026-09-15',
+      anchor: '2026-09-08',
+    },
+    made: '2026-09-10T12:00:00+00:00',
+    built: { mode: 'all', agency: null },
+  }
+
+  it('keeps both a choice of export and a layout written at the same moment', async () => {
+    for (let round = 0; round < 5; round++) {
+      const project = await store.create({ name: `LA ${round}`, feed: 'la-metro-rail' })
+      const writes =
+        round % 2 === 0
+          ? [store.setExport(project.id, choice as never), store.completeLayout(project.id, done)]
+          : [store.completeLayout(project.id, done), store.setExport(project.id, choice as never)]
+      await Promise.all(writes)
+      const after = await store.get(project.id)
+      expect(after.export, `round ${round}`).toEqual(choice)
+      expect(after.layout, `round ${round}`).toBe(done.layout)
+      expect(after.made, `round ${round}`).toBe(done.made)
+      expect(after.built, `round ${round}`).toEqual(done.built)
+    }
+  })
+
+  it('keeps every field when every writer lands at once, and a failure does not stop the next', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    const results = await Promise.allSettled([
+      store.completeLayout(project.id, done),
+      store.setTheme(project.id, 'sepia'),
+      store.setExport(project.id, { preset: 'portfolio-svg', options: {} } as never),
+      store.completeColors(project.id, { colors: { A: '#0072bc' }, defaultColor: '#112233' }),
+      store.completeOrder(project.id, ['K', 'A']),
+      store.setExport(project.id, choice as never),
+      store.rename(project.id, 'Los Angeles'),
+      store.setInputs(project.id, { mode: 'subway', agency: null }),
+    ])
+    expect(results.map((r) => r.status)).toEqual([
+      'fulfilled',
+      'fulfilled',
+      'rejected',
+      'fulfilled',
+      'fulfilled',
+      'fulfilled',
+      'fulfilled',
+      'fulfilled',
+    ])
+    expect(await store.get(project.id)).toMatchObject({
+      name: 'Los Angeles',
+      mode: 'subway',
+      theme: 'sepia',
+      layout: done.layout,
+      colors: { A: '#0072bc' },
+      defaultColor: '#112233',
+      lineOrder: ['K', 'A'],
+      export: choice,
+    })
+  })
+})
+
 // Both folders are under the engine's home, so the settings screen asks
 // before it removes that home's contents: a record being renamed into place
 // is a write the reset must not walk through (A1-04).
