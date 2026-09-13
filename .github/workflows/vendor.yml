@@ -117,7 +117,7 @@ jobs:
         working-directory: loom-src/build
         run: ./loom --help > /dev/null && ./octi --help > /dev/null
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: loom-${{ matrix.target }}
           path: |
@@ -214,7 +214,7 @@ jobs:
             exit 1
           fi
           echo "no GPL readline or GDBM in the vendored runtime"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: python-${{ matrix.target }}
           path: vendor/python/${{ matrix.target }}
@@ -304,7 +304,7 @@ jobs:
         shell: msys2 {0}
         working-directory: loom-src/build
         run: ./loom.exe --help > /dev/null && ./octi.exe --help > /dev/null
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: loom-win-x64
           path: |
