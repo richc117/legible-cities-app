@@ -22,6 +22,11 @@ case "$cmd" in
   *"git commit"*|*"git push"*) ;;
   *) exit 0 ;;
 esac
+# Known blind spot: this scans the project directory, not the directory the
+# command runs in. A commit made in a sibling worktree (`cd ../lc-X && git
+# commit`, or `git -C ../lc-X commit`) is scanned against this checkout's
+# index. The worktree's own pre-commit hooks and CI still cover it; /lanes
+# makes running them there a step.
 root="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null)}"
 cd "$root" || exit 0
 

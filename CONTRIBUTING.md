@@ -107,7 +107,9 @@ assistant needs are the ones a person needs, and they are here: the
 constitution in `.specify/memory/constitution.md`, the decision records
 under `docs/adr/`, and the specs under `specs/`. Whatever runs on your
 side, the scanners in `.pre-commit-config.yaml` and the checks in CI are
-what decide whether a change lands.
+what decide whether a change lands. The committed settings say which
+plugins run here, and `/lanes` is how several issues are built at once
+(ADR-034).
 
 None of it is required, and none of it replaces reading the diff yourself.
 Other tools are welcome; if you configure one, keep its files out of the
