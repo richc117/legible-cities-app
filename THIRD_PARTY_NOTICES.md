@@ -5,7 +5,8 @@ The app is licensed under the GNU General Public License v3.0 or later (see
 keeps its own licence; the table is kept current as components are added or
 removed. **The installers `.github/workflows/build.yml` makes are test
 builds until a release** (ADR-035), though as artefacts of this public
-repository they are downloadable for 30 days, and so conveyed. They bundle
+repository they are downloadable for 30 days, and so conveyed; a pushed
+release tag attaches them to a draft GitHub Release (ADR-041). They bundle
 the runtime, the engine, LOOM and ffmpeg for their target and carry
 `LICENSE` and this file beside them. `vendor-manifest.json` inside the app
 records each component's pin: the runtime's release, asset and checksum,
@@ -14,8 +15,8 @@ in the runtime, LOOM's commit (and the Windows port's), and FFmpeg's
 version and configure line with the checksums of the FFmpeg, x264 and
 (on Windows) zlib sources it was built from. It does not record the
 versions of the libraries linked into the Python runtime and wheels. The
-ffmpeg they carry is built in this repository (ADR-040), and the GPL
-sources are attached with the release (A6-01).
+ffmpeg they carry is built in this repository (ADR-040), and every
+Release attaches the GPL components' sources beside them (below).
 
 | Component | Role | Licence | Source |
 |---|---|---|---|
@@ -49,18 +50,36 @@ sources are attached with the release (A6-01).
 
 ## Obligations we take on
 
-- **GPL components** (LOOM, FFmpeg with x264, the engine): each release
-  attaches source archives for the exact versions it bundles, beside the
-  binaries, together with the build scripts and the FFmpeg configure line
-  used. The installed app ships `LICENSE` and this file and shows them in
-  its Licences screen. FFmpeg is built in this repository (ADR-040), so its
-  Corresponding Source is FFmpeg's release tarball, x264 at its pinned
-  commit, zlib's release tarball for the Windows binaries, and
-  `scripts/vendor-ffmpeg.sh` with every configure line: the vendor workflow
-  that builds the binaries uploads exactly those, verified against the
-  pins, as the `ffmpeg-source` artefact of the same run, with a `BUILD.txt`
-  naming the repository commit, and A6-01 attaches that artefact to each
-  release. The manifest names the same sources by hash.
+- **GPL components** (LOOM, FFmpeg with x264, the engine): every GitHub
+  Release attaches, beside the three installers and `SHA256SUMS.txt`, one
+  archive of the Corresponding Source of each, built by the vendor workflow
+  in the same run as the installers from the same `vendor/pins.json`, and
+  refused if the run's pins, app version or run do not match the
+  installers' manifests (`scripts/release.mjs`, ADR-041). The installed app
+  ships `LICENSE` and this file and shows them in its Licences screen.
+  - `ffmpeg-<version>-source.tar`, the `ffmpeg-source` artefact: FFmpeg is
+    built in this repository (ADR-040), so its Corresponding Source is
+    FFmpeg's release tarball, x264 at its pinned commit, zlib's release
+    tarball for the Windows binaries, and `scripts/vendor-ffmpeg.sh` with
+    every configure line, each verified against the pins (FFmpeg's and
+    zlib's signatures too), with copies of the pins and the vendor workflow
+    and a `BUILD.txt` naming the repository commit. The manifest names the
+    same sources by hash.
+  - `loom-<commit>-source.tar`, the `loom-source` artefact: LOOM at the
+    pinned commit with its `cppgtfs` and `util` submodules at the commits
+    that commit records, each checked before it is archived; Transport for
+    Cairo's Windows port at its pinned commit;
+    `scripts/loom-windows-patch.py`, which applies the port's changes for
+    the Windows build; copies of the pins and the vendor workflow, whose
+    `loom` and `loom-windows` jobs are the build instructions; and a
+    `BUILD.txt` naming the commits.
+  - `legible-cities-engine-<version>-source.tar`, the `engine-source`
+    artefact: the engine at the pinned tag, its version checked against
+    the pin as the runtime's vendoring checks it, with
+    `scripts/vendor-python.sh`, which installs it, and a `BUILD.txt` naming
+    the commit the tag resolved to.
+  - The app's own source is the archive GitHub attaches to every Release of
+    its tag.
 - **mingw-w64 runtime**, linked into the Windows ffmpeg and ffprobe. Its
   `COPYING.MinGW-w64-runtime.txt` at commit `9c1abbbf55`, verbatim but for
   one e-mail address this public repository does not reproduce (the file

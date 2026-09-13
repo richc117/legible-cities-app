@@ -70,8 +70,7 @@ stale or the wrong architecture (`scripts/check-vendored.mjs`), compiles
 the runtime's bytecode as unchecked hashes so nothing is written inside a
 signed bundle, packages a dmg per Mac and an nsis installer, launches the
 packaged app once and runs every bundled tool from inside it, and checks
-the bundle did not change (ADR-035). They are unsigned test artefacts until
-A6-01 and A6-05. The ffmpeg they carry is our own build (#95, ADR-040):
+the bundle did not change (ADR-035). They are unsigned until A6-05. The ffmpeg they carry is our own build (#95, ADR-040):
 `scripts/vendor-ffmpeg.sh` builds FFmpeg 9.0.1 and x264 at a pinned commit
 natively on each target (MSYS2 UCRT64 on Windows), with
 `--disable-everything` and only what the export and its checks use, x264
@@ -84,6 +83,15 @@ three-stop feed in `resources/first-run-gtfs/`, whose output must parse as
 a line graph because a zero exit proves nothing, and `ffmpeg`/`ffprobe
 -version`, and a failure is one dialog naming the tool, never over the
 mismatch dialog, and a row in Settings (`src/main/first-run.ts`).
+A pushed tag `v<version>` or `v<version>-rc.<N>` then drafts a GitHub
+Release (A6-01, ADR-041): the release job, the only one with `contents:
+write`, runs after every vendor and packaging job succeeded, and
+`scripts/release.mjs` refuses a tag not for `package.json`'s version or not
+on `main`, names the installers for their machine, archives `ffmpeg-source`,
+`loom-source` and `engine-source` from the same run, writes `SHA256SUMS.txt`
+and the notes from `.github/release-notes.md`, and creates or updates a
+**draft, never published**; the maintainer publishes it by hand, and
+`docs/install.md` is what a person follows.
 
 Settings (A1-04) came after it: one file under the user-data folder holding
 the two folders a person chose and the interface's theme, read before the

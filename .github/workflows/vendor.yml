@@ -758,3 +758,197 @@ jobs:
           path: ffmpeg-source
           if-no-files-found: error
           retention-days: 30
+
+  # The Corresponding Source of the LOOM binaries above (A6-01, ADR-041):
+  # LOOM at the pinned commit with its submodules at the commits that commit
+  # records, the Windows port at its pinned commit, the patch script that
+  # applies the port's changes, and copies of the pins and this workflow,
+  # whose loom and loom-windows jobs are the build instructions. Each clone
+  # is checked against the commit the pins record, and every submodule
+  # against the commit LOOM's tree records for it, before anything is
+  # archived. The release job in build.yml attaches this artefact, by this
+  # name, to each GitHub Release. It runs on every vendor run, so a change
+  # that breaks it fails on a branch rather than on a tag.
+  loom-source:
+    name: loom (source)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Fetch LOOM and the Windows port at their pins, and archive them
+        shell: bash
+        run: |
+          set -euo pipefail
+          read_pin() { python3 -c "import json,sys;print(json.load(open('vendor/pins.json'))[sys.argv[1]][sys.argv[2]])" "$1" "$2"; }
+          loom_repo=$(read_pin loom repo)
+          loom_commit=$(read_pin loom commit)
+          port_repo=$(read_pin loom_windows_port repo)
+          port_commit=$(read_pin loom_windows_port commit)
+          work="$RUNNER_TEMP/loom-source"
+          out=loom-source
+          mkdir -p "$work" "$out/build"
+
+          git clone --quiet --recurse-submodules "$loom_repo" "$work/loom"
+          git -C "$work/loom" checkout --quiet "$loom_commit"
+          git -C "$work/loom" submodule update --quiet --init --recursive
+          test "$(git -C "$work/loom" rev-parse HEAD)" = "$loom_commit"
+          # A leading '-' is a submodule not checked out, '+' one at another
+          # commit than LOOM's tree records, 'U' a conflict: any of them and
+          # the archive would not be the source the binaries were built from.
+          submodules=$(git -C "$work/loom" submodule status --recursive)
+          printf '%s\n' "$submodules"
+          if [ -z "$submodules" ] || grep -qE '^[-+U]' <<< "$submodules"; then
+            echo "::error::LOOM's submodules are not all checked out at the commits $loom_commit records"
+            exit 1
+          fi
+          if [ -n "$(git -C "$work/loom" status --porcelain --ignore-submodules=none)" ]; then
+            echo "::error::the LOOM checkout is not clean"
+            exit 1
+          fi
+
+          git clone --quiet "$port_repo" "$work/port"
+          git -C "$work/port" checkout --quiet "$port_commit"
+          test "$(git -C "$work/port" rev-parse HEAD)" = "$port_commit"
+
+          # archive <folder> <name>: the tree as checked out, submodules
+          # included and git's metadata left out, unpacking into <name>/, with
+          # names sorted and owners and times fixed, so the same pins make the
+          # same tar. The listing is captured before it is cut: a tar piped
+          # into head dies of SIGPIPE under pipefail.
+          archive() {
+            local folder=$1 name=$2 when listing
+            when=$(git -C "$work/$folder" log -1 --format=%ct)
+            mv "$work/$folder" "$work/$name"
+            tar --create --file "$out/$name.tar.gz" --gzip --exclude=.git \
+              --sort=name --owner=0 --group=0 --numeric-owner --mtime="@$when" \
+              -C "$work" "$name"
+            listing=$(tar --list --gzip --file "$out/$name.tar.gz")
+            echo "$name.tar.gz: $(wc -l <<< "$listing" | tr -d ' ') entries"
+            if grep -qE '(^|/)\.git(/|$)' <<< "$listing"; then
+              echo "::error::$name.tar.gz carries git metadata"
+              exit 1
+            fi
+          }
+          archive loom "loom-$loom_commit"
+          archive port "loom-windows-port-$port_commit"
+          cp scripts/loom-windows-patch.py .github/workflows/vendor.yml "$out/build/"
+          cp vendor/pins.json "$out/build/pins.json"
+
+          commit=${GITHUB_SHA:-unknown}
+          {
+            echo "The Corresponding Source of the LOOM binaries Legible Cities ships:"
+            echo "gtfs2graph, topo, loom and octi."
+            echo
+            echo "Written by the loom-source job of .github/workflows/vendor.yml, of"
+            echo "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY at commit $commit."
+            echo "Copies of that workflow, of vendor/pins.json and of"
+            echo "scripts/loom-windows-patch.py as they were then are in build/."
+            echo
+            echo "loom-$loom_commit.tar.gz"
+            echo "  LOOM at commit $loom_commit of $loom_repo,"
+            echo "  with its submodules at the commits that commit records:"
+            sed 's/^/    /' <<< "$submodules"
+            echo "loom-windows-port-$port_commit.tar.gz"
+            echo "  Transport for Cairo's Windows port at commit $port_commit of $port_repo."
+            echo "  The Windows build copies win_compat.h and five cppgtfs files from it and"
+            echo "  applies its other documented changes to LOOM's tree with"
+            echo "  build/loom-windows-patch.py <loom> <port>."
+            echo
+            echo "How each target is built is the loom job (macOS and Linux) and the"
+            echo "loom-windows job (Windows, in MSYS2 UCRT64) of build/vendor.yml: CMake in"
+            echo "Release mode with GLPK, COIN-OR, Gurobi, libzip and OpenMP left out, and on"
+            echo "Windows zlib and bzip2 linked statically, building the targets gtfs2graph,"
+            echo "topo, loom and octi. The toolchains are the runners' own."
+          } > "$out/BUILD.txt"
+          ls -l "$out" "$out/build"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: loom-source
+          path: loom-source
+          if-no-files-found: error
+          retention-days: 30
+
+  # The engine's source at the pinned tag, as the python job installs it into
+  # the runtime the installers carry (A6-01, ADR-041). The pins record the
+  # engine's tag and version, not a commit, so the tag's version is checked
+  # as the python job checks it, and the commit it resolved to is written
+  # into BUILD.txt. The release job in build.yml attaches this artefact, by
+  # this name, to each GitHub Release.
+  engine-source:
+    name: engine (source)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Fetch the engine at its pinned tag, and archive it
+        shell: bash
+        run: |
+          set -euo pipefail
+          read_pin() { python3 -c "import json,sys;print(json.load(open('vendor/pins.json'))['engine'][sys.argv[1]])" "$1"; }
+          repo=$(read_pin repo)
+          tag=$(read_pin tag)
+          version=$(read_pin version)
+          work="$RUNNER_TEMP/engine-source"
+          out=engine-source
+          mkdir -p "$work" "$out/build"
+
+          git clone --quiet --depth 1 --branch "$tag" -c advice.detachedHead=false "$repo" "$work/engine"
+          found=$(grep -oE '__version__ *= *"[^"]+"' "$work/engine/src/schematic/__init__.py" | head -1 | cut -d'"' -f2)
+          if [ "$found" != "$version" ]; then
+            echo "::error::the pin says $version, the tag $tag holds $found"
+            exit 1
+          fi
+          # The archive holds the tree as checked out, so a submodule would be
+          # missing from it; the engine has none, and must not gain one unseen.
+          if [ -f "$work/engine/.gitmodules" ]; then
+            echo "::error::the engine at $tag has submodules, which this archive would leave out"
+            exit 1
+          fi
+          commit=$(git -C "$work/engine" rev-parse HEAD)
+          when=$(git -C "$work/engine" log -1 --format=%ct)
+          name="legible-cities-$tag"
+          mv "$work/engine" "$work/$name"
+          # As loom-source archives: sorted, owners and times fixed, no git
+          # metadata, the listing captured rather than piped into head.
+          tar --create --file "$out/$name.tar.gz" --gzip --exclude=.git \
+            --sort=name --owner=0 --group=0 --numeric-owner --mtime="@$when" \
+            -C "$work" "$name"
+          listing=$(tar --list --gzip --file "$out/$name.tar.gz")
+          echo "$name.tar.gz: $(wc -l <<< "$listing" | tr -d ' ') entries"
+          if grep -qE '(^|/)\.git(/|$)' <<< "$listing"; then
+            echo "::error::$name.tar.gz carries git metadata"
+            exit 1
+          fi
+          if ! grep -qx "$name/src/schematic/__init__.py" <<< "$listing"; then
+            echo "::error::$name.tar.gz does not hold the engine's package"
+            exit 1
+          fi
+          cp scripts/vendor-python.sh .github/workflows/vendor.yml "$out/build/"
+          cp vendor/pins.json "$out/build/pins.json"
+          {
+            echo "The source of the legible-cities engine Legible Cities ships, installed"
+            echo "into its bundled Python runtime."
+            echo
+            echo "Written by the engine-source job of .github/workflows/vendor.yml, of"
+            echo "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY at commit ${GITHUB_SHA:-unknown}."
+            echo "Copies of that workflow, of vendor/pins.json and of"
+            echo "scripts/vendor-python.sh as they were then are in build/."
+            echo
+            echo "$name.tar.gz"
+            echo "  The engine $version at tag $tag of $repo, commit $commit."
+            echo
+            echo "The python job of build/vendor.yml checks out the same tag and"
+            echo "build/vendor-python.sh installs it, with the dependencies it declares,"
+            echo "into python-build-standalone's runtime."
+          } > "$out/BUILD.txt"
+          ls -l "$out" "$out/build"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: engine-source
+          path: engine-source
+          if-no-files-found: error
+          retention-days: 30

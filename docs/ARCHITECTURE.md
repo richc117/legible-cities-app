@@ -1205,7 +1205,7 @@ outside the asar, in the same shape on every target
 | `python/` | the python-build-standalone runtime with the engine installed, its bytecode compiled | `src/main/interpreter.ts` |
 | `loom/` | `gtfs2graph`, `topo`, `loom`, `octi` | `src/main/config.ts`, as `SCHEMATIC_LOOM_BIN` |
 | `ffmpeg/` | `ffmpeg` and `ffprobe`, built by the vendor workflow from pinned FFmpeg and x264 sources with only what the export uses (ADR-040) | `src/main/config.ts`, as `SCHEMATIC_FFMPEG` |
-| `vendor-manifest.json` | the pins' sha256 and every component's exact version, the runtime's Python packages included | a release (A6-01) |
+| `vendor-manifest.json` | the pins' sha256 and every component's exact version, the runtime's Python packages included | a person, and the release job, which checks each installer's against the run drafting the Release |
 | `first-run-gtfs/` | a GTFS folder of three stops and one subway trip, 588 bytes | `src/main/first-run.ts`, the first-run check |
 | `LICENSE`, `THIRD_PARTY_NOTICES.md` | the app's licence and the notices | a person, and the Licences screen |
 
@@ -1287,6 +1287,33 @@ signature. A local `npm run dist` builds an unpacked app with whatever is
 vendored: with nothing, the hook lets it through and says it is not an
 installer; with anything, it holds the build to the same check.
 
+### The release
+
+A pushed tag `v<version>` or `v<version>-rc.<N>` runs the same build, path
+filters or not (GitHub does not evaluate them for a tag), and after the
+vendor jobs and all three packaging jobs succeed a last job, the only one
+with `contents: write`, drafts a GitHub Release (A6-01,
+specs/025-release-on-a-tag, ADR-041). `scripts/release.mjs` decides and
+the workflow does: it refuses a tag that is not for `package.json`'s
+version, or whose commit is not reachable from `main`, before anything is
+downloaded; renames the three installers for their machine
+(`Legible-Cities-<version>-mac-arm64.dmg`, `-mac-x64.dmg`,
+`-windows-x64-setup.exe`) after checking each artefact's manifest was
+written from this run's pins, for this version, in this run; archives the
+vendor workflow's three Corresponding Source artefacts, `ffmpeg-source`,
+`loom-source` (LOOM at its commit with its submodules, the Windows port,
+the patch script) and `engine-source` (the engine at its tag), one tar
+each; writes `SHA256SUMS.txt` over them; and fills the notes from
+`.github/release-notes.md` and the pins. Then one step holding the token
+lists the Releases, creates a draft for the tag or updates the one draft
+there is (removing any asset this run does not attach), refuses a
+published Release for the tag untouched, uploads with replacement, and
+reads the draft back to compare every asset's name, size and GitHub's
+sha256 digest with the files. An `-rc.N` draft is a prerelease. Nothing
+is published: the maintainer reads the draft and publishes it by hand.
+`docs/install.md` is what a person follows with the assets, and the
+first-run dialog's "How to install" opens it on `main`.
+
 ## Deliberately absent
 
 | Not here | Arrives with |
@@ -1295,5 +1322,4 @@ installer; with anything, it holds the build to the same check.
 | The left rail, and the project's fields and diagnostics in the inspector; the inspector holds only the jobs, and the fields and the diagnostics stay on the project screen (ADR-036) | Open; no issue yet |
 | Editing the numeric style fields; the record holds the engine's defaults, and the colours, the order and the theme are a person's since A4-01, A4-02 and A4-03 | post-MVP |
 | Installers signed with an identity, and notarised | A6-05 |
-| A release: the GPL sources attached (for ffmpeg, the `ffmpeg-source` artefact the vendor workflow uploads beside the binaries), and the download page with the unsigned-install steps | A6-01 |
 | Signing and auto-update | A6-05 |

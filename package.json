@@ -1,7 +1,7 @@
 {
   "name": "legible-cities-app",
   "productName": "Legible Cities",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "A desktop app for Legible Cities: schematic transit maps and animations from a GTFS feed, for people who do not use a terminal.",
   "private": true,
   "license": "GPL-3.0-or-later",

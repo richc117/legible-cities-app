@@ -1,6 +1,8 @@
 # The installers: a dmg for each Mac and an nsis installer for Windows, each
 # carrying the pinned engine runtime, LOOM and ffmpeg for its target
-# (specs/002-vendored-components-and-installers, ADR-035).
+# (specs/002-vendored-components-and-installers, ADR-035); and, on a release
+# tag, a draft GitHub Release carrying them (specs/025-release-on-a-tag,
+# ADR-041).
 #
 # One run, no fetch from another: the vendor jobs run here, through
 # vendor.yml's workflow_call, and each packaging job takes its target's
@@ -16,20 +18,40 @@
 # to name.
 #
 # Unsigned (FR-005): the Mac app is signed ad hoc and the Windows installer
-# not at all, until the release-readiness gate (A6-05). Installers are
-# test artefacts until then. The ffmpeg they carry is this repository's
-# own build (issue 95, ADR-040), and A6-01 attaches the GPL sources.
+# not at all, until the release-readiness gate (A6-05). The ffmpeg they
+# carry is this repository's own build (issue 95, ADR-040).
 #
-# This runs on request and on a push to any branch that changes what it
+# This runs on request, on a push to any branch that changes what it
 # packages or how the app finds it, src/main and the npm manifests included,
-# so every Dependabot npm branch builds the installers too (ADR-035). Those
-# built on main are kept 30 days, on any other branch 7. `npm run dist`
-# stays the everyday unpacked build.
+# so every Dependabot npm branch builds the installers too (ADR-035), and on
+# every pushed tag that starts with v. GitHub does not evaluate path filters
+# for a tag push, so a tag builds whatever changed; and a push trigger that
+# names tags and no branches would stop running for branches, which is why
+# both are listed. Installers built on main are kept 30 days, on any other
+# ref 7.
+#
+# The release job runs only for a pushed tag, and only when the vendor jobs
+# and all three packaging jobs succeeded: a Release has every installer and
+# every source archive, or does not exist. It is the only job that can
+# write to the repository. scripts/release.mjs refuses a tag that is not
+# v<version> or v<version>-rc.<N> for package.json's version, or whose
+# commit is not on main, before anything is drafted; it drafts, and never
+# publishes: the maintainer reads the draft and publishes it by hand. An
+# -rc.N tag's draft is a prerelease. A rerun updates the draft in place; a
+# published Release for the tag fails the job and is not touched. The
+# assets are the three installers renamed for their machine, one archive of
+# each Corresponding Source artefact (ffmpeg-source, loom-source,
+# engine-source), and SHA256SUMS.txt; the notes are .github/release-notes.md
+# filled from vendor/pins.json and the tag. `npm run dist` stays the
+# everyday unpacked build.
 name: build
 
 on:
   workflow_dispatch:
   push:
+    branches: ['**']
+    tags: ['v*']
+    # Evaluated for branches only: GitHub ignores path filters on a tag push.
     paths:
       - 'vendor/pins.json'
       - 'electron-builder.yml'
@@ -173,3 +195,141 @@ jobs:
             vendor/manifest-${{ matrix.target }}.json
           if-no-files-found: error
           retention-days: ${{ github.ref == 'refs/heads/main' && 30 || 7 }}
+
+  release:
+    name: release (draft)
+    needs: [vendor, package]
+    # A pushed tag only, never a branch, a pull request or a dispatch, and
+    # only when every vendor job and all three packaging jobs succeeded.
+    # !cancelled() stands in for the default success(), so the results are
+    # read here rather than implied.
+    if: >-
+      ${{ !cancelled()
+      && github.event_name == 'push'
+      && startsWith(github.ref, 'refs/tags/v')
+      && needs.vendor.result == 'success'
+      && needs.package.result == 'success' }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    # The one job that can write: to create and edit the draft and upload its
+    # assets. Every other job keeps the workflow's contents: read.
+    permissions:
+      contents: write
+    # Two runs for one tag (a rerun while the first is drafting) take turns.
+    concurrency:
+      group: release-${{ github.ref }}
+      cancel-in-progress: false
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      # The whole history, so the tag's commit can be tested against main's.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Refuse a tag that is not for package.json's version, or not on main
+        id: decide
+        shell: bash
+        run: node scripts/release.mjs decide "$TAG" --main refs/remotes/origin/main
+
+      # Each into a folder named for its artefact, by name rather than by
+      # pattern: a pattern that matches one artefact unpacks it without the folder.
+      - name: Download the darwin-arm64 installer
+        uses: actions/download-artifact@v8
+        with:
+          name: installer-darwin-arm64
+          path: downloaded/installer-darwin-arm64
+      - name: Download the darwin-x64 installer
+        uses: actions/download-artifact@v8
+        with:
+          name: installer-darwin-x64
+          path: downloaded/installer-darwin-x64
+      - name: Download the win-x64 installer
+        uses: actions/download-artifact@v8
+        with:
+          name: installer-win-x64
+          path: downloaded/installer-win-x64
+      - name: Download FFmpeg's Corresponding Source
+        uses: actions/download-artifact@v8
+        with:
+          name: ffmpeg-source
+          path: downloaded/ffmpeg-source
+      - name: Download LOOM's Corresponding Source
+        uses: actions/download-artifact@v8
+        with:
+          name: loom-source
+          path: downloaded/loom-source
+      - name: Download the engine's source
+        uses: actions/download-artifact@v8
+        with:
+          name: engine-source
+          path: downloaded/engine-source
+
+      - name: Assemble the assets and their checksums
+        shell: bash
+        run: node scripts/release.mjs assemble "$TAG" downloaded release-assets
+
+      - name: Write the notes from the template
+        shell: bash
+        run: node scripts/release.mjs notes "$TAG" "$RUNNER_TEMP/notes.md"
+
+      # The only step that holds the token. Nothing is written before the
+      # script has judged what GitHub already has for the tag, and the draft
+      # is read back and compared with the files afterwards.
+      - name: Create or update the draft, upload the assets, and check them
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NAME: ${{ steps.decide.outputs.name }}
+          PRERELEASE: ${{ steps.decide.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          listing="$RUNNER_TEMP/releases.jsonl"
+          list() {
+            gh api --paginate "repos/$GITHUB_REPOSITORY/releases" \
+              --jq '.[] | {id, tag_name, draft, prerelease, assets: [.assets[] | {name, size, digest}]}' > "$listing"
+          }
+          list
+          plan=$(node scripts/release.mjs existing "$TAG" "$listing" release-assets)
+          action=$(jq -r .action <<< "$plan")
+          prerelease_flag=()
+          if [ "$PRERELEASE" = true ]; then prerelease_flag=(--prerelease); fi
+          case "$action" in
+            create)
+              echo "drafting $NAME for $TAG"
+              gh release create "$TAG" --draft --verify-tag --title "$NAME" \
+                --notes-file "$RUNNER_TEMP/notes.md" "${prerelease_flag[@]}"
+              ;;
+            update)
+              echo "updating the draft $NAME for $TAG (id $(jq -r .id <<< "$plan"))"
+              gh release edit "$TAG" --draft=true --prerelease="$PRERELEASE" \
+                --title "$NAME" --notes-file "$RUNNER_TEMP/notes.md"
+              while IFS= read -r stale; do
+                if [ -n "$stale" ]; then
+                  echo "removing $stale, which this run does not attach"
+                  gh release delete-asset "$TAG" "$stale" --yes
+                fi
+              done < <(jq -r '.stale[]' <<< "$plan")
+              ;;
+            *)
+              echo "::error::release.mjs answered $plan"
+              exit 1
+              ;;
+          esac
+          gh release upload "$TAG" release-assets/* --clobber
+          list
+          node scripts/release.mjs verify "$TAG" "$listing" release-assets
+          {
+            echo "### Draft: $NAME"
+            echo
+            echo "Not published. Read it on the repository's Releases page, then publish it by hand."
+            echo
+            echo '~~~'
+            cat release-assets/SHA256SUMS.txt
+            echo '~~~'
+          } >> "$GITHUB_STEP_SUMMARY"

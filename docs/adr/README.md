@@ -71,6 +71,7 @@ already cites the number you mean to use.
 | 038 | [The sidecar runtime, measured on three targets](038-the-sidecar-runtime-measured-on-three-targets.md) | Accepted |
 | 039 | [The determinism gate judges the capture, and the file for its structure](039-the-determinism-gate-judges-the-capture.md) | Accepted |
 | 040 | [FFmpeg is built here, from pinned sources, with only what the export uses](040-ffmpeg-is-built-from-pinned-sources.md) | Accepted |
+| 041 | [Releases are drafted from a tag](041-releases-are-drafted-from-a-tag.md) | Accepted |
 
 ## Amending rather than superseding
 
