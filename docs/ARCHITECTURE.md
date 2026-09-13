@@ -111,6 +111,7 @@ write under `api.clipboard`, and the app's own settings under
 | `settings.engineSize()` | walks the engine's home, bounded and never through a symbolic link |
 | `settings.openLogsFolder()` | makes the platform's log folder for this app if it is missing, and opens it |
 | `settings.resetEngineData()` | removes `projects`, `out`, `data` and `frames` beneath the engine's home, never the home itself; answers what went and what would not; refused while anything is writing under it |
+| `settings.copyDiagnostics(reports)` | puts what a bug report needs on the clipboard: the versions, the operating system, `engine.info`, the last 200 lines of both logs and the reports given, each project's diagnostics as its panel copies them (at most 20 of at most 64 KB, checked in main); composed in the main process with the home folder written as `~`; nothing is sent (A6-03) |
 
 The engine bridge is deliberately untyped beyond a method name and an
 object of parameters: A1-02 generates the methods from the engine's schema
@@ -378,11 +379,42 @@ it is how the end-to-end suite keeps its settings file out of a person's
 own profile, and the app reads it before it is ready or not at all.
 Contract: `specs/019-settings/contracts/bridge.md`.
 
-The main-process log is stderr for now and may contain paths - the
-configuration lines by contract, and Electron's own report of a failed
-bridge call, which prints the underlying error. The log file A6-03 writes
-shortens paths under the user's data folder before anything is copied for a
-bug report.
+## The log files
+
+Every line the main process logs goes through `log` in `src/main/log.ts`,
+and since A6-03 its sink is two files in the platform's log folder
+(`app.getPath('logs')`, which "Open logs folder" opens): lines under the
+`engine` tag - the engine's stderr as the supervisor reads it, and the
+supervisor's own lines about the engine - go to `engine.log`, everything
+else to `main.log`, each stamped with an ISO 8601 time. In development
+every line still reaches standard error as well. `src/main/log-file.ts`
+writes each file from one queue, so a burst of engine output is a handful
+of writes and never holds up the supervisor. A write that would take a
+file past 5 MB first renames it to `<name>.old.log`, replacing the one
+before; nothing else is ever removed, and the reset does not touch the
+logs, which are not under the engine's home.
+
+Lines logged before the app is ready are held in memory, two thousand at
+most, and written first once the files open, which is the first thing the
+app does when it is ready and before the engine starts. A folder that
+cannot be written costs the file and never the app: from the first failure
+the lines go to standard error, which is told once why. The files close on
+`will-quit`, after the engine's shutdown has logged its last line. Under
+`LEGIBLE_USER_DATA` the logs move to `<userData>/logs` with
+`app.setAppLogsPath`, because on macOS they would otherwise stay in a
+person's own log folder.
+
+The log may contain paths - the configuration lines by contract, and
+Electron's own report of a failed bridge call, which prints the underlying
+error. It stays on the machine. "Copy diagnostics" in Settings
+(`src/main/diagnostics-text.ts`) composes the copy in the main process and
+writes the home folder, and its real path when that differs, as `~`: in
+either separator, doubled backslashes included, and in any case on Windows
+and macOS, matching only a whole folder name. The composed text is checked
+for the home folder afterwards, and a copy that still names it is refused.
+A path outside the home folder, such as an export folder on another
+volume, is left as it is. The replacement is not a scrubber for anything
+else; the person reads the text before they paste it.
 
 ## Design tokens
 
@@ -953,5 +985,4 @@ frame in RGB with the tolerance of 8.
 | A screen for long jobs across projects; the layout run and the export draw their own progress on the project screen | A1-03 |
 | Editing the numeric style fields; the record holds the engine's defaults, and the colours, the order and the theme are a person's since A4-01, A4-02 and A4-03 | post-MVP |
 | Vendored Python, LOOM and ffmpeg; installers | A0-10 (`specs/002`) |
-| A log file and "copy diagnostics" | A6-03 |
 | Signing and auto-update | A6-05 |

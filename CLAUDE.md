@@ -110,6 +110,16 @@ takes frames from beats and a still plan has none
 (`src/renderer/src/ExportTab.tsx`, `src/renderer/src/exportChoice.ts`,
 `src/main/export.ts`).
 
+The logs (A6-03) came next: `main.log` and `engine.log` in the platform's
+log folder behind the sink in `src/main/log.ts`, routed by the `engine`
+tag, each capped at 5 MB with one `.old.log` kept and no dependency
+(`src/main/log-file.ts`); the logs follow `LEGIBLE_USER_DATA`, which macOS
+would not do on its own. "Copy diagnostics" in Settings puts the versions,
+`engine.info`, the end of both logs and the session's map reports on the
+clipboard, composed in the main process with the home folder written as `~`
+and checked for afterwards (`src/main/diagnostics-text.ts`). Nothing is
+sent anywhere.
+
 Work proceeds phase by phase; `CONTRIBUTING.md` explains the flow, the
 labels, the milestones and the `A0-05`-style issue codes. The four Phase 0
 spikes have run: LOOM ships without its optional solvers (ADR-019), the
