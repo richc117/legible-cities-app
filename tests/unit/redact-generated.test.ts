@@ -11,6 +11,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { diagnosticsText, type DiagnosticsInput } from '../../src/main/diagnostics-text'
+import { RUNNING_RESULT } from '../../src/shared/first-run'
 import { redactUrls } from '../../src/main/redact'
 
 /** mulberry32: a 32-bit seeded generator, good enough to vary test input. */
@@ -114,6 +115,7 @@ const input = (engineLog: string): DiagnosticsInput => ({
   versions: {},
   os: { type: 'Linux', release: '6.0.0', arch: 'x64' },
   engine: { absent: 'not running' },
+  firstRun: RUNNING_RESULT,
   mainLog: '',
   engineLog,
   reports: [],

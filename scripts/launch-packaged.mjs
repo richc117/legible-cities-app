@@ -19,17 +19,23 @@
 //    backend at the pinned commit, and the bundled ffmpeg's path. At the
 //    pinned engine these are read from the environment and from
 //    `shutil.which`: settings, not proof that anything runs.
-// 4. The log shows the interpreter, LOOM and ffmpeg taken from the bundle,
-//    and the engine ending when asked, at quit.
-// 5. After quit, each bundled LOOM tool (`--help`) and ffmpeg and ffprobe
+// 4. The first-run check (A6-02, specs/026) finishes inside the app with
+//    LOOM and ffmpeg both passed: `gtfs2graph` drew a line graph from the
+//    GTFS folder the package carries, and ffmpeg and ffprobe answered
+//    `-version`, each spawned by the app itself from its own resources.
+// 5. The log shows the interpreter, LOOM and ffmpeg taken from the bundle,
+//    the first-run check's passing line, and the engine ending when asked,
+//    at quit.
+// 6. After quit, each bundled LOOM tool (`--help`) and ffmpeg and ffprobe
 //    (`-version`) is run from inside the bundle, with the bundle as its
 //    working directory: a zero exit and the line each prints first. This
 //    is what proves they execute from the packaged, signed app.
-// 6. Every file and folder in the bundle is the same after all of that as
+// 7. Every file and folder in the bundle is the same after all of that as
 //    before the launch: same set, sizes and modification times.
 //
-// It does not run a layout or an export, so LOOM and ffmpeg never do real
-// work inside the app here; see ADR-035 for what a full session would take.
+// It does not run a layout or an export. The first-run check is the one
+// piece of real LOOM work done inside the app here, over a three-stop feed;
+// see ADR-035 for what a full session would take.
 //
 // The profile is a temporary folder, given with Chromium's own
 // `--user-data-dir`: LEGIBLE_USER_DATA is development-only and a packaged
@@ -77,6 +83,15 @@ const LAUNCH_MS = 90_000
 const READY_MS = 120_000
 const EXIT_MS = 20_000
 const TOOL_MS = 30_000
+/** The first-run check: three spawns of 15 s at most each, after the engine settles. */
+const FIRST_RUN_MS = 60_000
+
+/**
+ * The line the app logs when its first-run check passed for both tools
+ * (`summaryLine` in src/main/first-run.ts, under the `first-run` tag).
+ */
+export const FIRST_RUN_PASSED =
+  /\[first-run\] finished: LOOM passed \(\d+ ms\), ffmpeg passed \(\d+ ms\)$/
 
 /** The log files the app writes (src/main/log-file.ts). */
 const LOG_FILES = ['main.log', 'main.old.log', 'engine.log', 'engine.old.log']
@@ -415,6 +430,28 @@ async function run(target, release) {
         fail(`the engine's home is ${info.home}, not under the profile`)
       }
     }
+
+    // The first-run check runs once the engine's first start has settled,
+    // whichever way; it is read from the page, as the Settings screen reads it.
+    const checkUntil = Date.now() + FIRST_RUN_MS
+    let firstRun = null
+    for (;;) {
+      firstRun = await window
+        .evaluate(async () => await globalThis.api.firstRun.get())
+        .catch(() => null)
+      if (firstRun?.finished === true || Date.now() > checkUntil) break
+      await sleep(250)
+    }
+    say(`${target}: first-run check ${JSON.stringify(firstRun)}`)
+    if (firstRun?.finished !== true) {
+      fail(`the first-run check did not finish within ${FIRST_RUN_MS} ms`)
+    } else {
+      for (const tool of ['loom', 'ffmpeg']) {
+        if (firstRun[tool]?.outcome !== 'passed') {
+          fail(`the first-run check did not pass ${tool}: ${JSON.stringify(firstRun[tool])}`)
+        }
+      }
+    }
   } catch (error) {
     fail(`the launch failed: ${error instanceof Error ? error.message : String(error)}`)
   } finally {
@@ -450,6 +487,7 @@ async function run(target, release) {
         new RegExp(`\\[config\\] SCHEMATIC_LOOM_COMMIT=${pins.loom.commit} \\(default\\)$`),
         'the pinned LOOM commit',
       ],
+      [main, FIRST_RUN_PASSED, 'the first-run check passing for LOOM and ffmpeg'],
       [engine, /\[engine\] ended on request/, 'the engine ending when asked, at quit'],
     ]
     for (const [lines, pattern, what] of needs) {
@@ -488,7 +526,7 @@ async function run(target, release) {
   cleanUp()
   if (report() !== 0) return 1
   say(
-    `${target}: the packaged app reached engine ready from the bundled runtime with LOOM and ffmpeg configured from the bundle; the four LOOM tools, ffmpeg and ffprobe each ran from inside the bundle; and the bundle is unchanged after launch, quit and those runs`,
+    `${target}: the packaged app reached engine ready from the bundled runtime with LOOM and ffmpeg configured from the bundle; its first-run check passed for both; the four LOOM tools, ffmpeg and ffprobe each ran from inside the bundle; and the bundle is unchanged after launch, quit and those runs`,
   )
   return 0
 }

@@ -131,6 +131,7 @@ listed below for filing. *engine's*: inside the engine's page.
 | Theme select | pass | pass | pass | pass | fixed (C2) | fixed (C2) | not yet run: a person's | not yet run: a person's |
 | Versions | n/a | pass (a definition list; a null said in words) | n/a | n/a | pass | pass | not yet run: a person's | not yet run: a person's |
 | Reset engine data and its confirmation | fixed (D8) | pass | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
+| Bundled tools rows (A6-02) | n/a (no control; the screen's walk is swept with the rows present: asserted in the sweep, written, not run) | pass (a named region; the summary a polite `role="status"`; a definition list, "LOOM tools" and "ffmpeg and ffprobe"): asserted in the sweep, written, not run | n/a | asserted in the sweep, written, not run | pass (existing pairs: `--text-muted` and `--text` on `--surface`) | pass (the same pairs) | not yet run: a person's | not yet run: a person's |
 
 ### Jobs inspector
 
@@ -139,6 +140,19 @@ listed below for filing. *engine's*: inside the engine's page.
 | Toggle, heading, Close, Escape | pass | pass | pass | pass (no slide at any setting) | pass | pass | not yet run: a person's | not yet run: a person's |
 | Jobs: progress line, Cancel, Copy log, Details | pass | pass (each names its job) | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
 | Below 900px, over the main region | audit only (the main region `inert`; not in the sweep) | audit only | audit only | audit only | pass | pass | not yet run: a person's | not yet run: a person's |
+
+### First-run dialog (A6-02)
+
+Added after the pass, with the first-run check (specs/026): the sweep's
+test "the first-run dialog, and Settings with the Bundled tools rows",
+launched with `SCHEMATIC_LOOM_BIN` an empty folder. **Written, not run**: its
+cells say "asserted in the sweep" and become pass or a defect once it runs.
+
+| Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (warm-dark) | Contrast (sepia) | VoiceOver (macOS) | Narrator (Windows) |
+|---|---|---|---|---|---|---|---|---|
+| The dialog: its details disclosure, Copy diagnostics, How to install, OK | asserted in the sweep: OK focused on opening, the Tab walk reaches the disclosure and the three buttons, Escape closes it; written, not run | asserted in the sweep (labelled by its title, described by its sentences); written, not run | asserted in the sweep (the global `:focus-visible` ring); written, not run | asserted in the sweep; written, not run | pass (existing pairs: `--text`, `--text-muted` on `--surface-raised`, the kit's buttons) | pass (the same pairs; the primary button as C1) | not yet run: a person's | not yet run: a person's |
+| Focus after it closes | asserted in the sweep: back on the Library's heading; if what held focus when it opened has gone, the open screen's heading takes it (`FirstRunDialog.tsx`, with `focusHandback.ts`'s `focusLost`); written, not run | n/a | n/a | n/a | n/a | n/a | not yet run: a person's | not yet run: a person's |
+| Waiting for another dialog | audit and e2e (`tests/e2e/first-run.spec.ts`): it never opens over a dialog a person has open, or over the mismatch dialog, and opens when that one closes, taking focus then | n/a | n/a | n/a | n/a | n/a | not yet run: a person's | not yet run: a person's |
 
 ### Mismatch dialog
 
@@ -290,5 +304,5 @@ or a design decision.
 - VoiceOver on macOS and Narrator on Windows over every row above, after the
   release tag: the two columns in each table.
 - The end-to-end sweep's first run, and this record corrected by what it
-  finds.
+  finds; the first-run dialog's test (A6-02) has not run yet.
 - A look at the sepia primary button (C1).

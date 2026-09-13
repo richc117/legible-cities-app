@@ -1,0 +1,4 @@
+stop_id,stop_name,stop_lat,stop_lon
+a,Alpha,0.0000,0.0000
+b,Beta,0.0000,0.0100
+c,Gamma,0.0100,0.0200

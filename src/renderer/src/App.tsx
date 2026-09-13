@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useRef, useState, type JSX } from 'react'
+import { needsTelling } from '../../shared/first-run'
 import { endSentence } from '../../shared/jobs'
 import type { SettingsView } from '../../shared/settings'
 import EngineStatus from './EngineStatus'
+import FirstRunDialog, { useFirstRun } from './FirstRunDialog'
 import {
   jobs,
   onJobEnded,
   readProjectNames,
+  reportsInSession,
   runningCount,
   subscribeToJobs,
   unnamedProjects,
@@ -17,7 +20,7 @@ import Button from './kit/Button'
 import Library from './Library'
 import MismatchDialog from './MismatchDialog'
 import ProjectView from './ProjectView'
-import Settings from './Settings'
+import Settings, { copyDiagnostics } from './Settings'
 import { applyTheme } from './theme'
 import { useEngineState } from './useEngineState'
 
@@ -43,6 +46,14 @@ export default function App(): JSX.Element {
   const [screen, setScreen] = useState<Screen>({ screen: 'library', notice: null })
   const engine = useEngineState()
   const [mismatchSeen, setMismatchSeen] = useState(false)
+  // The first-run check of the bundled tools (A6-02): a failure is said once
+  // per start, and never over the mismatch dialog - it waits for that one.
+  const firstRun = useFirstRun()
+  const [firstRunSeen, setFirstRunSeen] = useState(false)
+  // Unknown counts as possibly mismatched: the check only finishes after the
+  // engine's first start has settled, but the page may hear of the one
+  // before the other.
+  const mismatchFirst = engine === null || (engine.state === 'mismatched' && !mismatchSeen)
   // The app's own settings, read once. The main process is the only writer,
   // so every change comes back from it as a whole view rather than being
   // edited here (specs/019-settings).
@@ -142,6 +153,20 @@ export default function App(): JSX.Element {
           expected={engine.expected}
           found={engine.found}
           onClose={() => setMismatchSeen(true)}
+        />
+      )}
+      {firstRun !== null && needsTelling(firstRun) && (
+        <FirstRunDialog
+          open={!firstRunSeen && !mismatchFirst}
+          result={firstRun}
+          onCopyDiagnostics={() =>
+            copyDiagnostics({
+              listProjects: () => window.api.projects.list(),
+              reports: reportsInSession,
+              copy: (reports) => window.api.settings.copyDiagnostics(reports),
+            })
+          }
+          onClose={() => setFirstRunSeen(true)}
         />
       )}
       {/* One polite line for the ends of jobs, on every screen, never shown. */}

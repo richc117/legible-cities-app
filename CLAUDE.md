@@ -72,6 +72,12 @@ signed bundle, packages a dmg per Mac and an nsis installer, launches the
 packaged app once and runs every bundled tool from inside it, and checks
 the bundle did not change (ADR-035). They are unsigned test artefacts until
 A6-01 and A6-05; the ffmpeg they carry is replaced by our own build (#95).
+On every start a packaged app makes those tools do real work once the
+engine has settled (A6-02): the main process runs `gtfs2graph` over the
+three-stop feed in `resources/first-run-gtfs/`, whose output must parse as
+a line graph because a zero exit proves nothing, and `ffmpeg`/`ffprobe
+-version`, and a failure is one dialog naming the tool, never over the
+mismatch dialog, and a row in Settings (`src/main/first-run.ts`).
 
 Settings (A1-04) came after it: one file under the user-data folder holding
 the two folders a person chose and the interface's theme, read before the

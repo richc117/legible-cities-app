@@ -11,6 +11,7 @@ import { constants } from 'node:fs'
 import { open } from 'node:fs/promises'
 import { join } from 'node:path'
 import { DIAGNOSTICS_REPORTS } from '../shared/api'
+import { describeCheck, FIRST_RUN_TOOLS, summarize, type FirstRunResult } from '../shared/first-run'
 import { lenientDecode, redactUrls } from './redact'
 
 /** Read-only, and on POSIX never through a symbolic link, as the log is written. */
@@ -33,6 +34,8 @@ export interface DiagnosticsInput {
   os: { type: string; release: string; arch: string }
   /** The engine's own `engine.info` answer, or a sentence saying why there is none. */
   engine: { info: unknown } | { absent: string }
+  /** The first-run check of the bundled LOOM and ffmpeg, as it stands (A6-02). */
+  firstRun: FirstRunResult
   mainLog: string
   engineLog: string
   /** Each project's report as its own panel copies it. */
@@ -74,6 +77,13 @@ export function composeDiagnostics(input: DiagnosticsInput): string {
     ),
     section('Operating system', `${os.type} ${os.release} (${os.arch})`),
     section('Engine', 'info' in engine ? JSON.stringify(engine.info, null, 2) : engine.absent),
+    section(
+      'Bundled tools',
+      [
+        summarize(input.firstRun),
+        ...FIRST_RUN_TOOLS.map((tool) => describeCheck(tool, input.firstRun[tool])),
+      ].join('\n'),
+    ),
     section(`main.log, the last ${TAIL_LINES} lines`, input.mainLog),
     section(`engine.log, the last ${TAIL_LINES} lines`, input.engineLog),
     section(

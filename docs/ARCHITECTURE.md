@@ -1206,6 +1206,7 @@ outside the asar, in the same shape on every target
 | `loom/` | `gtfs2graph`, `topo`, `loom`, `octi` | `src/main/config.ts`, as `SCHEMATIC_LOOM_BIN` |
 | `ffmpeg/` | `ffmpeg` and `ffprobe` | `src/main/config.ts`, as `SCHEMATIC_FFMPEG` |
 | `vendor-manifest.json` | the pins' sha256 and every component's exact version, the runtime's Python packages included | a release (A6-01) |
+| `first-run-gtfs/` | a GTFS folder of three stops and one subway trip, 588 bytes | `src/main/first-run.ts`, the first-run check |
 | `LICENSE`, `THIRD_PARTY_NOTICES.md` | the app's licence and the notices | a person, and the Licences screen |
 
 `.github/workflows/build.yml` builds the installers - a dmg on each Mac
@@ -1229,13 +1230,55 @@ fails the package, where electron-builder alone would skip it with a
 warning. Last, `scripts/launch-packaged.mjs` launches the unpacked app once
 with a temporary `--user-data-dir` and the bundle as its working directory,
 waits for the engine to be ready, asks it `engine.info` (which, at the
-pinned engine, reports configuration rather than proving execution), quits,
-and reads the log for the bundled origins and the engine's clean end. It
-then runs each bundled LOOM tool with `--help` and ffmpeg and ffprobe with
+pinned engine, reports configuration rather than proving execution), waits
+for the first-run check to pass for both tools, quits, and reads the log for
+the bundled origins, the check's passing line and the engine's clean end.
+It then runs each bundled LOOM tool with `--help` and ffmpeg and ffprobe with
 `-version` from inside the bundle, and compares every file and folder in the
 bundle with the list taken before the launch. It runs no layout or export;
 ADR-035 says what that would take. On macOS the job then verifies the app's
 signature with `codesign --verify --deep --strict`.
+
+### The first-run check
+
+The engine's handshake proves the runtime and the engine start; nothing
+else proves LOOM or ffmpeg will run on a person's machine until a layout or
+an export fails half way through. So on every start of a packaged app, once
+the engine's first start has settled (ready, unavailable, mismatched or
+stopped), the main process runs the tools itself (A6-02,
+specs/026-first-run-check): `gtfs2graph -m subway` over `first-run-gtfs/`,
+which passes only when its standard output parses as a feature collection
+with a `LineString` in it - a zero exit is not enough, since a mode with
+nothing in it prints an empty collection and exits 0, and a LOOM tool's
+`--version` says `-128-NOTFOUND` whatever it is - and `ffmpeg -version` and
+`ffprobe -version`, which must exit 0 and introduce themselves, ffprobe
+found beside ffmpeg as the engine finds it. No engine method is involved:
+the paths are the configuration's. A package judges its own `loom/` and
+`ffmpeg/` whether or not they are there, because `resolveConfig` falls back
+to the development defaults for a package without them
+(`firstRunTargets` in `src/main/config.ts`); a development run checks only
+what `SCHEMATIC_LOOM_BIN` or `SCHEMATIC_FFMPEG` names, and never Docker or
+PATH. Each spawn is an argument array with `windowsHide`, a 15-second
+deadline, its standard output capped and its standard error in `main.log`
+under `first-run`, run in a fresh folder under the temporary folder that is
+removed after, and ended at quit; a killed child is given two seconds to
+close first, because on Windows a terminating process still holds its
+working folder, and a quit during the file checks spawns nothing. The
+outcomes are published together, once the folder is gone and the summary
+line is in the log, so the launch check - which quits the moment the result
+says finished - always finds the line. The result crosses the bridge as one
+read and one change (`api.firstRun`): per tool running, passed, failed with
+a sentence and a detail with no path in it (the check's own paths and the
+app's folder as their names, the home as `~` as "Copy diagnostics" writes
+it, any other drive- or share-rooted path cut to the end of its line), or
+skipped with a reason. A failure opens one modal dialog per start, never
+over another dialog - the mismatch dialog, or one a person has open - and
+opens when that one closes, with "Copy diagnostics" (whose text now carries the check) and "How
+to install", which opens the install document at an address the main
+process holds, in the platform's browser; that press is the check's only
+reach to the network. Settings shows the result for as long as the app
+runs. Measured on an Apple-silicon Mac with the vendored binaries: under
+10 ms for `gtfs2graph`, about 10 ms each for ffmpeg and ffprobe.
 
 The Mac app is signed ad hoc, and nothing is signed with an identity until
 A6-05; `forceCodeSigning` is set but only takes effect once a real identity

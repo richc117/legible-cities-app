@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
+import { summaryLine } from '../../src/main/first-run'
 
 const repo = resolve(__dirname, '../..')
 const SCRIPT = join(repo, 'scripts', 'launch-packaged.mjs')
@@ -27,6 +28,7 @@ interface Module {
   bundledTools(resources: string, exe: string, pins: unknown, target: string): Tool[]
   unpacked(target: string, release: string): { bundle: string; resources: string } | null
   writtenSince(path: string, since: number): boolean
+  FIRST_RUN_PASSED: RegExp
 }
 // A URL built at run time, so the type checker does not look for
 // declarations of a plain JavaScript module.
@@ -158,5 +160,49 @@ describe('writtenSince, which decides what the macOS log cleanup removes', () =>
     const { writtenSince } = await load()
     expect(writtenSince(log(''), launch)).toBe(true)
     expect(writtenSince(join(tmpdir(), 'lc-no-such-log', 'main.log'), launch)).toBe(false)
+  })
+})
+
+describe('FIRST_RUN_PASSED, the first-run check’s line the launch looks for (A6-02)', () => {
+  // As a log file holds it: the stamp, the tag, and the app's own summary.
+  const logged = (line: string): string => `2026-09-13T08:00:00.000Z [first-run] finished: ${line}`
+
+  it('matches the line the app logs when LOOM and ffmpeg both passed', async () => {
+    const { FIRST_RUN_PASSED } = await load()
+    const line = summaryLine({
+      finished: true,
+      loom: { outcome: 'passed', ms: 14 },
+      ffmpeg: { outcome: 'passed', ms: 1203 },
+    })
+    expect(FIRST_RUN_PASSED.test(logged(line))).toBe(true)
+  })
+
+  it('does not match a failure, a skip or a check still running', async () => {
+    const { FIRST_RUN_PASSED } = await load()
+    for (const result of [
+      {
+        finished: true,
+        loom: {
+          outcome: 'failed' as const,
+          kind: 'missing' as const,
+          sentence: 's',
+          detail: 'd',
+          ms: 0,
+        },
+        ffmpeg: { outcome: 'passed' as const, ms: 9 },
+      },
+      {
+        finished: true,
+        loom: { outcome: 'skipped' as const, reason: 'r' },
+        ffmpeg: { outcome: 'passed' as const, ms: 9 },
+      },
+      {
+        finished: false,
+        loom: { outcome: 'passed' as const, ms: 9 },
+        ffmpeg: { outcome: 'running' as const },
+      },
+    ]) {
+      expect(FIRST_RUN_PASSED.test(logged(summaryLine(result)))).toBe(false)
+    }
   })
 })

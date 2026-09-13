@@ -832,6 +832,57 @@ test('Settings, its reset confirmation, and focus after "Use the default"', asyn
   })
 })
 
+test('the first-run dialog, and Settings with the Bundled tools rows', async () => {
+  test.setTimeout(180_000)
+  // A development run checks what the environment names: an empty folder as
+  // the LOOM folder is LOOM missing (specs/026), and the dialog says so.
+  const p = profile()
+  const emptyLoom = mkdtempSync(join(tmpdir(), 'legible-cities-a11y-loom-'))
+  await withApp(
+    p,
+    async (page) => {
+      const dialog = page.getByRole('dialog', { name: /LOOM.* will not run/ })
+      await expect(dialog).toBeVisible({ timeout: 20_000 })
+      await expect(dialog.getByRole('button', { name: 'OK' })).toBeFocused()
+      for (const name of ['Copy diagnostics', 'How to install', 'OK'])
+        await expect(dialog.getByRole('button', { name, exact: true })).toBeVisible()
+      // The details disclosure, closed, is the walk's first stop.
+      await expect(dialog.locator('details')).not.toHaveAttribute('open', '')
+      await sweep(page, 'the first-run dialog', dialog)
+
+      // Closed from the keyboard, focus is back on the screen it was over.
+      await dialog.getByRole('button', { name: 'OK' }).focus()
+      await page.keyboard.press('Escape')
+      await expect(dialog).toBeHidden()
+      await expect
+        .poll(() =>
+          page.evaluate(() => {
+            const active = document.activeElement
+            if (active === null) return 'nothing'
+            return active.id !== '' ? `#${active.id}` : active.tagName.toLowerCase()
+          }),
+        )
+        .toBe('#library-heading')
+      await expect(page.getByRole('status', { name: 'Engine' })).toContainText(/ready/i, {
+        timeout: 20_000,
+      })
+
+      // Settings, the check's rows present: a summary said politely, and a
+      // row per tool in the versions list's style.
+      await page.getByRole('button', { name: 'Settings' }).click()
+      await expect(heading(page)).toHaveText('Settings')
+      await expect(page.locator('#engine-folder-size')).not.toHaveText('Measuring…')
+      const tools = page.getByRole('region', { name: 'Bundled tools' })
+      const summary = tools.getByRole('status')
+      await expect(summary).toHaveText('Not every tool the app needs ran.')
+      await expect(summary).toHaveAttribute('aria-live', 'polite')
+      await expect(tools.locator('dt')).toHaveText(['LOOM tools', 'ffmpeg and ffprobe'])
+      await sweep(page, 'Settings, with the Bundled tools rows')
+    },
+    { env: { SCHEMATIC_LOOM_BIN: emptyLoom }, ready: false },
+  )
+})
+
 test('the mismatch dialog', async () => {
   const p = profile({ version: '0.1.0' })
   await withApp(

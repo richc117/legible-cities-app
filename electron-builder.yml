@@ -46,6 +46,11 @@ extraResources:
     to: LICENSE
   - from: THIRD_PARTY_NOTICES.md
     to: THIRD_PARTY_NOTICES.md
+  # The tiny GTFS folder the first-run check runs gtfs2graph over (A6-02,
+  # specs/026-first-run-check). Read only; the check's working directory is
+  # a temporary folder.
+  - from: resources/first-run-gtfs
+    to: first-run-gtfs
 mac:
   target:
     - dmg
