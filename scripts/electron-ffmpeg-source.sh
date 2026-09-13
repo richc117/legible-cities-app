@@ -4,6 +4,7 @@
 # archive (issue 109, ADR-043).
 #
 #   scripts/electron-ffmpeg-source.sh <outdir>
+#   scripts/electron-ffmpeg-source.sh --tree-id <dir>    print a folder's tree id, as the checks take it
 #
 # Writes <outdir>/electron-ffmpeg-<electron version>-source.tar.xz, which the
 # electron-ffmpeg-source job of .github/workflows/vendor.yml uploads and the
@@ -14,33 +15,44 @@
 # whoever distributes it in object form to accompany it with the complete
 # corresponding source, or to offer equivalent access to it from the same
 # place, and section 0 says what that is: the source of every module, and the
-# scripts that control its compilation. So the archive holds, under
-# electron-ffmpeg-<version>-source/:
+# scripts that control its compilation. What this project takes that to be
+# is, under electron-ffmpeg-<version>-source/:
 #
-#   src/third_party/ffmpeg/  Chromium's FFmpeg at the commit Chromium's DEPS pins,
-#                            with its BUILD.gn, ffmpeg_generated.gni and the
-#                            generated configuration of every branding and target
-#   src/third_party/opus/    libopus, linked statically into the library
-#   src/media/ffmpeg/        the scripts that configure FFmpeg and generate the GN files
-#   src/build/               Chromium's GN build configuration that BUILD.gn imports
-#   electron/                Electron's FFmpeg patch and its release gn args
-#   legible-cities/          copies of this script, the pins and the vendor workflow
-#   BUILD.txt                what each part is and how the library was built
+#   src/third_party/ffmpeg/   Chromium's FFmpeg at the commit Chromium's DEPS pins,
+#                             with its BUILD.gn, ffmpeg_generated.gni and the
+#                             generated configuration of every branding and target
+#   src/third_party/opus/     libopus, linked statically into the library
+#   src/third_party/nasm/     the assembler BUILD.gn builds FFmpeg's x86-64 assembly
+#                             with, and its nasm_assemble.gni
+#   src/media/ffmpeg/         the scripts that configure FFmpeg and generate the GN files
+#   src/tools/generate_stubs/ the script that writes ffmpeg.dll's export list
+#   src/build/                Chromium's GN build configuration that BUILD.gn imports
+#   electron/                 Electron's FFmpeg patch, its release gn args, and its
+#                             patches to Chromium's build/
+#   legible-cities/           copies of this script, the pins and the vendor workflow
+#   BUILD.txt                 what each part is, how the library was built, and
+#                             what is left out
+#
+# Those directories are everything FFmpeg's BUILD.gn and the .gni files it
+# imports name outside themselves, checked when the pins were taken; the pins'
+# note says how.
 #
 # Nothing is trusted for its bytes. googlesource's +archive tarballs are
 # written at download time and differ from one fetch to the next, so each
 # Chromium directory is unpacked and judged by the git tree id it makes,
-# against the id the pins record; FFmpeg is fetched with git at its commit
-# and judged the same way once exported; Electron's files by their blob ids.
-# The tree ids are taken with core.autocrlf off and every attribute that could
-# change a file's bytes unset, so a .gitattributes inside a tree cannot make
-# the same files hash differently.
+# against the id the pins record and the id gitiles lists for that path at
+# the pinned commit; FFmpeg is fetched with git at its commit and judged the
+# same way once exported; Electron's files by their blob ids. The tree ids
+# are taken with no git configuration but the script's own, core.autocrlf
+# off and every attribute that could change a file's bytes unset, so a
+# .gitattributes inside a tree cannot make the same files hash differently.
 #
 # Refuses, before anything is fetched, a package-lock.json that installs
 # another Electron than the pins name, and then an Electron tag that no
 # longer names the pinned commit, an Electron DEPS that names another
-# Chromium, a Chromium tag that no longer names its pinned commit, and a
-# Chromium DEPS that names another FFmpeg revision.
+# Chromium, a Chromium tag that no longer names its pinned commit, a
+# Chromium DEPS that names another FFmpeg revision, and a Chromium tree that
+# records another repository or revision for nasm.
 #
 # Needs bash, git, curl, python3, base64, GNU tar and xz: the job runs on
 # ubuntu-22.04. The archive is packed with names sorted, owner and group 0,
@@ -50,28 +62,81 @@
 #
 # ELECTRON_FFMPEG_PINS names another pins file, and ELECTRON_FFMPEG_LOCK
 # another package-lock.json, so a wrong pin can be tried without editing the
-# committed files. ELECTRON_FFMPEG_WORK names a folder to work in and keep; by
-# default the work is in a temporary folder removed at exit.
+# committed files. ELECTRON_FFMPEG_WORK names a folder to work in and keep,
+# which must not exist or be empty; by default the work is in a temporary
+# folder removed at exit.
 set -euo pipefail
 umask 022
 
 usage() {
   echo "usage: electron-ffmpeg-source.sh <outdir>" >&2
+  echo "       electron-ffmpeg-source.sh --tree-id <dir>" >&2
   exit 2
 }
-[ $# -eq 1 ] && [ -n "$1" ] || usage
-outdir=$1
-
-here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-pins=${ELECTRON_FFMPEG_PINS:-$here/vendor/pins.json}
-lock=${ELECTRON_FFMPEG_LOCK:-$here/package-lock.json}
 
 fail() {
   echo "::error::$*" >&2
   exit 1
 }
 
+# Git is asked with no configuration but what is given here, so a person's
+# global settings cannot change what a tree hashes to.
+export GIT_CONFIG_NOSYSTEM=1
+export GIT_CONFIG_GLOBAL=/dev/null
+export GIT_TERMINAL_PROMPT=0
+gitc() {
+  git -c core.autocrlf=false -c core.eol=lf -c core.safecrlf=false -c core.filemode=true \
+    -c core.symlinks=true -c core.ignorecase=false -c core.precomposeunicode=false \
+    -c advice.detachedHead=false -c init.defaultBranch=main "$@"
+}
+
+# The attributes that would change a file's bytes on the way into git, unset
+# for every path in a repository's own info/attributes, which outranks any
+# .gitattributes inside the tree.
+NO_CONVERSION='* -text -eol -crlf -ident -filter -working-tree-encoding -export-ignore -export-subst'
+
+# tree_id <dir>: the git tree id of a folder's files as they are, with no
+# conversion. A .git inside would be taken for a submodule, so it is refused.
+tree_id() {
+  local dir=$1 gd
+  if [ -n "$(find "$dir" -name .git -print -quit)" ]; then
+    fail "$dir holds a .git, which a tree id would take for a submodule"
+  fi
+  gd=$(mktemp -d)
+  gitc init --quiet --bare "$gd"
+  mkdir -p "$gd/info"
+  printf '%s\n' "$NO_CONVERSION" > "$gd/info/attributes"
+  : > "$gd/info/exclude"
+  gitc -C "$dir" --git-dir="$gd" --work-tree=. add --all --force .
+  gitc -C "$dir" --git-dir="$gd" --work-tree=. write-tree
+  rm -rf "$gd"
+}
+
+if [ "${1:-}" = --tree-id ]; then
+  [ $# -eq 2 ] && [ -d "$2" ] || usage
+  tree_id "$2"
+  exit 0
+fi
+
+[ $# -eq 1 ] && [ -n "$1" ] || usage
 command -v python3 >/dev/null 2>&1 || fail "electron-ffmpeg-source.sh needs python3"
+
+absolute() {
+  python3 -c 'import os, sys; print(os.path.abspath(sys.argv[1]))' "$1"
+}
+outdir=$(absolute "$1")
+here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+pins=$(absolute "${ELECTRON_FFMPEG_PINS:-$here/vendor/pins.json}")
+lock=$(absolute "${ELECTRON_FFMPEG_LOCK:-$here/package-lock.json}")
+work_given=
+if [ -n "${ELECTRON_FFMPEG_WORK:-}" ]; then
+  work_given=$(absolute "$ELECTRON_FFMPEG_WORK")
+  # The work is emptied as it goes and kept after, so a folder that holds
+  # anything already (the checkout, with ELECTRON_FFMPEG_WORK=.) is refused.
+  if [ -e "$work_given" ] && { [ ! -d "$work_given" ] || [ -n "$(ls -A "$work_given")" ]; }; then
+    fail "ELECTRON_FFMPEG_WORK names $work_given, which exists and is not an empty folder"
+  fi
+fi
 
 # pin <key>...: a value under electron_ffmpeg in the pins, one key per
 # argument, since Electron's file names have dots in them; a missing one ends
@@ -83,16 +148,20 @@ node = json.load(open(sys.argv[1], encoding="utf-8"))["electron_ffmpeg"]
 for key in sys.argv[2:]:
     node = node[key]
 if not isinstance(node, str) or node == "":
-    raise SystemExit(f"electron_ffmpeg {sys.argv[2:]} is not a string in the pins")
+    raise SystemExit(f"::error::electron_ffmpeg {sys.argv[2:]} is not a string in the pins")
 print(node)
 PY
 }
 
-# pin_keys <key>: the keys of an object under electron_ffmpeg, one per line.
+# pin_keys <key>: the keys of an object under electron_ffmpeg, one per line;
+# an object that is missing or empty ends the run.
 pin_keys() {
   python3 - "$pins" "$1" <<'PY'
 import json, sys
-for key in json.load(open(sys.argv[1], encoding="utf-8"))["electron_ffmpeg"][sys.argv[2]]:
+node = json.load(open(sys.argv[1], encoding="utf-8"))["electron_ffmpeg"][sys.argv[2]]
+if not isinstance(node, dict) or not node:
+    raise SystemExit(f"::error::electron_ffmpeg {sys.argv[2]} is not an object with entries in the pins")
+for key in node:
     print(key)
 PY
 }
@@ -110,6 +179,10 @@ ffmpeg_commit=$(pin ffmpeg commit)
 ffmpeg_tree=$(pin ffmpeg tree)
 ffmpeg_reports=$(pin ffmpeg reports)
 licence=$(pin licence)
+# Captured, not read from a process substitution, so a failure stops the run.
+tree_keys=$(pin_keys chromium_trees)
+deps_keys=$(pin_keys chromium_deps)
+file_keys=$(pin_keys electron_files)
 
 # The Electron npm installs, which is the Electron whose library the
 # installers carry.
@@ -131,50 +204,62 @@ tar --version 2>/dev/null | head -1 | grep -q 'GNU tar' || fail "electron-ffmpeg
 name="electron-ffmpeg-$electron_version-source"
 archive="$name.tar.xz"
 
-if [ -n "${ELECTRON_FFMPEG_WORK:-}" ]; then
-  rm -rf "$ELECTRON_FFMPEG_WORK"
-  mkdir -p "$ELECTRON_FFMPEG_WORK"
-  work=$(cd "$ELECTRON_FFMPEG_WORK" && pwd)
+if [ -n "$work_given" ]; then
+  mkdir -p "$work_given"
+  work=$work_given
 else
   work=$(mktemp -d)
   trap 'rm -rf "$work"' EXIT
 fi
+mkdir -p "$outdir"
 # Every git command below runs outside any repository, the checkout's
 # included: a worktree's .git names a folder another machine may not have.
-mkdir -p "$outdir"
-out=$(cd "$outdir" && pwd)
 cd "$work"
 root="$work/$name"
-mkdir -p "$root/src/third_party" "$root/src/media" "$root/electron" "$root/legible-cities"
+mkdir -p "$root/src" "$root/electron" "$root/legible-cities"
 
-# Git is asked with no configuration but what is given here, so a person's
-# global settings cannot change what a tree hashes to.
-export GIT_CONFIG_NOSYSTEM=1
-export GIT_CONFIG_GLOBAL=/dev/null
-export GIT_TERMINAL_PROMPT=0
-gitc() {
-  git -c core.autocrlf=false -c core.eol=lf -c core.safecrlf=false -c core.filemode=true \
-    -c core.symlinks=true -c core.ignorecase=false -c core.precomposeunicode=false \
-    -c advice.detachedHead=false -c init.defaultBranch=main "$@"
+# get <url> <file>: fetch with backoff. A failed transfer (a truncated body
+# included, which curl can report with a 200), a 5xx or a 429 is tried again,
+# five times in all; any other answer ends the run.
+get() {
+  local url=$1 file=$2 attempt code status delay=5
+  for attempt in 1 2 3 4 5; do
+    if code=$(curl -sS -L --connect-timeout 30 --max-time 900 -o "$file" -w '%{http_code}' "$url"); then
+      status=0
+    else
+      status=$?
+    fi
+    [ -n "$code" ] || code=000
+    if [ "$status" -eq 0 ] && [ "$code" = 200 ]; then
+      return 0
+    fi
+    if [ "$status" -eq 0 ] && ! [[ "$code" =~ ^(429|5[0-9][0-9])$ ]]; then
+      fail "fetching $url answered $code"
+    fi
+    echo "fetching $url answered $code, curl exit $status (attempt $attempt of 5)" >&2
+    if [ "$attempt" -lt 5 ]; then
+      sleep "$delay"
+      delay=$((delay * 2))
+    fi
+  done
+  fail "fetching $url failed five times, the last with $code and curl exit $status"
 }
 
-# get <url> <file>: fetch with backoff. A 5xx, a 429 or a connection that
-# fails is tried again, five times in all; anything else ends the run.
-get() {
-  local url=$1 file=$2 attempt code delay=5
-  for attempt in 1 2 3 4 5; do
-    code=$(curl -sS -L --connect-timeout 30 --max-time 900 -o "$file" -w '%{http_code}' "$url") || true
-    [ -n "$code" ] || code=000
-    case "$code" in
-      200) return 0 ;;
-      000 | 429 | 5??)
-        echo "fetching $url answered $code (attempt $attempt of 5)" >&2
-        if [ "$attempt" -lt 5 ]; then sleep "$delay"; delay=$((delay * 2)); fi
-        ;;
-      *) fail "fetching $url answered $code" ;;
-    esac
-  done
-  fail "fetching $url failed five times, the last with $code"
+# gitiles <url> <field>: a field of gitiles' JSON answer for a path, which
+# comes behind a )]}' line.
+gitiles() {
+  local file
+  file=$(mktemp)
+  get "$1" "$file"
+  python3 - "$file" "$2" <<'PY'
+import json, sys
+text = open(sys.argv[1], encoding="utf-8").read()
+if text.startswith(")]}'"):
+    text = text.split("\n", 1)[1]
+value = json.loads(text).get(sys.argv[2], "")
+print(value if isinstance(value, str) else "")
+PY
+  rm -f "$file"
 }
 
 # peeled <repo> <tag>: the commit a tag names on its remote, peeled through
@@ -192,20 +277,17 @@ peeled() {
   fail "could not ask $1 for the tag $2"
 }
 
-# tree_id <dir>: the git tree id of a folder's files as they are, with no
-# conversion. A .git inside would be taken for a submodule, so it is refused.
-tree_id() {
-  local dir=$1 gd
-  if [ -n "$(find "$dir" -name .git -print -quit)" ]; then
-    fail "$dir holds a .git, which a tree id would take for a submodule"
-  fi
-  gd=$(mktemp -d)
-  gitc init --quiet --bare "$gd"
-  printf '* -text -eol -crlf -ident -filter -working-tree-encoding\n' > "$gd/info/attributes"
-  : > "$gd/info/exclude"
-  gitc -C "$dir" --git-dir="$gd" --work-tree=. add --all --force .
-  gitc -C "$dir" --git-dir="$gd" --work-tree=. write-tree
-  rm -rf "$gd"
+# unpack <url> <dir> <tree> <what>: a gitiles archive unpacked into <dir>,
+# whose files must make <tree>.
+unpack() {
+  local url=$1 dir=$2 want=$3 what=$4 file found
+  file="$work/unpack.tar.gz"
+  get "$url" "$file"
+  mkdir -p "$dir"
+  tar -x -z -f "$file" -C "$dir"
+  rm -f "$file"
+  found=$(tree_id "$dir")
+  [ "$found" = "$want" ] || fail "$what makes tree $found, and the pins say $want"
 }
 
 # The tags still name the pinned commits, and each DEPS names the next pin.
@@ -243,7 +325,8 @@ echo "Chromium's DEPS names FFmpeg $ffmpeg_commit"
 # against its id. The commit's tree is checked, then the exported files'.
 repo="$work/ffmpeg.git"
 gitc init --quiet --bare "$repo"
-printf '* -text -eol -crlf -ident -filter -working-tree-encoding -export-ignore -export-subst\n' > "$repo/info/attributes"
+mkdir -p "$repo/info"
+printf '%s\n' "$NO_CONVERSION" > "$repo/info/attributes"
 for attempt in 1 2 3; do
   if gitc --git-dir="$repo" fetch --quiet --depth 1 "$ffmpeg_repo" "$ffmpeg_commit"; then break; fi
   [ "$attempt" -lt 3 ] || fail "could not fetch FFmpeg $ffmpeg_commit from $ffmpeg_repo"
@@ -263,18 +346,33 @@ version=$(grep -h '#define FFMPEG_VERSION ' "$root"/src/third_party/ffmpeg/chrom
 rm -rf "$repo"
 echo "FFmpeg $ffmpeg_commit: tree $ffmpeg_tree, $(find "$root/src/third_party/ffmpeg" -type f | wc -l | tr -d ' ') files, reports $ffmpeg_reports"
 
-# The Chromium directories, each unpacked from gitiles and judged by its tree.
+# The Chromium directories: the tree gitiles lists for the path at the pinned
+# commit, and the tree the unpacked archive makes, must both be the pin.
 while IFS= read -r path; do
   want=$(pin chromium_trees "$path" tree)
-  file="$work/$(tr / - <<< "$path").tar.gz"
-  get "$chromium_repo/+archive/$chromium_commit/$path.tar.gz" "$file"
-  mkdir -p "$root/src/$path"
-  tar -x -z -f "$file" -C "$root/src/$path"
-  rm -f "$file"
-  found=$(tree_id "$root/src/$path")
-  [ "$found" = "$want" ] || fail "Chromium's $path at $chromium_commit makes tree $found, and the pins say $want"
+  found=$(gitiles "$chromium_repo/+/$chromium_commit/$path/?format=JSON" id)
+  [ "$found" = "$want" ] || fail "Chromium's $path at $chromium_commit is tree ${found:-nothing}, and the pins say $want"
+  unpack "$chromium_repo/+archive/$chromium_commit/$path.tar.gz" "$root/src/$path" "$want" \
+    "Chromium's $path at $chromium_commit, unpacked,"
   echo "src/$path: tree $want, $(find "$root/src/$path" -type f | wc -l | tr -d ' ') files"
-done < <(pin_keys chromium_trees)
+done <<< "$tree_keys"
+
+# The DEPS entries: Chromium's tree records each one's repository and
+# revision, which must be the pins', and its tree is judged the same way.
+while IFS= read -r path; do
+  dep_repo=$(pin chromium_deps "$path" repo)
+  dep_commit=$(pin chromium_deps "$path" commit)
+  want=$(pin chromium_deps "$path" tree)
+  found=$(gitiles "$chromium_repo/+/$chromium_commit/$path?format=JSON" url)
+  [ "$found" = "$dep_repo" ] || fail "Chromium $chromium_commit takes $path from ${found:-nowhere}, and the pins say $dep_repo"
+  found=$(gitiles "$chromium_repo/+/$chromium_commit/$path?format=JSON" revision)
+  [ "$found" = "$dep_commit" ] || fail "Chromium $chromium_commit takes $path at ${found:-no revision}, and the pins say $dep_commit"
+  found=$(gitiles "$dep_repo/+/$dep_commit/?format=JSON" id)
+  [ "$found" = "$want" ] || fail "$dep_repo at $dep_commit is tree ${found:-nothing}, and the pins say $want"
+  unpack "$dep_repo/+archive/$dep_commit.tar.gz" "$root/src/$path" "$want" \
+    "$dep_repo at $dep_commit, unpacked,"
+  echo "src/$path: $dep_repo at $dep_commit, tree $want, $(find "$root/src/$path" -type f | wc -l | tr -d ' ') files"
+done <<< "$deps_keys"
 
 # Electron's files, each judged by its blob id.
 while IFS= read -r path; do
@@ -284,7 +382,7 @@ while IFS= read -r path; do
   found=$(gitc hash-object --no-filters "$root/electron/$path")
   [ "$found" = "$want" ] || fail "Electron's $path at $electron_commit is blob $found, and the pins say $want"
   echo "electron/$path: blob $want"
-done < <(pin_keys electron_files)
+done <<< "$file_keys"
 
 cp "$here/scripts/electron-ffmpeg-source.sh" "$here/.github/workflows/vendor.yml" "$root/legible-cities/"
 cp "$pins" "$root/legible-cities/pins.json"
@@ -294,15 +392,34 @@ repository="this repository"
 if [ -n "${GITHUB_REPOSITORY:-}" ]; then
   repository="${GITHUB_SERVER_URL:-https://github.com}/$GITHUB_REPOSITORY"
 fi
-trees=$(while IFS= read -r path; do
-  printf 'src/%s/\n  %s\n  Chromium %s, commit %s: tree %s.\n' \
-    "$path" "$(pin chromium_trees "$path" what)." "$chromium_version" "$chromium_commit" \
-    "$(pin chromium_trees "$path" tree)"
-  printf '  Licence: %s.\n' "$(pin chromium_trees "$path" licence)"
-done < <(pin_keys chromium_trees))
-files=$(while IFS= read -r path; do
-  printf '  electron/%s  blob %s\n' "$path" "$(pin electron_files "$path")"
-done < <(pin_keys electron_files))
+trees=
+while IFS= read -r path; do
+  what=$(pin chromium_trees "$path" what)
+  tree=$(pin chromium_trees "$path" tree)
+  tree_licence=$(pin chromium_trees "$path" licence)
+  trees+="src/$path/
+  $what.
+  Chromium $chromium_version, commit $chromium_commit: tree $tree.
+  Licence: $tree_licence.
+"
+done <<< "$tree_keys"
+while IFS= read -r path; do
+  what=$(pin chromium_deps "$path" what)
+  tree=$(pin chromium_deps "$path" tree)
+  dep_repo=$(pin chromium_deps "$path" repo)
+  dep_commit=$(pin chromium_deps "$path" commit)
+  tree_licence=$(pin chromium_deps "$path" licence)
+  trees+="src/$path/
+  $what.
+  $dep_repo at commit $dep_commit, as Chromium $chromium_version records it: tree $tree.
+  Licence: $tree_licence.
+"
+done <<< "$deps_keys"
+files=
+while IFS= read -r path; do
+  files+="  $path  blob $(pin electron_files "$path")
+"
+done <<< "$file_keys"
 decoders=$(pin components decoders)
 parsers=$(pin components parsers)
 demuxers=$(pin components demuxers)
@@ -331,15 +448,17 @@ demuxers=$(pin components demuxers)
   echo "  wrote for each branding and target (config.h holds the configure line it was run"
   echo "  with, and codec_list.c, parser_list.c and demuxer_list.c what it enabled)."
   echo "  The library reports FFmpeg version $ffmpeg_reports."
-  printf '%s\n' "$trees"
+  printf '%s' "$trees"
   echo "electron/"
   echo "  Files of Electron $electron_tag, commit $electron_commit of $electron_repo:"
-  printf '%s\n' "$files"
+  printf '%s' "$files"
   echo "  patches/ffmpeg/ is the one change Electron makes to FFmpeg, applied to"
-  echo "  src/third_party/ffmpeg with \`git am\` in the order .patches lists (it links the"
-  echo "  macOS library with an @loader_path install name). build/args/ holds the gn args"
-  echo "  Electron's release builds use. Electron's DEPS at that commit names Chromium"
-  echo "  $chromium_version, and Chromium's tag $chromium_tag is commit $chromium_commit."
+  echo "  src/third_party/ffmpeg in the order its .patches lists (it links the macOS library"
+  echo "  with an @loader_path install name). build/args/ holds the gn args Electron's"
+  echo "  release builds use. patches/chromium/ holds, with the list that orders them, the"
+  echo "  patches Electron applies to Chromium that change files under src/build/; apply them"
+  echo "  to src/ with the others that list names. Electron's DEPS at that commit names"
+  echo "  Chromium $chromium_version, and Chromium's tag $chromium_tag is commit $chromium_commit."
   echo
   echo "How the library is built: Electron checks out Chromium $chromium_version with gclient,"
   echo "applies its patches, and builds with electron/build/args/release.gn, which imports"
@@ -348,42 +467,56 @@ demuxers=$(pin components demuxers)
   echo "is_component_ffmpeg = true with is_official_build = true builds FFmpeg's"
   echo "shared_library(\"ffmpeg\") target in src/third_party/ffmpeg/BUILD.gn, from the sources"
   echo "ffmpeg_generated.gni lists for that branding, operating system and architecture,"
-  echo "with //third_party/opus linked in. That configuration has CONFIG_GPL, CONFIG_NONFREE"
-  echo "and CONFIG_VERSION3 at 0, and enables:"
+  echo "with //third_party/opus linked in; on x86-64 its assembly is assembled by"
+  echo "//third_party/nasm, and on Windows //tools/generate_stubs writes the DLL's exports."
+  echo "That configuration has CONFIG_GPL, CONFIG_NONFREE and CONFIG_VERSION3 at 0, and"
+  echo "enables:"
   echo "  decoders: $decoders"
   echo "  parsers: $parsers"
   echo "  demuxers: $demuxers"
   echo "The Chromium branding under chromium/config/Chromium/ is the same without the"
   echo "aac and h264 decoders and parsers and the aac demuxer. src/media/ffmpeg/scripts/"
   echo "regenerates the configuration and the GN files; src/build/ is the GN configuration"
-  echo "BUILD.gn imports. The compiler is Chromium's own clang, fetched by gclient at the"
-  echo "same Chromium commit, and GN and the rest of the checkout are Chromium's at that"
-  echo "commit, $chromium_repo."
+  echo "BUILD.gn imports."
   echo
-  echo "What this is, in the terms of the GNU Lesser General Public License, version 2.1,"
-  echo "section 0: the source code for all modules the library contains (FFmpeg's, and"
-  echo "libopus's, which is linked into it), with the scripts used to control its"
-  echo "compilation (FFmpeg's BUILD.gn and generated configuration, the scripts that"
-  echo "generate them, the GN configuration they import, Electron's patch and gn args)."
-  echo "The full text of the licence is src/third_party/ffmpeg/COPYING.LGPLv2.1, and it"
-  echo "is also in Electron's LICENSES.chromium.html."
+  echo "Left out, as the toolchain and the rest of a Chromium checkout rather than the"
+  echo "library's source: Chromium's clang and its runtime libraries, GN, Python, and the"
+  echo "platform SDKs, which gclient and the host provide; build_overrides/, buildtools/"
+  echo "and the gclient_args.gni gclient writes, which src/build/ reads; the PGO profiles"
+  echo "gclient's hooks download for official builds, which are profile data rather than"
+  echo "source or scripts; and Electron's other patches to Chromium, none of which changes"
+  echo "a file under build/, third_party/ffmpeg/, third_party/opus/, third_party/nasm/,"
+  echo "media/ffmpeg/ or tools/generate_stubs/ (checked when these pins were taken). All of"
+  echo "them are public at the commits named here: $chromium_repo and $electron_repo."
+  echo
+  echo "What this project takes to be the complete source code, in the terms of the GNU"
+  echo "Lesser General Public License, version 2.1, section 0: the source code for all"
+  echo "modules the library contains (FFmpeg's, and libopus's, which is linked into it),"
+  echo "with the scripts used to control its compilation (FFmpeg's BUILD.gn and generated"
+  echo "configuration, the scripts that generate them, the GN configuration and the tools"
+  echo "they use from Chromium's tree, and Electron's patches and gn args). The full text of"
+  echo "the licence is src/third_party/ffmpeg/COPYING.LGPLv2.1, and it is also in"
+  echo "Electron's LICENSES.chromium.html."
   echo
   echo "Patent licensing for the H.264 and AAC decoders is not assessed by this project."
 } > "$root/BUILD.txt"
 
-rm -f "$out/$archive"
+rm -f "$outdir/$archive"
 # Sorted names, fixed owners and modes, every time the FFmpeg commit's, and
 # one xz thread: xz's block layout depends on its thread count.
 tar --create --file - --format=gnu --sort=name --owner=0 --group=0 --numeric-owner \
   --mode='u+rw,go-w,a+rX' --mtime="@$when" -C "$work" "$name" \
-  | xz -9 -T1 -c > "$out/$archive"
-listing=$(xz -dc "$out/$archive" | tar --list --file -)
-for expected in "$name/BUILD.txt" "$name/src/third_party/ffmpeg/BUILD.gn" \
-  "$name/src/third_party/ffmpeg/COPYING.LGPLv2.1" "$name/src/third_party/opus/BUILD.gn" \
-  "$name/electron/patches/ffmpeg/link_with_loader_path.patch" "$name/legible-cities/pins.json"; do
-  grep -qxF "$expected" <<< "$listing" || fail "$archive does not hold $expected"
+  | xz -9 -T1 -c > "$outdir/$archive"
+listing=$(xz -dc "$outdir/$archive" | tar --list --file -)
+expected=("$name/BUILD.txt" "$name/legible-cities/pins.json"
+  "$name/src/third_party/ffmpeg/BUILD.gn" "$name/src/third_party/ffmpeg/COPYING.LGPLv2.1")
+while IFS= read -r path; do expected+=("$name/src/$path/"); done <<< "$tree_keys"
+while IFS= read -r path; do expected+=("$name/src/$path/"); done <<< "$deps_keys"
+while IFS= read -r path; do expected+=("$name/electron/$path"); done <<< "$file_keys"
+for entry in "${expected[@]}"; do
+  grep -qxF "$entry" <<< "$listing" || fail "$archive does not hold $entry"
 done
 if grep -qE '(^|/)\.git(/|$)' <<< "$listing"; then
   fail "$archive carries git metadata"
 fi
-echo "wrote $out/$archive: $(wc -c < "$out/$archive" | tr -d ' ') bytes, $(grep -vc '/$' <<< "$listing") files"
+echo "wrote $outdir/$archive: $(wc -c < "$outdir/$archive" | tr -d ' ') bytes, $(grep -vc '/$' <<< "$listing") files"

@@ -86,11 +86,30 @@ for as long as the installers are offered.
 **(a)**, chosen by the maintainer on 2026-09-13. `vendor/pins.json` gains an
 `electron_ffmpeg` block keyed to the Electron version: Electron's version,
 tag and commit; Chromium's version, tag and commit; the FFmpeg commit and
-its tree id; the tree ids of Chromium's `third_party/opus`, `media/ffmpeg`
-and `build` at that commit; the blob ids of Electron's
-`patches/ffmpeg/.patches`, `link_with_loader_path.patch`,
-`build/args/all.gn` and `build/args/release.gn`; the 29 components; and the
-licence.
+its tree id; the tree ids of Chromium's `build`, `media/ffmpeg`,
+`third_party/opus` and `tools/generate_stubs` at that commit; nasm's
+repository, revision and tree, a DEPS entry of that commit; the blob ids of
+Electron's `patches/ffmpeg/.patches`, `link_with_loader_path.patch`,
+`build/args/all.gn`, `build/args/release.gn`, and `patches/chromium/.patches`
+with the eight patches it lists that change files under Chromium's `build/`;
+the 29 components; and the licence.
+
+**What goes in** is what FFmpeg's `BUILD.gn` and the `.gni` files it imports
+name outside themselves, read at the pinned commit: `//build` (compiler,
+sanitizer and toolchain configuration), `//third_party/opus`,
+`//third_party/nasm/nasm_assemble.gni`, for the x86-64 assembly on
+darwin-x64 and win-x64, whose nasm Chromium builds from source, and
+`//tools/generate_stubs/generate_stubs.py`, which writes the Windows DLL's
+export list; with `media/ffmpeg`, whose scripts generate FFmpeg's
+configuration. Of Electron's 179 patches to Chromium, eight change files
+under `build/` and none change `third_party/ffmpeg`, `third_party/opus`,
+`third_party/nasm`, `media/ffmpeg` or `tools/generate_stubs`. **What stays
+out**, as `BUILD.txt` says, is the toolchain and the rest of a Chromium
+checkout: Chromium's clang, GN, Python and the platform SDKs,
+`build_overrides/`, `buildtools/` and the `gclient_args.gni` gclient
+writes, the PGO profiles gclient's hooks download, and Electron's other
+patches. That line is this project's reading of section 0's "scripts used
+to control compilation", not a lawyer's.
 
 `scripts/electron-ffmpeg-source.sh`, run by vendor.yml's
 `electron-ffmpeg-source` job on `ubuntu-22.04`:
@@ -102,17 +121,20 @@ licence.
   its pinned commit and its DEPS names the pinned FFmpeg revision;
 - shallow-fetches FFmpeg at its commit, checks the commit's tree id, exports
   it and checks the exported files' tree id;
-- fetches each Chromium directory as a gitiles archive, retried with backoff
-  on a 5xx, a 429 or a failed connection, and checks the tree id its files
-  make. googlesource's archives are written at download time and are never
+- checks that gitiles lists each Chromium directory at the pinned commit
+  as the pinned tree, and that Chromium's tree records nasm's pinned
+  repository and revision; fetches each directory as a gitiles archive,
+  retried with backoff on a 5xx, a 429 or a failed transfer (a truncated
+  body included), and checks the tree id its files make. googlesource's archives are written at download time and are never
   the same bytes twice, so an archive's hash cannot be pinned, but the tree
   can. Every tree id is taken with no git configuration but its own,
   `core.autocrlf=false`, and every conversion attribute unset in the
   repository's `info/attributes`, so an in-tree `.gitattributes` cannot
   change what files hash to;
-- fetches Electron's four files at the pinned commit and checks each blob id;
+- fetches Electron's files at the pinned commit and checks each blob id;
 - writes `BUILD.txt`: what each part is, the pins, how Electron's gn args
-  build the library, and what this is in LGPL-2.1 section 0's terms;
+  build the library, what is left out, and what this project takes to be
+  the complete source in LGPL-2.1 section 0's terms;
 - packs `electron-ffmpeg-<electron version>-source.tar.xz` with GNU tar
   (names sorted, owner and group 0, modes normalised, every time the FFmpeg
   commit's) and one xz thread, and uploads it as `electron-ffmpeg-source`.
@@ -137,15 +159,17 @@ other asset. The notes template gains a row in "What is inside" and a line in
 
 ## Consequences
 
-**The archive is 16,290,324 bytes** (13,263 files), beside installers of
+**The archive is 17,738,076 bytes** (14,631 files), beside installers of
 160 to 208 MB and `ffmpeg-9.0.1-source.tar` of 19.8 MB. Measured on
 2026-09-13 by running the script twice in an `ubuntu:22.04` container
-(git 2.34.1, GNU tar 1.34, xz 5.2.5): each run took one to two minutes,
-googlesource answered 503 to between one and three requests per run and the
-retries recovered, and both runs made the same bytes (sha256 `72a3140804`).
-Refused in the same container: a `package-lock.json` for Electron 44.3.0,
-a Chromium version the DEPS does not name, and a wrong tree id for
-`media/ffmpeg`.
+(git 2.34.1, GNU tar 1.34, xz 5.2.5): each run took about a minute and a
+half, googlesource answered 503 to between one and three requests per run
+and the retries recovered, and both runs made the same bytes (sha256
+`08deabe3dc`). Refused in the same container: a `package-lock.json` for
+Electron 44.3.0, a Chromium version the DEPS does not name, a wrong tree id
+for `media/ffmpeg` and for `tools/generate_stubs`, a nasm revision Chromium
+does not record, a pins block with no Electron files, and a work folder that
+is not empty.
 
 **Every Electron bump moves the whole block**, forced by the check: the new
 tag's commit, the Chromium version and commit in its DEPS, the FFmpeg
@@ -160,11 +184,15 @@ where it once failed nothing.
 **The reading of the licence is this project's**, not a lawyer's: that
 section 4 applies to the library copy the installers carry, whatever
 section 6 says of Electron's executable. If that reading is wrong the cost is
-16 MB per Release.
+18 MB per Release.
 
-**`v0.1.0-rc.2` is given the archive after publication**, uploaded by hand
-from the first CI run of this change. It ships the same Electron 44.2.0, so the
-same source; its `BUILD.txt` names the later commit that made it.
+**`v0.1.0-rc.2` is to be given the archive after publication.** Once this
+change merges, the archive from the first build on `main` is uploaded to
+that pre-release by hand, and its sha256 is written into rc.2's notes:
+rc.2's `SHA256SUMS.txt` was made at publication and cannot list an asset
+added afterwards, and `docs/install.md` says so. rc.2 ships the same Electron
+44.2.0, so it is the same source; its `BUILD.txt` names the later commit that
+made it.
 
 **Signing (A6-05).** The LGPL-2.1 asks, for the work that uses the library,
 that a person can use a modified library. Today the Mac app is signed ad

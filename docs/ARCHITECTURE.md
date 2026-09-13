@@ -1340,11 +1340,14 @@ app never calls, LGPL-2.1-or-later with libopus inside (issue 109, ADR-043).
 Its source is attached as it was packed, as
 `electron-ffmpeg-<electron version>-source.tar.xz`, by the vendor workflow's
 `electron-ffmpeg-source` job (`scripts/electron-ffmpeg-source.sh`): Chromium's
-FFmpeg at the commit Chromium's DEPS pins, Chromium's `third_party/opus`,
-`media/ffmpeg` and `build`, and Electron's FFmpeg patch and gn args, each
+FFmpeg at the commit Chromium's DEPS pins, and everything its `BUILD.gn`
+names outside itself - Chromium's `build`, `third_party/opus`,
+`third_party/nasm` and `tools/generate_stubs` - with `media/ffmpeg`, and
+Electron's FFmpeg patch, gn args and patches to Chromium's `build/`, each
 verified by its git object id against `electron_ffmpeg` in
-`vendor/pins.json` - by tree id for the directories, since googlesource's
-archives are never the same bytes twice - and packed reproducibly. The job
+`vendor/pins.json` - by tree id for the directories, both as gitiles lists
+them and as their archives unpack, since googlesource's archives are never
+the same bytes twice - and packed reproducibly. The job
 refuses a `package-lock.json` for another Electron, so every Electron bump
 moves that block. Each packaging job refuses, before `npm ci`, to go on
 without the artefact, so no installer is made in a run whose Electron

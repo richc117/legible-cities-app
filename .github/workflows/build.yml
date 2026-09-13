@@ -14,8 +14,11 @@
 # A target whose components are missing, stale or the wrong architecture
 # fails, naming the component, and uploads nothing; the other targets go on
 # (SC-005). So the packaging jobs run whatever the vendor jobs' result, and
-# a download that finds no artefact is left for scripts/check-vendored.mjs
-# to name.
+# a download that finds no component is left for scripts/check-vendored.mjs
+# to name. The source of Electron's FFmpeg library is the exception: every
+# installer carries that library, so a packaging job refuses, itself and
+# before anything is installed, a run without the electron-ffmpeg-source
+# artefact, and no target is packaged (ADR-043).
 #
 # Unsigned (FR-005): the Mac app is signed ad hoc and the Windows installer
 # not at all, until the release-readiness gate (A6-05). The ffmpeg they
@@ -126,7 +129,7 @@ jobs:
           electron=$(node -p "require('./package-lock.json').packages['node_modules/electron'].version")
           archive="electron-ffmpeg-source/electron-ffmpeg-$electron-source.tar.xz"
           if [ ! -s "$archive" ]; then
-            echo "::error::$archive is not in this run: the vendor workflow's electron-ffmpeg-source job did not verify and upload the source of Electron $electron's FFmpeg library, and an installer carrying that library is not packaged without it"
+            echo "::error::$archive is not in this run: the vendor workflow's electron-ffmpeg-source job failed, or the download did. An installer carrying Electron $electron's FFmpeg library is not packaged without that library's source"
             exit 1
           fi
           echo "the source of Electron $electron's FFmpeg library: $(wc -c < "$archive" | tr -d ' ') bytes"

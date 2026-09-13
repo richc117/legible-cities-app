@@ -9,6 +9,8 @@
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import {
+  chmodSync,
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -37,6 +39,7 @@ const PINS = JSON.parse(readFileSync(PINS_FILE, 'utf8')) as {
     chromium: { version: string; commit: string }
     ffmpeg: { commit: string; tree: string }
     chromium_trees: Record<string, { tree: string }>
+    chromium_deps: Record<string, { repo: string; commit: string; tree: string }>
     electron_files: Record<string, string>
   }
 }
@@ -82,6 +85,7 @@ interface AssembleInput {
 }
 interface Module {
   parseTag(tag: string): { version: string; rc: number | null; label: string } | null
+  installedElectron(root: string): string | null
   decide(input: {
     tag: string
     packageVersion: string
@@ -779,10 +783,9 @@ describe('the notes', () => {
       `bzip2 ${PINS.loom_windows_static.bzip2.version}`,
       PINS.python.version,
       PKG.devDependencies.electron,
-      PINS.electron_ffmpeg.ffmpeg.commit,
-      `Chromium ${PINS.electron_ffmpeg.chromium.version}`,
       ELECTRON_SOURCE,
-      'LGPL-2.1-or-later',
+      `Chromium's FFmpeg at commit \`${PINS.electron_ffmpeg.ffmpeg.commit}\`, as Chromium ${PINS.electron_ffmpeg.chromium.version} and Electron ${PINS.electron_ffmpeg.electron.version} build it`,
+      `the FFmpeg library inside Electron ${PINS.electron_ffmpeg.electron.version}:`,
     ]) {
       expect(text).toContain(value)
     }
@@ -1053,10 +1056,99 @@ describe("the source of Electron's FFmpeg library", () => {
       expect(value).toMatch(id)
     }
     expect(Object.keys(pins.chromium_trees).sort()).toEqual(
-      ['build', 'media/ffmpeg', 'third_party/opus'].sort(),
+      ['build', 'media/ffmpeg', 'third_party/opus', 'tools/generate_stubs'].sort(),
     )
-    expect(Object.keys(pins.electron_files)).toContain('patches/ffmpeg/link_with_loader_path.patch')
+    expect(Object.keys(pins.chromium_deps)).toEqual(['third_party/nasm'])
+    for (const dep of Object.values(pins.chromium_deps)) {
+      expect(dep.commit).toMatch(id)
+      expect(dep.tree).toMatch(id)
+    }
+    const files = Object.keys(pins.electron_files)
+    for (const required of [
+      'patches/ffmpeg/.patches',
+      'patches/ffmpeg/link_with_loader_path.patch',
+      'build/args/all.gn',
+      'build/args/release.gn',
+      'patches/chromium/.patches',
+    ]) {
+      expect(files).toContain(required)
+    }
+    // Electron's patches to Chromium's build/, eight at Electron 44.2.0.
+    expect(files.filter((file) => /^patches\/chromium\/.+\.patch$/.test(file))).toHaveLength(8)
   })
+
+  it('reads the Electron package-lock.json installs, and null when it names none', async () => {
+    const { installedElectron } = await load()
+    expect(installedElectron(repo)).toBe(ELECTRON)
+    const dir = scratch()
+    writeFileSync(join(dir, 'package-lock.json'), JSON.stringify({ packages: { '': {} } }))
+    expect(installedElectron(dir)).toBeNull()
+    writeFileSync(join(dir, 'package-lock.json'), JSON.stringify({ lockfileVersion: 3 }))
+    expect(installedElectron(dir)).toBeNull()
+  })
+
+  it.skipIf(process.platform === 'win32')(
+    'takes a tree id no in-tree .gitattributes can change, as git mktree makes it from the bytes',
+    () => {
+      const dir = join(scratch(), 'tree')
+      put(join(dir, '.gitattributes'), '* text eol=crlf\n')
+      put(join(dir, 'crlf.txt'), 'one\r\ntwo\r\n')
+      put(join(dir, 'lf.txt'), 'three\n')
+      put(join(dir, 'sub', 'deeper.txt'), 'four\r\n')
+      put(join(dir, 'run.sh'), '#!/bin/sh\n')
+      chmodSync(join(dir, 'run.sh'), 0o755)
+
+      const bare = join(scratch(), 'objects.git')
+      const env = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' }
+      const git = (args: string[], input?: string): string => {
+        const result = spawnSync('git', ['--git-dir', bare, ...args], {
+          encoding: 'utf8',
+          timeout: 30_000,
+          env,
+          input,
+        })
+        expect(result.status, result.stderr).toBe(0)
+        return result.stdout.trim()
+      }
+      spawnSync('git', ['init', '--quiet', '--bare', bare], { timeout: 30_000, env })
+      const blob = (path: string): string =>
+        git(['hash-object', '-w', '--no-filters', join(dir, path)])
+      const sub = git(['mktree'], `100644 blob ${blob('sub/deeper.txt')}\tdeeper.txt\n`)
+      const expected = git(
+        ['mktree'],
+        [
+          `100644 blob ${blob('.gitattributes')}\t.gitattributes`,
+          `100644 blob ${blob('crlf.txt')}\tcrlf.txt`,
+          `100644 blob ${blob('lf.txt')}\tlf.txt`,
+          `100755 blob ${blob('run.sh')}\trun.sh`,
+          `040000 tree ${sub}\tsub`,
+          '',
+        ].join('\n'),
+      )
+
+      const result = spawnSync('bash', [SOURCE_SCRIPT, '--tree-id', dir], {
+        encoding: 'utf8',
+        timeout: 30_000,
+      })
+      expect(result.stderr).toBe('')
+      expect(result.status).toBe(0)
+      expect(result.stdout.trim()).toBe(expected)
+
+      // A plain git add honours the attribute and stores other bytes, which
+      // is what the script's own attributes rule out.
+      const plain = join(scratch(), 'plain')
+      cpSync(dir, plain, { recursive: true })
+      const plainGit = (args: string[]): string =>
+        spawnSync('git', ['-C', plain, ...args], {
+          encoding: 'utf8',
+          timeout: 30_000,
+          env,
+        }).stdout.trim()
+      plainGit(['init', '--quiet'])
+      plainGit(['add', '--all'])
+      expect(plainGit(['write-tree'])).not.toBe(expected)
+    },
+  )
 
   it.skipIf(process.platform === 'win32')(
     'refuses a package-lock.json for another Electron, naming both, before fetching anything',

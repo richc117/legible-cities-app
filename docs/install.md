@@ -50,9 +50,11 @@ need them to install.
 
 ## Check the download (optional)
 
-`SHA256SUMS.txt` lists a SHA-256 checksum for every file on the release. If
-the checksum of the file you downloaded matches its line, the file arrived
-exactly as it was built.
+`SHA256SUMS.txt` lists a SHA-256 checksum for every file the release was
+published with. A file added to a release after it was published is not in
+it; the release's notes give that file's checksum instead. If the checksum of
+the file you downloaded matches its line, the file arrived exactly as it was
+built.
 
 - **Mac**: open Terminal (in Applications › Utilities), type `shasum -a 256 `
   with a space after it, drag the downloaded file onto the Terminal window,
