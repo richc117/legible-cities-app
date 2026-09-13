@@ -49,6 +49,17 @@ export class JobRegistry {
   /** Every job ever copied into the list, so one pushed out or forgotten never comes back. */
   readonly #recorded = new Set<string>()
   readonly #names = new Map<string, string>()
+  /**
+   * A clock for names, moved by every rename and every forgetting, so a
+   * list read can tell whether it is older than what it would overwrite.
+   */
+  #tick = 0
+  /** When each project was last named or forgotten by its own screen. */
+  readonly #namedAt = new Map<string, number>()
+  /** When every project was last forgotten at once, by a reset. */
+  #clearedAt = 0
+  #reading: Promise<void> | null = null
+  #queued: Promise<void> | null = null
 
   /**
    * List a run's jobs from now on. A run tracked twice is tracked once.
@@ -144,7 +155,7 @@ export class JobRegistry {
     return this.#names.has(projectId)
   }
 
-  /** Every project's name, as a list read from the store answered. Nothing is forgotten by it. */
+  /** Every project's name, as given. Nothing is forgotten by it. */
   setNames(names: Iterable<readonly [string, string]>): void {
     let moved = false
     for (const [id, name] of names) {
@@ -155,6 +166,48 @@ export class JobRegistry {
     if (moved) this.#notify()
   }
 
+  /** A project's screen renamed it: the new name, which no read begun earlier may overwrite. */
+  rename(projectId: string, name: string): void {
+    this.#tick += 1
+    this.#namedAt.set(projectId, this.#tick)
+    this.setNames([[projectId, name]])
+  }
+
+  /**
+   * Read the names from a list, one read at a time. A read asked for while
+   * one is out is queued once behind it, so a project created during the
+   * first read is named by the second; however many ask meanwhile, one more
+   * read is made. A read applies nothing for a project renamed or forgotten
+   * after it began, and nothing at all if a reset came after it began:
+   * its list may be older than what it would overwrite.
+   */
+  readNames(list: () => Promise<readonly { id: string; name: string }[]>): Promise<void> {
+    if (this.#reading === null) {
+      const began = this.#tick
+      this.#reading = list()
+        .then(
+          (projects) => {
+            if (began < this.#clearedAt) return
+            this.setNames(
+              projects
+                .filter((p) => (this.#namedAt.get(p.id) ?? 0) <= began)
+                .map((p) => [p.id, p.name] as const),
+            )
+          },
+          () => undefined,
+        )
+        .finally(() => {
+          this.#reading = null
+        })
+      return this.#reading
+    }
+    this.#queued ??= this.#reading.then(() => {
+      this.#queued = null
+      return this.readNames(list)
+    })
+    return this.#queued
+  }
+
   /**
    * A project was deleted: its finished jobs and its name go. A running
    * one cannot exist, since a project cannot be deleted while it runs. Only
@@ -162,10 +215,25 @@ export class JobRegistry {
    * at that moment, and must not make a live project's jobs vanish.
    */
   forgetProject(projectId: string): void {
+    this.#tick += 1
+    this.#namedAt.set(projectId, this.#tick)
     const before = this.#finished.length
     this.#finished = this.#finished.filter((job) => job.projectId !== projectId)
     const hadName = this.#names.delete(projectId)
     if (this.#finished.length !== before || hadName) this.#notify()
+  }
+  /**
+   * The engine's data was reset: every project is gone, so every project's
+   * finished jobs and every name go. A feed add is no project's and stays;
+   * a running job cannot exist, since a reset refuses while one runs.
+   */
+  forgetAllProjects(): void {
+    this.#tick += 1
+    this.#clearedAt = this.#tick
+    this.#namedAt.clear()
+    this.#names.clear()
+    this.#finished = this.#finished.filter((job) => job.projectId === null)
+    this.#notify()
   }
 }
 
@@ -323,7 +391,10 @@ export const forgetProjectJobs: JobRegistry['forgetProject'] = (projectId) =>
 
 /** A project was renamed: the jobs say its new name from now on. */
 export const nameProject = (projectId: string, name: string): void =>
-  registry.setNames([[projectId, name]])
+  registry.rename(projectId, name)
+
+/** The engine's data was reset: every project's jobs and name go. */
+export const forgetAllProjectJobs = (): void => registry.forgetAllProjects()
 
 /** The projects among these jobs whose names are not known yet. */
 export const unnamedProjects = (list: readonly Job[]): string[] => [
@@ -334,25 +405,12 @@ export const unnamedProjects = (list: readonly Job[]): string[] => [
   ),
 ]
 
-let reading: Promise<void> | null = null
-
 /**
- * Read the projects' names from the store, one read at a time. Asked only
- * when a name is needed - the inspector opening, or a job ending or listed
- * for a project it cannot name - so a person working on one screen causes
- * no extra reads. A read that fails costs the names, not the jobs; a read
- * that misses a project forgets nothing.
+ * Read the projects' names from the store. Asked only when a name is
+ * needed - the inspector opening, or a job ending or listed for a project
+ * it cannot name - so a person working on one screen causes no extra
+ * reads. A read that fails costs the names, not the jobs; a read that
+ * misses a project forgets nothing.
  */
-export function readProjectNames(): Promise<void> {
-  if (reading !== null) return reading
-  reading = window.api.projects
-    .list()
-    .then(
-      (list) => registry.setNames(list.map((p) => [p.id, p.name] as const)),
-      () => undefined,
-    )
-    .finally(() => {
-      reading = null
-    })
-  return reading
-}
+export const readProjectNames = (): Promise<void> =>
+  registry.readNames(() => window.api.projects.list())

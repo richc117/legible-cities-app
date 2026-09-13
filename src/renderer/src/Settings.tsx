@@ -13,7 +13,13 @@ import { DIAGNOSTICS_REPORTS } from '../../shared/api'
 import type { EngineState } from '../../shared/engine'
 import type { EngineInfo } from '../../shared/protocol'
 import ConfirmDialog from './ConfirmDialog'
-import { engineClient, reportsInSession, runsInProgress, subscribeToRuns } from './engine/runs'
+import {
+  engineClient,
+  forgetAllProjectJobs,
+  reportsInSession,
+  runsInProgress,
+  subscribeToRuns,
+} from './engine/runs'
 import Icon from './icons/Icon'
 import Button from './kit/Button'
 import Select from './kit/Select'
@@ -159,6 +165,10 @@ export default function Settings({ settings, onChanged, engine, onBack }: Props)
   const reset = async (): Promise<void> => {
     try {
       const outcome = await window.api.settings.resetEngineData()
+      // The projects went with the engine's data, so their jobs and names
+      // leave the inspector; unless the projects folder itself could not be
+      // removed, in which case they are still there (A1-03).
+      if (!outcome.failed.some((f) => f.folder === 'projects')) forgetAllProjectJobs()
       setConfirming(false)
       setNotice(describeReset(outcome))
     } finally {

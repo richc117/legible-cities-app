@@ -283,3 +283,110 @@ describe('the registry over a real run', () => {
     expect(disagreements).toEqual([])
   })
 })
+
+/** A list read the test answers when it chooses. */
+function deferredList() {
+  const reads: ((projects: { id: string; name: string }[]) => void)[] = []
+  const list = (): Promise<{ id: string; name: string }[]> =>
+    new Promise((resolve) => {
+      reads.push(resolve)
+    })
+  return { list, reads }
+}
+
+const settle = (): Promise<void> => new Promise((r) => setImmediate(r))
+
+describe('reading names', () => {
+  it('does not let a read begun before a rename overwrite the new name', async () => {
+    const registry = new JobRegistry()
+    const run = new StubRun('p1')
+    registry.track(run)
+    run.start(1)
+    run.end('done', 2)
+    const { list, reads } = deferredList()
+    const read = registry.readNames(list)
+    // The rename lands while the list, taken before it, is on its way back.
+    registry.rename('p1', 'LA Metro')
+    reads[0]([{ id: 'p1', name: 'Los Angeles' }])
+    await read
+    expect(registry.jobs()[0].projectName).toBe('LA Metro')
+  })
+
+  it('names a project a read began before, but a later read after a rename applies', async () => {
+    const registry = new JobRegistry()
+    registry.rename('p1', 'LA Metro')
+    const { list, reads } = deferredList()
+    const read = registry.readNames(list)
+    reads[0]([
+      { id: 'p1', name: 'LA Metro Rail' },
+      { id: 'p2', name: 'Bart' },
+    ])
+    await read
+    expect(registry.hasName('p2')).toBe(true)
+    const run = new StubRun('p1')
+    registry.track(run)
+    run.start(1)
+    expect(registry.jobs()[0].projectName, 'a read begun after the rename is newer').toBe(
+      'LA Metro Rail',
+    )
+  })
+
+  it('queues one more read behind a read that is out, so a project created meanwhile is named', async () => {
+    const registry = new JobRegistry()
+    const { list, reads } = deferredList()
+    const first = registry.readNames(list)
+    const second = registry.readNames(list)
+    const third = registry.readNames(list)
+    expect(reads, 'one read at a time').toHaveLength(1)
+    expect(second).toBe(third)
+    reads[0]([{ id: 'p1', name: 'Los Angeles' }])
+    await first
+    await settle()
+    expect(reads, 'one more read, however many asked meanwhile').toHaveLength(2)
+    reads[1]([
+      { id: 'p1', name: 'Los Angeles' },
+      { id: 'p2', name: 'Bart' },
+    ])
+    await second
+    expect(registry.hasName('p2')).toBe(true)
+    expect(reads).toHaveLength(2)
+  })
+
+  it('a failed read costs the names and leaves the next read free to run', async () => {
+    const registry = new JobRegistry()
+    await registry.readNames(() => Promise.reject(new Error('unreadable')))
+    await registry.readNames(async () => [{ id: 'p1', name: 'Los Angeles' }])
+    expect(registry.hasName('p1')).toBe(true)
+  })
+})
+
+describe('a reset of the engine data', () => {
+  it("forgets every project's finished jobs and names, keeps a feed add's, and a read begun before it applies nothing", async () => {
+    const registry = new JobRegistry()
+    const a = new StubRun('pa')
+    const b = new StubRun('pb')
+    const feeds = new StubRun(null)
+    for (const run of [a, b, feeds]) {
+      registry.track(run)
+      run.start(1)
+      run.end('done', 2)
+    }
+    registry.setNames([
+      ['pa', 'Alpha'],
+      ['pb', 'Bravo'],
+    ])
+    const { list, reads } = deferredList()
+    const late = registry.readNames(list)
+    let heard = 0
+    registry.subscribe(() => {
+      heard += 1
+    })
+    registry.forgetAllProjects()
+    expect(heard).toBe(1)
+    expect(registry.jobs().map((j) => j.projectId)).toEqual([null])
+    expect(registry.hasName('pa')).toBe(false)
+    reads[0]([{ id: 'pa', name: 'Alpha' }])
+    await late
+    expect(registry.hasName('pa'), 'a list from before the reset is not applied').toBe(false)
+  })
+})

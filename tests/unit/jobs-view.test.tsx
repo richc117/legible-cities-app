@@ -13,6 +13,7 @@ import JobsList, {
   createAnnouncer,
   describeJob,
   handOff,
+  leftJob,
   JobItem,
   LOG_COPIED,
   logNotCopied,
@@ -64,9 +65,7 @@ describe('the inspector', () => {
 
 describe('a job', () => {
   it('shows who it is for, what it is, its stages and its sentence, and Cancel while it runs', () => {
-    const html = renderToStaticMarkup(
-      <JobItem job={job()} onCancel={noop} onCancelFocus={noop} onCopy={copied} />,
-    )
+    const html = renderToStaticMarkup(<JobItem job={job()} onCancel={noop} onCopy={copied} />)
     expect(html).toContain('Los Angeles')
     expect(html).toContain('Layout run')
     expect(html).toContain('aria-label="Running topo."')
@@ -86,7 +85,7 @@ describe('a job', () => {
           ended: Date.UTC(2026, 8, 13, 12, 1, 0),
         })}
         onCancel={noop}
-        onCancelFocus={noop}
+
         onCopy={copied}
       />,
     )
@@ -102,7 +101,7 @@ describe('a job', () => {
       <JobItem
         job={job({ state: 'failed', hint: 'same words', detail: 'same words' })}
         onCancel={noop}
-        onCancelFocus={noop}
+
         onCopy={copied}
       />,
     )
@@ -119,7 +118,7 @@ describe('a job', () => {
           label: 'Feed add from a web address',
         })}
         onCancel={noop}
-        onCancelFocus={noop}
+
         onCopy={copied}
       />,
     )
@@ -237,5 +236,18 @@ describe('handing focus to a job', () => {
 
   it('leaves a person who has moved on alone', () => {
     expect(handOff('elsewhere', true)).toEqual({ focus: false, keep: false })
+  })
+
+  it('ends the handoff when focus or a pointer lands outside the job, plain text included', () => {
+    // A job's item and what is inside it, as the list's document listener sees them.
+    const heading = { name: 'heading' }
+    const cancel = { name: 'cancel' }
+    const text = { name: 'text elsewhere' }
+    const item = { contains: (node: { name: string }) => node === heading || node === cancel }
+    expect(leftJob(heading, item)).toBe(false)
+    expect(leftJob(cancel, item)).toBe(false)
+    expect(leftJob(text, item), 'a press on plain text elsewhere').toBe(true)
+    expect(leftJob(text, null), 'the job is no longer listed').toBe(true)
+    expect(leftJob(null, item)).toBe(true)
   })
 })

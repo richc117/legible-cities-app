@@ -373,6 +373,38 @@ test('cancelling the newer of two running jobs leaves focus on its heading as it
   })
 })
 
+test('focus a person moved away from a Cancel is not taken back when the job ends', async () => {
+  const h = home({ octi_child: true, octi_ms: 60_000 })
+  await withApp(h, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await openInspector(page)
+    const job = jobNamed(page, 'Los Angeles Layout run')
+    await expect(job.getByRole('img')).toHaveAccessibleName('Running octi.', { timeout: 20_000 })
+
+    // Focus rests on the inspector's Cancel, unpressed; then the person
+    // clicks plain text elsewhere, which leaves focus on the page itself.
+    await job.getByRole('button', { name: 'Cancel: Layout run, Los Angeles' }).focus()
+    await page.locator('.app-header .brand').click()
+    await expect
+      .poll(() => page.evaluate(() => document.activeElement === document.body))
+      .toBe(true)
+
+    // The run ends from its own screen, without moving focus: a click
+    // dispatched to the button, no pointer and no focus change.
+    await page
+      .getByRole('region', { name: 'Layout run' })
+      .getByRole('button', { name: 'Cancel', exact: true })
+      .dispatchEvent('click')
+    await expect(job).toHaveAttribute('data-state', 'cancelled', { timeout: 20_000 })
+    await expect(announcement(page)).toHaveText('Los Angeles: Layout run, cancelled.')
+    // Rendered since the end, and focus is still where the person left it.
+    expect(await page.evaluate(() => document.activeElement?.closest('#inspector') != null)).toBe(
+      false,
+    )
+  })
+})
+
 test("a renamed project's jobs say its new name, and a deleted project's jobs leave the list", async () => {
   const h = home()
   await withApp(h, async (page) => {

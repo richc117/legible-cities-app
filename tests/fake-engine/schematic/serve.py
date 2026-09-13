@@ -226,6 +226,11 @@ class Engine:
         # The octi stage's children while they run, ended on shutdown or at
         # the end of input as the engine ends LOOM's, so no test leaves one.
         self.octi_children: set = set()
+        # Their own lock, not the one write() holds, and a flag set under it
+        # once shutting down begins, so a child started after that is ended
+        # at once rather than outliving the stand-in.
+        self.children_lock = threading.Lock()
+        self.stopping = False
         if control.get("spawn_child"):
             self.child = subprocess.Popen(
                 [sys.executable, "-c", "import time; time.sleep(600)"],
@@ -379,12 +384,19 @@ class Engine:
         """The octi stage, when the control file asks for a child: start one, as
         the engine starts LOOM's tool, and wait for a cancel. A cancel ends the
         child before the answer, as the engine's cancel does, and says so in a
-        file the test reads. True when the stage was cancelled."""
+        file the test reads. True when the stage was cancelled, or when the
+        stand-in had begun stopping and the child was ended at once."""
         child = subprocess.Popen(
             [sys.executable, "-c", "import time; time.sleep(600)"],
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        with LOCK:
-            self.octi_children.add(child)
+        with self.children_lock:
+            stopping = self.stopping
+            if not stopping:
+                self.octi_children.add(child)
+        if stopping:
+            child.kill()
+            child.wait(timeout=10)
+            return True
         try:
             (HOME / "fake-engine.octi.pid").write_text(str(child.pid))
         except OSError:
@@ -406,11 +418,12 @@ class Engine:
             if child.poll() is None:
                 child.kill()
                 child.wait(timeout=10)
-            with LOCK:
+            with self.children_lock:
                 self.octi_children.discard(child)
 
     def end_children(self) -> None:
-        with LOCK:
+        with self.children_lock:
+            self.stopping = True
             children = list(self.octi_children)
         for child in children:
             if child.poll() is None:

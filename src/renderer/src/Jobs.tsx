@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type JSX } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type JSX } from 'react'
 import { composeJobLog, describeJobState, jobSubject, type Job } from '../../shared/jobs'
 import Icon from './icons/Icon'
 import Button from './kit/Button'
@@ -69,8 +69,17 @@ export function createAnnouncer(
 export type FocusPlace = 'lost' | 'in-job' | 'elsewhere'
 
 /**
- * What the list does for a job focus was handed to (Cancel pressed, or
- * Cancel holding focus): put focus on the job's heading when it was lost -
+ * Whether an event's target has left the job focus was handed to: a
+ * `focusin` or a `pointerdown` anywhere outside its item - plain text
+ * included, which leaves focus on the body and must not read as focus lost -
+ * ends the handoff at once, so focus a person moved is never taken back.
+ */
+export function leftJob<N>(target: N | null, item: { contains(node: N): boolean } | null): boolean {
+  return item === null || target === null || !item.contains(target)
+}
+
+/**
+ * What the list does for a job whose Cancel was pressed: put focus on the job's heading when it was lost -
  * Chromium drops focus to the body when the item holding it is moved or its
  * button removed, which is what a cancelled job going below the running ones
  * does - and keep watching while the job still runs and focus is still in
@@ -87,8 +96,6 @@ const startedAt = (ms: number): string => new Date(ms).toLocaleTimeString()
 interface ItemProps {
   job: Job
   onCancel: (jobId: string) => void
-  /** Focus is on this job's Cancel: if it is lost, the list gives it to the job's heading. */
-  onCancelFocus: (jobId: string) => void
   /**
    * Copy the job's log and answer the sentence to show. By id, so the copy
    * reads the job as it is at the press: log lines arrive between renders.
@@ -96,7 +103,7 @@ interface ItemProps {
   onCopy: (jobId: string) => Promise<string>
 }
 
-export function JobItem({ job, onCancel, onCancelFocus, onCopy }: ItemProps): JSX.Element {
+export function JobItem({ job, onCancel, onCopy }: ItemProps): JSX.Element {
   const [copied, setCopied] = useState<string | null>(null)
   const copying = useRef(false)
   const running = job.state === 'running'
@@ -128,15 +135,13 @@ export function JobItem({ job, onCancel, onCancelFocus, onCopy }: ItemProps): JS
       )}
       <div className="toolbar">
         {running && (
-          <span onFocusCapture={() => onCancelFocus(job.id)}>
-            <Button
-              aria-label={`Cancel: ${job.label}, ${jobSubject(job)}`}
-              onClick={() => onCancel(job.id)}
-            >
-              <Icon name="close" />
-              Cancel
-            </Button>
-          </span>
+          <Button
+            aria-label={`Cancel: ${job.label}, ${jobSubject(job)}`}
+            onClick={() => onCancel(job.id)}
+          >
+            <Icon name="close" />
+            Cancel
+          </Button>
         )}
         <Button
           aria-label={`Copy log: ${job.label}, ${jobSubject(job)}`}
@@ -168,23 +173,31 @@ interface ListProps {
 }
 
 const headingOf = (jobId: string): HTMLElement | null => document.getElementById(`${jobId}-title`)
+const itemOf = (jobId: string): HTMLElement | null => headingOf(jobId)?.closest('li') ?? null
 
 /** The session's jobs, running first, then finished newest first; or a sentence saying there are none. */
 export default function JobsList({ jobs, onCancel, onCopy }: ListProps): JSX.Element {
-  // The job focus was handed to, kept at the list because the list is what
-  // moves an item: a job that stops goes below the running ones, and the
-  // move takes the focus with it before any item could keep it.
+  // The job whose Cancel was pressed, kept at the list because the list is
+  // what moves an item: a job that stops goes below the running ones, and
+  // the move takes the focus with it before any item could keep it. Set only
+  // by the press, and dropped the moment focus or a pointer lands outside
+  // that job, so focus a person moved is never taken back.
   const handedTo = useRef<string | null>(null)
+  const stopWatching = useRef<(() => void) | null>(null)
+
+  const release = useCallback((): void => {
+    handedTo.current = null
+    stopWatching.current?.()
+    stopWatching.current = null
+  }, [])
+  useEffect(() => release, [release])
 
   useLayoutEffect(() => {
     const jobId = handedTo.current
     if (jobId === null) return
     const job = jobs.find((j) => j.id === jobId)
     const heading = headingOf(jobId)
-    if (job === undefined || heading === null) {
-      handedTo.current = null
-      return
-    }
+    if (job === undefined || heading === null) return release()
     const active = document.activeElement
     const place: FocusPlace =
       active === null || active === document.body
@@ -194,12 +207,22 @@ export default function JobsList({ jobs, onCancel, onCopy }: ListProps): JSX.Ele
           : 'elsewhere'
     const next = handOff(place, job.state === 'running')
     if (next.focus) heading.focus()
-    if (!next.keep) handedTo.current = null
+    if (!next.keep) release()
   })
 
   const cancel = (jobId: string): void => {
-    // The heading first: the button is about to go, and the item to move.
+    release()
     handedTo.current = jobId
+    const outside = (event: Event): void => {
+      if (leftJob(event.target as Node | null, itemOf(jobId))) release()
+    }
+    document.addEventListener('focusin', outside, true)
+    document.addEventListener('pointerdown', outside, true)
+    stopWatching.current = () => {
+      document.removeEventListener('focusin', outside, true)
+      document.removeEventListener('pointerdown', outside, true)
+    }
+    // The heading first: the button is about to go, and the item to move.
     headingOf(jobId)?.focus()
     onCancel(jobId)
   }
@@ -208,15 +231,7 @@ export default function JobsList({ jobs, onCancel, onCopy }: ListProps): JSX.Ele
   return (
     <ul className="jobs">
       {jobs.map((job) => (
-        <JobItem
-          key={job.id}
-          job={job}
-          onCancel={cancel}
-          onCancelFocus={(jobId) => {
-            handedTo.current = jobId
-          }}
-          onCopy={onCopy}
-        />
+        <JobItem key={job.id} job={job} onCancel={cancel} onCopy={onCopy} />
       ))}
     </ul>
   )

@@ -1076,7 +1076,10 @@ read only when a name is needed - a job ending, or listed in the open
 inspector, for a project it cannot name - rather than on every screen
 change or every run. Those reads are few, but each is a store read, and it
 can overlap a record being renamed into place. A rename hands the new name
-in from the project screen. The finished jobs and the names are copies kept
+in from the project screen, and a list read begun before a rename, a delete
+or a reset applies nothing it would overwrite; a read asked for while one is
+out is queued once behind it. A reset that removed the projects folder
+forgets every project's jobs and names. The finished jobs and the names are copies kept
 beside the runs, not derived from them; a project's are dropped only when
 its own screen has deleted it, never because a list read missed a record
 it could not read at that moment. The job list is the inspector's own
