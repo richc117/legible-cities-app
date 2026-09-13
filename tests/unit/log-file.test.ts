@@ -143,6 +143,31 @@ describe('a log file', () => {
   })
 })
 
+describe('a line with a URL in it', () => {
+  it('reaches the file with its secrets taken out, and the fallback likewise', async () => {
+    const dir = await folder()
+    const file = openLogFile(dir, 'engine', { now: clock })
+    file.write(
+      '[engine] stderr: FeedError: https://someone:pw@example.org/g.zip?key=k1 could not be fetched',
+    )
+    await file.close()
+    const written = await readFile(join(dir, 'engine.log'), 'utf8')
+    expect(written).not.toContain('k1')
+    expect(written).not.toContain(':pw@')
+    expect(written).toContain(
+      'https://<redacted>@example.org/g.zip?key=<redacted> could not be fetched',
+    )
+
+    const blocked = join(dir, 'not-a-folder')
+    await writeFile(blocked, '')
+    const said: string[] = []
+    const failing = openLogFile(blocked, 'main', { now: clock, fallback: (l) => said.push(l) })
+    failing.write('[feeds] https://example.org/g.zip?key=k1')
+    await failing.close()
+    expect(said.join('\n')).not.toContain('k1')
+  })
+})
+
 describe('a rotation that cannot rename', () => {
   it('keeps appending, says so once, and renames at the next crossing of the cap', async () => {
     const dir = await folder()

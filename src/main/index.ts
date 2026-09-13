@@ -2,8 +2,8 @@
 // here draws; see specs/001-electron-skeleton/plan.md and
 // specs/004-sidecar-supervisor/plan.md.
 
-import { existsSync, mkdirSync, realpathSync } from 'node:fs'
-import { mkdir, readFile } from 'node:fs/promises'
+import { existsSync, mkdirSync } from 'node:fs'
+import { mkdir, readFile, realpath } from 'node:fs/promises'
 import { homedir, release, tmpdir, type } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 import { BrowserWindow, app, clipboard, dialog, ipcMain, session, shell } from 'electron'
@@ -27,6 +27,7 @@ import { engineCommand, engineEnvironment, resolveInterpreter } from './interpre
 import { registerClipboardHandler, registerProjectHandlers, registerViewerHandlers } from './ipc'
 import { byTag, holdingSink, log, setSink, toStderr } from './log'
 import { LOG_WAIT_MS, openLogFile, within, type LogFile } from './log-file'
+import { redactUrls } from './redact'
 import { shortHomeFrom } from './diagnostics-text'
 import { ProjectStore } from './projects'
 import { SettingsStore } from './settings'
@@ -44,9 +45,11 @@ export const PRODUCT_NAME = 'Legible Cities'
 // standard error as they always were. Once the folder is known they go to
 // main.log and engine.log (specs/023-logs-and-diagnostics).
 const development = !app.isPackaged
+// Standard error gets each line with its URLs redacted, as the files do
+// (src/main/redact.ts): terminal scrollback is pasted as readily as a log.
 const earlyLines = holdingSink(2_000)
 setSink((line, tag, at) => {
-  if (development) toStderr(line, tag)
+  if (development) toStderr(redactUrls(line), tag)
   earlyLines.sink(line, tag, at)
 })
 /** The two files, once open; closed on the way out, after the engine's last line. */
@@ -124,7 +127,7 @@ async function openLogs(): Promise<void> {
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code ?? 'no log folder'
     setSink(toStderr)
-    if (!development) earlyLines.release(toStderr)
+    if (!development) earlyLines.release((line, tag) => toStderr(redactUrls(line), tag))
     log.warn('log', `the log folder could not be used (${code}); logging to standard error`)
     return
   }
@@ -137,7 +140,7 @@ async function openLogs(): Promise<void> {
     (line, _tag, at) => engine.write(line, at),
   )
   setSink((line, tag, at) => {
-    if (development) toStderr(line, tag)
+    if (development) toStderr(redactUrls(line), tag)
     toFiles(line, tag, at)
   })
   earlyLines.release(toFiles)
@@ -146,22 +149,25 @@ async function openLogs(): Promise<void> {
 /**
  * The home folder as the copy should hide it: as the platform names it,
  * through its links, and on Windows in the 8.3 short form the temporary
- * folder is usually written in (`RUNNER~1` for a longer user name), which
- * is derived from the temporary folder's raw and real paths.
+ * folder is usually written in (`RUNNER~1` for a longer user name), derived
+ * from the temporary folder's raw and real paths. Asked for when a copy is
+ * made, and asynchronously, so a slow disk never holds the window; a
+ * temporary folder on a network share (`\\server\…`) is not asked at all,
+ * because a share that does not answer would hold the copy instead.
  */
-function homeFolders(): string[] {
+async function homeFolders(): Promise<string[]> {
   const home = homedir()
   const homes = new Set([home])
   try {
-    homes.add(realpathSync.native(home))
+    homes.add(await realpath(home))
   } catch {
     // The home as named is still hidden.
   }
   if (process.platform === 'win32') {
     for (const raw of [process.env.TEMP, process.env.TMP, tmpdir()]) {
-      if (raw === undefined || raw === '') continue
+      if (raw === undefined || raw === '' || raw.startsWith('\\\\')) continue
       try {
-        const short = shortHomeFrom(home, raw, realpathSync.native(raw))
+        const short = shortHomeFrom(home, raw, await realpath(raw))
         if (short !== null) homes.add(short)
       } catch {
         // A temporary folder that is not there says nothing about the home.
@@ -470,7 +476,7 @@ if (!hasLock) {
         flushLogs: async () => {
           await Promise.all([logFiles?.main.flush(), logFiles?.engine.flush()])
         },
-        homes: homeFolders(),
+        homes: homeFolders,
         platform: process.platform,
         writeText: (text) => clipboard.writeText(text),
       },

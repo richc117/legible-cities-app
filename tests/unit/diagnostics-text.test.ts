@@ -4,7 +4,7 @@
 // temporary folder, and the Windows ones are assembled from pieces, so no
 // literal path of that shape is committed (bin/preflight refuses one).
 
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -132,6 +132,14 @@ describe('the home folder', () => {
     expect(shortenHome(temp, [home], 'linux')).toBe(temp)
   })
 
+  it('is found in the short form of a dotted name, extension and all', () => {
+    // john.smith is JOHN~1.SMI: the stem is the part before the last full stop.
+    const home = ['C:', 'Users', 'john.smith'].join('\\')
+    const temp = ['C:', 'Users', 'JOHN~1.SMI', 'AppData', 'Local', 'Temp'].join('\\')
+    expect(shortenHome(temp, [home], 'win32')).toBe('~\\AppData\\Local\\Temp')
+    expect(shortenHome(['C:', 'Users', 'JOHN~2'].join('\\') + '.', [home], 'win32')).toBe('~.')
+  })
+
   it('derives the short home from the temporary folder, and only when the two line up', () => {
     const home = ['C:', 'Users', 'runneradmin'].join('\\')
     const raw = ['C:', 'Users', 'RUNNER~1', 'AppData', 'Local', 'Temp'].join('\\')
@@ -183,6 +191,18 @@ describe('the home folder', () => {
 
   it('ignores a home that is the root or nothing, rather than replacing every separator', () => {
     expect(shortenHome('/a/b', ['/', ''], 'linux')).toBe('/a/b')
+  })
+
+  it('takes the secrets out of a URL an older log still holds whole', () => {
+    const text = diagnosticsText(
+      input({
+        engineLog: "[engine] stderr: FeedError('https://example.org/g.zip?api_key=k1')",
+      }),
+      [],
+      'linux',
+    )
+    expect(text).not.toContain('k1')
+    expect(text).toContain("FeedError('https://example.org/g.zip?api_key=<redacted>')")
   })
 
   it('is absent from the finished copy, even when every section named it', async () => {
@@ -241,6 +261,19 @@ describe('a log tail', () => {
     expect(await tailLog(dir, 'main', 2)).toBe('old 2\nnew 1')
   })
 
+  it.skipIf(process.platform === 'win32')(
+    'does not follow a symbolic link planted where the log should be',
+    async () => {
+      const dir = await folder()
+      const secret = join(dir, 'elsewhere.txt')
+      await writeFile(secret, 'not a log\n')
+      await symlink(secret, join(dir, 'main.log'))
+      const tail = await tailLog(dir, 'main')
+      expect(tail).not.toContain('not a log')
+      expect(tail).toMatch(/^main\.log could not be read \(/)
+    },
+  )
+
   it('says so when the log does not exist yet', async () => {
     const dir = await folder()
     expect(await tailLog(dir, 'engine')).toBe('There is no engine.log yet.')
@@ -268,7 +301,7 @@ describe('the reports from the page', () => {
 // still hold the code that would.
 describe('no telemetry', () => {
   it('the log and diagnostics modules import no network module and call no fetch', async () => {
-    for (const file of ['log.ts', 'log-file.ts', 'diagnostics-text.ts']) {
+    for (const file of ['log.ts', 'log-file.ts', 'diagnostics-text.ts', 'redact.ts']) {
       const source = await readFile(join(__dirname, '../../src/main', file), 'utf8')
       expect(source, file).not.toMatch(
         /from ['"](node:)?(net|http|https|http2|dgram|tls|dns)['"]|\bfetch\s*\(|\bnet\./,

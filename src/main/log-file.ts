@@ -21,6 +21,7 @@
 import { constants } from 'node:fs'
 import { open, rename as renameFile, type FileHandle } from 'node:fs/promises'
 import { join } from 'node:path'
+import { redactUrls } from './redact'
 
 /** The cap on one log file, in bytes: 5 MB. */
 export const LOG_CAP = 5 * 1024 * 1024
@@ -64,7 +65,7 @@ export interface LogFile {
   readonly path: string
   /** `<folder>/<name>.old.log`. */
   readonly oldPath: string
-  /** Queue one line, stamped `at` or now. Never throws, never waits. */
+  /** Queue one line, its URLs redacted, stamped `at` or now. Never throws, never waits. */
   write(line: string, at?: Date): void
   /**
    * Resolves once every line queued before the call has reached the file
@@ -251,7 +252,9 @@ export function openLogFile(folder: string, name: string, options: LogFileOption
   }
 
   const write = (line: string, at?: Date): void => {
-    const stamped = `${(at ?? now()).toISOString()} ${line}`
+    // Every line, whoever wrote it: a feed's URL can carry a key, and a log
+    // file outlives the moment a person would have noticed (src/main/redact.ts).
+    const stamped = `${(at ?? now()).toISOString()} ${redactUrls(line)}`
     if (failed || closed) {
       if (options.mirrored !== true) fallback(stamped)
       return

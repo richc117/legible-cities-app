@@ -7,9 +7,14 @@
 // sends anything anywhere; the text's only destination is the clipboard,
 // and the person reads it before they paste it.
 
+import { constants } from 'node:fs'
 import { open } from 'node:fs/promises'
 import { join } from 'node:path'
 import { DIAGNOSTICS_REPORTS } from '../shared/api'
+import { redactUrls } from './redact'
+
+/** Read-only, and on POSIX never through a symbolic link, as the log is written. */
+const READ_FLAGS = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0)
 
 /** How many lines of each log the copy carries. */
 export const TAIL_LINES = 200
@@ -114,15 +119,24 @@ function segmentSource(segment: string): string {
 }
 
 /**
- * The 8.3 short name Windows gives a long folder name: its first six
- * characters once spaces and full stops are gone, a tilde and a number. The
- * temporary folder is usually written this way (`RUNNER~1` for a user whose
- * name is longer than eight characters), so a home found only in its long
- * form would leak the start of the user's name through every path under it.
+ * The 8.3 short name Windows gives a long folder name, by shape: the first
+ * six characters of the part before the last full stop once spaces and full
+ * stops are gone, a tilde, a number, and up to three characters of
+ * extension (`john.smith` is `JOHN~1.SMI`). The temporary folder is usually
+ * written this way (`RUNNER~1` for a user whose name is longer than eight
+ * characters), so a home found only in its long form would leak the start
+ * of the user's name through every path under it.
+ *
+ * Best effort: Windows also drops characters a short name cannot hold, and
+ * can hash a name it has too many of. The guarantee is the short home read
+ * from the temporary folder itself (`shortHomeFrom`), which is matched
+ * exactly; this pattern catches the ordinary cases that one did not see.
  */
 function shortNameSource(segment: string): string | null {
-  const stem = segment.replace(/[\s.]/g, '').slice(0, 6)
-  return stem === '' ? null : `${escape(stem)}~\\d+`
+  const dot = segment.lastIndexOf('.')
+  const base = dot > 0 ? segment.slice(0, dot) : segment
+  const stem = base.replace(/[\s.]/g, '').slice(0, 6)
+  return stem === '' ? null : `${escape(stem)}~\\d+(?:\\.[^\\\\/\\s]{1,3})?`
 }
 
 /**
@@ -230,7 +244,9 @@ export function diagnosticsText(
   homes: readonly string[],
   platform: string,
 ): string {
-  const text = shortenHome(composeDiagnostics(input), homes, platform)
+  // URLs first: log files written before the logs redacted them still hold
+  // whole addresses, and a copy is where they would leave the machine.
+  const text = shortenHome(redactUrls(composeDiagnostics(input)), homes, platform)
   if (containsHome(text, homes, platform)) {
     throw new Error('the diagnostics still named your home folder, so nothing was copied')
   }
@@ -248,7 +264,7 @@ async function tailOf(
 ): Promise<{ lines: string[]; whole: boolean } | null> {
   let handle
   try {
-    handle = await open(path, 'r')
+    handle = await open(path, READ_FLAGS)
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
     throw error

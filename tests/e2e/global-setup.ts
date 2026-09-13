@@ -10,8 +10,14 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+/** The prefix the folder is made with; the teardown checks it as well. */
+export const LOGS_PREFIX = 'legible-cities-e2e-logs-'
+
 export default function globalSetup(): void {
-  // One named by hand is respected; the teardown leaves it too.
+  // One named by hand is respected, and the teardown leaves it alone.
   if (process.env.LEGIBLE_LOGS !== undefined && process.env.LEGIBLE_LOGS !== '') return
-  process.env.LEGIBLE_LOGS = mkdtempSync(join(tmpdir(), 'legible-cities-e2e-logs-'))
+  const made = mkdtempSync(join(tmpdir(), LOGS_PREFIX))
+  process.env.LEGIBLE_LOGS = made
+  // What this setup made, so the teardown removes that and nothing else.
+  process.env.LEGIBLE_E2E_LOGS_MADE = made
 }

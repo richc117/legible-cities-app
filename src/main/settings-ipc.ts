@@ -90,8 +90,12 @@ export interface DiagnosticsDeps {
   engineInfo: () => Promise<unknown>
   /** Every line logged so far on disk, so the tail read next is current; waited for at most `LOG_WAIT_MS`. */
   flushLogs: () => Promise<void>
-  /** The home folder, and its real path when that differs: each is written as `~`. */
-  homes: string[]
+  /**
+   * The home folder in every form the copy must hide - as named, through its
+   * links, and on Windows in 8.3 short form - each written as `~`. Asked for
+   * when a copy is made, not at start, because finding them touches the disk.
+   */
+  homes: () => Promise<string[]>
   platform: string
   /** The system clipboard, the same writer the diagnostics panel's handler uses. */
   writeText: (text: string) => void
@@ -267,7 +271,7 @@ export class SettingsService {
         : await Promise.all([tailLog(folder, 'main'), tailLog(folder, 'engine')])
     const text = diagnosticsText(
       { ...d.about(), engine, mainLog, engineLog, reports },
-      d.homes,
+      await d.homes(),
       d.platform,
     )
     d.writeText(text)

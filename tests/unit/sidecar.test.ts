@@ -486,12 +486,18 @@ describe('describeState', () => {
 // because the behaviour is the pipe's and not the engine's.
 describe('stopping', () => {
   it('has read the last stderr line written before the pipe closed', async () => {
-    const helper = "setTimeout(() => process.stderr.write('the last line\\n'), 300)"
+    // The helper says it has started before the engine leaves, so however
+    // slowly a Node starts, the gap between the exit and the last line is
+    // the helper's own 300 ms and nothing else.
+    const helper = [
+      "process.stdout.write('started')",
+      "setTimeout(() => process.stderr.write('the last line\\n'), 300)",
+    ].join('\n')
     const script = [
       "const { spawn } = require('node:child_process')",
       "process.stdin.once('data', () => {",
-      `  spawn(process.execPath, ['-e', ${JSON.stringify(helper)}], { stdio: ['ignore', 'ignore', 'inherit'] })`,
-      '  process.exit(0)',
+      `  const h = spawn(process.execPath, ['-e', ${JSON.stringify(helper)}], { stdio: ['ignore', 'pipe', 'inherit'] })`,
+      "  h.stdout.once('data', () => process.exit(0))",
       '})',
       'setInterval(() => undefined, 1000)',
     ].join('\n')
