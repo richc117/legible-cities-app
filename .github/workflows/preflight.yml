@@ -27,7 +27,7 @@ jobs:
     name: preflight
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Personal paths, addresses, keys and session links
