@@ -11,6 +11,7 @@
 // pointed at a native LOOM folder that does not exist, so a layout it did
 // not find fails at once instead of building one.
 
+import { createHash } from 'node:crypto'
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -21,6 +22,8 @@ import { parseRecord } from '../../src/shared/project'
 import {
   ANCHOR,
   FEED,
+  FIXTURE,
+  STAGE_FILES,
   fixtureLayoutId,
   layoutSnapshot,
   pagePath,
@@ -57,6 +60,15 @@ function interpreter(): string | null {
 
 const PYTHON = interpreter()
 const WHY = PYTHON === null ? ' (skipped: no interpreter with the engine is named)' : ''
+// The determinism workflow opts in, and there a skip would read as proof.
+const REQUIRED = process.env.LEGIBLE_DETERMINISM_TEST === '1'
+
+it.runIf(REQUIRED && PYTHON === null)(
+  'is proven when the determinism test is opted in, so no interpreter is a failure',
+  () => {
+    throw new Error('LEGIBLE_DETERMINISM_TEST=1, but no interpreter with the engine is named')
+  },
+)
 const made: string[] = []
 
 afterAll(() => {
@@ -95,7 +107,8 @@ describe.skipIf(PYTHON === null)(`the determinism fixture on the pinned engine${
 
   it('draws a project page from it, with the day from the fixed anchor, and leaves it as it was', async () => {
     const engineHome = home()
-    const record = await prepareProject(PYTHON as string, engineHome)
+    const { record, trips } = await prepareProject(PYTHON as string, engineHome)
+    expect(trips, 'the page has trains to animate').toBeGreaterThan(0)
     const parsed = parseRecord(
       JSON.parse(readFileSync(join(engineHome, 'projects', record.id, 'project.json'), 'utf8')),
     )
@@ -115,6 +128,16 @@ describe.skipIf(PYTHON === null)(`the determinism fixture on the pinned engine${
     expect(snapshot.layout).toBe(fixtureLayoutId())
     expect(snapshot.made).toBe(record.made)
     // Drawing a map never lays out: the one stored set, made when it was.
-    expect(snapshot.stored).toEqual({ [fixtureLayoutId()]: record.made })
+    expect(Object.keys(snapshot.stored)).toEqual([fixtureLayoutId()])
+    expect(snapshot.stored[fixtureLayoutId()].made).toBe(record.made)
+    // And its stage files are the committed ones, byte for byte.
+    const committed = layoutSnapshot(engineHome).stored[fixtureLayoutId()].stages
+    for (const file of STAGE_FILES) {
+      expect(committed[file], file).toBe(
+        createHash('sha256')
+          .update(readFileSync(join(FIXTURE, 'data', 'graphs', FEED, fixtureLayoutId(), file)))
+          .digest('hex'),
+      )
+    }
   }, 300_000)
 })

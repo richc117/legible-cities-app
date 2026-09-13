@@ -23,7 +23,13 @@ import {
   seedHome,
   type LayoutSnapshot,
 } from '../support/determinism'
-import { compareStreams, decodeArgs, TOLERANCE } from '../support/frames'
+import {
+  channelsOver,
+  compareStreams,
+  decodeArgs,
+  firstAndLast,
+  TOLERANCE,
+} from '../support/frames'
 
 async function* chunks(...parts: number[][]): AsyncGenerator<Buffer> {
   for (const part of parts) yield Buffer.from(part)
@@ -88,13 +94,45 @@ describe('the frame comparison', () => {
   })
 })
 
+describe('the motion check', () => {
+  it('reads the first and last whole frames of a stream, whatever its chunks', async () => {
+    const ends = await firstAndLast(chunks([1, 2], [3, 4, 5], [6, 7, 8, 9], [10]), 3)
+    expect(ends.frames).toBe(3)
+    expect([...(ends.first ?? [])]).toEqual([1, 2, 3])
+    expect([...(ends.last ?? [])]).toEqual([7, 8, 9])
+  })
+
+  it('has no frames for an empty stream, so an empty export cannot pass for a moving one', async () => {
+    const ends = await firstAndLast(chunks(), 3)
+    expect(ends).toEqual({ frames: 0, first: null, last: null })
+  })
+
+  it('finds a motionless export motionless and a moving one moving, at the tolerance', () => {
+    const still = Buffer.from([10, 20, 30, 40, 50, 60])
+    expect(channelsOver(still, Buffer.from(still))).toBe(0)
+    expect(channelsOver(still, Buffer.from([18, 12, 30, 40, 50, 60]))).toBe(0)
+    expect(channelsOver(still, Buffer.from([19, 20, 30, 40, 50, 69]))).toBe(2)
+  })
+
+  it('refuses to compare frames of different sizes', () => {
+    expect(() => channelsOver(Buffer.alloc(3), Buffer.alloc(6))).toThrow()
+  })
+})
+
 describe('the layout check', () => {
   const id = 'a'.repeat(64)
   const other = 'b'.repeat(64)
+  const made = '2026-09-11T04:39:55+00:00'
+  const stages = {
+    '00_gtfs2graph.json': '0'.repeat(64),
+    '01_topo.json': '1'.repeat(64),
+    '02_loom.json': '2'.repeat(64),
+    '03_octi.json': '3'.repeat(64),
+  }
   const snapshot: LayoutSnapshot = {
     layout: id,
-    made: '2026-09-11T04:39:55+00:00',
-    stored: { [id]: '2026-09-11T04:39:55+00:00' },
+    made,
+    stored: { [id]: { made, stages } },
   }
 
   it('finds nothing between two exports from the same stored layout', () => {
@@ -105,7 +143,7 @@ describe('the layout check', () => {
     const swapped: LayoutSnapshot = {
       ...snapshot,
       layout: other,
-      stored: { ...snapshot.stored, [other]: snapshot.made },
+      stored: { ...snapshot.stored, [other]: { made, stages } },
     }
     const drift = layoutDrift(snapshot, swapped)
     expect(drift).toContain(`the record's layout moved from ${id} to ${other}`)
@@ -121,10 +159,27 @@ describe('the layout check', () => {
   it('fails when the same id was laid out again', () => {
     const again: LayoutSnapshot = {
       ...snapshot,
-      stored: { [id]: '2026-09-12T10:00:00+00:00' },
+      stored: { [id]: { made: '2026-09-12T10:00:00+00:00', stages } },
     }
     expect(layoutDrift(snapshot, again)).toEqual([
       `stored layout ${id} was made again (2026-09-11T04:39:55+00:00 to 2026-09-12T10:00:00+00:00)`,
+    ])
+  })
+
+  it('fails when a stage file changed under the same id and made', () => {
+    const touched: LayoutSnapshot = {
+      ...snapshot,
+      stored: { [id]: { made, stages: { ...stages, '01_topo.json': 'f'.repeat(64) } } },
+    }
+    expect(layoutDrift(snapshot, touched)).toEqual([
+      `stored layout ${id} has a different 01_topo.json`,
+    ])
+    const gone: LayoutSnapshot = {
+      ...snapshot,
+      stored: { [id]: { made, stages: { ...stages, '03_octi.json': null } } },
+    }
+    expect(layoutDrift(snapshot, gone)).toEqual([
+      `stored layout ${id} has a different 03_octi.json`,
     ])
   })
 
@@ -144,6 +199,13 @@ describe('the layout check', () => {
     expect(layoutDrift(before, layoutSnapshot(home))).toEqual([])
     write(other)
     expect(layoutDrift(before, layoutSnapshot(home))).not.toEqual([])
+    // A stage file rewritten on disk is found by its bytes.
+    write(fixture)
+    const octi = join(home, 'data', 'graphs', 'bart', fixture, '03_octi.json')
+    writeFileSync(octi, readFileSync(octi, 'utf8') + ' ')
+    expect(layoutDrift(before, layoutSnapshot(home))).toEqual([
+      `stored layout ${fixture} has a different 03_octi.json`,
+    ])
   })
 })
 

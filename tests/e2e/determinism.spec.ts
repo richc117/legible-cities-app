@@ -45,13 +45,19 @@ import {
   requestsReceived,
   seedHome,
 } from '../support/determinism'
-import { compareDecoded, extractFrames, TOLERANCE } from '../support/frames'
+import {
+  channelsOver,
+  compareDecoded,
+  decodedEnds,
+  extractFrames,
+  TOLERANCE,
+} from '../support/frames'
 
 const OPTED_IN = process.env.LEGIBLE_DETERMINISM_TEST === '1'
 const PYTHON = process.env.LEGIBLE_ENGINE_PYTHON ?? ''
 const FFMPEG = process.env.SCHEMATIC_FFMPEG ?? ''
 
-/** The preset's size at draft quality (scale 1), as the engine's table has it at v0.8.2. */
+/** The preset's size at draft quality (scale 1), from the pinned engine's preset table. */
 const WIDTH = 630
 const HEIGHT = 1120
 const FILE = `${FEED}-instagram-reel-gif.gif`
@@ -75,7 +81,9 @@ test('the same project, exported twice, decodes to the same frames within the to
   const evidence = testInfo.outputPath('evidence')
 
   seedHome(engineHome)
-  const record = await prepareProject(PYTHON, engineHome)
+  const { record, trips } = await prepareProject(PYTHON, engineHome)
+  // A page with no trains animates nothing, and two exports of nothing agree.
+  expect(trips, 'trips the engine drew on the page').toBeGreaterThan(0)
   const before = layoutSnapshot(engineHome)
   expect(before.layout).toBe(record.layout)
   expect(layoutDrift(before, before)).toEqual([])
@@ -139,12 +147,16 @@ test('the same project, exported twice, decodes to the same frames within the to
       console.log(`export ${keep}: ${Math.round((Date.now() - t0) / 1000)} s`)
       expect(existsSync(file)).toBe(true)
       copyFileSync(file, join(dir, keep))
+      // Kept with the test's results at once, so whatever fails after this
+      // point uploads the file it failed on.
+      mkdirSync(testInfo.outputDir, { recursive: true })
+      copyFileSync(file, join(testInfo.outputDir, keep))
       const sidecar = JSON.parse(readFileSync(`${file}.json`, 'utf8')) as Record<string, unknown>
       // The stored layout has not moved: not in the record, not on disk.
       expect(layoutDrift(before, layoutSnapshot(engineHome)), 'the layout moved').toEqual([])
       expect(sidecar.preset).toBe('instagram-reel-gif')
       expect(sidecar.service_date).toBe(record.date)
-      // At v0.8.2 the engine's sidecar carries no layout id; the record and
+      // The pinned engine's sidecar carries no layout id; the record and
       // the stored set are what say which layout drew the file. Should the
       // engine add one, it must be the project's.
       if ('layout' in sidecar) expect(sidecar.layout).toBe(record.layout)
@@ -172,17 +184,20 @@ test('the same project, exported twice, decodes to the same frames within the to
 
     const a = join(dir, 'first.gif')
     const b = join(dir, 'second.gif')
-    mkdirSync(testInfo.outputDir, { recursive: true })
-    copyFileSync(a, join(testInfo.outputDir, 'first.gif'))
-    copyFileSync(b, join(testInfo.outputDir, 'second.gif'))
     const frameBytes = WIDTH * HEIGHT * 3
     const result = await compareDecoded(a, b, { ffmpeg: FFMPEG, frameBytes })
     const identical = readFileSync(a).equals(readFileSync(b))
+    // Agreement is evidence only of something that moves: the first and last
+    // frames of one export must differ by more than the tolerance.
+    const ends = await decodedEnds(a, frameBytes, { ffmpeg: FFMPEG })
+    const moved =
+      ends.first !== null && ends.last !== null ? channelsOver(ends.first, ends.last) : 0
     console.log(
       `${statSync(a).size} and ${statSync(b).size} bytes; files byte-identical: ${identical}; ` +
         `${result.frames} frames, ${result.bytes} decoded bytes, max channel difference ` +
         `${result.maxDiff}, ${result.over} channels over ${TOLERANCE} in ` +
-        `${result.differing.length} frames`,
+        `${result.differing.length} frames; ${moved} channels over ${TOLERANCE} between the ` +
+        `first export's first and last frames`,
     )
     if (result.differing.length > 0) {
       // Evidence for a person, never the verdict: a frame that cannot be
@@ -196,6 +211,8 @@ test('the same project, exported twice, decodes to the same frames within the to
     }
     expect(result.bytes % frameBytes, 'the decoded bytes are whole frames').toBe(0)
     expect(result.frames, 'frames decoded').toBeGreaterThan(1)
+    expect(ends.frames, 'the motion check read the same frames').toBe(result.frames)
+    expect(moved, 'the export moves: its first and last frames differ').toBeGreaterThan(0)
     expect(result.sameLength, 'the same number of frames').toBe(true)
     expect(result.differing, `frames with a channel differing by more than ${TOLERANCE}`).toEqual(
       [],

@@ -7,6 +7,7 @@
 // app, and the unit tests use it on its own, the layout check against a
 // swapped identifier and the fixture against the real engine.
 
+import { createHash } from 'node:crypto'
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { engineCommand, engineEnvironment } from '../../src/main/interpreter'
@@ -134,12 +135,14 @@ export async function startEngine(
  * the engine chooses the day from the fixed anchor, draws the project's page
  * from the fixture's stored layout with `map.build` - never `graph.build` -
  * and the record names that layout, its `made`, the day and the window. Its
- * export is the draft `instagram-reel-gif`. Answers the record.
+ * export is the draft `instagram-reel-gif`. Answers the record, and how many
+ * trips the engine drew on the page: a page with none animates nothing, and
+ * two exports of nothing agree perfectly.
  */
 export async function prepareProject(
   interpreter: string,
   engineHome: string,
-): Promise<ProjectRecord> {
+): Promise<{ record: ProjectRecord; trips: number }> {
   const layout = fixtureLayoutId()
   const made = madeOf(engineHome, layout)
   if (made === null) throw new Error('the seeded layout has no made in its meta')
@@ -189,7 +192,7 @@ export async function prepareProject(
       join(engineHome, 'projects', PROJECT_ID, 'project.json'),
       JSON.stringify(record, null, 2),
     )
-    return record
+    return { record, trips: built.diagnostics.trips.total }
   } finally {
     await sidecar.stop()
   }
@@ -199,31 +202,59 @@ export async function prepareProject(
 export const pagePath = (engineHome: string): string =>
   join(engineHome, 'out', PROJECT_ID, `${FEED}.html`)
 
+/** The four stage files a stored layout holds, as the engine names them. */
+export const STAGE_FILES = [
+  '00_gtfs2graph.json',
+  '01_topo.json',
+  '02_loom.json',
+  '03_octi.json',
+] as const
+
+/** One stored layout, as far as a drift can be seen in it. */
+export interface StoredLayout {
+  /** The `made` its meta says. */
+  made: string | null
+  /** The sha256 of each stage file, or null for one that is not there. */
+  stages: Record<string, string | null>
+}
+
 /** What says which layout a project draws from, at one moment. */
 export interface LayoutSnapshot {
   /** The record's layout id. */
   layout: string | null
   /** The record's `made`. */
   made: string | null
-  /** Every stored layout of the feed, by id, with the `made` its meta says. */
-  stored: Record<string, string | null>
+  /** Every stored layout of the feed, by id. */
+  stored: Record<string, StoredLayout>
+}
+
+function sha256Of(file: string): string | null {
+  try {
+    return createHash('sha256').update(readFileSync(file)).digest('hex')
+  } catch {
+    return null
+  }
 }
 
 export function layoutSnapshot(engineHome: string, projectId = PROJECT_ID): LayoutSnapshot {
   const record = JSON.parse(
     readFileSync(join(engineHome, 'projects', projectId, 'project.json'), 'utf8'),
   ) as Partial<ProjectRecord>
-  const stored: Record<string, string | null> = {}
-  for (const id of layoutsIn(graphs(engineHome))) stored[id] = madeOf(engineHome, id)
+  const stored: Record<string, StoredLayout> = {}
+  for (const id of layoutsIn(graphs(engineHome))) {
+    const stages: Record<string, string | null> = {}
+    for (const file of STAGE_FILES) stages[file] = sha256Of(join(graphs(engineHome), id, file))
+    stored[id] = { made: madeOf(engineHome, id), stages }
+  }
   return { layout: record.layout ?? null, made: record.made ?? null, stored }
 }
 
 /**
  * Every way two snapshots say the layout moved, as sentences; empty when it
  * did not. A different id in the record is a different layout. A different
- * `made` under the same id, or a stored set that appeared or went, is the
- * layout stages run again, which a render or an export must never do
- * (ADR-023, ADR-033).
+ * `made` under the same id, a stage file whose bytes changed, or a stored
+ * set that appeared or went, is the layout stages run again or the set
+ * touched, which a render or an export must never do (ADR-023, ADR-033).
  */
 export function layoutDrift(before: LayoutSnapshot, after: LayoutSnapshot): string[] {
   const drift: string[] = []
@@ -235,10 +266,18 @@ export function layoutDrift(before: LayoutSnapshot, after: LayoutSnapshot): stri
     drift.push(`the record names ${after.layout}, which is not stored`)
   const ids = new Set([...Object.keys(before.stored), ...Object.keys(after.stored)])
   for (const id of [...ids].sort()) {
-    if (!(id in after.stored)) drift.push(`stored layout ${id} went`)
-    else if (!(id in before.stored)) drift.push(`stored layout ${id} appeared`)
-    else if (before.stored[id] !== after.stored[id])
-      drift.push(`stored layout ${id} was made again (${before.stored[id]} to ${after.stored[id]})`)
+    const was = before.stored[id]
+    const is = after.stored[id]
+    if (is === undefined) drift.push(`stored layout ${id} went`)
+    else if (was === undefined) drift.push(`stored layout ${id} appeared`)
+    else {
+      if (was.made !== is.made)
+        drift.push(`stored layout ${id} was made again (${was.made} to ${is.made})`)
+      const files = new Set([...Object.keys(was.stages), ...Object.keys(is.stages)])
+      for (const file of [...files].sort())
+        if ((was.stages[file] ?? null) !== (is.stages[file] ?? null))
+          drift.push(`stored layout ${id} has a different ${file}`)
+    }
   }
   return drift
 }

@@ -943,18 +943,41 @@ committed BART fixture - the feed's zip and one stored layout, whose id
 `tests/unit/determinism-real.test.ts` checks is the one the pinned engine
 addresses - has the real engine draw the project's page from it, and
 exports the project's draft `instagram-reel-gif` through the Export tab
-twice. The GIFs are decoded with the vendored ffmpeg and compared frame by
-frame in RGB at a channel tolerance of 8 (`tests/support/frames.ts`, which
-the reel test shares); the record's layout id and `made`, and the stored
-set's meta, must not move between the exports (`layoutDrift` in
+twice. The GIFs are decoded with the vendored ffmpeg, each frame once, and
+compared frame by frame in RGB at a channel tolerance of 8
+(`tests/support/frames.ts`, which the reel test shares); a decoder that
+does not exit cleanly fails the comparison. Agreement alone would pass two
+blank exports, so the page must carry trips and the first export's first
+and last frames must differ by more than the tolerance. The record's layout
+id and `made`, and the stored set's meta and the sha256 of its four stage
+files, must not move between the exports (`layoutDrift` in
 `tests/support/determinism.ts`), and a `sitecustomize` on the engine's
 `PYTHONPATH`, which the app passes in development only, records each
 request's method so the test can assert no `graph.build` was sent. The
-engine's sidecar carries no layout id at v0.8.2, so the record and the
-stored set are what name the layout. `.github/workflows/determinism.yml`
-runs it on Ubuntu, macOS and Windows once per pull request and five times on
-a weekly schedule, and keeps the two GIFs and the differing frames for a
-week when it fails; it is not a required check.
+pinned engine's sidecar carries no layout id, so the record and the stored
+set are what name the layout. `.github/workflows/determinism.yml` proves
+the fixture's id against the engine it installed and then runs the test on
+Ubuntu, macOS and Windows, once per pull request that touches what the
+export is made of and five times on a weekly schedule, and keeps the two
+GIFs and the differing frames for a week when it fails; it is not a
+required check.
+
+The test was shown to catch what it is for, on macOS against the real
+engine, before it was merged. The unaltered app exported two
+byte-identical GIFs of 108 frames, a maximum channel difference of 0. With
+the paint wait before each capture removed, one run of three still passed
+(a maximum difference of 7) and two failed (32, with 24 channels over 8 in
+6 frames): the rule is load-bearing, and one agreeing pair is not evidence
+that it holds. With the page's `setCapture` doing nothing, and separately
+with `capture.ts` never calling `setCapture(true)`, every one of the 108
+frames differed, by up to 254. Removing only the `cancelAnimationFrame` in
+the page's `setCapture` was not run: it drops the one frame already queued,
+which fires during the settle, before `settle()` snaps the transitions and
+the first beat sets the clock, so it is not expected to change a frame.
+
+The test never runs LOOM, by design (ADR-023): it reads a stored layout.
+So whether a layout made on Windows is reproducible, which ADR-021 expected
+this test to measure, is still unmeasured.
 
 ## The export
 

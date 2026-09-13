@@ -34,8 +34,14 @@ if _home:
                 message = args[0] if isinstance(args, tuple) and args else args
                 method = message.get("method") if isinstance(message, dict) else None
                 if isinstance(method, str):
-                    with _log.open("a", encoding="utf-8") as fh:
-                        fh.write(method + "\n")
+                    # Never the engine's problem: a record that cannot be
+                    # written is missing from the log, and the test's own
+                    # count of export requests says so.
+                    try:
+                        with _log.open("a", encoding="utf-8") as fh:
+                            fh.write(method + "\n")
+                    except OSError:
+                        pass
             return False
 
     _endpoint = logging.getLogger("pylsp_jsonrpc.endpoint")

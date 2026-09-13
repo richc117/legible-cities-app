@@ -8,10 +8,33 @@
 # Once per pull request, and five times on the weekly schedule, because one
 # agreeing pair is not evidence: spike A0-05 was fooled twice by samples that
 # small. Not a required check until it has earned it; the maintainer decides.
+#
+# A pull request runs it only when it touches what the export or this test is
+# made of: the app, the test and its fixture, the pins and the vendoring
+# scripts, the packages, and the build and test configuration. A change to
+# documentation alone costs three runners nothing. The weekly schedule runs it
+# whatever changed. Should it become a required check, remove the filter, or a
+# pull request that skips it waits for it forever.
 name: determinism
 
 on:
   pull_request:
+    paths:
+      - 'src/**'
+      - 'tests/e2e/determinism.spec.ts'
+      - 'tests/e2e/global-*.ts'
+      - 'tests/unit/determinism-real.test.ts'
+      - 'tests/support/**'
+      - 'tests/fixtures/determinism/**'
+      - 'vendor/pins.json'
+      - 'scripts/vendor-*.sh'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'electron.vite.config.ts'
+      - 'playwright.config.ts'
+      - 'vitest.config.ts'
+      - 'tsconfig*.json'
+      - '.github/workflows/determinism.yml'
   schedule:
     # Mondays, 05:17 UTC.
     - cron: '17 5 * * 1'
@@ -19,6 +42,11 @@ on:
 
 permissions:
   contents: read
+
+# A newer push to the same branch makes the older run's answer moot.
+concurrency:
+  group: determinism-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   determinism:
@@ -86,12 +114,28 @@ jobs:
 
       # macOS and Windows run the runtime the app ships: python-build-standalone
       # at its pin with the engine installed, as the vendor workflow proves it.
+      # Cached by the pins and the scripts, which together say exactly what
+      # was vendored: a changed pin or script is a new key and a fresh, proven
+      # runtime.
+      - name: Restore the vendored runtime (macOS, Windows)
+        if: runner.os != 'Linux'
+        id: python-cache
+        uses: actions/cache@v6
+        with:
+          path: vendor/python/${{ matrix.target }}
+          key: determinism-python-${{ matrix.target }}-${{ hashFiles('vendor/pins.json', 'scripts/vendor-*.sh') }}
+
       - name: Vendor the runtime with the engine (macOS, Windows)
+        if: runner.os != 'Linux' && steps.python-cache.outputs.cache-hit != 'true'
+        env:
+          TARGET: ${{ matrix.target }}
+        run: bash scripts/vendor-python.sh "$TARGET" engine
+
+      - name: Point the test at the runtime (macOS, Windows)
         if: runner.os != 'Linux'
         env:
           TARGET: ${{ matrix.target }}
         run: |
-          bash scripts/vendor-python.sh "$TARGET" engine
           case "$TARGET" in
             win-*) py="$GITHUB_WORKSPACE/vendor/python/$TARGET/python/python.exe" ;;
             *)     py="$GITHUB_WORKSPACE/vendor/python/$TARGET/python/bin/python3" ;;
@@ -103,7 +147,7 @@ jobs:
       # version the runtime pin carries.
       - name: Set up Python 3.12 (Linux)
         if: runner.os == 'Linux'
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
@@ -117,11 +161,39 @@ jobs:
           "$py" -m pip list --format=freeze | sed 's/^/  /'
           echo "LEGIBLE_ENGINE_PYTHON=$py" >> "$GITHUB_ENV"
 
+      # The check vendor-python.sh makes of the runtimes it builds, made of
+      # this install too: the engine installed is the one whose protocol the
+      # app was generated from.
+      - name: Refuse an engine whose schema is not the pinned one (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          want=$(python3 -c "import json;print(json.load(open('vendor/pins.json'))['engine']['schema_sha256'])")
+          got=$("$LEGIBLE_ENGINE_PYTHON" -m schematic.serve --schema | tr -d '\r' | sha256sum | cut -d' ' -f1)
+          if [ "$got" != "$want" ]; then
+            echo "::error::the installed engine's schema is not the pinned one"
+            echo "  engine.schema_sha256 $want"
+            echo "  installed engine     $got"
+            exit 1
+          fi
+          echo "schema ok: $got"
+
+      - name: Restore the vendored ffmpeg
+        id: ffmpeg-cache
+        uses: actions/cache@v6
+        with:
+          path: vendor/ffmpeg/${{ matrix.target }}
+          key: determinism-ffmpeg-${{ matrix.target }}-${{ hashFiles('vendor/pins.json', 'scripts/vendor-*.sh') }}
+
       - name: Vendor ffmpeg
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        env:
+          TARGET: ${{ matrix.target }}
+        run: bash scripts/vendor-ffmpeg.sh "$TARGET"
+
+      - name: Point the test at ffmpeg
         env:
           TARGET: ${{ matrix.target }}
         run: |
-          bash scripts/vendor-ffmpeg.sh "$TARGET"
           case "$TARGET" in
             win-*) exe=.exe ;;
             *)     exe= ;;
@@ -136,6 +208,14 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      # The fixture's folder must be the id this engine addresses for BART,
+      # or the exports below compare a layout no project could have. Proven
+      # on every run, against the engine this run installed.
+      - name: Prove the fixture's layout id against the pinned engine
+        run: npx vitest run tests/unit/determinism-real.test.ts
+        env:
+          LEGIBLE_DETERMINISM_TEST: '1'
 
       - name: Export twice and compare (Linux, under a display server)
         if: runner.os == 'Linux'

@@ -25,12 +25,13 @@ The layout's id is
   then, and adopted as an addressed layout, unchanged, by engine 0.4.0 on
   11 September 2026: that is what `"migrated": true` and `made` in the meta
   record. The meta carries no path.
-- **The id is the pinned engine's**, not just a folder name: at engine
-  `v0.8.2` (the tag in `vendor/pins.json`) the layout the engine addresses
-  for `bart` with a project's inputs - mode `all`, every operator, no LOOM
-  commit told - is this one. `tests/unit/determinism-real.test.ts` asks the
-  engine for it with `graph.build` and checks the answer is this id, found
-  rather than made, whenever an interpreter with the engine is named.
+- **The id is the pinned engine's**, not just a folder name: at the engine
+  tag in `vendor/pins.json`, the layout the engine addresses for `bart` with
+  a project's inputs - mode `all`, every operator, no LOOM commit told - is
+  this one. `tests/unit/determinism-real.test.ts` asks the engine for it
+  with `graph.build` and checks the answer is this id, found rather than
+  made, whenever an interpreter with the engine is named; the determinism
+  workflow runs it against the engine it installed before every export.
 
 The normalised copy of the feed is not committed: the engine writes it into
 the temporary home from the zip when it first reads the tables.

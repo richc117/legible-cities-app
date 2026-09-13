@@ -160,8 +160,9 @@ written to disk.
 The determinism test (A5-04) exports the committed BART fixture twice
 through the Export tab against the real engine and the vendored ffmpeg, and
 compares the two GIFs frame by frame in RGB at a tolerance of 8 with the
-stored layout checked unmoved and no `graph.build` sent, on three platforms
-once per pull request and five times a week
+stored layout checked unmoved, no `graph.build` sent and the export
+required to move, on three platforms once per pull request that touches
+what an export is made of and five times a week
 (`tests/e2e/determinism.spec.ts`, `.github/workflows/determinism.yml`).
 
 Work proceeds phase by phase; `CONTRIBUTING.md` explains the flow, the
