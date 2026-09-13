@@ -8,6 +8,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { LOG_WAIT_MS } from '../../src/main/log-file'
 import { SettingsStore } from '../../src/main/settings'
 import {
   ENGINE_INFO_TIMEOUT_MS,
@@ -52,6 +53,8 @@ async function harness(
     homeDir?: (root: string) => string
     /** The engine's `engine.info`, for the diagnostics copy. */
     engineInfo?: () => Promise<unknown>
+    /** The logs' flush before the copy reads their tails. */
+    flushLogs?: () => Promise<void>
     /** The home folders the copy hides, and the platform it reads them for. */
     homes?: (root: string) => string[]
     platform?: string
@@ -94,7 +97,7 @@ async function harness(
     diagnostics: {
       about: () => ABOUT,
       engineInfo: over.engineInfo ?? (async () => ({ engine: '0.0.0-test', protocol: 1 })),
-      flushLogs: async () => undefined,
+      flushLogs: over.flushLogs ?? (async () => undefined),
       homes: over.homes?.(root) ?? [root],
       platform: over.platform ?? 'linux',
       writeText: (text) => copied.push(text),
@@ -546,6 +549,20 @@ describe('copying diagnostics', () => {
       vi.useRealTimers()
       await copying
       expect(h.copied[0]).toContain('no answer within 5 s')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('copies without the newest lines when the logs cannot be flushed in time', async () => {
+    vi.useFakeTimers()
+    try {
+      const h = await harness({ flushLogs: () => new Promise(() => undefined) })
+      const copying = h.call(CHANNELS.settingsCopyDiagnostics, [])
+      await vi.advanceTimersByTimeAsync(LOG_WAIT_MS)
+      vi.useRealTimers()
+      await copying
+      expect(h.copied).toHaveLength(1)
     } finally {
       vi.useRealTimers()
     }

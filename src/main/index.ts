@@ -4,7 +4,7 @@
 
 import { existsSync, mkdirSync, realpathSync } from 'node:fs'
 import { mkdir, readFile } from 'node:fs/promises'
-import { homedir, release, type } from 'node:os'
+import { homedir, release, tmpdir, type } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 import { BrowserWindow, app, clipboard, dialog, ipcMain, session, shell } from 'electron'
 import pins from '../../vendor/pins.json'
@@ -26,7 +26,8 @@ import { registerExportHandlers } from './export-ipc'
 import { engineCommand, engineEnvironment, resolveInterpreter } from './interpreter'
 import { registerClipboardHandler, registerProjectHandlers, registerViewerHandlers } from './ipc'
 import { byTag, holdingSink, log, setSink, toStderr } from './log'
-import { openLogFile, type LogFile } from './log-file'
+import { LOG_WAIT_MS, openLogFile, within, type LogFile } from './log-file'
+import { shortHomeFrom } from './diagnostics-text'
 import { ProjectStore } from './projects'
 import { SettingsStore } from './settings'
 import { registerSettingsHandlers, SettingsService } from './settings-ipc'
@@ -44,9 +45,9 @@ export const PRODUCT_NAME = 'Legible Cities'
 // main.log and engine.log (specs/023-logs-and-diagnostics).
 const development = !app.isPackaged
 const earlyLines = holdingSink(2_000)
-setSink((line, tag) => {
+setSink((line, tag, at) => {
   if (development) toStderr(line, tag)
-  earlyLines.sink(line, tag)
+  earlyLines.sink(line, tag, at)
 })
 /** The two files, once open; closed on the way out, after the engine's last line. */
 let logFiles: { main: LogFile; engine: LogFile } | null = null
@@ -79,16 +80,31 @@ if (movedUserData !== undefined && movedUserData !== '' && isAbsolute(movedUserD
     )
   }
 }
-// The logs follow the moved profile. On Windows and Linux Electron keeps
-// them inside the user-data folder already; on macOS it does not, and the
-// suite must never write a person's own log (specs/023, FR-009).
-if (userDataMoved && movedUserData !== undefined) {
+// The logs, moved for a test run, on the same terms as the user-data folder:
+// development only, an absolute path, and a bad value costs the switch and
+// not the launch. The end-to-end suite sets LEGIBLE_LOGS for every launch
+// (tests/e2e/global-setup.ts), because most of its launches keep the default
+// profile and would otherwise write and rotate a person's own log. A moved
+// profile wins: its logs follow it. On Windows and Linux Electron keeps the
+// logs inside the user-data folder already; on macOS it does not
+// (specs/023, FR-009).
+const movedLogs = !app.isPackaged ? process.env.LEGIBLE_LOGS : undefined
+let logsMoved: string | null = null
+const logsTarget =
+  userDataMoved && movedUserData !== undefined
+    ? { path: join(movedUserData, 'logs'), key: 'LEGIBLE_USER_DATA' }
+    : movedLogs !== undefined && movedLogs !== '' && isAbsolute(movedLogs)
+      ? { path: movedLogs, key: 'LEGIBLE_LOGS' }
+      : null
+if (logsTarget !== null) {
   try {
-    app.setAppLogsPath(join(movedUserData, 'logs'))
+    mkdirSync(logsTarget.path, { recursive: true })
+    app.setAppLogsPath(logsTarget.path)
+    logsMoved = logsTarget.key
   } catch (error) {
     log.error(
       'config',
-      `the logs could not follow LEGIBLE_USER_DATA: ${error instanceof Error ? error.message : String(error)}`,
+      `the logs could not follow ${logsTarget.key}: ${error instanceof Error ? error.message : String(error)}`,
     )
   }
 }
@@ -117,25 +133,42 @@ async function openLogs(): Promise<void> {
   const engine = openLogFile(folder, 'engine', options)
   logFiles = { main, engine }
   const toFiles = byTag(
-    (line) => main.write(line),
-    (line) => engine.write(line),
+    (line, _tag, at) => main.write(line, at),
+    (line, _tag, at) => engine.write(line, at),
   )
-  setSink((line, tag) => {
+  setSink((line, tag, at) => {
     if (development) toStderr(line, tag)
-    toFiles(line, tag)
+    toFiles(line, tag, at)
   })
   earlyLines.release(toFiles)
 }
 
-/** The home folder as the copy should hide it: as the platform names it, and through its links. */
+/**
+ * The home folder as the copy should hide it: as the platform names it,
+ * through its links, and on Windows in the 8.3 short form the temporary
+ * folder is usually written in (`RUNNER~1` for a longer user name), which
+ * is derived from the temporary folder's raw and real paths.
+ */
 function homeFolders(): string[] {
   const home = homedir()
+  const homes = new Set([home])
   try {
-    const real = realpathSync.native(home)
-    return real === home ? [home] : [home, real]
+    homes.add(realpathSync.native(home))
   } catch {
-    return [home]
+    // The home as named is still hidden.
   }
+  if (process.platform === 'win32') {
+    for (const raw of [process.env.TEMP, process.env.TMP, tmpdir()]) {
+      if (raw === undefined || raw === '') continue
+      try {
+        const short = shortHomeFrom(home, raw, realpathSync.native(raw))
+        if (short !== null) homes.add(short)
+      } catch {
+        // A temporary folder that is not there says nothing about the home.
+      }
+    }
+  }
+  return [...homes]
 }
 
 let mainWindow: BrowserWindow | null = null
@@ -259,6 +292,9 @@ async function loadConfig(stored: AppSettings): Promise<Config> {
   // knowing this was set.
   if (userDataMoved) {
     log.info('config', `LEGIBLE_USER_DATA=${app.getPath('userData')} (environment)`)
+  }
+  if (logsMoved !== null) {
+    log.info('config', `logs in ${app.getPath('logs')} (${logsMoved}, environment)`)
   }
   return config
 }
@@ -540,15 +576,20 @@ if (!hasLock) {
     void stopping.finally(() => app.quit())
   })
 
-  // The files close last: the engine's shutdown lines are written by then,
-  // because this runs only once the quit above has let Electron go. Lines
-  // logged after this reach standard error in development and nowhere else.
+  // The files close last. This runs only once the quit above has let
+  // Electron go, and the supervisor's stop waits for the engine's stdio to
+  // close (bounded at a second), so the engine's shutdown lines and what it
+  // printed on the way out are queued by then. Lines logged after this
+  // reach standard error in development and nowhere else.
   app.on('will-quit', (event) => {
     if (logFiles === null || logsClosed) return
     event.preventDefault()
     logsClosed = true
     const files = logFiles
-    void Promise.all([files.main.close(), files.engine.close()]).finally(() => app.quit())
+    // Bounded: a disk that does not answer costs the last lines, not the quit.
+    void within(Promise.all([files.main.close(), files.engine.close()]), LOG_WAIT_MS).finally(() =>
+      app.quit(),
+    )
   })
 
   app.on('window-all-closed', () => {

@@ -3,11 +3,11 @@
 // before a close on disk, and a folder that cannot be written costing the
 // file and never the caller.
 
-import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { LOG_CAP, openLogFile } from '../../src/main/log-file'
+import { LOG_CAP, LOG_WAIT_MS, openLogFile, within } from '../../src/main/log-file'
 
 const roots: string[] = []
 
@@ -141,4 +141,118 @@ describe('a log file', () => {
     expect(said).toHaveLength(1)
     expect(said[0]).toMatch(/^\[log\] warning/)
   })
+})
+
+describe('a rotation that cannot rename', () => {
+  it('keeps appending, says so once, and renames at the next crossing of the cap', async () => {
+    const dir = await folder()
+    const said: string[] = []
+    let refusals = 2
+    const file = openLogFile(dir, 'engine', {
+      now: clock,
+      cap: 100,
+      fallback: (l) => said.push(l),
+      // Windows refuses a rename while another program holds the file open.
+      rename: async (from, to) => {
+        if (refusals > 0) {
+          refusals -= 1
+          throw Object.assign(new Error('resource busy or locked'), { code: 'EBUSY' })
+        }
+        const { rename } = await import('node:fs/promises')
+        await rename(from, to)
+      },
+    })
+    // A stamped line is 34 bytes: two fit under the cap, and the third
+    // crosses it and is refused.
+    for (let i = 0; i < 3; i += 1) file.write(`line ${String(i).padStart(4, '0')}`)
+    await file.flush()
+    expect(await readdir(dir)).toEqual(['engine.log'])
+    expect(await readFile(join(dir, 'engine.log'), 'utf8')).toContain('line 0002')
+    expect(said).toEqual([expect.stringMatching(/engine\.log could not be rotated \(EBUSY\)/)])
+    // Not retried before every line: the next one is appended with no rename asked.
+    file.write('line 0003')
+    await file.flush()
+    expect(refusals, 'the second refusal is still unspent').toBe(1)
+    // The next crossing asks again (refused), and the one after renames.
+    for (let i = 4; i < 12; i += 1) file.write(`line ${String(i).padStart(4, '0')}`)
+    await file.close()
+    expect((await readdir(dir)).sort()).toEqual(['engine.log', 'engine.old.log'])
+    expect(said.filter((l) => /could not be written/.test(l))).toEqual([])
+    expect(said, 'said once').toHaveLength(1)
+    const all =
+      (await readFile(join(dir, 'engine.old.log'), 'utf8')) +
+      (await readFile(join(dir, 'engine.log'), 'utf8'))
+    expect(all).toContain('line 0011')
+  })
+})
+
+describe('waiting on a log', () => {
+  it('flushes the lines queued before the call, whatever keeps arriving after', async () => {
+    const dir = await folder()
+    const file = openLogFile(dir, 'engine', { now: clock })
+    file.write('[engine] before the flush')
+    // A steady stderr: a line on every turn of the loop, for as long as the test runs.
+    let streaming = true
+    const stream = (): void => {
+      if (!streaming) return
+      file.write('[engine] stderr: loom is still talking')
+      setImmediate(stream)
+    }
+    stream()
+    const flushed = file.flush().then(() => 'flushed')
+    const timedOut = new Promise((resolve) => setTimeout(() => resolve('timed out'), 1_000))
+    expect(await Promise.race([flushed, timedOut])).toBe('flushed')
+    streaming = false
+    expect(await readFile(join(dir, 'engine.log'), 'utf8')).toContain('before the flush')
+    await file.close()
+  })
+
+  it('closes with the lines queued before the close on disk, while more arrive', async () => {
+    const dir = await folder()
+    const later: string[] = []
+    const file = openLogFile(dir, 'engine', { now: clock, fallback: (l) => later.push(l) })
+    for (let i = 0; i < 1000; i += 1) file.write(`[engine] stderr: ${i}`)
+    const closing = file.close()
+    file.write('[engine] after the close began')
+    await closing
+    const lines = (await readFile(join(dir, 'engine.log'), 'utf8')).trimEnd().split('\n')
+    expect(lines).toHaveLength(1000)
+    expect(later).toEqual(['2026-09-12T10:00:00.000Z [engine] after the close began'])
+  })
+
+  it('gives up on work that never finishes after the time it is given, and never rejects', async () => {
+    expect(LOG_WAIT_MS).toBe(2_000)
+    const started = Date.now()
+    await within(new Promise(() => undefined), 50)
+    expect(Date.now() - started).toBeGreaterThanOrEqual(40)
+    await expect(within(Promise.reject(new Error('disk gone')), 50)).resolves.toBeUndefined()
+  })
+})
+
+describe('where the file is opened', () => {
+  it('uses the time a held line was logged, not the time it was written', async () => {
+    const dir = await folder()
+    const file = openLogFile(dir, 'main', { now: clock })
+    file.write('[config] early', new Date('2026-09-12T09:59:58.000Z'))
+    await file.close()
+    expect(await readFile(join(dir, 'main.log'), 'utf8')).toBe(
+      '2026-09-12T09:59:58.000Z [config] early\n',
+    )
+  })
+
+  it.skipIf(process.platform === 'win32')(
+    'refuses to append through a symbolic link planted where the file goes',
+    async () => {
+      const dir = await folder()
+      const target = join(dir, 'elsewhere.txt')
+      await writeFile(target, 'not a log\n')
+      await symlink(target, join(dir, 'main.log'))
+      const said: string[] = []
+      const file = openLogFile(dir, 'main', { now: clock, fallback: (l) => said.push(l) })
+      file.write('[config] one')
+      await file.close()
+      expect(await readFile(target, 'utf8')).toBe('not a log\n')
+      expect(said[0]).toMatch(/main\.log could not be written/)
+    },
+  )
 })

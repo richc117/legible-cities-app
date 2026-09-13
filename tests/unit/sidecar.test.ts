@@ -477,3 +477,35 @@ describe('describeState', () => {
     ).toContain('needs engine 0.2.0')
   })
 })
+
+// A6-03: the log files close once the supervisor's stop resolves, so what
+// the engine's side printed on its way out must have been read by then.
+// 'exit' arrives as soon as the engine has gone, while its stderr pipe can
+// stay open - here a helper it started holds it for a moment and writes
+// last - so the stop waits for 'close', bounded. A Node child stands in,
+// because the behaviour is the pipe's and not the engine's.
+describe('stopping', () => {
+  it('has read the last stderr line written before the pipe closed', async () => {
+    const helper = "setTimeout(() => process.stderr.write('the last line\\n'), 300)"
+    const script = [
+      "const { spawn } = require('node:child_process')",
+      "process.stdin.once('data', () => {",
+      `  spawn(process.execPath, ['-e', ${JSON.stringify(helper)}], { stdio: ['ignore', 'ignore', 'inherit'] })`,
+      '  process.exit(0)',
+      '})',
+      'setInterval(() => undefined, 1000)',
+    ].join('\n')
+    const log: string[] = []
+    const sidecar = new Sidecar({
+      command: [process.execPath, '-e', script],
+      env: {},
+      pin: PIN,
+      log: (m) => log.push(m),
+      bounds: { ...FAST, handshakeMs: 30_000 },
+    })
+    sidecar.start()
+    // The handshake written at start is what makes it leave.
+    await sidecar.stop()
+    expect(log).toContain('stderr: the last line')
+  }, 20_000)
+})

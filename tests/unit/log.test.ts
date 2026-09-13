@@ -72,6 +72,19 @@ describe('the held lines', () => {
     expect(again, 'released once').toEqual([])
   })
 
+  it('keep the moment each was logged, for the file written later', () => {
+    let tick = 0
+    const held = holdingSink(10, () => new Date(Date.UTC(2026, 8, 12, 10, 0, tick++)))
+    held.sink('[config] a', 'config')
+    held.sink('[config] b', 'config')
+    const got: [string, string | undefined][] = []
+    held.release((line, _tag, at) => got.push([line, at?.toISOString()]))
+    expect(got).toEqual([
+      ['[config] a', '2026-09-12T10:00:00.000Z'],
+      ['[config] b', '2026-09-12T10:00:01.000Z'],
+    ])
+  })
+
   it('keep the newest when there are more than the limit, and say how many went', () => {
     const held = holdingSink(2)
     for (const n of [1, 2, 3, 4]) held.sink(`[config] ${n}`, 'config')

@@ -25,6 +25,7 @@ import {
   type SettingsView,
 } from '../shared/settings'
 import { areReports, diagnosticsText, tailLog, type DiagnosticsInput } from './diagnostics-text'
+import { LOG_WAIT_MS, within } from './log-file'
 import { PickedPaths } from './picked'
 import {
   contains,
@@ -87,7 +88,7 @@ export interface DiagnosticsDeps {
   about: () => Pick<DiagnosticsInput, 'app' | 'versions' | 'os'>
   /** The engine's `engine.info`; rejects with the engine's own sentence when it is not ready. */
   engineInfo: () => Promise<unknown>
-  /** Every line logged so far on disk, so the tail read next is current. */
+  /** Every line logged so far on disk, so the tail read next is current; waited for at most `LOG_WAIT_MS`. */
   flushLogs: () => Promise<void>
   /** The home folder, and its real path when that differs: each is written as `~`. */
   homes: string[]
@@ -251,7 +252,9 @@ export class SettingsService {
     }
     const d = this.#deps.diagnostics
     const engine = await this.#engineInfo()
-    await d.flushLogs().catch(() => undefined)
+    // Bounded: a log that cannot be flushed costs the newest lines of the
+    // tail, never the copy.
+    await within(d.flushLogs(), LOG_WAIT_MS)
     let folder: string | null
     try {
       folder = this.#deps.logsFolder()

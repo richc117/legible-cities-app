@@ -15,6 +15,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   writeFileSync,
 } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
@@ -353,6 +354,21 @@ test('keeps main.log and engine.log, and copies diagnostics without the home fol
     // folder on Windows, so the configuration lines alone would carry it.
     const plain = (text: string): string => text.replace(/[\\/]+/g, '/').toLowerCase()
     expect(plain(copied)).not.toContain(plain(homedir()))
+    // And not in the form the temporary folder writes it. On a Windows
+    // runner that is the 8.3 short name (`RUNNER~1`), which carries the
+    // start of the user's name and which a check for the long home alone
+    // could never catch. The home-bearing part of each temporary path is
+    // as many leading folders as the home has.
+    const depth = homedir().split(/[\\/]+/).length
+    for (const temp of [tmpdir(), realpathSync.native(tmpdir())]) {
+      const prefix = temp
+        .split(/[\\/]+/)
+        .slice(0, depth)
+        .join('/')
+      const homeBearing =
+        plain(prefix) === plain(homedir()) || (process.platform === 'win32' && /~\d+$/.test(prefix))
+      if (homeBearing) expect(plain(copied), temp).not.toContain(plain(prefix))
+    }
   })
 
   // After the quit. Both files are in the moved profile, each line stamped;

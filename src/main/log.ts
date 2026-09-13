@@ -4,8 +4,11 @@
 // (specs/023-logs-and-diagnostics). No Electron import, so pure modules and
 // tests can use it.
 
-/** A line as it was logged, and the tag it was logged under. */
-export type Sink = (line: string, tag: string) => void
+/**
+ * A line as it was logged, the tag it was logged under, and - for a line
+ * that was held before it could be written - when it was logged.
+ */
+export type Sink = (line: string, tag: string, at?: Date) => void
 
 /** The tag the engine's own lines, and the supervisor's about it, are logged under. */
 export const ENGINE_TAG = 'engine'
@@ -47,7 +50,7 @@ export const log = {
 
 /** Lines under the engine's tag to one sink, every other line to the other. */
 export function byTag(main: Sink, engine: Sink): Sink {
-  return (line, tag) => (tag === ENGINE_TAG ? engine : main)(line, tag)
+  return (line, tag, at) => (tag === ENGINE_TAG ? engine : main)(line, tag, at)
 }
 
 /**
@@ -55,22 +58,26 @@ export function byTag(main: Sink, engine: Sink): Sink {
  * files open once the app knows its paths, and the first lines of a launch
  * that goes wrong before then are the ones most worth having. Bounded, and
  * it keeps the newest: a launch that never gets that far must not grow
- * without limit.
+ * without limit. Each line keeps the moment it was logged, so a file written
+ * later still says when it happened.
  */
-export function holdingSink(limit: number): { sink: Sink; release(into: Sink): void } {
-  const held: [string, string][] = []
+export function holdingSink(
+  limit: number,
+  now: () => Date = () => new Date(),
+): { sink: Sink; release(into: Sink): void } {
+  const held: [string, string, Date][] = []
   let dropped = 0
   return {
-    sink: (line, tag) => {
-      held.push([line, tag])
+    sink: (line, tag, at) => {
+      held.push([line, tag, at ?? now()])
       if (held.length > limit) {
         held.shift()
         dropped += 1
       }
     },
     release: (into) => {
-      if (dropped > 0) into(`[log] warning: ${dropped} early line(s) were not kept`, 'log')
-      for (const [line, tag] of held.splice(0)) into(line, tag)
+      if (dropped > 0) into(`[log] warning: ${dropped} early line(s) were not kept`, 'log', now())
+      for (const [line, tag, at] of held.splice(0)) into(line, tag, at)
       dropped = 0
     },
   }
