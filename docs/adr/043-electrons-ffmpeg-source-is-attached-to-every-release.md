@@ -46,8 +46,9 @@ read and never run:
 - **What the notice covers.** Electron's `LICENSES.chromium.html` has
   FFmpeg's notice and the full LGPL-2.1 text. electron-builder deletes that
   file from the Mac app (`app-builder-lib`'s `electronMac.js`), and the
-  published `v0.1.0-rc.2` arm64 dmg does not carry it; issue 108 carries it
-  back into the Mac app, separately from this decision.
+  published `v0.1.0-rc.2` arm64 dmg does not carry it. Issue 108 (ADR-042)
+  put it back into the Mac app, separately from this decision, and Settings ›
+  Licences opens it and names this library.
 - **What others do.** VS Code's `cgmanifest.json` points at the googlesource
   repository and a commit; Signal Desktop (also on Electron 44.2.0) and
   Electron itself attach nothing. Electron's maintainers hold that its
