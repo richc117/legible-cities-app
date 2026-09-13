@@ -95,6 +95,21 @@ and while it is up every engine request, every export and every write to a
 project record is refused, so nothing lands in a folder being walked away
 (`src/main/settings.ts`, `src/main/settings-ipc.ts`).
 
+The export tab (A5-01) widened the reel's one button: the project panel is
+two tabs, Map (what the screen held before) and Export, a `Tabs` control in
+the kit on the WAI-ARIA pattern. Export offers the thirteen social presets
+from `export.presets` grouped by platform, a storyboard from
+`export.storyboards` for a video or GIF, and view, labels, title, clock,
+start time, lines, quality and a filename tag; the choice is the project's,
+written to the record's `export` the moment it is made. While the tab is
+open the map's own frame is the preview, sent to the address
+`export.plan` answers with `safe` on exactly where the preset has safe
+zones, and **an export's plan never carries `safe`**. A still is captured as
+one beat of one frame pinned at the plan's `at`, since the app's capture
+takes frames from beats and a still plan has none
+(`src/renderer/src/ExportTab.tsx`, `src/renderer/src/exportChoice.ts`,
+`src/main/export.ts`).
+
 Work proceeds phase by phase; `CONTRIBUTING.md` explains the flow, the
 labels, the milestones and the `A0-05`-style issue codes. The four Phase 0
 spikes have run: LOOM ships without its optional solvers (ADR-019), the
