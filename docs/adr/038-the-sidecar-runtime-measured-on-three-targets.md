@@ -95,7 +95,7 @@ it also requires libpython to link libedit and import readline's symbols
 from it. The measurements above predate these gates. The link check, the
 `--only-binary` install and the frozen list were exercised on a developer
 Mac (arm64), each refusal against a planted failure, and by vendor run
-<id> on the three runners.
+34733777983 on the three runners.
 
 A0-10 inherits four things this record makes visible:
 
