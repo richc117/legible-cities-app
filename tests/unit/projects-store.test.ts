@@ -2,7 +2,7 @@
 // developer's own data, and every root is removed afterwards.
 
 import { createHash } from 'node:crypto'
-import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, relative, sep } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -50,6 +50,7 @@ function record(id: string, overrides: Partial<ProjectRecord> = {}): ProjectReco
     defaultColor: DEFAULT_COLOR,
     lineOrder: [],
     theme: DEFAULT_THEME,
+    export: { preset: 'instagram-reel', options: {} },
     layout: null,
     made: null,
     built: null,
@@ -125,6 +126,7 @@ describe('create', () => {
       defaultColor: '#888888',
       lineOrder: [],
       theme: 'warm-dark',
+      export: { preset: 'instagram-reel', options: {} },
       layout: null,
       made: null,
       built: null,
@@ -905,6 +907,170 @@ describe('setTheme', () => {
     const current = await store.get(project.id)
     await writeFile(file, JSON.stringify({ ...current, version: 99 }), 'utf8')
     await expect(store.setTheme(project.id, 'sepia')).rejects.toThrow('read-only')
+  })
+})
+
+// What a project was last set to export (A5-01), written the moment it is
+// chosen, as the theme is, and read back with the reel for a record from
+// before the export tab.
+describe('setExport', () => {
+  const LINKEDIN = {
+    preset: 'linkedin-video',
+    storyboard: 'day',
+    options: { clock: false, at: '07:30', lines: ['A', 'B'], quality: 'draft', tag: 'draft-1' },
+  } as const
+
+  it('writes the choice and the time, and nothing else', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    const before = await store.get(project.id)
+    expect(before.export, 'every project starts on the reel').toEqual({
+      preset: 'instagram-reel',
+      options: {},
+    })
+    const after = await store.setExport(project.id, {
+      ...LINKEDIN,
+      options: { ...LINKEDIN.options, lines: [...LINKEDIN.options.lines] },
+    })
+    expect(after.export).toEqual(LINKEDIN)
+    expect(after.theme).toBe(before.theme)
+    expect(after.layout, 'a choice is not a build of any kind').toBe(before.layout)
+    expect(after.modified >= before.modified).toBe(true)
+    const fresh = new ProjectStore(home, (message) => lines.push(message))
+    expect((await fresh.get(project.id)).export, 'and it is on disk').toEqual(LINKEDIN)
+  })
+
+  it('refuses a choice the engine would refuse, and writes nothing', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    for (const choice of [
+      null,
+      { preset: 'portfolio-mp4', options: {} },
+      { preset: 'linkedin-video', storyboard: 'nope', options: {} },
+      { preset: 'linkedin-video', options: { safe: true } },
+      { preset: 'linkedin-video', options: { tag: 'has space' } },
+      { preset: 'linkedin-video', options: { at: '7.30' } },
+    ]) {
+      await expect(
+        store.setExport(project.id, choice as never),
+        JSON.stringify(choice),
+      ).rejects.toThrow()
+    }
+    expect((await store.get(project.id)).export, 'nothing was written').toEqual({
+      preset: 'instagram-reel',
+      options: {},
+    })
+  })
+
+  it('reads a record from before the export tab, or with a broken choice, as the reel', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    const file = join(home, 'projects', project.id, 'project.json')
+    const current = await store.get(project.id)
+    const { export: _dropped, readOnly: _readOnly, ...older } = current
+    void _dropped
+    void _readOnly
+    await writeFile(file, JSON.stringify(older), 'utf8')
+    expect((await store.get(project.id)).export).toEqual({ preset: 'instagram-reel', options: {} })
+    await writeFile(
+      file,
+      JSON.stringify({ ...older, export: { preset: 'portfolio-mp4', options: { clock: false } } }),
+      'utf8',
+    )
+    expect((await store.get(project.id)).export).toEqual({ preset: 'instagram-reel', options: {} })
+  })
+
+  it('refuses a record a newer version of the app wrote', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    const file = join(home, 'projects', project.id, 'project.json')
+    const current = await store.get(project.id)
+    await writeFile(file, JSON.stringify({ ...current, version: 99 }), 'utf8')
+    await expect(store.setExport(project.id, LINKEDIN as never)).rejects.toThrow('read-only')
+  })
+})
+
+// Every writer reads the record, changes its field and writes the whole
+// record back. Two on one project at once would each put the other's field
+// back as it was, so they take turns, per project.
+describe('writes to one project take turns', () => {
+  const choice = { preset: 'linkedin-video', storyboard: 'day', options: { clock: false } } as const
+  const done = {
+    date: '2026-09-15',
+    layout: 'c'.repeat(64),
+    service: {
+      start: '2026-01-01',
+      end: '2026-12-31',
+      busiest: '2026-09-15',
+      anchor: '2026-09-08',
+    },
+    made: '2026-09-10T12:00:00+00:00',
+    built: { mode: 'all', agency: null },
+  }
+
+  it('keeps both a choice of export and a layout written at the same moment', async () => {
+    for (let round = 0; round < 5; round++) {
+      const project = await store.create({ name: `LA ${round}`, feed: 'la-metro-rail' })
+      const writes =
+        round % 2 === 0
+          ? [store.setExport(project.id, choice as never), store.completeLayout(project.id, done)]
+          : [store.completeLayout(project.id, done), store.setExport(project.id, choice as never)]
+      await Promise.all(writes)
+      const after = await store.get(project.id)
+      expect(after.export, `round ${round}`).toEqual(choice)
+      expect(after.layout, `round ${round}`).toBe(done.layout)
+      expect(after.made, `round ${round}`).toBe(done.made)
+      expect(after.built, `round ${round}`).toEqual(done.built)
+    }
+  })
+
+  it('counts a write that is waiting its turn, so the reset sees it', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    const first = store.setTheme(project.id, 'sepia')
+    const second = store.setExport(project.id, choice as never)
+    expect(store.writing, 'one writing and one waiting behind it').toBe(2)
+    await Promise.all([first, second])
+    expect(store.writing).toBe(0)
+  })
+
+  it('refuses a write queued behind a delete, and writes nothing', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    const removed = store.delete(project.id)
+    const late = store.setExport(project.id, choice as never)
+    await expect(removed).resolves.toMatchObject({ failed: [] })
+    await expect(late).rejects.toThrow('not found')
+    await expect(stat(join(root, project.id)), 'no folder was made again').rejects.toThrow()
+    expect(store.writing).toBe(0)
+  })
+
+  it('keeps every field when every writer lands at once, and a failure does not stop the next', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    const results = await Promise.allSettled([
+      store.completeLayout(project.id, done),
+      store.setTheme(project.id, 'sepia'),
+      store.setExport(project.id, { preset: 'portfolio-svg', options: {} } as never),
+      store.completeColors(project.id, { colors: { A: '#0072bc' }, defaultColor: '#112233' }),
+      store.completeOrder(project.id, ['K', 'A']),
+      store.setExport(project.id, choice as never),
+      store.rename(project.id, 'Los Angeles'),
+      store.setInputs(project.id, { mode: 'subway', agency: null }),
+    ])
+    expect(results.map((r) => r.status)).toEqual([
+      'fulfilled',
+      'fulfilled',
+      'rejected',
+      'fulfilled',
+      'fulfilled',
+      'fulfilled',
+      'fulfilled',
+      'fulfilled',
+    ])
+    expect(await store.get(project.id)).toMatchObject({
+      name: 'Los Angeles',
+      mode: 'subway',
+      theme: 'sepia',
+      layout: done.layout,
+      colors: { A: '#0072bc' },
+      defaultColor: '#112233',
+      lineOrder: ['K', 'A'],
+      export: choice,
+    })
   })
 })
 

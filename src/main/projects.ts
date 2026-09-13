@@ -40,6 +40,12 @@ import {
   validateServiceWindow,
   withinWindow,
 } from '../shared/project'
+import {
+  copyChoice,
+  DEFAULT_CHOICE,
+  validateExportChoice,
+  type ExportChoice,
+} from '../shared/export'
 import { isLayoutId, type LayoutDone, type LayoutResult } from '../shared/layout'
 import { isValidProjectId } from './paths'
 
@@ -110,6 +116,37 @@ export class ProjectStore {
    */
   get writing(): number {
     return this.#writing
+  }
+
+  /**
+   * One project's load-modify-writes, one after another. Every writer reads
+   * the record, changes one field and writes the whole record back, so two
+   * at once on one project would each write the other's field back as it
+   * was: a choice of export made during a re-layout could put back the old
+   * layout, or be put back itself. Chained per identifier, each writer reads
+   * what the one before it wrote. Projects do not wait for each other.
+   *
+   * A method running inside the queue must never call another queued
+   * method on the same identifier: that call joins the queue behind the
+   * one making it, and each waits for the other forever. Share a private
+   * helper instead. A queued write counts in `writing` from the moment it
+   * is asked for, so the reset's guard sees writes that are still waiting.
+   */
+  readonly #queues = new Map<string, Promise<void>>()
+
+  async #serial<T>(id: string, work: () => Promise<T>): Promise<T> {
+    const before = this.#queues.get(id) ?? Promise.resolve()
+    const run = before.then(work)
+    const settled = run.then(
+      () => undefined,
+      () => undefined,
+    )
+    this.#queues.set(id, settled)
+    try {
+      return await run
+    } finally {
+      if (this.#queues.get(id) === settled) this.#queues.delete(id)
+    }
   }
 
   /** Count a write for as long as it is touching the disk. */
@@ -294,6 +331,7 @@ export class ProjectStore {
       defaultColor: DEFAULT_COLOR,
       lineOrder: [],
       theme: DEFAULT_THEME,
+      export: copyChoice(DEFAULT_CHOICE),
       layout: null,
       made: null,
       built: null,
@@ -311,7 +349,7 @@ export class ProjectStore {
   }
 
   async rename(id: string, name: string): Promise<ProjectRecord> {
-    return this.#track(() => this.#renameTracked(id, name))
+    return this.#track(() => this.#serial(id, () => this.#renameTracked(id, name)))
   }
 
   async #renameTracked(id: string, name: string): Promise<ProjectRecord> {
@@ -339,7 +377,7 @@ export class ProjectStore {
    * out here. An empty agency is none.
    */
   async setInputs(id: string, inputs: ProjectInputs): Promise<ProjectRecord> {
-    return this.#track(() => this.#setInputsTracked(id, inputs))
+    return this.#track(() => this.#serial(id, () => this.#setInputsTracked(id, inputs)))
   }
 
   async #setInputsTracked(id: string, inputs: ProjectInputs): Promise<ProjectRecord> {
@@ -375,7 +413,7 @@ export class ProjectStore {
    * feed may carry a fresh calendar.
    */
   async completeLayout(id: string, done: LayoutDone): Promise<LayoutResult> {
-    return this.#track(() => this.#completeLayoutTracked(id, done))
+    return this.#track(() => this.#serial(id, () => this.#completeLayoutTracked(id, done)))
   }
 
   async #completeLayoutTracked(id: string, done: LayoutDone): Promise<LayoutResult> {
@@ -419,7 +457,7 @@ export class ProjectStore {
    * engine answered, and there must be a layout to have drawn from.
    */
   async completeRebuild(id: string, done: RebuildDone): Promise<ProjectRecord> {
-    return this.#track(() => this.#completeRebuildTracked(id, done))
+    return this.#track(() => this.#serial(id, () => this.#completeRebuildTracked(id, done)))
   }
 
   async #completeRebuildTracked(id: string, done: RebuildDone): Promise<ProjectRecord> {
@@ -450,7 +488,7 @@ export class ProjectStore {
    * here; the app resolves nothing and stores no feed colour.
    */
   async completeColors(id: string, palette: Palette): Promise<ProjectRecord> {
-    return this.#track(() => this.#completeColorsTracked(id, palette))
+    return this.#track(() => this.#serial(id, () => this.#completeColorsTracked(id, palette)))
   }
 
   async #completeColorsTracked(id: string, palette: Palette): Promise<ProjectRecord> {
@@ -477,7 +515,7 @@ export class ProjectStore {
    * is written is what was seen.
    */
   async completeOrder(id: string, order: LineOrder): Promise<ProjectRecord> {
-    return this.#track(() => this.#completeOrderTracked(id, order))
+    return this.#track(() => this.#serial(id, () => this.#completeOrderTracked(id, order)))
   }
 
   async #completeOrderTracked(id: string, order: LineOrder): Promise<ProjectRecord> {
@@ -503,7 +541,7 @@ export class ProjectStore {
    * colours as CSS variables and restyles itself from its own address.
    */
   async setTheme(id: string, theme: Theme): Promise<ProjectRecord> {
-    return this.#track(() => this.#setThemeTracked(id, theme))
+    return this.#track(() => this.#serial(id, () => this.#setThemeTracked(id, theme)))
   }
 
   async #setThemeTracked(id: string, theme: Theme): Promise<ProjectRecord> {
@@ -521,9 +559,33 @@ export class ProjectStore {
     return updated
   }
 
+  /**
+   * What a person set the project to export (A5-01): the preset, the
+   * storyboard and the options, written the moment they are chosen, as a
+   * theme is. Nothing is built for it; a plan is asked when the export is.
+   */
+  async setExport(id: string, choice: ExportChoice): Promise<ProjectRecord> {
+    return this.#track(() => this.#serial(id, () => this.#setExportTracked(id, choice)))
+  }
+
+  async #setExportTracked(id: string, choice: ExportChoice): Promise<ProjectRecord> {
+    this.checkId(id)
+    check(validateExportChoice(choice))
+    const { record, readOnly } = await this.load(id)
+    if (readOnly) throw new Error('read-only')
+    const updated: ProjectRecord = {
+      ...record,
+      version: RECORD_VERSION,
+      export: copyChoice(choice),
+      modified: new Date().toISOString(),
+    }
+    await this.writeAtomic(id, updated)
+    return updated
+  }
+
   async delete(id: string): Promise<DeleteResult> {
     this.checkId(id)
-    return this.#track(() => this.#deleteTracked(id))
+    return this.#track(() => this.#serial(id, () => this.#deleteTracked(id)))
   }
 
   async #deleteTracked(id: string): Promise<DeleteResult> {

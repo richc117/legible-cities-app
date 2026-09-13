@@ -17,6 +17,7 @@ The on-disk form of `ProjectRecord` (`data-model.md`), version 1:
   "defaultColor": "#888888",
   "lineOrder": [],
   "theme": "warm-dark",
+  "export": { "preset": "instagram-reel", "options": {} },
   "layout": null,
   "made": null,
   "built": null,
@@ -68,6 +69,17 @@ The on-disk form of `ProjectRecord` (`data-model.md`), version 1:
   the export as `dark` or `light`. Anything else reads as `warm-dark` and
   is refused on write. It is the project's theme and not the interface's,
   which is a setting of its own (A1-04).
+- `export` (added by A5-01, still version 1) is what the project was last
+  set to export from the export tab: `{ preset, storyboard?, options }`,
+  where `preset` is one of the thirteen social presets the app offers,
+  `storyboard` is absent for the preset's own, and `options` holds only
+  what a person changed from the engine's defaults among `view`, `labels`,
+  `title`, `clock`, `at` (the engine's `Clock`), `lines` (labels under the
+  `colors` rules), `quality` and `tag` (the engine's `Token`). The theme,
+  the safe zones and the fade are never in it. A block that is not that
+  shape reads as the reel with no options, which is what the one button
+  exported before, and is refused on write
+  (specs/022-export-tab).
 - A write stores the record as the reader normalised it, stamped with the
   current `version`: unknown keys are dropped, an invalid colour, theme or
   date falls back to its default, and a missing timestamp becomes the epoch.

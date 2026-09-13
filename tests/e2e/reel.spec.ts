@@ -95,6 +95,7 @@ function home(): { engineHome: string; exportFolder: string; id: string } {
     defaultColor: DEFAULT_COLOR,
     lineOrder: [],
     theme: DEFAULT_THEME,
+    export: { preset: 'instagram-reel', options: {} },
     // The page is the checkout's; the identifier only has to be one.
     layout: 'f'.repeat(64),
     made: null,
@@ -198,10 +199,13 @@ test('the Los Angeles reel, exported twice, decodes to the same frames within th
     await page.getByRole('button', { name: 'Open Los Angeles' }).click()
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Los Angeles')
 
+    // The export lives on its own tab (A5-01), and a project from before it
+    // starts there on the reel with the engine's defaults.
+    await page.getByRole('tab', { name: 'Export' }).click()
     const file = join(h.exportFolder, 'Los Angeles', REEL)
     const exportOnce = async (): Promise<number> => {
       const t0 = Date.now()
-      await page.getByRole('button', { name: 'Export reel' }).click()
+      await page.getByRole('button', { name: 'Export', exact: true }).click()
       await expect(page.getByText(/^Exported /)).toBeVisible({ timeout: 20 * 60_000 })
       return Date.now() - t0
     }

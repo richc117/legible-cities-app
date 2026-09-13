@@ -2,8 +2,8 @@ import { isEngineErrorShape, ERROR_CODES, type EngineState } from '../../../shar
 import {
   EXPORT_STAGES,
   type ExportProgress,
+  type ExportChoice,
   type ExportResult,
-  type OfferedPreset,
 } from '../../../shared/export'
 import type { RunState } from '../../../shared/layout'
 import type { ProjectRecord } from '../../../shared/project'
@@ -38,7 +38,7 @@ export interface ExportSnapshot {
 
 /** What the page can do with an export, and no more; a test passes a stub. */
 export interface ExportBridge {
-  run(projectId: string, preset: OfferedPreset): { id: string; result: Promise<ExportResult> }
+  run(projectId: string, choice: ExportChoice): { id: string; result: Promise<ExportResult> }
   cancel(id: string): Promise<void>
   reveal(id: string): Promise<void>
   onProgress(listener: (progress: ExportProgress) => void): () => void
@@ -83,12 +83,10 @@ export class ExportRun {
   /** The last export that wrote a file, for the reveal. */
   #written: string | null = null
   readonly #bridge: ExportBridge
-  readonly #preset: OfferedPreset
   readonly #off: () => void
 
-  constructor(bridge: ExportBridge, preset: OfferedPreset) {
+  constructor(bridge: ExportBridge) {
     this.#bridge = bridge
-    this.#preset = preset
     // One subscription for the run's whole life, filtered by the id of the
     // export in flight, so a report for another project's export is ignored.
     this.#off = bridge.onProgress((progress) => {
@@ -110,8 +108,12 @@ export class ExportRun {
     for (const listener of this.#listeners) listener(this.#snapshot)
   }
 
-  /** The project and the engine's state as they are at this moment. */
-  start(project: ProjectRecord, engine: EngineState | null): void {
+  /**
+   * The project, the engine's state and what to export, as they are at this
+   * moment. The choice is the export tab's (A5-01); the main process checks
+   * it again before the engine sees it.
+   */
+  start(project: ProjectRecord, engine: EngineState | null, choice: ExportChoice): void {
     if (this.#snapshot.state === 'running') return
 
     if (engine === null || engine.state !== 'ready') {
@@ -140,7 +142,7 @@ export class ExportRun {
       left: false,
     })
 
-    const request = this.#bridge.run(project.id, this.#preset)
+    const request = this.#bridge.run(project.id, choice)
     this.#id = request.id
     request.result.then(
       (result) => {

@@ -1,0 +1,669 @@
+{
+  "engine": "v0.8.2",
+  "source": "schematic.export.preset_table() and storyboard_table() at the engine's v0.8.2 tag, copied by hand; a pin that changes a preset or a storyboard changes this file in the same pull request",
+  "presets": [
+    {
+      "name": "instagram-post",
+      "platform": "Instagram",
+      "width": 1080,
+      "height": 1350,
+      "kind": "still",
+      "format": "png",
+      "view": "map",
+      "labels": true,
+      "storyboard": null,
+      "fps": 30,
+      "max_bytes": null,
+      "frame_top": 0.46,
+      "safe_zones": false,
+      "note": ""
+    },
+    {
+      "name": "instagram-square",
+      "platform": "Instagram",
+      "width": 1080,
+      "height": 1080,
+      "kind": "still",
+      "format": "png",
+      "view": "map",
+      "labels": true,
+      "storyboard": null,
+      "fps": 30,
+      "max_bytes": null,
+      "frame_top": 0.46,
+      "safe_zones": false,
+      "note": ""
+    },
+    {
+      "name": "instagram-story",
+      "platform": "Instagram",
+      "width": 1080,
+      "height": 1920,
+      "kind": "still",
+      "format": "png",
+      "view": "map",
+      "labels": true,
+      "storyboard": null,
+      "fps": 30,
+      "max_bytes": null,
+      "frame_top": 0.46,
+      "safe_zones": true,
+      "note": ""
+    },
+    {
+      "name": "linkedin",
+      "platform": "LinkedIn",
+      "width": 1200,
+      "height": 1200,
+      "kind": "still",
+      "format": "png",
+      "view": "map",
+      "labels": true,
+      "storyboard": null,
+      "fps": 30,
+      "max_bytes": null,
+      "frame_top": 0.46,
+      "safe_zones": false,
+      "note": ""
+    },
+    {
+      "name": "linkedin-link",
+      "platform": "LinkedIn",
+      "width": 1200,
+      "height": 627,
+      "kind": "still",
+      "format": "png",
+      "view": "map",
+      "labels": true,
+      "storyboard": null,
+      "fps": 30,
+      "max_bytes": null,
+      "frame_top": 0.46,
+      "safe_zones": false,
+      "note": "link-preview shape; the map gets very little height"
+    },
+    {
+      "name": "bluesky",
+      "platform": "Bluesky",
+      "width": 1200,
+      "height": 900,
+      "kind": "still",
+      "format": "jpg",
+      "view": "map",
+      "labels": true,
+      "storyboard": null,
+      "fps": 30,
+      "max_bytes": 976000,
+      "frame_top": 0.46,
+      "safe_zones": false,
+      "note": ""
+    },
+    {
+      "name": "x",
+      "platform": "X",
+      "width": 1600,
+      "height": 900,
+      "kind": "still",
+      "format": "png",
+      "view": "map",
+      "labels": true,
+      "storyboard": null,
+      "fps": 30,
+      "max_bytes": null,
+      "frame_top": 0.46,
+      "safe_zones": false,
+      "note": ""
+    },
+    {
+      "name": "instagram-reel",
+      "platform": "Instagram",
+      "width": 1080,
+      "height": 1920,
+      "kind": "video",
+      "format": "mp4",
+      "view": "map",
+      "labels": true,
+      "storyboard": "tour",
+      "fps": 30,
+      "max_bytes": null,
+      "frame_top": 0.46,
+      "safe_zones": true,
+      "note": ""
+    },
+    {
+      "name": "bluesky-video",
+      "platform": "Bluesky",
+      "width": 1080,
+      "height": 1350,
+      "kind": "video",
+      "format": "mp4",
+      "view": "map",
+      "labels": true,
+      "storyboard": "tour",
+      "fps": 30,
+      "max_bytes": 50000000,
+      "frame_top": 0.46,
+      "safe_zones": false,
+      "note": ""
+    },
+    {
+      "name": "linkedin-video",
+      "platform": "LinkedIn",
+      "width": 1200,
+      "height": 1200,
+      "kind": "video",
+      "format": "mp4",
+      "view": "map",
+      "labels": true,
+      "storyboard": "tour",
+      "fps": 30,
+      "max_bytes": null,
+      "frame_top": 0.46,
+      "safe_zones": false,
+      "note": ""
+    },
+    {
+      "name": "instagram-reel-gif",
+      "platform": "Instagram",
+      "width": 630,
+      "height": 1120,
+      "kind": "video",
+      "format": "gif",
+      "view": "map",
+      "labels": true,
+      "storyboard": "morph",
+      "fps": 12,
+      "max_bytes": null,
+      "frame_top": 0.46,
+      "safe_zones": false,
+      "note": "9:16 as GIF; half the mp4's size and rate, or it is unusable"
+    },
+    {
+      "name": "linkedin-gif",
+      "platform": "LinkedIn",
+      "width": 640,
+      "height": 640,
+      "kind": "video",
+      "format": "gif",
+      "view": "map",
+      "labels": true,
+      "storyboard": "morph",
+      "fps": 12,
+      "max_bytes": null,
+      "frame_top": 0.46,
+      "safe_zones": false,
+      "note": "square GIF"
+    },
+    {
+      "name": "bluesky-gif",
+      "platform": "Bluesky",
+      "width": 640,
+      "height": 800,
+      "kind": "video",
+      "format": "gif",
+      "view": "map",
+      "labels": true,
+      "storyboard": "morph",
+      "fps": 12,
+      "max_bytes": null,
+      "frame_top": 0.46,
+      "safe_zones": false,
+      "note": "4:5 GIF. Bluesky caps an image at ~1 MB, which nothing this long will meet -- post the mp4 there and keep this for a page"
+    },
+    {
+      "name": "portfolio-svg",
+      "platform": "Portfolio",
+      "width": 0,
+      "height": 0,
+      "kind": "vector",
+      "format": "svg",
+      "view": "map",
+      "labels": true,
+      "storyboard": null,
+      "fps": 30,
+      "max_bytes": null,
+      "frame_top": 0.46,
+      "safe_zones": false,
+      "note": "both palettes, at the map's own aspect"
+    },
+    {
+      "name": "portfolio-mp4",
+      "platform": "Portfolio",
+      "width": 1200,
+      "height": 900,
+      "kind": "video",
+      "format": "mp4",
+      "view": "map",
+      "labels": true,
+      "storyboard": "tour",
+      "fps": 30,
+      "max_bytes": null,
+      "frame_top": 0.46,
+      "safe_zones": false,
+      "note": ""
+    },
+    {
+      "name": "portfolio-gif",
+      "platform": "Portfolio",
+      "width": 900,
+      "height": 675,
+      "kind": "video",
+      "format": "gif",
+      "view": "map",
+      "labels": true,
+      "storyboard": "morph",
+      "fps": 24,
+      "max_bytes": null,
+      "frame_top": 0.46,
+      "safe_zones": false,
+      "note": "palette-based GIF; keep it short, they are heavy"
+    }
+  ],
+  "storyboards": [
+    {
+      "name": "transform",
+      "views": "geographic -> map -> linear -> time",
+      "seconds": 27,
+      "geographic": true,
+      "beats": [
+        {
+          "secs": 4,
+          "view": "geographic",
+          "labels": null,
+          "at": "08:00",
+          "speed": 120,
+          "sweep": false,
+          "hours": null,
+          "span": null,
+          "tween": 0
+        },
+        {
+          "secs": 5,
+          "view": "map",
+          "labels": null,
+          "at": null,
+          "speed": null,
+          "sweep": false,
+          "hours": null,
+          "span": null,
+          "tween": null
+        },
+        {
+          "secs": 5,
+          "view": "linear",
+          "labels": null,
+          "at": null,
+          "speed": null,
+          "sweep": false,
+          "hours": null,
+          "span": null,
+          "tween": null
+        },
+        {
+          "secs": 4,
+          "view": "time",
+          "labels": null,
+          "at": null,
+          "speed": null,
+          "sweep": false,
+          "hours": null,
+          "span": null,
+          "tween": null
+        },
+        {
+          "secs": 9,
+          "view": null,
+          "labels": null,
+          "at": null,
+          "speed": null,
+          "sweep": true,
+          "hours": 3,
+          "span": null,
+          "tween": null
+        }
+      ]
+    },
+    {
+      "name": "transform-loop",
+      "views": "geographic -> map -> linear",
+      "seconds": 11.5,
+      "geographic": true,
+      "beats": [
+        {
+          "secs": 2.5,
+          "view": "geographic",
+          "labels": null,
+          "at": "08:00",
+          "speed": 120,
+          "sweep": false,
+          "hours": null,
+          "span": null,
+          "tween": 0
+        },
+        {
+          "secs": 3,
+          "view": "map",
+          "labels": null,
+          "at": null,
+          "speed": null,
+          "sweep": false,
+          "hours": null,
+          "span": null,
+          "tween": null
+        },
+        {
+          "secs": 3,
+          "view": "linear",
+          "labels": null,
+          "at": null,
+          "speed": null,
+          "sweep": false,
+          "hours": null,
+          "span": null,
+          "tween": null
+        },
+        {
+          "secs": 3,
+          "view": "geographic",
+          "labels": null,
+          "at": null,
+          "speed": null,
+          "sweep": false,
+          "hours": null,
+          "span": null,
+          "tween": null
+        }
+      ]
+    },
+    {
+      "name": "essay-loop",
+      "views": "geographic -> map -> linear",
+      "seconds": 20.200000000000003,
+      "geographic": true,
+      "beats": [
+        {
+          "secs": 2.6,
+          "view": "geographic",
+          "labels": null,
+          "at": "08:00",
+          "speed": 60,
+          "sweep": false,
+          "hours": null,
+          "span": null,
+          "tween": 0
+        },
+        {
+          "secs": 4.4,
+          "view": "map",
+          "labels": null,
+          "at": null,
+          "speed": null,
+          "sweep": false,
+          "hours": null,
+          "span": null,
+          "tween": 1.8
+        },
+        {
+          "secs": 4.4,
+          "view": "linear",
+          "labels": null,
+          "at": null,
+          "speed": null,
+          "sweep": false,
+          "hours": null,
+          "span": null,
+          "tween": 1.8
+        },
+        {
+          "secs": 4.4,
+          "view": "map",
+          "labels": null,
+          "at": null,
+          "speed": null,
+          "sweep": false,
+          "hours": null,
+          "span": null,
+          "tween": 1.8
+        },
+        {
+          "secs": 4.4,
+          "view": "geographic",
+          "labels": null,
+          "at": null,
+          "speed": null,
+          "sweep": false,
+          "hours": null,
+          "span": null,
+          "tween": 1.8
+        }
+      ]
+    },
+    {
+      "name": "tour",
+      "views": "map -> linear -> time",
+      "seconds": 25,
+      "geographic": false,
+      "beats": [
+        {
+          "secs": 6,
+          "view": "map",
+          "labels": null,
+          "at": "05:30",
+          "speed": 240,
+          "sweep": false,
+          "hours": null,
+          "span": null,
+          "tween": null
+        },
+        {
+          "secs": 6,
+          "view": "linear",
+          "labels": null,
+          "at": null,
+          "speed": null,
+          "sweep": false,
+          "hours": null,
+          "span": null,
+          "tween": null
+        },
+        {
+          "secs": 3,
+          "view": "time",
+          "labels": null,
+          "at": null,
+          "speed": null,
+          "sweep": false,
+          "hours": null,
+          "span": null,
+          "tween": null
+        },
+        {
+          "secs": 10,
+          "view": null,
+          "labels": null,
+          "at": null,
+          "speed": null,
+          "sweep": true,
+          "hours": 4,
+          "span": null,
+          "tween": null
+        }
+      ]
+    },
+    {
+      "name": "reveal",
+      "views": "map -> linear -> time",
+      "seconds": 29,
+      "geographic": false,
+      "beats": [
+        {
+          "secs": 4,
+          "view": "map",
+          "labels": true,
+          "at": "05:30",
+          "speed": 240,
+          "sweep": false,
+          "hours": null,
+          "span": null,
+          "tween": null
+        },
+        {
+          "secs": 6,
+          "view": null,
+          "labels": false,
+          "at": null,
+          "speed": null,
+          "sweep": false,
+          "hours": null,
+          "span": null,
+          "tween": null
+        },
+        {
+          "secs": 6,
+          "view": "linear",
+          "labels": null,
+          "at": null,
+          "speed": null,
+          "sweep": false,
+          "hours": null,
+          "span": null,
+          "tween": null
+        },
+        {
+          "secs": 3,
+          "view": "time",
+          "labels": null,
+          "at": null,
+          "speed": null,
+          "sweep": false,
+          "hours": null,
+          "span": null,
+          "tween": null
+        },
+        {
+          "secs": 10,
+          "view": null,
+          "labels": null,
+          "at": null,
+          "speed": null,
+          "sweep": true,
+          "hours": 4,
+          "span": null,
+          "tween": null
+        }
+      ]
+    },
+    {
+      "name": "morph",
+      "views": "map -> linear -> time",
+      "seconds": 9.0,
+      "geographic": false,
+      "beats": [
+        {
+          "secs": 1.5,
+          "view": "map",
+          "labels": null,
+          "at": "08:00",
+          "speed": 120,
+          "sweep": false,
+          "hours": null,
+          "span": null,
+          "tween": null
+        },
+        {
+          "secs": 2.5,
+          "view": "linear",
+          "labels": null,
+          "at": null,
+          "speed": null,
+          "sweep": false,
+          "hours": null,
+          "span": null,
+          "tween": null
+        },
+        {
+          "secs": 2.5,
+          "view": "time",
+          "labels": null,
+          "at": null,
+          "speed": null,
+          "sweep": false,
+          "hours": null,
+          "span": null,
+          "tween": null
+        },
+        {
+          "secs": 2.5,
+          "view": "map",
+          "labels": null,
+          "at": null,
+          "speed": null,
+          "sweep": false,
+          "hours": null,
+          "span": null,
+          "tween": null
+        }
+      ]
+    },
+    {
+      "name": "day",
+      "views": "map",
+      "seconds": 20,
+      "geographic": false,
+      "beats": [
+        {
+          "secs": 1,
+          "view": "map",
+          "labels": null,
+          "at": "05:00",
+          "speed": 0,
+          "sweep": false,
+          "hours": null,
+          "span": null,
+          "tween": null
+        },
+        {
+          "secs": 18,
+          "view": null,
+          "labels": null,
+          "at": null,
+          "speed": null,
+          "sweep": true,
+          "hours": null,
+          "span": null,
+          "tween": null
+        },
+        {
+          "secs": 1,
+          "view": null,
+          "labels": null,
+          "at": null,
+          "speed": 0,
+          "sweep": false,
+          "hours": null,
+          "span": null,
+          "tween": null
+        }
+      ]
+    },
+    {
+      "name": "run",
+      "views": "map",
+      "seconds": 20,
+      "geographic": false,
+      "beats": [
+        {
+          "secs": 20,
+          "view": "map",
+          "labels": null,
+          "at": "07:30",
+          "speed": 240,
+          "sweep": false,
+          "hours": null,
+          "span": null,
+          "tween": null
+        }
+      ]
+    }
+  ]
+}

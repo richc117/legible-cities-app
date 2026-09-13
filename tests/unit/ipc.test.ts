@@ -76,6 +76,7 @@ describe('registerProjectHandlers', () => {
       [CHANNELS.projectsCompleteColors, 'aaaaaaaaaaaa', { colors: {}, defaultColor: '#888888' }],
       [CHANNELS.projectsCompleteOrder, 'aaaaaaaaaaaa', ['A']],
       [CHANNELS.projectsSetTheme, 'aaaaaaaaaaaa', 'sepia'],
+      [CHANNELS.projectsSetExport, 'aaaaaaaaaaaa', { preset: 'instagram-reel', options: {} }],
     ] as const
     for (const [channel, ...args] of writes) {
       await expect(h.call(channel, ...args), channel).rejects.toThrow(why)
@@ -289,6 +290,38 @@ describe('registerProjectHandlers', () => {
       { method: 'setTheme', args: ['abcdefghijk1', 'sepia'] },
       { method: 'setTheme', args: ['abcdefghijk1', 'warm-dark'] },
     ])
+  })
+
+  it('refuses an export choice the engine would refuse, and passes a copy of one it would take', async () => {
+    const { call, calls } = harness()
+    for (const choice of [
+      undefined,
+      null,
+      'instagram-reel',
+      { preset: 'portfolio-svg', options: {} },
+      { preset: 'instagram-reel' },
+      { preset: 'instagram-reel', options: { safe: true } },
+      { preset: 'instagram-reel', options: { theme: 'light' } },
+      { preset: 'instagram-reel', options: { fade: 1 } },
+      { preset: 'instagram-reel', options: { lines: ['A', 'A'] } },
+      { preset: 'instagram-reel', options: { tag: '-leading' } },
+      { preset: 'instagram-reel', storyboard: 'tour', options: {}, more: true },
+    ]) {
+      await expect(
+        call(CHANNELS.projectsSetExport, 'abcdefghijk1', choice),
+        JSON.stringify(choice) ?? 'undefined',
+      ).rejects.toThrow()
+    }
+    expect(calls, 'nothing reached the store').toEqual([])
+
+    const choice = {
+      preset: 'bluesky-gif',
+      storyboard: 'reveal',
+      options: { labels: false, view: 'linear', lines: ['K'], tag: 'v2' },
+    }
+    await call(CHANNELS.projectsSetExport, 'abcdefghijk1', choice)
+    expect(calls).toEqual([{ method: 'setExport', args: ['abcdefghijk1', choice] }])
+    expect(calls[0].args[1], 'a copy, not the caller’s object').not.toBe(choice)
   })
 
   it('passes a palette the panel would send, and only its two fields', async () => {

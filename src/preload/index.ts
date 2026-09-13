@@ -78,6 +78,7 @@ const api: Api = {
     completeColors: (id, palette) => invoke(CHANNELS.projectsCompleteColors, id, palette),
     completeOrder: (id, order) => invoke(CHANNELS.projectsCompleteOrder, id, order),
     setTheme: (id, theme) => invoke(CHANNELS.projectsSetTheme, id, theme),
+    setExport: (id, choice) => invoke(CHANNELS.projectsSetExport, id, choice),
   },
   viewer: {
     attach: (projectId) => invoke(CHANNELS.viewerAttach, projectId),
@@ -100,8 +101,9 @@ const api: Api = {
     write: (text) => invoke(CHANNELS.clipboardWrite, text),
   },
   export: {
-    run: (projectId, preset) =>
-      startJob(CHANNELS.exportRun, CHANNELS.exportSettled, projectId, preset),
+    run: (projectId, choice) =>
+      startJob(CHANNELS.exportRun, CHANNELS.exportSettled, projectId, choice),
+    preview: (projectId, choice) => invoke(CHANNELS.exportPreview, projectId, choice),
     cancel: (id) => invoke(CHANNELS.exportCancel, id),
     reveal: (id) => invoke(CHANNELS.exportReveal, id),
     onProgress: (listener) => subscribe(CHANNELS.exportProgress, listener),

@@ -3,15 +3,26 @@
 // the export. The engine, the store and the capture are fakes that record
 // what they were asked; a cancel is delivered wherever the export is.
 
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { CaptureError, type CaptureOptions, type CaptureResult } from '../../src/main/capture'
 import {
   Exporter,
   folderName,
+  isProjectPage,
   jobOf,
+  STILL_FRAME,
   normalise,
   pageUrl,
   themeFor,
@@ -20,11 +31,25 @@ import {
 import type { Notification } from '../../src/main/sidecar'
 import type { CaptureJob } from '../../src/shared/capture'
 import { EngineError, ERROR_CODES } from '../../src/shared/engine'
-import type { ExportProgress } from '../../src/shared/export'
+import {
+  DEFAULT_CHOICE,
+  OFFERED_PRESETS,
+  STORYBOARD_NAMES,
+  planOptions,
+  sentChoice,
+  validateChoiceOptions,
+  validateExportChoice,
+  type ExportChoice,
+  type ExportProgress,
+} from '../../src/shared/export'
 import { DEFAULT_STYLE, type ProjectRecord } from '../../src/shared/project'
-import type { CaptureJob as PlannedJob } from '../../src/shared/protocol'
+import type { CaptureJob as PlannedJob, Preset } from '../../src/shared/protocol'
+import { FAKE_ENGINE, findPython } from '../support/python'
 
 const tick = (): Promise<void> => new Promise((r) => setImmediate(r))
+
+/** What the one button exported before the export tab: the reel, with the engine's defaults. */
+const REEL: ExportChoice = { preset: 'instagram-reel', options: {} }
 
 interface Pending {
   id: number
@@ -34,8 +59,22 @@ interface Pending {
   reject(error: unknown): void
 }
 
-function fakeEngine(ready = true) {
+/**
+ * The engine's preset table at the pinned tag (v0.8.2), as `export.presets`
+ * answers it; the stand-in engine is held to the same file below.
+ */
+const ENGINE_TABLES = JSON.parse(
+  readFileSync(resolve(__dirname, '../fixtures/export-tables-v0.8.2.json'), 'utf8'),
+) as { engine: string; presets: Preset[]; storyboards: unknown[] }
+
+/**
+ * A fake engine. `export.presets` is answered at once from the pinned
+ * table, under ids of its own, so the plan and the encode keep the ids and
+ * the places in `requests` the tests count by; `tables` counts the asks.
+ */
+function fakeEngine(ready = true, presets: unknown = { presets: ENGINE_TABLES.presets }) {
   const requests: Pending[] = []
+  const tables: number[] = []
   const cancelled: number[] = []
   const listeners = new Set<(n: Notification) => void>()
   let nextId = 1
@@ -52,6 +91,11 @@ function fakeEngine(ready = true) {
             }),
           ),
         }
+      }
+      if (method === 'export.presets') {
+        const id = 1000 + tables.length
+        tables.push(id)
+        return { id, result: Promise.resolve(presets) }
       }
       const id = nextId++
       let resolve!: (v: unknown) => void
@@ -75,7 +119,7 @@ function fakeEngine(ready = true) {
   }
   const engineCancelled = (p: Pending): void =>
     p.reject(new EngineError(ERROR_CODES.cancelled, 'Request Cancelled'))
-  return { engine, requests, cancelled, notify, engineCancelled, listeners }
+  return { engine, requests, tables, cancelled, notify, engineCancelled, listeners }
 }
 
 const project = (over: Partial<ProjectRecord & { readOnly: boolean }> = {}) => ({
@@ -92,6 +136,7 @@ const project = (over: Partial<ProjectRecord & { readOnly: boolean }> = {}) => (
   defaultColor: '#888888',
   lineOrder: [],
   theme: 'warm-dark' as const,
+  export: { preset: 'instagram-reel' as const, options: {} },
   layout: 'a'.repeat(64),
   made: null,
   built: null,
@@ -194,6 +239,8 @@ function harness(
     blocked?: string | null
     /** The export folder, changed between calls, to prove when it is read. */
     folder?: { now: string }
+    /** What `export.presets` answers, when not the pinned table. */
+    presets?: unknown
   } = {},
 ) {
   const root = mkdtempSync(join(tmpdir(), 'legible-cities-export-'))
@@ -201,7 +248,7 @@ function harness(
   const framesRoot = join(root, 'frames')
   const folder = over.folder ?? { now: join(root, 'exports') }
   const exportFolder = folder.now
-  const eng = fakeEngine(over.ready ?? true)
+  const eng = fakeEngine(over.ready ?? true, over.presets ?? { presets: ENGINE_TABLES.presets })
   const cap = fakeCapture()
   const progress: ExportProgress[] = []
   const log: string[] = []
@@ -252,7 +299,7 @@ const until = async (what: string, ok: () => boolean, ms = 30_000): Promise<void
 describe('the export, step by step', () => {
   it('plans with the engine, captures, encodes, and hands back the file name', async () => {
     const h = harness()
-    const { result } = h.exporter.start('tok-1', 'abcdefghijk1', 'instagram-reel')
+    const { result } = h.exporter.start('tok-1', 'abcdefghijk1', REEL)
     await settle()
 
     // The plan: the project's feed, page, service day and theme, nothing else.
@@ -330,7 +377,7 @@ describe('the export, step by step', () => {
 
   it("puts the plan's notes beside the planned sentence, with any path taken out", async () => {
     const h = harness()
-    void h.exporter.start('tok-1', 'abcdefghijk1', 'instagram-reel').result.catch(() => {})
+    void h.exporter.start('tok-1', 'abcdefghijk1', REEL).result.catch(() => {})
     await settle()
     h.eng.requests[0].resolve(
       plan({
@@ -350,7 +397,7 @@ describe('the export, step by step', () => {
   // off for the life of the install after one reset, and nothing saw it.
   it('marks the frames folder again after it has been taken away', async () => {
     const h = harness()
-    const first = h.exporter.start('tok-1', 'abcdefghijk1', 'instagram-reel')
+    const first = h.exporter.start('tok-1', 'abcdefghijk1', REEL)
     await until('the plan', () => h.eng.requests.length === 1)
     h.eng.requests[0].resolve(plan())
     await until('the capture', () => h.cap.calls.length === 1)
@@ -362,7 +409,7 @@ describe('the export, step by step', () => {
     rmSync(h.framesRoot, { recursive: true, force: true })
     expect(existsSync(h.framesRoot)).toBe(false)
 
-    const second = h.exporter.start('tok-2', 'abcdefghijk1', 'instagram-reel')
+    const second = h.exporter.start('tok-2', 'abcdefghijk1', REEL)
     await until('the second plan', () => h.eng.requests.length === 2)
     h.eng.requests[1].resolve(plan())
     await until('the second capture', () => h.cap.calls.length === 2)
@@ -375,7 +422,7 @@ describe('the export, step by step', () => {
 describe('cancelling', () => {
   it('during the capture aborts it, removes the frames and ends cancelled', async () => {
     const h = harness()
-    const { result } = h.exporter.start('tok-1', 'abcdefghijk1', 'instagram-reel')
+    const { result } = h.exporter.start('tok-1', 'abcdefghijk1', REEL)
     await settle()
     h.eng.requests[0].resolve(plan())
     await until('the capture', () => h.cap.calls.length === 1)
@@ -390,7 +437,7 @@ describe('cancelling', () => {
 
   it('during the encode cancels the engine request and ends cancelled', async () => {
     const h = harness()
-    const { result } = h.exporter.start('tok-1', 'abcdefghijk1', 'instagram-reel')
+    const { result } = h.exporter.start('tok-1', 'abcdefghijk1', REEL)
     await settle()
     h.eng.requests[0].resolve(plan())
     await until('the capture', () => h.cap.calls.length === 1)
@@ -407,7 +454,7 @@ describe('cancelling', () => {
 
   it('between the plan and the capture never starts the capture', async () => {
     const h = harness()
-    const { result } = h.exporter.start('tok-1', 'abcdefghijk1', 'instagram-reel')
+    const { result } = h.exporter.start('tok-1', 'abcdefghijk1', REEL)
     await settle()
     h.exporter.cancel('tok-1')
     expect(h.eng.cancelled, 'the plan request is cancelled too').toEqual([1])
@@ -418,7 +465,7 @@ describe('cancelling', () => {
 
   it('a quit cancels every export', async () => {
     const h = harness()
-    const { result } = h.exporter.start('tok-1', 'abcdefghijk1', 'instagram-reel')
+    const { result } = h.exporter.start('tok-1', 'abcdefghijk1', REEL)
     await settle()
     h.eng.requests[0].resolve(plan())
     await until('the capture', () => h.cap.calls.length === 1)
@@ -437,7 +484,7 @@ describe('cancelling', () => {
 describe('failing', () => {
   it("a failed encode ends with the engine's hint and no frames left", async () => {
     const h = harness()
-    const { result } = h.exporter.start('tok-1', 'abcdefghijk1', 'instagram-reel')
+    const { result } = h.exporter.start('tok-1', 'abcdefghijk1', REEL)
     await settle()
     h.eng.requests[0].resolve(plan())
     await until('the capture', () => h.cap.calls.length === 1)
@@ -460,7 +507,7 @@ describe('failing', () => {
 
   it('a failed capture carries its sentence as an export failure', async () => {
     const h = harness()
-    const { result } = h.exporter.start('tok-1', 'abcdefghijk1', 'instagram-reel')
+    const { result } = h.exporter.start('tok-1', 'abcdefghijk1', REEL)
     await settle()
     h.eng.requests[0].resolve(plan())
     await until('the capture', () => h.cap.calls.length === 1)
@@ -474,7 +521,7 @@ describe('failing', () => {
 
   it('a plan the capture cannot take is refused before a window exists', async () => {
     const h = harness()
-    const { result } = h.exporter.start('tok-1', 'abcdefghijk1', 'instagram-reel')
+    const { result } = h.exporter.start('tok-1', 'abcdefghijk1', REEL)
     await settle()
     h.eng.requests[0].resolve(plan({ url: 'https://example.com/la.html', scale: 4 }))
     await expect(result).rejects.toMatchObject({ code: ERROR_CODES.exportFailed })
@@ -484,7 +531,7 @@ describe('failing', () => {
 
   it('a plan whose file name could be a path is refused', async () => {
     const h = harness()
-    const { result } = h.exporter.start('tok-1', 'abcdefghijk1', 'instagram-reel')
+    const { result } = h.exporter.start('tok-1', 'abcdefghijk1', REEL)
     await settle()
     h.eng.requests[0].resolve(plan({ filename: '../escape.mp4' }))
     await expect(result).rejects.toThrow(/no usable file/)
@@ -493,7 +540,7 @@ describe('failing', () => {
 
   it('an engine that is not ready fails with its state, and nothing is captured', async () => {
     const h = harness({ ready: false })
-    const { result } = h.exporter.start('tok-1', 'abcdefghijk1', 'instagram-reel')
+    const { result } = h.exporter.start('tok-1', 'abcdefghijk1', REEL)
     await expect(result).rejects.toMatchObject({ code: ERROR_CODES.notReady })
     expect(h.cap.calls).toHaveLength(0)
   })
@@ -501,7 +548,7 @@ describe('failing', () => {
   it('a project without a layout, or a read-only one, is refused before the engine is asked', async () => {
     for (const over of [{ layout: null }, { date: null }, { readOnly: true }]) {
       const h = harness({ project: over })
-      const { result } = h.exporter.start('tok-1', 'abcdefghijk1', 'instagram-reel')
+      const { result } = h.exporter.start('tok-1', 'abcdefghijk1', REEL)
       await expect(result).rejects.toMatchObject({ code: ERROR_CODES.badCall })
       expect(h.eng.requests, JSON.stringify(over)).toHaveLength(0)
     }
@@ -515,19 +562,19 @@ describe('failing', () => {
         abcdefghijk3: { name: 'LA, again' },
       },
     })
-    const first = h.exporter.start('tok-1', 'abcdefghijk1', 'instagram-reel')
+    const first = h.exporter.start('tok-1', 'abcdefghijk1', REEL)
     await settle()
     h.eng.requests[0].resolve(plan())
     await until('the capture', () => h.cap.calls.length === 1)
     expect(h.cap.calls, 'the first is capturing').toHaveLength(1)
 
-    const second = h.exporter.start('tok-2', 'abcdefghijk2', 'instagram-reel')
+    const second = h.exporter.start('tok-2', 'abcdefghijk2', REEL)
     await settle()
     h.eng.requests[1].resolve(plan())
     await expect(second.result).rejects.toThrow(/Another export is writing this file/)
     expect(h.cap.calls, 'the second never captured').toHaveLength(1)
 
-    const third = h.exporter.start('tok-3', 'abcdefghijk3', 'instagram-reel')
+    const third = h.exporter.start('tok-3', 'abcdefghijk3', REEL)
     await settle()
     h.eng.requests[2].resolve(plan())
     // Two, not three: the second was refused the file and never captured.
@@ -543,7 +590,7 @@ describe('failing', () => {
     for (const end of await Promise.all(ends))
       expect(end).toMatchObject({ code: ERROR_CODES.cancelled })
     // The file is free again once the first has ended.
-    const again = h.exporter.start('tok-4', 'abcdefghijk2', 'instagram-reel')
+    const again = h.exporter.start('tok-4', 'abcdefghijk2', REEL)
     await settle()
     h.eng.requests[3].resolve(plan())
     await until('the fourth capture', () => h.cap.calls.length === 3)
@@ -554,13 +601,9 @@ describe('failing', () => {
 
   it('a second export of the same project, or the same id, is refused at once', async () => {
     const h = harness()
-    void h.exporter.start('tok-1', 'abcdefghijk1', 'instagram-reel').result.catch(() => {})
-    expect(() => h.exporter.start('tok-1', 'abcdefghijk2', 'instagram-reel')).toThrow(
-      /already running/,
-    )
-    expect(() => h.exporter.start('tok-2', 'abcdefghijk1', 'instagram-reel')).toThrow(
-      /already being exported/,
-    )
+    void h.exporter.start('tok-1', 'abcdefghijk1', REEL).result.catch(() => {})
+    expect(() => h.exporter.start('tok-1', 'abcdefghijk2', REEL)).toThrow(/already running/)
+    expect(() => h.exporter.start('tok-2', 'abcdefghijk1', REEL)).toThrow(/already being exported/)
     h.exporter.cancel('tok-1')
     await settle()
     expect(h.exporter.live).toBe(0)
@@ -570,7 +613,7 @@ describe('failing', () => {
 describe('the small functions', () => {
   it('plans a sepia project in the engine’s word for it', async () => {
     const h = harness({ project: { theme: 'sepia' } })
-    h.exporter.start('tok-1', 'abcdefghijk1', 'instagram-reel')
+    h.exporter.start('tok-1', 'abcdefghijk1', REEL)
     await settle()
     expect(h.eng.requests[0].params).toMatchObject({ options: { theme: 'light' } })
   })
@@ -619,7 +662,7 @@ describe('the export and the settings screen', () => {
   it('refuses to start at all while the engine data is being reset', () => {
     const why = 'The engine data is being reset; wait for it to finish.'
     const h = harness({ blocked: why })
-    expect(() => h.exporter.start('tok-1', 'abcdefghijk1', 'instagram-reel')).toThrow(why)
+    expect(() => h.exporter.start('tok-1', 'abcdefghijk1', REEL)).toThrow(why)
     expect(h.exporter.live, 'nothing was begun').toBe(0)
     expect(h.eng.requests, 'the engine was never asked for a plan').toHaveLength(0)
   })
@@ -631,7 +674,7 @@ describe('the export and the settings screen', () => {
     dirs.push(root)
     const folder = { now: join(root, 'first') }
     const h = harness({ folder })
-    const { result } = h.exporter.start('tok-1', 'abcdefghijk1', 'instagram-reel')
+    const { result } = h.exporter.start('tok-1', 'abcdefghijk1', REEL)
     // Changed the instant the export is under way, while the plan is out.
     folder.now = join(root, 'second')
     await settle()
@@ -646,5 +689,459 @@ describe('the export and the settings screen', () => {
     expect((h.eng.requests[1].params as { dest: string }).dest).toBe(dest)
     h.eng.requests[1].resolve({ files: [{ path: dest, bytes: 1234 }], sidecar: {} })
     await expect(result).resolves.toBeTruthy()
+  })
+})
+
+// The export tab's half of the export (A5-01, specs/022-export-tab): the
+// choice reaches the plan as options, a still is captured as one pinned
+// frame, and the preview plans with the safe zones where the preset has
+// them and never otherwise.
+describe('what the export tab chooses', () => {
+  const LINKEDIN: ExportChoice = {
+    preset: 'linkedin-video',
+    storyboard: 'day',
+    options: { clock: false, at: '07:30', lines: ['A', 'B'], quality: 'draft', tag: 'draft-1' },
+  }
+
+  it('plans with the options, the storyboard and the theme, and never with safe', async () => {
+    for (const [choice, theme] of [
+      [LINKEDIN, 'sepia'],
+      [REEL, 'warm-dark'],
+      [{ preset: 'instagram-story', options: { title: false, view: 'linear' } }, 'warm-dark'],
+    ] as [ExportChoice, 'sepia' | 'warm-dark'][]) {
+      const h = harness({ project: { theme } })
+      void h.exporter.start('tok-1', 'abcdefghijk1', choice).result.catch(() => undefined)
+      await settle()
+      const params = h.eng.requests[0].params as {
+        preset: string
+        options: Record<string, unknown>
+      }
+      expect(params.preset).toBe(choice.preset)
+      expect(params.options).toEqual({
+        ...sentChoice(choice, presetOf(choice.preset)).options,
+        ...(choice.storyboard ? { storyboard: choice.storyboard } : {}),
+        theme: theme === 'sepia' ? 'light' : 'dark',
+      })
+      expect(h.eng.tables, 'the table is asked before the plan').toHaveLength(1)
+      expect('safe' in params.options, 'an export never draws the safe zones').toBe(false)
+      h.exporter.cancel('tok-1')
+    }
+  })
+
+  it('captures a still as one frame pinned at its time, and encodes that frame', async () => {
+    const h = harness()
+    const still = plan({
+      preset: 'instagram-post',
+      mode: 'still',
+      beats: [],
+      at: 7 * 3600 + 30 * 60,
+      storyboard: '',
+      format: 'png',
+      filename: 'la-metro-rail-instagram-post.png',
+    })
+    const { result } = h.exporter.start('tok-1', 'abcdefghijk1', {
+      preset: 'instagram-post',
+      options: { at: '07:30' },
+    })
+    await settle()
+    h.eng.requests[0].resolve(still)
+    await until('the capture', () => h.cap.calls.length === 1)
+    expect(h.cap.calls[0].job.beats).toEqual([
+      {
+        secs: 1 / 30,
+        view: 'map',
+        labels: null,
+        at: 27_000,
+        speed: 0,
+        sweep: false,
+        hours: null,
+        lo: null,
+        hi: null,
+        tween: 0,
+      },
+    ])
+    expect(h.progress[1].message).toBe('Planned la-metro-rail-instagram-post.png: a still.')
+    h.cap.calls[0].finish(1)
+    await settle()
+    expect(h.eng.requests[1].params).toMatchObject({
+      plan: still,
+      source: join(h.framesRoot, 'tok-1', STILL_FRAME),
+    })
+    const dest = join(h.exportFolder, 'Los Angeles', 'la-metro-rail-instagram-post.png')
+    h.eng.requests[1].resolve({ files: [{ path: dest, bytes: 99 }], sidecar: {} })
+    await expect(result).resolves.toEqual({
+      file: 'la-metro-rail-instagram-post.png',
+      bytes: 99,
+      frames: 1,
+    })
+  })
+
+  it('refuses a still the plan did not pin, before a window exists', async () => {
+    const h = harness()
+    const { result } = h.exporter.start('tok-1', 'abcdefghijk1', REEL)
+    await settle()
+    h.eng.requests[0].resolve(plan({ mode: 'still', beats: [], at: null }))
+    await expect(result).rejects.toThrow(/cannot be captured/)
+    expect(h.cap.calls).toHaveLength(0)
+  })
+
+  const presetOf = (name: string): Preset => {
+    const found = ENGINE_TABLES.presets.find((p) => p.name === name)
+    if (found === undefined) throw new Error(`no ${name} in the pinned table`)
+    return found
+  }
+
+  it('never sends a view or a start time beside a storyboard, which names its own', async () => {
+    const h = harness()
+    const video: ExportChoice = {
+      preset: 'instagram-reel',
+      storyboard: 'run',
+      options: { view: 'linear', at: '07:30', clock: false },
+    }
+    void h.exporter.start('tok-1', 'abcdefghijk1', video).result.catch(() => undefined)
+    await until('the plan', () => h.eng.requests.length === 1)
+    expect(h.eng.requests[0].params).toMatchObject({
+      options: { storyboard: 'run', clock: false, theme: 'dark' },
+    })
+    const options = (h.eng.requests[0].params as { options: object }).options
+    expect(options).not.toHaveProperty('view')
+    expect(options).not.toHaveProperty('at')
+    h.exporter.cancel('tok-1')
+
+    // A still takes both, and no storyboard.
+    const s = harness()
+    const still: ExportChoice = {
+      preset: 'instagram-post',
+      storyboard: 'run',
+      options: { view: 'linear', at: '07:30' },
+    }
+    void s.exporter.start('tok-2', 'abcdefghijk1', still).result.catch(() => undefined)
+    await until('the plan', () => s.eng.requests.length === 1)
+    expect((s.eng.requests[0].params as { options: object }).options).toEqual({
+      view: 'linear',
+      at: '07:30',
+      theme: 'dark',
+    })
+    s.exporter.cancel('tok-2')
+  })
+
+  it('makes a JPEG still at standard quality only, read from the engine’s table', async () => {
+    // Bluesky's still is the engine's one JPEG preset at v0.8.2; which it is
+    // comes from the table, so a table that says otherwise is obeyed.
+    const h = harness()
+    const draft: ExportChoice = { preset: 'bluesky', options: { quality: 'draft', tag: 'd' } }
+    void h.exporter.start('tok-1', 'abcdefghijk1', draft).result.catch(() => undefined)
+    await until('the plan', () => h.eng.requests.length === 1)
+    expect((h.eng.requests[0].params as { options: object }).options).toEqual({
+      tag: 'd',
+      theme: 'dark',
+    })
+    h.exporter.cancel('tok-1')
+
+    const png = harness({
+      presets: {
+        presets: ENGINE_TABLES.presets.map((p) =>
+          p.name === 'bluesky' ? { ...p, format: 'png' } : p,
+        ),
+      },
+    })
+    void png.exporter.start('tok-2', 'abcdefghijk1', draft).result.catch(() => undefined)
+    await until('the plan', () => png.eng.requests.length === 1)
+    expect((png.eng.requests[0].params as { options: object }).options).toMatchObject({
+      quality: 'draft',
+    })
+    png.exporter.cancel('tok-2')
+  })
+
+  it('refuses a plan that would keep a PNG capture as a JPEG, or that disagrees with its preset', async () => {
+    for (const [choice, answer, sentence] of [
+      [
+        { preset: 'bluesky', options: {} },
+        plan({
+          preset: 'bluesky',
+          mode: 'still',
+          beats: [],
+          at: 25_200,
+          format: 'jpg',
+          keep: true,
+          filename: 'la-metro-rail-bluesky.jpg',
+        }),
+        /standard quality/,
+      ],
+      [
+        { preset: 'instagram-post', options: {} },
+        plan({ preset: 'instagram-post', filename: 'la-metro-rail-instagram-post.mp4' }),
+        /does not match its preset/,
+      ],
+    ] as [ExportChoice, PlannedJob, RegExp][]) {
+      const h = harness()
+      const { result } = h.exporter.start('tok-1', 'abcdefghijk1', choice)
+      await until('the plan', () => h.eng.requests.length === 1)
+      h.eng.requests[0].resolve(answer)
+      await expect(result).rejects.toThrow(sentence)
+      expect(h.cap.calls).toHaveLength(0)
+    }
+  })
+
+  it('refuses a preset the engine’s table no longer lists, before the plan', async () => {
+    const h = harness({ presets: { presets: [] } })
+    const { result } = h.exporter.start('tok-1', 'abcdefghijk1', REEL)
+    await expect(result).rejects.toThrow(/no longer offers/)
+    expect(h.eng.requests).toHaveLength(0)
+  })
+
+  it('previews with the safe zones exactly where the preset has them', async () => {
+    for (const [choice, safe] of [
+      [REEL, true],
+      [{ preset: 'instagram-story', options: {} }, true],
+      [LINKEDIN, false],
+      [{ preset: 'bluesky', options: {} }, false],
+    ] as [ExportChoice, boolean][]) {
+      const h = harness()
+      const answer = h.exporter.preview('abcdefghijk1', choice)
+      await until('the plan', () => h.eng.requests.length === 1)
+      expect(h.eng.tables).toHaveLength(1)
+      expect(h.eng.requests[0].method).toBe('export.plan')
+      expect(h.eng.requests[0].params).toEqual({
+        key: 'la-metro-rail',
+        preset: choice.preset,
+        page: 'app://local/projects/abcdefghijk1/la-metro-rail.html',
+        date: '2026-09-08',
+        options: planOptions(choice, presetOf(choice.preset), 'dark', safe),
+      })
+      const url = `app://local/projects/abcdefghijk1/la-metro-rail.html?present=1${safe ? '&safe=1' : ''}`
+      h.eng.requests[0].resolve(plan({ url, width: 540, height: 960, notes: ['see /x/y'] }))
+      await expect(answer).resolves.toEqual({
+        ok: true,
+        url,
+        width: 540,
+        height: 960,
+        notes: ['see a file'],
+      })
+      expect(h.exporter.live, 'a preview is not an export').toBe(0)
+      expect(h.cap.calls).toHaveLength(0)
+    }
+  })
+
+  it("answers the engine's refusal in its own shape, and never throws", async () => {
+    const h = harness()
+    const answer = h.exporter.preview('abcdefghijk1', LINKEDIN)
+    await until('the plan', () => h.eng.requests.length === 1)
+    h.eng.requests[0].reject(
+      new EngineError(-32000, 'no geographic geometry', {
+        kind: 'export',
+        detail: 'ValueError',
+        hint: "'la-metro-rail' carries no geographic geometry",
+      }),
+    )
+    await expect(answer).resolves.toEqual({
+      ok: false,
+      error: {
+        code: -32000,
+        message: 'no geographic geometry',
+        data: {
+          kind: 'export',
+          detail: 'ValueError',
+          hint: "'la-metro-rail' carries no geographic geometry",
+        },
+      },
+    })
+  })
+
+  it('refuses a planned address that is not the project’s own page', async () => {
+    const h = harness()
+    const answer = h.exporter.preview('abcdefghijk1', REEL)
+    await until('the plan', () => h.eng.requests.length === 1)
+    h.eng.requests[0].resolve(plan({ url: 'app://local/projects/zzzzzzzzzzzz/x.html?safe=1' }))
+    await expect(answer).resolves.toMatchObject({
+      ok: false,
+      error: { code: ERROR_CODES.exportFailed },
+    })
+  })
+
+  it('previews nothing while the engine data is being reset, or before a layout', async () => {
+    const why = 'The engine data is being reset; wait for it to finish.'
+    const blocked = harness({ blocked: why })
+    await expect(blocked.exporter.preview('abcdefghijk1', REEL)).resolves.toMatchObject({
+      ok: false,
+      error: { message: why },
+    })
+    const bare = harness({ project: { layout: null } })
+    await expect(bare.exporter.preview('abcdefghijk1', REEL)).resolves.toMatchObject({ ok: false })
+    expect([...blocked.eng.requests, ...bare.eng.requests]).toHaveLength(0)
+  })
+
+  it('previews nothing when a reset begins while the record is being read', async () => {
+    const why = 'The engine data is being reset; wait for it to finish.'
+    let blocked: string | null = null
+    let release!: () => void
+    const read = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const eng = fakeEngine()
+    const exporter = new Exporter({
+      engine: eng.engine,
+      projects: {
+        get: async (id) => {
+          await read
+          return project({ id })
+        },
+      },
+      capture: fakeCapture().capture,
+      framesRoot: join(tmpdir(), 'unused-frames'),
+      exportFolder: () => join(tmpdir(), 'unused-exports'),
+      blocked: () => blocked,
+      log: () => undefined,
+    })
+    const answer = exporter.preview('abcdefghijk1', REEL)
+    await settle()
+    blocked = why
+    release()
+    await expect(answer).resolves.toMatchObject({ ok: false, error: { message: why } })
+    expect(eng.tables, 'the engine was never asked').toHaveLength(0)
+    expect(eng.requests).toHaveLength(0)
+  })
+
+  it('knows the project’s own page from any other', () => {
+    const project = { id: 'abcdefghijk1', feed: 'la-metro-rail' }
+    const page = 'app://local/projects/abcdefghijk1/la-metro-rail.html'
+    expect(isProjectPage(page, project)).toBe(true)
+    expect(isProjectPage(`${page}?present=1&safe=1`, project)).toBe(true)
+    for (const url of [
+      `${page}x?present=1`,
+      `${page}#x`,
+      'app://local/projects/abcdefghijk2/la-metro-rail.html?x',
+      `https://example.com/?${page}`,
+      `${page}?present=1 &x`,
+      42,
+    ])
+      expect(isProjectPage(url, project), String(url)).toBe(false)
+  })
+})
+
+describe('the choice itself', () => {
+  const schema = JSON.parse(
+    readFileSync(resolve(__dirname, '../../vendor/protocol.schema.json'), 'utf8'),
+  ) as { $defs: Record<string, { enum?: string[] }> }
+
+  it('offers the thirteen social presets, every one of them the engine’s', () => {
+    expect(OFFERED_PRESETS).toHaveLength(13)
+    const engine = schema.$defs.PresetName.enum ?? []
+    for (const name of OFFERED_PRESETS) expect(engine).toContain(name)
+    expect(engine.filter((name) => !(OFFERED_PRESETS as readonly string[]).includes(name))).toEqual(
+      ['portfolio-svg', 'portfolio-mp4', 'portfolio-gif'],
+    )
+  })
+
+  it('knows every storyboard the engine has, and no other', () => {
+    expect([...STORYBOARD_NAMES].sort()).toEqual(
+      [...(schema.$defs.StoryboardName.enum ?? [])].sort(),
+    )
+  })
+
+  it('takes every preset, storyboard and option the tab can send', () => {
+    for (const preset of OFFERED_PRESETS)
+      expect(validateExportChoice({ preset, options: {} }), preset).toBeNull()
+    for (const storyboard of STORYBOARD_NAMES)
+      expect(validateExportChoice({ preset: 'linkedin-gif', storyboard, options: {} })).toBeNull()
+    expect(
+      validateChoiceOptions({
+        view: 'geographic',
+        labels: false,
+        title: false,
+        clock: true,
+        at: '25:44:10',
+        lines: ['A', 'Rapid 720'],
+        quality: 'high',
+        tag: 'v2.final_1',
+      }),
+    ).toBeNull()
+    expect(validateExportChoice(DEFAULT_CHOICE)).toBeNull()
+  })
+
+  it('refuses what the engine would, with a sentence', () => {
+    for (const [choice, sentence] of [
+      [{ preset: 'portfolio-gif', options: {} }, /does not offer/],
+      [{ preset: 'x', storyboard: 'nope', options: {} }, /not a storyboard/],
+      [{ preset: 'x' }, /options must be an object/],
+      [{ preset: 'x', options: {}, fade: 1 }, /not part of an export choice/],
+      [{ preset: 'x', options: { safe: true } }, /safe is not an option/],
+      [{ preset: 'x', options: { theme: 'dark' } }, /theme is not an option/],
+      [{ preset: 'x', options: { storyboard: 'tour' } }, /storyboard is not an option/],
+      [{ preset: 'x', options: { view: 'schematic' } }, /view must be one of/],
+      [{ preset: 'x', options: { labels: 'yes' } }, /labels must be on or off/],
+      [{ preset: 'x', options: { at: '7.30' } }, /HH:MM/],
+      [{ preset: 'x', options: { at: '07:75' } }, /59/],
+      [{ preset: 'x', options: { lines: 'A' } }, /list of line labels/],
+      [{ preset: 'x', options: { lines: ['A', 'A'] } }, /twice/],
+      [{ preset: 'x', options: { lines: [''] } }, /label/],
+      [{ preset: 'x', options: { quality: 'best' } }, /draft, standard or high/],
+      [{ preset: 'x', options: { tag: 'has space' } }, /tag/],
+      [{ preset: 'x', options: { tag: '.hidden' } }, /tag/],
+      [{ preset: 'x', options: { tag: 'x'.repeat(65) } }, /tag/],
+    ] as [unknown, RegExp][])
+      expect(validateExportChoice(choice), JSON.stringify(choice)).toMatch(sentence)
+  })
+
+  it('adds safe to a plan only when the preview asks', () => {
+    const reel = { kind: 'video', format: 'mp4' } as const
+    expect(planOptions(REEL, reel, 'dark')).toEqual({ theme: 'dark' })
+    expect(planOptions(REEL, reel, 'light', true)).toEqual({ theme: 'light', safe: true })
+  })
+})
+
+// The stand-in engine answers the export tab's three methods with the
+// engine's own tables (T005), so the end-to-end suite runs without Docker.
+// Its names are held to the generated unions here, through the schema they
+// were made from.
+const PYTHON = findPython()
+describe.skipIf(PYTHON === null)('the stand-in engine’s export tables', () => {
+  const python = (code: string): string => {
+    const probe = spawnSync(PYTHON as string, ['-c', code], {
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 20_000,
+      env: { ...process.env, PYTHONPATH: FAKE_ENGINE, PYTHONDONTWRITEBYTECODE: '1' },
+    })
+    expect(probe.status, probe.stderr).toBe(0)
+    return probe.stdout
+  }
+
+  it('answers the engine’s own tables at the pinned tag, size, kind, format and all', () => {
+    const tables = JSON.parse(
+      python(
+        'import json; from schematic import serve; print(json.dumps({"presets": serve.EXPORT_PRESETS, "storyboards": serve.EXPORT_STORYBOARDS}))',
+      ),
+    ) as { presets: Preset[]; storyboards: { name: string }[] }
+    // tests/fixtures/export-tables-v0.8.2.json is the engine's
+    // `preset_table()` and `storyboard_table()` at v0.8.2. A pin that
+    // changes a preset's size, kind, format, rate, safe zones or storyboard
+    // fails here until the fixture and the stand-in both follow it.
+    expect(ENGINE_TABLES.engine).toBe('v0.8.2')
+    expect(tables.presets).toEqual(ENGINE_TABLES.presets)
+    expect(tables.storyboards).toEqual(ENGINE_TABLES.storyboards)
+    const schema = JSON.parse(
+      readFileSync(resolve(__dirname, '../../vendor/protocol.schema.json'), 'utf8'),
+    ) as { $defs: Record<string, { enum?: string[] }> }
+    expect(tables.presets.map((p) => p.name)).toEqual(schema.$defs.PresetName.enum)
+    expect(tables.storyboards.map((b) => b.name).sort()).toEqual(
+      [...(schema.$defs.StoryboardName.enum ?? [])].sort(),
+    )
+  })
+
+  it('refuses to keep a capture in a format the preset does not write, as the engine silently would', () => {
+    const answers = JSON.parse(
+      python(
+        [
+          'import json',
+          'from pathlib import Path',
+          'from schematic import serve',
+          'cases = [(True, "jpg", "000000.png"), (False, "jpg", "000000.png"), (True, "png", "000000.png")]',
+          'print(json.dumps([serve.Engine.still_problem({"keep": k, "format": f}, Path(s)) for k, f, s in cases]))',
+        ].join('\n'),
+      ),
+    ) as (string | null)[]
+    expect(answers[0]).toMatch(/will not keep a png capture as a jpg file/)
+    expect(answers.slice(1)).toEqual([null, null])
   })
 })

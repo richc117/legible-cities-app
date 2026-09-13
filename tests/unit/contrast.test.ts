@@ -102,6 +102,13 @@ const PAIRS: [string, string, number][] = [
   ['--success', '--surface-raised', 3.0],
   ['--focus', '--surface', 3.0],
   ['--focus', '--surface-raised', 3.0],
+  // The tab strip (A5-01): a tab not chosen, under the pointer, and the
+  // chosen tab's underline there too. On the panel's own ground the tabs
+  // and the export tab's switches use pairs already above: --text and
+  // --text-muted for a tab, --accent for the underline and a checkbox,
+  // --text-faint for a switch an export holds.
+  ['--text-muted', '--surface-hover', 4.5],
+  ['--accent', '--surface-hover', 3.0],
 ]
 
 // The document's stated ratios, read from its two tables (docs/DESIGN.md,

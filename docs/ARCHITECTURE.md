@@ -86,6 +86,7 @@ write under `api.clipboard`, and the app's own settings under
 | `completeColors(id, palette)` | records the line colours a person chose, once the map has been drawn with them; every label and every colour is checked on the main side first (A4-01) |
 | `completeOrder(id, order)` | records the order a person arranged the lines in, once the map has been drawn in it; every label is checked on the main side first, and the same line twice is refused (A4-02) |
 | `setTheme(id, theme)` | records the theme the project's map is drawn in, at once rather than after a build: a theme is neither a layout nor a render, and the page restyles itself from its own address (A4-03) |
+| `setExport(id, choice)` | records what the project is set to export - a preset, a storyboard, the options - at once; every field is held to the engine's own rules on the main side first (A5-01) |
 | `feeds.pickZip()` | opens the platform's file chooser for a GTFS zip and remembers the answer; the one native dialog, since a page cannot choose a file (A2-01) |
 
 | `viewer.attach(projectId)` | holds the project page's frame by identity once it has loaded, and answers whether it did (ADR-028) |
@@ -97,7 +98,8 @@ write under `api.clipboard`, and the app's own settings under
 | `engine.cancel(id)` | `$/cancelRequest` for that request |
 | `engine.onState`, `onProgress`, `onLog` | subscriptions; each returns its unsubscribe |
 
-| `export.run(projectId, preset)` | an export of one preset, as `{ id, result }`: the main process asks the engine for the plan, takes the page's frames itself and asks the engine to encode them; the result is the file's name and size, never its path (A5-02b) |
+| `export.run(projectId, choice)` | an export of one preset with its storyboard and options, as `{ id, result }`: the main process asks the engine for the plan, takes the page's frames itself and asks the engine to encode them; the result is the file's name and size, never its path (A5-02b, A5-01) |
+| `export.preview(projectId, choice)` | the address the map's frame shows while the export tab is open: the engine's plan for the choice with the safe zones asked for exactly where the preset has them; `{ ok, url, width, height, notes }` or the engine's refusal as data; nothing is captured or written (A5-01) |
 | `export.cancel(id)` | stops it wherever it is: the plan or encode request is cancelled, the capture aborted |
 | `export.reveal(id)` | shows a finished export's file in the platform's file browser; the page names the export, the main process knows the file |
 | `export.onProgress` | a subscription; each report names the stage (plan, capture, encode), how far it is, and a sentence |
@@ -833,9 +835,11 @@ window before the engine is stopped.
 
 ## The export
 
-The first reel (A5-02b): one preset, `instagram-reel`, from one button on
-the project screen, over the engine's `export.plan` and `export.encode`
-with the capture above in the middle. The flow runs in the main process
+The first reel (A5-02b) was one preset, `instagram-reel`, from one button on
+the project screen; since A5-01 it is any of the thirteen social presets,
+chosen on the project panel's Export tab with a storyboard and options, over
+the engine's `export.plan` and `export.encode` with the capture above in
+the middle. The flow runs in the main process
 (`src/main/export.ts`), because the capture does and is never exposed to
 the page; the page starts it, watches it and can stop it through
 `api.export`, on the same token-and-event pattern as the engine bridge, and
@@ -876,6 +880,61 @@ export of one project cannot overlap, because the export reads the page a
 layout would rewrite: each button is disabled while the other runs, and so
 is delete.
 
+### The export tab
+
+The project panel has two tabs (A5-01, `specs/022-export-tab`), a
+`Tabs` control in the kit on the WAI-ARIA pattern: Map holds the
+diagnostics, the service day, the line colours, the line order, the theme
+and the geographic view, as the screen held them before; Export holds the
+export. A panel not chosen stays mounted, so a debounced colour waiting to
+be drawn is not thrown away by a look at the other tab.
+
+Every list is the engine's. `export.presets` and `export.storyboards` are
+asked once while the engine stays up, and the presets are narrowed to
+`OFFERED_PRESETS` - the thirteen social ones, each checked against the
+generated `PresetName`; the three `portfolio-*` presets are the published
+site's. The choice - `{ preset, storyboard?, options }`, where the options
+are the engine's `ExportOptions` without the theme (the project's), the
+safe zones (the app's, for a preview only), the storyboard (beside them) and
+the fade (not offered) - is written to the record the moment it is made,
+a typed field when it is committed, through `setExport`. An option set back
+to what the engine does without it is removed rather than sent. What is
+sent is also narrowed by the preset, from `export.presets`, in the main
+process before every plan (`sentChoice`): a view and a start time are a
+still's only, since a storyboard's first beat names its own and the capture
+applies it; a still the table says is JPEG is made at standard quality only,
+because the capture writes PNG and the engine keeps a capture unchanged at
+draft and high. The record keeps what a person chose. Writes to one record
+take turns through a per-project chain in the store, so a choice made during
+a re-layout cannot write back the old layout. A saved
+preset or storyboard the engine no longer lists falls back to the reel,
+and the tab says which name was dropped.
+
+While the tab is open the map's own frame is the preview: not a second
+frame, because the viewer's bridge holds one per project. The tab asks
+`export.preview` 250 ms after the last change, drops an answer to anything
+but the newest question, and hands the answer's address to the viewer,
+which sends the same sandboxed frame there at the plan's aspect ratio. The
+address is the project's page with the engine's query, so the frame is
+attached from the main process by the project's prefix as the plain map is
+(ADR-028), and the main side refuses a planned address that names any other
+page. The frame, the title, the clock and the safe zones are the page's own
+drawing from that address (principle I). The preview asks for `safe`
+exactly when the engine's table says the preset's platform draws over the
+picture; an export's plan never carries it, because `planOptions` adds it
+only when told to and the export never tells it. A refusal - a storyboard
+visiting the geographic view on a feed without that geometry, say - keeps
+the last good address in the frame, puts the engine's sentence under the
+choosers, and disables Export until the choice changes. While a run
+rewrites the page, or an export is under way, nothing is planned; while an
+export is under way the choices are disabled.
+
+A still has no beats in the engine's plan; the engine's recorder seeks to
+`at` and takes one screenshot. The app's capture takes frames from beats,
+so `jobOf` makes a still one beat one frame long that seeks to `at` and
+stops the clock there, and `export.encode` is given that one frame as its
+source. The capture itself is unchanged.
+
 `tests/unit/export.test.ts` asserts the order, the parameters and the
 cleanup against a fake engine, a fake store and a fake capture, and
 `tests/unit/export-ipc.test.ts` the bridge's checks; `tests/e2e/export.spec.ts`
@@ -893,7 +952,6 @@ frame in RGB with the tolerance of 8.
 | The contract tests running in continuous integration; they exist and are gated on an engine checkout. The vendor job's schema check is not them: it proves only that the runtime it builds starts `schematic.serve --schema` and that the output hashes to `engine.schema_sha256` | Open; no issue yet |
 | A screen for long jobs across projects; the layout run and the export draw their own progress on the project screen | A1-03 |
 | Editing the numeric style fields; the record holds the engine's defaults, and the colours, the order and the theme are a person's since A4-01, A4-02 and A4-03 | post-MVP |
-| Every other preset, and the export's options: quality, storyboard, theme, the safe zones | A5-01 |
 | Vendored Python, LOOM and ffmpeg; installers | A0-10 (`specs/002`) |
 | A log file and "copy diagnostics" | A6-03 |
 | Signing and auto-update | A6-05 |

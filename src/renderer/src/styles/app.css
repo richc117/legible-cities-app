@@ -872,6 +872,123 @@ dialog::backdrop {
   border: 0;
 }
 
+/* The export's preview (A5-01): the same shape, and inside it the frame at
+   the aspect ratio the engine planned, as large as the shape allows and
+   centred, so a tall story and a wide link card are both seen whole. The
+   width and height arrive as plain numbers from the plan; the ratio is
+   theirs. Resized without motion under reduced motion, as everything is. */
+.viewer-shape-planned {
+  display: grid;
+  place-items: center;
+  container-type: size;
+}
+
+.viewer-shape-planned .viewer-frame {
+  width: min(100cqw, 100cqh * var(--frame-width) / var(--frame-height));
+  height: min(100cqh, 100cqw * var(--frame-height) / var(--frame-width));
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .viewer-frame {
+    transition:
+      width var(--duration) var(--easing),
+      height var(--duration) var(--easing);
+  }
+}
+
+/* The project panel's tab strip (A5-01, DESIGN.md 8.2): text tabs on the
+   panel's ground over a rule, the chosen one in --text with an --accent
+   underline, the rest in --text-muted, each at least a control high. */
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2-2);
+  margin: var(--space-4-6) 0 var(--space-4-4);
+  border-bottom: var(--border-width) solid var(--border);
+}
+
+.tab {
+  min-height: var(--control-height-large);
+  margin: 0 0 calc(-1 * var(--border-width));
+  padding: 0 var(--space-4-3);
+  border: 0;
+  border-bottom: var(--focus-ring-width) solid transparent;
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--font-ui);
+  cursor: pointer;
+}
+
+.tab:hover {
+  background: var(--surface-hover);
+}
+
+.tab[aria-selected='true'] {
+  color: var(--text);
+  font-weight: var(--weight-strong);
+  border-bottom-color: var(--accent);
+}
+
+.tab-panel:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* The export tab (A5-01): the choices as panel rows, one column, the two
+   groups of switches as fieldsets whose legend reads as a field's label. */
+.export-tab h2 {
+  font-size: var(--font-ui-medium);
+  margin: 0 0 var(--space-2-2);
+}
+
+.export-tab h2:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.export-choices {
+  margin: 0 0 var(--space-4-4);
+}
+
+.export-choices fig-dropdown {
+  width: 100%;
+}
+
+.export-choices fieldset {
+  display: grid;
+  gap: var(--space-2-2);
+  margin: 0 0 var(--space-4-3);
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.export-choices legend {
+  padding: 0;
+  margin: 0 0 var(--space-2-2);
+  font-weight: var(--weight-strong);
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4-2);
+  min-height: var(--target-min);
+}
+
+.check input {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.check:has(input:disabled) {
+  color: var(--text-faint);
+}
+
 /* The geographic view: a pane the size of the viewer's shape, holding the
    engine's drawing in a frame with no permissions, moved by transforms
    from here. The frame is sized to the drawing and never scrolls; the

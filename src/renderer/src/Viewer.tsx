@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type JSX } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type JSX } from 'react'
 import type { ProjectRecord } from '../../shared/project'
 import { VIEWER_SANDBOX } from '../../shared/viewer'
+import type { PreviewAddress } from './exportChoice'
 
 // The engine's page, on the screen.
 //
@@ -27,7 +28,33 @@ const pageUrl = (project: ProjectRecord): string =>
   `app://local/projects/${project.id}/${project.feed}.html` +
   `?present=1&controls=1&theme=${encodeURIComponent(project.theme)}`
 
-export default function Viewer({ project }: { project: ProjectRecord }): JSX.Element {
+/**
+ * The frame's shape for a planned preview: the preset's width and height as
+ * two plain numbers the stylesheet divides, so the frame keeps the export's
+ * aspect ratio inside the space the map had. Data, not a size: the numbers
+ * are the engine's, and no unit is written here.
+ */
+const shapeOf = (address: PreviewAddress): CSSProperties =>
+  ({
+    '--frame-width': address.width,
+    '--frame-height': address.height,
+  }) as CSSProperties
+
+export default function Viewer({
+  project,
+  address = null,
+}: {
+  project: ProjectRecord
+  /**
+   * While the export tab is open, the address `export.plan` answered for
+   * the choice there, and the size it was planned at (A5-01). The frame is
+   * the same frame, still sandboxed and still attached from the main
+   * process by the project's prefix, which the planned address shares; the
+   * page draws the frame, the title, the clock and the safe zones itself
+   * from that address. Null for the map with its own controls.
+   */
+  address?: PreviewAddress | null
+}): JSX.Element {
   const frame = useRef<HTMLIFrameElement>(null)
   const [problem, setProblem] = useState<string | null>(null)
 
@@ -65,13 +92,20 @@ export default function Viewer({ project }: { project: ProjectRecord }): JSX.Ele
 
   return (
     <section className="viewer" aria-label="Map">
-      <div className="viewer-shape">
+      <div
+        className={address === null ? 'viewer-shape' : 'viewer-shape viewer-shape-planned'}
+        style={address === null ? undefined : shapeOf(address)}
+      >
         <iframe
           ref={frame}
           className="viewer-frame"
           sandbox={VIEWER_SANDBOX}
-          src={pageUrl(project)}
-          title={`${project.name}, animated`}
+          src={address === null ? pageUrl(project) : address.url}
+          title={
+            address === null
+              ? `${project.name}, animated`
+              : `${project.name}, as the export will frame it`
+          }
         />
       </div>
       {problem !== null && (

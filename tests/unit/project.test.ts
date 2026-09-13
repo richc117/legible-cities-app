@@ -46,6 +46,7 @@ const full: ProjectRecord = {
   defaultColor: '#888888',
   lineOrder: [],
   theme: 'warm-dark',
+  export: { preset: 'instagram-reel', options: {} },
   layout: null,
   made: null,
   built: null,
@@ -215,6 +216,28 @@ describe('validateTheme', () => {
 })
 
 describe('parseRecord', () => {
+  it('reads what a project was set to export whole, or as the reel', () => {
+    const choice = {
+      preset: 'bluesky-video',
+      storyboard: 'reveal',
+      options: { labels: false, lines: ['A'], tag: 'v2' },
+    }
+    const kept = parseRecord({ ...structuredClone(full), export: choice })
+    expect('record' in kept && kept.record.export).toEqual(choice)
+    for (const broken of [
+      'instagram-reel',
+      { preset: 'portfolio-svg', options: {} },
+      { preset: 'bluesky-video', options: { safe: true } },
+      { preset: 'bluesky-video', storyboard: 'tour', options: { tag: 'a b' } },
+    ]) {
+      const read = parseRecord({ ...structuredClone(full), export: broken })
+      expect('record' in read && read.record.export, JSON.stringify(broken)).toEqual({
+        preset: 'instagram-reel',
+        options: {},
+      })
+    }
+  })
+
   it('reads a full record as written', () => {
     expect(parseRecord(structuredClone(full))).toEqual({ record: full, readOnly: false })
   })
@@ -236,6 +259,7 @@ describe('parseRecord', () => {
       defaultColor: DEFAULT_COLOR,
       lineOrder: [],
       theme: DEFAULT_THEME,
+      export: { preset: 'instagram-reel', options: {} },
       layout: null,
       made: null,
       built: null,

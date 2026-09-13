@@ -248,7 +248,7 @@ test('a write that fails says so where the switch is, and changes nothing', asyn
 })
 
 test('an export is planned in the theme the project is drawn in', async () => {
-  const h = home()
+  const h = home({ encode_delay_ms: 600 })
   await withApp(h, async (page) => {
     await project(page, 'Los Angeles')
     await page.getByRole('button', { name: /lay out/i }).click()
@@ -261,20 +261,50 @@ test('an export is planned in the theme the project is drawn in', async () => {
     const [id] = readdirSync(join(h.engineHome, 'projects'))
     copyFileSync(fixture, join(h.engineHome, 'out', id, 'la-metro-rail.html'))
 
-    await page.getByRole('button', { name: 'Export reel' }).click()
-    await expect(page.getByText(/Exported|Planning|Capturing|Encoding/)).toBeVisible({
+    // The export is on its own tab (A5-01). Its preview plans too, so the
+    // press waits for the preview to have answered - the frame at the
+    // reel's shape - or a late preview's plan could land beside the
+    // export's own.
+    await page.getByRole('tab', { name: 'Export' }).click()
+    await expect
+      .poll(
+        async () =>
+          new URL((await frame(page).getAttribute('src')) ?? '').searchParams.get('frame'),
+        {
+          timeout: 20_000,
+        },
+      )
+      .toBe('1080:1920')
+    await page.getByRole('button', { name: 'Export', exact: true }).click()
+    await expect(page.getByText(/Planning|Capturing|Encoding/)).toBeVisible({
       timeout: 30_000,
     })
+    // The switch is out of reach while the export runs: the theme it was
+    // planned with is the theme the reel will have, whatever is pressed now
+    // (FR-008). It is on the map tab, and leaving the export tab does not
+    // stop the export; the encode is slowed so the export is still going.
+    await page.getByRole('tab', { name: 'Map' }).click()
+    await expect(switchOf(page).getByRole('button', { name: 'Warm dark' })).toBeDisabled()
+
     await expect
-      .poll(() => received(h, 'export.plan').length, { timeout: 30_000 })
+      .poll(() => received(h, 'export.encode').length, { timeout: 30_000 })
       .toBeGreaterThan(0)
-    const plans = received(h, 'export.plan')
+    // The export's own plan: the export tab plans previews too, so the last
+    // plan overall may be a preview's.
+    const lines = readFileSync(join(h.engineHome, 'fake-engine.received'), 'utf8').split('\n')
+    const encode = lines.findIndex((line) => line.includes('"method": "export.encode"'))
+    let plan: string | undefined
+    // The nearest plan before the encode that is the reel's and does not
+    // ask for the safe zones: a preview of the reel always does.
+    for (let i = encode - 1; i >= 0 && plan === undefined; i--)
+      if (
+        lines[i].includes('"method": "export.plan"') &&
+        lines[i].includes('"preset": "instagram-reel"') &&
+        !lines[i].includes('"safe"')
+      )
+        plan = lines[i]
     // The engine's own word for it, and the page the capture drives carries
     // the page's own word.
-    expect(plans[plans.length - 1]).toContain('"theme": "light"')
-    // And the switch is out of reach while the export runs: the theme it
-    // was planned with is the theme the reel will have, whatever is pressed
-    // now (FR-008).
-    await expect(switchOf(page).getByRole('button', { name: 'Warm dark' })).toBeDisabled()
+    expect(plan).toContain('"theme": "light"')
   })
 })
