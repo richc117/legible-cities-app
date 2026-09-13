@@ -633,10 +633,10 @@ jobs:
             mingw-w64-ucrt-x86_64-python
       - name: Build ffmpeg and ffprobe
         shell: msys2 {0}
-        run: time bash scripts/vendor-ffmpeg.sh --build-only "$TARGET" build/ffmpeg-win-x64
+        run: time bash scripts/vendor-ffmpeg.sh --build-only "$TARGET" vendor/ffmpeg/.built-win-x64
       - name: Verify and prove them
         shell: bash
-        run: bash scripts/vendor-ffmpeg.sh --from build/ffmpeg-win-x64 "$TARGET"
+        run: bash scripts/vendor-ffmpeg.sh --from vendor/ffmpeg/.built-win-x64 "$TARGET"
       - name: Refuse a DLL that is not Windows' own, or a zlib that is not the pinned one
         shell: msys2 {0}
         run: |
