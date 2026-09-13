@@ -18,6 +18,53 @@
     "note": "MSYS2/UCRT64 build scripts and compatibility patches for Windows.",
     "licence": "GPL-3.0"
   },
+  "loom_windows_static": {
+    "note": "The libraries the Windows LOOM tools link statically from MSYS2 UCRT64's packages, which the loom-windows job installs at whatever MSYS2 ships that day: zlib and bzip2 (in topo, loom and octi, by their version strings in the tools of build run 34750505248), besides GCC's runtime and mingw-w64's CRT and winpthreads, whose notices are in THIRD_PARTY_NOTICES.md. MSYS2 builds each package from the upstream release tarball with patches of its own, so both are pinned: the loom-windows job refuses a package whose revision is not `msys2_revision`, then fetches MSYS2's source package for that revision (its PKGBUILD, patches and the upstream tarball), checks it against `msys2_source.sha256`, verifies its signature with the shared signed() against the key with `msys2_source.signing_key.fingerprint` (fetched at run time; pacman-key cannot be used, since it needs write access to the runner's keyring), and records the exact package revisions. Both source packages' signatures were made on 2026-09-13's revisions by 5F944B027F7FE2091985AA2EFA11531AA0AA7F57, checked that day to be in msys2.gpg of msys2-keyring 1~20260814-1, which pacman trusts through MSYS2's master keys; a new revision signed by another MSYS2 key needs the fingerprint moved with it. The loom-source job, which the LOOM builds wait for, fetches the upstream release tarball, checks its sha256, and verifies its signature against the key with the primary fingerprint recorded here, each checked on 2026-09-13 to be the key that made the published signature (zlib's is Mark Adler's, as for FFmpeg's zlib; bzip2 1.0.8's was made by a subkey of Mark Wielaard's).",
+    "zlib": {
+      "version": "1.3.2",
+      "msys2_package": "mingw-w64-ucrt-x86_64-zlib",
+      "msys2_revision": "1.3.2-2",
+      "msys2_source": {
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-zlib-1.3.2-2.src.tar.zst",
+        "sha256": "eef69dea52357e01b272d6fd6dc4d7c0773f71260cb7bcde6047c8c383518db3",
+        "signature": "https://repo.msys2.org/mingw/sources/mingw-w64-zlib-1.3.2-2.src.tar.zst.sig",
+        "signing_key": {
+          "url": "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+          "fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57"
+        }
+      },
+      "url": "https://github.com/madler/zlib/releases/download/v1.3.2/zlib-1.3.2.tar.gz",
+      "sha256": "bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16",
+      "signature": "https://github.com/madler/zlib/releases/download/v1.3.2/zlib-1.3.2.tar.gz.asc",
+      "signing_key": {
+        "url": "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x5ED46A6721D365587791E2AA783FCD8E58BCAFBA",
+        "fingerprint": "5ED46A6721D365587791E2AA783FCD8E58BCAFBA"
+      },
+      "licence": "Zlib"
+    },
+    "bzip2": {
+      "version": "1.0.8",
+      "msys2_package": "mingw-w64-ucrt-x86_64-bzip2",
+      "msys2_revision": "1.0.8-4",
+      "msys2_source": {
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-bzip2-1.0.8-4.src.tar.zst",
+        "sha256": "fd9360917314d1cbccb3cb15ed8450d1e56b8a9f733b606504aba52c52159e54",
+        "signature": "https://repo.msys2.org/mingw/sources/mingw-w64-bzip2-1.0.8-4.src.tar.zst.sig",
+        "signing_key": {
+          "url": "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+          "fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57"
+        }
+      },
+      "url": "https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz",
+      "sha256": "ab5a03176ee106d3f0fa90e381da478ddae405918153cca248e682cd0c4a2269",
+      "signature": "https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz.sig",
+      "signing_key": {
+        "url": "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xEC3CFE88F6CA0788774F5C1D1AA44BE649DE760A",
+        "fingerprint": "EC3CFE88F6CA0788774F5C1D1AA44BE649DE760A"
+      },
+      "licence": "bzip2-1.0.6"
+    }
+  },
   "engine": {
     "repo": "https://github.com/richc117/legible-cities",
     "tag": "v0.8.3",

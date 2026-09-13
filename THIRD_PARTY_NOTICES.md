@@ -5,7 +5,8 @@ The app is licensed under the GNU General Public License v3.0 or later (see
 keeps its own licence; the table is kept current as components are added or
 removed. **The installers `.github/workflows/build.yml` makes are test
 builds until a release** (ADR-035), though as artefacts of this public
-repository they are downloadable for 30 days, and so conveyed. They bundle
+repository they are downloadable for 30 days, and so conveyed; a pushed
+release tag attaches them to a draft GitHub Release (ADR-041). They bundle
 the runtime, the engine, LOOM and ffmpeg for their target and carry
 `LICENSE` and this file beside them. `vendor-manifest.json` inside the app
 records each component's pin: the runtime's release, asset and checksum,
@@ -14,8 +15,8 @@ in the runtime, LOOM's commit (and the Windows port's), and FFmpeg's
 version and configure line with the checksums of the FFmpeg, x264 and
 (on Windows) zlib sources it was built from. It does not record the
 versions of the libraries linked into the Python runtime and wheels. The
-ffmpeg they carry is built in this repository (ADR-040), and the GPL
-sources are attached with the release (A6-01).
+ffmpeg they carry is built in this repository (ADR-040), and every
+Release attaches the GPL components' sources beside them (below).
 
 | Component | Role | Licence | Source |
 |---|---|---|---|
@@ -27,8 +28,9 @@ sources are attached with the release (A6-01).
 | Phosphor Icons | The interface's icons, vendored unmodified from `@phosphor-icons/core` **2.1.1** under `src/renderer/src/icons/phosphor/` with the licence beside them; the light weight at 16px, the regular at 24px, the fill weight for toggled states | MIT | https://github.com/phosphor-icons/core |
 | FFmpeg (ADR-012, ADR-040) | Encoding MP4 and GIF exports, bundled under `ffmpeg/` in the app's resources: `ffmpeg` and `ffprobe` of **FFmpeg 9.0.1**, built in this repository by `scripts/vendor-ffmpeg.sh` in the `ffmpeg` jobs of `.github/workflows/vendor.yml`, natively on each target, from the release tarball pinned by URL and sha256 in `vendor/pins.json`, whose signature by FFmpeg's release signing key the vendor workflow verifies, and proven by the same script before it is vendored. Configured `--enable-gpl --enable-version3` with `--disable-everything --disable-autodetect --disable-network`, and only the codecs, formats, filters and protocols the engine's export uses enabled back, with three more that the checks use: the `testsrc` filter the vendoring proof makes frames with, and the `rawvideo` encoder and muxer and `gif` decoder the determinism test reads exports back with; the configure line of every target is in the pins and printed by `ffmpeg -version`. The only external libraries are x264 and zlib (the operating system's on macOS; linked statically on Windows), and the vendor jobs refuse any other. **No freetype, fontconfig, HarfBuzz, libass, libdvdread or libdvdcss**: the export needs none, because the page draws every word in it. The vendor job also builds a Linux x64 binary for tests, and neither ships nor uploads it. Patent licensing for H.264 and AAC encoders is not assessed in this repository | GPL-3.0-or-later (`--enable-gpl --enable-version3`) | https://ffmpeg.org/releases/ffmpeg-9.0.1.tar.xz (tag `n9.0.1`, commit `bf1b838f2a`), and the `ffmpeg-source` artefact on each release |
 | x264 | H.264 encoder statically linked into both FFmpeg binaries on every target: commit `0480cb05fa`, pinned with the sha256 of its `git archive` tar in `vendor/pins.json`, configured 8-bit 4:2:0 without its command-line tool, OpenCL or input libraries | GPL-2.0-or-later | https://code.videolan.org/videolan/x264, and the `ffmpeg-source` artefact on each release |
-| zlib | Compression for FFmpeg's PNG encoder and decoder. Linked statically into the Windows binaries from the **1.3.2** release tarball pinned in `vendor/pins.json`; on macOS FFmpeg links the operating system's `/usr/lib/libz.1.dylib`, which is not shipped | Zlib | https://github.com/madler/zlib, and the `ffmpeg-source` artefact on each release |
-| GCC runtime library and mingw-w64 runtime, with winpthreads | Linked statically into the Windows FFmpeg binaries by MSYS2 UCRT64's GCC with `-static`: GCC's `libgcc`, mingw-w64's CRT startup code and import libraries, and mingw-w64's winpthreads, which the toolchain brings in although FFmpeg and x264 use Win32 threads (the Windows binaries carry its source file names). They import only Windows' own DLLs, the Universal CRT among them, which the vendor job checks. The notices of both are below, from mingw-w64 at commit `9c1abbbf55`, which MSYS2's crt, headers and winpthreads packages `14.0.0.r375.g9c1abbbf5` in the build were made from | GPL-3.0-or-later WITH GCC-exception-3.1 (libgcc); the mingw-w64 runtime's own terms, with parts under the BSD-style, MIT and permissive notices its licence file lists, all quoted below (mingw-w64's CRT); MIT, with parts derived from Lockless Inc.'s Posix Threads library under BSD-3-Clause (winpthreads) | https://gcc.gnu.org/ and https://www.mingw-w64.org/ |
+| zlib | Compression for FFmpeg's PNG encoder and decoder. Linked statically into the Windows binaries from the **1.3.2** release tarball pinned in `vendor/pins.json`; on macOS FFmpeg links the operating system's `/usr/lib/libz.1.dylib`, which is not shipped. Also linked statically into the Windows LOOM tools `topo`, `loom` and `octi`, from MSYS2 UCRT64's zlib package, which the vendor workflow refuses unless it is the revision **1.3.2-2** pinned under `loom_windows_static`, built by MSYS2 from the 1.3.2 release with MSYS2's patches; on macOS LOOM links the system's | Zlib | https://github.com/madler/zlib, and the `ffmpeg-source` and LOOM source archives on each release |
+| bzip2 (libbzip2) | Decompression in the Windows LOOM tools `topo`, `loom` and `octi`, linked statically from MSYS2 UCRT64's bzip2 package, which the vendor workflow refuses unless it is the revision **1.0.8-4** pinned under `loom_windows_static` in `vendor/pins.json`, built by MSYS2 from the 1.0.8 release with MSYS2's patches; its notice is below. On macOS LOOM links the system's `libbz2`, which is not shipped | bzip2-1.0.6 (BSD-style) | https://sourceware.org/bzip2/, and the LOOM source archive on each release |
+| GCC runtime library and mingw-w64 runtime, with winpthreads | Linked statically into the Windows FFmpeg binaries by MSYS2 UCRT64's GCC with `-static`: GCC's `libgcc`, mingw-w64's CRT startup code and import libraries, and mingw-w64's winpthreads, which the toolchain brings in although FFmpeg and x264 use Win32 threads (the Windows binaries carry its source file names). They import only Windows' own DLLs, the Universal CRT among them, which the vendor job checks. The same are linked statically into the four Windows LOOM tools by the same toolchain with `-static` (`scripts/loom-windows-patch.py`), with GCC's C++ library `libstdc++` besides, since LOOM is C++; each release's LOOM source archive names the exact MSYS2 package revisions (`TOOLCHAIN-win-x64.txt`). The notices of both are below, from mingw-w64 at commit `9c1abbbf55`, which MSYS2's crt, headers and winpthreads packages `14.0.0.r375.g9c1abbbf5` in the build were made from | GPL-3.0-or-later WITH GCC-exception-3.1 (libgcc, libstdc++); the mingw-w64 runtime's own terms, with parts under the BSD-style, MIT and permissive notices its licence file lists, all quoted below (mingw-w64's CRT); MIT, with parts derived from Lockless Inc.'s Posix Threads library under BSD-3-Clause (winpthreads) | https://gcc.gnu.org/ and https://www.mingw-w64.org/ |
 | Electron | Application shell; includes Chromium and Node.js under their own licences. Pinned in `package.json` | MIT | https://www.electronjs.org/ |
 | React | User interface | MIT | https://react.dev/ |
 | electron-vite, Vite, Vitest, Playwright, TypeScript, ESLint, Prettier, electron-builder | Development tooling: build, test, style. Present in the repository, not shipped in the app | MIT (electron-vite, Vite, Vitest, ESLint, Prettier, electron-builder); Apache-2.0 (Playwright, TypeScript) | package.json |
@@ -49,19 +51,45 @@ sources are attached with the release (A6-01).
 
 ## Obligations we take on
 
-- **GPL components** (LOOM, FFmpeg with x264, the engine): each release
-  attaches source archives for the exact versions it bundles, beside the
-  binaries, together with the build scripts and the FFmpeg configure line
-  used. The installed app ships `LICENSE` and this file and shows them in
-  its Licences screen. FFmpeg is built in this repository (ADR-040), so its
-  Corresponding Source is FFmpeg's release tarball, x264 at its pinned
-  commit, zlib's release tarball for the Windows binaries, and
-  `scripts/vendor-ffmpeg.sh` with every configure line: the vendor workflow
-  that builds the binaries uploads exactly those, verified against the
-  pins, as the `ffmpeg-source` artefact of the same run, with a `BUILD.txt`
-  naming the repository commit, and A6-01 attaches that artefact to each
-  release. The manifest names the same sources by hash.
-- **mingw-w64 runtime**, linked into the Windows ffmpeg and ffprobe. Its
+- **GPL components** (LOOM, FFmpeg with x264, the engine): every GitHub
+  Release attaches, beside the three installers and `SHA256SUMS.txt`, one
+  archive of the Corresponding Source of each, built by the vendor workflow
+  in the same run as the installers from the same `vendor/pins.json`, and
+  refused if the run's pins, app version or run do not match the
+  installers' manifests (`scripts/release.mjs`, ADR-041). The installed app
+  ships `LICENSE` and this file and shows them in its Licences screen.
+  - `ffmpeg-<version>-source.tar`, the `ffmpeg-source` artefact: FFmpeg is
+    built in this repository (ADR-040), so its Corresponding Source is
+    FFmpeg's release tarball, x264 at its pinned commit, zlib's release
+    tarball for the Windows binaries, and `scripts/vendor-ffmpeg.sh` with
+    every configure line, each verified against the pins (FFmpeg's and
+    zlib's signatures too), with copies of the pins and the vendor workflow
+    and a `BUILD.txt` naming the repository commit. The manifest names the
+    same sources by hash.
+  - `loom-<commit>-source.tar`, the `loom-source` artefact: LOOM at the
+    pinned commit with its `cppgtfs` and `util` submodules at the commits
+    that commit records, each checked before it is archived; Transport for
+    Cairo's Windows port at its pinned commit;
+    `scripts/loom-windows-patch.py`, which applies the port's changes for
+    the Windows build; the upstream release tarballs of zlib 1.3.2 and
+    bzip2 1.0.8, each checked against its sha256 and its publisher's
+    signature, and MSYS2's source packages (PKGBUILD, patches and upstream
+    tarball) for the exact revisions the Windows tools link statically,
+    each checked against its pinned sha256 and MSYS2's signature; copies of the pins and the vendor workflow,
+    whose `loom` and `loom-windows` jobs are the build instructions; a
+    `BUILD.txt` naming the commits and tarballs; and
+    `TOOLCHAIN-win-x64.txt`, the `loom-windows` job's record of the MSYS2
+    package revisions it linked in. The LOOM jobs wait for this one, so no
+    LOOM binary is uploaded in a run whose sources did not verify.
+  - `legible-cities-engine-<version>-source.tar`, the `engine-source`
+    artefact: the engine at the pinned tag, its version checked against
+    the pin as the runtime's vendoring checks it, with
+    `scripts/vendor-python.sh`, which installs it, and a `BUILD.txt` naming
+    the commit the tag resolved to.
+  - The app's own source is the archive GitHub attaches to every Release of
+    its tag.
+- **mingw-w64 runtime**, linked into the Windows ffmpeg and ffprobe and
+  the Windows LOOM tools. Its
   `COPYING.MinGW-w64-runtime.txt` at commit `9c1abbbf55`, verbatim but for
   one e-mail address this public repository does not reproduce (the file
   itself carries it:
@@ -335,7 +363,7 @@ sources are attached with the release (A6-01).
   Lesser General Public License for more details.
   ```
 - **winpthreads** (MIT, with parts BSD-3-Clause), linked into the Windows
-  ffmpeg and ffprobe. Its `COPYING`, verbatim, identical at commit
+  ffmpeg and ffprobe and the Windows LOOM tools. Its `COPYING`, verbatim, identical at commit
   `9c1abbbf55`:
 
   > Copyright (c) 2011 mingw-w64 project
@@ -395,6 +423,52 @@ sources are attached with the release (A6-01).
   >  * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
   >  * OF THE POSSIBILITY OF SUCH DAMAGE.
   >  */
+- **bzip2** (libbzip2 1.0.8), linked into the Windows LOOM tools. Its
+  `LICENSE`, verbatim from the 1.0.8 release tarball but for trailing
+  spaces and one e-mail address this public repository does not reproduce:
+
+  ```text
+  This program, "bzip2", the associated library "libbzip2", and all
+  documentation, are copyright (C) 1996-2019 Julian R Seward.  All
+  rights reserved.
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions
+  are met:
+
+  1. Redistributions of source code must retain the above copyright
+     notice, this list of conditions and the following disclaimer.
+
+  2. The origin of this software must not be misrepresented; you must
+     not claim that you wrote the original software.  If you use this
+     software in a product, an acknowledgment in the product
+     documentation would be appreciated but is not required.
+
+  3. Altered source versions must be plainly marked as such, and must
+     not be misrepresented as being the original software.
+
+  4. The name of the author may not be used to endorse or promote
+     products derived from this software without specific prior written
+     permission.
+
+  THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS
+  OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+  WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+  DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
+  GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+  INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+  NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+  Julian Seward, [address omitted]
+  bzip2/libbzip2 version 1.0.8 of 13 July 2019
+  ```
+- **zlib**, linked into the Windows FFmpeg and LOOM binaries. Its licence
+  asks for no notice in a binary; its terms are in `zlib.h` and `LICENSE`
+  inside the release tarball attached with each release's sources.
 - **FigUI3 core, Phosphor Icons and react-colorful** (MIT): the kit and the
   picker are compiled into the interface and the icons are inlined into it,
   so no licence file reaches the built app on its own; this file, which the
