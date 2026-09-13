@@ -2,7 +2,7 @@
 
 **Feature Branch**: `A1-03-jobs`
 
-**Created**: 2026-09-13
+**Created**: 2026-09-12
 
 **Status**: Draft
 
@@ -37,7 +37,7 @@ runs, not a second place they live.
 
 ## Decisions taken before this spec
 
-Answered by the maintainer on 2026-09-13:
+Answered by the maintainer on 2026-09-12:
 
 - **The inspector starts collapsed.** Its toggle carries a count of running
   jobs, and a job that finishes or fails is announced politely. Nothing

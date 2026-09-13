@@ -1,7 +1,7 @@
 # ADR-036: The inspector spans projects
 
 - **Status:** Accepted
-- **Date:** 2026-09-13
+- **Date:** 2026-09-12
 - **Supersedes:** none
 - **Superseded by:** none
 
@@ -66,9 +66,14 @@ deferred, and section 9 lists both as deliberately absent.
 
 ## Consequences
 
-**A job is visible, cancellable and diagnosable from every screen**, and
-the view of it cannot drift from the run's own screen, because each job is
-derived from the run's snapshot rather than kept beside it.
+**A job is visible, cancellable and diagnosable from every screen**, and a
+running job's view cannot drift from the run's own screen, because it is
+derived from the run's snapshot each time it is read. What is kept beside
+the runs are copies: a job that has ended, frozen at the moment it ended,
+and each project's name, since a run knows its project only by id. Copies
+can go stale, so each has one source that updates it - the moment of the
+end for a job, the list read or a rename for a name - and a project's jobs
+leave only when its own screen has deleted it.
 
 **Section 9's three regions are now two.** The inspector's width is taken
 from the main region on a wide window, so the viewer subtracts it; on a
@@ -78,11 +83,10 @@ narrow one the inspector is an overlay and takes nothing.
 later, they arrive as a section beside the jobs and bring a reason; the
 jobs stay first, since they are the one thing that spans projects.
 
-**Names are the renderer's to find.** A run knows its project only by id,
-so the window reads the project list when a name is needed, and only then:
-a read on every screen change would overlap record writes for nothing, and
-reads overlapping a record being renamed into place are a Windows hazard
-this change should not add to.
+**Names are the renderer's to find.** The window reads the project list
+when a name is needed, and only then. Each such read is still a store read
+that can overlap a record being renamed into place, a Windows hazard; a
+read on every screen change would add many more for nothing.
 
 **Nothing is persisted.** A relaunch starts with an empty list; what the
 engine said is already in `engine.log` (A6-03), which "Copy log" points at

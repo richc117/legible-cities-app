@@ -1,6 +1,6 @@
 # Implementation Plan: Jobs, in an inspector that spans projects
 
-**Branch**: `A1-03-jobs` | **Date**: 2026-09-13 | **Spec**: [spec.md](spec.md)
+**Branch**: `A1-03-jobs` | **Date**: 2026-09-12 | **Spec**: [spec.md](spec.md)
 
 ## Summary
 

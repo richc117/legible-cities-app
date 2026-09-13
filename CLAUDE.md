@@ -136,13 +136,17 @@ then the last twenty finished, each on its run's own progress line with
 Cancel through the run's own `cancel()`, the engine's hint and its detail
 behind a closed disclosure, and "Copy log", which the main process redacts
 through the diagnostics copy's own home lookup before the clipboard
-(`src/main/jobs-ipc.ts`). **A job is derived from its run's snapshot, never
-kept beside it** (`job()` on each run, `JobRegistry` in `runs.ts`,
-`src/shared/jobs.ts`), so the two views cannot disagree, and **the runs'
-snapshots and behaviour did not change**. Tracking a run is silent, since
-`layoutRunFor` is called during a render; project names are read only when
-one is needed, not on every screen change. A job's end is announced once;
-nothing is written to disk.
+(`src/main/jobs-ipc.ts`). **A running job is derived from its run's
+snapshot each time it is read; a finished job and a project's name are
+copies kept beside the runs** (`job()` on each run, `JobRegistry` in
+`runs.ts`, `src/shared/jobs.ts`), and **the runs' snapshots and behaviour
+did not change**. A project's jobs leave only when its own screen has
+deleted it, never because a list read missed a record, and a rename hands
+the new name in. The list is the inspector's own state, so a run's
+progress never re-renders the screen beside it. Tracking a run is silent,
+since `layoutRunFor` is called during a render. A job's end is announced
+once, emptied and refilled a frame later so a repeat is spoken; nothing is
+written to disk.
 
 Work proceeds phase by phase; `CONTRIBUTING.md` explains the flow, the
 labels, the milestones and the `A0-05`-style issue codes. The four Phase 0
