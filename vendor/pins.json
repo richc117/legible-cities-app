@@ -51,12 +51,16 @@
   },
   "ffmpeg": {
     "version": "9.0.1",
-    "note": "Built in this repository by scripts/vendor-ffmpeg.sh, in the ffmpeg jobs of .github/workflows/vendor.yml, natively on each target (ADR-040, amending ADR-012): ffmpeg and ffprobe only (the engine finds ffprobe beside SCHEMATIC_FFMPEG by name). FFmpeg from its release tarball, x264 from a commit, both checked by sha256 before use; x264 is the only external library, and zlib, which the PNG codecs need, is the operating system's on macOS and Linux and built statically from its release tarball on Windows, which has none. `source.sha256` was computed on download on 2026-09-13 (FFmpeg publishes a GPG signature, not a checksum). `x264.sha256` is of the uncompressed tar `git archive --format=tar --prefix=x264-<commit>/` writes for the commit, which is byte for byte the tar inside VideoLAN GitLab's .tar.bz2 of it; `x264.commit` is master's head since 2025-09-10, and the commit BtbN's builds pin. `zlib.sha256` matches the digest GitHub records for the release asset. Per target: `configure` is FFmpeg's configure line exactly as `ffmpeg -version` prints it; `x264_configure` and `zlib_configure` are the arguments given to each configure besides `--prefix`, which names the build's own dependency folder; `reports` is the token after 'ffmpeg version '. The script refuses to build when the lines it composes differ from these, and the proof refuses a binary whose -version differs.",
+    "note": "Built in this repository by scripts/vendor-ffmpeg.sh, in the ffmpeg jobs of .github/workflows/vendor.yml, natively on each target (ADR-040, amending ADR-012): ffmpeg and ffprobe only (the engine finds ffprobe beside SCHEMATIC_FFMPEG by name). FFmpeg from its release tarball, x264 from a commit, both checked by sha256 before use; x264 is the only external library, and zlib, which the PNG codecs need, is the operating system's on macOS and Linux and built statically from its release tarball on Windows, which has none. `source.sha256` was computed on download on 2026-09-13 (FFmpeg publishes a GPG signature, not a checksum); the --sources job verifies that signature, and zlib's, with gpg against keys fetched at run time and trusted only for the `signing_key.fingerprint` recorded here (FFmpeg's release signing key, and Mark Adler's, zlib's maintainer), each checked on 2026-09-13 to be the key named inside the published signature. `x264.sha256` is of the uncompressed tar `git archive --format=tar --prefix=x264-<commit>/` writes for the commit, which is byte for byte the tar inside VideoLAN GitLab's .tar.bz2 of it; `x264.commit` is master's head since 2025-09-10, and the commit BtbN's builds pin. `zlib.sha256` matches the digest GitHub records for the release asset. Per target: `configure` is FFmpeg's configure line exactly as `ffmpeg -version` prints it; `x264_configure` and `zlib_configure` are the arguments given to each configure besides `--prefix`, which names the build's own dependency folder; `reports` is the token after 'ffmpeg version '. The script refuses to build when the lines it composes differ from these, and the proof refuses a binary whose -version differs.",
     "licence": "GPL-3.0-or-later: every target is configured --enable-gpl --enable-version3 and links x264 (GPL-2.0-or-later); none is --enable-nonfree",
     "source": {
       "url": "https://ffmpeg.org/releases/ffmpeg-9.0.1.tar.xz",
       "sha256": "cf38e0e28c7e5605942c4a77755349b0145804a397af37eb1fb4c77cb237f635",
       "signature": "https://ffmpeg.org/releases/ffmpeg-9.0.1.tar.xz.asc",
+      "signing_key": {
+        "url": "https://ffmpeg.org/ffmpeg-devel.asc",
+        "fingerprint": "FCF986EA15E6E293A5644F10B4322F04D67658D8"
+      },
       "repo": "https://git.ffmpeg.org/ffmpeg.git",
       "tag": "n9.0.1",
       "commit": "bf1b838f2ab88b4f8fd83443325c782ea0e0f7fa",
@@ -72,6 +76,11 @@
       "version": "1.3.2",
       "url": "https://github.com/madler/zlib/releases/download/v1.3.2/zlib-1.3.2.tar.gz",
       "sha256": "bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16",
+      "signature": "https://github.com/madler/zlib/releases/download/v1.3.2/zlib-1.3.2.tar.gz.asc",
+      "signing_key": {
+        "url": "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x5ED46A6721D365587791E2AA783FCD8E58BCAFBA",
+        "fingerprint": "5ED46A6721D365587791E2AA783FCD8E58BCAFBA"
+      },
       "licence": "Zlib"
     },
     "targets": {

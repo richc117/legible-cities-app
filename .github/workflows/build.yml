@@ -17,8 +17,8 @@
 #
 # Unsigned (FR-005): the Mac app is signed ad hoc and the Windows installer
 # not at all, until the release-readiness gate (A6-05). Installers are
-# test artefacts until then; issue 95 replaces the third-party ffmpeg
-# builds before a release, and A6-01 attaches the GPL sources.
+# test artefacts until then. The ffmpeg they carry is this repository's
+# own build (issue 95, ADR-040), and A6-01 attaches the GPL sources.
 #
 # This runs on request and on a push to any branch that changes what it
 # packages or how the app finds it, src/main and the npm manifests included,

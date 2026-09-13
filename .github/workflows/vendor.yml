@@ -452,6 +452,9 @@ jobs:
   # a conveyed GPL binary. A5-04 runs the script directly.
   ffmpeg:
     name: ffmpeg (${{ matrix.target }})
+    # No ffmpeg artefact without its verified Corresponding Source in the
+    # same run: A6-01 attaches ffmpeg-source to the release beside them.
+    needs: ffmpeg-source
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
@@ -560,7 +563,7 @@ jobs:
             done
             exit $status
           fi
-      - name: Refuse a configure line with a library but x264 and zlib, or nonfree
+      - name: Refuse a configure line with a library but x264 and zlib, nonfree, or not everything else disabled
         shell: bash
         run: |
           # Every --enable- flag must be one of the licence switches, zlib,
@@ -582,6 +585,16 @@ jobs:
               echo "::error::$b is configured with $(tr '\n' ' ' <<< "$others")"
               status=1
             fi
+            # And everything else off: without these two, every component
+            # and every library FFmpeg can find on the runner comes back, and
+            # on macOS VideoToolbox and its kin live under /System, where the
+            # link check allows them.
+            for flag in --disable-everything --disable-autodetect; do
+              if [ -z "$(grep -xF -- "$flag" <<< "$(grep -oE -- '--disable-[a-z0-9_-]+' <<< "$conf")" || true)" ]; then
+                echo "::error::$b is not configured with $flag"
+                status=1
+              fi
+            done
           done
           exit $status
       - name: Measure
@@ -610,6 +623,7 @@ jobs:
   # DLLs.
   ffmpeg-windows:
     name: ffmpeg (win-x64)
+    needs: ffmpeg-source
     runs-on: windows-latest
     timeout-minutes: 75
     env:
@@ -673,7 +687,7 @@ jobs:
             fi
           done
           exit $status
-      - name: Refuse a configure line with a library but x264 and zlib, or nonfree
+      - name: Refuse a configure line with a library but x264 and zlib, nonfree, or not everything else disabled
         shell: bash
         run: |
           status=0
@@ -691,6 +705,16 @@ jobs:
               echo "::error::$b is configured with $(tr '\n' ' ' <<< "$others")"
               status=1
             fi
+            # And everything else off: without these two, every component
+            # and every library FFmpeg can find on the runner comes back, and
+            # on macOS VideoToolbox and its kin live under /System, where the
+            # link check allows them.
+            for flag in --disable-everything --disable-autodetect; do
+              if [ -z "$(grep -xF -- "$flag" <<< "$(grep -oE -- '--disable-[a-z0-9_-]+' <<< "$conf")" || true)" ]; then
+                echo "::error::$b is not configured with $flag"
+                status=1
+              fi
+            done
           done
           exit $status
       - name: Measure
@@ -708,12 +732,15 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  # The Corresponding Source of every ffmpeg above, uploaded once: FFmpeg's
-  # release tarball, x264 at its commit and zlib's release tarball, as
-  # fetched and verified against the pins, with copies of the script, the
-  # pins and this workflow, and BUILD.txt naming every configure line and
-  # this run's commit. A6-01 attaches this artefact, by this name, to each
-  # GitHub Release (ADR-040).
+  # The Corresponding Source of every ffmpeg above, uploaded once and first:
+  # FFmpeg's release tarball, x264 at its commit and zlib's release tarball,
+  # as fetched and verified against the pins, FFmpeg's and zlib's with their
+  # signatures checked by gpg against the pinned key fingerprints, with
+  # copies of the script, the pins and this workflow, and BUILD.txt naming
+  # every configure line and this run's commit. The ffmpeg jobs need this
+  # one, so no binary is built or uploaded in a run whose sources did not
+  # verify. A6-01 attaches this artefact, by this name, to each GitHub
+  # Release (ADR-040).
   ffmpeg-source:
     name: ffmpeg (source)
     runs-on: ubuntu-22.04

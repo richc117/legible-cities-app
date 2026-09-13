@@ -37,7 +37,7 @@ them before A6-01 tags a release:
   January 2027.
 
 What the export needs is known exactly: `src/schematic/export.py` at the
-pinned engine tag (v0.8.3) runs four ffmpeg invocations and one ffprobe
+pinned engine tag (v0.8.3) runs five ffmpeg invocations and one ffprobe
 call, and `scripts/vendor-ffmpeg.sh` already required every component they
 name before anything was vendored. Three more users of the binary were found
 while building this: the proof's own synthetic input (`-f lavfi -i
@@ -118,30 +118,54 @@ high` asks for. On macOS both are built for macOS **13.0**, the pinned
 Electron's `LSMinimumSystemVersion`, and linked with `-dead_strip_dylibs`,
 because FFmpeg's configure links CoreFoundation, CoreMedia and CoreVideo
 into libavutil whether or not anything uses them. On Windows FFmpeg is
-linked `-static`; FFmpeg uses Win32 threads and x264 its own, so no
-winpthreads DLL is needed.
+linked `-static`, so nothing of the toolchain's is needed beside it as a
+DLL. FFmpeg uses Win32 threads and x264 its own, but MSYS2's GCC is built
+for POSIX threads and mingw-w64's winpthreads is linked in all the same:
+the first Windows binaries carry its source file names.
 
 The script composes each configure line and refuses to build when it
 differs from the one in the pins, and refuses again when FFmpeg's own
-record of it does; the proof refuses a binary whose `-version` differs. The
-jobs then refuse a binary that links anything but `/usr/lib` and `/System`
+record of it does; on Windows it refuses a build whose library lines do not
+take zlib from the build's own folder, and on every target a binary that
+carries that folder's path. FFmpeg is configured in its own tree, because
+configured from elsewhere under MSYS2 it compiled every file by absolute
+path and `__FILE__` put the runner's temporary folder into the Windows
+binaries 164 times. The proof refuses a binary whose `-version` differs.
+The jobs then refuse a binary that links anything but `/usr/lib` and `/System`
 on macOS, or that is built for another architecture or for a macOS other
 than 13.0; anything but the C library, libm, libpthread, libdl and zlib on
 Linux; any imported DLL outside a list of Windows' own on Windows, read
 from the PE import table with `objdump -p`, and a zlib that is not the
 pinned release; and, on every target, any `--enable-` flag in `-buildconf`
-other than the licence switches, zlib, libx264 and the component lists, so
-another library or `--enable-nonfree` fails whatever the pins say.
+other than the licence switches, zlib, libx264 and the component lists, or
+a `-buildconf` without `--disable-everything` and `--disable-autodetect`,
+so another library, `--enable-nonfree`, or everything switched back on
+fails whatever the pins say.
 
 **ffprobe stays.** The engine finds it beside `SCHEMATIC_FFMPEG` by name
 and calls it once, for a duration that ffmpeg or the frame count could
 give; dropping it is an engine change, and the follow-up.
 
-**The Corresponding Source is uploaded by the same workflow**, as the
-artefact `ffmpeg-source`: the three archives as fetched and verified, copies
-of the script, the pins and `vendor.yml`, and `BUILD.txt` with every
-target's FFmpeg, x264 and zlib configure line and the repository commit.
-A6-01 attaches that artefact, by that name, to each GitHub Release.
+**The Corresponding Source is uploaded by the same workflow, first**, as
+the artefact `ffmpeg-source`: the three archives as fetched and verified,
+copies of the script, the pins and `vendor.yml`, and `BUILD.txt` with every
+target's FFmpeg, x264 and zlib configure line, the toolchains, and the
+repository commit. The binary jobs need that job, so no ffmpeg artefact is
+uploaded in a run whose sources did not verify. A6-01 attaches that
+artefact, by that name, to each GitHub Release.
+
+The sha256 of each archive was taken on first download. What ties FFmpeg's
+and zlib's to their publishers is a signature: the sources job fetches each
+signing key at run time and verifies the tarball's signature with gpg,
+accepting only the primary key fingerprint the pins record, which was
+checked on 2026-09-13 to be the key named inside each published signature:
+FFmpeg's release signing key `FCF986EA15E6E293A5644F10B4322F04D67658D8`,
+and Mark Adler's `5ED46A6721D365587791E2AA783FCD8E58BCAFBA` for zlib. The
+key files are not committed, because each names its owner's address. x264
+publishes no signature; its commit id is its integrity, and git checks it
+object by object. The exact toolchain versions, and the MSYS2 packages on
+Windows, go to each binary job's summary and log, since the sources job
+runs before any of them.
 
 ## Consequences
 
@@ -171,11 +195,15 @@ ffprobe, which carries the same libraries as ffmpeg for one duration.
 repository's own record: FFmpeg's release tarball, x264 at a commit, zlib's
 release tarball for the Windows binaries, and `scripts/vendor-ffmpeg.sh`
 with the configure lines. Nothing is inferred. macOS and Linux link the
-operating system's zlib, and the Windows binaries carry, as every MinGW
-executable does, GCC's `libgcc` and mingw-w64's CRT startup code, under the
-GCC Runtime Library Exception and mingw-w64's permissive terms.
-`THIRD_PARTY_NOTICES.md` shrinks from some eighty libraries to FFmpeg,
-x264, zlib and that runtime.
+operating system's zlib, and the Windows binaries carry, as MinGW
+executables linked `-static` do, GCC's `libgcc` under the GCC Runtime
+Library Exception, mingw-w64's CRT startup code, and winpthreads, whose MIT
+and BSD-3-Clause terms ask for their notice in the documentation, which
+`THIRD_PARTY_NOTICES.md` gives. The macOS binaries link only the system's
+libraries, and what clang adds from compiler-rt is under Apache-2.0 with the
+LLVM exception, which asks for no notice in object code; the Linux build is
+not shipped. `THIRD_PARTY_NOTICES.md` shrinks from some eighty libraries to
+FFmpeg, x264, zlib and that runtime.
 
 **No libdvdcss, no freetype, no network.** `drawtext` and `subtitles` no
 longer exist, so the engine's docstring is true of what ships; the export

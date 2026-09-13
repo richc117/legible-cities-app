@@ -1204,7 +1204,7 @@ outside the asar, in the same shape on every target
 |---|---|---|
 | `python/` | the python-build-standalone runtime with the engine installed, its bytecode compiled | `src/main/interpreter.ts` |
 | `loom/` | `gtfs2graph`, `topo`, `loom`, `octi` | `src/main/config.ts`, as `SCHEMATIC_LOOM_BIN` |
-| `ffmpeg/` | `ffmpeg` and `ffprobe` | `src/main/config.ts`, as `SCHEMATIC_FFMPEG` |
+| `ffmpeg/` | `ffmpeg` and `ffprobe`, built by the vendor workflow from pinned FFmpeg and x264 sources with only what the export uses (ADR-040) | `src/main/config.ts`, as `SCHEMATIC_FFMPEG` |
 | `vendor-manifest.json` | the pins' sha256 and every component's exact version, the runtime's Python packages included | a release (A6-01) |
 | `first-run-gtfs/` | a GTFS folder of three stops and one subway trip, 588 bytes | `src/main/first-run.ts`, the first-run check |
 | `LICENSE`, `THIRD_PARTY_NOTICES.md` | the app's licence and the notices | a person, and the Licences screen |
@@ -1295,5 +1295,5 @@ installer; with anything, it holds the build to the same check.
 | The left rail, and the project's fields and diagnostics in the inspector; the inspector holds only the jobs, and the fields and the diagnostics stay on the project screen (ADR-036) | Open; no issue yet |
 | Editing the numeric style fields; the record holds the engine's defaults, and the colours, the order and the theme are a person's since A4-01, A4-02 and A4-03 | post-MVP |
 | Installers signed with an identity, and notarised | A6-05 |
-| A release: the GPL sources attached, the download page with the unsigned-install steps, and an ffmpeg of this project's own build | A6-01, issue 95 |
+| A release: the GPL sources attached (for ffmpeg, the `ffmpeg-source` artefact the vendor workflow uploads beside the binaries), and the download page with the unsigned-install steps | A6-01 |
 | Signing and auto-update | A6-05 |

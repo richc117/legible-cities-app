@@ -74,9 +74,10 @@ the bundle did not change (ADR-035). They are unsigned test artefacts until
 A6-01 and A6-05. The ffmpeg they carry is our own build (#95, ADR-040):
 `scripts/vendor-ffmpeg.sh` builds FFmpeg 9.0.1 and x264 at a pinned commit
 natively on each target (MSYS2 UCRT64 on Windows), with
-`--disable-everything` and only what the export uses, x264 the one external
-library and zlib the system's or, on Windows, static; the vendor job refuses
-any other library and uploads the Corresponding Source as `ffmpeg-source`.
+`--disable-everything` and only what the export and its checks use, x264
+the one external library and zlib the system's or, on Windows, static; the
+vendor job refuses any other library and uploads the Corresponding Source
+as `ffmpeg-source` before any binary.
 On every start a packaged app makes those tools do real work once the
 engine has settled (A6-02): the main process runs `gtfs2graph` over the
 three-stop feed in `resources/first-run-gtfs/`, whose output must parse as

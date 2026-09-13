@@ -4,6 +4,9 @@
 - **Date:** 2026-09-12
 - **Supersedes:** none
 - **Superseded by:** none
+- **Amended by:** [ADR-040](040-ffmpeg-is-built-from-pinned-sources.md): the
+  ffmpeg the installers carry is built in this repository, 12 to 17 MB a
+  target rather than the 132 to 290 MB of third-party builds given below
 
 ## Context
 

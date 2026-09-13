@@ -34,10 +34,12 @@
 # fetched; nothing is installed.
 #
 # --sources writes what A6-01 attaches to a release as the Corresponding
-# Source: the three source archives as fetched and verified, copies of this
-# script, the pins and the vendor workflow, and BUILD.txt with every
-# configure line and the repository commit they came from. The vendor job
-# uploads it as the ffmpeg-source artefact.
+# Source: the three source archives as fetched and verified, with FFmpeg's
+# and zlib's signatures checked by gpg against the signing keys whose
+# fingerprints the pins record, copies of this script, the pins and the
+# vendor workflow, and BUILD.txt with every configure line and the
+# repository commit they came from. The vendor job uploads it as the
+# ffmpeg-source artefact, and builds no binary until it has.
 #
 # VENDOR_FFMPEG_PINS names another pins file, so a wrong checksum can be
 # tried without editing the committed one. VENDOR_FFMPEG_WORK names a folder
@@ -51,7 +53,7 @@
 #
 # The proof is what export.py uses at the pinned engine tag, not a list of
 # what FFmpeg can do: the encoders, decoders, filters, muxers, demuxers,
-# input devices and protocols its four invocations and its ffprobe call
+# input devices and protocols its five invocations and its ffprobe call
 # name, then a real encode of a one-second synthetic sequence through the
 # same filter graphs into MP4 and GIF, each read back with ffprobe.
 #
@@ -270,6 +272,43 @@ fetch_x264() {
   verify "$file" "$x264_sha"
 }
 
+# signed <file> <signature url> <key url> <fingerprint>: the file carries a
+# good signature by the key with that primary fingerprint. The key is
+# fetched at run time and trusted only for its fingerprint, which the pins
+# record; a key file names its owner's address, so none is committed. The
+# sha256 in the pins was taken on first download; this is what ties those
+# bytes to their publisher.
+signed() {
+  local file=$1 sig_url=$2 key_url=$3 want=$4 home status primary
+  command -v gpg >/dev/null 2>&1 || { echo "verifying $(basename "$file") needs gpg" >&2; exit 2; }
+  home=$(mktemp -d)
+  chmod 700 "$home"
+  echo "fetching $sig_url"
+  curl -fsSL --retry 3 --connect-timeout 30 --max-time 120 -o "$file.asc" "$sig_url"
+  echo "fetching the signing key $want"
+  curl -fsSL --retry 3 --connect-timeout 30 --max-time 120 -o "$home/key.asc" "$key_url"
+  gpg --homedir "$home" --batch --quiet --import "$home/key.asc" 2> "$home/import.log" || {
+    cat "$home/import.log" >&2
+    echo "the signing key from $key_url did not import" >&2
+    exit 1
+  }
+  if ! status=$(gpg --homedir "$home" --batch --status-fd 1 --verify "$file.asc" "$file" 2> "$home/verify.log"); then
+    cat "$home/verify.log" >&2
+    echo "$(basename "$file") has no good signature by $want" >&2
+    exit 1
+  fi
+  # VALIDSIG's last field is the primary key's fingerprint, whichever
+  # subkey signed.
+  primary=$(awk '$2 == "VALIDSIG" { print $NF }' <<< "$status")
+  if [ "$primary" != "$want" ]; then
+    printf '%s\n' "$status" >&2
+    echo "$(basename "$file") is signed by ${primary:-no valid key}, not $want" >&2
+    exit 1
+  fi
+  rm -rf "$home"
+  echo "signature ok: $(basename "$file") by $want"
+}
+
 # ---------------------------------------------------------------------------
 # What is configured
 # ---------------------------------------------------------------------------
@@ -367,9 +406,40 @@ same() {
 # ---------------------------------------------------------------------------
 
 if [ "$mode" = sources ]; then
+  # Every pinned line is read into a variable before it is used: a pin read
+  # inside an echo or an argument that fails would pass a blank and carry on.
+  ffmpeg_signature=$(pin source.signature)
+  ffmpeg_key_url=$(pin source.signing_key.url)
+  ffmpeg_key=$(pin source.signing_key.fingerprint)
+  ffmpeg_tag=$(pin source.tag)
+  ffmpeg_commit=$(pin source.commit)
+  zlib_signature=$(pin zlib.signature)
+  zlib_key_url=$(pin zlib.signing_key.url)
+  zlib_key=$(pin zlib.signing_key.fingerprint)
+  per_target=
+  for t in darwin-arm64 darwin-x64 win-x64 linux-x64; do
+    t_runner=$(pin runner "$t")
+    t_zlib=$(pin zlib "$t")
+    t_zlib_configure=
+    if [ "$t_zlib" = static ]; then t_zlib_configure=$(pin zlib_configure "$t"); fi
+    t_x264=$(pin x264_configure "$t")
+    t_configure=$(pin configure "$t")
+    t_reports=$(pin reports "$t")
+    per_target="$per_target
+$t, on $t_runner
+  zlib: $t_zlib${t_zlib_configure:+
+  zlib configure: $t_zlib_configure}
+  x264 configure: $t_x264
+  FFmpeg configure: $t_configure
+  ffmpeg -version reports: $t_reports
+"
+  done
+
   fetch "$ffmpeg_url" "$ffmpeg_sha" "$outdir"
+  signed "$outdir/$ffmpeg_tarball" "$ffmpeg_signature" "$ffmpeg_key_url" "$ffmpeg_key"
   fetch_x264 "$outdir"
   fetch "$zlib_url" "$zlib_sha" "$outdir"
+  signed "$outdir/$zlib_tarball" "$zlib_signature" "$zlib_key_url" "$zlib_key"
   mkdir -p "$outdir/build"
   cp scripts/vendor-ffmpeg.sh .github/workflows/vendor.yml "$outdir/build/"
   cp "$pins" "$outdir/build/pins.json"
@@ -393,32 +463,33 @@ if [ "$mode" = sources ]; then
     echo "Sources, each verified against the sha256 in the pins before use:"
     echo "  $ffmpeg_tarball  sha256 $ffmpeg_sha"
     echo "    FFmpeg $version, from $ffmpeg_url"
-    echo "    (tag $(pin source.tag), commit $(pin source.commit))"
+    echo "    (tag $ffmpeg_tag, commit $ffmpeg_commit), with a good signature,"
+    echo "    $ffmpeg_tarball.asc, by FFmpeg's release signing key $ffmpeg_key"
     echo "  $x264_tarball  sha256 $x264_sha"
     echo "    x264 at commit $x264_commit of $x264_repo, as"
     echo "    git archive --format=tar --prefix=x264-$x264_commit/ writes it"
     echo "  $zlib_tarball  sha256 $zlib_sha"
-    echo "    zlib $zlib_version, from $zlib_url; linked statically into the"
-    echo "    Windows binaries only, since macOS and Linux have the operating system's own"
+    echo "    zlib $zlib_version, from $zlib_url, with a good signature,"
+    echo "    $zlib_tarball.asc, by $zlib_key; linked statically into the Windows"
+    echo "    binaries only, since macOS and Linux have the operating system's own"
     echo
     echo "Each target is built natively. On Windows, zlib is configured with --prefix"
     echo "naming the build's own dependency folder, then made and installed. x264 is"
     echo "configured with --prefix naming that folder, then \`make\` and"
-    echo "\`make install-lib-static\`. FFmpeg is configured out of its tree with"
-    echo "PKG_CONFIG_LIBDIR naming that folder's lib/pkgconfig and PKG_CONFIG_PATH"
-    echo "empty, then \`make\`; ffmpeg and ffprobe are the two programs it leaves."
-    echo "On macOS MACOSX_DEPLOYMENT_TARGET is $macos_min throughout."
-    for t in darwin-arm64 darwin-x64 win-x64 linux-x64; do
-      echo
-      echo "$t"
-      echo "  zlib: $(pin zlib "$t")"
-      if [ "$(pin zlib "$t")" = static ]; then
-        echo "  zlib configure: $(pin zlib_configure "$t")"
-      fi
-      echo "  x264 configure: $(pin x264_configure "$t")"
-      echo "  FFmpeg configure: $(pin configure "$t")"
-      echo "  ffmpeg -version reports: $(pin reports "$t")"
-    done
+    echo "\`make install-lib-static\`. FFmpeg is configured in its own source tree"
+    echo "with PKG_CONFIG_LIBDIR naming that folder's lib/pkgconfig and"
+    echo "PKG_CONFIG_PATH empty, then \`make\`; ffmpeg and ffprobe are the two"
+    echo "programs it leaves. On macOS MACOSX_DEPLOYMENT_TARGET is $macos_min throughout."
+    echo
+    echo "The toolchains are the runners': Xcode's clang on macOS, with Homebrew's"
+    echo "nasm on Intel; Ubuntu's gcc with nasm on Linux; and on Windows MSYS2's"
+    echo "UCRT64 environment, a rolling distribution whose GCC, binutils, mingw-w64"
+    echo "runtime and nasm are what MSYS2 shipped on the day. FFmpeg is linked there"
+    echo "with -static, so GCC's libgcc and mingw-w64's CRT startup code and"
+    echo "winpthreads are inside the executables, which import only Windows' own"
+    echo "DLLs. The exact version of each tool, and on Windows the pacman packages,"
+    echo "are in the summary and log of each ffmpeg job of the same run."
+    printf '%s' "$per_target"
   } > "$outdir/BUILD.txt"
   echo "wrote the Corresponding Source to $outdir:"
   ls -l "$outdir"
@@ -431,7 +502,7 @@ fi
 
 # build <dir>: ffmpeg and ffprobe for $target, into <dir>.
 build() {
-  local bindir=$1 jobs missing='' tool host_os host_arch srcdir deps fbuild recorded
+  local bindir=$1 jobs missing='' tool host_os host_arch srcdir deps fbuild recorded banner toolchain
   local cc=cc started=$SECONDS
 
   host_os=$(uname -s)
@@ -474,8 +545,7 @@ build() {
   fetch_x264 "$srcdir"
   if [ "$zlib_mode" = static ]; then fetch "$zlib_url" "$zlib_sha" "$srcdir"; fi
 
-  # Fresh every time: FFmpeg refuses an out-of-tree build beside a source
-  # tree that was once configured in place, and nothing stale is linked.
+  # Fresh every time, so nothing stale is configured or linked.
   rm -rf "$work/build"
   mkdir -p "$work/build"
   deps="$work/build/deps"
@@ -485,12 +555,25 @@ build() {
   # Each tool's first line, taken from its captured output: piped into head,
   # a tool that writes more than one line dies of SIGPIPE under pipefail, as
   # GNU make 4.3 did on the first Linux run ("make: write error: stdout").
-  local banner
-  echo "toolchain:"
-  banner=$("$cc" --version); echo "${banner%%$'\n'*}"
-  banner=$(make --version); echo "${banner%%$'\n'*}"
-  echo "pkg-config $(pkg-config --version)"
-  if [ "$host_arch" = x86_64 ]; then nasm -v; fi
+  # Each tool's first line, taken from its captured output: piped into head,
+  # a tool that writes more than one line dies of SIGPIPE under pipefail, as
+  # GNU make 4.3 did on the first Linux run ("make: write error: stdout").
+  banner=$("$cc" --version); toolchain=${banner%%$'\n'*}
+  banner=$(make --version); toolchain="$toolchain"$'\n'"${banner%%$'\n'*}"
+  banner=$(pkg-config --version); toolchain="$toolchain"$'\n'"pkg-config $banner"
+  if [ "$host_arch" = x86_64 ]; then
+    banner=$(nasm -v); toolchain="$toolchain"$'\n'"${banner%%$'\n'*}"
+  fi
+  if [ "$target" = win-x64 ] && command -v pacman >/dev/null 2>&1; then
+    banner=$(pacman -Q)
+    banner=$(grep -E '^(make|mingw-w64-ucrt-x86_64-(gcc|gcc-libs|binutils|crt|crt-git|headers|headers-git|winpthreads|winpthreads-git|libwinpthread|libwinpthread-git|nasm|pkgconf)) ' <<< "$banner" || true)
+    toolchain="$toolchain"$'\n'"$banner"
+  fi
+  printf 'toolchain:\n%s\n' "$toolchain"
+  # Into the run's summary too, which BUILD.txt points to.
+  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+    printf '### ffmpeg %s toolchain\n\n%s\n%s\n%s\n' "$target" '~~~' "$toolchain" '~~~' >> "$GITHUB_STEP_SUMMARY"
+  fi
 
   case "$target" in
     darwin-*) export MACOSX_DEPLOYMENT_TARGET=$macos_min ;;
@@ -521,10 +604,14 @@ build() {
     exit 1
   }
 
+  # In its own tree: configured from elsewhere, FFmpeg compiles each file by
+  # a path through a `src` link, or, where no link can be made (MSYS2 on the
+  # Windows runner), by its absolute path, which __FILE__ then carries into
+  # the executables; the first Windows build held the runner's temporary
+  # folder 164 times. In the tree, every path is relative.
   echo "configuring FFmpeg $version"
-  fbuild="$work/build/ffmpeg-build"
-  mkdir -p "$fbuild"
-  (cd "$fbuild" && "$work/build/ffmpeg-$version/configure" "${ffmpeg_args[@]}") \
+  fbuild="$work/build/ffmpeg-$version"
+  (cd "$fbuild" && ./configure "${ffmpeg_args[@]}") \
     > "$work/build/ffmpeg-configure.log" 2>&1 || {
     tail -n 40 "$work/build/ffmpeg-configure.log" >&2
     if [ -f "$fbuild/ffbuild/config.log" ]; then tail -n 40 "$fbuild/ffbuild/config.log" >&2; fi
@@ -535,6 +622,22 @@ build() {
   recorded=$(sed -n 's/^#define FFMPEG_CONFIGURATION "\(.*\)"$/\1/p' "$fbuild/config.h")
   same "FFmpeg's recorded configuration" "${recorded//$'\r'/}" "$(pin configure "$target")"
   sed -n '/^External libraries:/,/^Programs:/p' "$work/build/ffmpeg-configure.log"
+  if [ "$zlib_mode" = static ]; then
+    # zlib resolved from the build's own folder, not from a libz.a of the
+    # toolchain's, which could carry the same version string: every library
+    # line that links zlib names the pinned build's folder.
+    local zlib_libdir zlib_lines
+    zlib_libdir=$(pkg-config --variable=libdir zlib)
+    zlib_lines=$(grep -E '^EXTRALIBS' "$fbuild/ffbuild/config.mak" || true)
+    zlib_lines=$(grep -E -- '-lz( |$)' <<< "$zlib_lines" || true)
+    if [ -z "$zlib_libdir" ] || [ -z "$zlib_lines" ] ||
+      [ -n "$(grep -vF -- "-L$zlib_libdir" <<< "$zlib_lines" || true)" ]; then
+      echo "FFmpeg did not take zlib from ${zlib_libdir:-the dependency folder}:" >&2
+      printf '%s\n' "${zlib_lines:-no library line links zlib}" >&2
+      exit 1
+    fi
+    echo "zlib from $zlib_libdir"
+  fi
 
   echo "building FFmpeg"
   (cd "$fbuild" && make -j"$jobs") > "$work/build/ffmpeg-make.log" 2>&1 || {
@@ -542,6 +645,19 @@ build() {
     echo "FFmpeg did not build" >&2
     exit 1
   }
+
+  # No path of this machine's build folder in either binary, in the shell's
+  # form or Windows': a package would carry it, and bytes would differ from
+  # run to run for nothing.
+  local b where
+  for b in "ffmpeg$exe" "ffprobe$exe"; do
+    for where in "$work/build" "$(absolute "$work")/build"; do
+      if grep -aqF -- "$where" "$fbuild/$b"; then
+        echo "$b carries the build folder's path, $where" >&2
+        exit 1
+      fi
+    done
+  done
 
   mkdir -p "$bindir"
   cp "$fbuild/ffmpeg$exe" "$fbuild/ffprobe$exe" "$bindir/"
