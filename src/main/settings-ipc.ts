@@ -290,6 +290,15 @@ export class SettingsService {
   }
 
   /**
+   * The home folder in every form a copy must hide, for another copy made
+   * in this process: a job's log (A1-03) goes through the same lookup, with
+   * the same deadline and the same refusal, rather than a second one.
+   */
+  homesToHide(): Promise<string[]> {
+    return this.#homes()
+  }
+
+  /**
    * Every form of the home folder the copy must hide. The home through its
    * links is bounded at `HOMES_TIMEOUT_MS` and fails closed: a home that does
    * not answer in time - on a network mount, say - refuses the copy, because

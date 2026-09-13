@@ -12,6 +12,7 @@ import type { FeedRecord } from '../../src/shared/protocol'
 interface Pending {
   params: Record<string, unknown>
   report(stage: string, fraction: number, message: string): void
+  log(level: string, line: string): void
   resolve(value: unknown): void
   reject(error: unknown): void
   cancelled: boolean
@@ -22,6 +23,7 @@ function stub() {
   const client: AddClient = {
     request(_method, params) {
       const listeners: ((p: { stage: string; fraction: number; message: string }) => void)[] = []
+      const logs: ((l: { level: string; line: string }) => void)[] = []
       let settle!: (v: unknown) => void
       let fail!: (e: unknown) => void
       const result = new Promise<unknown>((res, rej) => {
@@ -33,6 +35,7 @@ function stub() {
         cancelled: false,
         report: (stage, fraction, message) =>
           listeners.forEach((l) => l({ stage, fraction, message })),
+        log: (level, line) => logs.forEach((l) => l({ level, line })),
         resolve: settle,
         reject: fail,
       }
@@ -41,6 +44,10 @@ function stub() {
         result: result as Promise<FeedRecord>,
         onProgress: (l: (p: { stage: string; fraction: number; message: string }) => void) => {
           listeners.push(l)
+          return () => {}
+        },
+        onLog: (l: (line: { level: string; line: string }) => void) => {
+          logs.push(l)
           return () => {}
         },
         cancel: () => {
@@ -191,5 +198,56 @@ describe("the dialogs' rules", () => {
       'Los Angeles · Metro Rail',
     )
     expect(placeOf({ ...FEED, city: 'Portland' })).toBe('Portland')
+  })
+})
+
+// The inspector's view of an add (A1-03, specs/024-jobs).
+describe('the add as a job', () => {
+  it('is a feed-add job with no project, never naming the address, and keeps its log', async () => {
+    const { client, calls } = stub()
+    const run = new FeedAdd(client)
+    expect(run.job()).toBeNull()
+    run.start({ url: 'https://agency.example/gtfs.zip?api_key=secret' }, READY)
+    const job = run.job()
+    expect(job).toMatchObject({
+      kind: 'feed-add',
+      projectId: null,
+      label: 'Feed add from a web address',
+      state: 'running',
+    })
+    expect(JSON.stringify(job)).not.toContain('secret')
+    calls[0].log('info', 'downloading')
+    calls[0].resolve(FEED)
+    await tick()
+    expect(run.job()).toMatchObject({
+      state: 'done',
+      label: 'Feed add of Mine',
+      log: ['[info] downloading'],
+    })
+  })
+
+  it('a refusal carries the hint and detail without paths, and a reset makes it no job', async () => {
+    const { client, calls } = stub()
+    const run = new FeedAdd(client)
+    run.start({ file: ['', 'somewhere', 'feed.zip'].join('/') }, READY)
+    expect(run.job()?.label).toBe('Feed add from a file')
+    const where = ['', 'somewhere', 'feed.zip'].join('/')
+    calls[0].reject({
+      code: -32000,
+      message: 'no stops',
+      data: {
+        kind: 'feed',
+        detail: `FeedError: ${where} has no stops.txt`,
+        hint: 'feed.zip has no stops.txt',
+      },
+    })
+    await tick()
+    expect(run.job()).toMatchObject({
+      state: 'failed',
+      hint: 'feed.zip has no stops.txt',
+      detail: 'FeedError: a file has no stops.txt',
+    })
+    run.reset()
+    expect(run.job()).toBeNull()
   })
 })

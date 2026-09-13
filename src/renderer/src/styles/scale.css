@@ -73,6 +73,10 @@
   --measure-wide: 64rem;
   /* A tooltip's measure: a sentence or two, never a column of prose. */
   --tooltip-width: 20rem;
+  /* The window's inspector (A1-03, section 9): beside the main region, or
+     over it on a window narrower than 900px, where the stylesheet's media
+     query says 56.25rem because a media query cannot read a token. */
+  --inspector-width: 320px;
   --backdrop-opacity: 0.6;
 
   /* Layers. */

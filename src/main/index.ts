@@ -25,6 +25,7 @@ import { claimFramesRoot, clearFrames, describeSweep, FRAMES_FOLDER } from './fr
 import { registerExportHandlers } from './export-ipc'
 import { engineCommand, engineEnvironment, resolveInterpreter } from './interpreter'
 import { registerClipboardHandler, registerProjectHandlers, registerViewerHandlers } from './ipc'
+import { registerJobsHandlers } from './jobs-ipc'
 import { byTag, holdingSink, log, setSink, toStderrRedacted } from './log'
 import { LOG_WAIT_MS, openLogFile, within, type LogFile } from './log-file'
 import { shortHomeFrom } from './diagnostics-text'
@@ -474,6 +475,18 @@ if (!hasLock) {
     // Held where the handlers registered above it can ask it.
     settings = settingsService
     registerSettingsHandlers(ipcMain, settingsService, isTopFrame)
+    // "Copy log" on a job (A1-03): the same home lookup and the same
+    // redaction as "Copy diagnostics", then the same clipboard.
+    registerJobsHandlers(
+      ipcMain,
+      {
+        homes: () => settingsService.homesToHide(),
+        platform: process.platform,
+        writeText: (text) => clipboard.writeText(text),
+        log: (message) => log.info('jobs', message),
+      },
+      isTopFrame,
+    )
 
     // The registry's gate, and in front of it the reset's: while the engine
     // home is being removed, nothing may ask the engine to write into it.

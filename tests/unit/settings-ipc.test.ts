@@ -578,6 +578,27 @@ describe('copying diagnostics', () => {
     }
   })
 
+  it("shares its home lookup with a job's log: the named and the real home, or a refusal in time", async () => {
+    const h = await harness({
+      homes: (root) => [join(root, 'home', 'someone'), join(root, 'net', 'export', 'someone')],
+    })
+    expect(await h.settings.homesToHide()).toEqual([
+      join(h.root, 'home', 'someone'),
+      join(h.root, 'net', 'export', 'someone'),
+    ])
+    vi.useFakeTimers()
+    try {
+      const slow = await harness({ realHome: () => new Promise(() => undefined) })
+      const looking = slow.settings.homesToHide()
+      const refused = expect(looking).rejects.toThrow('the home folder did not answer in time')
+      await vi.advanceTimersByTimeAsync(HOMES_TIMEOUT_MS)
+      vi.useRealTimers()
+      await refused
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('refuses the copy when the home through its links does not answer in time', async () => {
     vi.useFakeTimers()
     try {

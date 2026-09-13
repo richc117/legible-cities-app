@@ -196,6 +196,16 @@ export interface Api {
     write(text: string): Promise<void>
   }
   /**
+   * The jobs the inspector lists (A1-03). Only the copy crosses the bridge:
+   * the jobs themselves are the runs the page already keeps. The page sends
+   * a job's text, at most 256 KB; the main process takes the secrets out of
+   * its web addresses, writes the home folder as `~` and puts it on the
+   * clipboard, or refuses (specs/024-jobs, FR-007).
+   */
+  jobs: {
+    copyLog(text: string): Promise<void>
+  }
+  /**
    * What the app decides for itself: where the engine keeps its data, where
    * exports go, which theme the interface wears. No method takes a path.
    * A folder is chosen in the platform's own dialog, which only the main
@@ -270,6 +280,7 @@ export const CHANNELS = {
   exportSettled: 'export:settled',
   feedsPickZip: 'feeds:pick-zip',
   clipboardWrite: 'clipboard:write',
+  jobsCopyLog: 'jobs:copy-log',
   settingsRead: 'settings:read',
   settingsSetTheme: 'settings:set-theme',
   settingsChooseEngineFolder: 'settings:choose-engine-folder',

@@ -282,3 +282,69 @@ describe('the small functions', () => {
     expect(sentenceFor('?')).toBe('The export did not finish.')
   })
 })
+
+// The inspector's view of an export (A1-03, specs/024-jobs).
+describe('the export as a job', () => {
+  it('is no job until it starts, then a running export job named for its preset', () => {
+    const stub = stubBridge()
+    const run = new ExportRun(stub.bridge)
+    expect(run.job()).toBeNull()
+    run.start(project(), READY, REEL)
+    expect(run.job()).toMatchObject({
+      kind: 'export',
+      label: 'Export as instagram-reel',
+      projectId: 'abcdefghijk1',
+      state: 'running',
+      ended: null,
+    })
+    expect(run.job()?.stages.map((s) => s.id)).toEqual(['plan', 'capture', 'encode'])
+  })
+
+  it('keeps its progress sentences as its log, since it has no engine log of its own', async () => {
+    const stub = stubBridge()
+    const run = new ExportRun(stub.bridge)
+    run.start(project(), READY, REEL)
+    stub.report({ id: 'tok-1', stage: 'plan', fraction: 1, message: 'Planned x.mp4: 60 frames.' })
+    stub.report({ id: 'tok-1', stage: 'capture', fraction: 0.5, message: '' })
+    stub.report({ id: 'tok-9', stage: 'encode', fraction: 1, message: 'not ours' })
+    expect(run.job()?.log).toEqual(['plan: Planned x.mp4: 60 frames.'])
+    stub.resolve({ file: 'x.mp4', bytes: 10, frames: 60 })
+    await tick()
+    expect(run.job()).toMatchObject({ state: 'done' })
+    expect(run.job()?.ended).not.toBeNull()
+  })
+
+  it('a failure carries the hint, and the detail when the engine sent one', async () => {
+    const stub = stubBridge()
+    const run = new ExportRun(stub.bridge)
+    run.start(project(), READY, REEL)
+    stub.reject({
+      code: -32000,
+      message: 'ffmpeg exited 1',
+      data: {
+        kind: 'export',
+        detail: 'ffmpeg exited 1',
+        hint: 'ffmpeg could not encode the frames.',
+      },
+    })
+    await tick()
+    expect(run.job()).toMatchObject({
+      state: 'failed',
+      hint: 'ffmpeg could not encode the frames.',
+      detail: 'ffmpeg exited 1',
+    })
+  })
+
+  it('a refused start is a failed job, and the snapshot keeps its own fields', () => {
+    const stub = stubBridge()
+    const run = new ExportRun(stub.bridge)
+    run.start(project({ layout: null }), READY, REEL)
+    expect(run.job()).toMatchObject({
+      state: 'failed',
+      hint: expect.stringMatching(/Lay the project out/),
+    })
+    expect(Object.keys(run.snapshot).sort()).toEqual(
+      ['state', 'stages', 'message', 'error', 'file', 'left'].sort(),
+    )
+  })
+})

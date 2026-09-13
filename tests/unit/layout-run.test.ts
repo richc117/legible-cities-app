@@ -28,6 +28,8 @@ interface Pending {
   method: string
   params: Record<string, unknown>
   report(stage: string, message: string): void
+  /** A `job/log` line for this request, as the typed client delivers one. */
+  log(level: string, line: string): void
   resolve(value: unknown): void
   reject(error: unknown): void
   cancelled: boolean
@@ -42,6 +44,7 @@ function stubClient() {
   const client: RunClient = {
     request(method, params: unknown) {
       const listeners: ((p: { stage: string; message: string }) => void)[] = []
+      const logs: ((l: { level: string; line: string }) => void)[] = []
       let settle!: (v: unknown) => void
       let fail!: (e: unknown) => void
       const result = new Promise<unknown>((res, rej) => {
@@ -53,6 +56,7 @@ function stubClient() {
         params: params as Record<string, unknown>,
         cancelled: false,
         report: (stage, message) => listeners.forEach((l) => l({ stage, message })),
+        log: (level, line) => logs.forEach((l) => l({ level, line })),
         resolve: settle,
         reject: fail,
       }
@@ -61,6 +65,10 @@ function stubClient() {
         result,
         onProgress: (listener: (p: { stage: string; message: string }) => void) => {
           listeners.push(listener)
+          return () => {}
+        },
+        onLog: (listener: (l: { level: string; line: string }) => void) => {
+          logs.push(listener)
           return () => {}
         },
         cancel: () => {
@@ -1152,5 +1160,131 @@ describe('the arrangement on every other draw', () => {
     run.recolour(record, READY, { colors: {}, defaultColor: '#888888' })
     await tick()
     expect(calls[0].params).toMatchObject({ line_order: ['C', 'A'] })
+  })
+})
+
+// The inspector's view of a run (A1-03, specs/024-jobs): one job per
+// attempt, derived from the snapshot, so the two can never disagree.
+describe('the run as a job', () => {
+  it('is no job until it starts, then a running layout job for its project', () => {
+    const { run, begin } = setup()
+    expect(run.job()).toBeNull()
+    begin()
+    const job = run.job()
+    expect(job).toMatchObject({
+      kind: 'layout',
+      label: 'Layout run',
+      projectId: 'p1',
+      projectName: null,
+      state: 'running',
+      hint: null,
+      detail: null,
+      ended: null,
+    })
+    expect(job?.stages.map((s) => s.id)).toEqual([...LAYOUT_STAGES])
+    expect(job?.stages).toEqual(
+      run.snapshot.stages.map(({ id, label, state }) => ({ id, label, state })),
+    )
+  })
+
+  it('keeps its own log lines, from every call it makes, and its stages and sentence as the snapshot has them', async () => {
+    const { run, calls, begin } = setup()
+    begin()
+    calls[0].log('info', 'gtfs2graph: running')
+    calls[0].report('gtfs2graph', 'gtfs2graph: 3 nodes')
+    await laidOut(calls)
+    calls[2].log('warning', 'schedule: 2 trips skipped')
+    const job = run.job()
+    expect(job?.log).toEqual(['[info] gtfs2graph: running', '[warning] schedule: 2 trips skipped'])
+    expect(job?.message).toBe(run.snapshot.message)
+    expect(job?.stages.map((s) => s.state)).toEqual(run.snapshot.stages.map((s) => s.state))
+  })
+
+  it('ends done with an end time, and a new attempt is a new job', async () => {
+    const { run, calls, begin } = setup()
+    begin()
+    const first = run.job()?.id
+    await laidOut(calls)
+    calls[2].resolve(MAP)
+    await tick()
+    await tick()
+    expect(run.snapshot.state).toBe('done')
+    const done = run.job()
+    expect(done).toMatchObject({ id: first, state: 'done' })
+    expect(done?.ended).not.toBeNull()
+    expect((done?.ended ?? 0) >= (done?.started ?? 0)).toBe(true)
+    begin()
+    expect(run.job()?.id).not.toBe(first)
+    expect(run.job()?.state).toBe('running')
+  })
+
+  it("a failure carries the engine's hint and its detail, both without paths", async () => {
+    const { run, calls, begin } = setup()
+    begin()
+    const detail = ['ValueError: empty graph in ', '', 'engine-home', 'graphs', 'la.json'].join('/')
+    calls[0].reject({
+      code: -32000,
+      message: 'empty',
+      data: { kind: 'engine', detail, hint: 'la-metro-rail: the line graph is empty' },
+    })
+    await tick()
+    const job = run.job()
+    expect(job).toMatchObject({ state: 'failed', hint: 'la-metro-rail: the line graph is empty' })
+    expect(job?.detail).toBe('ValueError: empty graph in a file')
+    expect(job?.rawDetail, 'kept as sent for the copy, which main redacts').toBe(detail)
+  })
+
+  it('a start the engine is not ready for is a failed job of its own', () => {
+    const { run, record } = setup({}, null)
+    run.start(record, null)
+    expect(run.job()).toMatchObject({
+      state: 'failed',
+      hint: expect.stringMatching(/still starting/),
+    })
+    expect(run.job()?.ended).not.toBeNull()
+  })
+
+  it('names a re-layout, a rebuild, a recolour and a reorder by what they are', async () => {
+    const { run, calls, record } = setup({ layout: LAYOUT, date: '2026-09-15' })
+    run.start(record, READY, { force: true })
+    expect(run.job()).toMatchObject({ kind: 'layout', label: 'Re-layout' })
+    run.cancel()
+    calls[0].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
+    await tick()
+    expect(run.job()?.state).toBe('cancelled')
+    run.rebuild(record, READY, '2026-09-16')
+    expect(run.job()).toMatchObject({ kind: 'rebuild', label: 'Rebuild for 2026-09-16' })
+    run.cancel()
+    calls[1].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
+    await tick()
+    run.recolour(record, READY, { colors: {}, defaultColor: '#888888' })
+    expect(run.job()).toMatchObject({ kind: 'rebuild', label: 'Redraw in new colours' })
+    run.cancel()
+    calls[2].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
+    await tick()
+    run.reorder(record, READY, ['B', 'A'])
+    expect(run.job()).toMatchObject({ kind: 'rebuild', label: 'Redraw in a new line order' })
+  })
+
+  it('leaves the snapshot exactly as it was: no field added', () => {
+    const { run, begin } = setup()
+    begin()
+    expect(Object.keys(run.snapshot).sort()).toEqual(
+      [
+        'state',
+        'stages',
+        'message',
+        'error',
+        'changed',
+        'relaid',
+        'forced',
+        'replaced',
+        'rebuilt',
+        'recoloured',
+        'reordered',
+        'day',
+        'report',
+      ].sort(),
+    )
   })
 })
