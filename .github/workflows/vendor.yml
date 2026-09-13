@@ -23,6 +23,10 @@ on:
   push:
     paths: ['vendor/pins.json', '.github/workflows/vendor.yml', 'scripts/vendor-python.sh', 'scripts/vendor-ffmpeg.sh']
   workflow_dispatch:
+  # .github/workflows/build.yml runs these jobs in its own run, so the
+  # installers are packaged from artefacts built from the pins it checked
+  # out and never from another run's (A0-10, ADR-035).
+  workflow_call:
 
 permissions:
   contents: read

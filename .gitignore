@@ -12,6 +12,8 @@ playwright-report/
 vendor/python/
 vendor/loom/
 vendor/ffmpeg/
+# ...and the manifest scripts/check-vendored.mjs writes from them for a build.
+vendor/manifest-*.json
 
 # Secrets and signing material (the documented example is tracked)
 .env

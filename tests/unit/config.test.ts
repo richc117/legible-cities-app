@@ -197,3 +197,97 @@ describe('LEGIBLE_ENGINE_PYTHON', () => {
     expect(c.sources.LEGIBLE_ENGINE_PYTHON).toBe('.env.local')
   })
 })
+
+describe('bundled components (A0-10)', () => {
+  const base = { userData: '/ud', desktop: '/desk', loomPin: PIN, baseDir: '/repo' }
+  const resources = join('/app', 'Contents', 'Resources')
+  const tools = ['gtfs2graph', 'topo', 'loom', 'octi']
+  const everything = (exe = '') => [
+    ...tools.map((tool) => join(resources, 'loom', `${tool}${exe}`)),
+    join(resources, 'ffmpeg', `ffmpeg${exe}`),
+  ]
+  const existing =
+    (...paths: string[]) =>
+    (path: string) =>
+      paths.includes(path)
+
+  it('uses the packaged LOOM and ffmpeg when present, reports them bundled, and pins the commit', () => {
+    const c = resolveConfig({
+      ...base,
+      env: {},
+      bundled: { resourcesPath: resources, platform: 'darwin', exists: existing(...everything()) },
+    })
+    expect(c.loomBin).toBe(join(resources, 'loom'))
+    expect(c.sources.SCHEMATIC_LOOM_BIN).toBe('bundled')
+    expect(c.ffmpeg).toBe(join(resources, 'ffmpeg', 'ffmpeg'))
+    expect(c.sources.SCHEMATIC_FFMPEG).toBe('bundled')
+    expect(c.loomCommit, 'the bundled binaries are the pinned build').toBe(PIN)
+    expect(c.sources.SCHEMATIC_LOOM_COMMIT).toBe('default')
+    expect(describeConfig(c, { development: false })).toEqual(
+      expect.arrayContaining([
+        `SCHEMATIC_LOOM_BIN=${join(resources, 'loom')} (bundled)`,
+        `SCHEMATIC_FFMPEG=${join(resources, 'ffmpeg', 'ffmpeg')} (bundled)`,
+      ]),
+    )
+  })
+  it('looks for the .exe names on Windows', () => {
+    const c = resolveConfig({
+      ...base,
+      env: {},
+      bundled: {
+        resourcesPath: resources,
+        platform: 'win32',
+        exists: existing(...everything('.exe')),
+      },
+    })
+    expect(c.loomBin).toBe(join(resources, 'loom'))
+    expect(c.ffmpeg).toBe(join(resources, 'ffmpeg', 'ffmpeg.exe'))
+    const posixNames = resolveConfig({
+      ...base,
+      env: {},
+      bundled: { resourcesPath: resources, platform: 'win32', exists: existing(...everything()) },
+    })
+    expect(posixNames.loomBin).toBeNull()
+    expect(posixNames.ffmpeg).toBeNull()
+  })
+  it('uses neither when it is absent, or LOOM when a tool is missing', () => {
+    const none = resolveConfig({
+      ...base,
+      env: {},
+      bundled: { resourcesPath: resources, platform: 'darwin', exists: () => false },
+    })
+    expect(none.loomBin).toBeNull()
+    expect(none.ffmpeg).toBeNull()
+    expect(none.loomCommit).toBeNull()
+    expect(none.sources.SCHEMATIC_LOOM_BIN).toBe('default')
+    expect(none.sources.SCHEMATIC_FFMPEG).toBe('default')
+    const partial = resolveConfig({
+      ...base,
+      env: {},
+      bundled: {
+        resourcesPath: resources,
+        platform: 'darwin',
+        exists: existing(...everything().filter((p) => !p.endsWith(join('loom', 'topo')))),
+      },
+    })
+    expect(partial.loomBin, 'three tools of four is not a LOOM').toBeNull()
+    expect(partial.ffmpeg).toBe(join(resources, 'ffmpeg', 'ffmpeg'))
+  })
+  it('gives way to the environment and the file, which a person set', () => {
+    const c = resolveConfig({
+      ...base,
+      env: { SCHEMATIC_LOOM_BIN: '/opt/loom' },
+      fileText: 'SCHEMATIC_FFMPEG=/file/ffmpeg\n',
+      bundled: { resourcesPath: resources, platform: 'darwin', exists: existing(...everything()) },
+    })
+    expect(c.loomBin).toBe('/opt/loom')
+    expect(c.sources.SCHEMATIC_LOOM_BIN).toBe('environment')
+    expect(c.ffmpeg).toBe('/file/ffmpeg')
+    expect(c.sources.SCHEMATIC_FFMPEG).toBe('.env.local')
+  })
+  it('is nothing in development, where no resources are passed', () => {
+    const c = resolveConfig({ ...base, env: {} })
+    expect(c.loomBin).toBeNull()
+    expect(c.ffmpeg).toBeNull()
+  })
+})

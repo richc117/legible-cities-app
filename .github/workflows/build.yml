@@ -1,0 +1,156 @@
+# The installers: a dmg for each Mac and an nsis installer for Windows, each
+# carrying the pinned engine runtime, LOOM and ffmpeg for its target
+# (specs/002-vendored-components-and-installers, ADR-035).
+#
+# One run, no fetch from another: the vendor jobs run here, through
+# vendor.yml's workflow_call, and each packaging job takes its target's
+# artefacts from this same run. They cannot be stale, because they were
+# built from the pins this run checked out; the manifest records the pins'
+# hash all the same, and the packager's afterPack hook refuses a manifest
+# written from any other.
+#
+# A target whose components are missing, stale or the wrong architecture
+# fails, naming the component, and uploads nothing; the other targets go on
+# (SC-005). So the packaging jobs run whatever the vendor jobs' result, and
+# a download that finds no artefact is left for scripts/check-vendored.mjs
+# to name.
+#
+# Unsigned (FR-005): the Mac app is signed ad hoc and the Windows installer
+# not at all, until the release-readiness gate (A6-05). Installers are
+# test artefacts until then; issue 95 replaces the third-party ffmpeg
+# builds before a release, and A6-01 attaches the GPL sources.
+#
+# The vendor jobs take tens of minutes and change rarely, so this runs on
+# request and when what it packages changes; `npm run dist` stays the
+# everyday unpacked build.
+name: build
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'vendor/pins.json'
+      - 'electron-builder.yml'
+      - 'scripts/vendor-python.sh'
+      - 'scripts/vendor-ffmpeg.sh'
+      - 'scripts/check-vendored.mjs'
+      - 'scripts/launch-packaged.mjs'
+      - '.github/workflows/vendor.yml'
+      - '.github/workflows/build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  vendor:
+    uses: ./.github/workflows/vendor.yml
+
+  package:
+    name: package (${{ matrix.target }})
+    needs: vendor
+    # Every target is packaged whatever the vendor jobs' result: one target's
+    # failure must not cost the others their installers.
+    if: ${{ !cancelled() }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-15,       target: darwin-arm64, builder: '--mac dmg --arm64', installer: 'release/*.dmg' }
+          - { os: macos-15-intel, target: darwin-x64,   builder: '--mac dmg --x64',   installer: 'release/*.dmg' }
+          - { os: windows-latest, target: win-x64,      builder: '--win nsis --x64',  installer: 'release/*.exe' }
+    env:
+      TARGET: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build the app
+        run: npm run build
+
+      # Each into its own folder, named as vendor.yml uploads it. A missing
+      # artefact does not end the job here: the check below names it.
+      - name: Download the runtime
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: python-${{ matrix.target }}
+          path: vendor/python/${{ matrix.target }}
+      - name: Download LOOM
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: loom-${{ matrix.target }}
+          path: vendor/loom/${{ matrix.target }}
+      - name: Download ffmpeg
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: ffmpeg-${{ matrix.target }}
+          path: vendor/ffmpeg/${{ matrix.target }}
+
+      - name: Restore the executable bits the artefact zip dropped
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          # ADR-038: an artefact is a zip, which keeps no mode. Only what is
+          # there is touched; what is not is the check's to report.
+          for pattern in "vendor/python/$TARGET/python/bin/*" "vendor/loom/$TARGET/*" "vendor/ffmpeg/$TARGET/*"; do
+            for file in $pattern; do
+              if [ -f "$file" ]; then chmod +x "$file"; fi
+            done
+          done
+
+      - name: Refuse a missing, stale or wrong-architecture component, and write the manifest
+        shell: bash
+        run: node scripts/check-vendored.mjs "$TARGET"
+
+      - name: Compile the runtime's bytecode
+        shell: bash
+        run: |
+          # Unchecked hashes, so a copy that gives every source a new time -
+          # the packager's, an installer's - leaves the bytecode valid, and
+          # the first start writes nothing into the bundle. -f replaces the
+          # timestamped files the compiler's own imports would otherwise have
+          # written first and then kept; PYTHONDONTWRITEBYTECODE stops those
+          # being written at all.
+          case "$TARGET" in
+            win-*) py="vendor/python/$TARGET/python/python.exe"; lib="vendor/python/$TARGET/python/Lib" ;;
+            *)     py="vendor/python/$TARGET/python/bin/python3"; lib="vendor/python/$TARGET/python/lib" ;;
+          esac
+          PYTHONDONTWRITEBYTECODE=1 "$py" -m compileall -f -q -j 0 --invalidation-mode unchecked-hash "$lib"
+          echo "compiled: $(find "$lib" -name '*.pyc' | wc -l | tr -d ' ') bytecode files"
+
+      - name: Package
+        shell: bash
+        env:
+          # Makes every component required in the afterPack hook.
+          LEGIBLE_VENDOR_TARGET: ${{ matrix.target }}
+          BUILDER_ARGS: ${{ matrix.builder }}
+        # Unquoted on purpose: the matrix holds three words for the packager.
+        run: npx electron-builder $BUILDER_ARGS --publish never
+
+      - name: Launch the packaged app once
+        shell: bash
+        env:
+          CI: 'true'
+        run: node scripts/launch-packaged.mjs "$TARGET"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: installer-${{ matrix.target }}
+          path: |
+            ${{ matrix.installer }}
+            vendor/manifest-${{ matrix.target }}.json
+          if-no-files-found: error
+          retention-days: 30

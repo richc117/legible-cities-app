@@ -76,7 +76,7 @@ A build for a target whose vendored components are missing, stale or the wrong p
 - The vendoring workflow's upstream publishes no checksum (python-build-standalone publishes none): the checksum in the pins file is one this repository computed on first download, and a later mismatch is treated as the asset having changed, which is the point.
 - A layout binary links a library from the build host's package manager (Homebrew, MSYS2): it will not run on a clean machine, and the workflow's link check fails the build.
 - The third party's Windows patches drift from the pinned commit: the build applies the documented changes to this repository's pinned tree, so drift shows as a failed patch, not a silently different binary.
-- The installer is large: the runtime is about 110 MB stripped, the layout binaries a few MB, the encoder tens of MB; the download page states the size.
+- The installer is large: the runtime is about 110 MB stripped, the layout binaries a few MB, the encoder 132-290 MB unpacked depending on the target (ADR-012); the download page states the size. *(Corrected 2026-09-13: this line said the encoder was tens of MB.)*
 - The pins file is edited by hand with a typo in a checksum: the workflow fails on the first download and says which pin.
 
 ## Requirements *(mandatory)*
@@ -102,7 +102,7 @@ A build for a target whose vendored components are missing, stale or the wrong p
 
 **Not in this feature**
 
-- **FR-012**: The application MUST NOT start the engine, speak the sidecar protocol, run the pipeline or export anything. This feature puts the components in place; the sidecar supervisor (planned issue A1-01) is the first to run one.
+- **FR-012**: This feature changes nothing about how the engine is started; it puts the components where the supervisor already looks. *(Corrected 2026-09-13: this line said the application must not start the engine, which it has done since the sidecar supervisor, A1-01.)*
 - **FR-013**: No component is downloaded at first run, ever. Everything the engine needs is inside the package (ADR-011).
 
 ### Key Entities
@@ -130,8 +130,8 @@ A build for a target whose vendored components are missing, stale or the wrong p
 - **A-002**: The vendored directory is not committed. *Why*: binaries in a git repository are a size and licensing problem; the pins file and the workflow are the reproducible thing.
 - **A-003**: The layout binaries are built without their optional solvers and fed an unpacked feed directory, per ADR-019; the engine unpacks before calling them. *Why*: it is what makes them self-contained.
 - **A-004**: The Windows layout binaries are built in the workflow from the documented compatibility patches applied to this repository's pinned tree, not taken prebuilt, per ADR-021. *Why*: the prebuilt directory carries Microsoft system libraries that must not be redistributed.
-- **A-005**: The engine is installed at a pinned git tag, without its declared dependencies, plus the runtime dependencies it actually imports (pandas and requests), until the engine's dependency list is trimmed. *Why*: the sidecar spike found the declared list three times the size of the real one.
-- **A-006**: The first Windows run of the vendoring workflow is an experiment, and the Windows target may lag the others; the build produces packages for every target whose components are present and says which are missing. *Why*: nothing has run the MSYS2 toolchain in this repository yet.
+- **A-005**: The engine is installed at a pinned git tag with the dependencies it declares, from wheels (`--only-binary :all:`). *Why*: since E02 the declared list is exactly what the sidecar imports, and installing without it left a runtime that could not start `schematic.serve` (ADR-038). *(Corrected 2026-09-13: this line said the engine was installed without its dependencies, which was true until A0-06.)*
+- **A-006**: Every vendoring job is green on all three shipped targets, Windows included, so no target is expected to lag; the build still fails a target whose components are missing and completes the others. *(Corrected 2026-09-13: this line said the Windows target might lag, before any Windows vendoring job had run.)*
 
 ## Dependencies
 
