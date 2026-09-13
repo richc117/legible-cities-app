@@ -197,7 +197,7 @@ jobs:
         if: runner.os == 'Linux' && steps.ffmpeg-cache.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update
-          sudo apt-get install --no-install-recommends -y nasm pkg-config zlib1g-dev
+          sudo apt-get install --no-install-recommends -y nasm pkgconf zlib1g-dev
 
       - name: Build tools for ffmpeg (macOS)
         if: runner.os == 'macOS' && steps.ffmpeg-cache.outputs.cache-hit != 'true'

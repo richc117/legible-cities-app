@@ -482,9 +482,13 @@ build() {
   tar -xJf "$srcdir/$ffmpeg_tarball" -C "$work/build"
   tar -xf "$srcdir/$x264_tarball" -C "$work/build"
 
+  # Each tool's first line, taken from its captured output: piped into head,
+  # a tool that writes more than one line dies of SIGPIPE under pipefail, as
+  # GNU make 4.3 did on the first Linux run ("make: write error: stdout").
+  local banner
   echo "toolchain:"
-  "$cc" --version | head -n 1
-  make --version | head -n 1
+  banner=$("$cc" --version); echo "${banner%%$'\n'*}"
+  banner=$(make --version); echo "${banner%%$'\n'*}"
   echo "pkg-config $(pkg-config --version)"
   if [ "$host_arch" = x86_64 ]; then nasm -v; fi
 

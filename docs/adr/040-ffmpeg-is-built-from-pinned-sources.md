@@ -147,14 +147,17 @@ A6-01 attaches that artefact, by that name, to each GitHub Release.
 
 **Size**, ffmpeg and ffprobe together, unpacked:
 
-| Target | Third-party builds (ADR-012) | This build | Build job |
+| Target | Third-party builds (ADR-012) | This build | Job, on its runner |
 |---|---|---|---|
-| darwin-arm64 | 132.5 MB | **11.9 MB** (ffmpeg 6.05 MB, ffprobe 5.85 MB), on a developer Mac | 30 s for x264, configure and make on ten cores, sources cached; the runner's time comes from the first green run |
-| darwin-x64 | 189.2 MB | from the first green run | from the first green run |
-| win-x64 | 289.5 MB | from the first green run | from the first green run |
-| linux-x64 (tests) | 291.5 MB | from the first green run | from the first green run |
+| darwin-arm64 | 132.5 MB | **11.8 MB** (11,849,680 bytes) | 1 min 38 s on `macos-15`; 30 s for the build alone on a ten-core developer Mac, sources cached |
+| darwin-x64 | 189.2 MB | **14.2 MB** (14,203,784 bytes) | 3 min 27 s on `macos-15-intel`, with Homebrew's nasm |
+| win-x64 | 289.5 MB | **16.5 MB** (16,497,664 bytes) | 7 min 17 s on `windows-latest`, MSYS2's setup included |
+| linux-x64 (tests) | 291.5 MB | from the next vendor run | from the next vendor run |
 
-About a tenth of the darwin-arm64 pair, and roughly half of what remains is
+Measured by the vendor workflow's run of 2026-09-13, each job from start to
+end, checkout and toolchain included. The Corresponding Source job takes 9 s.
+
+A tenth or less of every pair it replaces, and roughly half of what remains is
 ffprobe, which carries the same libraries as ffmpeg for one duration.
 
 **The source obligation is now three archives and a script**, all in this

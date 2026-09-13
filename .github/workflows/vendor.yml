@@ -473,10 +473,12 @@ jobs:
         run: |
           # Build tools only; nothing installed here is linked into the
           # result, which the link check below proves. nasm assembles x264's
-          # and FFmpeg's x86-64 code; Apple silicon needs none.
+          # and FFmpeg's x86-64 code; Apple silicon needs none. pkgconf, not
+          # pkg-config: the runner already has pkgconf, and apt removes it,
+          # with packages that depend on it, to install pkg-config instead.
           if [ "$RUNNER_OS" = "Linux" ]; then
             sudo apt-get update
-            sudo apt-get install --no-install-recommends -y nasm pkg-config zlib1g-dev
+            sudo apt-get install --no-install-recommends -y nasm pkgconf zlib1g-dev
           else
             command -v pkg-config >/dev/null || brew install pkgconf
             if [ "$TARGET" = darwin-x64 ]; then brew install nasm; fi
