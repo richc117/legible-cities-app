@@ -491,13 +491,15 @@ test('the choice is the project’s, and it is there when the project is opened 
     await presetSelect(page).selectOption('bluesky-gif')
     await exportPanel(page).getByRole('combobox', { name: 'Storyboard' }).selectOption('reveal')
     await exportPanel(page).getByRole('checkbox', { name: 'The clock' }).uncheck()
-    await expect
-      .poll(() => readRecord(h).export)
-      .toEqual({
-        preset: 'bluesky-gif',
-        storyboard: 'reveal',
-        options: { clock: false },
-      })
+    await withWhatTheScreenSaid(page, () =>
+      expect
+        .poll(() => readRecord(h).export)
+        .toEqual({
+          preset: 'bluesky-gif',
+          storyboard: 'reveal',
+          options: { clock: false },
+        }),
+    )
   })
   await withApp(h, async (page) => {
     await page.getByRole('button', { name: 'Open Los Angeles' }).click()
