@@ -111,6 +111,7 @@ write under `api.clipboard`, and the app's own settings under
 | `settings.engineSize()` | walks the engine's home, bounded and never through a symbolic link |
 | `settings.openLogsFolder()` | makes the platform's log folder for this app if it is missing, and opens it |
 | `settings.resetEngineData()` | removes `projects`, `out`, `data` and `frames` beneath the engine's home, never the home itself; answers what went and what would not; refused while anything is writing under it |
+| `settings.copyDiagnostics(reports)` | puts what a bug report needs on the clipboard: the versions, the operating system, `engine.info`, the last 200 lines of both logs and the reports given, each project's diagnostics as its panel copies them (at most 20 of at most 64 KB, checked in main); composed in the main process with the home folder written as `~`; nothing is sent (A6-03) |
 
 The engine bridge is deliberately untyped beyond a method name and an
 object of parameters: A1-02 generates the methods from the engine's schema
@@ -378,11 +379,102 @@ it is how the end-to-end suite keeps its settings file out of a person's
 own profile, and the app reads it before it is ready or not at all.
 Contract: `specs/019-settings/contracts/bridge.md`.
 
-The main-process log is stderr for now and may contain paths - the
-configuration lines by contract, and Electron's own report of a failed
-bridge call, which prints the underlying error. The log file A6-03 writes
-shortens paths under the user's data folder before anything is copied for a
-bug report.
+`LEGIBLE_LOGS` moves the log folder on the same terms: development only,
+an absolute path, read before the app is ready, and a bad value costs the
+switch and not the launch. A moved user-data folder wins over it, its logs
+following it. The end-to-end suite sets it for every launch from
+`tests/e2e/global-setup.ts`, to a temporary folder `global-teardown.ts`
+removes, because most launches keep the default profile and would
+otherwise write and rotate a person's own log.
+
+## The log files
+
+Every line the main process logs goes through `log` in `src/main/log.ts`,
+and since A6-03 its sink is two files in the platform's log folder
+(`app.getPath('logs')`, which "Open logs folder" opens): lines under the
+`engine` tag - the engine's stderr as the supervisor reads it, and the
+supervisor's own lines about the engine - go to `engine.log`, everything
+else to `main.log`, each stamped with an ISO 8601 time. In development
+every line still reaches standard error as well. `src/main/log-file.ts`
+writes each file from one queue, so a burst of engine output is a handful
+of writes and never holds up the supervisor. A write that would take a
+file past 5 MB first renames it to `<name>.old.log`, replacing the one
+before; nothing else is ever removed, and the reset does not touch the
+logs, which are not under the engine's home. A rename the platform refuses
+(Windows, while another program holds the file) does not stop the log: the
+file is reopened and appended to, standard error is told once, and the
+rename is tried again when another 5 MB has been written. While a reader
+holds the file and the rename is refused, the log grows past 5 MB until
+that retry succeeds. On POSIX the file is opened with `O_NOFOLLOW`, for
+writing and for the copy's reading, so a link planted in its place is not
+followed.
+
+Every line has its web addresses redacted before it is written, to either
+file and to standard error, in development and when the log folder cannot
+be used (`src/main/redact.ts`): the engine prints a feed's whole URL when a
+download fails, and a URL can carry a key. For an `http` or `https`
+address - slashes plain or JSON-escaped, host a name or an IPv6 literal -
+the scheme, the host, the path and the query's parameter names stay; the
+user information, every query value (after `?`, `&` or `;`), a nameless
+query part and the fragment become `<redacted>`. A percent-encoded address
+is decoded leniently and redacted up to a raw `&`. A path with a query and
+no scheme, or an `http(s)` one, which is how urllib3 and `requests` word a
+failed connection (`Max retries exceeded with url: /gtfs.zip?api_key=…`),
+keeps each `name=` and loses its value; another scheme's query, like the
+app's own `app://local/…?theme=dark`, is kept. An address runs to the next
+whitespace, quotes and parentheses included, since the engine prints a URL
+as given; only closing punctuation at its end is set aside. Not covered: a
+token carried as a path segment, because nothing says which segment is
+one; a secret in a parameter's name position, where a value holds an
+unencoded `&` before it (`?key=a&SECRET=1`); a query on a run with no `/`
+before its `?`; and a URL with whitespace inside it. Each run of text is
+looked at once, and percent-encoded addresses are walked with a cursor, so
+a long line costs linear time. `tests/unit/redact-generated.test.ts` puts
+600 seeded URLs through the engine's message shapes.
+
+Lines logged before the app is ready are held in memory, two thousand at
+most, and written first once the files open, which is the first thing the
+app does when it is ready and before the engine starts. A folder that
+cannot be opened or written costs the file and never the app: from the first
+failure the lines go to standard error, which is told once why. A held line
+keeps the time it was logged.
+
+The files close on `will-quit`, which comes after the supervisor's stop has
+resolved. That stop waits for the engine's stdio to close as well as for
+its exit, at most a second after the exit, so what the engine printed on
+the way out is normally in `engine.log`; a helper process that holds the
+pipe longer than that loses its last lines. The close is bounded too, at
+two seconds (`LOG_WAIT_MS`), and so is the flush "Copy diagnostics" makes
+before reading the tails, which waits only for the lines queued when it
+was asked, so a steady stream from the engine cannot hold it. Under
+`LEGIBLE_USER_DATA` the logs move to `<userData>/logs`, and under
+`LEGIBLE_LOGS` to the folder it names, with `app.setAppLogsPath`, because
+on macOS they would otherwise stay in a person's own log folder.
+
+The log may contain paths - the configuration lines by contract, and
+Electron's own report of a failed bridge call, which prints the underlying
+error. It stays on the machine. "Copy diagnostics" in Settings
+(`src/main/diagnostics-text.ts`) composes the copy in the main process and
+writes the home folder, and its real path when that differs, as `~`: in
+either separator, doubled backslashes included, percent-encoded as in a
+file URL, in any case on Windows and macOS, and on Windows in its 8.3 short
+form, which the temporary folder is usually written in (`RUNNER~1`) and
+which would otherwise leak the start of the user name. The short home is
+derived from the temporary folder's raw and real paths, and matched by
+shape as well. A match is a whole folder name; a full stop ends one unless
+a name carries on after it. The composed text is checked for the home
+folder afterwards, percent-decoded as well, and a copy that still names it
+is refused.
+A path outside the home folder, such as an export folder on another
+volume, is left as it is. The copy redacts web addresses again, since a
+log written before the redaction existed still holds them whole. Neither
+is a scrubber for anything else; the person reads the text before they
+paste it. The home folders are found when the copy is made, asynchronously,
+and a temporary folder on a network share is not asked. The home's own
+real path is bounded at two seconds (`HOMES_TIMEOUT_MS`) and fails closed:
+if it does not answer, the copy is refused, since a home reached through a
+link could otherwise survive in the text. The short forms are bounded the
+same way, separately, and whichever answered are used.
 
 ## Design tokens
 
@@ -953,5 +1045,4 @@ frame in RGB with the tolerance of 8.
 | A screen for long jobs across projects; the layout run and the export draw their own progress on the project screen | A1-03 |
 | Editing the numeric style fields; the record holds the engine's defaults, and the colours, the order and the theme are a person's since A4-01, A4-02 and A4-03 | post-MVP |
 | Vendored Python, LOOM and ffmpeg; installers | A0-10 (`specs/002`) |
-| A log file and "copy diagnostics" | A6-03 |
 | Signing and auto-update | A6-05 |

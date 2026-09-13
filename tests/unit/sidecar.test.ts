@@ -477,3 +477,65 @@ describe('describeState', () => {
     ).toContain('needs engine 0.2.0')
   })
 })
+
+// A6-03: the log files close once the supervisor's stop resolves, so what
+// the engine's side printed on its way out must have been read by then.
+// 'exit' arrives as soon as the engine has gone, while its stderr pipe can
+// stay open - here a helper it started holds it for a moment and writes
+// last - so the stop waits for 'close', bounded. A Node child stands in,
+// because the behaviour is the pipe's and not the engine's.
+//
+// Not on Windows. Two runs on the Windows runner (PR 92) showed the engine
+// ending on request and the helper's line never arriving: the grandchild
+// does not keep the parent's stderr pipe open there, so the pipe closes as
+// the engine exits and there is nothing left to wait for. The wait for
+// 'close' is harmless on that platform; this test of it only means
+// something where a grandchild can hold the pipe.
+describe('stopping', () => {
+  it.skipIf(process.platform === 'win32')(
+    'has read the last stderr line written before the pipe closed',
+    async () => {
+      // The helper says it has started before the engine leaves, so however
+      // slowly a Node starts, the gap between the exit and the last line is
+      // the helper's own 300 ms and nothing else.
+      const helper = [
+        "process.stdout.write('started')",
+        "setTimeout(() => process.stderr.write('the last line\\n'), 300)",
+      ].join('\n')
+      const script = [
+        "const { spawn } = require('node:child_process')",
+        "process.stdin.once('data', () => {",
+        `  const h = spawn(process.execPath, ['-e', ${JSON.stringify(helper)}], { stdio: ['ignore', 'pipe', 'inherit'] })`,
+        "  h.stdout.once('data', () => process.exit(0))",
+        '})',
+        'setInterval(() => undefined, 1000)',
+      ].join('\n')
+      const log: string[] = []
+      const sidecar = new Sidecar({
+        command: [process.execPath, '-e', script],
+        // The environment the app gives the engine, not an empty one: Node on
+        // Windows does not start without SystemRoot, and an empty environment
+        // made this stand-in exit at once there, before it had started the
+        // helper at all (120 ms, four log lines, on the Windows runner).
+        env: engineEnvironment({
+          config: { home: tmpdir(), loomBin: null, loomCommit: null, ffmpeg: null },
+          base: process.env,
+          development: true,
+        }),
+        pin: PIN,
+        log: (m) => log.push(m),
+        // Generous, because a stand-in that has not left by `shutdownMs` is
+        // ended as a tree - `taskkill /T /F` on Windows, the process group on
+        // POSIX - and the helper holding the pipe would go with it. Two Node
+        // starts on a slow runner can take longer than the fast bound.
+        bounds: { ...FAST, handshakeMs: 30_000, shutdownMs: 15_000 },
+      })
+      sidecar.start()
+      // The handshake written at start is what makes it leave.
+      await sidecar.stop()
+      expect(log, log.join('\n')).toContain('stderr: the last line')
+      expect(log, 'it left on its own, not as a killed tree').toContain('ended on request (quit)')
+    },
+    20_000,
+  )
+})

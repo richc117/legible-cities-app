@@ -9,10 +9,11 @@ import {
   type FolderView,
   type SettingsView,
 } from '../../shared/settings'
+import { DIAGNOSTICS_REPORTS } from '../../shared/api'
 import type { EngineState } from '../../shared/engine'
 import type { EngineInfo } from '../../shared/protocol'
 import ConfirmDialog from './ConfirmDialog'
-import { engineClient, runsInProgress, subscribeToRuns } from './engine/runs'
+import { engineClient, reportsInSession, runsInProgress, subscribeToRuns } from './engine/runs'
 import Icon from './icons/Icon'
 import Button from './kit/Button'
 import Select from './kit/Select'
@@ -42,6 +43,41 @@ const SOURCE_WORDS: Record<FolderView['source'], string> = {
   environment: 'set in the environment',
 }
 
+/** What the screen says after "Copy diagnostics", either way. */
+export const DIAGNOSTICS_COPIED =
+  'The diagnostics are on the clipboard, with your home folder written as ~. Nothing was sent anywhere.'
+export const diagnosticsNotCopied = (why: string): string =>
+  `The diagnostics could not be copied: ${why}. Nothing was sent anywhere.`
+
+/**
+ * "Copy diagnostics", as a function that can be called without rendering.
+ * The page gathers the one thing only it holds - the reports of the maps
+ * drawn this session, named by their projects - and the main process
+ * composes the rest and writes the clipboard. A refusal is a sentence,
+ * never a thrown error in a click handler.
+ */
+export async function copyDiagnostics(bridge: {
+  listProjects: () => Promise<{ id: string; name: string }[]>
+  reports: (nameOf: (id: string) => string | undefined) => string[]
+  copy: (reports: string[]) => Promise<void>
+}): Promise<string> {
+  try {
+    // A list that cannot be read costs the names, not the copy.
+    const names = new Map(
+      (await bridge.listProjects().catch(() => [])).map((p) => [p.id, p.name] as const),
+    )
+    const encoder = new TextEncoder()
+    const reports = bridge
+      .reports((id) => names.get(id))
+      .filter((report) => encoder.encode(report).length <= DIAGNOSTICS_REPORTS.bytes)
+      .slice(-DIAGNOSTICS_REPORTS.count)
+    await bridge.copy(reports)
+    return DIAGNOSTICS_COPIED
+  } catch (error) {
+    return diagnosticsNotCopied(sentenceOf(error))
+  }
+}
+
 /** A value the engine reports as null: said in words, never left blank. */
 function reported(value: string | null, absent: string): string {
   return value === null || value === '' ? absent : value
@@ -54,6 +90,8 @@ export default function Settings({ settings, onChanged, engine, onBack }: Props)
   const [message, setMessage] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [confirming, setConfirming] = useState(false)
+  const [copied, setCopied] = useState<string | null>(null)
+  const copying = useRef(false)
   const ready = engine?.state === 'ready'
 
   // A layout run or an export is four steps with gaps between them, and the
@@ -234,8 +272,40 @@ export default function Settings({ settings, onChanged, engine, onBack }: Props)
             Open logs folder
           </Button>
         </div>
-        <p className="message">
-          The app writes its log to standard error for now; the folder is where a log file will go.
+        <p className="message" id="logs-description">
+          The app keeps two logs in that folder: <code>main.log</code> for the app and{' '}
+          <code>engine.log</code> for the engine, each up to 5 MB with the one before it kept beside
+          it. They stay on this computer.
+        </p>
+        <div className="toolbar">
+          <Button
+            aria-describedby="diagnostics-description"
+            onClick={() => {
+              // A second press while the first is gathering would copy twice.
+              if (copying.current) return
+              copying.current = true
+              setCopied(null)
+              void copyDiagnostics({
+                listProjects: () => window.api.projects.list(),
+                reports: reportsInSession,
+                copy: (reports) => window.api.settings.copyDiagnostics(reports),
+              })
+                .then(setCopied)
+                .finally(() => {
+                  copying.current = false
+                })
+            }}
+          >
+            Copy diagnostics
+          </Button>
+        </div>
+        <p className="message" id="diagnostics-description">
+          Copies what a bug report needs: the versions, the end of both logs and the figures of
+          every map drawn since the app started, with your home folder written as ~. The app sends
+          none of it anywhere; paste it where you choose.
+        </p>
+        <p className="message" role="status" aria-live="polite">
+          {copied}
         </p>
       </section>
 

@@ -24,6 +24,8 @@ import {
   type FolderSource,
   type SettingsView,
 } from '../shared/settings'
+import { areReports, diagnosticsText, tailLog, type DiagnosticsInput } from './diagnostics-text'
+import { LOG_WAIT_MS, within } from './log-file'
 import { PickedPaths } from './picked'
 import {
   contains,
@@ -73,7 +75,41 @@ export interface SettingsDeps {
   bundleRoots: string[]
   /** What a reset must never remove: these come from Electron, not from the page. */
   guards: ResetGuards
+  /** What "Copy diagnostics" gathers, injected so the whole copy is asserted in a unit test. */
+  diagnostics: DiagnosticsDeps
   log: (message: string) => void
+}
+
+/** How long the copy waits for the home folders' real and short forms before hiding the home as named. */
+export const HOMES_TIMEOUT_MS = 2_000
+
+/** How long the copy waits for the engine's `engine.info` before saying it did not answer. */
+export const ENGINE_INFO_TIMEOUT_MS = 5_000
+
+export interface DiagnosticsDeps {
+  /** The app's version, the runtime's versions and the operating system. */
+  about: () => Pick<DiagnosticsInput, 'app' | 'versions' | 'os'>
+  /** The engine's `engine.info`; rejects with the engine's own sentence when it is not ready. */
+  engineInfo: () => Promise<unknown>
+  /** Every line logged so far on disk, so the tail read next is current; waited for at most `LOG_WAIT_MS`. */
+  flushLogs: () => Promise<void>
+  /** The home folder as the platform names it. */
+  home: string
+  /**
+   * The home folder through its links. Asked when a copy is made, because
+   * it touches the disk; a copy is refused if it does not answer in time,
+   * since a home reached through a link would otherwise survive the copy.
+   */
+  realHome: () => Promise<string>
+  /**
+   * On Windows, the home in 8.3 short form as each temporary folder writes
+   * it, or null where it does not; one lookup each, and whichever answer in
+   * time are used. Elsewhere, none.
+   */
+  shortHomes: () => Promise<string | null>[]
+  platform: string
+  /** The system clipboard, the same writer the diagnostics panel's handler uses. */
+  writeText: (text: string) => void
 }
 
 /**
@@ -218,6 +254,106 @@ export class SettingsService {
   }
 
   /**
+   * Put what a bug report needs on the clipboard: the versions, the
+   * engine's own answer, the end of both logs and the reports of the maps
+   * drawn this session, with the home folder written as `~` and checked for
+   * afterwards. The reports come from the page, so they are checked first;
+   * everything else is this process's own. Nothing is sent anywhere
+   * (specs/023, FR-005 to FR-008).
+   */
+  async copyDiagnostics(reports: unknown): Promise<void> {
+    if (!areReports(reports)) {
+      throw new Error('the reports to copy are not a short list of text')
+    }
+    const d = this.#deps.diagnostics
+    const engine = await this.#engineInfo()
+    // Bounded: a log that cannot be flushed costs the newest lines of the
+    // tail, never the copy.
+    await within(d.flushLogs(), LOG_WAIT_MS)
+    let folder: string | null
+    try {
+      folder = this.#deps.logsFolder()
+    } catch {
+      folder = null
+    }
+    const [mainLog, engineLog] =
+      folder === null
+        ? ['The log folder could not be found.', 'The log folder could not be found.']
+        : await Promise.all([tailLog(folder, 'main'), tailLog(folder, 'engine')])
+    const text = diagnosticsText(
+      { ...d.about(), engine, mainLog, engineLog, reports },
+      await this.#homes(),
+      d.platform,
+    )
+    d.writeText(text)
+    this.#deps.log(`copied diagnostics (${Buffer.byteLength(text, 'utf8')} bytes) to the clipboard`)
+  }
+
+  /**
+   * Every form of the home folder the copy must hide. The home through its
+   * links is bounded at `HOMES_TIMEOUT_MS` and fails closed: a home that does
+   * not answer in time - on a network mount, say - refuses the copy, because
+   * its real path could be in the text and nothing would find it. A lookup
+   * that answers with an error has answered, and the home as named stands.
+   * The short forms are bounded the same way, separately, and whichever
+   * answered are used.
+   */
+  async #homes(): Promise<string[]> {
+    const { home, realHome, shortHomes } = this.#deps.diagnostics
+    const found = new Set([home])
+    const shorts = shortHomes().map((lookup) =>
+      lookup.then(
+        (short) => {
+          if (short !== null) found.add(short)
+        },
+        () => undefined,
+      ),
+    )
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const late = Symbol('late')
+    const deadline = new Promise<typeof late>((resolve) => {
+      timer = setTimeout(() => resolve(late), HOMES_TIMEOUT_MS)
+    })
+    try {
+      const [real] = await Promise.all([
+        Promise.race([realHome().catch(() => home), deadline]),
+        within(Promise.all(shorts), HOMES_TIMEOUT_MS),
+      ])
+      if (real === late) {
+        throw new Error('the home folder did not answer in time, so nothing was copied')
+      }
+      found.add(real)
+      return [...found]
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
+  async #engineInfo(): Promise<DiagnosticsInput['engine']> {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error(`no answer within ${ENGINE_INFO_TIMEOUT_MS / 1000} s`)),
+        ENGINE_INFO_TIMEOUT_MS,
+      )
+    })
+    try {
+      const info = await Promise.race([this.#deps.diagnostics.engineInfo(), timeout])
+      return { info }
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : typeof error === 'object' && error !== null && 'message' in error
+            ? String((error as { message: unknown }).message)
+            : String(error)
+      return { absent: `The engine did not give its engine.info: ${message}` }
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
+  /**
    * Remove what the app and the engine keep under the home. The home itself
    * stays, and so does anything else in it: a person can point it at a
    * folder of their own in one click, and the button's confirmation talks
@@ -306,7 +442,8 @@ function refusalForLocked(which: Which): string {
 /**
  * The handlers. Each is registered for the interface's own top frame only,
  * and each ignores whatever arguments it is given: no settings call takes
- * one except the theme, whose value is checked against the three names.
+ * one except the theme, whose value is checked against the three names,
+ * and the diagnostics copy, whose reports are checked as bounded text.
  */
 export function registerSettingsHandlers(
   ipcMain: IpcMain,
@@ -331,4 +468,9 @@ export function registerSettingsHandlers(
     await settings.openLogsFolder()
   })
   handle(CHANNELS.settingsResetEngineData, async () => settings.resetEngineData())
+  // The one settings call that takes something from the page: the reports
+  // of the maps it drew, as text, checked in the service before use.
+  handle(CHANNELS.settingsCopyDiagnostics, async (reports) => {
+    await settings.copyDiagnostics(reports)
+  })
 }

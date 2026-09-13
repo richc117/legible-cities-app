@@ -108,7 +108,8 @@ const api: Api = {
     reveal: (id) => invoke(CHANNELS.exportReveal, id),
     onProgress: (listener) => subscribe(CHANNELS.exportProgress, listener),
   },
-  // Only the theme crosses inward. The two folder choosers take nothing:
+  // Only the theme and the diagnostics' report text cross inward, each
+  // checked on the main side. The two folder choosers take nothing:
   // the main process opens the dialog and applies its own answer, so there
   // is no path here for a page to invent (specs/019-settings).
   settings: {
@@ -121,6 +122,7 @@ const api: Api = {
     engineSize: () => invoke(CHANNELS.settingsEngineSize),
     openLogsFolder: () => invoke(CHANNELS.settingsOpenLogs),
     resetEngineData: () => invoke(CHANNELS.settingsResetEngineData),
+    copyDiagnostics: (reports) => invoke(CHANNELS.settingsCopyDiagnostics, reports),
   },
 }
 

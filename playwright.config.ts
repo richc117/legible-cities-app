@@ -9,4 +9,8 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   reporter: process.env.CI ? 'github' : 'list',
   outputDir: 'test-results',
+  // A log folder of the suite's own for every launch, so no run writes a
+  // person's own log (specs/023-logs-and-diagnostics).
+  globalSetup: './tests/e2e/global-setup.ts',
+  globalTeardown: './tests/e2e/global-teardown.ts',
 })

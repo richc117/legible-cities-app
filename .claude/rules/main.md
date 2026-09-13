@@ -53,8 +53,13 @@ frames folder should be is refused rather than followed, as the reset
 refuses one. The folder itself is never removed, and the app marks a folder
 whenever it makes one - at start and before each export, because the reset
 takes the mark with the folder. Removing it outright, on the home as configured,
-was a real bug (`src/main/frames.ts`). A path that is not one
-of those is a bug. See ADR-016.
+was a real bug (`src/main/frames.ts`). The logs, `main.log` and
+`engine.log` with one `.old.log` each, go to `app.getPath('logs')`, which
+is the platform's log folder and never the engine's home, so the reset
+does not reach them; in development `LEGIBLE_USER_DATA` or `LEGIBLE_LOGS`
+moves them, and an end-to-end launch always has one of the two, or it
+writes a person's own log (`src/main/log-file.ts`, specs/023). A path that
+is not one of those is a bug. See ADR-016.
 
 ## The protocol is a contract
 

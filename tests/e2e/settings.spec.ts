@@ -15,9 +15,10 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   writeFileSync,
 } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import {
   _electron as electron,
@@ -300,4 +301,94 @@ test('resets the engine data behind a confirmation, and leaves the Library empty
       /no projects/i,
     )
   })
+})
+
+// A6-03. The logs follow LEGIBLE_USER_DATA into this suite's own profile,
+// on macOS too, where Electron would otherwise keep them in a person's own
+// log folder; nothing here is ever written there.
+test('keeps main.log and engine.log, and copies diagnostics without the home folder', async () => {
+  test.slow()
+  const userData = profile()
+  const logs = join(userData, 'logs')
+
+  await withApp(userData, async (page, app) => {
+    await expect(page.getByRole('status', { name: 'Engine' })).toContainText(/ready/i, {
+      timeout: 20_000,
+    })
+    await open(page)
+    // An engine request of the page's own: the versions block asks engine.info.
+    await expect(definition(page, 'Engine')).toHaveText(PINNED_ENGINE)
+
+    // The button is reached and pressed from the keyboard, and the result
+    // is a sentence where the button is.
+    const copy = page.getByRole('button', { name: 'Copy diagnostics' })
+    await copy.focus()
+    await page.keyboard.press('Enter')
+    await expect(page.getByRole('status').filter({ hasText: /on the clipboard/ })).toBeVisible()
+
+    const copied = await app.evaluate(({ clipboard }) => clipboard.readText())
+    // In the spec's order: the app, the runtime, the system, the engine, the
+    // two logs, the maps.
+    const order = [
+      /Legible Cities \S+/,
+      /Electron \d+/,
+      /Chromium \d+/,
+      /Node \d+/,
+      /## Operating system/,
+      new RegExp(`"engine": "${PINNED_ENGINE.replace(/\./g, '\\.')}"`),
+      /## main\.log/,
+      /## engine\.log/,
+      /No map has been drawn since the app started\./,
+    ].map((pattern) => copied.search(pattern))
+    expect(
+      order.every((at) => at >= 0),
+      copied,
+    ).toBe(true)
+    expect([...order].sort((a, b) => a - b)).toEqual(order)
+    // The logs' tails are there: the configuration lines, and the engine's.
+    expect(copied).toMatch(/\[config\] /)
+    expect(copied).toMatch(/\[engine\] state: Engine ready/)
+
+    // The home folder is nowhere in it, in either separator or any case.
+    // The profile is under the temporary folder, which is under the home
+    // folder on Windows, so the configuration lines alone would carry it.
+    const plain = (text: string): string => text.replace(/[\\/]+/g, '/').toLowerCase()
+    expect(plain(copied)).not.toContain(plain(homedir()))
+    // And not in the form the temporary folder writes it. On a Windows
+    // runner that is the 8.3 short name (`RUNNER~1`), which carries the
+    // start of the user's name and which a check for the long home alone
+    // could never catch. The home-bearing part of each temporary path is
+    // as many leading folders as the home has.
+    const depth = homedir().split(/[\\/]+/).length
+    for (const temp of [tmpdir(), realpathSync.native(tmpdir())]) {
+      const prefix = temp
+        .split(/[\\/]+/)
+        .slice(0, depth)
+        .join('/')
+      const homeBearing =
+        plain(prefix) === plain(homedir()) || (process.platform === 'win32' && /~\d+$/.test(prefix))
+      if (homeBearing) expect(plain(copied), temp).not.toContain(plain(prefix))
+    }
+  })
+
+  // After the quit. Both files are in the moved profile, each line stamped;
+  // the engine's lines are in its own file and nowhere else, and its
+  // shutdown - the last thing the quit logs - reached the file before it
+  // closed.
+  await expect.poll(() => existsSync(join(logs, 'engine.log')), { timeout: 10_000 }).toBe(true)
+  const main = readFileSync(join(logs, 'main.log'), 'utf8')
+  const engine = readFileSync(join(logs, 'engine.log'), 'utf8')
+  expect(main).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z \[config\] /m)
+  expect(main).toContain('[settings] copied diagnostics')
+  expect(main).not.toContain('[engine]')
+  expect(engine).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z \[engine\] /m)
+  expect(engine).toMatch(
+    /\[engine\] (ended on request|ended on terminate|did not end on terminate)/,
+  )
+  // Never more than the two files a log may have.
+  expect(
+    readdirSync(logs)
+      .filter((name) => name.endsWith('.log'))
+      .sort(),
+  ).toEqual(['engine.log', 'main.log'])
 })

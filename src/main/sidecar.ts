@@ -59,6 +59,13 @@ const STDERR_TAIL = 20
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
 
+/**
+ * How long, after the engine has exited, its stdio may take to give up the
+ * last lines: a grandchild that inherited a pipe must not hold a reason, or
+ * a quit, for longer than this.
+ */
+export const STDIO_CLOSE_MS = 1_000
+
 export function describeExit(code: number | null, signal: NodeJS.Signals | null): string {
   if (signal !== null) return `ended by signal ${signal}`
   return `exited with code ${code ?? 'unknown'}`
@@ -69,6 +76,8 @@ export class Sidecar {
   private child: ChildProcess | null = null
   private client: JsonRpcClient | null = null
   private exited: Promise<void> = Promise.resolve()
+  /** The last child's stdio closing, after its exit: its last stderr lines are read by then. */
+  private stdioClosed: Promise<void> = Promise.resolve()
   private failures = 0
   private stopping = false
   private started = false
@@ -226,6 +235,11 @@ export class Sidecar {
     this.exited = new Promise<void>((resolve) => {
       exitedResolve = resolve
     })
+    let closedResolve: () => void = () => {}
+    this.stdioClosed = new Promise<void>((resolve) => {
+      closedResolve = resolve
+    })
+    child.once('close', () => closedResolve())
 
     child.on('error', (error: NodeJS.ErrnoException) => {
       // Before it ran at all: not found or not executable. Retrying would
@@ -233,6 +247,7 @@ export class Sidecar {
       if (this.child === child && child.pid === undefined) {
         this.child = null
         exitedResolve()
+        closedResolve()
         this.couldNotStart(`${error.code ?? error.message}`)
       } else {
         this.log(`process error: ${error.message}`)
@@ -303,7 +318,7 @@ export class Sidecar {
         return
       }
       unexpected = describeExit(code, signal)
-      setTimeout(report, 1_000)
+      setTimeout(report, STDIO_CLOSE_MS)
     })
     child.once('close', report)
 
@@ -456,6 +471,10 @@ export class Sidecar {
     if (this.ending !== null) await this.ending
     const child = this.child
     if (child !== null) await this.endChild(child, 'quit')
+    // 'exit' comes before the stderr pipe has given up its last lines, and
+    // the log files close once this resolves; wait for 'close', for as long
+    // as an unexpected exit waits for its reason.
+    await this.waitFor(this.stdioClosed, STDIO_CLOSE_MS)
   }
 
   /** Shut one child down: the request, then the group or the tree, then force. */
