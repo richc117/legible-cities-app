@@ -1295,18 +1295,23 @@ vendor jobs and all three packaging jobs succeed a last job, the only one
 with `contents: write`, drafts a GitHub Release (A6-01,
 specs/025-release-on-a-tag, ADR-041). `scripts/release.mjs` decides and
 the workflow does: it refuses a tag that is not for `package.json`'s
-version, or whose commit is not reachable from `main`, before anything is
-downloaded; renames the three installers for their machine
+version, that no longer names the run's commit on `origin` (moved or
+deleted since the push), or whose commit is not reachable from `main`,
+before anything is downloaded; renames the three installers for their machine
 (`Legible-Cities-<version>-mac-arm64.dmg`, `-mac-x64.dmg`,
 `-windows-x64-setup.exe`) after checking each artefact's manifest was
 written from this run's pins, for this version, in this run; archives the
 vendor workflow's three Corresponding Source artefacts, `ffmpeg-source`,
 `loom-source` (LOOM at its commit with its submodules, the Windows port,
-the patch script) and `engine-source` (the engine at its tag), one tar
-each; writes `SHA256SUMS.txt` over them; and fills the notes from
+the patch script, and the zlib and bzip2 tarballs the Windows tools link
+statically, with the `loom-windows` job's record of its MSYS2 packages put
+inside) and `engine-source` (the engine at its tag), one tar each, owners
+and times fixed; writes `SHA256SUMS.txt` over them; and fills the notes from
 `.github/release-notes.md` and the pins. Then one step holding the token
 lists the Releases, creates a draft for the tag or updates the one draft
-there is (removing any asset this run does not attach), refuses a
+there is (its title, prerelease flag and assets, never its notes, which
+the maintainer may have edited; removing any asset this run does not
+attach), refuses a
 published Release for the tag untouched, uploads with replacement, and
 reads the draft back to compare every asset's name, size and GitHub's
 sha256 digest with the files. An `-rc.N` draft is a prerelease. Nothing

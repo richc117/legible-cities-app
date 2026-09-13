@@ -123,8 +123,13 @@ SmartScreen through "More info" › "Run anyway".
 
 - A tag pushed from a commit that is not on `main`: the job refuses; a
   Release is made only from `main`'s history.
-- A tag without the `v` prefix or not SemVer: the workflow does not run
-  the release job.
+- A tag moved or deleted while its build runs: that run's release job
+  refuses, because the tag no longer names the commit it built, and the run
+  for the tag's new commit drafts the Release.
+- A tag without the `v` prefix does not start the build. A tag with it
+  that is not `v<X.Y.Z>` or `v<X.Y.Z>-rc.<N>` (`v1`, `v0.1.0-beta`) builds
+  the installers, and the release job refuses it at its first step, naming
+  the reason; no Release is drafted (FR-003).
 - The release job needs `contents: write`; it is the only job that has it,
   and only on a tag.
 

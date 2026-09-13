@@ -34,14 +34,15 @@
 # and all three packaging jobs succeeded: a Release has every installer and
 # every source archive, or does not exist. It is the only job that can
 # write to the repository. scripts/release.mjs refuses a tag that is not
-# v<version> or v<version>-rc.<N> for package.json's version, or whose
-# commit is not on main, before anything is drafted; it drafts, and never
-# publishes: the maintainer reads the draft and publishes it by hand. An
-# -rc.N tag's draft is a prerelease. A rerun updates the draft in place; a
-# published Release for the tag fails the job and is not touched. The
+# v<version> or v<version>-rc.<N> for package.json's version, that has been
+# moved or deleted since the push that started the run, or whose commit is
+# not on main, before anything is drafted; it drafts, and never publishes:
+# the maintainer reads the draft and publishes it by hand. An -rc.N tag's
+# draft is a prerelease. A rerun updates the draft in place and keeps its
+# notes; a published Release for the tag fails the job and is not touched. The
 # assets are the three installers renamed for their machine, one archive of
-# each Corresponding Source artefact (ffmpeg-source, loom-source,
-# engine-source), and SHA256SUMS.txt; the notes are .github/release-notes.md
+# each Corresponding Source artefact (ffmpeg-source, loom-source with the
+# loom-windows-toolchain record inside, engine-source), and SHA256SUMS.txt; the notes are .github/release-notes.md
 # filled from vendor/pins.json and the tag. `npm run dist` stays the
 # everyday unpacked build.
 name: build
@@ -221,51 +222,66 @@ jobs:
       cancel-in-progress: false
     env:
       TAG: ${{ github.ref_name }}
+    # The actions here are pinned to full commits, the version in the
+    # comment: checkout and setup-node take github.token as their default
+    # token input in the one job that can write. download-artifact does
+    # not; it reads this run's artefacts with the runner's own token.
     steps:
       # The whole history, so the tag's commit can be tested against main's.
-      - uses: actions/checkout@v7
+      # checkout uses the token to fetch and, with persist-credentials off,
+      # leaves none in git's configuration.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: actions/setup-node@v6
+      # setup-node uses the token only to read Node's version list.
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 22
 
-      - name: Refuse a tag that is not for package.json's version, or not on main
+      # The checkout forces the local tag to this run's commit, so the script
+      # asks origin where the tag points now (a public read, no token) and
+      # refuses a tag moved or deleted since the push that started the run.
+      - name: Refuse a tag not for package.json's version, moved since, or not on main
         id: decide
         shell: bash
-        run: node scripts/release.mjs decide "$TAG" --main refs/remotes/origin/main
+        run: node scripts/release.mjs decide "$TAG" --main refs/remotes/origin/main --remote origin --run-commit "$GITHUB_SHA"
 
       # Each into a folder named for its artefact, by name rather than by
       # pattern: a pattern that matches one artefact unpacks it without the folder.
       - name: Download the darwin-arm64 installer
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: installer-darwin-arm64
           path: downloaded/installer-darwin-arm64
       - name: Download the darwin-x64 installer
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: installer-darwin-x64
           path: downloaded/installer-darwin-x64
       - name: Download the win-x64 installer
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: installer-win-x64
           path: downloaded/installer-win-x64
       - name: Download FFmpeg's Corresponding Source
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: ffmpeg-source
           path: downloaded/ffmpeg-source
       - name: Download LOOM's Corresponding Source
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: loom-source
           path: downloaded/loom-source
+      - name: Download the record of what the Windows LOOM tools link
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: loom-windows-toolchain
+          path: downloaded/loom-windows-toolchain
       - name: Download the engine's source
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: engine-source
           path: downloaded/engine-source
@@ -278,9 +294,10 @@ jobs:
         shell: bash
         run: node scripts/release.mjs notes "$TAG" "$RUNNER_TEMP/notes.md"
 
-      # The only step that holds the token. Nothing is written before the
-      # script has judged what GitHub already has for the tag, and the draft
-      # is read back and compared with the files afterwards.
+      # The only step of this repository's own that holds the token. Nothing
+      # is written before the script has judged what GitHub already has for
+      # the tag, and the draft is read back and compared with the files
+      # afterwards.
       - name: Create or update the draft, upload the assets, and check them
         shell: bash
         env:
@@ -306,9 +323,10 @@ jobs:
                 --notes-file "$RUNNER_TEMP/notes.md" "${prerelease_flag[@]}"
               ;;
             update)
-              echo "updating the draft $NAME for $TAG (id $(jq -r .id <<< "$plan"))"
-              gh release edit "$TAG" --draft=true --prerelease="$PRERELEASE" \
-                --title "$NAME" --notes-file "$RUNNER_TEMP/notes.md"
+              # The notes are left alone: the maintainer may have edited them
+              # in the draft, and a rerun must not put the template back.
+              echo "updating the draft $NAME for $TAG (id $(jq -r .id <<< "$plan")); its notes are kept"
+              gh release edit "$TAG" --draft=true --prerelease="$PRERELEASE" --title "$NAME"
               while IFS= read -r stale; do
                 if [ -n "$stale" ]; then
                   echo "removing $stale, which this run does not attach"

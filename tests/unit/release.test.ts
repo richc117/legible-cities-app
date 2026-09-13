@@ -8,7 +8,15 @@
 
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -21,6 +29,7 @@ const PINS = JSON.parse(readFileSync(PINS_FILE, 'utf8')) as {
   engine: { version: string; tag: string }
   loom: { commit: string }
   loom_windows_port: { commit: string }
+  loom_windows_static: { zlib: { version: string }; bzip2: { version: string } }
   ffmpeg: { version: string; x264: { commit: string }; zlib: { version: string } }
   python: { version: string }
 }
@@ -55,11 +64,19 @@ interface AssembleInput {
   pinsSha256: string
   packageVersion: string
   runId?: string | null
-  tar?: (archive: string, parent: string, name: string) => void
+  epoch?: number
+  tar?: (archive: string, parent: string, name: string, epoch: number) => void
 }
 interface Module {
   parseTag(tag: string): { version: string; rc: number | null; label: string } | null
-  decide(input: { tag: string; packageVersion: string; onMain: boolean | string }): Decision
+  decide(input: {
+    tag: string
+    packageVersion: string
+    onMain: boolean | string
+    tagNow: { run: string; remote: string | null } | string
+  }): Decision
+  parseLsRemote(text: string, tag: string): string | null
+  remoteTagCommit(cwd: string, remote: string, tag: string): string | null | { error: string }
   tagCommit(cwd: string, tag: string): { commit: string } | { error: string }
   isOnMain(cwd: string, commit: string, mainRef: string): boolean | string
   assetNames(label: string, pins: unknown): string[]
@@ -107,6 +124,9 @@ function put(path: string, content: string | Buffer): void {
 }
 const sha = (content: string | Buffer): string => createHash('sha256').update(content).digest('hex')
 
+/** A run whose tag still names the commit it built. */
+const HERE = { run: 'c'.repeat(40), remote: 'c'.repeat(40) }
+
 describe('parseTag', () => {
   it('reads a final tag and a release-candidate tag', async () => {
     const { parseTag } = await load()
@@ -130,6 +150,10 @@ describe('parseTag', () => {
     'v0.1.0-beta.1',
     'v0.1.0-rc.1.2',
     'v0.1.0+build',
+    'v0.1.0\n',
+    '\nv0.1.0',
+    'v00.1.0',
+    'v0.01.0',
     'vfoo',
     'v 0.1.0',
     '',
@@ -142,7 +166,7 @@ describe('parseTag', () => {
 describe('decide', () => {
   it('drafts a final Release for v<version> on main', async () => {
     const { decide } = await load()
-    expect(decide({ tag: 'v0.1.0', packageVersion: '0.1.0', onMain: true })).toEqual({
+    expect(decide({ tag: 'v0.1.0', packageVersion: '0.1.0', onMain: true, tagNow: HERE })).toEqual({
       ok: true,
       name: 'Legible Cities 0.1.0',
       version: '0.1.0',
@@ -152,7 +176,9 @@ describe('decide', () => {
 
   it('drafts a prerelease for v<version>-rc.<N>', async () => {
     const { decide } = await load()
-    expect(decide({ tag: 'v0.1.0-rc.1', packageVersion: '0.1.0', onMain: true })).toEqual({
+    expect(
+      decide({ tag: 'v0.1.0-rc.1', packageVersion: '0.1.0', onMain: true, tagNow: HERE }),
+    ).toEqual({
       ok: true,
       name: 'Legible Cities 0.1.0-rc.1',
       version: '0.1.0-rc.1',
@@ -163,7 +189,7 @@ describe('decide', () => {
   it('refuses a tag for another version, naming both', async () => {
     const { decide } = await load()
     for (const tag of ['v0.1.1', 'v0.1.1-rc.1', 'v0.0.9']) {
-      const decision = decide({ tag, packageVersion: '0.1.0', onMain: true })
+      const decision = decide({ tag, packageVersion: '0.1.0', onMain: true, tagNow: HERE })
       expect(decision.ok).toBe(false)
       if (decision.ok) continue
       expect(decision.reason).toContain(tag.slice(1).replace(/-rc\.\d+$/, ''))
@@ -173,7 +199,12 @@ describe('decide', () => {
 
   it('refuses a tag that is not a release tag, before asking git anything', async () => {
     const { decide } = await load()
-    const decision = decide({ tag: 'v0.1.0-beta.1', packageVersion: '0.1.0', onMain: 'not asked' })
+    const decision = decide({
+      tag: 'v0.1.0-beta.1',
+      packageVersion: '0.1.0',
+      onMain: 'not asked',
+      tagNow: 'not asked',
+    })
     expect(decision).toEqual({
       ok: false,
       reason: expect.stringContaining('neither v<X.Y.Z> nor v<X.Y.Z>-rc.<N>'),
@@ -182,16 +213,56 @@ describe('decide', () => {
 
   it('refuses a commit that is not on main, and one it could not place', async () => {
     const { decide } = await load()
-    const off = decide({ tag: 'v0.1.0', packageVersion: '0.1.0', onMain: false })
+    const off = decide({ tag: 'v0.1.0', packageVersion: '0.1.0', onMain: false, tagNow: HERE })
     expect(off).toEqual({ ok: false, reason: expect.stringContaining('not on main') })
-    const unknown = decide({ tag: 'v0.1.0', packageVersion: '0.1.0', onMain: 'no origin/main' })
+    const unknown = decide({
+      tag: 'v0.1.0',
+      packageVersion: '0.1.0',
+      onMain: 'no origin/main',
+      tagNow: HERE,
+    })
     expect(unknown).toEqual({ ok: false, reason: expect.stringContaining('no origin/main') })
+  })
+
+  it('refuses a tag moved or deleted since the push that started the run', async () => {
+    const { decide } = await load()
+    const base = { tag: 'v0.1.0', packageVersion: '0.1.0', onMain: true }
+    const moved = decide({ ...base, tagNow: { run: 'a'.repeat(40), remote: 'b'.repeat(40) } })
+    expect(moved).toEqual({ ok: false, reason: expect.stringContaining('was moved') })
+    if (!moved.ok) {
+      expect(moved.reason).toContain('a'.repeat(40))
+      expect(moved.reason).toContain('b'.repeat(40))
+    }
+    const gone = decide({ ...base, tagNow: { run: 'a'.repeat(40), remote: null } })
+    expect(gone).toEqual({ ok: false, reason: expect.stringContaining('no longer on the remote') })
+    const unasked = decide({ ...base, tagNow: 'ls-remote failed' })
+    expect(unasked).toEqual({ ok: false, reason: expect.stringContaining('ls-remote failed') })
+    // A moved tag is refused even where main would also refuse it.
+    const both = decide({
+      ...base,
+      onMain: false,
+      tagNow: { run: 'a'.repeat(40), remote: 'b'.repeat(40) },
+    })
+    expect(both).toEqual({ ok: false, reason: expect.stringContaining('was moved') })
+  })
+
+  it('reads where a tag points from ls-remote, peeled when annotated', async () => {
+    const { parseLsRemote } = await load()
+    const tag = 'v0.1.0'
+    const object = '1'.repeat(40)
+    const commit = '2'.repeat(40)
+    expect(
+      parseLsRemote(`${object}\trefs/tags/v0.1.0\n${commit}\trefs/tags/v0.1.0^{}\n`, tag),
+    ).toBe(commit)
+    expect(parseLsRemote(`${commit}\trefs/tags/v0.1.0\n`, tag)).toBe(commit)
+    expect(parseLsRemote(`${commit}\trefs/tags/v0.1.0-rc.1\n`, tag)).toBeNull()
+    expect(parseLsRemote('', tag)).toBeNull()
   })
 
   it('refuses when package.json is not at a plain X.Y.Z', async () => {
     const { decide } = await load()
     for (const packageVersion of ['0.1.0-rc.1', '0.1', '']) {
-      const decision = decide({ tag: 'v0.1.0', packageVersion, onMain: true })
+      const decision = decide({ tag: 'v0.1.0', packageVersion, onMain: true, tagNow: HERE })
       expect(decision.ok).toBe(false)
     }
   })
@@ -199,7 +270,9 @@ describe('decide', () => {
   it('agrees with the committed package.json: the first release is 0.1.0', async () => {
     const { decide } = await load()
     expect(PKG.version).toBe('0.1.0')
-    expect(decide({ tag: 'v0.1.0-rc.1', packageVersion: PKG.version, onMain: true }).ok).toBe(true)
+    expect(
+      decide({ tag: 'v0.1.0-rc.1', packageVersion: PKG.version, onMain: true, tagNow: HERE }).ok,
+    ).toBe(true)
   })
 
   it('from the command line, fails naming both versions and outputs nothing', () => {
@@ -216,42 +289,76 @@ describe('decide', () => {
   })
 })
 
-describe('tagCommit and isOnMain, over a repository', () => {
-  function repository(): { dir: string; main: string; side: string } {
-    const dir = scratch()
-    const hooks = join(dir, 'no-hooks')
+describe('the tag, main and the remote, over real repositories', () => {
+  interface Repositories {
+    /** A clone, as the release job's checkout is, with origin a bare repository. */
+    dir: string
+    origin: string
+    main: string
+    side: string
+    git: (...args: string[]) => string
+  }
+
+  /**
+   * A bare origin and a clone of it: package.json at 0.1.0 on main, tagged
+   * v0.1.0 (annotated) and pushed; a side branch tagged v0.1.0-rc.1 and
+   * pushed. No network: origin is a folder.
+   */
+  function repositories(): Repositories {
+    const root = scratch()
+    const hooks = join(root, 'no-hooks')
     mkdirSync(hooks)
-    const work = join(dir, 'work')
-    mkdirSync(work)
-    const git = (...args: string[]): string => {
-      const run = spawnSync('git', args, { cwd: work, encoding: 'utf8', timeout: 30_000 })
-      if (run.status !== 0) throw new Error(`git ${args.join(' ')}: ${run.stderr}`)
-      return run.stdout.trim()
+    const origin = join(root, 'origin.git')
+    const dir = join(root, 'work')
+    const run = (cwd: string, args: string[]): string => {
+      const result = spawnSync('git', args, { cwd, encoding: 'utf8', timeout: 30_000 })
+      if (result.status !== 0) throw new Error(`git ${args.join(' ')}: ${result.stderr}`)
+      return result.stdout.trim()
     }
-    git('init', '--quiet', '--initial-branch=main')
+    run(root, ['init', '--quiet', '--bare', '--initial-branch=main', origin])
+    run(root, ['clone', '--quiet', origin, dir])
+    const git = (...args: string[]): string => run(dir, args)
     git('config', 'user.name', 'Test')
     git('config', 'user.email', 'test@example.invalid')
     git('config', 'commit.gpgsign', 'false')
     git('config', 'tag.gpgsign', 'false')
     git('config', 'core.hooksPath', hooks)
-    writeFileSync(join(work, 'a.txt'), 'a\n')
-    git('add', 'a.txt')
+    git('checkout', '--quiet', '-B', 'main')
+    writeFileSync(join(dir, 'package.json'), '{ "name": "t", "version": "0.1.0" }\n')
+    git('add', 'package.json')
     git('commit', '--quiet', '-m', 'on main')
     const main = git('rev-parse', 'HEAD')
     // Annotated, as a maintainer's tag may be: its commit is peeled.
     git('tag', '-a', 'v0.1.0', '-m', 'the release')
+    git('push', '--quiet', 'origin', 'main', 'v0.1.0')
     git('checkout', '--quiet', '-b', 'side')
-    writeFileSync(join(work, 'b.txt'), 'b\n')
+    writeFileSync(join(dir, 'b.txt'), 'b\n')
     git('add', 'b.txt')
     git('commit', '--quiet', '-m', 'off main')
     const side = git('rev-parse', 'HEAD')
     git('tag', 'v0.1.0-rc.1')
-    return { dir: work, main, side }
+    git('push', '--quiet', 'origin', 'v0.1.0-rc.1')
+    git('fetch', '--quiet', 'origin')
+    return { dir, origin, main, side, git }
+  }
+
+  /** `release.mjs decide` against the clone, its outputs in a file as on a runner. */
+  function decideCli(repos: Repositories, args: string[]) {
+    const outputs = join(scratch(), 'outputs.txt')
+    writeFileSync(outputs, '')
+    const env: NodeJS.ProcessEnv = { ...process.env, GITHUB_OUTPUT: outputs }
+    delete env.GITHUB_SHA
+    const result = spawnSync(
+      process.execPath,
+      [SCRIPT, 'decide', ...args, '--repo', repos.dir, '--main', 'refs/remotes/origin/main'],
+      { encoding: 'utf8', timeout: 60_000, env },
+    )
+    return { ...result, outputs: readFileSync(outputs, 'utf8') }
   }
 
   it('peels a tag to its commit, and says when there is no such tag', async () => {
     const { tagCommit } = await load()
-    const { dir, main, side } = repository()
+    const { dir, main, side } = repositories()
     expect(tagCommit(dir, 'v0.1.0')).toEqual({ commit: main })
     expect(tagCommit(dir, 'v0.1.0-rc.1')).toEqual({ commit: side })
     expect(tagCommit(dir, 'v0.2.0')).toEqual({ error: expect.stringContaining('no tag v0.2.0') })
@@ -259,12 +366,62 @@ describe('tagCommit and isOnMain, over a repository', () => {
 
   it('places a commit on main or off it, and says when main is not there', async () => {
     const { isOnMain } = await load()
-    const { dir, main, side } = repository()
-    expect(isOnMain(dir, main, 'refs/heads/main')).toBe(true)
-    expect(isOnMain(dir, side, 'refs/heads/main')).toBe(false)
-    expect(isOnMain(dir, main, 'refs/remotes/origin/main')).toEqual(
+    const { dir, main, side } = repositories()
+    expect(isOnMain(dir, main, 'refs/remotes/origin/main')).toBe(true)
+    expect(isOnMain(dir, side, 'refs/remotes/origin/main')).toBe(false)
+    expect(isOnMain(dir, main, 'refs/remotes/upstream/main')).toEqual(
       expect.stringContaining('not in this checkout'),
     )
+  })
+
+  it('asks the remote where a tag points, peeled, and says when it has none', async () => {
+    const { remoteTagCommit } = await load()
+    const { dir, main, side } = repositories()
+    expect(remoteTagCommit(dir, 'origin', 'v0.1.0')).toBe(main)
+    expect(remoteTagCommit(dir, 'origin', 'v0.1.0-rc.1')).toBe(side)
+    expect(remoteTagCommit(dir, 'origin', 'v0.2.0')).toBeNull()
+    expect(remoteTagCommit(dir, 'nowhere', 'v0.1.0')).toEqual({
+      error: expect.stringContaining('ls-remote'),
+    })
+  })
+
+  it('from the command line, drafts for a tag on main that has not moved', () => {
+    const repos = repositories()
+    const result = decideCli(repos, ['v0.1.0', '--run-commit', repos.main])
+    expect(result.stderr).toBe('')
+    expect(result.status).toBe(0)
+    expect(result.outputs).toBe('name=Legible Cities 0.1.0\nversion=0.1.0\nprerelease=false\n')
+    // Without --run-commit or GITHUB_SHA, the local tag's commit is the run's.
+    expect(decideCli(repos, ['v0.1.0']).status).toBe(0)
+  })
+
+  it('from the command line, refuses a tag off main, and one moved since the run began', () => {
+    const repos = repositories()
+    const off = decideCli(repos, ['v0.1.0-rc.1', '--run-commit', repos.side])
+    expect(off.status).toBe(1)
+    expect(off.stderr).toContain('not on main')
+    expect(off.outputs).toBe('')
+
+    // The run built main's commit; then the tag was moved and force-pushed.
+    repos.git('tag', '-f', '-a', 'v0.1.0', '-m', 'moved', repos.side)
+    repos.git('push', '--quiet', '--force', 'origin', 'v0.1.0')
+    repos.git('tag', '-f', 'v0.1.0', repos.main)
+    const moved = decideCli(repos, ['v0.1.0', '--run-commit', repos.main])
+    expect(moved.status).toBe(1)
+    expect(moved.stderr).toContain('was moved')
+    expect(moved.stderr).toContain(repos.side)
+    expect(moved.outputs).toBe('')
+
+    // And deleted from the remote.
+    repos.git('push', '--quiet', 'origin', ':refs/tags/v0.1.0')
+    const gone = decideCli(repos, ['v0.1.0', '--run-commit', repos.main])
+    expect(gone.status).toBe(1)
+    expect(gone.stderr).toContain('no longer on the remote')
+  })
+
+  it('from the command line, refuses an unknown option', () => {
+    const repos = repositories()
+    expect(decideCli(repos, ['v0.1.0', '--publish']).status).toBe(2)
   })
 })
 
@@ -278,6 +435,7 @@ interface Downloads {
   extraInstaller?: Target
   manifest?: (target: Target) => Record<string, unknown>
   emptySource?: string
+  noToolchain?: boolean
 }
 
 function manifestFor(target: Target): Record<string, unknown> {
@@ -313,14 +471,23 @@ function downloads(options: Downloads = {}): string {
     mkdirSync(join(root, source), { recursive: true })
     if (source !== options.emptySource) put(join(root, source, 'BUILD.txt'), `${source}\n`)
   }
+  if (!options.noToolchain) {
+    put(
+      join(root, 'loom-windows-toolchain', 'TOOLCHAIN-win-x64.txt'),
+      'mingw-w64-ucrt-x86_64-zlib\n',
+    )
+  }
   return root
 }
 
-/** Stands in for tar: records the call and writes a file naming what it archived. */
+/**
+ * Stands in for tar: records the call, with the folder's files and the
+ * time given, and writes a file naming what it archived.
+ */
 function fakeTar(calls: string[][]) {
-  return (archive: string, parent: string, name: string): void => {
-    calls.push([archive, name])
-    expect(existsSync(join(parent, name, 'BUILD.txt'))).toBe(true)
+  return (archive: string, parent: string, name: string, epoch: number): void => {
+    const files = readdirSync(join(parent, name)).sort().join(',')
+    calls.push([archive, name, files, String(epoch)])
     writeFileSync(archive, `tar of ${name}`)
   }
 }
@@ -334,6 +501,7 @@ describe('assemble', () => {
     pinsSha256: PINS_SHA,
     packageVersion: PKG.version,
     runId: '42',
+    epoch: 1789000000,
   })
 
   it('renames each installer for its machine, archives each source, and sums them all', async () => {
@@ -359,11 +527,13 @@ describe('assemble', () => {
     expect(readFileSync(join(out, `Legible-Cities-${label}-mac-x64.dmg`), 'utf8')).toBe(
       'installer for darwin-x64',
     )
-    expect(calls.map(([, name]) => name).sort()).toEqual(
+    // Each folder archived whole at the commit's time; LOOM's with the
+    // Windows record beside its BUILD.txt.
+    expect(calls.map(([, name, files, epoch]) => [name, files, epoch]).sort()).toEqual(
       [
-        `ffmpeg-${PINS.ffmpeg.version}-source`,
-        `legible-cities-engine-${PINS.engine.version}-source`,
-        `loom-${loom}-source`,
+        [`ffmpeg-${PINS.ffmpeg.version}-source`, 'BUILD.txt', '1789000000'],
+        [`legible-cities-engine-${PINS.engine.version}-source`, 'BUILD.txt', '1789000000'],
+        [`loom-${loom}-source`, 'BUILD.txt,TOOLCHAIN-win-x64.txt', '1789000000'],
       ].sort(),
     )
     const sumsText = readFileSync(join(out, SUMS), 'utf8')
@@ -413,6 +583,17 @@ describe('assemble', () => {
       tar: fakeTar([]),
     })
     expect(result.problems).toEqual([expect.stringContaining('loom-source')])
+  })
+
+  it("refuses LOOM's source without the Windows tools' record", async () => {
+    const { assemble } = await load()
+    const out = join(scratch(), 'assets')
+    const result = assemble({
+      ...base(downloads({ noToolchain: true }), out),
+      tar: fakeTar([]),
+    })
+    expect(result.problems).toEqual([expect.stringContaining('loom-windows-toolchain')])
+    expect(existsSync(out)).toBe(false)
   })
 
   it('refuses installers built from other pins, another version or another run', async () => {
@@ -486,6 +667,7 @@ describe('the notes', () => {
       PINS.ffmpeg.version,
       PINS.ffmpeg.x264.commit,
       PINS.ffmpeg.zlib.version,
+      `bzip2 ${PINS.loom_windows_static.bzip2.version}`,
       PINS.python.version,
       PKG.devDependencies.electron,
     ]) {
@@ -502,6 +684,30 @@ describe('the notes', () => {
     expect(problems).toEqual([])
     expect(text.startsWith('> **A release candidate.**')).toBe(true)
     expect(text).toContain('Legible-Cities-0.1.0-rc.2-mac-arm64.dmg')
+  })
+
+  it('from the command line, write the filled notes to the file named', () => {
+    const out = join(scratch(), 'notes.md')
+    const result = spawnSync(process.execPath, [SCRIPT, 'notes', 'v0.1.0-rc.1', out], {
+      encoding: 'utf8',
+      timeout: 30_000,
+      env: { ...process.env, GITHUB_REPOSITORY: 'owner/app' },
+    })
+    expect(result.stderr).toBe('')
+    expect(result.status).toBe(0)
+    const text = readFileSync(out, 'utf8')
+    expect(text).toBe(result.stdout)
+    expect(text).toContain('https://github.com/owner/app/blob/v0.1.0-rc.1/docs/install.md')
+    expect(text).not.toMatch(/\{\{|\}\}/)
+
+    const bad = join(scratch(), 'bad.md')
+    const refused = spawnSync(process.execPath, [SCRIPT, 'notes', 'v0.1', bad], {
+      encoding: 'utf8',
+      timeout: 30_000,
+    })
+    expect(refused.status).toBe(1)
+    expect(refused.stderr).toContain('not a release tag')
+    expect(existsSync(bad)).toBe(false)
   })
 
   it('refuse a template naming a value nothing fills', async () => {
@@ -662,9 +868,23 @@ describe('build.yml', () => {
     expect(release.match(/GH_TOKEN/g)).toHaveLength(1)
   })
 
-  it('drafts and never publishes', () => {
+  it('drafts and never publishes, and a rerun keeps the notes in the draft', () => {
     expect(release).toContain('gh release create "$TAG" --draft')
     expect(release).toContain('--draft=true')
     expect(release).not.toMatch(/--latest|--draft=false|draft=false/)
+    const edit = release.split('\n').find((line) => line.includes('gh release edit'))
+    expect(edit).toBeDefined()
+    expect(edit).not.toContain('--notes')
+    expect(release.match(/--notes-file/g)).toHaveLength(1)
+  })
+
+  it('pins every action the writing job uses to a full commit', () => {
+    const uses = release.match(/uses: \S+/g) ?? []
+    expect(uses.length).toBeGreaterThan(0)
+    for (const line of uses) expect(line).toMatch(/^uses: actions\/[a-z-]+@[0-9a-f]{40}$/)
+  })
+
+  it("asks where the tag points now, with this run's commit", () => {
+    expect(release).toContain('--run-commit "$GITHUB_SHA"')
   })
 })

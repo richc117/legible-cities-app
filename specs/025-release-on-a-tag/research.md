@@ -112,3 +112,50 @@ then tested.
   warned about.
 - `make_latest` does not apply to drafts or prereleases; the workflow never
   passes `--latest`.
+
+## 6. After the review (2026-09-13)
+
+**What the Windows LOOM tools link.** The `loom-win-x64` artefact of build
+run 34750505248, read with `strings`: `topo`, `loom` and `octi` carry
+`inflate 1.3.2 Copyright` and `bzip2/libbzip2` `1.0.8, 13-Jul-2019`; all
+four carry winpthreads' name, about 900 libstdc++ symbols and
+`GCC: (Rev3, Built by MSYS2 project) 16.2.0`; none carries protobuf,
+although the job installs it. MSYS2's packages on the day were
+`mingw-w64-ucrt-x86_64-zlib 1.3.2-2` and `mingw-w64-ucrt-x86_64-bzip2
+1.0.8-4` (packages.msys2.org).
+
+**The tarballs.** `bzip2-1.0.8.tar.gz` from sourceware is sha256
+`ab5a0317…2269`; its `.sig` names issuer `12768A96…9A78`, a subkey whose
+primary key is `EC3CFE88F6CA0788774F5C1D1AA44BE649DE760A`, fetched from
+keyserver.ubuntu.com, with `GOODSIG` and `VALIDSIG` and no revocation. zlib
+1.3.2's tarball, signature and key are the ones `ffmpeg-source` already
+verifies. The extended `loom-source` script ran in `ubuntu:22.04` and
+verified both; with bzip2's fingerprint changed to zlib's key it refused.
+The `loom-windows` record step ran against a stand-in `pacman` and
+`python`: it wrote the record for the pinned versions, and refused bzip2
+1.0.9 and a missing bzip2.
+
+**The order.** `loom-windows` must record the packages it built with, so
+the record cannot come before it; the tarballs can. So `loom-source`
+fetches and verifies the pinned tarballs first, the LOOM jobs need it (no
+LOOM binary without its verified source, ADR-040's rule), `loom-windows`
+refuses a package whose version is not pinned, and the release puts the
+record inside LOOM's archive.
+
+**The token in the release job.** At the pinned commits: `actions/checkout`
+v7.0.1 (`3d3c42e5…90b1`) has `token`, defaulting to `github.token`;
+`actions/setup-node` v6.5.0 (`24997072…9c38`) has `token`, defaulting to
+`github.token` on github.com, for Node's version list; and
+`actions/download-artifact` v8.0.1 (`3e5f45b2…7e7c`) has `github-token`
+with no default, needed only for another run or repository. The tags `v7`,
+`v6` and `v8` named the same commits on 2026-09-13.
+
+**A moved tag.** The checkout forces `refs/tags/<tag>` to the run's commit,
+so only the remote says where the tag points now: `git ls-remote origin
+refs/tags/<tag> refs/tags/<tag>^{}`, the peeled line for an annotated tag.
+The unit test pushes, moves and deletes a tag on a bare repository and runs
+the command line against a clone of it.
+
+**`vendor.yml` on a tag.** Its push trigger named only paths, which GitHub
+does not evaluate for a tag push, so every tag started it; it names
+branches now.

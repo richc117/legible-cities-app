@@ -30,11 +30,11 @@ Every component and its licence is listed in `THIRD_PARTY_NOTICES.md`, which the
 
 ## Source code
 
-The app is free software under the GNU General Public License, version 3 or later. So are the engine, LOOM and this build of FFmpeg, and their Corresponding Source is attached here:
+The app is free software under the GNU General Public License, version 3 or later. The engine, LOOM and this build of FFmpeg are under the GPL too, at the versions in the table above, and their Corresponding Source is attached here:
 
 - **The app**: the "Source code" archives GitHub attaches to this Release, the repository at {{tag}} ({{app_source_url}}).
 - **`{{ffmpeg_source}}`**: FFmpeg {{ffmpeg_version}}'s release tarball and its signature, x264 at its commit, zlib {{zlib_version}}'s release tarball and its signature, each as fetched and verified against the pins; the script that builds them, the pins and the vendor workflow; and `BUILD.txt` with every target's configure lines and the commit they came from.
-- **`{{loom_source}}`**: LOOM at commit `{{loom_commit}}` with its submodules, the Windows port at commit `{{port_commit}}`, `scripts/loom-windows-patch.py`, which applies the port's changes to LOOM for the Windows build, the pins and the vendor workflow, and `BUILD.txt` saying how each target is built.
+- **`{{loom_source}}`**: LOOM at commit `{{loom_commit}}` with its submodules, the Windows port at commit `{{port_commit}}`, `scripts/loom-windows-patch.py`, which applies the port's changes to LOOM for the Windows build, the release tarballs and signatures of zlib {{loom_zlib_version}} and bzip2 {{loom_bzip2_version}}, which the Windows tools link statically, the pins and the vendor workflow, `BUILD.txt` saying how each target is built, and `TOOLCHAIN-win-x64.txt` naming the MSYS2 packages the Windows tools were linked with.
 - **`{{engine_source}}`**: the engine at {{engine_tag}}, as installed into the bundled Python, with the script that installs it and `BUILD.txt` naming the commit.
 
 Maps made with the app derive from each transit agency's published feed and remain subject to that agency's terms.

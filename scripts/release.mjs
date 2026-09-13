@@ -3,7 +3,7 @@
 // Release carries, write the notes from the committed template, and judge
 // what is already on GitHub (specs/025-release-on-a-tag, A6-01, ADR-041).
 //
-//   node scripts/release.mjs decide <tag> [--main <ref>]
+//   node scripts/release.mjs decide <tag> [--main <ref>] [--remote <name>] [--run-commit <sha>] [--repo <dir>]
 //   node scripts/release.mjs assemble <tag> <downloaded> <out>
 //   node scripts/release.mjs notes <tag> <out-file>
 //   node scripts/release.mjs existing <tag> <releases.jsonl> <assets-dir>
@@ -23,15 +23,19 @@
 // - A tag is `v<X.Y.Z>` or `v<X.Y.Z>-rc.<N>`, and X.Y.Z is package.json's
 //   version exactly. An `-rc.N` tag drafts a prerelease. Anything else is
 //   refused before anything is drafted, naming both versions.
-// - The tag's commit is reachable from main: a Release is made only from
-//   main's history.
+// - The tag still names, on the remote, the commit this run built: a run
+//   for a tag since moved or deleted drafts nothing. And that commit is
+//   reachable from main: a Release is made only from main's history.
 // - A Release is a draft, always. No `--latest`, and never published here.
 //   A draft for the tag is updated in place, its assets replaced and any
-//   asset this run would not attach removed; a published Release for the
-//   tag, or more than one draft, is refused and left untouched.
+//   asset this run would not attach removed, and its notes left as the
+//   maintainer may have edited them; a published Release for the tag, or
+//   more than one draft, is refused and left untouched.
 // - The assets are the three installers, SHA256SUMS.txt over every other
 //   attached file, and one archive of each GPL component's Corresponding
-//   Source (ffmpeg-source, loom-source, engine-source from vendor.yml).
+//   Source (ffmpeg-source, loom-source with the loom-windows-toolchain
+//   record inside it, engine-source, all from vendor.yml), archived with
+//   fixed owners and times.
 //   Each installer artefact's manifest must have been written from this
 //   run's pins, for this app version, in this run.
 //
@@ -99,12 +103,16 @@ export function parseTag(tag) {
  * @param {object} input
  * @param {string} input.tag the tag's name, `v0.1.0` or `v0.1.0-rc.1`
  * @param {string} input.packageVersion package.json's version at the tag's commit
- * @param {boolean | string} input.onMain true when the tag's commit is
+ * @param {boolean | string} input.onMain true when the run's commit is
  *   reachable from main, false when it is not, and a message when that
  *   could not be told
+ * @param {{ run: string, remote: string | null } | string} input.tagNow the
+ *   commit this run built and the commit the tag names on the remote now
+ *   (null when the tag is gone from it), or a message when the remote could
+ *   not be asked
  * @returns {{ ok: false, reason: string } | { ok: true, name: string, version: string, prerelease: boolean }}
  */
-export function decide({ tag, packageVersion, onMain }) {
+export function decide({ tag, packageVersion, onMain, tagNow }) {
   const parsed = parseTag(tag)
   if (parsed === null) {
     return {
@@ -122,6 +130,27 @@ export function decide({ tag, packageVersion, onMain }) {
     return {
       ok: false,
       reason: `the tag ${tag} is for version ${parsed.version}, and package.json says ${packageVersion}; move the version in a pull request and tag v${packageVersion}${parsed.rc === null ? '' : `-rc.${parsed.rc}`} instead`,
+    }
+  }
+  // The checkout forces the local tag to the run's commit, so only the
+  // remote says whether the tag was moved or deleted after the push that
+  // started this run; an older run must not replace a newer tag's draft.
+  if (typeof tagNow === 'string') {
+    return { ok: false, reason: `could not ask the remote where ${tag} points: ${tagNow}` }
+  }
+  if (tagNow === null || typeof tagNow !== 'object' || typeof tagNow.run !== 'string') {
+    return { ok: false, reason: `nothing said which commit this run built for ${tag}` }
+  }
+  if (tagNow.remote === null) {
+    return {
+      ok: false,
+      reason: `the tag ${tag} is no longer on the remote; this run built ${tagNow.run} for a tag that has since been deleted`,
+    }
+  }
+  if (tagNow.remote !== tagNow.run) {
+    return {
+      ok: false,
+      reason: `the tag ${tag} was moved: it names ${tagNow.remote} now, and this run built ${tagNow.run}; the run for the tag's new commit drafts the Release`,
     }
   }
   if (typeof onMain === 'string') {
@@ -160,6 +189,58 @@ export function tagCommit(cwd, tag) {
   if (result.error) return { error: result.error.message }
   if (result.status !== 0) return { error: `there is no tag ${tag} in this checkout` }
   return { commit: result.stdout.trim() }
+}
+
+/** HEAD's committer time, in seconds, for the archives' fixed times. */
+export function commitTime(cwd) {
+  const result = git(cwd, ['log', '-1', '--format=%ct', 'HEAD'])
+  const seconds = Number((result.stdout ?? '').trim())
+  if (result.error || result.status !== 0 || !Number.isInteger(seconds)) {
+    throw new Error(`could not read HEAD's commit time: ${(result.stderr ?? '').trim()}`)
+  }
+  return seconds
+}
+
+/** A commit id, peeled to the commit it names, or a message. */
+export function commitOf(cwd, rev) {
+  const result = git(cwd, ['rev-parse', '--verify', '--quiet', `${rev}^{commit}`])
+  if (result.error) return { error: result.error.message }
+  if (result.status !== 0) return { error: `${rev} is not a commit in this checkout` }
+  return { commit: result.stdout.trim() }
+}
+
+/**
+ * The commit a tag names in `git ls-remote` output: the peeled `^{}` line
+ * for an annotated tag, the tag's own line for a lightweight one, or null
+ * when the remote has no such tag.
+ *
+ * @param {string} text what `git ls-remote <remote> refs/tags/<tag> refs/tags/<tag>^{}` printed
+ */
+export function parseLsRemote(text, tag) {
+  let plain = null
+  let peeled = null
+  for (const line of text.split(/\r?\n/)) {
+    const match = /^([0-9a-f]{40,64})\t(\S+)$/.exec(line.trim())
+    if (match === null) continue
+    if (match[2] === `refs/tags/${tag}^{}`) peeled = match[1]
+    else if (match[2] === `refs/tags/${tag}`) plain = match[1]
+  }
+  return peeled ?? plain
+}
+
+/**
+ * Where a tag points on the remote now: a commit, null when it is gone, or
+ * a message when the remote could not be asked.
+ *
+ * @returns {string | null | { error: string }}
+ */
+export function remoteTagCommit(cwd, remote, tag) {
+  const result = git(cwd, ['ls-remote', remote, `refs/tags/${tag}`, `refs/tags/${tag}^{}`])
+  if (result.error) return { error: result.error.message }
+  if (result.status !== 0) {
+    return { error: `git ls-remote exited ${result.status}: ${(result.stderr ?? '').trim()}` }
+  }
+  return parseLsRemote(result.stdout, tag)
 }
 
 /**
@@ -216,6 +297,9 @@ export function sourceAssets(pins) {
       artefact: 'loom-source',
       stem: `loom-${pins.loom.commit.slice(0, 12)}-source`,
       key: 'loom_source',
+      // The MSYS2 packages the loom-windows job linked in, recorded by that
+      // job in the same run, travel inside LOOM's archive.
+      with: ['loom-windows-toolchain'],
     },
     {
       artefact: 'engine-source',
@@ -265,7 +349,7 @@ function filesUnder(root) {
  * @returns {{
  *   problems: string[],
  *   installers: { target: string, from: string, asset: string, manifest: string }[],
- *   sources: { artefact: string, from: string, stem: string }[],
+ *   sources: { artefact: string, from: string, stem: string, with: string[] }[],
  * }}
  */
 export function planAssets({ downloaded, label, pins }) {
@@ -307,7 +391,13 @@ export function planAssets({ downloaded, label, pins }) {
       problems.push(`${source.artefact} was not downloaded, or is empty`)
       continue
     }
-    sources.push({ artefact: source.artefact, from: dir, stem: source.stem })
+    const extras = (source.with ?? []).map((name) => join(downloaded, name))
+    const missing = extras.filter((extra) => filesUnder(extra).length === 0)
+    for (const extra of missing) {
+      problems.push(`${relative(downloaded, extra)} was not downloaded, or is empty`)
+    }
+    if (missing.length > 0) continue
+    sources.push({ artefact: source.artefact, from: dir, stem: source.stem, with: extras })
   }
   return { problems, installers, sources }
 }
@@ -368,9 +458,27 @@ export function parseSums(text) {
   return sums
 }
 
-/** `tar -cf <archive> -C <parent> <name>`, with the child-process rules. */
-export function tarFolder(archive, parent, name) {
-  const result = spawnSync('tar', ['-cf', archive, '-C', parent, name], {
+/**
+ * `tar -cf <archive> -C <parent> <name>` with GNU tar's options for a
+ * reproducible archive: names sorted, owner and group 0, every time the
+ * given one (the tagged commit's). The release job runs on Ubuntu, whose
+ * tar is GNU's.
+ */
+export function tarFolder(archive, parent, name, epoch) {
+  const args = [
+    '--create',
+    '--file',
+    archive,
+    '--sort=name',
+    '--owner=0',
+    '--group=0',
+    '--numeric-owner',
+    `--mtime=@${epoch}`,
+    '-C',
+    parent,
+    name,
+  ]
+  const result = spawnSync('tar', args, {
     encoding: 'utf8',
     timeout: CHILD_TIMEOUT_MS,
     windowsHide: true,
@@ -396,6 +504,7 @@ export function assemble({
   pinsSha256,
   packageVersion,
   runId = null,
+  epoch = 0,
   tar = tarFolder,
 }) {
   const parsed = parseTag(tag)
@@ -430,8 +539,11 @@ export function assemble({
   try {
     for (const source of plan.sources) {
       cpSync(source.from, join(staging, source.stem), { recursive: true })
+      for (const extra of source.with) {
+        cpSync(extra, join(staging, source.stem), { recursive: true })
+      }
       const archive = `${source.stem}.tar`
-      tar(join(resolve(out), archive), staging, source.stem)
+      tar(join(resolve(out), archive), staging, source.stem, epoch)
       files.push(archive)
     }
   } finally {
@@ -477,6 +589,8 @@ export function notesValues({ tag, pins, pkg, repository }) {
     ffmpeg_version: pins.ffmpeg.version,
     x264_commit: pins.ffmpeg.x264.commit,
     zlib_version: pins.ffmpeg.zlib.version,
+    loom_zlib_version: pins.loom_windows_static.zlib.version,
+    loom_bzip2_version: pins.loom_windows_static.bzip2.version,
     python_version: pins.python.version,
     python_release: pins.python.release,
     sums: SUMS,
@@ -628,6 +742,38 @@ function describeFiles(dir, names) {
   })
 }
 
+/**
+ * `decide <tag> [--main <ref>] [--remote <name>] [--run-commit <sha>] [--repo <dir>]`.
+ * The run's commit defaults to GITHUB_SHA, and without it to the local tag's.
+ */
+export function parseDecideArgs(args, env = process.env) {
+  const options = {
+    tag: null,
+    repo: repoRoot,
+    mainRef: 'refs/remotes/origin/main',
+    remote: 'origin',
+    runCommit: env.GITHUB_SHA || null,
+  }
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i]
+    const value = () => {
+      const next = args[i + 1]
+      if (next === undefined || next === '') throw new Error(`${arg} needs a value`)
+      i += 1
+      return next
+    }
+    if (arg === '--main') options.mainRef = value()
+    else if (arg === '--remote') options.remote = value()
+    else if (arg === '--run-commit') options.runCommit = value()
+    else if (arg === '--repo') options.repo = resolve(value())
+    else if (arg.startsWith('--')) throw new Error(`unknown option ${arg}`)
+    else if (options.tag === null) options.tag = arg
+    else throw new Error(`one tag at a time; got ${options.tag} and ${arg}`)
+  }
+  if (options.tag === null) throw new Error('decide needs a tag')
+  return options
+}
+
 function refuse(message) {
   process.stderr.write(`::error::${message}\n`)
   return 1
@@ -639,15 +785,35 @@ function main(argv) {
   const pkg = readJson(join(repoRoot, 'package.json'))
   const pins = readJson(pinsFile)
 
-  if (command === 'decide' && (args.length === 1 || (args.length === 3 && args[1] === '--main'))) {
-    const tag = args[0]
-    const mainRef = args[2] ?? 'refs/remotes/origin/main'
-    let onMain = 'not asked'
-    if (parseTag(tag) !== null) {
-      const commit = tagCommit(repoRoot, tag)
-      onMain = 'error' in commit ? commit.error : isOnMain(repoRoot, commit.commit, mainRef)
+  if (command === 'decide') {
+    let options
+    try {
+      options = parseDecideArgs(args)
+    } catch (error) {
+      process.stderr.write(`${error.message}\n`)
+      return 2
     }
-    const decision = decide({ tag, packageVersion: pkg.version, onMain })
+    const { tag, repo, mainRef, remote } = options
+    const packageVersion = readJson(join(repo, 'package.json')).version
+    let onMain = 'not asked'
+    let tagNow = 'not asked'
+    if (parseTag(tag) !== null && packageVersion === parseTag(tag).version) {
+      // The run's commit: GITHUB_SHA on the runner, else the local tag's.
+      const run =
+        options.runCommit === null ? tagCommit(repo, tag) : commitOf(repo, options.runCommit)
+      if ('error' in run) {
+        onMain = run.error
+        tagNow = run.error
+      } else {
+        const remoteCommit = remoteTagCommit(repo, remote, tag)
+        tagNow =
+          remoteCommit !== null && typeof remoteCommit === 'object'
+            ? remoteCommit.error
+            : { run: run.commit, remote: remoteCommit }
+        onMain = isOnMain(repo, run.commit, mainRef)
+      }
+    }
+    const decision = decide({ tag, packageVersion, onMain, tagNow })
     if (!decision.ok) return refuse(`${decision.reason}. Nothing was drafted.`)
     emit({ name: decision.name, version: decision.version, prerelease: decision.prerelease })
     return 0
@@ -663,6 +829,7 @@ function main(argv) {
       pinsSha256: sha256File(pinsFile),
       packageVersion: pkg.version,
       runId: process.env.GITHUB_RUN_ID ?? null,
+      epoch: commitTime(repoRoot),
     })
     if (problems.length > 0) {
       for (const problem of problems) process.stderr.write(`::error::${problem}\n`)
@@ -675,6 +842,7 @@ function main(argv) {
 
   if (command === 'notes' && args.length === 2) {
     const [tag, outFile] = args
+    if (parseTag(tag) === null) return refuse(`the tag ${tag} is not a release tag`)
     const values = notesValues({
       tag,
       pins,
@@ -722,7 +890,7 @@ function main(argv) {
 
   process.stderr.write(
     [
-      'usage: release.mjs decide <tag> [--main <ref>]',
+      'usage: release.mjs decide <tag> [--main <ref>] [--remote <name>] [--run-commit <sha>] [--repo <dir>]',
       '       release.mjs assemble <tag> <downloaded> <out>',
       '       release.mjs notes <tag> <out-file>',
       '       release.mjs existing <tag> <releases.jsonl> <assets-dir>',

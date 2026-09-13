@@ -62,7 +62,9 @@ exactly as it was built.
   Enter.
 
 Compare the long string it prints with the file's line in `SHA256SUMS.txt`.
-If they differ, delete the file and download it again.
+PowerShell prints it in capital letters and the file has small ones; that
+difference does not matter, only the letters and digits do. If they
+differ, delete the file and download it again.
 
 ## Install on a Mac
 
@@ -153,11 +155,11 @@ type the path.
 
 | What | Where |
 |---|---|
-| The app itself | `%LOCALAPPDATA%\Programs\legible-cities-app\` |
+| The app itself | usually `%LOCALAPPDATA%\Programs\legible-cities-app\` |
 | The app's own data: its settings (`settings.json`) and the embedded browser's own storage and caches | `%APPDATA%\Legible Cities\` |
 | The engine's data: your projects, the feeds you added, stored layouts and the maps drawn from them | `%APPDATA%\Legible Cities\engine\`, unless you chose another folder in Settings |
 | The logs: `main.log` and `engine.log`, each started afresh past 5 MB with one older copy kept (`.old.log`) | `%APPDATA%\Legible Cities\logs\` |
-| Your exports, in a folder per project | `Desktop\Legible Cities\` in your user folder, unless you chose another folder in Settings |
+| Your exports, in a folder per project | `Legible Cities` on your desktop, unless you chose another folder in Settings. That is `Desktop\Legible Cities\` in your user folder, or, if OneDrive backs up your desktop, the Desktop folder inside OneDrive |
 
 To open one of these folders, paste its path, such as `%APPDATA%\Legible
 Cities`, into the address bar of File Explorer and press Enter.
@@ -195,15 +197,16 @@ do these in order.
      `~/Library/Preferences/com.richardcaballero.legiblecities.plist` and
      `~/Library/Saved Application State/com.richardcaballero.legiblecities.savedState/`.
      Then empty the Trash.
-   - **Windows**: `%APPDATA%\Legible Cities\`. The uninstaller removes
-     `%LOCALAPPDATA%\Programs\legible-cities-app\`; delete it too if it is
-     still there.
+   - **Windows**: `%APPDATA%\Legible Cities\`. The uninstaller removes the
+     app's own folder, usually `%LOCALAPPDATA%\Programs\legible-cities-app\`;
+     delete it too if it is still there.
    - If you chose your own engine data folder in Settings, it is not inside
      these folders: after step 1, delete it yourself if nothing else of yours
      is in it.
 4. **Your exports** are yours and are not removed by any of this. Delete
-   the `Legible Cities` folder on your desktop, or the export folder you
-   chose, if you no longer want them.
+   the `Legible Cities` folder on your desktop (inside OneDrive, if OneDrive
+   backs up your desktop), or the export folder you chose, if you no longer
+   want them.
 
 ## Report a problem
 

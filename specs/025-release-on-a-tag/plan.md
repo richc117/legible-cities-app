@@ -50,14 +50,17 @@ needs.vendor.result == 'success' && needs.package.result == 'success'`;
 `permissions: contents: write`; `concurrency: release-<ref>`. Steps:
 
 1. Checkout with `fetch-depth: 0`, `persist-credentials: false`.
-2. `release.mjs decide "$TAG" --main refs/remotes/origin/main` writes the
-   Release's name, label and prerelease flag to the step's outputs, or fails.
+2. `release.mjs decide "$TAG" --main refs/remotes/origin/main --remote
+   origin --run-commit "$GITHUB_SHA"` writes the Release's name, label and
+   prerelease flag to the step's outputs, or fails; it asks `git ls-remote`
+   where the tag points now, since the checkout forces the local tag.
 3. Six downloads by name into `downloaded/<artefact>/`.
 4. `release.mjs assemble` into `release-assets/`.
 5. `release.mjs notes` into `$RUNNER_TEMP/notes.md`.
 6. With `GH_TOKEN`: list the Releases; `release.mjs existing` answers
    create, update (with the stale assets) or refuse; `gh release create
-   --draft --verify-tag` or `gh release edit --draft=true`; delete the stale
+   --draft --verify-tag` with the notes, or `gh release edit --draft=true`
+   without them, so a maintainer's edits survive a rerun; delete the stale
    assets; `gh release upload --clobber`; list again; `release.mjs verify`.
 
 ### The script (FR-003, FR-005, FR-006, SC-002)
@@ -70,7 +73,10 @@ with tar injected. A CLI over them, in the style of `check-vendored.mjs`.
 
 ### The source jobs (US3)
 
-`loom-source` and `engine-source` in `vendor.yml`, on `ubuntu-22.04`, each
+`loom-source` (which the LOOM jobs need, with zlib's and bzip2's tarballs
+verified against `loom_windows_static` in the pins, and the `loom-windows`
+job's `pacman -Q` record added by the release) and `engine-source` in
+`vendor.yml`, on `ubuntu-22.04`, each
 checking its clone against the pins (LOOM's and the port's commits, every
 submodule against LOOM's tree, the engine's version at its tag) and
 uploading tars without git metadata, sorted with fixed owners and times,

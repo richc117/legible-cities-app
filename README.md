@@ -7,8 +7,9 @@ exports them as stills, reels and GIFs. It is the
 window, for people who do not use a terminal.
 
 **To install it**, download the file for your computer from the
-[Releases page](https://github.com/richc117/legible-cities-app/releases) and
-follow [the install guide](docs/install.md): the installers are not signed
+[Releases page](https://github.com/richc117/legible-cities-app/releases),
+which has installers once the first release is published, and follow
+[the install guide](docs/install.md): the installers are not signed
 yet, and it shows how to open the app past macOS's and Windows' warnings,
 what the app writes and where, and how to remove it completely.
 
@@ -17,7 +18,8 @@ opening to a Library of projects, the pinned engine started as a child
 process and spoken to over JSON-RPC, a layout run with per-stage progress,
 the engine's animation page shown in a sandboxed frame, and exports for the
 social presets the engine defines. Installers for both Macs and Windows are
-built in CI and attached to GitHub Releases. Work proceeds through the
+built in CI and attached to a GitHub Release drafted from each release tag.
+Work proceeds through the
 issues and milestones on this repository.
 
 ## What it will do

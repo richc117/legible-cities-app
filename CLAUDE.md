@@ -86,8 +86,8 @@ mismatch dialog, and a row in Settings (`src/main/first-run.ts`).
 A pushed tag `v<version>` or `v<version>-rc.<N>` then drafts a GitHub
 Release (A6-01, ADR-041): the release job, the only one with `contents:
 write`, runs after every vendor and packaging job succeeded, and
-`scripts/release.mjs` refuses a tag not for `package.json`'s version or not
-on `main`, names the installers for their machine, archives `ffmpeg-source`,
+`scripts/release.mjs` refuses a tag not for `package.json`'s version, moved
+since its push, or not on `main`, names the installers for their machine, archives `ffmpeg-source`,
 `loom-source` and `engine-source` from the same run, writes `SHA256SUMS.txt`
 and the notes from `.github/release-notes.md`, and creates or updates a
 **draft, never published**; the maintainer publishes it by hand, and

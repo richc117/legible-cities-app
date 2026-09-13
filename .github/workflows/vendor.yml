@@ -22,6 +22,10 @@ name: vendor
 
 on:
   push:
+    # Branches named, so a pushed tag does not start this workflow on its
+    # own: GitHub ignores path filters on a tag push, and build.yml already
+    # runs these jobs for a tag through workflow_call.
+    branches: ['**']
     paths: ['vendor/pins.json', '.github/workflows/vendor.yml', 'scripts/vendor-python.sh', 'scripts/vendor-ffmpeg.sh']
   workflow_dispatch:
   # .github/workflows/build.yml runs these jobs in its own run, so the
@@ -35,6 +39,9 @@ permissions:
 jobs:
   loom:
     name: loom (${{ matrix.target }})
+    # No LOOM artefact without its verified Corresponding Source in the same
+    # run, as for ffmpeg (ADR-040, ADR-041).
+    needs: loom-source
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
@@ -344,6 +351,7 @@ jobs:
   # failing, and so the shell difference stays visible.
   loom-windows:
     name: loom (win-x64)
+    needs: loom-source
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
@@ -366,6 +374,45 @@ jobs:
             mingw-w64-ucrt-x86_64-zlib
             mingw-w64-ucrt-x86_64-bzip2
             mingw-w64-ucrt-x86_64-python
+      # zlib and bzip2 are linked into the tools statically from MSYS2's
+      # packages, which move with MSYS2 (update: true above); their sources
+      # travel with LOOM's only for the versions the pins name, so any other
+      # fails here, before a minute is spent. The exact package revisions of
+      # everything linked in go to the release inside LOOM's source archive.
+      - name: Refuse a zlib or bzip2 other than the pinned one, and record what is linked in
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          packages=$(pacman -Q)
+          status=0
+          for lib in zlib bzip2; do
+            want=$(python -c "import json,sys;print(json.load(open('vendor/pins.json'))['loom_windows_static'][sys.argv[1]]['version'])" "$lib")
+            want=${want//$'\r'/}
+            line=$(grep -E "^mingw-w64-ucrt-x86_64-$lib " <<< "$packages" || true)
+            have=${line#* }
+            have=${have%-*}
+            echo "$lib: MSYS2 has ${line:-nothing}; the pin is $want"
+            if [ -z "$line" ] || [ "$have" != "$want" ]; then
+              echo "::error::MSYS2's $lib is ${have:-missing}, not the pinned $want; move loom_windows_static.$lib in vendor/pins.json, with its tarball's sha256 and signature, to build"
+              status=1
+            fi
+          done
+          [ "$status" -eq 0 ] || exit 1
+          record=$(grep -E '^mingw-w64-ucrt-x86_64-(gcc|gcc-libs|binutils|crt|crt-git|headers|headers-git|winpthreads|winpthreads-git|libwinpthread|libwinpthread-git|zlib|bzip2) ' <<< "$packages")
+          mkdir -p loom-windows-toolchain
+          {
+            echo "The MSYS2 UCRT64 packages the Windows LOOM tools were built with, from"
+            echo "the loom-windows job of .github/workflows/vendor.yml, run $GITHUB_RUN_ID of"
+            echo "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY at commit $GITHUB_SHA."
+            echo
+            echo "Linked in statically: zlib and bzip2 (their release tarballs are in"
+            echo "windows-static/), GCC's libgcc and libstdc++ (gcc-libs), and mingw-w64's CRT"
+            echo "and winpthreads. MSYS2's recipe for each revision is its PKGBUILD in"
+            echo "https://github.com/msys2/MINGW-packages."
+            echo
+            printf '%s\n' "$record"
+          } > loom-windows-toolchain/TOOLCHAIN-win-x64.txt
+          cat loom-windows-toolchain/TOOLCHAIN-win-x64.txt
       - name: Clone LOOM at the pin and the port at its pin
         shell: msys2 {0}
         run: |
@@ -431,6 +478,13 @@ jobs:
             loom-src/build/topo.exe
             loom-src/build/loom.exe
             loom-src/build/octi.exe
+          if-no-files-found: error
+          retention-days: 30
+      # build.yml's release job puts this beside LOOM's source in the Release.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: loom-windows-toolchain
+          path: loom-windows-toolchain
           if-no-files-found: error
           retention-days: 30
 
@@ -762,13 +816,16 @@ jobs:
   # The Corresponding Source of the LOOM binaries above (A6-01, ADR-041):
   # LOOM at the pinned commit with its submodules at the commits that commit
   # records, the Windows port at its pinned commit, the patch script that
-  # applies the port's changes, and copies of the pins and this workflow,
-  # whose loom and loom-windows jobs are the build instructions. Each clone
-  # is checked against the commit the pins record, and every submodule
-  # against the commit LOOM's tree records for it, before anything is
-  # archived. The release job in build.yml attaches this artefact, by this
-  # name, to each GitHub Release. It runs on every vendor run, so a change
-  # that breaks it fails on a branch rather than on a tag.
+  # applies the port's changes, the release tarballs of zlib and bzip2, which
+  # the Windows tools link statically, and copies of the pins and this
+  # workflow, whose loom and loom-windows jobs are the build instructions.
+  # Each clone is checked against the commit the pins record, every
+  # submodule against the commit LOOM's tree records for it, and each
+  # tarball against its sha256 and signature, before anything is archived.
+  # The LOOM jobs need this one, so no LOOM artefact is uploaded in a run
+  # whose sources did not verify, as for ffmpeg. The release job in build.yml
+  # attaches this artefact, by this name, to each GitHub Release, with the
+  # loom-windows job's record of the MSYS2 packages inside it.
   loom-source:
     name: loom (source)
     runs-on: ubuntu-22.04
@@ -811,6 +868,62 @@ jobs:
           git clone --quiet "$port_repo" "$work/port"
           git -C "$work/port" checkout --quiet "$port_commit"
           test "$(git -C "$work/port" rev-parse HEAD)" = "$port_commit"
+
+          # The release tarballs of the libraries the Windows tools link
+          # statically from MSYS2 (loom_windows_static in the pins), each
+          # checked against its sha256 and its signature verified by gpg
+          # against the key with the pinned primary fingerprint, as
+          # ffmpeg-source verifies FFmpeg's and zlib's. The loom-windows job
+          # refuses a package of any other version. A key's user ID carries
+          # its owner's address, so only fingerprints are printed.
+          static_pin() { python3 -c "import json,sys,functools;print(functools.reduce(lambda n,k:n[k],sys.argv[2].split('.'),json.load(open('vendor/pins.json'))['loom_windows_static'][sys.argv[1]]))" "$1" "$2"; }
+          mkdir -p "$out/windows-static"
+          static_lines=
+          for lib in zlib bzip2; do
+            version=$(static_pin "$lib" version)
+            url=$(static_pin "$lib" url)
+            sha=$(static_pin "$lib" sha256)
+            sig_url=$(static_pin "$lib" signature)
+            key_url=$(static_pin "$lib" signing_key.url)
+            want=$(static_pin "$lib" signing_key.fingerprint)
+            package=$(static_pin "$lib" msys2_package)
+            file="$out/windows-static/${url##*/}"
+            signature="$file.${sig_url##*.}"
+            curl -fsSL --retry 3 --connect-timeout 30 --max-time 300 -o "$file" "$url"
+            got=$(sha256sum "$file" | cut -d' ' -f1)
+            if [ "$got" != "$sha" ]; then
+              echo "::error::${file##*/} is sha256 $got, and the pin says $sha"
+              exit 1
+            fi
+            curl -fsSL --retry 3 --connect-timeout 30 --max-time 120 -o "$signature" "$sig_url"
+            home=$(mktemp -d)
+            chmod 700 "$home"
+            curl -fsSL --retry 3 --connect-timeout 30 --max-time 120 -o "$home/key.asc" "$key_url"
+            if ! gpg --homedir "$home" --batch --import "$home/key.asc" > /dev/null 2>&1; then
+              echo "::error::the signing key for $lib did not import"
+              exit 1
+            fi
+            status=$(gpg --homedir "$home" --batch --status-fd 1 --verify "$signature" "$file" 2> /dev/null || true)
+            said=$(awk '$2 ~ /^(VALIDSIG|ERRSIG|NO_PUBKEY|KEYREVOKED|KEYEXPIRED)$/ { print; next }
+                        $2 ~ /^(BADSIG|REVKEYSIG|EXPKEYSIG|EXPSIG|GOODSIG)$/ { print $1, $2, $3 }' <<< "$status")
+            # A revoked key's signature verifies with gpg exiting 0; it is
+            # refused. VALIDSIG's last field is the primary key, whichever
+            # subkey signed.
+            revoked=$(awk '$2 == "REVKEYSIG" || $2 == "KEYREVOKED"' <<< "$status")
+            primary=$(awk '$2 == "VALIDSIG" { print $NF }' <<< "$status")
+            if [ -z "$(awk '$2 == "GOODSIG"' <<< "$status")" ] || [ -n "$revoked" ] || [ "$primary" != "$want" ]; then
+              printf '%s\n' "$said"
+              echo "::error::${file##*/} has no good signature by $want"
+              exit 1
+            fi
+            rm -rf "$home"
+            echo "checksum and signature ok: ${file##*/} by $want"
+            static_lines+=$(printf '%s\n' \
+              "windows-static/${file##*/}  sha256 $sha" \
+              "  $lib $version, from $url," \
+              "  with a good signature, ${signature##*/}, by the key $want;" \
+              "  linked into the Windows tools from MSYS2's $package at that version.")$'\n'
+          done
 
           # archive <folder> <name>: the tree as checked out, submodules
           # included and git's metadata left out, unpacking into <name>/, with
@@ -855,6 +968,11 @@ jobs:
             echo "  The Windows build copies win_compat.h and five cppgtfs files from it and"
             echo "  applies its other documented changes to LOOM's tree with"
             echo "  build/loom-windows-patch.py <loom> <port>."
+            printf '%s' "$static_lines"
+            echo
+            echo "TOOLCHAIN-win-x64.txt, which the release adds beside this file from the"
+            echo "loom-windows job of the same run, names the exact MSYS2 package revisions"
+            echo "of zlib, bzip2, GCC's runtime and mingw-w64's CRT and winpthreads linked in."
             echo
             echo "How each target is built is the loom job (macOS and Linux) and the"
             echo "loom-windows job (Windows, in MSYS2 UCRT64) of build/vendor.yml: CMake in"
