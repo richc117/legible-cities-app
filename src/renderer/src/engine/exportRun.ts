@@ -5,6 +5,7 @@ import {
   type ExportChoice,
   type ExportResult,
 } from '../../../shared/export'
+import { failureOf, LogBuffer, nextJobId, screenPaths, type Job } from '../../../shared/jobs'
 import type { RunState } from '../../../shared/layout'
 import type { ProjectRecord } from '../../../shared/project'
 import type { Stage } from '../ProgressLine'
@@ -75,9 +76,23 @@ const IDLE: ExportSnapshot = {
   left: false,
 }
 
+/** What the run keeps about its latest attempt beyond the snapshot, for the inspector (A1-03). */
+interface Attempt {
+  id: string
+  label: string
+  projectId: string
+  started: number
+  ended: number | null
+  /** The export's progress sentences: it has no engine log of its own. */
+  log: LogBuffer
+  detail: string | null
+  rawDetail: string | null
+}
+
 export class ExportRun {
   #snapshot: ExportSnapshot = IDLE
   #listeners = new Set<(s: ExportSnapshot) => void>()
+  #attempt: Attempt | null = null
   /** The export in flight, by the bridge's token. */
   #id: string | null = null
   /** The last export that wrote a file, for the reveal. */
@@ -105,7 +120,39 @@ export class ExportRun {
 
   #set(patch: Partial<ExportSnapshot>): void {
     this.#snapshot = { ...this.#snapshot, ...patch }
+    const attempt = this.#attempt
+    if (attempt !== null && attempt.ended === null && this.#snapshot.state !== 'running')
+      attempt.ended = Date.now()
     for (const listener of this.#listeners) listener(this.#snapshot)
+  }
+
+  /**
+   * The latest attempt as a job, or null when the export has never
+   * started. Derived from the snapshot, so the inspector and the export tab
+   * cannot disagree about a state (specs/024-jobs).
+   */
+  job(): Job | null {
+    const attempt = this.#attempt
+    const { state, stages, message, error } = this.#snapshot
+    if (attempt === null || state === 'idle') return null
+    const failed = state === 'failed'
+    return {
+      id: attempt.id,
+      kind: 'export',
+      projectId: attempt.projectId,
+      projectName: null,
+      label: attempt.label,
+      state,
+      stages: stages.map(({ id, label, state: s }) => ({ id, label, state: s })),
+      message,
+      hint: failed ? screenPaths(error) : null,
+      detail: failed ? attempt.detail : null,
+      rawDetail: failed ? attempt.rawDetail : null,
+      log: attempt.log.lines,
+      dropped: attempt.log.dropped,
+      started: attempt.started,
+      ended: attempt.ended,
+    }
   }
 
   /**
@@ -115,6 +162,16 @@ export class ExportRun {
    */
   start(project: ProjectRecord, engine: EngineState | null, choice: ExportChoice): void {
     if (this.#snapshot.state === 'running') return
+    this.#attempt = {
+      id: nextJobId(),
+      label: `Export as ${choice.preset}`,
+      projectId: project.id,
+      started: Date.now(),
+      ended: null,
+      log: new LogBuffer(),
+      detail: null,
+      rawDetail: null,
+    }
 
     if (engine === null || engine.state !== 'ready') {
       this.#set({
@@ -167,6 +224,7 @@ export class ExportRun {
           })
           return
         }
+        if (this.#attempt !== null) Object.assign(this.#attempt, failureOf(reason))
         const encoding = this.#snapshot.stages.some(
           (s) => s.id === 'encode' && s.state === 'running',
         )
@@ -183,6 +241,10 @@ export class ExportRun {
   }
 
   #report(progress: ExportProgress): void {
+    // One line per stage, the newest report replacing the last: the plan's
+    // sentence survives a capture that reports every frame.
+    if (progress.message !== '')
+      this.#attempt?.log.push(`${progress.stage}: ${progress.message}`, progress.stage)
     this.#set({
       stages: stagesAt(this.#snapshot.stages, progress.stage),
       message: progress.message === '' ? this.#snapshot.message : progress.message,

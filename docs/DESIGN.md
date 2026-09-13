@@ -350,13 +350,13 @@ not used:
 | Component | Rule |
 |---|---|
 | Dialogs | native `<dialog>` with `showModal()`, as the create, confirm and mismatch dialogs already are; title 15px, body prose track, actions right-aligned, the safe action focused first, Escape cancels; width `--dialog-width` |
-| Lists (Library, feeds, jobs) | rows of `--control-height`, 13px, name in `--text`, meta in `--text-faint` at 12px (`--text-muted` on a selected row, where faint falls under 4.5), the whole row a button, `--surface-hover` and `--surface-selected`, a 1px `--border` between groups only |
+| Lists (Library, feeds) | rows of `--control-height`, 13px, name in `--text`, meta in `--text-faint` at 12px (`--text-muted` on a selected row, where faint falls under 4.5), the whole row a button, `--surface-hover` and `--surface-selected`, a 1px `--border` between groups only |
 | Status line | one line, 12px, `role="status"` `aria-live="polite"`, a 16px icon for the state, never animated; sits in the header on every screen |
 | Progress and steps | the Beck vocabulary (section 10): a line with ticks per stage, the current stage a hollow diamond in `--accent`, done stages filled, the sentence from the engine beside it at 13px; cancel is a text button to the right |
 | Toolbar | 24px controls in a row with `--space-2-2` gaps, segmented groups as pills, labels visible at 13px until the window is narrower than 720px, then icons with tooltips |
 | Panels and settings | a 15px heading, rows of label at 13px and control at `--control-height` 32px, `--space-4-3` between rows, `--space-4-6` between groups, one column |
 | Empty states | a 24px icon, one prose sentence, one primary action; the Library's "first feed" call to action is one (A2-01) |
-| Errors and hints | the engine's `hint` sentence verbatim in `--error` at 13px beside the control or in the status line; `detail` only in the log; never a toast for something a person must act on |
+| Errors and hints | the engine's `hint` sentence verbatim in `--error` at 13px beside the control or in the status line; `detail` only in the log, or in a failed job in the inspector behind a closed "Details" disclosure; never a toast for something a person must act on |
 | Tooltips | 12px, `--surface-raised`, 1px `--border`, 200ms delay, keyboard-reachable through focus |
 | The viewer | the engine's page in an iframe filling the main region, no chrome of the app's over it; its controls are its own. While the export tab is open the same frame is the export's preview (A5-01): sent to the address the engine planned, sized to the preset's aspect ratio as large as the viewer's shape allows and centred on `--surface-sunken`, with the frame, title, clock and safe zones the page's own drawing; resized over `--duration` and not at all under reduced motion |
 | Tables (routes, route types) | a real `<table>` with a `<caption>` and `<th scope>`; the UI track at 12px, rules in `--border` under the header and between rows, numbers in `--numerals` aligned in their column, a header that sorts is a button styled as its label with `aria-sort` on the cell; a row the choice leaves out reads in `--text-faint`; a colour swatch is a `--space-4-3` square beside a name, never a drawing (A2-02) |
@@ -368,22 +368,33 @@ not used:
 | Theme switch (A4-03) | the project's own theme, not the interface's: the two the engine's page draws, as a segmented pair in the toolbar shape the geographic view's stage toggle uses - the chosen one `primary` with `aria-pressed`, the pair in a group named for what it sets - under a 15px heading and one sentence saying that the interface has its own and neither follows the other. Not disabled while the write is in flight, because a button that disables itself under a person's hands takes the focus with it, and a press that arrives then is kept and applied after it; disabled while a run or an export is going - a run rewrites the page file in place and the change would reload the frame onto half a document, and an export took the theme when it planned, so a change now would not reach the reel - with a `role="status"` line inside the section saying so, since the run's own panel is elsewhere and tied to this by nothing a screen reader can follow, and focus handed to the heading before the buttons go, because a debounced colour or order change closes the way with nobody pressing anything |
 | Tabs (A5-01) | the WAI-ARIA tabs pattern with real buttons, not FigUI3's `fig-tabs`, whose mutation observer and scroll buttons would fight React for the children: a `tablist` named for what it chooses between, one tab stop for the strip, Left and Right moving between tabs and choosing the one they land on (wrapping), Home and End to the ends, `aria-selected` and `aria-controls` on each tab, each panel a `tabpanel` labelled by its tab and a tab stop of its own (`tabindex="0"`), so Tab from the strip reaches it even when it holds nothing focusable. Text tabs at 13px, at least `--control-height-large` high, over a 1px `--border` rule: the chosen one in `--text` at the strong weight with a `--focus-ring-width` underline in `--accent`, the rest in `--text-muted`, `--surface-hover` under the pointer. A panel not chosen is hidden and stays mounted, because it may hold work a person has started - a colour waiting to be drawn, a time half typed. Which tab is open is where a person is looking, not a setting, and is not stored |
 | Export tab (A5-01) | a 15px heading, one sentence saying the map shows the export's frame while the tab is open, then panel rows in one column: the preset as a native select with an `<optgroup>` per platform, each option the engine's name, its size and what it makes; the storyboard as a native select for a video or GIF preset only, each option its views and length, the preset's own marked; the engine's refusal of the choice in `--error` at 13px directly under those two, where the choice was made, and Export disabled until the choice changes; the view as a native select, for a still only, since a storyboard's first beat names its own view and clock; the quality as a native select, and for a JPEG still (the engine's table says which) a disabled select at standard with one message line saying the engine makes a JPEG still at standard quality only; the frame's three switches and the lines to keep as native checkboxes in `<fieldset>`s whose `<legend>` reads as a field's label, `accent-color` from `--accent`, each row at least `--target-min`; the start time (a still's only) and the filename tag as the kit's text field with their rule beneath as the field's message, written when committed (Enter or leaving the field), never on each keystroke, and a sentence in `--error` there when the engine's pattern refuses it; then the export's own progress line, cancel and Reveal. Every choice is written to the project the moment it is made. While an export runs the choices are disabled, with a `role="status"` line saying why and focus handed to the heading first; a saved choice the engine no longer offers falls back to the reel and a `role="status"` line names what was dropped |
+| Inspector (A1-03) | the window's right-hand region, `<aside>` named "Inspector", beside whichever screen is open: `--inspector-width` wide on `--surface` with a 1px `--border` on its left, sticky under the header and scrolled on its own; below 900px it is fixed over the main region on `--surface-raised` at `--layer-overlay` instead of squeezing it, and the main region is `inert` while it is covered, so Shift+Tab cannot reach controls a person cannot see; the header, and the toggle that closes it, stay reachable. It opens from a header toggle - a secondary button with the layers icon, "Jobs" and, while any run, "N running", its accessible name "Jobs, N running" or "Jobs, none running", `aria-expanded` - and is rendered only while open. Opening moves focus to its 15px "Jobs" heading; closing, from the toggle, its Close text button or Escape anywhere inside, returns focus to the toggle. It appears and goes without a slide, at every motion setting. It starts collapsed and never opens by itself |
+| Jobs (A1-03) | a list with no bullets in the inspector, running jobs first and then the finished ones newest first, at most twenty of those, a `--border` rule between jobs: each an `<li>` named by its heading - the project's name (or "Feeds") in `--text` at the strong weight and the job's label beneath in `--text-muted`, the heading focusable so focus can be handed to it - then its state and start time in `--text-faint` at 12px, the run's own progress line scrolled sideways rather than shrunk so its stage names stay 12px, the last sentence, and when it failed the engine's hint in `--error` and its detail, when it says more, behind a native `<details>` closed by default in the monospaced track at 12px. Cancel (while running) and "Copy log" are text buttons in a toolbar, each naming the job it acts on; Cancel hands focus to the job's heading before it goes. "Copy log" says in a `role="status"` line that the log is on the clipboard with the keys in web addresses taken out and the home folder written as `~`, or why not. A job's end is said once, politely, in a visually hidden line on every screen - "<project>: <label>, <state>." - never repeating the hint; the line is emptied and filled a frame later, so the same sentence twice is spoken twice. Cancel hands focus to the job's heading, and if the job then moves below a running one the list gives the heading the focus again - only after a press of Cancel, and never once focus or a pointer has landed outside that job, so focus a person moved is not taken back. No absolute path is on screen |
 | Deliverables | an export that finished says the file's name in prose and offers "Reveal", a text button that opens the file's folder in the platform's file browser; the path is never shown, and the folder is the person's own (A1-04) |
 | Folder and version rows (Settings) | a folder's path is the one place a path is shown, because it is the person's own choice: the monospaced track at 12px, `--text` on `--surface-sunken`, wrapped rather than cut, under a 13px label, with its source beneath as a message ("the default", "chosen here", "set in the environment") and the actions under that; a folder waiting for a restart reads in `--warning`; a folder the environment names carries no action at all. Versions are a definition list, the term in `--text-muted`, the value as the engine sent it; a field the engine reports as null reads as a sentence saying so, never as a blank (A1-04) |
 
 ## 9. Layout and window
 
 Native title bar on both platforms for now; a custom one arrives only with
-a reason and an ADR. Three regions when a project is open: a left rail
-for the Library and navigation (`--space-4-16` wide collapsed, 240px
-open), the main region (the viewer or a screen), and a right inspector
-for the project's fields, diagnostics and jobs (A1-03, A3-03; 320px,
-collapsible). The header holds the screen title at 20px, the status line
-and the way into Settings, which is where the theme control went: it is a
-choice made once, not a switch to flick, and it sits with the other things
-the app decides for itself (A1-04). Minimum window 640 by 480 as today; below 900px the
-inspector collapses first. The prose measure applies inside panels;
-lists and tables fill their region.
+a reason and an ADR. Three regions are planned: a left rail for the
+Library and navigation (`--space-4-16` wide collapsed, 240px open), the
+main region (the viewer or a screen), and a right inspector (320px,
+collapsible). The header holds the screen title at 20px, the status line,
+the inspector's toggle and the way into Settings, which is where the theme
+control went: it is a choice made once, not a switch to flick, and it sits
+with the other things the app decides for itself (A1-04). Minimum window
+640 by 480 as today. The prose measure applies inside panels; lists and
+tables fill their region. The inspector is the window's, not a project's,
+because jobs span projects (ADR-036): it sits beside all three screens, the
+Library and Settings included, and below 900px it covers the main region
+rather than squeezing it.
+
+Deliberately absent from this layout for now (ADR-036):
+
+| Not yet | Why |
+|---|---|
+| The left rail | three screens and a Back button navigate well enough; a rail is worth its width when there is more to reach |
+| The project's fields and diagnostics in the inspector | they stay on the project screen, where they are read beside the map; the inspector holds only the jobs, which are the one thing that spans projects |
 
 ## 10. Motifs from Beck
 
@@ -408,7 +419,8 @@ the size of a tick, blob or diamond.
   hand to the icon grid; not a map excerpt. The app icon is the same
   drawing on the sepia ground at every platform size.
 - **The ground.** The sepia theme is the cream of the pocket map already.
-- **Ticks as dividers** in timelines and the jobs drawer.
+- **Ticks as dividers** in timelines. The inspector's jobs use a plain
+  rule for now; a tick there waits until the list has groups to divide.
 
 **Never:** the map or any part of it, the roundel, TfL's line colours
 as a system, Johnston or a clone of it for chrome (Hammersmith One, OFL,

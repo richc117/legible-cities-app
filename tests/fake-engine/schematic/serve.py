@@ -35,6 +35,15 @@ writes before the app starts (every key optional):
     add_refuses       a sentence: feeds.add from a URL refuses with it, kind feed
     inspect_refuses   a sentence: feeds.inspect refuses with it, kind feed
     stage_refuses     a sentence: render.stage refuses with it, kind engine
+    empty_modes       modes graph.build keeps no routes for: after gtfs2graph it refuses with
+                      the engine's route-type sentence as the hint and a different detail
+                      (pipeline.require_edges, classified), as the engine does
+    build_log_lines   extra job/log lines graph.build sends first; "{home}" in one is replaced
+                      by the user's home folder, so a copied log has one to hide
+    octi_child        true: graph.build starts a child during octi, as the engine starts LOOM's
+                      octi tool, and waits octi_ms (default 2000) for a cancel; a cancel ends
+                      the child and records its pid in fake-engine.octi-ended; its pid while it
+                      runs is in fake-engine.octi.pid
 
 It writes ``fake-engine.pid`` (its process id) and ``fake-engine.received``
 (one JSON line per message it read) into the home so a test can end it from
@@ -214,6 +223,14 @@ class Engine:
         self.layout_stages: dict = {}
         self.builds = 0
         self.child = None
+        # The octi stage's children while they run, ended on shutdown or at
+        # the end of input as the engine ends LOOM's, so no test leaves one.
+        self.octi_children: set = set()
+        # Their own lock, not the one write() holds, and a flag set under it
+        # once shutting down begins, so a child started after that is ended
+        # at once rather than outliving the stand-in.
+        self.children_lock = threading.Lock()
+        self.stopping = False
         if control.get("spawn_child"):
             self.child = subprocess.Popen(
                 [sys.executable, "-c", "import time; time.sleep(600)"],
@@ -252,6 +269,7 @@ class Engine:
                 return True
             if self.child is not None:
                 self.child.kill()
+            self.end_children()
             return False
         if method == "graph.build":
             threading.Thread(target=self.build, args=(msg_id, message.get("params") or {}),
@@ -362,24 +380,96 @@ class Engine:
                "error": {"code": -32601, "message": f"Method Not Found: {method}"}})
         return True
 
+    def octi(self, msg_id) -> bool:
+        """The octi stage, when the control file asks for a child: start one, as
+        the engine starts LOOM's tool, and wait for a cancel. A cancel ends the
+        child before the answer, as the engine's cancel does, and says so in a
+        file the test reads. True when the stage was cancelled, or when the
+        stand-in had begun stopping and the child was ended at once."""
+        child = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(600)"],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        with self.children_lock:
+            stopping = self.stopping
+            if not stopping:
+                self.octi_children.add(child)
+        if stopping:
+            child.kill()
+            child.wait(timeout=10)
+            return True
+        try:
+            (HOME / "fake-engine.octi.pid").write_text(str(child.pid))
+        except OSError:
+            pass
+        deadline = time.monotonic() + self.control.get("octi_ms", 2000) / 1000
+        try:
+            while time.monotonic() < deadline:
+                if msg_id in self.cancelled:
+                    child.kill()
+                    child.wait(timeout=10)
+                    try:
+                        (HOME / "fake-engine.octi-ended").write_text(str(child.pid))
+                    except OSError:
+                        pass
+                    return True
+                time.sleep(0.01)
+            return False
+        finally:
+            if child.poll() is None:
+                child.kill()
+                child.wait(timeout=10)
+            with self.children_lock:
+                self.octi_children.discard(child)
+
+    def end_children(self) -> None:
+        with self.children_lock:
+            self.stopping = True
+            children = list(self.octi_children)
+        for child in children:
+            if child.poll() is None:
+                child.kill()
+
     def build(self, msg_id, params: dict) -> None:
         if self.control.get("silent"):
             return
         delay = self.control.get("progress_delay_ms", 30) / 1000
+        # The lines follow the mode, so a narrower choice draws fewer: the
+        # stand-in's feeds carry A (tram) and B (subway) for every key.
+        mode = params.get("mode", FEEDS.get(params.get("key", "x"), {}).get("mode") or "all")
+        for line in self.control.get("build_log_lines", []):
+            write({"jsonrpc": "2.0", "method": "job/log",
+                   "params": {"id": msg_id, "level": "info",
+                              "line": line.replace("{home}", str(Path.home()))}})
         for i, stage in enumerate(("gtfs2graph", "topo", "loom", "octi"), start=1):
-            time.sleep(delay)
+            if stage == "octi" and self.control.get("octi_child"):
+                if self.octi(msg_id):
+                    write({"jsonrpc": "2.0", "id": msg_id,
+                           "error": {"code": -32800, "message": "Request Cancelled"}})
+                    return
+            else:
+                time.sleep(delay)
             if msg_id in self.cancelled:
                 write({"jsonrpc": "2.0", "id": msg_id,
                        "error": {"code": -32800, "message": "Request Cancelled"}})
                 return
             write({"jsonrpc": "2.0", "method": "job/log",
                    "params": {"id": msg_id, "level": "info", "line": f"{stage}: running"}})
+            if stage == "gtfs2graph" and mode in self.control.get("empty_modes", []):
+                # The engine's own words (pipeline.require_edges at v0.8.2),
+                # classified the way its serve.classify does: the hint is the
+                # sentence, the detail the exception and where it was raised.
+                key = params.get("key", "x")
+                hint = (f"{key}: the line graph is empty -- gtfs2graph -m {mode!r} "
+                        "matched no routes. Check the feed's route_type values; agencies "
+                        "disagree about which of tram/subway/rail their network is.")
+                write({"jsonrpc": "2.0", "id": msg_id,
+                       "error": {"code": -32000, "message": hint,
+                                 "data": {"kind": "engine", "hint": hint,
+                                          "detail": f"ValueError: {hint} (pipeline.py:403)"}}})
+                return
             write({"jsonrpc": "2.0", "method": "job/progress",
                    "params": {"id": msg_id, "stage": stage, "fraction": i / 4,
                               "message": f"{stage}: 3 nodes, 2 edges"}})
-        # The lines follow the mode, so a narrower choice draws fewer: the
-        # stand-in's feeds carry A (tram) and B (subway) for every key.
-        mode = params.get("mode", FEEDS.get(params.get("key", "x"), {}).get("mode") or "all")
         lines = ["A", "B"] if mode == "all" else ["A"] if "tram" in mode else ["B"]
         summary = {"nodes": 3, "stations": 3, "junctions": 0, "edges": 2, "lines": lines}
         stages = {s: dict(summary) for s in ("gtfs2graph", "topo", "loom", "octi")}
@@ -909,6 +999,7 @@ def main() -> int:
         message = read_message(stream)
         if message is None:
             sys.stderr.write("fake engine: end of input\n")
+            engine.end_children()
             return 0
         record(message)
         if not engine.handle(message):

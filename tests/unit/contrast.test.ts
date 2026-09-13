@@ -109,6 +109,13 @@ const PAIRS: [string, string, number][] = [
   // --text-faint for a switch an export holds.
   ['--text-muted', '--surface-hover', 4.5],
   ['--accent', '--surface-hover', 3.0],
+  // The inspector (A1-03) adds no pair of its own. Beside the main region
+  // it sits on --surface, and over it on a narrow window on
+  // --surface-raised, and every pair it uses is above on both grounds: a
+  // job's title and the disclosure's summary in --text, its label and
+  // detail in --text-muted, its time and the progress line's labels in
+  // --text-faint, the hint in --error, the running mark in --accent and the
+  // line in --border-strong.
 ]
 
 // The document's stated ratios, read from its two tables (docs/DESIGN.md,

@@ -70,8 +70,8 @@ into it from the privileged side (ADR-028).
 Typed in `src/shared/api.ts`, which the preload and the renderer both
 import. Nine methods under `api.projects`, three under `api.viewer`, the
 engine under `api.engine`, the export under `api.export`, one clipboard
-write under `api.clipboard`, and the app's own settings under
-`api.settings`:
+write under `api.clipboard`, a job's copied log under `api.jobs`, and the
+app's own settings under `api.settings`:
 
 | Method | Does |
 |---|---|
@@ -112,6 +112,7 @@ write under `api.clipboard`, and the app's own settings under
 | `settings.openLogsFolder()` | makes the platform's log folder for this app if it is missing, and opens it |
 | `settings.resetEngineData()` | removes `projects`, `out`, `data` and `frames` beneath the engine's home, never the home itself; answers what went and what would not; refused while anything is writing under it |
 | `settings.copyDiagnostics(reports)` | puts what a bug report needs on the clipboard: the versions, the operating system, `engine.info`, the last 200 lines of both logs and the reports given, each project's diagnostics as its panel copies them (at most 20 of at most 64 KB, checked in main); composed in the main process with the home folder written as `~`; nothing is sent (A6-03) |
+| `jobs.copyLog(text)` | puts one job's log on the clipboard: the page composes the text (at most 256 KB, checked in main), and the main process redacts every web address's secrets and writes the home folder as `~` through the same lookup and deadline as the diagnostics copy, refusing if a home survives (A1-03) |
 
 The engine bridge is deliberately untyped beyond a method name and an
 object of parameters: A1-02 generates the methods from the engine's schema
@@ -1037,12 +1038,73 @@ progress, a file, a sidecar, a cancel that removes both; and
 exports the real Los Angeles reel twice and compares the two files frame by
 frame in RGB with the tolerance of 8.
 
+## The inspector and its jobs
+
+The window has a right-hand inspector (A1-03, `specs/024-jobs`, ADR-036):
+rendered from `App.tsx` beside whichever of the three screens is open, not
+from a project's screen, because the jobs it lists span projects. It starts
+collapsed; a toggle in the header carries the running count in its text
+and its accessible name. Beside the main region it is 320px wide and the
+viewer's width subtracts it; below 900px it covers the main region instead,
+and Escape closes it.
+
+A job is one read-only shape (`src/shared/jobs.ts`): an id per attempt, a
+kind (`layout`, `rebuild`, `export`, `feed-add`), the project's id, a
+label, the state, the stages, the last sentence, the engine's hint and
+detail when it failed, the last 200 log lines and the start and end. The
+runs do not change: `LayoutRun`, `ExportRun` and `FeedAdd` each gain a
+`job()` derived from the snapshot they already keep, plus what the
+snapshot does not hold - the times, the detail and a bounded log buffer
+fed by the request handles' `onLog` (an export's log is its progress
+sentences, one line per stage, the newest replacing the last, since it has
+no `job/log` stream). A line too long to keep is cut back to a separator or
+a space, so no part of a folder name is left for the home-folder rule to
+miss. A refused start is a failed
+job of its own. Because a running job is derived, the inspector and the run's own
+view cannot disagree about a state.
+
+`runs.ts` keeps a `JobRegistry` over every run it makes. Running jobs are
+read from the runs each time and never dropped; the moment a run's job
+reaches a final state the registry copies it into a session list, newest
+first, at most twenty, never adds a job it has copied before, and tells
+its end listeners once. Tracking
+a run is silent, because `layoutRunFor` is called while a screen renders.
+Cancel in the inspector calls the run's own `cancel()`. A run knows its
+project only by id, so the registry names the jobs from `projects.list()`
+(`readProjectNames` in `runs.ts`),
+read only when a name is needed - a job ending, or listed in the open
+inspector, for a project it cannot name - rather than on every screen
+change or every run. Those reads are few, but each is a store read, and it
+can overlap a record being renamed into place. A rename hands the new name
+in from the project screen, and a list read begun before a rename, a delete
+or a reset applies nothing it would overwrite; a read asked for while one is
+out is queued once behind it. A reset that removed the projects folder
+forgets every project's jobs and names. The finished jobs and the names are copies kept
+beside the runs, not derived from them; a project's are dropped only when
+its own screen has deleted it, never because a list read missed a record
+it could not read at that moment. The job list is the inspector's own
+state, mounted only while it is open; `App.tsx` keeps just the running
+count, which React does not re-render for when it has not changed, so a
+run's progress never re-renders the screen beside it. Below 900px the main
+region is `inert` while the inspector covers it. One visually hidden polite live region says
+"<project>: <label>, <state>." once per job, emptied and then filled a frame
+later so the same sentence twice is spoken twice, and never repeats the
+engine's hint, which both views already show. Nothing is written to disk; a
+relaunch starts with an empty list.
+
+`tests/unit/jobs.test.ts`, `runs.test.ts`, `jobs-view.test.tsx`,
+`jobs-ipc.test.ts` and the job tests in the three run suites hold this, and
+`tests/e2e/jobs.spec.ts` drives it against the stand-in, which can refuse a
+mode with the engine's `require_edges` sentence, send extra log lines with
+the home folder in them, and record that a cancel during `octi` ended the
+child it started.
+
 ## Deliberately absent
 
 | Not here | Arrives with |
 |---|---|
 | The contract tests running in continuous integration; they exist and are gated on an engine checkout. The vendor job's schema check is not them: it proves only that the runtime it builds starts `schematic.serve --schema` and that the output hashes to `engine.schema_sha256` | Open; no issue yet |
-| A screen for long jobs across projects; the layout run and the export draw their own progress on the project screen | A1-03 |
+| The left rail, and the project's fields and diagnostics in the inspector; the inspector holds only the jobs, and the fields and the diagnostics stay on the project screen (ADR-036) | Open; no issue yet |
 | Editing the numeric style fields; the record holds the engine's defaults, and the colours, the order and the theme are a person's since A4-01, A4-02 and A4-03 | post-MVP |
 | Vendored Python, LOOM and ffmpeg; installers | A0-10 (`specs/002`) |
 | Signing and auto-update | A6-05 |

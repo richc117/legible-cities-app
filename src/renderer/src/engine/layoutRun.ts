@@ -8,6 +8,14 @@ import {
   type ProjectRecord,
   type ServiceWindow,
 } from '../../../shared/project'
+import {
+  failureOf,
+  LogBuffer,
+  nextJobId,
+  screenPaths,
+  type Job,
+  type JobKind,
+} from '../../../shared/jobs'
 import type { Diagnostics, MapBuildResult, Methods } from '../../../shared/protocol'
 import type { Stage } from '../ProgressLine'
 
@@ -152,6 +160,8 @@ export function reportOf(result: MapBuildResult, date: string): RunReport | null
 interface Handle<T> {
   result: Promise<T>
   onProgress(listener: (p: { stage: string; message: string }) => void): () => void
+  /** The engine's log lines for this request; the typed client has it, a test stub may not. */
+  onLog?(listener: (l: { level: string; line: string }) => void): () => void
   cancel(): void
 }
 
@@ -256,11 +266,30 @@ const IDLE: RunSnapshot = {
   report: null,
 }
 
+/**
+ * What a run keeps about its latest attempt beyond the snapshot, for the
+ * inspector (A1-03): who it is for, when it started and ended, the engine's
+ * detail when it failed, and the last lines of its log. The snapshot is
+ * untouched by it; the job is derived from both.
+ */
+interface Attempt {
+  id: string
+  kind: JobKind
+  label: string
+  projectId: string
+  started: number
+  ended: number | null
+  log: LogBuffer
+  detail: string | null
+  rawDetail: string | null
+}
+
 export class LayoutRun {
   #snapshot: RunSnapshot = IDLE
   #listeners = new Set<(s: RunSnapshot) => void>()
   #inFlight: { cancel(): void } | null = null
   #cancelled = false
+  #attempt: Attempt | null = null
   readonly #options: RunOptions
 
   constructor(options: RunOptions) {
@@ -278,7 +307,58 @@ export class LayoutRun {
 
   #set(patch: Partial<RunSnapshot>): void {
     this.#snapshot = { ...this.#snapshot, ...patch }
+    const attempt = this.#attempt
+    if (attempt !== null && attempt.ended === null && this.#snapshot.state !== 'running')
+      attempt.ended = Date.now()
     for (const listener of this.#listeners) listener(this.#snapshot)
+  }
+
+  /** A new attempt begins: every start, refused or not, is a job of its own. */
+  #open(kind: JobKind, label: string, projectId: string): void {
+    this.#attempt = {
+      id: nextJobId(),
+      kind,
+      label,
+      projectId,
+      started: Date.now(),
+      ended: null,
+      log: new LogBuffer(),
+      detail: null,
+      rawDetail: null,
+    }
+  }
+
+  #log(line: { level: string; line: string }): void {
+    this.#attempt?.log.push(`[${line.level}] ${line.line}`)
+  }
+
+  /**
+   * The latest attempt as a job, or null when the run has never started.
+   * Derived from the snapshot, so the inspector and the project screen
+   * cannot disagree about a state (specs/024-jobs, SC-002).
+   */
+  job(): Job | null {
+    const attempt = this.#attempt
+    const { state, stages, message, error } = this.#snapshot
+    if (attempt === null || state === 'idle') return null
+    const failed = state === 'failed'
+    return {
+      id: attempt.id,
+      kind: attempt.kind,
+      projectId: attempt.projectId,
+      projectName: null,
+      label: attempt.label,
+      state,
+      stages: stages.map(({ id, label, state: s }) => ({ id, label, state: s })),
+      message,
+      hint: failed ? screenPaths(error) : null,
+      detail: failed ? attempt.detail : null,
+      rawDetail: failed ? attempt.rawDetail : null,
+      log: attempt.log.lines,
+      dropped: attempt.log.dropped,
+      started: attempt.started,
+      ended: attempt.ended,
+    }
   }
 
   /**
@@ -295,6 +375,7 @@ export class LayoutRun {
     if (this.#snapshot.state === 'running') return
     const { client, complete, today } = this.#options
     const force = options.force === true
+    this.#open('layout', force ? 'Re-layout' : 'Layout run', project.id)
     if (
       !this.#begin(engine, {
         forced: force,
@@ -324,6 +405,7 @@ export class LayoutRun {
         })
         this.#inFlight = layout
         layout.onProgress((p) => this.#report(p))
+        layout.onLog?.((l) => this.#log(l))
         const built = await layout.result
         // A forced layout call that has answered has already replaced the
         // stored set; whatever happens from here, the screen must say so.
@@ -344,6 +426,7 @@ export class LayoutRun {
           lines: built.stages.octi.lines,
         })
         this.#inFlight = service
+        service.onLog?.((l) => this.#log(l))
         const window = await service.result
         if (this.#cancelled) return this.#stopped()
         // A project keeps the day it has; the engine's day is for one without.
@@ -391,6 +474,7 @@ export class LayoutRun {
   rebuild(project: ProjectRecord, engine: EngineState | null, date: string): void {
     if (this.#snapshot.state === 'running') return
     const { completeRebuild } = this.#options
+    this.#open('rebuild', `Rebuild for ${date}`, project.id)
     const layout = project.layout
     if (layout === null) {
       this.#set({
@@ -438,6 +522,7 @@ export class LayoutRun {
   recolour(project: ProjectRecord, engine: EngineState | null, palette: Palette): void {
     if (this.#snapshot.state === 'running') return
     const { completeColors } = this.#options
+    this.#open('rebuild', 'Redraw in new colours', project.id)
     const layout = project.layout
     const date = project.date
     if (layout === null || date === null) {
@@ -485,6 +570,7 @@ export class LayoutRun {
   reorder(project: ProjectRecord, engine: EngineState | null, order: LineOrder): void {
     if (this.#snapshot.state === 'running') return
     const { completeOrder } = this.#options
+    this.#open('rebuild', 'Redraw in a new line order', project.id)
     const layout = project.layout
     const date = project.date
     if (layout === null || date === null) {
@@ -605,6 +691,7 @@ export class LayoutRun {
     })
     this.#inFlight = map
     map.onProgress((p) => this.#report(p))
+    map.onLog?.((l) => this.#log(l))
     const drawn = await map.result
     this.#inFlight = null
     // What the engine measured drawing this map: kept for the panel, and
@@ -635,6 +722,7 @@ export class LayoutRun {
       })
       return
     }
+    if (this.#attempt !== null) Object.assign(this.#attempt, failureOf(reason))
     this.#set({
       state: 'failed',
       error: sentenceFor(reason),

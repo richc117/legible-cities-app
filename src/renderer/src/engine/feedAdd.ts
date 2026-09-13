@@ -4,6 +4,7 @@ import {
   withoutPaths,
   type EngineState,
 } from '../../../shared/engine'
+import { failureOf, LogBuffer, nextJobId, screenPaths, type Job } from '../../../shared/jobs'
 import type { FeedRecord, Methods } from '../../../shared/protocol'
 import type { Stage } from '../ProgressLine'
 
@@ -32,6 +33,8 @@ interface Handle<T> {
   onProgress(
     listener: (p: { stage: string; fraction: number; message: string }) => void,
   ): () => void
+  /** The engine's log lines for this request; the typed client has it, a test stub may not. */
+  onLog?(listener: (l: { level: string; line: string }) => void): () => void
   cancel(): void
 }
 
@@ -63,9 +66,21 @@ const IDLE: AddSnapshot = {
   feed: null,
 }
 
+/** What the add keeps about its latest attempt beyond the snapshot, for the inspector (A1-03). */
+interface Attempt {
+  id: string
+  label: string
+  started: number
+  ended: number | null
+  log: LogBuffer
+  detail: string | null
+  rawDetail: string | null
+}
+
 export class FeedAdd {
   #snapshot: AddSnapshot = IDLE
   #listeners = new Set<(s: AddSnapshot) => void>()
+  #attempt: Attempt | null = null
   #inFlight: { cancel(): void } | null = null
   readonly #client: AddClient
 
@@ -84,7 +99,39 @@ export class FeedAdd {
 
   #set(patch: Partial<AddSnapshot>): void {
     this.#snapshot = { ...this.#snapshot, ...patch }
+    const attempt = this.#attempt
+    if (attempt !== null && attempt.ended === null && this.#snapshot.state !== 'running')
+      attempt.ended = Date.now()
     for (const listener of this.#listeners) listener(this.#snapshot)
+  }
+
+  /**
+   * The latest attempt as a job, or null when nothing has been added or the
+   * dialog has been reset for its next opening. The inspector keeps a
+   * finished add in its own list, so a reset does not lose it.
+   */
+  job(): Job | null {
+    const attempt = this.#attempt
+    const { state, stages, message, error, feed } = this.#snapshot
+    if (attempt === null || state === 'idle') return null
+    const failed = state === 'failed'
+    return {
+      id: attempt.id,
+      kind: 'feed-add',
+      projectId: null,
+      projectName: null,
+      label: feed === null ? attempt.label : `Feed add of ${feed.name}`,
+      state,
+      stages: stages.map(({ id, label, state: s }) => ({ id, label, state: s })),
+      message,
+      hint: failed ? screenPaths(error) : null,
+      detail: failed ? attempt.detail : null,
+      rawDetail: failed ? attempt.rawDetail : null,
+      log: attempt.log.lines,
+      dropped: attempt.log.dropped,
+      started: attempt.started,
+      ended: attempt.ended,
+    }
   }
 
   /** Back to nothing, for the next opening of the dialog. */
@@ -95,6 +142,17 @@ export class FeedAdd {
 
   start(source: AddSource, engine: EngineState | null): void {
     if (this.#snapshot.state === 'running') return
+    this.#attempt = {
+      id: nextJobId(),
+      // Never the address or the path: a URL can carry a key, and a path
+      // is not for a screen.
+      label: 'url' in source ? 'Feed add from a web address' : 'Feed add from a file',
+      started: Date.now(),
+      ended: null,
+      log: new LogBuffer(),
+      detail: null,
+      rawDetail: null,
+    }
     if (engine === null || engine.state !== 'ready') {
       this.#set({
         state: 'failed',
@@ -117,6 +175,7 @@ export class FeedAdd {
     })
     this.#inFlight = handle
     handle.onProgress((p) => this.#report(p))
+    handle.onLog?.((l) => this.#attempt?.log.push(`[${l.level}] ${l.line}`))
     void handle.result.then(
       (feed) => {
         this.#inFlight = null
@@ -137,6 +196,7 @@ export class FeedAdd {
           })
           return
         }
+        if (this.#attempt !== null) Object.assign(this.#attempt, failureOf(reason))
         this.#set({
           state: 'failed',
           error: sentenceFor(reason),

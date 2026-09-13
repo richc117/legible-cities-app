@@ -100,6 +100,10 @@ const api: Api = {
   clipboard: {
     write: (text) => invoke(CHANNELS.clipboardWrite, text),
   },
+  // A job's text, checked, redacted and written in the main process.
+  jobs: {
+    copyLog: (text) => invoke(CHANNELS.jobsCopyLog, text),
+  },
   export: {
     run: (projectId, choice) =>
       startJob(CHANNELS.exportRun, CHANNELS.exportSettled, projectId, choice),
