@@ -158,7 +158,10 @@ test('exports the reel from one click: three stages, a file, its sidecar, and no
     expect(existsSync(file), 'the file is under the export folder').toBe(true)
     const sidecar = JSON.parse(readFileSync(file + '.json', 'utf8')) as Record<string, unknown>
     expect(sidecar.file).toBe(REEL)
-    expect(sidecar.frames, 'one second at thirty frames per second').toBe(30)
+    // The fields the engine's own sidecar carries, which the stand-in's
+    // matches (`_write_sidecar` at the pinned tag).
+    expect(sidecar.preset).toBe('instagram-reel')
+    expect(sidecar.size).toBe('1080x1920')
     const [id] = readdirSync(join(h.engineHome, 'projects'))
     const record = JSON.parse(
       readFileSync(join(h.engineHome, 'projects', id, 'project.json'), 'utf8'),

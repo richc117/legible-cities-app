@@ -31,7 +31,7 @@ import type {
   ExportEncodeParams,
   ExportEncodeResult,
   ExportPlanParams,
-  ExportPresets,
+  Preset,
 } from '../shared/protocol'
 import {
   CaptureError,
@@ -182,6 +182,31 @@ export function normalise(reason: unknown): EngineError {
   return engineError(ERROR_CODES.exportFailed, withoutPaths(message), 'io')
 }
 
+/**
+ * The engine's entry for the chosen preset, from `export.presets`, with the
+ * fields the app decides by checked, since they arrived from another
+ * process; a preset the engine no longer lists is refused.
+ */
+export function entryOf(
+  table: unknown,
+  choice: Pick<ExportChoice, 'preset'>,
+): Pick<Preset, 'name' | 'kind' | 'format' | 'safe_zones'> {
+  const presets = isObject(table) && Array.isArray(table.presets) ? table.presets : []
+  const entry: unknown = presets.find((p) => isObject(p) && p.name === choice.preset)
+  if (
+    !isObject(entry) ||
+    !['still', 'video', 'vector'].includes(entry.kind as string) ||
+    typeof entry.format !== 'string'
+  )
+    throw engineError(ERROR_CODES.badCall, 'The engine no longer offers that preset.', 'params')
+  return {
+    name: choice.preset,
+    kind: entry.kind as Preset['kind'],
+    format: entry.format as Preset['format'],
+    safe_zones: entry.safe_zones === true,
+  }
+}
+
 /** The engine's advice about the plan; it goes on screen, so it gets the same treatment as a hint. */
 function notesOf(plan: PlannedJob): string[] {
   return Array.isArray(plan.notes)
@@ -266,22 +291,17 @@ export class Exporter {
           'params',
         )
       const { engine } = this.#options
-      // Which presets draw the platform's interface over the picture is the
-      // engine's table, not the app's: asked each time, since both calls are
-      // pure and instant, rather than held across an engine restart.
-      const table = (await engine.request('export.presets').result) as ExportPresets
-      const entry =
-        isObject(table) && Array.isArray(table.presets)
-          ? table.presets.find((p) => isObject(p) && p.name === choice.preset)
-          : undefined
-      if (entry === undefined)
-        throw engineError(ERROR_CODES.badCall, 'The engine no longer offers that preset.', 'params')
+      // Which presets draw the platform's interface over the picture, and
+      // which options a preset takes, are the engine's table, not the
+      // app's: asked each time, since both calls are pure and instant,
+      // rather than held across an engine restart.
+      const entry = entryOf(await engine.request('export.presets').result, choice)
       const params = {
         key: project.feed,
         preset: choice.preset,
         page: pageUrl(project),
         date: project.date,
-        options: planOptions(choice, themeFor(project.theme), entry.safe_zones === true),
+        options: planOptions(choice, entry, themeFor(project.theme), entry.safe_zones),
       } satisfies ExportPlanParams
       const plan = (await engine.request('export.plan', params).result) as PlannedJob
       if (!isObject(plan) || !isProjectPage(plan.url, project))
@@ -344,7 +364,7 @@ export class Exporter {
 
   async #request<T>(
     method: string,
-    params: Record<string, unknown>,
+    params: Record<string, unknown> | undefined,
     control: Control,
     onFraction?: (fraction: number) => void,
   ): Promise<T> {
@@ -395,6 +415,14 @@ export class Exporter {
     // the preset's own tables. The page is the project's, on the app's
     // origin, and the service day is the project's stored one (ADR-031).
     this.#emit(token, 'plan', 0, 'Planning the export.')
+    // Which options this preset takes is the engine's table: a view and a
+    // start time are not sent beside a storyboard, whose first beat names
+    // its own, and a JPEG still is made at standard quality only.
+    const entry = entryOf(
+      await this.#request<unknown>('export.presets', undefined, control),
+      choice,
+    )
+    this.#stopIfCancelled(control)
     // The options are the person's, from the export tab, and the theme the
     // project's own. `safe` is never set here, whatever the preview showed:
     // the safe zones are a preview aid and never a deliverable (FR-006).
@@ -403,7 +431,7 @@ export class Exporter {
       preset: choice.preset,
       page: pageUrl(project),
       date: project.date,
-      options: planOptions(choice, themeFor(project.theme)),
+      options: planOptions(choice, entry, themeFor(project.theme)),
     } satisfies ExportPlanParams
     const plan = await this.#request<PlannedJob>('export.plan', planParams, control)
     this.#stopIfCancelled(control)
@@ -415,6 +443,21 @@ export class Exporter {
       throw engineError(
         ERROR_CODES.exportFailed,
         `The engine's plan cannot be captured: ${problem}.`,
+        'export',
+      )
+    // The plan is the engine's own answer to the table it just gave; one
+    // that disagrees with it is not captured. A JPEG still the engine would
+    // keep as captured would be PNG bytes under a `.jpg` name.
+    if ((plan.mode === 'still') !== (entry.kind === 'still') || plan.format !== entry.format)
+      throw engineError(
+        ERROR_CODES.exportFailed,
+        "The engine's plan does not match its preset.",
+        'export',
+      )
+    if (plan.mode === 'still' && plan.format === 'jpg' && plan.keep === true)
+      throw engineError(
+        ERROR_CODES.exportFailed,
+        'A JPEG still can only be made at standard quality.',
         'export',
       )
     if (typeof plan.filename !== 'string' || !FILENAME.test(plan.filename))

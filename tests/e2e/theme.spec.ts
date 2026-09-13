@@ -248,7 +248,7 @@ test('a write that fails says so where the switch is, and changes nothing', asyn
 })
 
 test('an export is planned in the theme the project is drawn in', async () => {
-  const h = home()
+  const h = home({ encode_delay_ms: 600 })
   await withApp(h, async (page) => {
     await project(page, 'Los Angeles')
     await page.getByRole('button', { name: /lay out/i }).click()
@@ -264,21 +264,28 @@ test('an export is planned in the theme the project is drawn in', async () => {
     // The export is on its own tab (A5-01).
     await page.getByRole('tab', { name: 'Export' }).click()
     await page.getByRole('button', { name: 'Export', exact: true }).click()
-    await expect(page.getByText(/Exported|Planning|Capturing|Encoding/)).toBeVisible({
+    await expect(page.getByText(/Planning|Capturing|Encoding/)).toBeVisible({
       timeout: 30_000,
     })
-    await expect
-      .poll(() => received(h, 'export.plan').length, { timeout: 30_000 })
-      .toBeGreaterThan(0)
-    const plans = received(h, 'export.plan')
-    // The engine's own word for it, and the page the capture drives carries
-    // the page's own word.
-    expect(plans[plans.length - 1]).toContain('"theme": "light"')
-    // And the switch is out of reach while the export runs: the theme it
-    // was planned with is the theme the reel will have, whatever is pressed
-    // now (FR-008). It is on the map tab, and leaving the export tab does
-    // not stop the export.
+    // The switch is out of reach while the export runs: the theme it was
+    // planned with is the theme the reel will have, whatever is pressed now
+    // (FR-008). It is on the map tab, and leaving the export tab does not
+    // stop the export; the encode is slowed so the export is still going.
     await page.getByRole('tab', { name: 'Map' }).click()
     await expect(switchOf(page).getByRole('button', { name: 'Warm dark' })).toBeDisabled()
+
+    await expect
+      .poll(() => received(h, 'export.encode').length, { timeout: 30_000 })
+      .toBeGreaterThan(0)
+    // The export's own plan is the last one before its encode: the export
+    // tab plans previews too, so the last plan overall may be a preview's.
+    const lines = readFileSync(join(h.engineHome, 'fake-engine.received'), 'utf8').split('\n')
+    const encode = lines.findIndex((line) => line.includes('"method": "export.encode"'))
+    let plan: string | undefined
+    for (let i = encode - 1; i >= 0 && plan === undefined; i--)
+      if (lines[i].includes('"method": "export.plan"')) plan = lines[i]
+    // The engine's own word for it, and the page the capture drives carries
+    // the page's own word.
+    expect(plan).toContain('"theme": "light"')
   })
 })

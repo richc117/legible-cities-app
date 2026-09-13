@@ -7,7 +7,7 @@
 import { VIEWS } from './capture'
 import type { EngineErrorShape } from './engine'
 import { COLORS_MAX, validateLineLabel } from './project'
-import type { ExportOptions, PresetName, StoryboardName } from './protocol'
+import type { ExportOptions, Preset, PresetName, StoryboardName } from './protocol'
 
 /**
  * The presets the interface offers: the thirteen social ones (A5-01). Each
@@ -198,21 +198,64 @@ export function copyChoice(choice: ExportChoice): ExportChoice {
     : { preset: choice.preset, storyboard: choice.storyboard, options }
 }
 
+/** What the engine's table says of a preset that decides which options reach its plan. */
+export type PresetShape = Pick<Preset, 'kind' | 'format'>
+
 /**
- * The options `export.plan` is given for a choice: the person's, the
- * storyboard beside them, and the project's theme in the engine's word for
- * it. `safe` is added only by the preview, and only here, so an export's
- * plan cannot carry it (FR-006).
+ * Does this preset play a storyboard? A video or a GIF does, and every
+ * storyboard's first beat names its own view and its own clock, which the
+ * capture applies. A view or a start time sent beside one would change
+ * the preview's first frame and not the file's, and a start time would
+ * move the capture's "no trains" check to a clock the file never shows.
+ */
+export const playsStoryboard = (preset: Pick<Preset, 'kind'>): boolean => preset.kind === 'video'
+
+/**
+ * Is this preset a still the engine writes as JPEG? The app's capture
+ * writes PNG, and at draft and high quality the engine keeps the captured
+ * file as it is rather than resampling it, so the result would be PNG
+ * bytes under a `.jpg` name, or a file over the platform's limit. Only
+ * standard quality, which re-encodes, is offered for one.
+ */
+export const standardQualityOnly = (preset: PresetShape): boolean =>
+  preset.kind === 'still' && preset.format === 'jpg'
+
+/**
+ * The part of a choice that is sent for this preset. A record keeps
+ * whatever a person chose; what reaches the engine leaves out a view and a
+ * start time for a preset that plays a storyboard, a storyboard for a
+ * still, and a quality other than standard for a JPEG still. Applied in the
+ * main process, which builds every plan, so the tab hiding the controls is
+ * a convenience and not the guard.
+ */
+export function sentChoice(choice: ExportChoice, preset: PresetShape): ExportChoice {
+  const copy = copyChoice(choice)
+  if (playsStoryboard(preset)) {
+    delete copy.options.view
+    delete copy.options.at
+  } else {
+    delete copy.storyboard
+  }
+  if (standardQualityOnly(preset)) delete copy.options.quality
+  return copy
+}
+
+/**
+ * The options `export.plan` is given for a choice: the person's, as far as
+ * this preset takes them, the storyboard beside them, and the project's
+ * theme in the engine's word for it. `safe` is added only by the preview,
+ * and only here, so an export's plan cannot carry it (FR-006).
  */
 export function planOptions(
   choice: ExportChoice,
+  preset: PresetShape,
   theme: 'dark' | 'light',
   safe = false,
 ): ExportOptions {
-  const { options } = copyChoice(choice)
+  const sent = sentChoice(choice, preset)
   return {
-    ...options,
-    ...(choice.storyboard === undefined ? {} : { storyboard: choice.storyboard }),
+    ...sent.options,
+    ...(sent.storyboard === undefined ? {} : { storyboard: sent.storyboard }),
     theme,
     ...(safe ? { safe: true } : {}),
   }

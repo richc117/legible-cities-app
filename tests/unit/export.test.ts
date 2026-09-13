@@ -36,6 +36,7 @@ import {
   OFFERED_PRESETS,
   STORYBOARD_NAMES,
   planOptions,
+  sentChoice,
   validateChoiceOptions,
   validateExportChoice,
   type ExportChoice,
@@ -58,8 +59,22 @@ interface Pending {
   reject(error: unknown): void
 }
 
-function fakeEngine(ready = true) {
+/**
+ * The engine's preset table at the pinned tag (v0.8.2), as `export.presets`
+ * answers it; the stand-in engine is held to the same file below.
+ */
+const ENGINE_TABLES = JSON.parse(
+  readFileSync(resolve(__dirname, '../fixtures/export-tables-v0.8.2.json'), 'utf8'),
+) as { engine: string; presets: Preset[]; storyboards: unknown[] }
+
+/**
+ * A fake engine. `export.presets` is answered at once from the pinned
+ * table, under ids of its own, so the plan and the encode keep the ids and
+ * the places in `requests` the tests count by; `tables` counts the asks.
+ */
+function fakeEngine(ready = true, presets: unknown = { presets: ENGINE_TABLES.presets }) {
   const requests: Pending[] = []
+  const tables: number[] = []
   const cancelled: number[] = []
   const listeners = new Set<(n: Notification) => void>()
   let nextId = 1
@@ -76,6 +91,11 @@ function fakeEngine(ready = true) {
             }),
           ),
         }
+      }
+      if (method === 'export.presets') {
+        const id = 1000 + tables.length
+        tables.push(id)
+        return { id, result: Promise.resolve(presets) }
       }
       const id = nextId++
       let resolve!: (v: unknown) => void
@@ -99,7 +119,7 @@ function fakeEngine(ready = true) {
   }
   const engineCancelled = (p: Pending): void =>
     p.reject(new EngineError(ERROR_CODES.cancelled, 'Request Cancelled'))
-  return { engine, requests, cancelled, notify, engineCancelled, listeners }
+  return { engine, requests, tables, cancelled, notify, engineCancelled, listeners }
 }
 
 const project = (over: Partial<ProjectRecord & { readOnly: boolean }> = {}) => ({
@@ -219,6 +239,8 @@ function harness(
     blocked?: string | null
     /** The export folder, changed between calls, to prove when it is read. */
     folder?: { now: string }
+    /** What `export.presets` answers, when not the pinned table. */
+    presets?: unknown
   } = {},
 ) {
   const root = mkdtempSync(join(tmpdir(), 'legible-cities-export-'))
@@ -226,7 +248,7 @@ function harness(
   const framesRoot = join(root, 'frames')
   const folder = over.folder ?? { now: join(root, 'exports') }
   const exportFolder = folder.now
-  const eng = fakeEngine(over.ready ?? true)
+  const eng = fakeEngine(over.ready ?? true, over.presets ?? { presets: ENGINE_TABLES.presets })
   const cap = fakeCapture()
   const progress: ExportProgress[] = []
   const log: string[] = []
@@ -696,10 +718,11 @@ describe('what the export tab chooses', () => {
       }
       expect(params.preset).toBe(choice.preset)
       expect(params.options).toEqual({
-        ...choice.options,
+        ...sentChoice(choice, presetOf(choice.preset)).options,
         ...(choice.storyboard ? { storyboard: choice.storyboard } : {}),
         theme: theme === 'sepia' ? 'light' : 'dark',
       })
+      expect(h.eng.tables, 'the table is asked before the plan').toHaveLength(1)
       expect('safe' in params.options, 'an export never draws the safe zones').toBe(false)
       h.exporter.cancel('tok-1')
     }
@@ -762,8 +785,109 @@ describe('what the export tab chooses', () => {
     expect(h.cap.calls).toHaveLength(0)
   })
 
-  const TABLE = (safeZones: string[]): { presets: Partial<Preset>[] } => ({
-    presets: OFFERED_PRESETS.map((name) => ({ name, safe_zones: safeZones.includes(name) })),
+  const presetOf = (name: string): Preset => {
+    const found = ENGINE_TABLES.presets.find((p) => p.name === name)
+    if (found === undefined) throw new Error(`no ${name} in the pinned table`)
+    return found
+  }
+
+  it('never sends a view or a start time beside a storyboard, which names its own', async () => {
+    const h = harness()
+    const video: ExportChoice = {
+      preset: 'instagram-reel',
+      storyboard: 'run',
+      options: { view: 'linear', at: '07:30', clock: false },
+    }
+    void h.exporter.start('tok-1', 'abcdefghijk1', video).result.catch(() => undefined)
+    await until('the plan', () => h.eng.requests.length === 1)
+    expect(h.eng.requests[0].params).toMatchObject({
+      options: { storyboard: 'run', clock: false, theme: 'dark' },
+    })
+    const options = (h.eng.requests[0].params as { options: object }).options
+    expect(options).not.toHaveProperty('view')
+    expect(options).not.toHaveProperty('at')
+    h.exporter.cancel('tok-1')
+
+    // A still takes both, and no storyboard.
+    const s = harness()
+    const still: ExportChoice = {
+      preset: 'instagram-post',
+      storyboard: 'run',
+      options: { view: 'linear', at: '07:30' },
+    }
+    void s.exporter.start('tok-2', 'abcdefghijk1', still).result.catch(() => undefined)
+    await until('the plan', () => s.eng.requests.length === 1)
+    expect((s.eng.requests[0].params as { options: object }).options).toEqual({
+      view: 'linear',
+      at: '07:30',
+      theme: 'dark',
+    })
+    s.exporter.cancel('tok-2')
+  })
+
+  it('makes a JPEG still at standard quality only, read from the engine’s table', async () => {
+    // Bluesky's still is the engine's one JPEG preset at v0.8.2; which it is
+    // comes from the table, so a table that says otherwise is obeyed.
+    const h = harness()
+    const draft: ExportChoice = { preset: 'bluesky', options: { quality: 'draft', tag: 'd' } }
+    void h.exporter.start('tok-1', 'abcdefghijk1', draft).result.catch(() => undefined)
+    await until('the plan', () => h.eng.requests.length === 1)
+    expect((h.eng.requests[0].params as { options: object }).options).toEqual({
+      tag: 'd',
+      theme: 'dark',
+    })
+    h.exporter.cancel('tok-1')
+
+    const png = harness({
+      presets: {
+        presets: ENGINE_TABLES.presets.map((p) =>
+          p.name === 'bluesky' ? { ...p, format: 'png' } : p,
+        ),
+      },
+    })
+    void png.exporter.start('tok-2', 'abcdefghijk1', draft).result.catch(() => undefined)
+    await until('the plan', () => png.eng.requests.length === 1)
+    expect((png.eng.requests[0].params as { options: object }).options).toMatchObject({
+      quality: 'draft',
+    })
+    png.exporter.cancel('tok-2')
+  })
+
+  it('refuses a plan that would keep a PNG capture as a JPEG, or that disagrees with its preset', async () => {
+    for (const [choice, answer, sentence] of [
+      [
+        { preset: 'bluesky', options: {} },
+        plan({
+          preset: 'bluesky',
+          mode: 'still',
+          beats: [],
+          at: 25_200,
+          format: 'jpg',
+          keep: true,
+          filename: 'la-metro-rail-bluesky.jpg',
+        }),
+        /standard quality/,
+      ],
+      [
+        { preset: 'instagram-post', options: {} },
+        plan({ preset: 'instagram-post', filename: 'la-metro-rail-instagram-post.mp4' }),
+        /does not match its preset/,
+      ],
+    ] as [ExportChoice, PlannedJob, RegExp][]) {
+      const h = harness()
+      const { result } = h.exporter.start('tok-1', 'abcdefghijk1', choice)
+      await until('the plan', () => h.eng.requests.length === 1)
+      h.eng.requests[0].resolve(answer)
+      await expect(result).rejects.toThrow(sentence)
+      expect(h.cap.calls).toHaveLength(0)
+    }
+  })
+
+  it('refuses a preset the engine’s table no longer lists, before the plan', async () => {
+    const h = harness({ presets: { presets: [] } })
+    const { result } = h.exporter.start('tok-1', 'abcdefghijk1', REEL)
+    await expect(result).rejects.toThrow(/no longer offers/)
+    expect(h.eng.requests).toHaveLength(0)
   })
 
   it('previews with the safe zones exactly where the preset has them', async () => {
@@ -775,20 +899,18 @@ describe('what the export tab chooses', () => {
     ] as [ExportChoice, boolean][]) {
       const h = harness()
       const answer = h.exporter.preview('abcdefghijk1', choice)
-      await until('the table', () => h.eng.requests.length === 1)
-      expect(h.eng.requests[0].method).toBe('export.presets')
-      h.eng.requests[0].resolve(TABLE(['instagram-reel', 'instagram-story']))
-      await until('the plan', () => h.eng.requests.length === 2)
-      expect(h.eng.requests[1].method).toBe('export.plan')
-      expect(h.eng.requests[1].params).toEqual({
+      await until('the plan', () => h.eng.requests.length === 1)
+      expect(h.eng.tables).toHaveLength(1)
+      expect(h.eng.requests[0].method).toBe('export.plan')
+      expect(h.eng.requests[0].params).toEqual({
         key: 'la-metro-rail',
         preset: choice.preset,
         page: 'app://local/projects/abcdefghijk1/la-metro-rail.html',
         date: '2026-09-08',
-        options: planOptions(choice, 'dark', safe),
+        options: planOptions(choice, presetOf(choice.preset), 'dark', safe),
       })
       const url = `app://local/projects/abcdefghijk1/la-metro-rail.html?present=1${safe ? '&safe=1' : ''}`
-      h.eng.requests[1].resolve(plan({ url, width: 540, height: 960, notes: ['see /x/y'] }))
+      h.eng.requests[0].resolve(plan({ url, width: 540, height: 960, notes: ['see /x/y'] }))
       await expect(answer).resolves.toEqual({
         ok: true,
         url,
@@ -804,10 +926,8 @@ describe('what the export tab chooses', () => {
   it("answers the engine's refusal in its own shape, and never throws", async () => {
     const h = harness()
     const answer = h.exporter.preview('abcdefghijk1', LINKEDIN)
-    await until('the table', () => h.eng.requests.length === 1)
-    h.eng.requests[0].resolve(TABLE([]))
-    await until('the plan', () => h.eng.requests.length === 2)
-    h.eng.requests[1].reject(
+    await until('the plan', () => h.eng.requests.length === 1)
+    h.eng.requests[0].reject(
       new EngineError(-32000, 'no geographic geometry', {
         kind: 'export',
         detail: 'ValueError',
@@ -831,10 +951,8 @@ describe('what the export tab chooses', () => {
   it('refuses a planned address that is not the project’s own page', async () => {
     const h = harness()
     const answer = h.exporter.preview('abcdefghijk1', REEL)
-    await until('the table', () => h.eng.requests.length === 1)
-    h.eng.requests[0].resolve(TABLE(['instagram-reel']))
-    await until('the plan', () => h.eng.requests.length === 2)
-    h.eng.requests[1].resolve(plan({ url: 'app://local/projects/zzzzzzzzzzzz/x.html?safe=1' }))
+    await until('the plan', () => h.eng.requests.length === 1)
+    h.eng.requests[0].resolve(plan({ url: 'app://local/projects/zzzzzzzzzzzz/x.html?safe=1' }))
     await expect(answer).resolves.toMatchObject({
       ok: false,
       error: { code: ERROR_CODES.exportFailed },
@@ -935,8 +1053,9 @@ describe('the choice itself', () => {
   })
 
   it('adds safe to a plan only when the preview asks', () => {
-    expect(planOptions(REEL, 'dark')).toEqual({ theme: 'dark' })
-    expect(planOptions(REEL, 'light', true)).toEqual({ theme: 'light', safe: true })
+    const reel = { kind: 'video', format: 'mp4' } as const
+    expect(planOptions(REEL, reel, 'dark')).toEqual({ theme: 'dark' })
+    expect(planOptions(REEL, reel, 'light', true)).toEqual({ theme: 'light', safe: true })
   })
 })
 
@@ -946,26 +1065,52 @@ describe('the choice itself', () => {
 // were made from.
 const PYTHON = findPython()
 describe.skipIf(PYTHON === null)('the stand-in engine’s export tables', () => {
-  it('lists the engine’s presets and storyboards by the generated names', () => {
-    const probe = spawnSync(
-      PYTHON as string,
-      [
-        '-c',
-        'import json; from schematic import serve; print(json.dumps({"presets": [p["name"] for p in serve.EXPORT_PRESETS], "storyboards": [b["name"] for b in serve.EXPORT_STORYBOARDS]}))',
-      ],
-      {
-        encoding: 'utf8',
-        windowsHide: true,
-        timeout: 20_000,
-        env: { ...process.env, PYTHONPATH: FAKE_ENGINE, PYTHONDONTWRITEBYTECODE: '1' },
-      },
-    )
+  const python = (code: string): string => {
+    const probe = spawnSync(PYTHON as string, ['-c', code], {
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 20_000,
+      env: { ...process.env, PYTHONPATH: FAKE_ENGINE, PYTHONDONTWRITEBYTECODE: '1' },
+    })
     expect(probe.status, probe.stderr).toBe(0)
-    const tables = JSON.parse(probe.stdout) as { presets: string[]; storyboards: string[] }
+    return probe.stdout
+  }
+
+  it('answers the engine’s own tables at the pinned tag, size, kind, format and all', () => {
+    const tables = JSON.parse(
+      python(
+        'import json; from schematic import serve; print(json.dumps({"presets": serve.EXPORT_PRESETS, "storyboards": serve.EXPORT_STORYBOARDS}))',
+      ),
+    ) as { presets: Preset[]; storyboards: { name: string }[] }
+    // tests/fixtures/export-tables-v0.8.2.json is the engine's
+    // `preset_table()` and `storyboard_table()` at v0.8.2. A pin that
+    // changes a preset's size, kind, format, rate, safe zones or storyboard
+    // fails here until the fixture and the stand-in both follow it.
+    expect(ENGINE_TABLES.engine).toBe('v0.8.2')
+    expect(tables.presets).toEqual(ENGINE_TABLES.presets)
+    expect(tables.storyboards).toEqual(ENGINE_TABLES.storyboards)
     const schema = JSON.parse(
       readFileSync(resolve(__dirname, '../../vendor/protocol.schema.json'), 'utf8'),
     ) as { $defs: Record<string, { enum?: string[] }> }
-    expect(tables.presets).toEqual(schema.$defs.PresetName.enum)
-    expect(tables.storyboards.sort()).toEqual([...(schema.$defs.StoryboardName.enum ?? [])].sort())
+    expect(tables.presets.map((p) => p.name)).toEqual(schema.$defs.PresetName.enum)
+    expect(tables.storyboards.map((b) => b.name).sort()).toEqual(
+      [...(schema.$defs.StoryboardName.enum ?? [])].sort(),
+    )
+  })
+
+  it('refuses to keep a capture in a format the preset does not write, as the engine silently would', () => {
+    const answers = JSON.parse(
+      python(
+        [
+          'import json',
+          'from pathlib import Path',
+          'from schematic import serve',
+          'cases = [(True, "jpg", "000000.png"), (False, "jpg", "000000.png"), (True, "png", "000000.png")]',
+          'print(json.dumps([serve.Engine.still_problem({"keep": k, "format": f}, Path(s)) for k, f, s in cases]))',
+        ].join('\n'),
+      ),
+    ) as (string | null)[]
+    expect(answers[0]).toMatch(/will not keep a png capture as a jpg file/)
+    expect(answers.slice(1)).toEqual([null, null])
   })
 })

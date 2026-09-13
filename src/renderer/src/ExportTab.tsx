@@ -4,6 +4,7 @@ import { withoutPaths, type EngineState } from '../../shared/engine'
 import {
   isOfferedPreset,
   QUALITIES,
+  standardQualityOnly,
   validateClock,
   validateTag,
   type ExportChoice,
@@ -168,6 +169,8 @@ export default function ExportTab({
   const preset =
     tables.status === 'ready' ? tables.tables.presets.find((p) => p.name === choice.preset) : null
   const defaults = preset ? defaultsFor(preset) : null
+  // A JPEG still, read from the engine's table: made at standard quality only.
+  const jpegStill = preset ? standardQualityOnly(preset) : false
   const key = keyOf(choice, project)
   const refused = refusal !== null && refusal.key === key
 
@@ -422,28 +425,35 @@ export default function ExportTab({
               </p>
             )}
 
-            <div className="field">
-              <span className="field-label" aria-hidden="true">
-                View
-              </span>
-              <Select
-                label="View"
-                value={choice.options.view ?? defaults.view}
-                disabled={locked}
-                onChange={(value) => {
-                  const view = VIEWS.find((v) => v === value)
-                  if (view !== undefined)
-                    change(withOption(choice, preset, { key: 'view', value: view }))
-                }}
-              >
-                {VIEWS.map((view) => (
-                  <option key={view} value={view}>
-                    {VIEW_WORDS[view]}
-                    {view === defaults.view ? ' (the preset’s own)' : ''}
-                  </option>
-                ))}
-              </Select>
-            </div>
+            {/* A storyboard's first beat names its own view and its own
+                clock, and the capture applies them: a view or a start time
+                beside one would change the preview and not the file. Both
+                are a still's only, and the main process leaves them out of
+                any other plan whatever the record holds. */}
+            {!plays(preset) && (
+              <div className="field">
+                <span className="field-label" aria-hidden="true">
+                  View
+                </span>
+                <Select
+                  label="View"
+                  value={choice.options.view ?? defaults.view}
+                  disabled={locked}
+                  onChange={(value) => {
+                    const view = VIEWS.find((v) => v === value)
+                    if (view !== undefined)
+                      change(withOption(choice, preset, { key: 'view', value: view }))
+                  }}
+                >
+                  {VIEWS.map((view) => (
+                    <option key={view} value={view}>
+                      {VIEW_WORDS[view]}
+                      {view === defaults.view ? ' (the preset’s own)' : ''}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            )}
 
             <fieldset className="export-flags" disabled={locked}>
               <legend>What the frame shows</legend>
@@ -467,28 +477,30 @@ export default function ExportTab({
               ))}
             </fieldset>
 
-            <div className="field">
-              <label htmlFor="export-at">Start time</label>
-              <div onBlur={commitAt}>
-                <TextInput
-                  id="export-at"
-                  value={atDraft}
-                  onChange={setAtDraft}
-                  placeholder={plays(preset) ? 'the storyboard’s own' : '07:00'}
-                  disabled={locked}
-                  spellCheck={false}
-                  aria-describedby="export-at-message"
-                  aria-invalid={atProblem !== null ? true : undefined}
-                />
+            {!plays(preset) && (
+              <div className="field">
+                <label htmlFor="export-at">Start time</label>
+                <div onBlur={commitAt}>
+                  <TextInput
+                    id="export-at"
+                    value={atDraft}
+                    onChange={setAtDraft}
+                    placeholder="07:00"
+                    disabled={locked}
+                    spellCheck={false}
+                    aria-describedby="export-at-message"
+                    aria-invalid={atProblem !== null ? true : undefined}
+                  />
+                </div>
+                <p
+                  id="export-at-message"
+                  className={atProblem === null ? 'message' : 'message error'}
+                >
+                  {atProblem ??
+                    'HH:MM. The still is taken at this time; past midnight stays past midnight, so 25:30 is half past one the next morning.'}
+                </p>
               </div>
-              <p
-                id="export-at-message"
-                className={atProblem === null ? 'message' : 'message error'}
-              >
-                {atProblem ??
-                  'HH:MM. A still is taken at this time; past midnight stays past midnight, so 25:30 is half past one the next morning.'}
-              </p>
-            </div>
+            )}
 
             <fieldset className="export-lines" disabled={locked}>
               <legend>Lines to keep</legend>
@@ -524,22 +536,40 @@ export default function ExportTab({
               <span className="field-label" aria-hidden="true">
                 Quality
               </span>
-              <Select
-                label="Quality"
-                value={choice.options.quality ?? defaults.quality}
-                disabled={locked}
-                onChange={(value) => {
-                  const quality = QUALITIES.find((q) => q === value)
-                  if (quality !== undefined)
-                    change(
-                      withOption(choice, preset, { key: 'quality', value: quality as Quality }),
-                    )
-                }}
-              >
-                <option value="draft">draft: quick, to check it</option>
-                <option value="standard">standard (the engine’s own)</option>
-                <option value="high">high: twice the size, kept</option>
-              </Select>
+              {jpegStill ? (
+                <>
+                  <Select
+                    key="standard-only"
+                    label="Quality"
+                    value="standard"
+                    disabled
+                    onChange={() => undefined}
+                  >
+                    <option value="standard">standard</option>
+                  </Select>
+                  <p className="message">
+                    This preset is a JPEG still, which the engine makes at standard quality only.
+                  </p>
+                </>
+              ) : (
+                <Select
+                  key="any"
+                  label="Quality"
+                  value={choice.options.quality ?? defaults.quality}
+                  disabled={locked}
+                  onChange={(value) => {
+                    const quality = QUALITIES.find((q) => q === value)
+                    if (quality !== undefined)
+                      change(
+                        withOption(choice, preset, { key: 'quality', value: quality as Quality }),
+                      )
+                  }}
+                >
+                  <option value="draft">draft: quick, to check it</option>
+                  <option value="standard">standard (the engine’s own)</option>
+                  <option value="high">high: twice the size, kept</option>
+                </Select>
+              )}
             </div>
 
             <div className="field">

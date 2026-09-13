@@ -4,6 +4,7 @@ import {
   DEFAULT_QUALITY,
   isOfferedPreset,
   isStoryboardName,
+  playsStoryboard,
   type ExportChoice,
   type ExportChoiceOptions,
   type ExportPreview,
@@ -60,8 +61,8 @@ export function byPlatform(
   return [...groups].map(([platform, rows]) => ({ platform, presets: rows }))
 }
 
-/** Is this preset a video or a GIF, which play a storyboard? */
-export const plays = (preset: Pick<Preset, 'kind'>): boolean => preset.kind === 'video'
+/** Is this preset a video or a GIF, which play a storyboard? The shared rule, under the tab's name. */
+export const plays = playsStoryboard
 
 /** A preset as the chooser lists it: the engine's name, its size and what it makes. */
 export function presetWords(preset: Preset): string {

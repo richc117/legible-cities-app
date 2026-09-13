@@ -96,6 +96,36 @@ const received = (h: Home, method: string): string[] =>
     .split('\n')
     .filter((line) => line.includes(`"method": "${method}"`))
 
+/**
+ * The plan the last export was made from: the last `export.plan` the
+ * stand-in read before the last `export.encode`. The preview plans too, so
+ * the last plan overall may be a preview's, and would say nothing about the
+ * file.
+ */
+function lastExportPlan(h: Home): string {
+  const lines = readFileSync(join(h.engineHome, 'fake-engine.received'), 'utf8').split('\n')
+  let encode = -1
+  for (let i = lines.length - 1; i >= 0 && encode === -1; i--)
+    if (lines[i].includes('"method": "export.encode"')) encode = i
+  expect(encode, 'an export reached the encode').toBeGreaterThan(-1)
+  for (let i = encode - 1; i >= 0; i--)
+    if (lines[i].includes('"method": "export.plan"')) return lines[i]
+  throw new Error('the export was never planned')
+}
+
+/** Each preset's size as the engine's sidecar writes it (its table at v0.8.2). */
+const SIZES: Record<string, string> = {
+  'instagram-post': '1080x1350',
+  'instagram-reel': '1080x1920',
+  'instagram-reel-gif': '630x1120',
+  linkedin: '1200x1200',
+  'linkedin-video': '1200x1200',
+  'linkedin-gif': '640x640',
+  bluesky: '1200x900',
+  'bluesky-video': '1080x1350',
+  'bluesky-gif': '640x800',
+}
+
 /** A laid-out project named Los Angeles, whose page is the stand-in that animates. */
 async function laidOut(page: Page, h: Home): Promise<void> {
   await page.getByRole('button', { name: 'New project' }).click()
@@ -152,9 +182,11 @@ test('the tab strip is one tab stop, moved with the arrow keys, and each tab sho
     await page.keyboard.press('End')
     await expect(exportTab).toHaveAttribute('aria-selected', 'true')
 
-    // The strip is one stop: Tab leaves it for the panel's first control.
+    // The strip is one stop: Tab leaves it for the chosen panel, which is a
+    // stop of its own.
     await page.keyboard.press('Tab')
     await expect(page.locator('[role="tab"]:focus')).toHaveCount(0)
+    await expect(exportPanel(page)).toBeFocused()
   })
 })
 
@@ -203,37 +235,50 @@ test('offers the thirteen social presets by platform, and previews the safe zone
   })
 })
 
-test('every option changes the preview, and a typed one is written when it is committed', async () => {
+test('every option changes the preview of a still, and a typed one is written only when it is committed', async () => {
   const h = home()
   await withApp(h, async (page) => {
     await laidOut(page, h)
     await openExportTab(page)
     const panel = exportPanel(page)
+    // A still: the view and the start time are a still's options, since a
+    // storyboard's first beat names its own.
+    await presetSelect(page).selectOption('instagram-post')
     await expect
-      .poll(async () => (await frameQuery(page)).get('safe'), { timeout: 20_000 })
-      .toBe('1')
+      .poll(async () => (await frameQuery(page)).get('frame'), { timeout: 20_000 })
+      .toBe('1080:1350')
 
     await panel.getByRole('checkbox', { name: /^The title/ }).uncheck()
     await expect.poll(async () => (await frameQuery(page)).get('title')).toBe('0')
-    await panel.getByRole('checkbox', { name: 'The clock' }).uncheck()
-    await expect.poll(async () => (await frameQuery(page)).get('clock')).toBe('0')
+    await panel.getByRole('checkbox', { name: 'The clock' }).check()
+    await expect.poll(async () => (await frameQuery(page)).get('clock')).toBe('1')
     await panel.getByRole('checkbox', { name: 'Station names' }).uncheck()
     await expect.poll(async () => (await frameQuery(page)).get('labels')).toBe('0')
     await panel.getByRole('combobox', { name: 'View' }).selectOption('linear')
     await expect.poll(async () => (await frameQuery(page)).get('view')).toBe('linear')
 
-    // The stand-in's feed has lines A and B; keeping one hides the other.
+    // The stand-in's feed has lines A to K; keeping one hides the rest.
     await panel.getByRole('checkbox', { name: 'B', exact: true }).check()
     await expect.poll(async () => (await frameQuery(page)).get('lines')).toBe('B')
-
-    // A start time is written when the field is left, not on each key.
-    const at = panel.getByLabel('Start time')
-    await at.fill('07:3')
     await expect
-      .poll(() => (readRecord(h).export as { options: object }).options)
-      .not.toHaveProperty('at')
+      .poll(() => (readRecord(h).export as { options: { lines?: string[] } }).options.lines)
+      .toEqual(['B'])
+
+    // A start time is written when the field is left, not on each key. The
+    // record is read after a wait long enough for any write a keystroke
+    // started to have landed - a record write here takes milliseconds -
+    // so "not written" is a claim about a moment after the typing, not the
+    // first poll.
+    const at = panel.getByLabel('Start time')
+    const before = readRecord(h)
     await at.fill('07:30')
+    await page.waitForTimeout(1_500)
+    expect(readRecord(h).modified, 'typing wrote nothing').toBe(before.modified)
+    expect((readRecord(h).export as { options: object }).options).not.toHaveProperty('at')
     await at.press('Tab')
+    await expect
+      .poll(() => (readRecord(h).export as { options: { at?: string } }).options.at)
+      .toBe('07:30')
     await expect.poll(async () => (await frameQuery(page)).get('at')).toBe('07:30')
 
     // A tag the engine's pattern refuses says why and is not written.
@@ -241,6 +286,7 @@ test('every option changes the preview, and a typed one is written when it is co
     await tag.fill('has space')
     await tag.press('Enter')
     await expect(panel.getByText(/a tag is up to 64 letters/)).toBeVisible()
+    expect((readRecord(h).export as { options: object }).options).not.toHaveProperty('tag')
     await tag.fill('draft-1')
     await tag.press('Enter')
     await panel.getByRole('combobox', { name: 'Quality' }).selectOption('draft')
@@ -248,10 +294,10 @@ test('every option changes the preview, and a typed one is written when it is co
     await expect
       .poll(() => readRecord(h).export)
       .toEqual({
-        preset: 'instagram-reel',
+        preset: 'instagram-post',
         options: {
           title: false,
-          clock: false,
+          clock: true,
           labels: false,
           view: 'linear',
           lines: ['B'],
@@ -260,6 +306,17 @@ test('every option changes the preview, and a typed one is written when it is co
           quality: 'draft',
         },
       })
+
+    // A video takes neither: they are not offered, and a record that
+    // keeps them does not send them.
+    await presetSelect(page).selectOption('instagram-reel')
+    await expect(panel.getByRole('combobox', { name: 'View' })).toHaveCount(0)
+    await expect(panel.getByLabel('Start time')).toHaveCount(0)
+    await expect
+      .poll(async () => (await frameQuery(page)).get('frame'), { timeout: 20_000 })
+      .toBe('1080:1920')
+    expect((await frameQuery(page)).get('view')).toBe('map')
+    expect((await frameQuery(page)).get('at')).toBeNull()
   })
 })
 
@@ -283,6 +340,9 @@ test('a still, a video and a GIF for each of Instagram, LinkedIn and Bluesky, fr
     for (const [preset, format] of cases) {
       await presetSelect(page).selectOption(preset)
       await expect.poll(() => (readRecord(h).export as { preset: string }).preset).toBe(preset)
+      // A JPEG still, as the engine's table says, is standard quality only.
+      if (format === 'jpg')
+        await expect(exportPanel(page).getByRole('combobox', { name: 'Quality' })).toBeDisabled()
       const plansBefore = received(h, 'export.plan').length
       await exportButton(page).click()
       const name = `la-metro-rail-${preset}.${format}`
@@ -292,23 +352,18 @@ test('a still, a video and a GIF for each of Instagram, LinkedIn and Bluesky, fr
       const file = join(h.exportFolder, 'Los Angeles', name)
       expect(existsSync(file), name).toBe(true)
       const sidecar = JSON.parse(readFileSync(file + '.json', 'utf8')) as Record<string, unknown>
+      // The fields the engine's sidecar carries (`_write_sidecar`).
       expect(sidecar.preset).toBe(preset)
-      expect(sidecar.format).toBe(format)
+      expect(sidecar.size, name).toBe(SIZES[preset])
+      expect(sidecar.file).toBe(name)
       expect(sidecar.service_date).toBe(readRecord(h).date)
-      // One second of the stand-in's plan at the preset's own rate, or one
-      // frame for a still.
-      const fps = format === 'gif' ? 12 : 30
-      expect(sidecar.frames, name).toBe(format === 'png' || format === 'jpg' ? 1 : fps)
 
-      // The export's own plan: the one that asked for this preset's file
-      // after the press, and it never asks for the safe zones.
-      const plans = received(h, 'export.plan').slice(plansBefore)
-      const exported = plans.filter((line) => line.includes(`"preset": "${preset}"`))
-      expect(exported.length, name).toBeGreaterThan(0)
-      expect(
-        exported.some((line) => !line.includes('"safe"')),
-        name,
-      ).toBe(true)
+      // The export's own plan, the last before its encode: this preset, and
+      // never the safe zones.
+      expect(received(h, 'export.plan').length).toBeGreaterThan(plansBefore)
+      const exported = lastExportPlan(h)
+      expect(exported, name).toContain(`"preset": "${preset}"`)
+      expect(exported, name).not.toContain('"safe"')
     }
     // Every plan made for a file, across all nine, is without `safe`: the
     // ones with it are previews, and each of those names a preset whose
@@ -326,6 +381,7 @@ test('a storyboard chosen for a video reaches the plan, and the preset’s own i
     await presetSelect(page).selectOption('linkedin-video')
     const storyboard = exportPanel(page).getByRole('combobox', { name: 'Storyboard' })
     await expect(storyboard).toHaveValue('tour')
+    await expect(exportPanel(page).getByRole('combobox', { name: 'View' })).toHaveCount(0)
     await storyboard.selectOption('day')
     await expect
       .poll(() => readRecord(h).export)
@@ -336,8 +392,9 @@ test('a storyboard chosen for a video reaches the plan, and the preset’s own i
       })
     await exportButton(page).click()
     await expect(exportPanel(page).getByText(/^Exported /)).toBeVisible({ timeout: 60_000 })
-    const plans = received(h, 'export.plan').filter((l) => !l.includes('"safe"'))
-    expect(plans[plans.length - 1]).toContain('"storyboard": "day"')
+    const exported = lastExportPlan(h)
+    expect(exported).toContain('"preset": "linkedin-video"')
+    expect(exported).toContain('"storyboard": "day"')
   })
 })
 

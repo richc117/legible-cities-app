@@ -797,6 +797,20 @@ class Engine:
                 "filename": f"{stem}.{preset['format']}"}
 
 
+    @staticmethod
+    def still_problem(plan: dict, source: Path) -> str | None:
+        """What the engine's encode would get wrong with this still. At draft and
+        high quality it keeps the captured file as it is (`shutil.copyfile`), so a
+        PNG capture for a JPEG preset would be PNG bytes under a .jpg name. The
+        engine writes it and says nothing; the stand-in refuses, so a test sees
+        the app never asks for one."""
+        captured = source.suffix.lstrip(".").lower()
+        wanted = plan.get("format")
+        if plan.get("keep") and captured != wanted:
+            return (f"the stand-in will not keep a {captured} capture as a {wanted} file: "
+                    "at this quality the engine copies the capture unchanged")
+        return None
+
     def encode(self, msg_id, params: dict) -> None:
         """export.encode, in shape: reads the frames the app captured, reports
         five steps of progress, writes the file and the sidecar beside it, and
@@ -810,6 +824,10 @@ class Engine:
         if plan.get("mode") == "still":
             if not source.is_file():
                 error(msg_id, -32000, "the captured still is not there", "io")
+                return
+            problem = self.still_problem(plan, source)
+            if problem is not None:
+                error(msg_id, -32000, problem, "export")
                 return
             frames = [source]
         elif not source.is_dir():
@@ -848,14 +866,22 @@ class Engine:
         dest.write_bytes(b"stand-in %s: %d frames\n" % (plan.get("format", "").encode(), len(frames)))
         provenance = params.get("provenance") or {}
         preset = PRESETS.get(plan.get("preset"), {})
+        feed = FEEDS.get(plan.get("key"), {})
+        board = plan.get("storyboard") or ""
+        # The engine's `_write_sidecar` fields at v0.8.2, in its order, so a
+        # test that reads a sidecar reads what the engine writes.
         meta = {"file": dest.name, "bytes": dest.stat().st_size, "feed": plan.get("key"),
-                "preset": plan.get("preset"), "platform": preset.get("platform", "stand-in"),
-                "width": preset.get("width"), "height": preset.get("height"),
-                "format": plan.get("format"), "theme": plan.get("theme"),
-                "view": plan.get("view"), "storyboard": plan.get("storyboard"),
-                "service_date": provenance.get("service_date"), "frames": len(frames),
-                "caveats": []}
-        sidecar.write_text(json.dumps(meta, indent=2))
+                "city": feed.get("city"), "network": feed.get("network"),
+                "preset": plan.get("preset"), "platform": preset.get("platform"),
+                "size": (f"{preset['width']}x{preset['height']}" if preset.get("width")
+                         else "native"),
+                "view": (STORYBOARDS.get(board, {}).get("views") or plan.get("view")),
+                "storyboard": board or None, "theme": plan.get("theme"),
+                "alt": f"The stand-in's {plan.get('key')} map.",
+                "service_date": provenance.get("service_date"),
+                "trips": provenance.get("trips"), "caveats": provenance.get("caveats", []),
+                "notes": list(feed.get("notes", [])), "source": feed.get("url")}
+        sidecar.write_text(json.dumps(meta, indent=2) + "\n")
         write({"jsonrpc": "2.0", "id": msg_id, "result": {
             "files": [{"path": str(dest), "bytes": dest.stat().st_size}], "sidecar": meta}})
 
