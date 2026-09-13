@@ -1039,12 +1039,19 @@ test('a release, installed, through docs/acceptance.md', async () => {
       await row.getByRole('button', { name: `Start a project on ${name}` }).click()
       const create = window.getByRole('dialog', { name: 'New project' })
       await log.soft('the create dialog opens on the added feed', async () => {
-        const shown = await create
-          .getByRole('combobox', { name: 'Feed' })
-          .evaluate(
-            (select) => (select as HTMLSelectElement).selectedOptions[0]?.textContent?.trim() ?? '',
-          )
-        expect(shown.startsWith(name)).toBe(true)
+        // The dialog chooses its feed in an effect after it opens, which a
+        // slow machine may not have run by the first look: poll, as a person
+        // would read it once the dialog has settled.
+        const shown = (): Promise<string> =>
+          create
+            .getByRole('combobox', { name: 'Feed' })
+            .evaluate(
+              (select) =>
+                (select as HTMLSelectElement).selectedOptions[0]?.textContent?.trim() ?? '',
+            )
+        await expect
+          .poll(async () => (await shown()).startsWith(name), { timeout: SHORT_MS })
+          .toBe(true)
       })
       await create.getByLabel('Name', { exact: true }).fill('Caltrain')
       await create.getByRole('button', { name: 'Create', exact: true }).click()
