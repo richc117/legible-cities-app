@@ -10,17 +10,7 @@
 // and an error thrown here is what the renderer shows.
 
 import { randomBytes } from 'node:crypto'
-import {
-  lstat,
-  mkdir,
-  readdir,
-  readFile,
-  realpath,
-  rename,
-  rm,
-  stat,
-  writeFile,
-} from 'node:fs/promises'
+import { lstat, mkdir, readdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, parse, resolve, sep } from 'node:path'
 import {
   DEFAULT_SETTINGS,
@@ -29,6 +19,7 @@ import {
   type AppSettings,
   type FolderSize,
 } from '../shared/settings'
+import { failedWords, renameOver, retriedWords, type ReplaceOptions } from './replace-file'
 
 export const SETTINGS_FILE = 'settings.json'
 
@@ -46,27 +37,44 @@ export class SettingsStore {
   #settings: AppSettings = { ...DEFAULT_SETTINGS }
   #loaded = false
 
-  /** The folder is Electron's userData; the file sits directly beneath it. */
+  /**
+   * The folder is Electron's userData; the file sits directly beneath it.
+   * `replace` is the rename a write ends with, as the project store's is.
+   */
   constructor(
     private readonly dir: string,
     private readonly log: (message: string) => void,
+    private readonly replace: ReplaceOptions = {},
   ) {}
 
   private get file(): string {
     return join(this.dir, SETTINGS_FILE)
   }
 
-  /** What was last read or written. Defaults before the first load. */
+  /**
+   * What was last read or landed on disk. Defaults before the first load.
+   * A write still waiting in the queue, or still retrying its rename, is
+   * not in it: `current` changes only once that write has landed, so a
+   * reader never sees settings the file does not hold. A change that
+   * depends on the settings goes through `update`, which sees every write
+   * asked for before it.
+   */
   get current(): AppSettings {
     return this.#settings
   }
 
   /**
-   * Read the file. Missing is not a fault: a first run has no settings. A
-   * file that is not JSON, or not an object, or whose fields are wrong, is
-   * one log line and the defaults - never a refusal to start.
+   * Read the file, in the queue, so a read cannot land after a write it
+   * began before and put the older settings back in force. Missing is not
+   * a fault: a first run has no settings. A file that is not JSON, or not
+   * an object, or whose fields are wrong, is one log line and the defaults
+   * - never a refusal to start.
    */
-  async load(): Promise<AppSettings> {
+  load(): Promise<AppSettings> {
+    return this.#serial(() => this.#load())
+  }
+
+  async #load(): Promise<AppSettings> {
     let text: string
     try {
       text = await readFile(this.file, 'utf8')
@@ -101,22 +109,70 @@ export class SettingsStore {
   }
 
   /**
+   * The writes, one after another. A write can wait over a second for a
+   * held file on Windows (replace-file.ts), and two overlapping writes
+   * would each run their own schedule, so the older could land after the
+   * newer and the file, `current` and the screen end on the press before
+   * the last. Chained, each lands in the order it was asked for, and one
+   * that fails does not stop the next.
+   *
+   * Work running inside the queue must never await `load()`, `write()` or
+   * `update()`: each joins the queue behind the work calling it, and each
+   * waits for the other forever. Call the private `#load` and `#write`
+   * instead, as `update` does.
+   */
+  #queue: Promise<unknown> = Promise.resolve()
+
+  #serial<T>(work: () => Promise<T>): Promise<T> {
+    const run = this.#queue.then(work)
+    this.#queue = run.catch(() => undefined)
+    return run
+  }
+
+  /**
    * Write the settings, whole, in the current form. The folder is made
    * first: on a first run the user-data folder exists, but a person who
-   * pointed the app at a fresh one has not made it.
+   * pointed the app at a fresh one has not made it. A write built from
+   * `current` can lose a change still in the queue; use `update` for that.
    */
-  async write(next: AppSettings): Promise<AppSettings> {
-    if (!this.#loaded) await this.load()
+  write(next: AppSettings): Promise<AppSettings> {
+    return this.update(() => next)
+  }
+
+  /**
+   * Read, change and write in one turn of the queue. `change` is given the
+   * settings as every earlier write left them - landed, or failed and so
+   * not in force - and answers the settings to write, or null for no
+   * change, which writes nothing and answers the settings as they are.
+   * A change made from `current` outside the queue would compare against
+   * settings a pending write has not updated yet: a press back to the
+   * stored theme while another theme was retrying would be skipped, and a
+   * folder chosen at the same moment as a theme would be put back.
+   */
+  update(change: (settings: AppSettings) => AppSettings | null): Promise<AppSettings> {
+    return this.#serial(async () => {
+      if (!this.#loaded) await this.#load()
+      const next = change(this.#settings)
+      return next === null ? this.#settings : this.#write(next)
+    })
+  }
+
+  async #write(next: AppSettings): Promise<AppSettings> {
     const settings: AppSettings = { ...next, version: SETTINGS_VERSION }
     const text = JSON.stringify(settings, null, 2) + '\n'
     const temp = join(this.dir, tempFile())
     try {
       await mkdir(this.dir, { recursive: true })
       await writeFile(temp, text, 'utf8')
-      await rename(temp, this.file)
+      // Tried again on Windows while another handle holds the file, as a
+      // record's is: a defence, since a held file is suspected and not
+      // proven to have lost a choice (replace-file.ts, issue 93).
+      const renamed = await renameOver(temp, this.file, this.replace)
+      const retried = retriedWords(renamed)
+      if (retried !== null) this.log(`settings: ${retried}`)
     } catch (error) {
       await rm(temp, { force: true }).catch(() => undefined)
-      this.log(`settings: write failed (${reasonOf(error)})`)
+      this.log(`settings: ${failedWords(error)}`)
       throw new Error('the settings could not be saved', { cause: error })
     }
     this.#settings = settings

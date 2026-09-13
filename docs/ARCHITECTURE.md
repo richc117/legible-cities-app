@@ -262,7 +262,14 @@ not a project: the Library skips it and the log names the folder.
 **Writes are atomic.** The store writes `project.json.tmp` beside the
 record and renames it over `project.json`, so a crash mid-write leaves the
 previous record rather than a truncated one; readers ignore a stray
-`.tmp`. Rename changes exactly `name` and `modified`.
+`.tmp`. On Windows a rename over a file is refused while another handle
+has it open - a scanner, or a read in this process - so there the rename
+alone is tried again on `EPERM`, `EACCES` or `EBUSY` over about 1.3 seconds
+before the write fails, and the settings file's is too; this is a defence,
+because a held file is the suspected and not the proven cause of issue 93
+(`src/main/replace-file.ts`). A write still retrying when the app quits is
+dropped: the record stays whole, and a stray `.tmp` may remain, which
+readers ignore. Rename changes exactly `name` and `modified`.
 
 **Delete removes two folders**: `projects/<id>/` and the project's
 generated output under `out/<id>/`, whether or not the latter exists.
@@ -328,7 +335,10 @@ rename over the old file - and read the way a record is read, so a file
 that is half written, hand edited or from a newer app starts the app with
 the defaults it cannot use rather than stopping it. It is read before the
 configuration resolves, because a stored folder is one of the things the
-configuration decides.
+configuration decides. Its reads and writes run one after another; the
+settings in force change only once a write has landed, and a change that
+depends on the stored settings - the theme, a folder - goes through the
+store's `update`, which reads, changes and writes in one turn.
 
 Two rules hold the screen together. The environment still wins, so the
 development loop and the end-to-end suite steer the app as they did, and a

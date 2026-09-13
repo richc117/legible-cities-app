@@ -31,6 +31,7 @@ import {
   type Page,
 } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
+import { withWhatTheScreenSaid } from '../support/store-lines'
 
 const repoRoot = resolve(__dirname, '../..')
 const fixture = resolve(__dirname, '../fixtures/capture-page.html')
@@ -72,7 +73,13 @@ function launch(h: Home): Promise<ElectronApplication> {
   })
 }
 
+/** Where the current launch logs - its own profile's folder - and when it started. */
+let launched = { folder: '', since: new Date() }
+
 async function withApp(h: Home, run: (page: Page) => Promise<void>): Promise<void> {
+  // LEGIBLE_USER_DATA moves the logs with the profile, ahead of LEGIBLE_LOGS
+  // (src/main/index.ts), so this launch's lines are under its own profile.
+  launched = { folder: join(h.userData, 'logs'), since: new Date() }
   const app = await launch(h)
   try {
     const page = await app.firstWindow()
@@ -406,13 +413,15 @@ test('a storyboard chosen for a video reaches the plan, and the preset’s own i
     await expect(storyboard).toHaveValue('tour')
     await expect(exportPanel(page).getByRole('combobox', { name: 'View' })).toHaveCount(0)
     await storyboard.selectOption('day')
-    await expect
-      .poll(() => readRecord(h).export)
-      .toEqual({
-        preset: 'linkedin-video',
-        storyboard: 'day',
-        options: {},
-      })
+    await withWhatTheScreenSaid(page, launched, () =>
+      expect
+        .poll(() => readRecord(h).export)
+        .toEqual({
+          preset: 'linkedin-video',
+          storyboard: 'day',
+          options: {},
+        }),
+    )
     // The preview for "day" has been asked for: the address does not carry
     // a storyboard, so the stand-in's log says so instead. Nothing older can
     // reach the engine after it, since the renderer sends in order and no
@@ -462,13 +471,15 @@ test('the choice is the project’s, and it is there when the project is opened 
     await presetSelect(page).selectOption('bluesky-gif')
     await exportPanel(page).getByRole('combobox', { name: 'Storyboard' }).selectOption('reveal')
     await exportPanel(page).getByRole('checkbox', { name: 'The clock' }).uncheck()
-    await expect
-      .poll(() => readRecord(h).export)
-      .toEqual({
-        preset: 'bluesky-gif',
-        storyboard: 'reveal',
-        options: { clock: false },
-      })
+    await withWhatTheScreenSaid(page, launched, () =>
+      expect
+        .poll(() => readRecord(h).export)
+        .toEqual({
+          preset: 'bluesky-gif',
+          storyboard: 'reveal',
+          options: { clock: false },
+        }),
+    )
   })
   await withApp(h, async (page) => {
     await page.getByRole('button', { name: 'Open Los Angeles' }).click()
