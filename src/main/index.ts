@@ -327,14 +327,12 @@ function createSidecar(config: Config): Sidecar {
   log.info('engine', `interpreter: ${resolution.interpreter} (${resolution.origin})`)
   return new Sidecar({
     command: engineCommand(resolution.interpreter),
-    env: {
-      ...engineEnvironment({ config, base: process.env, development: !app.isPackaged }),
-      // A packaged runtime carries its bytecode, compiled at build as
-      // unchecked hashes (A0-10); a module that lacks one is compiled in
-      // memory, never written into the bundle, which on macOS would break
-      // its signature.
-      ...(resolution.origin === 'bundled runtime' ? { PYTHONDONTWRITEBYTECODE: '1' } : {}),
-    },
+    env: engineEnvironment({
+      config,
+      base: process.env,
+      development: !app.isPackaged,
+      bundledInterpreter: resolution.origin === 'bundled runtime',
+    }),
     pin,
     log: engineLog,
   })

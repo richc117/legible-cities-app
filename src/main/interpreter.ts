@@ -111,6 +111,13 @@ export interface EnvironmentInput {
   config: Pick<Config, 'home' | 'loomBin' | 'loomCommit' | 'ffmpeg'>
   base: Record<string, string | undefined>
   development: boolean
+  /**
+   * The interpreter is the packaged app's own runtime (`bundled runtime`).
+   * Its bytecode was compiled at build as unchecked hashes (A0-10), and a
+   * module that lacks some is compiled in memory rather than written into
+   * the bundle, which on macOS would break its signature.
+   */
+  bundledInterpreter?: boolean
   logLevel?: string
   platform?: NodeJS.Platform
 }
@@ -142,5 +149,6 @@ export function engineEnvironment(input: EnvironmentInput): Record<string, strin
   // Lines arrive as they are written, and survive any locale.
   env.PYTHONUNBUFFERED = '1'
   env.PYTHONIOENCODING = 'utf-8'
+  if (input.bundledInterpreter === true) env.PYTHONDONTWRITEBYTECODE = '1'
   return env
 }

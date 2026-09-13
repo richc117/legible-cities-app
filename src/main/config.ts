@@ -66,8 +66,8 @@ export interface ConfigInput {
   /**
    * A packaged app's own LOOM and ffmpeg, under its resources (A0-10,
    * specs/002). Absent in development, where nothing is bundled. Each is
-   * used only when present and when neither the environment nor the file
-   * names another, and its source then reads `bundled`.
+   * used whenever its folder is there and neither the environment nor the
+   * file names another, and its source then reads `bundled`.
    */
   bundled?: {
     resourcesPath: string
@@ -76,22 +76,25 @@ export interface ConfigInput {
   }
 }
 
-/** The four LOOM tools a bundled directory must hold to be used. */
-const LOOM_TOOLS = ['gtfs2graph', 'topo', 'loom', 'octi'] as const
-
-/** The bundled LOOM directory and ffmpeg, each where the build put it, or null where it did not. */
+/**
+ * The bundled LOOM directory and ffmpeg, or null where the build put no
+ * folder for them at all. Decided by the folder, not by what is in it: a
+ * package whose `loom/` has lost a tool must still hand the engine that
+ * folder, so the engine's own "has no topo" reaches the person. Falling back
+ * instead would run LOOM through Docker, which can pull an image from a
+ * public registry, or an ffmpeg from PATH, and nothing is downloaded or
+ * borrowed at run time (FR-013).
+ */
 export function bundledComponents(bundled: NonNullable<ConfigInput['bundled']>): {
   loomBin: string | null
   ffmpeg: string | null
 } {
   const exe = bundled.platform === 'win32' ? '.exe' : ''
   const loomBin = join(bundled.resourcesPath, 'loom')
-  const ffmpeg = join(bundled.resourcesPath, 'ffmpeg', `ffmpeg${exe}`)
+  const ffmpegFolder = join(bundled.resourcesPath, 'ffmpeg')
   return {
-    loomBin: LOOM_TOOLS.every((tool) => bundled.exists(join(loomBin, `${tool}${exe}`)))
-      ? loomBin
-      : null,
-    ffmpeg: bundled.exists(ffmpeg) ? ffmpeg : null,
+    loomBin: bundled.exists(loomBin) ? loomBin : null,
+    ffmpeg: bundled.exists(ffmpegFolder) ? join(ffmpegFolder, `ffmpeg${exe}`) : null,
   }
 }
 
@@ -143,8 +146,9 @@ export function resolveConfig(input: ConfigInput): Config {
 
   const home = pick('SCHEMATIC_HOME', input.env, file, input.settings?.engineFolder ?? null)
   // What the package carries sits below everything a person or a developer
-  // names, and above nothing: a packaged app with no LOOM directory still
-  // runs the Docker backend, as development does.
+  // names. Only a package with no `loom/` or `ffmpeg/` folder at all - a
+  // local unpacked build with nothing vendored - falls through to the
+  // development defaults (see bundledComponents).
   const carried =
     input.bundled === undefined ? { loomBin: null, ffmpeg: null } : bundledComponents(input.bundled)
   const namedLoomBin = pick('SCHEMATIC_LOOM_BIN', input.env, file)
