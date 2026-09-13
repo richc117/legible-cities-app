@@ -197,3 +197,95 @@ describe('LEGIBLE_ENGINE_PYTHON', () => {
     expect(c.sources.LEGIBLE_ENGINE_PYTHON).toBe('.env.local')
   })
 })
+
+describe('bundled components (A0-10)', () => {
+  const base = { userData: '/ud', desktop: '/desk', loomPin: PIN, baseDir: '/repo' }
+  const resources = join('/app', 'Contents', 'Resources')
+  const folders = [join(resources, 'loom'), join(resources, 'ffmpeg')]
+  const existing =
+    (...paths: string[]) =>
+    (path: string) =>
+      paths.includes(path)
+
+  it('uses the packaged LOOM and ffmpeg folders, reports them bundled, and pins the commit', () => {
+    const c = resolveConfig({
+      ...base,
+      env: {},
+      bundled: { resourcesPath: resources, platform: 'darwin', exists: existing(...folders) },
+    })
+    expect(c.loomBin).toBe(join(resources, 'loom'))
+    expect(c.sources.SCHEMATIC_LOOM_BIN).toBe('bundled')
+    expect(c.ffmpeg).toBe(join(resources, 'ffmpeg', 'ffmpeg'))
+    expect(c.sources.SCHEMATIC_FFMPEG).toBe('bundled')
+    expect(c.loomCommit, 'the bundled binaries are the pinned build').toBe(PIN)
+    expect(c.sources.SCHEMATIC_LOOM_COMMIT).toBe('default')
+    expect(describeConfig(c, { development: false })).toEqual(
+      expect.arrayContaining([
+        `SCHEMATIC_LOOM_BIN=${join(resources, 'loom')} (bundled)`,
+        `SCHEMATIC_FFMPEG=${join(resources, 'ffmpeg', 'ffmpeg')} (bundled)`,
+      ]),
+    )
+  })
+  it('names ffmpeg.exe on Windows', () => {
+    const c = resolveConfig({
+      ...base,
+      env: {},
+      bundled: { resourcesPath: resources, platform: 'win32', exists: existing(...folders) },
+    })
+    expect(c.loomBin).toBe(join(resources, 'loom'))
+    expect(c.ffmpeg).toBe(join(resources, 'ffmpeg', 'ffmpeg.exe'))
+  })
+  it('keeps a bundled folder whose contents are incomplete, so the engine says what is missing', () => {
+    // Only the folders exist: no tool, no ffmpeg. Falling back would run
+    // LOOM through Docker, which can pull an image, or an ffmpeg from PATH
+    // (FR-013); the engine's own error names the missing tool instead.
+    const c = resolveConfig({
+      ...base,
+      env: {},
+      bundled: { resourcesPath: resources, platform: 'darwin', exists: existing(...folders) },
+    })
+    expect(c.loomBin).toBe(join(resources, 'loom'))
+    expect(c.ffmpeg).toBe(join(resources, 'ffmpeg', 'ffmpeg'))
+    // Each is decided by its own folder.
+    const onlyLoom = resolveConfig({
+      ...base,
+      env: {},
+      bundled: {
+        resourcesPath: resources,
+        platform: 'darwin',
+        exists: existing(join(resources, 'loom')),
+      },
+    })
+    expect(onlyLoom.loomBin).toBe(join(resources, 'loom'))
+    expect(onlyLoom.ffmpeg).toBeNull()
+  })
+  it('falls through to the defaults only for a package with no folders at all', () => {
+    const none = resolveConfig({
+      ...base,
+      env: {},
+      bundled: { resourcesPath: resources, platform: 'darwin', exists: () => false },
+    })
+    expect(none.loomBin).toBeNull()
+    expect(none.ffmpeg).toBeNull()
+    expect(none.loomCommit).toBeNull()
+    expect(none.sources.SCHEMATIC_LOOM_BIN).toBe('default')
+    expect(none.sources.SCHEMATIC_FFMPEG).toBe('default')
+  })
+  it('gives way to the environment and the file, which a person set', () => {
+    const c = resolveConfig({
+      ...base,
+      env: { SCHEMATIC_LOOM_BIN: '/opt/loom' },
+      fileText: 'SCHEMATIC_FFMPEG=/file/ffmpeg\n',
+      bundled: { resourcesPath: resources, platform: 'darwin', exists: existing(...folders) },
+    })
+    expect(c.loomBin).toBe('/opt/loom')
+    expect(c.sources.SCHEMATIC_LOOM_BIN).toBe('environment')
+    expect(c.ffmpeg).toBe('/file/ffmpeg')
+    expect(c.sources.SCHEMATIC_FFMPEG).toBe('.env.local')
+  })
+  it('is nothing in development, where no resources are passed', () => {
+    const c = resolveConfig({ ...base, env: {} })
+    expect(c.loomBin).toBeNull()
+    expect(c.ffmpeg).toBeNull()
+  })
+})

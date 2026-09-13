@@ -183,6 +183,8 @@ const resetInProgress = (): string | null => settings?.refuseWhileResetting() ??
  */
 function sourceOf(source: Source): FolderSource {
   if (source === 'environment' || source === '.env.local') return 'environment'
+  // Nothing bundled is a folder; the two folders never read `bundled`.
+  if (source === 'bundled') return 'default'
   return source
 }
 
@@ -279,6 +281,11 @@ async function loadConfig(stored: AppSettings): Promise<Config> {
     baseDir,
     // Below the environment and .env.local, above the defaults (A1-04).
     settings: { engineFolder: stored.engineFolder, exportFolder: stored.exportFolder },
+    // A packaged app's own LOOM and ffmpeg, under its resources, as the
+    // interpreter is found there (A0-10); nothing is bundled in development.
+    bundled: development
+      ? undefined
+      : { resourcesPath: process.resourcesPath, platform: process.platform, exists: existsSync },
   })
   for (const line of describeConfig(config, { development })) log.info('config', line)
   // Not one of the configuration's keys, so it is said here: a support
@@ -320,7 +327,12 @@ function createSidecar(config: Config): Sidecar {
   log.info('engine', `interpreter: ${resolution.interpreter} (${resolution.origin})`)
   return new Sidecar({
     command: engineCommand(resolution.interpreter),
-    env: engineEnvironment({ config, base: process.env, development: !app.isPackaged }),
+    env: engineEnvironment({
+      config,
+      base: process.env,
+      development: !app.isPackaged,
+      bundledInterpreter: resolution.origin === 'bundled runtime',
+    }),
     pin,
     log: engineLog,
   })

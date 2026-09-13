@@ -147,8 +147,9 @@ The engine is `python -m schematic.serve` from the pinned engine
 (`vendor/pins.json`, `engine` block: tag, version, protocol), run by the
 first interpreter of these that exists and by nothing else: the one
 `LEGIBLE_ENGINE_PYTHON` names; in development, the engine checkout's own
-`.venv`; in a packaged app, the bundled runtime under the app's resources.
-With none, the state is *unavailable* with a sentence that names the key to
+`.venv`; in a packaged app, the bundled runtime under the app's resources,
+started with `PYTHONDONTWRITEBYTECODE=1` so nothing it imports is ever
+written into the bundle (see "Packaging" below). With none, the state is *unavailable* with a sentence that names the key to
 set, and the app is otherwise usable.
 
 `src/main/sidecar.ts` spawns it with an argument array, `windowsHide`, a
@@ -297,15 +298,15 @@ under `projects/`, sorted by modified time, newest first.
 
 Four locations, one pin and one development pointer, from the process
 environment, then `.env.local` (development only, gitignored; `.env.example`
-documents it), then the two folders a person chose in Settings, then
-defaults:
+documents it), then the two folders a person chose in Settings, then what a
+packaged app carries (reported as `bundled`), then defaults:
 
 | Key | Default |
 |---|---|
 | `SCHEMATIC_HOME` | the folder chosen in Settings, else `<userData>/engine` (ADR-016) |
-| `SCHEMATIC_LOOM_BIN` | unset; a directory of native LOOM binaries, which the engine runs instead of its Docker image |
+| `SCHEMATIC_LOOM_BIN` | in a packaged app, `loom/` under its resources whenever that folder exists, so a missing tool is the engine's error and never a fall back to Docker; otherwise unset. A directory of native LOOM binaries, which the engine runs instead of its Docker image |
 | `SCHEMATIC_LOOM_COMMIT` | passed when set, or with a LOOM directory, where the default is the app's pin (`loom.commit` in `vendor/pins.json`); the binaries cannot say which LOOM they are, so the engine reports what it is told as `engine.info.loom.commit` |
-| `SCHEMATIC_FFMPEG` | unset |
+| `SCHEMATIC_FFMPEG` | in a packaged app, `ffmpeg/ffmpeg` (`.exe` on Windows) under its resources whenever the `ffmpeg/` folder exists; otherwise unset, and the engine takes the first on `PATH` |
 | `LEGIBLE_EXPORT_FOLDER` | the folder chosen in Settings, else `<desktop>/Legible Cities`; where exports go, in a folder per project |
 | `LEGIBLE_ENGINE_CHECKOUT` | unset; the tokens test reads the engine page from it, and the engine runs from its `.venv` |
 | `LEGIBLE_ENGINE_PYTHON` | unset; an interpreter named explicitly (a path, or a bare command for PATH), which wins over the checkout |
@@ -1109,6 +1110,56 @@ mode with the engine's `require_edges` sentence, send extra log lines with
 the home folder in them, and record that a cancel during `octi` ended the
 child it started.
 
+## Packaging
+
+A packaged app carries everything the engine needs, under its resources and
+outside the asar, in the same shape on every target
+(`electron-builder.yml`):
+
+| Path under the resources | What | Found by |
+|---|---|---|
+| `python/` | the python-build-standalone runtime with the engine installed, its bytecode compiled | `src/main/interpreter.ts` |
+| `loom/` | `gtfs2graph`, `topo`, `loom`, `octi` | `src/main/config.ts`, as `SCHEMATIC_LOOM_BIN` |
+| `ffmpeg/` | `ffmpeg` and `ffprobe` | `src/main/config.ts`, as `SCHEMATIC_FFMPEG` |
+| `vendor-manifest.json` | the pins' sha256 and every component's exact version, the runtime's Python packages included | a release (A6-01) |
+| `LICENSE`, `THIRD_PARTY_NOTICES.md` | the app's licence and the notices | a person, and the Licences screen |
+
+`.github/workflows/build.yml` builds the installers - a dmg on each Mac
+runner and an nsis installer on Windows - from the vendor artefacts of its
+own run: it calls `vendor.yml` as a reusable workflow, and each packaging
+job downloads its target's three artefacts, restores the executable bits
+the artefact zip dropped, and runs `scripts/check-vendored.mjs <target>`
+(`npm run dist:check`). The check refuses, naming the component and the
+target, anything missing, stale against `vendor/pins.json` (the runtime's
+version, the engine's, and the version string and configure line inside
+ffmpeg and ffprobe) or built for another architecture, which it reads from
+each executable's Mach-O or PE header; then it writes the manifest. The job
+compiles the runtime's bytecode with `compileall -f --invalidation-mode
+unchecked-hash`, because a timestamped file stops matching the moment the
+packager copies its source and the first start rewrites it inside the
+bundle, breaking a Mac bundle's signature (ADR-035). The same script is
+electron-builder's `afterPack` hook: it checks the components again where
+they landed, every module's bytecode, and the manifest's hash against the
+pins being built, and with `LEGIBLE_VENDOR_TARGET` set a missing component
+fails the package, where electron-builder alone would skip it with a
+warning. Last, `scripts/launch-packaged.mjs` launches the unpacked app once
+with a temporary `--user-data-dir` and the bundle as its working directory,
+waits for the engine to be ready, asks it `engine.info` (which, at the
+pinned engine, reports configuration rather than proving execution), quits,
+and reads the log for the bundled origins and the engine's clean end. It
+then runs each bundled LOOM tool with `--help` and ffmpeg and ffprobe with
+`-version` from inside the bundle, and compares every file and folder in the
+bundle with the list taken before the launch. It runs no layout or export;
+ADR-035 says what that would take. On macOS the job then verifies the app's
+signature with `codesign --verify --deep --strict`.
+
+The Mac app is signed ad hoc, and nothing is signed with an identity until
+A6-05; `forceCodeSigning` is set but only takes effect once a real identity
+replaces the ad-hoc one, so the `codesign --verify` step is what checks the
+signature. A local `npm run dist` builds an unpacked app with whatever is
+vendored: with nothing, the hook lets it through and says it is not an
+installer; with anything, it holds the build to the same check.
+
 ## Deliberately absent
 
 | Not here | Arrives with |
@@ -1116,5 +1167,6 @@ child it started.
 | The contract tests running in continuous integration; they exist and are gated on an engine checkout. The vendor job's schema check is not them: it proves only that the runtime it builds starts `schematic.serve --schema` and that the output hashes to `engine.schema_sha256` | Open; no issue yet |
 | The left rail, and the project's fields and diagnostics in the inspector; the inspector holds only the jobs, and the fields and the diagnostics stay on the project screen (ADR-036) | Open; no issue yet |
 | Editing the numeric style fields; the record holds the engine's defaults, and the colours, the order and the theme are a person's since A4-01, A4-02 and A4-03 | post-MVP |
-| Vendored Python, LOOM and ffmpeg; installers | A0-10 (`specs/002`) |
+| Installers signed with an identity, and notarised | A6-05 |
+| A release: the GPL sources attached, the download page with the unsigned-install steps, and an ffmpeg of this project's own build | A6-01, issue 95 |
 | Signing and auto-update | A6-05 |

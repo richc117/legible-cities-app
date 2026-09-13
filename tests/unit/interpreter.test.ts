@@ -175,6 +175,24 @@ describe('engineEnvironment', () => {
     })
     expect(posix.Path).toBeUndefined()
   })
+  it('keeps a bundled runtime from writing bytecode, and only a bundled one', () => {
+    expect(
+      engineEnvironment({ config, base: env, development: false, bundledInterpreter: true })
+        .PYTHONDONTWRITEBYTECODE,
+    ).toBe('1')
+    expect(
+      engineEnvironment({ config, base: env, development: false }).PYTHONDONTWRITEBYTECODE,
+    ).toBeUndefined()
+    expect(
+      engineEnvironment({
+        config,
+        base: { ...env, PYTHONDONTWRITEBYTECODE: '1' },
+        development: true,
+        bundledInterpreter: false,
+      }).PYTHONDONTWRITEBYTECODE,
+      'not passed through from the app environment either',
+    ).toBeUndefined()
+  })
   it('adds the optional engine keys when set, and the log level asked for', () => {
     const out = engineEnvironment({
       config: { home: '/h', loomBin: '/loom', loomCommit: 'abcdef0', ffmpeg: '/ff/ffmpeg' },

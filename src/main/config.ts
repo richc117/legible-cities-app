@@ -1,6 +1,6 @@
 // Configuration: four locations, one pin and one development pointer, from
 // the process environment, then .env.local, then the two folders a person
-// chose in Settings, then defaults. Pure: no Electron import, so the
+// chose in Settings, then what a packaged app carries, then defaults. Pure: no Electron import, so the
 // parsing and the log lines are unit-tested without a window. Contract:
 // specs/001-electron-skeleton/contracts/config.md; the export folder,
 // specs/010-export/contracts/bridge.md; the stored tier,
@@ -22,7 +22,7 @@ export const KEYS = [
 export const EXPORT_FOLDER_NAME = 'Legible Cities'
 
 export type Key = (typeof KEYS)[number]
-export type Source = 'default' | 'settings' | '.env.local' | 'environment'
+export type Source = 'default' | 'bundled' | 'settings' | '.env.local' | 'environment'
 
 export interface Config {
   home: string
@@ -63,6 +63,39 @@ export interface ConfigInput {
    * defaults. Both are absolute; the store refuses anything else.
    */
   settings?: { engineFolder: string | null; exportFolder: string | null }
+  /**
+   * A packaged app's own LOOM and ffmpeg, under its resources (A0-10,
+   * specs/002). Absent in development, where nothing is bundled. Each is
+   * used whenever its folder is there and neither the environment nor the
+   * file names another, and its source then reads `bundled`.
+   */
+  bundled?: {
+    resourcesPath: string
+    platform: NodeJS.Platform
+    exists: (path: string) => boolean
+  }
+}
+
+/**
+ * The bundled LOOM directory and ffmpeg, or null where the build put no
+ * folder for them at all. Decided by the folder, not by what is in it: a
+ * package whose `loom/` has lost a tool must still hand the engine that
+ * folder, so the engine's own "has no topo" reaches the person. Falling back
+ * instead would run LOOM through Docker, which can pull an image from a
+ * public registry, or an ffmpeg from PATH, and nothing is downloaded or
+ * borrowed at run time (FR-013).
+ */
+export function bundledComponents(bundled: NonNullable<ConfigInput['bundled']>): {
+  loomBin: string | null
+  ffmpeg: string | null
+} {
+  const exe = bundled.platform === 'win32' ? '.exe' : ''
+  const loomBin = join(bundled.resourcesPath, 'loom')
+  const ffmpegFolder = join(bundled.resourcesPath, 'ffmpeg')
+  return {
+    loomBin: bundled.exists(loomBin) ? loomBin : null,
+    ffmpeg: bundled.exists(ffmpegFolder) ? join(ffmpegFolder, `ffmpeg${exe}`) : null,
+  }
 }
 
 /** KEY=value per line; `#` starts a comment; matching quotes are stripped; no interpolation. */
@@ -112,12 +145,26 @@ export function resolveConfig(input: ConfigInput): Config {
     isAbsolute(value) ? value : resolve(input.baseDir, value)
 
   const home = pick('SCHEMATIC_HOME', input.env, file, input.settings?.engineFolder ?? null)
-  const loomBin = pick('SCHEMATIC_LOOM_BIN', input.env, file)
+  // What the package carries sits below everything a person or a developer
+  // names. Only a package with no `loom/` or `ffmpeg/` folder at all - a
+  // local unpacked build with nothing vendored - falls through to the
+  // development defaults (see bundledComponents).
+  const carried =
+    input.bundled === undefined ? { loomBin: null, ffmpeg: null } : bundledComponents(input.bundled)
+  const namedLoomBin = pick('SCHEMATIC_LOOM_BIN', input.env, file)
+  const loomBin: { value: string | null; source: Source } =
+    namedLoomBin.value === null && carried.loomBin !== null
+      ? { value: carried.loomBin, source: 'bundled' }
+      : namedLoomBin
   const loomCommit = pick('SCHEMATIC_LOOM_COMMIT', input.env, file)
   // A value that is only whitespace is no value: the file parser trims, the
   // environment does not.
   const namedCommit = loomCommit.value === null ? null : loomCommit.value.trim() || null
-  const ffmpeg = pick('SCHEMATIC_FFMPEG', input.env, file)
+  const namedFfmpeg = pick('SCHEMATIC_FFMPEG', input.env, file)
+  const ffmpeg: { value: string | null; source: Source } =
+    namedFfmpeg.value === null && carried.ffmpeg !== null
+      ? { value: carried.ffmpeg, source: 'bundled' }
+      : namedFfmpeg
   const exportFolder = pick(
     'LEGIBLE_EXPORT_FOLDER',
     input.env,

@@ -1,8 +1,36 @@
-# Packaging configuration. Present so that `npm run dist` produces an
-# unpacked app locally; the installers, and the vendored engine runtime,
-# LOOM and ffmpeg they carry (extraResources), arrive with
-# specs/002-vendored-components-and-installers (issue A0-10). Unsigned
-# until the release-readiness gate (issue A6-05).
+# Packaging configuration. `npm run dist` produces an unpacked app locally,
+# with or without vendored components; .github/workflows/build.yml produces
+# the installers, a dmg per Mac and an nsis installer for Windows, from the
+# same run's vendor artefacts (specs/002-vendored-components-and-installers,
+# ADR-035).
+#
+# Every vendored component is copied into the app's resources, outside the
+# asar, at a path of the same shape on every target, where the main process
+# looks for it (src/main/interpreter.ts, src/main/config.ts):
+#
+#   resources/python/                the runtime, with the engine installed
+#   resources/loom/                  gtfs2graph, topo, loom, octi
+#   resources/ffmpeg/                ffmpeg and ffprobe
+#   resources/vendor-manifest.json   every component's exact version
+#
+# electron-builder skips an extraResources source that does not exist, with
+# only a warning. The afterPack hook is what refuses it: it checks the
+# components where they landed, their architecture, the compiled bytecode,
+# and that the manifest was written from this vendor/pins.json. With
+# LEGIBLE_VENDOR_TARGET set, as the build workflow sets it, nothing may be
+# missing; without it, a build that carries no component at all is let
+# through and says it is not an installer.
+#
+# Unsigned until the release-readiness gate (issue A6-05). On macOS the app
+# is signed ad hoc, which needs no identity: the packager changes the bundle
+# after Electron's own signature was made, and an Apple-silicon Mac refuses
+# a bundle whose signature is broken where it runs one signed ad hoc once a
+# person allows it. A Developer ID replaces the `identity` line; nothing
+# about the layout changes. `forceCodeSigning` does nothing while the
+# identity is `-`: electron-builder 26 builds the ad-hoc identity before the
+# only branch that reads the flag. It is kept for when a real identity
+# replaces `-`, where a missing certificate then fails the build. What
+# checks the ad-hoc signature is build.yml's `codesign --verify` step.
 appId: com.richardcaballero.legiblecities
 productName: Legible Cities
 directories:
@@ -12,10 +40,36 @@ files:
   - out/**
   - package.json
 asar: true
+afterPack: ./scripts/check-vendored.mjs
+extraResources:
+  - from: LICENSE
+    to: LICENSE
+  - from: THIRD_PARTY_NOTICES.md
+    to: THIRD_PARTY_NOTICES.md
 mac:
   target:
     - dmg
   category: public.app-category.graphics-design
+  identity: '-'
+  forceCodeSigning: true
+  extraResources:
+    - from: vendor/python/darwin-${arch}/python
+      to: python
+    - from: vendor/loom/darwin-${arch}
+      to: loom
+    - from: vendor/ffmpeg/darwin-${arch}
+      to: ffmpeg
+    - from: vendor/manifest-darwin-${arch}.json
+      to: vendor-manifest.json
 win:
   target:
     - nsis
+  extraResources:
+    - from: vendor/python/win-${arch}/python
+      to: python
+    - from: vendor/loom/win-${arch}
+      to: loom
+    - from: vendor/ffmpeg/win-${arch}
+      to: ffmpeg
+    - from: vendor/manifest-win-${arch}.json
+      to: vendor-manifest.json
