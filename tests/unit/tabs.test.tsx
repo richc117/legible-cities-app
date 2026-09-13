@@ -51,10 +51,10 @@ describe('Tabs', () => {
       </>,
     )
     expect(html).toContain(
-      `<div role="tabpanel" class="tab-panel" id="${panelId('p', 'map')}" aria-labelledby="${tabId('p', 'map')}" hidden=""><p>kept</p></div>`,
+      `<div role="tabpanel" class="tab-panel" id="${panelId('p', 'map')}" aria-labelledby="${tabId('p', 'map')}" tabindex="0" hidden=""><p>kept</p></div>`,
     )
     expect(html).toContain(
-      `<div role="tabpanel" class="tab-panel" id="${panelId('p', 'export')}" aria-labelledby="${tabId('p', 'export')}"><p>shown</p></div>`,
+      `<div role="tabpanel" class="tab-panel" id="${panelId('p', 'export')}" aria-labelledby="${tabId('p', 'export')}" tabindex="0"><p>shown</p></div>`,
     )
   })
 

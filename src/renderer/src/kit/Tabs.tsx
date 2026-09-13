@@ -105,7 +105,7 @@ export default function Tabs<T extends string>({
 }
 
 /**
- * One tab's panel. Kept in the document while another tab is chosen, and
+ * One tab's panel, focusable itself. Kept in the document while another tab is chosen, and
  * hidden: a panel holds work a person has started - a colour waiting to be
  * drawn, a start time half typed - and unmounting it would throw that away.
  */
@@ -126,6 +126,10 @@ export function TabPanel({
       className="tab-panel"
       id={panelId(idPrefix, id)}
       aria-labelledby={tabId(idPrefix, id)}
+      // A stop of its own, as the WAI-ARIA tabs pattern has it: from the
+      // strip, Tab reaches the panel even when the panel holds nothing that
+      // takes focus, and the panel's focus ring says where the reader is.
+      tabIndex={0}
       hidden={!selected}
     >
       {children}
