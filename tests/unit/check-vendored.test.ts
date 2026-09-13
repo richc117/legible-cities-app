@@ -29,7 +29,12 @@ const PINS = JSON.parse(PINS_TEXT) as {
   python: { version: string }
   engine: { version: string }
   loom: { commit: string }
-  ffmpeg: { targets: Record<string, { reports: string; configure: string }> }
+  ffmpeg: {
+    source: { sha256: string }
+    x264: { commit: string }
+    zlib: { sha256: string }
+    targets: Record<string, { reports: string; configure: string; x264_configure: string }>
+  }
 }
 
 type Target = 'darwin-arm64' | 'darwin-x64' | 'win-x64'
@@ -210,6 +215,19 @@ describe('check-vendored.mjs, as the build runs it', () => {
       expect(manifest.components.engine.version).toBe(PINS.engine.version)
       expect(manifest.components.loom.commit).toBe(PINS.loom.commit)
       expect(manifest.components.ffmpeg.reports).toBe(PINS.ffmpeg.targets[target].reports)
+      // What a release needs to name the Corresponding Source: the source
+      // archives by hash, and zlib's only where it is linked.
+      expect(manifest.components.ffmpeg.source.sha256).toBe(PINS.ffmpeg.source.sha256)
+      expect(manifest.components.ffmpeg.x264.commit).toBe(PINS.ffmpeg.x264.commit)
+      expect(manifest.components.ffmpeg.x264.configure).toBe(
+        PINS.ffmpeg.targets[target].x264_configure,
+      )
+      expect(manifest.components.ffmpeg.zlib.linked, target).toBe(
+        target === 'win-x64' ? 'static' : 'system',
+      )
+      expect(manifest.components.ffmpeg.zlib.sha256 ?? null, target).toBe(
+        target === 'win-x64' ? PINS.ffmpeg.zlib.sha256 : null,
+      )
       expect(manifest.components.python_packages).toEqual([
         { name: 'openschematicmaps', version: PINS.engine.version },
         { name: 'python_dateutil', version: '2.9.0.post0' },

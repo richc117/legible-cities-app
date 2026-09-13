@@ -7,8 +7,9 @@
 # on all four targets. The python job covers darwin-arm64, darwin-x64 and
 # win-x64 with one script and one licence gate (A0-06); Linux has no python
 # target because the app ships on macOS and Windows first (ADR-021).
-# The ffmpeg job takes a prebuilt static GPL FFmpeg for four targets, the
-# fourth, linux-x64, only for tests (ADR-012).
+# The ffmpeg jobs build a minimal GPL FFmpeg from pinned sources for four
+# targets, the fourth, linux-x64, only for tests, and upload its
+# Corresponding Source once (ADR-012, ADR-040).
 #
 # The configure flags are the spike's finding, not a preference: LOOM's
 # optional dependencies (GLPK, COIN-OR, Gurobi, libzip) are never called at
@@ -433,85 +434,298 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  # FFmpeg and ffprobe, prebuilt rather than built: ADR-012 has the sources
-  # and why. scripts/vendor-ffmpeg.sh verifies every pinned archive against
-  # its checksum and fails on a mismatch, refuses an ffmpeg or ffprobe whose
-  # configure line is not the pinned one, lacks --enable-gpl,
-  # --enable-version3 or --enable-libx264, or carries --enable-nonfree, or
-  # whose -L calls it not legally
-  # redistributable, requires every component export.py names, and encodes
-  # a one-second MP4 and GIF the way the engine does, reading both back with
-  # ffprobe, before anything reaches vendor/ffmpeg/<target>. linux-x64 is
-  # for tests and is not shipped, so it is proven here and not uploaded: an
-  # artefact of this public repository is a conveyed GPL binary, and the
-  # notices cover the three shipped builds only. A5-04 runs the script
-  # directly.
+  # FFmpeg and ffprobe, built here from the pinned sources (ADR-040, which
+  # amends ADR-012): FFmpeg's release tarball and x264 at a commit, each
+  # checked by sha256, configured with --disable-everything and only what the
+  # engine's export.py uses enabled back, with x264 the one external library
+  # (zlib, which the PNG codecs need, is the system's on macOS and Linux and
+  # built from its release tarball on Windows). scripts/vendor-ffmpeg.sh
+  # builds, refuses a configure line that is not the pinned one, then proves
+  # the pair as it proved the third-party builds before: the version and
+  # configure line, --enable-gpl, --enable-version3 and --enable-libx264 and no
+  # --enable-nonfree, -L, every component export.py names, and a one-second
+  # MP4 and GIF encoded the way the engine does and read back with ffprobe.
+  # Nothing reaches vendor/ffmpeg/<target> before that. The steps below then
+  # refuse any library the system does not provide and any configure flag
+  # beyond the pinned kinds. linux-x64 is for tests and is not shipped, so it
+  # is proven here and not uploaded: an artefact of this public repository is
+  # a conveyed GPL binary. A5-04 runs the script directly.
   ffmpeg:
     name: ffmpeg (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         include:
           - { os: macos-15,       target: darwin-arm64 }
           - { os: macos-15-intel, target: darwin-x64   }
-          - { os: windows-latest, target: win-x64      }
           - { os: ubuntu-22.04,   target: linux-x64    }
+    env:
+      TARGET: ${{ matrix.target }}
+      HOMEBREW_NO_AUTO_UPDATE: '1'
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - name: Fetch, verify and prove ffmpeg and ffprobe
+      - name: Build tools
         shell: bash
-        env:
-          TARGET: ${{ matrix.target }}
-        run: bash scripts/vendor-ffmpeg.sh "$TARGET"
-      - name: Refuse a macOS binary that links anything outside the system, or is another architecture
-        if: runner.os == 'macOS'
-        shell: bash
-        env:
-          TARGET: ${{ matrix.target }}
         run: |
-          # ADR-020's reason for refusing a build-host library, applied to a
-          # binary somebody else built: a Homebrew or /usr/local dylib would
-          # load on the builder's machine and on no user's. Only /usr/lib and
-          # /System may appear. Output is captured and tested as text, as in
-          # the python job, and a check that read no Mach-O file fails.
-          links=$(find "vendor/ffmpeg/$TARGET" -type f -exec otool -L {} +)
-          printf '%s\n' "$links"
-          files=$(grep -c ':$' <<< "$links" || true)
-          if [ "${files:-0}" -ne 2 ]; then
-            echo "::error::the link check read ${files:-0} Mach-O files under vendor/ffmpeg/$TARGET, not ffmpeg and ffprobe"
-            exit 1
+          # Build tools only; nothing installed here is linked into the
+          # result, which the link check below proves. nasm assembles x264's
+          # and FFmpeg's x86-64 code; Apple silicon needs none.
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            sudo apt-get update
+            sudo apt-get install --no-install-recommends -y nasm pkg-config zlib1g-dev
+          else
+            command -v pkg-config >/dev/null || brew install pkgconf
+            if [ "$TARGET" = darwin-x64 ]; then brew install nasm; fi
           fi
-          outside=$(grep -E '^[[:space:]]' <<< "$links" | grep -vE '^[[:space:]]+/(usr/lib|System/Library)/' || true)
-          if [ -n "$outside" ]; then
-            echo "::error::ffmpeg or ffprobe links a library outside /usr/lib and /System"
-            printf '%s\n' "$outside"
-            exit 1
-          fi
-          echo "ffmpeg and ffprobe link only /usr/lib and /System"
-          # Each binary is exactly the target's architecture: a universal
-          # binary would double the size, and the other architecture would
-          # run on this runner under Rosetta and prove nothing about a user's.
-          case "$TARGET" in
-            darwin-arm64) want=arm64 ;;
-            darwin-x64)   want=x86_64 ;;
-            *) echo "::error::no architecture known for $TARGET"; exit 1 ;;
-          esac
-          for b in ffmpeg ffprobe; do
-            archs=$(lipo -archs "vendor/ffmpeg/$TARGET/$b")
-            if [ "$archs" != "$want" ]; then
-              echo "::error::$b is '$archs', not $want"
+      - name: Build, verify and prove ffmpeg and ffprobe
+        shell: bash
+        run: time bash scripts/vendor-ffmpeg.sh "$TARGET"
+      - name: Refuse a binary that links anything outside the system, or is another architecture or macOS
+        shell: bash
+        run: |
+          # Output is captured and tested as text, as in the python job, and
+          # a check that read fewer than the two binaries fails.
+          dir="vendor/ffmpeg/$TARGET"
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            # Only /usr/lib and /System may appear: a Homebrew or /usr/local
+            # dylib would load on the runner and on no user's machine.
+            links=$(find "$dir" -type f -exec otool -L {} +)
+            printf '%s\n' "$links"
+            files=$(grep -c ':$' <<< "$links" || true)
+            if [ "${files:-0}" -ne 2 ]; then
+              echo "::error::the link check read ${files:-0} Mach-O files under $dir, not ffmpeg and ffprobe"
               exit 1
             fi
+            outside=$(grep -E '^[[:space:]]' <<< "$links" | grep -vE '^[[:space:]]+/(usr/lib|System/Library)/' || true)
+            if [ -n "$outside" ]; then
+              echo "::error::ffmpeg or ffprobe links a library outside /usr/lib and /System"
+              printf '%s\n' "$outside"
+              exit 1
+            fi
+            echo "ffmpeg and ffprobe link only /usr/lib and /System"
+            # Each binary is exactly the target's architecture: a universal
+            # binary would double the size, and the other architecture would
+            # run on this runner under Rosetta and prove nothing about a user's.
+            case "$TARGET" in
+              darwin-arm64) want=arm64 ;;
+              darwin-x64)   want=x86_64 ;;
+              *) echo "::error::no architecture known for $TARGET"; exit 1 ;;
+            esac
+            for b in ffmpeg ffprobe; do
+              archs=$(lipo -archs "$dir/$b")
+              if [ "$archs" != "$want" ]; then
+                echo "::error::$b is '$archs', not $want"
+                exit 1
+              fi
+              # No newer than the macOS the pinned Electron needs (13.0), or
+              # the export fails on a Mac the app itself starts on.
+              load=$(otool -l "$dir/$b")
+              minos=$(awk '/LC_BUILD_VERSION/ { found = 1 } found && $1 == "minos" { print $2; exit }' <<< "$load")
+              echo "$b: $archs, minos $minos"
+              if [ "$minos" != "13.0" ]; then
+                echo "::error::$b is built for macOS ${minos:-unknown}, not 13.0"
+                exit 1
+              fi
+            done
+            echo "ffmpeg and ffprobe are $want only, for macOS 13.0 and later"
+          else
+            # The C library, libm, libpthread, libdl and zlib are the system's
+            # on every Linux; anything else would be one a machine has to
+            # supply, and x264 must not appear as a library at all.
+            status=0
+            for b in ffmpeg ffprobe; do
+              echo "--- $b ---"
+              links=$(ldd "$dir/$b")
+              printf '%s\n' "$links"
+              if [ -z "$(grep -E 'libc\.so' <<< "$links" || true)" ]; then
+                echo "::error::ldd listed no C library for $b; nothing was checked"
+                status=1
+              fi
+              if [ -n "$(grep 'not found' <<< "$links" || true)" ]; then
+                echo "::error::$b needs a library the runner does not ship"
+                status=1
+              fi
+              outside=$(grep -vE '^[[:space:]]*(linux-vdso\.so|/lib64/ld-linux-x86-64\.so|(libc|libm|libpthread|libdl|libz)\.so)' <<< "$links" || true)
+              if [ -n "$outside" ]; then
+                echo "::error::$b links a library outside the allowlist"
+                printf '%s\n' "$outside"
+                status=1
+              fi
+            done
+            exit $status
+          fi
+      - name: Refuse a configure line with a library but x264 and zlib, or nonfree
+        shell: bash
+        run: |
+          # Every --enable- flag must be one of the licence switches, zlib,
+          # libx264, or a list of FFmpeg's own components; anything else
+          # (another external library, --enable-nonfree, a hardware API)
+          # fails, whatever the pin says.
+          status=0
+          for b in ffmpeg ffprobe; do
+            conf=$("vendor/ffmpeg/$TARGET/$b" -hide_banner -buildconf)
+            conf=${conf//$'\r'/}
+            enabled=$(grep -oE -- '--enable-[a-z0-9_-]+' <<< "$conf" | sort -u)
+            echo "$b enables: $(tr '\n' ' ' <<< "$enabled")"
+            if [ -z "$enabled" ]; then
+              echo "::error::$b -buildconf listed nothing; nothing was checked"
+              status=1
+            fi
+            others=$(grep -vxE -- '--enable-(gpl|version3|zlib|libx264|encoder|decoder|parser|muxer|demuxer|filter|indev|protocol)' <<< "$enabled" || true)
+            if [ -n "$others" ]; then
+              echo "::error::$b is configured with $(tr '\n' ' ' <<< "$others")"
+              status=1
+            fi
           done
-          echo "ffmpeg and ffprobe are $want only"
+          exit $status
+      - name: Measure
+        shell: bash
+        run: |
+          # What the pair adds to an installer, unpacked, for ADR-040.
+          bytes=$(cat "vendor/ffmpeg/$TARGET/ffmpeg" "vendor/ffmpeg/$TARGET/ffprobe" | wc -c | tr -d ' ')
+          ls -l "vendor/ffmpeg/$TARGET"
+          line="$TARGET: ffmpeg and ffprobe $bytes bytes, $(awk -v b="$bytes" 'BEGIN { printf "%.1f", b / 1000000 }') MB"
+          echo "$line"
+          echo "$line" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v7
         if: matrix.target != 'linux-x64'
         with:
           name: ffmpeg-${{ matrix.target }}
           path: vendor/ffmpeg/${{ matrix.target }}
+          if-no-files-found: error
+          retention-days: 30
+
+  # Windows builds under MSYS2 UCRT64 on windows-latest, beside the LOOM
+  # Windows job and for the same reasons (ADR-021, ADR-040): the build and
+  # the proof run on the operating system that ships, in one job. The build
+  # step is MSYS2's shell; the proof is Git Bash's, where it has always run,
+  # and it takes the pair the build left. GCC's runtime, zlib and x264 are
+  # all linked statically, and the import table must name only Windows' own
+  # DLLs.
+  ffmpeg-windows:
+    name: ffmpeg (win-x64)
+    runs-on: windows-latest
+    timeout-minutes: 75
+    env:
+      TARGET: win-x64
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            make
+            diffutils
+            git
+            curl
+            tar
+            xz
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-nasm
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-python
+      - name: Build ffmpeg and ffprobe
+        shell: msys2 {0}
+        run: time bash scripts/vendor-ffmpeg.sh --build-only "$TARGET" build/ffmpeg-win-x64
+      - name: Verify and prove them
+        shell: bash
+        run: bash scripts/vendor-ffmpeg.sh --from build/ffmpeg-win-x64 "$TARGET"
+      - name: Refuse a DLL that is not Windows' own, or a zlib that is not the pinned one
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          # The direct imports, from the PE import table: a DLL from the MSYS2
+          # tree (libwinpthread, libgcc, zlib1, libx264) would be one we had
+          # to ship. The C runtime is the Universal CRT, reached through its
+          # api-ms-win-crt API sets, part of Windows 10 and later.
+          status=0
+          zlib=$(python -c "import json;print(json.load(open('vendor/pins.json'))['ffmpeg']['zlib']['version'])")
+          zlib=${zlib//$'\r'/}
+          for b in ffmpeg ffprobe; do
+            exe="vendor/ffmpeg/$TARGET/$b.exe"
+            imports=$(objdump -p "$exe" | sed -n 's/^[[:space:]]*DLL Name: //p' | tr -d '\r')
+            echo "--- $b.exe imports ---"
+            printf '%s\n' "$imports"
+            if [ -z "$imports" ]; then
+              echo "::error::objdump listed no imports for $b.exe; nothing was checked"
+              status=1
+            fi
+            outside=$(grep -viE '^(kernel32|user32|advapi32|bcrypt|ole32|oleaut32|shell32|shlwapi|psapi|gdi32|ws2_32|msvcrt|ucrtbase|ntdll)\.dll$|^api-ms-win-(crt|core)-[a-z0-9-]+\.dll$' <<< "$imports" || true)
+            if [ -n "$outside" ]; then
+              echo "::error::$b.exe imports a DLL that is not Windows' own: $(tr '\n' ' ' <<< "$outside")"
+              status=1
+            fi
+            # zlib is linked statically, so no import shows which; its own
+            # copyright string does, and it must be the pinned release rather
+            # than a static zlib from the MSYS2 tree.
+            if ! grep -aqF " deflate $zlib Copyright" "$exe"; then
+              echo "::error::$b.exe does not carry zlib $zlib"
+              status=1
+            fi
+          done
+          exit $status
+      - name: Refuse a configure line with a library but x264 and zlib, or nonfree
+        shell: bash
+        run: |
+          status=0
+          for b in ffmpeg ffprobe; do
+            conf=$("vendor/ffmpeg/$TARGET/$b.exe" -hide_banner -buildconf)
+            conf=${conf//$'\r'/}
+            enabled=$(grep -oE -- '--enable-[a-z0-9_-]+' <<< "$conf" | sort -u)
+            echo "$b enables: $(tr '\n' ' ' <<< "$enabled")"
+            if [ -z "$enabled" ]; then
+              echo "::error::$b -buildconf listed nothing; nothing was checked"
+              status=1
+            fi
+            others=$(grep -vxE -- '--enable-(gpl|version3|zlib|libx264|encoder|decoder|parser|muxer|demuxer|filter|indev|protocol)' <<< "$enabled" || true)
+            if [ -n "$others" ]; then
+              echo "::error::$b is configured with $(tr '\n' ' ' <<< "$others")"
+              status=1
+            fi
+          done
+          exit $status
+      - name: Measure
+        shell: bash
+        run: |
+          bytes=$(cat "vendor/ffmpeg/$TARGET/ffmpeg.exe" "vendor/ffmpeg/$TARGET/ffprobe.exe" | wc -c | tr -d ' ')
+          ls -l "vendor/ffmpeg/$TARGET"
+          line="$TARGET: ffmpeg and ffprobe $bytes bytes, $(awk -v b="$bytes" 'BEGIN { printf "%.1f", b / 1000000 }') MB"
+          echo "$line"
+          echo "$line" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ffmpeg-win-x64
+          path: vendor/ffmpeg/win-x64
+          if-no-files-found: error
+          retention-days: 30
+
+  # The Corresponding Source of every ffmpeg above, uploaded once: FFmpeg's
+  # release tarball, x264 at its commit and zlib's release tarball, as
+  # fetched and verified against the pins, with copies of the script, the
+  # pins and this workflow, and BUILD.txt naming every configure line and
+  # this run's commit. A6-01 attaches this artefact, by this name, to each
+  # GitHub Release (ADR-040).
+  ffmpeg-source:
+    name: ffmpeg (source)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Fetch and verify the sources
+        shell: bash
+        run: bash scripts/vendor-ffmpeg.sh --sources ffmpeg-source
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ffmpeg-source
+          path: ffmpeg-source
           if-no-files-found: error
           retention-days: 30

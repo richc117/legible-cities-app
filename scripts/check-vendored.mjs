@@ -462,14 +462,37 @@ export function buildManifest({ target, pins, pinsSha256, packages, app }) {
             }
           : {}),
       },
+      // Built by this repository's vendor job from these sources (ADR-040);
+      // its ffmpeg-source artefact carries them with every configure line.
       ffmpeg: {
         version: ffmpeg.version,
         reports: ffmpegTarget.reports,
-        origin: ffmpegTarget.origin,
-        build_scripts: ffmpegTarget.build_scripts,
-        source: ffmpeg.source,
+        built_by: 'scripts/vendor-ffmpeg.sh in .github/workflows/vendor.yml',
+        source: {
+          url: ffmpeg.source.url,
+          sha256: ffmpeg.source.sha256,
+          tag: ffmpeg.source.tag,
+          commit: ffmpeg.source.commit,
+        },
         configure: ffmpegTarget.configure,
-        archives: ffmpegTarget.archives.map(({ url, sha256 }) => ({ url, sha256 })),
+        x264: {
+          repo: ffmpeg.x264.repo,
+          commit: ffmpeg.x264.commit,
+          sha256: ffmpeg.x264.sha256,
+          configure: ffmpegTarget.x264_configure,
+          licence: ffmpeg.x264.licence,
+        },
+        zlib:
+          ffmpegTarget.zlib === 'static'
+            ? {
+                linked: 'static',
+                version: ffmpeg.zlib.version,
+                url: ffmpeg.zlib.url,
+                sha256: ffmpeg.zlib.sha256,
+                configure: ffmpegTarget.zlib_configure,
+                licence: ffmpeg.zlib.licence,
+              }
+            : { linked: 'system' },
         licence: ffmpeg.licence,
       },
     },

@@ -50,84 +50,59 @@
     "licence_check": "Verified 2026-09-07: the interpreter links libedit, not GNU readline, and _dbm links only libSystem - no GDBM. Both are GPL components that must stay out; see THIRD_PARTY_NOTICES.md. The Windows asset, listed 2026-09-12, has no readline and no _dbm or _gdbm extension; darwin-x64 has the same names as darwin-arm64."
   },
   "ffmpeg": {
-    "version": "9.0",
+    "version": "9.0.1",
+    "note": "Built in this repository by scripts/vendor-ffmpeg.sh, in the ffmpeg jobs of .github/workflows/vendor.yml, natively on each target (ADR-040, amending ADR-012): ffmpeg and ffprobe only (the engine finds ffprobe beside SCHEMATIC_FFMPEG by name). FFmpeg from its release tarball, x264 from a commit, both checked by sha256 before use; x264 is the only external library, and zlib, which the PNG codecs need, is the operating system's on macOS and Linux and built statically from its release tarball on Windows, which has none. `source.sha256` was computed on download on 2026-09-13 (FFmpeg publishes a GPG signature, not a checksum). `x264.sha256` is of the uncompressed tar `git archive --format=tar --prefix=x264-<commit>/` writes for the commit, which is byte for byte the tar inside VideoLAN GitLab's .tar.bz2 of it; `x264.commit` is master's head since 2025-09-10, and the commit BtbN's builds pin. `zlib.sha256` matches the digest GitHub records for the release asset. Per target: `configure` is FFmpeg's configure line exactly as `ffmpeg -version` prints it; `x264_configure` and `zlib_configure` are the arguments given to each configure besides `--prefix`, which names the build's own dependency folder; `reports` is the token after 'ffmpeg version '. The script refuses to build when the lines it composes differ from these, and the proof refuses a binary whose -version differs.",
+    "licence": "GPL-3.0-or-later: every target is configured --enable-gpl --enable-version3 and links x264 (GPL-2.0-or-later); none is --enable-nonfree",
     "source": {
+      "url": "https://ffmpeg.org/releases/ffmpeg-9.0.1.tar.xz",
+      "sha256": "cf38e0e28c7e5605942c4a77755349b0145804a397af37eb1fb4c77cb237f635",
+      "signature": "https://ffmpeg.org/releases/ffmpeg-9.0.1.tar.xz.asc",
       "repo": "https://git.ffmpeg.org/ffmpeg.git",
-      "release": "https://ffmpeg.org/releases/ffmpeg-9.0.1.tar.xz",
       "tag": "n9.0.1",
       "commit": "bf1b838f2ab88b4f8fd83443325c782ea0e0f7fa",
-      "btbn_commit": "e47273f4d9227152dcbf543cebaf9e2430ddbcc4"
+      "licence": "LGPL-2.1-or-later, GPL-2.0-or-later with --enable-gpl, and the version 3 of each with --enable-version3"
     },
-    "note": "Prebuilt static GPL builds of FFmpeg 9.0, ffmpeg and ffprobe only (the engine finds ffprobe beside SCHEMATIC_FFMPEG by name), each from a builder that publishes its build scripts. macOS: martin-riedl.de's n9.0.1 release builds (source.commit). Windows, and Linux for tests only: one BtbN snapshot, the release/9.0 branch at n9.0.1-11 (source.btbn_commit); martin-riedl.de's Linux build is --enable-nonfree --enable-decklink and may not be redistributed, and gyan.dev, first chosen for Windows, publishes no build scripts. The sha256 of every archive was computed on download on 2026-09-12 and matches what each builder publishes (martin-riedl.de's .sha256 files, BtbN's checksums.sha256). `reports` is the token ffmpeg -version prints after 'ffmpeg version '; `configure` is the build's configure line verbatim, from -version on darwin-arm64 and from the binary's strings elsewhere.",
-    "licence": "GPL-3.0-or-later: every target's configure line carries --enable-gpl and --enable-version3, and none carries --enable-nonfree",
+    "x264": {
+      "repo": "https://code.videolan.org/videolan/x264.git",
+      "commit": "0480cb05fa188d37ae87e8f4fd8f1aea3711f7ee",
+      "sha256": "5686546d663e7520bd05cd47a31d615d0dc707c089cfcb5924a1bcfd3aea7be5",
+      "licence": "GPL-2.0-or-later"
+    },
+    "zlib": {
+      "version": "1.3.2",
+      "url": "https://github.com/madler/zlib/releases/download/v1.3.2/zlib-1.3.2.tar.gz",
+      "sha256": "bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16",
+      "licence": "Zlib"
+    },
     "targets": {
       "darwin-arm64": {
-        "origin": "https://ffmpeg.martin-riedl.de",
-        "build_scripts": "https://git.martin-riedl.de/ffmpeg/build-script at f63b8aab8f5ce1a067da86ba69e34a36a7e217e5 (the commit on main that moved it to 9.0.1, on 2026-08-17, and main's head ever since; the build, made on 2026-08-18, does not record which commit built it, so this is inferred). Every library is fetched at a released version except x264, fetched as master's tarball, whose head has been 0480cb05fa188d37ae87e8f4fd8f1aea3711f7ee since 2025-09-10",
-        "reports": "9.0.1-https://www.martin-riedl.de",
-        "configure": "--prefix=/Volumes/ffmpeg_arm64/out --pkg-config-flags=--static --extra-version='https://www.martin-riedl.de' --enable-gray --enable-libxml2 --enable-version3 --enable-gpl --enable-openssl --enable-libfreetype --enable-fontconfig --enable-libharfbuzz --enable-libbluray --enable-libsnappy --enable-libsrt --enable-libvmaf --enable-libass --enable-libklvanc --enable-libzimg --enable-libzvbi --enable-libaom --enable-libdav1d --enable-libopenh264 --enable-libopenjpeg --enable-librav1e --enable-libsvtav1 --enable-libvpx --enable-libvvenc --enable-libwebp --enable-libx264 --enable-libx265 --enable-libmp3lame --enable-libopus --enable-libvorbis --enable-libtheora",
-        "archives": [
-          {
-            "url": "https://ffmpeg.martin-riedl.de/download/macos/arm64/1787073674_9.0.1/ffmpeg.zip",
-            "sha256": "8287a1b2229e05eb41859f073e18e6c52c60a778f2f5e6881070fe51b79407fe",
-            "extract": { "ffmpeg": "ffmpeg" }
-          },
-          {
-            "url": "https://ffmpeg.martin-riedl.de/download/macos/arm64/1787073674_9.0.1/ffprobe.zip",
-            "sha256": "102a26b8940a053298d9929bfaae71e4b6ef65ba5f19a99a88c433108560741a",
-            "extract": { "ffprobe": "ffprobe" }
-          }
-        ]
+        "runner": "macos-15",
+        "zlib": "system",
+        "x264_configure": "--enable-static --disable-cli --disable-opencl --disable-avs --disable-swscale --disable-lavf --disable-ffms --disable-gpac --disable-lsmash --bit-depth=8 --chroma-format=420 --extra-cflags=-mmacosx-version-min=13.0 --extra-ldflags=-mmacosx-version-min=13.0",
+        "configure": "--disable-everything --disable-autodetect --disable-doc --disable-debug --disable-network --disable-ffplay --enable-gpl --enable-version3 --enable-zlib --enable-libx264 --pkg-config-flags=--static --extra-cflags='-mmacosx-version-min=13.0' --extra-ldflags='-mmacosx-version-min=13.0 -Wl,-dead_strip_dylibs' --enable-encoder='libx264,aac,gif,png,mjpeg,rawvideo' --enable-decoder='png,h264,mjpeg,gif,wrapped_avframe,pcm_u8,pcm_s16le,pcm_s32le,pcm_f32le,pcm_f64le' --enable-parser=gif --enable-muxer='mp4,gif,image2,rawvideo' --enable-demuxer='image2,mov,gif' --enable-filter='scale,format,fade,palettegen,paletteuse,anullsrc,testsrc,null,anull,aformat,aresample,trim,atrim,crop' --enable-indev=lavfi --enable-protocol='file,pipe'",
+        "reports": "9.0.1"
       },
       "darwin-x64": {
-        "origin": "https://ffmpeg.martin-riedl.de",
-        "build_scripts": "https://git.martin-riedl.de/ffmpeg/build-script at f63b8aab8f5ce1a067da86ba69e34a36a7e217e5 (the commit on main that moved it to 9.0.1, on 2026-08-17, and main's head ever since; the build, made on 2026-08-18, does not record which commit built it, so this is inferred). Every library is fetched at a released version except x264, fetched as master's tarball, whose head has been 0480cb05fa188d37ae87e8f4fd8f1aea3711f7ee since 2025-09-10",
-        "reports": "9.0.1-https://www.martin-riedl.de",
-        "configure": "--prefix=/Volumes/ffmpeg_amd64/out --pkg-config-flags=--static --extra-version='https://www.martin-riedl.de' --enable-gray --enable-libxml2 --enable-version3 --enable-gpl --enable-openssl --enable-libfreetype --enable-fontconfig --enable-libharfbuzz --enable-libbluray --enable-libsnappy --enable-libsrt --enable-libvmaf --enable-libass --enable-libklvanc --enable-libzimg --enable-libzvbi --enable-libaom --enable-libdav1d --enable-libopenh264 --enable-libopenjpeg --enable-librav1e --enable-libsvtav1 --enable-libvpx --enable-libvvenc --enable-libwebp --enable-libx264 --enable-libx265 --enable-libmp3lame --enable-libopus --enable-libvorbis --enable-libtheora",
-        "archives": [
-          {
-            "url": "https://ffmpeg.martin-riedl.de/download/macos/amd64/1787081194_9.0.1/ffmpeg.zip",
-            "sha256": "5bdead62ff504ab9b447cc72b212c4fb481e3f7de5877d427a51bee8136dda40",
-            "extract": { "ffmpeg": "ffmpeg" }
-          },
-          {
-            "url": "https://ffmpeg.martin-riedl.de/download/macos/amd64/1787081194_9.0.1/ffprobe.zip",
-            "sha256": "34511bbcf1988ad2886023bf5ace4f44cf62e6defeb3d194d6f7619e5b061f7f",
-            "extract": { "ffprobe": "ffprobe" }
-          }
-        ]
+        "runner": "macos-15-intel",
+        "zlib": "system",
+        "x264_configure": "--enable-static --disable-cli --disable-opencl --disable-avs --disable-swscale --disable-lavf --disable-ffms --disable-gpac --disable-lsmash --bit-depth=8 --chroma-format=420 --extra-cflags=-mmacosx-version-min=13.0 --extra-ldflags=-mmacosx-version-min=13.0",
+        "configure": "--disable-everything --disable-autodetect --disable-doc --disable-debug --disable-network --disable-ffplay --enable-gpl --enable-version3 --enable-zlib --enable-libx264 --pkg-config-flags=--static --extra-cflags='-mmacosx-version-min=13.0' --extra-ldflags='-mmacosx-version-min=13.0 -Wl,-dead_strip_dylibs' --enable-encoder='libx264,aac,gif,png,mjpeg,rawvideo' --enable-decoder='png,h264,mjpeg,gif,wrapped_avframe,pcm_u8,pcm_s16le,pcm_s32le,pcm_f32le,pcm_f64le' --enable-parser=gif --enable-muxer='mp4,gif,image2,rawvideo' --enable-demuxer='image2,mov,gif' --enable-filter='scale,format,fade,palettegen,paletteuse,anullsrc,testsrc,null,anull,aformat,aresample,trim,atrim,crop' --enable-indev=lavfi --enable-protocol='file,pipe'",
+        "reports": "9.0.1"
       },
       "win-x64": {
-        "origin": "https://github.com/BtbN/FFmpeg-Builds",
-        "build_scripts": "https://github.com/BtbN/FFmpeg-Builds/tree/autobuild-2026-08-31-13-27 (commit 8267213e26c1031621e6e1210fe3aa4867214f6a; month-end builds are kept for two years)",
-        "reports": "n9.0.1-11-ge47273f4d9-20260831",
-        "configure": "--prefix=/ffbuild/prefix --pkg-config-flags=--static --pkg-config=pkg-config --cross-prefix=x86_64-w64-mingw32- --arch=x86_64 --target-os=mingw32 --enable-gpl --enable-version3 --disable-debug --disable-w32threads --enable-pthreads --enable-iconv --enable-zlib --enable-libxml2 --enable-libvmaf --enable-fontconfig --enable-libharfbuzz --enable-libfreetype --enable-libfribidi --enable-vulkan --enable-libvorbis --disable-libxcb --disable-xlib --disable-libpulse --enable-gmp --enable-lzma --enable-liblcevc-dec --enable-opencl --enable-amf --enable-libaom --enable-libaribb24 --enable-avisynth --enable-chromaprint --enable-libdav1d --enable-libdavs2 --enable-libdvdread --enable-libdvdnav --disable-libfdk-aac --enable-ffnvcodec --enable-cuda-llvm --enable-frei0r --enable-libgme --enable-libkvazaar --enable-libaribcaption --enable-libass --enable-libbluray --enable-libjxl --enable-libmp3lame --enable-libopus --enable-libplacebo --enable-librist --enable-libssh --enable-libtheora --enable-libvpx --enable-libwebp --enable-libzmq --enable-lv2 --enable-libvpl --enable-openal --enable-liboapv --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopenh264 --enable-libopenjpeg --enable-libopenmpt --enable-librav1e --enable-librubberband --enable-schannel --enable-sdl2 --enable-libsnappy --enable-libsoxr --enable-libsrt --enable-libsvtav1 --enable-libtwolame --enable-libuavs3d --disable-libdrm --enable-vaapi --enable-libvidstab --enable-libvvenc --disable-whisper --enable-libx264 --enable-libx265 --enable-libxavs2 --enable-libxvid --enable-libzimg --enable-libzvbi --extra-cflags=-DLIBTWOLAME_STATIC --extra-cxxflags= --extra-libs=-lgomp --extra-ldflags=-pthread --extra-ldexeflags= --cc=x86_64-w64-mingw32-gcc --cxx=x86_64-w64-mingw32-g++ --ar=x86_64-w64-mingw32-gcc-ar --ranlib=x86_64-w64-mingw32-gcc-ranlib --nm=x86_64-w64-mingw32-gcc-nm --extra-version=20260831",
-        "archives": [
-          {
-            "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-31-13-27/ffmpeg-n9.0.1-11-ge47273f4d9-win64-gpl-9.0.zip",
-            "sha256": "ec9db2cda1f5894ab95446076ad8bf49379db4b53c02e778ad3b49adf91fec83",
-            "extract": {
-              "ffmpeg.exe": "ffmpeg-n9.0.1-11-ge47273f4d9-win64-gpl-9.0/bin/ffmpeg.exe",
-              "ffprobe.exe": "ffmpeg-n9.0.1-11-ge47273f4d9-win64-gpl-9.0/bin/ffprobe.exe"
-            }
-          }
-        ]
+        "runner": "windows-latest, in MSYS2 UCRT64",
+        "zlib": "static",
+        "zlib_configure": "--static",
+        "x264_configure": "--enable-static --disable-cli --disable-opencl --disable-avs --disable-swscale --disable-lavf --disable-ffms --disable-gpac --disable-lsmash --bit-depth=8 --chroma-format=420",
+        "configure": "--disable-everything --disable-autodetect --disable-doc --disable-debug --disable-network --disable-ffplay --enable-gpl --enable-version3 --enable-zlib --enable-libx264 --pkg-config-flags=--static --extra-ldflags=-static --enable-encoder='libx264,aac,gif,png,mjpeg,rawvideo' --enable-decoder='png,h264,mjpeg,gif,wrapped_avframe,pcm_u8,pcm_s16le,pcm_s32le,pcm_f32le,pcm_f64le' --enable-parser=gif --enable-muxer='mp4,gif,image2,rawvideo' --enable-demuxer='image2,mov,gif' --enable-filter='scale,format,fade,palettegen,paletteuse,anullsrc,testsrc,null,anull,aformat,aresample,trim,atrim,crop' --enable-indev=lavfi --enable-protocol='file,pipe'",
+        "reports": "9.0.1"
       },
       "linux-x64": {
-        "origin": "https://github.com/BtbN/FFmpeg-Builds",
-        "build_scripts": "https://github.com/BtbN/FFmpeg-Builds/tree/autobuild-2026-08-31-13-27 (commit 8267213e26c1031621e6e1210fe3aa4867214f6a; month-end builds are kept for two years)",
-        "reports": "n9.0.1-11-ge47273f4d9-20260831",
-        "configure": "--prefix=/ffbuild/prefix --pkg-config-flags=--static --pkg-config=pkg-config --cross-prefix=x86_64-ffbuild-linux-gnu- --arch=x86_64 --target-os=linux --enable-gpl --enable-version3 --disable-debug --enable-iconv --enable-zlib --enable-libxml2 --enable-libsoxr --enable-openssl --enable-libvmaf --enable-fontconfig --enable-libharfbuzz --enable-libfreetype --enable-libfribidi --enable-vulkan --enable-libvorbis --enable-libxcb --enable-xlib --enable-libpulse --enable-gmp --enable-lzma --enable-liblcevc-dec --enable-opencl --enable-amf --enable-libaom --enable-libaribb24 --enable-avisynth --enable-chromaprint --enable-libdav1d --enable-libdavs2 --enable-libdvdread --enable-libdvdnav --disable-libfdk-aac --enable-ffnvcodec --enable-cuda-llvm --enable-frei0r --enable-libgme --enable-libkvazaar --enable-libaribcaption --enable-libass --enable-libbluray --enable-libjxl --enable-libmp3lame --enable-libopus --enable-libplacebo --enable-librist --enable-libssh --enable-libtheora --enable-libvpx --enable-libwebp --enable-libzmq --enable-lv2 --enable-libvpl --enable-openal --enable-liboapv --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopenh264 --enable-libopenjpeg --enable-libopenmpt --enable-librav1e --enable-librubberband --disable-schannel --enable-sdl2 --enable-libsnappy --enable-libsrt --enable-libsvtav1 --enable-libtwolame --enable-libuavs3d --enable-libdrm --enable-vaapi --enable-libvidstab --enable-libvvenc --disable-whisper --enable-libx264 --enable-libx265 --enable-libxavs2 --enable-libxvid --enable-libzimg --enable-libzvbi --extra-cflags=-DLIBTWOLAME_STATIC --extra-cxxflags= --extra-libs='-lgomp -ldl' --extra-ldflags=-pthread --extra-ldexeflags= --cc=x86_64-ffbuild-linux-gnu-gcc --cxx=x86_64-ffbuild-linux-gnu-g++ --ar=x86_64-ffbuild-linux-gnu-gcc-ar --ranlib=x86_64-ffbuild-linux-gnu-gcc-ranlib --nm=x86_64-ffbuild-linux-gnu-gcc-nm --extra-version=20260831",
-        "archives": [
-          {
-            "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-31-13-27/ffmpeg-n9.0.1-11-ge47273f4d9-linux64-gpl-9.0.tar.xz",
-            "sha256": "182c1b509720e939bb47bfb47dc29cc0c298640401128e3dce8627d10707eb5a",
-            "extract": {
-              "ffmpeg": "ffmpeg-n9.0.1-11-ge47273f4d9-linux64-gpl-9.0/bin/ffmpeg",
-              "ffprobe": "ffmpeg-n9.0.1-11-ge47273f4d9-linux64-gpl-9.0/bin/ffprobe"
-            }
-          }
-        ]
+        "runner": "ubuntu-22.04",
+        "zlib": "system",
+        "x264_configure": "--enable-static --disable-cli --disable-opencl --disable-avs --disable-swscale --disable-lavf --disable-ffms --disable-gpac --disable-lsmash --bit-depth=8 --chroma-format=420",
+        "configure": "--disable-everything --disable-autodetect --disable-doc --disable-debug --disable-network --disable-ffplay --enable-gpl --enable-version3 --enable-zlib --enable-libx264 --pkg-config-flags=--static --enable-encoder='libx264,aac,gif,png,mjpeg,rawvideo' --enable-decoder='png,h264,mjpeg,gif,wrapped_avframe,pcm_u8,pcm_s16le,pcm_s32le,pcm_f32le,pcm_f64le' --enable-parser=gif --enable-muxer='mp4,gif,image2,rawvideo' --enable-demuxer='image2,mov,gif' --enable-filter='scale,format,fade,palettegen,paletteuse,anullsrc,testsrc,null,anull,aformat,aresample,trim,atrim,crop' --enable-indev=lavfi --enable-protocol='file,pipe'",
+        "reports": "9.0.1"
       }
     }
   }
