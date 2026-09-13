@@ -249,6 +249,10 @@ export class PreviewPlanner {
 
   /** Plan this choice once the changes stop. */
   schedule(choice: ExportChoice): void {
+    // An answer still on its way was asked for a choice that is no longer
+    // the one on screen: it is dropped now, not when the next plan is asked,
+    // or it would land in the frame during the wait.
+    this.#asked += 1
     this.#stopped = false
     this.#debounced(choice)
   }

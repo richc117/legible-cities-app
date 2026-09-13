@@ -253,6 +253,21 @@ describe('the preview planner', () => {
     expect(answers.map(([p]) => (p.ok ? p.url : null))).toEqual(['new'])
   })
 
+  it('drops an answer that arrives while a newer change is still waiting to be planned', async () => {
+    const { planner, asked, answers } = deferred()
+    planner.schedule(REEL)
+    await vi.advanceTimersByTimeAsync(PREVIEW_DELAY)
+    expect(asked).toHaveLength(1)
+    planner.schedule({ ...REEL, storyboard: 'run' })
+    asked[0].resolve(ok('old'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(answers, 'the old answer never reaches the frame').toEqual([])
+    await vi.advanceTimersByTimeAsync(PREVIEW_DELAY)
+    asked[1].resolve(ok('new'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(answers.map(([p]) => (p.ok ? p.url : null))).toEqual(['new'])
+  })
+
   it('forgets a waiting plan and a pending answer when cancelled', async () => {
     const { planner, asked, answers } = deferred()
     planner.schedule(REEL)
