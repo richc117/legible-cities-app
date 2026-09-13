@@ -21,14 +21,22 @@
 // engine's GIF encode does not preserve the tolerance: it builds one palette
 // from every captured frame (palettegen=stats_mode=diff), so differences
 // below 8 in a few captured pixels move palette entries, and with them
-// colours in every frame, by far more than 8. Measured on 12 September 2026:
-// five runs whose captures agreed within the tolerance every time gave GIFs
-// that differed past it in four. That is the engine's to fix (engine issue
-// 33, richc117/legible-cities#33), not a capture this app can make steadier.
+// colours in every frame, by far more than 8. That is the engine's to fix
+// (engine issue 33); ADR-039 records why the gate judges the capture until
+// it is.
+//
+// What this verdict catches, as measured on 12 September 2026 against the
+// real engine (docs/ARCHITECTURE.md, "The capture", has the numbers): a
+// page whose clock is never stopped, from either side of setCapture. What it
+// does not: removing the paint wait before each capture passed three runs of
+// three, so that rule is untested here (app issue 100). And under load it
+// can fail correctly and rarely: one baseline run of thirteen captured one
+// frame from the wrong paint, a single frame over 8 (issue 100 too).
 //
 // Opt-in, and never in the ci workflow: it needs the engine and ffmpeg, and
 // takes minutes. `.github/workflows/determinism.yml` runs it on three
-// platforms, once per pull request and five times a week.
+// platforms, once per pull request that touches what an export is made of,
+// and five times a week whatever changed.
 //
 //   LEGIBLE_DETERMINISM_TEST=1 \
 //   LEGIBLE_ENGINE_PYTHON=<interpreter with the pinned engine> \
@@ -319,6 +327,12 @@ test('the same project, exported twice, captures the same frames within the tole
 
     // The verdict: the two captures agree within the tolerance, and move.
     expect(captured.framesA, 'frames captured').toBeGreaterThan(1)
+    // Draft quality captures at scale 1, so a captured frame is the preset's
+    // size in pixels; any other size is a capture of something else.
+    expect(size, "the captured frames are the preset's size").toEqual({
+      width: WIDTH,
+      height: HEIGHT,
+    })
     expect(captured.framesB, 'the same number of captured frames').toBe(captured.framesA)
     expect(captured.frames, 'every captured frame compared').toHaveLength(captured.framesA)
     expect(

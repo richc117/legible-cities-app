@@ -946,8 +946,9 @@ exports the project's draft `instagram-reel-gif` through the Export tab
 twice. The app keeps each export's captured frames for the test
 (`LEGIBLE_KEEP_FRAMES`, which the test sets and which `keptFramesFolder` in
 `src/main/export.ts` ignores in a packaged app), and **the verdict is the
-capture's**: the two captures must have the same number of frames, every
-frame within a channel tolerance of 8 in RGB, and must move - the first and
+capture's** (ADR-039): the two captures must have the same number of
+frames, each the preset's size, every frame within a channel tolerance of
+8 in RGB, and must move - the first and
 last captured frames differ by more than the tolerance, since two blank
 captures agree perfectly, and the page must carry trips. The record's
 layout id and `made`, and the stored set's meta and the sha256 of its four
@@ -970,36 +971,51 @@ times on a weekly schedule; it keeps that report from every run, and the
 two GIFs and the differing captured frames for a week when a run fails. It
 is not a required check.
 
-Why the GIFs are not the verdict was measured. Five unaltered runs on one
-macOS machine, while other work loaded it, captured the same frames every
-time: in one run all 108 PNG files were byte-identical, and in the other
-four 93 were, with the other 15 differing below the tolerance and no frame
-with a pixel over 8. Four of those five runs' GIFs nonetheless differed
-past the tolerance in all 108 frames, by up to 221 levels, along whole line
-colours, in files whose sizes fell into two values. The engine's GIF encode
-builds one palette from every captured frame
-(`palettegen=stats_mode=diff`), and differences below the tolerance move
-palette entries, and with them colours in every frame, by far more than
-it. ffmpeg itself is steady: the engine's two GIF commands, run by the
-pinned ffmpeg on one folder of frames, gave byte-identical files five times
-in a row, five times at once and once on a single thread, while one 10x10
-box added to one frame of 108 moved colours past the tolerance in all 108.
-So the capture meets principle III and the GIF encode does not preserve
-its tolerance; that is the engine's to fix (engine issue 33).
+Why the GIFs are not the verdict was measured, against the real engine on
+one macOS machine with other work loading it. At engine v0.8.2, five
+unaltered runs kept their captured frames: in one, all 108 PNG files of the
+two captures were byte-identical; in the other four, 93 were, the other 15
+differed below the tolerance, and no frame had a pixel over 8. Four of
+those five runs' GIFs nonetheless differed past the tolerance in all 108
+frames, by up to 221 levels, along whole line colours, in files whose sizes
+fell into two values. The engine's GIF encode builds one palette from every
+captured frame (`palettegen=stats_mode=diff`), and differences below the
+tolerance move palette entries, and with them colours in every frame, by
+far more than it. ffmpeg itself is steady: the engine's two GIF commands,
+run by the pinned ffmpeg on one folder of frames, gave byte-identical files
+five times in a row, five times at once and once on a single thread, while
+one 10x10 box added to one frame of 108 moved colours past the tolerance in
+all 108. The delivered GIF does not preserve the tolerance; that is the
+engine's to fix (engine issue 33).
 
-The rules the test exists for were shown to be load-bearing, on the same
-machine against the real engine, before the verdict moved to the capture;
-these measurements are of the GIFs. The unaltered app exported two
-byte-identical GIFs of 108 frames, a maximum channel difference of 0. With
-the paint wait before each capture removed, one run of three still passed
-(a maximum difference of 7) and two failed (32, with 24 channels over 8 in
-6 frames): one agreeing pair is not evidence that the rule holds. With the
-page's `setCapture` doing nothing, and separately with `capture.ts` never
-calling `setCapture(true)`, every one of the 108 frames differed, by up to
-254. Removing only the `cancelAnimationFrame` in the page's `setCapture` was
-not run: it drops the one frame already queued, which fires during the
-settle, before `settle()` snaps the transitions and the first beat sets the
-clock, so it is not expected to change a frame.
+What the capture verdict catches was measured the same way at engine
+v0.8.3, against which the fixture's layout id was proven too. Of thirteen
+unaltered runs, twelve passed, with 93 or 108 captured PNG files
+byte-identical and no frame over 8. One, with the machine loaded, failed:
+107 of 108 captured frames identical and one frame over 8, by up to 221
+levels. Its report was overwritten before it was read, so which frame, and
+whether it was the other run's frame before or after, is not known; the
+ten runs after it passed. That is a capture taking one frame from the
+wrong paint under load (app issue 100), and the gate going red for it is
+correct. With the page's `setCapture` doing nothing the test failed with
+108 frames over 8, and with `capture.ts` never calling `setCapture(true)`
+with 107: the rule that the clock stops before any wait is tested. With the
+paint wait before each capture removed, the test **passed three runs of
+three** on the capture, with 94 to 101 files identical and no frame over
+8: the rule that every capture waits for the paint is **not** tested by
+this verdict (issue 100). Removing only the `cancelAnimationFrame` in the
+page's `setCapture` was not run: it drops the one frame already queued,
+which fires during the settle, before `settle()` snaps the transitions and
+the first beat sets the clock, so it is not expected to change a frame.
+
+History, measured on the GIFs at v0.8.2 before the verdict moved to the
+capture and superseded by the above: two exports of the unaltered app were
+byte-identical; with the paint wait removed, one run of three passed with a
+maximum difference of 7 and two failed with 32; with the clock never
+stopped, from either side, every frame differed by up to 254. Those GIF
+failures may have been the palette's amplification (engine issue 33)
+rather than the paint wait, and are not evidence that the paint-wait rule
+holds.
 
 The test never runs LOOM, by design (ADR-023): it reads a stored layout.
 So whether a layout made on Windows is reproducible, which ADR-021 expected

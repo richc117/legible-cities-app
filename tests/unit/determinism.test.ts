@@ -25,7 +25,9 @@ import {
 } from '../support/determinism'
 import {
   channelsOver,
+  compareDecoded,
   compareStreams,
+  decodedEnds,
   decodeArgs,
   decodeSequenceArgs,
   firstAndLast,
@@ -119,6 +121,33 @@ describe('the motion check', () => {
 
   it('refuses to compare frames of different sizes', () => {
     expect(() => channelsOver(Buffer.alloc(3), Buffer.alloc(6))).toThrow()
+  })
+})
+
+describe('a decoder that does not exit cleanly', () => {
+  // Node, told to exit, stands in for ffmpeg on every platform; `--` keeps
+  // the decoder's own arguments away from Node's option parser.
+  const exits = (code: number): string[] => [process.execPath, '-e', `process.exit(${code})`, '--']
+
+  it('rejects the comparison on a non-zero exit, though both streams were empty alike', async () => {
+    await expect(compareDecoded('a.gif', 'b.gif', { ffmpeg: exits(1) })).rejects.toThrow(
+      /ended with code 1/,
+    )
+  })
+
+  it('rejects the motion check on a non-zero exit', async () => {
+    await expect(decodedEnds('a.gif', 3, { ffmpeg: exits(1) })).rejects.toThrow(/code 1/)
+  })
+
+  it('rejects when the program cannot start at all', async () => {
+    await expect(
+      compareDecoded('a.gif', 'b.gif', { ffmpeg: join(tmpdir(), 'no-such-ffmpeg-here') }),
+    ).rejects.toThrow()
+  })
+
+  it('resolves on a clean exit, with nothing decoded to say so', async () => {
+    const result = await compareDecoded('a.gif', 'b.gif', { ffmpeg: exits(0), frameBytes: 3 })
+    expect(result).toMatchObject({ bytes: 0, frames: 0, sameLength: true })
   })
 })
 

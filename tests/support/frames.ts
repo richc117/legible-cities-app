@@ -145,8 +145,16 @@ interface Decoder {
  * cannot start at all, rejects `finished`: two files truncated the same way
  * decode to the same bytes, and only the exit says one of them was broken.
  */
-function decoder(ffmpeg: string, file: string, args = decodeArgs(file)): Decoder {
-  const child = spawn(ffmpeg, args, {
+/**
+ * The program that decodes: a path or a name, or a program and the
+ * arguments that go before the decoder's own (how a unit test stands a
+ * failing process in for ffmpeg without writing a script for each platform).
+ */
+export type Command = string | readonly string[]
+
+function decoder(ffmpeg: Command, file: string, args = decodeArgs(file)): Decoder {
+  const [program, ...leading] = typeof ffmpeg === 'string' ? [ffmpeg] : ffmpeg
+  const child = spawn(program, [...leading, ...args], {
     windowsHide: true,
     stdio: ['ignore', 'pipe', 'inherit'],
     timeout: 10 * 60_000,
@@ -180,7 +188,7 @@ function decoder(ffmpeg: string, file: string, args = decodeArgs(file)): Decoder
 export async function compareDecoded(
   a: string,
   b: string,
-  options: CompareOptions & { ffmpeg?: string } = {},
+  options: CompareOptions & { ffmpeg?: Command } = {},
 ): Promise<Comparison> {
   const ffmpeg = options.ffmpeg ?? 'ffmpeg'
   const da = decoder(ffmpeg, a)
@@ -253,7 +261,7 @@ export function channelsOver(a: Buffer, b: Buffer, tolerance = TOLERANCE): numbe
 export async function decodedEnds(
   file: string,
   frameBytes: number,
-  options: { ffmpeg?: string } = {},
+  options: { ffmpeg?: Command } = {},
 ): Promise<Ends> {
   const d = decoder(options.ffmpeg ?? 'ffmpeg', file)
   try {
@@ -403,7 +411,7 @@ export async function probeSize(
 export async function compareCaptured(
   dirA: string,
   dirB: string,
-  options: { ffmpeg?: string; ffprobe?: string; tolerance?: number } = {},
+  options: { ffmpeg?: Command; ffprobe?: string; tolerance?: number } = {},
 ): Promise<CapturedComparison> {
   const ffmpeg = options.ffmpeg ?? 'ffmpeg'
   const ffprobe = options.ffprobe ?? 'ffprobe'
@@ -455,7 +463,7 @@ export async function compareCaptured(
 /** One image decoded to packed 8-bit RGB, whole, in memory. */
 export async function decodeImage(
   file: string,
-  options: { ffmpeg?: string } = {},
+  options: { ffmpeg?: Command } = {},
 ): Promise<Buffer> {
   const d = decoder(options.ffmpeg ?? 'ffmpeg', file)
   try {
@@ -488,7 +496,7 @@ export async function neighbours(
   dirB: string,
   frames: number[],
   width: number,
-  options: { ffmpeg?: string; limit?: number; count?: number } = {},
+  options: { ffmpeg?: Command; limit?: number; count?: number } = {},
 ): Promise<Neighbours[]> {
   const count = options.count ?? Infinity
   const cache = new Map<string, Buffer>()

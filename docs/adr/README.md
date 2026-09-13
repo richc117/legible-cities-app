@@ -69,6 +69,7 @@ already cites the number you mean to use.
 | 036 | [The inspector spans projects](036-the-inspector-spans-projects.md) | Accepted |
 | 037 | Reserved: allocated to A6-05's decision, not yet written | - |
 | 038 | [The sidecar runtime, measured on three targets](038-the-sidecar-runtime-measured-on-three-targets.md) | Accepted |
+| 039 | [The determinism gate judges the capture, and the file for its structure](039-the-determinism-gate-judges-the-capture.md) | Accepted |
 
 ## Amending rather than superseding
 

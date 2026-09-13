@@ -163,7 +163,7 @@ compares the two captures frame by frame in RGB at a tolerance of 8, with
 the capture required to move, the stored layout checked unmoved and no
 `graph.build` sent; the delivered GIFs are checked for structure only,
 because the engine's GIF palette turns differences below the tolerance into
-colour shifts above it (engine issue 33). It runs on three platforms once
+colour shifts above it (engine issue 33, ADR-039). It runs on three platforms once
 per pull request that touches what an export is made of and five times a
 week
 (`tests/e2e/determinism.spec.ts`, `.github/workflows/determinism.yml`).
