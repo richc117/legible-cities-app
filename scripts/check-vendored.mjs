@@ -267,6 +267,12 @@ export function licencePaths(python) {
  * own and every extension module's, as file names in `licenses/`. A path
  * outside that folder is kept as it is, so it matches no file and is
  * reported rather than skipped.
+ *
+ * An extension may list more than one build variant; only the one built
+ * into the runtime counts, which python-build-standalone marks `default`
+ * (and lists first). At release 20260901 no extension on any target has
+ * more than one, so this only keeps a text for a variant that is not
+ * shipped from being required.
  */
 export function namedLicences(metadata) {
   const paths = []
@@ -274,10 +280,9 @@ export function namedLicences(metadata) {
   const extensions = metadata?.build_info?.extensions
   if (extensions !== null && typeof extensions === 'object') {
     for (const variants of Object.values(extensions)) {
-      if (!Array.isArray(variants)) continue
-      for (const variant of variants) {
-        if (Array.isArray(variant?.license_paths)) paths.push(...variant.license_paths)
-      }
+      if (!Array.isArray(variants) || variants.length === 0) continue
+      const installed = variants.find((variant) => variant?.variant === 'default') ?? variants[0]
+      if (Array.isArray(installed?.license_paths)) paths.push(...installed.license_paths)
     }
   }
   return new Set(
@@ -371,7 +376,7 @@ export function checkPythonLicences({ python, target, pins }) {
     for (const text of entry.contains ?? []) {
       if (!bytes.includes(Buffer.from(text, 'utf8'))) {
         problems.push(
-          `lists ${name} for ${entry.file}, which no longer contains "${text}"; read it again`,
+          `lists ${name} for ${entry.file}, which no longer contains ${JSON.stringify(text)}; read it again`,
         )
       }
     }

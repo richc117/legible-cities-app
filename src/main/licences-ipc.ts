@@ -1,9 +1,9 @@
 // The Licences section's bridge, main side (issue 108, specs/027-licences,
-// FR-004 and FR-005): what can be opened, and the two openings.
+// FR-004 and FR-005): what can be opened, and the three openings.
 //
-// Nothing crosses inward. Both files are fixed paths under the app's
-// resources, held here; the page asks for "the notices" or "the licence
-// texts" by name and cannot say where either is. Nothing is written. Each
+// Nothing crosses inward. All three are fixed paths in the app, held here;
+// the page asks for "the notices", "the licence texts" or "Chromium's
+// licences" by name and cannot say where any of them is. Nothing is written. Each
 // handler answers the interface's own top frame only, as every other does.
 
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'

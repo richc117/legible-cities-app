@@ -135,7 +135,7 @@ const api: Api = {
     onChanged: (listener) => subscribe(CHANNELS.firstRunChanged, listener),
     openInstallGuide: () => invoke(CHANNELS.firstRunOpenInstallGuide),
   },
-  // Nothing crosses inward: the two files are the main process's to name.
+  // Nothing crosses inward: the three places are the main process's to name.
   licences: {
     read: () => invoke(CHANNELS.licencesRead),
     openNotices: () => invoke(CHANNELS.licencesOpenNotices),

@@ -8,6 +8,9 @@
   sidecar ships as a pinned python-build-standalone runtime - stands, and
   three of whose reasons do not: that `--no-deps` is load-bearing, that
   Windows is undecided by measurement, and the start-time comparison.
+- **Amended by:** [ADR-042](042-the-installers-carry-the-licence-texts-they-owe.md):
+  the runtime carries the licence texts of the libraries linked into it,
+  and CPython's incorporated-software notices, under `python/licenses/`
 
 ## Context
 

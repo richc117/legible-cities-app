@@ -146,7 +146,17 @@ interface TreeOptions {
   skip?: 'python' | 'loom' | 'ffmpeg'
   bytecodeFlags?: number
   /** Spoil the runtime's licence texts one way. */
-  licences?: 'text-missing' | 'text-stray' | 'evidence-gone' | 'notices-changed' | 'folder-missing'
+  licences?:
+    | 'text-missing'
+    | 'text-stray'
+    | 'evidence-gone'
+    | 'version-moved'
+    | 'notices-changed'
+    | 'folder-missing'
+    | 'metadata-unreadable'
+    | 'absent-carried'
+    | 'listed-not-carried'
+    | 'unshipped-variant'
 }
 
 /**
@@ -161,16 +171,25 @@ function licenceTexts(target: Target, python: string, spoil: TreeOptions['licenc
   const pin = PINS.python.targets[target]
   const lists = pin.licences
   const named = ['LICENSE.bzip2.txt', ...Object.keys(lists.named_absent)]
+  const bz2 = { variant: 'default', license_paths: named.map((name) => `licenses/${name}`) }
   put(
     join(python, 'PYTHON.json'),
-    JSON.stringify({
-      python_version: PINS.python.version,
-      target_triple: pin.triple,
-      license_path: 'licenses/LICENSE.cpython.txt',
-      build_info: {
-        extensions: { _bz2: [{ license_paths: named.map((name) => `licenses/${name}`) }] },
-      },
-    }),
+    spoil === 'metadata-unreadable'
+      ? '{"python_version": '
+      : JSON.stringify({
+          python_version: PINS.python.version,
+          target_triple: pin.triple,
+          license_path: 'licenses/LICENSE.cpython.txt',
+          build_info: {
+            extensions: {
+              // A variant that is not the one built names a text nobody carries.
+              _bz2:
+                spoil === 'unshipped-variant'
+                  ? [bz2, { variant: 'other', license_paths: ['licenses/LICENSE.unshipped.txt'] }]
+                  : [bz2],
+            },
+          },
+        }),
   )
   const folder = join(python, 'licenses')
   const carried = [
@@ -179,18 +198,32 @@ function licenceTexts(target: Target, python: string, spoil: TreeOptions['licenc
     ...Object.keys(lists.unlisted),
     ...lists.not_linked,
   ]
+  // The first unlisted and not_linked entries, which 'listed-not-carried' leaves out.
+  const dropped = [Object.keys(lists.unlisted)[0], lists.not_linked[0]]
   for (const name of carried) {
     if (spoil === 'text-missing' && name === 'LICENSE.bzip2.txt') continue
+    if (spoil === 'listed-not-carried' && dropped.includes(name)) continue
     put(join(folder, name), `the text of ${name}\n`)
   }
   if (spoil === 'text-stray') put(join(folder, 'LICENSE.stray.txt'), 'a text nobody names\n')
+  if (spoil === 'absent-carried') {
+    for (const name of Object.keys(lists.named_absent))
+      put(join(folder, name), 'carried after all\n')
+  }
   put(
     join(folder, PINS.python.licence_texts.cpython_incorporated.file),
     spoil === 'notices-changed' ? `${NOTICES_TEXT}and more\n` : NOTICES_TEXT,
   )
   for (const entry of Object.values(lists.unlisted)) {
-    const strings = spoil === 'evidence-gone' ? [] : entry.contains
-    put(join(python, ...entry.file.split('/')), Buffer.from(`MZ\0${strings.join('\0')}\0`))
+    // 'version-moved': the same strings with a later version that begins
+    // with the pinned one, as a zlib 1.3.2.1 would read.
+    const strings =
+      spoil === 'evidence-gone'
+        ? []
+        : spoil === 'version-moved'
+          ? entry.contains.map((text) => (endsInVersion(text) ? `${text.slice(0, -1)}.1\0` : text))
+          : entry.contains
+    put(join(python, ...entry.file.split('/')), Buffer.from(`MZ\0${strings.join('')}\0`))
   }
 }
 
@@ -286,6 +319,17 @@ function check(target: string, vendor: string, pins = PINS_FILE) {
     windowsHide: true,
   })
   return { status: run.status, stdout: run.stdout, stderr: run.stderr }
+}
+
+/** A version string as the pins write one: digits last, then the NUL that ends the C string. */
+const endsInVersion = (text: string): boolean =>
+  text.length > 1 && text.endsWith('\0') && /\d$/.test(text.slice(0, -1))
+
+/** The check's refusal of a tree whose licence texts are spoiled one way. */
+function refusal(target: Target, licences: TreeOptions['licences']): string {
+  const result = check(target, vendorTree(target, { licences }))
+  expect(result.status, `${target} ${licences}`).toBe(1)
+  return result.stderr
 }
 
 describe('check-vendored.mjs, as the build runs it', () => {
@@ -426,11 +470,6 @@ describe('check-vendored.mjs, as the build runs it', () => {
   // its LICENSE.txt does not carry, agree with its build metadata and the
   // pins' three lists, or nothing is packaged.
   it("refuses a runtime whose licence texts, build metadata and the pins' lists disagree", () => {
-    const refusal = (target: Target, licences: TreeOptions['licences']): string => {
-      const result = check(target, vendorTree(target, { licences }))
-      expect(result.status, `${target} ${licences}`).toBe(1)
-      return result.stderr
-    }
     expect(refusal('darwin-arm64', 'folder-missing')).toContain(
       'darwin-arm64: python carries no licence texts',
     )
@@ -447,8 +486,51 @@ describe('check-vendored.mjs, as the build runs it', () => {
     const gone = refusal('win-x64', 'evidence-gone')
     for (const [name, entry] of Object.entries(PINS.python.targets['win-x64'].licences.unlisted)) {
       expect(gone).toContain(
-        `win-x64: python lists ${name} for ${entry.file}, which no longer contains "${entry.contains[0]}"`,
+        `win-x64: python lists ${name} for ${entry.file}, which no longer contains ${JSON.stringify(entry.contains[0])}`,
       )
+    }
+  })
+
+  it('refuses a version string that has moved on, however it begins', () => {
+    const moved = refusal('win-x64', 'version-moved')
+    for (const [name, entry] of Object.entries(PINS.python.targets['win-x64'].licences.unlisted)) {
+      const versions = entry.contains.filter(endsInVersion)
+      expect(versions.length, name).toBeGreaterThan(0)
+      for (const text of versions) {
+        expect(moved).toContain(
+          `lists ${name} for ${entry.file}, which no longer contains ${JSON.stringify(text)}`,
+        )
+      }
+    }
+  })
+
+  it('refuses a named_absent text that is carried, a listed text that is not, and unreadable metadata', () => {
+    const mac = PINS.python.targets['darwin-arm64'].licences
+    const carried = refusal('darwin-arm64', 'absent-carried')
+    for (const name of Object.keys(mac.named_absent)) {
+      expect(carried).toContain(
+        `darwin-arm64: python carries ${name}, which named_absent says the archive lacks; take it off that list`,
+      )
+    }
+    const win = PINS.python.targets['win-x64'].licences
+    const missing = refusal('win-x64', 'listed-not-carried')
+    const unlisted = Object.keys(win.unlisted)[0]
+    expect(missing).toContain(
+      `win-x64: python owes ${unlisted} (${win.unlisted[unlisted].library}), which is not carried`,
+    )
+    expect(missing).toContain(
+      `win-x64: python lists ${win.not_linked[0]} as not_linked, but it is not carried`,
+    )
+    expect(refusal('darwin-x64', 'metadata-unreadable')).toContain(
+      'darwin-x64: python carries no readable build metadata',
+    )
+  })
+
+  it('counts only the variant built into the runtime', () => {
+    for (const target of ['darwin-arm64', 'win-x64'] as const) {
+      const result = check(target, vendorTree(target, { licences: 'unshipped-variant' }))
+      expect(result.stderr, target).toBe('')
+      expect(result.status, target).toBe(0)
     }
   })
 
@@ -459,7 +541,15 @@ describe('check-vendored.mjs, as the build runs it', () => {
     mac.named_absent['LICENSE.gone.txt'] = 'a text nothing names any more'
     mac.not_linked.push('LICENSE.bzip2.txt')
     mac.unlisted['LICENSE.cpython.txt'] = { library: 'CPython', file: 'bin/python3', contains: [] }
+    // On two lists at once.
+    const win = moved.python.targets['win-x64'].licences
+    win.unlisted[win.not_linked[0]] = { library: 'twice', file: 'python312.dll', contains: [] }
     writeFileSync(pins, JSON.stringify(moved))
+    const both = check('win-x64', vendorTree('win-x64'), pins)
+    expect(both.status).toBe(1)
+    expect(both.stderr).toContain(
+      `win-x64: python lists ${win.not_linked[0]} as both unlisted and not_linked`,
+    )
     // The tree was made from the repository's lists, then checked against these.
     const result = check('darwin-arm64', vendorTree('darwin-arm64'), pins)
     expect(result.status).toBe(1)

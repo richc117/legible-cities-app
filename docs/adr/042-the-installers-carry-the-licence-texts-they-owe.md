@@ -41,7 +41,8 @@ What that archive holds was measured before anything was built
   `pyexpat.pyd` or the libmpdec in `_decimal.pyd`, which come from
   CPython's own tree; their texts are in the folder, unaccounted for.
 - **The folder is a catalogue,** with texts for libraries these builds do
-  not link (Berkeley DB, the X11 libraries, OpenSSL 1.1).
+  not link (Berkeley DB, the X11 libraries, OpenSSL 1.1 - which the macOS
+  metadata names anyway, beside OpenSSL 3, for `_hashlib` and `_ssl`).
 - **CPython's own incorporated software** (HACL*, BLAKE2, SipHash,
   `dtoa.c` and the rest of its documentation's "Licenses and
   Acknowledgements for Incorporated Software") is in no text the runtime

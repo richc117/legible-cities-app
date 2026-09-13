@@ -79,6 +79,11 @@ describe('vendor/pins.json python licence texts', () => {
         expect(entry.library.length, target).toBeGreaterThan(10)
         expect(entry.file, target).toMatch(/^[\w./-]+$/)
         expect(entry.contains.length, target).toBeGreaterThan(0)
+        // A version is the C string it is in the binary, NUL on both sides,
+        // so a later version that begins with it does not match.
+        for (const text of entry.contains) {
+          if (/\d\.\d/.test(text)) expect(text, `${target}: ${entry.file}`).toMatch(/^\0.+\0$/s)
+        }
       }
     }
   })

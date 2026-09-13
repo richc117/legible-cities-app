@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useRef, useState, type JSX } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react'
 import {
   APP_THEMES,
   describeReset,
@@ -28,6 +28,7 @@ import type { EngineInfo } from '../../shared/protocol'
 import ConfirmDialog from './ConfirmDialog'
 import { useFirstRun } from './FirstRunDialog'
 import { focusLost } from './focusHandback'
+import { createAnnouncer } from './Jobs'
 import {
   engineClient,
   forgetAllProjectJobs,
@@ -109,6 +110,20 @@ export async function copyDiagnostics(bridge: {
 }
 
 /**
+ * What the Licences section's status line is told: a sentence, emptied and
+ * written again a frame later as the jobs inspector's announcement is, so a
+ * second press on the same unavailable button is said a second time rather
+ * than being a render React skips; null clears it at once.
+ */
+export function licenceAnnouncer(
+  write: (message: string | null) => void,
+  nextFrame: (then: () => void) => unknown,
+): (message: string | null) => void {
+  const announce = createAnnouncer((text) => write(text === '' ? null : text), nextFrame)
+  return (message) => (message === null ? write(null) : announce(message))
+}
+
+/**
  * The Licences section's three buttons, as data the screen renders: each
  * one's label, why it cannot open its file (null when it can), and what a
  * press does. While the view is still being asked for, both are available
@@ -176,6 +191,13 @@ export default function Settings({ settings, onChanged, engine, onBack }: Props)
   // Whether the notices and the licence texts are there to open (issue 108).
   const [licences, setLicences] = useState<LicencesView | null>(null)
   const [licenceMessage, setLicenceMessage] = useState<string | null>(null)
+  const sayLicence = useMemo(
+    () =>
+      licenceAnnouncer(setLicenceMessage, (then) =>
+        requestAnimationFrame(() => requestAnimationFrame(then)),
+      ),
+    [],
+  )
   useEffect(() => {
     let left = false
     window.api.licences.read().then(
@@ -505,7 +527,7 @@ export default function Settings({ settings, onChanged, engine, onBack }: Props)
         </dl>
         {/* Unavailable rather than disabled, so each keeps its place in the
             Tab order and is read with why (A6-07); a press says it again. */}
-        {licenceButtons(licences, (message) => setLicenceMessage(message)).map((button) => (
+        {licenceButtons(licences, sayLicence).map((button) => (
           <Fragment key={button.what}>
             <div className="toolbar">
               <Button

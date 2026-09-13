@@ -43,7 +43,10 @@ that has not been proven by a run.
   `openssl-1.1`, `openssl-3`, `sqlite`, `tcl`, `tix`, `zlib`. The folder is
   the project's whole catalogue, not a list for this build: it carries texts
   for libraries these builds do not link (Berkeley DB, the three X11
-  libraries, OpenSSL 1.1).
+  libraries, OpenSSL 1.1). The macOS metadata still names OpenSSL 1.1's
+  text, beside OpenSSL 3's, for `_hashlib` and `_ssl`, each of which has
+  one build variant and links OpenSSL 3's static libraries; no extension on
+  any target lists more than one variant.
 - **`python/PYTHON.json`**, format version 8, 62-126 KB. The top level
   names CPython's licences (`Python-2.0`, `CNRI-Python`) and
   `licenses/LICENSE.cpython.txt`. `build_info.extensions` gives, per

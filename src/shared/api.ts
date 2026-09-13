@@ -259,8 +259,10 @@ export interface Api {
   /**
    * The Licences section of Settings (issue 108): whether the notices file,
    * the folder of licence texts and Chromium's licences are there to open,
-   * and the three openings. None takes an argument: both are fixed paths under the app's
-   * resources, held by the main process (specs/027-licences, FR-004).
+   * and the three openings. None takes an argument: all three are fixed
+   * paths in the app - under its resources, and Chromium's licences beside
+   * the executable on Windows - held by the main process
+   * (specs/027-licences, FR-004).
    */
   licences: {
     read(): Promise<LicencesView>

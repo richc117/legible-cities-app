@@ -6,24 +6,28 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { licenceButtons } from '../../src/renderer/src/Settings'
+import { licenceAnnouncer, licenceButtons } from '../../src/renderer/src/Settings'
 import { APP_LICENCE, BUNDLED_COMPONENTS, describeUnavailable } from '../../src/shared/licences'
 
 const repo = resolve(__dirname, '../..')
 
-/** The first cell of every row in the notices file's component table. */
-function noticeRows(): string[] {
+/** Every row of the notices file's component table: its first cell and its licence cell. */
+function noticeTable(): Map<string, string> {
   const text = readFileSync(resolve(repo, 'THIRD_PARTY_NOTICES.md'), 'utf8')
   const lines = text.split(/\r?\n/)
   const header = lines.findIndex((line) => line.startsWith('| Component |'))
   expect(header, 'the component table').toBeGreaterThan(-1)
-  const rows: string[] = []
+  const rows = new Map<string, string>()
   for (const line of lines.slice(header + 2)) {
     if (!line.startsWith('|')) break
-    rows.push(line.split('|')[1].trim())
+    const cells = line.split('|').map((cell) => cell.trim())
+    // | Component | Role | Licence | Source |
+    rows.set(cells[1], cells[3])
   }
   return rows
 }
+
+const noticeRows = (): string[] => [...noticeTable().keys()]
 
 /**
  * Rows the notices file keeps for what the installers do not carry: tooling,
@@ -59,6 +63,19 @@ describe('the components the Licences section names', () => {
       ).toBe(shipped)
     }
     expect(new Set(BUNDLED_COMPONENTS.map((c) => c.name)).size).toBe(BUNDLED_COMPONENTS.length)
+  })
+
+  it('names the licences its notices row names', () => {
+    const table = noticeTable()
+    for (const component of BUNDLED_COMPONENTS) {
+      expect(component.identifiers.length, component.name).toBeGreaterThan(0)
+      for (const identifier of component.identifiers) {
+        expect(component.licence, `${component.name} on the screen`).toContain(identifier)
+        expect(table.get(component.notice), `${component.name} in its notices row`).toContain(
+          identifier,
+        )
+      }
+    }
   })
 
   it("says the app's own licence as package.json does", () => {
@@ -125,6 +142,26 @@ describe('the Licences buttons', () => {
     await expect
       .poll(() => refused.said)
       .toEqual([null, 'The licence texts’ folder could not be opened: gone'])
+  })
+
+  it('say the same sentence again on a second press, emptying the line between', () => {
+    const written: (string | null)[] = []
+    const frames: (() => void)[] = []
+    const say = licenceAnnouncer(
+      (message) => written.push(message),
+      (then) => frames.push(then),
+    )
+    const { bridge } = setUp()
+    const [notices] = licenceButtons(
+      { notices: 'development', texts: 'development', chromium: 'development' },
+      say,
+      bridge,
+    )
+    notices.press()
+    frames.shift()?.()
+    notices.press()
+    frames.shift()?.()
+    expect(written).toEqual([null, notices.unavailable, null, notices.unavailable])
   })
 
   it('names a missing file in a packaged app differently from a development run', () => {

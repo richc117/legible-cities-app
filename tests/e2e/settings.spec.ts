@@ -420,6 +420,22 @@ test('names the licences, and says a development run bundles nothing to open', a
       await expect(licences.locator('dt', { hasText: new RegExp(`^${term}$`) })).toHaveCount(1)
     }
 
+    // The reason is beneath the button and the button names it, but the kit
+    // copies aria-describedby onto the button inside its shadow root, where
+    // an id in the page resolves to nothing: the description is empty
+    // (docs/accessibility.md, F5). Asserted as it is, so a kit that carries
+    // the reference across fails here and this line becomes the sentence.
+    const notices = licences.getByRole('button', { name: 'Open the notices' })
+    const reason = licences.locator('#licences-notices-unavailable')
+    await expect(reason).toHaveText(
+      'The notices file is not bundled in a development run, so there is nothing to open here.',
+    )
+    await expect(licences.locator('fig-button', { hasText: 'Open the notices' })).toHaveAttribute(
+      'aria-describedby',
+      'licences-notices-unavailable',
+    )
+    await expect(notices).toHaveAccessibleDescription('')
+
     for (const [name, sentence] of [
       ['Open the notices', 'The notices file is not bundled in a development run'],
       ['Show the licence texts', 'The licence texts are not bundled in a development run'],
@@ -432,6 +448,27 @@ test('names the licences, and says a development run bundles nothing to open', a
       await button.click({ force: true })
       await expect(licences.getByRole('status')).toContainText(sentence)
     }
+    // A second press says it again: the line is emptied and written a frame
+    // later, so it changes rather than being set to what it already holds.
+    const status = licences.locator('[role="status"]')
+    await status.evaluate((line) => {
+      const seen: string[] = []
+      ;(window as { licenceLines?: string[] }).licenceLines = seen
+      new MutationObserver(() => seen.push(line.textContent ?? '')).observe(line, {
+        childList: true,
+        characterData: true,
+        subtree: true,
+      })
+    })
+    await licences.getByRole('button', { name: "Open Chromium's licences" }).click({ force: true })
+    await expect
+      .poll(() =>
+        page.evaluate(() => ((window as { licenceLines?: string[] }).licenceLines ?? []).slice(-2)),
+      )
+      .toEqual([
+        '',
+        "Chromium's licences are not bundled in a development run, so there is nothing to open here.",
+      ])
     const opened = await app.evaluate(
       () => (globalThis as { openedForTest?: string[] }).openedForTest ?? [],
     )

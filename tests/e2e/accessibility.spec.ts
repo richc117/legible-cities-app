@@ -823,7 +823,9 @@ test('Settings, its reset confirmation, and focus after "Use the default"', asyn
     for (const name of ['Open the notices', 'Show the licence texts', "Open Chromium's licences"]) {
       await expect(licences.getByRole('button', { name })).toHaveAttribute('aria-disabled', 'true')
     }
-    await expect(licences.getByRole('status')).toHaveAttribute('aria-live', 'polite')
+    // By its attribute: an empty status line has no box, so a role query,
+    // which skips what is not visible, does not find it before a press.
+    await expect(licences.locator('[role="status"]')).toHaveAttribute('aria-live', 'polite')
     await sweep(page, 'Settings')
 
     await chooserAnswers(app, chosen)

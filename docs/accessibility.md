@@ -131,7 +131,7 @@ listed below for filing. *engine's*: inside the engine's page.
 | Theme select | pass | pass | pass | pass | fixed (C2) | fixed (C2) | not yet run: a person's | not yet run: a person's |
 | Versions | n/a | pass (a definition list; a null said in words) | n/a | n/a | pass | pass | not yet run: a person's | not yet run: a person's |
 | Reset engine data and its confirmation | fixed (D8) | pass | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
-| Licences section (issue 108) | asserted in the sweep, written, not run (three buttons `aria-disabled` in a development run, kept in the Tab order) | asserted in the sweep, written, not run (a named region; a definition list; each unavailable button described by its reason; a polite `role="status"` line) | asserted in the sweep, written, not run | asserted in the sweep, written, not run | pass (existing pairs: `--text-muted` and `--text` on `--surface`; the unavailable button's look is the kit's existing one) | pass (the same pairs) | not yet run: a person's | not yet run: a person's |
+| Licences section (issue 108) | asserted in the sweep, written, not run (three buttons `aria-disabled` in a development run, kept in the Tab order) | asserted in the sweep and in `settings.spec.ts`, written, not run (a named region; a definition list; each unavailable button's reason shown beneath it and said in a polite `role="status"` line on every press, a second press included); **finding (F5)**: the button names its reason with `aria-describedby`, and the kit carries that to its inner button, where the reference resolves to nothing, so the reason is not the button's description | asserted in the sweep, written, not run | asserted in the sweep, written, not run | pass (existing pairs: `--text-muted` and `--text` on `--surface`; the unavailable button's look is the kit's existing one) | pass (the same pairs) | not yet run: a person's | not yet run: a person's |
 | Bundled tools rows (A6-02) | n/a (no control; the screen's walk is swept with the rows present: asserted in the sweep, written, not run) | pass (a named region; the summary a polite `role="status"`; a definition list, "LOOM tools" and "ffmpeg and ffprobe"): asserted in the sweep, written, not run | n/a | asserted in the sweep, written, not run | pass (existing pairs: `--text-muted` and `--text` on `--surface`) | pass (the same pairs) | not yet run: a person's | not yet run: a person's |
 
 ### Jobs inspector
@@ -299,6 +299,21 @@ or a design decision.
   cannot be stopped, with both buttons unavailable, for as long as the
   sidecar's 600 s inactivity bound; `feeds.remove` has no request deadline
   of its own. Two presses of Escape close it, and nothing else does.
+
+- **F5. A kit button's `aria-describedby` describes nothing.** *Screen:*
+  Settings (the Licences buttons when unavailable, "Choose folder" and
+  "Reset engine data"), and any `Button` given `aria-describedby`. *Steps:*
+  Tab to one and listen for its description. *What a person meets:* the
+  name and no description. FigUI3's `fig-button` copies the attribute onto
+  the `<button>` inside its shadow root, and an id reference there resolves
+  within the shadow tree, where the page's element is not. Measured on
+  2026-09-13 in Playwright's Chromium with the kit's `fig.js`: a native
+  `<button aria-describedby>` had the sentence as its description and a
+  `fig-button` had none, whether the attribute was set before the kit
+  connected or after. `settings.spec.ts` asserts the empty description so
+  a fix shows. Not fixed here: it is the kit, or the kit's wrapper
+  (`kit/Button.tsx`), for every screen at once. For the Licences buttons
+  the reason is also on screen beneath each and said on a press.
 
 ## Walking it with a screen reader
 
@@ -648,8 +663,9 @@ a table).
   each: the notices open in the platform's viewer (or are shown in its file
   browser), the licence texts' folder opens in the file browser, and
   Chromium's licences open in the browser. In a development run each is
-  read dimmed with "not bundled in a development run", and a press says it
-  again.
+  read dimmed, with its reason as the text after it but not as its
+  description (F5); a press says "… not bundled in a development run, so
+  there is nothing to open here.", and a second press says it again.
 - **Bundled tools rows (A6-02).** Listen for the heading "Bundled tools",
   the status "The bundled LOOM and ffmpeg ran.", and a description list:
   "LOOM tools", "ran (`<n>` ms)."; "ffmpeg and ffprobe", "ran (`<n>` ms)."

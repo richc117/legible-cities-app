@@ -137,17 +137,21 @@
             "LICENSE.expat.txt": {
               "library": "Expat 2.8.3, from CPython's Modules/expat, compiled into pyexpat.pyd; the pyexpat entry has no licence",
               "file": "DLLs/pyexpat.pyd",
-              "contains": ["expat_2.8.3"]
+              "contains": ["\u0000expat_2.8.3\u0000"]
             },
             "LICENSE.mpdecimal.txt": {
               "library": "libmpdec 2.5.1, from CPython's Modules/_decimal/libmpdec, compiled into _decimal.pyd; the _decimal entry has no licence",
               "file": "DLLs/_decimal.pyd",
-              "contains": ["libmpdec: internal error", "2.5.1"]
+              "contains": ["libmpdec: internal error", "\u00002.5.1\u0000"]
             },
             "LICENSE.zlib.txt": {
               "library": "zlib 1.3.2, from CPython's Windows externals, compiled into python312.dll; zlib and binascii are in_core with no licence",
               "file": "python312.dll",
-              "contains": ["incorrect header check", "invalid distance too far back", "1.3.2"]
+              "contains": [
+                "incorrect header check",
+                "invalid distance too far back",
+                "\u00001.3.2\u0000"
+              ]
             }
           },
           "named_absent": {},
@@ -166,7 +170,7 @@
     "licence": "PSF-2.0 (CPython); MPL-2.0 (the project's build scripts)",
     "licence_check": "Verified 2026-09-07: the interpreter links libedit, not GNU readline, and _dbm links only libSystem - no GDBM. Both are GPL components that must stay out; see THIRD_PARTY_NOTICES.md. The Windows asset, listed 2026-09-12, has no readline and no _dbm or _gdbm extension; darwin-x64 has the same names as darwin-arm64.",
     "licence_texts": {
-      "note": "The licence texts the runtime owes (issue 108, ADR-042). The install_only asset carries CPython's LICENSE.txt only; each target's `full` archive, the same build before python-build-standalone repackaged it, carries a `licenses/` folder and PYTHON.json, whose build metadata names the licence file of each extension module's linked libraries. scripts/vendor-python.sh fetches the full archive, checks `full.sha256` (computed on download on 2026-09-13 and matching the digest GitHub records for the asset), extracts only `licenses/` and PYTHON.json, and ships both under the runtime; scripts/check-vendored.mjs then requires the metadata, the folder and three reviewed lists per target to agree, in the vendor job and again at packaging. `unlisted`: texts owed that the metadata names for nothing, each with the file it is compiled into and strings that prove it, looked for in that file on every run. `named_absent`: texts the metadata names that the archive does not carry, each with why nothing is owed. `not_linked`: texts carried that no extension names. Every text named must be carried or be named_absent; every text carried must be named, unlisted or not_linked, once; and every entry must still be true. A new python-build-standalone release therefore fails the job until a person rereads these lists against the new metadata: that is the intended cost. Measured in specs/027-licences/research.md.",
+      "note": "The licence texts the runtime owes (issue 108, ADR-042). The install_only asset carries CPython's LICENSE.txt only; each target's `full` archive, the same build before python-build-standalone repackaged it, carries a `licenses/` folder and PYTHON.json, whose build metadata names the licence file of each extension module's linked libraries. scripts/vendor-python.sh fetches the full archive, checks `full.sha256` (computed on download on 2026-09-13 and matching the digest GitHub records for the asset), extracts only `licenses/` and PYTHON.json, and ships both under the runtime; scripts/check-vendored.mjs then requires the metadata, the folder and three reviewed lists per target to agree, in the vendor job and again at packaging. `unlisted`: texts owed that the metadata names for nothing, each with the file it is compiled into and strings that prove it, looked for in that file on every run. A version in `contains` is written as the C string it is in the binary, between NUL characters (\\u0000), so a later version that merely begins with it (1.3.2.1) does not pass. `named_absent`: texts the metadata names that the archive does not carry, each with why nothing is owed. `not_linked`: texts carried that no extension names. Every text named must be carried or be named_absent; every text carried must be named, unlisted or not_linked, once; and every entry must still be true. A new python-build-standalone release therefore fails the job until a person rereads these lists against the new metadata: that is the intended cost. Measured in specs/027-licences/research.md.",
       "cpython_incorporated": {
         "note": "CPython's Doc/license.rst at the pinned version's tag: its 'Licenses and Acknowledgements for Incorporated Software' (HACL*, BLAKE2, SipHash, dtoa, asyncio's and the other notices) are not in the LICENSE.txt the runtime ships. Fetched by commit, checked against sha256 (computed on download on 2026-09-13), and shipped as `file` inside the runtime's licenses folder.",
         "tag": "v3.12.14",
