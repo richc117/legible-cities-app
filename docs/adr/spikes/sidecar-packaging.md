@@ -190,3 +190,100 @@ asking for both operating systems is unmet.
 - Add python-build-standalone's own licence files to the shipped runtime and
   reference them from `THIRD_PARTY_NOTICES.md`; the `install_only` asset does
   not carry the `PYTHON.json` manifest the full tarballs do.
+
+## 2026-09-12: darwin-x64 and win-x64 (A0-06, second half)
+
+The recipe now runs on the two targets the first session could not reach,
+from the `python` job in `.github/workflows/vendor.yml`, with the same
+script and the same licence gate as darwin-arm64. The engine is the pinned
+tag (v0.8.2), installed with the three dependencies it declares.
+
+### What changed in the recipe, and why
+
+- **`--no-deps` is gone.** E02 trimmed the engine's declared dependencies to
+  pandas, python-lsp-jsonrpc and requests, which is what the sidecar
+  imports. The script had kept installing only pandas and requests beside a
+  `--no-deps` engine, so the vendored runtime **could not start the
+  sidecar**: `schematic.serve` imports `pylsp_jsonrpc`, and the final check
+  imported only `schematic, pandas, requests`, which passed. python-lsp-jsonrpc
+  brings ujson with it.
+- **The check runs what the app runs.** `python -m schematic.serve --schema`
+  must exit 0, and the SHA-256 of its output must equal
+  `engine.schema_sha256` in the pins. At v0.8.2 the engine writes the schema
+  through text-mode stdout, so on Windows every line ends in `\r\n`; the
+  script strips carriage returns before hashing, and that line can go once
+  the pin moves past the engine release that writes to `sys.stdout.buffer`.
+- **The check writes no bytecode** (`PYTHONDONTWRITEBYTECODE=1`). Before, the
+  import check ran after the strip and put `__pycache__` back for every
+  module it imported, so the size line measured a runtime that was no
+  longer the stripped one.
+- **Windows' `.pdb` debug symbols are stripped**: 86 MB uncompressed in the
+  Windows asset, none on macOS.
+- **Hashes are taken by Python**, not `shasum`, so the one script runs under
+  Git Bash on `windows-latest` as it does on macOS; Python's own output is
+  written without a newline, which a Windows Python would end in `\r`.
+
+### The two assets
+
+Both from release `20260901`, CPython 3.12.14, `install_only`. Upstream
+publishes no checksums, so both hashes were computed on this Mac (arm64)
+from a `curl -fsSL` download, with `shasum -a 256` and again with Python's
+`hashlib`, which agreed. The same download of the darwin-arm64 asset
+reproduced the hash already pinned, which is the control.
+
+| Target | Asset | SHA-256 |
+|---|---|---|
+| darwin-x64 | `cpython-3.12.14+20260901-x86_64-apple-darwin-install_only.tar.gz` | `2e31b23f3f1319f707d0e620b48847a0046577541d357276821f9f1b5492e0ba` |
+| win-x64 | `cpython-3.12.14+20260901-x86_64-pc-windows-msvc-install_only.tar.gz` | `e90c1b6419da3bd812dd73bb3de40287a21abf153438147639ec5e20375ea93f` |
+
+### The Windows layout, from the tarball listing
+
+- The interpreter is `python/python.exe`, at the root of the unpacked tree
+  (not under `bin/`), beside `python312.dll`, `python3.dll` and the two
+  `vcruntime140` DLLs. The copies under `Lib/venv/scripts/nt/` are venv
+  launchers. `src/main/interpreter.ts` already looks for
+  `python/python.exe` under the resources folder of a packaged Windows
+  build; getting the target's tree there is A0-10's.
+- **No readline of any kind**, and no `_dbm` or `_gdbm` extension: only the
+  pure-Python `Lib/dbm/` package, whose `gnu.py` imports an extension that is
+  not there. On macOS both x64 and arm64 carry `_dbm` and no gdbm; arm64's
+  `_dbm` links only libSystem (measured 2026-09-07), and x64's has not been
+  looked at with `otool`.
+- The DLLs are OpenSSL 3 (`libcrypto-3-x64`, `libssl-3-x64`), `libffi-8`,
+  `sqlite3`, Tcl/Tk (`tcl86t`, `tk86t` and three under `tcl/`), the Python
+  DLLs and the MSVC runtime. None is GPL. The gate now also refuses a
+  `*readline*.dll` or `*readline*.pyd`, which could only arrive from a
+  package, and prints every shared library the runtime carries so a new one
+  shows up in the log of the run that brought it.
+
+### Measurements
+
+Size and file count are the script's own line; cold start is three runs of
+`python -m schematic.serve --schema` from the job's timing step, first with
+no bytecode at all (the runtime as vendored), then with a bytecode cache
+outside the runtime, whose first run compiles. Runner timings are one
+virtual machine each and are indicative, not a budget.
+
+| Target | Size | Files | Cold start, no bytecode | Cold start, cached bytecode | Source |
+|---|---|---|---|---|---|
+| darwin-arm64, this Mac (arm64) | 109 MB | 2568 | 0.79, 0.72, 0.71 s | 0.99 (compiling), 0.18, 0.18 s | local run of the script |
+| darwin-arm64, runner | from run <id> | from run <id> | from run <id> | from run <id> | run <id> |
+| darwin-x64, runner | from run <id> | from run <id> | from run <id> | from run <id> | run <id> |
+| win-x64, runner | from run <id> | from run <id> | from run <id> | from run <id> | run <id> |
+
+**The first session's 0.12 s does not carry over.** It timed a stand-in that
+imported `schematic` and `pandas` with bytecode present. The real entry
+point with no bytecode takes about 0.7 s here, and about 0.18 s once
+bytecode exists. Whether the installer ships compiled bytecode, or lets the
+first start write it somewhere outside a signed bundle, is A0-10's to decide;
+the handshake's budget should be read against the no-bytecode column until
+it does.
+
+### Still open
+
+- The runtime's Python packages are resolved by pip at build time, not from
+  the engine's `uv.lock`, so two runs a month apart can vendor different
+  patch versions of pandas or NumPy. The schema check does not notice that.
+- `THIRD_PARTY_NOTICES.md` names pandas, NumPy, requests, python-lsp-jsonrpc
+  and ujson, but not the rest of what pip installs (certifi, charset-normalizer,
+  idna, urllib3, python-dateutil, six); A0-10's Licences screen needs them.

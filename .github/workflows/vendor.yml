@@ -4,7 +4,9 @@
 #
 # Written during the A0-05 spike and first run on 2026-09-07, once the
 # repository had runners; see docs/adr/spikes/loom-native.md. LOOM is green
-# on all four targets. The python job covers darwin-arm64 only (A0-06).
+# on all four targets. The python job covers darwin-arm64, darwin-x64 and
+# win-x64 with one script and one licence gate (A0-06); Linux has no python
+# target because the app ships on macOS and Windows first (ADR-021).
 #
 # The configure flags are the spike's finding, not a preference: LOOM's
 # optional dependencies (GLPK, COIN-OR, Gurobi, libzip) are never called at
@@ -131,11 +133,12 @@ jobs:
   # The Python sidecar runtime. ADR-020 chose python-build-standalone over
   # PyInstaller; scripts/vendor-python.sh verifies the pinned checksum and
   # fails rather than continuing if the asset changed. The engine it
-  # installs is the pinned one (A1-02 wired the block in). What stands
-  # between here and closing A0-06 is this matrix growing darwin-x64 and
-  # win-x64, which is where the recipe is actually unproven; the engine's
-  # tags are public since 2026-09-08, and the refuse-early step below
-  # guards that.
+  # installs is the pinned one (A1-02 wired the block in), with the
+  # dependencies it declares, and the script refuses a runtime whose
+  # `schematic.serve --schema` does not start or does not hash to the pinned
+  # schema. Every step runs under bash, which on windows-latest is Git Bash;
+  # scripts/vendor-python.sh says what that constrains. The engine's tags are
+  # public since 2026-09-08, and the refuse-early step below guards that.
   python:
     name: python (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
@@ -143,7 +146,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: macos-15, target: darwin-arm64 }
+          - { os: macos-15,       target: darwin-arm64 }
+          - { os: macos-15-intel, target: darwin-x64   }
+          - { os: windows-latest, target: win-x64      }
     steps:
       - uses: actions/checkout@v7
       - name: Read the engine's pin
@@ -151,9 +156,13 @@ jobs:
         shell: bash
         run: |
           # actions/checkout wants owner/repo, not the URL the pin stores
-          # for the tools that clone with git.
-          python3 - <<'PY' >> "$GITHUB_OUTPUT"
-          import json
+          # for the tools that clone with git. The Windows runner may have
+          # `python` and no working `python3`.
+          host_py=python3
+          "$host_py" -c 'import sys' >/dev/null 2>&1 || host_py=python
+          "$host_py" - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, sys
+          sys.stdout.reconfigure(newline='\n')  # no \r in an output value on Windows
           engine = json.load(open('vendor/pins.json'))['engine']
           owner_repo = engine['repo'].removeprefix('https://github.com/').removesuffix('.git')
           if owner_repo.count('/') != 1:
@@ -198,22 +207,60 @@ jobs:
             exit 1
           fi
           echo "engine $found at $PINNED_TAG"
-      - name: Fetch, verify and strip the runtime
-        run: scripts/vendor-python.sh ${{ matrix.target }} "$ENGINE_PATH"
-        env:
-          ENGINE_PATH: ${{ github.workspace }}/engine
+      - name: Fetch, verify, strip and prove the runtime
+        shell: bash
+        # A relative engine path, so no backslashed workspace path reaches
+        # the script on Windows; the script resolves it before it moves.
+        run: bash scripts/vendor-python.sh ${{ matrix.target }} engine
       - name: Refuse a runtime carrying a GPL component we did not intend
         shell: bash
         run: |
           # THIRD_PARTY_NOTICES.md requires no GNU readline and no GDBM. The
           # spike found PyInstaller collecting readline from the build host;
-          # this is the check that would have caught it.
-          if find vendor/python -iname '*gdbm*' -o -iname 'libreadline*' | grep -q .; then
+          # this is the check that would have caught it. The last two names
+          # are the Windows forms: python-build-standalone ships no readline
+          # there, so a readline DLL or extension could only have come from a
+          # package, and a GNU one would be GPL.
+          gpl() {
+            find vendor/python -iname '*gdbm*' -o -iname 'libreadline*' \
+              -o -iname '*readline*.dll' -o -iname '*readline*.pyd'
+          }
+          if gpl | grep -q .; then
             echo "::error::the vendored runtime carries GDBM or GNU readline"
-            find vendor/python -iname '*gdbm*' -o -iname 'libreadline*'
+            gpl
             exit 1
           fi
           echo "no GPL readline or GDBM in the vendored runtime"
+          # The shared libraries it does carry, by name, so a new one shows
+          # up in the log of the run that brought it.
+          echo "shared libraries:"
+          find vendor/python \( -iname '*.dll' -o -iname '*.dylib' \) -exec basename {} \; | sort | uniq -c
+      - name: Time the sidecar's cold start
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          # For the spike report: three runs of what the script proved,
+          # first with no bytecode at all (the runtime as vendored, and
+          # nothing written into it), then with a bytecode cache outside the
+          # runtime, whose first run compiles and whose last two do not.
+          case "$TARGET" in
+            win-*) py="vendor/python/$TARGET/python/python.exe" ;;
+            *)     py="vendor/python/$TARGET/python/bin/python3" ;;
+          esac
+          TIMEFORMAT="%R s"
+          echo "$TARGET, no bytecode:"
+          for i in 1 2 3; do
+            time PYTHONDONTWRITEBYTECODE=1 "$py" -m schematic.serve --schema > /dev/null
+          done
+          echo "$TARGET, bytecode cached outside the runtime:"
+          for i in 1 2 3; do
+            time PYTHONPYCACHEPREFIX="$RUNNER_TEMP/pycache" "$py" -m schematic.serve --schema > /dev/null
+          done
+          if find "vendor/python/$TARGET" -name __pycache__ | grep -q .; then
+            echo "::error::timing wrote bytecode into the runtime about to be uploaded"
+            exit 1
+          fi
       - uses: actions/upload-artifact@v7
         with:
           name: python-${{ matrix.target }}
