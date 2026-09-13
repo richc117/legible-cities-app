@@ -64,6 +64,15 @@ takes it on its address and restyles itself - and the interface's own theme
 in Settings is a separate thing that neither follows;
 `src/renderer/src/ThemeSwitch.tsx`). That is the first reel.
 
+Installers (A0-10) came with Phase 5: `build.yml` runs the vendor jobs in
+the same run, refuses a target whose Python, LOOM or ffmpeg is missing,
+stale or the wrong architecture (`scripts/check-vendored.mjs`), compiles
+the runtime's bytecode as unchecked hashes so nothing is written inside a
+signed bundle, packages a dmg per Mac and an nsis installer, launches the
+packaged app once and runs every bundled tool from inside it, and checks
+the bundle did not change (ADR-035). They are unsigned test artefacts until
+A6-01 and A6-05; the ffmpeg they carry is replaced by our own build (#95).
+
 Settings (A1-04) came after it: one file under the user-data folder holding
 the two folders a person chose and the interface's theme, read before the
 configuration resolves so a stored folder sits between `.env.local` and the
@@ -192,7 +201,8 @@ npm run typecheck                     # tsc over the node and the web project
 npm test                              # vitest; the supervisor runs against a stand-in engine (needs a python3 on PATH)
 npm run build                         # electron-vite build into out/
 npm run test:e2e                      # Playwright launches the built app, with and without the stand-in engine
-npm run dist                          # electron-builder --dir; installers arrive with A0-10
+npm run dist                          # electron-builder --dir; installers come from build.yml (A0-10)
+npm run dist:check <target>           # are the vendored components for a target present, current and the right architecture
 ```
 
 `.github/workflows/ci.yml` runs lint, typecheck, test, build and the smoke
