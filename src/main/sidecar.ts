@@ -42,11 +42,17 @@ export const DEFAULT_BOUNDS: Bounds = {
 export interface RequestOptions {
   /**
    * The longest the request may take from being sent to being answered,
-   * however much progress it reports: past it the engine is sent
-   * `$/cancelRequest` and the request ends with the `inactive` error, as the
-   * inactivity bound ends one. For a request whose work is short and known,
-   * where a person is waiting on the answer and progress is no sign of it
-   * (issue 107). Absent, only the inactivity bound applies.
+   * however much progress it reports, or whether it was cancelled: past it
+   * the engine is sent `$/cancelRequest` (unless a cancel already was) and
+   * the request ends with the `inactive` error, as the inactivity bound
+   * ends one. For a request whose work is short and known, where a person
+   * is waiting on the answer and progress is no sign of it (issue 107).
+   * Absent, only the inactivity bound applies. A finite, positive number of
+   * milliseconds no larger than a timer can hold.
+   *
+   * Ending the request here does not end the engine's work: the engine may
+   * still be doing it, so the request is counted by `inFlight` until its
+   * late answer arrives or the engine exits.
    */
   deadlineMs?: number
 }
@@ -68,6 +74,9 @@ export interface SidecarOptions {
 }
 
 const STDERR_TAIL = 20
+
+/** The longest delay a Node timer holds; a longer one fires at once. */
+const MAX_TIMER_MS = 2_147_483_647
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -102,6 +111,14 @@ export class Sidecar {
   private readonly inactivity = new Map<number, NodeJS.Timeout>()
   /** The requests with a deadline of their own, by id; each timer cleared on any ending. */
   private readonly deadlines = new Map<number, NodeJS.Timeout>()
+  /** The requests the engine has been sent `$/cancelRequest` for, so a bound does not ask again. */
+  private readonly cancelSent = new Set<number>()
+  /**
+   * The requests a bound ended while the engine may still be working on
+   * them, by id: counted by `inFlight` until their late answer arrives or
+   * the connection goes. Ids belong to one connection, so they go with it.
+   */
+  private readonly expired = new Set<number>()
   private restartTimer: NodeJS.Timeout | null = null
   private stableTimer: NodeJS.Timeout | null = null
   /** An endChild() in progress, so stop() waits for it rather than passing it. */
@@ -138,7 +155,9 @@ export class Sidecar {
    * engine's data away under it (specs/019-settings, FR-009).
    */
   get inFlight(): number {
-    return this.client?.inFlight.length ?? 0
+    // A request a bound ended is still the engine's work until it answers:
+    // a removal past its deadline may be deleting files (issue 107).
+    return (this.client?.inFlight.length ?? 0) + this.expired.size
   }
 
   /** How many request deadlines are armed: none once every request has ended, and none after a stop. */
@@ -175,19 +194,30 @@ export class Sidecar {
       })
       return { id: 0, result: Promise.reject(error) }
     }
+    const deadlineMs = options.deadlineMs
+    if (
+      deadlineMs !== undefined &&
+      !(Number.isFinite(deadlineMs) && deadlineMs > 0 && deadlineMs <= MAX_TIMER_MS)
+    ) {
+      throw new RangeError(
+        `a request deadline is a positive number of milliseconds up to ${MAX_TIMER_MS}; got ${deadlineMs}`,
+      )
+    }
     const { id, result } = client.request(method, params)
     this.armInactivity(client, id)
-    if (options.deadlineMs !== undefined) this.armDeadline(client, id, method, options.deadlineMs)
+    if (deadlineMs !== undefined) this.armDeadline(client, id, method, deadlineMs)
     const settled = result.then(
       (value) => {
         this.disarmInactivity(id)
         this.disarmDeadline(id)
+        this.cancelSent.delete(id)
         this.stable()
         return value
       },
       (error: EngineError) => {
         this.disarmInactivity(id)
         this.disarmDeadline(id)
+        this.cancelSent.delete(id)
         // The engine answered, even with an error: it is working.
         if (error.code !== ERROR_CODES.engineExited && error.code !== ERROR_CODES.inactive)
           this.stable()
@@ -198,10 +228,41 @@ export class Sidecar {
   }
 
   cancel(id: number): void {
-    // A cancel already asked the engine to stop: the deadline would only
-    // ask again. The inactivity bound still ends a cancel nobody answers.
+    // The deadline stays armed: an engine that does not honour the cancel
+    // still has the request ended at it, and the bound, knowing the cancel
+    // was sent, does not send another.
+    const client = this.client
+    if (client === null) return
+    if (client.inFlight.includes(id)) this.cancelSent.add(id)
+    client.cancel(id)
+  }
+
+  /**
+   * End a request a bound gave up on: ask the engine to cancel it, once,
+   * then settle it here with the bound's sentence. The engine may still be
+   * at the work, so the id stays counted until its answer arrives.
+   */
+  private expire(client: JsonRpcClient, id: number, message: string): void {
+    this.disarmInactivity(id)
     this.disarmDeadline(id)
-    this.client?.cancel(id)
+    if (!client.inFlight.includes(id)) return
+    if (!this.cancelSent.has(id)) client.cancel(id)
+    this.cancelSent.delete(id)
+    if (this.client === client) this.expired.add(id)
+    client.fail(
+      id,
+      new EngineError(ERROR_CODES.inactive, message, {
+        kind: 'inactive',
+        detail: message,
+        hint: message,
+      }),
+    )
+  }
+
+  /** A response for an id the client no longer holds: a request a bound ended has had its answer. */
+  private lateAnswer(client: JsonRpcClient, id: number): void {
+    if (this.client !== client || !this.expired.delete(id)) return
+    this.log(`request ${id}: the engine answered after the app stopped waiting`)
   }
 
   private armDeadline(client: JsonRpcClient, id: number, method: string, ms: number): void {
@@ -209,23 +270,13 @@ export class Sidecar {
     const seconds = ms / 1000
     const timer = setTimeout(() => {
       this.deadlines.delete(id)
-      this.disarmInactivity(id)
-      const message =
+      const within =
         ms >= 1000 && Number.isInteger(seconds)
-          ? `No answer within ${seconds} second${seconds === 1 ? '' : 's'}; the request was cancelled.`
-          : `No answer within ${ms} ms; the request was cancelled.`
+          ? `${seconds} second${seconds === 1 ? '' : 's'}`
+          : `${ms} ms`
+      const message = `No answer within ${within}; the engine was asked to cancel the request.`
       this.log(`request ${id} (${method}): ${message}`)
-      // Asked once, then ended here: an answer that arrives after this is
-      // for an id the client no longer holds, and is dropped with a log line.
-      client.cancel(id)
-      client.fail(
-        id,
-        new EngineError(ERROR_CODES.inactive, message, {
-          kind: 'inactive',
-          detail: message,
-          hint: message,
-        }),
-      )
+      this.expire(client, id, message)
     }, ms)
     this.deadlines.set(id, timer)
   }
@@ -248,15 +299,7 @@ export class Sidecar {
           ? `No progress for ${minutes} minute${minutes === 1 ? '' : 's'}; the request was cancelled.`
           : `No progress for ${this.bounds.inactivityMs} ms; the request was cancelled.`
       this.log(`request ${id}: ${message}`)
-      client.cancel(id)
-      client.fail(
-        id,
-        new EngineError(ERROR_CODES.inactive, message, {
-          kind: 'inactive',
-          detail: message,
-          hint: message,
-        }),
-      )
+      this.expire(client, id, message)
     }, this.bounds.inactivityMs)
     this.inactivity.set(id, timer)
   }
@@ -338,6 +381,7 @@ export class Sidecar {
         )
       },
       log: (message) => this.log(message),
+      onDroppedResponse: (id) => this.lateAnswer(client, id),
     })
     this.client = client
     // A write to a pipe whose reader has gone must not take the app down.
@@ -504,12 +548,18 @@ export class Sidecar {
     if (this._state.state === 'ready') this.failures = 0
   }
 
-  /** Every request's bounds, the inactivity and the deadline alike: the requests went with the child. */
+  /**
+   * Every request's bounds, the inactivity and the deadline alike, and what
+   * is known about their cancels and late answers: the requests went with
+   * the child, and the next connection numbers its own from 1.
+   */
   private clearRequestBounds(): void {
     for (const timer of this.inactivity.values()) clearTimeout(timer)
     this.inactivity.clear()
     for (const timer of this.deadlines.values()) clearTimeout(timer)
     this.deadlines.clear()
+    this.cancelSent.clear()
+    this.expired.clear()
   }
 
   // -- shutdown --

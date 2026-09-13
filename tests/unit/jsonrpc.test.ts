@@ -98,15 +98,17 @@ function client() {
   const notifications: { method: string; params: unknown }[] = []
   const log: string[] = []
   const protocolErrors: ProtocolError[] = []
+  const dropped: number[] = []
   const c = new JsonRpcClient(toEngine, fromEngine, {
     onNotification: (method, params) => notifications.push({ method, params }),
     onProtocolError: (e) => protocolErrors.push(e),
     log: (m) => log.push(m),
+    onDroppedResponse: (id) => dropped.push(id),
   })
   const reply = (message: unknown): void => {
     writeFrame(fromEngine, message)
   }
-  return { c, sent, notifications, log, protocolErrors, reply }
+  return { c, sent, notifications, log, protocolErrors, reply, dropped }
 }
 
 describe('JsonRpcClient', () => {
@@ -193,6 +195,16 @@ describe('JsonRpcClient', () => {
     await tick()
     expect(notifications.map((n) => n.method)).toEqual(['job/log', 'job/progress'])
     expect(log.some((l) => l.includes('unknown request id 99'))).toBe(true)
+  })
+  it('reports the id of a late answer to a request settled from outside (issue 107)', async () => {
+    const { c, dropped, reply } = client()
+    const { id, result } = c.request('feeds.remove', { key: 'x' })
+    c.fail(id, new EngineError(-32003, 'no answer in time'))
+    await expect(result).rejects.toMatchObject({ code: -32003 })
+    reply({ jsonrpc: '2.0', id, result: { ok: true } })
+    reply({ jsonrpc: '2.0', id: 'not-a-number', result: null })
+    await tick()
+    expect(dropped).toEqual([id])
   })
   it('cancels only a request in flight, with the id', async () => {
     const { c, sent } = client()

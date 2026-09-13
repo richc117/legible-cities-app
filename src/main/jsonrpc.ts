@@ -107,6 +107,11 @@ export interface ClientHandlers {
   onNotification(method: string, params: unknown): void
   onProtocolError(error: ProtocolError): void
   log(message: string): void
+  /**
+   * A response arrived for an id this client does not hold: a request
+   * settled from outside (`fail`) has had its late answer. Optional.
+   */
+  onDroppedResponse?(id: number): void
 }
 
 interface Pending {
@@ -241,6 +246,7 @@ export class JsonRpcClient {
     const pending = typeof id === 'number' ? this.pending.get(id) : undefined
     if (pending === undefined) {
       this.handlers.log(`dropped a response for an unknown request id ${String(id)}`)
+      if (typeof id === 'number') this.handlers.onDroppedResponse?.(id)
       return
     }
     this.pending.delete(id as number)

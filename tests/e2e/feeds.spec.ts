@@ -379,12 +379,12 @@ function received(engineHome: string, method: string): number {
     .filter((line) => line.includes(`"${method}"`)).length
 }
 
-test('a removal the engine does not answer in time ends with a sentence, and the list is read again', async () => {
+test('a removal the engine does not answer in time ends with a sentence, and the list shows the truth once it does', async () => {
   test.setTimeout(120_000)
-  // The stand-in does the removal after eight seconds and does not stop for
-  // a cancel, as an engine part-way through the files would not; the app
-  // stops waiting after one (issue 107).
-  const engineHome = home({ remove_delay_ms: 8_000 })
+  // The stand-in blocks on the removal for eight seconds before doing it,
+  // reading nothing else meanwhile, as the pinned engine runs feeds.remove
+  // on its one reader thread; the app stops waiting after one (issue 107).
+  const engineHome = home({ remove_blocks_ms: 8_000 })
   addedFeed(engineHome, 'metro-de-prueba', 'Metro de Prueba')
   const userData = mkdtempSync(join(tmpdir(), 'legible-cities-feeds-profile-'))
   await withApp(
@@ -400,38 +400,40 @@ test('a removal the engine does not answer in time ends with a sentence, and the
       await remove.click()
       await expect(remove).toHaveAttribute('aria-disabled', 'true')
 
-      // The deadline ends it: the sentence, the buttons taking presses again,
-      // and the engine still holding the feed, so it was not the answer.
+      // The deadline releases the dialog: the sentence, and the buttons
+      // taking presses again, while the engine is still in the removal.
       await expect(confirm.getByRole('alert')).toHaveText(
         'The engine did not answer in time, so the feed may or may not have been removed. The list of feeds is read again to show what the engine has now.',
         { timeout: 6_000 },
       )
-      expect(addedKeys(engineHome), 'the engine has not finished yet').toEqual(['metro-de-prueba'])
+      expect(addedKeys(engineHome), 'the engine has not done the removal yet').toEqual([
+        'metro-de-prueba',
+      ])
       await expect(confirm, 'the dialog stays open with its sentence').toBeVisible()
       await expect(remove).not.toHaveAttribute('aria-disabled', 'true')
       await expect(cancel).not.toHaveAttribute('aria-disabled', 'true')
       await expect(confirm.getByRole('status')).toHaveText('')
-      expect(received(engineHome, '$/cancelRequest'), 'the engine was asked to stop, once').toBe(1)
 
-      // The list is read again, and shows what the engine has at that moment.
+      // The list is unchanged while the engine is in the removal: the read
+      // the app sent waits behind it.
+      await expect(feedRow(page, 'Metro de Prueba')).toHaveCount(1)
+
+      // The engine finishes the removal regardless. The read queued behind
+      // it lands, and closing the dialog reads the list once more; either
+      // way the feed has gone from it.
+      await expect.poll(() => addedKeys(engineHome), { timeout: 20_000 }).toEqual([])
       await expect
         .poll(() => received(engineHome, 'feeds.list'), { timeout: 10_000 })
         .toBeGreaterThan(listsBefore)
-      await expect(feedRow(page, 'Metro de Prueba')).toHaveCount(1)
-
-      // The engine finishes late; its answer is not waited for. Closing the
-      // dialog reads the list once more, and the feed has gone from it.
-      await expect.poll(() => addedKeys(engineHome), { timeout: 20_000 }).toEqual([])
-      const listsAfterDeadline = received(engineHome, 'feeds.list')
       await cancel.click()
       await expect(confirm).toBeHidden()
-      await expect
-        .poll(() => received(engineHome, 'feeds.list'), { timeout: 10_000 })
-        .toBeGreaterThan(listsAfterDeadline)
-      await expect(feedRow(page, 'Metro de Prueba')).toHaveCount(0)
+      await expect(feedRow(page, 'Metro de Prueba')).toHaveCount(0, { timeout: 10_000 })
       await expect(page.getByRole('list', { name: 'Added' })).toHaveCount(0)
       // The row whose Remove opened the dialog went with the feed.
       await expect(page.getByRole('heading', { name: 'Feeds' })).toBeFocused()
+      // The engine read the app's cancel only after the removal, and it
+      // changed nothing; read on a poll, since a slow runner records late.
+      await expect.poll(() => received(engineHome, '$/cancelRequest')).toBe(1)
       expect(received(engineHome, 'feeds.remove'), 'one removal was sent').toBe(1)
     },
     { LEGIBLE_USER_DATA: userData, LEGIBLE_FEEDS_REMOVE_DEADLINE_MS: '1000' },

@@ -310,19 +310,25 @@ or a design decision.
   buttons unavailable, for as long as the sidecar's 600 s inactivity bound;
   `feeds.remove` had no request deadline of its own. *Now:* `feeds.remove`
   is sent with a deadline of 30 seconds (`FEEDS_REMOVE_DEADLINE_MS` in
-  `src/main/feeds-ipc.ts`). Past it the engine is sent `$/cancelRequest`
-  once, the request ends with the `inactive` error, and the dialog stays
-  open with its buttons taking presses again and the alert "The engine did
-  not answer in time, so the feed may or may not have been removed. The
-  list of feeds is read again to show what the engine has now."; the list
-  is read at once, and again when that dialog is closed, since the engine
-  may finish the work after the app stopped waiting (`src/main/sidecar.ts`,
+  `src/main/feeds-ipc.ts`). At the deadline the dialog is released: it
+  stays open, its buttons take presses again, and the alert says "The
+  engine did not answer in time, so the feed may or may not have been
+  removed. The list of feeds is read again to show what the engine has
+  now." The pinned engine (v0.8.3) does not stop for that: it runs
+  `feeds.remove` on the one thread that reads requests, so it finishes the
+  removal regardless, reads the app's `$/cancelRequest` only afterwards and
+  ignores it, and answers nothing else meanwhile. The list the app asks for
+  at the deadline is therefore answered once the removal is done and shows
+  it done; closing the dialog reads the list once more. Until the engine
+  answers, the list is left as it was, and a read that fails leaves it
+  too. While the engine is still in the removal the app counts it as
+  running, so "Reset engine data" waits (`src/main/sidecar.ts`,
   `Library.tsx`). No other confirmation waits on the engine: deleting a
   project and resetting the engine's data are the main process's own file
   work. Asserted in `tests/unit/sidecar.test.ts` and end to end in
-  `tests/e2e/feeds.spec.ts` with the stand-in's `remove_delay_ms` beyond a
-  deadline shortened through the development-only
-  `LEGIBLE_FEEDS_REMOVE_DEADLINE_MS`.
+  `tests/e2e/feeds.spec.ts`, against a stand-in that blocks its reader for
+  the removal (`remove_blocks_ms`) beyond a deadline shortened through the
+  development-only `LEGIBLE_FEEDS_REMOVE_DEADLINE_MS`.
 
 - **F5. A kit button's `aria-describedby` described nothing. Fixed
   (issue 113).** *Screen:* Settings (the Licences buttons when unavailable,

@@ -380,7 +380,7 @@ describe('a request deadline (issue 107)', () => {
     const h = harness(true, undefined, (method) => registryDeadline(method))
     await h.call(CHANNELS.engineRequest, 'tok1', 'feeds.remove', { key: 'x' })
     expect(h.requests[0].options).toEqual({ deadlineMs: 30_000 })
-    const message = 'No answer within 30 seconds; the request was cancelled.'
+    const message = 'No answer within 30 seconds; the engine was asked to cancel the request.'
     h.requests[0].deferred.reject(
       new EngineError(ERROR_CODES.inactive, message, {
         kind: 'inactive',
