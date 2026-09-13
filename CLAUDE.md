@@ -195,6 +195,11 @@ when a pressed control goes, `src/renderer/src/focusHandback.ts`; control
 edges, placeholders and the sepia primary fill), sweeps them in
 `tests/e2e/accessibility.spec.ts`, and records the result per screen in
 `docs/accessibility.md`, whose VoiceOver and Narrator columns are a person's.
+The people at the release gate follow documents that quote the app's own
+sentences and control names, so changing one means changing them too
+(A6-04): the acceptance checklist (`docs/acceptance.md`), the stranger's
+timed run (`docs/acceptance-stranger.md`) and the screen-reader walkthrough
+in `docs/accessibility.md`.
 
 Work proceeds phase by phase; `CONTRIBUTING.md` explains the flow, the
 labels, the milestones and the `A0-05`-style issue codes. The four Phase 0
