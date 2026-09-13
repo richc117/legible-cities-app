@@ -17,60 +17,32 @@
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { homedir, tmpdir } from 'node:os'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
-
-const RESULTS = [
-  'pass',
-  'fail',
-  'not automated',
-  'pass, part not automated',
-  'pass, part not checked',
-  'not run',
-]
-
-const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-
-/** The home and temporary folders written as `~` and `<temp>`, as the spec writes them. */
-function redact(text) {
-  const flags = process.platform === 'win32' ? 'gi' : 'g'
-  let out = text
-  for (const [path, word] of [
-    [tmpdir(), '<temp>'],
-    [homedir(), '~'],
-  ]) {
-    for (const spelling of new Set([path, path.replace(/\\/g, '/'), path.replace(/\//g, '\\')])) {
-      if (spelling.length > 1) out = out.replace(new RegExp(escapeRegExp(spelling), flags), word)
-    }
-  }
-  return out
-}
-
-const cell = (text) =>
-  redact(String(text))
-    .replace(/\r?\n+/g, ' ')
-    .replace(/\|/g, '\\|')
-    .trim()
+import { fillStep, parseSums, redact, RESULTS } from './pure.mjs'
 
 function sha256(path) {
   return createHash('sha256').update(readFileSync(path)).digest('hex')
 }
 
-function readJson(path) {
+/** A JSON file's object, or `fallback` when it is not there or not JSON. */
+function readJson(path, fallback = {}) {
   try {
     return JSON.parse(readFileSync(path, 'utf8'))
   } catch {
-    return {}
+    return fallback
   }
 }
 
-/** Replace step `n`'s result and notes in a rendered record, keeping its title. */
-function fillStep(markdown, n, result, notes) {
-  if (!RESULTS.includes(result)) throw new Error(`${result} is not a result`)
-  const row = new RegExp(`^\\| ${n} \\| (.*?) \\| .*\\|$`, 'm')
-  if (!row.test(markdown)) throw new Error(`the record has no row for step ${n}`)
-  return markdown.replace(row, (_, title) => `| ${n} | ${title} | ${result} | ${cell(notes)} |`)
+/** A record the spec wrote, or a sentence saying it did not. */
+function readRecord(path) {
+  if (!existsSync(path)) {
+    throw new Error(
+      `there is no record at ${path}: the spec did not write one, so step 21 has nowhere to go`,
+    )
+  }
+  return readFileSync(path, 'utf8')
 }
 
 /** Every place install.md names for this system, and whether each is there. */
@@ -156,14 +128,19 @@ function namedForTheApp() {
 }
 
 function leftovers(madePath, recordPath, installFolder) {
-  const made = readJson(madePath)
+  const made = readJson(madePath, null)
   const problems = []
   const notes = []
+  if (made === null) {
+    problems.push(
+      `there is no readable made.json at ${madePath}, so the profile, export folder and log files the run made could not be checked`,
+    )
+  }
   for (const [what, path] of [
-    ['the profile the run made', made.profile],
-    ['the export folder the run made', made.exports],
-    ...(made.logFilesMade ?? []).map((path) => ['a log file the run made', path]),
-    ...(made.logsFolderMade ? [['the log folder the run made', made.logs]] : []),
+    ['the profile the run made', made?.profile],
+    ['the export folder the run made', made?.exports],
+    ...(made?.logFilesMade ?? []).map((path) => ['a log file the run made', path]),
+    ...(made?.logsFolderMade ? [['the log folder the run made', made.logs]] : []),
   ]) {
     if (typeof path === 'string' && path !== '' && existsSync(path))
       problems.push(`${what} is still there: ${path}`)
@@ -191,7 +168,7 @@ function leftovers(madePath, recordPath, installFolder) {
       ? 'Not automated: the Windows apps list and the Start menu as a person sees them.'
       : "Not automated: a Finder search, which is a person's.",
   ].join(' ')
-  writeFileSync(recordPath, fillStep(readFileSync(recordPath, 'utf8'), 21, result, text))
+  writeFileSync(recordPath, fillStep(readRecord(recordPath), 21, result, text))
   process.stdout.write(`step 21: ${result}: ${redact(text)}\n`)
   return problems.length === 0 ? 0 : 1
 }
@@ -204,12 +181,10 @@ function main(args) {
       return 0
     case 'sums': {
       const [sumsPath, name] = rest
-      for (const line of readFileSync(sumsPath, 'utf8').split(/\r?\n/)) {
-        const match = /^([0-9a-f]{64}) [ *](.+)$/.exec(line)
-        if (match !== null && match[2] === name) {
-          process.stdout.write(`${match[1]}\n`)
-          return 0
-        }
+      const sum = parseSums(readFileSync(sumsPath, 'utf8')).get(name)
+      if (sum !== undefined) {
+        process.stdout.write(`${sum}\n`)
+        return 0
       }
       process.stderr.write(`${name} has no line in ${sumsPath}\n`)
       return 1
@@ -231,7 +206,7 @@ function main(args) {
     }
     case 'fill': {
       const [path, n, result, ...notes] = rest
-      writeFileSync(path, fillStep(readFileSync(path, 'utf8'), Number(n), result, notes.join(' ')))
+      writeFileSync(path, fillStep(readRecord(path), Number(n), result, notes.join(' ')))
       return 0
     }
     case 'leftovers':
@@ -244,4 +219,13 @@ function main(args) {
   }
 }
 
-process.exitCode = main(process.argv.slice(2))
+// A failure is a sentence on standard error and an exit code, never a stack
+// trace in a workflow's log.
+try {
+  process.exitCode = main(process.argv.slice(2))
+} catch (error) {
+  process.stderr.write(
+    `record-cli: ${redact(error instanceof Error ? error.message : String(error))}\n`,
+  )
+  process.exitCode = 1
+}

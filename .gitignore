@@ -6,6 +6,8 @@ release/
 .vite/
 coverage/
 test-results/
+# The acceptance run's record and screenshots (tests/acceptance, A6-04).
+acceptance-results/
 playwright-report/
 
 # Vendored runtimes and binaries are CI artefacts, never committed

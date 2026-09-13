@@ -19,5 +19,6 @@ export default defineConfig({
   // rather than at the end of the run.
   use: { actionTimeout: 60_000 },
   reporter: process.env.CI ? [['github'], ['list']] : 'list',
-  outputDir: 'test-results/acceptance-output',
+  // Beside the record, and not under test-results/, which `npm run test:e2e` empties.
+  outputDir: 'acceptance-results/playwright-output',
 })

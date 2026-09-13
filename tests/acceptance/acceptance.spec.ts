@@ -10,7 +10,10 @@
 // Without it the test is skipped. Optional:
 //
 //   LEGIBLE_ACCEPTANCE_OUT    where the record and failure screenshots go
-//                             (default test-results/acceptance)
+//                             (default acceptance-results, which git ignores)
+//   LEGIBLE_ACCEPTANCE_TEMP   where the profile and export folder are made
+//                             (default the runner's or the system's temporary
+//                             folder); failure screenshots show these paths
 //   LEGIBLE_ACCEPTANCE_PINS   vendor/pins.json at the release's tag, for the
 //                             versions the app must report (default: this
 //                             checkout's)
@@ -64,13 +67,21 @@ import {
   type Page,
 } from '@playwright/test'
 import type { ProjectRecord } from '../../src/shared/project'
+import { tagContains as gitTagContains, writtenSince } from './pure.mjs'
 import { RunRecord, STEP_TITLES, redact, type Result } from './record'
 
 const repoRoot = resolve(__dirname, '../..')
 const APP = process.env.LEGIBLE_ACCEPTANCE_APP ?? ''
-const OUT = resolve(
-  process.env.LEGIBLE_ACCEPTANCE_OUT || join(repoRoot, 'test-results', 'acceptance'),
-)
+// Not under test-results/, which `npm run test:e2e` empties.
+const OUT = resolve(process.env.LEGIBLE_ACCEPTANCE_OUT || join(repoRoot, 'acceptance-results'))
+/**
+ * Where the run's profile and export folder are made. Screenshots of a
+ * failed step show Settings, and so these paths: a runner's temporary folder
+ * is outside any home, and LEGIBLE_ACCEPTANCE_TEMP moves them out of a
+ * person's home on their own machine (on Windows the default is inside it).
+ */
+const TEMP_ROOT =
+  process.env.LEGIBLE_ACCEPTANCE_TEMP || (process.env.CI ? process.env.RUNNER_TEMP : '') || tmpdir()
 const PINS_PATH = process.env.LEGIBLE_ACCEPTANCE_PINS || join(repoRoot, 'vendor', 'pins.json')
 const PRODUCT = 'Legible Cities'
 const PLATFORM =
@@ -133,20 +144,10 @@ const TAG = process.env.LEGIBLE_ACCEPTANCE_TAG ?? ''
 
 /**
  * Whether the tag under test contains a feature's commit: true or false, or
- * null when no tag was named or git cannot say (a shallow checkout, a tag
- * this clone does not have).
+ * null when no tag was named or git cannot tell (tests/acceptance/pure.mjs).
  */
-function tagContains(feature: Feature): boolean | null {
-  if (TAG === '') return null
-  const result = spawnSync(
-    'git',
-    ['merge-base', '--is-ancestor', feature.commit, `refs/tags/${TAG}`],
-    { cwd: repoRoot, encoding: 'utf8', timeout: 30 * 1_000, windowsHide: true },
-  )
-  if (result.status === 0) return true
-  if (result.status === 1) return false
-  return null
-}
+const tagContains = (feature: Feature): boolean | null =>
+  gitTagContains({ tag: TAG, commit: feature.commit, cwd: repoRoot })
 
 interface Pins {
   engine: { version: string }
@@ -154,6 +155,11 @@ interface Pins {
   loom: { commit: string }
 }
 
+// A person without an installed app skips; a runner without one has lost
+// its install step, and says so.
+if (APP === '' && process.env.CI) {
+  throw new Error('LEGIBLE_ACCEPTANCE_APP is empty on a CI runner: the install step named no app')
+}
 test.skip(
   APP === '',
   'set LEGIBLE_ACCEPTANCE_APP to an installed Legible Cities to run the checklist',
@@ -222,7 +228,8 @@ function processesUnder(dir: string): string[] {
       ],
       {
         encoding: 'utf8',
-        timeout: 60 * SECOND,
+        // Shorter than the wait around it, so a quit is probed several times.
+        timeout: 8 * SECOND,
         windowsHide: true,
         env: { ...process.env, LC_ACCEPTANCE_DIR: dir },
       },
@@ -234,7 +241,7 @@ function processesUnder(dir: string): string[] {
   }
   const result = spawnSync('ps', ['-axww', '-o', 'pid=,command='], {
     encoding: 'utf8',
-    timeout: 30 * SECOND,
+    timeout: 8 * SECOND,
     windowsHide: true,
     maxBuffer: 16 * 1024 * 1024,
   })
@@ -560,8 +567,8 @@ test('a release, installed, through docs/acceptance.md', async () => {
   const session: Session = {
     exe,
     install: installOf(exe),
-    profile: mkdtempSync(join(tmpdir(), 'lc-acceptance-profile-')),
-    exportFolder: join(mkdtempSync(join(tmpdir(), 'lc-acceptance-exports-')), 'exports'),
+    profile: mkdtempSync(join(TEMP_ROOT, 'lc-acceptance-profile-')),
+    exportFolder: join(mkdtempSync(join(TEMP_ROOT, 'lc-acceptance-exports-')), 'exports'),
     pins,
     app: null,
     page: null,
@@ -587,6 +594,38 @@ test('a release, installed, through docs/acceptance.md', async () => {
           files: new Set(LOG_FILES.filter((name) => existsSync(join(macLogs, name)))),
         }
 
+  // What the run made, written the moment it is made and again as more is,
+  // so a run that dies still leaves step 21 a list to check. Its paths are
+  // absolute and unredacted, for the check; the workflow does not upload it.
+  const made = {
+    profile: session.profile,
+    exports: dirname(session.exportFolder),
+    logs: macLogs,
+    logsFolderMade: logsBefore !== null && !logsBefore.folder,
+    logFilesMade: [] as string[],
+    kept: [] as string[],
+    notRemoved: [] as string[],
+  }
+  const writeMade = (): void => {
+    try {
+      writeFileSync(join(OUT, 'made.json'), `${JSON.stringify(made, null, 2)}\n`)
+    } catch (error) {
+      record.anythingElse(`made.json could not be written: ${messageOf(error)}`)
+    }
+  }
+  /** The macOS log files this run has created so far: there now, and not before it. */
+  const noteLogFiles = (): void => {
+    if (macLogs === null || logsBefore === null) return
+    for (const name of LOG_FILES) {
+      const path = join(macLogs, name)
+      if (!logsBefore.files.has(name) && existsSync(path) && !made.logFilesMade.includes(path)) {
+        made.logFilesMade.push(path)
+      }
+    }
+    writeMade()
+  }
+  writeMade()
+
   const page = (): Page => {
     if (session.page === null || session.app === null) throw new Error('the app is not running')
     return session.page
@@ -603,6 +642,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
     session.app = app
     const window = await app.firstWindow({ timeout: LAUNCH_MS })
     session.page = window
+    noteLogFiles()
     await installRecorder(window)
     await bringToFront(app, window)
     const where = await app.evaluate(({ app: electronApp }) => ({
@@ -716,11 +756,13 @@ test('a release, installed, through docs/acceptance.md', async () => {
       const early = (await saidSoFar(window)).filter((s) =>
         /^(Checking the engine…|Starting the engine\.)$/.test(s),
       )
-      log.note(
-        early.length > 0
-          ? `Seen before ready: ${[...new Set(early)].map((s) => `"${s}"`).join(', ')}.`
-          : 'Nothing before "Engine ready" was seen; the app may have been ready before the first read.',
-      )
+      if (early.length > 0) {
+        log.note(`Seen before ready: ${[...new Set(early)].map((s) => `"${s}"`).join(', ')}.`)
+      } else {
+        log.notAutomated(
+          'that the status line started at "Checking the engine…" or "Starting the engine.": neither was caught before "Engine ready".',
+        )
+      }
       record.field('Engine version', pins.engine.version)
       // Step 2's last point, which the first window is: the header.
       await log.soft(
@@ -944,12 +986,16 @@ test('a release, installed, through docs/acceptance.md', async () => {
         .catch(() => '')
       if (cancelSeen) log.note('"Cancel the add" was shown while the add ran.')
       else
-        log.note('"Cancel the add" was not caught: the add may have ended before the first look.')
+        log.notAutomated(
+          '"Cancel the add" while the add ran: it had ended, or not begun, at the one look.',
+        )
       if (runText !== '') {
         await log.soft('the two stages', () => {
           expect(runText).toContain('download')
           expect(runText).toContain('check')
         })
+      } else {
+        log.notAutomated("the progress line's two stages: the add was not caught while it ran.")
       }
 
       const ended = await until(
@@ -1143,9 +1189,23 @@ test('a release, installed, through docs/acceptance.md', async () => {
           expect(labels).toEqual(LAYOUT_STAGES)
         })
         const cancel = await region.getByRole('button', { name: 'Cancel', exact: true }).isVisible()
-        if (!cancel) log.note(`${name}: Cancel was not caught beside the line.`)
-        return runToEnd(region, /Laid out/, LAYOUT_MS)
+        if (!cancel) {
+          log.notAutomated(`${name}: Cancel beside the line while it ran, which was not caught.`)
+        }
+        const end = await runToEnd(region, /Laid out/, LAYOUT_MS)
+        if (end.ok) {
+          await log.soft(`${name}: every stage ticked`, async () => {
+            const marks = await region
+              .locator('svg rect.mark')
+              .evaluateAll((rects) => rects.map((rect) => rect.getAttribute('class') ?? ''))
+            expect(marks.map((m) => m.includes('mark-done'))).toEqual(LAYOUT_STAGES.map(() => true))
+          })
+        }
+        return end
       }
+      log.notAutomated(
+        "that the sentence beside the line is the engine's for the last stage that finished: each is replaced by the next, and a short one can go before it is drawn.",
+      )
 
       const la = await layOut('Los Angeles')
       if (!la.ok) throw new Error(`Los Angeles was not laid out: "${la.sentence}" "${la.message}"`)
@@ -1284,24 +1344,24 @@ test('a release, installed, through docs/acceptance.md', async () => {
           'Zoom with the wheel or plus and minus, pan by dragging or with the arrows, 0 to fit.',
         )
       })
+      // The control is checked whenever this build has it. Whether the tag
+      // contains the commit that brought it decides only what its absence
+      // is: a failure, not in this build, or - when a tag was named and git
+      // cannot tell - a problem of its own, never a quiet pass.
       const skipExpected = tagContains(FEATURES.skipPastMap)
       const skipPresent = (await window.locator('button.skip-link').count()) > 0
       const { name: skipName, commit: skipCommit, landed: skipLanded } = FEATURES.skipPastMap
-      if (skipExpected === false) {
-        log.notChecked(
-          `${skipName}: ${TAG} was tagged before ${skipLanded} (${skipCommit.slice(0, 7)})${skipPresent ? ', though the control is on the screen' : ''}.`,
+      const skipShort = skipCommit.slice(0, 7)
+      if (TAG !== '' && skipExpected === null) {
+        log.problems.push(
+          `git could not tell whether ${TAG} contains ${skipShort} (${skipName}, ${skipLanded}): the tag or the commit is not in this clone, or the clone is shallow`,
         )
-      } else if (skipExpected === null && !skipPresent) {
-        log.notChecked(
-          `${skipName}: the control is not in this build, and no tag git could read was named (LEGIBLE_ACCEPTANCE_TAG) to say whether it should be; it landed in ${skipLanded} (${skipCommit.slice(0, 7)}).`,
-        )
-      } else {
+      }
+      if (skipPresent) {
+        if (skipExpected === false) {
+          log.note(`${skipName} is on the screen though ${TAG} was tagged before ${skipLanded}.`)
+        }
         await log.soft('Skip past the map, then Rename', async () => {
-          if (skipExpected === null) {
-            log.note(
-              `${skipName} checked: no tag git could read was named, and the control is in this build.`,
-            )
-          }
           await window.keyboard.press('Tab')
           const skip = window.getByRole('button', { name: 'Skip past the map', exact: true })
           await expect(skip).toBeFocused()
@@ -1311,6 +1371,16 @@ test('a release, installed, through docs/acceptance.md', async () => {
           await window.keyboard.press('Enter')
           await expect(window.getByRole('button', { name: 'Rename', exact: true })).toBeFocused()
         })
+      } else if (skipExpected === true) {
+        log.problems.push(
+          `${skipName} is not on the screen, and ${TAG} contains ${skipShort}, which brought it`,
+        )
+      } else if (skipExpected === false) {
+        log.notChecked(`${skipName}: ${TAG} was tagged before ${skipLanded} (${skipShort}).`)
+      } else if (TAG === '') {
+        log.notChecked(
+          `${skipName}: the control is not in this build, and no tag was named (LEGIBLE_ACCEPTANCE_TAG) to say whether it should be; it landed in ${skipLanded} (${skipShort}).`,
+        )
       }
 
       await log.soft('the viewer', async () => {
@@ -1760,6 +1830,11 @@ test('a release, installed, through docs/acceptance.md', async () => {
       // capture takes most of the export and is always caught; the plan and
       // the encode can be over between two looks, and are only noted.
       const current = new Set<string>()
+      // The page's visibility, sampled with it: in a visible page the
+      // recorder sees every sentence React draws, and "Captured n of n"
+      // counts up for most of the export.
+      const visibilities = new Set<string>()
+      await bringToFront(session.app as ElectronApplication, window)
       const watch = (async () => {
         const region = panel.getByRole('region', { name: 'Export' })
         const cancel = region.getByRole('button', { name: 'Cancel', exact: true })
@@ -1777,6 +1852,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
           for (const label of await region.locator('svg text.label-current').allTextContents()) {
             current.add(label.trim())
           }
+          visibilities.add(await window.evaluate(() => document.visibilityState))
           await sleep(200)
         }
       })().then(
@@ -1821,6 +1897,18 @@ test('a release, installed, through docs/acceptance.md', async () => {
       log.note(
         `Sentences seen beside the line: ${seen.map(([name]) => `"${name}"`).join(', ') || 'none'}; not caught: ${missed.map(([name]) => `"${name}"`).join(', ') || 'none'}.`,
       )
+      const capturedSeen = said.some((t) => /^Captured \d+ of \d+ frames\.$/.test(t))
+      if (visibilities.size === 1 && visibilities.has('visible')) {
+        if (!capturedSeen) {
+          log.problems.push(
+            '"Captured <n> of <n> frames." was never drawn, though the page was visible throughout the export',
+          )
+        }
+      } else if (!capturedSeen) {
+        log.notAutomated(
+          `"Captured <n> of <n> frames." counting up: the page was ${[...visibilities].join(' and ') || 'never sampled'} during the export, and a hidden page's drawing is throttled.`,
+        )
+      }
       await log.soft('the file is a valid MP4', () => {
         const probe = ffprobe(session.resources, done.path)
         const video = probe.streams?.find((s) => s.codec_type === 'video')
@@ -2202,17 +2290,24 @@ test('a release, installed, through docs/acceptance.md', async () => {
         )
         expect(blank).toEqual([])
       })
-      await app.evaluate(({ shell }) => {
+      // On Windows, which has no viewer for Markdown by default, the notices
+      // do not open, and the app shows the file in File Explorer instead:
+      // the stub answers the platform's refusal there, so that path is the
+      // one exercised and recorded.
+      const refuseNotices = process.platform === 'win32'
+      await app.evaluate(({ shell }, refuse) => {
         const opened: string[] = []
         ;(globalThis as { __opened?: string[] }).__opened = opened
         shell.openPath = (async (path: string) => {
           opened.push(`open ${path}`)
-          return ''
+          return refuse && path.endsWith('THIRD_PARTY_NOTICES.md')
+            ? 'There is no application associated with the given file name extension.'
+            : ''
         }) as typeof shell.openPath
         shell.showItemInFolder = (path: string) => {
           opened.push(`show ${path}`)
         }
-      })
+      }, refuseNotices)
       const opened = (): Promise<string[]> =>
         app.evaluate(() => (globalThis as { __opened?: string[] }).__opened ?? [])
       const pressFor = async (name: string): Promise<string> => {
@@ -2234,6 +2329,17 @@ test('a release, installed, through docs/acceptance.md', async () => {
         const path = await pressFor('Open the notices')
         expect(basename(path)).toBe('THIRD_PARTY_NOTICES.md')
         expect(existsSync(path)).toBe(true)
+        if (refuseNotices) {
+          const shown = await until(
+            async () => (await opened()).find((entry) => entry === `show ${path}`),
+            SHORT_MS,
+            async () =>
+              `the notices were not shown in File Explorer after they did not open: ${(await opened()).join('; ')}`,
+          )
+          log.note(
+            `With no viewer for Markdown, the app fell back to showing the file (${shown.slice(0, 4)}).`,
+          )
+        }
       })
       await log.soft('Show the licence texts', async () => {
         const path = await pressFor('Show the licence texts')
@@ -2351,29 +2457,27 @@ test('a release, installed, through docs/acceptance.md', async () => {
     )
 
     // What the run made, removed; the workflow checks it is gone (step 21).
-    const made = {
-      profile: session.profile,
-      exports: dirname(session.exportFolder),
-      logs: macLogs,
-      logsFolderMade: logsBefore !== null && !logsBefore.folder,
-      logFilesMade: [] as string[],
-      kept: [] as string[],
+    // A removal that fails is said, not thrown: the record must still be written.
+    noteLogFiles()
+    const remove = (path: string, options: Parameters<typeof rmSync>[1]): void => {
+      try {
+        rmSync(path, options)
+      } catch (error) {
+        made.notRemoved.push(path)
+        record.anythingElse(`Could not remove ${path}: ${messageOf(error)}`)
+      }
     }
-    rmSync(session.profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 })
-    rmSync(dirname(session.exportFolder), {
-      recursive: true,
-      force: true,
-      maxRetries: 10,
-      retryDelay: 500,
-    })
+    const folder = { recursive: true, force: true, maxRetries: 10, retryDelay: 500 }
+    remove(session.profile, folder)
+    remove(dirname(session.exportFolder), folder)
     if (macLogs !== null && logsBefore !== null) {
-      for (const name of LOG_FILES) {
-        const path = join(macLogs, name)
-        if (logsBefore.files.has(name) || !existsSync(path)) continue
+      for (const path of [...made.logFilesMade]) {
+        if (!existsSync(path)) continue
         if (writtenSince(path, since)) {
-          made.logFilesMade.push(path)
-          rmSync(path, { force: true })
+          remove(path, { force: true })
         } else {
+          // A rotation turned a person's own log into a file that did not exist.
+          made.logFilesMade.splice(made.logFilesMade.indexOf(path), 1)
           made.kept.push(path)
         }
       }
@@ -2386,7 +2490,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
         }
       }
     }
-    writeFileSync(join(OUT, 'made.json'), `${JSON.stringify(made, null, 2)}\n`)
+    writeMade()
     if (made.kept.length > 0) {
       record.anythingElse(
         `Log files that were there before the run keep its lines: ${made.kept.join(', ')}`,
@@ -2401,23 +2505,3 @@ test('a release, installed, through docs/acceptance.md', async () => {
     .filter((n) => record.result(n) === 'fail')
   expect(failed, `the steps that failed; the record is ${recordPath}`).toEqual([])
 })
-
-/**
- * Whether a log file that was not there before the run is this run's to
- * remove: its first stamped line is at or after `since`, or it has none. A
- * `main.log` near its cap rotates into a `main.old.log` that did not exist,
- * and its lines then begin before the run (scripts/launch-packaged.mjs).
- */
-function writtenSince(path: string, since: number): boolean {
-  let contents: string
-  try {
-    contents = readFileSync(path, 'utf8')
-  } catch {
-    return false
-  }
-  for (const line of contents.split(/\r?\n/)) {
-    const stamp = Date.parse(line.slice(0, line.indexOf(' ')))
-    if (Number.isFinite(stamp)) return stamp >= since
-  }
-  return true
-}

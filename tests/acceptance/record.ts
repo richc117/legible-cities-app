@@ -5,11 +5,19 @@
 // tests/acceptance/record-cli.mjs, which edits the same rows.
 //
 // The record is pasted into a public issue, so every note goes through
-// `redact` first: the home folder is written as `~` and the temporary folder
-// as `<temp>`, in every spelling a path can take on this machine.
+// `redact` first (tests/acceptance/pure.mjs, shared with the CLI): the home
+// folder is written as `~` and the temporary folder as `<temp>`, in every
+// spelling a path can take on this machine. A step's result is one of
+// pure.mjs's RESULTS: "pass, part not automated" is a step whose every
+// automated check held and which asks for something a machine cannot judge,
+// "pass, part not checked" one that asks for something the release under
+// test predates; either part is named in the notes, never counted as passed.
 
-import { readFileSync, realpathSync, writeFileSync } from 'node:fs'
-import { homedir, tmpdir } from 'node:os'
+import { readFileSync, writeFileSync } from 'node:fs'
+import { cell, redact, type Result } from './pure.mjs'
+
+export { redact }
+export type { Result }
 
 /** The checklist's step titles, word for word, from the results template. */
 export const STEP_TITLES: Record<number, string> = {
@@ -54,21 +62,6 @@ export const FIELDS = [
 
 export type Field = (typeof FIELDS)[number]
 
-/**
- * A step's result. "pass, part not automated" is a step whose every
- * automated check held and which asks for something a machine cannot judge;
- * "pass, part not checked" one that asks for something the release under
- * test predates. Either part is named in the notes and is never counted as
- * passed.
- */
-export type Result =
-  | 'pass'
-  | 'fail'
-  | 'not automated'
-  | 'pass, part not automated'
-  | 'pass, part not checked'
-  | 'not run'
-
 export interface Row {
   title: string
   result: Result
@@ -79,43 +72,6 @@ export interface Row {
 export interface Prior {
   fields?: Partial<Record<Field, string>>
   steps?: Record<string, { result: Result; notes: string }>
-}
-
-const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-
-function spellings(path: string): string[] {
-  const out = new Set<string>([path])
-  try {
-    out.add(realpathSync.native(path))
-  } catch {
-    // Not there: the plain spelling is all there is.
-  }
-  for (const each of [...out]) {
-    out.add(each.replace(/\\/g, '/'))
-    out.add(each.replace(/\//g, '\\'))
-  }
-  // Longest first, so a folder inside another is replaced before its parent.
-  return [...out].filter((p) => p.length > 1).sort((a, b) => b.length - a.length)
-}
-
-const TEMP = spellings(tmpdir())
-const HOME = spellings(homedir())
-
-/** Text with the temporary and home folders written as `<temp>` and `~`. */
-export function redact(text: string): string {
-  const flags = process.platform === 'win32' ? 'gi' : 'g'
-  let out = text
-  for (const path of TEMP) out = out.replace(new RegExp(escapeRegExp(path), flags), '<temp>')
-  for (const path of HOME) out = out.replace(new RegExp(escapeRegExp(path), flags), '~')
-  return out
-}
-
-/** A cell of a Markdown table: one line, no bare pipe. */
-export function cell(text: string): string {
-  return redact(text)
-    .replace(/\r?\n+/g, ' ')
-    .replace(/\|/g, '\\|')
-    .trim()
 }
 
 export class RunRecord {

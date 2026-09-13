@@ -47,12 +47,29 @@ paste into the run's issue. On a machine with the app already installed,
 the spec runs on its own:
 
 ```
-LEGIBLE_ACCEPTANCE_APP="/Applications/Legible Cities.app" npm run test:acceptance
+LEGIBLE_ACCEPTANCE_APP="/Applications/Legible Cities.app" LEGIBLE_ACCEPTANCE_TAG=v0.1.0-rc.3 npm run test:acceptance
 ```
 
-It launches the app, so never beside another launch of it; it uses a
-temporary profile and export folder, removes both afterwards, and leaves
-the clipboard holding the last thing the app copied. It brings the app's
+The record and the screenshots go to `acceptance-results/` (ignored by git;
+`LEGIBLE_ACCEPTANCE_OUT` moves them). It launches the app, so never beside
+another launch of it; it uses a temporary profile and export folder,
+removes both afterwards, and leaves the clipboard holding the last thing
+the app copied.
+
+Two things a local run leaves that a runner does not:
+
+- **The screenshots are not redacted.** The record writes your home folder
+  as `~`, but a screenshot of a failed step shows the screen as it was,
+  Settings' folder paths included. On Windows the temporary folder is
+  inside your home, so set `LEGIBLE_ACCEPTANCE_TEMP` to a folder outside
+  it (such as `C:\lc-acceptance`) before a run whose screenshots you mean
+  to share, and look at each before attaching it.
+- **On a Mac, your own logs.** A packaged app writes its logs to
+  `~/Library/Logs/Legible Cities` whatever its profile. The run removes the
+  log files it created, but its lines are appended to a `main.log` or
+  `engine.log` that was already there, and can push one past its 5 MB cap,
+  rotating your existing `main.log` into `main.old.log`; that file is left
+  alone. It brings the app's
 window to the front, takes focus and scrolls the map into view before
 watching it, because Chromium stops the map's animation in a window hidden
 behind others and in a frame scrolled out of sight; if the window still is not

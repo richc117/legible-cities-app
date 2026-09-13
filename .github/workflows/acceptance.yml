@@ -242,9 +242,11 @@ jobs:
         if: ${{ !cancelled() }}
         with:
           name: acceptance-${{ matrix.target }}
+          # Not made.json: its paths are absolute and unredacted, for step 21's
+          # check on the runner only. The screenshots are not redacted either,
+          # but a runner's folders are outside any person's home.
           path: |
             ${{ runner.temp }}/acceptance/*.md
             ${{ runner.temp }}/acceptance/*.png
-            ${{ runner.temp }}/acceptance/made.json
           if-no-files-found: warn
           retention-days: 30
