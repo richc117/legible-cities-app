@@ -975,6 +975,25 @@ the page's `setCapture` was not run: it drops the one frame already queued,
 which fires during the settle, before `settle()` snaps the transitions and
 the first beat sets the clock, so it is not expected to change a frame.
 
+Then the unaltered test, run five times on the same machine while other
+work loaded it, failed three: the GIFs differed in every frame, by up to 221
+levels, in a file whose size fell into one of two values. The pixels over
+the tolerance in the first frame of one failure lay along one line only, a
+palette colour moved rather than geometry: the engine's GIF encode builds
+one palette from every captured frame (`palettegen=stats_mode=diff`), so a
+difference in any captured frame can move a colour in all of them. ffmpeg
+itself is not the cause: the engine's two GIF commands, run by the pinned
+ffmpeg on one folder of frames, gave byte-identical files five times in a
+row, five times at once, and once on a single thread, while one 10x10 box
+added to one frame of 108 moved colours by more than the tolerance in all
+108. Whether the captured frames themselves differ, and where, is what
+`LEGIBLE_KEEP_FRAMES` is for: in development only, the export copies each
+export's frames to that folder before removing them
+(`keptFramesFolder` in `src/main/export.ts`), and the test then compares
+the two captures frame by frame, with the pixels, the box they lie in and
+whether a frame is the other run's frame before or after it, in
+`captured-frames.json`.
+
 The test never runs LOOM, by design (ADR-023): it reads a stored layout.
 So whether a layout made on Windows is reproducible, which ADR-021 expected
 this test to measure, is still unmeasured.

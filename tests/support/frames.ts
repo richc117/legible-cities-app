@@ -6,7 +6,7 @@
 // determinism test, so the two measure the same thing.
 
 import { spawn } from 'node:child_process'
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, readdirSync, readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import type { Readable } from 'node:stream'
 
@@ -145,8 +145,8 @@ interface Decoder {
  * cannot start at all, rejects `finished`: two files truncated the same way
  * decode to the same bytes, and only the exit says one of them was broken.
  */
-function decoder(ffmpeg: string, file: string): Decoder {
-  const child = spawn(ffmpeg, decodeArgs(file), {
+function decoder(ffmpeg: string, file: string, args = decodeArgs(file)): Decoder {
+  const child = spawn(ffmpeg, args, {
     windowsHide: true,
     stdio: ['ignore', 'pipe', 'inherit'],
     timeout: 10 * 60_000,
@@ -311,4 +311,266 @@ export async function extractFrames(
       )
     })
   }
+}
+
+/**
+ * The decoder's arguments for a folder of captured frames, `000000.png`
+ * onwards, as the capture writes them: each frame once, as packed 8-bit RGB.
+ */
+export function decodeSequenceArgs(dir: string): string[] {
+  return [
+    '-v',
+    'error',
+    '-start_number',
+    '0',
+    '-i',
+    join(dir, '%06d.png'),
+    '-fps_mode',
+    'passthrough',
+    '-f',
+    'rawvideo',
+    '-pix_fmt',
+    'rgb24',
+    'pipe:1',
+  ]
+}
+
+/** A raw stream as whole frames, one at a time; a partial frame at the end is dropped. */
+export async function* wholeFrames(
+  stream: AsyncIterable<Buffer>,
+  frameBytes: number,
+): AsyncGenerator<Buffer> {
+  if (!Number.isInteger(frameBytes) || frameBytes <= 0)
+    throw new Error('a frame has a whole, positive number of bytes')
+  let current = Buffer.alloc(frameBytes)
+  let filled = 0
+  for await (const chunk of stream) {
+    let offset = 0
+    while (offset < chunk.length) {
+      const n = Math.min(frameBytes - filled, chunk.length - offset)
+      chunk.copy(current, filled, offset, offset + n)
+      filled += n
+      offset += n
+      if (filled === frameBytes) {
+        yield current
+        current = Buffer.alloc(frameBytes)
+        filled = 0
+      }
+    }
+  }
+}
+
+/** Where two frames differ: pixels with a channel over the tolerance, their bounding box, the largest difference. */
+export interface PixelDifference {
+  frame: number
+  pixels: number
+  maxDiff: number
+  /** Inclusive, in pixels from the top left; null when no pixel differs. */
+  box: { x0: number; y0: number; x1: number; y1: number } | null
+}
+
+/** Compare two RGB frames of `width` pixels a row, pixel by pixel. */
+export function pixelDifference(
+  a: Buffer,
+  b: Buffer,
+  width: number,
+  frame = 0,
+  tolerance = TOLERANCE,
+): PixelDifference {
+  if (a.length !== b.length || a.length % (width * 3) !== 0)
+    throw new Error('two frames of different sizes cannot be compared')
+  let pixels = 0
+  let maxDiff = 0
+  let x0 = Infinity
+  let y0 = Infinity
+  let x1 = -1
+  let y1 = -1
+  for (let p = 0; p < a.length / 3; p++) {
+    const i = p * 3
+    const d = Math.max(
+      Math.abs(a[i] - b[i]),
+      Math.abs(a[i + 1] - b[i + 1]),
+      Math.abs(a[i + 2] - b[i + 2]),
+    )
+    if (d > maxDiff) maxDiff = d
+    if (d > tolerance) {
+      pixels++
+      const x = p % width
+      const y = Math.floor(p / width)
+      if (x < x0) x0 = x
+      if (y < y0) y0 = y
+      if (x > x1) x1 = x
+      if (y > y1) y1 = y
+    }
+  }
+  return { frame, pixels, maxDiff, box: pixels === 0 ? null : { x0, y0, x1, y1 } }
+}
+
+/** What two runs' captured frames say, frame by frame. */
+export interface CapturedComparison {
+  framesA: number
+  framesB: number
+  /** Frames whose PNG files are byte for byte the same. */
+  identicalFiles: number
+  /** Every frame, compared, with where it differs. */
+  frames: PixelDifference[]
+}
+
+/** A PNG's size in pixels, from ffprobe. */
+export async function probeSize(
+  ffprobe: string,
+  file: string,
+): Promise<{ width: number; height: number }> {
+  const out = await new Promise<string>((resolve, reject) => {
+    const child = spawn(
+      ffprobe,
+      ['-v', 'error', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', file],
+      { windowsHide: true, stdio: ['ignore', 'pipe', 'inherit'], timeout: 60_000 },
+    )
+    let text = ''
+    child.stdout.on('data', (chunk: Buffer) => (text += chunk.toString('utf8')))
+    child.on('error', reject)
+    child.on('close', (code, signal) =>
+      code === 0
+        ? resolve(text)
+        : reject(new Error(`ffprobe ended with ${signal ?? `code ${code}`}`)),
+    )
+  })
+  const [width, height] = out.trim().split(',').map(Number)
+  if (!Number.isInteger(width) || !Number.isInteger(height))
+    throw new Error(`ffprobe gave no size for ${basename(file)}`)
+  return { width, height }
+}
+
+/**
+ * Two folders of captured frames compared in RGB, frame by frame, with the
+ * pixels that differ and where: what the capture took, before any encoder
+ * has had a chance to spread a difference across every frame.
+ */
+export async function compareCaptured(
+  dirA: string,
+  dirB: string,
+  options: { ffmpeg?: string; ffprobe?: string; tolerance?: number } = {},
+): Promise<CapturedComparison> {
+  const ffmpeg = options.ffmpeg ?? 'ffmpeg'
+  const ffprobe = options.ffprobe ?? 'ffprobe'
+  const png = (dir: string) =>
+    readdirSync(dir)
+      .filter((n) => /^\d{6}\.png$/.test(n))
+      .sort()
+  const namesA = png(dirA)
+  const namesB = png(dirB)
+  let identicalFiles = 0
+  for (const name of namesA)
+    if (
+      namesB.includes(name) &&
+      readFileSync(join(dirA, name)).equals(readFileSync(join(dirB, name)))
+    )
+      identicalFiles++
+  const result: CapturedComparison = {
+    framesA: namesA.length,
+    framesB: namesB.length,
+    identicalFiles,
+    frames: [],
+  }
+  if (namesA.length === 0 || namesB.length === 0) return result
+  const size = await probeSize(ffprobe, join(dirA, namesA[0]))
+  const frameBytes = size.width * size.height * 3
+  const da = decoder(ffmpeg, dirA, decodeSequenceArgs(dirA))
+  const db = decoder(ffmpeg, dirB, decodeSequenceArgs(dirB))
+  try {
+    const ia = wholeFrames(da.stdout, frameBytes)[Symbol.asyncIterator]()
+    const ib = wholeFrames(db.stdout, frameBytes)[Symbol.asyncIterator]()
+    for (let frame = 0; ; frame++) {
+      const [a, b] = await Promise.all([ia.next(), ib.next()])
+      if (a.done || b.done) {
+        // Drain whichever is longer, so its decoder can exit.
+        for (let it = a.done ? ib : ia, next = a.done ? b : a; !next.done; next = await it.next());
+        break
+      }
+      result.frames.push(pixelDifference(a.value, b.value, size.width, frame, options.tolerance))
+    }
+    await Promise.all([da.finished, db.finished])
+    return result
+  } catch (error) {
+    da.kill()
+    db.kill()
+    throw error
+  }
+}
+
+/** One image decoded to packed 8-bit RGB, whole, in memory. */
+export async function decodeImage(
+  file: string,
+  options: { ffmpeg?: string } = {},
+): Promise<Buffer> {
+  const d = decoder(options.ffmpeg ?? 'ffmpeg', file)
+  try {
+    const parts: Buffer[] = []
+    for await (const chunk of d.stdout) parts.push(chunk as Buffer)
+    await d.finished
+    return Buffer.concat(parts)
+  } catch (error) {
+    d.kill()
+    throw error
+  }
+}
+
+/** How a differing captured frame compares with its neighbours in the other run. */
+export interface Neighbours {
+  frame: number
+  /** Pixels over the tolerance between A's frame and B's frame before, the same, and after; null past an end. */
+  aAgainstB: { before: number | null; same: number; after: number | null }
+  bAgainstA: { before: number | null; same: number; after: number | null }
+}
+
+/**
+ * For each named frame, whether one run's frame is really the other run's
+ * frame before or after it: a capture that took the last painted frame
+ * rather than the state just set shows up as a frame that matches its
+ * neighbour exactly. At most `limit` frames.
+ */
+export async function neighbours(
+  dirA: string,
+  dirB: string,
+  frames: number[],
+  width: number,
+  options: { ffmpeg?: string; limit?: number; count?: number } = {},
+): Promise<Neighbours[]> {
+  const count = options.count ?? Infinity
+  const cache = new Map<string, Buffer>()
+  const read = async (dir: string, frame: number): Promise<Buffer | null> => {
+    if (frame < 0 || frame >= count) return null
+    const file = join(dir, `${String(frame).padStart(6, '0')}.png`)
+    const hit = cache.get(file)
+    if (hit !== undefined) return hit
+    const image = await decodeImage(file, options).catch(() => null)
+    if (image !== null) cache.set(file, image)
+    return image
+  }
+  const against = async (x: Buffer, dir: string, frame: number): Promise<number | null> => {
+    const y = await read(dir, frame)
+    return y === null || y.length !== x.length ? null : pixelDifference(x, y, width).pixels
+  }
+  const out: Neighbours[] = []
+  for (const frame of frames.slice(0, options.limit ?? 12)) {
+    const a = await read(dirA, frame)
+    const b = await read(dirB, frame)
+    if (a === null || b === null) continue
+    out.push({
+      frame,
+      aAgainstB: {
+        before: await against(a, dirB, frame - 1),
+        same: pixelDifference(a, b, width).pixels,
+        after: await against(a, dirB, frame + 1),
+      },
+      bAgainstA: {
+        before: await against(b, dirA, frame - 1),
+        same: pixelDifference(b, a, width).pixels,
+        after: await against(b, dirA, frame + 1),
+      },
+    })
+    cache.clear()
+  }
+  return out
 }

@@ -20,7 +20,7 @@ import {
 } from './config'
 import { registerEngineHandlers } from './engine-ipc'
 import { PickedPaths, registerFeedsHandlers, registryGuard } from './feeds-ipc'
-import { Exporter } from './export'
+import { Exporter, keptFramesFolder } from './export'
 import { claimFramesRoot, clearFrames, describeSweep, FRAMES_FOLDER } from './frames'
 import { registerExportHandlers } from './export-ipc'
 import { engineCommand, engineEnvironment, resolveInterpreter } from './interpreter'
@@ -560,6 +560,7 @@ if (!hasLock) {
       // The frames live under the engine home, so no export may begin while
       // that folder is being removed.
       blocked: resetInProgress,
+      keepFrames: keptFramesFolder(process.env, app.isPackaged),
       log: (message) => log.info('export', message),
     })
     registerExportHandlers(

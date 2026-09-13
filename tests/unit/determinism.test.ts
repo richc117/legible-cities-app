@@ -27,7 +27,10 @@ import {
   channelsOver,
   compareStreams,
   decodeArgs,
+  decodeSequenceArgs,
   firstAndLast,
+  pixelDifference,
+  wholeFrames,
   TOLERANCE,
 } from '../support/frames'
 
@@ -116,6 +119,47 @@ describe('the motion check', () => {
 
   it('refuses to compare frames of different sizes', () => {
     expect(() => channelsOver(Buffer.alloc(3), Buffer.alloc(6))).toThrow()
+  })
+})
+
+describe('the captured frames comparison', () => {
+  it('decodes a capture folder from 000000.png, each frame once, in RGB', () => {
+    const args = decodeSequenceArgs('frames')
+    expect(args[args.indexOf('-start_number') + 1]).toBe('0')
+    expect(args[args.indexOf('-i') + 1]).toMatch(/%06d\.png$/)
+    expect(args[args.indexOf('-fps_mode') + 1]).toBe('passthrough')
+    expect(args[args.indexOf('-pix_fmt') + 1]).toBe('rgb24')
+  })
+
+  it('splits a stream into whole frames whatever its chunks, and drops a partial one', async () => {
+    const out: number[][] = []
+    for await (const frame of wholeFrames(chunks([1, 2, 3, 4], [5, 6, 7]), 3)) out.push([...frame])
+    expect(out).toEqual([
+      [1, 2, 3],
+      [4, 5, 6],
+    ])
+  })
+
+  it('counts the pixels over the tolerance and bounds them, in pixels from the top left', () => {
+    // Three pixels a row, two rows.
+    const a = Buffer.alloc(18)
+    const b = Buffer.from(a)
+    b[1 * 3 + 0] = 9 // row 0, x 1: one channel over
+    b[5 * 3 + 2] = 200 // row 1, x 2
+    b[3 * 3 + 1] = 8 // row 1, x 0: at the tolerance, the same pixel
+    expect(pixelDifference(a, b, 3, 7)).toEqual({
+      frame: 7,
+      pixels: 2,
+      maxDiff: 200,
+      box: { x0: 1, y0: 0, x1: 2, y1: 1 },
+    })
+    expect(pixelDifference(a, Buffer.from(a), 3)).toEqual({
+      frame: 0,
+      pixels: 0,
+      maxDiff: 0,
+      box: null,
+    })
+    expect(() => pixelDifference(a, Buffer.alloc(15), 3)).toThrow()
   })
 })
 

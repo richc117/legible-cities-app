@@ -21,18 +21,27 @@
 //
 // Opted in, a missing interpreter or ffmpeg fails rather than skips: a
 // scheduled job that skipped would read as green.
+//
+// With LEGIBLE_KEEP_FRAMES naming an absolute folder as well, the app keeps
+// each export's captured frames (in development only), and the test compares
+// those too, frame by frame in RGB at the same tolerance, and writes where
+// each frame differs to captured-frames.json beside the GIFs. The GIF's
+// palette is made from every frame, so one captured pixel out of place can
+// move a colour in all of them; the captured frames say where it began.
 
 import {
   copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   statSync,
+  writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, dirname, isAbsolute, join } from 'node:path'
 import { _electron as electron, expect, test, type Locator, type Page } from '@playwright/test'
 import {
   FEED,
@@ -47,15 +56,20 @@ import {
 } from '../support/determinism'
 import {
   channelsOver,
+  compareCaptured,
   compareDecoded,
   decodedEnds,
   extractFrames,
+  neighbours,
+  probeSize,
   TOLERANCE,
+  type CapturedComparison,
 } from '../support/frames'
 
 const OPTED_IN = process.env.LEGIBLE_DETERMINISM_TEST === '1'
 const PYTHON = process.env.LEGIBLE_ENGINE_PYTHON ?? ''
 const FFMPEG = process.env.SCHEMATIC_FFMPEG ?? ''
+const KEEP = process.env.LEGIBLE_KEEP_FRAMES ?? ''
 
 /** The preset's size at draft quality (scale 1), from the pinned engine's preset table. */
 const WIDTH = 630
@@ -78,6 +92,11 @@ test('the same project, exported twice, decodes to the same frames within the to
   const userData = join(dir, 'profile')
   const engineHome = join(dir, 'engine')
   const exportFolder = join(dir, 'exports')
+  // A folder of this run's own under the one named, so earlier runs' frames
+  // are never mistaken for these.
+  if (KEEP !== '') expect(isAbsolute(KEEP), 'LEGIBLE_KEEP_FRAMES is an absolute path').toBe(true)
+  const kept =
+    KEEP === '' ? null : (mkdirSync(KEEP, { recursive: true }), mkdtempSync(join(KEEP, 'run-')))
   const evidence = testInfo.outputPath('evidence')
 
   seedHome(engineHome)
@@ -103,6 +122,7 @@ test('the same project, exported twice, decodes to the same frames within the to
       // In development only, the app passes this to the engine, and Python
       // imports the shim in it at start: it records each request's method.
       PYTHONPATH: REQUESTS_SHIM,
+      LEGIBLE_KEEP_FRAMES: kept ?? '',
     } as Record<string, string>,
     timeout: 60_000,
   })
@@ -199,6 +219,59 @@ test('the same project, exported twice, decodes to the same frames within the to
         `${result.differing.length} frames; ${moved} channels over ${TOLERANCE} between the ` +
         `first export's first and last frames`,
     )
+    // What the capture took, when it was kept: compared before anything is
+    // asserted, so a failure of either comparison reports both.
+    let captured: CapturedComparison | null = null
+    if (kept !== null) {
+      const runs = readdirSync(kept).sort()
+      expect(runs, 'one kept frames folder per export').toHaveLength(2)
+      const [ka, kb] = runs.map((name) => join(kept, name))
+      // Beside ffmpeg, by name, as the engine finds it (export.ffprobe_path).
+      const ffprobe = join(dirname(FFMPEG), basename(FFMPEG).replace('ffmpeg', 'ffprobe'))
+      captured = await compareCaptured(ka, kb, { ffmpeg: FFMPEG, ffprobe })
+      const differing = captured.frames.filter((f) => f.pixels > 0)
+      // Whether a differing frame is the other run's frame before or after
+      // it: the signature of a capture that took the last painted frame.
+      const { width } = await probeSize(ffprobe, join(ka, '000000.png'))
+      const near = await neighbours(
+        ka,
+        kb,
+        differing.map((f) => f.frame),
+        width,
+        { ffmpeg: FFMPEG, count: Math.min(captured.framesA, captured.framesB) },
+      )
+      writeFileSync(
+        join(testInfo.outputDir, 'captured-frames.json'),
+        JSON.stringify({ ...captured, differing: differing.length, neighbours: near }, null, 2),
+      )
+      for (const n of near)
+        console.log(
+          `  frame ${n.frame} against the other run: A vs B[-1,0,+1] ` +
+            `${n.aAgainstB.before},${n.aAgainstB.same},${n.aAgainstB.after}; ` +
+            `B vs A[-1,0,+1] ${n.bAgainstA.before},${n.bAgainstA.same},${n.bAgainstA.after} pixels`,
+        )
+      console.log(
+        `captured frames: ${captured.framesA} and ${captured.framesB}; ` +
+          `${captured.identicalFiles} PNG files byte-identical; ` +
+          `${differing.length} frames with a pixel over ${TOLERANCE}` +
+          differing
+            .slice(0, 20)
+            .map(
+              (f) =>
+                `\n  frame ${f.frame}: ${f.pixels} pixels, max ${f.maxDiff}, ` +
+                `x ${f.box?.x0}-${f.box?.x1}, y ${f.box?.y0}-${f.box?.y1}`,
+            )
+            .join(''),
+      )
+      const pairs = join(evidence, 'captured')
+      mkdirSync(pairs, { recursive: true })
+      for (const f of differing.slice(0, 12)) {
+        const name = `${String(f.frame).padStart(6, '0')}.png`
+        copyFileSync(join(ka, name), join(pairs, `first-${name}`))
+        copyFileSync(join(kb, name), join(pairs, `second-${name}`))
+      }
+    }
+
     if (result.differing.length > 0) {
       // Evidence for a person, never the verdict: a frame that cannot be
       // extracted is logged, and the comparison below still fails the test.
@@ -208,6 +281,16 @@ test('the same project, exported twice, decodes to the same frames within the to
       } catch (error) {
         console.log(`the differing frames could not be extracted: ${String(error)}`)
       }
+    }
+    if (captured !== null) {
+      // Soft, so the GIF's own verdict below is reported beside this one.
+      expect.soft(captured.framesB, 'the same number of captured frames').toBe(captured.framesA)
+      expect
+        .soft(
+          captured.frames.filter((f) => f.pixels > 0).map((f) => f.frame),
+          `captured frames with a pixel differing by more than ${TOLERANCE}`,
+        )
+        .toEqual([])
     }
     expect(result.bytes % frameBytes, 'the decoded bytes are whole frames').toBe(0)
     expect(result.frames, 'frames decoded').toBeGreaterThan(1)
