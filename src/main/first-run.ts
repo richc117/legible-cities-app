@@ -252,8 +252,20 @@ export function withoutPaths(
   platform: string = process.platform,
 ): string {
   let out = text
+  // A known path that is the home, or holds it, would be written as its last
+  // folder name - `…/Jane Doe` - before the home could become `~`; such a
+  // path is left to the home's own replacement.
+  const fold = (path: string): string => {
+    const forward = path.replace(/\\/g, '/').replace(/\/+$/, '')
+    return platform === 'win32' || platform === 'darwin' ? forward.toLowerCase() : forward
+  }
+  const holdsHome = (path: string): boolean =>
+    homes.some((home) => {
+      const [k, h] = [fold(path), fold(home)]
+      return k !== '' && (h === k || h.startsWith(`${k}/`))
+    })
   for (const path of [...new Set(known)]
-    .filter((p) => p !== '')
+    .filter((p) => p !== '' && !holdsHome(p))
     .sort((a, b) => b.length - a.length)) {
     const forms = [path, path.replace(/\\/g, '/'), path.replace(/\//g, '\\')]
     for (const form of new Set(forms)) {
@@ -444,10 +456,23 @@ export class FirstRunCheck {
           const target = targets[tool]
           if (target.kind !== 'check') return
           const started = this.#now()
-          const verdict =
-            tool === 'loom'
-              ? await this.#loom(target.path, cwd)
-              : await this.#ffmpeg(target.path, cwd)
+          let verdict: Verdict
+          try {
+            verdict =
+              tool === 'loom'
+                ? await this.#loom(target.path, cwd)
+                : await this.#ffmpeg(target.path, cwd)
+          } catch (error) {
+            // Nothing is expected to throw here, but the result must still
+            // finish - Settings would say "checking" for ever and the launch
+            // check would wait out its deadline - and the other tool's own
+            // outcome must still be its own, so this is caught per tool.
+            verdict = {
+              outcome: 'failed',
+              kind: 'not-running',
+              detail: `The check itself failed: ${error instanceof Error ? error.message : String(error)}`,
+            }
+          }
           const ms = Math.max(0, Math.round(this.#now() - started))
           if (this.#aborted) return
           // Each line a tool printed on standard error, as its own log line,

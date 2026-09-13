@@ -7,8 +7,10 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import FirstRunDialog, {
   anotherDialogOpen,
+  applyStep,
   firstRunTitle,
   nextStep,
+  type DialogLike,
 } from '../../src/renderer/src/FirstRunDialog'
 import { failureSentence, type FirstRunResult } from '../../src/shared/first-run'
 
@@ -113,12 +115,37 @@ describe('what the dialog element does', () => {
     expect(nextStep({ wanted: false, shown: false, another: true })).toBe('none')
   })
 
-  it('reads the page when it decides, not a state that has not caught up', async () => {
-    const { readFileSync } = await import('node:fs')
-    const source = readFileSync(
-      new URL('../../src/renderer/src/FirstRunDialog.tsx', import.meta.url),
-      'utf8',
-    )
-    expect(source).toMatch(/another: anotherDialogOpen\(dialog\.ownerDocument, dialog\)/)
+  it('reads the page when it decides: mounted while another dialog is open, it does not show', () => {
+    // A dialog element and its page, as far as the decision touches them.
+    function fake(othersOpen: number) {
+      const calls: string[] = []
+      const page = {
+        querySelectorAll: () => [...Array.from({ length: othersOpen }, () => ({})), dialog],
+      }
+      const dialog = {
+        open: false,
+        ownerDocument: page,
+        showModal: () => {
+          calls.push('showModal')
+          dialog.open = true
+        },
+        close: () => {
+          calls.push('close')
+          dialog.open = false
+        },
+      }
+      return { dialog: dialog as unknown as DialogLike, calls }
+    }
+
+    const busy = fake(1)
+    expect(applyStep(busy.dialog, true)).toBe('none')
+    expect(busy.calls).toEqual([])
+
+    const free = fake(0)
+    expect(applyStep(free.dialog, true)).toBe('show')
+    expect(free.calls).toEqual(['showModal'])
+    // Shown, then no longer wanted.
+    expect(applyStep(free.dialog, false)).toBe('close')
+    expect(free.calls).toEqual(['showModal', 'close'])
   })
 })

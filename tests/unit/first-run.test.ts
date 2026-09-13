@@ -633,6 +633,44 @@ describe('FirstRunCheck', () => {
     ).toBe('The check did not run (the temporary folder could not be made (ENOSPC)).')
   })
 
+  it('finishes, and says the check failed, when a dependency throws for one tool', async () => {
+    const healthy = tree()!
+    const { subject, seen, temps } = check({
+      kind: async (path) => {
+        if (path === FFMPEG) throw new Error('the disk went away')
+        return healthy(path)
+      },
+    })
+    const result = await subject.run()
+    expect(result.finished).toBe(true)
+    expect(result.loom.outcome).toBe('passed')
+    expect(result.ffmpeg).toMatchObject({
+      outcome: 'failed',
+      kind: 'not-running',
+      sentence: 'The bundled ffmpeg did not run, so exports cannot be made.',
+      detail: 'The check itself failed: the disk went away',
+    })
+    expect(seen.at(-1)).toEqual(result)
+    expect(temps.removed).toHaveLength(1)
+  })
+
+  it('writes a tool kept directly in a home with a space as ~, never the home’s name', async () => {
+    const home = join(tmpdir(), 'Jane Doe')
+    const ffmpeg = join(home, 'ffmpeg')
+    const { subject } = check({
+      targets: {
+        loom: { kind: 'skip', reason: 'development: SCHEMATIC_LOOM_BIN is not named' },
+        ffmpeg: { kind: 'check', path: ffmpeg, named: true },
+      },
+      kind: async (path) => (path === ffmpeg ? 'file' : null),
+      homes: async () => [home],
+    })
+    const result = await subject.run()
+    const detail = result.ffmpeg.outcome === 'failed' ? result.ffmpeg.detail : ''
+    expect(detail).not.toContain('Doe')
+    expect(detail).toBe(`There is no ffprobe at ~${join(home, 'ffprobe').slice(home.length)}.`)
+  })
+
   it('names both in one result when both fail', async () => {
     const { subject } = check({ missing: [LOOM, FFMPEG] })
     const result = await subject.run()

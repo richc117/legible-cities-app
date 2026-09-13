@@ -199,10 +199,12 @@ test('waits for the mismatch dialog to close before it opens', async () => {
 
 test('waits for a dialog a person has open, and opens when it closes', async () => {
   test.slow()
-  // The stand-in exits at once, so the engine's first start takes its three
-  // restarts (about seven seconds) to settle as stopped: time to open the
-  // New project dialog before the check runs.
-  const userData = profile({ exit: 'at-once' })
+  // The stand-in answers nothing, so the engine's first start settles as
+  // stopped only after four handshakes time out (10 s each), three shutdowns
+  // go unanswered (3 s each) and three restarts wait (1, 2 and 4 s): about
+  // 56 s (DEFAULT_BOUNDS in src/main/sidecar.ts). Opening New project inside
+  // that window leaves a wide margin on a slow runner; the check runs after.
+  const userData = profile({ mute: true })
   await withApp(userData, { SCHEMATIC_LOOM_BIN: emptyFolder() }, async (page) => {
     await expect(page.locator('h1')).toHaveText('Library')
     await page.getByRole('button', { name: 'New project' }).first().click()
@@ -211,7 +213,7 @@ test('waits for a dialog a person has open, and opens when it closes', async () 
     expect((await firstRun(page)).finished, 'the check finished before the dialog opened').toBe(
       false,
     )
-    await expect.poll(async () => (await firstRun(page)).finished, { timeout: 30_000 }).toBe(true)
+    await expect.poll(async () => (await firstRun(page)).finished, { timeout: 90_000 }).toBe(true)
     const tools = page.getByRole('dialog', { name: /LOOM.* will not run/ })
     await expect(tools).toBeHidden()
     await expect(creating).toBeVisible()

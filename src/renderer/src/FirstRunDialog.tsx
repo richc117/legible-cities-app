@@ -66,6 +66,29 @@ export function nextStep(state: {
   return 'none'
 }
 
+/** The part of a `<dialog>` element the decision touches. */
+export interface DialogLike extends Element {
+  readonly open: boolean
+  showModal(): void
+  close(): void
+}
+
+/**
+ * Decide from the element and its page, and do it: show the dialog, close
+ * it, or leave it. Answers the step taken, so the caller can move the focus
+ * after a show and mark a close as its own.
+ */
+export function applyStep(dialog: DialogLike, wanted: boolean): 'show' | 'close' | 'none' {
+  const step = nextStep({
+    wanted,
+    shown: dialog.open,
+    another: anotherDialogOpen(dialog.ownerDocument, dialog),
+  })
+  if (step === 'show') dialog.showModal()
+  else if (step === 'close') dialog.close()
+  return step
+}
+
 /** The dialog's title: the tools that will not run, by name. */
 export function firstRunTitle(result: FirstRunResult): string {
   const names = failedTools(result).map((tool) => TOOL_NAMES[tool])
@@ -98,6 +121,9 @@ export default function FirstRunDialog({
   // is mounted. Only a trigger to decide again when that changes, so this one
   // opens when that one closes; the decision itself reads the page.
   const [waiting, setWaiting] = useState(false)
+  // Held so a person's dismissal can stop the watch: once they have seen it,
+  // the dialog never opens again this session.
+  const observerRef = useRef<MutationObserver | null>(null)
   useEffect(() => {
     const update = (): void => setWaiting(anotherDialogOpen(document, dialogRef.current))
     update()
@@ -108,25 +134,24 @@ export default function FirstRunDialog({
       attributes: true,
       attributeFilter: ['open'],
     })
+    observerRef.current = observer
     return () => observer.disconnect()
   }, [])
 
   useEffect(() => {
     const dialog = dialogRef.current
     if (!dialog) return
-    const step = nextStep({
-      wanted: open,
-      shown: dialog.open,
-      another: anotherDialogOpen(dialog.ownerDocument, dialog),
-    })
-    if (step === 'show') {
-      dialog.showModal()
-      okRef.current?.focus()
-    } else if (step === 'close') {
-      closingItself.current = true
-      dialog.close()
-    }
+    // Marked before the close; its event arrives later, and clears the mark.
+    if (!open && dialog.open) closingItself.current = true
+    if (applyStep(dialog, open) === 'show') okRef.current?.focus()
   }, [open, waiting])
+
+  /** A person dismissed it: stop watching the page, and tell the parent. */
+  const dismiss = (): void => {
+    observerRef.current?.disconnect()
+    observerRef.current = null
+    onClose()
+  }
 
   const failed = failedTools(result)
 
@@ -135,7 +160,7 @@ export default function FirstRunDialog({
       ref={dialogRef}
       aria-labelledby="first-run-title"
       aria-describedby="first-run-desc"
-      onCancel={() => onClose()}
+      onCancel={() => dismiss()}
       onClose={() => {
         // Escape and OK both end here; only a close of the component's own
         // making is not the person's.
@@ -143,7 +168,7 @@ export default function FirstRunDialog({
           closingItself.current = false
           return
         }
-        onClose()
+        dismiss()
       }}
     >
       <h2 id="first-run-title">{firstRunTitle(result)}</h2>
@@ -198,7 +223,7 @@ export default function FirstRunDialog({
         >
           How to install
         </Button>
-        <Button variant="primary" ref={okRef} onClick={() => onClose()}>
+        <Button variant="primary" ref={okRef} onClick={() => dismiss()}>
           OK
         </Button>
       </div>
