@@ -31,6 +31,47 @@ focus.
 Before you start, note the time: the results template asks how long the
 run took.
 
+## The automated run
+
+Most of this checklist is also driven by a machine, against the same
+installers, so a Release has evidence from both systems before a person
+sits down with it. `.github/workflows/acceptance.yml`, run by hand with the
+Release's tag (the Release must be published, a prerelease for an `-rc`
+tag, since the run's token cannot see a draft), does step 1 on a macOS and
+a Windows runner, installs the app, runs
+`tests/acceptance/acceptance.spec.ts` over steps 3 to 20 against the
+installed app, and uninstalls it for step 21. Its record is this
+checklist's [results template](#results-template), filled in, as the job's
+summary and an artefact with a screenshot of each failed step, ready to
+paste into the run's issue. On a machine with the app already installed,
+the spec runs on its own:
+
+```
+LEGIBLE_ACCEPTANCE_APP="/Applications/Legible Cities.app" npm run test:acceptance
+```
+
+It launches the app, so never beside another launch of it; it uses a
+temporary profile and export folder, removes both afterwards, and leaves
+the clipboard holding the last thing the app copied.
+
+What it cannot do stays a person's, and the record says so step by step
+("not automated"), never counting it as passed:
+
+- **Step 2**: a runner downloads without a quarantine attribute or a mark of
+  the web, so neither Gatekeeper nor SmartScreen warns, and the way past
+  the warning in `install.md` is not exercised. The Mac app is copied from
+  the disk image rather than dragged to Applications; the Windows installer
+  runs silently and so does not open the app.
+- **Judgement**: whether a map, a colour, a theme or a GIF looks right,
+  whether a drag feels right (the spec drags the picker with the mouse and
+  checks it stays open), and whether the Finder or File Explorer came to
+  the front with the file selected (the spec records what the app asked
+  the system to show or open, and checks those files).
+- **Places**: the profile and export folder are temporary, so the folders
+  in `install.md`'s tables are checked only in step 21.
+- **The stranger's timed run and the screen-reader walkthrough**, which
+  are separate documents and entirely a person's.
+
 ## The steps
 
 ### 1. Download and check the installer
