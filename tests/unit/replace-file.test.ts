@@ -1,7 +1,8 @@
-// The rename a record or the settings file ends with, tried again while the
-// platform says the destination is held (issue 93). Windows refuses a rename
-// over a file another handle has open; no other platform does, so the
-// refusal is made here by hand, through the seam, with each code it comes as.
+// The rename a record or the settings file ends with, tried again on Windows
+// while the platform says the destination is held: a defence against the
+// suspected cause of issue 93. The refusal is made here by hand, through the
+// seam, with each code the retry takes, and the retried codes are passed in
+// so the retry is exercised on every platform.
 
 import { mkdtemp, readFile, rename as real, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -14,8 +15,11 @@ import {
   renameOver,
   RenameRefused,
   retriedWords,
+  WINDOWS_RETRY_CODES,
   type Rename,
 } from '../../src/main/replace-file'
+
+const codes = WINDOWS_RETRY_CODES
 
 let dir: string
 
@@ -54,7 +58,13 @@ describe('the bound', () => {
     expect(RENAME_RETRY_DELAYS_MS).toEqual([10, 20, 40, 80, 160, 320, 640])
     const total = RENAME_RETRY_DELAYS_MS.reduce((sum, ms) => sum + ms, 0)
     expect(total).toBeLessThanOrEqual(1300)
-    expect([...RENAME_RETRY_CODES].sort()).toEqual(['EACCES', 'EBUSY', 'EPERM'])
+    expect([...WINDOWS_RETRY_CODES].sort()).toEqual(['EACCES', 'EBUSY', 'EPERM'])
+  })
+
+  it('tries nothing again by default anywhere but Windows', () => {
+    expect([...RENAME_RETRY_CODES].sort()).toEqual(
+      process.platform === 'win32' ? ['EACCES', 'EBUSY', 'EPERM'] : [],
+    )
   })
 })
 
@@ -87,6 +97,7 @@ describe('renameOver', () => {
         const renamed = await renameOver(from, to, {
           rename: refused.rename,
           wait: async (ms) => void waits.push(ms),
+          codes,
         })
         expect(renamed.attempts, `${times} refusals`).toBe(times + 1)
         expect(refused.calls()).toBe(times + 1)
@@ -104,6 +115,7 @@ describe('renameOver', () => {
     const failure = await renameOver(from, to, {
       rename: refused.rename,
       wait: async (ms) => void waits.push(ms),
+      codes,
     }).catch((error: unknown) => error)
     expect(failure).toBeInstanceOf(RenameRefused)
     expect((failure as RenameRefused).code).toBe('EBUSY')
@@ -118,7 +130,7 @@ describe('renameOver', () => {
     const { from, to } = await files()
     const refused = refusedRename(2, 'EPERM', real)
     const started = Date.now()
-    await renameOver(from, to, { rename: refused.rename })
+    await renameOver(from, to, { rename: refused.rename, codes })
     // 10 ms then 20 ms, 30 in all; a margin for a timer's rounding.
     expect(Date.now() - started).toBeGreaterThanOrEqual(25)
     expect(await readFile(to, 'utf8')).toBe('after')
@@ -132,6 +144,7 @@ describe('renameOver', () => {
       const failure = await renameOver(from, to, {
         rename: refused.rename,
         wait: async (ms) => void waits.push(ms),
+        codes,
       }).catch((error: unknown) => error)
       expect(refused.calls()).toBe(1)
       expect(waits).toEqual([])
@@ -149,9 +162,47 @@ describe('renameOver', () => {
         throw new Error('no code')
       },
       wait: async () => undefined,
+      codes,
     }).catch((error: unknown) => error)
     expect(calls).toBe(1)
     expect(failedWords(failure)).toBe('write failed (unknown error, 1 attempt)')
+  })
+
+  it.skipIf(process.platform === 'win32')(
+    'fails at once off Windows when no codes are given, a held-looking code included',
+    async () => {
+      const { from, to } = await files()
+      for (const code of ['EPERM', 'EACCES', 'EBUSY']) {
+        const refused = refusedRename(Infinity, code, async () => undefined)
+        const waits: number[] = []
+        const failure = await renameOver(from, to, {
+          rename: refused.rename,
+          wait: async (ms) => void waits.push(ms),
+        }).catch((error: unknown) => error)
+        expect(refused.calls(), code).toBe(1)
+        expect(waits, code).toEqual([])
+        expect(failedWords(failure)).toBe(`write failed (${code}, 1 attempt)`)
+      }
+    },
+  )
+
+  it('says how many attempts were made when a wait itself fails', async () => {
+    const { from, to } = await files()
+    const refused = refusedRename(Infinity, 'EPERM', async () => undefined)
+    let waited = 0
+    const failure = await renameOver(from, to, {
+      rename: refused.rename,
+      wait: async () => {
+        waited += 1
+        if (waited === 2) throw new Error('the wait was cut short')
+      },
+      codes,
+    }).catch((error: unknown) => error)
+    expect(failure).toBeInstanceOf(RenameRefused)
+    expect(refused.calls()).toBe(2)
+    expect((failure as RenameRefused).attempts).toBe(2)
+    expect(failedWords(failure)).toBe('write failed (unknown error, 2 attempts)')
+    expect(await readFile(to, 'utf8')).toBe('before')
   })
 
   it('words a failure that was not the rename by its code alone', () => {

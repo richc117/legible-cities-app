@@ -1,20 +1,24 @@
-// Replacing a file by renaming a finished copy over it, tried again while
-// the platform says the file is held (issue 93).
+// Replacing a file by renaming a finished copy over it, tried again on
+// Windows while the platform says the file is held: a defence, added for
+// issue 93, whose cause is suspected and not proven.
 //
 // A project record and the settings file are written to a fresh temporary
 // name and renamed over the real one, so a crash mid-write leaves the
-// previous file whole. On Windows that rename fails while any other handle
-// has the destination open: libuv's MoveFileExW with
-// MOVEFILE_REPLACE_EXISTING answers EPERM when the handle allows deletion
-// and EBUSY when it does not, and EACCES is the same refusal by another
-// route. The holders are brief - the virus scanner or the search indexer
-// opening the file just renamed into place, or a reader in this process (a
-// preview's `get`, the Library's `list`) that opened it a moment before -
-// so back-to-back writes of one file meet them and a person's choice was
-// lost to one. A refused rename is therefore tried again a few times with
-// growing waits. Nothing else is: another code will not change by waiting,
-// and the temporary file is the writer's own, so a failure to write it is
-// not a hold.
+// previous file whole. On Windows a rename over a file fails while another
+// handle has that file open; libuv reports the refusal as EPERM when access
+// is denied and EBUSY on a sharing violation. Holders are brief - a virus
+// scanner or the search indexer looking at a file just renamed into place,
+// or a reader in this process (a preview's `get`, the Library's `list`)
+// that opened it a moment before. Issue 93 saw choices go unsaved on the
+// Windows runner only, and a refused rename is the suspected cause; it did
+// not reproduce on a quiet runner with or without this retry, so the retry
+// is a defence against a failure that is possible, not a fix for one that
+// was seen.
+//
+// Only those codes are tried again, a few times with growing waits, and
+// only on Windows. Anywhere else a locked file or a permission error will
+// not change by waiting and fails at once. The temporary file is the
+// writer's own, so a failure to write it is never tried again either.
 
 import { rename as renameFile } from 'node:fs/promises'
 
@@ -25,16 +29,29 @@ import { rename as renameFile } from 'node:fs/promises'
  */
 export const RENAME_RETRY_DELAYS_MS: readonly number[] = [10, 20, 40, 80, 160, 320, 640]
 
-/** The codes a held destination produces; no other failure is tried again. */
-export const RENAME_RETRY_CODES: ReadonlySet<string> = new Set(['EPERM', 'EACCES', 'EBUSY'])
+/**
+ * The codes a held destination is reported with on Windows. EACCES is not
+ * known to come from a held file there; it is kept because a retry of an
+ * access refusal is bounded and cannot make a write land wrongly, only
+ * later.
+ */
+export const WINDOWS_RETRY_CODES: ReadonlySet<string> = new Set(['EPERM', 'EACCES', 'EBUSY'])
+
+/** The codes tried again by default: Windows' three there, and none anywhere else. */
+export const RENAME_RETRY_CODES: ReadonlySet<string> =
+  process.platform === 'win32' ? WINDOWS_RETRY_CODES : new Set<string>()
 
 export type Rename = (from: string, to: string) => Promise<void>
 export type Wait = (ms: number) => Promise<void>
 
-/** The seams a test replaces: the rename itself, and the wait between attempts. */
+/**
+ * The seams a test replaces: the rename itself, the wait between attempts,
+ * and the codes tried again, so the retry is exercised on any platform.
+ */
 export interface ReplaceOptions {
   rename?: Rename
   wait?: Wait
+  codes?: ReadonlySet<string>
 }
 
 /** The code of a filesystem failure, never its message, which names the path. */
@@ -66,9 +83,11 @@ const sleep: Wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /**
  * Rename `from` over `to`, trying again after each wait in
- * RENAME_RETRY_DELAYS_MS while the refusal is one of RENAME_RETRY_CODES.
- * Throws RenameRefused on any other code at once, and on a held file once
- * the waits are spent; cleaning up `from` is the caller's.
+ * RENAME_RETRY_DELAYS_MS while the refusal is one of the retried codes
+ * (RENAME_RETRY_CODES unless a test says otherwise). Throws RenameRefused
+ * on any other code at once, on a held file once the waits are spent, and
+ * if a wait itself fails, always with the attempts made; cleaning up
+ * `from` is the caller's.
  */
 export async function renameOver(
   from: string,
@@ -77,6 +96,7 @@ export async function renameOver(
 ): Promise<Renamed> {
   const rename = options.rename ?? renameFile
   const wait = options.wait ?? sleep
+  const codes = options.codes ?? RENAME_RETRY_CODES
   const refused: string[] = []
   for (let attempt = 1; ; attempt += 1) {
     try {
@@ -84,10 +104,14 @@ export async function renameOver(
       return { attempts: attempt, refused }
     } catch (error) {
       const code = codeOf(error)
-      if (!RENAME_RETRY_CODES.has(code) || attempt > RENAME_RETRY_DELAYS_MS.length)
+      if (!codes.has(code) || attempt > RENAME_RETRY_DELAYS_MS.length)
         throw new RenameRefused(attempt, error)
       refused.push(code)
+    }
+    try {
       await wait(RENAME_RETRY_DELAYS_MS[attempt - 1])
+    } catch (error) {
+      throw new RenameRefused(attempt, error)
     }
   }
 }

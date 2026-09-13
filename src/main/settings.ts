@@ -96,11 +96,27 @@ export class SettingsStore {
   }
 
   /**
+   * The writes, one after another. A write can wait over a second for a
+   * held file on Windows (replace-file.ts), and two overlapping writes
+   * would each run their own schedule, so the older could land after the
+   * newer and the file, `current` and the screen end on the press before
+   * the last. Chained, each lands in the order it was asked for, and one
+   * that fails does not stop the next.
+   */
+  #queue: Promise<unknown> = Promise.resolve()
+
+  /**
    * Write the settings, whole, in the current form. The folder is made
    * first: on a first run the user-data folder exists, but a person who
    * pointed the app at a fresh one has not made it.
    */
-  async write(next: AppSettings): Promise<AppSettings> {
+  write(next: AppSettings): Promise<AppSettings> {
+    const run = this.#queue.then(() => this.#write(next))
+    this.#queue = run.catch(() => undefined)
+    return run
+  }
+
+  async #write(next: AppSettings): Promise<AppSettings> {
     if (!this.#loaded) await this.load()
     const settings: AppSettings = { ...next, version: SETTINGS_VERSION }
     const text = JSON.stringify(settings, null, 2) + '\n'
@@ -108,9 +124,9 @@ export class SettingsStore {
     try {
       await mkdir(this.dir, { recursive: true })
       await writeFile(temp, text, 'utf8')
-      // Tried again while another handle holds the file, as a record's is
-      // (replace-file.ts): a folder or a theme a person chose is not lost
-      // to a scanner's look at the file.
+      // Tried again on Windows while another handle holds the file, as a
+      // record's is: a defence, since a held file is suspected and not
+      // proven to have lost a choice (replace-file.ts, issue 93).
       const renamed = await renameOver(temp, this.file, this.replace)
       const retried = retriedWords(renamed)
       if (retried !== null) this.log(`settings: ${retried}`)

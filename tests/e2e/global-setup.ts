@@ -14,6 +14,9 @@ import { join } from 'node:path'
 export const LOGS_PREFIX = 'legible-cities-e2e-logs-'
 
 export default function globalSetup(): void {
+  // When the run began, so the teardown reads only the temporary profiles
+  // this run made (issue 93).
+  process.env.LEGIBLE_E2E_STARTED = String(Date.now())
   // One named by hand is respected, and the teardown leaves it alone.
   if (process.env.LEGIBLE_LOGS !== undefined && process.env.LEGIBLE_LOGS !== '') return
   const made = mkdtempSync(join(tmpdir(), LOGS_PREFIX))

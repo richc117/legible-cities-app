@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { _electron as electron, expect, test, type Page } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
+import { withWhatTheScreenSaid } from '../support/store-lines'
 
 const repoRoot = resolve(__dirname, '../..')
 const PYTHON = findPython()
@@ -22,11 +23,17 @@ function home(control: Record<string, unknown> = {}): string {
   return dir
 }
 
+/** Where the current launch logs, and when it started. */
+let launched = { folder: '', since: new Date() }
+
 async function withApp(
   engineHome: string,
   run: (page: Page) => Promise<void>,
   env: Record<string, string> = {},
 ): Promise<void> {
+  // Every launch here logs to the suite's shared folder, so a failed wait
+  // reads only the lines stamped since this one started.
+  launched = { folder: process.env.LEGIBLE_LOGS ?? '', since: new Date() }
   const app = await electron.launch({
     args: ['.'],
     cwd: repoRoot,
@@ -64,33 +71,6 @@ async function openProjectOn(page: Page, feedName: string, name: string): Promis
 const readRecord = (engineHome: string): Record<string, unknown> => {
   const [id] = readdirSync(join(engineHome, 'projects'))
   return JSON.parse(readFileSync(join(engineHome, 'projects', id, 'project.json'), 'utf8'))
-}
-
-/**
- * A wait for the record, which on failure says what the screen said beside
- * it: a write the store refused shows its sentence in an alert, and a change
- * that never reached the store shows nothing, and the two need telling apart
- * (issue 93). The assertion itself is the caller's and is not changed.
- */
-async function withWhatTheScreenSaid(page: Page, wait: () => Promise<void>): Promise<void> {
-  try {
-    await wait()
-  } catch (error) {
-    if (!(error instanceof Error)) throw error
-    const alerts = await page
-      .getByRole('alert')
-      .allInnerTexts()
-      .catch(() => [] as string[])
-    const shown = alerts.map((text) => text.trim()).filter((text) => text !== '')
-    const said =
-      shown.length === 0
-        ? 'The screen showed no message: the change did not reach the record.'
-        : `The screen said: ${shown.join(' | ')}`
-    const before = error.message
-    error.message = `${before}\n\n${said}`
-    if (error.stack !== undefined) error.stack = error.stack.replace(before, error.message)
-    throw error
-  }
 }
 
 test('shows what is in the feed, sorts the routes, and marks what the mode keeps', async () => {
@@ -161,12 +141,12 @@ test('a feed with several operators offers the choice, filters the routes, and s
     await expect(routes.getByRole('row')).toHaveCount(3)
     await operator.selectOption('')
     await expect(routes.getByRole('row')).toHaveCount(5)
-    await withWhatTheScreenSaid(page, () =>
+    await withWhatTheScreenSaid(page, launched, () =>
       expect.poll(() => readRecord(engineHome).agency).toBeNull(),
     )
     await operator.selectOption('SUB')
     await expect(routes.getByRole('row')).toHaveCount(2)
-    await withWhatTheScreenSaid(page, () =>
+    await withWhatTheScreenSaid(page, launched, () =>
       expect.poll(() => readRecord(engineHome).agency).toBe('SUB'),
     )
     await expect(inspect.getByRole('combobox', { name: 'Mode' })).toHaveValue('subway')
@@ -175,7 +155,7 @@ test('a feed with several operators offers the choice, filters the routes, and s
     // Every operator: the engine is asked with an empty agency, which is
     // its word for none, and the histogram's kept types follow the mode.
     await operator.selectOption('')
-    await withWhatTheScreenSaid(page, () =>
+    await withWhatTheScreenSaid(page, launched, () =>
       expect.poll(() => readRecord(engineHome).agency).toBeNull(),
     )
     await page.getByRole('button', { name: /lay out/i }).click()

@@ -25,7 +25,11 @@ import {
   SETTINGS_FILE,
   SettingsStore,
 } from '../../src/main/settings'
-import { RENAME_RETRY_DELAYS_MS, type Rename } from '../../src/main/replace-file'
+import {
+  RENAME_RETRY_DELAYS_MS,
+  WINDOWS_RETRY_CODES,
+  type Rename,
+} from '../../src/main/replace-file'
 import { DEFAULT_SETTINGS, SETTINGS_VERSION } from '../../src/shared/settings'
 
 let dir: string
@@ -118,9 +122,9 @@ describe('SettingsStore', () => {
   })
 })
 
-// Windows refuses a rename over a file another handle has open, the scanner
-// among them; a folder or a theme a person chose must not be lost to that
-// (issue 93). The refusal is made through the store's seam.
+// On Windows a rename over a file another handle has open is refused; that
+// is the suspected, unproven cause of issue 93, and the retry is a defence.
+// The refusal and the Windows codes are given through the store's seam.
 describe('SettingsStore, when the platform holds the file', () => {
   function heldStore(held: () => string | null): {
     store: SettingsStore
@@ -139,6 +143,7 @@ describe('SettingsStore, when the platform holds the file', () => {
       store: new SettingsStore(dir, (message) => lines.push(message), {
         rename: refused,
         wait: async (ms) => void waits.push(ms),
+        codes: WINDOWS_RETRY_CODES,
       }),
       renames: () => renames,
       waits,
@@ -172,6 +177,49 @@ describe('SettingsStore, when the platform holds the file', () => {
     expect(held.store.current.theme, 'what is in force is what is on disk').not.toBe('warm-dark')
     expect(await temporaries()).toEqual([])
     expect(lines).toContain('settings: write failed (EPERM, 8 attempts)')
+  })
+
+  it('lands two overlapping writes in the order they were asked for, the last one winning', async () => {
+    await store.write({ ...DEFAULT_SETTINGS, theme: 'system' })
+    // The first write's file is held for three attempts, with a real wait
+    // between each; the second's is never held. Run side by side, the second
+    // would land first and the first would then put its older theme back.
+    let olderTries = 0
+    const refused: Rename = async (from, to) => {
+      const theme = JSON.parse(await readFile(from, 'utf8')).theme
+      if (theme === 'sepia' && ++olderTries <= 3)
+        throw Object.assign(new Error(`EPERM: held, rename '${to}'`), { code: 'EPERM' })
+      await rename(from, to)
+    }
+    const held = new SettingsStore(dir, (message) => lines.push(message), {
+      rename: refused,
+      wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      codes: WINDOWS_RETRY_CODES,
+    })
+    const older = held.write({ ...DEFAULT_SETTINGS, theme: 'sepia' })
+    const newer = held.write({ ...DEFAULT_SETTINGS, theme: 'warm-dark' })
+    await Promise.all([older, newer])
+    expect(JSON.parse(await readFile(file(), 'utf8')).theme, 'on disk').toBe('warm-dark')
+    expect(held.current.theme, 'in force').toBe('warm-dark')
+    expect(olderTries, 'the older was held and retried').toBe(4)
+    expect(await temporaries()).toEqual([])
+  })
+
+  it('writes the next settings after one that failed', async () => {
+    await store.write({ ...DEFAULT_SETTINGS, theme: 'system' })
+    const held = new SettingsStore(dir, (message) => lines.push(message), {
+      rename: async (from, to) => {
+        if (JSON.parse(await readFile(from, 'utf8')).theme === 'sepia')
+          throw Object.assign(new Error('EXDEV: no'), { code: 'EXDEV' })
+        await rename(from, to)
+      },
+      codes: WINDOWS_RETRY_CODES,
+    })
+    const failed = held.write({ ...DEFAULT_SETTINGS, theme: 'sepia' })
+    const next = held.write({ ...DEFAULT_SETTINGS, theme: 'warm-dark' })
+    await expect(failed).rejects.toThrow('the settings could not be saved')
+    await expect(next).resolves.toMatchObject({ theme: 'warm-dark' })
+    expect(JSON.parse(await readFile(file(), 'utf8')).theme).toBe('warm-dark')
   })
 
   it('does not wait for a failure other than a held file', async () => {

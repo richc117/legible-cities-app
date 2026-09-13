@@ -18,7 +18,12 @@ import { join, relative, sep } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { isValidProjectId } from '../../src/main/paths'
 import { newId, ProjectStore } from '../../src/main/projects'
-import { RENAME_RETRY_DELAYS_MS, type Rename, type Wait } from '../../src/main/replace-file'
+import {
+  RENAME_RETRY_DELAYS_MS,
+  WINDOWS_RETRY_CODES,
+  type Rename,
+  type Wait,
+} from '../../src/main/replace-file'
 import {
   DEFAULT_COLOR,
   DEFAULT_STYLE,
@@ -1123,10 +1128,11 @@ describe('writes in flight', () => {
   })
 })
 
-// On Windows a rename over project.json fails while another handle has it
-// open - the scanner looking at the record just renamed into place, or a
-// preview reading it - and a person's choice was lost to that (issue 93).
-// The platform's refusal is made here through the store's seam.
+// On Windows a rename over project.json is refused while another handle has
+// it open - a scanner looking at the record just renamed into place, or a
+// preview reading it. That is the suspected, unproven cause of issue 93, and
+// the retry is a defence against it. The refusal and the Windows codes are
+// given here through the store's seam, so this runs on every platform.
 describe('a record the platform holds', () => {
   const choice = { preset: 'linkedin-video', storyboard: 'day', options: {} } as const
 
@@ -1142,6 +1148,7 @@ describe('a record the platform holds', () => {
     const held_ = new ProjectStore(home, (message) => lines.push(message), {
       rename: rename_,
       wait,
+      codes: WINDOWS_RETRY_CODES,
     })
     return { store: held_, renames: () => renames }
   }
@@ -1200,6 +1207,24 @@ describe('a record the platform holds', () => {
     expect(await leftovers(project.id)).toEqual([])
     expect(lines).toContain(`projects/${project.id}: write failed (EPERM, 8 attempts)`)
     expect(held.store.writing, 'the count is released').toBe(0)
+  })
+
+  it('says the attempts, removes the temporary file and keeps the record when a wait fails', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    const held = heldStore(
+      () => 'EBUSY',
+      async () => {
+        throw new Error('the wait was cut short')
+      },
+    )
+    await expect(held.store.setTheme(project.id, 'sepia')).rejects.toThrow(
+      'the project could not be saved',
+    )
+    expect(held.renames()).toBe(1)
+    expect(lines).toContain(`projects/${project.id}: write failed (unknown error, 1 attempt)`)
+    expect(await leftovers(project.id)).toEqual([])
+    expect((await store.get(project.id)).theme).toBe(DEFAULT_THEME)
+    expect(held.store.writing).toBe(0)
   })
 
   it('does not wait for a failure other than a held file', async () => {

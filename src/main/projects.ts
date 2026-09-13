@@ -228,10 +228,10 @@ export class ProjectStore {
     await this.#track(async () => {
       try {
         await writeFile(temp, text, 'utf8')
-        // Only the rename is tried again, and only while the record is held
-        // by another handle, which on Windows refuses it (replace-file.ts).
-        // Readers keep opening project.json meanwhile and read the previous
-        // record whole.
+        // Only the rename is tried again, only on Windows, and only while
+        // another handle holds the record: a defence against the suspected
+        // cause of issue 93 (replace-file.ts). Readers keep opening
+        // project.json meanwhile and read the previous record whole.
         const renamed = await renameOver(temp, this.file(id), this.replace)
         const retried = retriedWords(renamed)
         if (retried !== null) this.log(`projects/${id}: ${retried}`)

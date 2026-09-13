@@ -31,6 +31,7 @@ import {
   type Page,
 } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
+import { withWhatTheScreenSaid } from '../support/store-lines'
 
 const repoRoot = resolve(__dirname, '../..')
 const fixture = resolve(__dirname, '../fixtures/capture-page.html')
@@ -72,7 +73,13 @@ function launch(h: Home): Promise<ElectronApplication> {
   })
 }
 
+/** Where the current launch logs - its own profile's folder - and when it started. */
+let launched = { folder: '', since: new Date() }
+
 async function withApp(h: Home, run: (page: Page) => Promise<void>): Promise<void> {
+  // LEGIBLE_USER_DATA moves the logs with the profile, ahead of LEGIBLE_LOGS
+  // (src/main/index.ts), so this launch's lines are under its own profile.
+  launched = { folder: join(h.userData, 'logs'), since: new Date() }
   const app = await launch(h)
   try {
     const page = await app.firstWindow()
@@ -165,33 +172,6 @@ async function openExportTab(page: Page): Promise<void> {
 async function frameQuery(page: Page): Promise<URLSearchParams> {
   const src = (await frame(page).getAttribute('src')) ?? ''
   return new URL(src).searchParams
-}
-
-/**
- * A wait for the record, which on failure says what the screen said beside
- * it: a write the store refused shows its sentence in an alert, and a change
- * that never reached the store shows nothing, and the two need telling apart
- * (issue 93). The assertion itself is the caller's and is not changed.
- */
-async function withWhatTheScreenSaid(page: Page, wait: () => Promise<void>): Promise<void> {
-  try {
-    await wait()
-  } catch (error) {
-    if (!(error instanceof Error)) throw error
-    const alerts = await page
-      .getByRole('alert')
-      .allInnerTexts()
-      .catch(() => [] as string[])
-    const shown = alerts.map((text) => text.trim()).filter((text) => text !== '')
-    const said =
-      shown.length === 0
-        ? 'The screen showed no message: the change did not reach the record.'
-        : `The screen said: ${shown.join(' | ')}`
-    const before = error.message
-    error.message = `${before}\n\n${said}`
-    if (error.stack !== undefined) error.stack = error.stack.replace(before, error.message)
-    throw error
-  }
 }
 
 test('the tab strip is one tab stop, moved with the arrow keys, and each tab shows its panel', async () => {
@@ -433,7 +413,7 @@ test('a storyboard chosen for a video reaches the plan, and the preset’s own i
     await expect(storyboard).toHaveValue('tour')
     await expect(exportPanel(page).getByRole('combobox', { name: 'View' })).toHaveCount(0)
     await storyboard.selectOption('day')
-    await withWhatTheScreenSaid(page, () =>
+    await withWhatTheScreenSaid(page, launched, () =>
       expect
         .poll(() => readRecord(h).export)
         .toEqual({
@@ -491,7 +471,7 @@ test('the choice is the project’s, and it is there when the project is opened 
     await presetSelect(page).selectOption('bluesky-gif')
     await exportPanel(page).getByRole('combobox', { name: 'Storyboard' }).selectOption('reveal')
     await exportPanel(page).getByRole('checkbox', { name: 'The clock' }).uncheck()
-    await withWhatTheScreenSaid(page, () =>
+    await withWhatTheScreenSaid(page, launched, () =>
       expect
         .poll(() => readRecord(h).export)
         .toEqual({
