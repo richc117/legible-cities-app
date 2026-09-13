@@ -866,8 +866,14 @@ test('the project screen: one press skips past the map to its toolbar, and the m
       await expect(panel).toBeVisible()
       // The frame holds the busy page at this tab's address: the plain map
       // under Map, the planned preview under Export.
+      // The frame can load the page again between two looks on a slow runner
+      // (the Export tab plans its preview), so both wait as long, and the
+      // address is read once more after the controls are there.
       await expect(frame.locator('#where')).toContainText(address, { timeout: 20_000 })
-      await expect(frame.getByRole('button', { name: `Map control ${controls}` })).toBeAttached()
+      await expect(frame.getByRole('button', { name: `Map control ${controls}` })).toBeAttached({
+        timeout: 20_000,
+      })
+      await expect(frame.locator('#where')).toContainText(address, { timeout: 20_000 })
 
       // Out of sight while it does not hold focus, and in the document.
       await expect.poll(width, { message: `${tab}: hidden at rest` }).toBeLessThanOrEqual(1)
