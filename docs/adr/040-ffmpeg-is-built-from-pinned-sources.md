@@ -149,13 +149,20 @@ A6-01 attaches that artefact, by that name, to each GitHub Release.
 
 | Target | Third-party builds (ADR-012) | This build | Job, on its runner |
 |---|---|---|---|
-| darwin-arm64 | 132.5 MB | **11.8 MB** (11,849,680 bytes) | 1 min 38 s on `macos-15`; 30 s for the build alone on a ten-core developer Mac, sources cached |
-| darwin-x64 | 189.2 MB | **14.2 MB** (14,203,784 bytes) | 3 min 27 s on `macos-15-intel`, with Homebrew's nasm |
-| win-x64 | 289.5 MB | **16.5 MB** (16,497,664 bytes) | 7 min 17 s on `windows-latest`, MSYS2's setup included |
-| linux-x64 (tests) | 291.5 MB | from the next vendor run | from the next vendor run |
+| darwin-arm64 | 132.5 MB | **11.8 MB** (11,849,680 bytes) | 1 min 29 s on `macos-15`; 30 s for the build alone on a ten-core developer Mac, sources cached |
+| darwin-x64 | 189.2 MB | **14.2 MB** (14,203,784 bytes) | 6 min 39 s on `macos-15-intel`, with Homebrew's nasm; the same job took 3 min 27 s in run 34746980746 |
+| win-x64 | 289.5 MB | **16.5 MB** (16,497,664 bytes) | 7 min 40 s on `windows-latest`, MSYS2's setup included |
+| linux-x64 (tests) | 291.5 MB | **13.2 MB** (13,224,096 bytes) | 2 min 01 s on `ubuntu-22.04` |
 
-Measured by the vendor workflow's run of 2026-09-13, each job from start to
-end, checkout and toolchain included. The Corresponding Source job takes 9 s.
+Sizes and times are from vendor workflow run 34747632147 (2026-09-13, at
+commit `9333adf`), the first in which all five ffmpeg jobs passed: every
+target built from the pinned sources, passed the unchanged proof, the link
+checks (no library beyond the system's, and on Windows only Windows' own
+DLLs and the pinned zlib) and the configure-flag check, and the
+Corresponding Source job, which took 14 s, uploaded `ffmpeg-source`. Each
+time is the job's, start to end, checkout and toolchain included. The
+installer build at `d22b80e` (build run 34746980879) packaged, launched and
+verified all three installers with these binaries.
 
 A tenth or less of every pair it replaces, and roughly half of what remains is
 ffprobe, which carries the same libraries as ffmpeg for one duration.
