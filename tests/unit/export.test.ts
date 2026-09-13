@@ -1095,7 +1095,9 @@ describe('the choice itself', () => {
 // Its names are held to the generated unions here, through the schema they
 // were made from.
 const PYTHON = findPython()
-describe.skipIf(PYTHON === null)('the stand-in engine’s export tables', () => {
+// A Python start on a busy Windows runner can take longer than vitest's five
+// seconds; the probe allows itself twenty, and so does the test.
+describe.skipIf(PYTHON === null)('the stand-in engine’s export tables', { timeout: 30_000 }, () => {
   const python = (code: string): string => {
     const probe = spawnSync(PYTHON as string, ['-c', code], {
       encoding: 'utf8',
