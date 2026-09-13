@@ -169,9 +169,13 @@ test('keeps the theme and a chosen export folder across a relaunch', async () =>
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'sepia')
 
     await chooserAnswers(app, chosen)
-    await page.getByRole('button', { name: 'Choose the export folder' }).click()
+    const chooser = page.getByRole('button', { name: 'Choose the export folder' })
+    await chooser.click()
     await expect(page.locator('#export-folder-path')).toHaveText(chosen)
     await expect(page.locator('#export-folder-source')).toHaveText('chosen here')
+    // The button is described by the path beneath it, and the description
+    // follows the path when it changes in place (issue 113).
+    await expect(chooser).toHaveAccessibleDescription(chosen)
 
     const written: unknown = JSON.parse(readFileSync(join(userData, 'settings.json'), 'utf8'))
     expect(written).toMatchObject({ version: 1, theme: 'sepia', exportFolder: chosen })
@@ -419,21 +423,20 @@ test('names the licences, and says a development run bundles nothing to open', a
       await expect(licences.locator('dt', { hasText: new RegExp(`^${term}$`) })).toHaveCount(1)
     }
 
-    // The reason is beneath the button and the button names it, but the kit
-    // copies aria-describedby onto the button inside its shadow root, where
-    // an id in the page resolves to nothing: the description is empty
-    // (docs/accessibility.md, F5). Asserted as it is, so a kit that carries
-    // the reference across fails here and this line becomes the sentence.
+    // The reason is beneath the button and is the button's description. The
+    // kit would copy aria-describedby into its shadow root, where the id
+    // resolves to nothing (docs/accessibility.md, F5), so the wrapper keeps
+    // it from the kit and mirrors the reason's text onto the inner button
+    // (issue 113): no dangling reference is left on either.
     const notices = licences.getByRole('button', { name: 'Open the notices' })
-    const reason = licences.locator('#licences-notices-unavailable')
-    await expect(reason).toHaveText(
-      'The notices file is not bundled in a development run, so there is nothing to open here.',
-    )
-    await expect(licences.locator('fig-button', { hasText: 'Open the notices' })).toHaveAttribute(
-      'aria-describedby',
-      'licences-notices-unavailable',
-    )
-    await expect(notices).toHaveAccessibleDescription('')
+    const reason =
+      'The notices file is not bundled in a development run, so there is nothing to open here.'
+    await expect(licences.locator('#licences-notices-unavailable')).toHaveText(reason)
+    await expect(notices).toHaveAccessibleDescription(reason)
+    await expect(notices).not.toHaveAttribute('aria-describedby', /.*/)
+    await expect(
+      licences.locator('fig-button', { hasText: 'Open the notices' }),
+    ).not.toHaveAttribute('aria-describedby', /.*/)
 
     for (const [name, sentence] of [
       ['Open the notices', 'The notices file is not bundled in a development run'],

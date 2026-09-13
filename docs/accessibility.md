@@ -131,7 +131,7 @@ listed below for filing. *engine's*: inside the engine's page.
 | Theme select | pass | pass | pass | pass | fixed (C2) | fixed (C2) | not yet run: a person's | not yet run: a person's |
 | Versions | n/a | pass (a definition list; a null said in words) | n/a | n/a | pass | pass | not yet run: a person's | not yet run: a person's |
 | Reset engine data and its confirmation | fixed (D8) | pass | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
-| Licences section (issue 108) | asserted in the sweep (three buttons `aria-disabled` in a development run, kept in the Tab order) | asserted in the sweep and in `settings.spec.ts` (a named region; a definition list; each unavailable button's reason shown beneath it and said in a polite `role="status"` line on every press, a second press included); **finding (F5)**: the button names its reason with `aria-describedby`, and the kit carries that to its inner button, where the reference resolves to nothing, so the reason is not the button's description | asserted in the sweep | asserted in the sweep | pass (existing pairs: `--text-muted` and `--text` on `--surface`; the unavailable button's look is the kit's existing one) | pass (the same pairs) | not yet run: a person's | not yet run: a person's |
+| Licences section (issue 108) | asserted in the sweep (three buttons `aria-disabled` in a development run, kept in the Tab order) | asserted in the sweep and in `settings.spec.ts` (a named region; a definition list; each unavailable button's reason shown beneath it and said in a polite `role="status"` line on every press, a second press included); **fixed (F5, issue 113)**: each unavailable button's reason is its accessible description, asserted in `settings.spec.ts` (`toHaveAccessibleDescription`) with no `aria-describedby` left on the button or its host | asserted in the sweep | asserted in the sweep | pass (existing pairs: `--text-muted` and `--text` on `--surface`; the unavailable button's look is the kit's existing one) | pass (the same pairs) | not yet run: a person's | not yet run: a person's |
 | Bundled tools rows (A6-02) | n/a (no control; the screen's walk is swept with the rows present: asserted in the sweep) | pass (a named region; the summary a polite `role="status"`; a definition list, "LOOM tools" and "ffmpeg and ffprobe"): asserted in the sweep | n/a | asserted in the sweep | pass (existing pairs: `--text-muted` and `--text` on `--surface`) | pass (the same pairs) | not yet run: a person's | not yet run: a person's |
 
 ### Jobs inspector
@@ -300,20 +300,32 @@ or a design decision.
   sidecar's 600 s inactivity bound; `feeds.remove` has no request deadline
   of its own. Two presses of Escape close it, and nothing else does.
 
-- **F5. A kit button's `aria-describedby` describes nothing.** *Screen:*
-  Settings (the Licences buttons when unavailable, "Choose folder" and
-  "Reset engine data"), and any `Button` given `aria-describedby`. *Steps:*
-  Tab to one and listen for its description. *What a person meets:* the
-  name and no description. FigUI3's `fig-button` copies the attribute onto
-  the `<button>` inside its shadow root, and an id reference there resolves
+- **F5. A kit button's `aria-describedby` described nothing. Fixed
+  (issue 113).** *Screen:* Settings (the Licences buttons when unavailable,
+  "Choose folder" and "Reset engine data"), the add-a-feed dialog's "Choose
+  a zip", and any `Button` given `aria-describedby`. *Steps:* Tab to one
+  and listen for its description. *What a person met:* the name and no
+  description. FigUI3's `fig-button` copies the attribute onto the
+  `<button>` inside its shadow root, and an id reference there resolves
   within the shadow tree, where the page's element is not. Measured on
   2026-09-13 in Playwright's Chromium with the kit's `fig.js`: a native
   `<button aria-describedby>` had the sentence as its description and a
   `fig-button` had none, whether the attribute was set before the kit
-  connected or after. `settings.spec.ts` asserts the empty description so
-  a fix shows. Not fixed here: it is the kit, or the kit's wrapper
-  (`kit/Button.tsx`), for every screen at once. For the Licences buttons
-  the reason is also on screen beneath each and said on a press.
+  connected or after. *The fix*, once, in `kit/Button.tsx`: the wrapper no
+  longer hands `aria-describedby` to the kit, reads the described
+  elements' text, and writes it onto the inner button as
+  `aria-description`, kept current by a `MutationObserver` on the button's
+  document (so a reason whose text changes, or which is rendered again,
+  is followed) and removed when the prop goes or the button unmounts.
+  Measured in the same Chromium before choosing: `aria-description` is the
+  description for both Chromium's accessibility tree and Playwright's;
+  `ariaDescribedByElements` crosses the boundary in Chromium but
+  Playwright's description ignores it, so no test could hold it; and the
+  kit's dangling inner `aria-describedby` left beside `aria-description`
+  empties Playwright's. `tests/unit/kit-button.test.tsx` tests the syncing,
+  and `settings.spec.ts` asserts a Licences button's reason and the export
+  folder chooser's path as their descriptions. Still a person's: that
+  VoiceOver and Narrator read the reason when the button is focused.
 
 ## Walking it with a screen reader
 
@@ -663,8 +675,8 @@ a table).
   each: the notices open in the platform's viewer (or are shown in its file
   browser), the licence texts' folder opens in the file browser, and
   Chromium's licences open in the browser. In a development run each is
-  read dimmed, with its reason as the text after it but not as its
-  description (F5); a press says "… not bundled in a development run, so
+  read dimmed, with its reason as its description (F5, fixed; confirm it
+  is read on focus); a press says "… not bundled in a development run, so
   there is nothing to open here.", and a second press says it again.
 - **Bundled tools rows (A6-02).** Listen for the heading "Bundled tools",
   the status "The bundled LOOM and ffmpeg ran.", and a description list:
