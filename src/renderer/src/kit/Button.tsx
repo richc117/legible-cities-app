@@ -148,6 +148,52 @@ export function mirrorDescription(
   }
 }
 
+/** The kit's host element, as far as its disabled state and the mirrored attributes go. */
+export interface KitHost {
+  setAttribute(name: string, value: string): void
+  removeAttribute(name: string): void
+  readonly shadowRoot: { querySelector(selectors: 'button'): DescriptionTarget | null } | null
+}
+
+/** The state the wrapper owns on a kit button: its disabled attribute and what it mirrors. */
+export interface KitState {
+  disabled: boolean
+  expanded?: boolean
+  pressed?: boolean
+  unavailable?: boolean
+  controls?: string
+}
+
+/**
+ * Writes `disabled` onto the host, where the kit observes it, and then the
+ * state attributes onto the kit's inner button, in that order. The order is
+ * the point: a change of `disabled` makes the kit re-sync its inner button
+ * synchronously, and that re-sync removes `aria-pressed` from the host and
+ * the inner button of any button that is not the kit's own toggle (fig.js,
+ * `#syncPressedState`), so state written before it would be gone after it
+ * (issue 124). Writing an unchanged `disabled` again does nothing in the
+ * kit, whose callback returns when the value has not changed, so calling
+ * this for any change of state is safe. `aria-description` (issue 113) is
+ * not the kit's to touch and not this function's either.
+ */
+export function syncKitButton(host: KitHost, state: KitState): void {
+  if (state.disabled) host.setAttribute('disabled', '')
+  else host.removeAttribute('disabled')
+  const inner = host.shadowRoot?.querySelector('button')
+  if (!inner) return
+  const set = (name: string, value: string | undefined): void => {
+    if (value === undefined) inner.removeAttribute(name)
+    else inner.setAttribute(name, value)
+  }
+  set('aria-expanded', state.expanded === undefined ? undefined : String(state.expanded))
+  set('aria-pressed', state.pressed === undefined ? undefined : String(state.pressed))
+  set('aria-disabled', state.unavailable === true ? 'true' : undefined)
+  // And on the host, where the app's stylesheet can draw it unavailable.
+  if (state.unavailable === true) host.setAttribute('data-unavailable', '')
+  else host.removeAttribute('data-unavailable')
+  set('aria-controls', state.controls)
+}
+
 const Button = forwardRef<HTMLElement, ButtonProps>(function Button(
   {
     variant = 'secondary',
@@ -172,28 +218,15 @@ const Button = forwardRef<HTMLElement, ButtonProps>(function Button(
     if (element) element.type = type
   }, [type])
 
+  // One effect, disabled first and the mirrored state after, and it runs
+  // again whenever `disabled` changes: the kit re-syncs its inner button
+  // synchronously inside that attribute's change and removes aria-pressed
+  // from it on the way (issue 124), so the state is written back straight
+  // after, in the same effect, rather than by an effect that might not run.
   useEffect(() => {
-    const element = host.current
-    if (!element) return
-    if (disabled) element.setAttribute('disabled', '')
-    else element.removeAttribute('disabled')
-  }, [disabled])
-
-  useEffect(() => {
-    const inner = host.current?.shadowRoot?.querySelector('button')
-    if (!inner) return
-    const set = (name: string, value: string | undefined): void => {
-      if (value === undefined) inner.removeAttribute(name)
-      else inner.setAttribute(name, value)
-    }
-    set('aria-expanded', expanded === undefined ? undefined : String(expanded))
-    set('aria-pressed', pressed === undefined ? undefined : String(pressed))
-    set('aria-disabled', unavailable === true ? 'true' : undefined)
-    // And on the host, where the app's stylesheet can draw it unavailable.
-    if (unavailable === true) host.current?.setAttribute('data-unavailable', '')
-    else host.current?.removeAttribute('data-unavailable')
-    set('aria-controls', controls)
-  }, [expanded, pressed, unavailable, controls])
+    if (host.current)
+      syncKitButton(host.current, { disabled, expanded, pressed, unavailable, controls })
+  }, [disabled, expanded, pressed, unavailable, controls])
 
   useEffect(() => {
     const element = host.current

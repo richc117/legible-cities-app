@@ -212,6 +212,45 @@ test('focus is handed over before the buttons go, when a timer closes the way', 
   })
 })
 
+test('the switch still says which theme is chosen after a rebuild has disabled it and given it back', async () => {
+  const h = home({ progress_delay_ms: 400 })
+  await withApp(h, async (page) => {
+    await project(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    const group = switchOf(page).getByRole('group', { name: 'The theme this map is drawn in' })
+    const warm = group.getByRole('button', { name: 'Warm dark' })
+    const sepia = group.getByRole('button', { name: 'Sepia' })
+    const builds = received(h, 'map.build').length
+
+    // A colour change rebuilds the map from the stored layout, and the
+    // switch is disabled while it runs. The kit re-syncs its inner button on
+    // every change of `disabled` and removed aria-pressed doing it, so after
+    // the first rebuild neither theme was announced as chosen (issue 124).
+    const colours = page.getByRole('region', { name: 'Line colours' })
+    await colours.getByRole('button', { name: /^Choose the colour of line A/ }).click()
+    const picker = colours.getByRole('group', { name: 'Colour for line A' })
+    await picker.getByLabel('Hex value').fill('#ff0000')
+    await picker.getByRole('button', { name: 'Use this colour' }).click()
+    await expect(sepia).toBeDisabled({ timeout: 30_000 })
+    await expect
+      .poll(() => received(h, 'map.build').length, { timeout: 30_000 })
+      .toBeGreaterThan(builds)
+    await expect(sepia).toBeEnabled({ timeout: 30_000 })
+    await expect(warm).toBeEnabled()
+
+    // On the button a screen reader reads: the role locator finds the kit's
+    // inner button, which is where the wrapper mirrors the state.
+    await expect(warm).toHaveAttribute('aria-pressed', 'true')
+    await expect(sepia).toHaveAttribute('aria-pressed', 'false')
+
+    await sepia.click()
+    await expect.poll(() => readRecord(h).theme).toBe('sepia')
+    await expect(sepia).toHaveAttribute('aria-pressed', 'true')
+    await expect(warm).toHaveAttribute('aria-pressed', 'false')
+  })
+})
+
 test('two presses inside one write end where the second asked, not the first', async () => {
   const h = home()
   await withApp(h, async (page) => {

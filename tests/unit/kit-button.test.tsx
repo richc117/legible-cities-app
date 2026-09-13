@@ -5,14 +5,24 @@
 // syncing is a function over a root, a target and a watcher, so it is
 // tested here without a browser; tests/e2e/settings.spec.ts holds the
 // description in the built app.
+//
+// The state the wrapper mirrors (issue 124): the kit re-syncs its inner
+// button whenever the host's `disabled` changes and removes aria-pressed on
+// the way, so the wrapper writes `disabled` first and the mirrored state
+// after, in one function. A stand-in kit below does what fig.js does
+// synchronously inside `setAttribute`; tests/e2e/theme.spec.ts holds the
+// pressed state through a rebuild in the built app.
 
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import Button, {
   describedText,
   mirrorDescription,
+  syncKitButton,
   type DescriptionRoot,
   type DescriptionTarget,
+  type KitHost,
+  type KitState,
   type WatchRoot,
 } from '../../src/renderer/src/kit/Button'
 
@@ -151,5 +161,122 @@ describe('Button', () => {
     expect(html).toContain('<fig-button')
     expect(html).toContain('aria-label="Open the notices"')
     expect(html).not.toContain('aria-describedby')
+  })
+})
+
+/**
+ * A stand-in for FigUI3's fig-button as far as `disabled` goes: a change of
+ * the attribute re-syncs the inner button synchronously, inside the call
+ * that made it, and an unchanged value does nothing (fig.js,
+ * `attributeChangedCallback` and `#syncButtonAttributes`). The real kit
+ * removes aria-pressed from the host and the inner button there; `harsh`
+ * removes everything the wrapper mirrors, as a later kit could.
+ */
+function fakeKit(harsh = false): KitHost & {
+  attrs: Map<string, string>
+  inner: ReturnType<typeof fakeTarget>
+  resyncs: number
+} {
+  const inner = fakeTarget()
+  const resync = (): void => {
+    kit.resyncs += 1
+    kit.attrs.delete('aria-pressed')
+    inner.attrs.delete('aria-pressed')
+    // The kit copies these from the host, where the wrapper puts none of them.
+    for (const name of ['aria-label', 'aria-labelledby', 'aria-describedby', 'title'])
+      inner.attrs.delete(name)
+    if (harsh) {
+      for (const name of ['aria-expanded', 'aria-disabled', 'aria-controls'])
+        inner.attrs.delete(name)
+      kit.attrs.delete('data-unavailable')
+    }
+  }
+  const kit = {
+    attrs: new Map<string, string>(),
+    inner,
+    resyncs: 0,
+    shadowRoot: { querySelector: () => inner },
+    setAttribute(name: string, value: string) {
+      const old = kit.attrs.get(name) ?? null
+      kit.attrs.set(name, value)
+      if (name === 'disabled' && old !== value) resync()
+    },
+    removeAttribute(name: string) {
+      const had = kit.attrs.has(name)
+      kit.attrs.delete(name)
+      if (name === 'disabled' && had) resync()
+    },
+  }
+  return kit
+}
+
+describe('syncKitButton', () => {
+  const toggle: KitState = { disabled: false, pressed: true }
+
+  it("keeps a toggle pressed through the kit's re-sync as it disables and enables again", () => {
+    const kit = fakeKit()
+    syncKitButton(kit, toggle)
+    expect(kit.inner.attrs.get('aria-pressed')).toBe('true')
+
+    syncKitButton(kit, { ...toggle, disabled: true })
+    expect(kit.resyncs).toBe(1)
+    expect(kit.attrs.has('disabled')).toBe(true)
+    expect(kit.inner.attrs.get('aria-pressed')).toBe('true')
+
+    syncKitButton(kit, toggle)
+    expect(kit.resyncs).toBe(2)
+    expect(kit.attrs.has('disabled')).toBe(false)
+    expect(kit.inner.attrs.get('aria-pressed')).toBe('true')
+
+    // And the other button of the pair, not pressed, says so rather than nothing.
+    const other = fakeKit()
+    syncKitButton(other, { disabled: true, pressed: false })
+    syncKitButton(other, { disabled: false, pressed: false })
+    expect(other.inner.attrs.get('aria-pressed')).toBe('false')
+  })
+
+  it('keeps every mirrored attribute through a disabled toggle, even from a kit that removes them all', () => {
+    const state: KitState = {
+      disabled: false,
+      expanded: true,
+      pressed: false,
+      unavailable: true,
+      controls: 'panel-1',
+    }
+    for (const kit of [fakeKit(), fakeKit(true)]) {
+      syncKitButton(kit, state)
+      syncKitButton(kit, { ...state, disabled: true })
+      syncKitButton(kit, state)
+      expect(kit.resyncs).toBe(2)
+      expect(Object.fromEntries(kit.inner.attrs)).toEqual({
+        'aria-expanded': 'true',
+        'aria-pressed': 'false',
+        'aria-disabled': 'true',
+        'aria-controls': 'panel-1',
+      })
+      expect(kit.attrs.has('data-unavailable')).toBe(true)
+    }
+  })
+
+  it('removes what is no longer set, and leaves a description it does not own alone', () => {
+    const kit = fakeKit(true)
+    kit.inner.setAttribute('aria-description', 'One run is going.')
+    syncKitButton(kit, { disabled: true, expanded: true, unavailable: true, controls: 'panel-1' })
+    syncKitButton(kit, { disabled: false })
+    expect(Object.fromEntries(kit.inner.attrs)).toEqual({
+      'aria-description': 'One run is going.',
+    })
+    expect(kit.attrs.has('data-unavailable')).toBe(false)
+    expect(kit.attrs.has('disabled')).toBe(false)
+  })
+
+  it('writes an unchanged disabled state without making the kit re-sync', () => {
+    const kit = fakeKit()
+    syncKitButton(kit, { ...toggle, disabled: true })
+    syncKitButton(kit, { ...toggle, disabled: true, pressed: false })
+    syncKitButton(kit, { disabled: false, pressed: false })
+    syncKitButton(kit, { disabled: false, pressed: true })
+    expect(kit.resyncs).toBe(2)
+    expect(kit.inner.attrs.get('aria-pressed')).toBe('true')
   })
 })
