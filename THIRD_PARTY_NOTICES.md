@@ -126,10 +126,11 @@ FFmpeg library inside Electron, beside them (below).
   whose `package-lock.json` installs another Electron than the pins are for.
   No installer is packaged in a run whose archive did not verify
   (`build.yml`). `v0.1.0-rc.2` was published before this decision: once it
-  merges, the archive from the first build on `main` is to be uploaded to
-  that pre-release by hand, with its sha256 in rc.2's notes, since rc.2's
+  merged, the archive from the first build on `main` was uploaded to that
+  pre-release by hand, with its sha256 in rc.2's notes, since rc.2's
   `SHA256SUMS.txt` cannot list an asset added after publication. rc.2 ships
-  Electron 44.2.0, and the archive it was given is that Electron's.
+  Electron 44.2.0, and the archive it was given,
+  `electron-ffmpeg-44.2.0-source.tar.xz`, is that Electron's.
 - **mingw-w64 runtime**, linked into the Windows ffmpeg and ffprobe and
   the Windows LOOM tools. Its
   `COPYING.MinGW-w64-runtime.txt` at commit `9c1abbbf55`, verbatim but for
