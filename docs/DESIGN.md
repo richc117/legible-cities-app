@@ -356,7 +356,9 @@ map's own animation is the engine's and is untouched.
 
 FigUI3 supplies the dense, minimal control set the maintainer wants, and
 its core is adoptable under the app's licence. Verified at 9.0.0
-(2026-09-07):
+(2026-09-07); at 9.0.7 (2026-09-14) the licence file, `fig-layer.js`,
+`base.css` and `polyfills/` were unchanged and the core's builds still
+name neither the editor nor the lab:
 
 - **Licence.** Split since 8.9.24: `fig.js`, `fig-layer.js`, `fig.css`,
   `fig-layer.css`, `base.css`, `components.css`, `polyfills/` and their
@@ -383,7 +385,7 @@ its core is adoptable under the app's licence. Verified at 9.0.0
 **Adoption rules.**
 
 1. Import only `@rogieking/figui3/fig.css` and `@rogieking/figui3/fig.js`,
-   pinned at 9.0.0 as a build-time dependency, so packaging copies none of
+   pinned at 9.0.7 as a build-time dependency, so packaging copies none of
    it; a guard in the build refuses any `fig-editor` or `fig-lab` import.
    The select control is the native `<select>` styled with the tokens
    (ADR-026); `<fig-select>` is in the editor bundle and is not used.
@@ -578,7 +580,7 @@ Settled here:
   consumer of the tokens appears; the current copy-and-test sync is the
   lighter form of the pattern GitHub's Primer uses with a published
   package.
-- FigUI3 core at 9.0.0, MIT only, behind an adapter and wrappers.
+- FigUI3 core at 9.0.7, MIT only, behind an adapter and wrappers.
 - Two type tracks, system faces, no bundled fonts.
 - The line vocabulary of section 10 - round stations, quarter-circle
   bends, the brand's four lines as identity - and no further.
