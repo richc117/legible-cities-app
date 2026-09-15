@@ -377,19 +377,46 @@ or a design decision.
   folder chooser's path as their descriptions. Still a person's: that
   VoiceOver and Narrator read the reason when the button is focused.
 
-- **F6. A kit button's `aria-controls` relates it to nothing.** *Screen:*
-  the header's Jobs toggle (`App.tsx`) and the line colours' Choose buttons
-  (`LineColours.tsx`, the default colour's and each line's). *Steps:* with
-  a screen reader that reports controlled elements, focus one. *What a
-  person meets:* no relation to the inspector or the colour picker it
-  opens. `kit/Button.tsx` mirrors `aria-controls` onto the `<button>` in
-  the kit's shadow root, where an id resolves within the shadow tree and
-  the page's element is not, as F5 was. Measured on 2026-09-13 in
-  Playwright's Chromium with the kit's `fig.js`: a native `<button
-  aria-controls>` had a `controls` relation to the element and the kit's
-  inner button had none. Low impact: assistive technology rarely uses
-  `aria-controls`, and `aria-expanded` on both still says what the press
-  does. The fix would be the wrapper's, as F5's was; not fixed here.
+- **F6. A kit button's `aria-controls` related it to nothing. Fixed
+  (issue 121).** *Screen:* the header's Jobs toggle (`App.tsx`) and the
+  line colours' Choose buttons (`LineColours.tsx`, the default colour's and
+  each line's), and any `Button` given `aria-controls`. *Steps:* with a
+  screen reader that reports controlled elements, focus one. *What a
+  person met:* no relation to the inspector or the colour picker it opens.
+  `kit/Button.tsx` mirrored `aria-controls` onto the `<button>` in the
+  kit's shadow root, where an id resolves within the shadow tree and the
+  page's element is not, as F5 was. Measured on 2026-09-13 in Playwright's
+  Chromium with the kit's `fig.js`: a native `<button aria-controls>` had a
+  `controls` relation to the element and the kit's inner button had none.
+  *The choice:* carry the relation rather than stop claiming it, because
+  unlike a description there is a form of it that works and a test can
+  read. Measured on 2026-09-14 with the kit's `fig.js` in Chromium 151 and
+  153, either side of the Chromium 152 in Electron 44.2.0, through the
+  DevTools protocol's accessibility tree: the inner button given the
+  element itself as `ariaControlsElements` had the same `controls`
+  relation a native button's attribute gives, a reference from inside a
+  shadow root to an element of the document around it being one the ARIA
+  reflection rules allow; setting the id attribute afterwards cleared the
+  reference, so nothing may write the attribute once it is set. *The fix*,
+  once, in `kit/Button.tsx`: the wrapper writes no `aria-controls`
+  attribute anywhere, resolves the ids in the button's document and sets
+  the elements as the inner button's `ariaControlsElements`, kept current
+  by a `MutationObserver` on that document (the inspector and a picker
+  render after their buttons, go when they close, and can be rendered
+  again as another element), cleared when none is left, when the prop goes
+  and when the button unmounts, and set again after any change of
+  `disabled`. The same function driven in those two Chromium builds
+  related the button to an element that arrived after it, to its
+  replacement, through a disabled toggle, to nothing once it went, and to
+  nothing after unmounting. `tests/unit/kit-button.test.tsx` tests the
+  syncing against a stand-in that behaves as Chromium does, and
+  `accessibility.spec.ts` ("the project screen: its Map tab…") reads the
+  relation from the built app's accessibility tree: each Choose button
+  controls its open picker and nothing once it closes, and the Jobs toggle
+  controls the Inspector while it is open and nothing while it is not.
+  Still a person's: whether VoiceOver or Narrator says anything of it,
+  which neither is known to; `aria-expanded` still says what the press
+  does.
 
 ## Walking it with a screen reader
 

@@ -20,8 +20,9 @@
 // handed on when the control that held it goes with the press (a layout
 // run's buttons, an export's, the service day's, the Library's rows and
 // Settings' "Use the default"), a confirmation's Cancel holding focus while
-// the action runs, an explanation that Escape dismisses, and the colour
-// picker's sliders showing the app's focus ring.
+// the action runs, an explanation that Escape dismisses, the colour
+// picker's sliders showing the app's focus ring, and a kit button's
+// aria-controls relating it to what it opens (issue 121, F6).
 //
 // Contrast is arithmetic, not a screenshot: tests/unit/contrast.test.ts.
 // That test reads token pairs, though, and cannot see which rule wins on an
@@ -378,6 +379,36 @@ async function expectNamed(scope: Locator, where: string): Promise<void> {
   expect(unnamed, `${where}: controls without a name\n${snapshot}`).toEqual([])
 }
 
+/**
+ * The names of the elements the one button named `name` controls, from
+ * Chromium's accessibility tree through the DevTools protocol; none is an
+ * empty list. The relation is read there because neither Playwright's
+ * snapshot nor its locators expose aria-controls, and a kit button's is an
+ * element reference on the button inside its shadow root, with no id to
+ * read off the page (issue 121, docs/accessibility.md F6).
+ */
+async function controlsOf(page: Page, name: string | RegExp): Promise<string[]> {
+  const cdp = await page.context().newCDPSession(page)
+  try {
+    const { nodes } = await cdp.send('Accessibility.getFullAXTree')
+    const named = (node: (typeof nodes)[number]): string =>
+      typeof node.name?.value === 'string' ? node.name.value : ''
+    const buttons = nodes.filter((node) => {
+      if (node.ignored || node.role?.value !== 'button') return false
+      return typeof name === 'string' ? named(node) === name : name.test(named(node))
+    })
+    expect(buttons.map(named), `one button named ${String(name)}`).toHaveLength(1)
+    const byId = new Map(nodes.map((node) => [node.backendDOMNodeId, node]))
+    const controls = buttons[0].properties?.find((property) => property.name === 'controls')
+    return (controls?.value.relatedNodes ?? []).map((related) => {
+      const node = byId.get(related.backendDOMNodeId)
+      return node === undefined ? `(not in the tree: ${related.idref ?? ''})` : named(node)
+    })
+  } finally {
+    await cdp.detach()
+  }
+}
+
 /** A Tab walk from the top reaches every enabled control, and each shows its focus. */
 async function expectTabWalk(page: Page, where: string): Promise<void> {
   await page.evaluate(installProbe)
@@ -711,6 +742,11 @@ test('the project screen: its Map tab, Inspect, the geographic view, the inspect
     await colours.getByRole('button', { name: 'Choose the colour of line A' }).click()
     const picker = colours.getByRole('group', { name: 'Colour for line A' })
     await expect(picker.getByRole('slider', { name: 'Hue' })).toBeVisible()
+    // Its Choose button controls the picker it opened, as a native button's
+    // aria-controls would say (issue 121, F6).
+    await expect
+      .poll(() => controlsOf(page, 'Choose the colour of line A'))
+      .toEqual(['Colour for line A'])
     await sweep(page, 'the project, a colour picker open')
     await picker.getByRole('slider', { name: 'Hue' }).focus()
     await page.keyboard.press('Shift+Tab')
@@ -724,6 +760,24 @@ test('the project screen: its Map tab, Inspect, the geographic view, the inspect
     ).not.toBe('none')
     await page.keyboard.press('Escape')
     await expect(picker).toBeHidden()
+    // Closed, it names nothing it no longer shows.
+    await expect.poll(() => controlsOf(page, 'Choose the colour of line A')).toEqual([])
+
+    // The default colour's Choose button, the other kind of row.
+    const uncoloured = colours.getByRole('button', {
+      name: 'Choose the colour of lines the feed leaves uncoloured',
+    })
+    await uncoloured.click()
+    await expect(
+      colours.getByRole('group', { name: 'Colour for lines the feed leaves uncoloured' }),
+    ).toBeVisible()
+    await expect
+      .poll(() => controlsOf(page, 'Choose the colour of lines the feed leaves uncoloured'))
+      .toEqual(['Colour for lines the feed leaves uncoloured'])
+    await uncoloured.click()
+    await expect(
+      colours.getByRole('group', { name: 'Colour for lines the feed leaves uncoloured' }),
+    ).toBeHidden()
 
     // An explanation shown on focus is sent away with Escape, and comes back
     // once focus has left its row and returned.
@@ -779,11 +833,19 @@ test('the project screen: its Map tab, Inspect, the geographic view, the inspect
     await expect(inspect.getByRole('combobox', { name: 'Mode' })).toBeFocused()
 
     // The inspector, with the session's jobs: the layout run and the rebuild.
+    // Collapsed, the toggle controls nothing yet: the inspector is not
+    // rendered until it opens, and the relation follows it in and out.
+    await expect.poll(() => controlsOf(page, /^Jobs, /)).toEqual([])
     await page.getByRole('button', { name: /^Jobs, / }).click()
     const inspector = page.getByRole('complementary', { name: 'Inspector' })
     await expect(inspector.getByRole('listitem').first()).toBeVisible()
+    await expect.poll(() => controlsOf(page, /^Jobs, /)).toEqual(['Inspector'])
     await sweep(page, 'the inspector')
-    await page.keyboard.press('Escape')
+    // Closed with its own button, since the walk leaves focus wherever it
+    // ended and Escape is the inspector's only while focus is inside it.
+    await inspector.getByRole('button', { name: 'Close the inspector' }).click()
+    await expect(inspector).toHaveCount(0)
+    await expect.poll(() => controlsOf(page, /^Jobs, /)).toEqual([])
   })
 })
 

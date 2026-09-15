@@ -66,20 +66,34 @@ page's elements are not. So `aria-describedby` is never given to the kit
 (docs/accessibility.md, F5): the wrapper writes the described elements'
 text onto the inner button as `aria-description` instead, follows it with
 a `MutationObserver` on the button's document, and removes it when the
-prop goes or the button unmounts (issue 113). `aria-controls` is mirrored
-onto the inner button too, but for the same reason it resolves to nothing
-and relates the button to no element (docs/accessibility.md, F6); the
-wrapper does not take `aria-labelledby`, which would fail the same way.
+prop goes or the button unmounts (issue 113). The wrapper does not take
+`aria-labelledby`, which would fail the same way.
+
+`aria-controls` is never written as an attribute either, on the host or
+the inner button, because an id there relates the button to nothing
+(docs/accessibility.md, F6). The wrapper resolves the ids in the button's
+document and sets the elements themselves as the inner button's
+`ariaControlsElements`, which Chromium's accessibility tree takes as the
+button's `controls` relation across the shadow boundary (measured in
+Chromium 151 and 153 with the kit's `fig.js`, either side of Electron
+44.2.0's Chromium 152). It follows the document with a `MutationObserver`,
+since a controlled element renders after its button, goes and comes back
+as another element, clears the reference when no named element is left,
+when the prop goes and when the button unmounts, and sets it again after
+any change of `disabled` (`mirrorControls`, issue 121). The choice over
+dropping `aria-controls` from kit buttons: the relation can be carried and
+read back in a test, so a caller's claim stays true. Setting the attribute
+clears an element reference, so nothing else may write `aria-controls` on
+the inner button, the wrapper's own state syncing included.
 
 The kit observes `disabled` on the host and, inside every change of it,
 re-syncs its inner button synchronously, removing `aria-pressed` from the
 host and the inner button of any button that is not its own toggle. So
 `Button` writes `disabled` and the mirrored attributes (`aria-expanded`,
-`aria-pressed`, `aria-disabled`, `aria-controls`, and `data-unavailable`
-on the host) in one effect that runs whenever any of them changes,
+`aria-pressed`, `aria-disabled`, and `data-unavailable` on the host) in one effect that runs whenever any of them changes,
 `disabled` first, so the mirrored state is re-applied after the kit's
 re-sync (`syncKitButton`, issue 124). The re-sync does not touch
-`aria-description`.
+`aria-description` or `aria-controls`.
 
 Each wrapper: a `ref` to the element; `value` set through the ref in an
 effect (never in JSX); listeners attached in an effect; `forwardRef` so a
