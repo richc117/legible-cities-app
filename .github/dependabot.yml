@@ -37,6 +37,19 @@ updates:
       development:
         dependency-type: development
         update-types: ["minor", "patch"]
+    # Majors that cannot install until upstream moves, so a pull request for
+    # them fails at npm ci on every job. Lift each when its blocker clears.
+    ignore:
+      # electron-vite 5.0.0 accepts vite up to 7; only its 6.0.0 betas take
+      # 8 (alex8088/electron-vite#894). plugin-react 6 needs vite 8.
+      - dependency-name: "vite"
+        versions: [">=8"]
+      - dependency-name: "@vitejs/plugin-react"
+        versions: [">=6"]
+      # TypeScript 7.0 ships no compiler API: typescript-eslint accepts
+      # <6.1.0 and @rogieking/figui3 accepts ^5.0.0.
+      - dependency-name: "typescript"
+        versions: [">=7"]
 
   # The Python sidecar's own requirements, once it has any.
   - package-ecosystem: pip
