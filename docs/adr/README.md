@@ -67,7 +67,7 @@ already cites the number you mean to use.
 | 034 | [Assistant plugins are opted in per repository](034-assistant-plugins-are-opted-in-per-repository.md) | Accepted |
 | 035 | [Installers are built from the same run's vendor artefacts](035-installers-are-built-from-the-same-runs-vendor-artefacts.md) | Accepted |
 | 036 | [The inspector spans projects](036-the-inspector-spans-projects.md) | Accepted |
-| 037 | Reserved: allocated to A6-05's decision, not yet written | - |
+| 037 | [The first release is unsigned](037-the-first-release-is-unsigned.md) | Proposed |
 | 038 | [The sidecar runtime, measured on three targets](038-the-sidecar-runtime-measured-on-three-targets.md) | Accepted |
 | 039 | [The determinism gate judges the capture, and the file for its structure](039-the-determinism-gate-judges-the-capture.md) | Accepted |
 | 040 | [FFmpeg is built here, from pinned sources, with only what the export uses](040-ffmpeg-is-built-from-pinned-sources.md) | Accepted |
