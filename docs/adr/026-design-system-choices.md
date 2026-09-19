@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-09-07
 - **Supersedes:** none
-- **Superseded by:** none
+- **Superseded by:** ADR-044, in part (the mark only)
 
 ## Context
 
