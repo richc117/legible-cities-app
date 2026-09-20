@@ -61,9 +61,10 @@ test('follows the platform theme and measures as the design document says', asyn
     )
     await page.reload()
 
+    // The focus ring is cobalt, the brand's accent, in both themes.
     for (const [source, attribute, focus] of [
-      ['dark', null, 'rgb(129, 165, 255)'],
-      ['light', 'sepia', 'rgb(64, 104, 207)'],
+      ['dark', null, 'rgb(111, 155, 255)'],
+      ['light', 'sepia', 'rgb(42, 91, 181)'],
     ] as const) {
       await setTheme(page, source)
       await expect
@@ -106,10 +107,10 @@ test('follows the platform theme and measures as the design document says', asyn
       })
       // Computed custom properties come back resolved, so the chain
       // --figma-color-bg -> --surface -> --bg is one colour at the end.
-      const expected = source === 'dark' ? '#15120f' : '#f7efe1'
+      const expected = source === 'dark' ? '#1a1410' : '#f5e6c8'
       expect(surfaces.surface).toBe(expected)
       expect(surfaces.figma).toBe(expected)
-      expect(surfaces.body).toBe(source === 'dark' ? 'rgb(21, 18, 15)' : 'rgb(247, 239, 225)')
+      expect(surfaces.body).toBe(source === 'dark' ? 'rgb(26, 20, 16)' : 'rgb(245, 230, 200)')
     }
   })
 })

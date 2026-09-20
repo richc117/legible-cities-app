@@ -12,22 +12,30 @@ choices it left open were decided the same day (ADR-026).
 
 ## 1. Principles
 
-1. **The map is the engine's.** The app draws chrome: lists, panels,
-   dialogs, progress, settings. The generated animation page is embedded
-   and driven, never redrawn, restyled or imitated. Nothing in the app's
-   palette may be mistaken for a transit line.
+1. **The map is the engine's; the lines are the brand's; neither is a
+   state.** The app draws chrome: lists, panels, dialogs, progress,
+   settings. The generated animation page is embedded and driven, never
+   redrawn, restyled or imitated. The four brand lines - vermilion,
+   cobalt, saffron and jade - are identity: they carry the icon, the
+   lockup, the progress line and the header rules, and they are never a
+   status and never stand beside one. A status has its own hue, and always
+   an icon and a word with it.
 2. **Editorial, warm, restrained.** The brand comes from the maintainer's
-   portfolio and the Legible Cities website: a warm-dark and a sepia
-   theme, an old-style serif for reading, sentences rather than labels,
-   nothing decorative. The app extends that identity into dense desktop
-   chrome; it does not replace it.
+   portfolio and the Legible Cities website: two grounds, an old-style
+   serif for reading, sentences rather than labels, nothing decorative.
+   The interface's two are Night and Parchment, named for what they are
+   rather than for the engine's; the app extends that identity into dense
+   desktop chrome without replacing it.
 3. **Dense, not cramped.** Controls at 13px on a 4px grid, as Obsidian and
    Figma's plugin surfaces do, so a working screen holds a library, a job
    and a map at once. Prose keeps the websites' 18px rhythm. The two never
    share a scale.
-4. **One palette, two themes, every pair checked.** Six brand colours per
-   theme are the source; a ramp and a semantic layer derive from them; every
-   text and control pair clears WCAG AA in both themes, by test, not by eye.
+4. **One palette, two themes, every pair checked.** The interface's own
+   ground and ink are the source; a ramp and a semantic layer derive from
+   them; every text and control pair clears WCAG AA in both themes, by
+   test, not by eye. The palette is the app's, not the engine's: the map
+   keeps the engine page's colours and the two no longer have to agree
+   (ADR-044).
 5. **Allusion, not pastiche.** Harry Beck's 1933 diagram supplies a
    vocabulary (the 45-degree join, the tick, the hollow interchange mark,
    the cream ground) for progress, steps and the mark. The map, the roundel
@@ -61,45 +69,73 @@ iconography, and components that are operated rather than read.
 
 ### 3.1 Tiers
 
-Four tiers, as Obsidian structures its variables: the brand six, a neutral
-ramp, semantic tokens named for use, and component tokens. Only the brand
-six are shared with the engine's page; everything below them is the app's.
+Four tiers, as Obsidian structures its variables: the brand, a neutral
+ramp, semantic tokens named for use, and component tokens. All four are
+the app's own. They were once the engine page's six, copied and drift
+tested; ADR-044 separated them, because the app's stylesheets have not
+been able to reach the map since its frame was given an opaque origin, and
+a project's map theme and a person's interface theme have been independent
+choices since A4-03. `tokens.css` is still the engine page's copy and is
+still drift tested, but nothing loads it.
 
-**Tier 1, brand (from the engine page, copied with a drift test):**
+**Tier 1, the interface's ground and ink.** Night is the dark theme, which
+takes no attribute; Parchment is the light one, at `data-theme="sepia"`.
+The identifiers are the engine's because a project's map wears the
+engine's two and the ids must keep matching; the names are the
+interface's, and name only these colours.
 
-| Token | Warm-dark | Sepia |
+| Token | Night | Parchment |
 |---|---|---|
-| `--bg` | `#15120f` | `#f7efe1` |
-| `--bg-soft` | `#1f1915` | `#f0e2cf` |
-| `--text` | `#f2ede6` | `#2d241d` |
-| `--muted` | `#c3b8aa` | `#655748` |
-| `--border` | `#3a2f27` | `#cab9a2` |
-| `--focus` | `#81a5ff` | `#4068cf` |
+| `--bg` | `#1a1410` | `#f5e6c8` |
+| `--bg-soft` | `#211c17` | `#e9dabe` |
+| `--text` | `#f5ead8` | `#2d241d` |
+| `--muted` | `#c4bbac` | `#5c5347` |
+| `--border` | `#37322d` | `#c0b39b` |
+| `--focus` | `#6f9bff` | `#2a5bb5` |
 
-**Tier 2, ramp.** Twelve steps from background to text, interpolated in
-sRGB, private to the theme files. The brand's soft background, border and
-muted text already sit on it.
+**Tier 1, the brand lines.** Four, and identity rather than state
+(principle 1). They are what the icon, the lockup, the progress line and
+the header rules are drawn in. They are never text, never a status, and
+never a transit line: an agency's colours belong to the agency and are
+drawn literally inside the engine's page.
 
-| Step | Warm-dark | on bg | Sepia | on bg |
+| Token | Night | Parchment |
+|---|---|---|
+| `--line-vermilion` | `#f05a40` | `#d6402a` |
+| `--line-cobalt` | `#6f9bff` | `#2a5bb5` |
+| `--line-saffron` | `#f5ad35` | `#eb9a1c` |
+| `--line-jade` | `#3fb47c` | `#1d8757` |
+| `--station-fill` | `#1a1410` | `#fffaf0` |
+| `--station-ink` | `#f5ead8` | `#2d241d` |
+
+Cobalt is the accent: `--accent` and `--focus` are it, in both themes.
+
+**Tier 2, ramp.** Twelve steps from ground to ink, private to the theme
+files. Each step was solved on the ground-to-ink line in linear light to
+hold the contrast its predecessor had against its own ground, since the
+old ramp matched no simple interpolation. The soft background, border and
+muted text sit on it.
+
+| Step | Night | on bg | Parchment | on bg |
 |---|---|---|---|---|
-| 0 | `#15120f` | 1.00 | `#f7efe1` | 1.00 |
-| 1 | `#1e1b18` | 1.09 | `#efe7d9` | 1.08 |
-| 2 | `#272420` | 1.21 | `#e7dfd1` | 1.16 |
-| 3 | `#322e2b` | 1.39 | `#ddd5c8` | 1.27 |
-| 4 | `#3d3936` | 1.63 | `#d3cabe` | 1.42 |
-| 5 | `#4a4743` | 2.02 | `#c7beb2` | 1.61 |
-| 6 | `#5c5854` | 2.65 | `#b6aea2` | 1.92 |
-| 7 | `#726e69` | 3.69 | `#a29a8f` | 2.43 |
-| 8 | `#8f8a85` | 5.46 | `#887f75` | 3.44 |
-| 9 | `#b0aba6` | 8.19 | `#6a6158` | 5.31 |
-| 10 | `#d1ccc6` | 11.70 | `#4b423a` | 8.59 |
-| 11 | `#f2ede6` | 16.02 | `#2d241d` | 13.31 |
+| 0 | `#1a1410` | 1.00 | `#f5e6c8` | 1.00 |
+| 1 | `#221d18` | 1.09 | `#eddec1` | 1.08 |
+| 2 | `#2a2621` | 1.21 | `#e5d6ba` | 1.16 |
+| 3 | `#34302a` | 1.39 | `#dacdb2` | 1.28 |
+| 4 | `#3f3b35` | 1.64 | `#d0c2a9` | 1.42 |
+| 5 | `#4e4842` | 2.02 | `#c3b79f` | 1.61 |
+| 6 | `#5f5a52` | 2.67 | `#b3a791` | 1.92 |
+| 7 | `#767066` | 3.72 | `#9e9380` | 2.45 |
+| 8 | `#938c80` | 5.47 | `#837969` | 3.47 |
+| 9 | `#b5ad9f` | 8.20 | `#655c4f` | 5.33 |
+| 10 | `#d8cebe` | 11.72 | `#453d34` | 8.65 |
+| 11 | `#f5ead8` | 15.32 | `#2d241d` | 12.33 |
 
 **Tier 3, semantic.** What components use. Contrast is against the
 theme's `--bg` unless noted; the implementation carries a unit test that
 recomputes every pair.
 
-| Token | Use | Warm-dark | Sepia |
+| Token | Use | Night | Parchment |
 |---|---|---|---|
 | `--surface` | the window ground | `--bg` | `--bg` |
 | `--surface-raised` | panels, cards, dialogs | `--bg-soft` | `--bg-soft` |
@@ -107,17 +143,18 @@ recomputes every pair.
 | `--surface-hover` | a list row under the pointer | step 2 | step 1 |
 | `--surface-selected` | the current item | step 3 | step 3 |
 | `--border` | dividers, cards | `--border` | `--border` |
-| `--border-strong` | inputs at rest, table rules (≥ 3.0) | step 7 `#726e69` 3.69 | step 8 `#887f75` 3.44 |
+| `--border-strong` | inputs at rest, table rules (≥ 3.0) | step 7 `#767066` 3.72 | step 8 `#837969` 3.47 |
 | `--text` | prose and labels | `--text` | `--text` |
-| `--text-muted` | secondary labels (≥ 4.5) | `--muted` 9.56 | `--muted` 6.11 |
-| `--text-faint` | timestamps, counts (≥ 4.5) | step 8 `#8f8a85` 5.46 | step 9 `#6a6158` 5.31 |
-| `--accent` | links, the primary action, the current step | `#81a5ff` 7.78 | `#4068cf` 4.49 |
-| `--accent-text` | accent used as text (≥ 4.5) | `#81a5ff` | `#2f56b8` 5.85 |
-| `--on-accent` | text on an accent fill | `#15120f` 7.78 | `#f2ede6` 4.40 on `--accent`, short of 4.5 for the kit's 13px label, so a fill behind text is `--accent-text`, 5.74 (A6-07) |
+| `--text-muted` | secondary labels (≥ 4.5) | `--muted` 9.60 | `--muted` 6.12 |
+| `--text-faint` | timestamps, counts (≥ 4.5) | step 8 `#938c80` 5.47 | step 9 `#655c4f` 5.33 |
+| `--accent` | links, the primary action, the current step | cobalt 6.78 | cobalt 5.22 |
+| `--accent-text` | accent used as text (≥ 4.5) | cobalt 6.78 | `#2753a6` 5.93, since cobalt itself is 4.09 on a selected row |
+| `--on-accent` | text on an accent fill | `--bg` 6.78 on `--accent` | `--bg` 5.22 on `--accent` |
 | `--focus` | the focus ring | `--focus` | `--focus` |
-| `--success` | a finished job, a green tick | `#5fb37a` 7.30 | `#2f7a4f` 4.58; `#276a44` on raised |
-| `--warning` | a caveat the engine reports | `#e0a83a` 8.74 | `#8a5a10` 5.18 |
-| `--error` | a failure, a refused input | `#e0574a` 5.00 | `#b3261e` 5.72 |
+| `--success` | a finished job, a green tick | `#5fb37a` 7.13 | `#2f7a4f` 4.24 |
+| `--success-strong` | a finished job in words (≥ 4.5) | `#5fb37a` 7.13 | `#276a44` 5.27 |
+| `--warning` | a caveat the engine reports | `#e0a83a` 8.54 | `#83560f` 5.16 |
+| `--error` | a failure, a refused input | `#e0574a` 4.89 | `#b3261e` 5.30 |
 | `--selection` | text selection | `--accent` at 30% | `--accent` at 25% |
 
 Status colours are per theme by necessity: no single red, amber or green
@@ -125,21 +162,39 @@ clears AA on both grounds. They are never used as fills behind text; a
 status fill is the colour at 12 to 16% over `--surface-raised` with the
 status colour as the text.
 
+**Which ground a colour may be drawn on.** The figures above are against
+`--surface`. On the denser grounds some of them fall short, so the rule is
+the narrow one that holds in both themes:
+
+- `--error`, `--warning` and `--border-strong` are drawn on `--surface`
+  and `--surface-raised` only. Night's `--error` is 4.03 on `--surface-sunken`
+  and 3.51 on `--surface-selected`; Parchment's `--border-strong` is 2.99
+  on sunken.
+- `--text-faint` additionally misses on `--surface-selected`: 3.93 in
+  Night, 4.18 in Parchment. `--success-strong` misses there in Parchment
+  only, at 4.13; it holds in Night, at 5.13.
+- `--text`, `--text-muted`, `--accent`, `--accent-text` and `--focus` clear
+  their thresholds on every ground in both themes.
+
 **Tier 4, component tokens** (`--control-height`, `--icon-size`,
 `--dialog-width`) live with the components in section 8.
 
 ### 3.2 Rules
 
 - Transit line colours belong to the agency and appear only inside the
-  engine's page, drawn literally. The app's semantic colours must stay
-  visually distinct from them: no line-like saturated strokes in chrome, no
-  "the red line means error".
+  engine's page, drawn literally. The brand's four lines are not those and
+  never stand for them: they are identity, and they never carry a status.
+  A status keeps its own hue and never appears as a bare stroke - it has an
+  icon and a word, so "the red line means error" stays impossible.
 - Every colour in the app is a token. A hex value in a component file is a
   bug; the contrast test reads the token file.
-- The theme attribute is the engine's: no attribute is warm-dark and
-  `data-theme="sepia"` is the light theme, on `<html>`, as the engine page
-  and the copied tokens already do. The OS preference chooses until the
-  setting arrives (A1-04); a chosen theme is never overridden by it.
+- The theme attribute is the engine's: no attribute is the dark theme and
+  `data-theme="sepia"` is the light one, on `<html>`, because a project's
+  map wears the engine's two and the identifiers must keep matching. Only
+  the names a person reads are the interface's - Night and Parchment in
+  Settings, while a project's map switch still says Warm dark and Sepia,
+  which is what the engine draws. The OS preference chooses until a person
+  chooses (A1-04); a chosen theme is never overridden by it.
 - Elevation is expressed by surface step and a 1px border, never by a
   shadow larger than 0 1px 2px at 20% black; the engine's page is flat and
   the app sits beside it.
@@ -473,10 +528,12 @@ Settled here:
 - Plain CSS custom properties are the token format. Electron 44 runs
   Chromium 152, which supports `light-dark()`, `color-mix()`, `@layer`,
   `:has()`, container queries and relative colour syntax (full since
-  Chromium 131), so nothing is missing. Files: `tokens.css` (the brand six
-  per theme, copied from the engine page, drift-tested), `theme.css` (the
-  ramp and the semantic tokens per theme, on `:root` and `:root[data-theme="sepia"]`), `scale.css` (type, space, sizes, motion),
-  `figui-adapter.css`. The DTCG format (2025.10, a stable Community Group
+  Chromium 131), so nothing is missing. Files: `theme.css` (the
+  interface's ground and ink, the brand lines, the ramp and the semantic
+  tokens per theme, on `:root` and `:root[data-theme="sepia"]`),
+  `scale.css` (type, space, sizes, motion), `figui-adapter.css`.
+  `tokens.css` is the engine page's own two blocks, drift-tested and
+  loaded by nothing (ADR-044). The DTCG format (2025.10, a stable Community Group
   report, not a W3C standard) and a build with Style Dictionary 5.5.3
   (Apache-2.0) or Terrazzo 2.7.1 (MIT) become worth it only when a third
   consumer of the tokens appears; the current copy-and-test sync is the

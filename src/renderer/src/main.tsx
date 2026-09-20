@@ -2,10 +2,11 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
 import ProgressPreview from './ProgressPreview'
-// Order matters: the brand's tokens, the system's tokens and scale, the
-// kit (its own defaults), the adapter that maps the tokens into the kit,
-// then the app's own rules on top.
-import './styles/tokens.css'
+// Order matters: the interface's palette and scale, the kit (its own
+// defaults), the adapter that maps the tokens into the kit, then the app's
+// own rules on top. The engine page's tokens are not loaded: the app's
+// palette is its own (ADR-044), and tokens.css is only a drift-tested
+// record of that page now.
 import './styles/theme.css'
 import './styles/scale.css'
 import './kit'

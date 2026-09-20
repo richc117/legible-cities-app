@@ -146,11 +146,17 @@ export function themeAttribute(theme: AppTheme, prefersLight: boolean): 'sepia' 
   return prefersLight ? 'sepia' : null
 }
 
-/** The theme's name for a person, in the design document's words. */
+/**
+ * The theme's name for a person, in the design document's words. These are
+ * the interface's own colours (ADR-044), so they carry the interface's
+ * names; the identifiers stay the engine's because a project's map wears
+ * the engine's two and the two sets must keep matching. A project's map
+ * switch says Warm dark and Sepia, which is what the engine draws there.
+ */
 export const THEME_LABELS: Record<AppTheme, string> = {
   system: 'Follow the system',
-  'warm-dark': 'Warm dark',
-  sepia: 'Sepia',
+  'warm-dark': 'Night',
+  sepia: 'Parchment',
 }
 
 const UNITS = ['bytes', 'kB', 'MB', 'GB', 'TB'] as const

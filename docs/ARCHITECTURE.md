@@ -526,19 +526,28 @@ same way, separately, and whichever answered are used.
 
 ## Design tokens
 
-Four stylesheets, loaded from `src/renderer/src/main.tsx` in this order,
+Three stylesheets, loaded from `src/renderer/src/main.tsx` in this order,
 each building on the one before; the design system they implement is
 [`docs/DESIGN.md`](DESIGN.md), and every interface issue cites it.
 
 | File | Holds |
 |---|---|
-| `styles/tokens.css` | a verbatim copy of the two theme blocks in the engine's animation page, warm-dark and sepia: six colours per theme, the brand's. The page is the source of truth (principle II); a unit test fails when the copy drifts from the checkout named by `LEGIBLE_ENGINE_CHECKOUT`, and skips with a message where no checkout is configured |
-| `styles/theme.css` | the twelve-step warm ramp derived from those six, and the semantic tokens on top of it (surfaces, borders, muted text, the accent, success, warning, error, selection), declared once per theme |
+| `styles/theme.css` | the interface's own ground and ink per theme, the four brand lines and the station pair, the twelve-step ramp solved between ground and ink, and the semantic tokens on top of it (surfaces, borders, muted text, the accent, success, warning, error, selection), declared once per theme |
 | `styles/scale.css` | everything that is not a colour: the two type tracks, the 4px spacing grid, control heights, radii, layers, motion |
 | `styles/figui-adapter.css` | the mapping from the app's tokens onto the control kit's own variables, so a kit control is drawn in the app's colours and at the app's sizes without a rule of its own |
 
+There is a fourth, `styles/tokens.css`, which nothing loads. It is a
+verbatim copy of the two theme blocks in the engine's animation page, kept
+so a retheme on the engine's side is still caught: `tests/unit/tokens.test.ts`
+is its only reader, and it fails when the copy drifts from the checkout
+named by `LEGIBLE_ENGINE_CHECKOUT`, skipping with a message where no
+checkout is configured. The interface stopped drawing its chrome from
+those six in ADR-044; the map still wears them, from the engine's own page
+inside a frame no stylesheet of ours reaches.
+
 The theme attribute is the engine's: `data-theme="sepia"` for light, no
-attribute for warm-dark. It follows the operating system's preference
+attribute for the dark theme, whose names for a person are Parchment and
+Night. It follows the operating system's preference
 unless a person chose one of the two by name in Settings, which is applied
 as soon as the settings are read (A1-04, `src/renderer/src/theme.ts`); a
 project's own theme, which its page wears, is a different field and is

@@ -8,14 +8,15 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 const styles = resolve(__dirname, '../../src/renderer/src/styles')
-const tokens = readFileSync(resolve(styles, 'tokens.css'), 'utf8')
+// theme.css alone, because theme.css alone is what the app loads: the
+// engine page's tokens.css is a drift-tested record nothing imports
+// (ADR-044). Merging it here would let a token theme.css forgets resolve
+// to the engine's old value and pass.
 const theme = readFileSync(resolve(styles, 'theme.css'), 'utf8')
 const adapter = readFileSync(resolve(styles, 'figui-adapter.css'), 'utf8')
 const app = readFileSync(resolve(styles, 'app.css'), 'utf8')
 
 type Theme = 'dark' | 'sepia'
-// The token files write the attribute with either quote (prettier prefers
-// single quotes; the engine's copy keeps double).
 const SELECTOR: Record<Theme, RegExp> = {
   dark: /:root\s*\{/g,
   sepia: /:root\[data-theme=["']sepia["']\]\s*\{/g,
@@ -42,7 +43,7 @@ function block(css: string, selector: RegExp): Record<string, string> {
 }
 
 export function tokensFor(which: Theme): Record<string, string> {
-  return { ...block(tokens, SELECTOR[which]), ...block(theme, SELECTOR[which]) }
+  return block(theme, SELECTOR[which])
 }
 
 /** A token's value with var() references followed to a colour literal. */
@@ -112,9 +113,11 @@ const PAIRS: [string, string, number][] = [
   ['--text-muted', '--surface-hover', 4.5],
   ['--accent', '--surface-hover', 3.0],
   // The accessibility pass (A6-07). A primary button's text on its fill:
-  // the kit's brand fill is --accent-text, because --on-accent on --accent
-  // is 4.40 in sepia and the kit's label is 13px at 500 weight, which is
-  // not large text. The hover and pressed fills are checked below.
+  // the kit's brand fill is --accent-text. That began as a workaround, for
+  // an --on-accent that reached only 4.40 on the old sepia accent; the
+  // retheme's cobalt clears 4.5 either way, and the mapping stays because
+  // --accent-text is the darker of the two and costs nothing. The hover
+  // and pressed fills are checked below.
   ['--on-accent', '--accent-text', 4.5],
   // A kit button unavailable while a confirmation's action runs keeps its
   // label readable: the kit's disabled text on its disabled fill.
@@ -220,7 +223,7 @@ const design = readFileSync(resolve(__dirname, '../../docs/DESIGN.md'), 'utf8')
 
 function stated(): { name: string; theme: Theme; against: string; ratio: number }[] {
   const out: { name: string; theme: Theme; against: string; ratio: number }[] = []
-  const ramp = design.slice(design.indexOf('| Step | Warm-dark'), design.indexOf('**Tier 3'))
+  const ramp = design.slice(design.indexOf('| Step | Night'), design.indexOf('**Tier 3'))
   for (const row of ramp.matchAll(
     /^\| (\d+) \| `#[0-9a-f]{6}` \| ([\d.]+) \| `#[0-9a-f]{6}` \| ([\d.]+) \|/gm,
   )) {
@@ -269,14 +272,35 @@ describe('the design tokens clear WCAG AA in both themes', () => {
           ).toBeGreaterThanOrEqual(minimum)
         })
       }
-      it('text on the accent clears the pair the document states', () => {
+      // Both themes now, where the light one was allowed 3.0 while its
+      // accent managed 4.40 under the ground (ADR-044).
+      it('text on the accent clears 4.5', () => {
         const ratio = contrast(resolveToken(map, '--on-accent'), resolveToken(map, '--accent'))
-        expect(ratio).toBeGreaterThanOrEqual(which === 'dark' ? 4.5 : 3.0)
+        expect(ratio).toBeGreaterThanOrEqual(4.5)
       })
       it('has every ramp step and every semantic token', () => {
         for (let i = 0; i < 12; i++)
           expect(map[`--tone-${i}`], `--tone-${i}`).toMatch(/^#[0-9a-f]{6}$/)
         for (const name of [
+          // The ground and ink this file owns since ADR-044. --border is
+          // here because nothing else reaches it: every other one is
+          // resolved through a pair or a surface above, so a theme that
+          // dropped it would paint every divider in currentColor with a
+          // green suite. The identity six are here for the same reason -
+          // nothing consumes them yet, so only this holds the two blocks
+          // symmetric.
+          '--bg',
+          '--bg-soft',
+          '--text',
+          '--muted',
+          '--border',
+          '--focus',
+          '--line-vermilion',
+          '--line-cobalt',
+          '--line-saffron',
+          '--line-jade',
+          '--station-fill',
+          '--station-ink',
           '--surface',
           '--surface-raised',
           '--surface-sunken',
