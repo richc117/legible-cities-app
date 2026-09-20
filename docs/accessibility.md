@@ -265,8 +265,9 @@ on the element, in `tests/e2e/accessibility.spec.ts`:
 - **C6. The empty state's glyph rule reached inside its own button**
   (issue 143). `.empty .icon` is a descendant selector, so besides the mark
   it caught the `add` icon inside the empty state's primary action and drew
-  it `--text-muted` on the accent fill: 1.23 in warm-dark and 1.04 in
-  sepia, where a glyph needs 3.0. The label beside it was `--on-accent` all
+  it `--text-muted` on the accent fill: 1.23 and 1.04 on the palette of the
+  day, 1.42 and 1.03 on the one the retheme brought (ADR-044), where a
+  glyph needs 3.0 on either. The label beside it was `--on-accent` all
   along, which is part of why it read as deliberate. It is `.empty > .icon`
   now, and an icon inside a button takes the button's ink, which the kit
   already gives it. Asserted on the element in both themes by
