@@ -35,10 +35,12 @@ fig-separator {
   --figma-color-bg-selected-pressed: var(--surface-selected);
   --figma-color-bg-menu: var(--surface-raised);
   --figma-color-bg-menu-hover: var(--surface-hover);
-  /* A fill behind text is --accent-text, not --accent: in sepia the accent
-     under --on-accent is 4.40, short of 4.5 at the kit's 13px and 500
-     weight, and --accent-text is 5.74. In warm-dark the two are one colour
-     (A6-07; docs/DESIGN.md 3.1). */
+  /* A fill behind text is --accent-text, not --accent. That began as a
+     workaround: the old sepia accent held --on-accent at only 4.40, short
+     of 4.5 at the kit's 13px and 500 weight. Cobalt clears 4.5 either way
+     now (5.22 by day), so the mapping is kept for margin rather than
+     necessity - --accent-text is the darker of the two by day and the same
+     colour by night (A6-07, ADR-044; docs/DESIGN.md 3.1). */
   --figma-color-bg-brand: var(--accent-text);
   --figma-color-bg-brand-hover: color-mix(in srgb, var(--accent-text) 88%, var(--text));
   --figma-color-bg-brand-pressed: color-mix(in srgb, var(--accent-text) 80%, var(--text));

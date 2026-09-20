@@ -530,7 +530,7 @@ test('the Library, its empty state and its three dialogs', async () => {
   })
 })
 
-/** A token's colour as the computed style writes it, `#15120f` as `rgb(21, 18, 15)`. */
+/** A token's colour as the computed style writes it, `#1a1410` as `rgb(26, 20, 16)`. */
 async function tokenRgb(page: Page, token: string): Promise<string> {
   const hex = await page.evaluate(
     (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim(),

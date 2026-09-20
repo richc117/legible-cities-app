@@ -1,7 +1,7 @@
 /* Layout and components for the shell (docs/DESIGN.md, sections 4, 5, 7
-   and 8.2). Every colour, size and duration is a token from tokens.css,
-   theme.css and scale.css; tests/unit/no-literals.test.ts holds this file
-   to that, so a value written here is a bug. */
+   and 8.2). Every colour, size and duration is a token from theme.css or
+   scale.css; tests/unit/no-literals.test.ts holds this file to that, so a
+   value written here is a bug. */
 
 /* The root keeps a 16px rem so the kit's rem-based values hold; the
    interface's own text starts at the body. */

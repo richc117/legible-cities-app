@@ -1,9 +1,15 @@
 /*
- * Design tokens, copied from the engine's animation page
- * (src/schematic/page/page.html in legible-cities, at the pinned engine
- * version): its two theme blocks, warm-dark and sepia, verbatim.
- * tests/unit/tokens.test.ts fails when this copy drifts from the page.
- * Do not edit by hand; change the engine, then copy.
+ * The engine animation page's two theme blocks, warm-dark and sepia,
+ * copied verbatim from src/schematic/page/page.html in legible-cities at
+ * the pinned engine version. tests/unit/tokens.test.ts fails when this
+ * copy drifts from the page. Do not edit by hand; change the engine, then
+ * copy.
+ *
+ * Nothing loads this file. The interface draws its chrome from theme.css,
+ * which is the app's own palette (ADR-044); this is kept as the record
+ * that catches a retheme on the engine's side. The map a project shows
+ * wears these colours, but it wears them from the engine's own page,
+ * inside a frame no stylesheet of ours reaches.
  */
 :root {
   --bg: #15120f; --bg-soft: #1f1915; --text: #f2ede6; --muted: #c3b8aa;

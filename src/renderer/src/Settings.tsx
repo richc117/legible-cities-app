@@ -459,8 +459,9 @@ export default function Settings({ settings, onChanged, engine, onBack }: Props)
             ))}
           </Select>
           <p className="message">
-            Warm dark and sepia are the engine&rsquo;s own two. This is the interface&rsquo;s; a
-            project&rsquo;s own theme, which its page wears, is the project&rsquo;s.
+            Night and Parchment are the interface&rsquo;s own two. A project&rsquo;s theme, which
+            its map wears, is the project&rsquo;s and is the engine&rsquo;s Warm dark or Sepia;
+            neither follows the other.
           </p>
         </div>
       </section>

@@ -708,8 +708,9 @@ a table).
   clipboard, with your home folder written as ~. Nothing was sent
   anywhere."
 - **Theme select.** Under "Appearance", the pop-up button "Theme" with
-  "Follow the system", "Warm dark" and "Sepia". Change it and listen for the
-  new value; change it back.
+  "Follow the system", "Night" and "Parchment" - the interface's own two,
+  not the engine's, which a project's map switch still calls Warm dark and
+  Sepia. Change it and listen for the new value; change it back.
 - **Versions.** A description list under "Versions": Engine, Protocol,
   Python, LOOM backend, LOOM commit, ffmpeg, none read as empty.
 - **Reset engine data and its confirmation.** Last of all in the sitting.
