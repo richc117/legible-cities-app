@@ -352,7 +352,11 @@ body {
   padding: var(--space-4-6) 0;
 }
 
-.empty .icon {
+/* The empty state's own glyph, and only it: a descendant selector here
+   also caught the icon inside the primary action below, painting it
+   --text-muted on the accent fill at 1.42 and 1.03 (issue 143). An icon
+   inside a button takes the button's ink, which the kit already gives it. */
+.empty > .icon {
   color: var(--text-muted);
 }
 

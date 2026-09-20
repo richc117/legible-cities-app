@@ -24,6 +24,11 @@
 // picker's sliders showing the app's focus ring.
 //
 // Contrast is arithmetic, not a screenshot: tests/unit/contrast.test.ts.
+// That test reads token pairs, though, and cannot see which rule wins on an
+// element - issue 143 was a component rule reaching past what it was written
+// for, so a passing pair was drawn in a colour nothing had paired it with.
+// Where the cascade is the question, the measurement belongs here, on the
+// element, in both themes.
 // The engine's page inside the viewer's frame is the engine's, and is not
 // swept here; a Tab walk passes the "Skip past the map" control, then through
 // its frame and out again (issue 106).
@@ -1041,3 +1046,55 @@ test('the mismatch dialog', async () => {
     { ready: false },
   )
 })
+
+// An icon inside a filled button takes the button's ink, not the ground's.
+// Token arithmetic cannot see this: --on-accent on the accent fill passes
+// on its own, and the defect was a component rule reaching past what it was
+// written for, so what a person saw was a muted glyph on a saturated fill
+// (issue 143). Measured on the element, in both themes, because that is
+// where the cascade is decided.
+test('an icon in a filled button is the button’s ink, in both themes', async () => {
+  const p = profile()
+  await withApp(p, async (page) => {
+    const button = page.locator('fig-button', { hasText: 'New project' })
+    await expect(button).toBeVisible({ timeout: 20_000 })
+    for (const scheme of ['dark', 'light'] as const) {
+      await page.emulateMedia({ colorScheme: scheme })
+      const seen = await button.evaluate((host) => {
+        const icon = host.querySelector('.icon')
+        return {
+          label: getComputedStyle(host).color,
+          icon: icon === null ? 'no icon' : getComputedStyle(icon).color,
+          fill: getComputedStyle(host).backgroundColor,
+        }
+      })
+      expect(seen.icon, `${scheme}: the icon's colour`).toBe(seen.label)
+      // And the pair it now shares clears the 3.0 a glyph needs, so a later
+      // change to --on-accent or --accent cannot quietly sink it.
+      expect(
+        contrast(seen.icon, seen.fill),
+        `${scheme}: ${seen.icon} on ${seen.fill}`,
+      ).toBeGreaterThanOrEqual(3)
+    }
+  })
+})
+
+/** WCAG contrast between two `rgb(r, g, b)` strings, as the styles report them. */
+function contrast(a: string, b: string): number {
+  const luminance = (rgb: string): number => {
+    const parts = rgb.match(/\d+/g)
+    if (parts === null || parts.length < 3) throw new Error(`not an rgb colour: ${rgb}`)
+    const channel = (v: number): number => {
+      const c = v / 255
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+    }
+    return (
+      0.2126 * channel(Number(parts[0])) +
+      0.7152 * channel(Number(parts[1])) +
+      0.0722 * channel(Number(parts[2]))
+    )
+  }
+  const la = luminance(a)
+  const lb = luminance(b)
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
+}
