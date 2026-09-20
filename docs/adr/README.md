@@ -56,7 +56,7 @@ already cites the number you mean to use.
 | 023 | [Determinism is per project; the layout is computed once and stored](023-per-project-determinism.md) | Accepted |
 | 024 | [Capture runs in the app, offscreen, through the debugger](024-capture-is-in-process-and-offscreen.md) | Accepted |
 | 025 | Reserved: a decision about the project, recorded outside this repository | Superseded by 029 |
-| 026 | [The design system's icons, select control and mark](026-design-system-choices.md) | Accepted |
+| 026 | [The design system's icons, select control and mark](026-design-system-choices.md) | Accepted; the mark superseded by 044 |
 | 027 | [The layout a project stores, and what the engine cannot yet promise](027-the-layout-a-project-stores.md) | Superseded by 033 |
 | 028 | [The viewer frame is sandboxed, and driven from the main process](028-the-viewer-frame-is-sandboxed.md) | Accepted |
 | 029 | [The assistant's configuration is committed](029-the-assistants-configuration-is-committed.md) | Accepted |
@@ -74,6 +74,7 @@ already cites the number you mean to use.
 | 041 | [Releases are drafted from a tag](041-releases-are-drafted-from-a-tag.md) | Accepted |
 | 042 | [The installers carry the licence texts they owe, and the app opens them](042-the-installers-carry-the-licence-texts-they-owe.md) | Accepted |
 | 043 | [The source of Electron's FFmpeg library is attached to every release](043-electrons-ffmpeg-source-is-attached-to-every-release.md) | Accepted |
+| 044 | [The interface's palette is the app's own](044-the-interface-palette-is-the-apps-own.md) | Accepted |
 
 ## Amending rather than superseding
 
@@ -82,3 +83,8 @@ be wrong is amended, not superseded: the new record carries `Amends:` and the
 old one gains `Amended by:`, and both stay Accepted. ADR-013 and ADR-028 are
 the first pair, ADR-023 and ADR-031 the second. Superseding is for a
 decision that has been replaced.
+
+A record that bundles several decisions can have one of them superseded on
+its own: it keeps its status and gains `Superseded by: ADR-NNN, in part`
+naming which decision, and the new record says the same in reverse. ADR-026
+and ADR-044 are the first pair.
