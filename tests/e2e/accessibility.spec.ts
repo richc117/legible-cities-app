@@ -24,6 +24,11 @@
 // picker's sliders showing the app's focus ring.
 //
 // Contrast is arithmetic, not a screenshot: tests/unit/contrast.test.ts.
+// That test reads token pairs, though, and cannot see which rule wins on an
+// element - issue 143 was a component rule reaching past what it was written
+// for, so a passing pair was drawn in a colour nothing had paired it with.
+// Where the cascade is the question, the measurement belongs here, on the
+// element, in both themes.
 // The engine's page inside the viewer's frame is the engine's, and is not
 // swept here; a Tab walk passes the "Skip past the map" control, then through
 // its frame and out again (issue 106).
@@ -1041,3 +1046,92 @@ test('the mismatch dialog', async () => {
     { ready: false },
   )
 })
+
+// An icon inside a filled button takes the button's ink, not the ground's.
+// Token arithmetic cannot see this: --on-accent on the accent fill passes
+// on its own, and the defect was a component rule reaching past what it was
+// written for, so what a person saw was a muted glyph on a saturated fill
+// (issue 143). Measured on the element, in both themes, because that is
+// where the cascade is decided.
+//
+// The button is found through `.empty`, not by its name: the Library draws
+// a second "New project" in the toolbar and hides the empty state's one
+// while there are projects, so a bare name could resolve to the button
+// that never had this defect. And `seen.label` is the host's colour, not
+// the label text's: the kit styles `button, fig-button` together, so the
+// host and the inner button carry the same ink and the slotted icon
+// inherits it. If the kit ever moved the ink inside its shadow root, this
+// test would fail for a reason that has nothing to do with `.empty`.
+test('an icon in a filled button is the button’s ink, in both themes', async () => {
+  const p = profile()
+  await withApp(p, async (page) => {
+    const empty = page.locator('.empty')
+    const button = empty.locator('fig-button')
+    await expect(button).toBeVisible({ timeout: 20_000 })
+    for (const scheme of ['dark', 'light'] as const) {
+      await page.emulateMedia({ colorScheme: scheme })
+      // The theme is not a media query: theme.ts listens for the change and
+      // writes data-theme, so the attribute lands a turn after emulateMedia
+      // resolves. Without this the light pass can measure the dark theme
+      // twice and still agree with itself (design.spec.ts does the same).
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.getAttribute('data-theme')))
+        .toBe(scheme === 'dark' ? null : 'sepia')
+
+      const seen = await empty.evaluate((block) => {
+        const host = block.querySelector('fig-button')
+        const icon = host?.querySelector('.icon') ?? null
+        const glyph = block.querySelector(':scope > .icon')
+        const style = (el: Element | null): string =>
+          el === null ? 'missing' : getComputedStyle(el).color
+        return {
+          label: host === null ? 'missing' : getComputedStyle(host).color,
+          icon: style(icon),
+          glyph: style(glyph),
+          muted: getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim(),
+          fill: host === null ? 'missing' : getComputedStyle(host).backgroundColor,
+        }
+      })
+
+      expect(seen.icon, `${scheme}: the icon in the button`).toBe(seen.label)
+      // And the pair it now shares clears the 3.0 a glyph needs, so a later
+      // change to --on-accent or --accent cannot quietly sink it.
+      expect(
+        contrast(seen.icon, seen.fill),
+        `${scheme}: ${seen.icon} on ${seen.fill}`,
+      ).toBeGreaterThanOrEqual(3)
+      // The other half of the rule: the block's own glyph is still muted,
+      // so narrowing the selector cannot have narrowed it away.
+      expect(seen.glyph, `${scheme}: the empty state's own glyph`).toBe(rgb(seen.muted))
+    }
+  })
+})
+
+/** A `#rrggbb` token as the computed style writes it, `rgb(r, g, b)`. */
+function rgb(hex: string): string {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex)
+  if (m === null) throw new Error(`not a six-digit hex colour: ${hex}`)
+  const n = Number.parseInt(m[1], 16)
+  return `rgb(${n >> 16}, ${(n >> 8) & 255}, ${n & 255})`
+}
+
+/**
+ * WCAG contrast between two opaque `rgb(r, g, b)` strings, as the computed
+ * style writes them. Anything else - `rgba(...)`, a `color()` function - is
+ * refused rather than guessed at: a transparent fill read as opaque black
+ * would report a large ratio for a pair that was never drawn.
+ */
+function contrast(a: string, b: string): number {
+  const luminance = (colour: string): number => {
+    const m = /^rgb\((\d{1,3}),\s*(\d{1,3}),\s*(\d{1,3})\)$/.exec(colour)
+    if (m === null) throw new Error(`not an opaque rgb colour: ${colour}`)
+    const channel = (v: string): number => {
+      const c = Number(v) / 255
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+    }
+    return 0.2126 * channel(m[1]) + 0.7152 * channel(m[2]) + 0.0722 * channel(m[3])
+  }
+  const la = luminance(a)
+  const lb = luminance(b)
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
+}
