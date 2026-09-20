@@ -120,7 +120,7 @@ export default function App(): JSX.Element {
     <>
       <header className="app-header">
         <span className="brand">
-          <Icon name="mark" />
+          <Icon name="mark" size={24} />
           Legible Cities
         </span>
         <EngineStatus state={engine} />

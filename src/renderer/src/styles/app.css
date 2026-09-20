@@ -356,7 +356,9 @@ body {
    also caught the icon inside the primary action below, painting it
    --text-muted on the accent fill, far under the 3.0 a glyph needs - issue
    143 has the measurements. An icon inside a button takes the button's
-   ink, which the kit already gives it. */
+   ink, which the kit already gives it. The glyph is the mark today, which
+   draws from --line-* and takes nothing from here; this is kept for an
+   empty state that holds a monochrome one. */
 .empty > .icon {
   color: var(--text-muted);
 }
