@@ -76,7 +76,7 @@ listed below for filing. *engine's*: inside the engine's page.
 | Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (warm-dark) | Contrast (sepia) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
 | Toolbar (New project, Add feed) | pass | pass | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
-| Empty state | fixed (D4) | pass | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
+| Empty state | fixed (D4) | pass | pass | pass | fixed (C6) | fixed (C1, C6) | not yet run: a person's | not yet run: a person's |
 | Project rows | pass | pass (`Open <name>`, the meta as description) | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
 | Feed rows (Start a project, Remove) | fixed (D5) | pass (each names its feed) | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
 | Create-project dialog | pass | pass | pass | pass | fixed (C2) | fixed (C1, C2) | not yet run: a person's | not yet run: a person's |
@@ -231,8 +231,12 @@ The rest:
 - **D11. Sortable table headers were 16px targets**, under the design's 24.
   They are at least `--target-min` high (`app.css`). Asserted in the sweep.
 
-Contrast, all in the token stylesheets and asserted in
-`tests/unit/contrast.test.ts`:
+Contrast. C1 to C5 are in the token stylesheets and asserted in
+`tests/unit/contrast.test.ts`, which recomputes token pairs. C6 was not,
+and could not have been: it was a component rule reaching past what it was
+written for, so a pair that passes on its own was drawn somewhere nothing
+had paired it with. Where the cascade is the question, the measurement is
+on the element, in `tests/e2e/accessibility.spec.ts`:
 
 - **C1. A primary button's label in sepia was 4.40**: `--on-accent` on
   `--accent` at the kit's 13px and 500 weight, which is not large text. The
@@ -257,6 +261,17 @@ Contrast, all in the token stylesheets and asserted in
   4.5 on the field's raised fill in sepia (3.62 and 1.84), and the darker
   one in warm-dark too (3.77). It is `--text-faint` now, which clears 4.5
   on that fill in both themes.
+
+- **C6. The empty state's glyph rule reached inside its own button**
+  (issue 143). `.empty .icon` is a descendant selector, so besides the mark
+  it caught the `add` icon inside the empty state's primary action and drew
+  it `--text-muted` on the accent fill: 1.23 in warm-dark and 1.04 in
+  sepia, where a glyph needs 3.0. The label beside it was `--on-accent` all
+  along, which is part of why it read as deliberate. It is `.empty > .icon`
+  now, and an icon inside a button takes the button's ink, which the kit
+  already gives it. Asserted on the element in both themes by
+  `tests/e2e/accessibility.spec.ts`, because no arithmetic over token pairs
+  could see it.
 
 Reduced motion needed no fix: the stylesheet already turns every transition
 and animation off, pseudo-elements and the dialog backdrop included, and the
