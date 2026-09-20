@@ -21,7 +21,7 @@ and loaded by nothing.
 | `--text` | #f5ead8 | #2d241d |
 | `--muted` | #c4bbac | #5c5347 |
 | `--border` | #37322d | #c0b39b |
-| `--focus` | #6f9bff | #2a5bb5 |
+| `--focus` | var(--line-cobalt) #6f9bff | var(--line-cobalt) #2a5bb5 |
 
 ## The brand lines
 

@@ -26,7 +26,9 @@
   --text: #f5ead8;
   --muted: #c4bbac;
   --border: #37322d;
-  --focus: #6f9bff;
+  /* Cobalt, declared below: the accent and the focus ring are one colour,
+     and saying so here keeps them one if cobalt ever moves. */
+  --focus: var(--line-cobalt);
 
   /* The four brand lines. Identity, never a state: they carry the icon,
      the lockup, the progress line and the header rules, and never stand
@@ -76,7 +78,7 @@
   --text: #2d241d;
   --muted: #5c5347;
   --border: #c0b39b;
-  --focus: #2a5bb5;
+  --focus: var(--line-cobalt);
 
   --line-vermilion: #d6402a;
   --line-cobalt: #2a5bb5;

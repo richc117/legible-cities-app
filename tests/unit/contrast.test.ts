@@ -282,6 +282,25 @@ describe('the design tokens clear WCAG AA in both themes', () => {
         for (let i = 0; i < 12; i++)
           expect(map[`--tone-${i}`], `--tone-${i}`).toMatch(/^#[0-9a-f]{6}$/)
         for (const name of [
+          // The ground and ink this file owns since ADR-044. --border is
+          // here because nothing else reaches it: every other one is
+          // resolved through a pair or a surface above, so a theme that
+          // dropped it would paint every divider in currentColor with a
+          // green suite. The identity six are here for the same reason -
+          // nothing consumes them yet, so only this holds the two blocks
+          // symmetric.
+          '--bg',
+          '--bg-soft',
+          '--text',
+          '--muted',
+          '--border',
+          '--focus',
+          '--line-vermilion',
+          '--line-cobalt',
+          '--line-saffron',
+          '--line-jade',
+          '--station-fill',
+          '--station-ink',
           '--surface',
           '--surface-raised',
           '--surface-sunken',

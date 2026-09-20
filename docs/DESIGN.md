@@ -170,8 +170,9 @@ the narrow one that holds in both themes:
   and `--surface-raised` only. Night's `--error` is 4.03 on `--surface-sunken`
   and 3.51 on `--surface-selected`; Parchment's `--border-strong` is 2.99
   on sunken.
-- `--text-faint` and `--success-strong` additionally miss on
-  `--surface-selected`: 3.93 and 5.13 in Night, 4.18 and 4.13 in Parchment.
+- `--text-faint` additionally misses on `--surface-selected`: 3.93 in
+  Night, 4.18 in Parchment. `--success-strong` misses there in Parchment
+  only, at 4.13; it holds in Night, at 5.13.
 - `--text`, `--text-muted`, `--accent`, `--accent-text` and `--focus` clear
   their thresholds on every ground in both themes.
 
