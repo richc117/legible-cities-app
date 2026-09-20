@@ -1100,8 +1100,11 @@ test('an icon in a filled button is the button’s ink, in both themes', async (
         contrast(seen.icon, seen.fill),
         `${scheme}: ${seen.icon} on ${seen.fill}`,
       ).toBeGreaterThanOrEqual(3)
-      // The other half of the rule: the block's own glyph is still muted,
-      // so narrowing the selector cannot have narrowed it away.
+      // The other half of the rule: it still reaches the block's own glyph,
+      // so narrowing the selector cannot have narrowed it away. This is the
+      // selector, not the appearance - the glyph is the mark now, and the
+      // mark draws from --line-* and takes no colour from here (ADR-044).
+      // The rule stays for the day an empty state holds a monochrome one.
       expect(seen.glyph, `${scheme}: the empty state's own glyph`).toBe(rgb(seen.muted))
     }
   })

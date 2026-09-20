@@ -327,6 +327,15 @@ colour, never a shadow. An icon never carries meaning alone: a label or an
 and `aria-pressed`, as the engine page's segmented control does. Sizes are
 tokens; no icon is scaled to an in-between size.
 
+**The mark is the one exception**, and it is not an icon in this sense: it
+is the identity, and the identity is four coloured lines (ADR-044). It
+takes the `--line-*` tokens rather than `currentColor`, which is also how
+it follows Night and Parchment from one file. It is never given a meaning,
+never stands for a state, and is never used where a glyph is wanted - the
+set above is for that. It is drawn at 24px or larger: below that the four
+lines and the gaps where they cross collapse into noise, which is why the
+header lockup takes the large size rather than the control size.
+
 ## 7. Motion
 
 Movement exists to explain a change of state, never to decorate. Durations
@@ -475,11 +484,14 @@ the size of a tick, blob or diamond.
   stage a hollow diamond, a finished run a filled end mark; a change of
   direction only ever at 45 degrees. This is the app's one signature
   component, on the layout, map and export screens.
-- **The mark** (ADR-026). The app icon and the empty-state glyph: a
-  45-degree join with a hollow interchange diamond, in the brand's text
-  colour on the sepia ground, or in the accent on warm-dark. Drawn by
-  hand to the icon grid; not a map excerpt. The app icon is the same
-  drawing on the sepia ground at every platform size.
+- **The mark** (ADR-044, superseding ADR-026's). The app icon, the header
+  lockup and the empty-state glyph: two pairs of lines, one running
+  straight through and one crossing it and stepping down on two rounded
+  bends, in the four brand colours. The app icon carries its own ground and
+  its stations; the interface's copy drops the stations, which are mush
+  below 64px, and takes the ground from the surface it sits on, so what is
+  left is the lines. Not a map excerpt, and not a picture of any city's
+  network.
 - **The ground.** The sepia theme is the cream of the pocket map already.
 - **Ticks as dividers** in timelines. The inspector's jobs use a plain
   rule for now; a tick there waits until the list has groups to divide.
