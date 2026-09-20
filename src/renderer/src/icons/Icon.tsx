@@ -76,7 +76,11 @@ export function iconMarkup(name: IconName, size: 16 | 24, fill = false): string 
 }
 
 export default function Icon({ name, size = 16, fill, label, className }: Props): JSX.Element {
-  const classes = ['icon', size === 24 ? 'icon-24' : '', className ?? ''].filter(Boolean).join(' ')
+  // The mark always takes the large size: at 16px its four lines and the
+  // gaps where they cross collapse into noise, and Props.size defaults to
+  // 16, so the rule belongs here rather than only in the document.
+  const large = size === 24 || name === 'mark'
+  const classes = ['icon', large ? 'icon-24' : '', className ?? ''].filter(Boolean).join(' ')
   return (
     <span
       className={classes}

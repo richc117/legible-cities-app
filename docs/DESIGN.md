@@ -37,8 +37,9 @@ choices it left open were decided the same day (ADR-026).
    keeps the engine page's colours and the two no longer have to agree
    (ADR-044).
 5. **Allusion, not pastiche.** Harry Beck's 1933 diagram supplies a
-   vocabulary (the 45-degree join, the tick, the hollow interchange mark,
-   the cream ground) for progress, steps and the mark. The map, the roundel
+   vocabulary (the tick, the hollow interchange mark, the cream ground)
+   for progress and steps. The mark is no longer one of them: it is the
+   brand's own icon (ADR-044). The map, the roundel
    and the lettering are Transport for London's and are never reproduced.
 6. **Accessible by construction.** Keyboard first, labelled, visible focus,
    polite live regions, reduced motion honoured (constitution, principle
@@ -491,7 +492,8 @@ the size of a tick, blob or diamond.
   its stations; the interface's copy drops the stations, which are mush
   below 64px, and takes the ground from the surface it sits on, so what is
   left is the lines. Not a map excerpt, and not a picture of any city's
-  network.
+  network: it is six fixed paths, and it is never drawn from a project's
+  data. A preview of a map is the engine's page, as principle 1 says.
 - **The ground.** The sepia theme is the cream of the pocket map already.
 - **Ticks as dividers** in timelines. The inspector's jobs use a plain
   rule for now; a tick there waits until the list has groups to divide.

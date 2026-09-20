@@ -1110,6 +1110,55 @@ test('an icon in a filled button is the button’s ink, in both themes', async (
   })
 })
 
+// The mark resolves to the theme's own line colours, in both themes.
+// Nothing else proves it paints at all: its six strokes are var() inside
+// presentation attributes, and `stroke` has initial value `none`, so a
+// renamed token or a typo makes the mark invalid at computed-value time and
+// it disappears completely - with the file still on disk, still passing the
+// unit test that reads it as text, and still clicked by jobs.spec.ts. This
+// also pins the claim that one file follows both themes (ADR-044).
+test('the mark paints in the theme\u2019s own line colours, in both themes', async () => {
+  const p = profile()
+  await withApp(p, async (page) => {
+    const mark = page.locator('.app-header .brand .icon svg')
+    await expect(mark).toBeVisible({ timeout: 20_000 })
+    for (const scheme of ['dark', 'light'] as const) {
+      await page.emulateMedia({ colorScheme: scheme })
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.getAttribute('data-theme')))
+        .toBe(scheme === 'dark' ? null : 'sepia')
+
+      const seen = await mark.evaluate((svg) => {
+        const root = getComputedStyle(document.documentElement)
+        const token = (name: string): string => root.getPropertyValue(name).trim()
+        return {
+          strokes: [...svg.querySelectorAll('path')].map((el) => getComputedStyle(el).stroke),
+          want: {
+            vermilion: token('--line-vermilion'),
+            cobalt: token('--line-cobalt'),
+            jade: token('--line-jade'),
+            saffron: token('--line-saffron'),
+            surface: token('--surface'),
+          },
+        }
+      })
+      // Two lines run through, two cross and step down, and the two between
+      // them are the ground, which is what makes the crossings read.
+      expect(seen.strokes, `${scheme}: six strokes`).toHaveLength(6)
+      expect(seen.strokes, `${scheme}: the mark's colours`).toEqual([
+        rgb(seen.want.vermilion),
+        rgb(seen.want.cobalt),
+        rgb(seen.want.surface),
+        rgb(seen.want.surface),
+        rgb(seen.want.jade),
+        rgb(seen.want.saffron),
+      ])
+      // The failure this exists for: an unresolvable var() computes to none.
+      expect(seen.strokes, `${scheme}: nothing fell back to none`).not.toContain('none')
+    }
+  })
+})
+
 /** A `#rrggbb` token as the computed style writes it, `rgb(r, g, b)`. */
 function rgb(hex: string): string {
   const m = /^#([0-9a-f]{6})$/i.exec(hex)

@@ -36,7 +36,7 @@ describe('icons', () => {
   // a second file, and the no-literals rule holds here as everywhere.
   it('draw the mark from the theme tokens, not from literals', () => {
     const text = readFileSync(join(dir, 'mark.svg'), 'utf8')
-    expect(text).toMatch(/<svg/)
+    expect(text).toMatch(/^<svg/)
     expect(text).not.toMatch(/<script|on[a-z]+=|javascript:/i)
     expect(text).not.toMatch(/#[0-9a-f]{3,8}\b/i)
     expect(text).not.toMatch(/currentColor/)
@@ -48,6 +48,9 @@ describe('icons', () => {
     // An id inlined twice on one page is not an id, and the header and the
     // Library's empty state can both be showing.
     expect(text).not.toMatch(/\bid=/)
+    // The master carries role="img" and an aria-label; Icon owns the
+    // semantics, and deriving the file again must not bring them back.
+    expect(text).not.toMatch(/role=|aria-/)
   })
   it('carry the notice and say where they came from', () => {
     expect(existsSync(join(dir, 'phosphor', 'LICENSE'))).toBe(true)
