@@ -749,4 +749,28 @@ describe('electron-builder.yml', () => {
       '- from: node_modules/electron/dist/LICENSES.chromium.html\n      to: LICENSES.chromium.html',
     )
   })
+
+  // electron-builder falls back to its own default icon when a named one is
+  // missing, with a warning in a log nobody reads, so the installers would
+  // carry Electron's atom and every check here would still pass (issue 140).
+  it('names brand icons that are on disk', () => {
+    const named = [
+      ...config.matchAll(
+        /^\s*(?:icon|installerIcon|uninstallerIcon|installerHeaderIcon|installerSidebar|uninstallerSidebar|installerHeader|background): (assets\/brand\/\S+)$/gm,
+      ),
+    ].map((m) => m[1])
+    expect(named).toContain('assets/brand/macos/icon.icns')
+    expect(named).toContain('assets/brand/windows/icon.ico')
+    for (const file of new Set(named)) expect(existsSync(join(repo, file))).toBe(true)
+  })
+
+  // The dmg background is cropped, not scaled, so the window has to be the
+  // background's own size; and the three NSIS bitmaps draw only on the
+  // assisted installer, which this app does not build (see the config).
+  it('sizes the disk-image window to its background and leaves the one-click installer alone', () => {
+    expect(config).toContain('background: assets/brand/macos/background.tiff')
+    expect(config).toMatch(/window:\n {4}width: 660\n {4}height: 400/)
+    expect(config).not.toMatch(/^\s*oneClick:/m)
+    expect(config).not.toMatch(/^\s*(installerSidebar|uninstallerSidebar|installerHeader):/m)
+  })
 })

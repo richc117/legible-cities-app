@@ -55,6 +55,12 @@ mac:
   target:
     - dmg
   category: public.app-category.graphics-design
+  # The brand icon, drawn on Apple's 824px grid inside the 1024px canvas
+  # with its shadow (assets/brand/README.md). electron-builder would derive
+  # an .icns from buildResources/icon.png, but that PNG is the full-bleed
+  # master: no padding, no shadow, and every size resampled from one image
+  # rather than the small master below 128px, which drops the stations.
+  icon: assets/brand/macos/icon.icns
   identity: '-'
   forceCodeSigning: true
   extraResources:
@@ -77,9 +83,29 @@ mac:
       to: LICENSE.electron.txt
     - from: node_modules/electron/dist/LICENSES.chromium.html
       to: LICENSES.chromium.html
+# The disk image a person opens on a Mac: the brand background, the app and
+# the Applications link placed on the two plates it draws. `window` is the
+# background's own 660x400, because electron-builder's default window is
+# 540x380 and a background larger than the window is cropped, not scaled.
+# background.tiff carries both resolutions (`tiffutil -cathidpicheck`, which
+# needs a Mac); the two PNGs beside it are the source.
+dmg:
+  icon: assets/brand/macos/icon.icns
+  background: assets/brand/macos/background.tiff
+  window:
+    width: 660
+    height: 400
+  contents:
+    - x: 165
+      y: 200
+    - x: 495
+      y: 200
+      type: link
+      path: /Applications
 win:
   target:
     - nsis
+  icon: assets/brand/windows/icon.ico
   extraResources:
     - from: vendor/python/win-${arch}/python
       to: python
@@ -97,5 +123,16 @@ win:
 # not have, right after it is made and again on uninstall (issue 128).
 # build/installer.nsh is also electron-builder's default; it is named so the
 # file is not a surprise.
+#
+# The icons below are the brand .ico, which carries the nine sizes Windows
+# asks for down to 16px, the small ones without stations. The three branded
+# bitmaps in assets/brand/windows/ (installer-sidebar, uninstaller-sidebar,
+# installer-header) are deliberately not wired: NSIS draws them only on the
+# assisted installer's pages, and `oneClick: false` would change how a
+# person installs, what docs/acceptance.md describes, and what
+# acceptance.yml's silent install exercises. Wiring them is its own issue.
 nsis:
   include: build/installer.nsh
+  installerIcon: assets/brand/windows/icon.ico
+  uninstallerIcon: assets/brand/windows/icon.ico
+  installerHeaderIcon: assets/brand/windows/icon.ico

@@ -577,10 +577,13 @@ Icons are Phosphor (ADR-026), vendored as plain SVG files under
 `icons/phosphor/` with their licence: the light weight at 16px and the
 regular weight at 24px, plus the filled play and pause. `icons/Icon.tsx`
 inlines them as markup so they take `currentColor`, hidden from assistive
-technology unless given a label. The mark, `icons/mark.svg`, is the
-design document's 45-degree join with a hollow interchange diamond, drawn
-by hand; `scripts/render-icon.sh` renders it on the sepia ground into
-`build/icon.png`, the committed application icon. The progress line
+technology unless given a label. The mark, `icons/mark.svg`, is the brand
+icon, its five colours drawn from the theme's own tokens so one file
+follows both themes (ADR-044). The packaged app's icon is the brand art
+itself rather than a rendering of the mark: `electron-builder.yml` names
+`assets/brand/macos/icon.icns` and `assets/brand/windows/icon.ico`, each
+carrying every size the platform asks for, the small ones without
+stations. The progress line
 (`ProgressLine.tsx`) is the first of the document's Beck motifs on screen:
 one line with a tick per pipeline stage, a filled mark for a stage that
 has run, a hollow diamond for the one running, drawn from the tokens and
