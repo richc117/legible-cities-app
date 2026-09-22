@@ -114,10 +114,13 @@ win:
       to: ffmpeg
     - from: vendor/manifest-win-${arch}.json
       to: vendor-manifest.json
-# Only an include: the per-user one-click defaults stay, and with them the
-# install folder, %LOCALAPPDATA%\Programs\<package name>, which
-# .github/workflows/acceptance.yml derives and refuses to guess at if
-# anything else is set here. build/installer.nsh removes the copy of the
+# An include and the three installer icons, and nothing else: the per-user
+# one-click defaults stay, and with them the install folder,
+# %LOCALAPPDATA%\Programs\<package name>, which
+# .github/workflows/acceptance.yml derives and refuses to guess at if an
+# option it has not been taught is set here (issue 140; a unit test holds
+# this file to that workflow's own pattern, because the gate runs by hand
+# against a published tag and would otherwise fail after the release). build/installer.nsh removes the copy of the
 # installer electron-builder's template keeps for an updater this app does
 # not have, right after it is made and again on uninstall (issue 128).
 # build/installer.nsh is also electron-builder's default; it is named so the

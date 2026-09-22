@@ -794,10 +794,29 @@ describe('electron-builder.yml', () => {
   // the art is the size: the two icon positions have to fall inside it, and
   // a background swapped for larger art moves the window with it.
   it('places the disk image icons inside the background it draws them on', () => {
+    // The TIFF is what the packager reads, and it is built from the PNGs by
+    // hand (`tiffutil`), so the size is taken from the TIFF itself: art
+    // edited without rebuilding it would otherwise pass here and ship.
+    const tiff = readFileSync(join(repo, 'assets/brand/macos/background.tiff'))
+    const little = tiff.subarray(0, 2).toString('latin1') === 'II'
+    expect(little || tiff.subarray(0, 2).toString('latin1') === 'MM').toBe(true)
+    const u16 = (at: number): number => (little ? tiff.readUInt16LE(at) : tiff.readUInt16BE(at))
+    const u32 = (at: number): number => (little ? tiff.readUInt32LE(at) : tiff.readUInt32BE(at))
+    const ifd = u32(4)
+    const dimension: Record<number, number> = {}
+    for (let i = 0; i < u16(ifd); i++) {
+      const entry = ifd + 2 + i * 12
+      const tag = u16(entry)
+      // ImageWidth and ImageLength, as a SHORT (3) or a LONG (4).
+      if (tag === 256 || tag === 257)
+        dimension[tag] = u16(entry + 2) === 3 ? u16(entry + 8) : u32(entry + 8)
+    }
+    const [width, height] = [dimension[256], dimension[257]]
+    expect([width, height]).toEqual([660, 400])
+    // The @1x PNG it was built from, so the pair cannot drift apart unseen.
     const png = readFileSync(join(repo, 'assets/brand/macos/dmg-background.png'))
     expect(png.subarray(12, 16).toString('latin1')).toBe('IHDR')
-    const [width, height] = [png.readUInt32BE(16), png.readUInt32BE(20)]
-    expect([width, height]).toEqual([660, 400])
+    expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([width, height])
     const dmg = section('dmg')
     expect(dmg).not.toMatch(/^[ \t]+window:$/m)
     const at = [...dmg.matchAll(/^[ \t]+- x: (\d+)\n[ \t]+y: (\d+)$/gm)].map(
@@ -823,15 +842,29 @@ describe('electron-builder.yml', () => {
   // nsis section holding anything it does not know, because a person's
   // install folder is derived rather than read. It is dispatched by hand
   // against a published tag, so an option it has not been taught fails the
-  // release gate and nothing before it: the workflow's own pattern is run
-  // here, over this config (issue 140, review of PR 151).
-  it('sets no nsis option the acceptance gate would refuse', () => {
+  // release gate and nothing before it. The workflow's own pattern is lifted
+  // out and run over this config's nsis lines, rather than its key list
+  // being read off: the gate refuses a key it knows written in a shape it
+  // does not - quoted, a flow scalar, a value on the next line - and a test
+  // that only compared keys would pass every one of those (issue 140).
+  it('sets no nsis line the acceptance gate would refuse', () => {
     const workflow = readFileSync(join(repo, '.github/workflows/acceptance.yml'), 'utf8')
-    const guard = workflow.match(/\$line -notmatch '\^\\s\+\((?<keys>[^)]+)\)/)
-    expect(guard?.groups?.keys).toBeDefined()
-    const allowed = (guard?.groups?.keys as string).split('|')
-    const set = [...section('nsis').matchAll(/^[ \t]+([A-Za-z]\w*):/gm)].map((m) => m[1])
-    expect(set.length).toBeGreaterThan(0)
-    expect(set.filter((key) => !allowed.includes(key))).toEqual([])
+    // PowerShell's single-quoted string, in which '' is one quote. The file
+    // holds two of these; the one naming `include` is the line check, the
+    // other tests the `nsis:` header itself.
+    const guards = [...workflow.matchAll(/\$line -notmatch '(?<pattern>(?:[^']|'')+)'\)/g)]
+      .map((m) => (m.groups?.pattern as string).replaceAll("''", "'"))
+      .filter((pattern) => pattern.includes('include'))
+    expect(guards).toHaveLength(1)
+    const allows = new RegExp(guards[0])
+    const lines = section('nsis')
+      .split('\n')
+      .slice(1)
+      .filter((line) => line.trim() !== '' && !/^[ \t]*#/.test(line))
+    expect(lines.length).toBeGreaterThan(0)
+    expect(lines.filter((line) => !allows.test(line))).toEqual([])
+    // And the pattern is the gate's, not one that lets anything through.
+    expect(allows.test('  oneClick: false')).toBe(false)
+    expect(allows.test('  include: [build/installer.nsh]')).toBe(false)
   })
 })
