@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { _electron as electron, expect, test, type Page } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
+import { cell, createProject, openProject } from '../support/project'
 import { withWhatTheScreenSaid } from '../support/store-lines'
 
 const repoRoot = resolve(__dirname, '../..')
@@ -54,18 +55,8 @@ async function withApp(
 }
 
 async function openProjectOn(page: Page, feedName: string, name: string): Promise<void> {
-  await expect(page.getByRole('status', { name: 'Engine' })).toContainText(/ready/i, {
-    timeout: 20_000,
-  })
-  await page
-    .getByRole('listitem', { name: feedName, exact: true })
-    .getByRole('button', { name: /Start a project/ })
-    .click()
-  const dialog = page.getByRole('dialog', { name: 'New project' })
-  await dialog.getByLabel('Name', { exact: true }).fill(name)
-  await dialog.getByRole('button', { name: 'Create', exact: true }).click()
-  await page.getByRole('button', { name: `Open ${name}` }).click()
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText(name)
+  await createProject(page, feedName, name)
+  await openProject(page, name)
 }
 
 const readRecord = (engineHome: string): Record<string, unknown> => {
@@ -77,7 +68,7 @@ test('shows what is in the feed, sorts the routes, and marks what the mode keeps
   const engineHome = home()
   await withApp(engineHome, async (page) => {
     await openProjectOn(page, 'LA Metro Rail', 'Los Angeles')
-    const inspect = page.getByRole('region', { name: 'In the feed' })
+    const inspect = cell(page, 'data')
     await expect(inspect).toContainText('Los Angeles County MTA')
     await expect(inspect).toContainText((1160).toLocaleString())
     await expect(inspect).toContainText('the engine would draw 2026-06-16')
@@ -129,7 +120,7 @@ test('a feed with several operators offers the choice, filters the routes, and s
   const engineHome = home()
   await withApp(engineHome, async (page) => {
     await openProjectOn(page, 'Mexico City Metro', 'CDMX')
-    const inspect = page.getByRole('region', { name: 'In the feed' })
+    const inspect = cell(page, 'data')
     await expect(inspect.getByRole('list', { name: 'Warnings' })).toContainText('headway-based')
     // The project began with the feed's entry: subway, METRO.
     const record = readRecord(engineHome)
@@ -182,7 +173,7 @@ test('a typed mode is written only when submitted, and its aliases keep what the
   const engineHome = home()
   await withApp(engineHome, async (page) => {
     await openProjectOn(page, 'LA Metro Rail', 'LA')
-    const inspect = page.getByRole('region', { name: 'In the feed' })
+    const inspect = cell(page, 'data')
     await inspect.getByRole('combobox', { name: 'Mode' }).selectOption('other')
     const field = inspect.getByLabel('Modes, comma-joined, or route_type numbers')
     await field.fill('metro,streetcar')
@@ -224,7 +215,7 @@ test("a record from before says what the feed's own entry draws, and takes it in
       timeout: 20_000,
     })
     await page.getByRole('button', { name: 'Open Older' }).click()
-    const inspect = page.getByRole('region', { name: 'In the feed' })
+    const inspect = cell(page, 'data')
     await expect(inspect).toContainText("The feed's own entry draws subway for METRO")
     await inspect.getByRole('button', { name: "Use the feed's entry" }).click()
     await expect.poll(() => readRecord(engineHome).mode).toBe('subway')
@@ -237,7 +228,7 @@ test('a refused inspection says so and leaves the rest of the screen working', a
   const engineHome = home({ inspect_refuses: 'The feed has neither calendar table.' })
   await withApp(engineHome, async (page) => {
     await openProjectOn(page, 'LA Metro Rail', 'Los Angeles')
-    const inspect = page.getByRole('region', { name: 'In the feed' })
+    const inspect = cell(page, 'data')
     await expect(inspect.getByRole('alert')).toHaveText('The feed has neither calendar table.')
     await expect(page.getByRole('button', { name: /lay out/i })).toBeEnabled()
   })
@@ -269,7 +260,7 @@ test('without the engine the section says so and the rest of the screen works', 
         timeout: 20_000,
       })
       await page.getByRole('button', { name: 'Open Alone' }).click()
-      const inspect = page.getByRole('region', { name: 'In the feed' })
+      const inspect = cell(page, 'data')
       await expect(inspect).toContainText('not ready')
       await expect(page.getByRole('button', { name: 'Rename', exact: true })).toBeEnabled()
     },

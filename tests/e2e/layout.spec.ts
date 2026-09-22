@@ -23,6 +23,7 @@ import {
   type Page,
 } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
+import { cell, openProject, panel } from '../support/project'
 
 const repoRoot = resolve(__dirname, '../..')
 const PYTHON = findPython()
@@ -71,10 +72,8 @@ async function openNewProject(page: Page, name: string): Promise<void> {
   const dialog = page.getByRole('dialog', { name: 'New project' })
   await dialog.getByLabel('Name', { exact: true }).fill(name)
   await dialog.getByRole('button', { name: 'Create', exact: true }).click()
-  const entry = page.getByRole('button', { name: `Open ${name}` })
-  await expect(entry).toBeVisible()
-  await entry.click()
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText(name)
+  await expect(page.getByRole('button', { name: `Open ${name}` })).toBeVisible()
+  await openProject(page, name)
 }
 
 const readRecord = (engineHome: string): Record<string, unknown> => {
@@ -92,7 +91,7 @@ test('lays a project out, reports every stage, and records what it was drawn fro
     expect(before.date).toBeNull()
 
     await page.getByRole('button', { name: /lay out/i }).click()
-    const run = page.getByRole('region', { name: 'Layout run' })
+    const run = cell(page, 'process')
     await expect(run).toBeVisible()
     // Every stage the engine reports is on the line, named.
     for (const stage of [
@@ -130,7 +129,7 @@ test('shows no path on the screen, whatever the engine says', async () => {
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     // The engine's last progress message is the folder it wrote into. The
     // dates in the record carry slashes, so only the run's own region is read.
-    const text = await page.getByRole('region', { name: 'Layout run' }).innerText()
+    const text = await cell(page, 'process').innerText()
     expect(text).not.toMatch(/[/\\]/)
     expect(text).toContain('Wrote the map')
   })
@@ -170,47 +169,47 @@ test("shows what the build had to fudge, in the engine's own words and figures",
   const engineHome = home(FUDGED)
   await withApp(engineHome, async (page, app) => {
     await openNewProject(page, 'Los Angeles')
-    const panel = page.getByRole('region', { name: 'What the build had to fudge' })
+    const fudge = panel(page, 'What the build had to fudge')
     // Nothing to say about a build that has not happened.
-    await expect(panel).toHaveCount(0)
+    await expect(fudge).toHaveCount(0)
 
     await page.getByRole('button', { name: /lay out/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
-    await expect(panel).toBeVisible()
+    await expect(fudge).toBeVisible()
 
     // The caveat is the engine's sentence, word for word, and the score is
     // the number it sent.
     await expect(
-      panel.getByText('4 of 116 stops could not be placed on the map', { exact: false }),
+      fudge.getByText('4 of 116 stops could not be placed on the map', { exact: false }),
     ).toBeVisible()
-    await expect(panel).toContainText('issues score of 0.2137')
+    await expect(fudge).toContainText('issues score of 0.2137')
     // Every figure is the block's, formatted and never derived.
-    await expect(panel).toContainText('99.4%')
-    await expect(panel).toContainText('112 of 116 (97%)')
-    await expect(panel).toContainText('80122, 80123')
+    await expect(fudge).toContainText('99.4%')
+    await expect(fudge).toContainText('112 of 116 (97%)')
+    await expect(fudge).toContainText('80122, 80123')
     for (const figure of ['114', '121', '135', '40', '26', '19']) {
-      await expect(panel).toContainText(figure)
+      await expect(fudge).toContainText(figure)
     }
 
     // An explanation is reachable from the keyboard, and says what the
     // engine's word means.
-    const trigger = panel.getByRole('button', { name: 'What trips on borrowed track means' })
+    const trigger = fudge.getByRole('button', { name: 'What trips on borrowed track means' })
     await trigger.focus()
-    await expect(panel.getByText(/neighbouring line's track/)).toBeVisible()
+    await expect(fudge.getByText(/neighbouring line's track/)).toBeVisible()
 
     // And to a press, which is how a touch user asks; the control says
     // whether the explanation it controls is showing.
-    const pressed = panel.getByRole('button', { name: 'What labels dropped means' })
+    const pressed = fudge.getByRole('button', { name: 'What labels dropped means' })
     await expect(pressed).toHaveAttribute('aria-expanded', 'false')
     await pressed.click()
     await expect(pressed).toHaveAttribute('aria-expanded', 'true')
-    await expect(panel.getByText(/nowhere to sit without overlapping/)).toBeVisible()
+    await expect(fudge.getByText(/nowhere to sit without overlapping/)).toBeVisible()
     await pressed.click()
     await expect(pressed).toHaveAttribute('aria-expanded', 'false')
 
     // "Copy as text" hands over what is on the screen.
-    await panel.getByRole('button', { name: 'Copy as text' }).click()
-    await expect(panel.getByText(/on the clipboard/)).toBeVisible()
+    await fudge.getByRole('button', { name: 'Copy as text' }).click()
+    await expect(fudge.getByText(/on the clipboard/)).toBeVisible()
     const copied = await app.evaluate(({ clipboard }) => clipboard.readText())
     expect(copied).toContain('Los Angeles — the map drawn for')
     expect(copied).toContain('Trips on borrowed track: 26')
@@ -220,7 +219,7 @@ test("shows what the build had to fudge, in the engine's own words and figures",
     )
     // The result's files are paths under the engine home; none reaches the
     // screen or the clipboard (constitution V).
-    expect(await panel.innerText()).not.toMatch(/[/\\]/)
+    expect(await fudge.innerText()).not.toMatch(/[/\\]/)
   })
 })
 
@@ -237,17 +236,17 @@ test('a clean network says there are no caveats and a score of 0', async () => {
     await openNewProject(page, 'Los Angeles')
     await page.getByRole('button', { name: /lay out/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
-    const panel = page.getByRole('region', { name: 'What the build had to fudge' })
-    await expect(panel).toContainText('No caveats')
-    await expect(panel).toContainText('the issues score is 0.')
-    await expect(panel).toContainText('100.0%')
-    await expect(panel).toContainText('3 of 3 (100%)')
+    const fudge = panel(page, 'What the build had to fudge')
+    await expect(fudge).toContainText('No caveats')
+    await expect(fudge).toContainText('the issues score is 0.')
+    await expect(fudge).toContainText('100.0%')
+    await expect(fudge).toContainText('3 of 3 (100%)')
     // The named figure, and the rest of its sub-block as the stand-in has
     // it: merged a level down rather than replaced, or the stand-in would
     // answer a shape the engine cannot produce. The copied block says
     // which figure is which without guessing at a row.
-    await panel.getByRole('button', { name: 'Copy as text' }).click()
-    await expect(panel.getByText(/on the clipboard/)).toBeVisible()
+    await fudge.getByRole('button', { name: 'Copy as text' }).click()
+    await expect(fudge.getByText(/on the clipboard/)).toBeVisible()
     const copied = await app.evaluate(({ clipboard }) => clipboard.readText())
     expect(copied).toContain('Trips: 9')
     expect(copied).toContain('Distinct paths: 1')
@@ -264,7 +263,7 @@ test('a run that did not finish leaves no figures on the screen', async () => {
     await page.getByRole('button', { name: /lay out/i }).click()
     await page.getByRole('button', { name: /cancel/i }).click()
     await expect(page.getByText(/was cancelled/i)).toBeVisible({ timeout: 20_000 })
-    await expect(page.getByRole('region', { name: 'What the build had to fudge' })).toHaveCount(0)
+    await expect(panel(page, 'What the build had to fudge')).toHaveCount(0)
   })
 })
 
@@ -318,7 +317,7 @@ test('quitting during a run leaves no process and an unchanged record', async ()
   await openNewProject(page, 'Los Angeles')
   const before = JSON.stringify(readRecord(engineHome))
   await page.getByRole('button', { name: /lay out/i }).click()
-  await expect(page.getByRole('region', { name: 'Layout run' })).toBeVisible()
+  await expect(cell(page, 'process')).toBeVisible()
 
   // Quit with the run still going.
   await app.close()
@@ -352,7 +351,7 @@ test('a re-layout runs every stage again behind its warning, and cancelling the 
       .getByRole('dialog', { name: 'Lay this project out from scratch?' })
       .getByRole('button', { name: 'Re-layout' })
       .click()
-    const run = page.getByRole('region', { name: 'Layout run' })
+    const run = cell(page, 'process')
     await expect(run).toBeVisible()
     await expect(page.getByText(/^Laid out again from scratch/)).toBeVisible({ timeout: 30_000 })
     const after = readRecord(engineHome)
@@ -443,7 +442,7 @@ test("a first layout stores the engine's day and the feed's window, and shows bo
     const maps = received(engineHome, 'map.build')
     expect(maps[0]).toContain('"date": "2026-06-16"')
 
-    const section = page.getByRole('region', { name: 'Service day' })
+    const section = cell(page, 'frame')
     await expect(section).toContainText('Drawn for 2026-06-16')
     await expect(section).toContainText('2026-03-01 to 2026-11-30')
     const control = section.getByLabel('Draw for another day')
@@ -481,7 +480,7 @@ test('a chosen day is drawn from the stored layout alone, and written when the m
     const before = readRecord(engineHome)
     expect(before.date).toBe('2026-06-16')
 
-    const section = page.getByRole('region', { name: 'Service day' })
+    const section = cell(page, 'frame')
     const control = section.getByLabel('Draw for another day')
     await control.fill('2026-06-20')
     await section.getByRole('button', { name: 'Draw for this day' }).click()
@@ -517,7 +516,7 @@ test('a day outside the window cannot be chosen, and nothing is built', async ()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     const before = JSON.stringify(readRecord(engineHome))
 
-    const section = page.getByRole('region', { name: 'Service day' })
+    const section = cell(page, 'frame')
     const control = section.getByLabel('Draw for another day')
     await control.fill('2026-12-25')
     await section.getByRole('button', { name: 'Draw for this day' }).click()
@@ -541,7 +540,7 @@ test('a cancelled rebuild keeps the day and says so', async () => {
     await page.getByRole('button', { name: /lay out/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     const before = JSON.stringify(readRecord(engineHome))
-    const section = page.getByRole('region', { name: 'Service day' })
+    const section = cell(page, 'frame')
     await section.getByLabel('Draw for another day').fill('2026-06-20')
     await section.getByRole('button', { name: 'Draw for this day' }).click()
     await page.getByRole('button', { name: /cancel/i }).click()
@@ -567,7 +566,7 @@ test('reopening a laid-out project runs nothing and shows the same day and windo
 
     await page.getByRole('button', { name: /back to library/i }).click()
     await page.getByRole('button', { name: 'Open Los Angeles' }).click()
-    const section = page.getByRole('region', { name: 'Service day' })
+    const section = cell(page, 'frame')
     await expect(section).toContainText('Drawn for 2026-06-16')
     await expect(section).toContainText('2026-03-01 to 2026-11-30')
     await expect(section.getByLabel('Draw for another day')).toHaveValue('2026-06-16')
@@ -606,7 +605,7 @@ test('a project from before the window was stored keeps its day and gains the wi
   )
   await withApp(engineHome, async (page) => {
     await page.getByRole('button', { name: 'Open Older' }).click()
-    const section = page.getByRole('region', { name: 'Service day' })
+    const section = cell(page, 'frame')
     await expect(section).toContainText('Drawn for 2026-05-04')
     await expect(section).toContainText(/Lay the project out again to learn which days/)
     await expect(section.getByLabel('Draw for another day')).toHaveCount(0)
@@ -650,7 +649,7 @@ test('the busiest-weekday button stays under the keyboard, and a refusal returns
     await openNewProject(page, 'Los Angeles')
     await page.getByRole('button', { name: /lay out/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
-    const section = page.getByRole('region', { name: 'Service day' })
+    const section = cell(page, 'frame')
     const control = section.getByLabel('Draw for another day')
     const suggest = section.getByRole('button', { name: 'Use the busiest weekday' })
     await expect(

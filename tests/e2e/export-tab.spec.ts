@@ -31,6 +31,7 @@ import {
   type Page,
 } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
+import { cell, openCell } from '../support/project'
 import { withWhatTheScreenSaid } from '../support/store-lines'
 
 const repoRoot = resolve(__dirname, '../..')
@@ -156,7 +157,7 @@ async function laidOut(page: Page, h: Home): Promise<void> {
   copyFileSync(fixture, join(h.engineHome, 'out', projectId(h), 'la-metro-rail.html'))
 }
 
-const exportPanel = (page: Page): Locator => page.getByRole('tabpanel', { name: 'Export' })
+const exportPanel = (page: Page): Locator => cell(page, 'export')
 const presetSelect = (page: Page): Locator =>
   exportPanel(page).getByRole('combobox', { name: 'Preset' })
 const exportButton = (page: Page): Locator =>
@@ -164,7 +165,7 @@ const exportButton = (page: Page): Locator =>
 const frame = (page: Page): Locator => page.locator('iframe.viewer-frame')
 
 async function openExportTab(page: Page): Promise<void> {
-  await page.getByRole('tab', { name: 'Export' }).click()
+  await openCell(page, 'export')
   await expect(presetSelect(page)).toBeVisible({ timeout: 20_000 })
 }
 

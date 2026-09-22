@@ -14,6 +14,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { _electron as electron, expect, test, type Page } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
+import { cell, laidOutProject, openProject } from '../support/project'
 
 const repoRoot = resolve(__dirname, '../..')
 const PYTHON = findPython()
@@ -59,28 +60,11 @@ const received = (engineHome: string, method: string): string[] =>
     .split('\n')
     .filter((l) => l.includes(`"${method}"`))
 
-async function laidOutProject(page: Page, feedName: string, name: string): Promise<void> {
-  await expect(page.getByRole('status', { name: 'Engine' })).toContainText(/ready/i, {
-    timeout: 20_000,
-  })
-  await page
-    .getByRole('listitem', { name: feedName, exact: true })
-    .getByRole('button', { name: /Start a project/ })
-    .click()
-  const dialog = page.getByRole('dialog', { name: 'New project' })
-  await dialog.getByLabel('Name', { exact: true }).fill(name)
-  await dialog.getByRole('button', { name: 'Create', exact: true }).click()
-  await page.getByRole('button', { name: `Open ${name}` }).click()
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText(name)
-  await page.getByRole('button', { name: /lay out/i }).click()
-  await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
-}
-
 test('lists the feed lines with the colours the feed publishes', async () => {
   const engineHome = home()
   await withApp(engineHome, async (page) => {
     await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
-    const panel = page.getByRole('region', { name: 'Line colours' })
+    const panel = cell(page, 'lines')
     await expect(panel).toBeVisible()
     const rows = panel.getByRole('list', { name: 'Lines' }).getByRole('listitem')
     await expect(rows).toHaveCount(6)
@@ -99,7 +83,7 @@ test('an override redraws the map once, is stored, and is there on the next open
   const engineHome = home()
   await withApp(engineHome, async (page) => {
     await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
-    const panel = page.getByRole('region', { name: 'Line colours' })
+    const panel = cell(page, 'lines')
     const drawnBefore = received(engineHome, 'map.build').length
 
     await panel.getByRole('button', { name: /^Choose the colour of line A/ }).click()
@@ -125,8 +109,8 @@ test('an override redraws the map once, is stored, and is there on the next open
     // Back to the Library and in again: the same colours, and nothing built.
     const built = received(engineHome, 'map.build').length
     await page.getByRole('button', { name: 'Back to Library' }).click()
-    await page.getByRole('button', { name: 'Open Los Angeles' }).click()
-    const again = page.getByRole('region', { name: 'Line colours' })
+    await openProject(page, 'Los Angeles')
+    const again = cell(page, 'lines')
     await expect(
       again.getByRole('list', { name: 'Lines' }).getByRole('listitem').nth(0),
     ).toContainText('your colour, #ff0000')
@@ -138,7 +122,7 @@ test('reset puts a line back to the feed, and reset for all clears everything', 
   const engineHome = home()
   await withApp(engineHome, async (page) => {
     await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
-    const panel = page.getByRole('region', { name: 'Line colours' })
+    const panel = cell(page, 'lines')
 
     await panel.getByRole('button', { name: /^Choose the colour of line A/ }).click()
     const picker = panel.getByRole('group', { name: 'Colour for line A' })
@@ -181,7 +165,7 @@ test('the default colour is offered and reaches the engine as default_color', as
   const engineHome = home()
   await withApp(engineHome, async (page) => {
     await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
-    const panel = page.getByRole('region', { name: 'Line colours' })
+    const panel = cell(page, 'lines')
 
     // The row is in the panel whatever the feed publishes: it is what a
     // line the feed leaves uncoloured is drawn in.
@@ -211,7 +195,7 @@ test('the picker stays open through a drag, and closes when it is dismissed', as
   const engineHome = home()
   await withApp(engineHome, async (page) => {
     await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
-    const panel = page.getByRole('region', { name: 'Line colours' })
+    const panel = cell(page, 'lines')
     const choose = panel.getByRole('button', { name: 'Choose the colour of line A' })
     const drawnBefore = received(engineHome, 'map.build').length
     await choose.click()
@@ -262,7 +246,7 @@ test('one press opens another row’s picker while one is already open', async (
   const engineHome = home()
   await withApp(engineHome, async (page) => {
     await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
-    const panel = page.getByRole('region', { name: 'Line colours' })
+    const panel = cell(page, 'lines')
 
     // The default row is the first, so its picker sits above every line.
     await panel
@@ -288,7 +272,7 @@ test('Escape dismisses the picker and hands focus back, and so does the toggle',
   const engineHome = home()
   await withApp(engineHome, async (page) => {
     await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
-    const panel = page.getByRole('region', { name: 'Line colours' })
+    const panel = cell(page, 'lines')
     const choose = panel.getByRole('button', { name: 'Choose the colour of line A' })
     const picker = panel.getByRole('group', { name: 'Colour for line A' })
 
@@ -313,7 +297,7 @@ test('a colour that is not one is refused beside the field, and nothing is built
   const engineHome = home()
   await withApp(engineHome, async (page) => {
     await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
-    const panel = page.getByRole('region', { name: 'Line colours' })
+    const panel = cell(page, 'lines')
     const before = received(engineHome, 'map.build').length
 
     await panel.getByRole('button', { name: /^Choose the colour of line A/ }).click()
@@ -330,7 +314,7 @@ test('every control is reachable by keyboard and named for its line', async () =
   const engineHome = home()
   await withApp(engineHome, async (page) => {
     await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
-    const panel = page.getByRole('region', { name: 'Line colours' })
+    const panel = cell(page, 'lines')
     for (const line of ['A', 'B', 'C', 'D', 'E', 'K']) {
       await expect(
         panel.getByRole('button', { name: `Choose the colour of line ${line}` }),

@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { _electron as electron, expect, test, type Page } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
+import { cell, createProject, layOut, openProject, panel } from '../support/project'
 import { STAGE_SANDBOX } from '../../src/renderer/src/StageView'
 
 const repoRoot = resolve(__dirname, '../..')
@@ -47,26 +48,18 @@ async function withApp(engineHome: string, run: (page: Page) => Promise<void>): 
 }
 
 async function laidOutProject(page: Page): Promise<void> {
-  await page
-    .getByRole('listitem', { name: 'LA Metro Rail', exact: true })
-    .getByRole('button', { name: /Start a project/ })
-    .click()
-  const dialog = page.getByRole('dialog', { name: 'New project' })
-  await dialog.getByLabel('Name', { exact: true }).fill('Los Angeles')
-  await dialog.getByRole('button', { name: 'Create', exact: true }).click()
-  await page.getByRole('button', { name: 'Open Los Angeles' }).click()
-  await page.getByRole('button', { name: /lay out/i }).click()
-  await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+  await createProject(page, 'LA Metro Rail', 'Los Angeles')
+  await openProject(page, 'Los Angeles')
+  await layOut(page)
 }
 
-const counts = (page: Page) =>
-  page.getByRole('region', { name: 'Where the routes run' }).getByRole('definition')
+const counts = (page: Page) => panel(page, 'Where the routes run').getByRole('definition')
 
 test("draws the two stages in a frame with no permissions, with the engine's counts", async () => {
   const engineHome = home()
   await withApp(engineHome, async (page) => {
     await laidOutProject(page)
-    const view = page.getByRole('region', { name: 'Where the routes run' })
+    const view = panel(page, 'Where the routes run')
     const frame = view.locator('iframe.stage-frame')
     await expect(frame).toHaveAttribute('sandbox', STAGE_SANDBOX)
     await expect(frame).toHaveAttribute('srcdoc', /<svg/)
@@ -181,7 +174,7 @@ test('without the engine the view says so, and the rest of the screen works', as
       timeout: 20_000,
     })
     await page.getByRole('button', { name: 'Open Alone' }).click()
-    const view = page.getByRole('region', { name: 'Where the routes run' })
+    const view = panel(page, 'Where the routes run')
     await expect(view.getByRole('status')).toContainText('not ready')
     await expect(page.getByRole('button', { name: 'Rename', exact: true })).toBeEnabled()
   } finally {
@@ -193,7 +186,7 @@ test('a refused stage says so, and the rest of the screen works', async () => {
   const engineHome = home({ stage_refuses: 'The stand-in draws no stage today.' })
   await withApp(engineHome, async (page) => {
     await laidOutProject(page)
-    const view = page.getByRole('region', { name: 'Where the routes run' })
+    const view = panel(page, 'Where the routes run')
     await expect(view.getByRole('alert')).toHaveText('The stand-in draws no stage today.')
     await expect(page.getByRole('button', { name: 'Re-layout' })).toBeEnabled()
   })
@@ -204,7 +197,7 @@ test('a narrower mode and a re-run draw fewer lines', async () => {
   await withApp(engineHome, async (page) => {
     await laidOutProject(page)
     await expect(counts(page).nth(4)).toHaveText('2')
-    const inspect = page.getByRole('region', { name: 'In the feed' })
+    const inspect = cell(page, 'data')
     await inspect.getByRole('combobox', { name: 'Mode' }).selectOption('subway')
     await expect(page.getByText(/the choice has changed since/)).toBeVisible()
     await page.getByRole('button', { name: 'Lay out again' }).click()
