@@ -869,16 +869,39 @@ test('the project screen: one press skips past the map to its toolbar, and the m
       await page.getByRole('tab', { name: tab }).click()
       const panel = page.getByRole('tabpanel', { name: tab })
       await expect(panel).toBeVisible()
+      // The Export tab plans its preview from the presets the engine
+      // answers, so until they arrive the address it asks the frame for is
+      // not the one it will settle on. The macOS failure in issue 147 was
+      // taken with this combobox empty and the Storyboard's eight options
+      // already listed: the frame was being re-pointed while the test read
+      // it. Wait for the presets before looking at the frame at all.
+      if (tab === 'Export')
+        await expect(
+          panel.getByRole('combobox', { name: 'Preset' }).locator('option').first(),
+        ).toBeAttached({ timeout: 30_000 })
       // The frame holds the busy page at this tab's address: the plain map
-      // under Map, the planned preview under Export.
-      // The frame can load the page again between two looks on a slow runner
-      // (the Export tab plans its preview), so both wait as long, and the
-      // address is read once more after the controls are there.
-      await expect(frame.locator('#where')).toContainText(address, { timeout: 20_000 })
-      await expect(frame.getByRole('button', { name: `Map control ${controls}` })).toBeAttached({
-        timeout: 20_000,
-      })
-      await expect(frame.locator('#where')).toContainText(address, { timeout: 20_000 })
+      // under Map, the planned preview under Export. The frame loads the
+      // page again whenever the address changes, and the Export tab plans
+      // its preview after the tab is pressed, so the two facts are read
+      // together and re-read as a pair: asked one after the other, a load
+      // that lands between them fails the second for a frame that is
+      // perfectly correct a moment later (issue 147, item 3 - it failed on
+      // the macOS runner once in 125 runs and never here).
+      const loaded = async (): Promise<{ address: boolean; lastControl: number }> => {
+        try {
+          const where = await frame.locator('#where').innerText({ timeout: 1_000 })
+          const lastControl = await frame
+            .getByRole('button', { name: `Map control ${controls}`, exact: true })
+            .count()
+          return { address: where.includes(address), lastControl }
+        } catch {
+          // Mid-load the frame answers nothing; that is a retry, not a failure.
+          return { address: false, lastControl: 0 }
+        }
+      }
+      await expect
+        .poll(loaded, { timeout: 60_000, message: `${tab}: the busy page at ${address}` })
+        .toEqual({ address: true, lastControl: 1 })
 
       // Out of sight while it does not hold focus, and in the document.
       await expect.poll(width, { message: `${tab}: hidden at rest` }).toBeLessThanOrEqual(1)
