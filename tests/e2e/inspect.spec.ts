@@ -158,6 +158,9 @@ test('a feed with several operators offers the choice, filters the routes, and s
     await withWhatTheScreenSaid(page, launched, () =>
       expect.poll(() => readRecord(engineHome).agency).toBeNull(),
     )
+    // The record is on disk before the screen holds it, and the run starts
+    // from the screen's copy: pressed in between, it asks with SUB (#147).
+    await expect(page.getByRole('definition').filter({ hasText: /^none$/ })).toBeVisible()
     await page.getByRole('button', { name: /lay out/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     const asked = readFileSync(join(engineHome, 'fake-engine.received'), 'utf8')
