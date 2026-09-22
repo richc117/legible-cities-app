@@ -1,0 +1,8 @@
+/* The notebook (ADR-045): the cell's own chrome - its heading row, its
+   state, its collapsed summary and its provenance footer - the rail and its
+   stepper, and the pinned preview.
+
+   Empty until A5.5-05 draws the first cell. It exists now so that the
+   branch which does has somewhere to put its rules, and so the import order
+   is settled while nothing depends on it: the shell, then the panels, then
+   this. The four token files stay the only place a literal may appear. */
