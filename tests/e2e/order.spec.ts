@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { _electron as electron, expect, test, type Page } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
+import { laidOutProject, panel } from '../support/project'
 
 const repoRoot = resolve(__dirname, '../..')
 const PYTHON = findPython()
@@ -57,24 +58,7 @@ const received = (engineHome: string, method: string): string[] =>
     .split('\n')
     .filter((l) => l.includes(`"${method}"`))
 
-async function laidOutProject(page: Page, feedName: string, name: string): Promise<void> {
-  await expect(page.getByRole('status', { name: 'Engine' })).toContainText(/ready/i, {
-    timeout: 20_000,
-  })
-  await page
-    .getByRole('listitem', { name: feedName, exact: true })
-    .getByRole('button', { name: /Start a project/ })
-    .click()
-  const dialog = page.getByRole('dialog', { name: 'New project' })
-  await dialog.getByLabel('Name', { exact: true }).fill(name)
-  await dialog.getByRole('button', { name: 'Create', exact: true }).click()
-  await page.getByRole('button', { name: `Open ${name}` }).click()
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText(name)
-  await page.getByRole('button', { name: /lay out/i }).click()
-  await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
-}
-
-const panelOf = (page: Page) => page.getByRole('region', { name: 'Line order' })
+const panelOf = (page: Page) => panel(page, 'Line order')
 const rowsOf = (page: Page) =>
   panelOf(page)
     .getByRole('list', { name: 'Lines in the order they are drawn' })

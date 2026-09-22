@@ -21,6 +21,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { _electron as electron, expect, test, type Page } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
+import { cell, createProject, openProject } from '../support/project'
 
 const repoRoot = resolve(__dirname, '../..')
 const fixture = resolve(__dirname, '../fixtures/capture-page.html')
@@ -87,21 +88,11 @@ const received = (h: Home, method: string): string[] =>
     .filter((l) => l.includes(`"${method}"`))
 
 async function project(page: Page, name: string): Promise<void> {
-  await expect(page.getByRole('status', { name: 'Engine' })).toContainText(/ready/i, {
-    timeout: 20_000,
-  })
-  await page
-    .getByRole('listitem', { name: 'LA Metro Rail', exact: true })
-    .getByRole('button', { name: /Start a project/ })
-    .click()
-  const dialog = page.getByRole('dialog', { name: 'New project' })
-  await dialog.getByLabel('Name', { exact: true }).fill(name)
-  await dialog.getByRole('button', { name: 'Create', exact: true }).click()
-  await page.getByRole('button', { name: `Open ${name}` }).click()
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText(name)
+  await createProject(page, 'LA Metro Rail', name)
+  await openProject(page, name)
 }
 
-const switchOf = (page: Page) => page.getByRole('region', { name: 'Theme' })
+const switchOf = (page: Page) => cell(page, 'style')
 const frame = (page: Page) => page.locator('iframe.viewer-frame')
 
 test('offers the two themes and says which one the map is drawn in', async () => {
@@ -196,7 +187,7 @@ test('focus is handed over before the buttons go, when a timer closes the way', 
     // A colour change is debounced, so its build starts from a timer with
     // nobody pressing anything - and Chromium blurs a disabled element, so
     // the buttons going would take the focus to the body.
-    const colours = page.getByRole('region', { name: 'Line colours' })
+    const colours = cell(page, 'lines')
     await colours.getByRole('button', { name: /^Choose the colour of line A/ }).click()
     const picker = colours.getByRole('group', { name: 'Colour for line A' })
     await picker.getByLabel('Hex value').fill('#ff0000')
@@ -227,7 +218,7 @@ test('the switch still says which theme is chosen after a rebuild has disabled i
     // switch is disabled while it runs. The kit re-syncs its inner button on
     // every change of `disabled` and removed aria-pressed doing it, so after
     // the first rebuild neither theme was announced as chosen (issue 124).
-    const colours = page.getByRole('region', { name: 'Line colours' })
+    const colours = cell(page, 'lines')
     await colours.getByRole('button', { name: /^Choose the colour of line A/ }).click()
     const picker = colours.getByRole('group', { name: 'Colour for line A' })
     await picker.getByLabel('Hex value').fill('#ff0000')

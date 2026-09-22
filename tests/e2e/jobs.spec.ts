@@ -34,6 +34,7 @@ import {
   type Page,
 } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
+import { openProject } from '../support/project'
 
 const repoRoot = resolve(__dirname, '../..')
 const fixture = resolve(__dirname, '../fixtures/capture-page.html')
@@ -92,10 +93,8 @@ async function openNewProject(page: Page, name: string): Promise<void> {
   const dialog = page.getByRole('dialog', { name: 'New project' })
   await dialog.getByLabel('Name', { exact: true }).fill(name)
   await dialog.getByRole('button', { name: 'Create', exact: true }).click()
-  const entry = page.getByRole('button', { name: `Open ${name}` })
-  await expect(entry).toBeVisible()
-  await entry.click()
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText(name)
+  await expect(page.getByRole('button', { name: `Open ${name}` })).toBeVisible()
+  await openProject(page, name)
 }
 
 /** The only project's id, while there is only one. */
