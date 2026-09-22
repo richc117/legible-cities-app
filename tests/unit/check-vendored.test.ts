@@ -750,27 +750,88 @@ describe('electron-builder.yml', () => {
     )
   })
 
+  /** One top-level section, from its own `name:` line to the next one. */
+  const section = (name: string): string => {
+    const start = config.indexOf(`\n${name}:`) + 1
+    expect(start).toBeGreaterThan(0)
+    const body = config.indexOf('\n', start) + 1
+    const next = config.slice(body).search(/^[A-Za-z]/m)
+    return config.slice(start, next === -1 ? config.length : body + next)
+  }
+
   // electron-builder falls back to its own default icon when a named one is
-  // missing, with a warning in a log nobody reads, so the installers would
-  // carry Electron's atom and every check here would still pass (issue 140).
-  it('names brand icons that are on disk', () => {
-    const named = [
-      ...config.matchAll(
-        /^\s*(?:icon|installerIcon|uninstallerIcon|installerHeaderIcon|installerSidebar|uninstallerSidebar|installerHeader|background): (assets\/brand\/\S+)$/gm,
-      ),
-    ].map((m) => m[1])
-    expect(named).toContain('assets/brand/macos/icon.icns')
-    expect(named).toContain('assets/brand/windows/icon.ico')
-    for (const file of new Set(named)) expect(existsSync(join(repo, file))).toBe(true)
+  // missing: any generic icon under build/, then the framework's, with only
+  // a warning in a log nobody reads (app-builder-lib's iconConverter). So
+  // the installers would carry Electron's atom and every other check here
+  // would still pass (issue 140). Per section, because the app bundle, the
+  // disk image, the exe and the installer's pages each name their own: a
+  // file-wide assertion passes on a sibling while one of them goes bare.
+  it('names a brand icon in each section that draws one, and each is on disk', () => {
+    const named = new Map<string, string[]>()
+    for (const name of ['mac', 'dmg', 'win', 'nsis']) {
+      const icons = [
+        ...section(name).matchAll(/^[ \t]+(?:icon|installer\w*Icon|uninstallerIcon): (\S+)$/gm),
+      ].map((m) => m[1])
+      expect(icons.length).toBeGreaterThan(0)
+      named.set(name, icons)
+    }
+    expect(named.get('mac')).toEqual(['assets/brand/macos/icon.icns'])
+    expect(named.get('dmg')).toEqual(['assets/brand/macos/icon.icns'])
+    expect(named.get('win')).toEqual(['assets/brand/windows/icon.ico'])
+    expect(named.get('nsis')).toEqual([
+      'assets/brand/windows/icon.ico',
+      'assets/brand/windows/icon.ico',
+      'assets/brand/windows/icon.ico',
+    ])
+    const backgrounds = [...config.matchAll(/^[ \t]+background: (\S+)$/gm)].map((m) => m[1])
+    expect(backgrounds).toEqual(['assets/brand/macos/background.tiff'])
+    for (const file of [...[...named.values()].flat(), ...backgrounds])
+      expect(existsSync(join(repo, file))).toBe(true)
   })
 
-  // The dmg background is cropped, not scaled, so the window has to be the
-  // background's own size; and the three NSIS bitmaps draw only on the
-  // assisted installer, which this app does not build (see the config).
-  it('sizes the disk-image window to its background and leaves the one-click installer alone', () => {
-    expect(config).toContain('background: assets/brand/macos/background.tiff')
-    expect(config).toMatch(/window:\n {4}width: 660\n {4}height: 400/)
-    expect(config).not.toMatch(/^\s*oneClick:/m)
-    expect(config).not.toMatch(/^\s*(installerSidebar|uninstallerSidebar|installerHeader):/m)
+  // dmg-builder takes the window from the background's own pixel size and
+  // ignores a `window:` block whenever a background is set (dmgUtil.js), so
+  // the art is the size: the two icon positions have to fall inside it, and
+  // a background swapped for larger art moves the window with it.
+  it('places the disk image icons inside the background it draws them on', () => {
+    const png = readFileSync(join(repo, 'assets/brand/macos/dmg-background.png'))
+    expect(png.subarray(12, 16).toString('latin1')).toBe('IHDR')
+    const [width, height] = [png.readUInt32BE(16), png.readUInt32BE(20)]
+    expect([width, height]).toEqual([660, 400])
+    const dmg = section('dmg')
+    expect(dmg).not.toMatch(/^[ \t]+window:$/m)
+    const at = [...dmg.matchAll(/^[ \t]+- x: (\d+)\n[ \t]+y: (\d+)$/gm)].map(
+      (m) => [Number(m[1]), Number(m[2])] as const,
+    )
+    expect(at).toHaveLength(2)
+    for (const [x, y] of at) {
+      expect(x).toBeGreaterThan(0)
+      expect(x).toBeLessThan(width)
+      expect(y).toBeGreaterThan(0)
+      expect(y).toBeLessThan(height)
+    }
+  })
+
+  // The three branded NSIS bitmaps draw only on the assisted installer, and
+  // oneClick: false would move what acceptance.yml derives (see the config).
+  it('leaves the one-click installer alone', () => {
+    expect(config).not.toMatch(/^[ \t]*oneClick:/m)
+    expect(config).not.toMatch(/^[ \t]*(installerSidebar|uninstallerSidebar|installerHeader):/m)
+  })
+
+  // acceptance.yml reads the tag's own electron-builder.yml and refuses an
+  // nsis section holding anything it does not know, because a person's
+  // install folder is derived rather than read. It is dispatched by hand
+  // against a published tag, so an option it has not been taught fails the
+  // release gate and nothing before it: the workflow's own pattern is run
+  // here, over this config (issue 140, review of PR 151).
+  it('sets no nsis option the acceptance gate would refuse', () => {
+    const workflow = readFileSync(join(repo, '.github/workflows/acceptance.yml'), 'utf8')
+    const guard = workflow.match(/\$line -notmatch '\^\\s\+\((?<keys>[^)]+)\)/)
+    expect(guard?.groups?.keys).toBeDefined()
+    const allowed = (guard?.groups?.keys as string).split('|')
+    const set = [...section('nsis').matchAll(/^[ \t]+([A-Za-z]\w*):/gm)].map((m) => m[1])
+    expect(set.length).toBeGreaterThan(0)
+    expect(set.filter((key) => !allowed.includes(key))).toEqual([])
   })
 })

@@ -1302,8 +1302,9 @@ electron-builder's NSIS template copies the running installer, about
 160 MB, to `%LOCALAPPDATA%\<package name>-updater\installer.exe` for
 electron-updater's differential updates, and its uninstaller never removes
 it. This app has no updater until A6-05, and electron-builder has no option
-to skip the copy, so `build/installer.nsh` (named by `nsis.include`, the
-only nsis option set) removes the folder in `customInstall`, which the
+to skip the copy, so `build/installer.nsh` (named by `nsis.include`; the
+only other nsis options set are the three brand icons) removes the folder
+in `customInstall`, which the
 template runs straight after the copy, and again in `customUnInstall`, for
 an install an older installer made. The folder is the template's own
 `APP_INSTALLER_STORE_FILE` without its file name, and the build fails if
@@ -1321,7 +1322,10 @@ folder is absent while installed, puts a stand-in copy there, uninstalls
 silently and checks both the install folder and the updater folder are
 gone. `acceptance.yml`, which derives the install folder from the
 per-user one-click defaults, lets an nsis section through only when it
-holds nothing but `include`.
+holds `include` and the three installer icons, which draw the installer
+and say nothing about where it installs; a unit test holds
+`electron-builder.yml` to that list, because the gate runs by hand against
+a published tag and would otherwise fail after the release.
 
 ### The first-run check
 

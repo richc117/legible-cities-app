@@ -84,17 +84,16 @@ mac:
     - from: node_modules/electron/dist/LICENSES.chromium.html
       to: LICENSES.chromium.html
 # The disk image a person opens on a Mac: the brand background, the app and
-# the Applications link placed on the two plates it draws. `window` is the
-# background's own 660x400, because electron-builder's default window is
-# 540x380 and a background larger than the window is cropped, not scaled.
-# background.tiff carries both resolutions (`tiffutil -cathidpicheck`, which
-# needs a Mac); the two PNGs beside it are the source.
+# the Applications link placed on the two plates it draws. No `window` here
+# on purpose - dmg-builder sizes the window from the background's own pixels
+# and ignores a window block whenever a background is set (dmgUtil.js), so
+# the art is the size, and the two positions below are points inside its
+# 660x400. background.tiff carries both resolutions (`tiffutil
+# -cathidpicheck`, which needs a Mac, and is why the TIFF is committed
+# rather than built on the runner); the two PNGs beside it are the source.
 dmg:
   icon: assets/brand/macos/icon.icns
   background: assets/brand/macos/background.tiff
-  window:
-    width: 660
-    height: 400
   contents:
     - x: 165
       y: 200
