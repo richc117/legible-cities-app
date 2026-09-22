@@ -321,9 +321,15 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
     const error = (await result.catch((e: EngineError) => e)) as EngineError
     expect(error.code).toBe(ERROR_CODES.inactive)
     expect(error.data?.hint).toContain('No progress for 300 ms')
-    await sleep(100)
-    const cancel = h.received().find((m) => m.method === '$/cancelRequest')
-    expect(cancel).toBeDefined()
+    // The rejection is ours and the cancel is the engine's: the request is
+    // failed here the moment the bound passes, and `$/cancelRequest` is
+    // written, read by the process and appended to its file after that,
+    // unordered against this line. A fixed wait is a race whatever its size
+    // (issue 147), so this polls to a deadline instead.
+    const sent = (): Record<string, unknown> | undefined =>
+      h.received().find((m) => m.method === '$/cancelRequest')
+    await expect.poll(() => sent() !== undefined, { timeout: 10_000 }).toBe(true)
+    const cancel = sent()
     expect((cancel?.params as { id: number }).id).toBe(id)
     expect(h.sidecar.state.state).toBe('ready')
   })
