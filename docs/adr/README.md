@@ -75,6 +75,7 @@ already cites the number you mean to use.
 | 042 | [The installers carry the licence texts they owe, and the app opens them](042-the-installers-carry-the-licence-texts-they-owe.md) | Accepted |
 | 043 | [The source of Electron's FFmpeg library is attached to every release](043-electrons-ffmpeg-source-is-attached-to-every-release.md) | Accepted |
 | 044 | [The interface's palette is the app's own](044-the-interface-palette-is-the-apps-own.md) | Accepted |
+| 045 | [The project screen is a notebook of six cells](045-the-project-screen-is-a-notebook.md) | Accepted |
 
 ## Amending rather than superseding
 

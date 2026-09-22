@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-09-12
 - **Supersedes:** none
-- **Superseded by:** none
+- **Superseded by:** ADR-045, in part (the left rail's deferral)
 
 ## Context
 
