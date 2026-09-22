@@ -37,9 +37,11 @@ choices it left open were decided the same day (ADR-026).
    keeps the engine page's colours and the two no longer have to agree
    (ADR-044).
 5. **Allusion, not pastiche.** Harry Beck's 1933 diagram supplies a
-   vocabulary (the tick, the hollow interchange mark, the cream ground)
-   for progress and steps. The mark is no longer one of them: it is the
-   brand's own icon (ADR-044). The map, the roundel
+   vocabulary (a line that turns, stations on it, the cream ground) for
+   progress and steps, drawn in the brand's own terms: round stations and
+   rounded quarter-circle bends, not the 1933 tick and 45-degree join
+   (ADR-044, section 10). The mark is no longer one of them: it is the
+   brand's own icon. The map, the roundel
    and the lettering are Transport for London's and are never reproduced.
 6. **Accessible by construction.** Keyboard first, labelled, visible focus,
    polite live regions, reduced motion honoured (constitution, principle
@@ -420,7 +422,7 @@ not used:
 | Dialogs | native `<dialog>` with `showModal()`, as the create, confirm and mismatch dialogs already are; title 15px, body prose track, actions right-aligned, the safe action focused first, Escape cancels; width `--dialog-width`; while a confirmed action runs the dialog stays modal and takes nothing: both buttons keep their names and focus with `aria-disabled`, refuse every press and are drawn unavailable (the kit's variant tokens pointed at `--surface-sunken` and `--text-faint`), the first Escape is refused, and a `role="status"` line inside says what is running in the caller's words and that it cannot be stopped; if the platform closes it anyway (a second Escape) the screen is told at once, and a refusal that arrives afterwards is said on that screen while it is still open, never after a person has left it (A6-07) |
 | Lists (Library, feeds) | rows of `--control-height`, 13px, name in `--text`, meta in `--text-faint` at 12px (`--text-muted` on a selected row, where faint falls under 4.5), the whole row a button, `--surface-hover` and `--surface-selected`, a 1px `--border` between groups only |
 | Status line | one line, 12px, `role="status"` `aria-live="polite"`, a 16px icon for the state, never animated; sits in the header on every screen |
-| Progress and steps | the Beck vocabulary (section 10): a line with ticks per stage, the current stage a hollow diamond in `--accent`, done stages filled, the sentence from the engine beside it at 13px; cancel is a text button to the right; the controls a run offers change as it moves - Lay out gives way to Cancel, Cancel to Lay out again, Export to Cancel to Reveal - and focus on the one that went is handed to the one that came, without scrolling, only when the control that last took focus there can no longer hold it and focus has nowhere else to be; a press on prose forgets it (A6-07) |
+| Progress and steps | the line vocabulary (section 10): one line per run with a round station per stage, a finished stage filled, the running one ringed in `--accent` and the line reaching it, a failed one in `--error`; a station is never told apart by colour alone, so the sentence beside the line names the stage and its state; where the line turns it turns on a rounded quarter-circle, never a 45-degree join; the sentence from the engine beside it at 13px; cancel is a text button to the right; the controls a run offers change as it moves - Lay out gives way to Cancel, Cancel to Lay out again, Export to Cancel to Reveal - and focus on the one that went is handed to the one that came, without scrolling, only when the control that last took focus there can no longer hold it and focus has nowhere else to be; a press on prose forgets it (A6-07) |
 | Toolbar | 24px controls in a row with `--space-2-2` gaps, segmented groups as pills, labels visible at 13px until the window is narrower than 720px, then icons with tooltips |
 | Panels and settings | a 15px heading, rows of label at 13px and control at `--control-height` 32px, `--space-4-3` between rows, `--space-4-6` between groups, one column |
 | Empty states | a 24px icon, one prose sentence, one primary action; the Library's "first feed" call to action is one (A2-01) |
@@ -437,6 +439,12 @@ not used:
 | Theme switch (A4-03) | the project's own theme, not the interface's: the two the engine's page draws, as a segmented pair in the toolbar shape the geographic view's stage toggle uses - the chosen one `primary` with `aria-pressed`, the pair in a group named for what it sets - under a 15px heading and one sentence saying that the interface has its own and neither follows the other. Not disabled while the write is in flight, because a button that disables itself under a person's hands takes the focus with it, and a press that arrives then is kept and applied after it; disabled while a run or an export is going - a run rewrites the page file in place and the change would reload the frame onto half a document, and an export took the theme when it planned, so a change now would not reach the reel - with a `role="status"` line inside the section saying so, since the run's own panel is elsewhere and tied to this by nothing a screen reader can follow, and focus handed to the heading before the buttons go, because a debounced colour or order change closes the way with nobody pressing anything |
 | Tabs (A5-01) | the WAI-ARIA tabs pattern with real buttons, not FigUI3's `fig-tabs`, whose mutation observer and scroll buttons would fight React for the children: a `tablist` named for what it chooses between, one tab stop for the strip, Left and Right moving between tabs and choosing the one they land on (wrapping), Home and End to the ends, `aria-selected` and `aria-controls` on each tab, each panel a `tabpanel` labelled by its tab and a tab stop of its own (`tabindex="0"`), so Tab from the strip reaches it even when it holds nothing focusable. Text tabs at 13px, at least `--control-height-large` high, over a 1px `--border` rule: the chosen one in `--text` at the strong weight with a `--focus-ring-width` underline in `--accent`, the rest in `--text-muted`, `--surface-hover` under the pointer. A panel not chosen is hidden and stays mounted, because it may hold work a person has started - a colour waiting to be drawn, a time half typed. Which tab is open is where a person is looking, not a setting, and is not stored |
 | Export tab (A5-01) | a 15px heading, one sentence saying the map shows the export's frame while the tab is open, then panel rows in one column: the preset as a native select with an `<optgroup>` per platform, each option the engine's name, its size and what it makes; the storyboard as a native select for a video or GIF preset only, each option its views and length, the preset's own marked; the engine's refusal of the choice in `--error` at 13px directly under those two, where the choice was made, and Export disabled until the choice changes; the view as a native select, for a still only, since a storyboard's first beat names its own view and clock; the quality as a native select, and for a JPEG still (the engine's table says which) a disabled select at standard with one message line saying the engine makes a JPEG still at standard quality only; the frame's three switches and the lines to keep as native checkboxes in `<fieldset>`s whose `<legend>` reads as a field's label, `accent-color` from `--accent`, each row at least `--target-min`; the start time (a still's only) and the filename tag as the kit's text field with their rule beneath as the field's message, written when committed (Enter or leaving the field), never on each keystroke, and a sentence in `--error` there when the engine's pattern refuses it; then the export's own progress line, cancel and Reveal. Every choice is written to the project the moment it is made. While an export runs the choices are disabled, with a `role="status"` line saying why and focus handed to the heading first; a saved choice the engine no longer offers falls back to the reel and a `role="status"` line names what was dropped |
+| The cell (ADR-045) | a unit of work in the notebook, the six of them read top to bottom and never reordered: a heading row carrying its number in `--text-muted` `--numerals`, its name at 15px, its state and, while it is collapsed, one sentence saying what it holds - the day drawn, how many lines carry an override, which preset. The row is the toggle: a native button with `aria-expanded` over a named region, not a `<details>`, because the state and the summary sit in the row beside it. A collapsed cell keeps its controls in the document rather than unmounting them, since a half-typed value and a running Cancel both live inside one. Which cells are open is where a person is looking, not a setting, and is not stored, as the tab strip's own choice is not. A cell whose controls wait on the engine says so in one sentence and offers no disabled stand-in |
+| A cell's state | ready, running, stale or error, said as a 16px icon and a word inside the heading's accessible name, never as a colour alone and never in one of the four brand lines, which are identity and not status (principle 1). the word in `--text-muted` for ready, `--accent-text` for running, `--warning` for stale and `--error` for error - the text-safe accent, not `--accent`, which is held to 3.0 as a non-text mark and is the colour of the running station's ring rather than of any word - each on `--surface` or `--surface-raised` only, which is where the scoping table in section 3 allows them, so the state introduces no pair the contrast test does not already hold. Stale is not a warning about the app: it says the map on screen was drawn before a change above it, and the map and its controls stay exactly where they are until a person re-runs |
+| The rail and its stepper (ADR-045) | the project's own left region, `--space-4-16` collapsed and 240px open, holding the six cells as an `<ol>` of buttons - the number, the name and the state as one accessible name - and below them what the project has made. It is a `<nav>` with a name, not a tablist, because the cells stay in the document and a tablist would promise they do not. `aria-current="step"` follows the scroll without taking focus; choosing a step opens its cell, scrolls it clear of the header and moves focus to its heading, with no smooth scrolling under reduced motion. Below 900px it collapses to its numbers, and it is `inert` while the inspector covers the main region |
+| Outputs (ADR-045) | what this project has produced, in the rail under the stepper: each finished export by its preset and when it was made, newest first, read from the sidecar the export already writes rather than from memory, so it survives a restart - which is the gap it fills, since today a finished export is findable only in the inspector until the app is closed. Reveal opens the folder and no path is shown (constitution V). A file since moved or deleted reads as gone rather than failing on a press. One sentence when there are none |
+| The project's header (ADR-045) | above the notebook, not in the app's own header, which is the window's and knows no project: the project's name as the way back, one `role="status"` line of no more than a sentence saying what the notebook is doing as a whole, and Run all. Run all runs cells 01 to 05 in order and stops at the first failure, leaving that cell in error; it never runs the export, because an export writes a named file to a person's disk, and a sentence beside the button says so rather than leaving it to be discovered. While anything runs it gives way to Stop, with focus handed over as the progress rule requires |
+| The pinned preview (ADR-045) | the viewer's frame, kept on screen while the cells beneath it are read and edited: sticky under the header, its wrapper a child of the notebook's column rather than of any cell, so it is pinned from the top rather than at a scroll threshold - a threshold would need a hysteresis band, a story for a region that changes its relationship to the document mid-scroll, and a test that is flaky by construction, and cells 01 and 02 are better with the map in view. The frame is never moved between parents and its address is changed deliberately, never by a remount: both reload the engine's page, and a reload loses its clock, its view and its scrub position. Below 900px it sits above the notebook rather than beside it |
 | Inspector (A1-03) | the window's right-hand region, `<aside>` named "Inspector", beside whichever screen is open: `--inspector-width` wide on `--surface` with a 1px `--border` on its left, sticky under the header and scrolled on its own; below 900px it is fixed over the main region on `--surface-raised` at `--layer-overlay` instead of squeezing it, and the main region is `inert` while it is covered, so Shift+Tab cannot reach controls a person cannot see; the header, and the toggle that closes it, stay reachable. It opens from a header toggle - a secondary button with the layers icon, "Jobs" and, while any run, "N running", its accessible name "Jobs, N running" or "Jobs, none running", `aria-expanded` - and is rendered only while open. Opening moves focus to its 15px "Jobs" heading; closing, from the toggle, its Close text button or Escape anywhere inside, returns focus to the toggle. It appears and goes without a slide, at every motion setting. It starts collapsed and never opens by itself |
 | Jobs (A1-03) | a list with no bullets in the inspector, running jobs first and then the finished ones newest first, at most twenty of those, a `--border` rule between jobs: each an `<li>` named by its heading - the project's name (or "Feeds") in `--text` at the strong weight and the job's label beneath in `--text-muted`, the heading focusable so focus can be handed to it - then its state and start time in `--text-faint` at 12px, the run's own progress line scrolled sideways rather than shrunk so its stage names stay 12px, the last sentence, and when it failed the engine's hint in `--error` and its detail, when it says more, behind a native `<details>` closed by default in the monospaced track at 12px. Cancel (while running) and "Copy log" are text buttons in a toolbar, each naming the job it acts on; Cancel hands focus to the job's heading before it goes. "Copy log" says in a `role="status"` line that the log is on the clipboard with the keys in web addresses taken out and the home folder written as `~`, or why not. A job's end is said once, politely, in a visually hidden line on every screen - "<project>: <label>, <state>." - never repeating the hint; the line is emptied and filled a frame later, so the same sentence twice is spoken twice. Cancel hands focus to the job's heading, and if the job then moves below a running one the list gives the heading the focus again - only after a press of Cancel, and never once focus or a pointer has landed outside that job, so focus a person moved is not taken back. No absolute path is on screen |
 | Deliverables | an export that finished says the file's name in prose and offers "Reveal", a text button that opens the file's folder in the platform's file browser; the path is never shown, and the folder is the person's own (A1-04) |
@@ -448,27 +456,34 @@ not used:
 ## 9. Layout and window
 
 Native title bar on both platforms for now; a custom one arrives only with
-a reason and an ADR. Three regions are planned: a left rail for the
-Library and navigation (`--space-4-16` wide collapsed, 240px open), the
-main region (the viewer or a screen), and a right inspector (320px,
-collapsible). The header holds the screen title at 20px, the status line,
-the inspector's toggle and the way into Settings, which is where the theme
-control went: it is a choice made once, not a switch to flick, and it sits
-with the other things the app decides for itself (A1-04). Minimum window
-640 by 480 as today. The prose measure applies inside panels; lists and
-tables fill their region. The inspector is the window's, not a project's,
-because jobs span projects (ADR-036): it sits beside all three screens, the
-Library and Settings included, and below 900px it covers the main region
-rather than squeezing it.
+a reason and an ADR. Minimum window 640 by 480 as today. The header holds
+the product name, the engine's status line, the inspector's toggle and the
+way into Settings, which is where the interface's theme control went: it is
+a choice made once, not a switch to flick, and it sits with the other
+things the app decides for itself (A1-04).
 
-Deliberately absent from this layout for now (ADR-036):
+A project's screen has four regions (ADR-045):
 
-| Not yet | Why |
+| Region | What it is |
 |---|---|
-| The left rail | three screens and a Back button navigate well enough; a rail is worth its width when there is more to reach |
-| The project's fields and diagnostics in the inspector | they stay on the project screen, where they are read beside the map; the inspector holds only the jobs, which are the one thing that spans projects |
+| The rail | the project's own, on the left: the six cells as a numbered stepper, and what the project has made. `--space-4-16` collapsed, 240px open |
+| The notebook | the main region: the six cells in one scrolling column at the prose measure, all of them always in the document |
+| The pinned preview | the viewer's frame, sticky under the header so the map stays on screen while the cells below it are edited |
+| The inspector | the window's, not the project's, because jobs span projects (ADR-036): 320px, collapsible, beside the Library and Settings too |
 
-## 10. Motifs from Beck
+The rail is the project's and the inspector is the window's, and they are
+not one thing. ADR-036 deferred a rail on the grounds that three screens
+and a Back button navigate well enough; that reasoning was about the
+inspector's contents, which span projects, and ADR-045 supersedes it in
+that part only.
+
+Below 900px the inspector covers the main region rather than squeezing it,
+and the main region is `inert` while it is covered; the rail collapses to
+its numbers at the same width, and the preview moves above the notebook
+rather than beside it. The prose measure applies inside cells; lists and
+tables fill their region.
+
+## 10. The line vocabulary
 
 What the 1933 diagram verifiably did: only vertical, horizontal and
 45-degree segments; short ticks for ordinary stations and diamonds for
@@ -479,12 +494,22 @@ its rules are London's and not universal, that a fixed angle set applied as
 doctrine is its own dogma, and that the design lives in execution detail:
 the size of a tick, blob or diamond.
 
+The app draws its own line rather than that one (ADR-044). The brand icon
+settled the terms: **round stations**, and **rounded quarter-circle bends**
+with an inner radius about a third of the outer, where the 1933 diagram
+turns on a 45-degree join. The four brand lines - vermilion, cobalt,
+saffron and jade - are the identity and never a state (principle 1).
+
 **Used, sparingly:**
 
-- **The progress line.** Stages as ticks on a horizontal line, the current
-  stage a hollow diamond, a finished run a filled end mark; a change of
-  direction only ever at 45 degrees. This is the app's one signature
-  component, on the layout, map and export screens.
+- **The progress line.** One line per run, a round station per stage, the
+  line reaching as far as the run has got; a finished stage filled, the
+  running one ringed, a failed one in `--error`, and never told apart by
+  colour alone. It turns on a quarter-circle when it turns at all. This is
+  the app's one signature component, drawn wherever a run is reported: a
+  cell, a dialog and the inspector's jobs.
+- **The stepper.** The rail's six numbers are the same vocabulary at rest:
+  stations on a line a person can press, rather than a line that moves.
 - **The mark** (ADR-044, superseding ADR-026's). The app icon, the header
   lockup and the empty-state glyph: two pairs of lines, one running
   straight through and one crossing it and stepping down on two rounded
@@ -494,7 +519,7 @@ the size of a tick, blob or diamond.
   left is the lines. Not a map excerpt, and not a picture of any city's
   network: it is six fixed paths, and it is never drawn from a project's
   data. A preview of a map is the engine's page, as principle 1 says.
-- **The ground.** The sepia theme is the cream of the pocket map already.
+- **The ground.** Parchment is the cream of the pocket map already.
 - **Ticks as dividers** in timelines. The inspector's jobs use a plain
   rule for now; a tick there waits until the list has groups to divide.
 
@@ -555,7 +580,8 @@ Settled here:
   package.
 - FigUI3 core at 9.0.0, MIT only, behind an adapter and wrappers.
 - Two type tracks, system faces, no bundled fonts.
-- The Beck vocabulary as above and no further.
+- The line vocabulary of section 10 - round stations, quarter-circle
+  bends, the brand's four lines as identity - and no further.
 
 Decided by the maintainer on 2026-09-07 and recorded in ADR-026:
 
