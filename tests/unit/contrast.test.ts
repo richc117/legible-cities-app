@@ -105,6 +105,11 @@ const PAIRS: [string, string, number][] = [
   ['--success', '--surface-raised', 3.0],
   ['--focus', '--surface', 3.0],
   ['--focus', '--surface-raised', 3.0],
+  // A cell's state (ADR-045, section 8.2) adds no pair: its word is
+  // --text-muted, --accent-text, --warning or --error on --surface or
+  // --surface-raised, all above, and the running station's ring is --accent
+  // at 3.0 as a mark rather than text. A state drawn in any other colour, or
+  // on any other ground, adds its pair here.
   // The tab strip (A5-01): a tab not chosen, under the pointer, and the
   // chosen tab's underline there too. On the panel's own ground the tabs
   // and the export tab's switches use pairs already above: --text and
