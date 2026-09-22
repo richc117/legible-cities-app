@@ -168,11 +168,15 @@ jobs:
           # The folder a per-user one-click NSIS installer uses is the
           # package's name, sanitised (electron-builder's
           # getWindowsInstallationDirName); a build that sets nsis options
-          # could change that, so it is refused rather than guessed at. An
-          # include is let through (build/installer.nsh, issue 128); one that
-          # moves the install is caught by the exe check below. Any other
-          # line in the nsis section, or an include written in any shape but
-          # a plain `include: path`, is refused.
+          # could change that, so it is refused rather than guessed at. Four
+          # are let through: include (build/installer.nsh, issue 128) and the
+          # three icon options (issue 140), which draw the installer and say
+          # nothing about where it installs. An include that moves the
+          # install is caught by the exe check below. Any other line in the
+          # nsis section, or one of these four written in any shape but a
+          # plain `key: value`, is refused. oneClick is deliberately not on
+          # the list: it changes the pages, the flow and this workflow's
+          # assumptions together.
           $refused = @()
           $inNsis = $false
           foreach ($line in Get-Content -LiteralPath 'at-tag/electron-builder.yml') {
@@ -183,11 +187,11 @@ jobs:
             }
             if (-not $inNsis -or $line -match '^\s*(#.*)?$') { continue }
             if ($line -notmatch '^\s') { $inNsis = $false; continue }
-            if ($line -notmatch '^\s+include\s*:\s*[^\s#''"{\[&*!|>]\S*\s*(#.*)?$') { $refused += $line.Trim() }
+            if ($line -notmatch '^\s+(include|installerIcon|uninstallerIcon|installerHeaderIcon)\s*:\s*[^\s#''"{\[&*!|>]\S*\s*(#.*)?$') { $refused += $line.Trim() }
           }
           if ($refused.Count -gt 0) {
-            node $cli prior $env:PRIOR step 2 fail "electron-builder.yml at the tag sets nsis options other than include ($($refused -join ' / ')); this workflow assumes the per-user one-click defaults."
-            throw "electron-builder.yml at the tag sets nsis options other than include: $($refused -join ' / '). Check where it installs and update this workflow"
+            node $cli prior $env:PRIOR step 2 fail "electron-builder.yml at the tag sets nsis options beyond include and the installer icons ($($refused -join ' / ')); this workflow assumes the per-user one-click defaults."
+            throw "electron-builder.yml at the tag sets nsis options beyond include and the installer icons: $($refused -join ' / '). Check where it installs and update this workflow"
           }
           $name = node -p "require('./at-tag/package.json').name"
           $folder = Join-Path $env:LOCALAPPDATA "Programs\$name"

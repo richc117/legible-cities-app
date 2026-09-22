@@ -61,9 +61,12 @@ on:
     paths:
       - 'vendor/pins.json'
       - 'electron-builder.yml'
-      # The packager's build resources: the icon, and the NSIS include that
-      # removes the installer's copy of itself (issue 128).
+      # The packager's build resources: the NSIS include that removes the
+      # installer's copy of itself (issue 128).
       - 'build/**'
+      # The brand art the installers are drawn from: the app icons, the
+      # disk image's background, the installer's icons (issue 140).
+      - 'assets/brand/**'
       # How the app finds its components, and the packager's own version.
       - 'src/main/**'
       - 'package.json'

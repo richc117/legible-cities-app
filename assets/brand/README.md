@@ -39,32 +39,30 @@ Below 128 px the stations are left out so the lines stay clear.
 
 ## Wiring into electron-builder
 
-Not wired yet. A sketch for `electron-builder.yml`:
+Wired (issue 140). `electron-builder.yml` names, per platform:
 
-```yaml
-mac:
-  icon: assets/brand/macos/icon.icns
-dmg:
-  icon: assets/brand/macos/icon.icns
-  background: assets/brand/macos/background.tiff
-  contents:
-    - { x: 165, y: 200 }
-    - { x: 495, y: 200, type: link, path: /Applications }
-win:
-  icon: assets/brand/windows/icon.ico
-nsis:
-  installerIcon: assets/brand/windows/icon.ico
-  uninstallerIcon: assets/brand/windows/icon.ico
-  installerHeaderIcon: assets/brand/windows/icon.ico
-  # The three bitmaps below only appear with oneClick: false (the assisted installer).
-  installerSidebar: assets/brand/windows/installer-sidebar.bmp
-  uninstallerSidebar: assets/brand/windows/uninstaller-sidebar.bmp
-  installerHeader: assets/brand/windows/installer-header.bmp
-linux:
-  icon: assets/brand/linux/icons
-```
+| Where | File |
+| --- | --- |
+| `mac.icon`, `dmg.icon` | `macos/icon.icns` |
+| `dmg.background` | `macos/background.tiff` |
+| `win.icon` and the three `nsis` icons | `windows/icon.ico` |
 
-On a Mac, combine the two disk-image backgrounds into one Retina TIFF:
+Two things are deliberately left out, and both need their own issue:
+
+- **The three bitmaps** (`installer-sidebar.bmp`, `uninstaller-sidebar.bmp`,
+  `installer-header.bmp`). NSIS draws them only on the assisted installer,
+  and `oneClick: false` changes how a person installs, what
+  `docs/acceptance.md` describes and what `.github/workflows/acceptance.yml`
+  derives and exercises.
+- **`linux/`**. There is no Linux target.
+
+`dmg.window` is not set either: dmg-builder takes the window from the
+background's own pixel size and ignores a window block whenever a
+background is set, so the art is the size and `dmg.contents` are points
+inside its 660 x 400.
+
+The disk-image background is committed as a Retina TIFF so no runner needs
+a rasteriser. Rebuild it on a Mac after changing either PNG:
 
 ```
 tiffutil -cathidpicheck assets/brand/macos/dmg-background.png assets/brand/macos/dmg-background@2x.png -out assets/brand/macos/background.tiff

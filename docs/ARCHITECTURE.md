@@ -577,10 +577,13 @@ Icons are Phosphor (ADR-026), vendored as plain SVG files under
 `icons/phosphor/` with their licence: the light weight at 16px and the
 regular weight at 24px, plus the filled play and pause. `icons/Icon.tsx`
 inlines them as markup so they take `currentColor`, hidden from assistive
-technology unless given a label. The mark, `icons/mark.svg`, is the
-design document's 45-degree join with a hollow interchange diamond, drawn
-by hand; `scripts/render-icon.sh` renders it on the sepia ground into
-`build/icon.png`, the committed application icon. The progress line
+technology unless given a label. The mark, `icons/mark.svg`, is the brand
+icon, its five colours drawn from the theme's own tokens so one file
+follows both themes (ADR-044). The packaged app's icon is the brand art
+itself rather than a rendering of the mark: `electron-builder.yml` names
+`assets/brand/macos/icon.icns` and `assets/brand/windows/icon.ico`, each
+carrying every size the platform asks for, the small ones without
+stations. The progress line
 (`ProgressLine.tsx`) is the first of the document's Beck motifs on screen:
 one line with a tick per pipeline stage, a filled mark for a stage that
 has run, a hollow diamond for the one running, drawn from the tokens and
@@ -1299,8 +1302,9 @@ electron-builder's NSIS template copies the running installer, about
 160 MB, to `%LOCALAPPDATA%\<package name>-updater\installer.exe` for
 electron-updater's differential updates, and its uninstaller never removes
 it. This app has no updater until A6-05, and electron-builder has no option
-to skip the copy, so `build/installer.nsh` (named by `nsis.include`, the
-only nsis option set) removes the folder in `customInstall`, which the
+to skip the copy, so `build/installer.nsh` (named by `nsis.include`; the
+only other nsis options set are the three brand icons) removes the folder
+in `customInstall`, which the
 template runs straight after the copy, and again in `customUnInstall`, for
 an install an older installer made. The folder is the template's own
 `APP_INSTALLER_STORE_FILE` without its file name, and the build fails if
@@ -1318,7 +1322,10 @@ folder is absent while installed, puts a stand-in copy there, uninstalls
 silently and checks both the install folder and the updater folder are
 gone. `acceptance.yml`, which derives the install folder from the
 per-user one-click defaults, lets an nsis section through only when it
-holds nothing but `include`.
+holds `include` and the three installer icons, which draw the installer
+and say nothing about where it installs; a unit test holds
+`electron-builder.yml` to that list, because the gate runs by hand against
+a published tag and would otherwise fail after the release.
 
 ### The first-run check
 

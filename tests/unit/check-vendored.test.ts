@@ -749,4 +749,122 @@ describe('electron-builder.yml', () => {
       '- from: node_modules/electron/dist/LICENSES.chromium.html\n      to: LICENSES.chromium.html',
     )
   })
+
+  /** One top-level section, from its own `name:` line to the next one. */
+  const section = (name: string): string => {
+    const start = config.indexOf(`\n${name}:`) + 1
+    expect(start).toBeGreaterThan(0)
+    const body = config.indexOf('\n', start) + 1
+    const next = config.slice(body).search(/^[A-Za-z]/m)
+    return config.slice(start, next === -1 ? config.length : body + next)
+  }
+
+  // electron-builder falls back to its own default icon when a named one is
+  // missing: any generic icon under build/, then the framework's, with only
+  // a warning in a log nobody reads (app-builder-lib's iconConverter). So
+  // the installers would carry Electron's atom and every other check here
+  // would still pass (issue 140). Per section, because the app bundle, the
+  // disk image, the exe and the installer's pages each name their own: a
+  // file-wide assertion passes on a sibling while one of them goes bare.
+  it('names a brand icon in each section that draws one, and each is on disk', () => {
+    const named = new Map<string, string[]>()
+    for (const name of ['mac', 'dmg', 'win', 'nsis']) {
+      const icons = [
+        ...section(name).matchAll(/^[ \t]+(?:icon|installer\w*Icon|uninstallerIcon): (\S+)$/gm),
+      ].map((m) => m[1])
+      expect(icons.length).toBeGreaterThan(0)
+      named.set(name, icons)
+    }
+    expect(named.get('mac')).toEqual(['assets/brand/macos/icon.icns'])
+    expect(named.get('dmg')).toEqual(['assets/brand/macos/icon.icns'])
+    expect(named.get('win')).toEqual(['assets/brand/windows/icon.ico'])
+    expect(named.get('nsis')).toEqual([
+      'assets/brand/windows/icon.ico',
+      'assets/brand/windows/icon.ico',
+      'assets/brand/windows/icon.ico',
+    ])
+    const backgrounds = [...config.matchAll(/^[ \t]+background: (\S+)$/gm)].map((m) => m[1])
+    expect(backgrounds).toEqual(['assets/brand/macos/background.tiff'])
+    for (const file of [...[...named.values()].flat(), ...backgrounds])
+      expect(existsSync(join(repo, file))).toBe(true)
+  })
+
+  // dmg-builder takes the window from the background's own pixel size and
+  // ignores a `window:` block whenever a background is set (dmgUtil.js), so
+  // the art is the size: the two icon positions have to fall inside it, and
+  // a background swapped for larger art moves the window with it.
+  it('places the disk image icons inside the background it draws them on', () => {
+    // The TIFF is what the packager reads, and it is built from the PNGs by
+    // hand (`tiffutil`), so the size is taken from the TIFF itself: art
+    // edited without rebuilding it would otherwise pass here and ship.
+    const tiff = readFileSync(join(repo, 'assets/brand/macos/background.tiff'))
+    const little = tiff.subarray(0, 2).toString('latin1') === 'II'
+    expect(little || tiff.subarray(0, 2).toString('latin1') === 'MM').toBe(true)
+    const u16 = (at: number): number => (little ? tiff.readUInt16LE(at) : tiff.readUInt16BE(at))
+    const u32 = (at: number): number => (little ? tiff.readUInt32LE(at) : tiff.readUInt32BE(at))
+    const ifd = u32(4)
+    const dimension: Record<number, number> = {}
+    for (let i = 0; i < u16(ifd); i++) {
+      const entry = ifd + 2 + i * 12
+      const tag = u16(entry)
+      // ImageWidth and ImageLength, as a SHORT (3) or a LONG (4).
+      if (tag === 256 || tag === 257)
+        dimension[tag] = u16(entry + 2) === 3 ? u16(entry + 8) : u32(entry + 8)
+    }
+    const [width, height] = [dimension[256], dimension[257]]
+    expect([width, height]).toEqual([660, 400])
+    // The @1x PNG it was built from, so the pair cannot drift apart unseen.
+    const png = readFileSync(join(repo, 'assets/brand/macos/dmg-background.png'))
+    expect(png.subarray(12, 16).toString('latin1')).toBe('IHDR')
+    expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([width, height])
+    const dmg = section('dmg')
+    expect(dmg).not.toMatch(/^[ \t]+window:$/m)
+    const at = [...dmg.matchAll(/^[ \t]+- x: (\d+)\n[ \t]+y: (\d+)$/gm)].map(
+      (m) => [Number(m[1]), Number(m[2])] as const,
+    )
+    expect(at).toHaveLength(2)
+    for (const [x, y] of at) {
+      expect(x).toBeGreaterThan(0)
+      expect(x).toBeLessThan(width)
+      expect(y).toBeGreaterThan(0)
+      expect(y).toBeLessThan(height)
+    }
+  })
+
+  // The three branded NSIS bitmaps draw only on the assisted installer, and
+  // oneClick: false would move what acceptance.yml derives (see the config).
+  it('leaves the one-click installer alone', () => {
+    expect(config).not.toMatch(/^[ \t]*oneClick:/m)
+    expect(config).not.toMatch(/^[ \t]*(installerSidebar|uninstallerSidebar|installerHeader):/m)
+  })
+
+  // acceptance.yml reads the tag's own electron-builder.yml and refuses an
+  // nsis section holding anything it does not know, because a person's
+  // install folder is derived rather than read. It is dispatched by hand
+  // against a published tag, so an option it has not been taught fails the
+  // release gate and nothing before it. The workflow's own pattern is lifted
+  // out and run over this config's nsis lines, rather than its key list
+  // being read off: the gate refuses a key it knows written in a shape it
+  // does not - quoted, a flow scalar, a value on the next line - and a test
+  // that only compared keys would pass every one of those (issue 140).
+  it('sets no nsis line the acceptance gate would refuse', () => {
+    const workflow = readFileSync(join(repo, '.github/workflows/acceptance.yml'), 'utf8')
+    // PowerShell's single-quoted string, in which '' is one quote. The file
+    // holds two of these; the one naming `include` is the line check, the
+    // other tests the `nsis:` header itself.
+    const guards = [...workflow.matchAll(/\$line -notmatch '(?<pattern>(?:[^']|'')+)'\)/g)]
+      .map((m) => (m.groups?.pattern as string).replaceAll("''", "'"))
+      .filter((pattern) => pattern.includes('include'))
+    expect(guards).toHaveLength(1)
+    const allows = new RegExp(guards[0])
+    const lines = section('nsis')
+      .split('\n')
+      .slice(1)
+      .filter((line) => line.trim() !== '' && !/^[ \t]*#/.test(line))
+    expect(lines.length).toBeGreaterThan(0)
+    expect(lines.filter((line) => !allows.test(line))).toEqual([])
+    // And the pattern is the gate's, not one that lets anything through.
+    expect(allows.test('  oneClick: false')).toBe(false)
+    expect(allows.test('  include: [build/installer.nsh]')).toBe(false)
+  })
 })
