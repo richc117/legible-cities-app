@@ -56,6 +56,17 @@ things only a running app shows.
 
 ## The design system and the kit
 
+**A stylesheet is named for a region of the interface, not for a
+component.** The app's own rules are `styles/app.css` (the shell),
+`styles/panels.css` (the panels a project is made of) and
+`styles/notebook.css` (the cells' own chrome), imported in that order from
+`main.tsx` and nowhere else: no component imports CSS, and there are no CSS
+modules and no CSS-in-JS, because both move values out of the single
+cascade `tests/unit/contrast.test.ts` reads. A region earns its own file
+once its rules pass roughly two hundred lines; a component's rules live in
+its region's file. The four token files stay the only place a literal may
+appear (A5.5-07).
+
 Every colour, size and duration is a token from `docs/DESIGN.md`, declared
 in the four token files under `src/renderer/src/styles/`; a literal in a
 component file fails `tests/unit/no-literals.test.ts`, and every new text
