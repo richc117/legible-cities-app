@@ -585,9 +585,10 @@ itself rather than a rendering of the mark: `electron-builder.yml` names
 carrying every size the platform asks for, the small ones without
 stations. The progress line
 (`ProgressLine.tsx`) is the first of the document's Beck motifs on screen:
-one line with a tick per pipeline stage, a filled mark for a stage that
-has run, a hollow diamond for the one running, drawn from the tokens and
-described to assistive technology as one sentence.
+one line with a round station per pipeline stage, filled for a stage that
+has run and ringed in the accent for the one running, the line reaching as
+far as the run has got and turning onto it on a quarter-circle bend, drawn
+from the tokens and described to assistive technology as one sentence.
 
 ## The layout run
 

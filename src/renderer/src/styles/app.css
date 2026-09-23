@@ -632,9 +632,10 @@ dialog::backdrop {
   height: var(--icon-size-large);
 }
 
-/* The progress line: stages as ticks on a line, the running one a hollow
-   diamond, a failed one in the error colour (docs/DESIGN.md, section 10).
-   SVG lengths are unitless grid units, not pixels. */
+/* The progress line: a round station per stage on a line that reaches as far
+   as the run has got, the running one ringed in the accent, a failed one in
+   the error colour (docs/DESIGN.md, section 10 and 8.2's progress row). SVG
+   lengths are unitless grid units, not pixels. */
 
 .progress {
   display: grid;
@@ -647,20 +648,32 @@ dialog::backdrop {
   overflow: visible;
 }
 
+/* The rail. Its weight is also the bend's radius in ProgressLine.tsx, which
+   is what makes a bend's inner radius a third of its outer. */
 .progress .line {
   fill: none;
   stroke: var(--border-strong);
-  stroke-width: 2;
+  stroke-width: 3;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
-/* One square per stage; the state's class shapes it. A tick is the square
-   narrowed, a diamond the square turned, so a state change transitions. */
+/* The same rail again, cut short at the station the run has got to and drawn
+   in the ink a finished station is filled with; it grows as the run moves. */
+.progress .line-reached {
+  stroke: var(--text);
+  stroke-dasharray: 100;
+  transition: stroke-dashoffset var(--duration) var(--easing);
+}
+
+/* Two circles per stage; the state's class shapes them. Pending is a small
+   dot, done a filled station, running a ring and failed a ring with its core
+   filled, so a state change transitions in place and no two states differ by
+   colour alone. */
 .progress .mark {
+  fill: var(--surface);
   stroke: none;
-  stroke-width: 2;
-  stroke-linejoin: round;
+  stroke-width: 3;
   transform-box: fill-box;
   transform-origin: center;
   transition:
@@ -669,26 +682,36 @@ dialog::backdrop {
     transform var(--duration) var(--easing);
 }
 
+.progress .core {
+  fill: var(--error);
+  stroke: none;
+  transform: scale(0);
+  transform-box: fill-box;
+  transform-origin: center;
+  transition:
+    fill var(--duration) var(--easing),
+    transform var(--duration) var(--easing);
+}
+
 .progress .mark-pending {
   fill: var(--border-strong);
-  transform: scale(0.25, 1.25);
+  transform: scale(0.6);
 }
 
 .progress .mark-done {
   fill: var(--text);
-  transform: scale(0.5, 1.25);
 }
 
 .progress .mark-running {
-  fill: var(--surface);
   stroke: var(--accent);
-  transform: rotate(45deg) scale(0.85);
 }
 
 .progress .mark-failed {
-  fill: var(--error);
   stroke: var(--error);
-  transform: rotate(45deg) scale(0.85);
+}
+
+.progress .core-failed {
+  transform: scale(0.4);
 }
 
 .progress .label {

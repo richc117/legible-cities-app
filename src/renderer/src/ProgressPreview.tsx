@@ -7,12 +7,24 @@ import ProgressLine, { type Stage } from './ProgressLine'
 // real stages.
 const STAGES = ['gtfs2graph', 'topo', 'loom', 'octi']
 
+// The counts a run really has: the layout run's eight, the export's three
+// and a feed add's two, with one at the short end.
+const EIGHT = ['read', 'gtfs2graph', 'topo', 'loom', 'octi', 'render', 'schedule', 'animate']
+
 function sample(states: Stage['state'][], message?: string): Stage[] {
   return STAGES.map((label, i) => ({
     id: label,
     label,
     state: states[i],
     message: states[i] === 'running' || states[i] === 'failed' ? message : undefined,
+  }))
+}
+
+function counted(labels: string[], running: number): Stage[] {
+  return labels.map((label, i) => ({
+    id: label,
+    label,
+    state: i < running ? 'done' : i === running ? 'running' : 'pending',
   }))
 }
 
@@ -36,6 +48,8 @@ export default function ProgressPreview(): JSX.Element {
         stages={sample(['done', 'done', 'failed', 'pending'], 'loom failed (137): out of memory')}
         ariaLabel="Four stages, loom failed"
       />
+      <ProgressLine stages={counted(['download'], 0)} ariaLabel="One stage, downloading" />
+      <ProgressLine stages={counted(EIGHT, 4)} ariaLabel="Eight stages, octi running" />
     </main>
   )
 }
