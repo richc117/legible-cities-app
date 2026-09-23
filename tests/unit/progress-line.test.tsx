@@ -1,18 +1,30 @@
 // The progress line's stations per state, the quarter-circle bend it turns
 // on, how far along the rail a run has got, its accessible name, and that no
 // colour is written into it: colours are classes the stylesheet maps. Two of
-// these read app.css, as tests/unit/tokens.test.ts reads a stylesheet: the
-// drawing is half there, and what the document promises about it - a bend's
-// proportions, and four states no two of which differ by colour alone -
-// cannot be seen in either file alone.
+// these read the stylesheets under styles/, as tests/unit/tokens.test.ts
+// reads one: the drawing is half there, and what the document promises about
+// it - four states no two of which differ by colour alone, and a weight the
+// drawing keeps for itself so a bend holds its proportions - cannot be seen
+// in either file alone.
 
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { readFileSync, readdirSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import ProgressLine, { type Stage } from '../../src/renderer/src/ProgressLine'
 
-const css = readFileSync(resolve(__dirname, '../../src/renderer/src/styles/app.css'), 'utf8')
+const styles = resolve(__dirname, '../../src/renderer/src/styles')
+const css = readFileSync(join(styles, 'app.css'), 'utf8')
+
+/** Every stylesheet the interface loads, by name, with its comments out. */
+function stylesheets(): [string, string][] {
+  const files = readdirSync(styles).filter((name) => name.endsWith('.css'))
+  expect(files.length).toBeGreaterThan(1)
+  return files.map((name) => [
+    name,
+    readFileSync(join(styles, name), 'utf8').replace(/\/\*[\s\S]*?\*\//g, ''),
+  ])
+}
 
 /** The declarations of one rule, as a map, or null when there is no such
  * rule; comments are taken out. */
@@ -117,10 +129,21 @@ describe('ProgressLine', () => {
       expect(weight).toBe(radius)
       expect(radius + weight / 2).toBe(3 * (radius - weight / 2))
     }
-    // And the stylesheet must not set a width of its own: a rule there beats
-    // the attribute, and the ratio would go without this file being touched.
-    expect(rule('.progress .line')['stroke-width']).toBeUndefined()
-    expect(rule('.progress .mark')['stroke-width']).toBeUndefined()
+  })
+
+  it('leaves every stroke weight to the drawing, and none to a stylesheet', () => {
+    // The weight is a presentation attribute, and an attribute loses to any
+    // author rule at all - not only to one naming the line or the station,
+    // and not only in app.css. So no stylesheet the interface loads writes a
+    // stroke weight anywhere: a rule that did would beat the attribute and
+    // part the weight from the bend's radius, and the drawing would stop
+    // keeping its own proportions with nothing in ProgressLine.tsx touched.
+    // The kit's own vendored stylesheet is outside what this can see; it
+    // draws no line of ours.
+    for (const [name, text] of stylesheets())
+      expect(text, `${name} sets a stroke weight; the drawing sets its own`).not.toMatch(
+        /stroke-width/,
+      )
   })
 
   it('tells its four states apart by shape, not by colour', () => {
@@ -174,6 +197,15 @@ describe('ProgressLine', () => {
     expect(offset(middle)).toBeGreaterThan(offset(failed))
     expect(offset(failed)).toBeGreaterThan(0)
     expect(none).toContain('pathLength="100"')
+
+    // And exactly where, said here in the drawing's own terms rather than
+    // its formula: the rail is a stub 5 units long, a quarter of a circle of
+    // radius 3, and then 301 units of straight line; loom stands 205 of
+    // those units along it. Ends alone would not catch an arc counted as its
+    // radius, which puts the failure 0.2 further along.
+    const rail = 8 - 3 + (Math.PI / 2) * 3
+    const covered = ((rail + 205) / (rail + 301)) * 100
+    expect(offset(failed)).toBeCloseTo(100 - Math.round(covered * 10) / 10, 5)
   })
 
   it('draws every stage count a run has, from one to eight', () => {

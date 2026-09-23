@@ -76,9 +76,10 @@ function reached(stages: Stage[], lastX: number): number {
 
 /** A station: the circle the state shapes, and the core only a failed one
  * shows. Both are always drawn, so a state change is a transition. The ring
- * takes the line's weight and no vector effect: where the window is too
- * narrow for the drawing, all of it scales down together rather than the
- * stations keeping their weight over a line that has lost its. */
+ * takes the line's weight and no vector effect: a stroke that did not scale
+ * would keep its width while the circle beneath it shrank, closing the
+ * ring's hole where the drawing is scaled down - and the hole is the whole
+ * of what makes a running station a running one. */
 function station(x: number, state: StageState): JSX.Element {
   return (
     <>
