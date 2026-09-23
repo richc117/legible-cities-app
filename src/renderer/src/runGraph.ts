@@ -166,7 +166,15 @@ export function stalenessOf(record: ProjectRecord, run: RunFacts | null): StaleS
   // A re-layout that answered and then stopped before the map was drawn
   // left the stored set replaced, so the page is of geometry that is gone
   // (A3-05). Nothing on the record can see it; the run can.
-  if (run !== null && run.replaced) sources.push({ cell: 'process', reason: 'replaced' })
+  //
+  // Only once the run has stopped. `replaced` goes up the moment
+  // `graph.build` answers, which is minutes before the map is drawn, and a
+  // re-layout that is still drawing has not left anything behind yet:
+  // reading it while the run goes would flap cells 03 to 06 to stale for
+  // the whole drawing half of every re-layout, which is the opposite of
+  // "running makes nothing below it stale".
+  if (run !== null && run.replaced && run.state !== 'running')
+    sources.push({ cell: 'process', reason: 'replaced' })
   return sources.sort((a, b) => at(a.cell) - at(b.cell))
 }
 
@@ -174,10 +182,10 @@ export function stalenessOf(record: ProjectRecord, run: RunFacts | null): StaleS
  * Every cell's state, from the record and the runs in flight.
  *
  * Per cell, in order: a run of its own that is going reads `running`; one
- * that failed reads `error`; a source above it reads `stale`; otherwise
- * `ready`. A cancelled run is not an error - Stop returns a cell to what it
- * was - and a running cell makes nothing below it stale, because running is
- * not a change to anything yet.
+ * that failed reads `error`; a source above it reads `stale`, naming the
+ * nearest one; otherwise `ready`. A cancelled run is not an error - Stop
+ * returns a cell to what it was - and a running cell makes nothing below it
+ * stale, because running is not a change to anything yet.
  *
  * The four cheap-edit exemptions of ADR-045 fall out of `stalenessOf`
  * raising no source for a colour, a default colour, an order or a theme.
@@ -186,7 +194,16 @@ export function runGraph(input: RunGraphInput): Record<CellId, CellStatus> {
   const { record, run, exportRun } = input
   const running = cellOfRun(run)
   const failed = run !== null && run.state === 'failed' ? cellOfRun(run) : null
-  const sources = stalenessOf(record, run)
+  const exportFailed = exportRun?.state === 'failed'
+  // A cell in error is a source for the cells below it, exactly as a change
+  // is: the map below a failed run is of what came before it. It is appended
+  // last so that where one cell both failed and holds a change, the cells
+  // below it are told about the failure, which is the more particular of the
+  // two. Cell 06 is nobody's upstream, so an export that failed is not here.
+  const sources: StaleSource[] = [
+    ...stalenessOf(record, run),
+    ...(failed === null ? [] : [{ cell: failed, reason: 'upstream' as const }]),
+  ]
 
   const states = {} as Record<CellId, CellStatus>
   for (const cell of CELLS) {
@@ -195,16 +212,13 @@ export function runGraph(input: RunGraphInput): Record<CellId, CellStatus> {
       states[cell] = { state: 'running', because: null }
       continue
     }
-    if (isExport ? exportRun?.state === 'failed' : failed === cell) {
+    if (isExport ? exportFailed : failed === cell) {
       states[cell] = { state: 'error', because: 'failed' }
       continue
     }
-    // A cell in error is a source for the cells below it, exactly as a
-    // change is: the map below a failed run is of what came before it.
-    const above = sources.find((source) => at(source.cell) < at(cell))
-    const errorAbove = failed !== null && at(failed) < at(cell)
-    if (above !== undefined || errorAbove) {
-      states[cell] = { state: 'stale', because: above?.reason ?? 'upstream' }
+    const above = nearestAbove(sources, cell)
+    if (above !== undefined) {
+      states[cell] = { state: 'stale', because: above.reason }
       continue
     }
     states[cell] = { state: 'ready', because: null }
@@ -213,10 +227,47 @@ export function runGraph(input: RunGraphInput): Record<CellId, CellStatus> {
 }
 
 /**
- * Whether the record's colours, order or theme are the ones the map on
- * screen carries. Not a staleness source - the cheap edits redraw
- * themselves - but Revert and a cell's summary both need the answer
- * (A5.5-12, A5.5-18).
+ * The source nearest above a cell, which is the one it names. Nearest and
+ * not topmost: the sentence a cell says is read by someone who has just
+ * changed something, and "the day you chose has not been drawn" is the
+ * answer to what they did, where "the mode moved" is the answer to a
+ * question about a change three cells further up that they may have made
+ * last week. Every source is still on the record; the rail and the header
+ * can say how many.
+ *
+ * Later in the list wins a tie, which is how a failure beats a change in
+ * the same cell.
+ */
+function nearestAbove(sources: readonly StaleSource[], cell: CellId): StaleSource | undefined {
+  let nearest: StaleSource | undefined
+  for (const source of sources) {
+    if (at(source.cell) >= at(cell)) continue
+    if (nearest === undefined || at(source.cell) >= at(nearest.cell)) nearest = source
+  }
+  return nearest
+}
+
+/**
+ * Whether the record's colours and order are the ones the map on screen
+ * carries. Not a staleness source - the cheap edits redraw themselves - but
+ * Revert and a cell's summary both need the answer (A5.5-12, A5.5-18).
+ *
+ * The theme is deliberately not in it, although `drawn` carries one. A
+ * theme reaches the page on its address and the page restyles itself within
+ * a frame of the press (A4-03), so the map on screen always carries
+ * `record.theme` while `drawn.theme` is the theme of the last *draw*.
+ * Asking this function about the theme would answer "the map does not show
+ * it" about the one field of which that is never true.
+ *
+ * `drawn.theme` is kept for Revert, which puts a cell back to the state the
+ * map on screen agrees with: for cell 04 that is a matter of the record,
+ * not of the pixels.
+ *
+ * The order is compared as a value. An empty order and one naming every
+ * line in the engine's own alphabetical order draw the same map, and this
+ * says they differ: the lines a layout carries are not in the record, so a
+ * pure module cannot tell. A caller that has the line list can
+ * (`isAlphabetical` in `order.ts`).
  */
 export function drawnMatchesEdits(record: ProjectRecord): boolean {
   const { drawn } = record
@@ -224,7 +275,6 @@ export function drawnMatchesEdits(record: ProjectRecord): boolean {
   const labels = Object.keys(record.colors)
   return (
     drawn.defaultColor === record.defaultColor &&
-    drawn.theme === record.theme &&
     sameOrder(drawn.lineOrder, record.lineOrder) &&
     labels.length === Object.keys(drawn.colors).length &&
     labels.every((label) => drawn.colors[label] === record.colors[label])

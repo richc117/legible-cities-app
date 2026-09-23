@@ -199,8 +199,18 @@ describe('a drawn record', () => {
       { cell: 'process', reason: 'layout' },
       { cell: 'frame', reason: 'day' },
     ])
-    // The nearest source above a cell is the one it names.
-    expect(runGraph({ record: moved, run: null, exportRun: null }).lines.because).toBe('inputs')
+  })
+
+  it('names the nearest source above it, not the first', () => {
+    // Three changes, one under the other. Cell 05 is told about the day,
+    // which is the last thing that happened to the map, rather than about a
+    // mode someone may have changed last week.
+    const moved = { ...current, mode: 'subway', layout: OTHER, date: '2026-09-19' }
+    const graph = runGraph({ record: moved, run: null, exportRun: null })
+    expect(graph.lines.because).toBe('day')
+    expect(graph.frame.because).toBe('layout')
+    expect(graph.process.because).toBe('inputs')
+    expect(graph.data).toEqual({ state: 'ready', because: null })
   })
 })
 
@@ -228,12 +238,21 @@ describe('the cheap edits ADR-045 exempts', () => {
 
   it('are still visible to Revert through `drawn`', () => {
     expect(drawnMatchesEdits(current)).toBe(true)
-    for (const record of [colours, defaults, order, theme]) {
+    for (const record of [colours, defaults, order]) {
       expect(drawnMatchesEdits(record)).toBe(false)
     }
     // A record from before `drawn` has nothing to put back, and says so
     // rather than claiming a difference it cannot see.
     expect(drawnMatchesEdits(rc4)).toBe(true)
+  })
+
+  it('leaves the theme out of that answer, since the page restyles at once', () => {
+    // A theme reaches the page on its address and the page restyles itself
+    // within a frame of the press (A4-03), so the map on screen carries the
+    // record's theme however long ago it was last drawn. `drawn.theme` is
+    // still kept, because Revert puts the record back and not the pixels.
+    expect(drawnMatchesEdits(theme)).toBe(true)
+    expect(theme.drawn?.theme, 'and the last draw is still on the record').toBe('warm-dark')
   })
 
   it('sees an override removed as well as one added', () => {
@@ -288,7 +307,30 @@ describe('a run that ended', () => {
     const moved = { ...current, mode: 'subway' }
     const graph = runGraph({ record: moved, run: layoutRun('failed'), exportRun: null })
     expect(graph.process).toEqual({ state: 'error', because: 'failed' })
-    expect(graph.frame).toEqual({ state: 'stale', because: 'inputs' })
+    // And the cells below it are told about the run that failed, which is
+    // nearer to them than the mode that moved and more particular than it.
+    expect(graph.frame).toEqual({ state: 'stale', because: 'upstream' })
+    expect(graph.export.because).toBe('upstream')
+    expect(graph.data, 'nothing above cell 01').toEqual({ state: 'ready', because: null })
+  })
+
+  it('tells the cells below a failed rebuild about the run, not about a day', () => {
+    // Cell 03 both holds a change and failed: the failure is what 04 to 06
+    // are told, because it is the more particular of the two.
+    const moved = { ...current, date: '2026-09-19' }
+    const graph = runGraph({
+      record: moved,
+      run: layoutRun('failed', { rebuilt: true }),
+      exportRun: null,
+    })
+    expect(graph.frame).toEqual({ state: 'error', because: 'failed' })
+    expect(graph.style).toEqual({ state: 'stale', because: 'upstream' })
+  })
+
+  it('does not make a failed export anybody’s upstream: cell 06 is last', () => {
+    const graph = runGraph({ record: current, run: null, exportRun: { state: 'failed' } })
+    expect(graph.export).toEqual({ state: 'error', because: 'failed' })
+    expect(graph.lines).toEqual({ state: 'ready', because: null })
   })
 
   it('returns its cell to what it was when it was stopped, never to error', () => {
@@ -312,6 +354,22 @@ describe('a re-layout that replaced the stored set and drew no map', () => {
     expect(states(current, stopped)).toEqual(
       cells({ frame: 'stale', style: 'stale', lines: 'stale', export: 'stale' }),
     )
+  })
+
+  it('says nothing at all while the re-layout is still drawing', () => {
+    // `replaced` goes up the moment `graph.build` answers, minutes before
+    // the map is drawn. Reading it then would flap cells 03 to 06 to stale
+    // for the whole drawing half of every re-layout and back again, which
+    // is exactly what "running makes nothing below it stale" forbids.
+    const drawing = layoutRun('running', { replaced: true })
+    expect(stalenessOf(current, drawing)).toEqual([])
+    expect(states(current, drawing)).toEqual(cells({ process: 'running' }))
+  })
+
+  it('says nothing once the map has been drawn from the new set', () => {
+    // The run clears `replaced` when it finishes, so this is belt and
+    // braces: a finished run leaves nothing behind either way.
+    expect(states(current, layoutRun('done', { replaced: false }))).toEqual(all('ready'))
   })
 
   it('is an error on cell 02 when the run failed rather than stopping', () => {

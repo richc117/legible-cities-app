@@ -1067,11 +1067,17 @@ describe('drawn', () => {
     // anything being redrawn, which is exactly what a stale cell reports.
     await store.setInputs(project.id, { mode: 'subway', agency: 'LACMTA' })
     await store.setTheme(project.id, 'sepia')
+    await store.setExport(project.id, {
+      preset: 'linkedin-video',
+      storyboard: 'day',
+      options: { clock: false },
+    } as never)
     await store.rename(project.id, 'Los Angeles')
     const after = await store.get(project.id)
     expect(after.drawn).toEqual(drawn)
     expect(after.mode, 'the record moved, the map did not').toBe('subway')
     expect(after.theme).toBe('sepia')
+    expect(after.export.preset).toBe('linkedin-video')
   })
 
   it('is on disk, so what the map was drawn from survives a relaunch', async () => {

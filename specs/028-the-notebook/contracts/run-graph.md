@@ -134,11 +134,20 @@ change; what is behind is everything drawn from it.
 | `built` differs from the record's `mode` or `agency` | 01 | 02-06 | `inputs` |
 | `drawn.layout` differs from `layout` | 02 | 03-06 | `layout` |
 | the same layout under a different `made` | 02 | 03-06 | `relaid` |
-| the run's `replaced`: a re-layout replaced the stored set and drew no map | 02 | 03-06 | `replaced` |
+| the run's `replaced`, once the run has stopped | 02 | 03-06 | `replaced` |
 | `drawn.date` differs from `date` | 03 | 04-06 | `day` |
 | a cell's own run failed | that cell | below it | `upstream` |
 
-A cell names the nearest source above it.
+**A cell names the nearest source above it**, not the topmost. The sentence
+is read by someone who has just changed something, and the answer they want
+is what they did - "the day you chose has not been drawn" - rather than the
+root of it three cells further up, which they may have changed last week.
+Where a cell both failed and holds a change, the cells below it are told
+about the failure, which is the more particular of the two. Every source is
+still on the record, so the rail and the header can say how many.
+
+Cell 06 is nobody's upstream: an export that failed leaves cell 06 in error
+and nothing else changes.
 
 `built` is the one source that does not need `drawn`: it has been on the
 record since A2-02 and is what the engine made the stored layout with, so a
@@ -150,6 +159,13 @@ that answered and was then stopped left the engine's stored set replaced
 with the record untouched, so the page is of geometry that is gone (A3-05);
 only the run knows.
 
+It is read **only once the run has stopped**. The run raises `replaced` the
+moment `graph.build` answers, which is minutes before the map is drawn, and
+a re-layout that is still drawing has not left anything behind yet: reading
+it while the run goes would take cells 03 to 06 to stale for the whole
+drawing half of every re-layout and back again, which is the opposite of
+"running makes nothing below it stale".
+
 ### The cheap edits are exempt
 
 The colours, the default colour, the order and the theme raise **no
@@ -160,9 +176,18 @@ takes the focus with it, and a refused change is a lost one. Stale is for
 the edits that cost a re-layout.
 
 Their values are still kept in `drawn`, because Revert reads them
-(A5.5-12). `drawnMatchesEdits` answers whether the record's colours, order
-and theme are the ones the map carries, for a summary or a Revert, without
-being a state.
+(A5.5-12). `drawnMatchesEdits` answers whether the record's colours and
+order are the ones the map carries, for a summary or a Revert, without
+being a state. Two things a caller has to know about that answer:
+
+- **The theme is not in it**, although `drawn` carries one. See below.
+- **The order is compared as a value.** An empty order and one naming every
+  line in the engine's own alphabetical order draw the same map, and this
+  says they differ, because the lines a layout carries are not in the
+  record and a pure module cannot tell. A5.5-18 and A5.5-12 have the line
+  list and can: `isAlphabetical` in `src/renderer/src/order.ts` is the same
+  question asked where the answer exists. Without it, cell 05 would offer a
+  Revert that changes nothing a person can see.
 
 ## Each cell's state
 
@@ -199,18 +224,35 @@ comparison against `drawn.date` never fires, and the staleness that issue
 promises cannot exist. That is A5.5-15's to do; this contract says which
 comparison it will light up.
 
-**`drawn.theme` describes the last draw, not the page's address.** A theme
-is taken on the page's address and the page restyles itself at once
-(A4-03), so between a theme press and the next draw `drawn.theme` is behind
-what is on screen. It is exempt from staleness either way; A5.5-12's Revert
-for cell 04 should be read against that rather than against "what the map
-shows".
+**`drawn.theme` describes the last draw, not what is on screen.** A theme
+is taken on the page's address and the page restyles itself within a frame
+of the press (A4-03), with no draw at all, so the map on screen always
+carries `record.theme` while `drawn.theme` holds the theme of the last
+draw. It is exempt from staleness either way, and it is deliberately not in
+`drawnMatchesEdits`, which would otherwise answer "the map does not show
+it" about the one field of which that is never true. A5.5-12's Revert for
+cell 04 puts the record back, not the pixels, and its issue's phrase "what
+the map shows" should be read that way.
 
-**`made` has no live path to divergence yet.** A set re-laid out under this
-project is discovered by `graph.build`, which the app only calls as part of
-a run that then redraws - so `record.made` and `drawn.made` are written
-together. The comparison is implemented and tested from a record, and it is
-what makes the field worth storing; the case that will exercise it is an
-engine or an app that can ask what a stored set's `made` is now without
-drawing from it. Until then `replaced` is the reachable half of cell 02's
-provenance. A3-06's spec records an open edge of the same family.
+**Neither `made` nor `layout` has a live path to divergence yet, and
+`replaced` does not survive.** All three are worth stating together,
+because a reader will otherwise assume one of them is live:
+
+- `drawn.layout` and `drawn.made` are written by `drew`, which is called
+  only by the four handlers, and `layout` and `made` are written only by
+  `completeLayout` - which calls `drew` in the same breath, after the map
+  has been drawn. So nothing in the app as it stands can move one without
+  the other. The comparisons are implemented and tested from a record, and
+  they are what makes the two fields worth storing; the case that will
+  exercise `made` is an engine or an app that can ask what a stored set's
+  `made` is now without drawing from it. A set re-laid out under this
+  project is discovered today only by `graph.build`, inside a run that then
+  redraws. A3-06's spec records an open edge of the same family.
+- `replaced` lives in the renderer's memory and nowhere else. `#begin`
+  clears it at the start of every run, and a relaunch starts without it. So
+  a cancelled re-layout followed by any other run - or by a quit - loses
+  the one reachable cell-02 source, and the notebook goes back to reading
+  ready over a page drawn from geometry the engine has replaced. Putting it
+  on the record is a change to the record, not to this derivation; until
+  something does, cell 02's provenance is honest only within the session
+  that made it.
