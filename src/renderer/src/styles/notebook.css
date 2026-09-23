@@ -6,3 +6,95 @@
    branch which does has somewhere to put its rules, and so the import order
    is settled while nothing depends on it: the shell, then the panels, then
    this. The four token files stay the only place a literal may appear. */
+
+/* The cell (A5.5-05, DESIGN.md 8.2): a heading row that is the toggle, the
+   controls under it, and a footer where there is provenance to show. The
+   row's parts sit on one line - number, name, state, and the summary while
+   it is collapsed - which is why the toggle is a button and a region and
+   not a <details>, whose own summary owns that row. */
+
+.cell {
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  margin-bottom: var(--space-4-3);
+}
+
+/* The row itself: a button drawn as a row rather than as a control, so it
+   takes the whole width and reads as the cell's heading. */
+.cell-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4-3);
+  width: 100%;
+  padding: var(--space-4-3) var(--space-4-4);
+  background: none;
+  border: none;
+  font: inherit;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.cell-head:hover {
+  background: var(--surface-hover);
+}
+
+.cell-number {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  font-variant-numeric: var(--numerals);
+}
+
+.cell-name {
+  font-size: var(--font-ui-medium);
+  font-weight: var(--weight-strong);
+}
+
+/* The state: an icon and a word, never a colour alone. The word's colour
+   is the state's, on --surface, which is the only ground the scoping table
+   in section 3 allows these on. */
+.cell-state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2-2);
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+}
+
+.cell[data-state='running'] .cell-state {
+  color: var(--accent-text);
+}
+
+.cell[data-state='stale'] .cell-state {
+  color: var(--warning);
+}
+
+.cell[data-state='error'] .cell-state {
+  color: var(--error);
+}
+
+/* What the cell holds, while it is closed: one sentence, quiet, and cut
+   with an ellipsis rather than wrapping the row onto a second line. */
+.cell-summary {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cell-body {
+  padding: 0 var(--space-4-4) var(--space-4-4);
+}
+
+/* Provenance, out of the way: the layout's id and when it was made, the
+   day against the feed's window, the export's sidecar (A5.5-11). */
+.cell-footer {
+  border-top: var(--border-width) solid var(--border);
+  padding: var(--space-4-2) var(--space-4-4);
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
