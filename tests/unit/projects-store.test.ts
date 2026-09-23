@@ -69,6 +69,7 @@ function record(id: string, overrides: Partial<ProjectRecord> = {}): ProjectReco
     export: { preset: 'instagram-reel', options: {} },
     layout: null,
     made: null,
+    drawn: null,
     built: null,
     created: '2026-09-01T00:00:00.000Z',
     modified: '2026-09-01T00:00:00.000Z',
@@ -145,6 +146,7 @@ describe('create', () => {
       export: { preset: 'instagram-reel', options: {} },
       layout: null,
       made: null,
+      drawn: null,
       built: null,
       created: created.created,
       modified: created.modified,
@@ -999,6 +1001,110 @@ describe('setExport', () => {
     const current = await store.get(project.id)
     await writeFile(file, JSON.stringify({ ...current, version: 99 }), 'utf8')
     await expect(store.setExport(project.id, LINKEDIN as never)).rejects.toThrow('read-only')
+  })
+})
+
+// What the page on screen was drawn from (A5.5-04, ADR-045): written by the
+// four handlers that already write the record at the end of a draw, and by
+// nobody else, so a change the map has not taken up leaves `drawn` behind.
+describe('drawn', () => {
+  const LAYOUT = 'a'.repeat(64)
+  const OTHER = 'b'.repeat(64)
+
+  async function laidOut(): Promise<ProjectRecord> {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    await store.completeLayout(project.id, {
+      date: '2026-09-15',
+      layout: LAYOUT,
+      service: WINDOW,
+      made: MADE,
+      built: BUILT,
+    })
+    return project
+  }
+
+  it('is null on a project that has drawn nothing', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    expect(project.drawn).toBeNull()
+    expect(await readRecord(project.id)).toMatchObject({ drawn: null })
+  })
+
+  it('is the whole of what the layout run drew', async () => {
+    const project = await laidOut()
+    const after = await store.get(project.id)
+    expect(after.drawn).toEqual({
+      layout: LAYOUT,
+      made: MADE,
+      date: '2026-09-15',
+      colors: {},
+      defaultColor: DEFAULT_COLOR,
+      lineOrder: [],
+      theme: DEFAULT_THEME,
+    })
+  })
+
+  it('takes the new day from a rebuild, and nothing else', async () => {
+    const project = await laidOut()
+    const after = await store.completeRebuild(project.id, { date: '2026-09-12' })
+    expect(after.drawn).toMatchObject({ date: '2026-09-12', layout: LAYOUT, made: MADE })
+  })
+
+  it('takes the palette from a recolour and the order from a reorder', async () => {
+    const project = await laidOut()
+    const colours = await store.completeColors(project.id, {
+      colors: { A: '#0072bc' },
+      defaultColor: '#112233',
+    })
+    expect(colours.drawn).toMatchObject({ colors: { A: '#0072bc' }, defaultColor: '#112233' })
+    const order = await store.completeOrder(project.id, ['K', 'A'])
+    expect(order.drawn).toMatchObject({ lineOrder: ['K', 'A'], colors: { A: '#0072bc' } })
+  })
+
+  it('stays where it was when nothing was drawn', async () => {
+    const project = await laidOut()
+    const drawn = (await store.get(project.id)).drawn
+    // The inputs, the theme and the export choice are all written without
+    // anything being redrawn, which is exactly what a stale cell reports.
+    await store.setInputs(project.id, { mode: 'subway', agency: 'LACMTA' })
+    await store.setTheme(project.id, 'sepia')
+    await store.setExport(project.id, {
+      preset: 'linkedin-video',
+      storyboard: 'day',
+      options: { clock: false },
+    } as never)
+    await store.rename(project.id, 'Los Angeles')
+    const after = await store.get(project.id)
+    expect(after.drawn).toEqual(drawn)
+    expect(after.mode, 'the record moved, the map did not').toBe('subway')
+    expect(after.theme).toBe('sepia')
+    expect(after.export.preset).toBe('linkedin-video')
+  })
+
+  it('is on disk, so what the map was drawn from survives a relaunch', async () => {
+    const project = await laidOut()
+    await store.completeRebuild(project.id, { date: '2026-09-12' })
+    const fresh = new ProjectStore(home, (message) => lines.push(message))
+    expect((await fresh.get(project.id)).drawn).toMatchObject({ date: '2026-09-12' })
+  })
+
+  it('fills on the first draw of a record written before the field existed', async () => {
+    // A record from v0.1.0-rc.4: laid out, and with no idea what it drew.
+    const old: Record<string, unknown> = {
+      ...record(A, { layout: OTHER, made: MADE, built: BUILT, date: '2026-09-15' }),
+    }
+    delete old.drawn
+    await seed(A, old)
+    const opened = await store.get(A)
+    expect(opened.drawn, 'unknown, which is not the same as stale').toBeNull()
+    expect(opened.layout, 'and the layout is kept').toBe(OTHER)
+    const after = await store.completeLayout(A, {
+      date: '2026-09-15',
+      layout: LAYOUT,
+      service: WINDOW,
+      made: MADE,
+      built: BUILT,
+    })
+    expect(after.record.drawn).toMatchObject({ layout: LAYOUT, made: MADE })
   })
 })
 

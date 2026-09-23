@@ -6,6 +6,7 @@ import {
   DEFAULT_MODE,
   DEFAULT_STYLE,
   DEFAULT_THEME,
+  drawnFrom,
   ID_PATTERN,
   RECORD_VERSION,
   parseRecord,
@@ -49,6 +50,7 @@ const full: ProjectRecord = {
   export: { preset: 'instagram-reel', options: {} },
   layout: null,
   made: null,
+  drawn: null,
   built: null,
   created: '2026-09-07T20:00:00.000Z',
   modified: '2026-09-07T20:00:00.000Z',
@@ -377,6 +379,93 @@ describe('parseRecord', () => {
     for (const input of [null, undefined, 'text', 42, true, [full]]) {
       expect(parseRecord(input), JSON.stringify(input)).toEqual({ error: 'not an object' })
     }
+  })
+})
+
+describe('drawn', () => {
+  // What the page on screen was drawn from (A5.5-04, ADR-045). The field is
+  // additive and RECORD_VERSION does not move: an older build reads a record
+  // that carries it, and a record that lacks it is not wrong but unknown.
+  const LAYOUT = 'a'.repeat(64)
+  const MADE = '2026-09-10T12:00:00+00:00'
+  const drew: ProjectRecord = {
+    ...full,
+    layout: LAYOUT,
+    made: MADE,
+    date: '2026-09-12',
+    colors: { A: '#0072bc' },
+    lineOrder: ['A', 'K'],
+    theme: 'sepia',
+  }
+
+  it('is the record’s own seven fields, copied', () => {
+    expect(drawnFrom(drew)).toEqual({
+      layout: LAYOUT,
+      made: MADE,
+      date: '2026-09-12',
+      colors: { A: '#0072bc' },
+      defaultColor: drew.defaultColor,
+      lineOrder: ['A', 'K'],
+      theme: 'sepia',
+    })
+    // Copied, not shared: a later edit to the record must not rewrite what
+    // the map was drawn from under it.
+    const edited: ProjectRecord = {
+      ...drew,
+      colors: { ...drew.colors },
+      lineOrder: [...drew.lineOrder],
+    }
+    const drawn = drawnFrom(edited)
+    edited.colors.B = '#ff0000'
+    edited.lineOrder.push('B')
+    expect(drawn?.colors).toEqual({ A: '#0072bc' })
+    expect(drawn?.lineOrder).toEqual(['A', 'K'])
+  })
+
+  it('is null for a project that has drawn nothing', () => {
+    expect(drawnFrom(full)).toBeNull()
+  })
+
+  it('reads back as written', () => {
+    const drawn = drawnFrom(drew)
+    const parsed = parseRecord({ ...drew, drawn })
+    if (!('record' in parsed)) throw new Error(parsed.error)
+    expect(parsed.record.drawn).toEqual(drawn)
+  })
+
+  it('reads as nothing when it is missing, which is not the same as stale', () => {
+    const parsed = parseRecord(full)
+    if (!('record' in parsed)) throw new Error(parsed.error)
+    expect(parsed.record.drawn).toBeNull()
+  })
+
+  it('is whole or nothing: a half-valid block is not half-trusted', () => {
+    const drawn = drawnFrom(drew)
+    if (drawn === null) throw new Error('the fixture has a layout')
+    for (const half of [
+      { ...drawn, layout: 'abc' },
+      { ...drawn, made: 'last Tuesday' },
+      { ...drawn, date: '7 September 2026' },
+      { ...drawn, defaultColor: 'grey' },
+      { ...drawn, theme: 'neon' },
+      { ...drawn, colors: { A: 'red' } },
+      { ...drawn, lineOrder: ['A', 'A'] },
+      { ...drawn, lineOrder: 'A' },
+      { layout: LAYOUT },
+      'drawn',
+      [drawn],
+    ]) {
+      const parsed = parseRecord({ ...drew, drawn: half })
+      if (!('record' in parsed)) throw new Error(parsed.error)
+      expect(parsed.record.drawn, JSON.stringify(half)).toBeNull()
+    }
+  })
+
+  it('holds a day and a made of none, which a record can honestly have', () => {
+    const drawn = { ...drawnFrom(drew), made: null, date: null }
+    const parsed = parseRecord({ ...drew, drawn })
+    if (!('record' in parsed)) throw new Error(parsed.error)
+    expect(parsed.record.drawn).toEqual(drawn)
   })
 })
 

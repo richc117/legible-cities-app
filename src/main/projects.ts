@@ -15,6 +15,7 @@ import {
   DEFAULT_MODE,
   DEFAULT_STYLE,
   DEFAULT_THEME,
+  drawnFrom,
   ID_PATTERN,
   RECORD_VERSION,
   parseRecord,
@@ -49,6 +50,18 @@ import {
 import { isLayoutId, type LayoutDone, type LayoutResult } from '../shared/layout'
 import { isValidProjectId } from './paths'
 import { failedWords, renameOver, retriedWords, type ReplaceOptions } from './replace-file'
+
+/**
+ * The record a draw has just produced, with `drawn` set from its own
+ * values (A5.5-04, ADR-045). The four handlers that write at the end of a
+ * draw pass through here and nobody else does: an edit that draws nothing -
+ * a rename, the inputs, the theme, the export choice - leaves `drawn`
+ * exactly as it was, which is what lets the notebook say the map on screen
+ * is behind the record.
+ */
+function drew(record: ProjectRecord): ProjectRecord {
+  return { ...record, drawn: drawnFrom(record) }
+}
 
 const RECORD_FILE = 'project.json'
 // A fresh temporary name per write, written first and then renamed over the
@@ -346,6 +359,7 @@ export class ProjectStore {
       export: copyChoice(DEFAULT_CHOICE),
       layout: null,
       made: null,
+      drawn: null,
       built: null,
       created: now,
       modified: now,
@@ -441,7 +455,7 @@ export class ProjectStore {
       throw new Error('the layout run did not say which layout it drew from')
     const layout = done.layout
     const { start, end, busiest, anchor } = done.service
-    const updated: ProjectRecord = {
+    const updated: ProjectRecord = drew({
       ...record,
       version: RECORD_VERSION,
       layout,
@@ -450,7 +464,7 @@ export class ProjectStore {
       date: record.date ?? done.date,
       service: { start, end, busiest, anchor },
       modified: new Date().toISOString(),
-    }
+    })
     await this.writeAtomic(id, updated)
     // A different id is a different layout. The same id with a different
     // `made` is the same inputs laid out again since this project last drew
@@ -482,12 +496,12 @@ export class ProjectStore {
       throw new Error('lay the project out again to learn which days the feed covers')
     if (!withinWindow(done.date, record.service))
       throw new Error(`the feed covers ${record.service.start} to ${record.service.end}`)
-    const updated: ProjectRecord = {
+    const updated: ProjectRecord = drew({
       ...record,
       version: RECORD_VERSION,
       date: done.date,
       modified: new Date().toISOString(),
-    }
+    })
     await this.writeAtomic(id, updated)
     return updated
   }
@@ -509,13 +523,13 @@ export class ProjectStore {
     const { record, readOnly } = await this.load(id)
     if (readOnly) throw new Error('read-only')
     if (record.layout === null) throw new Error('lay the project out first')
-    const updated: ProjectRecord = {
+    const updated: ProjectRecord = drew({
       ...record,
       version: RECORD_VERSION,
       colors: { ...palette.colors },
       defaultColor: palette.defaultColor,
       modified: new Date().toISOString(),
-    }
+    })
     await this.writeAtomic(id, updated)
     return updated
   }
@@ -536,12 +550,12 @@ export class ProjectStore {
     const { record, readOnly } = await this.load(id)
     if (readOnly) throw new Error('read-only')
     if (record.layout === null) throw new Error('lay the project out first')
-    const updated: ProjectRecord = {
+    const updated: ProjectRecord = drew({
       ...record,
       version: RECORD_VERSION,
       lineOrder: [...order],
       modified: new Date().toISOString(),
-    }
+    })
     await this.writeAtomic(id, updated)
     return updated
   }
