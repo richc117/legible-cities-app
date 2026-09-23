@@ -38,6 +38,21 @@ import {
 // Playwright's description ignores it, so no test could hold it; and a
 // dangling inner aria-describedby beside aria-description is read first by
 // Playwright and describes nothing (measured on 2026-09-13, issue 113).
+//
+// aria-controls is not an attribute on the inner button either, for the
+// same reason: an id there relates the button to nothing (F6). The wrapper
+// resolves the ids in the button's document and sets the elements
+// themselves as the inner button's `ariaControlsElements`, kept current by
+// the same kind of observer, since the inspector and a colour picker render
+// after their buttons and go again. A reference from inside a shadow root to
+// an element of the document around it is one the ARIA reflection rules
+// allow, and Chromium's accessibility tree takes it as the button's
+// `controls` relation: measured on 2026-09-14 with the kit's own fig.js in
+// Chromium 151 and 153, either side of Electron 44.2.0's Chromium 152, where
+// the id attribute gave no relation, the element reference gave the same
+// relation a native button's attribute does, and setting the attribute
+// again afterwards cleared the reference (issue 121). So nothing may write
+// `aria-controls` onto the inner button once the wrapper has set elements.
 
 export interface ButtonProps {
   variant?: 'primary' | 'secondary' | 'ghost' | 'destructive'
@@ -62,6 +77,12 @@ export interface ButtonProps {
    */
   'aria-disabled'?: boolean
   'aria-describedby'?: string
+  /**
+   * The ids of the elements the button shows or hides, space-separated. Set
+   * on the inner button as element references, not as an id attribute
+   * (issue 121); an id with no element in the document relates nothing
+   * until one arrives.
+   */
   'aria-controls'?: string
 }
 
@@ -83,7 +104,7 @@ export interface DescriptionTarget {
  * Starts calling `callback` whenever the root's elements or their text
  * change, and returns the function that stops; a test passes its own.
  */
-export type WatchRoot = (root: DescriptionRoot, callback: () => void) => () => void
+export type WatchRoot = (root: object, callback: () => void) => () => void
 
 const watchWithObserver: WatchRoot = (root, callback) => {
   const observer = new MutationObserver(callback)
@@ -148,6 +169,65 @@ export function mirrorDescription(
   }
 }
 
+/** Where the controlled elements are looked up: the button's document or shadow root. */
+export interface ControlsRoot<E = Element> {
+  getElementById(id: string): E | null
+}
+
+/** The inner button, as far as the elements it controls go. */
+export interface ControlsTarget<E = Element> {
+  getAttribute(name: string): string | null
+  ariaControlsElements: readonly E[] | null
+}
+
+/** The elements an aria-controls list names, in order, each once; an id with no element adds nothing. */
+export function controlledElements<E>(root: ControlsRoot<E>, controls: string): E[] {
+  const elements: E[] = []
+  for (const id of controls.split(/\s+/)) {
+    if (id === '') continue
+    const element = root.getElementById(id)
+    if (element !== null && !elements.includes(element)) elements.push(element)
+  }
+  return elements
+}
+
+/**
+ * Keeps `target`'s `ariaControlsElements` equal to the elements `controls`
+ * names in `root`, and returns the function that stops. The root is watched
+ * as a description's is, because a controlled element renders after its
+ * button or is replaced by another with the same id. A reference is written
+ * only when the elements differ from what the target reports, and cleared
+ * when none are left, so it holds no element that has gone. Setting the
+ * reference writes an empty `aria-controls` on the inner button, inside its
+ * shadow root, which the root's observer does not see. Stopping clears the
+ * reference.
+ */
+export function mirrorControls<E>(
+  target: ControlsTarget<E>,
+  root: ControlsRoot<E>,
+  controls: string | undefined,
+  watch: WatchRoot = watchWithObserver,
+): () => void {
+  const sync = (): void => {
+    const wanted = controls === undefined ? [] : controlledElements(root, controls)
+    if (wanted.length === 0) {
+      if (target.getAttribute('aria-controls') !== null) target.ariaControlsElements = null
+      return
+    }
+    const current = target.ariaControlsElements ?? []
+    if (current.length === wanted.length && current.every((element, i) => element === wanted[i]))
+      return
+    target.ariaControlsElements = wanted
+  }
+  sync()
+  if (controls === undefined) return () => undefined
+  const stop = watch(root, sync)
+  return () => {
+    stop()
+    target.ariaControlsElements = null
+  }
+}
+
 /** The kit's host element, as far as its disabled state and the mirrored attributes go. */
 export interface KitHost {
   setAttribute(name: string, value: string): void
@@ -161,7 +241,6 @@ export interface KitState {
   expanded?: boolean
   pressed?: boolean
   unavailable?: boolean
-  controls?: string
 }
 
 /**
@@ -174,7 +253,9 @@ export interface KitState {
  * (issue 124). Writing an unchanged `disabled` again does nothing in the
  * kit, whose callback returns when the value has not changed, so calling
  * this for any change of state is safe. `aria-description` (issue 113) is
- * not the kit's to touch and not this function's either.
+ * not the kit's to touch and not this function's either, and nor is
+ * `aria-controls`: the reference `mirrorControls` sets is cleared by any
+ * write of that attribute (issue 121).
  */
 export function syncKitButton(host: KitHost, state: KitState): void {
   if (state.disabled) host.setAttribute('disabled', '')
@@ -191,7 +272,6 @@ export function syncKitButton(host: KitHost, state: KitState): void {
   // And on the host, where the app's stylesheet can draw it unavailable.
   if (state.unavailable === true) host.setAttribute('data-unavailable', '')
   else host.removeAttribute('data-unavailable')
-  set('aria-controls', state.controls)
 }
 
 const Button = forwardRef<HTMLElement, ButtonProps>(function Button(
@@ -224,9 +304,8 @@ const Button = forwardRef<HTMLElement, ButtonProps>(function Button(
   // from it on the way (issue 124), so the state is written back straight
   // after, in the same effect, rather than by an effect that might not run.
   useEffect(() => {
-    if (host.current)
-      syncKitButton(host.current, { disabled, expanded, pressed, unavailable, controls })
-  }, [disabled, expanded, pressed, unavailable, controls])
+    if (host.current) syncKitButton(host.current, { disabled, expanded, pressed, unavailable })
+  }, [disabled, expanded, pressed, unavailable])
 
   useEffect(() => {
     const element = host.current
@@ -234,6 +313,16 @@ const Button = forwardRef<HTMLElement, ButtonProps>(function Button(
     if (!element || !inner) return
     return mirrorDescription(inner, element.getRootNode() as Document | ShadowRoot, describedBy)
   }, [describedBy])
+
+  // Again whenever `disabled` changes, after the state above: the kit does
+  // not touch aria-controls in its re-sync today, but one that removed the
+  // attribute would clear the reference with it, as it would the state.
+  useEffect(() => {
+    const element = host.current
+    const inner = element?.shadowRoot?.querySelector('button')
+    if (!element || !inner) return
+    return mirrorControls<Element>(inner, element.getRootNode() as Document | ShadowRoot, controls)
+  }, [controls, disabled])
 
   return (
     <>

@@ -89,7 +89,15 @@ Run by the main session from the main checkout unless a step says "agent".
    output back; run again. A feature driven by a gesture is also used by
    hand in `npm run dev`: a suite that types where a person drags can be
    green over a broken control.
-7. **Rebase only when needed, and only here.** After each merge, a lane
+7. **Rebase only when needed, and only here.** A rebased worktree's `out/`
+   is the build the branch was written with, so **rebuild before any suite
+   touches it**: step 6's `npm run build` is not optional after a rebase,
+   and `npx playwright test` on its own does not build. On 23 September
+   2026 a lane rebased over fifteen commits failed two accessibility tests
+   that way - tests written after the branch was - and the control run
+   meant to isolate the cause reverted a source file without rebuilding
+   either, so it confirmed the wrong thing twice. The branch was correct.
+   After each merge, a lane
    still open rebases only if GitHub says it is behind or it touched a file
    that merged. Rebase in the worktree onto the fetched `origin/main`, never
    with `gh pr update-branch`: that makes a merge commit authored by

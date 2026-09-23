@@ -12,13 +12,25 @@
 // after, in one function. A stand-in kit below does what fig.js does
 // synchronously inside `setAttribute`; tests/e2e/theme.spec.ts holds the
 // pressed state through a rebuild in the built app.
+//
+// The elements a kit button controls (issue 121, F6): an aria-controls id
+// on the inner button relates it to nothing, so the wrapper sets the
+// elements themselves as its `ariaControlsElements`. A stand-in below
+// behaves as Chromium does: the reference reads back only the elements
+// still in the document, and any write of the attribute clears it.
+// tests/e2e/accessibility.spec.ts reads the relation from the built app's
+// accessibility tree.
 
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import Button, {
+  controlledElements,
   describedText,
+  mirrorControls,
   mirrorDescription,
   syncKitButton,
+  type ControlsRoot,
+  type ControlsTarget,
   type DescriptionRoot,
   type DescriptionTarget,
   type KitHost,
@@ -58,7 +70,7 @@ function fakeTarget(): DescriptionTarget & { attrs: Map<string, string>; writes:
 function fakeWatch(): WatchRoot & { fire: () => void; watching: number; stopped: number } {
   const callbacks = new Set<() => void>()
   const watch = Object.assign(
-    (_root: DescriptionRoot, callback: () => void) => {
+    (_root: object, callback: () => void) => {
       callbacks.add(callback)
       watch.watching += 1
       return () => {
@@ -151,7 +163,161 @@ describe('mirrorDescription', () => {
   })
 })
 
+interface FakeElement {
+  id: string
+}
+
+function fakeDocument(...ids: string[]): ControlsRoot<FakeElement> & {
+  elements: Map<string, FakeElement>
+} {
+  const elements = new Map(ids.map((id) => [id, { id }]))
+  return { elements, getElementById: (id) => elements.get(id) ?? null }
+}
+
+/** The inner button as Chromium treats its aria-controls, as far as the wrapper can tell. */
+function fakeInner(document: ReturnType<typeof fakeDocument>): ControlsTarget<FakeElement> & {
+  attrs: Map<string, string>
+  setAttribute(name: string, value: string): void
+  writes: number
+} {
+  let explicit: FakeElement[] | null = null
+  const attrs = new Map<string, string>()
+  const connected = (element: FakeElement): boolean =>
+    [...document.elements.values()].includes(element)
+  const inner = {
+    attrs,
+    writes: 0,
+    getAttribute: (name: string) => attrs.get(name) ?? null,
+    setAttribute(name: string, value: string) {
+      attrs.set(name, value)
+      // An id attribute written over the reference replaces it, and inside
+      // a shadow root the id resolves to nothing the page holds.
+      if (name === 'aria-controls') explicit = null
+    },
+    get ariaControlsElements(): readonly FakeElement[] | null {
+      if (!attrs.has('aria-controls')) return null
+      return explicit === null ? [] : explicit.filter(connected)
+    },
+    set ariaControlsElements(elements: readonly FakeElement[] | null) {
+      inner.writes += 1
+      if (elements === null) {
+        explicit = null
+        attrs.delete('aria-controls')
+      } else {
+        explicit = [...elements]
+        attrs.set('aria-controls', '')
+      }
+    },
+  }
+  return inner
+}
+
+describe('controlledElements', () => {
+  it('resolves the named elements in order, each once, skipping ids with no element', () => {
+    const document = fakeDocument('a', 'b')
+    const [a, b] = [document.elements.get('a'), document.elements.get('b')]
+    expect(controlledElements(document, ' b  missing a b ')).toEqual([b, a])
+    expect(controlledElements(document, 'missing')).toEqual([])
+    expect(controlledElements(document, '')).toEqual([])
+  })
+})
+
+describe('mirrorControls', () => {
+  it('relates the button to the named element at once, and writes nothing more while it holds', () => {
+    const document = fakeDocument('inspector')
+    const inner = fakeInner(document)
+    const watch = fakeWatch()
+    mirrorControls(inner, document, 'inspector', watch)
+    expect(inner.ariaControlsElements).toEqual([document.elements.get('inspector')])
+    // The reference, never the id: an id on the inner button relates nothing.
+    expect(inner.attrs.get('aria-controls')).toBe('')
+    expect(watch.watching).toBe(1)
+    const writes = inner.writes
+    watch.fire()
+    watch.fire()
+    expect(inner.writes).toBe(writes)
+  })
+
+  it('follows an element that arrives after the button, is replaced, and goes', () => {
+    const document = fakeDocument()
+    const inner = fakeInner(document)
+    const watch = fakeWatch()
+    mirrorControls(inner, document, 'inspector', watch)
+    expect(inner.ariaControlsElements).toBeNull()
+    expect(inner.writes).toBe(0)
+
+    const first = { id: 'inspector' }
+    document.elements.set('inspector', first)
+    watch.fire()
+    expect(inner.ariaControlsElements).toEqual([first])
+
+    // Rendered again: another element with the same id.
+    const second = { id: 'inspector' }
+    document.elements.set('inspector', second)
+    watch.fire()
+    expect(inner.ariaControlsElements?.[0]).toBe(second)
+
+    // Gone: no reference is kept to an element the document let go of.
+    document.elements.delete('inspector')
+    watch.fire()
+    expect(inner.ariaControlsElements).toBeNull()
+    expect(inner.attrs.has('aria-controls')).toBe(false)
+    const writes = inner.writes
+    watch.fire()
+    expect(inner.writes).toBe(writes)
+  })
+
+  it('clears the reference and stops watching when the prop goes or the button unmounts', () => {
+    const document = fakeDocument('picker')
+    const inner = fakeInner(document)
+    const watch = fakeWatch()
+    const stop = mirrorControls(inner, document, 'picker', watch)
+    expect(inner.ariaControlsElements).toHaveLength(1)
+
+    // The prop removed: the effect's cleanup, then the effect again without it.
+    stop()
+    expect(watch.stopped).toBe(1)
+    expect(inner.ariaControlsElements).toBeNull()
+    const again = mirrorControls(inner, document, undefined, watch)
+    expect(watch.watching).toBe(1)
+    watch.fire()
+    expect(inner.ariaControlsElements).toBeNull()
+    again()
+
+    // Named again, then unmounted.
+    const last = mirrorControls(inner, document, 'picker', watch)
+    expect(inner.ariaControlsElements).toHaveLength(1)
+    last()
+    expect(watch.stopped).toBe(2)
+    watch.fire()
+    expect(inner.ariaControlsElements).toBeNull()
+  })
+
+  it('puts back a reference that a write of the attribute cleared, when the effect runs again', () => {
+    const document = fakeDocument('inspector')
+    const inner = fakeInner(document)
+    const watch = fakeWatch()
+    const stop = mirrorControls(inner, document, 'inspector', watch)
+    // What a kit that re-synced the attribute on a change of disabled would do.
+    inner.setAttribute('aria-controls', 'inspector')
+    expect(inner.ariaControlsElements).toEqual([])
+    stop()
+    mirrorControls(inner, document, 'inspector', watch)
+    expect(inner.ariaControlsElements).toEqual([document.elements.get('inspector')])
+  })
+})
+
 describe('Button', () => {
+  it('puts aria-controls on neither the kit nor its markup, since an id there relates nothing', () => {
+    const html = renderToStaticMarkup(
+      <Button aria-controls="inspector" aria-expanded={false} aria-label="Jobs, none running">
+        Jobs
+      </Button>,
+    )
+    expect(html).toContain('<fig-button')
+    expect(html).not.toContain('aria-controls')
+  })
+
   it('does not hand aria-describedby to the kit, which would copy it where it resolves to nothing', () => {
     const html = renderToStaticMarkup(
       <Button aria-describedby="why" aria-label="Open the notices">
@@ -186,8 +352,7 @@ function fakeKit(harsh = false): KitHost & {
     for (const name of ['aria-label', 'aria-labelledby', 'aria-describedby', 'title'])
       inner.attrs.delete(name)
     if (harsh) {
-      for (const name of ['aria-expanded', 'aria-disabled', 'aria-controls'])
-        inner.attrs.delete(name)
+      for (const name of ['aria-expanded', 'aria-disabled']) inner.attrs.delete(name)
       kit.attrs.delete('data-unavailable')
     }
   }
@@ -241,7 +406,6 @@ describe('syncKitButton', () => {
       expanded: true,
       pressed: false,
       unavailable: true,
-      controls: 'panel-1',
     }
     for (const kit of [fakeKit(), fakeKit(true)]) {
       syncKitButton(kit, state)
@@ -252,19 +416,22 @@ describe('syncKitButton', () => {
         'aria-expanded': 'true',
         'aria-pressed': 'false',
         'aria-disabled': 'true',
-        'aria-controls': 'panel-1',
       })
       expect(kit.attrs.has('data-unavailable')).toBe(true)
     }
   })
 
-  it('removes what is no longer set, and leaves a description it does not own alone', () => {
+  it('removes what is no longer set, and leaves a description and a controls reference it does not own alone', () => {
     const kit = fakeKit(true)
     kit.inner.setAttribute('aria-description', 'One run is going.')
-    syncKitButton(kit, { disabled: true, expanded: true, unavailable: true, controls: 'panel-1' })
+    // The empty attribute an element reference leaves, which a write of the
+    // attribute would clear the reference with (issue 121).
+    kit.inner.setAttribute('aria-controls', '')
+    syncKitButton(kit, { disabled: true, expanded: true, unavailable: true })
     syncKitButton(kit, { disabled: false })
     expect(Object.fromEntries(kit.inner.attrs)).toEqual({
       'aria-description': 'One run is going.',
+      'aria-controls': '',
     })
     expect(kit.attrs.has('data-unavailable')).toBe(false)
     expect(kit.attrs.has('disabled')).toBe(false)

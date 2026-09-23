@@ -82,9 +82,15 @@ element declares the field, and the kit reads attributes, so `type`,
 only `aria-label`, `-labelledby` and `-describedby` to its inner button,
 so a state attribute is mirrored by hand. An id reference set on the kit's
 inner button resolves inside its shadow root, so `aria-describedby` is
-mirrored as `aria-description` text by `kit/Button.tsx` (issue 113), and
-`aria-labelledby` and `aria-controls` do not work there
-(`docs/accessibility.md`, F6). The kit gives every `<dialog>`
+mirrored as `aria-description` text by `kit/Button.tsx` (issue 113),
+`aria-controls` is set as the inner button's `ariaControlsElements`, the
+elements found by id in the document and followed by an observer, which
+Chromium honours across the shadow boundary (issue 121), and
+`aria-labelledby` does not work there (`docs/accessibility.md`, F6). Never
+write an `aria-controls` attribute on a kit's inner button: any write of
+it clears the element reference. Playwright's locators do not show the
+relation; read it from `Accessibility.getFullAXTree` over a DevTools
+protocol session. The kit gives every `<dialog>`
 `inset: auto`, which parks a modal in the corner unless the app's rules
 restore `inset: 0; margin: auto`. Its shadow styles need `style-src
 'unsafe-inline'`; `script-src` stays `'self'`. Playwright emulates the
