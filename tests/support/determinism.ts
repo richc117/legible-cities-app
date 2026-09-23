@@ -183,6 +183,7 @@ export async function prepareProject(
       export: { preset: 'instagram-reel-gif', options: { quality: 'draft' } },
       layout,
       made,
+      drawn: null,
       built: { mode: DEFAULT_MODE, agency: null },
       created: now,
       modified: now,

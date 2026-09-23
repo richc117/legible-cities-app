@@ -54,6 +54,32 @@ export interface ServiceWindow {
   anchor: string
 }
 
+/**
+ * What the page on screen was drawn from (ADR-045, A5.5-04): the layout and
+ * when the engine made it, the day, the colours, the default colour, the
+ * order and the theme, as they were at the end of the draw that produced
+ * the map now in the project's output folder.
+ *
+ * It is the record's copy of itself at that moment, which is what makes
+ * staleness a comparison of the record against itself, with no events and
+ * no dirty flags: a field that has moved since is a field the map on screen
+ * does not show.
+ *
+ * It carries `made` and not only `layout` because two projects can draw
+ * from one layout set and either can re-lay it out under the other, the
+ * case A3-06 added `made` for: without it a re-laid set would read current
+ * over a page drawn from the geometry it replaced.
+ */
+export interface DrawnFrom {
+  layout: string
+  made: string | null
+  date: string | null
+  colors: Record<string, string>
+  defaultColor: string
+  lineOrder: string[]
+  theme: Theme
+}
+
 export interface ProjectRecord {
   version: number
   id: string
@@ -90,6 +116,13 @@ export interface ProjectRecord {
    * `made` under it is a set laid out again since (A3-06). Null before.
    */
   made: string | null
+  /**
+   * What the map now on disk was drawn from (A5.5-04), written by the four
+   * handlers that write the record at the end of a draw; null for a record
+   * from before this was kept, which means only that we cannot prove its
+   * map is current - never that it is stale.
+   */
+  drawn: DrawnFrom | null
   created: string
   modified: string
 }
@@ -339,6 +372,29 @@ export function validateMade(made: unknown): string | null {
   return null
 }
 
+/**
+ * What a record that has just been drawn was drawn from: the seven fields
+ * of the record itself, copied. It is called on the record a handler is
+ * about to write, never on the one it read, because the values the draw
+ * used are the ones that write stores - the run is handed the record and
+ * draws from it, and no cheap edit can land between the draw and the write
+ * (the panels that make one are shut while a run holds the page).
+ *
+ * A record with no layout has drawn nothing, and gets null.
+ */
+export function drawnFrom(record: ProjectRecord): DrawnFrom | null {
+  if (record.layout === null) return null
+  return {
+    layout: record.layout,
+    made: record.made,
+    date: record.date,
+    colors: { ...record.colors },
+    defaultColor: record.defaultColor,
+    lineOrder: [...record.lineOrder],
+    theme: record.theme,
+  }
+}
+
 /** Is a day inside the window, inclusive? Both ISO, so strings compare. */
 export function withinWindow(date: string, service: ServiceWindow): boolean {
   return date >= service.start && date <= service.end
@@ -410,6 +466,7 @@ export function parseRecord(json: unknown): Parsed {
         : copyChoice(DEFAULT_CHOICE),
     layout: isLayoutId(json.layout) ? json.layout : null,
     made: validateMade(json.made) === null ? (json.made as string) : null,
+    drawn: readDrawn(json.drawn),
     built: readInputs(json.built),
     created: isString(json.created) ? json.created : epoch,
     modified: isString(json.modified) ? json.modified : epoch,
@@ -443,6 +500,35 @@ function readInputs(value: unknown): ProjectInputs | null {
   const agency = value.agency == null ? null : isString(value.agency) ? value.agency : undefined
   if (agency === undefined) return null
   return { mode: value.mode, agency: agency === null ? null : agency.trim() || null }
+}
+
+/**
+ * What the map was drawn from, whole, or null. Half-valid is not
+ * half-trusted here for the same reason it is not for the window: this
+ * block is only ever read to decide whether the map on screen still matches
+ * the record, and a block missing a field would answer that question about
+ * a field it does not hold. A record whose block will not read is a record
+ * whose map cannot be proved current, which reads as ready and not stale.
+ */
+function readDrawn(value: unknown): DrawnFrom | null {
+  if (!isObject(value)) return null
+  const { layout, made, date, defaultColor, theme } = value
+  if (!isLayoutId(layout)) return null
+  if (made !== null && validateMade(made) !== null) return null
+  if (date !== null && (!isString(date) || validateServiceDate(date) !== null)) return null
+  if (!isColor(defaultColor)) return null
+  if (!isTheme(theme)) return null
+  if (validatePalette({ colors: value.colors, defaultColor }) !== null) return null
+  if (validateLineOrder(value.lineOrder) !== null) return null
+  return {
+    layout,
+    made: made === null ? null : (made as string),
+    date: date === null ? null : (date as string),
+    colors: { ...(value.colors as Record<string, string>) },
+    defaultColor,
+    lineOrder: [...(value.lineOrder as string[])],
+    theme,
+  }
 }
 
 /** The stored window, whole, or null: a half-valid block is not half-trusted. */

@@ -161,6 +161,7 @@ const project = (over: Partial<ProjectRecord> = {}): ProjectRecord =>
     theme: 'warm-dark',
     layout: null,
     made: null,
+    drawn: null,
     built: null,
     created: '2026-09-01T00:00:00.000Z',
     modified: '2026-09-01T00:00:00.000Z',

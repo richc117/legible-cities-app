@@ -20,6 +20,7 @@ The on-disk form of `ProjectRecord` (`data-model.md`), version 1:
   "export": { "preset": "instagram-reel", "options": {} },
   "layout": null,
   "made": null,
+  "drawn": null,
   "built": null,
   "created": "2026-09-07T20:00:00.000Z",
   "modified": "2026-09-07T20:00:00.000Z"
@@ -36,6 +37,18 @@ The on-disk form of `ProjectRecord` (`data-model.md`), version 1:
 - `made` (added by A3-06, still version 1) is when the engine made the
   stored layout, its `meta.made` as answered by `graph.build`, or `null`;
   a value that does not parse as a time reads as `null`.
+- `drawn` (added by A5.5-04, still version 1) is what the map now in the
+  project's output folder was drawn from:
+  `{ layout, made, date, colors, defaultColor, lineOrder, theme }`, the
+  record's own values as they were at the end of the draw that produced it,
+  or `null`. It is written by the four handlers that write the record at
+  the end of a draw - `completeLayout`, `completeRebuild`, `completeColors`
+  and `completeOrder` - and by nothing else, so an edit that draws nothing
+  leaves it behind, which is how the notebook knows a cell is stale
+  (ADR-045). A block that is not whole reads as `null`, as the window does.
+  `null` means only that the map cannot be proved current, never that it is
+  stale. The rule that let it be added without moving the version is in
+  `specs/028-the-notebook/contracts/run-graph.md`.
 - `built` (added by A2-02, still version 1) is the mode and agency the
   engine made the stored layout with, `{ mode, agency }` from
   `graph.build`'s meta, or `null`; an empty agency reads as none, and a
