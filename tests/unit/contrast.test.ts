@@ -143,8 +143,9 @@ const PAIRS: [string, string, number][] = [
   // --surface-raised, and every pair it uses is above on both grounds: a
   // job's title and the disclosure's summary in --text, its label and
   // detail in --text-muted, its time and the progress line's labels in
-  // --text-faint, the hint in --error, the running mark in --accent and the
-  // line in --border-strong.
+  // --text-faint, the hint in --error, the running station's ring in
+  // --accent, the rail in --border-strong and as much of it as the run has
+  // covered in --text.
 ]
 
 /**

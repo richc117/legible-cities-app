@@ -273,7 +273,7 @@ to "Laid out.". Then open **Caltrain** and press **Lay out** there too.
 **See.**
 - A region with a progress line of eight named stages, in this order:
   `gtfs2graph`, `topo`, `loom`, `octi`, `schedule`, `render`, `animate`,
-  `write`. Each stage becomes a filled tick as the engine finishes it, and
+  `write`. Each stage's station is filled as the engine finishes it, and
   the sentence beside the line is the engine's for the last stage that
   finished. **Cancel** is beside it while it runs.
 - It ends with "Laid out." and a **Lay out again** button and a
@@ -421,7 +421,7 @@ Result: ____
 - While the tab is open, the viewer shows the export's tall frame, with the
   parts Instagram covers shaded.
 - A progress line with `plan`, `capture` and `encode`, the current stage
-  marked as it moves through them and each ticked when done, and
+  marked as it moves through them and each filled when done, and
   **Cancel**. Beside it the sentence changes as the export goes, among
   them "Planning the export.", "Planned `<file>`: `<n>` frames at `<fps>`
   frames per second.", "Capturing `<n>` frames.", "Captured `<n>` of `<n>`

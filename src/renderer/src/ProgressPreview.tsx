@@ -1,4 +1,5 @@
 import type { JSX } from 'react'
+import { LAYOUT_STAGES } from '../../shared/layout'
 import ProgressLine, { type Stage } from './ProgressLine'
 
 // Sample data for the progress line, reached through ?progress-preview on
@@ -13,6 +14,14 @@ function sample(states: Stage['state'][], message?: string): Stage[] {
     label,
     state: states[i],
     message: states[i] === 'running' || states[i] === 'failed' ? message : undefined,
+  }))
+}
+
+function counted(labels: readonly string[], running: number): Stage[] {
+  return labels.map((label, i) => ({
+    id: label,
+    label,
+    state: i < running ? 'done' : i === running ? 'running' : 'pending',
   }))
 }
 
@@ -35,6 +44,13 @@ export default function ProgressPreview(): JSX.Element {
       <ProgressLine
         stages={sample(['done', 'done', 'failed', 'pending'], 'loom failed (137): out of memory')}
         ariaLabel="Four stages, loom failed"
+      />
+      {/* The counts a run really has, at both ends: a feed add's download
+          alone, and the layout run's own eight stages. */}
+      <ProgressLine stages={counted(['download'], 0)} ariaLabel="One stage, downloading" />
+      <ProgressLine
+        stages={counted(LAYOUT_STAGES, 4)}
+        ariaLabel="The layout run's eight stages, schedule running"
       />
     </main>
   )

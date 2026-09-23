@@ -1203,8 +1203,8 @@ test('a release, installed, through docs/acceptance.md', async () => {
         if (end.ok) {
           await log.soft(`${name}: every stage ticked`, async () => {
             const marks = await region
-              .locator('svg rect.mark')
-              .evaluateAll((rects) => rects.map((rect) => rect.getAttribute('class') ?? ''))
+              .locator('svg circle.mark')
+              .evaluateAll((stations) => stations.map((s) => s.getAttribute('class') ?? ''))
             expect(marks.map((m) => m.includes('mark-done'))).toEqual(LAYOUT_STAGES.map(() => true))
           })
         }
@@ -1879,8 +1879,8 @@ test('a release, installed, through docs/acceptance.md', async () => {
         expect(current.has('capture'), `current stages seen: ${[...current].join(', ')}`).toBe(true)
         const marks = await panel
           .getByRole('region', { name: 'Export' })
-          .locator('svg rect.mark')
-          .evaluateAll((rects) => rects.map((rect) => rect.getAttribute('class') ?? ''))
+          .locator('svg circle.mark')
+          .evaluateAll((stations) => stations.map((s) => s.getAttribute('class') ?? ''))
         expect(marks.map((m) => m.includes('mark-done'))).toEqual([true, true, true])
         log.note(`The line marked as current: ${[...current].join(', ')}.`)
       })
