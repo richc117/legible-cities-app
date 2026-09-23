@@ -43,13 +43,21 @@ cannot measure any of this. A runner downloads without a quarantine
 attribute or a mark of the web, so neither Gatekeeper nor SmartScreen
 warns (`docs/acceptance.md`, step 2). `v0.1.0-rc.4` passed that run on a
 macOS and a Windows runner; what a person meets is measured only by the
-three person runs on the same release candidate:
+three person runs on a release candidate.
 
-[RESULTS #117: the stranger's time from the release page to the first window and to the first reel; where they stalled; whether they passed the unsigned-app warning unaided]
+Those runs are still owed. The three filed against `v0.1.0-rc.4` (#115,
+#116, #117) were closed as superseded on 2026-09-22 when ADR-045 made
+`v0.1.0` the notebook: they name screens and controls that will not exist,
+and a candidate cut after the refactor is the first one worth a person's
+afternoon. The results below are filled in from the runs against that
+candidate, which A5.6-08 and A5.6-09 rewrite the documents for and #37
+carries:
 
-[RESULTS #116: the clean Mac, macOS version, what Gatekeeper showed and whether install.md matched it]
+[RESULTS, the stranger: the time from the release page to the first window and to the first reel; where they stalled; whether they passed the unsigned-app warning unaided]
 
-[RESULTS #115: Windows version, what SmartScreen and the browser showed, any antivirus quarantine, and whether install.md matched it]
+[RESULTS, the clean Mac: macOS version, what Gatekeeper showed and whether install.md matched it]
+
+[RESULTS, Windows: the version, what SmartScreen and the browser showed, any antivirus quarantine, and whether install.md matched it]
 
 What else shaped the answer:
 
