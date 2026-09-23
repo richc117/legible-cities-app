@@ -38,8 +38,16 @@ const LABEL_Y = 5 * UNIT
 const FIRST = 2 * UNIT
 /** A station's radius. */
 const STATION = 5
-/** The bend's centreline radius, which is the rail's stroke-width in app.css. */
-const BEND = 3
+/** How thick the line is drawn, rail and ring alike. */
+const WEIGHT = 3
+/**
+ * The bend's centreline radius, which is the line's own weight: that is
+ * exactly what makes a bend's inner radius (WEIGHT / 2) a third of its outer
+ * (3 * WEIGHT / 2), as docs/DESIGN.md section 10 asks. Both come from this
+ * one constant, rather than a number here and another in the stylesheet,
+ * because a rail drawn thicker would otherwise change the ratio in silence.
+ */
+const BEND = WEIGHT
 /** How far below the line the rail comes in from the left. */
 const LEAD = UNIT
 /** The stub and the quarter-circle, before the rail runs straight. */
@@ -67,7 +75,10 @@ function reached(stages: Stage[], lastX: number): number {
 }
 
 /** A station: the circle the state shapes, and the core only a failed one
- * shows. Both are always drawn, so a state change is a transition. */
+ * shows. Both are always drawn, so a state change is a transition. The ring
+ * takes the line's weight and no vector effect: where the window is too
+ * narrow for the drawing, all of it scales down together rather than the
+ * stations keeping their weight over a line that has lost its. */
 function station(x: number, state: StageState): JSX.Element {
   return (
     <>
@@ -76,7 +87,7 @@ function station(x: number, state: StageState): JSX.Element {
         cx={x}
         cy={LINE_Y}
         r={STATION}
-        vectorEffect="non-scaling-stroke"
+        strokeWidth={WEIGHT}
       />
       <circle className={`core core-${state}`} cx={x} cy={LINE_Y} r={STATION} />
     </>
@@ -98,13 +109,18 @@ export default function ProgressLine({ stages, ariaLabel }: Props): JSX.Element 
         role="img"
         aria-label={ariaLabel}
       >
-        {/* The whole rail, then as much of it as the run has covered. */}
-        <path className="line" d={path} />
+        {/* The whole rail, then as much of it as the run has covered: the
+            same path, dashed to the station the run has got to. */}
+        <path className="line" d={path} strokeWidth={WEIGHT} />
         <path
           className="line line-reached"
           d={path}
+          strokeWidth={WEIGHT}
           pathLength={RAIL_LENGTH}
-          style={{ strokeDashoffset: RAIL_LENGTH - reached(stages, last) }}
+          style={{
+            strokeDasharray: RAIL_LENGTH,
+            strokeDashoffset: RAIL_LENGTH - reached(stages, last),
+          }}
         />
         {stages.map((stage, i) => {
           const x = FIRST + i * STEP

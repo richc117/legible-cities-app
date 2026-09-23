@@ -1,4 +1,5 @@
 import type { JSX } from 'react'
+import { LAYOUT_STAGES } from '../../shared/layout'
 import ProgressLine, { type Stage } from './ProgressLine'
 
 // Sample data for the progress line, reached through ?progress-preview on
@@ -6,10 +7,6 @@ import ProgressLine, { type Stage } from './ProgressLine'
 // in the app navigates here; the layout run (LayoutRun.tsx) drives the
 // real stages.
 const STAGES = ['gtfs2graph', 'topo', 'loom', 'octi']
-
-// The counts a run really has: the layout run's eight, the export's three
-// and a feed add's two, with one at the short end.
-const EIGHT = ['read', 'gtfs2graph', 'topo', 'loom', 'octi', 'render', 'schedule', 'animate']
 
 function sample(states: Stage['state'][], message?: string): Stage[] {
   return STAGES.map((label, i) => ({
@@ -20,7 +17,7 @@ function sample(states: Stage['state'][], message?: string): Stage[] {
   }))
 }
 
-function counted(labels: string[], running: number): Stage[] {
+function counted(labels: readonly string[], running: number): Stage[] {
   return labels.map((label, i) => ({
     id: label,
     label,
@@ -48,8 +45,13 @@ export default function ProgressPreview(): JSX.Element {
         stages={sample(['done', 'done', 'failed', 'pending'], 'loom failed (137): out of memory')}
         ariaLabel="Four stages, loom failed"
       />
+      {/* The counts a run really has, at both ends: a feed add's download
+          alone, and the layout run's own eight stages. */}
       <ProgressLine stages={counted(['download'], 0)} ariaLabel="One stage, downloading" />
-      <ProgressLine stages={counted(EIGHT, 4)} ariaLabel="Eight stages, octi running" />
+      <ProgressLine
+        stages={counted(LAYOUT_STAGES, 4)}
+        ariaLabel="The layout run's eight stages, schedule running"
+      />
     </main>
   )
 }

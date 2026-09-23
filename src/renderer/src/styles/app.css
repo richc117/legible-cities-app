@@ -648,21 +648,24 @@ dialog::backdrop {
   overflow: visible;
 }
 
-/* The rail. Its weight is also the bend's radius in ProgressLine.tsx, which
-   is what makes a bend's inner radius a third of its outer. */
+/* The rail. Its weight, and the ring's, is set where the drawing is, in
+   ProgressLine.tsx, from the same constant as the bend's radius: they are
+   what make a bend's inner radius a third of its outer, and a weight written
+   here as well would part them without either file looking wrong. Only the
+   colours are here. */
 .progress .line {
   fill: none;
   stroke: var(--border-strong);
-  stroke-width: 3;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
 /* The same rail again, cut short at the station the run has got to and drawn
-   in the ink a finished station is filled with; it grows as the run moves. */
+   in the ink a finished station is filled with; it grows as the run moves.
+   The dash it is cut with is the drawing's too, beside the offset that
+   moves. */
 .progress .line-reached {
   stroke: var(--text);
-  stroke-dasharray: 100;
   transition: stroke-dashoffset var(--duration) var(--easing);
 }
 
@@ -672,8 +675,9 @@ dialog::backdrop {
    colour alone. */
 .progress .mark {
   fill: var(--surface);
-  stroke: none;
-  stroke-width: 3;
+  /* Transparent, not none: none does not interpolate with a colour, so a
+     ring would pop into place rather than arrive with the rest. */
+  stroke: transparent;
   transform-box: fill-box;
   transform-origin: center;
   transition:
@@ -684,7 +688,6 @@ dialog::backdrop {
 
 .progress .core {
   fill: var(--error);
-  stroke: none;
   transform: scale(0);
   transform-box: fill-box;
   transform-origin: center;
