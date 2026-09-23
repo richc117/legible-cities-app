@@ -36,8 +36,12 @@
   cursor: pointer;
 }
 
+/* --surface-raised, not --surface-hover: the state's word is inside this
+   row, and section 3 allows the status colours on --surface and
+   --surface-raised only. Night's --surface-hover is --tone-2, where
+   --error falls to 4.03 - the figure section 3 quotes for that ground. */
 .cell-head:hover {
-  background: var(--surface-hover);
+  background: var(--surface-raised);
 }
 
 .cell-number {

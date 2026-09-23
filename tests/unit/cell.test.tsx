@@ -30,10 +30,13 @@ const draw = (props: Partial<Parameters<typeof Cell>[0]> = {}): string =>
   )
 
 describe('a cell', () => {
-  it('is a button carrying aria-expanded over a region, not a details element', () => {
+  it('is a button carrying aria-expanded over a named group, not a details element', () => {
     const closed = draw()
     expect(closed).toContain('aria-expanded="false"')
-    expect(closed).toContain('role="region"')
+    // A group and not a region: a region is a landmark, and six cells would
+    // put six of them in a screen reader's landmark menu.
+    expect(closed).toContain('role="group"')
+    expect(closed).not.toContain('role="region"')
     expect(closed).not.toContain('<details')
     expect(closed).not.toContain('<summary')
     expect(draw({ open: true })).toContain('aria-expanded="true"')
@@ -72,21 +75,38 @@ describe('a cell', () => {
     expect(words.size).toBe(STATES.length)
   })
 
-  it('carries the number, the name and the state in the row’s accessible name', () => {
+  it('takes the row’s name from what the row says, not from a string beside it', () => {
+    // No aria-label on the button: its name is its contents, so a cell that
+    // adds something to its row adds it to the name without this file
+    // knowing. What a name would replace is asserted here instead.
     for (const state of STATES) {
-      const name = cellLabel(3, 'Frame and service day', state, null)
-      expect(name).toBe(`03 Frame and service day, ${stateWord(state)}`)
-      expect(draw({ state })).toContain(`aria-label="${name}"`)
+      const html = draw({ state })
+      expect(html, `${state}: nothing replaces the row's contents`).not.toMatch(
+        /<button[^>]*aria-label/,
+      )
+      expect(html).toContain('03')
+      expect(html).toContain('Frame and service day')
+      expect(html).toContain(stateWord(state))
     }
   })
 
-  it('adds the summary to the name, and shows it only while collapsed', () => {
+  it('names the group its controls sit in, without the state', () => {
+    // The group's name must not move as a run does, or a screen reader
+    // re-announces it every time a stage finishes.
+    expect(cellLabel(3, 'Frame and service day')).toBe('03 Frame and service day')
+    for (const state of STATES) {
+      expect(draw({ state, open: true })).toContain('aria-label="03 Frame and service day"')
+    }
+  })
+
+  it('sits in a heading, so a notebook of six can be walked by heading', () => {
+    expect(draw()).toMatch(/<h2[^>]*class="disclosure-heading"/)
+    expect(draw({ headingLevel: 3 })).toMatch(/<h3[^>]*class="disclosure-heading"/)
+  })
+
+  it('shows the summary only while collapsed', () => {
     const summary = 'Tuesday 17 March, the engine’s choice'
-    expect(cellLabel(3, 'Frame and service day', 'ready', summary)).toBe(
-      '03 Frame and service day, ready. ' + summary,
-    )
-    const closed = draw({ summary })
-    expect(closed).toContain('cell-summary')
+    expect(draw({ summary })).toContain(summary)
     // Open, the sentence would say what the controls below it already say.
     expect(draw({ summary, open: true })).not.toContain('cell-summary')
   })
@@ -94,7 +114,6 @@ describe('a cell', () => {
   it('says nothing where a cell has no summary', () => {
     expect(draw({ summary: null })).not.toContain('cell-summary')
     expect(draw({ summary: '' })).not.toContain('cell-summary')
-    expect(cellLabel(6, 'Export', 'ready', '')).toBe('06 Export, ready')
   })
 
   it('has no footer unless one is given', () => {

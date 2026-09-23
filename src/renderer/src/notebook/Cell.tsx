@@ -10,10 +10,13 @@ import type { CellState } from '../runGraph'
 // six adapters that fill it own everything project-shaped, so a branch
 // adding a control to cell 03 edits its adapter and not this file.
 //
-// The heading row is the toggle. Its accessible name carries the number,
-// the name and the state as one sentence, because a screen reader reaching
-// the row should learn what a person sees in it without moving on; the
-// state's word is in the row for everyone else, never its colour alone.
+// The heading row is the toggle, inside a real heading, because a notebook
+// of six cells is walked by heading as a long document is, and the rail
+// moves focus to a cell's heading (DESIGN.md 8.2). The button's accessible
+// name is its own contents - the number, the name, the state, and the
+// summary while it shows - so a cell that adds something to its row adds it
+// to the name for free, rather than repeating it in a string this file
+// would have to know about.
 //
 // Collapsed, the controls stay in the document. `LineColours` holds a
 // debounced edit in flight and `ExportTab` a half-typed filename tag; a
@@ -35,20 +38,8 @@ export const stateWord = (state: CellState): string => STATES[state].word
 /** `01` to `06`, as the rail and every screenshot write it. */
 export const cellNumber = (number: number): string => String(number).padStart(2, '0')
 
-/**
- * What assistive technology hears when it reaches the row: the number, the
- * name, the state, and the summary if there is one. One sentence, in the
- * order the row draws them.
- */
-export function cellLabel(
-  number: number,
-  name: string,
-  state: CellState,
-  summary: string | null,
-): string {
-  const head = `${cellNumber(number)} ${name}, ${stateWord(state)}`
-  return summary === null || summary === '' ? head : `${head}. ${summary}`
-}
+/** The cell's own name, for the group its controls sit in and for the rail. */
+export const cellLabel = (number: number, name: string): string => `${cellNumber(number)} ${name}`
 
 export interface CellProps {
   number: number
@@ -64,6 +55,11 @@ export interface CellProps {
   onToggle: (open: boolean) => void
   /** Provenance, for the three cells that have any (A5.5-11). */
   footer?: ReactNode
+  /**
+   * The heading the row sits in. Two on the notebook, under the project's
+   * own; the sample page sets its own.
+   */
+  headingLevel?: 2 | 3
   headingRef?: React.Ref<HTMLButtonElement>
   children: ReactNode
 }
@@ -76,19 +72,21 @@ export default function Cell({
   open,
   onToggle,
   footer,
+  headingLevel = 2,
   headingRef,
   children,
 }: CellProps): JSX.Element {
   const { word, icon } = STATES[state]
+  const Heading = `h${headingLevel}` as 'h2' | 'h3'
   return (
     <section className="cell" data-state={state} data-cell={cellNumber(number)}>
       <Disclosure
         className="cell-head"
         open={open}
         onToggle={onToggle}
-        label={cellLabel(number, name, state, summary)}
-        regionLabel={`${cellNumber(number)} ${name}`}
+        label={cellLabel(number, name)}
         headingRef={headingRef}
+        heading={Heading}
         summary={
           <>
             <span className="cell-number">{cellNumber(number)}</span>

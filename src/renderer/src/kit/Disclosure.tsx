@@ -15,7 +15,14 @@ import { useId, type JSX, type ReactNode } from 'react'
 // region put the row where the design document draws it and cost nothing
 // but this file.
 //
-// The region is always in the document. A collapsed cell keeps its
+// The disclosed part is a named `group`, not a `region`. A region is a
+// landmark, and six cells would put six of them in a screen reader's
+// landmark menu beside the main region and the inspector, where they say
+// nothing a person navigating landmarks wants. The WAI-ARIA disclosure
+// pattern asks for no role on the disclosed content at all; a named group
+// keeps the name without the landmark.
+//
+// The disclosed part is always in the document. A collapsed cell keeps its
 // controls mounted, hidden, because a half-typed value and a running
 // Cancel both live inside one and unmounting loses them silently; that is
 // the same rule `kit/Tabs.tsx`'s `TabPanel` already follows.
@@ -25,11 +32,20 @@ export interface DisclosureProps {
   summary: ReactNode
   open: boolean
   onToggle: (open: boolean) => void
-  /** Read to assistive technology in place of the row's contents. */
+  /**
+   * The disclosed part's own accessible name. The button's name is its
+   * contents: a label here would replace them, and then everything a cell
+   * puts in its row would have to be repeated in a string beside it.
+   */
   label: string
-  /** The region's own accessible name, when it is not the label. */
-  regionLabel?: string
   className?: string
+  /**
+   * The heading the button sits in, where the disclosure is a section of
+   * the page rather than a control in a form: a notebook of six is walked
+   * by heading, and something has to be there to walk to. Omitted, the
+   * button stands alone, which is right for a disclosure inside a row.
+   */
+  heading?: 'h2' | 'h3'
   headingRef?: React.Ref<HTMLButtonElement>
   children: ReactNode
 }
@@ -39,32 +55,32 @@ export default function Disclosure({
   open,
   onToggle,
   label,
-  regionLabel,
   className,
+  heading: Heading,
   headingRef,
   children,
 }: DisclosureProps): JSX.Element {
   const id = useId()
   const regionId = `${id}-region`
-  const buttonId = `${id}-toggle`
+  const toggle = (
+    <button
+      type="button"
+      ref={headingRef}
+      className={className}
+      aria-expanded={open}
+      aria-controls={regionId}
+      onClick={() => onToggle(!open)}
+    >
+      {summary}
+    </button>
+  )
   return (
     <>
-      <button
-        type="button"
-        id={buttonId}
-        ref={headingRef}
-        className={className}
-        aria-expanded={open}
-        aria-controls={regionId}
-        aria-label={label}
-        onClick={() => onToggle(!open)}
-      >
-        {summary}
-      </button>
+      {Heading === undefined ? toggle : <Heading className="disclosure-heading">{toggle}</Heading>}
       <div
         id={regionId}
-        role="region"
-        aria-label={regionLabel ?? label}
+        role="group"
+        aria-label={label}
         hidden={!open}
         className="disclosure-region"
       >
