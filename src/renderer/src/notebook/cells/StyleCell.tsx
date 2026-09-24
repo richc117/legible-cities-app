@@ -58,12 +58,16 @@ export default function StyleCell({ cell, state, open, onToggle }: CellViewProps
           )}
           {/* The same rule, about the engine rather than the record: what
               this cell will hold, said plainly, with nothing standing in
-              for it. True of a read-only project too, which is why it sits
-              outside the branch above. */}
+              for it. Its first sentence is true of a read-only project too,
+              which is why it sits outside the branch above - but the
+              promise after it is not, since a record this version may not
+              write will never have its style chosen here whatever the
+              engine gains. So that one is said only where it can come
+              true. */}
           <p className="prose">
-            Line width, station size and label size are the engine&rsquo;s own for now: it has no
-            way to be told otherwise, so nothing here offers to set them. They are chosen in this
-            cell once there is one.
+            Line width, station size and label size are the engine&rsquo;s own for now: the engine
+            has no way to be told otherwise, so nothing here offers to set them.
+            {!project.readOnly && ' They are chosen in this cell once it can take them.'}
           </p>
         </>
       )}
