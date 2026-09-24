@@ -395,6 +395,25 @@ export function drawnFrom(record: ProjectRecord): DrawnFrom | null {
   }
 }
 
+/**
+ * The service day the map now on disk was drawn for.
+ *
+ * Since A5.5-15 this is **not** `record.date`: a day chosen and not yet
+ * drawn moves `date` and leaves the page in the project's output folder
+ * exactly where it was. Anything that reads or describes that page - the
+ * export's plan, the provenance beside the file, the export preview, the
+ * sentence saying what was drawn, and a redraw for new colours or a new
+ * order - must ask this rather than the record's day, or it will describe
+ * the picture with a day the picture does not show.
+ *
+ * A record from before `drawn` existed cannot say, and its stored day is
+ * then the best and only answer - which is exactly what those callers used
+ * before, so an old project is unaffected.
+ */
+export function drawnDate(record: Pick<ProjectRecord, 'date' | 'drawn'>): string | null {
+  return record.drawn?.date ?? record.date
+}
+
 /** Is a day inside the window, inclusive? Both ISO, so strings compare. */
 export function withinWindow(date: string, service: ServiceWindow): boolean {
   return date >= service.start && date <= service.end

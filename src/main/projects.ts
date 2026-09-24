@@ -63,6 +63,30 @@ function drew(record: ProjectRecord): ProjectRecord {
   return { ...record, drawn: drawnFrom(record) }
 }
 
+/**
+ * The record a redraw of the *same day* has produced: a recolour or a
+ * reorder (A4-01, A4-02). Everything moves except the day, which stays the
+ * one the map already showed.
+ *
+ * It is not `drew` because `drew` copies the record's `date`, and since
+ * A5.5-15 that may be a day a person has chosen and not drawn. A recolour
+ * draws `drawnDate(record)` - the day the page in the output folder was
+ * made for - so writing `record.date` into `drawn` would have dragging a
+ * colour close cell 03's gap with nobody pressing "Draw for this day", and
+ * would claim the map shows a day it was never drawn for. That is also the
+ * one way the race loses: a `setDate` landing between the debounce firing
+ * and this write would otherwise stamp the new day on the old picture.
+ *
+ * A record whose `drawn` is null has nothing to keep, and the redraw did
+ * draw `record.date`, which is what `drawnDate` answered for it.
+ */
+function redrew(record: ProjectRecord): ProjectRecord {
+  const before = record.drawn
+  const drawn = drawnFrom(record)
+  if (drawn === null || before === null) return { ...record, drawn }
+  return { ...record, drawn: { ...drawn, date: before.date } }
+}
+
 const RECORD_FILE = 'project.json'
 // A fresh temporary name per write, written first and then renamed over the
 // record, so a crash mid-write leaves the previous record whole (FR-004) and
@@ -554,7 +578,7 @@ export class ProjectStore {
     const { record, readOnly } = await this.load(id)
     if (readOnly) throw new Error('read-only')
     if (record.layout === null) throw new Error('lay the project out first')
-    const updated: ProjectRecord = drew({
+    const updated: ProjectRecord = redrew({
       ...record,
       version: RECORD_VERSION,
       colors: { ...palette.colors },
@@ -581,7 +605,7 @@ export class ProjectStore {
     const { record, readOnly } = await this.load(id)
     if (readOnly) throw new Error('read-only')
     if (record.layout === null) throw new Error('lay the project out first')
-    const updated: ProjectRecord = drew({
+    const updated: ProjectRecord = redrew({
       ...record,
       version: RECORD_VERSION,
       lineOrder: [...order],

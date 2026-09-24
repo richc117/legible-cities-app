@@ -589,6 +589,51 @@ describe('failing', () => {
     expect(h.cap.calls).toHaveLength(0)
   })
 
+  // A5.5-15 broke the invariant this used to rest on: a day chosen and not
+  // drawn moves `date` and leaves the page in the output folder alone. The
+  // capture navigates to that page, so the plan and the provenance take the
+  // day the page was drawn for, or the file would be frames of one day with
+  // beats, a clock and a sidecar for another. Nothing blocks the export -
+  // stale never does (ADR-045) - so this is the whole of the defence.
+  it('plans and stamps the day the page was drawn for, not a day merely chosen', async () => {
+    const drawn = {
+      layout: 'a'.repeat(64),
+      made: null,
+      date: '2026-09-08',
+      colors: {},
+      defaultColor: '#888888',
+      lineOrder: [],
+      theme: 'warm-dark' as const,
+    }
+    const h = harness({ project: { date: '2026-09-20', drawn } })
+    const { result } = h.exporter.start('tok-1', 'abcdefghijk1', REEL)
+    await settle()
+    expect(h.eng.requests[0].method).toBe('export.plan')
+    expect(
+      (h.eng.requests[0].params as { date: string }).date,
+      'the plan is of the picture, not of the choice',
+    ).toBe('2026-09-08')
+    h.eng.requests[0].resolve(plan())
+    await until('the capture', () => h.cap.calls.length === 1)
+    h.cap.calls[0].finish(60)
+    await until('the encode', () => h.eng.requests.length === 2)
+    expect(
+      (h.eng.requests[1].params as { provenance: { service_date: string } }).provenance,
+      'and so is the sidecar beside the file',
+    ).toEqual({ service_date: '2026-09-08' })
+    h.eng.requests[1].resolve({ files: [], sidecar: {} })
+    await result
+  })
+
+  it("takes the record's day when the project cannot say what it drew", async () => {
+    // A record from before `drawn` existed: unknown is not a reason to
+    // refuse, and its stored day is the only answer there is.
+    const h = harness({ project: { date: '2026-09-20', drawn: null } })
+    h.exporter.start('tok-1', 'abcdefghijk1', REEL)
+    await settle()
+    expect((h.eng.requests[0].params as { date: string }).date).toBe('2026-09-20')
+  })
+
   it('an engine that is not ready fails with its state, and nothing is captured', async () => {
     const h = harness({ ready: false })
     const { result } = h.exporter.start('tok-1', 'abcdefghijk1', REEL)

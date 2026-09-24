@@ -25,7 +25,7 @@ import {
   type ExportResult,
   type ExportStage,
 } from '../shared/export'
-import type { ProjectRecord, Theme } from '../shared/project'
+import { drawnDate, type ProjectRecord, type Theme } from '../shared/project'
 import type {
   CaptureJob as PlannedJob,
   ExportEncodeParams,
@@ -314,7 +314,12 @@ export class Exporter {
       refuseIfBlocked()
       const project = await this.#options.projects.get(projectId)
       refuseIfBlocked()
-      if (project.layout === null || project.date === null)
+      // The day the page in the output folder was drawn for, which since
+      // A5.5-15 is not always the record's: a preview is of that page, so
+      // its beats and its clock are the page's day or they describe a
+      // picture nobody is looking at.
+      const day = drawnDate(project)
+      if (project.layout === null || day === null)
         throw engineError(
           ERROR_CODES.badCall,
           'Lay the project out before previewing it.',
@@ -330,7 +335,7 @@ export class Exporter {
         key: project.feed,
         preset: choice.preset,
         page: pageUrl(project),
-        date: project.date,
+        date: day,
         options: planOptions(choice, entry, themeFor(project.theme), entry.safe_zones),
       } satisfies ExportPlanParams
       const plan = (await engine.request('export.plan', params).result) as PlannedJob
@@ -437,13 +442,23 @@ export class Exporter {
         'This project was made by a newer version of the app and cannot be exported here.',
         'params',
       )
-    if (project.layout === null || project.date === null)
+    // The service day the map on disk was drawn for. Not `project.date`,
+    // which a person may have moved without drawing it (A5.5-15): the
+    // capture navigates to the page the last draw wrote, so a plan or a
+    // provenance made from the record's day would compute the beats and the
+    // clock for one day and hand back frames of another, with the sidecar
+    // beside the file claiming the day that is not in the picture. Stale
+    // never blocks an export (ADR-045), so this is the only thing that
+    // keeps the two together.
+    const day = drawnDate(project)
+    if (project.layout === null || day === null)
       throw engineError(ERROR_CODES.badCall, 'Lay the project out before exporting it.', 'params')
     this.#stopIfCancelled(control)
 
     // The plan is the engine's: what to capture and how to encode it, from
     // the preset's own tables. The page is the project's, on the app's
-    // origin, and the service day is the project's stored one (ADR-031).
+    // origin, and the service day is the one that page was drawn for
+    // (ADR-031, A5.5-15).
     this.#emit(token, 'plan', 0, 'Planning the export.')
     // Which options this preset takes is the engine's table: a view and a
     // start time are not sent beside a storyboard, whose first beat names
@@ -460,7 +475,7 @@ export class Exporter {
       key: project.feed,
       preset: choice.preset,
       page: pageUrl(project),
-      date: project.date,
+      date: day,
       options: planOptions(choice, entry, themeFor(project.theme)),
     } satisfies ExportPlanParams
     const plan = await this.#request<PlannedJob>('export.plan', planParams, control)
@@ -555,7 +570,9 @@ export class Exporter {
         plan,
         source: still ? join(frames, STILL_FRAME) : frames,
         dest,
-        provenance: { service_date: project.date },
+        // The day in the picture, so the sidecar beside the file and the
+        // frames inside it never name different days.
+        provenance: { service_date: day },
       } satisfies ExportEncodeParams
       const encoded = await this.#request<ExportEncodeResult>(
         'export.encode',

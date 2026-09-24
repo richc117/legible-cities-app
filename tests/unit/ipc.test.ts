@@ -75,6 +75,7 @@ describe('registerProjectHandlers', () => {
       [CHANNELS.projectsCompleteRebuild, 'aaaaaaaaaaaa', { date: '2026-09-15' }],
       [CHANNELS.projectsCompleteColors, 'aaaaaaaaaaaa', { colors: {}, defaultColor: '#888888' }],
       [CHANNELS.projectsCompleteOrder, 'aaaaaaaaaaaa', ['A']],
+      [CHANNELS.projectsSetDate, 'aaaaaaaaaaaa', '2026-09-15'],
       [CHANNELS.projectsSetTheme, 'aaaaaaaaaaaa', 'sepia'],
       [CHANNELS.projectsSetExport, 'aaaaaaaaaaaa', { preset: 'instagram-reel', options: {} }],
     ] as const
@@ -86,6 +87,18 @@ describe('registerProjectHandlers', () => {
     await h.call(CHANNELS.projectsList)
     await h.call(CHANNELS.projectsGet, 'aaaaaaaaaaaa')
     expect(h.calls.map((c) => c.method)).toEqual(['list', 'get'])
+
+    // The list above is written by hand, so it is held to the channels
+    // rather than to whoever remembered: a writer added without a row here
+    // would otherwise slip through the reset's guard untested.
+    expect(
+      [...writes.map(([channel]) => channel), CHANNELS.projectsList, CHANNELS.projectsGet].sort(),
+      'every project channel is either held or a read',
+    ).toEqual(
+      Object.values(CHANNELS)
+        .filter((c) => c.startsWith('projects:'))
+        .sort(),
+    )
   })
 
   it('lets every write through when nothing is being reset', async () => {

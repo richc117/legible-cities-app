@@ -1098,15 +1098,20 @@ it keeps the layout run's.
 In order: the project's record is read, and a project that is read-only or
 has no layout is refused before the engine is asked. `export.plan` gets the
 project's feed, the preset, the page's address on the app's origin, the
-project's stored service day (ADR-031) and the record's theme, and answers
+day the page on disk was drawn for (ADR-031, `drawnDate`) and the record's
+theme, and answers
 with the recorder's job and what the encode needs back. The capture half of
 that plan goes through the capture's own validator - a page off the origin,
 a scale the capture does not do, a first beat that pins no clock - and is
 refused before a window exists. The frames go to
 `<SCHEMATIC_HOME>/frames/<token>/`, a folder that exists only while the
 export runs; `export.encode` gets the plan back unchanged, that folder, the
-file to write and the project's service day as provenance, and writes the
-file with its sidecar beside it. The frames are removed when the export
+file to write and that same drawn day as provenance, and writes the file
+with its sidecar beside it. The drawn day and not the record's: since
+A5.5-15 a person can choose a day and not draw it, the capture navigates to
+the page the last draw wrote, and stale never blocks an export (ADR-045),
+so reading `date` here would compute the beats and the clock for one day,
+hand back frames of another and put the wrong day in the sidecar. The frames are removed when the export
 ends, whichever way, and a start of the app removes the whole folder, so a
 crash mid-export leaves nothing a later run reads.
 

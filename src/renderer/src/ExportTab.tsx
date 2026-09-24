@@ -11,7 +11,7 @@ import {
   type ExportPreview,
   type Quality,
 } from '../../shared/export'
-import type { ProjectRecord } from '../../shared/project'
+import { drawnDate, type ProjectRecord } from '../../shared/project'
 import type { Inspection } from '../../shared/protocol'
 import { linesOf } from './colours'
 import { engineClient } from './engine/runs'
@@ -84,9 +84,17 @@ interface Props {
   onPreview: (address: PreviewAddress) => void
 }
 
-/** A key for "this choice, for this page, in this theme", so a refusal is tied to what was refused. */
+/**
+ * A key for "this choice, for this page, in this theme", so a refusal is
+ * tied to what was refused.
+ *
+ * The day is the one the page was drawn for and not the record's: a day
+ * chosen and not yet drawn changes nothing about the page this preview is
+ * of, and re-planning for it would draw the preview's beats and clock for a
+ * picture that does not exist (A5.5-15).
+ */
 const keyOf = (choice: ExportChoice, project: ProjectRecord): string =>
-  JSON.stringify([choice, project.theme, project.date, project.layout])
+  JSON.stringify([choice, project.theme, drawnDate(project), project.layout])
 
 export default function ExportTab({
   project,

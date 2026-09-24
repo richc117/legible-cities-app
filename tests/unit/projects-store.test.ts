@@ -683,18 +683,38 @@ describe('setDate', () => {
     return project
   }
 
-  it('writes the day and the time, and nothing else', async () => {
+  it('writes the day and the time, and every other field is the one it read', async () => {
     const project = await laidOut()
     const before = await store.get(project.id)
     const after = await store.setDate(project.id, '2026-09-12')
     expect(after.date).toBe('2026-09-12')
-    expect(after.layout).toBe(LAYOUT)
-    expect(after.service).toEqual(WINDOW)
-    expect(after.modified >= before.modified).toBe(true)
+    // Field by field against what was there, so "nothing else" is checked
+    // rather than asserted about the three fields that came to mind.
+    expect({ ...after, date: before.date, modified: before.modified }).toEqual({
+      ...before,
+      readOnly: undefined,
+    })
     expect(await store.get(project.id), 'and it is on disk').toEqual({
       ...after,
       readOnly: false,
     })
+  })
+
+  it('moves the modification time', async () => {
+    // Against a record whose time is years old, not against one written in
+    // the same millisecond: `modified >= before` is satisfied by a write
+    // that never touched it, which is no assertion at all.
+    await seed(
+      A,
+      record(A, {
+        layout: LAYOUT,
+        date: '2026-09-15',
+        service: WINDOW,
+        modified: '2020-01-01T00:00:00.000Z',
+      }),
+    )
+    const after = await store.setDate(A, '2026-09-12')
+    expect(after.modified > '2024-01-01T00:00:00.000Z').toBe(true)
   })
 
   it('leaves `drawn` exactly where it was, so the map is known to be behind', async () => {
@@ -1177,6 +1197,45 @@ describe('drawn', () => {
     expect(colours.drawn).toMatchObject({ colors: { A: '#0072bc' }, defaultColor: '#112233' })
     const order = await store.completeOrder(project.id, ['K', 'A'])
     expect(order.drawn).toMatchObject({ lineOrder: ['K', 'A'], colors: { A: '#0072bc' } })
+  })
+
+  it('keeps the drawn day through a recolour and a reorder, whatever the record says', async () => {
+    // A recolour draws the day the map already showed, so a day chosen and
+    // waiting (A5.5-15) must not be closed by dragging a colour - and must
+    // never be stamped on a picture that was drawn for another day, which
+    // is what a `setDate` landing between the debounce and this write would
+    // otherwise do.
+    const project = await laidOut()
+    await store.setDate(project.id, '2026-09-12')
+    const colours = await store.completeColors(project.id, {
+      colors: { A: '#0072bc' },
+      defaultColor: '#112233',
+    })
+    expect(colours.date, 'the choice stands').toBe('2026-09-12')
+    expect(colours.drawn?.date, 'and the map is still the day it was drawn for').toBe('2026-09-15')
+    expect(colours.drawn?.colors, 'while the colours did move').toEqual({ A: '#0072bc' })
+    const order = await store.completeOrder(project.id, ['K', 'A'])
+    expect(order.drawn?.date).toBe('2026-09-15')
+    expect(order.drawn?.lineOrder).toEqual(['K', 'A'])
+    // And the rebuild is still the only thing that closes it.
+    const rebuilt = await store.completeRebuild(project.id, { date: '2026-09-12' })
+    expect(rebuilt.drawn).toMatchObject({
+      date: '2026-09-12',
+      colors: { A: '#0072bc' },
+      lineOrder: ['K', 'A'],
+    })
+  })
+
+  it("fills a recolour's drawn block on a record that had none", async () => {
+    // Nothing to keep: the redraw drew the record's day, which is what
+    // `drawnDate` answers for a record with no block.
+    const old: Record<string, unknown> = {
+      ...record(A, { layout: LAYOUT, made: MADE, built: BUILT, date: '2026-09-15' }),
+    }
+    delete old.drawn
+    await seed(A, old)
+    const after = await store.completeColors(A, { colors: {}, defaultColor: '#112233' })
+    expect(after.drawn).toMatchObject({ date: '2026-09-15', defaultColor: '#112233' })
   })
 
   it('stays where it was when nothing was drawn', async () => {

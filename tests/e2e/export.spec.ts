@@ -166,8 +166,13 @@ test('exports the reel from one click: three stages, a file, its sidecar, and no
     const [id] = readdirSync(join(h.engineHome, 'projects'))
     const record = JSON.parse(
       readFileSync(join(h.engineHome, 'projects', id, 'project.json'), 'utf8'),
-    ) as { date: string }
-    expect(sidecar.service_date, "the project's own service day").toBe(record.date)
+    ) as { date: string; drawn: { date: string } }
+    // The day the page was drawn for, which is what the frames show. Not
+    // `record.date`, which since A5.5-15 may be a day chosen and not yet
+    // drawn: comparing against that would pass while the sidecar named a
+    // day the picture does not have in it.
+    expect(sidecar.service_date, 'the day the exported page was drawn for').toBe(record.drawn.date)
+    expect(record.drawn.date, 'and here nothing has moved since the draw').toBe(record.date)
     expect(framesLeft(h), 'the frames are gone').toEqual([])
 
     // Nothing on the screen is a path; the reveal is how the file is found.
@@ -176,6 +181,41 @@ test('exports the reel from one click: three stages, a file, its sidecar, and no
     await expect
       .poll(() => app.evaluate(() => (globalThis as { __revealed?: string[] }).__revealed))
       .toEqual([file])
+  })
+})
+
+// The invariant A5.5-15 broke, with an export over the gap it opens: the
+// capture navigates to the page the last draw wrote, so a day chosen and
+// not drawn must not reach the plan or the sidecar. Stale never blocks an
+// export (ADR-045), so nothing stops a person doing exactly this.
+test('exports the day the page was drawn for, not a day chosen and not yet drawn', async () => {
+  const h = home()
+  await withApp(h, async (page) => {
+    await laidOutProject(page, h)
+    const record = (): { date: string; drawn: { date: string } } => {
+      const [id] = readdirSync(join(h.engineHome, 'projects'))
+      return JSON.parse(readFileSync(join(h.engineHome, 'projects', id, 'project.json'), 'utf8'))
+    }
+    const drawnDay = record().drawn.date
+
+    // Choose another day and draw nothing for it.
+    const frame = await openCell(page, 'frame')
+    await frame.getByLabel('Draw for another day').fill('2026-06-20')
+    await expect.poll(() => record().date).toBe('2026-06-20')
+    expect(record().drawn.date, 'the page is still the day it was drawn for').toBe(drawnDay)
+    await openCell(page, 'export')
+
+    await exportButton(page).click()
+    await expect(page.getByText(/^Exported/)).toBeVisible({ timeout: 60_000 })
+    const sidecar = JSON.parse(readFileSync(deliverable(h) + '.json', 'utf8')) as Record<
+      string,
+      unknown
+    >
+    expect(
+      sidecar.service_date,
+      'the sidecar names the day in the picture, not the day on the record',
+    ).toBe(drawnDay)
+    expect(record().date, 'and the choice is untouched by the export').toBe('2026-06-20')
   })
 })
 

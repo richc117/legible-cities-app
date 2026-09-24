@@ -640,10 +640,11 @@ test('cell 03 offers no frame control it cannot honour, and says why', async () 
     await expect(body).toContainText(/cropped, turned, margined and masked/)
     // The cell's controls are the day's three and nothing else: no crop, no
     // rotation, no margin, no clip mask, not even greyed out.
-    expect(await body.getByRole('button').allInnerTexts()).toEqual([
-      'Use the busiest weekday',
-      'Draw for this day',
-    ])
+    // By name, not by text: these are kit buttons, whose label lives in a
+    // shadow root, so innerText reads empty. Two, and exactly these two.
+    await expect(body.getByRole('button')).toHaveCount(2)
+    for (const name of ['Use the busiest weekday', 'Draw for this day'])
+      await expect(body.getByRole('button', { name, exact: true })).toBeVisible()
     expect(await body.locator('input, select, textarea').count()).toBe(1)
     await expect(body.getByLabel('Draw for another day')).toBeEnabled()
   })

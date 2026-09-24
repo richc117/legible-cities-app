@@ -235,6 +235,31 @@ day, a project that has been laid out, and the day inside the window the
 engine answered. A day that could be chosen but never drawn would be a
 project stuck stale.
 
+**Everything that describes the map now on disk must read `drawnDate`, not
+`date`.** This is the cost of the gap, and it is not optional: `date` is a
+choice and `drawn.date` is the picture, and anything that confuses them
+describes the picture with a day the picture does not have in it. Four
+callers were changed with A5.5-15 and a fifth would be a defect:
+
+- the export's plan, its `service_date` provenance and the export preview
+  (`src/main/export.ts`, `ExportTab.tsx`). The capture navigates to the page
+  the last draw wrote, and **stale never blocks an export**, so a person can
+  choose a day and export without drawing it. Read `date` there and the
+  frames are of one day while the beats, the clock and the sidecar beside
+  the file are another's.
+- cell 02's "Drawn from layout … for `<day>`" (`LayoutRun.tsx`), which would
+  otherwise contradict cell 03's own sentence one cell below it.
+- a recolour and a reorder (`layoutRun.ts`), which draw the map that is
+  there and must not quietly draw a day nobody asked for.
+
+And the completion of a cheap edit must **not** move `drawn.date`.
+`completeColors` and `completeOrder` go through `redrew` rather than `drew`
+for exactly this: dragging a colour would otherwise close cell 03's gap with
+nobody pressing "Draw for this day", and - if a `setDate` landed between the
+debounce firing and the write - would stamp the newly chosen day on a
+picture drawn for the old one, which is the one direction of error that
+matters, since `drawn` is what everything else trusts.
+
 **`drawn.theme` describes the last draw, not what is on screen.** A theme
 is taken on the page's address and the page restyles itself within a frame
 of the press (A4-03), with no draw at all, so the map on screen always

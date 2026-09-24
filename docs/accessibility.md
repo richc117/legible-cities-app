@@ -187,7 +187,10 @@ was thrown to the top of the document with nothing said.
   Asserted in the sweep.
 - **D3. The service day.** "Draw for this day" and the date control disable
   themselves for the rebuild; the section's heading takes focus first
-  (`ServiceDay.tsx`). Asserted in the sweep.
+  (`ServiceDay.tsx`). Asserted in the sweep. Since A5.5-15 the refusal
+  under the control is also an `alert`: a day outside the window is refused
+  as it is typed, with no focus move to carry it, because a focus move there
+  shuts the platform's own calendar under the person's hand.
 - **D4. A project made from the Library's empty state.** The button that
   opened the dialog goes with the empty state; focus lands on the new
   project's row (`Library.tsx`). Asserted in the sweep.
@@ -635,15 +638,22 @@ a table).
   as its description; press it (expanded), press Escape, and check that the
   explanation is no longer shown and focus has not moved (D9). Press **Copy as text** and
   listen for "The figures and the caveats are on the clipboard."
-- **Service day and date control.** Listen for the heading "Service day",
-  the status "Drawn for `<day>`. The feed covers `<start>` to `<end>`; the
-  busiest weekday, counted from `<anchor>`, is `<day>`.", and the date field
-  "Draw for another day". Change the date and press **Draw for this day**:
-  listen for focus on the "Service day" heading (D3) and the rebuild's end.
+- **Service day and date control.** In cell **03 Frame and service day**,
+  listen for the section "Service day" (its name is the cell's heading, so
+  there is no heading of its own inside it), the status "Drawn for `<day>`.
+  The feed covers `<start>` to `<end>`; the busiest weekday, counted from
+  `<anchor>`, is `<day>`.", and the date field "Draw for another day".
+  Change the date, and **before pressing anything**: the day is written as
+  it is chosen (A5.5-15), so listen for the status to change to "`<new
+  day>` is chosen; the map still shows `<old day>`." Then press **Draw for
+  this day**: listen for focus on the cell's own heading (D3) and the
+  rebuild's end, after which the status is "Drawn for `<new day>`." again.
   Press **Use the busiest weekday** and listen for focus in the date field.
-  Type a date outside the window and press **Draw for this day**: listen for
-  focus back in the field, invalid, with "The feed covers `<start>` to
-  `<end>`." read with it.
+  Type a date outside the window: listen for "The feed covers `<start>` to
+  `<end>`." spoken as it is typed, with **no focus move** - the message is
+  an alert, because taking focus there would shut the platform's calendar.
+  Then press **Draw for this day** and listen for focus back in the field,
+  invalid, with the same sentence read with it.
 - **Line colours.** Listen for the heading "Line colours", the list
   "Lines", and in each row the line's label, the feed's colour, where the
   shown colour comes from ("the colour in the feed, `#rrggbb`"), a button

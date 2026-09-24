@@ -1,6 +1,16 @@
-import { useEffect, useId, useRef, useState, type FormEvent, type JSX, type RefObject } from 'react'
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type JSX,
+  type RefObject,
+} from 'react'
 import type { EngineState } from '../../shared/engine'
 import { validateServiceDate, withinWindow, type ProjectRecord } from '../../shared/project'
+import { debounce } from './debounce'
 import type { LayoutRun as Run } from './engine/layoutRun'
 import Icon from './icons/Icon'
 import Button from './kit/Button'
@@ -41,6 +51,20 @@ export function outsideWindow(start: string, end: string): string {
 
 /** What the section is called, as its heading and as its name while headless. */
 const NAME = 'Service day'
+
+/**
+ * How long a chosen day waits before it is written, in milliseconds.
+ *
+ * The write is one small record and not a map build, so this is short: it
+ * exists because a date control reports every whole value on the way to the
+ * one a person means. Typing over a day segment passes through one other
+ * day, and holding an arrow key passes through one per key repeat, each of
+ * which would otherwise be a record rewritten and a modification time moved.
+ *
+ * A pending choice is never dropped: the form flushes it when it goes, and
+ * "Draw for this day" writes the day itself before it draws.
+ */
+const CHOICE_DELAY = 250
 
 /**
  * Has the day on the record not been drawn? `drawn` is what the map now on
@@ -113,6 +137,22 @@ export default function ServiceDay({
     if (rebuilt && (state === 'cancelled' || state === 'failed')) setValue(project.date ?? '')
   }, [state, rebuilt, project.date])
 
+  // The write waits: a date control reports every whole value on the way to
+  // the one a person means. Made once, with the current writer read through
+  // a ref so a waiting call is never the one from three renders ago - the
+  // pattern `LineColours` already uses for its map builds.
+  const writeRef = useRef<(date: string) => void>(() => undefined)
+  const schedule = useMemo(
+    () => debounce((date: string) => writeRef.current(date), CHOICE_DELAY),
+    [],
+  )
+  // Flushed and not cancelled, which is the opposite of what the colour and
+  // order panels do with theirs: their pending call is a redraw a person
+  // will see fail to happen, and this one is a choice they have already
+  // seen the control take. Leaving the screen a fifth of a second after
+  // choosing a day must not lose the day.
+  useEffect(() => () => schedule.flush(), [schedule])
+
   if (service === null) {
     return (
       <section
@@ -157,6 +197,10 @@ export default function ServiceDay({
   const pick = (next: string): void => {
     setValue(next)
     setMessage(null)
+    // Whatever was waiting is a day the person has typed past. Dropped
+    // before anything else is decided, so an earlier valid day cannot land
+    // on the record while the control shows a later one it refused.
+    schedule.cancel()
     if (next === '' || next === project.date || validateServiceDate(next) !== null) return
     if (!withinWindow(next, service)) {
       // Not `refuse`: focus is in the control already, and taking it again
@@ -164,7 +208,7 @@ export default function ServiceDay({
       setMessage(outsideWindow(service.start, service.end))
       return
     }
-    void choose(next)
+    schedule(next)
   }
   const submit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault()
@@ -172,10 +216,13 @@ export default function ServiceDay({
     if (invalid !== null) return refuse(invalid)
     if (!withinWindow(value, service)) return refuse(outsideWindow(service.start, service.end))
     if (value === project.date && !undrawn) return
+    // A press is not a keystroke: whatever is waiting is this day, and it is
+    // written here rather than a quarter of a second into the run.
+    schedule.cancel()
     void (async () => {
       // Written first where the choice has not landed - a write that was
-      // refused, or one still in flight - so the record and the map agree
-      // about the day the moment the rebuild ends.
+      // refused, waiting, or still in flight - so the record and the map
+      // agree about the day the moment the rebuild ends.
       if (value !== project.date && !(await choose(value))) return
       // The rebuild disables the control and the button that asked for it,
       // and Chromium blurs a disabled element; the heading keeps focus in
@@ -183,6 +230,9 @@ export default function ServiceDay({
       ;(handback ?? heading).current?.focus()
       run.rebuild(project, engine, value)
     })()
+  }
+  writeRef.current = (date: string): void => {
+    void choose(date)
   }
   const covers =
     service.start === service.end
@@ -228,7 +278,12 @@ export default function ServiceDay({
             aria-describedby={messageId}
             aria-invalid={message ? true : undefined}
           />
-          <p id={messageId} className="message error">
+          {/* Spoken, not merely shown. Every other refusal in the app
+              reaches a screen reader by taking focus back to the control
+              that references it; this one does not, because `pick` refuses
+              a day as it is typed and taking focus there would shut the
+              platform's own calendar under the person's hand (A5.5-15). */}
+          <p id={messageId} className="message error" role="alert">
             {message}
           </p>
         </div>
@@ -242,6 +297,8 @@ export default function ServiceDay({
               // the control now holding the day is where focus belongs, and
               // it takes it before the write that redraws this form.
               input.current?.focus()
+              // A press, so at once and not on the debounce.
+              schedule.cancel()
               if (service.busiest !== project.date) void choose(service.busiest)
             }}
           >

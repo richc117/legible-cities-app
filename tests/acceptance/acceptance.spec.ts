@@ -1730,6 +1730,24 @@ test('a release, installed, through docs/acceptance.md', async () => {
         log.problems.push(`no day other than ${busiest} in ${startDay} to ${endDay} to choose`)
       } else {
         await control.fill(other)
+        // A5.5-15: choosing and drawing are two acts. The day reaches the
+        // record as it is chosen, the section says the map has not caught
+        // up, and nothing runs until the button is pressed.
+        await log.soft('the chosen day reaches the record before anything is drawn', async () => {
+          await expect.poll(async () => (await recordOf(window, 'Los Angeles')).date).toBe(other)
+        })
+        await log.soft('and the section says the map still shows the drawn day', () =>
+          expect(
+            section.getByText(`${other} is chosen; the map still shows ${drawn}.`, {
+              exact: true,
+            }),
+          ).toBeVisible(),
+        )
+        await log.soft('and nothing ran for the choice', () =>
+          expect(window.getByRole('button', { name: /^Jobs, / })).toHaveAccessibleName(
+            'Jobs, none running',
+          ),
+        )
         await drawFor(other)
       }
       // The button is unavailable while the control already holds the busiest
@@ -1760,6 +1778,16 @@ test('a release, installed, through docs/acceptance.md', async () => {
       log.note(`Ended on the busiest weekday, ${busiest}, counted from ${anchor}.`)
       log.notAutomated(
         "the calendar's own days: min and max were checked, not the platform's date picker.",
+      )
+      log.notAutomated(
+        "cell 03's collapsed row, which says the day, whose choice it was, and whether the " +
+          'map has been drawn for it.',
+      )
+      log.notAutomated(
+        'that cells 04, 05 and 06 say "not drawn yet" while a chosen day is waiting.',
+      )
+      log.notAutomated(
+        'that cell 03 offers no crop, rotation, margin or clip mask, not even greyed out.',
       )
     })
 

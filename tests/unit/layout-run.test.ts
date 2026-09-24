@@ -953,6 +953,40 @@ describe('recolour', () => {
     expect(run.snapshot.stages.every((s) => s.state === 'done')).toBe(true)
   })
 
+  // A5.5-15: `date` may be a day chosen and waiting to be drawn. A colour
+  // is a render of the map that is there, so it draws the day that map was
+  // drawn for - otherwise dragging a colour would quietly draw a day nobody
+  // asked it to and close cell 03's gap with nobody pressing the button.
+  it('draws the day the map was drawn for, not a day merely chosen', async () => {
+    const { run, calls, record } = setup({
+      ...stored,
+      date: '2026-09-20',
+      drawn: {
+        layout: LAYOUT,
+        made: null,
+        date: '2026-09-15',
+        colors: {},
+        defaultColor: '#888888',
+        lineOrder: [],
+        theme: 'warm-dark',
+      },
+    })
+    run.recolour(record, READY, chosen)
+    await tick()
+    expect(calls[0].method).toBe('map.build')
+    expect(calls[0].params).toMatchObject({ date: '2026-09-15' })
+    expect(run.snapshot.day, 'and the run says which day it drew').toBe('2026-09-15')
+  })
+
+  it("takes the record's day when the project cannot say what it drew", async () => {
+    // A record from before `drawn` existed: its stored day is the only
+    // answer there is, which is what a recolour used before.
+    const { run, calls, record } = setup({ ...stored, date: '2026-09-20', drawn: null })
+    run.recolour(record, READY, chosen)
+    await tick()
+    expect(calls[0].params).toMatchObject({ date: '2026-09-20' })
+  })
+
   it('writes nothing when the build fails, and says so', async () => {
     const { run, calls, completeColors, record } = setup(stored)
     run.recolour(record, READY, chosen)
