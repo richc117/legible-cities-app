@@ -43,7 +43,11 @@ function listOf(words: string[]): string {
  * Every figure is the engine's. The stop count is the feed's own total,
  * which is what `feeds.inspect` answers: the engine counts stops per feed
  * and not per mode, and inventing a filtered count here would be the app
- * drawing a conclusion the engine did not (constitution II).
+ * drawing a conclusion the engine did not (constitution II). It says "in
+ * the feed" for that reason: the two slots before it are filters, so a
+ * bare count in the fourth would be read as the count of what they keep,
+ * and `stops.total` is the feed's whole stop table, entrances and boarding
+ * areas included.
  */
 export function dataSummary(
   project: Pick<ProjectRecord, 'feed' | 'mode' | 'agency'>,
@@ -51,26 +55,27 @@ export function dataSummary(
 ): string | null {
   if (inspection === null) return null
   const feed = inspection.name || project.feed
-  const modes = project.mode
-    .split(',')
-    .map((part) => part.trim())
-    .filter((part) => part !== '')
+  // A record's mode is `MODE_PATTERN`: names or route_type numbers, comma
+  // joined, with no spaces and no empty part, on write and on read alike.
+  const modes = project.mode.split(',')
   // "all" is the engine's word for every route type, and the Mode control
   // says so in its own option; the row says it the same way.
-  const mode = modes.includes('all')
-    ? 'every type'
-    : modes.length === 0
-      ? project.mode
-      : listOf(modes)
-  // An operator the feed does not list is named by its id, as the Operator
-  // control names it: a stored choice is shown, never quietly dropped.
+  const mode = modes.includes('all') ? 'every type' : listOf(modes)
+  const listed = inspection.agencies.find((a) => a.agency_id === project.agency)
+  // The row names the operator as the Operator control names it: its name
+  // when it has one, its id when the name is blank - a feed may carry an
+  // empty agency_name, and `Inspect` defends against it twice - and the
+  // control's own suffix when the feed no longer lists it at all, which is
+  // the whole of what a person needs to know in that case.
   const operator =
     project.agency === null
       ? 'every operator'
-      : (inspection.agencies.find((a) => a.agency_id === project.agency)?.agency_name ??
-        project.agency)
+      : listed === undefined
+        ? `${project.agency} (not in this feed)`
+        : listed.agency_name || listed.agency_id
   const { total } = inspection.stops
-  return `${feed}, ${mode}, ${operator}, ${total.toLocaleString()} ${total === 1 ? 'stop' : 'stops'}`
+  const stops = `${total.toLocaleString()} ${total === 1 ? 'stop' : 'stops'} in the feed`
+  return `${feed}, ${mode}, ${operator}, ${stops}`
 }
 
 /**

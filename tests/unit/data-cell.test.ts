@@ -36,22 +36,33 @@ describe('what cell 01 says while it is collapsed', () => {
 
   it('names the feed, the mode, the operator and the stop count', () => {
     expect(dataSummary({ feed: 'la-metro-rail', mode: 'subway', agency: 'LACMTA' }, LA)).toBe(
-      `LA Metro Rail, subway, Los Angeles County MTA, ${(110).toLocaleString()} stops`,
+      'LA Metro Rail, subway, Los Angeles County MTA, 110 stops in the feed',
+    )
+  })
+
+  it('says the count is the feed\u2019s, since the two slots before it are filters', () => {
+    // The mode and the operator narrow what is drawn; `stops.total` does
+    // not narrow with them, and it counts entrances and boarding areas
+    // besides. Without its subject the true sentence is not the one read.
+    expect(dataSummary({ feed: 'la-metro-rail', mode: 'subway', agency: 'LACMTA' }, LA)).toContain(
+      'stops in the feed',
     )
   })
 
   it("says the engine's own word for every type as the Mode control says it", () => {
     expect(dataSummary({ feed: 'la-metro-rail', mode: 'all', agency: null }, LA)).toBe(
-      `LA Metro Rail, every type, every operator, ${(110).toLocaleString()} stops`,
+      'LA Metro Rail, every type, every operator, 110 stops in the feed',
     )
   })
 
   it('reads a comma-joined mode as prose, in the order it was typed', () => {
+    // As MODE_PATTERN allows one: names or route_type numbers, comma
+    // joined, no spaces and no empty part.
     expect(dataSummary({ feed: 'la-metro-rail', mode: 'rail,subway', agency: null }, LA)).toContain(
       'rail and subway',
     )
     expect(
-      dataSummary({ feed: 'la-metro-rail', mode: 'rail, subway ,tram', agency: null }, LA),
+      dataSummary({ feed: 'la-metro-rail', mode: 'rail,subway,tram', agency: null }, LA),
     ).toContain('rail, subway and tram')
   })
 
@@ -61,15 +72,26 @@ describe('what cell 01 says while it is collapsed', () => {
     )
   })
 
-  it('names an operator the feed does not list by its id, as the control does', () => {
-    expect(dataSummary({ feed: 'la-metro-rail', mode: 'subway', agency: 'GONE' }, LA)).toContain(
-      'subway, GONE,',
+  it('names an operator the feed no longer lists as the control does, suffix and all', () => {
+    // The suffix is the whole of what a person needs there: the stored
+    // choice is gone from the data, which is why `Inspect` adds it.
+    expect(dataSummary({ feed: 'la-metro-rail', mode: 'subway', agency: 'GONE' }, LA)).toBe(
+      'LA Metro Rail, subway, GONE (not in this feed), 110 stops in the feed',
+    )
+  })
+
+  it('names an operator whose name is blank by its id, as the control does', () => {
+    // A feed may carry an empty agency_name, and the protocol promises
+    // nothing about it: a nullish fallback would leave a hole in the row.
+    const blank = feed({ agencies: [{ agency_id: 'LACMTA', agency_name: '' }] })
+    expect(dataSummary({ feed: 'la-metro-rail', mode: 'subway', agency: 'LACMTA' }, blank)).toBe(
+      'LA Metro Rail, subway, LACMTA, 110 stops in the feed',
     )
   })
 
   it('falls back to the feed key when the feed has no name of its own', () => {
     expect(dataSummary({ feed: 'my-feed', mode: 'subway', agency: null }, feed({ name: '' }))).toBe(
-      `my-feed, subway, every operator, ${(110).toLocaleString()} stops`,
+      'my-feed, subway, every operator, 110 stops in the feed',
     )
   })
 
@@ -78,7 +100,7 @@ describe('what cell 01 says while it is collapsed', () => {
       stops: { stops: 1, stations: 0, entrances: 0, generic_nodes: 0, boarding_areas: 0, total: 1 },
     })
     expect(dataSummary({ feed: 'tiny', mode: 'subway', agency: null }, one)).toBe(
-      'LA Metro Rail, subway, every operator, 1 stop',
+      'LA Metro Rail, subway, every operator, 1 stop in the feed',
     )
   })
 
@@ -93,8 +115,10 @@ describe('what cell 01 says while it is collapsed', () => {
         total: 2400,
       },
     })
+    // The literal, not `toLocaleString()` on both sides: that asserts only
+    // that the test and the code call the same function.
     expect(dataSummary({ feed: 'big', mode: 'all', agency: null }, many)).toContain(
-      `${(2400).toLocaleString()} stops`,
+      '2,400 stops in the feed',
     )
   })
 })

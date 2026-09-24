@@ -14,7 +14,7 @@ import Cell from './Cell'
 const STATES: CellState[] = ['ready', 'running', 'stale', 'error']
 
 const SUMMARY: Record<CellId, string | null> = {
-  data: 'LA Metro Rail, rail and subway, Los Angeles County MTA, 110 stops',
+  data: 'LA Metro Rail, rail and subway, Los Angeles County MTA, 110 stops in the feed',
   process: 'Laid out d1deeb11, made 13 September',
   frame: 'Tuesday 17 March, the engine’s choice',
   style: 'Warm dark',

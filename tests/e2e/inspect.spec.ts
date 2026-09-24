@@ -261,7 +261,7 @@ test('the collapsed cell says the feed, the mode, the operator and the stop coun
     await expect(cell(page, 'data')).toContainText('Los Angeles County MTA')
     await closeCell(page, 'data')
     await expect(cellHeading(page, 'data')).toHaveAccessibleName(
-      /^01 Data ready LA Metro Rail, every type, every operator, 3 stops$/,
+      /^01 Data ready LA Metro Rail, every type, every operator, 3 stops in the feed$/,
     )
 
     // The sentence follows the choice, because it is the record's.
@@ -269,7 +269,7 @@ test('the collapsed cell says the feed, the mode, the operator and the stop coun
     await cell(page, 'data').getByRole('combobox', { name: 'Mode' }).selectOption('subway')
     await closeCell(page, 'data')
     await expect(cellHeading(page, 'data')).toHaveAccessibleName(
-      /LA Metro Rail, subway, every operator, 3 stops$/,
+      /LA Metro Rail, subway, every operator, 3 stops in the feed$/,
     )
   })
 })
@@ -286,16 +286,21 @@ test('a refused inspection leaves the row with nothing to say rather than half a
 
 test('a change of mode marks 02 to 06 stale, starts nothing, and leaves the map and its controls', async () => {
   const engineHome = home()
+  // Every build the engine was asked for, not `graph.build` alone: a
+  // rebuild from the stored layout is `map.build`, and a count that cannot
+  // see one proves nothing about "starts nothing".
   const builds = (): number =>
     readFileSync(join(engineHome, 'fake-engine.received'), 'utf8')
       .split('\n')
-      .filter((line) => line.includes('graph.build')).length
+      .filter((line) => /"(graph|map)\.build"/.test(line)).length
   const below = ['process', 'frame', 'style', 'lines', 'export'] as const
 
   await withApp(engineHome, async (page) => {
     await openProjectOn(page, 'LA Metro Rail', 'Los Angeles')
     await layOut(page)
-    expect(builds()).toBe(1)
+    // One layout: a graph and the map built from it.
+    const laid = builds()
+    expect(laid).toBe(2)
     for (const id of below) await expect(cellHeading(page, id)).toHaveAccessibleName(/ ready\b/)
 
     const inspect = await openCell(page, 'data')
@@ -311,7 +316,7 @@ test('a change of mode marks 02 to 06 stale, starts nothing, and leaves the map 
 
     // Nothing started, and the old map is still on screen with its controls
     // live: a stale map is not a wrong map (ADR-045).
-    expect(builds()).toBe(1)
+    expect(builds()).toBe(laid)
     await expect(page.getByRole('region', { name: 'Map' })).toBeVisible()
     await expect(
       panel(page, 'Theme').getByRole('button', { name: 'Sepia', exact: true }),
@@ -325,9 +330,11 @@ test('a change of operator marks 02 to 06 stale and starts nothing', async () =>
   await withApp(engineHome, async (page) => {
     await openProjectOn(page, 'Mexico City Metro', 'CDMX')
     await layOut(page)
-    const before = readFileSync(join(engineHome, 'fake-engine.received'), 'utf8')
-      .split('\n')
-      .filter((line) => line.includes('graph.build')).length
+    const builds = (): number =>
+      readFileSync(join(engineHome, 'fake-engine.received'), 'utf8')
+        .split('\n')
+        .filter((line) => /"(graph|map)\.build"/.test(line)).length
+    const before = builds()
 
     const inspect = await openCell(page, 'data')
     await inspect.getByRole('combobox', { name: 'Operator' }).selectOption('SUB')
@@ -335,11 +342,7 @@ test('a change of operator marks 02 to 06 stale and starts nothing', async () =>
       timeout: 10_000,
     })
     await expect(cellHeading(page, 'export')).toHaveAccessibleName(/not drawn yet/)
-    expect(
-      readFileSync(join(engineHome, 'fake-engine.received'), 'utf8')
-        .split('\n')
-        .filter((line) => line.includes('graph.build')).length,
-    ).toBe(before)
+    expect(builds()).toBe(before)
     await expect(page.getByRole('region', { name: 'Map' })).toBeVisible()
   })
 })
