@@ -392,6 +392,9 @@ Result: ____
   no layout run; the interface around it keeps its own theme.
 - **Warm dark** brings it back. Leave it on **Warm dark** for the exports,
   or their file names gain `-light` (step 13).
+- Beneath the two buttons, one sentence says that line width, station size
+  and label size are the engine's own for now. Nothing else in the cell
+  offers to set them, not even a control that cannot be pressed.
 
 Result: ____
 
