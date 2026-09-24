@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { _electron as electron, expect, test, type Page } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
-import { cellHeading, laidOutProject, panel } from '../support/project'
+import { cellHandback, laidOutProject, panel } from '../support/project'
 
 const repoRoot = resolve(__dirname, '../..')
 const PYTHON = findPython()
@@ -193,7 +193,7 @@ test('back to alphabetical empties the order and disables itself', async () => {
     // disabled element: focus is on the cell's heading row, which is the
     // panel's heading now (A5.5-08), rather than on the body, so a screen
     // reader is still in the cell.
-    await expect(cellHeading(page, 'lines')).toBeFocused()
+    await expect(cellHandback(page, 'lines')).toBeFocused()
   })
 })
 

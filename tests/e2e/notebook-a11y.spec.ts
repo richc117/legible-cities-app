@@ -30,7 +30,7 @@ import {
   sweep,
   withApp,
 } from '../support/a11y'
-import { cell, cellHeading, closeCell, openCell } from '../support/project'
+import { cell, cellHandback, cellHeading, closeCell, openCell } from '../support/project'
 
 test.skip(PYTHON === null, 'no python3 or python on the PATH to run the stand-in engine')
 
@@ -182,7 +182,7 @@ test('the notebook, Inspect, the geographic view, the inspector and its dialogs'
     const day = page.getByRole('region', { name: 'Service day' })
     await day.getByLabel('Draw for another day').fill('2026-06-17')
     await pressWithKeyboard(day.getByRole('button', { name: 'Draw for this day' }))
-    await expect(cellHeading(page, 'frame')).toBeFocused()
+    await expect(cellHandback(page, 'frame')).toBeFocused()
     await expect(page.getByText(/^Drawn for 2026-06-17 from the stored layout/)).toBeVisible({
       timeout: 30_000,
     })

@@ -72,11 +72,21 @@ export const control = (
 /**
  * A cell's heading row, which is its toggle: a button whose accessible name
  * is the row's own contents, so it begins with the cell's label and goes on
- * with its state. It is also where a cell's controls hand focus back when
- * one of them disables itself under a person's hands.
+ * with its state.
  */
 export const cellHeading = (page: Page, id: CellId): Locator =>
   page.getByRole('button', { name: new RegExp(`^${cellLabel(id)}\\b`) })
+
+/**
+ * Where a cell's controls hand focus back when one of them disables itself
+ * under a person's hands: the heading the row sits in, which takes focus
+ * and does nothing with it. Not the row's button - a reflexive Space or
+ * Enter there would collapse the cell the person is working in.
+ */
+export const cellHandback = (page: Page, id: CellId): Locator =>
+  page
+    .locator('h2.disclosure-heading')
+    .filter({ has: page.getByRole('button', { name: new RegExp(`^${cellLabel(id)}\\b`) }) })
 
 /**
  * A cell's panel, without pressing anything: the caller has already made it

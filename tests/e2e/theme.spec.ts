@@ -23,7 +23,7 @@ import { _electron as electron, expect, test, type Page } from '@playwright/test
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 import {
   cell,
-  cellHeading,
+  cellHandback,
   closeCell,
   createProject,
   openCell,
@@ -208,7 +208,7 @@ test('focus is handed over before the buttons go, when a timer closes the way', 
     await expect(sepia).toBeDisabled({ timeout: 30_000 })
     // The cell's heading row is the panel's heading now (A5.5-08), so that
     // is where focus is handed when the buttons go.
-    await expect(cellHeading(page, 'style')).toBeFocused()
+    await expect(cellHandback(page, 'style')).toBeFocused()
   })
 })
 
