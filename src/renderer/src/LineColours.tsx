@@ -78,14 +78,15 @@ interface Props {
    */
   busyNow?: () => boolean
   /**
-   * True when a cell of the notebook renders the heading (A5.5-08). The
-   * section is then named by what its own heading said and draws no heading
-   * of its own; false by default, so the panel still stands alone.
-   */
-  headless?: boolean
-  /**
-   * Where focus goes when a control that held it disables itself: the
-   * panel's own heading by default, the cell's heading row while headless.
+   * Where focus goes when a control that held it is disabled or removed,
+   * and, by being given at all, that a cell of the notebook renders the
+   * heading (A5.5-08): the section is then named by what its own heading
+   * said and draws no heading of its own.
+   *
+   * One prop and not two, because a headless panel with nowhere to hand
+   * focus back to is the A6-07 defect itself - Chromium blurs a disabled
+   * element and focus falls to the body - and a shape that cannot say it
+   * cannot ship it.
    */
   handback?: RefObject<HTMLElement | null>
 }
@@ -100,9 +101,9 @@ export default function LineColours({
   inspect,
   disabled = false,
   busyNow,
-  headless = false,
   handback,
 }: Props): JSX.Element {
+  const headless = handback !== undefined
   const ready = engine?.state === 'ready'
   const { state: runState, recoloured } = useSnapshot(run)
   const running = runState === 'running'

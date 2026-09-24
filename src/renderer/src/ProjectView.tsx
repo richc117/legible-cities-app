@@ -1,7 +1,6 @@
 import type { JSX } from 'react'
 import { ProjectProvider } from './notebook/context'
 import Notebook from './notebook/Notebook'
-import Preview from './notebook/Preview'
 import ProjectFooter from './notebook/ProjectFooter'
 import ProjectHeader from './notebook/ProjectHeader'
 import Rail from './notebook/Rail'
@@ -18,8 +17,11 @@ import { useProjectState } from './notebook/useProjectState'
 // this used to be.
 //
 // The four regions of DESIGN.md section 9 are the rail, the notebook, the
-// pinned preview and the inspector. Three are here; the inspector is the
-// window's and is drawn by `App.tsx` beside all three screens (ADR-036).
+// pinned preview and the inspector. Two are here: the preview is a child
+// of the notebook's column rather than a region beside it, which is what
+// lets A5.5-20 pin it with CSS and never reparent the frame; the inspector
+// is the window's and is drawn by `App.tsx` beside all three screens
+// (ADR-036).
 
 interface Props {
   id: string
@@ -35,7 +37,6 @@ export default function ProjectView({ id, onBack }: Props): JSX.Element {
         <ProjectHeader />
         <Rail />
         <Notebook />
-        <Preview />
         <ProjectFooter />
       </main>
     </ProjectProvider>

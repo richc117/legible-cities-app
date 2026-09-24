@@ -114,7 +114,7 @@ listed below for filing. *engine's*: inside the engine's page.
 | Line order | pass | pass | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
 | Theme switch | pass | fixed (issue 124: `aria-pressed`, a named group; after any rebuild both buttons had lost `aria-pressed`, because the kit re-syncs its inner button when `disabled` changes and removes it, and the wrapper did not write it back; it now writes `disabled` and the mirrored state in one effect, in that order, asserted in `theme.spec.ts`, "the switch still says which theme is chosen after a rebuild…") | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
 | Geographic view | pass (`+`, `-`, arrows, `0`) | pass (pane named, the counts); finding (F2) | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
-| Viewer frame | fixed (F3, issue 106: a "Skip past the map" button just before the frame, shown on focus, sends focus to Rename; Tab without it still walks into the map; asserted in `accessibility.spec.ts`, "the project screen: one press skips past the map…", with a page of forty controls in the frame) | pass (the frame's title; the skip a native button named by its text) | engine's (F1) | engine's (F1) | engine's (F1) | engine's (F1) | not yet run: a person's | not yet run: a person's |
+| Viewer frame | fixed (F3, issue 106: a "Skip past the map" button just before the frame, shown on focus, sends focus to Rename; Tab without it still walks into the map; asserted in `notebook-a11y.spec.ts`, "the project screen: one press skips past the map…", with a page of forty controls in the frame) | pass (the frame's title; the skip a native button named by its text) | engine's (F1) | engine's (F1) | engine's (F1) | engine's (F1) | not yet run: a person's | not yet run: a person's |
 | Rename form | pass (focus returns to Rename) | pass | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
 | Delete confirmation | fixed (D8) | pass | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
 
@@ -126,7 +126,7 @@ listed below for filing. *engine's*: inside the engine's page.
 | Frame switches, lines to keep | pass | pass (`fieldset` and `legend`) | pass | pass | fixed (C3) | fixed (C3) | not yet run: a person's | not yet run: a person's |
 | Start time, filename tag | pass | pass | pass | pass | fixed (C5) | fixed (C5) | not yet run: a person's | not yet run: a person's |
 | Export, its progress line, Cancel, Reveal | fixed (D2) | pass | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
-| Preview in the viewer's frame | fixed (F3, issue 106: the same skip, before the same frame; asserted in `accessibility.spec.ts`, "the project screen: one press skips past the map…") | pass | engine's (F1) | engine's (F1) | engine's (F1) | engine's (F1) | not yet run: a person's | not yet run: a person's |
+| Preview in the viewer's frame | fixed (F3, issue 106: the same skip, before the same frame; asserted in `notebook-a11y.spec.ts`, "the project screen: one press skips past the map…") | pass | engine's (F1) | engine's (F1) | engine's (F1) | engine's (F1) | not yet run: a person's | not yet run: a person's |
 
 ### Settings
 
@@ -320,7 +320,7 @@ or a design decision.
   button that can take it (DESIGN.md 8.2), without reaching into the frame;
   from the tab panel Rename is one Tab and Enter away whatever the page
   holds, and Tab without the skip still reaches the map.
-  `accessibility.spec.ts` ("the project screen: one press skips past the
+  `notebook-a11y.spec.ts` ("the project screen: one press skips past the
   map…") asserts both on both tabs, with forty controls in the frame, and
   that the map does not move when the skip appears; it passed in a full
   end-to-end run on macOS (2026-09-13), and CI runs it on three platforms. Going backwards is unchanged: Shift+Tab from the toolbar walks
@@ -416,7 +416,8 @@ or a design decision.
   replacement, through a disabled toggle, to nothing once it went, and to
   nothing after unmounting. `tests/unit/kit-button.test.tsx` tests the
   syncing against a stand-in that behaves as Chromium does, and
-  `accessibility.spec.ts` ("the project screen: its Map tab…") reads the
+  `notebook-a11y.spec.ts` ("the notebook, Inspect, the geographic view…")
+  reads the
   relation from the built app's accessibility tree: each Choose button
   controls its open picker and nothing once it closes, and the Jobs toggle
   controls the Inspector while it is open and nothing while it is not.

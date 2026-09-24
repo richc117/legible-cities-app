@@ -6,13 +6,18 @@ import { useProject } from './context'
 // The map on screen: the engine's own page in its frame, with the bypass
 // control immediately before it (issue 106).
 //
-// Moved from the project screen unchanged, and deliberately not yet
-// pinned. Making it sticky under the header is A5.5-20's, and it is that
-// branch's alone because the frame must never be reparented and its
-// address must never change by accident: both reload the engine's page,
-// and a reload loses its clock, its view and its scrub position (ADR-045).
-// So this file holds the frame where the tabs left it, keyed the way it
-// was keyed, and `preview.css` waits empty beside it.
+// The first child of the notebook's column (ADR-045, DESIGN.md 8.2), which
+// is where it has to be for A5.5-20 to pin it sticky with CSS alone -
+// pinned from the top rather than at a scroll threshold. Put there now, so
+// that branch adds rules to `preview.css` and never moves the frame
+// between parents: a reparent reloads the engine's page, as a changed
+// address does, and a reload loses its clock, its view and its scrub
+// position.
+//
+// It is also the only place the frame is on screen. Six open cells are
+// several windows tall, and Chromium does not lay out the contents of an
+// offscreen iframe: below them the map drew nothing and its page had no
+// accessibility tree at all.
 //
 // The frame carries `sandbox="allow-scripts"` and nothing else, and the
 // app drives the page from the main process (ADR-028). Nothing here

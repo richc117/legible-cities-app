@@ -2,6 +2,7 @@ import { useState, type JSX } from 'react'
 import { CELL_LIST, runGraph, type CellId } from '../runGraph'
 import { CELL_VIEWS } from './cells'
 import { useProject } from './context'
+import Preview from './Preview'
 
 // The notebook: the six cells in one scrolling column, read top to bottom
 // (ADR-045, docs/DESIGN.md 9).
@@ -16,8 +17,21 @@ import { useProject } from './context'
 // starts closed because the export's preview takes over the map's frame
 // while it is open, which is the Export tab's own rule (A5-01) and the one
 // thing about the tabs that was not merely where a panel sat.
+//
+// The map is the column's first child and not a sibling of it (ADR-045,
+// DESIGN.md 8.2, "The pinned preview"): the wrapper has to be inside the
+// column for A5.5-20 to pin it with CSS alone, and putting it there now
+// means that branch never moves the frame between parents, which is the
+// one operation ADR-045 forbids. Below the cells it was also off screen in
+// a window the six of them are taller than, and Chromium does not lay out
+// an offscreen iframe's contents at all.
 
-const START_OPEN: Record<CellId, boolean> = {
+/**
+ * Which cells a project's screen opens with: the five the Map tab showed,
+ * and cell 06 closed as the Export tab was. Exported so the decision is
+ * held to a test rather than to a comment (A5.5-08).
+ */
+export const START_OPEN: Record<CellId, boolean> = {
   data: true,
   process: true,
   frame: true,
@@ -36,6 +50,7 @@ export default function Notebook(): JSX.Element | null {
   const states = runGraph({ record: project, run: runSnapshot, exportRun: exportSnapshot })
   return (
     <div className="notebook">
+      <Preview />
       {CELL_LIST.map((cell) => {
         const View = CELL_VIEWS[cell.id]
         return (

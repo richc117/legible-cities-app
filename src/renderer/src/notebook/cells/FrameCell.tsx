@@ -8,8 +8,10 @@ import { useProject } from '../context'
 //
 // The day itself comes from the `<dl class="fields">` the project screen
 // carried whole, and the control is `ServiceDay` unchanged (A3-04) - drawn
-// headless, since this cell's heading row is the heading now, with its
-// focus handback pointed at that row.
+// headless, since this cell's heading is the section's heading now, and
+// that heading is where its focus handback lands. The heading and not the
+// toggle inside it: a reflexive Enter after "Draw for this day" would
+// otherwise collapse the cell a person is working in.
 //
 // The slot below is where the page's own transport - the scrub, Play day
 // and the speed, already on the engine page's seam - arrives as one new
@@ -17,7 +19,7 @@ import { useProject } from '../context'
 
 export default function FrameCell({ cell, state, open, onToggle }: CellViewProps): JSX.Element {
   const { project, engine, run, exporting } = useProject()
-  const heading = useRef<HTMLButtonElement>(null)
+  const heading = useRef<HTMLHeadingElement>(null)
   return (
     <Cell
       number={cell.number}
@@ -39,7 +41,6 @@ export default function FrameCell({ cell, state, open, onToggle }: CellViewProps
               project={project}
               engine={engine}
               disabled={exporting}
-              headless
               handback={heading}
             />
           )}

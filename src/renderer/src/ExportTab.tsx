@@ -40,16 +40,17 @@ import Select from './kit/Select'
 import TextInput from './kit/TextInput'
 import { useSnapshot } from './useSnapshot'
 
-// The export tab (A5-01, specs/022-export-tab): a preset from the engine's
+// The export (A5-01, specs/022-export-tab), cell 06 of the notebook since
+// A5.5-08 and its own tab before that: a preset from the engine's
 // table, grouped by platform; a storyboard for a video or a GIF; the
 // options; and the export itself, with the progress line, cancel and
 // "Reveal" it always had.
 //
-// The preview is not drawn here. While this tab is open the map's own frame
+// The preview is not drawn here. While this cell is open the map's own frame
 // is sent to the address `export.plan` answers for the choice, with the
 // platform's safe zones asked for where the preset has them, and the page
 // draws the frame, the title, the clock and the zones itself (principle I).
-// This tab only says which address, through `onPreview`.
+// This panel only says which address, through `onPreview`.
 //
 // Every list and every refusal is the engine's. A choice is written to the
 // project record the moment it is made (a text field when it is committed),
@@ -73,7 +74,7 @@ interface Props {
   run: Run
   /** A layout run, a chosen day, a recolour or a reorder is rewriting the page. */
   layingOut: boolean
-  /** Whether this tab is the one showing; the preview is planned only then. */
+  /** Whether the cell holding this is open; the preview is planned only then. */
   active: boolean
   /** The feed as the engine read it, for the lines; the Inspect view's cache answers. */
   inspect: (key: string) => Promise<Inspection>
@@ -193,6 +194,14 @@ export default function ExportTab({
   useEffect(() => {
     answerRef.current = (preview, asked) => {
       if (preview.ok) {
+        // Not while the cell is closed. The planner is cancelled in an
+        // effect, which flushes after the commit that closed it, so an
+        // answer already on its way would otherwise put the export's
+        // frame - its aspect ratio, its safe zones - on the map after a
+        // person has left the export, which is the one thing A5-01's rule
+        // exists to stop. `active` is current here because this callback
+        // is written on every render.
+        if (!active) return
         setRefusal(null)
         setNotes(preview.notes)
         onPreview({ url: preview.url, width: preview.width, height: preview.height })
@@ -365,7 +374,7 @@ export default function ExportTab({
             </p>
           )}
           <p className="prose">
-            While this tab is open the map shows the frame the export will have, with the parts a
+            While this cell is open the map shows the frame the export will have, with the parts a
             platform covers with its own buttons shaded where it has them. The theme is the
             map&rsquo;s own.
           </p>

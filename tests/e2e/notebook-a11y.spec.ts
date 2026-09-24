@@ -344,15 +344,17 @@ test('the project screen: one press skips past the map to its toolbar, and the m
         })
       const atRest = await mapAt()
 
-      // From the notebook's last control, the next Tab stop is the skip,
-      // before the frame: the six cells come first, then the map, then the
-      // project's own toolbar (ADR-045).
+      // The map is the notebook column's first child (ADR-045), so the skip
+      // is the first stop in the column and the stop before it is the
+      // project's own header: nothing focusable sits between the two.
+      // Asserted as that button and not as "somewhere in the notebook",
+      // which the skip being inside the column makes true of itself.
       await skip.focus()
       await page.keyboard.press('Shift+Tab')
-      expect(
-        await page.evaluate(() => document.activeElement?.closest('.notebook') != null),
-        `${tab}: the stop before the skip is in the notebook`,
-      ).toBe(true)
+      await expect(
+        page.getByRole('button', { name: 'Back to Library' }),
+        `${tab}: the stop before the skip is the project's header`,
+      ).toBeFocused()
       await page.keyboard.press('Tab')
       await expect(skip).toBeFocused()
 
@@ -381,9 +383,9 @@ test('the project screen: one press skips past the map to its toolbar, and the m
       await expect(rename).not.toBeFocused()
       await expect.poll(width, { message: `${tab}: hidden again` }).toBeLessThanOrEqual(1)
 
-      // Back out of the map to the skip, and pressed: the toolbar's first
-      // button, two presses from the notebook however many controls the
-      // map has.
+      // Back out of the map to the skip, and pressed: the project's own
+      // toolbar, which is after the frame and after the six cells, however
+      // many controls the map has (issue 106, DESIGN.md 8.2).
       await page.keyboard.press('Shift+Tab')
       await expect(skip).toBeFocused()
       await page.keyboard.press('Enter')
