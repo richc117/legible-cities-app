@@ -1,4 +1,12 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from 'react'
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type JSX,
+  type RefObject,
+} from 'react'
 import type { EngineState } from '../../shared/engine'
 import { withoutPaths } from '../../shared/engine'
 import type { Inspection } from '../../shared/protocol'
@@ -60,7 +68,21 @@ interface Props {
   disabled?: boolean
   /** The same question at this instant rather than at the last render (A4-01). */
   busyNow?: () => boolean
+  /**
+   * True when a cell of the notebook renders the heading (A5.5-08). The
+   * section is then named by what its own heading said and draws no heading
+   * of its own; false by default, so the panel still stands alone.
+   */
+  headless?: boolean
+  /**
+   * Where focus goes when a control that held it disables itself: the
+   * panel's own heading by default, the cell's heading row while headless.
+   */
+  handback?: RefObject<HTMLElement | null>
 }
+
+/** What the section is called, as its heading and as its name while headless. */
+const NAME = 'Line order'
 
 export default function LineOrder({
   run,
@@ -69,6 +91,8 @@ export default function LineOrder({
   inspect,
   disabled = false,
   busyNow,
+  headless = false,
+  handback,
 }: Props): JSX.Element {
   const ready = engine?.state === 'ready'
   const { state: runState, reordered } = useSnapshot(run)
@@ -243,7 +267,7 @@ export default function LineOrder({
     // itself, and Chromium blurs a disabled element; the heading is where
     // focus goes, so a screen reader stays in the panel (A3-04 learned
     // this, and the Colours panel's resets do the same).
-    headingRef.current?.focus()
+    ;(handback ?? headingRef).current?.focus()
     const next = alphabetical()
     setOrder(next)
     schedule(next)
@@ -251,10 +275,17 @@ export default function LineOrder({
   }
 
   return (
-    <section className="line-order" aria-labelledby="line-order-heading" aria-busy={busy}>
-      <h2 id="line-order-heading" tabIndex={-1} ref={headingRef}>
-        Line order
-      </h2>
+    <section
+      className="line-order"
+      aria-label={headless ? NAME : undefined}
+      aria-labelledby={headless ? undefined : 'line-order-heading'}
+      aria-busy={busy}
+    >
+      {!headless && (
+        <h2 id="line-order-heading" tabIndex={-1} ref={headingRef}>
+          {NAME}
+        </h2>
+      )}
       <p className="prose">
         Where two lines share track the map draws the later of them over the earlier, and the page
         lists them in this order too. The stations do not move: the stored layout is drawn again,

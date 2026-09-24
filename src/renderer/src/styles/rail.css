@@ -1,0 +1,13 @@
+/* The rail (ADR-045, docs/DESIGN.md 8.2, "The rail and its stepper"): the
+   project's own left region, narrow while it is collapsed and the
+   stepper's own width while it is open, holding the six cells as a
+   numbered stepper and, below them, what the project has made.
+
+   Empty. `Rail.tsx` is a stub that draws nothing, and this is where its
+   rules go when A5.5-10 draws the stepper and A5.5-11 the outputs. It is
+   separate from `notebook.css` so those two branches do not meet in the
+   cell's own chrome, which nine issues of this milestone also edit.
+
+   A stylesheet is named for a region of the interface, not for a
+   component, and the four token files stay the only place a literal may
+   appear (A5.5-07). */

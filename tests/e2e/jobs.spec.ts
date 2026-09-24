@@ -34,7 +34,7 @@ import {
   type Page,
 } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
-import { openProject } from '../support/project'
+import { openCell, openProject } from '../support/project'
 
 const repoRoot = resolve(__dirname, '../..')
 const fixture = resolve(__dirname, '../fixtures/capture-page.html')
@@ -113,8 +113,7 @@ async function layOutForExport(page: Page, h: Home): Promise<void> {
 }
 
 async function startExport(page: Page): Promise<void> {
-  await page.getByRole('tab', { name: 'Export' }).click()
-  const panel = page.getByRole('tabpanel', { name: 'Export' })
+  const panel = await openCell(page, 'export')
   await expect(panel.getByRole('combobox', { name: 'Preset' })).toBeVisible({ timeout: 20_000 })
   await panel.getByRole('button', { name: 'Export', exact: true }).click()
 }

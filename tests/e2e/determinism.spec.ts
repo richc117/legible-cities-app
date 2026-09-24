@@ -82,6 +82,7 @@ import {
   probeSize,
   TOLERANCE,
 } from '../support/frames'
+import { cell, openCell } from '../support/project'
 
 const OPTED_IN = process.env.LEGIBLE_DETERMINISM_TEST === '1'
 const PYTHON = process.env.LEGIBLE_ENGINE_PYTHON ?? ''
@@ -96,7 +97,7 @@ const GIF_MIN_BYTES = 64 * 1024
 
 test.skip(!OPTED_IN, 'opt in with LEGIBLE_DETERMINISM_TEST=1; it takes minutes')
 
-const exportPanel = (page: Page): Locator => page.getByRole('tabpanel', { name: 'Export' })
+const exportPanel = (page: Page): Locator => cell(page, 'export')
 
 test('the same project, exported twice, captures the same frames within the tolerance, from the same stored layout', async () => {
   test.setTimeout(45 * 60_000)
@@ -151,7 +152,7 @@ test('the same project, exported twice, captures the same frames within the tole
     })
     await page.getByRole('button', { name: `Open ${PROJECT_NAME}` }).click()
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(PROJECT_NAME)
-    await page.getByRole('tab', { name: 'Export' }).click()
+    await openCell(page, 'export')
     const panel = exportPanel(page)
     await expect(panel.getByRole('combobox', { name: 'Preset' })).toHaveValue(
       'instagram-reel-gif',

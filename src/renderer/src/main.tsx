@@ -9,17 +9,23 @@ import ProgressPreview from './ProgressPreview'
 // palette is its own (ADR-044), and tokens.css is only a drift-tested
 // record of that page now.
 //
-// The app's own rules are three files, one per region of the interface and
-// in the order they are read against each other: the shell, the panels a
-// project is made of, then the notebook's own chrome (A5.5-07). No
-// component imports a stylesheet; they are all imported here.
+// The app's own rules are one file per region of the interface, in the
+// order they are read against each other: the shell, the panels a project
+// is made of, the project's own screen, then the three regions of that
+// screen - the notebook's column and the cell's chrome, the rail, the
+// pinned preview (A5.5-07, A5.5-08). No component imports a stylesheet;
+// they are all imported here, and this block is edited once per region
+// rather than once per issue.
 import './styles/theme.css'
 import './styles/scale.css'
 import './kit'
 import './styles/figui-adapter.css'
 import './styles/app.css'
 import './styles/panels.css'
+import './styles/project.css'
 import './styles/notebook.css'
+import './styles/rail.css'
+import './styles/preview.css'
 // The theme, applied before anything is drawn: the system's preference
 // until App has read what a person chose in Settings (A1-04).
 import './theme'

@@ -31,7 +31,7 @@ import {
   type Page,
 } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
-import { cell, openCell } from '../support/project'
+import { cell, cellHeading, closeCell, openCell } from '../support/project'
 import { withWhatTheScreenSaid } from '../support/store-lines'
 
 const repoRoot = resolve(__dirname, '../..')
@@ -175,36 +175,29 @@ async function frameQuery(page: Page): Promise<URLSearchParams> {
   return new URL(src).searchParams
 }
 
-test('the tab strip is one tab stop, moved with the arrow keys, and each tab shows its panel', async () => {
+test('cell 06 is a disclosure, closed to begin with, and the cells above it stay open', async () => {
   const h = home()
   await withApp(h, async (page) => {
     await laidOut(page, h)
-    const strip = page.getByRole('tablist')
-    const mapTab = strip.getByRole('tab', { name: 'Map' })
-    const exportTab = strip.getByRole('tab', { name: 'Export' })
-    await expect(mapTab).toHaveAttribute('aria-selected', 'true')
-    await expect(exportTab).toHaveAttribute('tabindex', '-1')
-    await expect(page.getByRole('tabpanel', { name: 'Map' })).toBeVisible()
+    // The export took the map's frame for its preview while its tab was
+    // open, so its cell is the one that starts closed (ADR-045).
+    const heading = cellHeading(page, 'export')
+    await expect(heading).toHaveAttribute('aria-expanded', 'false')
     await expect(exportPanel(page)).toBeHidden()
 
-    await mapTab.focus()
-    await page.keyboard.press('ArrowRight')
-    await expect(exportTab).toBeFocused()
-    await expect(exportTab).toHaveAttribute('aria-selected', 'true')
+    await heading.click()
+    await expect(heading).toHaveAttribute('aria-expanded', 'true')
     await expect(exportPanel(page)).toBeVisible()
-    await expect(page.getByRole('tabpanel', { name: 'Map' })).toBeHidden()
 
-    await page.keyboard.press('Home')
-    await expect(mapTab).toBeFocused()
-    await expect(mapTab).toHaveAttribute('aria-selected', 'true')
-    await page.keyboard.press('End')
-    await expect(exportTab).toHaveAttribute('aria-selected', 'true')
+    // Not a tab strip: opening one cell hides none of the others. The
+    // notebook is one scrolling column and every cell stays in the
+    // document.
+    await expect(cell(page, 'lines')).toBeVisible()
+    await expect(cell(page, 'data')).toBeVisible()
 
-    // The strip is one stop: Tab leaves it for the chosen panel, which is a
-    // stop of its own.
-    await page.keyboard.press('Tab')
-    await expect(page.locator('[role="tab"]:focus')).toHaveCount(0)
-    await expect(exportPanel(page)).toBeFocused()
+    await heading.click()
+    await expect(heading).toHaveAttribute('aria-expanded', 'false')
+    await expect(exportPanel(page)).toBeHidden()
   })
 })
 
@@ -246,8 +239,8 @@ test('offers the thirteen social presets by platform, and previews the safe zone
       .toBe('1')
     await expect(exportPanel(page).getByRole('combobox', { name: 'Storyboard' })).toHaveCount(0)
 
-    // Back to the map tab: the plain map again.
-    await page.getByRole('tab', { name: 'Map' }).click()
+    // The cell closed: the plain map again.
+    await closeCell(page, 'export')
     await expect.poll(async () => (await frameQuery(page)).get('controls')).toBe('1')
     expect((await frameQuery(page)).get('safe')).toBeNull()
   })

@@ -25,7 +25,13 @@ the release tag, and its two columns are left for it.
    transition and animation off under `prefers-reduced-motion: reduce`. The
    kit's own stylesheet (FigUI3's MIT core) and `react-colorful`'s were read
    for what they draw at rest, on focus and in motion.
-2. **End-to-end sweep**, `tests/e2e/accessibility.spec.ts`, against the
+2. **End-to-end sweep**, `tests/e2e/accessibility.spec.ts` and, since
+   A5.5-08, `tests/e2e/notebook-a11y.spec.ts`, which took every check over a
+   project's own screen when that screen became a notebook of six cells
+   (ADR-045); the machinery both use is `tests/support/a11y.ts`. This
+   document still describes that screen as a tab strip below, and is
+   rewritten once, at the end of the notebook's work, against the interface
+   that ships (ADR-045). Against the
    stand-in engine: for each screen and each dialog, every control in the
    accessibility tree has a name (`ariaSnapshot()`); a Tab walk from the
    top reaches every enabled control and each shows a ring it did not have

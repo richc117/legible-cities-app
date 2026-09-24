@@ -1,0 +1,15 @@
+/* The project's screen (ADR-045, docs/DESIGN.md 9): its header, the three
+   regions below it - the rail, the notebook and the pinned preview - and
+   the foot that holds the project's own two actions.
+
+   Empty. A5.5-08 moved the six panels into cells without changing where
+   anything sits, so the screen still lays out from `app.css` and
+   `panels.css` as it did. The file exists now because nine of this
+   milestone's open issues have rules to add to the project screen, and a
+   region earns its own stylesheet before they meet in someone else's: the
+   header's status line and Run all (A5.5-19), the four regions at the
+   narrow width (A5.5-21), and the header's own rule (A5.5-22).
+
+   A stylesheet is named for a region of the interface, not for a
+   component, and the four token files stay the only place a literal may
+   appear (A5.5-07). */

@@ -1,11 +1,21 @@
-/* The notebook (ADR-045): the cell's own chrome - its heading row, its
-   state, its collapsed summary and its provenance footer - the rail and its
-   stepper, and the pinned preview.
+/* The notebook (ADR-045): the column of six cells, and the cell's own
+   chrome - its heading row, its state, its collapsed summary and its
+   provenance footer.
 
-   Empty until A5.5-05 draws the first cell. It exists now so that the
-   branch which does has somewhere to put its rules, and so the import order
-   is settled while nothing depends on it: the shell, then the panels, then
-   this. The four token files stay the only place a literal may appear. */
+   Narrowed by A5.5-08: the rail and the pinned preview, which this file
+   first claimed, have stylesheets of their own (`rail.css`,
+   `preview.css`), so the nine issues of this milestone that have rules to
+   add do not all meet here. The project screen's own layout is
+   `project.css`.
+
+   The four token files stay the only place a literal may appear. */
+
+/* The column (`.notebook`): the six cells read top to bottom, always in the
+   document, never hidden by the rail or by a step control (ADR-045). It has
+   no rules of its own yet - it takes the panel's measure, and the cell below
+   carries the spacing between one cell and the next - and it is named here
+   because it is the region this file is for and where the column's own
+   rules go when the rail sits beside it (A5.5-21). */
 
 /* The cell (A5.5-05, DESIGN.md 8.2): a heading row that is the toggle, the
    controls under it, and a footer where there is provenance to show. The

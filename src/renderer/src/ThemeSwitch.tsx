@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type JSX } from 'react'
+import { useEffect, useRef, useState, type JSX, type RefObject } from 'react'
 import { THEMES, type ProjectRecord, type Theme } from '../../shared/project'
 import Button from './kit/Button'
 import { nextWrite, writeThrough } from './themeWrites'
@@ -33,9 +33,31 @@ interface Props {
    * reach the reel it is making.
    */
   disabled?: boolean
+  /**
+   * True when a cell of the notebook renders the heading (A5.5-08). The
+   * section is then named by what its own heading said and draws no heading
+   * of its own; false by default, so the panel still stands alone and its
+   * own tests render it unchanged.
+   */
+  headless?: boolean
+  /**
+   * Where focus goes when a control that held it is disabled or removed.
+   * The panel's own heading by default; the cell's heading row while
+   * headless, which is the element the cell passes down.
+   */
+  handback?: RefObject<HTMLElement | null>
 }
 
-export default function ThemeSwitch({ project, onChange, disabled = false }: Props): JSX.Element {
+/** What the section is called, as its heading and as its name while headless. */
+const NAME = 'Theme'
+
+export default function ThemeSwitch({
+  project,
+  onChange,
+  disabled = false,
+  headless = false,
+  handback,
+}: Props): JSX.Element {
   const [problem, setProblem] = useState<string | null>(null)
   // Whether a write is in flight, and the theme pressed while it was: refs
   // rather than state, because a press reads them in the same tick it
@@ -58,9 +80,9 @@ export default function ThemeSwitch({ project, onChange, disabled = false }: Pro
     kept.current = null
     const active = document.activeElement
     if (active !== null && section.current?.contains(active) === true) {
-      headingRef.current?.focus()
+      ;(handback ?? headingRef).current?.focus()
     }
-  }, [disabled])
+  }, [disabled, handback])
 
   const choose = async (theme: Theme): Promise<void> => {
     const step = nextWrite(theme, project.theme, writing.current)
@@ -88,13 +110,16 @@ export default function ThemeSwitch({ project, onChange, disabled = false }: Pro
   return (
     <section
       className="theme-switch"
-      aria-labelledby="theme-switch-heading"
+      aria-label={headless ? NAME : undefined}
+      aria-labelledby={headless ? undefined : 'theme-switch-heading'}
       aria-busy={disabled}
       ref={section}
     >
-      <h2 id="theme-switch-heading" tabIndex={-1} ref={headingRef}>
-        Theme
-      </h2>
+      {!headless && (
+        <h2 id="theme-switch-heading" tabIndex={-1} ref={headingRef}>
+          {NAME}
+        </h2>
+      )}
       <p className="prose">
         The map is drawn in one of the engine&rsquo;s two themes, and so is every export of it. The
         interface has its own theme in Settings; neither follows the other.

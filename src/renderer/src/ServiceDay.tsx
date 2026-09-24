@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type FormEvent, type JSX } from 'react'
+import { useEffect, useId, useRef, useState, type FormEvent, type JSX, type RefObject } from 'react'
 import type { EngineState } from '../../shared/engine'
 import { validateServiceDate, withinWindow, type ProjectRecord } from '../../shared/project'
 import type { LayoutRun as Run } from './engine/layoutRun'
@@ -22,17 +22,33 @@ export function outsideWindow(start: string, end: string): string {
   return `The feed covers ${start} to ${end}.`
 }
 
+/** What the section is called, as its heading and as its name while headless. */
+const NAME = 'Service day'
+
 export default function ServiceDay({
   run,
   project,
   engine,
   disabled = false,
+  headless = false,
+  handback,
 }: {
   run: Run
   project: ProjectRecord
   engine: EngineState | null
   /** True while something else, such as an export, is reading the project's page. */
   disabled?: boolean
+  /**
+   * True when a cell of the notebook renders the heading (A5.5-08). The
+   * section is then named by what its own heading said and draws no heading
+   * of its own; false by default, so the panel still stands alone.
+   */
+  headless?: boolean
+  /**
+   * Where focus goes when a control that held it is disabled: the panel's
+   * own heading by default, the cell's heading row while headless.
+   */
+  handback?: RefObject<HTMLElement | null>
 }): JSX.Element {
   const { state, rebuilt } = useSnapshot(run)
   const running = state === 'running'
@@ -59,8 +75,12 @@ export default function ServiceDay({
 
   if (service === null) {
     return (
-      <section className="service-day" aria-labelledby="service-day-heading">
-        <h2 id="service-day-heading">Service day</h2>
+      <section
+        className="service-day"
+        aria-label={headless ? NAME : undefined}
+        aria-labelledby={headless ? undefined : 'service-day-heading'}
+      >
+        {!headless && <h2 id="service-day-heading">{NAME}</h2>}
         <p className="prose" role="status">
           {project.date === null ? 'Not yet chosen. ' : `Drawn for ${project.date}. `}
           Lay the project out again to learn which days the feed covers.
@@ -86,7 +106,7 @@ export default function ServiceDay({
     // The rebuild disables the control and the button that asked for it,
     // and Chromium blurs a disabled element; the heading keeps focus in the
     // section, as the theme switch's does (A6-07).
-    heading.current?.focus()
+    ;(handback ?? heading).current?.focus()
     run.rebuild(project, engine, value)
   }
   const covers =
@@ -95,10 +115,16 @@ export default function ServiceDay({
       : `The feed covers ${service.start} to ${service.end}`
 
   return (
-    <section className="service-day" aria-labelledby="service-day-heading">
-      <h2 id="service-day-heading" tabIndex={-1} ref={heading}>
-        Service day
-      </h2>
+    <section
+      className="service-day"
+      aria-label={headless ? NAME : undefined}
+      aria-labelledby={headless ? undefined : 'service-day-heading'}
+    >
+      {!headless && (
+        <h2 id="service-day-heading" tabIndex={-1} ref={heading}>
+          {NAME}
+        </h2>
+      )}
       <p className="prose" role="status">
         {project.date === null ? 'Not yet chosen.' : `Drawn for ${project.date}.`} {covers}; the
         busiest weekday, counted from {service.anchor}, is {service.busiest}.
