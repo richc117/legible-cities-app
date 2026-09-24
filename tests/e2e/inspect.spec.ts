@@ -1,13 +1,27 @@
 // The Inspect view against the stand-in engine: what the feed holds, the
 // sort, the mode and the agency chosen with the histogram in view, the
 // choice stored and passed to the layout, and the engine-away case.
+//
+// It is cell 01's spec since the notebook (A5.5-08, A5.5-09), so the two
+// things the cell adds to the panel are here too: the sentence the row
+// carries while it is collapsed, and what a change of mode or operator does
+// to the five cells below it.
 
 import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { _electron as electron, expect, test, type Page } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
-import { cell, createProject, openProject } from '../support/project'
+import {
+  cell,
+  cellHeading,
+  closeCell,
+  createProject,
+  layOut,
+  openCell,
+  openProject,
+  panel,
+} from '../support/project'
 import { withWhatTheScreenSaid } from '../support/store-lines'
 
 const repoRoot = resolve(__dirname, '../..')
@@ -231,6 +245,105 @@ test('a refused inspection says so and leaves the rest of the screen working', a
     const inspect = cell(page, 'data')
     await expect(inspect.getByRole('alert')).toHaveText('The feed has neither calendar table.')
     await expect(page.getByRole('button', { name: /lay out/i })).toBeEnabled()
+  })
+})
+
+// The row's accessible name is its own contents - the number, the name, the
+// state and, while it is collapsed, the summary - so the sentence is read
+// from the name rather than from a span, which is how a screen reader gets
+// it (DESIGN.md 8.2, A5.5-09).
+test('the collapsed cell says the feed, the mode, the operator and the stop count', async () => {
+  const engineHome = home()
+  await withApp(engineHome, async (page) => {
+    await openProjectOn(page, 'LA Metro Rail', 'Los Angeles')
+    // Wait for the inspection: before it there is no stop count and no
+    // feed name, and the row deliberately says nothing at all.
+    await expect(cell(page, 'data')).toContainText('Los Angeles County MTA')
+    await closeCell(page, 'data')
+    await expect(cellHeading(page, 'data')).toHaveAccessibleName(
+      /^01 Data ready LA Metro Rail, every type, every operator, 3 stops in the feed$/,
+    )
+
+    // The sentence follows the choice, because it is the record's.
+    await openCell(page, 'data')
+    await cell(page, 'data').getByRole('combobox', { name: 'Mode' }).selectOption('subway')
+    await closeCell(page, 'data')
+    await expect(cellHeading(page, 'data')).toHaveAccessibleName(
+      /LA Metro Rail, subway, every operator, 3 stops in the feed$/,
+    )
+  })
+})
+
+test('a refused inspection leaves the row with nothing to say rather than half a sentence', async () => {
+  const engineHome = home({ inspect_refuses: 'The feed has neither calendar table.' })
+  await withApp(engineHome, async (page) => {
+    await openProjectOn(page, 'LA Metro Rail', 'Los Angeles')
+    await expect(cell(page, 'data').getByRole('alert')).toBeVisible()
+    await closeCell(page, 'data')
+    await expect(cellHeading(page, 'data')).toHaveAccessibleName(/^01 Data ready$/)
+  })
+})
+
+test('a change of mode marks 02 to 06 stale, starts nothing, and leaves the map and its controls', async () => {
+  const engineHome = home()
+  // Every build the engine was asked for, not `graph.build` alone: a
+  // rebuild from the stored layout is `map.build`, and a count that cannot
+  // see one proves nothing about "starts nothing".
+  const builds = (): number =>
+    readFileSync(join(engineHome, 'fake-engine.received'), 'utf8')
+      .split('\n')
+      .filter((line) => /"(graph|map)\.build"/.test(line)).length
+  const below = ['process', 'frame', 'style', 'lines', 'export'] as const
+
+  await withApp(engineHome, async (page) => {
+    await openProjectOn(page, 'LA Metro Rail', 'Los Angeles')
+    await layOut(page)
+    // One layout: a graph and the map built from it.
+    const laid = builds()
+    expect(laid).toBe(2)
+    for (const id of below) await expect(cellHeading(page, id)).toHaveAccessibleName(/ ready\b/)
+
+    const inspect = await openCell(page, 'data')
+    await inspect.getByRole('combobox', { name: 'Mode' }).selectOption('subway')
+
+    // The expensive edit ADR-045 names: the stored layout is of something
+    // else now, so everything drawn from it says so and nothing runs.
+    for (const id of below)
+      await expect(cellHeading(page, id)).toHaveAccessibleName(/not drawn yet/, { timeout: 10_000 })
+    // Cell 01 holds the change, so it is not stale itself: a cell shows
+    // what it holds, and what is behind it is what was drawn from it.
+    await expect(cellHeading(page, 'data')).toHaveAccessibleName(/^01 Data ready\b/)
+
+    // Nothing started, and the old map is still on screen with its controls
+    // live: a stale map is not a wrong map (ADR-045).
+    expect(builds()).toBe(laid)
+    await expect(page.getByRole('region', { name: 'Map' })).toBeVisible()
+    await expect(
+      panel(page, 'Theme').getByRole('button', { name: 'Sepia', exact: true }),
+    ).toBeEnabled()
+    await expect(page.getByRole('button', { name: /lay out/i })).toBeEnabled()
+  })
+})
+
+test('a change of operator marks 02 to 06 stale and starts nothing', async () => {
+  const engineHome = home()
+  await withApp(engineHome, async (page) => {
+    await openProjectOn(page, 'Mexico City Metro', 'CDMX')
+    await layOut(page)
+    const builds = (): number =>
+      readFileSync(join(engineHome, 'fake-engine.received'), 'utf8')
+        .split('\n')
+        .filter((line) => /"(graph|map)\.build"/.test(line)).length
+    const before = builds()
+
+    const inspect = await openCell(page, 'data')
+    await inspect.getByRole('combobox', { name: 'Operator' }).selectOption('SUB')
+    await expect(cellHeading(page, 'process')).toHaveAccessibleName(/not drawn yet/, {
+      timeout: 10_000,
+    })
+    await expect(cellHeading(page, 'export')).toHaveAccessibleName(/not drawn yet/)
+    expect(builds()).toBe(before)
+    await expect(page.getByRole('region', { name: 'Map' })).toBeVisible()
   })
 })
 
