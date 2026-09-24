@@ -53,6 +53,9 @@ const LOCK = JSON.parse(readFileSync(join(repo, 'package-lock.json'), 'utf8')) a
 }
 const ELECTRON = LOCK.packages['node_modules/electron']?.version ?? 'none'
 const ELECTRON_SOURCE = `electron-ffmpeg-${PINS.electron_ffmpeg.electron.version}-source.tar.xz`
+// An Electron no pins will be for, so the refusals do not start passing
+// vacuously, or failing, when the pins move to the version they name.
+const OTHER_ELECTRON = '99.0.0'
 
 type Decision =
   { ok: false; reason: string } | { ok: true; name: string; version: string; prerelease: boolean }
@@ -511,7 +514,7 @@ function manifestFor(target: Target): Record<string, unknown> {
     target,
     pins_sha256: PINS_SHA,
     build: { commit: 'c0ffee', run: '42' },
-    app: { name: 'Legible Cities', version: PKG.version, electron: '44.2.0' },
+    app: { name: 'Legible Cities', version: PKG.version, electron: ELECTRON },
   }
 }
 
@@ -687,12 +690,12 @@ describe('assemble', () => {
     const out = join(scratch(), 'assets')
     const result = assemble({
       ...base(downloads(), out),
-      electronVersion: '44.3.0',
+      electronVersion: OTHER_ELECTRON,
       tar: fakeTar([]),
     })
     expect(result.problems).toEqual([
       expect.stringContaining(
-        `installs Electron 44.3.0, and vendor/pins.json's electron_ffmpeg is for Electron ${PINS.electron_ffmpeg.electron.version}`,
+        `installs Electron ${OTHER_ELECTRON}, and vendor/pins.json's electron_ffmpeg is for Electron ${PINS.electron_ffmpeg.electron.version}`,
       ),
     ])
     expect(existsSync(out)).toBe(false)
@@ -1073,7 +1076,7 @@ describe("the source of Electron's FFmpeg library", () => {
     ]) {
       expect(files).toContain(required)
     }
-    // Electron's patches to Chromium's build/, eight at Electron 44.2.0.
+    // Electron's patches to Chromium's build/, eight at Electron 44.2.0 and 44.3.0.
     expect(files.filter((file) => /^patches\/chromium\/.+\.patch$/.test(file))).toHaveLength(8)
   })
 
@@ -1155,7 +1158,7 @@ describe("the source of Electron's FFmpeg library", () => {
     () => {
       const dir = scratch()
       const lock = structuredClone(LOCK)
-      lock.packages['node_modules/electron'] = { version: '44.3.0' }
+      lock.packages['node_modules/electron'] = { version: OTHER_ELECTRON }
       const lockFile = join(dir, 'package-lock.json')
       writeFileSync(lockFile, JSON.stringify(lock))
       const out = join(dir, 'out')
@@ -1166,7 +1169,7 @@ describe("the source of Electron's FFmpeg library", () => {
       })
       expect(result.status).toBe(1)
       expect(result.stderr).toContain(
-        `package-lock.json installs Electron 44.3.0, and vendor/pins.json's electron_ffmpeg is for Electron ${PINS.electron_ffmpeg.electron.version}`,
+        `package-lock.json installs Electron ${OTHER_ELECTRON}, and vendor/pins.json's electron_ffmpeg is for Electron ${PINS.electron_ffmpeg.electron.version}`,
       )
       expect(result.stdout).toBe('')
       expect(existsSync(out)).toBe(false)
