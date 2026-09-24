@@ -46,7 +46,18 @@ export interface DisclosureProps {
    * button stands alone, which is right for a disclosure inside a row.
    */
   heading?: 'h2' | 'h3'
-  headingRef?: React.Ref<HTMLButtonElement>
+  /**
+   * The heading element, for focus that has nowhere else to be: the rail
+   * moves focus to a cell's heading, and a control inside one that
+   * disables itself under a person's hands hands focus here (A6-07).
+   *
+   * The heading and not the button, which is why the heading carries
+   * `tabIndex={-1}`: focus on the toggle would mean a reflexive Space or
+   * Enter after the press that sent it there collapsed the very section
+   * the person is working in. Needs `heading`; without one there is no
+   * element for it to name.
+   */
+  headingRef?: React.Ref<HTMLHeadingElement>
   children: ReactNode
 }
 
@@ -65,7 +76,6 @@ export default function Disclosure({
   const toggle = (
     <button
       type="button"
-      ref={headingRef}
       className={className}
       aria-expanded={open}
       aria-controls={regionId}
@@ -76,7 +86,13 @@ export default function Disclosure({
   )
   return (
     <>
-      {Heading === undefined ? toggle : <Heading className="disclosure-heading">{toggle}</Heading>}
+      {Heading === undefined ? (
+        toggle
+      ) : (
+        <Heading className="disclosure-heading" tabIndex={-1} ref={headingRef}>
+          {toggle}
+        </Heading>
+      )}
       <div
         id={regionId}
         role="group"

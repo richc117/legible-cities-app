@@ -1,5 +1,12 @@
 # The stranger's timed run
 
+> **This document still describes the project screen as a tab strip, and is
+> rewritten once, at the end of the notebook's work, against the interface
+> that ships (ADR-045).** A5.5-08 replaced the Map and Export tabs with six
+> numbered cells and moved or renamed several of the controls and sentences
+> quoted below, so a step here that names a tab will not be found on screen.
+> The release gate does not run against this text until that rewrite lands.
+
 Part of the release gate (issue A6-04), beside the
 [acceptance checklist](acceptance.md). One person who is not the maintainer,
 and has never used Legible Cities, goes from the release on GitHub to a

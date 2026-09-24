@@ -77,7 +77,22 @@ interface Props {
    * never do to each other (.claude/rules/main.md).
    */
   busyNow?: () => boolean
+  /**
+   * Where focus goes when a control that held it is disabled or removed,
+   * and, by being given at all, that a cell of the notebook renders the
+   * heading (A5.5-08): the section is then named by what its own heading
+   * said and draws no heading of its own.
+   *
+   * One prop and not two, because a headless panel with nowhere to hand
+   * focus back to is the A6-07 defect itself - Chromium blurs a disabled
+   * element and focus falls to the body - and a shape that cannot say it
+   * cannot ship it.
+   */
+  handback?: RefObject<HTMLElement | null>
 }
+
+/** What the section is called, as its heading and as its name while headless. */
+const NAME = 'Line colours'
 
 export default function LineColours({
   run,
@@ -86,7 +101,9 @@ export default function LineColours({
   inspect,
   disabled = false,
   busyNow,
+  handback,
 }: Props): JSX.Element {
+  const headless = handback !== undefined
   const ready = engine?.state === 'ready'
   const { state: runState, recoloured } = useSnapshot(run)
   const running = runState === 'running'
@@ -194,7 +211,7 @@ export default function LineColours({
   // so a screen reader stays in the panel (A3-04 learned this).
   const changeAndKeepFocus = (next: Palette): void => {
     change(next)
-    headingRef.current?.focus()
+    ;(handback ?? headingRef).current?.focus()
   }
 
   const inspection = state.status === 'ready' ? state.inspection : null
@@ -209,10 +226,17 @@ export default function LineColours({
   const nothingToReset = isReset(palette)
 
   return (
-    <section className="line-colours" aria-labelledby="line-colours-heading" aria-busy={busy}>
-      <h2 id="line-colours-heading" tabIndex={-1} ref={headingRef}>
-        Line colours
-      </h2>
+    <section
+      className="line-colours"
+      aria-label={headless ? NAME : undefined}
+      aria-labelledby={headless ? undefined : 'line-colours-heading'}
+      aria-busy={busy}
+    >
+      {!headless && (
+        <h2 id="line-colours-heading" tabIndex={-1} ref={headingRef}>
+          {NAME}
+        </h2>
+      )}
       <p className="prose">
         A line is drawn in the colour its feed publishes. Choose another here and the map, the chips
         over it and the time chart all follow. The stations do not move: the stored layout is drawn

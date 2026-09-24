@@ -24,6 +24,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test'
+import { openCell } from '../support/project'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 
 const repoRoot = resolve(__dirname, '../..')
@@ -125,9 +126,9 @@ async function laidOutProject(page: Page, h: Home): Promise<void> {
   await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
   const [id] = readdirSync(join(h.engineHome, 'projects'))
   copyFileSync(fixture, join(h.engineHome, 'out', id, 'la-metro-rail.html'))
-  // The export lives on its own tab of the project panel, and starts on the
-  // reel with the engine's defaults, which is what the one button made.
-  await page.getByRole('tab', { name: 'Export' }).click()
+  // The export is cell 06 of the notebook, and starts on the reel with the
+  // engine's defaults, which is what the one button made.
+  await openCell(page, 'export')
   await expect(exportButton(page)).toBeVisible({ timeout: 20_000 })
 }
 

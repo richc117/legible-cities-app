@@ -2,21 +2,20 @@
 //
 // The end-to-end suite is 7,780 lines across 22 files, and nearly every
 // assertion about a project reaches its control by walking the screen's
-// current shape: a tab strip with Map and Export, a region under a heading,
-// a control inside that region. The notebook (ADR-045) moves all of it into
-// six cells. Done a spec at a time, every branch of that refactor would edit
-// twenty files and a reviewer could not tell a regression from churn.
+// current shape. The notebook (ADR-045) moved all of it into six cells.
+// Done a spec at a time, every branch of that refactor would edit twenty
+// files and a reviewer could not tell a regression from churn.
 //
 // So the knowledge of *where* a control lives is here, and the specs say
-// *what* they expect. Today every function returns exactly what the specs
-// reached for before this file existed; when the screen moves, this file
-// moves with it and the specs do not change at all.
+// *what* they expect. A5.5-08 moved the screen and this file moved with
+// it: `openCell` presses a cell's disclosure where it pressed a tab, and
+// the specs that go through it did not change at all.
 //
 // Two things deliberately do not belong here. A spec asserting the tab
-// strip's own behaviour keeps reaching for tabs directly, because that
-// assertion is about the tabs and goes when they do (issue 175). And the
-// stand-in engine's own helpers stay in `python.ts`: this file knows about
-// screens, not about processes.
+// strip's own behaviour reached for tabs directly, because that assertion
+// was about the tabs and went when they did (issue 175). And the stand-in
+// engine's own helpers stay in `python.ts`: this file knows about screens,
+// not about processes.
 //
 // It lives beside the suite's other helpers in `tests/support/` rather than
 // in `tests/e2e/support/`, which issue 158 named, because that is where
@@ -25,26 +24,32 @@
 import { expect, type Locator, type Page } from '@playwright/test'
 
 /**
- * The six cells of the notebook, by the name ADR-045 gives them, and where
- * each one's controls live today. `tab` is the tab a person must be on to
- * see it, and `role`/`name` are the element that holds its controls.
+ * The six cells of the notebook, by the number and name ADR-045 fixes, and
+ * where each one's controls live inside it.
  *
- * Cell 05 holds two panels today, Line colours and Line order, which become
- * two sections of one cell. `cell('lines')` answers the colours; the order
- * is reached with `panel(page, 'Line order')` until they are one.
+ * `panel` is the region a cell's controls sit in, where the panel that
+ * moved into the cell kept the name its own heading gave it; null where the
+ * cell's own disclosed group is what holds them, which is cell 06's export.
+ *
+ * Cell 05 holds two panels, Line colours and Line order, which are two
+ * sections of one cell until A5.5-18 makes them one. `cell('lines')`
+ * answers the colours; the order is reached with `panel(page, 'Line
+ * order')`.
  */
 const CELLS = {
-  data: { tab: null, role: 'region', name: 'In the feed' },
-  process: { tab: null, role: 'region', name: 'Layout run' },
-  frame: { tab: 'Map', role: 'region', name: 'Service day' },
-  style: { tab: 'Map', role: 'region', name: 'Theme' },
-  lines: { tab: 'Map', role: 'region', name: 'Line colours' },
-  // The export's controls are the Export tab's panel itself, not a region
-  // inside it; in the notebook it becomes a cell like the others.
-  export: { tab: 'Export', role: 'tabpanel', name: 'Export' },
+  data: { number: 1, name: 'Data', panel: 'In the feed' },
+  process: { number: 2, name: 'Process', panel: 'Layout run' },
+  frame: { number: 3, name: 'Frame and service day', panel: 'Service day' },
+  style: { number: 4, name: 'Style', panel: 'Theme' },
+  lines: { number: 5, name: 'Lines', panel: 'Line colours' },
+  export: { number: 6, name: 'Export', panel: null },
 } as const
 
 export type CellId = keyof typeof CELLS
+
+/** `01 Data` to `06 Export`: the cell's own name, in the rail and on its heading row. */
+export const cellLabel = (id: CellId): string =>
+  `${String(CELLS[id].number).padStart(2, '0')} ${CELLS[id].name}`
 
 /** The project screen's own heading, which carries the project's name. */
 export const projectHeading = (page: Page): Locator => page.getByRole('heading', { level: 1 })
@@ -65,24 +70,48 @@ export const control = (
 ): Locator => scope.getByRole('button', { name, exact })
 
 /**
+ * A cell's heading row, which is its toggle: a button whose accessible name
+ * is the row's own contents, so it begins with the cell's label and goes on
+ * with its state.
+ */
+export const cellHeading = (page: Page, id: CellId): Locator =>
+  page.getByRole('button', { name: new RegExp(`^${cellLabel(id)}\\b`) })
+
+/**
+ * Where a cell's controls hand focus back when one of them disables itself
+ * under a person's hands: the heading the row sits in, which takes focus
+ * and does nothing with it. Not the row's button - a reflexive Space or
+ * Enter there would collapse the cell the person is working in.
+ */
+export const cellHandback = (page: Page, id: CellId): Locator =>
+  page
+    .locator('h2.disclosure-heading')
+    .filter({ has: page.getByRole('button', { name: new RegExp(`^${cellLabel(id)}\\b`) }) })
+
+/**
  * A cell's panel, without pressing anything: the caller has already made it
  * visible, or is asserting that it is not.
  */
-export const cell = (page: Page, id: CellId): Locator =>
-  page.getByRole(CELLS[id].role, { name: CELLS[id].name, exact: true })
+export const cell = (page: Page, id: CellId): Locator => {
+  const { panel: name } = CELLS[id]
+  return name === null
+    ? page.getByRole('group', { name: cellLabel(id), exact: true })
+    : panel(page, name)
+}
 
-/**
- * A cell's panel, made visible first. Today that means pressing the tab
- * that holds it; in the notebook it will mean opening the cell.
- */
+/** A cell's panel, opened first if it is collapsed. */
 export async function openCell(page: Page, id: CellId): Promise<Locator> {
-  const { tab } = CELLS[id]
-  if (tab !== null) {
-    const strip = page.getByRole('tab', { name: tab })
-    if ((await strip.getAttribute('aria-selected')) !== 'true') await strip.click()
-    await expect(page.getByRole('tabpanel', { name: tab })).toBeVisible()
-  }
+  const heading = cellHeading(page, id)
+  if ((await heading.getAttribute('aria-expanded')) !== 'true') await heading.click()
+  await expect(cell(page, id)).toBeVisible()
   return cell(page, id)
+}
+
+/** Collapse a cell, for a spec that asserts what happens once it is closed. */
+export async function closeCell(page: Page, id: CellId): Promise<void> {
+  const heading = cellHeading(page, id)
+  if ((await heading.getAttribute('aria-expanded')) === 'true') await heading.click()
+  await expect(cell(page, id)).toBeHidden()
 }
 
 /** The engine's status line says it is ready. A project needs one. */

@@ -1,0 +1,16 @@
+/* The pinned preview (ADR-045, docs/DESIGN.md 8.2, "The pinned preview"):
+   the viewer's frame kept on screen while the cells beneath it are read
+   and edited - sticky under the header, its wrapper a child of the
+   notebook's column so it is pinned from the top rather than at a scroll
+   threshold, and above the notebook rather than beside it at the narrow
+   width.
+
+   Empty. A5.5-08 moved the frame into `Preview.tsx` and left it exactly
+   where the tabs had it, because the frame must never be reparented and
+   its address must never change by accident: both reload the engine's
+   page, and a reload loses its clock, its view and its scrub position.
+   Pinning it is A5.5-20's, and these are its rules.
+
+   A stylesheet is named for a region of the interface, not for a
+   component, and the four token files stay the only place a literal may
+   appear (A5.5-07). */

@@ -60,7 +60,12 @@ export interface CellProps {
    * own; the sample page sets its own.
    */
   headingLevel?: 2 | 3
-  headingRef?: React.Ref<HTMLButtonElement>
+  /**
+   * The heading element, where focus goes when a control inside the cell
+   * can no longer hold it: the heading and not the toggle, so the press
+   * that follows does not collapse the cell (A5.5-08).
+   */
+  headingRef?: React.Ref<HTMLHeadingElement>
   children: ReactNode
 }
 

@@ -236,8 +236,10 @@ test('the picker stays open through a drag, and closes when it is dismissed', as
       'one build for the whole gesture, not one per colour',
     ).toHaveLength(drawnBefore + 1)
 
-    // A press outside the row dismisses it.
-    await panel.getByRole('heading', { name: 'Line colours' }).click()
+    // A press outside the row dismisses it. The panel's own prose, not the
+    // cell's heading row, which would collapse the cell and hide the picker
+    // for the wrong reason (A5.5-08).
+    await panel.getByText(/^A line is drawn in the colour its feed publishes/).click()
     await expect(picker).toBeHidden()
   })
 })

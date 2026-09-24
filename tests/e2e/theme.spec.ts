@@ -21,7 +21,14 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { _electron as electron, expect, test, type Page } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
-import { cell, createProject, openProject } from '../support/project'
+import {
+  cell,
+  cellHandback,
+  closeCell,
+  createProject,
+  openCell,
+  openProject,
+} from '../support/project'
 
 const repoRoot = resolve(__dirname, '../..')
 const fixture = resolve(__dirname, '../fixtures/capture-page.html')
@@ -199,7 +206,9 @@ test('focus is handed over before the buttons go, when a timer closes the way', 
     await expect(sepia).toBeFocused()
 
     await expect(sepia).toBeDisabled({ timeout: 30_000 })
-    await expect(switchOf(page).getByRole('heading', { name: 'Theme' })).toBeFocused()
+    // The cell's heading row is the panel's heading now (A5.5-08), so that
+    // is where focus is handed when the buttons go.
+    await expect(cellHandback(page, 'style')).toBeFocused()
   })
 })
 
@@ -295,7 +304,7 @@ test('an export is planned in the theme the project is drawn in', async () => {
     // press waits for the preview to have answered - the frame at the
     // reel's shape - or a late preview's plan could land beside the
     // export's own.
-    await page.getByRole('tab', { name: 'Export' }).click()
+    await openCell(page, 'export')
     await expect
       .poll(
         async () =>
@@ -311,9 +320,9 @@ test('an export is planned in the theme the project is drawn in', async () => {
     })
     // The switch is out of reach while the export runs: the theme it was
     // planned with is the theme the reel will have, whatever is pressed now
-    // (FR-008). It is on the map tab, and leaving the export tab does not
-    // stop the export; the encode is slowed so the export is still going.
-    await page.getByRole('tab', { name: 'Map' }).click()
+    // (FR-008). Closing the export's cell does not stop the export; the
+    // encode is slowed so the export is still going.
+    await closeCell(page, 'export')
     await expect(switchOf(page).getByRole('button', { name: 'Warm dark' })).toBeDisabled()
 
     await expect

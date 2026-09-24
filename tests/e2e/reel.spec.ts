@@ -30,6 +30,7 @@ import {
   type ProjectRecord,
 } from '../../src/shared/project'
 import { compareDecoded, TOLERANCE } from '../support/frames'
+import { openCell } from '../support/project'
 
 const repoRoot = resolve(__dirname, '../..')
 const REEL = 'la-metro-rail-instagram-reel.mp4'
@@ -132,9 +133,9 @@ test('the Los Angeles reel, exported twice, decodes to the same frames within th
     await page.getByRole('button', { name: 'Open Los Angeles' }).click()
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Los Angeles')
 
-    // The export lives on its own tab (A5-01), and a project from before it
-    // starts there on the reel with the engine's defaults.
-    await page.getByRole('tab', { name: 'Export' }).click()
+    // The export is cell 06 of the notebook (A5-01, ADR-045), and a project
+    // from before it starts there on the reel with the engine's defaults.
+    await openCell(page, 'export')
     const file = join(h.exportFolder, 'Los Angeles', REEL)
     const exportOnce = async (): Promise<number> => {
       const t0 = Date.now()

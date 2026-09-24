@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { _electron as electron, expect, test, type Page } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
-import { laidOutProject, panel } from '../support/project'
+import { cellHandback, laidOutProject, panel } from '../support/project'
 
 const repoRoot = resolve(__dirname, '../..')
 const PYTHON = findPython()
@@ -190,9 +190,10 @@ test('back to alphabetical empties the order and disables itself', async () => {
     const maps = received(engineHome, 'map.build')
     expect(maps[maps.length - 1]).not.toContain('line_order')
     // The button disabled itself under the press, and Chromium blurs a
-    // disabled element: focus is on the panel's heading rather than the
-    // body, so a screen reader is still in the panel.
-    await expect(panel.getByRole('heading', { name: 'Line order' })).toBeFocused()
+    // disabled element: focus is on the cell's heading row, which is the
+    // panel's heading now (A5.5-08), rather than on the body, so a screen
+    // reader is still in the cell.
+    await expect(cellHandback(page, 'lines')).toBeFocused()
   })
 })
 
