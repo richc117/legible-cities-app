@@ -292,6 +292,32 @@ describe('registerProjectHandlers', () => {
     ])
   })
 
+  it('refuses a day that is not one, and passes a day to the store to judge', async () => {
+    const { call, calls } = harness()
+    for (const date of [
+      undefined,
+      null,
+      42,
+      '',
+      '2026-9-2',
+      '2026-02-30',
+      'Saturday',
+      ['2026-01-01'],
+    ]) {
+      await expect(
+        call(CHANNELS.projectsSetDate, 'abcdefghijk1', date),
+        JSON.stringify(date) ?? 'undefined',
+      ).rejects.toThrow()
+    }
+    expect(calls, 'nothing reached the store').toEqual([])
+
+    await expect(call(CHANNELS.projectsSetDate, '../x', '2026-01-01')).rejects.toThrow('invalid id')
+    // Whether this project may be set to this day - a layout, a window, the
+    // day inside it - is the store's, which is where the record is.
+    await call(CHANNELS.projectsSetDate, 'abcdefghijk1', '2026-01-01')
+    expect(calls).toEqual([{ method: 'setDate', args: ['abcdefghijk1', '2026-01-01'] }])
+  })
+
   it('refuses an export choice the engine would refuse, and passes a copy of one it would take', async () => {
     const { call, calls } = harness()
     for (const choice of [

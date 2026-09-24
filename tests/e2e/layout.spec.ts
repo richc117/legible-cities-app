@@ -23,7 +23,7 @@ import {
   type Page,
 } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
-import { cell, openProject, panel } from '../support/project'
+import { cell, cellHeading, closeCell, openCell, openProject, panel } from '../support/project'
 
 const repoRoot = resolve(__dirname, '../..')
 const PYTHON = findPython()
@@ -519,6 +519,12 @@ test('a day outside the window cannot be chosen, and nothing is built', async ()
     const section = cell(page, 'frame')
     const control = section.getByLabel('Draw for another day')
     await control.fill('2026-12-25')
+    // Refused as it is chosen (A5.5-15), before anything is pressed: a day
+    // outside the window is never written, so it never reaches the record.
+    await expect(section.getByText('The feed covers 2026-03-01 to 2026-11-30.')).toBeVisible()
+    expect(JSON.stringify(readRecord(engineHome)), 'nothing was written').toBe(before)
+    // And refused again on the press, with the same words: the button stays
+    // available so a refusal is answered rather than silent.
     await section.getByRole('button', { name: 'Draw for this day' }).click()
     await expect(section.getByText('The feed covers 2026-03-01 to 2026-11-30.')).toBeVisible()
     await expect(control).toHaveAttribute('aria-invalid', 'true')
@@ -531,7 +537,7 @@ test('a day outside the window cannot be chosen, and nothing is built', async ()
   })
 })
 
-test('a cancelled rebuild keeps the day and says so', async () => {
+test('a cancelled rebuild keeps the chosen day, and leaves the map where it was', async () => {
   // Slow enough that the cancel lands inside the map call; the stand-in
   // reads its control file once, so the first layout is slow too.
   const engineHome = home({ map_draws: true, progress_delay_ms: 400 })
@@ -539,14 +545,107 @@ test('a cancelled rebuild keeps the day and says so', async () => {
     await openNewProject(page, 'Los Angeles')
     await page.getByRole('button', { name: /lay out/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
-    const before = JSON.stringify(readRecord(engineHome))
+    const before = readRecord(engineHome)
     const section = cell(page, 'frame')
     await section.getByLabel('Draw for another day').fill('2026-06-20')
+    await expect.poll(() => readRecord(engineHome).date).toBe('2026-06-20')
     await section.getByRole('button', { name: 'Draw for this day' }).click()
     await page.getByRole('button', { name: /cancel/i }).click()
     await expect(page.getByText(/The rebuild was cancelled/)).toBeVisible({ timeout: 20_000 })
-    expect(JSON.stringify(readRecord(engineHome)), 'the record is untouched').toBe(before)
-    await expect(section.getByLabel('Draw for another day')).toHaveValue('2026-06-16')
+
+    const after = readRecord(engineHome)
+    // The choice was never the rebuild's to undo (A5.5-15): it was written
+    // when it was made, and a run that drew nothing puts nothing back.
+    expect(after.date, 'the day stays chosen').toBe('2026-06-20')
+    expect(after.layout, 'and nothing was laid out').toEqual(before.layout)
+    expect(
+      (after.drawn as { date: string }).date,
+      'and the map is still the one that was drawn',
+    ).toBe('2026-06-16')
+    await expect(section.getByLabel('Draw for another day')).toHaveValue('2026-06-20')
+    // So the press that would close the gap is still offered.
+    await expect(section.getByRole('button', { name: 'Draw for this day' })).toBeEnabled()
+  })
+})
+
+// A5.5-15: choosing and drawing are two acts. The day reaches the record
+// when it is chosen, which is the only way cell 03's staleness can exist -
+// until this, `date` and `drawn.date` were written in one breath and could
+// never differ (specs/028-the-notebook/contracts/run-graph.md).
+test('a chosen day is written at once, starts nothing, and takes the cells below it to stale', async () => {
+  const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    expect(readRecord(engineHome).date).toBe('2026-06-16')
+    // The engine's own day, on cell 03's collapsed row.
+    await closeCell(page, 'frame')
+    await expect(cellHeading(page, 'frame')).toHaveAccessibleName(
+      '03 Frame and service day ready 2026-06-16, the busiest weekday',
+    )
+    const section = await openCell(page, 'frame')
+
+    await section.getByLabel('Draw for another day').fill('2026-06-20')
+    await expect
+      .poll(() => readRecord(engineHome).date, { message: 'the choice reaches the record' })
+      .toBe('2026-06-20')
+    expect(
+      (readRecord(engineHome).drawn as { date: string }).date,
+      'and only a draw moves what the map was drawn from',
+    ).toBe('2026-06-16')
+    // Nothing was started by the choice: no engine call, no job.
+    expect(received(engineHome, 'map.build'), 'nothing was asked for').toHaveLength(1)
+    await expect(page.getByRole('button', { name: /^Jobs, / })).toHaveAccessibleName(
+      'Jobs, none running',
+    )
+    await expect(section).toContainText('2026-06-20 is chosen; the map still shows 2026-06-16.')
+
+    // Cell 03 holds the change, so it stays ready and says so on its own
+    // row; 04, 05 and 06 are the ones drawn from a day that has moved.
+    for (const id of ['data', 'process', 'frame'] as const)
+      await expect(cellHeading(page, id)).toHaveAccessibleName(/ ready/)
+    for (const id of ['style', 'lines', 'export'] as const)
+      await expect(cellHeading(page, id)).toHaveAccessibleName(/ not drawn yet/)
+    await closeCell(page, 'frame')
+    await expect(cellHeading(page, 'frame')).toHaveAccessibleName(
+      '03 Frame and service day ready 2026-06-20, the day you chose, not drawn yet',
+    )
+    await openCell(page, 'frame')
+
+    // And the one press that closes the gap, which is a rebuild and never a
+    // re-layout: the stored layout is drawn again for the day now on record.
+    await section.getByRole('button', { name: 'Draw for this day' }).click()
+    await expect(page.getByText(/^Drawn for 2026-06-20 from the stored layout/)).toBeVisible({
+      timeout: 30_000,
+    })
+    expect((readRecord(engineHome).drawn as { date: string }).date).toBe('2026-06-20')
+    expect(received(engineHome, 'graph.build'), 'nothing was laid out').toHaveLength(1)
+    for (const id of ['style', 'lines', 'export'] as const)
+      await expect(cellHeading(page, id)).toHaveAccessibleName(/ ready/)
+    await expect(section.getByRole('button', { name: 'Draw for this day' })).toBeDisabled()
+  })
+})
+
+// The frame's other settings are engine work and are not drawn at all, not
+// even disabled: a control with nowhere to send its value teaches a person
+// a lie (ADR-045). One sentence says what the cell will gain.
+test('cell 03 offers no frame control it cannot honour, and says why', async () => {
+  const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    const body = page.getByRole('group', { name: '03 Frame and service day', exact: true })
+    await expect(body).toContainText(/cropped, turned, margined and masked/)
+    // The cell's controls are the day's three and nothing else: no crop, no
+    // rotation, no margin, no clip mask, not even greyed out.
+    expect(await body.getByRole('button').allInnerTexts()).toEqual([
+      'Use the busiest weekday',
+      'Draw for this day',
+    ])
+    expect(await body.locator('input, select, textarea').count()).toBe(1)
+    await expect(body.getByLabel('Draw for another day')).toBeEnabled()
   })
 })
 

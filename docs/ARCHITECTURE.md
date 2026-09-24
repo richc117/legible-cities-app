@@ -83,6 +83,7 @@ app's own settings under `api.settings`:
 | `completeLayout(id, done)` | records the layout's id, the feed's window and the service day a finished run produced; the id is the engine's own, as `graph.build` answered it (A3-01, ADR-033), the window is `feeds.service`'s answer (A3-04, ADR-031) |
 | `completeRebuild(id, done)` | records the day a finished rebuild drew the map for, inside the stored window or not at all (A3-04) |
 | `setInputs(id, { mode, agency })` | stores the mode and agency a person chose with the feed in view; the next layout passes them to the engine, which names a layout for them (A2-02) |
+| `setDate(id, date)` | stores the service day a person chose, at once and before anything is drawn for it; it refuses exactly what `completeRebuild` refuses and never touches `drawn`, so a day chosen and not yet drawn is what the notebook's cell 03 reports (A5.5-15) |
 | `completeColors(id, palette)` | records the line colours a person chose, once the map has been drawn with them; every label and every colour is checked on the main side first (A4-01) |
 | `completeOrder(id, order)` | records the order a person arranged the lines in, once the map has been drawn in it; every label is checked on the main side first, and the same line twice is refused (A4-02) |
 | `setTheme(id, theme)` | records the theme the project's map is drawn in, at once rather than after a build: a theme is neither a layout nor a render, and the page restyles itself from its own address (A4-03) |
@@ -673,16 +674,22 @@ A project keeps the day it has; the window is replaced at every layout
 run, because a fresh feed may carry a fresh calendar; a record from before
 the window was stored gains it at its next run.
 
-Changing the day is a person's explicit action, on the project screen: a
-native date control bounded by the stored window, with the engine's day
-one press away. A chosen day is a rebuild, `map.build` from the stored
-layout's id, never `graph.build`, so the stations do not move; the day is
-written only when the map has been drawn, through a bridge call of its own
-that refuses a day outside the window again in the main process. A
-cancelled or failed rebuild keeps the day, and says the page on screen may
-be the old map until the next build. The app parses and shows no time of
-day: a trip past midnight keeps its `25:44`-style time in the page, which
-is the engine's (`specs/012-service-date`).
+Changing the day is a person's explicit action, in cell 03 of the
+notebook: a native date control bounded by the stored window, with the
+engine's day one press away. Choosing and drawing are two acts (A5.5-15).
+The day is written to the record the moment it is chosen, through
+`setDate`, and that write starts nothing; the cells below cell 03 then read
+`stale`, because the record's day is not the one `drawn.date` says the map
+was made for. "Draw for this day" is the press that closes the gap: a
+rebuild, `map.build` from the stored layout's id, never `graph.build`, so
+the stations do not move, and `completeRebuild` writes the day again with
+`drawn` beside it. Both writers refuse the same days in the same sentences,
+in the main process, a day outside the window included. A cancelled or
+failed rebuild keeps the chosen day and leaves the map where it was, so the
+cells below stay stale and the press is still offered. The app parses and
+shows no time of day: a trip past midnight keeps its `25:44`-style time in
+the page, which is the engine's (`specs/012-service-date`,
+`specs/028-the-notebook`).
 
 ### What the build had to fudge
 

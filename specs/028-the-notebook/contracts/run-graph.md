@@ -216,13 +216,24 @@ them:
 invisible here.** The derivation reads the record, and the record is the
 only thing that survives a relaunch. The mode and the operator are written
 the moment they are chosen (`setInputs`, A2-02), so cell 01's edits derive.
-The service day is not: A3-04 writes it only after the rebuild has drawn.
-A cell 03 that changes the day and *starts nothing* (A5.5-15) therefore has
-to write the chosen day to the record when it is chosen, as the theme is
-written when it is pressed - otherwise the day never reaches `date`, the
-comparison against `drawn.date` never fires, and the staleness that issue
-promises cannot exist. That is A5.5-15's to do; this contract says which
-comparison it will light up.
+The service day was not: A3-04 wrote it only after the rebuild had drawn,
+in the same write that set `drawn.date`, so `drawn.date` could never differ
+from `date` and the `day` comparison above was unreachable by construction.
+
+A5.5-15 settled it, the way this paragraph asked for: `projects.setDate`
+writes the chosen day the moment it is chosen, as the theme is written when
+it is pressed. It is a writer and not a draw - it does **not** call `drew`,
+because `drawn` describes the map now on disk and only a draw may move it -
+and it starts nothing. The gap it opens between `date` and `drawn.date` is
+exactly the `day` source, and "Draw for this day" in cell 03 is the one
+press that closes it. `completeRebuild` still writes the day as well, so a
+rebuild whose choice never landed still ends with the two agreeing.
+
+Both writers refuse the same days for the same reasons, in the same
+sentence (`serviceDayRefusal` in `src/shared/project.ts`): a real calendar
+day, a project that has been laid out, and the day inside the window the
+engine answered. A day that could be chosen but never drawn would be a
+project stuck stale.
 
 **`drawn.theme` describes the last draw, not what is on screen.** A theme
 is taken on the page's address and the page restyles itself within a frame

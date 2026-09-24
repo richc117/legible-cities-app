@@ -43,3 +43,23 @@ covers"); and a day outside the window, naming the window's two days.
 It writes `date` and `modified`, and answers with the record.
 
 Nothing here talks to the engine, decides a day, or carries a path.
+
+## `api.projects.setDate(id, date)` (A5.5-15)
+
+```ts
+setDate(id: string, date: string): Promise<ProjectRecord>
+```
+
+The day a person chose, written the moment it is chosen and before
+anything is drawn for it, as the inputs and the theme are. It refuses
+exactly what `completeRebuild` refuses, in the same sentences
+(`serviceDayRefusal` in `src/shared/project.ts`), and writes `date` and
+`modified` and nothing else. It draws nothing and starts nothing.
+
+It is the one writer of `date` that does **not** set `drawn`, and that is
+its whole point: `drawn.date` is the day the map on disk was made for, so
+a day chosen and not yet drawn is the gap the notebook's cell 03 reports
+and its "Draw for this day" closes
+(specs/028-the-notebook/contracts/run-graph.md). `completeRebuild` is
+unchanged and still writes the day, so a rebuild whose choice never landed
+still ends with the record and the map agreeing.

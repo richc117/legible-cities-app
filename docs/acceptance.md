@@ -397,20 +397,31 @@ Result: ____
 
 ### 12. The service day
 
-**Do.** In **Service day**, choose another date in **Draw for another day**
-and press **Draw for this day**. Then press **Use the busiest weekday** and
-**Draw for this day** again. Try typing a date outside the range the
-section gives and pressing **Draw for this day**.
+**Do.** Open cell **03 Frame and service day**. Choose another date in
+**Draw for another day** and look at the cells below before pressing
+anything; then press **Draw for this day**. Then press **Use the busiest
+weekday** and **Draw for this day** again. Try typing a date outside the
+range the section gives and pressing **Draw for this day**.
 
 **See.**
 - The section says "Drawn for `<day>`. The feed covers `<start>` to
   `<end>`; the busiest weekday, counted from `<anchor>`, is `<day>`." and the
   date control's calendar offers only days in that range.
-- **Draw for this day** runs the progress line and ends with "Drawn for
+- Choosing a date **starts nothing**: no progress line, and the Jobs toggle
+  stays at "Jobs, none running". The section says "`<new day>` is chosen;
+  the map still shows `<old day>`.", cell 03's own state stays **ready**,
+  and cells **04 Style**, **05 Lines** and **06 Export** say **not drawn
+  yet**. Collapsed, cell 03's row reads "`<new day>`, the day you chose, not
+  drawn yet".
+- **Draw for this day** then runs the progress line and ends with "Drawn for
   `<day>` from the stored layout. The stations have not moved."; the
-  fields' Service day changes to the new date, and the Layout does not.
-- A date outside the range is refused under the control: "The feed covers
-  `<start>` to `<end>`.", and nothing runs.
+  fields' Service day changes to the new date, the Layout does not, and
+  cells 04 to 06 go back to **ready**.
+- A date outside the range is refused under the control as soon as it is
+  typed: "The feed covers `<start>` to `<end>`.", nothing is stored, and
+  pressing **Draw for this day** refuses it again and runs nothing.
+- The cell offers no crop, rotation, margin or clip mask, not even greyed
+  out, and says in one sentence that it will gain them.
 - End on the busiest weekday, and write the day down for step 16.
 
 Result: ____

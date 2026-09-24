@@ -6,16 +6,33 @@ import Icon from './icons/Icon'
 import Button from './kit/Button'
 import { useSnapshot } from './useSnapshot'
 
-// The service day on the project screen: the day the map is drawn for,
-// the days the feed covers, and a way to choose another (specs/012).
+// The service day, cell 03's control: the day the map is drawn for, the
+// days the feed covers, and a way to choose another (specs/012, A5.5-15).
 //
 // The day is the engine's choice at the first layout and a person's since.
-// Choosing one rebuilds the map from the stored layout and never re-lays
-// out (ADR-031, constitution III). The control is the platform's own date
+// Drawing one rebuilds the map from the stored layout and never re-lays out
+// (ADR-031, constitution III). The control is the platform's own date
 // input, bounded by the window the engine answered, and the main process
-// refuses a day outside it again: this form is the first gate, not the
-// only one. Nothing here reads or shows a time of day; times past midnight
-// are the page's own business.
+// refuses a day outside it again: this form is the first gate, not the only
+// one. Nothing here reads or shows a time of day; times past midnight are
+// the page's own business.
+//
+// Choosing and drawing are two acts now (A5.5-15). A day is written to the
+// record the moment it is chosen, as the mode and the operator are
+// (`setInputs`, A2-02) and as the theme is (A4-03), and that write starts
+// nothing. Until it existed the day reached the record only from a finished
+// draw, in the same write that set `drawn.date`, so the two could never
+// differ and the notebook's cells below this one could never be told that
+// the map does not show the chosen day
+// (specs/028-the-notebook/contracts/run-graph.md). "Draw for this day" is
+// then the one press that closes that gap, and it is offered exactly while
+// the gap is open.
+//
+// What the record holds and what the map shows are therefore two different
+// days for as long as a person leaves them apart: `project.date` is the
+// choice, `project.drawn.date` is the map. A cancelled or failed rebuild no
+// longer puts the choice back, because the choice was never the rebuild's
+// to undo.
 
 /** The sentence a day outside the window gets, on the form and from the store alike. */
 export function outsideWindow(start: string, end: string): string {
@@ -25,16 +42,33 @@ export function outsideWindow(start: string, end: string): string {
 /** What the section is called, as its heading and as its name while headless. */
 const NAME = 'Service day'
 
+/**
+ * Has the day on the record not been drawn? `drawn` is what the map now on
+ * disk was made from (A5.5-04); null is "we cannot prove this map is
+ * current", which reads as drawn rather than as undrawn - an old project's
+ * map is not wrong.
+ */
+export function dayUndrawn(record: Pick<ProjectRecord, 'date' | 'drawn'>): boolean {
+  return record.drawn !== null && record.drawn.date !== record.date
+}
+
 export default function ServiceDay({
   run,
   project,
   engine,
+  onDate,
   disabled = false,
   handback,
 }: {
   run: Run
   project: ProjectRecord
   engine: EngineState | null
+  /**
+   * Write the chosen day to the record. It draws nothing; it rejects with
+   * the store's own sentence when the day may not be stored, which is what
+   * the control shows (A5.5-15).
+   */
+  onDate: (date: string) => Promise<void>
   /** True while something else, such as an export, is reading the project's page. */
   disabled?: boolean
   /**
@@ -60,16 +94,21 @@ export default function ServiceDay({
   const input = useRef<HTMLInputElement>(null)
   const heading = useRef<HTMLHeadingElement>(null)
 
-  // The control follows the stored day: the record is read again when a
-  // run finishes, and a rebuild that stopped wrote nothing, so the day the
-  // project kept is the one to show. Keyed on the window's days, not the
-  // record object, which a rename replaces without changing either.
+  // The control follows the stored day, which is now the chosen one: a
+  // choice lands on the record before the map is drawn for it, so this
+  // effect confirms the control rather than correcting it. It still matters
+  // for the project changing under the component and for a choice this
+  // screen did not make. Keyed on the window's days, not the record object,
+  // which a rename replaces without changing either.
   const service = project.service
   const windowKey = service === null ? '' : `${service.start}/${service.end}/${service.busiest}`
   useEffect(() => {
     setValue(project.date ?? '')
     setMessage(null)
   }, [project.id, project.date, windowKey])
+  // A rebuild that stopped drew nothing, so the day stays chosen and
+  // undrawn, and the control keeps showing it: what this puts back is the
+  // record's day, which the choice already is.
   useEffect(() => {
     if (rebuilt && (state === 'cancelled' || state === 'failed')) setValue(project.date ?? '')
   }, [state, rebuilt, project.date])
@@ -90,30 +129,75 @@ export default function ServiceDay({
     )
   }
 
-  const unchanged = value === project.date
+  const undrawn = dayUndrawn(project)
   // A refusal goes back to the control, as the rename form's does, so the
   // message it references is read out with it.
   const refuse = (sentence: string): void => {
     setMessage(sentence)
     input.current?.focus()
   }
+  /** Write a chosen day to the record. True when it landed. */
+  const choose = async (date: string): Promise<boolean> => {
+    setMessage(null)
+    try {
+      await onDate(date)
+      return true
+    } catch (error) {
+      refuse(error instanceof Error ? error.message : String(error))
+      return false
+    }
+  }
+  /**
+   * A day the person settled on. A date input reports every edit, and a
+   * half-typed date reaches here as an empty value, so only a whole day
+   * inside the window is written; a whole day outside it gets the sentence
+   * at once and is not written, and the submit that follows refuses it
+   * again with the same words.
+   */
+  const pick = (next: string): void => {
+    setValue(next)
+    setMessage(null)
+    if (next === '' || next === project.date || validateServiceDate(next) !== null) return
+    if (!withinWindow(next, service)) {
+      // Not `refuse`: focus is in the control already, and taking it again
+      // would shut the platform's own calendar under the person's hand.
+      setMessage(outsideWindow(service.start, service.end))
+      return
+    }
+    void choose(next)
+  }
   const submit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault()
     const invalid = validateServiceDate(value)
     if (invalid !== null) return refuse(invalid)
     if (!withinWindow(value, service)) return refuse(outsideWindow(service.start, service.end))
-    if (unchanged) return
-    setMessage(null)
-    // The rebuild disables the control and the button that asked for it,
-    // and Chromium blurs a disabled element; the heading keeps focus in the
-    // section, as the theme switch's does (A6-07).
-    ;(handback ?? heading).current?.focus()
-    run.rebuild(project, engine, value)
+    if (value === project.date && !undrawn) return
+    void (async () => {
+      // Written first where the choice has not landed - a write that was
+      // refused, or one still in flight - so the record and the map agree
+      // about the day the moment the rebuild ends.
+      if (value !== project.date && !(await choose(value))) return
+      // The rebuild disables the control and the button that asked for it,
+      // and Chromium blurs a disabled element; the heading keeps focus in
+      // the section, as the theme switch's does (A6-07).
+      ;(handback ?? heading).current?.focus()
+      run.rebuild(project, engine, value)
+    })()
   }
   const covers =
     service.start === service.end
       ? `The feed covers one day, ${service.start}`
       : `The feed covers ${service.start} to ${service.end}`
+  // What the map shows, against what the record holds. The two differ only
+  // between a choice and the draw that answers it.
+  const said =
+    project.date === null
+      ? 'Not yet chosen.'
+      : !undrawn
+        ? `Drawn for ${project.date}.`
+        : project.drawn?.date == null
+          ? `${project.date} is chosen; no map has been drawn for it yet.`
+          : `${project.date} is chosen; the map still shows ${project.drawn.date}.`
 
   return (
     <section
@@ -127,8 +211,7 @@ export default function ServiceDay({
         </h2>
       )}
       <p className="prose" role="status">
-        {project.date === null ? 'Not yet chosen.' : `Drawn for ${project.date}.`} {covers}; the
-        busiest weekday, counted from {service.anchor}, is {service.busiest}.
+        {said} {covers}; the busiest weekday, counted from {service.anchor}, is {service.busiest}.
       </p>
       <form className="inline-form" noValidate onSubmit={submit}>
         <div className="field">
@@ -141,10 +224,7 @@ export default function ServiceDay({
             min={service.start}
             max={service.end}
             disabled={disabled || running}
-            onChange={(event) => {
-              setValue(event.target.value)
-              setMessage(null)
-            }}
+            onChange={(event) => pick(event.target.value)}
             aria-describedby={messageId}
             aria-invalid={message ? true : undefined}
           />
@@ -159,16 +239,21 @@ export default function ServiceDay({
               setValue(service.busiest)
               setMessage(null)
               // The button disables itself once pressed, which drops focus;
-              // the control now holding the day is where focus belongs.
+              // the control now holding the day is where focus belongs, and
+              // it takes it before the write that redraws this form.
               input.current?.focus()
+              if (service.busiest !== project.date) void choose(service.busiest)
             }}
           >
             Use the busiest weekday
           </Button>
+          {/* Offered while the map does not show the control's day: a day
+              chosen and not drawn, or one the store would not take, which
+              is refused again rather than being unpressable and silent. */}
           <Button
             variant="primary"
             type="submit"
-            disabled={disabled || running || unchanged || value === ''}
+            disabled={disabled || running || value === '' || (value === project.date && !undrawn)}
           >
             <Icon name="map" />
             Draw for this day
