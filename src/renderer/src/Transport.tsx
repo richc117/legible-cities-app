@@ -262,7 +262,11 @@ export default function Transport({
             min={bounds.t0}
             max={bounds.t1}
             step={SCRUB_STEP}
-            value={now}
+            // Clamped here as well as where it is set: `now` is zero for
+            // the frame between the bounds arriving and the first clock
+            // answering, and a value under `min` is a thumb the browser
+            // draws at the start of a day that does not start there.
+            value={clampTo(bounds, now)}
             // The clock the page wrote, so a screen reader hears 07:20
             // rather than 26400. Absent until the page has answered once,
             // where the seconds are all anyone has.
