@@ -31,17 +31,21 @@ import { expect, type Locator, type Page } from '@playwright/test'
  * moved into the cell kept the name its own heading gave it; null where the
  * cell's own disclosed group is what holds them, which is cell 06's export.
  *
- * Cell 05 holds two panels, Line colours and Line order, which are two
- * sections of one cell until A5.5-18 makes them one. `cell('lines')`
- * answers the colours; the order is reached with `panel(page, 'Line
- * order')`.
+ * **Cell 05 keeps two named sections**, Line colours and Line order, and
+ * A5.5-18 decided it should: one cell called Lines cannot say where the
+ * colours end and the order begins, and both names are quoted in the
+ * release documents. So `panel` is null for it, and `cell('lines')` answers
+ * the cell's own group - the whole cell, both sections. Before A5.5-18 it
+ * answered the colours alone, so a spec that reached for "cell 05" quietly
+ * got half of it; `panel(page, 'Line colours')` and `panel(page, 'Line
+ * order')` are how a spec names one section on purpose.
  */
 const CELLS = {
   data: { number: 1, name: 'Data', panel: 'In the feed' },
   process: { number: 2, name: 'Process', panel: 'Layout run' },
   frame: { number: 3, name: 'Frame and service day', panel: 'Service day' },
   style: { number: 4, name: 'Style', panel: 'Theme' },
-  lines: { number: 5, name: 'Lines', panel: 'Line colours' },
+  lines: { number: 5, name: 'Lines', panel: null },
   export: { number: 6, name: 'Export', panel: null },
 } as const
 

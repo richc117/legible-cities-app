@@ -114,6 +114,17 @@ session trailer, no link to a tool session, no closing keyword. Never
    staging.
 10. A claim of green without the command's output is not a report; reviewer
     findings are leads to verify, not verdicts.
+11. **A test you added is not finished until you have watched it fail.**
+    Break the thing it covers - delete the guard, repoint the locator,
+    return the wrong value - run it, confirm it goes red, restore, and say
+    in your report which mutation you made and what it printed. This lane
+    system has shipped three tests that passed with the feature removed:
+    `not.toContain` over an empty array, a collapsed cell whose children
+    stayed mounted, and a guard whose only test stubbed the guard out. Each
+    read as thorough and each was worth nothing. Where the mutation needs
+    Electron, say so and leave it for the coordinator rather than claiming
+    it - an unrun check honestly named is worth more than a green one that
+    cannot fail.
 
 ## The report
 
@@ -121,6 +132,8 @@ session trailer, no link to a tool session, no closing keyword. Never
 - The files touched (`git diff main...HEAD --stat`)
 - The four checks, each with its last lines of output
 - Every end-to-end test written, each marked "written, not run"
+- Every test you added, with the mutation you broke it with and what that
+  run printed; or, where the mutation needs Electron, that it is owed
 - Anything left undone, any question you stopped on, any
   `[NEEDS CLARIFICATION]` you met
 - Anything you found that is outside this lane
