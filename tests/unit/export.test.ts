@@ -11,6 +11,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -18,6 +19,7 @@ import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { CaptureError, type CaptureOptions, type CaptureResult } from '../../src/main/capture'
 import {
+  destinationRefusal,
   Destinations,
   Exporter,
   folderName,
@@ -248,7 +250,7 @@ function harness(
     /** Where a copy of each export's frames goes (LEGIBLE_KEEP_FRAMES). */
     keepFrames?: string | null
     /** Why a project's own destination may not be written to (A5.5-19). */
-    destinationRefusal?: (folder: string) => string | null
+    destinationRefusal?: (folder: string) => Promise<string | null>
   } = {},
 ) {
   const root = mkdtempSync(join(tmpdir(), 'legible-cities-export-'))
@@ -1287,7 +1289,7 @@ describe("a project's own destination", () => {
   it('refuses a stored folder the app may not write to, before anything is planned', async () => {
     const h = harness({
       project: { destination: join(tmpdir(), 'inside-the-app') },
-      destinationRefusal: () => 'that folder is inside the app itself',
+      destinationRefusal: async () => 'that folder is inside the app itself',
     })
     const { result } = h.exporter.start('tok-1', 'abcdefghijk1', REEL)
     await expect(result).rejects.toThrow(/inside the app itself/)
@@ -1300,7 +1302,7 @@ describe("a project's own destination", () => {
     const asked: string[] = []
     const h = harness({
       project: { destination: null },
-      destinationRefusal: (folder) => {
+      destinationRefusal: async (folder) => {
         asked.push(folder)
         return 'never said'
       },
@@ -1316,7 +1318,9 @@ describe("a project's own destination", () => {
 describe('choosing a destination', () => {
   const RECORD = project()
 
-  function chooser(over: { answer?: string | null; refuse?: (f: string) => string | null } = {}) {
+  function chooser(
+    over: { answer?: string | null; refuse?: (f: string) => Promise<string | null> } = {},
+  ) {
     const written: (string | null)[] = []
     const asked: string[] = []
     const destinations = new Destinations({
@@ -1332,7 +1336,7 @@ describe('choosing a destination', () => {
         return over.answer === undefined ? '/chosen/folder' : over.answer
       },
       appFolder: () => '/the/app/folder',
-      refuse: over.refuse ?? (() => null),
+      refuse: over.refuse ?? (async () => null),
     })
     return { destinations, written, asked }
   }
@@ -1363,7 +1367,7 @@ describe('choosing a destination', () => {
         return null
       },
       appFolder: () => '/the/app/folder',
-      refuse: () => null,
+      refuse: async () => null,
     })
     const record = await destinations.choose('abcdefghijk1')
     expect(asked).toEqual(['/mine'])
@@ -1398,7 +1402,7 @@ describe('choosing a destination', () => {
 
   // The chooser will make a folder anywhere the platform lets it.
   it('refuses a folder the app may not write into, whoever chose it', async () => {
-    const c = chooser({ refuse: () => 'that folder is inside the app itself' })
+    const c = chooser({ refuse: async () => 'that folder is inside the app itself' })
     await expect(c.destinations.choose('abcdefghijk1')).rejects.toThrow(
       'that folder is inside the app itself',
     )
@@ -1412,6 +1416,16 @@ describe('choosing a destination', () => {
     expect(c.written).toEqual([])
   })
 
+  // The store would refuse it too, with a bare "read-only" that would go
+  // straight into the alert beside the button.
+  it('refuses to take the app’s folder back on a record it may not write, in the same sentence', async () => {
+    const c = chooser()
+    await expect(c.destinations.useAppFolder('readonlyabc1')).rejects.toThrow(
+      /newer version of the app/,
+    )
+    expect(c.written).toEqual([])
+  })
+
   it("takes the app's folder again, sending nothing at all", async () => {
     const c = chooser()
     const record = await c.destinations.useAppFolder('abcdefghijk1')
@@ -1419,5 +1433,99 @@ describe('choosing a destination', () => {
     expect(c.written).toEqual([null])
     expect(record.destination).toBeNull()
     expect(RECORD.destination, 'a project starts with none of its own').toBeNull()
+  })
+})
+
+// The guard itself (A5.5-19). The two tests above prove the plumbing with a
+// stub that always refuses; this is the rule, over real folders and real
+// links, because the plumbing is not where the danger is.
+describe('where a project may not export to', () => {
+  const tree = () => {
+    const root = mkdtempSync(join(tmpdir(), 'legible-cities-forbidden-'))
+    dirs.push(root)
+    const home = join(root, 'support', 'engine')
+    mkdirSync(home, { recursive: true })
+    const bundle = join(root, 'Legible Cities.app')
+    mkdirSync(bundle, { recursive: true })
+    const elsewhere = join(root, 'Movies')
+    mkdirSync(elsewhere, { recursive: true })
+    return { root, home, bundle, elsewhere, where: { bundleRoots: [bundle], engineHome: home } }
+  }
+
+  it('allows a folder that is neither the app nor the engine data', async () => {
+    const t = tree()
+    expect(await destinationRefusal(t.elsewhere, t.where)).toBeNull()
+  })
+
+  it('refuses a folder inside the engine data folder, and the folder itself', async () => {
+    const t = tree()
+    for (const folder of [t.home, join(t.home, 'out'), join(t.home, 'out', 'deeper')])
+      expect(await destinationRefusal(folder, t.where), folder).toMatch(
+        /inside the engine data folder/,
+      )
+  })
+
+  // The defect this test was written for: the file lands at
+  // <destination>/<project name>/<filename>, and `folderName` passes
+  // "engine" through unchanged, so the folder the home sits in is a folder
+  // an export can reach into the home from - one project name away.
+  it('refuses a folder that holds the engine data folder, however far above it', async () => {
+    const t = tree()
+    for (const folder of [join(t.root, 'support'), t.root])
+      expect(await destinationRefusal(folder, t.where), folder).toMatch(
+        /holds the engine data folder/,
+      )
+  })
+
+  it('refuses the app’s own bundle and anything inside it', async () => {
+    const t = tree()
+    for (const folder of [t.bundle, join(t.bundle, 'Contents', 'Resources')])
+      expect(await destinationRefusal(folder, t.where), folder).toMatch(/inside the app itself/)
+  })
+
+  // Every check here is textual, so a link that passes one and then points
+  // inside the home would be a guard that refuses nothing.
+  it('follows a link in the folder it is given', async () => {
+    const t = tree()
+    const link = join(t.root, 'looks-harmless')
+    mkdirSync(join(t.home, 'out'), { recursive: true })
+    symlinkSync(join(t.home, 'out'), link, 'dir')
+    expect(await destinationRefusal(link, t.where)).toMatch(/inside the engine data folder/)
+  })
+
+  it('follows a link in the home it is given', async () => {
+    const t = tree()
+    const real = join(t.root, 'real-home')
+    mkdirSync(join(real, 'out'), { recursive: true })
+    const linked = join(t.root, 'linked-home')
+    symlinkSync(real, linked, 'dir')
+    const where = { bundleRoots: [t.bundle], engineHome: linked }
+    // The home is a link; the folder names where it really is.
+    expect(await destinationRefusal(join(real, 'out'), where)).toMatch(
+      /inside the engine data folder/,
+    )
+    expect(await destinationRefusal(t.root, where)).toMatch(/holds the engine data folder/)
+    expect(await destinationRefusal(t.elsewhere, where)).toBeNull()
+  })
+
+  it('follows a link in the bundle it is given', async () => {
+    const t = tree()
+    const linked = join(t.root, 'linked-app')
+    symlinkSync(t.bundle, linked, 'dir')
+    const where = { bundleRoots: [linked], engineHome: t.home }
+    expect(await destinationRefusal(join(t.bundle, 'Contents'), where)).toMatch(
+      /inside the app itself/,
+    )
+  })
+
+  // A folder that does not exist yet is judged, not waved through:
+  // `createDirectory` in the chooser makes one, and a record can name a
+  // folder that has since gone.
+  it('judges a folder that is not there', async () => {
+    const t = tree()
+    expect(await destinationRefusal(join(t.home, 'not-yet'), t.where)).toMatch(
+      /inside the engine data folder/,
+    )
+    expect(await destinationRefusal(join(t.elsewhere, 'not-yet'), t.where)).toBeNull()
   })
 })

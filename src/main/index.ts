@@ -26,7 +26,7 @@ import { FIXTURE_FOLDER, FirstRunCheck, LOG_TAG as FIRST_RUN_TAG } from './first
 import { registerFirstRunHandlers } from './first-run-ipc'
 import { LicencesService, registerLicencesHandlers } from './licences-ipc'
 import { PickedPaths, registerFeedsHandlers, registryDeadline, registryGuard } from './feeds-ipc'
-import { Destinations, Exporter, keptFramesFolder } from './export'
+import { destinationRefusal, Destinations, Exporter, keptFramesFolder } from './export'
 import { claimFramesRoot, clearFrames, describeSweep, FRAMES_FOLDER } from './frames'
 import { registerExportHandlers } from './export-ipc'
 import { engineCommand, engineEnvironment, resolveInterpreter } from './interpreter'
@@ -36,7 +36,7 @@ import { byTag, holdingSink, log, setSink, toStderrRedacted } from './log'
 import { LOG_WAIT_MS, openLogFile, within, type LogFile } from './log-file'
 import { shortHomeFrom } from './diagnostics-text'
 import { ProjectStore } from './projects'
-import { contains, SettingsStore } from './settings'
+import { SettingsStore } from './settings'
 import { registerSettingsHandlers, SettingsService } from './settings-ipc'
 import { Viewer } from './viewer'
 import { registerAppProtocol } from './protocol'
@@ -646,19 +646,13 @@ if (!hasLock) {
       log.warn('export', 'the frames folder could not be claimed'),
     )
     log.info('export', describeSweep(await clearFrames(framesRoot)))
-    // Where a project's own exports may not go (A5.5-19). Inside the app
-    // itself, which is read-only on macOS and wiped on update (ADR-016);
-    // and inside the engine's home, because "Reset engine data" removes
-    // four folders under it and the confirmation promises that exported
-    // files are not touched. Textual, on the folder the chooser answered,
-    // as the bundle check in Settings is.
-    const destinationRefusal = (folder: string): string | null => {
-      if (bundleRoots.some((root) => contains(root, folder)))
-        return 'that folder is inside the app itself; nothing can be kept there'
-      if (contains(config.home, folder))
-        return 'that folder is inside the engine data folder, which “Reset engine data” removes'
-      return null
-    }
+    // Where a project's own exports may not go (A5.5-19): the app's own
+    // bundle and the engine's home, in either direction and through their
+    // links. The rule itself is `destinationRefusal`, which is where it is
+    // said and where it is tested; this only names the two folders, which
+    // only this file knows.
+    const refuseDestination = (folder: string): Promise<string | null> =>
+      destinationRefusal(folder, { bundleRoots, engineHome: config.home })
     const destinations = new Destinations({
       projects: store,
       // Parented to the window, so it is modal to it (rules/main.md); only
@@ -673,7 +667,7 @@ if (!hasLock) {
         return answer.canceled || answer.filePaths.length === 0 ? null : answer.filePaths[0]
       },
       appFolder: () => settingsService.exportFolderNow(),
-      refuse: destinationRefusal,
+      refuse: refuseDestination,
     })
     exporter = new Exporter({
       engine,
@@ -681,7 +675,7 @@ if (!hasLock) {
       capture,
       framesRoot,
       exportFolder: () => settingsService.exportFolderNow(),
-      destinationRefusal,
+      destinationRefusal: refuseDestination,
       // The frames live under the engine home, so no export may begin while
       // that folder is being removed.
       blocked: resetInProgress,
@@ -698,6 +692,10 @@ if (!hasLock) {
       },
       (path) => shell.showItemInFolder(path),
       destinations,
+      // A destination is a write to a project's record, which lives under
+      // the home a reset is removing: it is refused while that runs, as
+      // every other record write is.
+      resetInProgress,
     )
     mainWindow = createWindow()
 

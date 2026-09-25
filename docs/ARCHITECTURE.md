@@ -90,6 +90,7 @@ app's own settings under `api.settings`:
 | `setExport(id, choice)` | records what the project is set to export - a preset, a storyboard, the options - at once; every field is held to the engine's own rules on the main side first (A5-01) |
 | `export.chooseDestination(id)` | opens the platform's folder chooser for one project's exports and applies its own answer, then hands back the record; no path crosses inward, as Settings' two folders do not (A1-04, A5.5-19) |
 | `export.useAppFolder(id)` | forgets that folder, so the project's exports go to the app's again; it takes no path at all (A5.5-19) |
+| | both write a project's record, so both are refused while the engine's data is being reset, as every other record write is |
 | `feeds.pickZip()` | opens the platform's file chooser for a GTFS zip and remembers the answer; the one native dialog, since a page cannot choose a file (A2-01) |
 
 | `viewer.attach(projectId)` | holds the project page's frame by identity once it has loaded, and answers whether it did (ADR-028) |
@@ -1123,9 +1124,16 @@ or a `Legible Cities` folder on the desktop - in a folder named after the
 project, under the engine's own file name; nothing is written inside the
 user-data folder or the bundle (ADR-016). A project's destination is a
 folder the platform's own dialog answered, judged when it was chosen and
-again at each export - a folder inside the app itself, or inside the
-engine's home, is refused both times, since the bundle is wiped on update
-and "Reset engine data" removes four folders under the home. The page is told the file's name
+again at each export: a folder inside the app itself is refused, since the
+bundle is wiped on update, and so is one inside the engine's home **or one
+that holds it**, since the file lands at `<destination>/<project name>/` and
+`folderName` passes "engine", "out", "data", "projects" and "frames"
+through unchanged - the folder the home sits in is one project name away
+from the home. Every path is resolved through its links first, because the
+comparison is textual and `SCHEMATIC_HOME` reaches the app unfiltered. It is
+the relation Settings already keeps in both directions over the app-wide
+export folder, and the two guards must not disagree
+(`destinationRefusal` in `src/main/export.ts`). The page is told the file's name
 and never its path; "Reveal" names the export by its token and the main
 process opens the folder it remembers writing to. A second export of the
 same project replaces the first, as the engine's own command line does: the

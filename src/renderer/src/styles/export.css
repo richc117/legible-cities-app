@@ -1,11 +1,13 @@
 /* The export's own region (A5.5-19): cell 06's destination.
  *
- * A region of the interface earns a file once it has rules of its own to
- * keep (.claude/rules/renderer.md). The export's older rules - the tab's
- * heading, the choices grid, the two fieldsets - are still in panels.css
- * where A5-01 wrote them and still apply; moving them is a change of its
- * own and not this one's. This file holds what cell 06 gained: the folder
- * a project exports to, shown as a path rather than as prose.
+ * **This file holds only what A5.5-19 added**, and nothing else: it is far
+ * under the two hundred lines at which `.claude/rules/renderer.md` says a
+ * region earns a file of its own. It exists because the alternative was
+ * editing panels.css, app.css or notebook.css, which two other lanes were
+ * holding at the time. The export's older rules - the choices grid, the
+ * two fieldsets, and the heading rules that this issue left without a
+ * heading - are still in panels.css where A5-01 wrote them; moving them
+ * here, and this file's right to exist at all, is a later change.
  *
  * It is read after panels.css, so a rule here may refine one there. It
  * does not: the two selectors below are this region's alone.

@@ -23,6 +23,7 @@ import {
 import { EngineError, ERROR_CODES, type EngineErrorShape } from '../shared/engine'
 import { validateId } from '../shared/project'
 import type { Destinations, Exporter } from './export'
+import type { StoreBlocked } from './ipc'
 import { badCall, TOKEN, toShape } from './ipc-shape'
 import { RESERVED_NAME } from './paths'
 
@@ -47,6 +48,14 @@ export function registerExportHandlers(
   reveal: (path: string) => void,
   /** Where one project's exports go, and the dialog that chooses it (A5.5-19). */
   destinations: DestinationSource,
+  /**
+   * Why a project's record may not be written right now, or null. Both
+   * destination calls write one, and a record lives under the home a reset
+   * is removing, so both are held exactly as `registerProjectHandlers`
+   * holds its writes (A1-04). The exporter has its own copy of this gate,
+   * which is why the other four handlers do not read it here.
+   */
+  blocked: StoreBlocked = () => null,
 ): () => void {
   const handle = (channel: string, handler: (...args: unknown[]) => Promise<unknown>): void => {
     ipcMain.handle(channel, async (event, ...args: unknown[]) => {
@@ -103,17 +112,24 @@ export function registerExportHandlers(
   // leave this process. An error is thrown rather than answered, as the
   // project handlers throw theirs: the page shows the sentence beside the
   // control that asked.
-  handle(CHANNELS.exportChooseDestination, async (projectId) => {
+  const readProject = (projectId: unknown): string => {
     if (typeof projectId !== 'string' || validateId(projectId) !== null)
       throw new Error('a destination needs a project')
-    return destinations.choose(projectId)
-  })
+    // Before the dialog, not after it: a chooser opened over a reset would
+    // be answered into a record being walked away, and a person would have
+    // chosen a folder for nothing.
+    const why = blocked()
+    if (why !== null) throw new Error(why)
+    return projectId
+  }
 
-  handle(CHANNELS.exportUseAppFolder, async (projectId) => {
-    if (typeof projectId !== 'string' || validateId(projectId) !== null)
-      throw new Error('a destination needs a project')
-    return destinations.useAppFolder(projectId)
-  })
+  handle(CHANNELS.exportChooseDestination, async (projectId) =>
+    destinations.choose(readProject(projectId)),
+  )
+
+  handle(CHANNELS.exportUseAppFolder, async (projectId) =>
+    destinations.useAppFolder(readProject(projectId)),
+  )
 
   handle(CHANNELS.exportReveal, async (token) => {
     if (typeof token !== 'string') return

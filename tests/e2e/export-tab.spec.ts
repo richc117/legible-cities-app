@@ -21,7 +21,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import {
   _electron as electron,
   expect,
@@ -565,7 +565,7 @@ test('a folder chosen for this project is where its export lands, and the app’
   })
 })
 
-test('the app refuses a folder inside itself, and says so under the control that asked', async () => {
+test('the app refuses a folder inside itself or around the engine data, under the control that asked', async () => {
   const h = home()
   await withApp(h, async (page, app) => {
     await laidOut(page, h)
@@ -578,5 +578,21 @@ test('the app refuses a folder inside itself, and says so under the control that
     await panel.getByRole('button', { name: 'Choose folder' }).click()
     await expect(panel.getByRole('alert')).toContainText('inside the app itself')
     expect(readRecord(h).destination, 'and nothing was written').toBeNull()
+
+    // Inside the engine's own home, which "Reset engine data" removes.
+    await chooserAnswers(app, join(h.engineHome, 'out'))
+    await panel.getByRole('button', { name: 'Choose folder' }).click()
+    await expect(panel.getByRole('alert')).toContainText('inside the engine data folder')
+
+    // And the folder the home sits in: the file lands at
+    // <destination>/<project name>/, and a project named "engine" would
+    // put it straight into the home through the guard meant to stop it.
+    await chooserAnswers(app, dirname(h.engineHome))
+    await panel.getByRole('button', { name: 'Choose folder' }).click()
+    await expect(panel.getByRole('alert')).toContainText('holds the engine data folder')
+    expect(readRecord(h).destination, 'and none of the three was written').toBeNull()
+
+    // A refusal leaves the choice as it was and does not stop the next one.
+    await expect(panel.getByText(/exports go to the app’s export folder/)).toBeVisible()
   })
 })

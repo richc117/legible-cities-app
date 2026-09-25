@@ -57,6 +57,9 @@ import { useSnapshot } from './useSnapshot'
 // options; and the export itself, with the progress line, cancel and
 // "Reveal" it always had.
 //
+// The panel has no heading of its own: cell 06's row is its heading, and
+// focus a disabling control drops is handed there (`handback`).
+//
 // The preview is not drawn here. While this cell is open the map's own frame
 // is sent to the address `export.plan` answers for the choice, with the
 // platform's safe zones asked for where the preset has them, and the page
@@ -103,14 +106,14 @@ interface Props {
   /** The address the map's frame should show, when a plan answers. */
   onPreview: (address: PreviewAddress) => void
   /**
-   * The heading of the cell this is drawn in (A5.5-19). Given, the panel is
-   * headless - the cell's own row is its heading - and focus that a
-   * disabling control drops lands there rather than on a second heading
-   * saying "Export" inside a cell already called "06 Export". It is the
-   * heading and not the toggle inside it, which a reflexive Space after the
-   * handback would collapse.
+   * The heading of the cell this is drawn in (A5.5-19). The panel has no
+   * heading of its own: the cell's row says "06 Export" already, and a
+   * second heading saying "Export" under it is one a screen reader reads
+   * twice. Focus that a disabling control drops lands here - on the
+   * heading and not on the toggle inside it, which a reflexive Space after
+   * the handback would collapse.
    */
-  handback?: RefObject<HTMLHeadingElement | null>
+  handback: RefObject<HTMLHeadingElement | null>
 }
 
 /**
@@ -136,7 +139,6 @@ export default function ExportTab({
   onPreview,
   handback,
 }: Props): JSX.Element {
-  const headless = handback !== undefined
   const ready = engine?.state === 'ready'
   const runState = useSnapshot(run).state
   const exporting = runState === 'running'
@@ -146,7 +148,6 @@ export default function ExportTab({
   const [notes, setNotes] = useState<string[]>([])
   const [writeProblem, setWriteProblem] = useState<string | null>(null)
   const [inspection, setInspection] = useState<Inspection | null>(null)
-  const headingRef = useRef<HTMLHeadingElement>(null)
   const choicesRef = useRef<HTMLFormElement>(null)
 
   // Where this project's exports go (A5.5-19). Held here rather than read
@@ -341,18 +342,14 @@ export default function ExportTab({
 
   // An export locks the choices: it planned from them, and a change now
   // could not reach the file being made. Chromium blurs a disabled control,
-  // so focus goes to the heading first - the cell's own, where this is a
-  // cell's panel.
+  // so focus goes to the cell's own heading first.
   const locked = project.readOnly || exporting
-  // Where focus goes when a control here can no longer hold it: the cell's
-  // own heading, or this panel's where it is a screen of its own.
-  const headingTarget = handback ?? headingRef
   useEffect(() => {
     if (!exporting) return
     const focused = document.activeElement
     if (focused !== null && choicesRef.current?.contains(focused) === true)
-      headingTarget.current?.focus()
-  }, [exporting, headingTarget])
+      handback.current?.focus()
+  }, [exporting, handback])
 
   // The destination's two presses. Neither sends a path: `chooseDestination`
   // asks the main process to open the platform's dialog and apply what it
@@ -421,19 +418,9 @@ export default function ExportTab({
     commitTag()
   }
 
-  // Drawn only where this panel is a screen of its own. In a cell the
-  // cell's heading row says "06 Export" already, and a second heading
-  // saying "Export" under it is one a screen reader reads twice.
-  const heading = headless ? null : (
-    <h2 id="export-tab-heading" tabIndex={-1} ref={headingRef}>
-      Export
-    </h2>
-  )
-
   if (project.layout === null) {
     return (
       <div className="export-tab">
-        {heading}
         <p className="prose">
           There is no map to export yet. Lay the project out first, and its export is previewed
           here.
@@ -446,7 +433,6 @@ export default function ExportTab({
 
   return (
     <div className="export-tab" aria-busy={exporting}>
-      {heading}
       {!ready && (
         <p className="hint" role="status">
           The engine is not running, so nothing can be planned or exported until it is.

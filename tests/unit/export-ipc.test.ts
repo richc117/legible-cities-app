@@ -20,7 +20,7 @@ const tick = (): Promise<void> => new Promise((r) => setImmediate(r))
 
 const REEL: ExportChoice = { preset: 'instagram-reel', options: {} }
 
-function harness(topFrame = true) {
+function harness(topFrame = true, blocked: string | null = null) {
   const handlers = new Map<string, Handler>()
   const ipc = {
     handle: (channel: string, h: Handler) => handlers.set(channel, h),
@@ -89,6 +89,7 @@ function harness(topFrame = true) {
     (channel, payload) => sent.push({ channel, payload }),
     (path) => revealed.push(path),
     destinations,
+    () => blocked,
   )
   const event = {} as IpcMainInvokeEvent
   const call = (channel: string, ...args: unknown[]) => handlers.get(channel)!(event, ...args)
@@ -182,6 +183,22 @@ describe('registerExportHandlers', () => {
       'forbidden',
     )
     expect(other.chosen).toEqual([])
+  })
+
+  // Both destination calls write a project's record, which lives under the
+  // home a reset is removing; they are held exactly as every other record
+  // write is (A1-04).
+  it('refuses a destination while the engine data is being reset, before the dialog', async () => {
+    const why = 'The engine data is being reset; wait for it to finish.'
+    const h = harness(true, why)
+    await expect(h.call(CHANNELS.exportChooseDestination, 'abcdefghijk1')).rejects.toThrow(why)
+    await expect(h.call(CHANNELS.exportUseAppFolder, 'abcdefghijk1')).rejects.toThrow(why)
+    expect(h.chosen, 'no chooser was opened').toEqual([])
+    expect(h.cleared).toEqual([])
+    // The exporter has its own copy of the gate, so the other handlers are
+    // not held here: a cancel and a reveal touch no record at all.
+    await h.call(CHANNELS.exportCancel, 't1')
+    expect(h.cancelled).toEqual(['t1'])
   })
 
   it('answers a refusal the exporter made as data, not a rejection', async () => {

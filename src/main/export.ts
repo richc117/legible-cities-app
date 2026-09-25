@@ -43,6 +43,7 @@ import {
 import { isObject, toShape } from './ipc-shape'
 import { RESERVED_NAME } from './paths'
 import { PickedPaths } from './picked'
+import { contains, realOrResolved } from './settings'
 import type { Notification } from './sidecar'
 
 /** What the export needs from the supervisor; a test hands in a fake. */
@@ -69,13 +70,12 @@ export interface ExporterOptions {
    */
   exportFolder: () => string
   /**
-   * Why a project's own destination may not be written to, or null: inside
-   * the app's own bundle, or inside the engine's home (A5.5-19). The same
-   * function the chooser refuses by, asked again here because a record is a
-   * file on disk and the folder it names may have become one of those since
-   * - or never have come from the chooser at all.
+   * Why a project's own destination may not be written to, or null
+   * (A5.5-19). The same function the chooser refuses by, asked again here
+   * because a record is a file on disk and the folder it names may have
+   * become one of those since - or never have come from the chooser at all.
    */
-  destinationRefusal?: (folder: string) => string | null
+  destinationRefusal?: (folder: string) => Promise<string | null>
   /**
    * Why no export may start at all, or null. Settings sets this while it is
    * removing the engine's home: an export begun during that `rm` would be
@@ -462,7 +462,7 @@ export class Exporter {
     // chosen - the engine's home can move between two starts, and a record
     // is a file anything on the machine can write.
     if (project.destination !== null) {
-      const why = this.#options.destinationRefusal?.(project.destination) ?? null
+      const why = (await this.#options.destinationRefusal?.(project.destination)) ?? null
       if (why !== null)
         throw engineError(
           ERROR_CODES.badCall,
@@ -642,6 +642,62 @@ export class Exporter {
   }
 }
 
+/** The folders a project's exports may not be written into. */
+export interface ForbiddenFolders {
+  /**
+   * The app's own bundle, and its resources beside it when packaged: it is
+   * read-only on macOS and wiped on update (ADR-016).
+   */
+  bundleRoots: string[]
+  /**
+   * The engine's home as the configuration resolved it. "Reset engine data"
+   * removes four folders under it, and its confirmation promises that
+   * exported files are not touched.
+   */
+  engineHome: string
+}
+
+/**
+ * Why a project may not export to this folder, or null (A5.5-19).
+ *
+ * **Both directions, and both sides resolved.** An export writes to
+ * `<destination>/<the project's name as a folder>/<the engine's filename>`,
+ * so a folder that *holds* the engine home is as dangerous as one inside
+ * it: `folderName` passes "engine" - and "out", "data", "projects" and
+ * "frames" - through unchanged, since it only replaces what a filesystem
+ * refuses and the names Windows reserves. Choose the folder the home sits
+ * in, call the project `engine`, and the export lands in the home through a
+ * guard meant to keep it out. This is the relation Settings already keeps
+ * over the app-wide export folder, in both directions, for the same stated
+ * reason (`#reset` in `settings-ipc.ts`), and the app must not carry two
+ * guards over one relation that can disagree.
+ *
+ * Containment either way rather than "is the home's parent", which is all
+ * a single name segment can reach today: the narrower rule would be a
+ * second thing to keep true about `folderName`, and a folder one level
+ * above the home is a folder a person is one press away from choosing.
+ *
+ * The comparison is textual, so every path goes through `realOrResolved`
+ * first. `SCHEMATIC_HOME` and a hand-edited settings file reach the app
+ * unfiltered, and a home reached through a link passes every textual check
+ * and then points at somewhere a reset will remove.
+ */
+export async function destinationRefusal(
+  folder: string,
+  where: ForbiddenFolders,
+): Promise<string | null> {
+  const real = await realOrResolved(folder)
+  for (const root of where.bundleRoots)
+    if (contains(await realOrResolved(root), real))
+      return 'that folder is inside the app itself; nothing can be kept there'
+  const home = await realOrResolved(where.engineHome)
+  if (contains(home, real))
+    return 'that folder is inside the engine data folder, which “Reset engine data” removes'
+  if (contains(real, home))
+    return 'that folder holds the engine data folder; an export goes into a folder named after the project, which could be that folder itself'
+  return null
+}
+
 /**
  * What choosing a destination needs. Everything Electron - the dialog, the
  * folders it may not answer with - is injected, so every rule below is
@@ -660,12 +716,8 @@ export interface DestinationsOptions {
   chooseFolder: (current: string) => Promise<string | null>
   /** The app's own export folder now, where a project that has chosen none starts. */
   appFolder: () => string
-  /**
-   * Why this folder may not be an export's destination, or null: inside
-   * the app's own bundle, which is read-only on macOS and wiped on update,
-   * or inside the engine's home, which "Reset engine data" removes.
-   */
-  refuse: (folder: string) => string | null
+  /** Why this folder may not be an export's destination, or null: `destinationRefusal`. */
+  refuse: (folder: string) => Promise<string | null>
 }
 
 /**
@@ -710,13 +762,20 @@ export class Destinations {
     if (folder === null) return this.useAppFolder(projectId)
     if (!this.#picked.take(folder as string))
       throw new Error("a folder is chosen in the app's own dialog")
-    const why = this.#options.refuse(folder as string)
+    const why = await this.#options.refuse(folder as string)
     if (why !== null) throw new Error(why)
     return this.#options.projects.setDestination(projectId, folder as string)
   }
 
-  /** Forget this project's own folder and take the app's again. Nothing crosses inward. */
+  /**
+   * Forget this project's own folder and take the app's again. Nothing
+   * crosses inward, and the record is read first only to refuse one this
+   * build may not write: the store would refuse it too, but with its own
+   * bare "read-only", which is not a sentence to put in front of anybody.
+   */
   async useAppFolder(projectId: string): Promise<ProjectRecord> {
+    const project = await this.#options.projects.get(projectId)
+    if (project.readOnly) throw new Error(READ_ONLY)
     return this.#options.projects.setDestination(projectId, null)
   }
 }

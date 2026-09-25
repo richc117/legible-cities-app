@@ -103,13 +103,23 @@ The on-disk form of `ProjectRecord` (`data-model.md`), version 1:
   changes with it. Anything that is not a folder the app would store -
   relative, empty, over 4,096 characters, or carrying a control character -
   reads as `null` and is refused on write; whether a particular folder may
-  be written into (inside the app's own bundle, inside the engine's home)
-  is the main process's judgement, made when it is chosen and again at each
-  export, because the home can move between two starts. `null` means "not
+  be written into - inside the app's own bundle, inside the engine's home,
+  or holding the engine's home, since the file lands one folder deeper -
+  is the main process's judgement, made on resolved paths when it is chosen
+  and again at each export, because the home can move between two starts. `null` means "not
   told otherwise", which is what every record meant before this field
   existed, so an older project is unaffected and an older build that drops
   the field sends the next export to the app's folder rather than misreading
-  anything. The rule that let it be added without moving the version is in
+  anything. That last point is where this field sits least comfortably
+  under criterion 3 of the rule below, which allows a dropped field only
+  where the app can recompute or re-observe it: a destination is neither,
+  and a person whose record has been through an older build chooses it
+  again. It is admitted here because what is lost is one press of a button
+  the cell still offers, said plainly on screen, while a version bump would
+  make every existing project read-only in every older build - and **it is
+  not a precedent for a field a person typed**, which cannot be chosen
+  again from a control that is showing what it holds. The rule that let it
+  be added without moving the version is in
   `specs/028-the-notebook/contracts/run-graph.md`, "Adding a field to
   `ProjectRecord` without moving `RECORD_VERSION`". The folder never
   crosses the bridge inward: it is chosen in the platform's own dialog,
