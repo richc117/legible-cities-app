@@ -373,16 +373,29 @@ th .sort:focus-visible {
 
 /* The map is not prose, so it leaves the panel's measure and takes the
    region (DESIGN.md 8.2, "the viewer"). The panel stays a reading column for
-   everything else. */
+   everything else.
+
+   Two regions beside it are subtracted from the window rather than from the
+   column, because both are outside the flow of it: the inspector, and the
+   project's own rail (A5.5-21, `project.css`). Each defaults to 0, so a
+   screen without one is exactly as it was. Without the rail's term the map
+   would be drawn over it: the rail is fixed, and a fixed region takes no
+   width from a `100vw`. */
 .viewer {
   display: grid;
   gap: var(--space-4-2);
-  width: min(100vw - var(--inspector-space, 0px) - 2 * var(--space-4-4), var(--measure-wide));
+  width: min(
+    100vw - var(--inspector-space, 0px) - var(--rail-space, 0px) - 2 * var(--space-4-4),
+    var(--measure-wide)
+  );
   margin: 0 0 var(--space-4-4)
     calc(
       (
           var(--measure) -
-            min(100vw - var(--inspector-space, 0px) - 2 * var(--space-4-4), var(--measure-wide))
+            min(
+              100vw - var(--inspector-space, 0px) - var(--rail-space, 0px) - 2 * var(--space-4-4),
+              var(--measure-wide)
+            )
         ) /
         2
     );

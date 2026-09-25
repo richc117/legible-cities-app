@@ -291,6 +291,39 @@ export interface ExportResult {
   frames: number
 }
 
+/**
+ * One thing a project has produced, as the rail's Outputs list says it
+ * (A5.5-21, DESIGN.md 8.2, "Outputs").
+ *
+ * Read from the sidecar the engine already writes beside every deliverable
+ * and not from anything the session remembers: until now a finished export
+ * was findable only in the inspector, and only until the app was closed.
+ * Nothing here is a path - the file's own name, never the folder it is in
+ * (constitution V).
+ */
+export interface ExportOutput {
+  /** The deliverable's own name, as the sidecar records it. Never a path. */
+  file: string
+  /** The preset the sidecar names, or null where it names none. */
+  preset: string | null
+  /** When the sidecar was written, which is when the export finished; ISO 8601. */
+  made: string
+  /**
+   * False when the file has been moved or deleted since. The sidecar stays,
+   * so the row still says what was made, reads as gone, and offers nothing
+   * to press.
+   */
+  present: boolean
+}
+
+/**
+ * How many outputs the rail lists. A folder somebody has exported into for
+ * a year is not a list anybody reads to the end, and the whole of it
+ * crosses the bridge on every read; newest first, so what is missing from
+ * the end is what nobody is looking for.
+ */
+export const OUTPUTS_MAX = 50
+
 /** What `export:run` answers at once: started, or refused before it started. */
 export type ExportAccepted = { accepted: true } | { accepted: false; error: EngineErrorShape }
 

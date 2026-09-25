@@ -2,14 +2,41 @@
    regions below it - the rail, the notebook and the pinned preview - and
    the foot that holds the project's own two actions.
 
-   Empty. A5.5-08 moved the six panels into cells without changing where
-   anything sits, so the screen still lays out from `app.css` and
-   `panels.css` as it did. The file exists now because nine of this
-   milestone's open issues have rules to add to the project screen, and a
-   region earns its own stylesheet before they meet in someone else's: the
-   header's status line and Run all (A5.5-19), the four regions at the
-   narrow width (A5.5-21), and the header's own rule (A5.5-22).
+   What is here is where the rail's space comes from (A5.5-21). The rest of
+   the screen still lays out from `app.css` and `panels.css` as it did; the
+   rail's own rules are in `rail.css` and the preview's in `preview.css`,
+   so the milestone's remaining issues do not meet in one file: the
+   header's status line and Run all (A5.5-19), and the header's own rule
+   (A5.5-22).
 
    A stylesheet is named for a region of the interface, not for a
    component, and the four token files stay the only place a literal may
    appear (A5.5-07). */
+
+/* The rail's space in the window, the way the inspector's is (`app.css`):
+   one variable, declared where the region exists and nowhere else.
+
+   Two things read it. The main region is padded by it, so the reading
+   column is centred in what is left rather than under the rail. And the
+   map, which breaks out of that column to the window's own width,
+   subtracts it from `100vw` exactly as it already subtracts the
+   inspector's - without that the map is drawn over the rail, because the
+   rail is fixed and a fixed region is invisible to a width computed from
+   the viewport.
+
+   `:has()` and not a class on the shell: which screen is open is `App.tsx`'s
+   state, and the rail belongs to one of the three. A variable that only
+   the project screen sets, read through a default of 0 everywhere else, is
+   the same shape the inspector's `--inspector-space` already has. */
+.app-main:has(.project) {
+  --rail-space: var(--rail-width);
+  padding-left: var(--rail-space);
+}
+
+/* Collapsed to its numbers below 900px, with the rest of the region: the
+   media query says 56.25rem because a media query cannot read a token. */
+@media (max-width: 56.25rem) {
+  .app-main:has(.project) {
+    --rail-space: var(--space-4-16);
+  }
+}

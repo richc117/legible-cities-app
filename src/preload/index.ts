@@ -111,6 +111,11 @@ const api: Api = {
     preview: (projectId, choice) => invoke(CHANNELS.exportPreview, projectId, choice),
     cancel: (id) => invoke(CHANNELS.exportCancel, id),
     reveal: (id) => invoke(CHANNELS.exportReveal, id),
+    // What the project has already produced, read from the sidecars on
+    // disk. A project's name in, a list of file names out; the folder is
+    // never named in either direction (A5.5-21).
+    outputs: (projectId) => invoke(CHANNELS.exportOutputs, projectId),
+    revealOutput: (projectId, file) => invoke(CHANNELS.exportRevealOutput, projectId, file),
     // Neither takes a path: the main process opens the platform's chooser
     // and applies its own answer, as Settings does for its two folders
     // (A5.5-19).

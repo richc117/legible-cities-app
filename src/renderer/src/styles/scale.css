@@ -77,6 +77,9 @@
      over it on a window narrower than 900px, where the stylesheet's media
      query says 56.25rem because a media query cannot read a token. */
   --inspector-width: 320px;
+  /* The project's own rail (A5.5-21, section 9), open. Collapsed it is
+     --space-4-16, which is already a token, so only this one is new. */
+  --rail-width: 240px;
   --backdrop-opacity: 0.6;
 
   /* Layers. */

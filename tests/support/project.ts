@@ -77,9 +77,16 @@ export const control = (
  * A cell's heading row, which is its toggle: a button whose accessible name
  * is the row's own contents, so it begins with the cell's label and goes on
  * with its state.
+ *
+ * Narrowed to `button.cell-head` by A5.5-21: the rail's own step for the
+ * same cell is named "01 Data, ready", which the label's prefix also
+ * matches, and an unnarrowed locator would answer two elements on every
+ * project screen.
  */
 export const cellHeading = (page: Page, id: CellId): Locator =>
-  page.getByRole('button', { name: new RegExp(`^${cellLabel(id)}\\b`) })
+  page
+    .getByRole('button', { name: new RegExp(`^${cellLabel(id)}\\b`) })
+    .and(page.locator('button.cell-head'))
 
 /**
  * Where a cell's controls hand focus back when one of them disables itself

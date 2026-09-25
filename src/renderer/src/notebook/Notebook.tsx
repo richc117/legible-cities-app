@@ -3,6 +3,7 @@ import { CELL_LIST, runGraph, type CellId } from '../runGraph'
 import { CELL_VIEWS } from './cells'
 import { useProject } from './context'
 import Preview from './Preview'
+import Rail from './Rail'
 
 // The notebook: the six cells in one scrolling column, read top to bottom
 // (ADR-045, docs/DESIGN.md 9).
@@ -49,20 +50,35 @@ export default function Notebook(): JSX.Element | null {
   if (project === null) return null
   const states = runGraph({ record: project, run: runSnapshot, exportRun: exportSnapshot })
   return (
-    <div className="notebook">
-      <Preview />
-      {CELL_LIST.map((cell) => {
-        const View = CELL_VIEWS[cell.id]
-        return (
-          <View
-            key={cell.id}
-            cell={cell}
-            state={states[cell.id].state}
-            open={open[cell.id]}
-            onToggle={(next) => setOpen((was) => ({ ...was, [cell.id]: next }))}
-          />
-        )
-      })}
-    </div>
+    <>
+      {/* The rail is placed from here and not from `ProjectView.tsx`
+          (A5.5-21), for one reason: which cells are open is this
+          component's state, and a step's press opens one. Lifting that
+          state to the screen so the two could be siblings would put a
+          value six cells read, and one region writes, a file further from
+          both. It stays outside `.notebook` - the column's children are
+          the map and the six cells, and `Preview` stays the first of them,
+          which is the arrangement `preview.css` pins. */}
+      <Rail
+        states={states}
+        open={open}
+        onOpen={(cell) => setOpen((was) => ({ ...was, [cell]: true }))}
+      />
+      <div className="notebook">
+        <Preview />
+        {CELL_LIST.map((cell) => {
+          const View = CELL_VIEWS[cell.id]
+          return (
+            <View
+              key={cell.id}
+              cell={cell}
+              state={states[cell.id].state}
+              open={open[cell.id]}
+              onToggle={(next) => setOpen((was) => ({ ...was, [cell.id]: next }))}
+            />
+          )
+        })}
+      </div>
+    </>
   )
 }

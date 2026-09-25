@@ -4,7 +4,13 @@
 // specs/004-sidecar-supervisor/contracts/bridge.md (engine).
 
 import type { EngineErrorShape, EngineState, JobLog, JobProgress } from './engine'
-import type { ExportChoice, ExportPreview, ExportProgress, ExportResult } from './export'
+import type {
+  ExportChoice,
+  ExportOutput,
+  ExportPreview,
+  ExportProgress,
+  ExportResult,
+} from './export'
 import type { FirstRunResult } from './first-run'
 import type { LayoutDone, LayoutResult } from './layout'
 import type { LicencesView } from './licences'
@@ -35,6 +41,7 @@ export type {
 export type { EngineState, JobLog, JobProgress } from './engine'
 export type {
   ExportChoice,
+  ExportOutput,
   ExportPreview,
   ExportProgress,
   ExportResult,
@@ -200,6 +207,22 @@ export interface Api {
     /** Show a finished export's file in the platform's file browser. */
     reveal(id: string): Promise<void>
     /**
+     * What this project has produced, newest first (A5.5-21): one row per
+     * sidecar in the project's own export folder, read from disk rather
+     * than from this session, so it survives a restart. The page names a
+     * project and nothing else; the folder is the main process's to work
+     * out, and no path comes back.
+     */
+    outputs(projectId: string): Promise<ExportOutput[]>
+    /**
+     * Show one of those in the platform's file browser, by the file's own
+     * bare name. False when it is no longer there, which is a row that has
+     * gone stale rather than a failure: the page re-reads the list and the
+     * row says so. The name is checked against the folder's own contents on
+     * the main side, so it can never become a path the page chose.
+     */
+    revealOutput(projectId: string, file: string): Promise<boolean>
+    /**
      * Open the platform's folder chooser and store its answer as this
      * project's own export destination (A5.5-19). Takes no path: the main
      * process opens the dialog and applies the answer itself, exactly as
@@ -331,6 +354,8 @@ export const CHANNELS = {
   exportRun: 'export:run',
   exportCancel: 'export:cancel',
   exportReveal: 'export:reveal',
+  exportOutputs: 'export:outputs',
+  exportRevealOutput: 'export:reveal-output',
   exportPreview: 'export:preview',
   exportChooseDestination: 'export:choose-destination',
   exportUseAppFolder: 'export:use-app-folder',
