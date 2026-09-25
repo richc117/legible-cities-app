@@ -7,7 +7,7 @@ import Select from './kit/Select'
 import {
   SPEEDS,
   clampTo,
-  readBounds,
+  makePoll,
   readClock,
   shownPlaying,
   shownSpeed,
@@ -132,32 +132,30 @@ export default function Transport({
     if (why === null) setRefused(null)
   }, [why])
 
-  // Where the page is, while anyone is looking. The bounds are asked once
-  // per page - they are the service day's, and only a draw changes it - and
-  // the clock on a timer.
+  // Where the page is, while anyone is looking. The poll owns when the day
+  // and the clock are asked for and how many asks may be outstanding;
+  // `makePoll` carries the reasoning and the tests. What is here is what to
+  // do with what it learns.
+  //
+  // A fresh poll per effect run, so a redraw asks the new page for its own
+  // day: a rebuild draws another service day, and keeping the old bounds
+  // would leave the scrub addressing a day the page no longer has.
   useEffect(() => {
     if (!open) return undefined
     let off = false
-    void window.api.viewer.call('bounds').then(
-      (answer) => {
-        const found = readBounds(answer)
-        if (!off && found !== null) setBounds(found)
+    const poll = makePoll(
+      (method) => window.api.viewer.call(method),
+      ({ bounds: found, clock: at }) => {
+        if (off) return
+        if (found !== null) setBounds(found)
+        // The thumb belongs to whoever is moving it; see HOLD.
+        if (at === null || Date.now() < held.current) return
+        setNow(at.now)
+        setClock(at.clock)
       },
-      () => undefined,
     )
-    const tick = (): void => {
-      void window.api.viewer.call('state').then(
-        (answer) => {
-          const at = readClock(answer)
-          if (off || at === null || Date.now() < held.current) return
-          setNow(at.now)
-          setClock(at.clock)
-        },
-        () => undefined,
-      )
-    }
-    tick()
-    const timer = setInterval(tick, POLL_DELAY)
+    poll.tick()
+    const timer = setInterval(poll.tick, POLL_DELAY)
     return () => {
       off = true
       clearInterval(timer)
@@ -173,8 +171,14 @@ export default function Transport({
   // choice a person has made and expects to find kept (which is why
   // `ServiceDay` flushes its own). A cell going has nothing to preserve.
   useEffect(() => () => sendSeek.cancel(), [sendSeek])
+  // Which seek an answer belongs to. Two seeks can be in flight at once -
+  // the debounce is 80ms and a round trip is not bounded - and without this
+  // the first one's answer arrives last and pulls the thumb back to where
+  // the person was half a second ago.
+  const seeks = useRef(0)
   useEffect(() => {
     seekRef.current = (at: number): void => {
+      const mine = (seeks.current += 1)
       void window.api.viewer
         .call('seek', at)
         // Read straight back, so what is on screen is the page's own answer
@@ -184,7 +188,7 @@ export default function Transport({
         .then(() => window.api.viewer.call('state'))
         .then((answer) => {
           const said = readClock(answer)
-          if (said === null) return
+          if (said === null || mine !== seeks.current) return
           setNow(said.now)
           setClock(said.clock)
         })
@@ -202,6 +206,11 @@ export default function Transport({
     return false
   }
 
+  /** The thumb is the person's for a moment: see HOLD. */
+  const hold = (): void => {
+    held.current = Date.now() + HOLD
+  }
+
   const scrub = (value: string): void => {
     if (bounds === null) return
     if (!allowed()) return
@@ -210,11 +219,29 @@ export default function Transport({
     // page's answer replaces both a round trip later. Nothing is written
     // anywhere, so an optimistic position that the page then clamps costs a
     // frame of being half a minute out and nothing else.
-    held.current = Date.now() + HOLD
+    hold()
     setNow(at)
     sendSeek(at)
   }
 
+  // Both of these write the memory **before** the call, and swallow a
+  // refusal, and that is a choice with a visible symptom either way.
+  //
+  // Written first: a call is refused only when there is no page to reach -
+  // the frame is mid-navigation, or gone - and in that case the memory is
+  // precisely what tells the next page what to be (`Viewer.tsx`'s restore).
+  // A press made a moment before a run finishes therefore still lands, on
+  // the page the run wrote. The symptom, when it is wrong, is that a press
+  // the page never received still moves the button and is then asserted to
+  // every page after it: the map runs on while the control says Pause,
+  // until the next navigation, which applies it and makes the two agree.
+  //
+  // Written after instead, the symptom would be the other one: a press made
+  // in the last moment of a run would be dropped silently, the button would
+  // spring back under the person's hand, and nothing would ever apply it.
+  // Of the two, a press that is honoured late is better than one that is
+  // lost, because the person can see the second one happen and cannot see
+  // the first.
   const play = (): void => {
     if (!allowed()) return
     const next = !playing
@@ -240,13 +267,27 @@ export default function Transport({
 
   return (
     <section className="transport" aria-labelledby="transport-heading">
-      {/* Cell 03 holds two sections now, the day and this, so neither can
-          be named by the cell's own heading alone - the rule A5.5-18
-          settled for cell 05's colours and order. The day's section keeps
-          the cell's heading, being what the cell is called for and what the
-          release documents quote; this one names itself. It takes no focus:
-          a control that disables itself hands focus to the cell's heading,
-          and nothing here disables at all. */}
+      {/* A panel names itself with an `h3` **or** with an `aria-label` on
+          its region, never with an `h2`, and which of the two is a
+          judgement about the panel (the rule lane 197 is landing; cell
+          05's two sections are the case that forced it). Cell 03's two
+          sections make that judgement differently, on purpose.
+
+          The day is named by the cell's own heading, and takes the
+          `aria-label` form. The cell is *called* "Frame and service day":
+          a heading reading "Service day" directly beneath one reading
+          "Frame and service day" repeats its parent and adds a level to
+          walk for nothing. It is also where the day's focus handback
+          lands - a control that disables itself under a person's hands
+          gives focus to the cell's heading - and that only reads as the
+          right place because that heading is the day's own name.
+
+          The transport is named by this `h3`, because nothing above names
+          it: the cell's heading is about what the project keeps, and this
+          is about the map now on the screen, which is a different subject
+          in the same cell. A person walking the document by heading has
+          something to walk to, and nothing here ever disables, so it needs
+          no handback and takes no focus. */}
       <h3 id="transport-heading">{NAME}</h3>
       <p className="prose">
         Where the map is in its service day. Moving it changes nothing the project keeps and draws
@@ -272,6 +313,16 @@ export default function Transport({
             // where the seconds are all anyone has.
             aria-valuetext={clock === '' ? undefined : clock}
             onChange={(event) => scrub(event.target.value)}
+            // The thumb is the person's from the moment they take hold of
+            // it, not from the first value it reports: a drag that begins
+            // on a playing map would otherwise have the poll move the
+            // thumb out from under the pointer before the first `change`.
+            // Focus does the same for the keyboard. Each `change` renews
+            // it, so the only gap left is a pointer held perfectly still
+            // for longer than HOLD - where the thumb is not moving anyway
+            // and the page's own clock is the better answer.
+            onPointerDown={hold}
+            onFocus={hold}
           />
           {/* Not a live region: it changes twice a second while the day
               runs, and a polite one would read the whole day out. A screen

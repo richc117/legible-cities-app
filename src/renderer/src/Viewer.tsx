@@ -9,7 +9,7 @@ import {
 import type { ProjectRecord } from '../../shared/project'
 import { VIEWER_SANDBOX } from '../../shared/viewer'
 import type { PreviewAddress } from './exportChoice'
-import { transportFor, withRemembered } from './transportState'
+import { asDispatched, transportFor, withRemembered } from './transportState'
 import { restoreCalls } from './viewerRestore'
 
 // The engine's page, on the screen.
@@ -247,12 +247,22 @@ export default function Viewer({
           // them. Without this a run, a theme change or the export's
           // preview would hand a person's paused, quarter-speed map back
           // to them playing at the page's own default.
-          const calls = restoreCalls(
-            withRemembered(kept.current, transportFor(project.id).snapshot),
-          )
+          const memory = transportFor(project.id)
+          const calls = restoreCalls(withRemembered(kept.current, memory.snapshot))
           for (const { method, args } of calls) {
             if (navigation !== navigations.current || !mounted.current) return
-            await window.api.viewer.call(method, ...args).catch(() => undefined)
+            // The memory is read again here, one call before it is sent,
+            // rather than once for the whole list. This loop is up to six
+            // awaited round trips long and cell 03's controls are live
+            // throughout: a Pause pressed during it writes the memory and
+            // sends its own call, and a list composed before that press
+            // would then overwrite it. Nothing anywhere could notice,
+            // because the page reports neither speed nor playing (engine
+            // issue 29), so the control would say Pause over a running map
+            // for as long as the screen stayed open. `asDispatched` is
+            // which of these calls assert a state and which do not.
+            const sending = asDispatched(method, args, memory.snapshot)
+            await window.api.viewer.call(method, ...sending).catch(() => undefined)
           }
         },
         () => {

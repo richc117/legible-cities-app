@@ -26,10 +26,11 @@ import { useProject } from '../context'
 // transport - the scrub, Play day and the speed - which drives the engine's
 // own page through the seam the app already has, and is therefore about the
 // map on screen rather than about anything the project keeps: it writes no
-// record, asks the engine nothing and marks no cell stale. It names itself,
-// because one heading cannot name two sections (the rule cell 05 settled in
-// A5.5-18); the day keeps the cell's own heading, being what the cell is
-// called for, and keeps the focus handback with it.
+// record, asks the engine nothing and marks no cell stale. It names itself
+// with an `h3` while the day is named by this cell's own heading and an
+// `aria-label`: a panel takes one form or the other and never an `h2`, and
+// which one is a judgement about the panel (lane 197's rule). The reasoning
+// for each of the two is where the second one is drawn, in `Transport.tsx`.
 //
 // It is offered to a read-only project as well as a writable one, and that
 // is deliberate: looking is not editing, and a project this build may not

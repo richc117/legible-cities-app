@@ -14,7 +14,9 @@ import {
   PAGE_SPEED,
   SPEEDS,
   TransportMemory,
+  asDispatched,
   clampTo,
+  makePoll,
   readBounds,
   readClock,
   shownPlaying,
@@ -291,5 +293,208 @@ describe('a project’s memory of what the app told its page', () => {
     expect(transportFor('aaaaaaaaaaaa')).not.toBe(transportFor('bbbbbbbbbbbb'))
     transportFor('aaaaaaaaaaaa').remember({ speed: 15 })
     expect(transportFor('bbbbbbbbbbbb').snapshot.speed).toBeNull()
+  })
+})
+
+// The poll (A5.5-16). This is where the feature's one real defect lived:
+// `bounds` was asked once, from an effect keyed on three values that never
+// move on a project screen, and the frame it needs is attached by the
+// iframe's own load handler - which cannot have run by the time React
+// flushes the effect that asks. So the ask always rejected, `bounds` stayed
+// null, and the whole section rendered `null` for the life of the screen.
+// Five end-to-end runs out of five, on the plain path: open a laid-out
+// project and look at cell 03.
+describe('the poll', () => {
+  /** A page that refuses the first `refusals` asks of each method, then answers. */
+  function page(refusals: { bounds?: number; state?: number } = {}): {
+    ask: (method: 'bounds' | 'state') => Promise<unknown>
+    asked: string[]
+    settle: () => Promise<void>
+  } {
+    const left = { bounds: refusals.bounds ?? 0, state: refusals.state ?? 0 }
+    const asked: string[] = []
+    const answers = { bounds: { t0: 21_600, t1: 93_600 }, state: { now: 26_400, clock: '07:20' } }
+    return {
+      asked,
+      ask: (method) => {
+        asked.push(method)
+        if (left[method] > 0) {
+          left[method] -= 1
+          return Promise.reject(new Error('the map is not on the screen'))
+        }
+        return Promise.resolve(answers[method])
+      },
+      // The asks settle as microtasks, so a handful of turns is enough and
+      // no timer is involved: nothing here waits on a clock.
+      settle: async () => {
+        for (let turn = 0; turn < 10; turn += 1) await Promise.resolve()
+      },
+    }
+  }
+
+  it('asks the day again on the next pass when the frame was not there yet', async () => {
+    // The defect, as a test. The frame is attached by the iframe's load
+    // handler, so the first ask of a freshly opened project always rejects;
+    // the control appears only because the poll asks again.
+    const it = page({ bounds: 1 })
+    const learnt = vi.fn()
+    const poll = makePoll(it.ask, learnt)
+
+    poll.tick()
+    await it.settle()
+    expect(learnt, 'the first pass learnt nothing, as it must').not.toHaveBeenCalled()
+    expect(it.asked, 'and it did not go on to ask for a clock it cannot place').toEqual(['bounds'])
+
+    poll.tick()
+    await it.settle()
+    expect(it.asked).toEqual(['bounds', 'bounds', 'state'])
+    expect(learnt).toHaveBeenCalledTimes(1)
+    expect(learnt).toHaveBeenCalledWith({
+      bounds: { t0: 21_600, t1: 93_600 },
+      clock: { now: 26_400, clock: '07:20' },
+    })
+  })
+
+  it('keeps asking for as many passes as it takes', async () => {
+    const it = page({ bounds: 4 })
+    const learnt = vi.fn()
+    const poll = makePoll(it.ask, learnt)
+    for (let pass = 0; pass < 5; pass += 1) {
+      poll.tick()
+      await it.settle()
+    }
+    expect(learnt).toHaveBeenCalledTimes(1)
+    expect(it.asked.filter((m) => m === 'bounds')).toHaveLength(5)
+  })
+
+  it('asks the day once and then only the clock', async () => {
+    const it = page()
+    const poll = makePoll(it.ask, () => undefined)
+    for (let pass = 0; pass < 3; pass += 1) {
+      poll.tick()
+      await it.settle()
+    }
+    expect(it.asked).toEqual(['bounds', 'state', 'state', 'state'])
+  })
+
+  it('has one ask outstanding at a time, whatever the timer does', async () => {
+    // Every ask is an injection into the frame's main world, and injections
+    // into one frame are serialised by that frame's main thread: a pass
+    // fired while the last is unanswered queues behind it. Unguarded, a slow
+    // page collects two passes a second, and that backlog sits ahead of the
+    // one-second read `Viewer.tsx` makes before it navigates - so the
+    // restore's deadline passes and the person loses their clock, view and
+    // labels across a run.
+    let release: (() => void) | null = null
+    const asked: string[] = []
+    const poll = makePoll(
+      (method) => {
+        asked.push(method)
+        return new Promise((resolve) => {
+          release = () => resolve({ t0: 0, t1: 100 })
+        })
+      },
+      () => undefined,
+    )
+    poll.tick()
+    for (let extra = 0; extra < 5; extra += 1) poll.tick()
+    await Promise.resolve()
+    expect(asked, 'five more ticks while the first is unanswered asked nothing').toEqual(['bounds'])
+    ;(release as unknown as () => void)()
+    for (let turn = 0; turn < 10; turn += 1) await Promise.resolve()
+    poll.tick()
+    expect(asked.length, 'and the poll is not stuck once it answers').toBeGreaterThan(1)
+  })
+
+  it('is not stopped for good by a pass that threw', async () => {
+    // The guard is cleared whichever way a pass ends. A pass handles its
+    // own refusals, so the way it throws is this callback throwing - which
+    // in the control sets React state. Cleared on success alone, one throw
+    // from here leaves the guard up and ends the poll for the life of the
+    // screen, which is the defect above again by another route.
+    //
+    // Written first as a refused *ask*, which proved nothing: a refused ask
+    // is caught inside the pass, so the pass resolves either way and the
+    // test passed with the guard cleared on success only.
+    const it = page()
+    let thrown = 0
+    const seen: unknown[] = []
+    const poll = makePoll(it.ask, (what) => {
+      if (thrown === 0) {
+        thrown += 1
+        throw new Error('the screen went while this was in flight')
+      }
+      seen.push(what)
+    })
+    poll.tick()
+    await it.settle()
+    expect(thrown, 'the first pass threw out of the callback').toBe(1)
+
+    poll.tick()
+    await it.settle()
+    expect(seen, 'and the poll went on asking').toHaveLength(1)
+  })
+
+  it('reports no day on the passes after it has learnt one', async () => {
+    const it = page()
+    const learnt = vi.fn()
+    const poll = makePoll(it.ask, learnt)
+    poll.tick()
+    await it.settle()
+    poll.tick()
+    await it.settle()
+    expect(learnt.mock.calls[0][0].bounds).not.toBeNull()
+    expect(learnt.mock.calls[1][0].bounds, 'nothing new to report').toBeNull()
+  })
+
+  it('hands on a clock the page could not answer as nothing, and keeps going', async () => {
+    const it = page({ state: 1 })
+    const learnt = vi.fn()
+    const poll = makePoll(it.ask, learnt)
+    poll.tick()
+    await it.settle()
+    expect(learnt).toHaveBeenCalledWith({ bounds: { t0: 21_600, t1: 93_600 }, clock: null })
+    poll.tick()
+    await it.settle()
+    expect(learnt.mock.calls[1][0].clock).toEqual({ now: 26_400, clock: '07:20' })
+  })
+})
+
+// A press made while the restore is dispatching (A5.5-16). `Viewer.tsx`
+// composes the list from the memory and then awaits up to six round trips,
+// and cell 03's controls are live for all of them.
+describe('what a restore sends at the moment it sends it', () => {
+  it('sends the speed the memory holds now, not the one the list was made with', () => {
+    expect(asDispatched('setSpeed', [60], { speed: 30, playing: null })).toEqual([30])
+  })
+
+  it('sends the play the memory holds now', () => {
+    // A person who pressed Pause during the restore must not have the
+    // restore's own setPlaying(true) put the map back into motion - and
+    // nothing could ever correct it, because the page reports neither
+    // (engine issue 29).
+    expect(asDispatched('setPlaying', [true], { speed: null, playing: false })).toEqual([false])
+  })
+
+  it('leaves the stop that begins a restore alone', () => {
+    // setPlaying(false) at the head of the list is not a claim about state:
+    // it is what keeps the clock still while the view, the labels and the
+    // seek are given back. Re-read from a memory that says "playing", it
+    // would become setPlaying(true) and the clock would run through the
+    // rest of the restore.
+    expect(asDispatched('setPlaying', [false], { speed: null, playing: true })).toEqual([false])
+  })
+
+  it('leaves every other call exactly as it was composed', () => {
+    const memory = { speed: 30, playing: false }
+    expect(asDispatched('showView', ['schematic', 0], memory)).toEqual(['schematic', 0])
+    expect(asDispatched('setLabels', [true], memory)).toEqual([true])
+    expect(asDispatched('seek', [26_400], memory)).toEqual([26_400])
+  })
+
+  it('changes nothing where the app has set neither', () => {
+    const nothing = { speed: null, playing: null }
+    expect(asDispatched('setSpeed', [60], nothing)).toEqual([60])
+    expect(asDispatched('setPlaying', [true], nothing)).toEqual([true])
   })
 })
