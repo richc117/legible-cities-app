@@ -6,6 +6,7 @@ import LayoutRunView from '../../LayoutRun'
 import Cell from '../Cell'
 import type { CellViewProps } from '../cells'
 import { useProject } from '../context'
+import EngineLog from '../EngineLog'
 import Time from '../Time'
 
 // Cell 02, Process: the layout the map is drawn from, and the run that
@@ -17,9 +18,11 @@ import Time from '../Time'
 // starts as well as during it, and the diagnostics are the panel A3-03
 // built.
 //
-// The two slots below are where the branches that follow put their one
-// new file each, so none of them opens this file for more than an import
-// line and none of them meets another in it.
+// Between the two sits the engine's own log for the run that is going
+// (A5.5-13), which is where a run doing something inexplicable can be read
+// beside the stage doing it. Both were slots once; neither is now, and no
+// slot comment is left above a filled one, which is the thing those
+// comments exist to prevent.
 
 /**
  * What the cell says on its collapsed row: the layout the map is drawn
@@ -76,10 +79,12 @@ export default function ProcessCell({ cell, state, open, onToggle }: CellViewPro
           {!project.readOnly && (
             <LayoutRunView run={run} project={project} engine={engine} disabled={exporting} />
           )}
-          {/* Slot: the engine's log for the run that is going (A5.5-13). */}
-          {/* Slot: what the build had to fudge (A5.5-14). The panel draws
-              nothing until a map has been drawn in this session, and the
-              numbers are never stored (A3-03, specs/017). */}
+          {/* The engine's log for the run that is going: a closed
+              disclosure, and nothing at all until a run has begun. */}
+          <EngineLog run={run} />
+          {/* What the build had to fudge: the panel draws nothing until a
+              map has been drawn in this session, and the numbers are never
+              stored (A3-03, specs/017). */}
           {!project.readOnly && <DiagnosticsView run={run} project={project} />}
         </>
       )}

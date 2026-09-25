@@ -13,13 +13,14 @@ import {
   existsSync,
   writeFileSync,
 } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import {
   _electron as electron,
   expect,
   test,
   type ElectronApplication,
+  type Locator,
   type Page,
 } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
@@ -929,5 +930,130 @@ test('a record from before made was stored gains it and is told nothing changed'
     await page.getByRole('button', { name: 'Lay out again' }).click()
     await expect(page.getByText(/^Laid out\.$/)).toBeVisible({ timeout: 30_000 })
     expect(readRecord(engineHome).made).toBe(once.made)
+  })
+})
+
+// The engine's log for the run that is going, in cell 02 (A5.5-13): the
+// disclosure under the stages, the lines arriving while the run goes, the
+// notebook's scroll left where it was, and the copy that goes through the
+// main process.
+//
+// The stand-in sends `job/log` for every stage and, with
+// `build_log_lines`, whatever else a test asks for first - which is how
+// `tests/e2e/jobs.spec.ts` gives the inspector's copy a key and a home
+// folder to hide. The same control gives this one its lines.
+
+/** Cell 02's own group: the run's region exists only while a run does. */
+const processCell = (page: Page): Locator =>
+  page.getByRole('group', { name: cellLabel('process'), exact: true })
+
+const logToggle = (page: Page): Locator =>
+  processCell(page).getByRole('button', { name: /^Engine log/ })
+
+const logLines = (page: Page): Locator =>
+  page.getByRole('group', { name: "The engine's log for this run", exact: true })
+
+test('the engine log is closed under the stages, fills while the run goes, and stops when it ends', async () => {
+  const engineHome = home({
+    map_draws: true,
+    progress_delay_ms: 200,
+    build_log_lines: ['reading the feed'],
+  })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    // Nothing before a run: there is no job to have a log.
+    await expect(logToggle(page)).toBeHidden()
+
+    await page.getByRole('button', { name: /lay out/i }).click()
+    // It arrives closed, and its lines are in the document but hidden, as
+    // every disclosure in this app keeps its contents.
+    await expect(logToggle(page)).toBeVisible({ timeout: 20_000 })
+    await expect(logToggle(page)).toHaveAttribute('aria-expanded', 'false')
+    await expect(logLines(page)).toBeHidden()
+
+    await logToggle(page).click()
+    await expect(logToggle(page)).toHaveAttribute('aria-expanded', 'true')
+    await expect(logLines(page)).toContainText('reading the feed')
+    // Lines keep arriving while the run goes: the stages report as they
+    // finish, and each is a line.
+    await expect(logLines(page)).toContainText('gtfs2graph: running', { timeout: 20_000 })
+    await expect(logLines(page)).toContainText('octi: running', { timeout: 20_000 })
+
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    // They stop when it ends: what is on screen a second later is what was
+    // on screen when it finished, and the disclosure a person opened for
+    // this run is still open.
+    const settled = await logLines(page).innerText()
+    await expect.poll(async () => logLines(page).innerText(), { timeout: 2_000 }).toBe(settled)
+    await expect(logToggle(page)).toHaveAttribute('aria-expanded', 'true')
+  })
+})
+
+test('opening the engine log leaves the notebook where it was', async () => {
+  const engineHome = home({
+    map_draws: true,
+    progress_delay_ms: 10,
+    // Enough lines that the box has something to scroll, so the panel has
+    // a reason to move a scroll position at all.
+    build_log_lines: Array.from({ length: 60 }, (_, i) => `reading table ${i}`),
+  })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+
+    // Somewhere down the notebook, under the pinned preview.
+    await page.evaluate(() => window.scrollTo(0, 240))
+    const before = await page.evaluate(() => window.scrollY)
+    expect(before, 'the notebook is long enough to scroll').toBeGreaterThan(0)
+
+    await logToggle(page).click()
+    await expect(logLines(page)).toBeVisible()
+    // The newest line is in view inside the box, and the column behind it
+    // has not moved: the panel sets the box's own scrollTop and never asks
+    // the platform to bring a line into view.
+    expect(await page.evaluate(() => window.scrollY)).toBe(before)
+    expect(
+      await logLines(page).evaluate(
+        (box) => box.scrollHeight - box.scrollTop - box.clientHeight <= 2,
+      ),
+      'the newest line is in view inside the box',
+    ).toBe(true)
+  })
+})
+
+test("cell 02's Copy log hides the feed key and writes the home folder as ~", async () => {
+  const key = ['s3cr3t', 'cell', 'two'].join('-')
+  const engineHome = home({
+    map_draws: true,
+    progress_delay_ms: 10,
+    build_log_lines: [
+      `fetching https://agency.example/gtfs.zip?api_key=${key}`,
+      'reading {home}/feeds/gtfs.zip',
+    ],
+  })
+  await withApp(engineHome, async (page, app) => {
+    await openNewProject(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    await logToggle(page).click()
+
+    await processCell(page)
+      .getByRole('button', { name: "Copy log: the engine's log for this run" })
+      .click()
+    await expect(
+      processCell(page)
+        .getByRole('status')
+        .filter({ hasText: /clipboard/ }),
+    ).toHaveText(/^The log is on the clipboard/)
+    const copied = await app.evaluate(({ clipboard }) => clipboard.readText())
+    expect(copied).toContain('# Layout run, Los Angeles')
+    expect(copied).toContain('https://agency.example/gtfs.zip?api_key=')
+    expect(copied).not.toContain(key)
+    expect(copied).not.toContain(homedir())
+    expect(copied).toMatch(/reading ~[\\/]feeds[\\/]gtfs\.zip/)
+    // Nothing the renderer writes: the log lives in the session's runs and
+    // in the main process's own engine.log, never in the project's record.
+    expect(JSON.stringify(readRecord(engineHome))).not.toContain('reading')
   })
 })
