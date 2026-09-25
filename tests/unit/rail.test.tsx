@@ -16,7 +16,9 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
+import { iconMarkup } from '../../src/renderer/src/icons/Icon'
 import { ProjectProvider } from '../../src/renderer/src/notebook/context'
+import { stateIcon } from '../../src/renderer/src/notebook/Cell'
 import Rail, { RAIL_LABEL, stepName } from '../../src/renderer/src/notebook/Rail'
 import {
   clearance,
@@ -78,7 +80,7 @@ describe('the rail’s stepper', () => {
     // accessibility tree read the same row (WCAG 2.5.3).
     expect(drawn).toContain('<span class="rail-number">01</span>')
     expect(drawn).toContain('<span class="rail-name">Data</span>')
-    expect(drawn).toContain('<span class="rail-state">ready</span>')
+    expect(drawn).toMatch(/<span class="rail-state">.*?ready<\/span>/)
   })
 
   it('carries each cell’s own state, in the state’s own word', () => {
@@ -118,13 +120,12 @@ describe('the rail’s stepper', () => {
   })
 })
 
-describe('the rail draws no status as a hue by itself', () => {
-  // Principle 1 and section 3: a status carries an icon and a word and is
-  // never a bare stroke. A step has room for a number, a name and a word
-  // and not for a fourth thing, so its state word is --text-muted in every
-  // state and the cell it points at carries the colour. Written down in
-  // DESIGN.md 8.2 as well; this is what stops it being narrowed back by
-  // omission, which is how it went wrong the first time.
+describe('a status is an icon and a word, never a hue alone', () => {
+  // Principle 1, and section 3's scoping table, which is not one rule for
+  // all three tokens. Written down in DESIGN.md 8.2 as well; this is what
+  // stops it being narrowed back by omission, which is how it went wrong
+  // the first time - the first version of this rail left the word grey on
+  // an unmeasured claim that there was no room for the icon.
   const css = readFileSync(
     resolve(__dirname, '../../src/renderer/src/styles/rail.css'),
     'utf8',
@@ -137,19 +138,50 @@ describe('the rail draws no status as a hue by itself', () => {
       body: m[2],
     }))
 
-  const STATUS = ['--error', '--warning', '--success', '--accent-text', '--accent']
-
-  it('gives a step no status colour, in any state or on any ground', () => {
-    for (const { selector, body } of rules()) {
-      if (!selector.includes('rail-step') && !selector.includes('rail-state')) continue
-      for (const token of STATUS) expect(body, `${selector} draws ${token}`).not.toContain(token)
+  it('draws the cell’s own glyph beside the word, in every state', () => {
+    // The same table the cell reads, so the two cannot come to disagree
+    // about which icon a state has.
+    for (const state of ['ready', 'running', 'stale', 'error'] as const) {
+      const drawn = draw({ ...allReady(), process: { state, because: null } })
+      expect(drawn).toContain(iconMarkup(stateIcon(state), 16))
     }
   })
 
-  it('draws the one status it does have beside an icon', () => {
-    // The gone row is the exception the rule allows: a condition of a row,
-    // with somewhere to put the icon. So the hue is there, and so is the
-    // icon - the component draws one, and the rule makes room for it.
+  it('puts every status colour on something that holds an icon and a word', () => {
+    // There are exactly two of those in the rail: a step's state and the
+    // gone row, each drawn as a glyph beside its text. A rule that coloured
+    // the step itself, its number or its name would be a status somewhere
+    // the word is not - a stroke a person has to already know to read.
+    const CARRIERS = ['.rail-state', '.output-gone']
+    for (const { selector, body } of rules()) {
+      if (!/--error|--warning|--accent-text/.test(body)) continue
+      expect(
+        CARRIERS.some((carrier) => selector.includes(carrier)),
+        `${selector} draws a status colour on nothing that carries an icon`,
+      ).toBe(true)
+    }
+  })
+
+  it('takes --warning and --error off the two grounds section 3 forbids', () => {
+    // --accent-text clears every ground, so running keeps its colour there;
+    // the other two do not, and fall back to --text-muted with the icon and
+    // the word still carrying the state.
+    for (const ground of [':hover', "[aria-current='step']"]) {
+      for (const state of ['stale', 'error']) {
+        const rule = rules().find(
+          (r) => r.selector.includes(ground) && r.selector.includes(`data-state='${state}'`),
+        )
+        expect(rule, `${state} on ${ground}`).toBeDefined()
+        expect(rule!.body).toContain('--text-muted')
+      }
+    }
+    expect(
+      rules().some((r) => r.selector.includes(':hover') && r.body.includes('--accent-text')),
+      'running is not taken off a ground it is allowed on',
+    ).toBe(false)
+  })
+
+  it('draws the one status in Outputs beside an icon too', () => {
     const gone = rules().filter((r) => r.selector.includes('output-gone'))
     expect(gone.some((r) => r.body.includes('--warning'))).toBe(true)
     expect(gone.some((r) => r.selector.includes('.icon'))).toBe(true)
@@ -158,6 +190,40 @@ describe('the rail draws no status as a hue by itself', () => {
       'utf8',
     )
     expect(outputs).toContain('<Icon name="warning" />')
+  })
+})
+
+describe('the rail’s width and the space kept for it are one value', () => {
+  // The invariant that is actually load-bearing here, and it was a comment
+  // alone. The rail is fixed, so it takes no width from the `100vw` the map
+  // breaks out to; the only thing keeping an opaque band off a region's
+  // presses is that `.rail`'s width and the main region's padding are the
+  // same variable. A `z-index` does not do it - the rail and the band
+  // compute to the same layer, and on a tie the band wins on document
+  // order, because the rail is rendered before the notebook's column.
+  const read = (file: string): string =>
+    readFileSync(resolve(__dirname, '../../src/renderer/src/styles', file), 'utf8').replace(
+      /\/\*[\s\S]*?\*\//g,
+      '',
+    )
+
+  it('gives .rail no width of its own', () => {
+    const rail = /\.rail\s*\{([^{}]*)\}/.exec(read('rail.css'))
+    expect(rail, '.rail has no rule at all').not.toBeNull()
+    expect(rail![1]).toContain('width: var(--rail-space)')
+  })
+
+  it('declares --rail-space in project.css and nowhere else', () => {
+    for (const file of ['rail.css', 'panels.css', 'notebook.css', 'preview.css', 'app.css'])
+      expect(read(file), `${file} declares --rail-space`).not.toMatch(/--rail-space\s*:/)
+    expect(read('project.css')).toMatch(/--rail-space\s*:/)
+  })
+
+  it('spends the same variable on the space the region is given', () => {
+    const project = read('project.css')
+    expect(project).toMatch(/padding-left:\s*var\(--rail-space\)/)
+    // And the map subtracts it, or it is drawn over the rail.
+    expect(read('panels.css')).toContain('var(--rail-space, 0px)')
   })
 })
 

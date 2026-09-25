@@ -101,25 +101,58 @@
   white-space: nowrap;
 }
 
-/* The state as a word, quiet, on every ground and in every state.
+/* The state: the same icon and the same word the cell itself draws
+   (notebook.css, `Cell.tsx`'s one table), in the state's own colour.
 
-   **A step draws no status hue at all**, and that is the decision rather
-   than an omission. Principle 1 and section 3 say a status always carries
-   an icon and a word and never appears as a hue by itself; the step has
-   room for a number, a name and a word and not for a fourth thing, so
-   colouring the word here would be the hue by itself - the case the rule
-   names. The cell the step points at draws the same state as an icon and a
-   word in the state's own colour (notebook.css), which is where a status
-   belongs and where a person reading it is going.
+   **Measured before it was drawn.** The first version of this left the word
+   grey on the claim that a step 240 pixels wide had room for a number, a
+   name and a word and not for a fourth thing. That was wrong: in plain
+   Chromium with these stylesheets, at the rail's own width and against the
+   longest state word there is ("not drawn yet"), the icon and its gap cost
+   twenty pixels and add no truncation anywhere. Five of the six names measure 28 to 48
+   pixels and have 71 left for them, where they had 91; the sixth, "Frame
+   and service day" at 137, is cut with the icon and cut without it, since
+   it is longer than the rail either way. Nothing overflows, and the row
+   goes from 37 pixels tall to 40.
 
-   It would also be the hue on the wrong ground: --surface-hover and
-   --surface-selected, which a step takes under the pointer and as the
-   current step, are not in section 3's scoping table for the status
-   colours at all. --text-muted is above on both. */
+   And the colour is worth those twenty pixels: the rail is the only place
+   a person sees all six states at once, so "which one failed?" is a glance
+   rather than six words read in turn.
+
+   The hues follow section 3's scoping table, which is not one rule for all
+   three. `--accent-text` clears its threshold on **every** ground, so a
+   running step keeps its colour under the pointer and as the current step.
+   `--warning` and `--error` are drawn on `--surface` and `--surface-raised`
+   only, so on `--surface-hover` and `--surface-selected` those two go back
+   to `--text-muted` - the icon and the word still say which state it is,
+   which is the whole reason the rule permits that. */
 .rail-state {
+  display: inline-flex;
   flex: none;
+  align-items: center;
+  gap: var(--space-2-2);
   color: var(--text-muted);
   font-size: var(--font-ui-small);
+}
+
+.rail-step[data-state='running'] .rail-state {
+  color: var(--accent-text);
+}
+
+.rail-step[data-state='stale'] .rail-state {
+  color: var(--warning);
+}
+
+.rail-step[data-state='error'] .rail-state {
+  color: var(--error);
+}
+
+/* The two grounds section 3 does not allow --warning and --error on. */
+.rail-step:hover[data-state='stale'] .rail-state,
+.rail-step:hover[data-state='error'] .rail-state,
+.rail-step[aria-current='step'][data-state='stale'] .rail-state,
+.rail-step[aria-current='step'][data-state='error'] .rail-state {
+  color: var(--text-muted);
 }
 
 /* Outputs: what the project has produced, newest first, read from the
@@ -198,8 +231,13 @@
    The name and the state are hidden from the eye and not from the
    accessibility tree: `display: none` would take them out of both, and a
    step whose visible label is "03" still has to say which cell it is. The
-   step's own `aria-label` says all three whatever is drawn. Outputs goes
-   with them, because a list of file names has nowhere to be at that
+   step's own `aria-label` says all three whatever is drawn.
+
+   The state's icon goes with its word rather than staying behind as the
+   one thing that still fits. An icon alone would be the status as a mark
+   and a hue with no word, which is the thing principle 1 refuses; a number
+   that says nothing about state is honest, and the label still says it.
+   Outputs goes too, because a list of file names has nowhere to be at that
    width. */
 @media (max-width: 56.25rem) {
   .rail {

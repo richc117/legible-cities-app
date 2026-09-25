@@ -65,15 +65,18 @@ async function wrote(
 function outputs(overrides: Partial<ConstructorParameters<typeof Outputs>[0]> = {}): {
   outputs: Outputs
   shown: string[]
+  logged: string[]
 } {
   const shown: string[] = []
+  const logged: string[] = []
   return {
     shown,
+    logged,
     outputs: new Outputs({
       projects: { get: async () => PROJECT },
       exportFolder: () => root,
       show: (path) => shown.push(path),
-      log: () => {},
+      log: (message) => logged.push(message),
       ...overrides,
     }),
   }
@@ -193,7 +196,26 @@ describe('the outputs a project has', () => {
       const later = new Date('2030-01-01T00:00:00.000Z')
       await utimes(theirs, later, later)
     }
-    expect(await outputs().outputs.list(PROJECT.id)).toEqual([])
+    const { outputs: o, logged } = outputs()
+    expect(await o.list(PROJECT.id)).toEqual([])
+    // And says so where a person can find it. The trade is right - a fast
+    // incomplete answer beats a multi-second freeze - but an incomplete one
+    // *looks* right: the rail says "Nothing exported yet." while the
+    // exports are sitting in the folder, and without this line "Copy
+    // diagnostics" would not mention it either.
+    expect(logged.join(' ')).toContain('not read to the end')
+    expect(logged.join(' '), 'and how far it got').toContain(String(SCAN_MAX))
+  })
+
+  it('passes over anything in the folder that is not a file', async () => {
+    // A directory named like a sidecar is the harmless case. The one this
+    // check is really for cannot be tested without hanging rather than
+    // failing: a named pipe would send `readFile` to block one of libuv's
+    // four threads until something writes to it, with no timeout and no way
+    // back. `outputs.ts` says so where the check is.
+    await mkdir(join(folder(), 'a-folder.json'), { recursive: true })
+    await wrote('la-reel.mp4', 'instagram-reel', '2026-09-20T10:00:00.000Z')
+    expect((await outputs().outputs.list(PROJECT.id)).map((r) => r.file)).toEqual(['la-reel.mp4'])
   })
 
   it('refuses to read anything while the engine’s home is being removed', async () => {

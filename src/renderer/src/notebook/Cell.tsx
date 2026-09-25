@@ -35,6 +35,13 @@ const STATES: Record<CellState, { word: string; icon: IconName }> = {
 /** The state as a person reads it, for the row and for the row's name. */
 export const stateWord = (state: CellState): string => STATES[state].word
 
+/**
+ * The glyph beside that word. Exported so the rail's stepper draws the
+ * same one as the cell it points at (A5.5-21): a status is an icon and a
+ * word, and two tables would eventually disagree about which icon.
+ */
+export const stateIcon = (state: CellState): IconName => STATES[state].icon
+
 /** `01` to `06`, as the rail and every screenshot write it. */
 export const cellNumber = (number: number): string => String(number).padStart(2, '0')
 

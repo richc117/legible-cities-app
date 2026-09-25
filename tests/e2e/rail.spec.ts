@@ -18,7 +18,12 @@
 // **The current step follows the scroll and takes no focus.** A person
 // reading down the notebook has not asked to be moved anywhere, so the
 // assertion is on both halves: the mark moves, and the focused element does
-// not.
+// not. It asserts the rule against the layout as it really is rather than
+// naming a cell: an earlier version expected the last step to be current at
+// the foot of the document, which is a branch of `currentStepOf` the
+// screen's own geometry cannot reach - there are 140 pixels below cell 06
+// and the strip under the band is 204 at the smallest window the app
+// allows. That measurement is in `railScroll.ts`.
 //
 // **Outputs come from the files and not from the session.** Every row here
 // is written into the export folder before the project is ever opened, so
@@ -173,9 +178,46 @@ test('the current step follows the scroll, and takes no focus doing it', async (
     const back = page.getByRole('button', { name: 'Back to Library' })
     await back.focus()
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
+    // That the scroll moved at all, said separately: without this, a page
+    // that could not scroll and a mark that did not follow fail the same
+    // way, and the next person has to work out which.
+    expect(await page.evaluate(() => window.scrollY), 'the page scrolled').toBeGreaterThan(0)
 
-    await expect(step(page, /^06 Export, /)).toHaveAttribute('aria-current', 'step')
+    // The mark moved off the first cell...
     await expect(step(page, /^01 Data, /)).not.toHaveAttribute('aria-current', 'step')
+    // ...and it is not asserted to be the *last* cell, which this test used
+    // to claim and which the screen cannot reach: for every cell's foot to
+    // rise above the band there would have to be a band's worth of content
+    // below cell 06, and there is the project's footer - 140px measured,
+    // against a strip of 204 at the smallest window the app allows and 364
+    // at 800. At the foot of the document the cell before it is still
+    // showing under the band, and that is the one being read.
+    //
+    // So what is asserted is the rule itself, against the layout as it
+    // really is: the step that carries the mark names the first cell with
+    // any of itself below the band.
+    const marked = await page.locator('.rail-step[aria-current="step"]').getAttribute('aria-label')
+    expect(marked, 'some step carries the mark').not.toBeNull()
+    const number = /^(\d\d) /.exec(marked as string)?.[1]
+    expect(number, `"${marked}" begins with a cell number`).toBeDefined()
+    const foot = await bandFoot(page)
+    const feet = await page.evaluate(() =>
+      [...document.querySelectorAll('.cell')].map((el) => ({
+        cell: el.getAttribute('data-cell') ?? '',
+        bottom: el.getBoundingClientRect().bottom,
+      })),
+    )
+    for (const { cell, bottom } of feet) {
+      if (cell < (number as string))
+        expect(
+          bottom,
+          `cell ${cell} is behind the band, before the marked one`,
+        ).toBeLessThanOrEqual(foot + 1)
+      if (cell === number)
+        expect(bottom, `the marked cell ${cell} shows below the band`).toBeGreaterThan(foot)
+    }
+
+    // And none of it moved focus.
     await expect(back).toBeFocused()
   })
 })

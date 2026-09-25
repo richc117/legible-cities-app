@@ -145,6 +145,11 @@ export class Outputs {
       if (!sidecar.endsWith(SIDECAR_SUFFIX) || sidecar.length === SIDECAR_SUFFIX.length) continue
       try {
         const stamp = await stat(join(folder, sidecar))
+        // A file, and nothing else that can carry a name. Not only tidiness:
+        // a named pipe called `something.json` - which a person's own folder
+        // may hold - would go to `readFile` and block one of libuv's four
+        // threads for as long as nothing writes to it, which is forever.
+        // There is no timeout on that and no way back from it.
         if (!stamp.isFile()) continue
         candidates.push({
           file: sidecar.slice(0, -SIDECAR_SUFFIX.length),
@@ -219,7 +224,20 @@ export class Outputs {
     const rows: ExportOutput[] = []
     let opened = 0
     for (const candidate of candidates) {
-      if (rows.length >= OUTPUTS_MAX || opened >= SCAN_MAX) break
+      if (rows.length >= OUTPUTS_MAX) break
+      if (opened >= SCAN_MAX) {
+        // The trade this makes, said out loud where a person can find it.
+        // A fast incomplete answer beats a multi-second freeze, but an
+        // incomplete one *looks* right: the rail says "Nothing exported
+        // yet." while the exports sit in the folder, and nothing else here
+        // would ever mention it. This line is what "Copy diagnostics" has
+        // to show for it (specs/023).
+        this.#options.log(
+          `the project's export folder was not read to the end: ${SCAN_MAX} files opened, ` +
+            `${rows.length} exports found, ${candidates.length} candidates in the folder`,
+        )
+        break
+      }
       if (candidate.bytes > SIDECAR_MAX) continue
       opened += 1
       const row = await this.#rowOf(folder, candidate)

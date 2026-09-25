@@ -68,13 +68,32 @@ export interface CellBox {
 
 /**
  * Which step the scroll is on: the first cell with any of itself below the
- * band, which is the first one a person can actually read. Past the last
- * cell's foot - the end of a long document - it stays the last, rather than
- * going blank where there is nothing further down to be on.
+ * band, which is the first one a person can actually read.
  *
  * It follows the scroll and never moves focus (DESIGN.md 8.2): it is what
  * `aria-current="step"` says, and a person reading down the notebook has
  * not asked to be moved anywhere.
+ *
+ * ## The last clause is a guard the screen cannot reach, and that is
+ * measured
+ *
+ * Falling back to the last cell, rather than to nothing, is what makes this
+ * total - but the project screen's own geometry never asks for it. Every
+ * cell's foot would have to be above the band, which needs the content
+ * below the last cell to be at least as tall as the strip left under the
+ * band. Below cell 06 there is the project's footer and the panel's bottom
+ * padding and nothing else: 140 pixels, measured in plain Chromium with
+ * these stylesheets. The strip is 204 pixels at the smallest window the app
+ * allows (480 tall) and grows with the window - 324 at 720, 364 at 800. So
+ * the last cell can never be scrolled clear of the band, and at the foot of
+ * the document the current step is whichever cell still has some of itself
+ * showing, which is the one before it.
+ *
+ * It is written down because an end-to-end test asserted the fallback as
+ * behaviour, and failed: "scroll to the bottom, the last step is current"
+ * is the obvious expectation and it is wrong here. The guard stays, since a
+ * function that answers nothing would take the mark off the rail entirely;
+ * what went is the claim that anything reaches it.
  */
 export function currentStepOf(cells: readonly CellBox[], clearTo: number): CellId | null {
   if (cells.length === 0) return null

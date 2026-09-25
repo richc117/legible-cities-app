@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useState, type JSX } from 'react'
+import Icon from '../icons/Icon'
 import { CELL_LIST, type Cell, type CellId, type CellStatus } from '../runGraph'
-import { cellNumber, stateWord } from './Cell'
+import { cellNumber, stateIcon, stateWord } from './Cell'
 import Outputs from './Outputs'
 import { clearance, currentStepOf, scrollTargetFor, type CellBox } from './railScroll'
 
@@ -155,7 +156,10 @@ export default function Rail({ states, open, onOpen }: Props): JSX.Element {
                 >
                   <span className="rail-number">{cellNumber(cell.number)}</span>
                   <span className="rail-name">{cell.name}</span>
-                  <span className="rail-state">{stateWord(state)}</span>
+                  <span className="rail-state">
+                    <Icon name={stateIcon(state)} />
+                    {stateWord(state)}
+                  </span>
                 </button>
               </li>
             )
