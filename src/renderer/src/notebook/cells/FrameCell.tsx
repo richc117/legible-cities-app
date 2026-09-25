@@ -1,6 +1,7 @@
 import { useRef, type JSX } from 'react'
 import type { ProjectRecord } from '../../../../shared/project'
 import ServiceDay, { dayUndrawn } from '../../ServiceDay'
+import Transport from '../../Transport'
 import Cell from '../Cell'
 import { frameFooter } from '../CellFooter'
 import type { CellViewProps } from '../cells'
@@ -21,9 +22,18 @@ import { useProject } from '../context'
 // nowhere to send its value teaches a person a lie (ADR-045). One sentence
 // says what the cell will gain instead.
 //
-// The slot below is where the page's own transport - the scrub, Play day
-// and the speed, already on the engine page's seam - arrives as one new
-// file (A5.5-16), so that branch never rewrites this one.
+// The cell holds two sections now (A5.5-16). Below the day is the
+// transport - the scrub, Play day and the speed - which drives the engine's
+// own page through the seam the app already has, and is therefore about the
+// map on screen rather than about anything the project keeps: it writes no
+// record, asks the engine nothing and marks no cell stale. It names itself,
+// because one heading cannot name two sections (the rule cell 05 settled in
+// A5.5-18); the day keeps the cell's own heading, being what the cell is
+// called for, and keeps the focus handback with it.
+//
+// It is offered to a read-only project as well as a writable one, and that
+// is deliberate: looking is not editing, and a project this build may not
+// write still has a map worth watching.
 
 /**
  * What the cell says on its collapsed row: the day the project is set to,
@@ -68,7 +78,7 @@ export function frameSummary(
 }
 
 export default function FrameCell({ cell, state, open, onToggle }: CellViewProps): JSX.Element {
-  const { project, engine, run, setDate, exporting } = useProject()
+  const { project, engine, run, setDate, exporting, layingOut, preview, drawn } = useProject()
   const heading = useRef<HTMLHeadingElement>(null)
   return (
     <Cell
@@ -115,7 +125,21 @@ export default function FrameCell({ cell, state, open, onToggle }: CellViewProps
             of it is drawn: the engine takes no such setting yet, so the cell holds the day alone
             until it can.
           </p>
-          {/* Slot: the page's own transport - scrub, Play day and speed (A5.5-16). */}
+          {/* The page's own transport (A5.5-16). Only where there is a page
+              to drive: a project with no layout has no frame on the screen
+              at all, so there is nothing for a scrub to be a scrub of. It
+              draws itself once the page has said what day it has, and
+              nothing before. */}
+          {project.layout !== null && (
+            <Transport
+              projectId={project.id}
+              redraw={drawn}
+              open={open}
+              laying={layingOut}
+              exporting={exporting}
+              previewing={preview !== null}
+            />
+          )}
         </>
       )}
     </Cell>

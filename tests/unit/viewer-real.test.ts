@@ -9,6 +9,12 @@
 //      and every fetch, and `script-src 'unsafe-inline'` does not allow
 //      `eval` or `new Function`. A page that used any of them would lose
 //      its typeface or its animation silently.
+//   3. The page still starts at the speed and the play cell 03's transport
+//      shows before anyone has pressed anything (A5.5-16). The seam cannot
+//      be asked either of those (engine issue 29), so the app's controls
+//      state the page's own defaults, and only the page can say whether
+//      they are still its own. `animate.py` inlines present.js into every
+//      generated page, so its fallbacks are in what is read here.
 //
 // Gated like the other real-engine tests: it needs a checkout whose layout
 // cache is warm, and skips saying so without one. It reads a page the engine
@@ -21,6 +27,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { resolveConfig } from '../../src/main/config'
+import { PAGE_PLAYING, PAGE_SPEED } from '../../src/renderer/src/transportState'
 import { VIEWER_METHODS } from '../../src/shared/viewer'
 
 const repo = resolve(__dirname, '../..')
@@ -88,6 +95,37 @@ describe.skipIf(PAGE === null)(`the real generated page${WHY}`, () => {
         new RegExp(`^\\s*${method}\\s*\\(`, 'm'),
       )
     }
+  })
+
+  // The five cell 03's transport is built on (A5.5-16), named here rather
+  // than left to the loop above: that loop asserts the app's own list
+  // against the page, so a branch that shrank `VIEWER_METHODS` would take
+  // the assertion away with the method. These five are a feature's
+  // dependency and are asserted whatever the list says.
+  it('still has the five the transport drives', () => {
+    for (const method of ['seek', 'setPlaying', 'setSpeed', 'bounds', 'state']) {
+      expect(html, `the transport has no ${method} to drive`).toMatch(
+        new RegExp(`^\\s*${method}\\s*\\(`, 'm'),
+      )
+    }
+  })
+
+  // The app's address names neither `speed` nor `play`, so what an
+  // untouched page is doing is what present.js falls back to - and the
+  // transport shows those two values before a person has pressed anything
+  // (`PAGE_SPEED`, `PAGE_PLAYING` in `transportState.ts`). They are the
+  // engine's numbers and not ours, and nothing else would fail if they
+  // moved: the control would simply say the map was at a speed it was not.
+  // present.js is inlined into every generated page, so this reads the
+  // engine's own source.
+  it('still starts at the speed and the play the app’s controls assume', () => {
+    expect(PAGE_PLAYING, 'the page plays from load').toBe(true)
+    expect(html, `present.js no longer defaults the speed to ${PAGE_SPEED}`).toMatch(
+      new RegExp(`num\\(\\s*["']speed["']\\s*,\\s*${PAGE_SPEED}\\s*\\)`),
+    )
+    expect(html, 'present.js no longer defaults play to on').toMatch(
+      /on\(\s*["']play["']\s*,\s*true\s*\)/,
+    )
   })
 
   it('asks for nothing the project policy refuses', () => {

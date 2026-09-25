@@ -9,6 +9,7 @@ import {
 import type { ProjectRecord } from '../../shared/project'
 import { VIEWER_SANDBOX } from '../../shared/viewer'
 import type { PreviewAddress } from './exportChoice'
+import { transportFor, withRemembered } from './transportState'
 import { restoreCalls } from './viewerRestore'
 
 // The engine's page, on the screen.
@@ -237,7 +238,18 @@ export default function Viewer({
           // navigation away from the map and is the only record of where
           // the map was, so a second navigation whose own read came too
           // late still has it. It goes when the screen does.
-          const calls = restoreCalls(kept.current)
+          //
+          // The speed and whether it was playing are laid over it from
+          // cell 03's own memory (A5.5-16). They are not in what the page
+          // answered and never can be - `state()` reports neither (engine
+          // issue 29) - so `restoreCalls` takes them "from a caller that
+          // knows them", and the caller that knows them is whoever set
+          // them. Without this a run, a theme change or the export's
+          // preview would hand a person's paused, quarter-speed map back
+          // to them playing at the page's own default.
+          const calls = restoreCalls(
+            withRemembered(kept.current, transportFor(project.id).snapshot),
+          )
           for (const { method, args } of calls) {
             if (navigation !== navigations.current || !mounted.current) return
             await window.api.viewer.call(method, ...args).catch(() => undefined)

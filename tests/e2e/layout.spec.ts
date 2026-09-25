@@ -1276,3 +1276,196 @@ test('the three cells with provenance carry it, the other three carry none, and 
     }
   })
 })
+
+// Cell 03's transport (A5.5-16): the scrub, Play day and the speed, driving
+// the engine's page through the seam the app already has.
+//
+// The stand-in engine writes `{}` where the page goes, so its "map" has no
+// `__present` at all and the transport draws nothing over it - correctly,
+// and uselessly for a test. So the page is written over afterwards with a
+// stand-in seam that records what it was asked, which is the same device
+// `tests/e2e/viewer.spec.ts` uses to drive the five methods from the
+// bridge. What this adds is the controls a person actually presses, and
+// what the app remembers on their behalf across a navigation.
+
+/** A page with the seam on it, recording every call, at the address a run wrote. */
+function standInPage(engineHome: string): void {
+  const id = readdirSync(join(engineHome, 'projects'))[0]
+  writeFileSync(
+    join(engineHome, 'out', id, 'la-metro-rail.html'),
+    [
+      '<!doctype html><meta charset="utf-8"><title>stand-in map</title><body>',
+      '<script>',
+      // 06:00 to 26:00 of the service day, which is a real feed's shape.
+      'var T0 = 21600, T1 = 93600;',
+      'var at = T0, speed = 60, playing = true;',
+      'window.__seen = [];',
+      'function fmt(s) {',
+      '  var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);',
+      '  return String(h % 24).padStart(2, "0") + ":" + String(m).padStart(2, "0")',
+      '       + (h >= 24 ? " +1d" : "");',
+      '}',
+      'window.__present = {',
+      '  showView: function (name) { window.__seen.push(["showView", name]) },',
+      '  setLabels: function (on) { window.__seen.push(["setLabels", !!on]) },',
+      '  setRoutes: function (keep) { window.__seen.push(["setRoutes", keep]) },',
+      '  seek: function (sec) { at = Math.max(T0, Math.min(T1, sec)); window.__seen.push(["seek", at]) },',
+      '  setSpeed: function (x) { speed = x; window.__seen.push(["setSpeed", x]) },',
+      '  setPlaying: function (on) { playing = !!on; window.__seen.push(["setPlaying", !!on]) },',
+      '  hasGeo: function () { return true },',
+      '  bounds: function () { return { t0: T0, t1: T1 } },',
+      '  state: function () { return { now: at, clock: fmt(at), viewName: "schematic", labels: true } },',
+      '};',
+      '</script></body>',
+    ].join('\n'),
+  )
+}
+
+/** What the page in the frame was asked, in order, from the only side that can reach it. */
+async function seenByPage(app: ElectronApplication): Promise<[string, unknown][]> {
+  return (await app.evaluate(async ({ BrowserWindow }) => {
+    const win = BrowserWindow.getAllWindows()[0]
+    const main = win.webContents.mainFrame
+    const frame = main.frames.find((f) => f !== main)
+    return frame ? ((await frame.executeJavaScript('window.__seen')) as unknown) : []
+  })) as [string, unknown][]
+}
+
+/** The transport's own section inside cell 03. */
+const transport = (page: Page): Locator =>
+  page.getByRole('region', { name: 'Transport', exact: true })
+
+const scrub = (page: Page): Locator => transport(page).getByLabel('Time of day')
+
+const speed = (page: Page): Locator =>
+  transport(page).getByRole('combobox', { name: 'Speed', exact: true })
+
+/** A laid-out project whose page carries the seam, open, with cell 03 disclosed. */
+async function projectWithASeam(page: Page, engineHome: string): Promise<void> {
+  await openNewProject(page, 'Los Angeles')
+  await page.getByRole('button', { name: /lay out/i }).click()
+  await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+  standInPage(engineHome)
+  // Reopened so the frame loads what was just written: the viewer navigates
+  // on a redraw and on nothing else, and nothing has redrawn.
+  await page.getByRole('button', { name: /back to library/i }).click()
+  await openProject(page, 'Los Angeles')
+  await expect(page.getByRole('region', { name: 'Map' })).toBeVisible()
+  await openCell(page, 'frame')
+}
+
+test('cell 03 drives the page and changes nothing the project keeps', async () => {
+  const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
+  await withApp(engineHome, async (page, app) => {
+    await projectWithASeam(page, engineHome)
+
+    // It appears only once the page has said what day it has, so its
+    // presence is itself the assertion that `bounds()` was asked and
+    // answered.
+    await expect(transport(page)).toBeVisible({ timeout: 20_000 })
+    await expect(scrub(page)).toHaveAttribute('min', '21600')
+    await expect(scrub(page)).toHaveAttribute('max', '93600')
+
+    // The clock is the page's own, read back rather than counted here: the
+    // page starts at 06:00 of its service day and says so in its own words.
+    await expect(scrub(page)).toHaveAttribute('aria-valuetext', '06:00')
+    await expect(transport(page)).toContainText('06:00')
+
+    // The page plays from load, so the control offers the other one.
+    const playPause = transport(page).getByRole('button', { name: /^(Play day|Pause)$/ })
+    await expect(playPause).toHaveAccessibleName('Pause')
+    await playPause.click()
+    await expect(playPause).toHaveAccessibleName('Play day')
+    expect(await seenByPage(app)).toContainEqual(['setPlaying', false])
+
+    // The speed is the kit's select over the platform's own.
+    await speed(page).selectOption('300')
+    await expect.poll(() => seenByPage(app)).toContainEqual(['setSpeed', 300])
+
+    // The scrub is keyboard-operable, and the clock that comes back is the
+    // page's: End is the last second of its day, which the page words as
+    // 02:00 of the next one.
+    await scrub(page).press('End')
+    await expect(scrub(page)).toHaveAttribute('aria-valuetext', '02:00 +1d', { timeout: 20_000 })
+    expect(await seenByPage(app)).toContainEqual(['seek', 93600])
+
+    // And none of it touched the project or the engine. `map.build` was
+    // asked once, by the layout; no job ran; every cell is still ready; the
+    // record's `drawn` is where the layout left it.
+    expect(received(engineHome, 'map.build'), 'nothing was drawn again').toHaveLength(1)
+    expect(received(engineHome, 'graph.build'), 'nothing was laid out').toHaveLength(1)
+    await expect(page.getByRole('button', { name: /^Jobs, / })).toHaveAccessibleName(
+      'Jobs, none running',
+    )
+    for (const id of ['data', 'process', 'frame', 'style', 'lines', 'export'] as const)
+      await expect(cellHeading(page, id), id).toHaveAccessibleName(/ ready/)
+    const record = readRecord(engineHome)
+    expect((record.drawn as { date: string }).date).toBe(record.date)
+  })
+})
+
+test('a theme change gives the map back the speed and the pause it had', async () => {
+  const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
+  await withApp(engineHome, async (page, app) => {
+    await projectWithASeam(page, engineHome)
+    await expect(transport(page)).toBeVisible({ timeout: 20_000 })
+
+    await transport(page).getByRole('button', { name: 'Pause' }).click()
+    await speed(page).selectOption('30')
+    await expect.poll(() => seenByPage(app)).toContainEqual(['setSpeed', 30])
+
+    // A theme is taken on the page's address, so the frame navigates and
+    // the page that arrives is a new document at the address's own
+    // defaults: playing, at a minute a second. `state()` answers neither of
+    // those (engine issue 29), so the app is the only thing that knows what
+    // they were - and this is the whole reason cell 03 remembers them.
+    await openCell(page, 'style')
+    await page.getByRole('button', { name: 'Sepia' }).click()
+    await expect(page.locator('iframe.viewer-frame')).toHaveAttribute('src', /theme=sepia/)
+
+    // `__seen` went with the old document, so everything read now was asked
+    // of the page that arrived.
+    await expect.poll(() => seenByPage(app), { timeout: 20_000 }).toContainEqual(['setSpeed', 30])
+    const asked = await seenByPage(app)
+    expect(asked, 'and it was not left running').toContainEqual(['setPlaying', false])
+    expect(
+      asked.filter(([method]) => method === 'setPlaying').pop(),
+      'the last word on playing is the pause, not a restart',
+    ).toEqual(['setPlaying', false])
+    // The control says the same, so the screen and the page agree.
+    await expect(transport(page).getByRole('button', { name: 'Play day' })).toBeVisible()
+    await expect(speed(page)).toHaveValue('30')
+  })
+})
+
+test('a scrub while a run holds the page is refused with a sentence', async () => {
+  // Slow enough that the rebuild is still going while the press is made:
+  // eight stages at 400ms is over three seconds.
+  const engineHome = home({ map_draws: true, progress_delay_ms: 400 })
+  await withApp(engineHome, async (page, app) => {
+    await projectWithASeam(page, engineHome)
+    await expect(transport(page)).toBeVisible({ timeout: 20_000 })
+    const before = (await seenByPage(app)).length
+
+    // A rebuild: the one press that draws the map again from the stored
+    // layout, which rewrites the page this scrub would be scrubbing.
+    await cell(page, 'frame').getByLabel('Draw for another day').fill('2026-06-20')
+    await cell(page, 'frame').getByRole('button', { name: 'Draw for this day' }).click()
+
+    await transport(page)
+      .getByRole('button', { name: /^(Play day|Pause)$/ })
+      .click()
+    await expect(transport(page).getByRole('alert')).toContainText('The map is being drawn')
+    // Refused and not queued: the page was asked nothing, and the control
+    // still says what the page is actually doing.
+    expect(await seenByPage(app), 'the page was not asked').toHaveLength(before)
+    await expect(transport(page).getByRole('button', { name: 'Pause' })).toBeVisible()
+
+    // The sentence goes when the reason does, rather than sitting there
+    // reading as a control that is broken.
+    await expect(page.getByText(/^Drawn for 2026-06-20 from the stored layout/)).toBeVisible({
+      timeout: 30_000,
+    })
+    await expect(transport(page).getByRole('alert')).toHaveCount(0)
+  })
+})

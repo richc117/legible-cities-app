@@ -675,3 +675,52 @@ th .sort:focus-visible {
 .engine-log .toolbar {
   margin: var(--space-4-2) 0 0;
 }
+
+/* The transport (A5.5-16): cell 03's second section, which drives the
+   engine's page rather than the project. The controls are the platform's
+   own - a native range and the kit's select - as the date control and the
+   preset's select are (DESIGN.md 8.2). */
+
+.transport h3 {
+  font-size: var(--font-ui-medium);
+  margin: var(--space-4-6) 0 var(--space-2-2);
+}
+
+/* The scrub and the clock it reads share a row: the clock sits where a
+   person's eye already is rather than under the control, and it never
+   reflows, because --numerals holds every digit to one width. */
+.transport-scrub {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4-3);
+}
+
+.transport-scrub input[type='range'] {
+  flex: 1;
+  min-width: 0;
+  /* The platform draws the track and the thumb; the accent is the app's,
+     as it is on the kit's checkbox. */
+  accent-color: var(--accent);
+}
+
+.transport-scrub input[type='range']:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.transport-clock {
+  flex: none;
+  font-variant-numeric: var(--numerals);
+  font-size: var(--font-ui);
+  color: var(--text);
+}
+
+/* The speed sits beside Play in the row of actions, so the field's own
+   bottom margin would push the two out of line. */
+.transport .actions {
+  align-items: center;
+}
+
+.transport-speed {
+  margin: 0;
+}
