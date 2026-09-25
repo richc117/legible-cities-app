@@ -463,7 +463,13 @@ followed.
 
 Every line has its web addresses redacted before it is written, to either
 file and to standard error, in development and when the log folder cannot
-be used (`src/main/redact.ts`): the engine prints a feed's whole URL when a
+be used - and, since A5.5-13, before it is sent to the window, which is a
+third destination: `src/main/engine-ipc.ts` redacts `job/log`'s line and
+`job/progress`'s message as it hands them on, so the jobs inspector's copy
+and the log cell 02 draws carry the same bytes the log file does. The
+engine's error `hint` and `detail` do not go through it yet and are drawn
+on a failure; issue #207 is that. What redacts is one function
+(`src/main/redact.ts`): the engine prints a feed's whole URL when a
 download fails, and a URL can carry a key. For an `http` or `https`
 address - slashes plain or JSON-escaped, host a name or an IPv6 literal -
 the scheme, the host, the path and the query's parameter names stay; the

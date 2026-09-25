@@ -100,6 +100,25 @@ export function sameLog(a: LogView, b: LogView): boolean {
   )
 }
 
+/**
+ * One read of the panel's content, and the whole of it: the run's own job,
+ * whatever prompted the read, with the previous view kept when nothing has
+ * moved so a tick that brought nothing costs no render.
+ *
+ * This is where "a feed add going at the same time can never put a line in
+ * this panel" is true rather than merely intended. The bridge's `onLog`
+ * fires for every engine request in the renderer, this one included, so it
+ * is the right thing to wake on and never a thing to read: the listener it
+ * is given takes no argument at all - `() => void`, which the compiler
+ * holds - and the content comes from `run.job()` here. A line belonging to
+ * another request reaches this function only if that run's own buffer
+ * holds it, which is to say never.
+ */
+export function readLog(run: Pick<LayoutRun, 'job'>, was: LogView): LogView {
+  const next = logOf(run.job())
+  return sameLog(was, next) ? was : next
+}
+
 /** How many lines there are, in the words the row says them. */
 export function lineCount(lines: number): string {
   if (lines === 0) return 'no lines yet'
@@ -134,6 +153,42 @@ export function isOpen(chosen: OpenFor, jobId: string | null): boolean {
   return jobId !== null && chosen.open && chosen.id === jobId
 }
 
+/**
+ * Whether the box is following its newest line, and for which run. Every
+ * piece of state in this panel is stamped with a job id for the same
+ * reason: the component outlives the run it is drawing - cell 02 stays
+ * mounted from one run to the next - so anything not stamped is run 1's
+ * answer still being used for run 2.
+ *
+ * A run nobody has scrolled in is followed. That is what makes the id
+ * matter here: without it, a person who scrolled back through run 1 turned
+ * the following off for every run after it, and run 2's box sat at the top
+ * while its lines piled up below.
+ */
+export interface Follow {
+  id: string | null
+  /** Whether the person left the box resting at its end in that run. */
+  at: boolean
+}
+
+export const FOLLOWING: Follow = { id: null, at: true }
+
+export function isFollowing(follow: Follow, jobId: string | null): boolean {
+  return follow.id !== jobId || follow.at
+}
+
+/** What the copy last said, and for which run; another run's sentence is not shown. */
+export interface Said {
+  id: string | null
+  text: string | null
+}
+
+export const SAID_NOTHING: Said = { id: null, text: null }
+
+export function saidFor(said: Said, jobId: string | null): string | null {
+  return said.id === jobId ? said.text : null
+}
+
 /** As much of a scrolling element as the two functions below need. */
 export interface Box {
   scrollTop: number
@@ -164,24 +219,51 @@ export function toNewest(box: Box | null): void {
   box.scrollTop = box.scrollHeight
 }
 
+/**
+ * A run's job with the project named on it, for the copy.
+ *
+ * `LayoutRun.job()` leaves `projectName` null on purpose - a run knows its
+ * project only by id, and whoever lists the jobs fills the name in - so the
+ * jobs inspector copies through the registry, which names it. A copy made
+ * straight from `run.job()` composes its heading through `jobSubject`,
+ * which falls back to "A project": cell 02's copied log said that where the
+ * inspector's, for the same run, said the project's name, and a bug report
+ * pasted from cell 02 did not say which project it was about.
+ *
+ * The name comes from the cell rather than from the registry because the
+ * cell is on the project's screen and already has the record; the
+ * registry's names are a cache the inspector fills when it opens, so a
+ * person who has never opened it would still get "A project".
+ */
+export function named(job: Job, projectName: string | null): Job {
+  return job.projectName === projectName ? job : { ...job, projectName }
+}
+
 /** The engine's log for a project's run: closed, and absent until a run has begun. */
-export default function EngineLog({ run }: { run: LayoutRun }): JSX.Element | null {
+export default function EngineLog({
+  run,
+  projectName,
+}: {
+  run: LayoutRun
+  /** The project's own name, for the copied log's heading. */
+  projectName: string
+}): JSX.Element | null {
   const [log, setLog] = useState<LogView>(() => logOf(run.job()))
   const [chosen, setChosen] = useState<OpenFor>(CLOSED)
-  const [copied, setCopied] = useState<string | null>(null)
+  const [said, setSaid] = useState<Said>(SAID_NOTHING)
   const copying = useRef(false)
   const box = useRef<HTMLPreElement>(null)
-  // Whether the newest line should keep itself in view. True until a person
-  // scrolls away from the end, so reading back through a run is not undone
-  // by the next line to arrive.
-  const following = useRef(true)
+  // Whether the newest line should keep itself in view, for the run it was
+  // decided in: true until a person scrolls away from the end, so reading
+  // back through a run is not undone by the next line to arrive, and true
+  // again for the next run, which they have not scrolled in.
+  const follow = useRef<Follow>(FOLLOWING)
 
   useEffect(() => {
     let frame: number | null = null
     const read = (): void => {
       frame = null
-      const next = logOf(run.job())
-      setLog((was) => (sameLog(was, next) ? was : next))
+      setLog((was) => readLog(run, was))
     }
     const bump = (): void => {
       if (frame === null) frame = requestAnimationFrame(read)
@@ -202,7 +284,7 @@ export default function EngineLog({ run }: { run: LayoutRun }): JSX.Element | nu
   // while it is resting at the end, and when it opens, since a hidden box
   // has no height to scroll.
   useLayoutEffect(() => {
-    if (open && following.current) toNewest(box.current)
+    if (open && isFollowing(follow.current, log.id)) toNewest(box.current)
   }, [open, log])
 
   if (log.id === null) return null
@@ -212,13 +294,13 @@ export default function EngineLog({ run }: { run: LayoutRun }): JSX.Element | nu
     if (copying.current) return
     const job = run.job()
     if (job === null) {
-      setCopied(logNotCopied('the run is no longer listed'))
+      setSaid({ id: log.id, text: logNotCopied('the run is no longer listed') })
       return
     }
     copying.current = true
-    setCopied(null)
-    void copyLog(job, (text) => window.api.jobs.copyLog(text))
-      .then(setCopied)
+    setSaid({ id: job.id, text: null })
+    void copyLog(named(job, projectName), (text) => window.api.jobs.copyLog(text))
+      .then((text) => setSaid({ id: job.id, text }))
       .finally(() => {
         copying.current = false
       })
@@ -247,7 +329,10 @@ export default function EngineLog({ run }: { run: LayoutRun }): JSX.Element | nu
             role="group"
             aria-label={LINES_LABEL}
             onScroll={() => {
-              following.current = box.current === null || atBottom(box.current)
+              follow.current = {
+                id: log.id,
+                at: box.current === null || atBottom(box.current),
+              }
             }}
           >
             {log.lines.join('\n')}
@@ -260,7 +345,7 @@ export default function EngineLog({ run }: { run: LayoutRun }): JSX.Element | nu
           </Button>
         </div>
         <p className="message" role="status" aria-live="polite">
-          {copied}
+          {saidFor(said, log.id)}
         </p>
       </Disclosure>
     </div>

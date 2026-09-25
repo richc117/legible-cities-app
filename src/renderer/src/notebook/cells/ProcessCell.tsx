@@ -81,7 +81,7 @@ export default function ProcessCell({ cell, state, open, onToggle }: CellViewPro
           )}
           {/* The engine's log for the run that is going: a closed
               disclosure, and nothing at all until a run has begun. */}
-          <EngineLog run={run} />
+          <EngineLog run={run} projectName={project.name} />
           {/* What the build had to fudge: the panel draws nothing until a
               map has been drawn in this session, and the numbers are never
               stored (A3-03, specs/017). */}

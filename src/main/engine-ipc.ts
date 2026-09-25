@@ -7,16 +7,16 @@
 // events and the page must never see a result before the last progress.
 // Contract: specs/004-sidecar-supervisor/contracts/bridge.md.
 //
-// **Both notifications are redacted on the way out** (A5.5-13). The engine
-// prints a feed's URL as it was given - key in the query and all - when a
-// download goes wrong, and every other way that text is kept has been
-// redacted since A6-03: `log.ts` and `log-file.ts` redact it into
+// **The two notifications are redacted on the way out** (A5.5-13). The
+// engine prints a feed's URL as it was given - key in the query and all -
+// when a download goes wrong, and every other way that text is kept has
+// been redacted since A6-03: `log.ts` and `log-file.ts` redact it into
 // `engine.log`, and `jobs-ipc.ts` redacts it again into the clipboard. What
-// crossed to the page was the one raw copy, and this is the one door it
-// comes through, so this is the one place to close it. From here the
-// screen, the runs' own `LogBuffer`s and every copy made from them carry
-// the same redacted bytes, with no second implementation anywhere -
-// certainly not in the renderer, which cannot import `redact.ts` at all.
+// crossed to the page was raw. So `job/log`'s line and `job/progress`'s
+// message are redacted here, and from here the screen, the runs' own
+// `LogBuffer`s and every copy made from them carry the same bytes, with no
+// second implementation anywhere - certainly not in the renderer, which
+// cannot import `redact.ts` at all.
 //
 // The log line was invisible while the jobs inspector merely held lines for
 // a copy, and stopped being invisible when cell 02 began drawing them. The
@@ -25,6 +25,23 @@
 // on the screen, in a screenshot and in a screen share. `readableMessage`
 // in `layoutRun.ts` replaces a message that looks like a path, which is a
 // different hazard and catches none of this.
+//
+// **This is not yet the only way a secret reaches the page, and issue #207
+// is the rest of it.** Two functions above, a settled request carries the
+// engine's error through `toShape`, which passes `data.hint` and
+// `data.detail` whole. `jsonrpc.ts` puts `hint` through `withoutPaths` and
+// `detail` through nothing, and `withoutPaths` cannot help here whatever it
+// is given: its pattern needs whitespace or `(` before the slash it
+// matches, and a URL's `//` follows a colon, so a query value is matched
+// nowhere in it. The sentence is then drawn - `feedAdd.ts` into the add-a-
+// feed dialog, `layoutRun.ts` into the run's own panel - so a failed
+// download puts the key on screen through the error instead of through the
+// message, one element away from the sentence redacted here.
+// `specs/023-logs-and-diagnostics/spec.md` records that the engine does
+// exactly this at v0.8.2. Closing it means touching every engine error in
+// the app, including the mismatch dialog and the tests that pin error
+// text, which is why it is #207 and not this change. Until #207 lands, do
+// not read the two lines below as saying the page is safe.
 //
 // It costs the ordinary sentence nothing: `redactUrls` returns any text
 // without a `?`, `#`, `@` or `%` in it untouched, so "topo: 3 nodes, 2
