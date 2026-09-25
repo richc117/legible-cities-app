@@ -576,3 +576,74 @@ th .sort:focus-visible {
 .focus-region {
   display: contents;
 }
+
+/* The engine's log for the run that is going (A5.5-13): a closed disclosure
+   under cell 02's stages, in the job detail's monospaced track.
+
+   The lines have a scrolling box of their own, twelve lines of the UI
+   leading tall, and the newest line is followed by moving that box's own
+   scrollTop - never by scrollIntoView, which scrolls every scrollable
+   ancestor to do its work and would take the notebook's column with it,
+   out from under the pinned preview, on every line the engine printed. */
+
+.engine-log {
+  margin: 0 0 var(--space-4-4);
+}
+
+/* The toggle takes the prose's own type, as the diagnostics' explain
+   trigger does, rather than standing a form control's height inside a
+   panel's text. */
+.engine-log-toggle {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2-2);
+  min-height: var(--target-min);
+  border-radius: var(--radius-small);
+  color: var(--text);
+  font-size: var(--font-ui-small);
+  cursor: pointer;
+}
+
+.engine-log-toggle:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.engine-log-count {
+  color: var(--text-muted);
+}
+
+.engine-log-lines {
+  max-height: calc(var(--line-ui) * 12);
+  overflow: auto;
+  margin: var(--space-2-2) 0 0;
+  padding: var(--space-4-2);
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-ui-small);
+  line-height: var(--line-ui);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The box scrolls, so it takes focus; a focusable region gets the ring
+   every other control has. */
+.engine-log-lines:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.engine-log .hint,
+.engine-log .message {
+  margin: var(--space-2-2) 0 0;
+  font-size: var(--font-ui-small);
+}
+
+.engine-log .toolbar {
+  margin: var(--space-4-2) 0 0;
+}

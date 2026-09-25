@@ -6,11 +6,57 @@
 // lines and after them, because an invoke reply is not ordered against
 // events and the page must never see a result before the last progress.
 // Contract: specs/004-sidecar-supervisor/contracts/bridge.md.
+//
+// **The two notifications are redacted on the way out** (A5.5-13). The
+// engine prints a feed's URL as it was given - key in the query and all -
+// when a download goes wrong, and every other way that text is kept has
+// been redacted since A6-03: `log.ts` and `log-file.ts` redact it into
+// `engine.log`, and `jobs-ipc.ts` redacts it again into the clipboard. What
+// crossed to the page was raw. So `job/log`'s line and `job/progress`'s
+// message are redacted here, and from here the screen, the runs' own
+// `LogBuffer`s and every copy made from them carry the same bytes, with no
+// second implementation anywhere - certainly not in the renderer, which
+// cannot import `redact.ts` at all.
+//
+// The log line was invisible while the jobs inspector merely held lines for
+// a copy, and stopped being invisible when cell 02 began drawing them. The
+// progress message never was: it is the sentence beside the progress line
+// on every run and on the Library's feed add, so a key in a feed's URL was
+// on the screen, in a screenshot and in a screen share. `readableMessage`
+// in `layoutRun.ts` replaces a message that looks like a path, which is a
+// different hazard and catches none of this.
+//
+// **This is not yet the only way a secret reaches the page, and issue #207
+// is the rest of it.** Two functions above, a settled request carries the
+// engine's error through `toShape`, which passes `data.hint` and
+// `data.detail` whole. `jsonrpc.ts` puts `hint` through `withoutPaths` and
+// `detail` through nothing, and `withoutPaths` cannot help here whatever it
+// is given: its pattern needs whitespace or `(` before the slash it
+// matches, and a URL's `//` follows a colon, so a query value is matched
+// nowhere in it. The sentence is then drawn - `feedAdd.ts` into the add-a-
+// feed dialog, `layoutRun.ts` into the run's own panel - so a failed
+// download puts the key on screen through the error instead of through the
+// message, one element away from the sentence redacted here.
+// `specs/023-logs-and-diagnostics/spec.md` records that the engine does
+// exactly this at v0.8.2. Closing it means touching every engine error in
+// the app, including the mismatch dialog and the tests that pin error
+// text, which is why it is #207 and not this change. Until #207 lands, do
+// not read the two lines below as saying the page is safe.
+//
+// It costs the ordinary sentence nothing: `redactUrls` returns any text
+// without a `?`, `#`, `@` or `%` in it untouched, so "topo: 3 nodes, 2
+// edges", "matched 114/114 stops" and "downloaded 4,096 of 65,536 bytes"
+// are byte-identical, and a path - which has none of those four either - is
+// left for `readableMessage` and `withoutPaths` to deal with as before.
+// Only text that already carries a secret changes. `redactUrls` is stable
+// under a second pass, so the clipboard's own redaction still changes
+// nothing.
 
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { CHANNELS, type EngineAccepted, type EngineSettled } from '../shared/api'
 import type { EngineState, JobLog, JobProgress } from '../shared/engine'
 import { badCall, isObject, TOKEN, toShape } from './ipc-shape'
+import { redactUrls } from './redact'
 import type { Notification, RequestOptions } from './sidecar'
 
 /** What the handlers need from the supervisor; a test hands in a fake. */
@@ -138,11 +184,14 @@ export function registerEngineHandlers(
       typeof params.fraction === 'number' &&
       typeof params.message === 'string'
     ) {
+      // Redacted here too, and this is the one a person actually sees: the
+      // sentence beside the progress line on every run. See the note at
+      // the top of this file.
       const progress: JobProgress = {
         id: token,
         stage: params.stage,
         fraction: params.fraction,
-        message: params.message,
+        message: redactUrls(params.message),
       }
       send(CHANNELS.engineProgress, progress)
     } else if (
@@ -151,7 +200,13 @@ export function registerEngineHandlers(
       LEVELS.has(params.level) &&
       typeof params.line === 'string'
     ) {
-      const line: JobLog = { id: token, level: params.level as JobLog['level'], line: params.line }
+      // Redacted here, at the one door the engine's log lines come through
+      // on their way to the page: see the note at the top of this file.
+      const line: JobLog = {
+        id: token,
+        level: params.level as JobLog['level'],
+        line: redactUrls(params.line),
+      }
       send(CHANNELS.engineLog, line)
     } else {
       log(`dropped a ${method} notification of an unexpected shape`)

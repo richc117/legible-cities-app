@@ -258,6 +258,112 @@ describe('registerEngineHandlers', () => {
     expect(sent).toHaveLength(3)
     expect(sent[2].channel).toBe(CHANNELS.engineSettled)
   })
+
+  // A `job/log` line reaches the page with its secrets already out
+  // (A5.5-13). The engine prints a feed's URL as it was given when a
+  // download fails, and until cell 02 drew these lines the page only held
+  // them for a copy, which `jobs-ipc.ts` redacted on its way to the
+  // clipboard. Redacting at this door covers the screen, the run's own
+  // buffer and that copy at once, and redaction being stable under a
+  // second pass means the copy's own is still a no-op.
+  it('takes the secrets out of a log line before the page ever sees it', async () => {
+    const { call, sent, notify } = harness()
+    await call(CHANNELS.engineRequest, 'tok-r', 'feeds.add', { key: 'x' })
+    const key = ['s3cr3t', 'bridge', 'key'].join('-')
+    notify({
+      method: 'job/log',
+      params: {
+        id: 1,
+        level: 'error',
+        line: `fetching https://someone:pw@agency.example/gtfs.zip?api_key=${key}#part`,
+      },
+    })
+    expect(sent).toEqual([
+      {
+        channel: CHANNELS.engineLog,
+        payload: {
+          id: 'tok-r',
+          level: 'error',
+          line: 'fetching https://<redacted>@agency.example/gtfs.zip?api_key=<redacted>#<redacted>',
+        },
+      },
+    ])
+    const payload = sent[0].payload as { line: string }
+    expect(payload.line).not.toContain(key)
+    expect(payload.line).not.toContain('someone:pw')
+  })
+
+  // The progress message is the worse of the two, because it is drawn: it
+  // is the sentence beside the progress line on every run and on the
+  // Library's feed add, so a key in a feed's URL was on the screen rather
+  // than only in memory.
+  it('takes the secrets out of a progress sentence, which is the one on the screen', async () => {
+    const { call, sent, notify } = harness()
+    await call(CHANNELS.engineRequest, 'tok-s', 'feeds.add', { key: 'x' })
+    const key = ['s3cr3t', 'progress', 'key'].join('-')
+    notify({
+      method: 'job/progress',
+      params: {
+        id: 1,
+        stage: 'download',
+        fraction: 0.5,
+        message: `downloading https://agency.example/gtfs.zip?api_key=${key}`,
+      },
+    })
+    expect(sent).toEqual([
+      {
+        channel: CHANNELS.engineProgress,
+        payload: {
+          id: 'tok-s',
+          stage: 'download',
+          fraction: 0.5,
+          message: 'downloading https://agency.example/gtfs.zip?api_key=<redacted>',
+        },
+      },
+    ])
+    expect((sent[0].payload as { message: string }).message).not.toContain(key)
+  })
+
+  // What every ordinary run says has to be byte-identical, or this change
+  // would be rewriting the engine's own sentences (DESIGN.md 11). These are
+  // the shapes the stand-in and the real engine actually send: a stage's
+  // figures, a ratio with slashes, a download's byte counts, and the write
+  // stage's absolute path, which `readableMessage` deals with separately
+  // and which must arrive here for it to recognise.
+  it('leaves an ordinary progress sentence exactly as the engine wrote it', async () => {
+    const { call, sent, notify } = harness()
+    await call(CHANNELS.engineRequest, 'tok-t', 'graph.build', { key: 'x' })
+    const ordinary = [
+      'topo: 3 nodes, 2 edges',
+      'schedule: matched 114/114 stops on A/C/E',
+      'downloaded 4,096 of 65,536 bytes',
+      // The write stage's own message, both platforms' shapes. Neither
+      // names anyone's home folder: `bin/preflight` refuses one in a
+      // committed file, and the case is about the separators, not the
+      // folders.
+      '/var/folders/ab/legible-cities/out/kq7x2mzp4dna',
+      'C:\\ProgramData\\legible-cities\\out\\kq7x2mzp4dna',
+    ]
+    for (const [i, message] of ordinary.entries()) {
+      notify({
+        method: 'job/progress',
+        params: { id: 1, stage: 'write', fraction: i / ordinary.length, message },
+      })
+    }
+    expect(sent.map((s) => (s.payload as { message: string }).message)).toEqual(ordinary)
+  })
+
+  it('leaves a line with nothing to hide exactly as the engine wrote it', async () => {
+    const { call, sent, notify } = harness()
+    await call(CHANNELS.engineRequest, 'tok-q', 'graph.build', { key: 'x' })
+    notify({
+      method: 'job/log',
+      params: { id: 1, level: 'info', line: 'schedule: matched 114/114 stops on A/C/E' },
+    })
+    expect((sent[0].payload as { line: string }).line).toBe(
+      'schedule: matched 114/114 stops on A/C/E',
+    )
+  })
 })
 
 describe('the guard in front of the engine', () => {

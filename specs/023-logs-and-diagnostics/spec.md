@@ -148,7 +148,12 @@ can confirm the app sends nothing.
   redaction before it is written, to either log and to standard error (in
   development, or when the log folder cannot be used), and the copy is
   passed through it again, because a log written before
-  this rule still holds whole addresses. What it covers, and nothing more:
+  this rule still holds whole addresses. Since A5.5-13 the same redaction
+  is applied before a line is sent to the window as well - the page is a
+  third destination, now that cell 02 draws the running job's log - so the
+  lines on screen, the runs' own buffers and the copy made from them are
+  the log file's bytes. The engine's error `hint` and `detail` still reach
+  the page whole and are drawn on a failure, which issue #207 covers. What it covers, and nothing more:
   - an `http` or `https` address, with its slashes plain or JSON-escaped
     (`https:\/\/`) and its host a name or an IPv6 literal: the scheme,
     the host, the path and the query's parameter names stay, and the user

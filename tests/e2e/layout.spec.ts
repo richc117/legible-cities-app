@@ -13,13 +13,14 @@ import {
   existsSync,
   writeFileSync,
 } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import {
   _electron as electron,
   expect,
   test,
   type ElectronApplication,
+  type Locator,
   type Page,
 } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
@@ -929,5 +930,177 @@ test('a record from before made was stored gains it and is told nothing changed'
     await page.getByRole('button', { name: 'Lay out again' }).click()
     await expect(page.getByText(/^Laid out\.$/)).toBeVisible({ timeout: 30_000 })
     expect(readRecord(engineHome).made).toBe(once.made)
+  })
+})
+
+// The engine's log for the run that is going, in cell 02 (A5.5-13): the
+// disclosure under the stages, the lines arriving while the run goes, the
+// notebook's scroll left where it was, and the copy that goes through the
+// main process.
+//
+// The stand-in sends `job/log` for every stage and, with
+// `build_log_lines`, whatever else a test asks for first - which is how
+// `tests/e2e/jobs.spec.ts` gives the inspector's copy a key and a home
+// folder to hide. The same control gives this one its lines.
+
+/** Cell 02's own group: the run's region exists only while a run does. */
+const processCell = (page: Page): Locator =>
+  page.getByRole('group', { name: cellLabel('process'), exact: true })
+
+const logToggle = (page: Page): Locator =>
+  processCell(page).getByRole('button', { name: /^Engine log/ })
+
+/**
+ * The box of lines, which is named for itself and not for the disclosure
+ * that holds it: the two are nested, so one name for both would put the
+ * same group name inside itself - unreadable for a screen reader, and two
+ * matches for this locator.
+ */
+const logLines = (page: Page): Locator =>
+  page.getByRole('group', { name: 'Log lines', exact: true })
+
+test('the engine log is closed under the stages, fills while the run goes, and stops when it ends', async () => {
+  const engineHome = home({
+    map_draws: true,
+    progress_delay_ms: 200,
+    build_log_lines: ['reading the feed'],
+  })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    // Nothing before a run: there is no job to have a log.
+    await expect(logToggle(page)).toBeHidden()
+
+    await page.getByRole('button', { name: /lay out/i }).click()
+    // It arrives closed, and its lines are in the document but hidden, as
+    // every disclosure in this app keeps its contents.
+    await expect(logToggle(page)).toBeVisible({ timeout: 20_000 })
+    await expect(logToggle(page)).toHaveAttribute('aria-expanded', 'false')
+    await expect(logLines(page)).toBeHidden()
+
+    await logToggle(page).click()
+    await expect(logToggle(page)).toHaveAttribute('aria-expanded', 'true')
+    await expect(logLines(page)).toContainText('reading the feed')
+    // Lines keep arriving while the run goes: the stages report as they
+    // finish, and each is a line.
+    await expect(logLines(page)).toContainText('gtfs2graph: running', { timeout: 20_000 })
+    await expect(logLines(page)).toContainText('octi: running', { timeout: 20_000 })
+
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    // They stop when it ends: what is on screen a second later is what was
+    // on screen when it finished, and the disclosure a person opened for
+    // this run is still open.
+    const settled = await logLines(page).innerText()
+    // A negative held over an interval, which is the one thing a poll
+    // cannot do: `expect.poll(...).toBe(settled)` is satisfied by its first
+    // read, taken before any late line could have arrived, so it passed
+    // whatever the panel did. A fixed wait is right here because the
+    // assertion is that nothing happens during it.
+    await page.waitForTimeout(1_000)
+    expect(await logLines(page).innerText(), 'no line arrives after the run ended').toBe(settled)
+    await expect(logToggle(page)).toHaveAttribute('aria-expanded', 'true')
+  })
+})
+
+test('opening the engine log leaves the notebook where it was', async () => {
+  const engineHome = home({
+    map_draws: true,
+    progress_delay_ms: 10,
+    // Enough lines that the box has something to scroll, so the panel has
+    // a reason to move a scroll position at all.
+    build_log_lines: Array.from({ length: 60 }, (_, i) => `reading table ${i}`),
+  })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+
+    // The toggle is put in the middle of the window first, and `before` is
+    // read after that. Playwright scrolls a target into view as part of
+    // clicking it, so a `before` read while the toggle was still below the
+    // fold would count that scroll as this panel's: the first version of
+    // this test did exactly that and reported a 1,868px jump the panel
+    // cannot cause. Centring also keeps the toggle clear of the sticky
+    // preview, so the click has nothing to scroll for either reason.
+    await logToggle(page).evaluate((el) => el.scrollIntoView({ block: 'center' }))
+    const before = await page.evaluate(() => window.scrollY)
+    expect(before, 'the notebook is long enough to scroll').toBeGreaterThan(0)
+    // Stated rather than assumed, so this test can never go back to
+    // measuring Playwright's own scrolling without saying so.
+    expect(
+      await logToggle(page).evaluate((el) => {
+        const box = el.getBoundingClientRect()
+        return box.top >= 0 && box.bottom <= window.innerHeight
+      }),
+      'the toggle is already in view, so clicking it cannot scroll the page',
+    ).toBe(true)
+
+    await logToggle(page).click()
+    await expect(logLines(page)).toBeVisible()
+    // The newest line is in view inside the box, and the column behind it
+    // has not moved: the panel sets the box's own scrollTop and never asks
+    // the platform to bring a line into view.
+    expect(await page.evaluate(() => window.scrollY)).toBe(before)
+    expect(
+      await logLines(page).evaluate(
+        (box) => box.scrollHeight - box.scrollTop - box.clientHeight <= 2,
+      ),
+      'the newest line is in view inside the box',
+    ).toBe(true)
+  })
+})
+
+test("cell 02 draws the engine's lines with the keys out, and its Copy log writes the home folder as ~", async () => {
+  const key = ['s3cr3t', 'cell', 'two'].join('-')
+  const engineHome = home({
+    map_draws: true,
+    progress_delay_ms: 10,
+    build_log_lines: [
+      `fetching https://agency.example/gtfs.zip?api_key=${key}`,
+      'reading {home}/feeds/gtfs.zip',
+    ],
+  })
+  await withApp(engineHome, async (page, app) => {
+    await openNewProject(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    await logToggle(page).click()
+    // On screen first: the line is redacted before it ever reaches the page
+    // (`src/main/engine-ipc.ts`), so the panel can draw it without being
+    // the thing that leaks it.
+    await expect(logLines(page)).toContainText('https://agency.example/gtfs.zip?api_key=<redacted>')
+    expect(await logLines(page).innerText()).not.toContain(key)
+
+    await processCell(page)
+      .getByRole('button', { name: "Copy log: the engine's log for this run" })
+      .click()
+    await expect(
+      processCell(page)
+        .getByRole('status')
+        .filter({ hasText: /clipboard/ }),
+    ).toHaveText(/^The log is on the clipboard/)
+    const copied = await app.evaluate(({ clipboard }) => clipboard.readText())
+    expect(copied).toContain('# Layout run, Los Angeles')
+    expect(copied).toContain('https://agency.example/gtfs.zip?api_key=')
+    expect(copied).not.toContain(key)
+    expect(copied).not.toContain(homedir())
+    expect(copied).toMatch(/reading ~[\\/]feeds[\\/]gtfs\.zip/)
+    // Nothing the renderer writes: the lines live in the session's runs and
+    // in the main process's own engine.log, and nothing under the engine
+    // home gained them. Asserted over the files rather than over the
+    // record, because a `ProjectRecord` has no field that could hold a log
+    // line and `not.toContain` over one passes however the renderer
+    // behaves - which is what the first version of this did.
+    const everythingUnder = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
+        entry.isDirectory()
+          ? everythingUnder(join(dir, entry.name))
+          : [readFileSync(join(dir, entry.name), 'utf8')],
+      )
+    const written = everythingUnder(join(engineHome, 'projects'))
+    expect(written.length, 'there are files to look in').toBeGreaterThan(0)
+    expect(
+      written.filter((text) => text.includes('agency.example')),
+      'no file the app wrote holds an engine log line',
+    ).toEqual([])
   })
 })
