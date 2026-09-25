@@ -97,6 +97,7 @@ function home(): { engineHome: string; exportFolder: string; id: string } {
     lineOrder: [],
     theme: DEFAULT_THEME,
     export: { preset: 'instagram-reel', options: {} },
+    destination: null,
     // The page is the checkout's; the identifier only has to be one.
     layout: 'f'.repeat(64),
     made: null,

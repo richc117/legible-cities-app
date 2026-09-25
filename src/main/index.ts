@@ -26,7 +26,7 @@ import { FIXTURE_FOLDER, FirstRunCheck, LOG_TAG as FIRST_RUN_TAG } from './first
 import { registerFirstRunHandlers } from './first-run-ipc'
 import { LicencesService, registerLicencesHandlers } from './licences-ipc'
 import { PickedPaths, registerFeedsHandlers, registryDeadline, registryGuard } from './feeds-ipc'
-import { Exporter, keptFramesFolder } from './export'
+import { destinationRefusal, Destinations, Exporter, keptFramesFolder } from './export'
 import { claimFramesRoot, clearFrames, describeSweep, FRAMES_FOLDER } from './frames'
 import { registerExportHandlers } from './export-ipc'
 import { engineCommand, engineEnvironment, resolveInterpreter } from './interpreter'
@@ -454,6 +454,13 @@ if (!hasLock) {
       picked,
       isTopFrame,
     )
+    // Nothing may be kept inside the app itself, whoever chose it. In
+    // development that is the checkout; packaged, the bundle and the
+    // resources beside it. Read by Settings' two folders and by a
+    // project's own export destination (A5.5-19).
+    const bundleRoots = app.isPackaged
+      ? [app.getAppPath(), process.resourcesPath]
+      : [app.getAppPath()]
     // What the app decides for itself. The export folder is asked at each
     // export, so a change here needs no restart; the engine's home was
     // resolved above and moves at the next start (specs/019-settings).
@@ -507,10 +514,7 @@ if (!hasLock) {
       // Asked for when it is wanted: a path Electron cannot answer must
       // cost one dead button, not the whole startup.
       logsFolder: () => app.getPath('logs'),
-      // Nothing may be kept inside the app itself, whoever chose it. In
-      // development that is the checkout; packaged, the bundle and the
-      // resources beside it.
-      bundleRoots: app.isPackaged ? [app.getAppPath(), process.resourcesPath] : [app.getAppPath()],
+      bundleRoots,
       guards: { userData: app.getPath('userData'), homeDir: homedir() },
       // "Copy diagnostics": everything from this process, and the engine's
       // own answer; the clipboard is written in the main process, as the
@@ -642,12 +646,36 @@ if (!hasLock) {
       log.warn('export', 'the frames folder could not be claimed'),
     )
     log.info('export', describeSweep(await clearFrames(framesRoot)))
+    // Where a project's own exports may not go (A5.5-19): the app's own
+    // bundle and the engine's home, in either direction and through their
+    // links. The rule itself is `destinationRefusal`, which is where it is
+    // said and where it is tested; this only names the two folders, which
+    // only this file knows.
+    const refuseDestination = (folder: string): Promise<string | null> =>
+      destinationRefusal(folder, { bundleRoots, engineHome: config.home })
+    const destinations = new Destinations({
+      projects: store,
+      // Parented to the window, so it is modal to it (rules/main.md); only
+      // the window's own top frame can ask, so the window is there.
+      chooseFolder: async (current) => {
+        if (mainWindow === null || mainWindow.isDestroyed()) return null
+        const answer = await dialog.showOpenDialog(mainWindow, {
+          title: 'Choose where this project exports to',
+          defaultPath: current,
+          properties: ['openDirectory', 'createDirectory'],
+        })
+        return answer.canceled || answer.filePaths.length === 0 ? null : answer.filePaths[0]
+      },
+      appFolder: () => settingsService.exportFolderNow(),
+      refuse: refuseDestination,
+    })
     exporter = new Exporter({
       engine,
       projects: store,
       capture,
       framesRoot,
       exportFolder: () => settingsService.exportFolderNow(),
+      destinationRefusal: refuseDestination,
       // The frames live under the engine home, so no export may begin while
       // that folder is being removed.
       blocked: resetInProgress,
@@ -663,6 +691,11 @@ if (!hasLock) {
           mainWindow.webContents.send(channel, payload)
       },
       (path) => shell.showItemInFolder(path),
+      destinations,
+      // A destination is a write to a project's record, which lives under
+      // the home a reset is removing: it is refused while that runs, as
+      // every other record write is.
+      resetInProgress,
     )
     mainWindow = createWindow()
 

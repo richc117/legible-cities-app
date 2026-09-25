@@ -45,6 +45,7 @@ const record: ProjectRecord = {
   lineOrder: ['A', 'K'],
   theme: 'warm-dark',
   export: { preset: 'instagram-reel', options: {} },
+  destination: null,
   layout: 'a'.repeat(64),
   made: '2026-09-10T12:00:00+00:00',
   drawn: null,

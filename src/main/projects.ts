@@ -27,6 +27,7 @@ import {
   validateLineOrder,
   validatePalette,
   validateTheme,
+  validateDestination,
   type CreateProjectInput,
   type DeleteResult,
   type LineOrder,
@@ -381,6 +382,7 @@ export class ProjectStore {
       lineOrder: [],
       theme: DEFAULT_THEME,
       export: copyChoice(DEFAULT_CHOICE),
+      destination: null,
       layout: null,
       made: null,
       drawn: null,
@@ -658,6 +660,37 @@ export class ProjectStore {
       ...record,
       version: RECORD_VERSION,
       export: copyChoice(choice),
+      modified: new Date().toISOString(),
+    }
+    await this.writeAtomic(id, updated)
+    return updated
+  }
+
+  /**
+   * Where this project's exports go, over the app's own folder (A5.5-19),
+   * or null to use the app's again. Written the moment it is chosen, as a
+   * theme and an export choice are; nothing is planned or built for it,
+   * because a destination is not part of any plan - the engine is told
+   * where to write only at the encode.
+   *
+   * The folder itself came from the platform's dialog in the main process,
+   * and whether it is one this app may write into was decided there; this
+   * checks the shape again because the store is the trusted layer and has
+   * callers of its own.
+   */
+  async setDestination(id: string, destination: string | null): Promise<ProjectRecord> {
+    return this.#track(() => this.#serial(id, () => this.#setDestinationTracked(id, destination)))
+  }
+
+  async #setDestinationTracked(id: string, destination: string | null): Promise<ProjectRecord> {
+    this.checkId(id)
+    check(validateDestination(destination))
+    const { record, readOnly } = await this.load(id)
+    if (readOnly) throw new Error('read-only')
+    const updated: ProjectRecord = {
+      ...record,
+      version: RECORD_VERSION,
+      destination,
       modified: new Date().toISOString(),
     }
     await this.writeAtomic(id, updated)

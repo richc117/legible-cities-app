@@ -1,0 +1,35 @@
+/* The export's own region (A5.5-19): cell 06's destination.
+ *
+ * **This file holds only what A5.5-19 added**, and nothing else: it is far
+ * under the two hundred lines at which `.claude/rules/renderer.md` says a
+ * region earns a file of its own. It exists because the alternative was
+ * editing panels.css, app.css or notebook.css, which two other lanes were
+ * holding at the time. The export's older rules - the choices grid, the
+ * two fieldsets, and the heading rules that this issue left without a
+ * heading - are still in panels.css where A5-01 wrote them; moving them
+ * here, and this file's right to exist at all, is a later change.
+ *
+ * It is read after panels.css, so a rule here may refine one there. It
+ * does not: the two selectors below are this region's alone.
+ */
+
+/* Where it goes: the same block Settings draws a folder in, so a path
+   reads as a path wherever the app shows one. Not `.settings .path`,
+   which is that screen's own selector. */
+.export-destination .path {
+  margin: 0;
+  padding: var(--space-2-3) var(--space-4-2);
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--font-ui-small);
+  line-height: var(--line-ui-tight);
+  overflow-wrap: anywhere;
+}
+
+/* The two buttons sit under whichever of the two the folder is said by,
+   with the gap a field's rows have. */
+.export-destination .toolbar {
+  margin: var(--space-2-2) 0 0;
+}

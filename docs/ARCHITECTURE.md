@@ -88,6 +88,9 @@ app's own settings under `api.settings`:
 | `completeOrder(id, order)` | records the order a person arranged the lines in, once the map has been drawn in it; every label is checked on the main side first, and the same line twice is refused (A4-02) |
 | `setTheme(id, theme)` | records the theme the project's map is drawn in, at once rather than after a build: a theme is neither a layout nor a render, and the page restyles itself from its own address (A4-03) |
 | `setExport(id, choice)` | records what the project is set to export - a preset, a storyboard, the options - at once; every field is held to the engine's own rules on the main side first (A5-01) |
+| `export.chooseDestination(id)` | opens the platform's folder chooser for one project's exports and applies its own answer, then hands back the record; no path crosses inward, as Settings' two folders do not (A1-04, A5.5-19) |
+| `export.useAppFolder(id)` | forgets that folder, so the project's exports go to the app's again; it takes no path at all (A5.5-19) |
+| | both write a project's record, so both are refused while the engine's data is being reset, as every other record write is |
 | `feeds.pickZip()` | opens the platform's file chooser for a GTFS zip and remembers the answer; the one native dialog, since a page cannot choose a file (A2-01) |
 
 | `viewer.attach(projectId)` | holds the project page's frame by identity once it has loaded, and answers whether it did (ADR-028) |
@@ -1115,10 +1118,25 @@ hand back frames of another and put the wrong day in the sidecar. The frames are
 ends, whichever way, and a start of the app removes the whole folder, so a
 crash mid-export leaves nothing a later run reads.
 
-The file goes under the export folder - `LEGIBLE_EXPORT_FOLDER`, or a
-`Legible Cities` folder on the desktop - in a folder named after the
+The file goes under the project's own destination where it has one
+(A5.5-19), and otherwise under the export folder - `LEGIBLE_EXPORT_FOLDER`,
+or a `Legible Cities` folder on the desktop - in a folder named after the
 project, under the engine's own file name; nothing is written inside the
-user-data folder or the bundle (ADR-016). The page is told the file's name
+user-data folder or the bundle (ADR-016). A project's destination is a
+folder the platform's own dialog answered, judged when it was chosen and
+again at each export. The app's own bundle and the engine's home are
+refused, **and so is any folder that holds either**: the file lands at
+`<destination>/<project name>/`, and `folderName` passes "engine", "out",
+"data", "projects", "frames" and the app's own name through unchanged, so
+the folder one of them sits in is a single project name away from it.
+Each refusal says which of the two it is and which way round. Every path is
+resolved through its links first, because the comparison is textual and
+`SCHEMATIC_HOME` reaches the app unfiltered. The home's half is the
+relation Settings already keeps in both directions over the app-wide export
+folder, and the bundle's is kept the same way, because two guards in one
+function over one kind of relation - one symmetric, one not - is what the
+first version of this got wrong (`destinationRefusal` in
+`src/main/export.ts`). The page is told the file's name
 and never its path; "Reveal" names the export by its token and the main
 process opens the folder it remembers writing to. A second export of the
 same project replaces the first, as the engine's own command line does: the
@@ -1158,7 +1176,19 @@ process before every plan (`sentChoice`): a view and a start time are a
 still's only, since a storyboard's first beat names its own and the capture
 applies it; a still the table says is JPEG is made at standard quality only,
 because the capture writes PNG and the engine keeps a capture unchanged at
-draft and high. The record keeps what a person chose. Writes to one record
+draft and high. The record keeps what a person chose.
+
+Where the file goes is the cell's one choice that is not the engine's
+(A5.5-19), and it is not part of any plan: `export.encode` has always taken
+an absolute destination, so a folder changes nothing about the preset, the
+preview or the capture. It is chosen in the platform's own dialog, which
+only the main process can open: the page asks by naming its project, the
+main process opens the chooser, spends its answer through a `PickedPaths`
+of its own, refuses a folder inside the app or inside the engine's home,
+writes the record and hands it back. No path crosses the bridge inward, and
+the folder that comes back out is shown to the person whose folder it is
+and is in no message the app sends anywhere (`Destinations` in
+`src/main/export.ts`). Writes to one record
 take turns through a per-project chain in the store, so a choice made during
 a re-layout cannot write back the old layout. A saved
 preset or storyboard the engine no longer lists falls back to the reel,

@@ -18,7 +18,7 @@ in `tests/unit/run-graph.test.ts`.
 | 03 | `frame` | Frame and service day | the service day (A5.5-15) |
 | 04 | `style` | Style | the project's map theme (A5.5-17) |
 | 05 | `lines` | Lines | the line colours and the line order (A5.5-18) |
-| 06 | `export` | Export | the presets, the options and the export (A5.5-19) |
+| 06 | `export` | Export | the presets, the options, where the file goes, and the export (A5.5-19) |
 
 The order is the order the work runs in, and the numbering is fixed
 (ADR-045): a cell that is thin stays a cell rather than being renumbered

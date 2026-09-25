@@ -183,8 +183,9 @@ export interface Api {
    * An export of one preset, run in the main process because the capture
    * lives there (ADR-024): the engine plans it, the app takes the frames,
    * the engine encodes them. The page names a project and what to export,
-   * and gets back a file's name; the folder is the export folder from the
-   * configuration, and `reveal` opens it (specs/010-export/contracts/bridge.md).
+   * and gets back a file's name; the folder is the project's own
+   * destination, or the export folder from the configuration where it has
+   * none, and `reveal` opens it (specs/010-export/contracts/bridge.md).
    */
   export: {
     run(projectId: string, choice: ExportChoice): ExportRequest
@@ -198,6 +199,17 @@ export interface Api {
     cancel(id: string): Promise<void>
     /** Show a finished export's file in the platform's file browser. */
     reveal(id: string): Promise<void>
+    /**
+     * Open the platform's folder chooser and store its answer as this
+     * project's own export destination (A5.5-19). Takes no path: the main
+     * process opens the dialog and applies the answer itself, exactly as
+     * Settings does for its two folders, so there is no path here for a
+     * page to invent. Answers the record, unchanged when the chooser was
+     * cancelled.
+     */
+    chooseDestination(projectId: string): Promise<ProjectRecord>
+    /** Forget this project's own folder; its exports go to the app's again. */
+    useAppFolder(projectId: string): Promise<ProjectRecord>
     onProgress(listener: (progress: ExportProgress) => void): () => void
   }
   /**
@@ -320,6 +332,8 @@ export const CHANNELS = {
   exportCancel: 'export:cancel',
   exportReveal: 'export:reveal',
   exportPreview: 'export:preview',
+  exportChooseDestination: 'export:choose-destination',
+  exportUseAppFolder: 'export:use-app-folder',
   exportProgress: 'export:progress',
   exportSettled: 'export:settled',
   feedsPickZip: 'feeds:pick-zip',

@@ -97,6 +97,7 @@ describe("cell 03's summary", () => {
     lineOrder: [],
     theme: DEFAULT_THEME,
     export: { ...DEFAULT_CHOICE },
+    destination: null,
     layout: LAYOUT,
     built: { mode: 'all', agency: null },
     made: MADE,
