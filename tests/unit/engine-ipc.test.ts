@@ -293,6 +293,66 @@ describe('registerEngineHandlers', () => {
     expect(payload.line).not.toContain('someone:pw')
   })
 
+  // The progress message is the worse of the two, because it is drawn: it
+  // is the sentence beside the progress line on every run and on the
+  // Library's feed add, so a key in a feed's URL was on the screen rather
+  // than only in memory.
+  it('takes the secrets out of a progress sentence, which is the one on the screen', async () => {
+    const { call, sent, notify } = harness()
+    await call(CHANNELS.engineRequest, 'tok-s', 'feeds.add', { key: 'x' })
+    const key = ['s3cr3t', 'progress', 'key'].join('-')
+    notify({
+      method: 'job/progress',
+      params: {
+        id: 1,
+        stage: 'download',
+        fraction: 0.5,
+        message: `downloading https://agency.example/gtfs.zip?api_key=${key}`,
+      },
+    })
+    expect(sent).toEqual([
+      {
+        channel: CHANNELS.engineProgress,
+        payload: {
+          id: 'tok-s',
+          stage: 'download',
+          fraction: 0.5,
+          message: 'downloading https://agency.example/gtfs.zip?api_key=<redacted>',
+        },
+      },
+    ])
+    expect((sent[0].payload as { message: string }).message).not.toContain(key)
+  })
+
+  // What every ordinary run says has to be byte-identical, or this change
+  // would be rewriting the engine's own sentences (DESIGN.md 11). These are
+  // the shapes the stand-in and the real engine actually send: a stage's
+  // figures, a ratio with slashes, a download's byte counts, and the write
+  // stage's absolute path, which `readableMessage` deals with separately
+  // and which must arrive here for it to recognise.
+  it('leaves an ordinary progress sentence exactly as the engine wrote it', async () => {
+    const { call, sent, notify } = harness()
+    await call(CHANNELS.engineRequest, 'tok-t', 'graph.build', { key: 'x' })
+    const ordinary = [
+      'topo: 3 nodes, 2 edges',
+      'schedule: matched 114/114 stops on A/C/E',
+      'downloaded 4,096 of 65,536 bytes',
+      // The write stage's own message, both platforms' shapes. Neither
+      // names anyone's home folder: `bin/preflight` refuses one in a
+      // committed file, and the case is about the separators, not the
+      // folders.
+      '/var/folders/ab/legible-cities/out/kq7x2mzp4dna',
+      'C:\\ProgramData\\legible-cities\\out\\kq7x2mzp4dna',
+    ]
+    for (const [i, message] of ordinary.entries()) {
+      notify({
+        method: 'job/progress',
+        params: { id: 1, stage: 'write', fraction: i / ordinary.length, message },
+      })
+    }
+    expect(sent.map((s) => (s.payload as { message: string }).message)).toEqual(ordinary)
+  })
+
   it('leaves a line with nothing to hide exactly as the engine wrote it', async () => {
     const { call, sent, notify } = harness()
     await call(CHANNELS.engineRequest, 'tok-q', 'graph.build', { key: 'x' })

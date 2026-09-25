@@ -7,18 +7,33 @@
 // events and the page must never see a result before the last progress.
 // Contract: specs/004-sidecar-supervisor/contracts/bridge.md.
 //
-// A `job/log` line is redacted on the way out (A5.5-13). The engine prints
-// a feed's URL as it was given - key in the query and all - when a download
-// fails, and every other way that line is kept has been redacted since
-// A6-03: `log.ts` and `log-file.ts` redact it into `engine.log`, and
-// `jobs-ipc.ts` redacts it again into the clipboard. Only the copy sent to
-// the page was raw, which was invisible while the inspector merely held the
-// lines for a copy, and stopped being invisible when cell 02 started
-// drawing them. This is the one door they come through, so it is the one
-// place to do it: from here the screen, the run's own `LogBuffer` and the
-// copy made from it are all redacted, with no second implementation
-// anywhere. `redactUrls` is stable under a second pass, so the copy's own
-// redaction still changes nothing.
+// **Both notifications are redacted on the way out** (A5.5-13). The engine
+// prints a feed's URL as it was given - key in the query and all - when a
+// download goes wrong, and every other way that text is kept has been
+// redacted since A6-03: `log.ts` and `log-file.ts` redact it into
+// `engine.log`, and `jobs-ipc.ts` redacts it again into the clipboard. What
+// crossed to the page was the one raw copy, and this is the one door it
+// comes through, so this is the one place to close it. From here the
+// screen, the runs' own `LogBuffer`s and every copy made from them carry
+// the same redacted bytes, with no second implementation anywhere -
+// certainly not in the renderer, which cannot import `redact.ts` at all.
+//
+// The log line was invisible while the jobs inspector merely held lines for
+// a copy, and stopped being invisible when cell 02 began drawing them. The
+// progress message never was: it is the sentence beside the progress line
+// on every run and on the Library's feed add, so a key in a feed's URL was
+// on the screen, in a screenshot and in a screen share. `readableMessage`
+// in `layoutRun.ts` replaces a message that looks like a path, which is a
+// different hazard and catches none of this.
+//
+// It costs the ordinary sentence nothing: `redactUrls` returns any text
+// without a `?`, `#`, `@` or `%` in it untouched, so "topo: 3 nodes, 2
+// edges", "matched 114/114 stops" and "downloaded 4,096 of 65,536 bytes"
+// are byte-identical, and a path - which has none of those four either - is
+// left for `readableMessage` and `withoutPaths` to deal with as before.
+// Only text that already carries a secret changes. `redactUrls` is stable
+// under a second pass, so the clipboard's own redaction still changes
+// nothing.
 
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { CHANNELS, type EngineAccepted, type EngineSettled } from '../shared/api'
@@ -152,11 +167,14 @@ export function registerEngineHandlers(
       typeof params.fraction === 'number' &&
       typeof params.message === 'string'
     ) {
+      // Redacted here too, and this is the one a person actually sees: the
+      // sentence beside the progress line on every run. See the note at
+      // the top of this file.
       const progress: JobProgress = {
         id: token,
         stage: params.stage,
         fraction: params.fraction,
-        message: params.message,
+        message: redactUrls(params.message),
       }
       send(CHANNELS.engineProgress, progress)
     } else if (
