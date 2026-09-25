@@ -78,9 +78,21 @@
    large screen, which measured 546 wide where it had been 1024. So the
    ratio gives way instead. The page fits itself to whatever box it is given
    - present.js refits the frame on every resize - so this is a map drawn to
-   a band, not a map with its edges cut off. */
+   a band, not a map with its edges cut off.
+
+   The width is said rather than left to the grid. Until the bound was put
+   here the shape filled its column because it was a stretched grid item
+   with an automatic width, and that was the only thing holding it out to
+   the edges; with a definite height and no ratio it is a different item to
+   lay out, and in the app it measured 992 where its box was 1024 - the
+   map a whole `--space-4-4` short at each edge. `width: 100%` against the
+   grid area, with the border counted into the box so the band is half the
+   window and not half plus its own edges, says what the rule means instead
+   of depending on which of those two the stretch answers. */
 .preview .viewer-shape {
   aspect-ratio: auto;
+  box-sizing: border-box;
+  width: 100%;
   height: calc((100vh - var(--header-height)) / 2);
 }
 

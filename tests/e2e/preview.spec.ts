@@ -339,18 +339,32 @@ test('the preview is pinned under the header, and above the cells at every width
     // A band, not the window: half of what is below the header, so the cell
     // being edited underneath stays in view. Bounded on the height and not
     // on the shape, so the map keeps the width it had.
+    //
+    // Measured against the box's **content**, which is what a child fills,
+    // and reported with the grid's own used track beside it. The first
+    // reading of this said the map was 992 in a box of 1024 - a whole
+    // `--space-4-4` short at each edge - and no window driven outside the
+    // app reproduced it, so the failure carries what it would take to tell
+    // the three cases apart next time: a box with padding in it, a track
+    // narrower than the box, or a map that does not fill its track.
     const band = await page.evaluate(() => {
-      const shape = document.querySelector('.viewer-shape')?.getBoundingClientRect()
-      const viewer = document.querySelector('.viewer')?.getBoundingClientRect()
+      const shapeEl = document.querySelector('.viewer-shape')
+      const viewerEl = document.querySelector('.viewer')
       const header = document.querySelector('.app-header')?.getBoundingClientRect()
-      return shape === undefined || viewer === undefined || header === undefined
-        ? null
-        : {
-            height: shape.height,
-            width: shape.width,
-            viewerWidth: viewer.width,
-            top: header.height,
-          }
+      if (shapeEl === null || viewerEl === null || header === undefined) return null
+      const shape = shapeEl.getBoundingClientRect()
+      const viewer = viewerEl.getBoundingClientRect()
+      const style = getComputedStyle(viewerEl)
+      const pad = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight)
+      return {
+        height: shape.height,
+        width: shape.width,
+        viewerWidth: viewer.width,
+        content: viewerEl.clientWidth - pad,
+        track: style.gridTemplateColumns,
+        shapes: document.querySelectorAll('.viewer-shape').length,
+        top: header.height,
+      }
     })
     expect(band, 'the map has a box on screen').not.toBeNull()
     const half = ((await page.evaluate(() => window.innerHeight)) - (band?.top ?? 0)) / 2
@@ -360,10 +374,13 @@ test('the preview is pinned under the header, and above the cells at every width
     // 1024 it has, measured - so this is the assertion that tells the two
     // bounds apart, and `viewerWidth` is what it is measured against
     // because that is the width the breakout gives the map.
-    expect(
-      band?.width ?? 0,
-      `the width it already had (the map ${band?.width}, its box ${band?.viewerWidth})`,
-    ).toBeGreaterThanOrEqual((band?.viewerWidth ?? 0) - 1)
+    const boxes =
+      `the map ${band?.width}, its box ${band?.viewerWidth} (content ${band?.content}), ` +
+      `the grid's track ${band?.track}, ${band?.shapes} shape(s) on the screen`
+    expect(band?.shapes, `one map on the screen: ${boxes}`).toBe(1)
+    expect(band?.width ?? 0, `the width it already had - ${boxes}`).toBeGreaterThanOrEqual(
+      (band?.content ?? 0) - 1,
+    )
     expect(
       band?.width ?? 0,
       `not shrunk to the band\u2019s own ratio (the map ${band?.width} by ${band?.height})`,
