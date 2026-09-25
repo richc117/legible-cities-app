@@ -454,15 +454,22 @@ export async function expectTabWalk(page: Page, where: string): Promise<void> {
     // press inside it reports the same <iframe> element and the press that
     // leaves it reports whatever the platform does next. On macOS that was
     // a control the walk had already reached, which read as the walk coming
-    // back round - it ended there and called the 58 controls after the frame
+    // back round: it ended there and called the 58 controls after the frame
     // unreachable, on a screen where a person reaches them by pressing Tab
-    // once more or by using "Skip past the map" (issue 213's neighbourhood;
-    // the walk into the frame is asserted on its own in
-    // `notebook-a11y.spec.ts`). So focus is put down on the first control
-    // after the frame, by hand and in document order. Everything outside a
-    // frame is still reached by Tab and still has to show its ring; the one
-    // thing no longer proved is that Tab is what crosses the frame's far
-    // edge.
+    // once more or by using "Skip past the map". That is the sweep's limit
+    // and not the screen's - the frame has sat above the cells since
+    // A5.5-08, and the walk into it is asserted on its own in
+    // `notebook-a11y.spec.ts`.
+    //
+    // So focus is put down on the first control after the frame, by hand
+    // and in document order. **That is a real reduction in what this sweep
+    // proves**, and it is taken deliberately, because a document cannot see
+    // into a cross-origin frame and no amount of pressing Tab out here will
+    // tell it what happened in there. What is still proved: every control
+    // outside a frame is reached by Tab and shows its ring. What is not:
+    // that a press of Tab is what crosses a frame's far edge - one control
+    // per frame, which on the project screen is cell 01's heading row, and
+    // which is still swept for its name and its ring.
     if (state === 'frame' && !frameIsEnd) {
       const landed = await page.evaluate(() =>
         (window as unknown as { __a11y: Probe }).__a11y.past(),
