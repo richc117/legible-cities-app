@@ -4,6 +4,7 @@ import type { ProjectRecord } from '../../../../shared/project'
 import DiagnosticsView from '../../Diagnostics'
 import LayoutRunView from '../../LayoutRun'
 import Cell from '../Cell'
+import { processFooter } from '../CellFooter'
 import type { CellViewProps } from '../cells'
 import { useProject } from '../context'
 import EngineLog from '../EngineLog'
@@ -59,6 +60,7 @@ export default function ProcessCell({ cell, state, open, onToggle }: CellViewPro
       summary={processSummary(project)}
       open={open}
       onToggle={onToggle}
+      footer={processFooter(project)}
     >
       {project !== null && (
         <>

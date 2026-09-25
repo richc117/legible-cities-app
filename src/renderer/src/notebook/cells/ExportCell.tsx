@@ -1,6 +1,7 @@
 import { useRef, type JSX } from 'react'
 import ExportTab from '../../ExportTab'
 import Cell from '../Cell'
+import { exportFooter } from '../CellFooter'
 import type { CellViewProps } from '../cells'
 import { useProject } from '../context'
 
@@ -56,6 +57,7 @@ export default function ExportCell({ cell, state, open, onToggle }: CellViewProp
       open={open}
       onToggle={toggle}
       headingRef={heading}
+      footer={exportFooter(exporter.snapshot)}
     >
       {project !== null && (
         <ExportTab

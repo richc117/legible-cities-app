@@ -1104,3 +1104,66 @@ test("cell 02 draws the engine's lines with the keys out, and its Copy log write
     ).toEqual([])
   })
 })
+
+// The provenance footer (A5.5-11): the strip under a cell's controls saying
+// where what the cell holds came from. Three cells have one; the other three
+// have nothing true to put in it and draw no strip at all.
+test('the three cells with provenance carry it, the other three carry none, and none carries a path', async () => {
+  const engineHome = home({
+    map_draws: true,
+    progress_delay_ms: 10,
+    service_window: ['2026-03-01', '2026-11-30'],
+    busiest: '2026-06-16',
+  })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    const group = (id: Parameters<typeof cellLabel>[0]): Locator =>
+      page.getByRole('group', { name: cellLabel(id), exact: true })
+
+    // Before the run there is no layout and no window, so neither cell has
+    // provenance: no strip, rather than a strip of empty terms.
+    await expect(group('process').locator('.cell-footer')).toHaveCount(0)
+    await expect(group('frame').locator('.cell-footer')).toHaveCount(0)
+
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    const record = readRecord(engineHome)
+
+    // Cell 02: the layout's eight characters, when the engine made it, what
+    // it was made with, and the engine and LOOM this app runs.
+    const process = group('process').locator('.cell-footer')
+    await expect(process).toBeVisible()
+    await expect(process).toContainText(String(record.layout).slice(0, 8))
+    await expect(process).toContainText('Built with')
+    // The exact moment on the element; the text beside it is the person's
+    // own locale, which is the machine's business and not this test's.
+    await expect(process.locator('time')).toHaveAttribute('datetime', String(record.made))
+    await expect(process).toContainText(PINNED_ENGINE)
+    await expect(process).toContainText('the host reported no commit')
+
+    // Cell 03: the day against the window the same run stored, and whose
+    // choice the day was.
+    const frame = group('frame').locator('.cell-footer')
+    await expect(frame).toContainText('2026-06-16')
+    await expect(frame).toContainText('2026-03-01 to 2026-11-30')
+    await expect(frame).toContainText('the busiest weekday')
+
+    // Cells 01, 04 and 05 have nothing true to report and say nothing.
+    for (const id of ['data', 'style', 'lines'] as const) {
+      await expect(group(id).locator('.cell-footer'), id).toHaveCount(0)
+    }
+
+    // No path on any of it, whatever the engine answered: `engine.info`
+    // carries the home, and a footer is the newest place it could land.
+    for (const id of ['data', 'process', 'frame', 'style', 'lines', 'export'] as const) {
+      const strip = group(id).locator('.cell-footer')
+      if ((await strip.count()) === 0) continue
+      const text = await strip.innerText()
+      expect(text, id).not.toContain(engineHome)
+      // A day carries hyphens and a locale's date carries slashes, so what
+      // is looked for is something path-shaped: a token that begins with a
+      // separator or a drive letter.
+      expect(text, id).not.toMatch(/(^|\s)(\/|~\/|[A-Za-z]:\\)/)
+    }
+  })
+})

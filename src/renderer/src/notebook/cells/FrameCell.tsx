@@ -2,6 +2,7 @@ import { useRef, type JSX } from 'react'
 import type { ProjectRecord } from '../../../../shared/project'
 import ServiceDay, { dayUndrawn } from '../../ServiceDay'
 import Cell from '../Cell'
+import { frameFooter } from '../CellFooter'
 import type { CellViewProps } from '../cells'
 import { useProject } from '../context'
 
@@ -60,6 +61,7 @@ export default function FrameCell({ cell, state, open, onToggle }: CellViewProps
       open={open}
       onToggle={onToggle}
       headingRef={heading}
+      footer={frameFooter(project)}
     >
       {project !== null && (
         <>
