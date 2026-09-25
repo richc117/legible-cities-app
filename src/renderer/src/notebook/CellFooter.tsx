@@ -1,12 +1,9 @@
-import { Fragment, useEffect, useState, type JSX } from 'react'
-import { withoutPaths } from '../../../shared/engine'
+import { Fragment, type JSX } from 'react'
+import { withoutPaths, type EngineState } from '../../../shared/engine'
 import { shortLayoutId } from '../../../shared/layout'
 import type { ProjectRecord } from '../../../shared/project'
-import type { EngineInfo } from '../../../shared/protocol'
 import type { ExportSnapshot } from '../engine/exportRun'
-import { engineClient } from '../engine/runs'
 import { describeInputs } from '../LayoutRun'
-import { useProject } from './context'
 import Time from './Time'
 
 // The provenance footer (A5.5-11, ADR-045, DESIGN.md 8.2, "The cell"): the
@@ -53,8 +50,8 @@ import Time from './Time'
 //     A value that would show a path is **refused**: its row is not drawn.
 //
 // Nothing here reaches for a field that holds a path, so neither half fires
-// today; both exist for the branch that reaches for `EngineInfo.home` or an
-// export's destination without meaning to.
+// today; both exist for the branch that reaches for an export's
+// destination, or for the engine home in `engine.info`, without meaning to.
 
 /** One row of the strip: what it is, and what it says. */
 export interface Fact {
@@ -111,33 +108,42 @@ export default function CellFooter({
 
 // ---------------------------------------------------------------- cell 02
 
-/** A commit as git writes it short; the engine answers the whole hash. */
-const shortCommit = (commit: string): string => commit.slice(0, 7)
-
 /**
  * What cell 02's strip says: the stored layout's own eight characters, when
- * the engine made it, what it was made with, and the engine and LOOM this
- * app is running.
+ * the engine made it, what it was made with, and the engine this app is
+ * running.
  *
- * **The last two say "now" in the term itself**, and that word is the whole
- * point of them. They are read from `engine.info` as Settings reads it, so
- * they are this moment's, while the three above them are the stored
- * layout's; five bare terms in one strip read top to bottom would tell a
- * person the layout was made by engine 0.8.3, which is precisely what the
- * record cannot say - it does not keep the versions that made the layout,
- * and inventing them would be the app asserting something the engine did
- * not (constitution II). A comment cannot fix that, because a comment is
- * not on the screen; the term is.
+ * **The last one says "now" in the term itself**, and that word is the
+ * whole point of it. It is this moment's, while the three above it are the
+ * stored layout's; four bare terms in one strip read top to bottom would
+ * tell a person the layout was made by engine 0.8.3, which is precisely
+ * what the record cannot say - it does not keep the version that made the
+ * layout, and inventing one would be the app asserting something the engine
+ * did not (constitution II). A comment cannot fix that, because a comment
+ * is not on the screen; the term is.
  *
- * "Now" and not "running": the engine is a sidecar process and is running,
- * but LOOM is a binary the engine shells out to for a layout and nothing
- * named LOOM is running while a person reads this - beside a spinner,
- * "LOOM running" would read as a job in flight. Settings calls the same two
- * fields "LOOM backend" and "LOOM commit" for the same reason.
+ * "Now" and not "running": a version is not a process, and beside a spinner
+ * "running" reads as a job in flight.
  *
- * They belong here even so, because they are what a layout run in this
- * cell would use, and a person reporting a map that looks wrong is asked
- * for them first.
+ * **It is the supervisor's own state, not an `engine.info` request**, and
+ * that is not a detail (issue #212, macOS CI on #211's test "opening the
+ * engine log leaves the notebook where it was"). A request made when the
+ * strip mounts answers a round trip later, and this strip mounts at the
+ * moment a first layout run ends, so the notebook grew by one wrapped row -
+ * `--line-ui` and one `--space-2-2` of row gap, 24px exactly - a beat after
+ * the run said it had finished. Everything below it moved then, under the
+ * hands of a person who had just watched the run end, and a test that
+ * measured the column's scroll across that beat measured a document still
+ * settling. The state carries the engine's version already, synchronously,
+ * and the engine must be ready for a layout to have happened at all: the
+ * strip now draws its final height on its first paint, from the record and
+ * one field the screen already holds.
+ *
+ * The LOOM commit went with the request, because it is the one thing here
+ * the state does not carry. It stays in Settings, which names it "LOOM
+ * commit" beside "LOOM backend", and in "Copy diagnostics", which is what
+ * a bug report is made of. A version that makes the notebook reflow after
+ * every first layout is worth less than the same version one screen away.
  *
  * A project with no layout has no provenance at all: the cell's own field
  * says "not laid out yet", and a strip of empty terms under it would say
@@ -145,7 +151,7 @@ const shortCommit = (commit: string): string => commit.slice(0, 7)
  */
 export function processFacts(
   project: Pick<ProjectRecord, 'layout' | 'made' | 'built'>,
-  info: EngineInfo | null,
+  engine: EngineState | null,
 ): Fact[] {
   if (project.layout === null) return []
   const facts: Fact[] = [{ term: 'Layout', value: shortLayoutId(project.layout) }]
@@ -157,21 +163,22 @@ export function processFacts(
   // rather than guarded against here.
   if (project.built !== null)
     facts.push({ term: 'Built with', value: describeInputs(project.built) })
-  if (info !== null) {
-    facts.push({ term: 'Engine now', value: info.engine })
-    facts.push({
-      term: 'LOOM now',
-      value:
-        info.loom.commit === null
-          ? `${info.loom.backend}, the host reported no commit`
-          : `${info.loom.backend}, ${shortCommit(info.loom.commit)}`,
-    })
-  }
+  // Only a ready engine has a version to give. An engine that has gone away
+  // takes the row with it, which is a change of height - but an engine
+  // restarting is a thing a person is being told about in the header at the
+  // same moment, not a beat after a run they were watching.
+  if (engine !== null && engine.state === 'ready')
+    facts.push({ term: 'Engine now', value: engine.version })
   return facts
 }
 
 /**
- * Cell 02's footer, with the engine's versions once it has answered.
+ * Cell 02's footer, or nothing at all before the project has a layout.
+ *
+ * One function, called by the notebook's own cell and by the sample page,
+ * so the two cannot compose the same strip differently. It is a plain
+ * function and not a component now: with the request gone there is no state
+ * to hold, and everything it draws is an argument.
  *
  * The record's inputs having moved since the layout was made (A2-02) is
  * **not** said here, though the strip is where provenance goes. A2-02's
@@ -182,69 +189,12 @@ export function processFacts(
  * words on screen twice in one cell, which is duplication rather than
  * consistency. `Built with` is the fact under it, and it stays.
  */
-function ProcessFooter({
-  project,
-}: {
-  project: Pick<ProjectRecord, 'layout' | 'made' | 'built'>
-}): JSX.Element {
-  return processStrip(project, useEngineInfo())
-}
-
-/**
- * Cell 02's strip, composed once: the notebook draws it through
- * `ProcessFooter` and the sample page draws it directly, and neither
- * composes it itself.
- *
- * Cells 03 and 06 cannot drift from the page that shows them, because both
- * callers go through one builder. Cell 02 is the one that has to ask the
- * engine, so its builder takes the answer as an argument - which left the
- * composition in two places, and the prop that would have differed between
- * them is `note`, the one the comment above spends eleven lines on.
- */
-export function processStrip(
-  project: Pick<ProjectRecord, 'layout' | 'made' | 'built'>,
-  info: EngineInfo | null,
-): JSX.Element {
-  return <CellFooter facts={processFacts(project, info)} />
-}
-
-/**
- * The engine's own versions, asked for once the engine is ready and again
- * if it restarts into another build. The same request Settings makes, and
- * the same handling of a refusal: the strip draws what the record knows and
- * says nothing about versions it could not get.
- */
-function useEngineInfo(): EngineInfo | null {
-  const { engine } = useProject()
-  const ready = engine?.state === 'ready'
-  const [info, setInfo] = useState<EngineInfo | null>(null)
-  useEffect(() => {
-    if (!ready) {
-      setInfo(null)
-      return
-    }
-    let left = false
-    engineClient()
-      .request('engine.info')
-      .result.then(
-        (answer) => {
-          if (!left) setInfo(answer)
-        },
-        () => undefined,
-      )
-    return () => {
-      left = true
-    }
-  }, [ready])
-  return info
-}
-
-/** Cell 02's footer, or nothing at all before the project has a layout. */
 export function processFooter(
   project: (Pick<ProjectRecord, 'layout' | 'made' | 'built'> | null) | undefined,
+  engine: EngineState | null,
 ): JSX.Element | undefined {
   if (project == null || project.layout === null) return undefined
-  return <ProcessFooter project={project} />
+  return <CellFooter facts={processFacts(project, engine)} />
 }
 
 // ---------------------------------------------------------------- cell 03

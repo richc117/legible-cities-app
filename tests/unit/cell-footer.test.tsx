@@ -22,23 +22,22 @@ import CellFooter, {
   processFacts,
   SIDECAR_NOTE,
 } from '../../src/renderer/src/notebook/CellFooter'
-import type { EngineInfo } from '../../src/shared/protocol'
+import type { EngineState } from '../../src/shared/engine'
 import type { ProjectRecord, ServiceWindow } from '../../src/shared/project'
 
 const renderer = resolve(__dirname, '../../src/renderer/src')
 
 const LAYOUT = 'd1deeb11f0c4ab93e2f5d0a7b6c5e4d3c2b1a09876543210fedcba9876543210'
 
-const INFO: EngineInfo = {
-  engine: '0.8.3',
-  protocol: 1,
-  python: '3.12.7',
-  loom: { commit: '6c38a2f1d0e9b8a7c6d5e4f3a2b1c0d9e8f7a6b5', backend: 'native' },
-  ffmpeg: 'ffmpeg',
-  // The one absolute path `engine.info` carries. It has no business on a
-  // screen, and the strip is the place a later branch would reach for it.
-  home: '/Volumes/Work/legible-cities/engine',
-}
+/** The supervisor's own state, which is what the project screen holds. */
+const READY: EngineState = { state: 'ready', version: '0.8.3', protocol: 1 }
+
+/**
+ * A path of the kind the strip must never print. `engine.info`'s `home` was
+ * the one in reach until the strip stopped asking for it (#212); an
+ * export's destination is the next.
+ */
+const A_PATH = '/Volumes/Work/legible-cities/engine'
 
 const WINDOW: ServiceWindow = {
   start: '2026-03-01',
@@ -85,27 +84,44 @@ describe('cell 02’s provenance', () => {
   })
 
   it('says nothing about a layout that does not exist, or about facts the record lacks', () => {
-    expect(processFacts(project({ layout: null }), INFO)).toEqual([])
+    expect(processFacts(project({ layout: null }), READY)).toEqual([])
     expect(terms(processFacts(project({ made: null, built: null }), null))).toEqual(['Layout'])
   })
 
-  it('names the engine and LOOM as this moment’s, in the term, and neither before they answer', () => {
-    expect(terms(processFacts(project(), null))).not.toContain('Engine now')
-    const facts = processFacts(project(), INFO)
-    // The tense is in the term and not in a comment: the three above these
-    // describe the stored layout and these two describe this moment, and a
+  it('names the engine as this moment’s, in the term, and only when it is ready', () => {
+    // The tense is in the term and not in a comment: the three above it
+    // describe the stored layout and this one describes this moment, and a
     // bare "Engine" in a provenance strip says the layout was made by it.
-    // "Now" and not "running", because nothing named LOOM is running while
-    // this is read - it is a binary the engine shells out to per layout.
-    expect(terms(facts)).toEqual(['Layout', 'Made', 'Built with', 'Engine now', 'LOOM now'])
+    const facts = processFacts(project(), READY)
+    expect(terms(facts)).toEqual(['Layout', 'Made', 'Built with', 'Engine now'])
     expect(facts[3].value).toBe('0.8.3')
-    // The commit as git writes it short, beside the backend that built it.
-    expect(facts[4].value).toBe('native, 6c38a2f')
+    for (const engine of [
+      null,
+      { state: 'starting', attempt: 1 },
+      { state: 'unavailable', reason: 'no python' },
+    ] as (EngineState | null)[]) {
+      expect(terms(processFacts(project(), engine))).not.toContain('Engine now')
+    }
   })
 
-  it('says what Settings says when the host reported no LOOM commit', () => {
-    const facts = processFacts(project(), { ...INFO, loom: { commit: null, backend: 'docker' } })
-    expect(facts[4].value).toBe('docker, the host reported no commit')
+  it('draws its whole self from what the screen already holds, asking the engine nothing', () => {
+    // #212: the version came from an `engine.info` request made when the
+    // strip mounted, which is the moment a first layout run ends, so the
+    // notebook grew by one wrapped row - 20px of `--line-ui` and 4px of
+    // row gap, 24px - a beat after the run said it had finished, and
+    // everything below cell 02 moved under the reader's hands. The state
+    // the screen already holds carries the version, synchronously.
+    // Its own comments say why the request is gone, and are not the code.
+    const code = readFileSync(join(renderer, 'notebook/CellFooter.tsx'), 'utf8')
+      .split('\n')
+      .filter((line) => !/^\s*(\*|\/\/|\/\*)/.test(line))
+      .join('\n')
+    for (const asking of ['engine.info', 'engineClient', 'useEffect', 'useState']) {
+      expect(code, asking).not.toContain(asking)
+    }
+    // Every row the strip can draw comes from an argument, so its height is
+    // settled on its first paint.
+    expect(terms(processFacts(project(), READY))).toHaveLength(4)
   })
 
   it('leaves A2-02’s moved-inputs sentence to the panel that acts on it', () => {
@@ -275,10 +291,10 @@ describe('a footer prints no absolute path, on any platform', () => {
   })
 
   it('does not print the engine home, wherever a value comes from', () => {
-    const facts = processFacts(project(), INFO)
-    const html = renderToStaticMarkup(<CellFooter facts={facts} note={INFO.home} />)
-    expect(html).not.toContain(INFO.home)
-    expect(JSON.stringify(facts)).not.toContain(INFO.home)
+    const facts = processFacts(project(), READY)
+    const html = renderToStaticMarkup(<CellFooter facts={facts} note={A_PATH} />)
+    expect(html).not.toContain(A_PATH)
+    expect(JSON.stringify(facts)).not.toContain(A_PATH)
     // A note is a sentence, which is what `withoutPaths` is for, so it is
     // rewritten rather than refused.
     expect(html).toContain('a file')
@@ -327,7 +343,7 @@ describe('which cells reach for a footer at all', () => {
     const preview = readFileSync(join(renderer, 'notebook/CellPreview.tsx'), 'utf8')
     // The same three builders the cells call, and cell 02's own
     // composition rather than a second one assembled here.
-    for (const builder of ['processStrip(', 'frameFooter(', 'exportFooter(']) {
+    for (const builder of ['processFooter(', 'frameFooter(', 'exportFooter(']) {
       expect(preview, builder).toContain(builder)
     }
     expect(preview).not.toMatch(/<span>[^<]*LOOM[^<]*<\/span>/)
@@ -362,7 +378,7 @@ describe('no term the strip draws is caught by a page-wide locator in the e2e su
   const suite = resolve(__dirname, '../e2e')
 
   const strip = [
-    ...processFacts(project(), INFO),
+    ...processFacts(project(), READY),
     ...frameFacts({ date: '2026-03-17', service: WINDOW }),
     ...exportFacts({ state: 'done', file: 'los-angeles-reel.mp4' }),
   ].map((fact) => fact.term)

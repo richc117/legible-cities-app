@@ -1139,10 +1139,12 @@ test('the three cells with provenance carry it, the other three carry none, and 
     // The exact moment on the element; the text beside it is the person's
     // own locale, which is the machine's business and not this test's.
     await expect(process.locator('time')).toHaveAttribute('datetime', String(record.made))
+    // The engine the app is running, from the supervisor's own state: the
+    // strip asks the engine nothing, so it has its whole height the moment
+    // it appears and the notebook does not reflow a beat after a run (#212).
     await expect(process).toContainText('Engine now')
     await expect(process).toContainText(PINNED_ENGINE)
-    await expect(process).toContainText('LOOM now')
-    await expect(process).toContainText('the host reported no commit')
+    await expect(process).not.toContainText('LOOM now')
     // And A2-02's moved-inputs sentence is the panel's, not the strip's: it
     // ends in a prompt to act, and it sits beside the button that acts.
     await expect(process).not.toContainText('lay out to draw with')

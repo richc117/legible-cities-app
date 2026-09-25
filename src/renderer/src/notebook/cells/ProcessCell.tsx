@@ -60,7 +60,7 @@ export default function ProcessCell({ cell, state, open, onToggle }: CellViewPro
       summary={processSummary(project)}
       open={open}
       onToggle={onToggle}
-      footer={processFooter(project)}
+      footer={processFooter(project, engine)}
     >
       {project !== null && (
         <>
