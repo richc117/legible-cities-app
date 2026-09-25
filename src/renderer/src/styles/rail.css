@@ -18,11 +18,25 @@
    component, and the four token files stay the only place a literal may
    appear (A5.5-07). */
 
+/* The width is `--rail-space` and not a width of its own, and that is
+   load-bearing rather than tidy. The same variable is the main region's
+   `padding-left` and the term the map subtracts from `100vw`
+   (`project.css`, `panels.css`), so the rail's box and the space reserved
+   for it are one value and cannot drift apart. If they ever did, the band
+   is opaque and would take the presses meant for a step, with nothing to
+   fail. A rule that gave this a width of its own would be that bug.
+
+   Drawn one step under the header's layer, for the reason `preview.css`
+   gives at length: how the header's forty pixels and its one-pixel rule
+   divide between its box and its border is not something a stylesheet can
+   read, and this is pinned at the token. Under the header, any pixel of
+   overlap is behind it. */
 .rail {
   position: fixed;
   left: 0;
   top: var(--header-height);
   bottom: 0;
+  z-index: calc(var(--layer-raised) - 1);
   box-sizing: border-box;
   width: var(--rail-space);
   overflow-y: auto;
@@ -87,33 +101,25 @@
   white-space: nowrap;
 }
 
-/* The state as a word, in the state's own colour, exactly as the cell's own
-   row says it (notebook.css) - and on --surface only. The two grounds a
-   step takes under the pointer and as the current step are not in section
-   3's scoping table for the status colours, so on those the word goes back
-   to --text-muted and the cell's own icon-and-word pair carries the colour.
-   Never a colour alone either way: the word is the state. */
+/* The state as a word, quiet, on every ground and in every state.
+
+   **A step draws no status hue at all**, and that is the decision rather
+   than an omission. Principle 1 and section 3 say a status always carries
+   an icon and a word and never appears as a hue by itself; the step has
+   room for a number, a name and a word and not for a fourth thing, so
+   colouring the word here would be the hue by itself - the case the rule
+   names. The cell the step points at draws the same state as an icon and a
+   word in the state's own colour (notebook.css), which is where a status
+   belongs and where a person reading it is going.
+
+   It would also be the hue on the wrong ground: --surface-hover and
+   --surface-selected, which a step takes under the pointer and as the
+   current step, are not in section 3's scoping table for the status
+   colours at all. --text-muted is above on both. */
 .rail-state {
   flex: none;
   color: var(--text-muted);
   font-size: var(--font-ui-small);
-}
-
-.rail-step[data-state='running'] .rail-state {
-  color: var(--accent-text);
-}
-
-.rail-step[data-state='stale'] .rail-state {
-  color: var(--warning);
-}
-
-.rail-step[data-state='error'] .rail-state {
-  color: var(--error);
-}
-
-.rail-step:hover .rail-state,
-.rail-step[aria-current='step'] .rail-state {
-  color: var(--text-muted);
 }
 
 /* Outputs: what the project has produced, newest first, read from the
@@ -166,10 +172,23 @@
 }
 
 /* A file moved or deleted since: the row stays, because what was made is
-   still worth saying, and there is nothing to press. */
+   still worth saying, and there is nothing to press.
+
+   The one status the rail does draw, and it draws it in full: the warning
+   icon and the sentence, never the hue alone (principle 1, section 3), on
+   --surface, which is the ground that table allows --warning on. It is a
+   condition of the row rather than a label on a control, so unlike the
+   step's state word it has somewhere to put the icon. */
 .output-gone {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2-2);
   color: var(--warning);
   font-size: var(--font-ui-small);
+}
+
+.output-gone .icon {
+  flex: none;
 }
 
 /* Collapsed to its numbers below 900px, where the media query says

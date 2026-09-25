@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useState, type JSX } from 'react'
+import { useCallback, useEffect, useRef, useState, type JSX } from 'react'
 import type { ExportOutput } from '../../../shared/export'
+import { useFocusHandback } from '../focusHandback'
+import Icon from '../icons/Icon'
 import Button from '../kit/Button'
 import { useProject } from './context'
 import Time from './Time'
@@ -18,6 +20,14 @@ import Time from './Time'
 // made; Reveal opens the folder, and the main process is the only side that
 // ever knows which folder that is. A file moved or deleted since reads as
 // gone rather than failing on a press, and offers nothing to press.
+//
+// Which is a control that goes with the press that used it (A6-07): the
+// Reveal answers false, the list is read again, the row turns to a
+// sentence, and the button a person just pressed leaves the document.
+// Chromium puts focus on the body then, and a keyboard user is thrown to
+// the top of the screen with nothing said, so focus is handed to this
+// section's own heading - `useFocusHandback` hands it over only when the
+// element that went was this region's and focus has nowhere else to be.
 
 /** What a row says when its preset is missing from the sidecar. */
 export const UNNAMED_PRESET = 'an export'
@@ -32,6 +42,12 @@ export default function Outputs(): JSX.Element | null {
   const { project, exportSnapshot } = useProject()
   const id = project?.id ?? null
   const [rows, setRows] = useState<ExportOutput[] | null>(null)
+  const sectionRef = useRef<HTMLElement>(null)
+  const headingRef = useRef<HTMLHeadingElement>(null)
+  // The heading and not another row's Reveal: the rows are a person's own
+  // files and which one takes the place of one that went is not this
+  // region's to decide, while the heading says where the person now is.
+  useFocusHandback(sectionRef, () => headingRef.current, rows)
 
   const read = useCallback((): void => {
     if (id === null) return
@@ -54,8 +70,10 @@ export default function Outputs(): JSX.Element | null {
 
   if (id === null) return null
   return (
-    <section className="rail-outputs" aria-labelledby="outputs-heading">
-      <h2 id="outputs-heading">Outputs</h2>
+    <section className="rail-outputs" aria-labelledby="outputs-heading" ref={sectionRef}>
+      <h2 id="outputs-heading" tabIndex={-1} ref={headingRef}>
+        Outputs
+      </h2>
       {rows !== null && rows.length === 0 && <p className="rail-empty">{NOTHING_YET}</p>}
       {rows !== null && rows.length > 0 && (
         <ul className="outputs">
@@ -83,7 +101,10 @@ export default function Outputs(): JSX.Element | null {
                   Reveal
                 </Button>
               ) : (
-                <span className="output-gone">{GONE}</span>
+                <span className="output-gone">
+                  <Icon name="warning" />
+                  {GONE}
+                </span>
               )}
             </li>
           ))}

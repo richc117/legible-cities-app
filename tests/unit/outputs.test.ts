@@ -12,11 +12,11 @@
 // The guards are here too. The page names a file and never a folder, so a
 // name that is a path must resolve to nothing at all.
 
-import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { Outputs, registerOutputHandlers } from '../../src/main/outputs'
+import { Outputs, SCAN_MAX, SIDECAR_MAX, registerOutputHandlers } from '../../src/main/outputs'
 import { CHANNELS } from '../../src/shared/api'
 import { OUTPUTS_MAX } from '../../src/shared/export'
 import type { ProjectRecord } from '../../src/shared/project'
@@ -152,9 +152,83 @@ describe('the outputs a project has', () => {
     }
   })
 
+  it('never opens a sidecar too big to be one, however new it is', async () => {
+    // The freeze this bounds: a person points a project's destination at a
+    // folder they already use, and one large .json in it gets read whole and
+    // parsed on the process that owns the engine's framing, the window and
+    // any running export.
+    //
+    // Asserted from the answer rather than by watching the reads. This file
+    // is a *valid* sidecar beside a file that is really there, and the
+    // newest thing in the folder - so the only thing that can keep it out of
+    // the list is that its size was looked at before its contents.
+    await mkdir(folder(), { recursive: true })
+    const huge = join(folder(), 'huge.mp4.json')
+    await writeFile(
+      huge,
+      JSON.stringify({ file: 'huge.mp4', preset: 'x', pad: 'y'.repeat(SIDECAR_MAX) }),
+    )
+    await writeFile(join(folder(), 'huge.mp4'), 'x')
+    const later = new Date('2030-01-01T00:00:00.000Z')
+    await utimes(huge, later, later)
+    await wrote('la-reel.mp4', 'instagram-reel', '2026-09-20T10:00:00.000Z')
+
+    expect((await outputs().outputs.list(PROJECT.id)).map((r) => r.file)).toEqual(['la-reel.mp4'])
+  })
+
+  it('opens at most SCAN_MAX sidecars, whatever else the folder holds', async () => {
+    // A folder of somebody else's JSON, every file of it newer than the one
+    // export: the cap has to bound the reading and not only the answer, or a
+    // person's own folder decides how long the main process is busy.
+    //
+    // Again from the answer: bounded, the walk stops before it reaches the
+    // export and the list is empty. Unbounded, it reads every one of them
+    // and the export is there at the end of it - which is the reading this
+    // is here to refuse.
+    await wrote('la-reel.mp4', 'instagram-reel', '2026-01-01T00:00:00.000Z')
+    await mkdir(folder(), { recursive: true })
+    for (let i = 0; i < SCAN_MAX + 20; i++) {
+      const theirs = join(folder(), `theirs-${String(i).padStart(4, '0')}.json`)
+      await writeFile(theirs, '{"note":"not an export"}')
+      const later = new Date('2030-01-01T00:00:00.000Z')
+      await utimes(theirs, later, later)
+    }
+    expect(await outputs().outputs.list(PROJECT.id)).toEqual([])
+  })
+
   it('refuses to read anything while the engine’s home is being removed', async () => {
     const { outputs: o } = outputs({ blocked: () => 'a reset is running' })
     await expect(o.list(PROJECT.id)).rejects.toThrow('a reset is running')
+  })
+})
+
+describe('a folder that cannot be read', () => {
+  // A folder the process may not list. Windows does not refuse a directory
+  // listing on a mode bit, so there is nothing to make fail there; the guard
+  // itself is the same on every platform.
+  const unreadable = it.skipIf(process.platform === 'win32')
+
+  unreadable('rejects with the code alone, never with the path Node puts in it', async () => {
+    // It reaches no screen today, because the page turns a failed read into
+    // an empty list - but the preload hands a rejection's message to the
+    // page verbatim, and Node writes the path it failed on into that
+    // message ("EACCES: permission denied, scandir '/Users/…'"). One future
+    // `catch` that renders it would be a leak with no change here.
+    await mkdir(folder(), { recursive: true })
+    await chmod(folder(), 0o000)
+    try {
+      const message = await outputs()
+        .outputs.list(PROJECT.id)
+        .then(
+          () => 'it did not reject',
+          (error: unknown) => (error as Error).message,
+        )
+      expect(message).toBe('EACCES')
+      expect(message).not.toContain(root)
+      expect(message).not.toMatch(/[/\\]/)
+    } finally {
+      await chmod(folder(), 0o700)
+    }
   })
 })
 
@@ -173,6 +247,46 @@ describe('revealing one of them', () => {
     const { outputs: o, shown } = outputs()
     expect(await o.reveal(PROJECT.id, 'la-reel.mp4')).toBe(false)
     expect(shown).toEqual([])
+  })
+
+  it('reveals a row the list’s cap left out, without walking the folder', async () => {
+    // A press looks its one candidate up by name and opens that sidecar
+    // alone, so it costs the same whichever row was pressed and is not
+    // limited by what the list had room to show. If a press went through
+    // `list`, this would answer false: the export is the oldest thing here
+    // and the scan stops long before it.
+    await wrote('la-reel.mp4', 'instagram-reel', '2026-01-01T00:00:00.000Z')
+    await mkdir(folder(), { recursive: true })
+    for (let i = 0; i < SCAN_MAX + 20; i++) {
+      const theirs = join(folder(), `theirs-${String(i).padStart(4, '0')}.json`)
+      await writeFile(theirs, '{"note":"not an export"}')
+      const later = new Date('2030-01-01T00:00:00.000Z')
+      await utimes(theirs, later, later)
+    }
+    const { outputs: o, shown } = outputs()
+    expect(await o.list(PROJECT.id), 'the cap left it out').toEqual([])
+    expect(await o.reveal(PROJECT.id, 'la-reel.mp4')).toBe(true)
+    expect(shown).toEqual([join(folder(), 'la-reel.mp4')])
+  })
+
+  it('shows the folder it checked, even if the destination moved meanwhile', async () => {
+    // The folder is resolved once and that one is shown. Resolved twice, a
+    // destination changed between the check and the press would send the
+    // platform to a file this never looked at.
+    await wrote('la-reel.mp4', 'instagram-reel', '2026-09-20T10:00:00.000Z')
+    const elsewhere = join(root, 'moved')
+    let asked = 0
+    const { outputs: o, shown } = outputs({
+      projects: {
+        get: async () => {
+          asked += 1
+          return asked === 1 ? PROJECT : { ...PROJECT, destination: elsewhere }
+        },
+      },
+    })
+    expect(await o.reveal(PROJECT.id, 'la-reel.mp4')).toBe(true)
+    expect(shown).toEqual([join(folder(), 'la-reel.mp4')])
+    expect(shown[0]).not.toContain(elsewhere)
   })
 
   it('reveals nothing for a name the folder does not hold', async () => {
@@ -211,6 +325,21 @@ describe('the two handlers', () => {
       expect(await call({}, PROJECT.id, name)).toBe(false)
     }
     expect(reveal).not.toHaveBeenCalled()
+  })
+
+  it('passes a bare name through, and answers what the reveal answered', async () => {
+    // The refusals above all hand in a source that reveals nothing, so a
+    // handler that answered false unconditionally would satisfy every one
+    // of them. This is the press that has to reach the folder.
+    const reveal = vi.fn(async () => true)
+    const list = vi.fn(async () => [])
+    const handlers = registered({ list, reveal })
+    expect(await handlers.get(CHANNELS.exportRevealOutput)!({}, PROJECT.id, 'la-reel.mp4')).toBe(
+      true,
+    )
+    expect(reveal).toHaveBeenCalledWith(PROJECT.id, 'la-reel.mp4')
+    expect(await handlers.get(CHANNELS.exportOutputs)!({}, PROJECT.id)).toEqual([])
+    expect(list).toHaveBeenCalledWith(PROJECT.id)
   })
 
   it('refuses any frame but the interface’s own top one', async () => {

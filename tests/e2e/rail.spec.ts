@@ -220,6 +220,18 @@ test('a file moved or deleted since reads as gone, and offers nothing to press',
     await expect(outputs.getByText('the file has been moved or deleted')).toBeVisible()
     await expect(outputs.getByText('instagram-reel')).toBeVisible()
     await expect(reveal).toHaveCount(0)
+    // An icon beside the sentence, never the hue by itself (principle 1).
+    await expect(outputs.locator('.output-gone .icon')).toHaveCount(1)
+
+    // And the button went under a person's finger, so focus went with it:
+    // handed to this section's heading rather than dropped on the body,
+    // which throws a keyboard user to the top of the screen with nothing
+    // said (A6-07, `focusHandback.ts`).
+    await expect(outputs.getByRole('heading', { name: 'Outputs' })).toBeFocused()
+    expect(
+      await page.evaluate(() => document.activeElement?.tagName.toLowerCase() ?? 'nothing'),
+      'focus is not on the body',
+    ).toBe('h2')
   })
 })
 

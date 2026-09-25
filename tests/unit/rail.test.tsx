@@ -12,6 +12,8 @@
 // looks like a step that did nothing, and the remedy that suggests itself
 // is the one issue 213 measured and withdrew.
 
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { ProjectProvider } from '../../src/renderer/src/notebook/context'
@@ -95,6 +97,15 @@ describe('the rail’s stepper', () => {
     expect(draw()).not.toContain('aria-current')
   })
 
+  it('gives the Outputs heading somewhere for focus to land', () => {
+    // Reveal is a control that goes with the press that used it: the file
+    // turns out to be gone, the row becomes a sentence, and the button
+    // leaves the document under a person's finger (A6-07). The handback
+    // needs an element to hand to, and a heading only takes focus if it is
+    // told to.
+    expect(draw()).toContain('<h2 id="outputs-heading" tabindex="-1">')
+  })
+
   it('draws the Outputs heading, and no list until the folder has answered', () => {
     const drawn = draw()
     expect(drawn).toContain('id="outputs-heading"')
@@ -104,6 +115,49 @@ describe('the rail’s stepper', () => {
     // different things, and a folder with ten files in it must never flash
     // the first on its way to the second.
     expect(drawn).not.toContain('class="rail-empty"')
+  })
+})
+
+describe('the rail draws no status as a hue by itself', () => {
+  // Principle 1 and section 3: a status carries an icon and a word and is
+  // never a bare stroke. A step has room for a number, a name and a word
+  // and not for a fourth thing, so its state word is --text-muted in every
+  // state and the cell it points at carries the colour. Written down in
+  // DESIGN.md 8.2 as well; this is what stops it being narrowed back by
+  // omission, which is how it went wrong the first time.
+  const css = readFileSync(
+    resolve(__dirname, '../../src/renderer/src/styles/rail.css'),
+    'utf8',
+  ).replace(/\/\*[\s\S]*?\*\//g, '')
+
+  /** Every rule's selector and body, comments already stripped. */
+  const rules = (): { selector: string; body: string }[] =>
+    [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({
+      selector: m[1].trim(),
+      body: m[2],
+    }))
+
+  const STATUS = ['--error', '--warning', '--success', '--accent-text', '--accent']
+
+  it('gives a step no status colour, in any state or on any ground', () => {
+    for (const { selector, body } of rules()) {
+      if (!selector.includes('rail-step') && !selector.includes('rail-state')) continue
+      for (const token of STATUS) expect(body, `${selector} draws ${token}`).not.toContain(token)
+    }
+  })
+
+  it('draws the one status it does have beside an icon', () => {
+    // The gone row is the exception the rule allows: a condition of a row,
+    // with somewhere to put the icon. So the hue is there, and so is the
+    // icon - the component draws one, and the rule makes room for it.
+    const gone = rules().filter((r) => r.selector.includes('output-gone'))
+    expect(gone.some((r) => r.body.includes('--warning'))).toBe(true)
+    expect(gone.some((r) => r.selector.includes('.icon'))).toBe(true)
+    const outputs = readFileSync(
+      resolve(__dirname, '../../src/renderer/src/notebook/Outputs.tsx'),
+      'utf8',
+    )
+    expect(outputs).toContain('<Icon name="warning" />')
   })
 })
 
