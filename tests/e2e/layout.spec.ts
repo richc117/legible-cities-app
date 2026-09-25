@@ -1014,6 +1014,38 @@ test('opening the engine log leaves the notebook where it was', async () => {
     await page.getByRole('button', { name: /lay out/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
 
+    // The map has answered before any of this is measured.
+    //
+    // With the stand-in engine the page a run writes has no `__present`, so
+    // the viewer probes it, fails, and says so in a line inside the
+    // preview: 16px of message and the viewer grid's 8px gap, 24px exactly,
+    // measured at three window sizes. The preview sits above the cells, so
+    // when that line arrives everything below it moves by 24 and the
+    // browser's scroll anchoring moves the page by the same 24 to keep what
+    // is in view where it was. Read as this panel's doing, that is a 24px
+    // jump across the click that this panel cannot cause.
+    //
+    // It is the map's business and not this panel's. It arrives late
+    // because the frame is navigated rather than remounted after a run
+    // (A5.5-20), which puts an extra round trip between the run ending and
+    // the page answering; before that it arrived earlier and this test
+    // happened not to overlap it.
+    //
+    // Waited for as the thing itself, not as the screen going quiet. A poll
+    // for "the preview stopped changing height" is satisfied by two equal
+    // readings taken before the line has arrived at all - measured, it
+    // returned at 281ms for a line that came at 400 - which is the same
+    // trap as an `expect.poll` whose first read passes. And waiting for the
+    // *notebook* to be still would be worse than useless: a cell that gains
+    // a row a beat after the record read has to stay catchable across the
+    // click, which is what this test is for and what it caught this
+    // morning, and a wait for the column to go quiet would wait past
+    // exactly that.
+    await expect(
+      page.getByRole('region', { name: 'Map' }).getByRole('alert'),
+      'the map has said it is not there, which is what moves the column',
+    ).toBeVisible({ timeout: 30_000 })
+
     // The toggle is put somewhere a click can reach it first, and `before`
     // is read after that. Playwright scrolls a target into view as part of
     // clicking it, so a `before` read while the toggle was still below the
