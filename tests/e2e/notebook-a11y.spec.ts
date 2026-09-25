@@ -327,8 +327,8 @@ test('cell 06, and focus through an export', async () => {
 
 /**
  * The project screen's heading outline, as a screen reader's heading list
- * would read it (issue 197): every `h2` in the document, and how many each
- * cell holds.
+ * would read it (issue 197): every `h2` that is not hidden, and how many
+ * each cell holds. What "not hidden" means exactly is in `met` below.
  *
  * Read from the document rather than through roles because what is being
  * asserted is the outline itself - the levels and their order - and
@@ -348,9 +348,16 @@ async function outline(
   page: Page,
 ): Promise<{ second: string[]; perCell: string[]; deeper: string[] }> {
   return page.evaluate(() => {
-    // Only the headings a person would meet, which is not the same as the
-    // headings in the markup. The project screen keeps two `ConfirmDialog`s
-    // in the document at all times, each with a real `<h2>` for its title:
+    // The headings that are not inside a `display: none` subtree, which is
+    // what `checkVisibility()` answers and is narrower than "the headings a
+    // person would meet" - a heading hidden by `visibility`, by `opacity` or
+    // off the side of the screen still counts here. That is the safe
+    // direction: this check can only over-count, and over-counting fails
+    // rather than passes. A visually hidden heading counts too, and should,
+    // because a screen reader meets it.
+    //
+    // It matters because the project screen keeps two `ConfirmDialog`s in
+    // the document at all times, each with a real `<h2>` for its title:
     // the re-layout warning, which `LayoutRun` renders inside cell 02, and
     // the delete confirmation under the notebook. Both are shut.
     //
