@@ -17,8 +17,6 @@ import CellFooter, {
   exportFooter,
   frameFacts,
   frameFooter,
-  inputsMoved,
-  movedSentence,
   processFacts,
   SIDECAR_NOTE,
 } from '../../src/renderer/src/notebook/CellFooter'
@@ -86,10 +84,15 @@ describe('cell 02’s provenance', () => {
     expect(terms(processFacts(project({ made: null, built: null }), null))).toEqual(['Layout'])
   })
 
-  it('names the engine and LOOM once the engine has answered, and neither before', () => {
-    expect(terms(processFacts(project(), null))).not.toContain('Engine')
+  it('names the engine and LOOM as running, in the term, and neither before it answers', () => {
+    expect(terms(processFacts(project(), null))).not.toContain('Engine running')
     const facts = processFacts(project(), INFO)
-    expect(terms(facts)).toEqual(['Layout', 'Made', 'Built with', 'Engine', 'LOOM'])
+    // The tense is in the term and not in a comment: the three above these
+    // describe the stored layout and these two describe this moment, and a
+    // bare "Engine" in a provenance strip says the layout was made by it.
+    expect(terms(facts)).toEqual(['Layout', 'Made', 'Built with', 'Engine running', 'LOOM running'])
+    expect(terms(facts)).not.toContain('Engine')
+    expect(terms(facts)).not.toContain('LOOM')
     expect(facts[3].value).toBe('0.8.3')
     // The commit as git writes it short, beside the backend that built it.
     expect(facts[4].value).toBe('native, 6c38a2f')
@@ -100,44 +103,52 @@ describe('cell 02’s provenance', () => {
     expect(facts[4].value).toBe('docker, the host reported no commit')
   })
 
-  it('says the record’s inputs have moved in the sentence A2-02 already wrote', () => {
-    expect(inputsMoved(project())).toBe(false)
-    expect(inputsMoved(project({ mode: 'subway' }))).toBe(true)
-    expect(inputsMoved(project({ agency: null }))).toBe(true)
-    // A record from before the inputs were kept has nothing to differ from.
-    expect(inputsMoved(project({ built: null, mode: 'subway' }))).toBe(false)
-    expect(movedSentence(project({ mode: 'subway' }))).toBe(
-      'This layout was made with rail, LACMTA; the choice has changed since, so lay out to draw with subway, LACMTA.',
-    )
-  })
-
-  it('quotes that sentence rather than writing a second one', () => {
-    // `LayoutRun.tsx` says it in the cell's body for the same case (A2-02).
-    // One case, one form of words: a reword there without one here is what
-    // this holds against.
+  it('leaves A2-02’s moved-inputs sentence to the panel that acts on it', () => {
+    // `LayoutRun` renders it inside this same cell, beside the button it
+    // tells a person to press ("so lay out to draw with ..."), so a strip
+    // that said it too would put those words on screen twice in one cell.
+    // The strip carries the facts; the panel carries the sentence.
     const layoutRun = readFileSync(join(renderer, 'LayoutRun.tsx'), 'utf8')
-    for (const clause of [
-      'This layout was made with',
-      'the choice has changed since, so',
-      'lay out to draw with',
-    ]) {
-      expect(layoutRun, `LayoutRun says "${clause}"`).toContain(clause)
-      expect(movedSentence(project({ mode: 'subway' }))).toContain(clause)
-    }
+    expect(layoutRun, 'the panel still says it').toContain('the choice has changed since, so')
+    const footer = readFileSync(join(renderer, 'notebook/CellFooter.tsx'), 'utf8')
+      .split('\n')
+      // Its own comments say why it is not here, and are not the strip.
+      .filter((line) => !/^\s*(\*|\/\/|\/\*)/.test(line))
+      .join('\n')
+    expect(footer).not.toContain('the choice has changed since')
+    expect(footer).not.toContain('lay out to draw with')
+    // And the fact under the sentence stays: what the layout was made with.
+    expect(terms(processFacts(project({ built: { mode: 'rail', agency: null } }), null))).toContain(
+      'Built with',
+    )
   })
 })
 
 describe('cell 03’s provenance', () => {
-  it('names the day, the days the feed covers and whose choice the day was', () => {
+  it('names the day, the days the feed covers, whose choice it was and what from', () => {
     const facts = frameFacts({ date: '2026-03-17', service: WINDOW })
-    expect(terms(facts)).toEqual(['Service day', 'The feed covers', 'Chosen'])
+    expect(terms(facts)).toEqual(['Service day', 'The feed covers', 'Chosen', 'Counted from'])
     expect(facts[0].value).toBe('2026-03-17')
     expect(facts[1].value).toBe('2026-03-01 to 2026-06-30')
-    expect(facts[2].value).toBe('by the engine: the busiest weekday, counted from 2026-03-10')
+    expect(facts[2].value).toBe('by the engine')
+    expect(facts[3].value).toBe('2026-03-10')
   })
 
-  it('credits a day that is not the busiest weekday to the person who picked it', () => {
-    expect(frameFacts({ date: '2026-04-02', service: WINDOW })[2].value).toBe('by you')
+  it('lifts no clause out of the panel’s own sentence', () => {
+    // `ServiceDay` says "the busiest weekday, counted from A, is B" as
+    // prose in this same cell. The facts stay; that clause does not.
+    const facts = frameFacts({ date: '2026-03-17', service: WINDOW })
+    const said = facts.map((fact) => String(fact.value)).join(' ')
+    expect(said).not.toContain('busiest weekday')
+    expect(said).not.toContain('counted from')
+  })
+
+  it('credits a day that is not the busiest weekday to the person who picked it, with no anchor', () => {
+    const facts = frameFacts({ date: '2026-04-02', service: WINDOW })
+    expect(facts[2].value).toBe('by you')
+    // The anchor is what the engine's choice was counted from, and says
+    // nothing about a day a person picked.
+    expect(terms(facts)).not.toContain('Counted from')
   })
 
   it('says a window of one day as one day', () => {
@@ -225,4 +236,14 @@ describe('the three cells that have provenance, and no others', () => {
       expect(source).not.toMatch(/footer=\{/)
     })
   }
+
+  it('the sample page draws the real strip and imitates none of it', () => {
+    // `?cell-preview` is what `tests/e2e/notebook.spec.ts` walks. It drew a
+    // hand-written `<span>Engine 0.8.3, LOOM 6c38a2f</span>` before this
+    // branch, which is how a sample page and the component it stands for
+    // drift apart without anything failing.
+    const preview = readFileSync(join(renderer, 'notebook/CellPreview.tsx'), 'utf8')
+    expect(preview).toContain("from './CellFooter'")
+    expect(preview).not.toMatch(/<span>[^<]*LOOM[^<]*<\/span>/)
+  })
 })

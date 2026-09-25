@@ -74,12 +74,18 @@ const shortCommit = (commit: string): string => commit.slice(0, 7)
 /**
  * What cell 02's strip says: the stored layout's own eight characters, when
  * the engine made it, what it was made with, and the engine and LOOM this
- * app runs.
+ * app is running.
  *
- * The last two are the engine now running, read from `engine.info` as
- * Settings reads it, and they are not claimed to be the versions that made
- * the stored layout: the record does not keep those, and inventing them
- * would be the app saying something the engine did not (constitution II).
+ * **The last two say "running" in the term itself**, and that word is the
+ * whole point of them. They are read from `engine.info` as Settings reads
+ * it, so they are this moment's, while the three above them are the stored
+ * layout's; five bare terms in one strip read top to bottom would tell a
+ * person the layout was made by engine 0.8.3, which is precisely what the
+ * record cannot say - it does not keep the versions that made the layout,
+ * and inventing them would be the app asserting something the engine did
+ * not (constitution II). A comment cannot fix that, because a comment is
+ * not on the screen; the term is.
+ *
  * They belong here even so, because they are what a layout run in this
  * cell would use, and a person reporting a map that looks wrong is asked
  * for them first.
@@ -103,9 +109,9 @@ export function processFacts(
   if (project.built !== null)
     facts.push({ term: 'Built with', value: describeInputs(project.built) })
   if (info !== null) {
-    facts.push({ term: 'Engine', value: info.engine })
+    facts.push({ term: 'Engine running', value: info.engine })
     facts.push({
-      term: 'LOOM',
+      term: 'LOOM running',
       value:
         info.loom.commit === null
           ? `${info.loom.backend}, the host reported no commit`
@@ -115,37 +121,25 @@ export function processFacts(
   return facts
 }
 
-/** Have the record's inputs moved since the stored layout was made (A2-02)? */
-export function inputsMoved(project: Pick<ProjectRecord, 'built' | 'mode' | 'agency'>): boolean {
-  return (
-    project.built !== null &&
-    (project.built.mode !== project.mode || project.built.agency !== project.agency)
-  )
-}
-
 /**
- * What the footer says when they have: **A2-02's own sentence**, as
- * `LayoutRun.tsx` says it for the same case. Quoted and not re-written -
- * one case is told to a person in one form of words, whichever part of the
- * cell says it - so a change to either must move both.
+ * Cell 02's footer, with the engine's versions once it has answered.
+ *
+ * The record's inputs having moved since the layout was made (A2-02) is
+ * **not** said here, though the strip is where provenance goes. A2-02's
+ * sentence ends "so lay out to draw with ...", which is a prompt to act,
+ * and it belongs beside the button that acts - where `LayoutRun` already
+ * says it, inside this same cell. The strip carries the facts and the
+ * panel carries the sentence; a strip that said it too would put the same
+ * words on screen twice in one cell, which is duplication rather than
+ * consistency. `Built with` is the fact under it, and it stays.
  */
-export function movedSentence(project: Pick<ProjectRecord, 'built' | 'mode' | 'agency'>): string {
-  return `This layout was made with ${describeInputs(project.built)}; the choice has changed since, so lay out to draw with ${describeInputs(project)}.`
-}
-
-/** Cell 02's footer, with the engine's versions once it has answered. */
 function ProcessFooter({
   project,
 }: {
-  project: Pick<ProjectRecord, 'layout' | 'made' | 'built' | 'mode' | 'agency'>
+  project: Pick<ProjectRecord, 'layout' | 'made' | 'built'>
 }): JSX.Element {
   const info = useEngineInfo()
-  return (
-    <CellFooter
-      facts={processFacts(project, info)}
-      note={inputsMoved(project) ? movedSentence(project) : null}
-    />
-  )
+  return <CellFooter facts={processFacts(project, info)} />
 }
 
 /**
@@ -181,8 +175,7 @@ function useEngineInfo(): EngineInfo | null {
 
 /** Cell 02's footer, or nothing at all before the project has a layout. */
 export function processFooter(
-  project:
-    (Pick<ProjectRecord, 'layout' | 'made' | 'built' | 'mode' | 'agency'> | null) | undefined,
+  project: (Pick<ProjectRecord, 'layout' | 'made' | 'built'> | null) | undefined,
 ): JSX.Element | undefined {
   if (project == null || project.layout === null) return undefined
   return <ProcessFooter project={project} />
@@ -203,10 +196,24 @@ export function processFooter(
  * The record's day and not `drawnDate`: this strip is about what the
  * project is set to, and the cell's own panel says in prose whether the map
  * on disk shows it yet (A5.5-15).
+ *
+ * `ServiceDay`'s status line states these same things as prose - "The feed
+ * covers X to Y; the busiest weekday, counted from A, is B" - and the rule
+ * cell 02 settled applies here: the strip carries the facts and the panel
+ * carries the sentence. A term the panel also states stays, because a term
+ * is not the panel's sentence; a clause lifted out of that sentence does
+ * not, which is why "Chosen" says only whose choice it was and the anchor
+ * is a fact of its own beneath it rather than "the busiest weekday, counted
+ * from A" read twice in one cell.
+ *
+ * The anchor is kept rather than left to the panel because the panel is not
+ * always drawn - a read-only project has no `ServiceDay` at all - and the
+ * anchor is what makes the engine's choice reproducible (ADR-031).
  */
 export function frameFacts(project: Pick<ProjectRecord, 'date' | 'service'>): Fact[] {
   const { service, date } = project
   if (service === null || date === null) return []
+  const engines = service.busiest === date
   return [
     { term: 'Service day', value: date },
     {
@@ -216,13 +223,10 @@ export function frameFacts(project: Pick<ProjectRecord, 'date' | 'service'>): Fa
           ? `one day, ${service.start}`
           : `${service.start} to ${service.end}`,
     },
-    {
-      term: 'Chosen',
-      value:
-        service.busiest === date
-          ? `by the engine: the busiest weekday, counted from ${service.anchor}`
-          : 'by you',
-    },
+    { term: 'Chosen', value: engines ? 'by the engine' : 'by you' },
+    // Only under the engine's own choice: the anchor is what that choice
+    // was counted from, and says nothing about a day a person picked.
+    ...(engines ? [{ term: 'Counted from', value: service.anchor }] : []),
   ]
 }
 
