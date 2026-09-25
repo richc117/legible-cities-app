@@ -41,6 +41,16 @@ export class Viewer {
    * Hold the frame showing this project's page. The frame is found once,
    * among the interface's children, by the address it was given; from here
    * on it is held, and its address is never consulted again.
+   *
+   * Once per document, which is not once per element. Since A5.5-20 the
+   * interface never remounts the frame - a remount reloads the page, and a
+   * reload loses its clock, its view and its scrub position - but it does
+   * navigate it, to the page a run has just rewritten and to the address
+   * the export planned and back. Each of those is a new document that has
+   * to be found again, so the renderer attaches on every load and the hold
+   * that is already there is released first, on the line below. The prefix
+   * is the project's folder, which both addresses share, so a plain map and
+   * an export's preview are the same project's frame.
    */
   attach(contents: WebContents, projectId: string): boolean {
     this.release()

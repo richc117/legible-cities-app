@@ -357,23 +357,46 @@ test('the project screen: one press skips past the map to its toolbar, and the m
 
       // Out of sight while it does not hold focus, and in the document.
       await expect.poll(width, { message: `${tab}: hidden at rest` }).toBeLessThanOrEqual(1)
-      // Where the map sits, from the top of the screen's own region rather
-      // than the viewport, so a scroll that brings the focused skip into
-      // view is not read as the map moving.
+      // Where the map sits, in the viewport.
+      //
+      // It was read from the top of the screen's own region until A5.5-20,
+      // with a comment saying that made it independent of the scroll. The
+      // map is pinned now: its top is held against the viewport while the
+      // region scrolls under it, so that difference *is* the scroll offset,
+      // and the measure reported the map moving four thousand pixels when
+      // nothing had moved at all. There is no frame in which a pinned map
+      // is stationary at every offset - it is still in the viewport while
+      // pinned and still in the document while not - so the reading before
+      // the skip appears and the reading after it are taken with nothing
+      // between them that scrolls, and the viewport is then the plainer of
+      // the two. Nothing about what is asserted changes: the skip is
+      // absolutely placed and takes no space in the flow, so if it moves
+      // the map it moves it wherever the page is.
       const mapAt = (): Promise<{ top: number; height: number }> =>
         page.locator('section.viewer').evaluate((el) => {
           const map = el.getBoundingClientRect()
-          const screen = (el.closest('main') as HTMLElement).getBoundingClientRect()
-          return { top: map.top - screen.top, height: map.height }
+          return { top: map.top, height: map.height }
         })
       const atRest = await mapAt()
+
+      // It moves nothing: the map is where it was before the skip appeared.
+      // Within half a pixel: a scroll can land on a fraction of one. The
+      // walk to the project's header and back comes after this, because it
+      // scrolls and the map is pinned; it used to sit in between.
+      await skip.focus()
+      await expect(skip).toBeFocused()
+      const shown = await mapAt()
+      expect(shown.top, `${tab}: the map does not move when the skip appears`).toBeCloseTo(
+        atRest.top,
+        0,
+      )
+      expect(shown.height, `${tab}: the map keeps its size`).toBeCloseTo(atRest.height, 0)
 
       // The map is the notebook column's first child (ADR-045), so the skip
       // is the first stop in the column and the stop before it is the
       // project's own header: nothing focusable sits between the two.
       // Asserted as that button and not as "somewhere in the notebook",
       // which the skip being inside the column makes true of itself.
-      await skip.focus()
       await page.keyboard.press('Shift+Tab')
       await expect(
         page.getByRole('button', { name: 'Back to Library' }),
@@ -390,14 +413,6 @@ test('the project screen: one press skips past the map to its toolbar, and the m
       expect(box?.height ?? 0, `${tab}: a target when focused`).toBeGreaterThanOrEqual(24)
       expect(await skip.evaluate((el) => getComputedStyle(el).clipPath)).toBe('none')
       expect(await skip.evaluate((el) => getComputedStyle(el).outlineStyle)).toBe('solid')
-      // And it moves nothing: the map is where it was before the skip appeared.
-      // Within half a pixel: a scroll can land on a fraction of one.
-      const shown = await mapAt()
-      expect(shown.top, `${tab}: the map does not move when the skip appears`).toBeCloseTo(
-        atRest.top,
-        0,
-      )
-      expect(shown.height, `${tab}: the map keeps its size`).toBeCloseTo(atRest.height, 0)
 
       // Not used, the next Tab goes into the map: its first control, whatever
       // else the page holds. Read from inside the frame, in one snapshot

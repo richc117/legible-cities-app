@@ -5,12 +5,115 @@
    threshold, and above the notebook rather than beside it at the narrow
    width.
 
-   Empty. A5.5-08 moved the frame into `Preview.tsx` and left it exactly
-   where the tabs had it, because the frame must never be reparented and
-   its address must never change by accident: both reload the engine's
-   page, and a reload loses its clock, its view and its scrub position.
-   Pinning it is A5.5-20's, and these are its rules.
+   All of it is CSS, and that is the point (A5.5-20). The frame is never
+   moved between parents and never remounted, because both reload the
+   engine's page and a reload loses its clock, its view and its scrub
+   position. A layout that pinned the map by putting it somewhere else
+   would be a reparent under another name, so the wrapper stays exactly
+   where `Notebook.tsx` puts it - the column's first child - and only
+   these rules move.
 
    A stylesheet is named for a region of the interface, not for a
    component, and the four token files stay the only place a literal may
    appear (A5.5-07). */
+
+/* Pinned from the top, so cells 01 and 02 are read with the map in view as
+   the rest are. Not at a scroll threshold: a threshold needs a hysteresis
+   band, a reduced-motion story, a story for a region that changes its
+   relationship to the document mid-scroll, and a test that is flaky by
+   construction.
+
+   It sticks at `--header-height`, which is what the inspector already does
+   for the same reason, and one step under the header's own layer. Both
+   halves of that matter. Above the cells, because a cell's own positioned
+   parts - a colour picker's disclosure among them - come after the map in
+   the document and would otherwise be painted over it as they scroll
+   under. Under the header, because how the header's forty pixels and its
+   one-pixel rule divide between its box and its border is not something a
+   stylesheet can read: measured in a page holding these sheets alone the
+   header's box comes to forty-one and a map pinned at forty covers the
+   rule, and measured in the app it comes to forty and a map pinned at
+   forty-one leaves a gap for the cells to show through. Pinned at the
+   token and painted below the header, neither can happen: the rule is
+   always the header's to draw, and any pixel of overlap is behind it.
+
+   At the narrow width nothing here changes, and that is the rule rather
+   than an omission: the preview is a child of the notebook's column at
+   every width, so it is above the cells and never beside them. The region
+   that moves at that width is the rail (A5.5-21). */
+.preview {
+  position: sticky;
+  top: var(--header-height);
+  z-index: calc(var(--layer-raised) - 1);
+  /* The ground the cells pass behind. The padding is the viewer's own
+     bottom margin, moved inside the pinned box: a transparent margin there
+     would let the top of the cell below show through the gap between the
+     map and that cell. */
+  padding-bottom: var(--space-4-4);
+  background: var(--surface);
+}
+
+/* The map is wider than the reading column, which panels.css breaks it out
+   of, so the pinned ground has to be the map's own box as well as this
+   wrapper's. Between them they cover everything a cell can occupy. */
+.preview .viewer {
+  margin-bottom: 0;
+  background: var(--surface);
+}
+
+/* Pinned, the map is a band: the whole width it already had, and half the
+   window below the header tall.
+
+   It has to be bounded. A 16:10 map at the map's own width is very nearly
+   the height of the window - 640 of the 680 a 720-tall window leaves under
+   the header - so pinned without a bound it would be the only thing on
+   screen, and the cells it is pinned above could not be read, which is the
+   whole reason it is pinned rather than merely present. A sticky box taller
+   than its scrollport also sticks by its top edge, so the foot of it could
+   never be scrolled to at all.
+
+   And the bound is on the height rather than on the shape. A `max-height`
+   against `aspect-ratio` shrinks the width to keep the ratio: the map would
+   step back from both edges of the window and sit small and off-centre on a
+   large screen, which measured 546 wide where it had been 1024. So the
+   ratio gives way instead. The page fits itself to whatever box it is given
+   - present.js refits the frame on every resize - so this is a map drawn to
+   a band, not a map with its edges cut off.
+
+   The width is said rather than left to the grid. Until the bound was put
+   here the shape filled its column because it was a stretched grid item
+   with an automatic width, and that was the only thing holding it out to
+   the edges; with a definite height and no ratio it is a different item to
+   lay out, and in the app it measured 992 where its box was 1024 - the
+   map a whole `--space-4-4` short at each edge. `width: 100%` against the
+   grid area, with the border counted into the box so the band is half the
+   window and not half plus its own edges, says what the rule means instead
+   of depending on which of those two the stretch answers. */
+.preview .viewer-shape {
+  aspect-ratio: auto;
+  box-sizing: border-box;
+  width: 100%;
+  height: calc((100vh - var(--header-height)) / 2);
+}
+
+/* What the band hides, and why there is no rule here for it.
+
+   A pinned band obscures the top of the scrollport, so anything scrolled
+   to the top of it - a control reached with Shift+Tab, a row a test
+   scrolls to before pressing it - can end up behind the map. The obvious
+   remedy, a `scroll-margin-top` on everything in the column as deep as the
+   band, was written and withdrawn: measured against the colour panel's own
+   geometry it moved the picker's square 139 pixels *up*, to 381 where the
+   band ends at 398, so the press that begins a colour drag landed on the
+   map instead of on the square and the picker was dismissed - the drag
+   issue 87 exists for. `scroll-padding-top` on the scrollport measured the
+   same. Both change where every scroll lands, not only the ones that would
+   have been hidden, and the direction is not predictable from the rule.
+
+   So this is a known gap rather than a solved problem - issue 213, whose
+   acceptance keeps the picker's drag passing - and it wants a remedy that
+   does not move what is already in view: a shallower band, or a scroll
+   container of the notebook's own. It is written down here, and
+   said again in docs/DESIGN.md 8.2 under "The pinned preview", because the
+   one-line answer sits right here looking obvious and the next person to
+   reach for it should know it was tried and what it cost. */
