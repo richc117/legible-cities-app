@@ -179,9 +179,18 @@ export default function Viewer({
     void read.then((state) => {
       if (off) return
       if (planned === null && state !== null) kept.current = state
-      // A message about the page being left does not belong over the page
-      // arriving; the load says whether that one is there.
-      setProblem(null)
+      // The message is **not** cleared here. It was for a while, so that a
+      // sentence about the page being left could not sit over the page
+      // arriving - and that guarantees two reflows in the common case
+      // rather than one: the line goes as the frame is sent, and the new
+      // page's failed probe puts it straight back. The line is 24px with
+      // the grid's gap around it, and it sits above the cells, so a map
+      // that is missing made the whole notebook jump up and back after
+      // every run. Cleared on the load's outcome instead it moves at most
+      // once and usually not at all, since broken and still broken is a
+      // steady state. What that costs is a sentence that can be one
+      // navigation out of date, which is the shortest honest window there
+      // is: the load is the moment the truth is known.
       navigations.current += 1
       setShowing({ src: wanted, planned: address })
     })
