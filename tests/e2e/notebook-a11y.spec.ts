@@ -357,14 +357,30 @@ test('the project screen: one press skips past the map to its toolbar, and the m
 
       // Out of sight while it does not hold focus, and in the document.
       await expect.poll(width, { message: `${tab}: hidden at rest` }).toBeLessThanOrEqual(1)
-      // Where the map sits, from the top of the screen's own region rather
-      // than the viewport, so a scroll that brings the focused skip into
-      // view is not read as the map moving.
+      // Where the map sits, in the viewport.
+      //
+      // It was read from the top of the screen's own region until A5.5-20,
+      // with a comment saying that made it independent of the scroll. The
+      // map is pinned now: its top is held against the viewport while the
+      // region scrolls under it, so that difference *is* the scroll offset
+      // and the measure said the map had moved by four thousand pixels
+      // when nothing had moved at all. There is no frame in which a pinned
+      // map is stationary at every scroll offset - it is still in the
+      // viewport while pinned and still in the document while not - so the
+      // two readings are taken at one offset instead, and the viewport is
+      // then the plainer of the two.
+      //
+      // The top of the column is that offset. The walk below goes to the
+      // project's header and back, which scrolls there by itself; starting
+      // there is what makes the reading before the skip appears and the
+      // reading after it comparable. Nothing about what is being asserted
+      // changes: the skip is absolutely placed and takes no space in the
+      // flow, so if it moves the map it moves it at any offset.
+      await page.evaluate(() => window.scrollTo(0, 0))
       const mapAt = (): Promise<{ top: number; height: number }> =>
         page.locator('section.viewer').evaluate((el) => {
           const map = el.getBoundingClientRect()
-          const screen = (el.closest('main') as HTMLElement).getBoundingClientRect()
-          return { top: map.top - screen.top, height: map.height }
+          return { top: map.top, height: map.height }
         })
       const atRest = await mapAt()
 

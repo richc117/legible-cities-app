@@ -89,29 +89,45 @@ async function withApp(
  * A page with the seam the app drives, in place of the one the stand-in
  * engine writes (which is `{}`, and answers nothing).
  *
- * Its clock moves only when it is seeked. The real page runs at sixty
- * service-seconds a second, which would make "where the clock was" a moving
- * target and this test a stopwatch; what is being measured is whether the
- * value read before a navigation is the value set after it.
+ * It answers **exactly what the engine's own page answers** that the app
+ * can use - `now`, `clock`, `viewName`, `labels` - and not the speed and
+ * not whether it is playing, which the engine's `state()` reports for
+ * neither (engine issue 29's seam gap from the other side). A stand-in
+ * that reported them would exercise a six-call restore the real app can
+ * never produce and never the three-call one it always does.
+ *
+ * Its clock runs at sixty service-seconds a second, as the engine's does,
+ * and is never stopped - the app cannot stop it, for want of that same
+ * field - so what the map is at any moment is a moving target and no
+ * assertion here is allowed to be a stopwatch. Instead the page writes
+ * down what it was told, in order, where a test can read it through the
+ * frame: the value seeked is exact and the sequence is exact, and the
+ * running afterwards is the engine's own business.
  */
 const mapPage = (): string =>
   [
     '<!doctype html><meta charset="utf-8"><title>stand-in map</title><body>',
+    '<p id="told"></p>',
     '<script>',
-    'var now = 0, viewName = "schematic", labels = true, playing = true, speed = 60;',
+    'var now = 0, viewName = "schematic", labels = true, told = [];',
+    'var last = performance.now();',
+    // The engine's own default speed, so a navigation costs what it costs.
+    'function tick(at) { now += ((at - last) / 1000) * 60; last = at;',
+    '                    requestAnimationFrame(tick) }',
+    'requestAnimationFrame(tick);',
+    'function say(what) { told.push(what);',
+    '                     document.getElementById("told").textContent = told.join(" ") }',
     'window.__present = {',
-    '  seek: function (sec) { now = sec },',
-    '  showView: function (name) { viewName = name },',
-    '  setLabels: function (on) { labels = !!on },',
-    '  setPlaying: function (on) { playing = !!on },',
-    '  setSpeed: function (x) { speed = x },',
-    '  setRoutes: function () {},',
+    '  seek: function (sec) { now = sec; say("seek=" + sec) },',
+    '  showView: function (name, dur) { viewName = name; say("showView=" + name + "/" + dur) },',
+    '  setLabels: function (on) { labels = !!on; say("setLabels=" + !!on) },',
+    '  setPlaying: function (on) { say("setPlaying=" + !!on) },',
+    '  setSpeed: function (x) { say("setSpeed=" + x) },',
+    '  setRoutes: function () { say("setRoutes") },',
     '  hasGeo: function () { return true },',
     '  bounds: function () { return { t0: 0, t1: 86400 } },',
-    // The shape the engine's own page answers, and no more of it: `now`,
-    // `viewName` and `labels` are what a restore has to work from.
-    '  state: function () { return { now: now, clock: "07:00", viewName: viewName,',
-    '                               labels: labels, speed: speed, playing: playing } },',
+    '  state: function () { return { now: now, clock: "07:00",',
+    '                               viewName: viewName, labels: labels } },',
     '};',
     '</script></body>',
   ].join('\n')
@@ -126,6 +142,18 @@ function standInPage(h: Home): void {
 
 const frame = (page: Page): ReturnType<Page['locator']> => page.locator('iframe.viewer-frame')
 const preview = (page: Page): ReturnType<Page['locator']> => page.locator('.preview')
+
+/**
+ * What the page in the frame has been told, in order, read from inside it.
+ *
+ * The frame is sandboxed to an opaque origin and the app cannot reach in
+ * (ADR-028); a test driver can, and this asks for nothing the app is able
+ * to ask for. It is read this way rather than added to the page's `state()`
+ * on purpose: `state()` has to answer exactly what the engine's own page
+ * answers, or the restore under test is not the one the app will make.
+ */
+const told = (page: Page): ReturnType<Page['locator']> =>
+  page.frameLocator('iframe.viewer-frame').locator('#told')
 
 /** One of the page's own methods, through the bridge, as the interface asks. */
 const drive = (page: Page, method: string, ...args: unknown[]): Promise<unknown> =>
@@ -176,10 +204,13 @@ test('the frame is one element across a scroll, a cell toggling and a redraw', a
     // A redraw: the run rewrites the page file, so the frame is sent to it
     // deliberately - and the element it is sent from is the element it was.
     // This is what `key={drawn}` used to do by throwing the element away.
+    //
+    // The wait is the address moving and nothing else: "Laid out" is on
+    // screen from the first run and would be there whether this one ran or
+    // not, and the address moves when the run has written the page.
     const before = await frame(page).getAttribute('src')
     await page.getByRole('button', { name: 'Lay out again', exact: true }).click()
-    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 60_000 })
-    await expect(frame(page)).not.toHaveAttribute('src', before ?? '', { timeout: 30_000 })
+    await expect(frame(page)).not.toHaveAttribute('src', before ?? '', { timeout: 90_000 })
     await expect(frame(page)).toHaveCount(1)
     await expect(markOnFrame(page)).resolves.toBe('the same frame')
   })
@@ -196,30 +227,49 @@ test('the map comes back to its clock, view and labels when the export takes the
     await page.getByRole('button', { name: 'Back to Library' }).click()
     await page.getByRole('button', { name: 'Open Los Angeles' }).click()
     await expect(frame(page)).toBeVisible()
-    await expect.poll(() => drive(page, 'state')).toMatchObject({ viewName: 'schematic' })
+    // The stand-in page is the one loaded, and driveable: the engine's own
+    // `{}` page refuses `state` outright, so this is not a value the plain
+    // page could also have answered.
+    await expect.poll(() => drive(page, 'state')).toMatchObject({ clock: '07:00' })
     await markFrame(page)
 
-    // Where a person left the map: a time scrubbed to, a view chosen and
-    // the labels turned off.
-    await drive(page, 'seek', 30_600)
+    // Where a person left the map: a view chosen, the labels turned off and
+    // a moment scrubbed to. The clock is read back rather than assumed,
+    // because the page runs on from wherever it is put, as the engine's
+    // does.
     await drive(page, 'showView', 'time')
     await drive(page, 'setLabels', false)
+    await drive(page, 'seek', 30_600)
+    const left = ((await drive(page, 'state')) as { now: number }).now
+    expect(left, 'the page took the scrub').toBeGreaterThanOrEqual(30_600)
 
     // Cell 06 opens and the engine's plan takes the frame (A5-01). That is
-    // a navigation, and the page that arrives is a new document.
+    // a navigation, and what arrives is a new document - which is what the
+    // empty record of what it has been told says, and it says as well that
+    // the plain map's own state was not handed to the export's preview,
+    // whose address is the engine's word on where the map should be.
     await openCell(page, 'export')
     await expect(frame(page)).toHaveAttribute('src', /frame=/, { timeout: 60_000 })
-    await expect.poll(() => drive(page, 'state')).toMatchObject({ now: 0 })
+    await expect(told(page)).toBeEmpty({ timeout: 30_000 })
 
-    // And closing it hands the frame back to the plain map, which is where
-    // it was left rather than where a fresh document starts.
+    // And closing it hands the frame back to the plain map, which is given
+    // back where it was left rather than where a fresh document starts.
+    //
+    // Asserted as the sequence the page was told, in order, with the clock
+    // exact: that is the three-call restore the engine's own `state()` can
+    // produce and the whole of it. The clock afterwards is not asserted as
+    // a figure - the page runs at sixty service-seconds a second and the
+    // app cannot stop it, having no way to learn it was running (engine
+    // issue 29) - only that it went on from where it was put and not from
+    // the start of the day.
     await closeCell(page, 'export')
     await expect(frame(page)).toHaveAttribute('src', /controls=1/, { timeout: 60_000 })
-    await expect
-      .poll(() => drive(page, 'state'), { timeout: 30_000 })
-      .toMatchObject({ viewName: 'time', labels: false })
-    const state = (await drive(page, 'state')) as { now: number }
-    expect(Math.abs(state.now - 30_600), 'the clock came back to within a second').toBeLessThan(1)
+    await expect(told(page)).toHaveText(`showView=time/0 setLabels=false seek=${left}`, {
+      timeout: 30_000,
+    })
+    const back = ((await drive(page, 'state')) as { now: number }).now
+    expect(back, 'the clock went on from where it was left').toBeGreaterThanOrEqual(left)
+    expect(await drive(page, 'state')).toMatchObject({ viewName: 'time', labels: false })
 
     // All of it on the one element.
     await expect(markOnFrame(page)).resolves.toBe('the same frame')
@@ -234,20 +284,31 @@ test('the preview is pinned under the header, and above the cells at every width
     await expect(preview(page)).toBeVisible()
 
     // Pinned by the stylesheet alone, from the top of the column: sticky,
-    // and offset by exactly the header's own height.
+    // offset by the header's own token, and one step under the header's
+    // layer so the header always draws its own rule.
+    //
+    // Against the token and not against the header's measured box. How the
+    // header's forty pixels and its one-pixel rule divide between its box
+    // and its border is not a thing this rule can know - a page holding
+    // these stylesheets alone measures forty-one - and an assertion that
+    // reads it back is asserting the box model rather than the rule.
     const pinned = await preview(page).evaluate((el) => {
       const style = getComputedStyle(el)
-      const header = document.querySelector('.app-header')
+      const root = getComputedStyle(document.documentElement)
       return {
         position: style.position,
         top: style.top,
-        headerHeight: header === null ? null : `${header.getBoundingClientRect().height}px`,
+        headerToken: root.getPropertyValue('--header-height').trim(),
+        layer: Number(style.zIndex),
+        headerLayer: Number(root.getPropertyValue('--layer-raised').trim()),
       }
     })
     expect(pinned.position).toBe('sticky')
-    // The header's height and the rule under it: a pixel less and the
-    // pinned map covers that rule, and it is on the header's own layer.
-    expect(pinned.top).toBe(pinned.headerHeight)
+    expect(pinned.top).toBe(pinned.headerToken)
+    // Above the cells, whose own positioned parts come after the map in the
+    // document, and below the header, whose rule it must never cover.
+    expect(pinned.layer, 'above the cells').toBeGreaterThan(0)
+    expect(pinned.layer, "under the header's own layer").toBeLessThan(pinned.headerLayer)
 
     // A band, not the window: half of what is below the header, so the cell
     // being edited underneath stays in view. Bounded on the height and not
@@ -268,8 +329,16 @@ test('the preview is pinned under the header, and above the cells at every width
     expect(band, 'the map has a box on screen').not.toBeNull()
     const half = ((await page.evaluate(() => window.innerHeight)) - (band?.top ?? 0)) / 2
     expect(Math.abs((band?.height ?? 0) - half), 'half the window below the header').toBeLessThan(4)
+    // Wider than the ratio: a bound that kept 16:10 while capping the height
+    // would make the map exactly `height * 16 / 10` wide - 546 against the
+    // 1024 it has, measured - so this is the assertion that tells the two
+    // bounds apart, and `viewerWidth` is what it is measured against
+    // because that is the width the breakout gives the map.
     expect(band?.width ?? 0, 'the width it already had').toBeGreaterThanOrEqual(
       (band?.viewerWidth ?? 0) - 1,
+    )
+    expect(band?.width ?? 0, 'not shrunk to the band\u2019s own ratio').toBeGreaterThan(
+      ((band?.height ?? 0) * 16) / 10 + 1,
     )
 
     // Scrolled to the foot of the notebook, the map is still on screen and
@@ -288,27 +357,31 @@ test('the preview is pinned under the header, and above the cells at every width
     expect(box, 'the preview has a box on screen').not.toBeNull()
     expect(box?.y ?? -1, 'clear of the header').toBeGreaterThanOrEqual(headerBottom - 1)
 
-    // Below 900px it sits above the notebook rather than beside it - which
-    // it does at every width, because it is a child of the column and not a
-    // region next to it. The window itself is made narrower, as a person
-    // would drag it.
+    // Below 900px it still sits above the notebook rather than beside it.
+    // That much is structural - the preview is a child of the column and
+    // the test below asserts it as structure, where it can actually fail -
+    // so what is measured here is the thing that can go wrong at a width
+    // and a height the app was not laid out at: the band follows the
+    // window rather than keeping a size taken at some other one. The window
+    // itself is made narrower, as a person would drag it.
     await page.evaluate(() => window.scrollTo(0, 0))
     await app.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0].setContentSize(800, 600)
     })
     await expect.poll(() => page.evaluate(() => window.innerWidth)).toBeLessThan(900)
-    const stacked = await page.evaluate(() => {
-      const map = document.querySelector('.preview')?.getBoundingClientRect()
-      const first = document.querySelector('.cell')?.getBoundingClientRect()
-      return map === undefined || first === undefined
+    const narrow = await page.evaluate(() => {
+      const shape = document.querySelector('.viewer-shape')?.getBoundingClientRect()
+      const header = document.querySelector('.app-header')?.getBoundingClientRect()
+      return shape === undefined || header === undefined
         ? null
-        : { mapBottom: map.bottom, cellTop: first.top }
+        : { height: shape.height, want: (window.innerHeight - header.height) / 2 }
     })
-    expect(stacked, 'the preview and the first cell are both on screen').not.toBeNull()
+    expect(narrow, 'the map has a box at the narrow width').not.toBeNull()
     expect(
-      (stacked?.mapBottom ?? 1) <= (stacked?.cellTop ?? 0) + 1,
-      'the map is above the cells, never beside them',
-    ).toBe(true)
+      Math.abs((narrow?.height ?? 0) - (narrow?.want ?? 0)),
+      'the band is half of the shorter window, not half of the taller one',
+    ).toBeLessThan(4)
+    expect((narrow?.height ?? 0) < (band?.height ?? 0), 'and it did shrink').toBe(true)
   })
 })
 

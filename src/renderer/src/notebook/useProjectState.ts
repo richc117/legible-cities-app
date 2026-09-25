@@ -69,7 +69,7 @@ export interface ProjectState {
   exportSnapshot: ExportSnapshot
   layingOut: boolean
   exporting: boolean
-  /** How many runs have drawn the page while this screen is open; the viewer is keyed by it. */
+  /** How many runs have drawn the page while this screen is open; the viewer's address carries it. */
   drawn: number
   /** The address the export planned for the map's frame, while cell 06 is open. */
   preview: PreviewAddress | null
@@ -137,8 +137,12 @@ export function useProjectState(id: string, onBack: (notice?: string) => void): 
     }
   }, [])
   // How many runs have drawn the page while this view is open. The viewer
-  // is keyed by it, so the frame loads the page a run just wrote instead of
-  // keeping the one it had: its address does not change between the two.
+  // puts it on the page's address, so the frame is sent to the page a run
+  // has just written instead of keeping the document it had: a run writes
+  // the same file name again, so without it the address would not move.
+  // It was the viewer's `key` until A5.5-20, which got the reload by
+  // remounting the frame - and a remount loses the page's clock, its view
+  // and its scrub position as surely as a reparent does (ADR-045).
   const [drawn, setDrawn] = useState(0)
   // The address the export last planned for the map's frame. Not stored: it
   // is planned again whenever cell 06 opens.

@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type CSSProperties, type JSX } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type JSX,
+  type SyntheticEvent,
+} from 'react'
 import type { ProjectRecord } from '../../shared/project'
 import { VIEWER_SANDBOX } from '../../shared/viewer'
 import type { PreviewAddress } from './exportChoice'
@@ -46,6 +53,47 @@ import { restoreCalls } from './viewerRestore'
 const pageUrl = (project: ProjectRecord, redraw: number): string =>
   `app://local/projects/${project.id}/${project.feed}.html` +
   `?present=1&controls=1&theme=${encodeURIComponent(project.theme)}&redraw=${redraw}`
+
+/**
+ * How long the page being left is given to say what it is showing, in
+ * milliseconds.
+ *
+ * The frame navigates whether or not it answers, and that is the whole
+ * point of the deadline. `viewer.call` reaches the page by injecting into
+ * its main world, and a page whose main thread is blocked never answers at
+ * all: without this the frame would stay on the old document for the life
+ * of the screen, so a run would draw a map nobody ever saw and cell 06's
+ * preview would never appear. That is a lever in the hands of a page the
+ * app does not trust, which is the thing ADR-028 exists to deny it, and it
+ * is reachable without malice - a feed's route name can become live markup
+ * in a generated page (engine issue E17). A deadline that passes loses the
+ * answer, which is `restoreCalls`'s "nothing known, nothing to do".
+ */
+const STATE_DEADLINE = 1000
+
+/**
+ * What the page says it is showing, or nothing. A refusal and a silence
+ * read alike, because nothing done with the answer tells them apart: both
+ * mean the state is not known.
+ *
+ * It takes the asking and the deadline rather than reaching for either, so
+ * the rule that matters - that a promise which never settles still produces
+ * an answer, on time - is tested without a window, a bridge or a frame.
+ */
+export function answerWithin(ask: () => Promise<unknown>, deadline: number): Promise<unknown> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const late = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), deadline)
+  })
+  let asked: Promise<unknown>
+  try {
+    asked = ask()
+  } catch {
+    clearTimeout(timer)
+    return Promise.resolve(null)
+  }
+  return Promise.race([asked.catch(() => null), late]).finally(() => clearTimeout(timer))
+}
 
 /**
  * The frame's shape for a planned preview: the preset's width and height as
@@ -102,9 +150,12 @@ export default function Viewer({
   // arriving there restores nothing and leaving it keeps what the map had,
   // which is what brings cell 06 back to the clock it was opened at.
   const kept = useRef<unknown>(null)
-  // Which load a restore belongs to. A second navigation while the first
-  // one's calls are still in flight would otherwise seek the wrong page.
-  const loads = useRef(0)
+  // Which navigation a restore belongs to. Bumped where the navigation is
+  // decided and not where the new document lands, because the gap between
+  // the two is exactly where a restore loop - up to five awaited round
+  // trips - would otherwise go on dispatching into a page the screen has
+  // already sent somewhere else.
+  const navigations = useRef(0)
   const mounted = useRef(true)
   useEffect(() => {
     mounted.current = true
@@ -117,15 +168,21 @@ export default function Viewer({
     if (wanted === showing.src) return undefined
     let off = false
     // The state of the page being left, when it is a page worth
-    // remembering and there is one there to ask. A refusal is not a
-    // failure and is not an answer either: the frame may be mid-navigation
-    // from a change a moment ago, and what was read before that is still
-    // the last thing anyone knows the map was showing, so it is kept.
-    const read =
-      planned === null ? window.api.viewer.call('state').catch(() => null) : Promise.resolve(null)
+    // remembering and there is one there to ask. Neither a refusal nor a
+    // silence is an answer: the frame may be mid-navigation from a change a
+    // moment ago, and what was read before that is still the last thing
+    // anyone knows the map was showing, so it is kept.
+    const read: Promise<unknown> =
+      planned === null
+        ? answerWithin(() => window.api.viewer.call('state'), STATE_DEADLINE)
+        : Promise.resolve(null)
     void read.then((state) => {
       if (off) return
       if (planned === null && state !== null) kept.current = state
+      // A message about the page being left does not belong over the page
+      // arriving; the load says whether that one is there.
+      setProblem(null)
+      navigations.current += 1
       setShowing({ src: wanted, planned: address })
     })
     return () => {
@@ -147,12 +204,18 @@ export default function Viewer({
   // and the frame reports success. Asking the page what it is showing is
   // what tells the two apart.
   //
-  // React's own `onLoad`, rather than a listener added in an effect: the
-  // event cannot arrive before the commit that changed the address, and
-  // React hands the event the closure of that commit, so a restore is
-  // always the one read for the address that just loaded.
-  const onLoad = (): void => {
-    const load = ++loads.current
+  // React's own `onLoad`, rather than a listener added in an effect, so
+  // there is no window in which the element carries no listener at all.
+  // But `load` is not delegated: React attaches to the element and then
+  // looks the handler up from the fibre's **current** props when it
+  // dispatches, so what runs is the newest render's closure and not the
+  // closure of the commit that started this navigation. That is why the
+  // address is checked rather than assumed - a load answering for a
+  // document the screen has since moved away from would otherwise be given
+  // the state read for a different one.
+  const onLoad = (event: SyntheticEvent<HTMLIFrameElement>): void => {
+    const mine = event.currentTarget.getAttribute('src') === showing.src
+    const navigation = navigations.current
     window.api.viewer
       .attach(project.id)
       .then((held) => (held ? window.api.viewer.call('state') : Promise.reject(new Error('no'))))
@@ -160,14 +223,14 @@ export default function Viewer({
         async () => {
           if (!mounted.current) return
           setProblem(null)
-          if (planned !== null) return
+          if (!mine || planned !== null) return
           // Not spent by being used. It is refreshed before every
           // navigation away from the map and is the only record of where
           // the map was, so a second navigation whose own read came too
           // late still has it. It goes when the screen does.
           const calls = restoreCalls(kept.current)
           for (const { method, args } of calls) {
-            if (load !== loads.current || !mounted.current) return
+            if (navigation !== navigations.current || !mounted.current) return
             await window.api.viewer.call(method, ...args).catch(() => undefined)
           }
         },

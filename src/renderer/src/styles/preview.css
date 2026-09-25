@@ -23,10 +23,19 @@
    relationship to the document mid-scroll, and a test that is flaky by
    construction.
 
-   `--layer-raised` is the header's own layer, and the two never overlap -
-   this sticks at exactly the header's height. The layer is what keeps the
-   positioned parts of the cells, a colour picker's disclosure among them,
-   from being painted over the map as they scroll under it.
+   It sticks at `--header-height`, which is what the inspector already does
+   for the same reason, and one step under the header's own layer. Both
+   halves of that matter. Above the cells, because a cell's own positioned
+   parts - a colour picker's disclosure among them - come after the map in
+   the document and would otherwise be painted over it as they scroll
+   under. Under the header, because how the header's forty pixels and its
+   one-pixel rule divide between its box and its border is not something a
+   stylesheet can read: measured in a page holding these sheets alone the
+   header's box comes to forty-one and a map pinned at forty covers the
+   rule, and measured in the app it comes to forty and a map pinned at
+   forty-one leaves a gap for the cells to show through. Pinned at the
+   token and painted below the header, neither can happen: the rule is
+   always the header's to draw, and any pixel of overlap is behind it.
 
    At the narrow width nothing here changes, and that is the rule rather
    than an omission: the preview is a child of the notebook's column at
@@ -34,12 +43,8 @@
    that moves at that width is the rail (A5.5-21). */
 .preview {
   position: sticky;
-  /* The header's own height and the rule under it. Without the border in
-     the sum the pinned map covers that rule by a pixel, and because this
-     is on the header's layer and comes after it in the document, it is the
-     map that wins and the header loses its edge. */
-  top: calc(var(--header-height) + var(--border-width));
-  z-index: var(--layer-raised);
+  top: var(--header-height);
+  z-index: calc(var(--layer-raised) - 1);
   /* The ground the cells pass behind. The padding is the viewer's own
      bottom margin, moved inside the pinned box: a transparent margin there
      would let the top of the cell below show through the gap between the
@@ -77,4 +82,35 @@
 .preview .viewer-shape {
   aspect-ratio: auto;
   height: calc((100vh - var(--header-height)) / 2);
+}
+
+/* Nothing is scrolled to behind the band.
+
+   A browser scrolls a newly focused element to the top of the scrollport,
+   and the top of the scrollport is now under the header and then under
+   half a window of map: Shift+Tab out of a cell would land on a control
+   nobody can see, which is worse than the scrolling the pinning replaced.
+   So everything in the column carries a scroll margin as deep as what is
+   pinned over it - the header, the band and the space below it, with the
+   header's rule and the shape's own edges in the slack.
+
+   On everything, rather than on a list of what can take focus: the list
+   would be wrong the first time a cell grew a control it did not name, and
+   the margin costs nothing on an element nothing ever scrolls to. Not on
+   the cells alone either, since the browser scrolls to the control and not
+   to the cell that holds it, and a margin only helps the element that is
+   the target.
+
+   The preview is out of it, and so is everything inside it: it is the
+   thing being cleared, a margin on it would scroll the column down by its
+   own height for nothing, and the skip link within it is never behind the
+   map, being part of it - `app.css` already clears that one of the header.
+
+   The rule lives here and not in the cell's own chrome because it is the
+   pinning that creates the need, and it would be wrong the moment the
+   pinning changed. */
+.notebook *:not(.preview, .preview *) {
+  scroll-margin-top: calc(
+    var(--header-height) + (100vh - var(--header-height)) / 2 + var(--space-4-6)
+  );
 }
