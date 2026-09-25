@@ -212,9 +212,13 @@ export default function Inspect({
           own heading cannot name any one of them, and a person reading down
           the cell has to be told where the stored fields end and the feed's
           own contents begin. The heading is a level below the cell's, as
-          cell 05's two sections are (A5.5-18), takes no focus of its own -
-          a control that disables itself hands focus to the cell's row - and
-          is what names this region (issue 197). */}
+          cell 05's two sections are (A5.5-18), and is what names this
+          region (issue 197). It takes no focus, and nothing hands it any:
+          cell 01 has no handback of any kind - `DataCell` gives `Cell` no
+          `headingRef`, as cells 03 to 06 do, and this panel does not use
+          `focusHandback`, as cell 02's run does - although its controls are
+          disabled under a person while a run or an export goes. That is a
+          gap rather than a decision, and not this heading's to close. */}
       <h3 id="inspect-heading">In the feed</h3>
       {state.status === 'waiting' && (
         <p className="hint" role="status">

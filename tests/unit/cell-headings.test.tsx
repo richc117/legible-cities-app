@@ -164,11 +164,22 @@ describe('a panel inside a cell', () => {
         // the three names are quoted in `tests/support/project.ts`, the
         // acceptance checklist and the screen-reader walkthrough. A heading
         // that moved level must not have moved its id.
+        //
+        // Matched rather than compared whole, so that an attribute the
+        // heading may want later - a `tabIndex`, were cell 01 ever given the
+        // handback it has not got - is not forbidden by a test about a name.
         const html = renderToStaticMarkup(panel)
         expect(html).toContain(`aria-labelledby="${id}"`)
-        expect(html).toContain(`<h3 id="${id}">${name}</h3>`)
-        // Nothing inside a panel is a second-level heading at all.
-        expect(headings(html, 2)).toEqual([])
+        expect(html).toMatch(new RegExp(`<h3\\b[^>]*\\bid="${id}"[^>]*>${name}</h3>`))
+      })
+
+      it('draws that one heading and no other level, so the outline has no hole', () => {
+        // Not an `h2`, which is the cell's own level and the whole of issue
+        // 197, and not an `h4`, which skips a level and reads as a hole to
+        // anyone walking the outline. A check that counted `h2`s would pass
+        // an `h4` without a word, which is half a rule.
+        const html = renderToStaticMarkup(panel)
+        expect([...html.matchAll(/<(h[1-6])\b/g)].map((m) => m[1])).toEqual(['h3'])
       })
     })
   }

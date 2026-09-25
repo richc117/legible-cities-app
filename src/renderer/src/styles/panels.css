@@ -21,10 +21,19 @@
    itself hands focus to the cell's heading, the row above them both - so
    neither carries a focus ring. This one opens the cell, so it has no
    space above it; the order's, below, keeps the space that separates the
-   two sections. */
+   two sections.
+
+   One rhythm for one level (issue 197): a heading inside a cell is
+   `--space-4-6` above and `--space-4-3` below, here and in cells 01 and 02
+   alike. The two below were `--space-2-2` and drew the same as `--space-4-3`
+   anyway - `.prose` sets no margin of its own, so a paragraph's 1em of
+   `--font-text` collapses over either value, and a paragraph is what
+   follows four of the five. The gap only shows where a control row follows
+   instead, which is the geographic view's toolbar, so the declared value is
+   the one that is true there. */
 .line-colours h3 {
   font-size: var(--font-ui-medium);
-  margin: 0 0 var(--space-2-2);
+  margin: 0 0 var(--space-4-3);
 }
 
 .theme-switch h2 {
@@ -39,7 +48,7 @@
 
 .line-order h3 {
   font-size: var(--font-ui-medium);
-  margin: var(--space-4-6) 0 var(--space-2-2);
+  margin: var(--space-4-6) 0 var(--space-4-3);
 }
 
 /* The place a line stands in the order, beside its swatch: a figure, quiet,

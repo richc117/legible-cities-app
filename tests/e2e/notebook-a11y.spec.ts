@@ -110,17 +110,29 @@ test('the notebook, Inspect, the geographic view, the inspector and its dialogs'
     //
     // A cell that is collapsed keeps its controls in the document, so this
     // sees cell 06's contents too though its row is shut.
-    expect(await outline(page)).toEqual({
-      second: [
-        '01 Data',
-        '02 Process',
-        '03 Frame and service day',
-        '04 Style',
-        '05 Lines',
-        '06 Export',
-      ],
-      perCell: ['01: 1', '02: 1', '03: 1', '04: 1', '05: 1', '06: 1'],
-    })
+    //
+    // Polled, not read once. The panels above arrive at their own pace - the
+    // diagnostics comes with the run's report and the geographic view with
+    // the engine's drawing - and a single `evaluate` is a fixed budget
+    // wherever it lands, which this suite has been bitten by before.
+    await expect
+      .poll(() => outline(page), { message: "the project screen's heading outline" })
+      .toEqual({
+        second: [
+          '01 Data',
+          '02 Process',
+          '03 Frame and service day',
+          '04 Style',
+          '05 Lines',
+          '06 Export',
+        ],
+        perCell: ['01: 1', '02: 1', '03: 1', '04: 1', '05: 1', '06: 1'],
+        // Nothing inside a cell skips a level either: the rule is that a
+        // panel's heading is one below the row, and a check that only
+        // counted `h2`s would pass an `h4` that reads as a hole in the
+        // outline to anyone walking it.
+        deeper: [],
+      })
     // And the panels that keep a name of their own carry it a level below,
     // which is what the region each one is named by still answers to: cell
     // 01's two sections, cell 02's report, and cell 05's two (A5.5-18).
@@ -297,7 +309,9 @@ test('cell 06, and focus through an export', async () => {
  * `h2`s under its `h1` are correct, and a rule saying "six second-level
  * headings, the cells'" is the project screen's alone.
  */
-async function outline(page: Page): Promise<{ second: string[]; perCell: string[] }> {
+async function outline(
+  page: Page,
+): Promise<{ second: string[]; perCell: string[]; deeper: string[] }> {
   return page.evaluate(() => ({
     second: [...document.querySelectorAll('h2')].map((h) => {
       const number = h.querySelector('.cell-number')?.textContent ?? ''
@@ -306,6 +320,15 @@ async function outline(page: Page): Promise<{ second: string[]; perCell: string[
     }),
     perCell: [...document.querySelectorAll('section.cell')].map(
       (cell) => `${cell.getAttribute('data-cell')}: ${cell.querySelectorAll('h2').length}`,
+    ),
+    // Every heading inside a cell that is neither the row nor a panel's own
+    // level: an `h1`, or an `h4` and below, which skips one and reads as a
+    // hole in the outline.
+    deeper: [...document.querySelectorAll('section.cell')].flatMap((cell) =>
+      [...cell.querySelectorAll('h1, h4, h5, h6')].map(
+        (h) =>
+          `${cell.getAttribute('data-cell')}: ${h.tagName.toLowerCase()} ${(h.textContent ?? '').trim()}`,
+      ),
     ),
   }))
 }
