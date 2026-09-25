@@ -1124,16 +1124,19 @@ or a `Legible Cities` folder on the desktop - in a folder named after the
 project, under the engine's own file name; nothing is written inside the
 user-data folder or the bundle (ADR-016). A project's destination is a
 folder the platform's own dialog answered, judged when it was chosen and
-again at each export: a folder inside the app itself is refused, since the
-bundle is wiped on update, and so is one inside the engine's home **or one
-that holds it**, since the file lands at `<destination>/<project name>/` and
-`folderName` passes "engine", "out", "data", "projects" and "frames"
-through unchanged - the folder the home sits in is one project name away
-from the home. Every path is resolved through its links first, because the
-comparison is textual and `SCHEMATIC_HOME` reaches the app unfiltered. It is
-the relation Settings already keeps in both directions over the app-wide
-export folder, and the two guards must not disagree
-(`destinationRefusal` in `src/main/export.ts`). The page is told the file's name
+again at each export. The app's own bundle and the engine's home are
+refused, **and so is any folder that holds either**: the file lands at
+`<destination>/<project name>/`, and `folderName` passes "engine", "out",
+"data", "projects", "frames" and the app's own name through unchanged, so
+the folder one of them sits in is a single project name away from it.
+Each refusal says which of the two it is and which way round. Every path is
+resolved through its links first, because the comparison is textual and
+`SCHEMATIC_HOME` reaches the app unfiltered. The home's half is the
+relation Settings already keeps in both directions over the app-wide export
+folder, and the bundle's is kept the same way, because two guards in one
+function over one kind of relation - one symmetric, one not - is what the
+first version of this got wrong (`destinationRefusal` in
+`src/main/export.ts`). The page is told the file's name
 and never its path; "Reveal" names the export by its token and the main
 process opens the folder it remembers writing to. A second export of the
 same project replaces the first, as the engine's own command line does: the

@@ -103,10 +103,11 @@ The on-disk form of `ProjectRecord` (`data-model.md`), version 1:
   changes with it. Anything that is not a folder the app would store -
   relative, empty, over 4,096 characters, or carrying a control character -
   reads as `null` and is refused on write; whether a particular folder may
-  be written into - inside the app's own bundle, inside the engine's home,
-  or holding the engine's home, since the file lands one folder deeper -
-  is the main process's judgement, made on resolved paths when it is chosen
-  and again at each export, because the home can move between two starts. `null` means "not
+  be written into - the app's own bundle, the engine's home, anything
+  inside either, and anything that holds either, since the file lands one
+  folder deeper and that folder is named after the project - is the main
+  process's judgement, made on resolved paths when it is chosen and again
+  at each export, because the home can move between two starts. `null` means "not
   told otherwise", which is what every record meant before this field
   existed, so an older project is unaffected and an older build that drops
   the field sends the next export to the app's folder rather than misreading

@@ -1440,16 +1440,28 @@ describe('choosing a destination', () => {
 // stub that always refuses; this is the rule, over real folders and real
 // links, because the plumbing is not where the danger is.
 describe('where a project may not export to', () => {
+  // Two roots, because both halves of the guard are symmetric now: a
+  // folder above the bundle and a folder above the home must be told
+  // apart, and one root holding both would be refused by whichever check
+  // ran first, which proves nothing about the other.
   const tree = () => {
     const root = mkdtempSync(join(tmpdir(), 'legible-cities-forbidden-'))
-    dirs.push(root)
+    const appRoot = mkdtempSync(join(tmpdir(), 'legible-cities-forbidden-app-'))
+    dirs.push(root, appRoot)
     const home = join(root, 'support', 'engine')
     mkdirSync(home, { recursive: true })
-    const bundle = join(root, 'Legible Cities.app')
+    const bundle = join(appRoot, 'Legible Cities.app')
     mkdirSync(bundle, { recursive: true })
     const elsewhere = join(root, 'Movies')
     mkdirSync(elsewhere, { recursive: true })
-    return { root, home, bundle, elsewhere, where: { bundleRoots: [bundle], engineHome: home } }
+    return {
+      root,
+      appRoot,
+      home,
+      bundle,
+      elsewhere,
+      where: { bundleRoots: [bundle], engineHome: home },
+    }
   }
 
   it('allows a folder that is neither the app nor the engine data', async () => {
@@ -1483,6 +1495,17 @@ describe('where a project may not export to', () => {
       expect(await destinationRefusal(folder, t.where), folder).toMatch(/inside the app itself/)
   })
 
+  // The same defect as the home's, in the other half of the same function:
+  // `folderName` passes "Legible Cities.app" through unchanged, so the
+  // folder the app sits in is one project name away from the bundle.
+  it('refuses a folder that holds the app itself, in its own sentence', async () => {
+    const t = tree()
+    const refusal = await destinationRefusal(t.appRoot, t.where)
+    expect(refusal).toMatch(/holds the app itself/)
+    // Not the "inside" sentence, which would be plainly wrong here.
+    expect(refusal).not.toMatch(/inside the app itself/)
+  })
+
   // Every check here is textual, so a link that passes one and then points
   // inside the home would be a guard that refuses nothing.
   it('follows a link in the folder it is given', async () => {
@@ -1508,7 +1531,7 @@ describe('where a project may not export to', () => {
     expect(await destinationRefusal(t.elsewhere, where)).toBeNull()
   })
 
-  it('follows a link in the bundle it is given', async () => {
+  it('follows a link in the bundle it is given, in both directions', async () => {
     const t = tree()
     const linked = join(t.root, 'linked-app')
     symlinkSync(t.bundle, linked, 'dir')
@@ -1516,6 +1539,8 @@ describe('where a project may not export to', () => {
     expect(await destinationRefusal(join(t.bundle, 'Contents'), where)).toMatch(
       /inside the app itself/,
     )
+    expect(await destinationRefusal(t.appRoot, where)).toMatch(/holds the app itself/)
+    expect(await destinationRefusal(t.elsewhere, where)).toBeNull()
   })
 
   // A folder that does not exist yet is judged, not waved through:

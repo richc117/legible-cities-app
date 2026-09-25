@@ -660,22 +660,31 @@ export interface ForbiddenFolders {
 /**
  * Why a project may not export to this folder, or null (A5.5-19).
  *
- * **Both directions, and both sides resolved.** An export writes to
+ * **Every forbidden folder, in both directions, on both sides resolved.**
+ * An export writes to
  * `<destination>/<the project's name as a folder>/<the engine's filename>`,
- * so a folder that *holds* the engine home is as dangerous as one inside
- * it: `folderName` passes "engine" - and "out", "data", "projects" and
- * "frames" - through unchanged, since it only replaces what a filesystem
- * refuses and the names Windows reserves. Choose the folder the home sits
- * in, call the project `engine`, and the export lands in the home through a
- * guard meant to keep it out. This is the relation Settings already keeps
- * over the app-wide export folder, in both directions, for the same stated
- * reason (`#reset` in `settings-ipc.ts`), and the app must not carry two
- * guards over one relation that can disagree.
+ * so a folder that *holds* a forbidden one is as dangerous as one inside
+ * it: `folderName` only replaces what a filesystem refuses and the names
+ * Windows reserves, so "engine" - and "out", "data", "projects", "frames"
+ * and "Legible Cities.app" - passes through unchanged. Choose the folder
+ * the engine's home sits in, call the project `engine`, and the export
+ * lands in the home through a guard meant to keep it out; choose the
+ * folder the app sits in and name the project after the app, and it lands
+ * in the bundle. Neither needs a link.
  *
- * Containment either way rather than "is the home's parent", which is all
- * a single name segment can reach today: the narrower rule would be a
- * second thing to keep true about `folderName`, and a folder one level
- * above the home is a folder a person is one press away from choosing.
+ * The home's half of this is the relation Settings already keeps over the
+ * app-wide export folder, in both directions, for the same stated reason
+ * (`#reset` in `settings-ipc.ts`). The bundle's half is the same relation,
+ * so it is kept the same way: two guards in one function over one kind of
+ * relation, one symmetric and one not, is what produced the first defect
+ * here.
+ *
+ * Containment either way rather than "is the parent of", which is all a
+ * single name segment can reach today: the narrower rule would be another
+ * thing that has to stay true about `folderName`, and the folder one level
+ * above is one a person is a single press from choosing. It costs the
+ * development case, where the bundle is the checkout and so the folders
+ * above the checkout cannot be exported to; that is accepted.
  *
  * The comparison is textual, so every path goes through `realOrResolved`
  * first. `SCHEMATIC_HOME` and a hand-edited settings file reach the app
@@ -687,9 +696,13 @@ export async function destinationRefusal(
   where: ForbiddenFolders,
 ): Promise<string | null> {
   const real = await realOrResolved(folder)
-  for (const root of where.bundleRoots)
-    if (contains(await realOrResolved(root), real))
+  for (const root of where.bundleRoots) {
+    const bundle = await realOrResolved(root)
+    if (contains(bundle, real))
       return 'that folder is inside the app itself; nothing can be kept there'
+    if (contains(real, bundle))
+      return 'that folder holds the app itself; an export goes into a folder named after the project, which could be the app'
+  }
   const home = await realOrResolved(where.engineHome)
   if (contains(home, real))
     return 'that folder is inside the engine data folder, which “Reset engine data” removes'

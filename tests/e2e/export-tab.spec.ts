@@ -579,6 +579,13 @@ test('the app refuses a folder inside itself or around the engine data, under th
     await expect(panel.getByRole('alert')).toContainText('inside the app itself')
     expect(readRecord(h).destination, 'and nothing was written').toBeNull()
 
+    // And the folder the app sits in: `folderName` passes the app's own
+    // name through unchanged, so a project named after it would export
+    // into the bundle. The same relation as the home's, said its own way.
+    await chooserAnswers(app, dirname(inside))
+    await panel.getByRole('button', { name: 'Choose folder' }).click()
+    await expect(panel.getByRole('alert')).toContainText('holds the app itself')
+
     // Inside the engine's own home, which "Reset engine data" removes.
     await chooserAnswers(app, join(h.engineHome, 'out'))
     await panel.getByRole('button', { name: 'Choose folder' }).click()
@@ -590,7 +597,7 @@ test('the app refuses a folder inside itself or around the engine data, under th
     await chooserAnswers(app, dirname(h.engineHome))
     await panel.getByRole('button', { name: 'Choose folder' }).click()
     await expect(panel.getByRole('alert')).toContainText('holds the engine data folder')
-    expect(readRecord(h).destination, 'and none of the three was written').toBeNull()
+    expect(readRecord(h).destination, 'and none of the four was written').toBeNull()
 
     // A refusal leaves the choice as it was and does not stop the next one.
     await expect(panel.getByText(/exports go to the app’s export folder/)).toBeVisible()
