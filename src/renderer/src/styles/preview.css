@@ -98,8 +98,10 @@
    same. Both change where every scroll lands, not only the ones that would
    have been hidden, and the direction is not predictable from the rule.
 
-   So this is a known gap rather than a solved problem, and it wants a
-   remedy that does not move what is already in view: a shallower band, or
-   a scroll container of the notebook's own. It is written down here
-   because the next person to reach for the one-line answer should know it
-   was tried. */
+   So this is a known gap rather than a solved problem - issue 213, whose
+   acceptance keeps the picker's drag passing - and it wants a remedy that
+   does not move what is already in view: a shallower band, or a scroll
+   container of the notebook's own. It is written down here, and
+   said again in docs/DESIGN.md 8.2 under "The pinned preview", because the
+   one-line answer sits right here looking obvious and the next person to
+   reach for it should know it was tried and what it cost. */
