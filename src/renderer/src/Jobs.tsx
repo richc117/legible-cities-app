@@ -3,6 +3,7 @@ import { composeJobLog, describeJobState, jobSubject, type Job } from '../../sha
 import Icon from './icons/Icon'
 import Button from './kit/Button'
 import ProgressLine from './ProgressLine'
+import { inWords } from './stages'
 
 // The jobs the inspector lists (A1-03, specs/024-jobs): each one the run's
 // own stages on the progress line, its last sentence, Cancel while it runs,
@@ -10,6 +11,13 @@ import ProgressLine from './ProgressLine'
 // disclosure; "Copy log" on every one. A second view of the runs, never a
 // second place they live: every value here is the run's, read through the
 // registry, and Cancel is the run's own `cancel()`.
+//
+// The stations carry the words cell 02 draws (A5.5-10), because a person
+// watching one run should not meet two vocabularies at once - the inspector
+// sits beside the cell, and both draw the same line for the same run. What
+// stays the engine's own, deliberately, is everything meant to be quoted at
+// the engine: the copied log, its hint and its detail. That is the line
+// between a word on a screen and a word in a bug report.
 
 /** What the job says after "Copy log", either way. */
 export const LOG_COPIED =
@@ -121,7 +129,7 @@ export function JobItem({ job, onCancel, onCopy }: ItemProps): JSX.Element {
         {describeJobState(job.state)}, started {startedAt(job.started)}
       </p>
       <div className="job-line">
-        <ProgressLine stages={job.stages} ariaLabel={describeJob(job)} />
+        <ProgressLine stages={inWords(job.stages)} ariaLabel={describeJob(job)} />
       </div>
       {job.message !== null && job.state !== 'failed' && (
         <p className="progress-message">{job.message}</p>

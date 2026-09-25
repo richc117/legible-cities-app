@@ -756,6 +756,13 @@ dialog::backdrop {
   min-width: 0;
 }
 
+/* The same line before a run has started (A5.5-10): cell 02 says what the
+   work is made of while every station is still waiting. It sits where the
+   running line sits, so the stations do not move when a run begins. */
+.layout-stages {
+  margin: 0 0 var(--space-4-3);
+}
+
 /* Focus and motion, for everything. */
 
 :focus-visible {

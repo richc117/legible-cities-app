@@ -23,7 +23,15 @@ import {
   type Page,
 } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
-import { cell, cellHeading, closeCell, openCell, openProject, panel } from '../support/project'
+import {
+  cell,
+  cellHeading,
+  cellLabel,
+  closeCell,
+  openCell,
+  openProject,
+  panel,
+} from '../support/project'
 
 const repoRoot = resolve(__dirname, '../..')
 const PYTHON = findPython()
@@ -81,6 +89,23 @@ const readRecord = (engineHome: string): Record<string, unknown> => {
   return JSON.parse(readFileSync(join(engineHome, 'projects', id, 'project.json'), 'utf8'))
 }
 
+/**
+ * The words cell 02 draws over the engine's eight stages (A5.5-10,
+ * `src/renderer/src/stages.ts`), in the order the engine runs them. The
+ * engine's own names are asserted where they belong, against the real
+ * engine, by `tests/unit/layout-real.test.ts`.
+ */
+const STAGE_WORDS = [
+  'parse',
+  'collapse',
+  'order',
+  'octilinear',
+  'trips',
+  'draw',
+  'animate',
+  'write',
+]
+
 test('lays a project out, reports every stage, and records what it was drawn from', async () => {
   const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
   await withApp(engineHome, async (page) => {
@@ -90,23 +115,36 @@ test('lays a project out, reports every stage, and records what it was drawn fro
     expect(before.layout).toBeNull()
     expect(before.date).toBeNull()
 
+    // The eight stages are on the line before anything has run: the cell
+    // says what the work is made of, not only what it is doing (A5.5-10).
+    // The cell's own group, not `cell(page, 'process')`, which is the run's
+    // region and exists only while a run does.
+    const process = page.getByRole('group', { name: cellLabel('process'), exact: true })
+    for (const stage of STAGE_WORDS) {
+      await expect(process.getByText(stage, { exact: true })).toBeVisible()
+    }
+    expect(
+      await process
+        .locator('svg circle.mark')
+        .evaluateAll((marks) => marks.map((mark) => mark.getAttribute('class') ?? '')),
+      'every station waiting',
+    ).toEqual(STAGE_WORDS.map(() => 'mark mark-pending'))
+
     await page.getByRole('button', { name: /lay out/i }).click()
     const run = cell(page, 'process')
     await expect(run).toBeVisible()
-    // Every stage the engine reports is on the line, named.
-    for (const stage of [
-      'gtfs2graph',
-      'topo',
-      'loom',
-      'octi',
-      'schedule',
-      'render',
-      'animate',
-      'write',
-    ]) {
+    // Every stage the engine reports is on the line, in the words a person
+    // reads rather than the engine's own names.
+    for (const stage of STAGE_WORDS) {
       await expect(run.getByText(stage, { exact: true })).toBeVisible()
     }
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    expect(
+      await run
+        .locator('svg circle.mark')
+        .evaluateAll((marks) => marks.map((mark) => mark.getAttribute('class') ?? '')),
+      'and every station finished',
+    ).toEqual(STAGE_WORDS.map(() => 'mark mark-done'))
 
     const after = readRecord(engineHome)
     expect(after.layout, "the engine's id: a SHA-256, as hex").toMatch(/^[0-9a-f]{64}$/)
@@ -276,6 +314,24 @@ test('a cancelled run writes nothing and says so', async () => {
     await page.getByRole('button', { name: /cancel/i }).click()
     await expect(page.getByText(/was cancelled/i)).toBeVisible({ timeout: 20_000 })
     expect(JSON.stringify(readRecord(engineHome)), 'the record is untouched').toBe(before)
+    // Stop returns the cell to what it was: a run a person stopped is not a
+    // failure, and the cell says ready rather than failed (A5.5-10,
+    // contracts/run-graph.md). The stations it stopped at are waiting again.
+    await expect(cellHeading(page, 'process')).toHaveAccessibleName(/\bready\b/)
+    const marks = await page
+      .getByRole('group', { name: cellLabel('process'), exact: true })
+      .locator('svg circle.mark')
+      .evaluateAll((stations) => stations.map((s) => s.getAttribute('class') ?? ''))
+    // The count first: everything below it is true of an empty list, which
+    // is what a locator that has stopped matching anything hands back.
+    expect(marks, 'the eight stations are all still drawn').toHaveLength(STAGE_WORDS.length)
+    // How far the run got before the press is the engine's business and the
+    // timing's, so which stations are done is not asserted - only that none
+    // was left running or failed, which is what Stop promises.
+    expect(
+      marks.filter((mark) => mark !== 'mark mark-pending' && mark !== 'mark mark-done'),
+      'no station was left running or failed',
+    ).toEqual([])
     // A cancelled run has to be repeatable, or the project is stuck.
     await expect(page.getByRole('button', { name: /lay out/i })).toBeVisible()
     await page.getByRole('button', { name: /lay out/i }).click()
