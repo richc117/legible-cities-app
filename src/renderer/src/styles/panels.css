@@ -259,7 +259,10 @@ th .sort:focus-visible {
   vertical-align: middle;
 }
 
-.inspect h2 {
+/* A level below the cell's own heading, as cell 05's two sections are: the
+   size is the panel heading's either way, so only the selector moved
+   (issue 197). */
+.inspect h3 {
   font-size: var(--font-ui-medium);
   margin: var(--space-4-6) 0 var(--space-4-3);
 }
@@ -279,7 +282,7 @@ th .sort:focus-visible {
    prose, its figures as a table, and each row's explanation on a small
    control that answers a pointer and the keyboard alike. */
 
-.diagnostics h2 {
+.diagnostics h3 {
   font-size: var(--font-ui-medium);
   margin: var(--space-4-6) 0 var(--space-4-3);
 }
@@ -539,7 +542,7 @@ th .sort:focus-visible {
    from here. The frame is sized to the drawing and never scrolls; the
    pane clips it and is what takes focus and the wheel. */
 
-.stage-view h2 {
+.stage-view h3 {
   font-size: var(--font-ui-medium);
   margin: var(--space-4-6) 0 var(--space-4-3);
 }

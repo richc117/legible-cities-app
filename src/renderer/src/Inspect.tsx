@@ -207,7 +207,15 @@ export default function Inspect({
 
   return (
     <section className="inspect" aria-labelledby="inspect-heading">
-      <h2 id="inspect-heading">In the feed</h2>
+      {/* Cell 01 is called Data and holds three things - the record's three
+          stored fields, this panel and the geographic view - so the cell's
+          own heading cannot name any one of them, and a person reading down
+          the cell has to be told where the stored fields end and the feed's
+          own contents begin. The heading is a level below the cell's, as
+          cell 05's two sections are (A5.5-18), takes no focus of its own -
+          a control that disables itself hands focus to the cell's row - and
+          is what names this region (issue 197). */}
+      <h3 id="inspect-heading">In the feed</h3>
       {state.status === 'waiting' && (
         <p className="hint" role="status">
           {ready

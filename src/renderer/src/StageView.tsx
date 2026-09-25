@@ -158,7 +158,12 @@ export default function StageView({ project, engine, read }: Props): JSX.Element
   const idle = state.status === 'waiting' && !loading
   return (
     <section className="stage-view" aria-labelledby="stage-heading">
-      <h2 id="stage-heading">Where the routes run</h2>
+      {/* The second of cell 01's two sections, and the one whose contents a
+          screen reader cannot read at all: the pane is a picture. The
+          heading is how a person is told what the unreadable part is and
+          where it starts, so it stays; it is a level below the cell's, as
+          cell 05's two sections are (A5.5-18, issue 197). */}
+      <h3 id="stage-heading">Where the routes run</h3>
       <div className="toolbar" role="group" aria-label="Stage">
         {STAGES.map((s) => (
           <Button

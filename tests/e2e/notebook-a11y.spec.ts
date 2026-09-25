@@ -17,7 +17,7 @@
 
 import { copyFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import {
   PYTHON,
   controlsOf,
@@ -96,6 +96,45 @@ test('the notebook, Inspect, the geographic view, the inspector and its dialogs'
     await expect(page.getByRole('region', { name: 'Line colours' })).toBeVisible()
     await expect(page.getByRole('region', { name: 'What the build had to fudge' })).toBeVisible()
     await expect(page.getByRole('group', { name: /^The gtfs2graph stage/ })).toBeVisible()
+
+    // The heading outline (issue 197). A screen reader walks a long document
+    // by heading, and the notebook is one: its six cells are the screen's
+    // second-level headings and nothing inside a cell is their sibling. It
+    // is asserted here, in the test that already has a laid-out project with
+    // every panel drawn, rather than in a test of its own: a second launch
+    // and a second layout run would cost minutes to see the same document.
+    //
+    // The inspector is still closed at this point, and its own "Jobs" is an
+    // `h2` of the window rather than of the notebook (ADR-036). The check is
+    // made before it is opened for that reason, and not by excluding it.
+    //
+    // A cell that is collapsed keeps its controls in the document, so this
+    // sees cell 06's contents too though its row is shut.
+    expect(await outline(page)).toEqual({
+      second: [
+        '01 Data',
+        '02 Process',
+        '03 Frame and service day',
+        '04 Style',
+        '05 Lines',
+        '06 Export',
+      ],
+      perCell: ['01: 1', '02: 1', '03: 1', '04: 1', '05: 1', '06: 1'],
+    })
+    // And the panels that keep a name of their own carry it a level below,
+    // which is what the region each one is named by still answers to: cell
+    // 01's two sections, cell 02's report, and cell 05's two (A5.5-18).
+    for (const name of [
+      'In the feed',
+      'Where the routes run',
+      'What the build had to fudge',
+      'Line colours',
+      'Line order',
+    ]) {
+      await expect(page.getByRole('heading', { level: 3, name, exact: true })).toBeVisible()
+      await expect(page.getByRole('region', { name, exact: true })).toBeVisible()
+    }
+
     await sweep(page, 'the project, its notebook')
     // A sortable column's header is a target of at least 24px, though its
     // label's line is 16.
@@ -238,6 +277,38 @@ test('cell 06, and focus through an export', async () => {
     { env: { LEGIBLE_EXPORT_FOLDER: exportFolder } },
   )
 })
+
+/**
+ * The project screen's heading outline, as a screen reader's heading list
+ * would read it (issue 197): every `h2` in the document, and how many each
+ * cell holds.
+ *
+ * Read from the document rather than through roles because what is being
+ * asserted is the outline itself - the levels and their order - and
+ * `getByRole('heading')` would answer the same for an `h2` and an `h3`
+ * given a level filter each time. A cell's row is named by its contents, so
+ * it is read as the number and name it draws; anything else answers its own
+ * text, which is how a panel heading that came back would be seen.
+ *
+ * The suite's own sweep cannot see this class of defect at all: `expectNamed`
+ * looks at `CONTROL_ROLES` and asks only whether a name is present, never
+ * whether an outline is sane. That is why this check is here and not in
+ * `tests/support/a11y.ts`, which every screen goes through: Settings' six
+ * `h2`s under its `h1` are correct, and a rule saying "six second-level
+ * headings, the cells'" is the project screen's alone.
+ */
+async function outline(page: Page): Promise<{ second: string[]; perCell: string[] }> {
+  return page.evaluate(() => ({
+    second: [...document.querySelectorAll('h2')].map((h) => {
+      const number = h.querySelector('.cell-number')?.textContent ?? ''
+      const name = h.querySelector('.cell-name')?.textContent ?? ''
+      return number === '' && name === '' ? (h.textContent ?? '').trim() : `${number} ${name}`
+    }),
+    perCell: [...document.querySelectorAll('section.cell')].map(
+      (cell) => `${cell.getAttribute('data-cell')}: ${cell.querySelectorAll('h2').length}`,
+    ),
+  }))
+}
 
 /**
  * A page for the viewer's frame with many controls of its own, as the
