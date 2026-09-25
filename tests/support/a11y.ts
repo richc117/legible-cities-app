@@ -162,7 +162,7 @@ interface Finding {
 type Probe = {
   begin(): number
   step(): StepAnswer
-  /** Put the walk down on the far side of the frame holding focus. */
+  /** Move focus to the first wanted control after the frame holding focus, and record nothing. */
   past(): string | null
   finish(): Finding
   moving(): string[]
@@ -305,19 +305,17 @@ function installProbe(): void {
           (deep.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
       )
       if (after === undefined) return null
+      // Focus is moved and **nothing is recorded**. Where it went is read
+      // afterwards by `step()`, from the document, exactly as it is for a
+      // press of Tab: taking focus away from a frame crosses a process
+      // boundary and does not finish synchronously, so the reading taken
+      // here can still be the frame - which is how the first version of
+      // this recorded nothing and reported the control it had just focused
+      // as unreachable. A probe that marked a control reached because it
+      // had asked for it would be worse than that: it would make the sweep
+      // lie in the one direction the sweep exists to catch.
       ;(after as HTMLElement).focus?.()
-      const landed = deepActive()
-      if (landed === null || !want.includes(controlOf(landed))) return null
-      const control = controlOf(landed)
-      // Recorded as a stop like any other, so its ring is still looked at;
-      // the one thing not proved about it is that a press of Tab is what
-      // brought focus here, which is the frame's business and not this
-      // document's.
-      last = control
-      visited.add(control)
-      const chain = chainOf(landed)
-      stops.push({ control, chain, focused: chain.map(ring) })
-      return describe(control)
+      return describe(after)
     },
     finish() {
       ;(document.activeElement as HTMLElement | null)?.blur?.()
@@ -471,13 +469,32 @@ export async function expectTabWalk(page: Page, where: string): Promise<void> {
     // per frame, which on the project screen is cell 01's heading row, and
     // which is still swept for its name and its ring.
     if (state === 'frame' && !frameIsEnd) {
-      const landed = await page.evaluate(() =>
+      const aimed = await page.evaluate(() =>
         (window as unknown as { __a11y: Probe }).__a11y.past(),
       )
-      trace[trace.length - 1] = `frame ${at} -> ${landed ?? 'nothing after it'}`
-      // Nothing after it that this walk still wants: stop asking, and let
-      // the presses carry on to wherever the platform takes them.
-      frameIsEnd = landed === null
+      if (aimed === null) {
+        // Nothing after it that this walk still wants: stop asking, and let
+        // the presses carry on to wherever the platform takes them.
+        trace[trace.length - 1] = `frame ${at} -> nothing after it`
+        frameIsEnd = true
+        continue
+      }
+      // `past()` only moves focus. Where focus actually went is read here,
+      // by the same `step()` that reads it after a press, so the walk
+      // learns it from the document and not from having asked: focus
+      // leaving a frame crosses a process boundary and the first reading
+      // can still be the frame. If it never arrives the walk carries on
+      // pressing and the control is reported missed, which is the honest
+      // answer and not a silent pass.
+      let arrived: string | null = null
+      const settle = Date.now() + 2_000
+      while (arrived === null && Date.now() < settle) {
+        const answer = await page.evaluate(() =>
+          (window as unknown as { __a11y: Probe }).__a11y.step(),
+        )
+        if (answer.state !== 'frame' && answer.state !== 'none') arrived = answer.at
+      }
+      trace[trace.length - 1] = `frame ${at} -> asked for ${aimed}, reached ${arrived ?? 'nothing'}`
       continue
     }
     if (
