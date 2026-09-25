@@ -6,7 +6,7 @@ import { useFocusHandback } from './focusHandback'
 import ProgressLine from './ProgressLine'
 import type { EngineState } from '../../shared/engine'
 import { shortLayoutId } from '../../shared/layout'
-import type { ProjectRecord } from '../../shared/project'
+import { drawnDate, type ProjectRecord } from '../../shared/project'
 import type { LayoutRun as Run } from './engine/layoutRun'
 import { useSnapshot } from './useSnapshot'
 
@@ -81,6 +81,7 @@ export default function LayoutRun({
     />
   )
 
+  const drawn = drawnDate(project)
   // The record's inputs have moved since the layout was made: the map on
   // screen is the old choice's until the next run draws the new (A2-02).
   const moved =
@@ -98,7 +99,11 @@ export default function LayoutRun({
         {project.layout !== null && (
           <p className="prose" role="status">
             Drawn from layout {shortLayoutId(project.layout)}
-            {project.date === null ? '' : ` for ${project.date}`}.
+            {/* The day the map on disk was drawn for, not the record's,
+                which may be a day chosen and not yet drawn (A5.5-15):
+                this sentence is about the picture, and cell 03 says a few
+                lines below it that the choice has moved. */}
+            {drawn === null ? '' : ` for ${drawn}`}.
           </p>
         )}
         {movedNotice}

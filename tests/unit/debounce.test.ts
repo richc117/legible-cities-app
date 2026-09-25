@@ -74,4 +74,38 @@ describe('debounce', () => {
     vi.advanceTimersByTime(100)
     expect(run.pending).toBe(false)
   })
+
+  // The other half of `cancel`, for a caller whose waiting call is a choice
+  // a person has already seen taken rather than an optimisation (A5.5-15).
+  it('flush runs the call that was waiting, now, with its latest arguments', () => {
+    const calls: string[] = []
+    const run = debounce((value: string) => calls.push(value), 100)
+    run('a')
+    run('b')
+    run.flush()
+    expect(calls, 'the last one, and only once').toEqual(['b'])
+    expect(run.pending).toBe(false)
+    vi.advanceTimersByTime(1000)
+    expect(calls, 'and the timer that was waiting does not run it again').toEqual(['b'])
+  })
+
+  it('flush with nothing waiting does nothing, and does not stop a later call', () => {
+    const calls: string[] = []
+    const run = debounce((value: string) => calls.push(value), 100)
+    run.flush()
+    expect(calls).toEqual([])
+    run('a')
+    run.flush()
+    vi.advanceTimersByTime(1000)
+    expect(calls).toEqual(['a'])
+  })
+
+  it('flush after the call has landed does not run it twice', () => {
+    const calls: string[] = []
+    const run = debounce((value: string) => calls.push(value), 100)
+    run('a')
+    vi.advanceTimersByTime(100)
+    run.flush()
+    expect(calls).toEqual(['a'])
+  })
 })

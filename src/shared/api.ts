@@ -120,6 +120,16 @@ export interface Api {
      */
     completeOrder(id: string, order: LineOrder): Promise<ProjectRecord>
     /**
+     * The service day a person chose (A5.5-15), written the moment it is
+     * chosen rather than after the rebuild that draws it, as the inputs and
+     * the theme are. That gap - a day on the record that `drawn.date` does
+     * not match - is what lets the notebook's cell 03 say the map does not
+     * show it, and nothing is started by the write. The main process refuses
+     * a day outside the stored window, and a project that has no window to
+     * be inside (specs/028-the-notebook/contracts/run-graph.md).
+     */
+    setDate(id: string, date: string): Promise<ProjectRecord>
+    /**
      * The theme a person chose for this project's map (A4-03), written the
      * moment it is pressed: a theme is neither a layout nor a render, so
      * there is nothing to finish first. The page restyles itself from its
@@ -293,6 +303,7 @@ export const CHANNELS = {
   projectsSetInputs: 'projects:set-inputs',
   projectsCompleteColors: 'projects:complete-colors',
   projectsCompleteOrder: 'projects:complete-order',
+  projectsSetDate: 'projects:set-date',
   projectsSetTheme: 'projects:set-theme',
   projectsSetExport: 'projects:set-export',
   viewerAttach: 'viewer:attach',

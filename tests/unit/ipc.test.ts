@@ -75,6 +75,7 @@ describe('registerProjectHandlers', () => {
       [CHANNELS.projectsCompleteRebuild, 'aaaaaaaaaaaa', { date: '2026-09-15' }],
       [CHANNELS.projectsCompleteColors, 'aaaaaaaaaaaa', { colors: {}, defaultColor: '#888888' }],
       [CHANNELS.projectsCompleteOrder, 'aaaaaaaaaaaa', ['A']],
+      [CHANNELS.projectsSetDate, 'aaaaaaaaaaaa', '2026-09-15'],
       [CHANNELS.projectsSetTheme, 'aaaaaaaaaaaa', 'sepia'],
       [CHANNELS.projectsSetExport, 'aaaaaaaaaaaa', { preset: 'instagram-reel', options: {} }],
     ] as const
@@ -86,6 +87,18 @@ describe('registerProjectHandlers', () => {
     await h.call(CHANNELS.projectsList)
     await h.call(CHANNELS.projectsGet, 'aaaaaaaaaaaa')
     expect(h.calls.map((c) => c.method)).toEqual(['list', 'get'])
+
+    // The list above is written by hand, so it is held to the channels
+    // rather than to whoever remembered: a writer added without a row here
+    // would otherwise slip through the reset's guard untested.
+    expect(
+      [...writes.map(([channel]) => channel), CHANNELS.projectsList, CHANNELS.projectsGet].sort(),
+      'every project channel is either held or a read',
+    ).toEqual(
+      Object.values(CHANNELS)
+        .filter((c) => c.startsWith('projects:'))
+        .sort(),
+    )
   })
 
   it('lets every write through when nothing is being reset', async () => {
@@ -290,6 +303,32 @@ describe('registerProjectHandlers', () => {
       { method: 'setTheme', args: ['abcdefghijk1', 'sepia'] },
       { method: 'setTheme', args: ['abcdefghijk1', 'warm-dark'] },
     ])
+  })
+
+  it('refuses a day that is not one, and passes a day to the store to judge', async () => {
+    const { call, calls } = harness()
+    for (const date of [
+      undefined,
+      null,
+      42,
+      '',
+      '2026-9-2',
+      '2026-02-30',
+      'Saturday',
+      ['2026-01-01'],
+    ]) {
+      await expect(
+        call(CHANNELS.projectsSetDate, 'abcdefghijk1', date),
+        JSON.stringify(date) ?? 'undefined',
+      ).rejects.toThrow()
+    }
+    expect(calls, 'nothing reached the store').toEqual([])
+
+    await expect(call(CHANNELS.projectsSetDate, '../x', '2026-01-01')).rejects.toThrow('invalid id')
+    // Whether this project may be set to this day - a layout, a window, the
+    // day inside it - is the store's, which is where the record is.
+    await call(CHANNELS.projectsSetDate, 'abcdefghijk1', '2026-01-01')
+    expect(calls).toEqual([{ method: 'setDate', args: ['abcdefghijk1', '2026-01-01'] }])
   })
 
   it('refuses an export choice the engine would refuse, and passes a copy of one it would take', async () => {

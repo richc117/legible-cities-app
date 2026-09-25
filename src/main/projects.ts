@@ -37,9 +37,9 @@ import {
   type RebuildDone,
   type Theme,
   validateMade,
+  serviceDayRefusal,
   validateServiceDate,
   validateServiceWindow,
-  withinWindow,
 } from '../shared/project'
 import {
   copyChoice,
@@ -61,6 +61,30 @@ import { failedWords, renameOver, retriedWords, type ReplaceOptions } from './re
  */
 function drew(record: ProjectRecord): ProjectRecord {
   return { ...record, drawn: drawnFrom(record) }
+}
+
+/**
+ * The record a redraw of the *same day* has produced: a recolour or a
+ * reorder (A4-01, A4-02). Everything moves except the day, which stays the
+ * one the map already showed.
+ *
+ * It is not `drew` because `drew` copies the record's `date`, and since
+ * A5.5-15 that may be a day a person has chosen and not drawn. A recolour
+ * draws `drawnDate(record)` - the day the page in the output folder was
+ * made for - so writing `record.date` into `drawn` would have dragging a
+ * colour close cell 03's gap with nobody pressing "Draw for this day", and
+ * would claim the map shows a day it was never drawn for. That is also the
+ * one way the race loses: a `setDate` landing between the debounce firing
+ * and this write would otherwise stamp the new day on the old picture.
+ *
+ * A record whose `drawn` is null has nothing to keep, and the redraw did
+ * draw `record.date`, which is what `drawnDate` answered for it.
+ */
+function redrew(record: ProjectRecord): ProjectRecord {
+  const before = record.drawn
+  const drawn = drawnFrom(record)
+  if (drawn === null || before === null) return { ...record, drawn }
+  return { ...record, drawn: { ...drawn, date: before.date } }
 }
 
 const RECORD_FILE = 'project.json'
@@ -488,20 +512,51 @@ export class ProjectStore {
 
   async #completeRebuildTracked(id: string, done: RebuildDone): Promise<ProjectRecord> {
     this.checkId(id)
-    check(validateServiceDate(done.date))
     const { record, readOnly } = await this.load(id)
     if (readOnly) throw new Error('read-only')
-    if (record.layout === null) throw new Error('lay the project out first')
-    if (record.service === null)
-      throw new Error('lay the project out again to learn which days the feed covers')
-    if (!withinWindow(done.date, record.service))
-      throw new Error(`the feed covers ${record.service.start} to ${record.service.end}`)
+    check(serviceDayRefusal(record, done.date))
     const updated: ProjectRecord = drew({
       ...record,
       version: RECORD_VERSION,
       date: done.date,
       modified: new Date().toISOString(),
     })
+    await this.writeAtomic(id, updated)
+    return updated
+  }
+
+  /**
+   * The service day a person chose (A5.5-15), written the moment it is
+   * chosen and not after a draw, as the inputs and the theme are.
+   *
+   * Until this existed the day reached the record only from `completeLayout`
+   * and `completeRebuild`, both of which write it in the same breath as
+   * `drawn.date`; `drawn.date` could therefore never differ from `date`, and
+   * the notebook's cell 03 could never say the map does not show the day a
+   * person picked (specs/028-the-notebook/contracts/run-graph.md).
+   *
+   * So this writes the day and deliberately does **not** call `drew`:
+   * `drawn` describes the map now on disk, and only a draw may move it. The
+   * gap between the two is exactly the staleness the cell reports.
+   */
+  async setDate(id: string, date: string): Promise<ProjectRecord> {
+    return this.#track(() => this.#serial(id, () => this.#setDateTracked(id, date)))
+  }
+
+  async #setDateTracked(id: string, date: string): Promise<ProjectRecord> {
+    this.checkId(id)
+    const { record, readOnly } = await this.load(id)
+    if (readOnly) throw new Error('read-only')
+    // The same gate a rebuild passes, and for the same reason: a day that
+    // could be chosen but never drawn is a project stuck stale.
+    check(serviceDayRefusal(record, date))
+    if (record.date === date) return record
+    const updated: ProjectRecord = {
+      ...record,
+      version: RECORD_VERSION,
+      date,
+      modified: new Date().toISOString(),
+    }
     await this.writeAtomic(id, updated)
     return updated
   }
@@ -523,7 +578,7 @@ export class ProjectStore {
     const { record, readOnly } = await this.load(id)
     if (readOnly) throw new Error('read-only')
     if (record.layout === null) throw new Error('lay the project out first')
-    const updated: ProjectRecord = drew({
+    const updated: ProjectRecord = redrew({
       ...record,
       version: RECORD_VERSION,
       colors: { ...palette.colors },
@@ -550,7 +605,7 @@ export class ProjectStore {
     const { record, readOnly } = await this.load(id)
     if (readOnly) throw new Error('read-only')
     if (record.layout === null) throw new Error('lay the project out first')
-    const updated: ProjectRecord = drew({
+    const updated: ProjectRecord = redrew({
       ...record,
       version: RECORD_VERSION,
       lineOrder: [...order],

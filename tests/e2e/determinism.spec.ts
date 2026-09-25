@@ -193,7 +193,9 @@ test('the same project, exported twice, captures the same frames within the tole
       // The stored layout has not moved: not in the record, not on disk.
       expect(layoutDrift(before, layoutSnapshot(engineHome)), 'the layout moved').toEqual([])
       expect(sidecar.preset).toBe('instagram-reel-gif')
-      expect(sidecar.service_date).toBe(record.date)
+      // The day the page was drawn for, not the record's chosen day: the
+      // two differ from A5.5-15 onwards, and the sidecar describes the file.
+      expect(sidecar.service_date).toBe(record.drawn?.date ?? record.date)
       // The pinned engine's sidecar carries no layout id; the record and
       // the stored set are what say which layout drew the file. Should the
       // engine add one, it must be the project's.

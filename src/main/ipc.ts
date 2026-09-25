@@ -86,6 +86,18 @@ function readRebuildDone(raw: unknown): RebuildDone {
   return { date }
 }
 
+/**
+ * A service day a person chose (A5.5-15): a real calendar day, checked for
+ * shape here. Whether this project may be set to it - a layout, a stored
+ * window, and the day inside it - is the store's, which is where the record
+ * that answers it is (`serviceDayRefusal`).
+ */
+function readServiceDay(raw: unknown): string {
+  const date = typeof raw === 'string' ? raw : ''
+  check(validateServiceDate(date))
+  return date
+}
+
 /** The two inputs a person chose: a mode by the engine's rule, an agency id or none. */
 function readInputs(raw: unknown): ProjectInputs {
   const input = isObject(raw) ? raw : {}
@@ -255,6 +267,7 @@ export function registerProjectHandlers(
   handle(CHANNELS.projectsCompleteOrder, (id, order) =>
     store.completeOrder(readId(id), readLineOrder(order)),
   )
+  handle(CHANNELS.projectsSetDate, (id, date) => store.setDate(readId(id), readServiceDay(date)))
   handle(CHANNELS.projectsSetTheme, (id, theme) => store.setTheme(readId(id), readTheme(theme)))
   handle(CHANNELS.projectsSetExport, (id, choice) =>
     store.setExport(readId(id), readExportChoice(choice)),

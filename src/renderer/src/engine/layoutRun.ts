@@ -1,6 +1,7 @@
 import { LAYOUT_STAGES, type RunState } from '../../../shared/layout'
 import { isEngineErrorShape, ERROR_CODES, type EngineState } from '../../../shared/engine'
 import {
+  drawnDate,
   orderOf,
   paletteOf,
   type LineOrder,
@@ -37,9 +38,12 @@ import type { Stage } from '../ProgressLine'
 //
 // A rebuild is the map call alone, from the stored layout, for a day a
 // person chose: the layout stages are never run, and the day is written
-// only when the map has been drawn. A recolour is the same shape for a
-// palette a person chose (A4-01): the stored day, the stored layout, and
-// the palette written only once the map carries it. Every draw, whichever
+// only when the map has been drawn - though since A5.5-15 it is on the
+// record before the run starts, and this is what makes the map agree with
+// it. A recolour is the same shape for a palette a person chose (A4-01):
+// the stored layout, the palette written only once the map carries it, and
+// the day the map already showed, never the record's, which may be a day
+// chosen and waiting to be drawn. Every draw, whichever
 // started it, sends the palette the project is being drawn with, so the
 // map on screen and the record never disagree.
 
@@ -513,8 +517,8 @@ export class LayoutRun {
   }
 
   /**
-   * The map alone, from the stored layout, for the stored day, in a palette
-   * a person chose (A4-01). The layout stages never run and the day never
+   * The map alone, from the stored layout, for the day it already showed,
+   * in a palette a person chose (A4-01). The layout stages never run and the day never
    * moves: a colour is a render, not a layout (ADR-023). The palette is
    * written only when the map has been drawn, as a chosen day is, so the
    * record never claims a colour the page on screen does not show.
@@ -524,7 +528,10 @@ export class LayoutRun {
     const { completeColors } = this.#options
     this.#open('rebuild', 'Redraw in new colours', project.id)
     const layout = project.layout
-    const date = project.date
+    // The day the map on disk was drawn for, not the record's, which may be
+    // a day chosen and not yet drawn (A5.5-15): a colour is a render, and a
+    // render must not quietly draw a day nobody asked it to.
+    const date = drawnDate(project)
     if (layout === null || date === null) {
       this.#set({
         state: 'failed',
@@ -562,17 +569,19 @@ export class LayoutRun {
   }
 
   /**
-   * The map alone, from the stored layout, for the stored day, with the
-   * lines arranged as a person put them (A4-02). The same shape as a
-   * recolour: the layout stages never run, the day never moves, and the
-   * order is written only when the map has been drawn in it.
+   * The map alone, from the stored layout, for the day it already showed,
+   * with the lines arranged as a person put them (A4-02). The same shape as a
+   * recolour: the layout stages never run, the day never moves - the day
+   * the map already showed is drawn again - and the order is written only
+   * when the map has been drawn in it.
    */
   reorder(project: ProjectRecord, engine: EngineState | null, order: LineOrder): void {
     if (this.#snapshot.state === 'running') return
     const { completeOrder } = this.#options
     this.#open('rebuild', 'Redraw in a new line order', project.id)
     const layout = project.layout
-    const date = project.date
+    // The drawn day, as a recolour takes it, and for the same reason.
+    const date = drawnDate(project)
     if (layout === null || date === null) {
       this.#set({
         state: 'failed',

@@ -395,9 +395,54 @@ export function drawnFrom(record: ProjectRecord): DrawnFrom | null {
   }
 }
 
+/**
+ * The service day the map now on disk was drawn for.
+ *
+ * Since A5.5-15 this is **not** `record.date`: a day chosen and not yet
+ * drawn moves `date` and leaves the page in the project's output folder
+ * exactly where it was. Anything that reads or describes that page - the
+ * export's plan, the provenance beside the file, the export preview, the
+ * sentence saying what was drawn, and a redraw for new colours or a new
+ * order - must ask this rather than the record's day, or it will describe
+ * the picture with a day the picture does not show.
+ *
+ * A record from before `drawn` existed cannot say, and its stored day is
+ * then the best and only answer - which is exactly what those callers used
+ * before, so an old project is unaffected.
+ */
+export function drawnDate(record: Pick<ProjectRecord, 'date' | 'drawn'>): string | null {
+  return record.drawn?.date ?? record.date
+}
+
 /** Is a day inside the window, inclusive? Both ISO, so strings compare. */
 export function withinWindow(date: string, service: ServiceWindow): boolean {
   return date >= service.start && date <= service.end
+}
+
+/**
+ * Why this project may not be set to this service day, or null.
+ *
+ * One function because the store has two writers of the day now - the day a
+ * person chooses (A5.5-15) and the day a rebuild drew for (A3-04) - and a
+ * day one of them would refuse must be refused by the other, in the same
+ * sentence. A day that could be chosen but not drawn, or drawn but not
+ * chosen, is a record that disagrees with the map beside it.
+ *
+ * The window is the engine's answer at a layout run (ADR-031), so a project
+ * with no layout has no window and nothing for a day to be inside.
+ */
+export function serviceDayRefusal(
+  record: Pick<ProjectRecord, 'layout' | 'service'>,
+  date: string,
+): string | null {
+  const invalid = validateServiceDate(date)
+  if (invalid !== null) return invalid
+  if (record.layout === null) return 'lay the project out first'
+  if (record.service === null)
+    return 'lay the project out again to learn which days the feed covers'
+  if (!withinWindow(date, record.service))
+    return `the feed covers ${record.service.start} to ${record.service.end}`
+  return null
 }
 
 type Parsed = { record: ProjectRecord; readOnly: boolean } | { error: string }

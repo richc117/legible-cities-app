@@ -87,6 +87,8 @@ export interface ProjectState {
     width: number,
   ) => Promise<RenderStageResult>
   setInputs: (inputs: { mode: string; agency: string | null }) => Promise<void>
+  /** The service day a person chose, written at once and drawing nothing (A5.5-15). */
+  setDate: (date: string) => Promise<void>
   setTheme: (theme: Theme) => Promise<void>
   setExport: (choice: ExportChoice) => Promise<void>
   /** The screen's own heading, focused once there is something to read. */
@@ -263,6 +265,20 @@ export function useProjectState(id: string, onBack: (notice?: string) => void): 
         : current,
     )
   }
+  // The service day is written the moment it is chosen, as the inputs are,
+  // and draws nothing: the rebuild that draws it is a separate press. Until
+  // A5.5-15 the day reached the record only from a finished draw, so
+  // `drawn.date` could never differ from `date` and the notebook could
+  // never say the map does not show the day a person picked. A rejection
+  // is the caller's to show, as the rename's is.
+  const setDate = async (date: string): Promise<void> => {
+    const record = await window.api.projects.setDate(id, date)
+    setState((current) =>
+      current.status === 'ready'
+        ? { status: 'ready', project: { ...current.project, ...record } }
+        : current,
+    )
+  }
   // The theme is written at once and nothing is rebuilt for it: the page
   // takes it on its address and restyles itself, so the record coming back
   // is all the viewer needs to reload in it (A4-03).
@@ -342,6 +358,7 @@ export function useProjectState(id: string, onBack: (notice?: string) => void): 
     inspect,
     readStage,
     setInputs,
+    setDate,
     setTheme,
     setExport,
     headingRef,
