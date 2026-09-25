@@ -8,6 +8,7 @@ import {
   SPEEDS,
   clampTo,
   makePoll,
+  pollsNow,
   readClock,
   shownPlaying,
   shownSpeed,
@@ -39,11 +40,13 @@ import { useSnapshot } from './useSnapshot'
 // it, rather than fighting it (`controls=1` gives the page its switcher and
 // nothing else, so the app's are the only transport on screen).
 //
-// The poll runs only while the cell is open. A collapsed cell keeps its
-// controls mounted - `Cell.tsx` hides them rather than unmounting, so a
-// half-typed value is never lost - which means an effect that polled on
-// mount would go on asking the page for the whole life of the screen with
-// nobody reading the answer.
+// The poll runs only while the cell is open and nothing else holds the
+// page. A collapsed cell keeps its controls mounted - `Cell.tsx` hides them
+// rather than unmounting, so a half-typed value is never lost - which means
+// an effect that polled on mount would go on asking the page for the whole
+// life of the screen with nobody reading the answer; and while a run, an
+// export or cell 06's preview holds the page every act here is refused, so
+// a poll then reads a clock nobody may move. `pollsNow` has both halves.
 
 /** What the section is called, as its heading and as its region's name. */
 const NAME = 'Transport'
@@ -132,16 +135,18 @@ export default function Transport({
     if (why === null) setRefused(null)
   }, [why])
 
-  // Where the page is, while anyone is looking. The poll owns when the day
-  // and the clock are asked for and how many asks may be outstanding;
-  // `makePoll` carries the reasoning and the tests. What is here is what to
-  // do with what it learns.
+  // Where the page is, while anyone is looking **and** nobody else holds
+  // the page: `pollsNow` carries why the second half is not merely the
+  // first. The poll owns when the day and the clock are asked for and how
+  // many asks may be outstanding; `makePoll` carries that reasoning and its
+  // tests. What is here is what to do with what it learns.
   //
-  // A fresh poll per effect run, so a redraw asks the new page for its own
-  // day: a rebuild draws another service day, and keeping the old bounds
-  // would leave the scrub addressing a day the page no longer has.
+  // A fresh poll per effect run, so a redraw - or a hold ending - asks the
+  // page in front of it for its own day: a rebuild draws another service
+  // day, and keeping the old bounds would leave the scrub addressing a day
+  // the page no longer has.
   useEffect(() => {
-    if (!open) return undefined
+    if (!pollsNow(open, why)) return undefined
     let off = false
     const poll = makePoll(
       (method) => window.api.viewer.call(method),
@@ -160,7 +165,7 @@ export default function Transport({
       off = true
       clearInterval(timer)
     }
-  }, [open, projectId, redraw])
+  }, [open, why, projectId, redraw])
 
   // The seek, made once and read through a ref, so a call waiting on the
   // timer is never the closure from three renders ago - the pattern

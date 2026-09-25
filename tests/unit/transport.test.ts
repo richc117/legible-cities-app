@@ -17,6 +17,7 @@ import {
   asDispatched,
   clampTo,
   makePoll,
+  pollsNow,
   readBounds,
   readClock,
   shownPlaying,
@@ -496,5 +497,42 @@ describe('what a restore sends at the moment it sends it', () => {
     const nothing = { speed: null, playing: null }
     expect(asDispatched('setSpeed', [60], nothing)).toEqual([60])
     expect(asDispatched('setPlaying', [true], nothing)).toEqual([true])
+  })
+})
+
+// Whether the page is asked anything at all (A5.5-16). Driven through
+// `transportRefusal` rather than through a hand-written null, so the two
+// cannot drift: the poll is gated on the very value that refuses a press,
+// and a hold dropped from one is dropped from both or this fails.
+describe('when the page is polled', () => {
+  const held = (page: Partial<Parameters<typeof transportRefusal>[0]>): string | null =>
+    transportRefusal({ ...NOTHING, ...page })
+
+  it('is asked while the cell is open and nothing else has the page', () => {
+    expect(pollsNow(true, held({}))).toBe(true)
+  })
+
+  it('is not asked while the cell is collapsed', () => {
+    // A collapsed cell keeps its controls mounted, so the effect is still
+    // there to ask; nobody can read the answer.
+    expect(pollsNow(false, held({}))).toBe(false)
+  })
+
+  it('is not asked while a run, an export or the preview holds the page', () => {
+    // Every act of this control is refused then, so a poll is a round trip
+    // through the privileged process, twice a second, to move a scrub
+    // nobody may move. During an export it is worse than idle: the frame is
+    // showing the address `export.plan` answered, so what would be read
+    // back is the export preview's clock and not the map's - and the viewer
+    // deliberately neither keeps nor restores that, so that closing cell 06
+    // brings the map back to the clock it was opened at.
+    for (const hold of ['laying', 'exporting', 'previewing'] as const) {
+      expect(pollsNow(true, held({ [hold]: true })), hold).toBe(false)
+    }
+  })
+
+  it('asks again once the hold ends', () => {
+    expect(pollsNow(true, held({ exporting: true }))).toBe(false)
+    expect(pollsNow(true, held({ exporting: false }))).toBe(true)
   })
 })

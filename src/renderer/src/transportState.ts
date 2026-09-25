@@ -275,6 +275,32 @@ export function transportRefusal(page: {
 }
 
 /**
+ * Whether the page should be polled at all: only while the cell is
+ * disclosed **and** nothing else holds the page.
+ *
+ * The second half is not an optimisation of the first. While a run, an
+ * export or cell 06's preview holds the page, every one of this control's
+ * acts is refused (`transportRefusal`, and the same value is what gates
+ * this), so a poll then is a round trip through the privileged process into
+ * a frame, twice a second, to move a scrub nobody may move. During an
+ * export that is worse than idle traffic: the frame is showing the address
+ * `export.plan` answered, so the clock being read back is the *export
+ * preview's* and not the map's - and `Viewer.tsx` deliberately neither
+ * keeps nor restores that address's state, so that closing cell 06 brings
+ * the map back to the clock it was opened at. A poll running through the
+ * preview overwrites the displayed clock with the preview's and leaves the
+ * scrub reading a time the map does not have the moment cell 06 closes.
+ *
+ * What it costs is that the clock stands still while a run redraws, which
+ * is honest: the map it describes is being replaced. The poll starts again
+ * when the hold ends, and asks for the day afresh, because by then the page
+ * is usually a new document.
+ */
+export function pollsNow(open: boolean, held: string | null): boolean {
+  return open && held === null
+}
+
+/**
  * What a freshly loaded page should be given back: whatever the page being
  * left said it was showing, with the two fields no page will ever say laid
  * over it.
