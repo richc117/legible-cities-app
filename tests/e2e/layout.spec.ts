@@ -1077,8 +1077,37 @@ test('opening the engine log leaves the notebook where it was', async () => {
         window.scrollBy(0, box.top - middle)
       }
     })
-    const before = await page.evaluate(() => window.scrollY)
-    expect(before, 'the notebook is long enough to scroll').toBeGreaterThan(0)
+    expect(
+      await page.evaluate(() => window.scrollY),
+      'the notebook is long enough to scroll',
+    ).toBeGreaterThan(0)
+    // Where the control a person is about to press is, on the screen. This
+    // and not `window.scrollY`, which this test asserted until issue 216
+    // (A5.5-16): the title states a **visual** property - the notebook does
+    // not move under the person - and `scrollY` is a proxy for it that comes
+    // apart from it in exactly the case this test lives in. Chromium's
+    // scroll anchoring *changes* `scrollY` in order to hold content
+    // visually still when something above the viewport grows, so an exact
+    // `scrollY` assertion can go red while the browser is behaving
+    // correctly and a person sees nothing move.
+    //
+    // No tolerance is added for that, and none may be: this assertion
+    // caught three separate defects in one wave (issue 216 names them), the
+    // largest of which was 24px, and a window of slack wide enough to
+    // absorb anchoring would pass every one of them. The rect is compared
+    // to a twentieth of a pixel, which is sub-pixel layout noise and
+    // nothing else.
+    //
+    // What `scrollY` was accidentally guarding - a cell drawing its final
+    // height on its first paint - is held where it belongs, by
+    // `tests/unit/cell-footer.test.tsx`'s "draws its whole self from what
+    // the screen already holds, asking the engine nothing".
+    const box = (): Promise<{ top: number; left: number; width: number; height: number }> =>
+      logToggle(page).evaluate((el) => {
+        const rect = el.getBoundingClientRect()
+        return { top: rect.top, left: rect.left, width: rect.width, height: rect.height }
+      })
+    const before = await box()
     // Stated rather than assumed, so this test can never go back to
     // measuring Playwright's own scrolling without saying so - and both
     // halves are stated, because one of them held while the other did not.
@@ -1096,10 +1125,15 @@ test('opening the engine log leaves the notebook where it was', async () => {
 
     await logToggle(page).click()
     await expect(logLines(page)).toBeVisible()
-    // The newest line is in view inside the box, and the column behind it
-    // has not moved: the panel sets the box's own scrollTop and never asks
-    // the platform to bring a line into view.
-    expect(await page.evaluate(() => window.scrollY)).toBe(before)
+    // The newest line is in view inside the box, and the control the person
+    // pressed is exactly where it was: the panel sets the box's own
+    // scrollTop and never asks the platform to bring a line into view.
+    const after = await box()
+    for (const edge of ['top', 'left', 'width', 'height'] as const) {
+      // A twentieth of a pixel: `toBeCloseTo(x, 1)` is |difference| < 0.05,
+      // which is the sub-pixel slack a fractional rect needs and no more.
+      expect(after[edge], `the toggle's ${edge} did not move`).toBeCloseTo(before[edge], 1)
+    }
     expect(
       await logLines(page).evaluate(
         (box) => box.scrollHeight - box.scrollTop - box.clientHeight <= 2,
