@@ -1321,15 +1321,61 @@ function standInPage(engineHome: string): void {
   )
 }
 
-/** What the page in the frame was asked, in order, from the only side that can reach it. */
+/**
+ * What the page in the frame was asked, in order, from the only side that
+ * can reach it.
+ *
+ * Every way of answering nothing answers an empty list, because this is
+ * read from `expect.poll` across a navigation and each of them is a moment
+ * to retry rather than a failure - the same treatment
+ * `notebook-a11y.spec.ts` gives the same moment. A document that has just
+ * arrived has not run its own script yet, so `__seen` is undefined for a
+ * beat after every navigation, and `toContainEqual` on undefined throws
+ * where an empty list simply does not match and is asked again.
+ */
 async function seenByPage(app: ElectronApplication): Promise<[string, unknown][]> {
-  return (await app.evaluate(async ({ BrowserWindow }) => {
-    const win = BrowserWindow.getAllWindows()[0]
-    const main = win.webContents.mainFrame
-    const frame = main.frames.find((f) => f !== main)
-    return frame ? ((await frame.executeJavaScript('window.__seen')) as unknown) : []
-  })) as [string, unknown][]
+  try {
+    const answer = (await app.evaluate(async ({ BrowserWindow }) => {
+      const win = BrowserWindow.getAllWindows()[0]
+      const main = win.webContents.mainFrame
+      const frame = main.frames.find((f) => f !== main)
+      return frame ? ((await frame.executeJavaScript('window.__seen || []')) as unknown) : []
+    })) as [string, unknown][] | undefined
+    return answer ?? []
+  } catch {
+    return []
+  }
 }
+
+/**
+ * How long one of the three tests below is allowed, in milliseconds.
+ *
+ * The suite's default is 60s (`playwright.config.ts`), and these do not fit
+ * in it on a Windows runner: "a theme change gives the map back the speed
+ * and the pause it had" timed out there while every assertion in it passed
+ * on this machine. The time is not one slow step. It is the sum, and the
+ * sum is declared in the test's own deadlines:
+ *
+ *   30s  `electron.launch`
+ *   20s  the engine's status line reaching "ready"
+ *   30s  the layout run
+ *   20s  the transport appearing once the page has answered `bounds()`
+ *   20s  the restore reaching the page after the theme's navigation
+ *        and a dozen 10s `expect` defaults for the clicks, the create
+ *        dialog, the reopen and the cell toggles
+ *
+ * That is over 120s of declared budget for a test allowed 60, so the
+ * default was never enough for it; this machine hides that by being fast.
+ *
+ * Raising the envelope does **not** make a hang slower to report, which is
+ * the usual objection and the reason to say so here: every step above
+ * carries its own deadline and fails on it, with its own message, long
+ * before this one is reached. The envelope only stops the *sum* being the
+ * failure. It is half again the declared budget, which covers the steps
+ * that have no deadline of their own - a click's actionability, a record
+ * write - without holding the suite for minutes on a run that is stuck.
+ */
+const TRANSPORT_TIMEOUT = 180_000
 
 /** The transport's own section inside cell 03. */
 const transport = (page: Page): Locator =>
@@ -1355,6 +1401,7 @@ async function projectWithASeam(page: Page, engineHome: string): Promise<void> {
 }
 
 test('cell 03 drives the page and changes nothing the project keeps', async () => {
+  test.setTimeout(TRANSPORT_TIMEOUT)
   const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
   await withApp(engineHome, async (page, app) => {
     await projectWithASeam(page, engineHome)
@@ -1405,6 +1452,7 @@ test('cell 03 drives the page and changes nothing the project keeps', async () =
 })
 
 test('a theme change gives the map back the speed and the pause it had', async () => {
+  test.setTimeout(TRANSPORT_TIMEOUT)
   const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
   await withApp(engineHome, async (page, app) => {
     await projectWithASeam(page, engineHome)
@@ -1412,7 +1460,12 @@ test('a theme change gives the map back the speed and the pause it had', async (
 
     await transport(page).getByRole('button', { name: 'Pause' }).click()
     await speed(page).selectOption('30')
-    await expect.poll(() => seenByPage(app)).toContainEqual(['setSpeed', 30])
+    // The page is deliberately not waited for here. That the select reaches
+    // it is the test above's assertion, and what this test turns on is the
+    // app's own memory, which `choose` writes before the call it sends - so
+    // waiting would be a second set of round trips into a frame that is
+    // about to be replaced anyway.
+    await expect(speed(page)).toHaveValue('30')
 
     // A theme is taken on the page's address, so the frame navigates and
     // the page that arrives is a new document at the address's own
@@ -1439,6 +1492,7 @@ test('a theme change gives the map back the speed and the pause it had', async (
 })
 
 test('a scrub while a run holds the page is refused with a sentence', async () => {
+  test.setTimeout(TRANSPORT_TIMEOUT)
   // Slow enough that the rebuild is still going while the press is made:
   // eight stages at 400ms is over three seconds.
   const engineHome = home({ map_draws: true, progress_delay_ms: 400 })
