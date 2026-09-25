@@ -115,3 +115,21 @@ test('the row says its number, its name and its state as one name', async () => 
     await expect(page.getByRole('button', { name: /^06 Export ready$/ }).first()).toBeVisible()
   })
 })
+
+test('a cell row on the sample page is a level below the state it illustrates', async () => {
+  await withSamplePage(async (page) => {
+    // `CellPreview` draws each state's name as an `h2` and mounts `Cell` at
+    // heading level 3, so a row is a child of the state it illustrates and
+    // not its sibling (issue 197). Without that prop this page is the flat
+    // outline the notebook's own rule forbids - and it is this spec that
+    // walks the page, so the check belongs here rather than beside the
+    // project screen's own outline in `notebook-a11y.spec.ts`.
+    const rows = await page.evaluate(() =>
+      [...document.querySelectorAll('.disclosure-heading')].map((h) => h.tagName.toLowerCase()),
+    )
+    // Asserted before the set, so "every row is an h3" cannot be satisfied
+    // by a page that drew no rows at all.
+    expect(rows.length, 'the sample page draws cells to look at').toBeGreaterThan(0)
+    expect([...new Set(rows)], 'every cell row here is an h3').toEqual(['h3'])
+  })
+})

@@ -1819,8 +1819,8 @@ test('a release, installed, through docs/acceptance.md', async () => {
         "the calendar's own days: min and max were checked, not the platform's date picker.",
       )
       log.notAutomated(
-        "cell 03's collapsed row, which says the day, whose choice it was, and whether the " +
-          'map has been drawn for it.',
+        "cell 03's collapsed row, which says the day, whether the map has been drawn for " +
+          "it, and the engine's own busiest weekday beside it.",
       )
       log.notAutomated(
         'that cells 04, 05 and 06 say "not drawn yet" while a chosen day is waiting.',
