@@ -104,9 +104,10 @@ test('the notebook, Inspect, the geographic view, the inspector and its dialogs'
     // every panel drawn, rather than in a test of its own: a second launch
     // and a second layout run would cost minutes to see the same document.
     //
-    // The inspector is still closed at this point, and its own "Jobs" is an
-    // `h2` of the window rather than of the notebook (ADR-036). The check is
-    // made before it is opened for that reason, and not by excluding it.
+    // Its subject is the notebook and not the screen: the rail's "Outputs"
+    // and the inspector's "Jobs" are second-level headings of the project
+    // screen and of the window, both correct where they are, and `outline()`
+    // is scoped to the column so that neither has to be listed here.
     //
     // Cell 06 is shut here, and a collapsed cell's contents are hidden, so
     // this does not see inside it: the same outline is read again in 'cell
@@ -117,7 +118,7 @@ test('the notebook, Inspect, the geographic view, the inspector and its dialogs'
     // the engine's drawing - and a single `evaluate` is a fixed budget
     // wherever it lands, which this suite has been bitten by before.
     await expect
-      .poll(() => outline(page), { message: "the project screen's heading outline" })
+      .poll(() => outline(page), { message: "the notebook's heading outline" })
       .toEqual({
         second: [
           '01 Data',
@@ -326,9 +327,12 @@ test('cell 06, and focus through an export', async () => {
 })
 
 /**
- * The project screen's heading outline, as a screen reader's heading list
- * would read it (issue 197): every `h2` that is not hidden, and how many
- * each cell holds. What "not hidden" means exactly is in `met` below.
+ * The notebook's heading outline, as a screen reader's heading list would
+ * read it (issue 197): every `h2` in the column that is not hidden, and how
+ * many each cell holds. What "not hidden" and "in the column" mean exactly
+ * is in `met` and `column` below; the scope is the point rather than an
+ * implementation detail, because the project screen carries second-level
+ * headings that are not the notebook's and are right where they are.
  *
  * Read from the document rather than through roles because what is being
  * asserted is the outline itself - the levels and their order - and
@@ -342,7 +346,7 @@ test('cell 06, and focus through an export', async () => {
  * whether an outline is sane. That is why this check is here and not in
  * `tests/support/a11y.ts`, which every screen goes through: Settings' six
  * `h2`s under its `h1` are correct, and a rule saying "six second-level
- * headings, the cells'" is the project screen's alone.
+ * headings, the cells'" is the notebook's alone.
  */
 async function outline(
   page: Page,
@@ -377,9 +381,40 @@ async function outline(
     // meets. That last part is why the outline is read a second time in
     // 'cell 06, and focus through an export', where all six are open.
     const met = (h: Element): boolean => h.checkVisibility()
+
+    // `second` is the notebook's own outline and not the whole screen's.
+    // The column is `.notebook`, whose children are the map and the six
+    // cells (`Notebook.tsx`, `notebook.css`); the rail sits outside it, as
+    // do the header, the footer and the inspector.
+    //
+    // Scoped rather than given a list of what else to expect, because the
+    // screen's furniture is not this check's subject. The rail's "Outputs"
+    // (A5.5-21) is a real second-level heading of the project screen and
+    // belongs exactly where it is, as the inspector's "Jobs" does
+    // (ADR-036). Neither is part of the notebook's outline, and a check
+    // that named them would be rewritten by every branch that puts another
+    // region beside the column.
+    //
+    // What that gives up, plainly: an `h2` outside a cell but inside the
+    // column is still caught - the map's own part of it included - and one
+    // anywhere else on the project screen is no longer this check's
+    // business. The inspector used to be kept out by reading the outline
+    // before it was opened; the scope is what keeps it out now, which is
+    // the better of the two, since an ordering that has to be remembered
+    // is an exclusion that rots.
+    //
+    // A missing column answers nothing and fails against six expected
+    // rows, rather than passing empty.
+    const column = document.querySelector('.notebook')
+    // `cells` is deliberately not scoped the same way: a cell is a cell
+    // wherever it is drawn, and the two fields below should follow one that
+    // ever appears outside the column rather than stop seeing it. Every
+    // `section.cell` on this screen is inside it today (`Notebook.tsx`), so
+    // a panel `h2` returning inside a cell is caught twice over - once here
+    // and once in `second`.
     const cells = [...document.querySelectorAll('section.cell')]
     return {
-      second: [...document.querySelectorAll('h2')].filter(met).map((h) => {
+      second: [...(column?.querySelectorAll('h2') ?? [])].filter(met).map((h) => {
         const number = h.querySelector('.cell-number')?.textContent ?? ''
         const name = h.querySelector('.cell-name')?.textContent ?? ''
         return number === '' && name === '' ? (h.textContent ?? '').trim() : `${number} ${name}`
