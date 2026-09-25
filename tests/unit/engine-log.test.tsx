@@ -16,6 +16,8 @@ import { describe, expect, it } from 'vitest'
 import EngineLog, {
   atBottom,
   CLOSED,
+  LINES_LABEL,
+  PANEL_LABEL,
   droppedNote,
   isOpen,
   lineCount,
@@ -207,10 +209,36 @@ describe('the panel', () => {
     expect(html).toContain('Copy log')
   })
 
+  // The defect this file did not catch the first time, and the reason the
+  // three end-to-end tests failed: the box of lines carried the disclosed
+  // part's own name, so the same group name sat inside itself. A screen
+  // reader user entering the disclosure heard it twice with nothing to tell
+  // the inner one from the outer, and `getByRole` matched two elements.
+  //
+  // Asserted as a property of the whole panel rather than as two string
+  // constants, so the next name added here is checked too.
+  it('gives no two nested elements the same accessible name', () => {
+    const html = renderToStaticMarkup(
+      <EngineLog run={runWith(job({ log: ['[info] one'], dropped: 41 }))} />,
+    )
+    const names = [...html.matchAll(/aria-label="([^"]*)"/g)].map((m) => m[1])
+    expect(names.length, 'the panel names something').toBeGreaterThan(1)
+    expect(new Set(names).size, `two elements share a name: ${names.join(' | ')}`).toBe(
+      names.length,
+    )
+  })
+
+  it('names the disclosed part and the box of lines differently', () => {
+    expect(PANEL_LABEL).not.toBe(LINES_LABEL)
+    const html = renderToStaticMarkup(<EngineLog run={runWith(job({ log: ['[info] one'] }))} />)
+    expect(html).toContain(`aria-label="Log lines"`)
+    expect(html).toContain(`aria-label="The engine&#x27;s log for this run"`)
+  })
+
   it('makes the scrolling box focusable and names it', () => {
     const html = renderToStaticMarkup(<EngineLog run={runWith(job({ log: ['[info] one'] }))} />)
     expect(html).toMatch(
-      /<pre class="engine-log-lines" tabindex="0" role="group" aria-label="The engine&#x27;s log for this run"/,
+      /<pre class="engine-log-lines" tabindex="0" role="group" aria-label="Log lines"/,
     )
   })
 

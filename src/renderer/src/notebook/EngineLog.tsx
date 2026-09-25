@@ -43,6 +43,33 @@ import Disclosure from '../kit/Disclosure'
 // project's, the renderer cannot import it, and a copy of it here is the
 // thing that goes stale.
 
+/**
+ * The two names in this panel, which have to differ, because one is inside
+ * the other: the disclosed part holds the box of lines, the note about
+ * dropped ones and "Copy log", while the box holds only the lines. Giving
+ * them the same name put the same group name twice in a screen reader's
+ * path with nothing to tell the inner one from the outer, and made
+ * `getByRole` ambiguous, which is how it was found.
+ *
+ * The box is named at all - rather than having its role and label removed -
+ * because it scrolls and takes focus, and an unnamed focusable scroll box
+ * is worse than a duplicated name: a person tabs into it and is told
+ * nothing about where they have landed.
+ *
+ * It is a named `group` and deliberately **not** `role="log"`, which is the
+ * role for this content and would have made the two distinct on its own.
+ * `log` carries an implicit `aria-live="polite"`, and the thing it would
+ * announce is every line of a run as it arrives - LOOM alone prints
+ * thousands in one stage - read out over whatever else the person is doing,
+ * unstoppable except by closing the disclosure they opened to read. The run
+ * already says what it is doing, once per stage, in the progress line's own
+ * sentence. Overriding the role with `aria-live="off"` would work and would
+ * leave a role in the markup that says the opposite of what the element
+ * does. `group` says what this is: a named box a person goes to and reads.
+ */
+export const PANEL_LABEL = "The engine's log for this run"
+export const LINES_LABEL = 'Log lines'
+
 /** The lines on screen and which job they belong to. */
 export interface LogView {
   /** The job the lines came from; null when the run has never started. */
@@ -203,7 +230,7 @@ export default function EngineLog({ run }: { run: LayoutRun }): JSX.Element | nu
         className="engine-log-toggle"
         open={open}
         onToggle={(next) => setChosen({ id: log.id, open: next })}
-        label="The engine's log for this run"
+        label={PANEL_LABEL}
         summary={
           <>
             Engine log <span className="engine-log-count">{lineCount(log.lines.length)}</span>
@@ -218,7 +245,7 @@ export default function EngineLog({ run }: { run: LayoutRun }): JSX.Element | nu
             ref={box}
             tabIndex={0}
             role="group"
-            aria-label="The engine's log for this run"
+            aria-label={LINES_LABEL}
             onScroll={() => {
               following.current = box.current === null || atBottom(box.current)
             }}

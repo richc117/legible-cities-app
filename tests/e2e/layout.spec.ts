@@ -950,8 +950,14 @@ const processCell = (page: Page): Locator =>
 const logToggle = (page: Page): Locator =>
   processCell(page).getByRole('button', { name: /^Engine log/ })
 
+/**
+ * The box of lines, which is named for itself and not for the disclosure
+ * that holds it: the two are nested, so one name for both would put the
+ * same group name inside itself - unreadable for a screen reader, and two
+ * matches for this locator.
+ */
 const logLines = (page: Page): Locator =>
-  page.getByRole('group', { name: "The engine's log for this run", exact: true })
+  page.getByRole('group', { name: 'Log lines', exact: true })
 
 test('the engine log is closed under the stages, fills while the run goes, and stops when it ends', async () => {
   const engineHome = home({
