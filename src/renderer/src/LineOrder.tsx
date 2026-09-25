@@ -69,20 +69,20 @@ interface Props {
   /** The same question at this instant rather than at the last render (A4-01). */
   busyNow?: () => boolean
   /**
-   * Where focus goes when a control that held it is disabled or removed,
-   * and, by being given at all, that a cell of the notebook renders the
-   * heading (A5.5-08): the section is then named by what its own heading
-   * said and draws no heading of its own.
+   * Where focus goes when a control that held it is disabled or removed:
+   * cell 05's own heading, as the colours section hands it (A5.5-18). Not
+   * the heading below, which names this section but is not the cell's, and
+   * not the cell's toggle - a reflexive Space after "Back to alphabetical"
+   * would collapse the cell the person is working in.
    *
-   * One prop and not two, because a headless panel with nowhere to hand
-   * focus back to is the A6-07 defect itself - Chromium blurs a disabled
-   * element and focus falls to the body - and a shape that cannot say it
-   * cannot ship it.
+   * Required, because a panel with nowhere to hand focus back to is the
+   * A6-07 defect itself - Chromium blurs a disabled element and focus falls
+   * to the body - and a shape that cannot say it cannot ship it.
    */
-  handback?: RefObject<HTMLElement | null>
+  handback: RefObject<HTMLElement | null>
 }
 
-/** What the section is called, as its heading and as its name while headless. */
+/** What the section is called, as its heading and as the name of its region. */
 const NAME = 'Line order'
 
 export default function LineOrder({
@@ -94,7 +94,6 @@ export default function LineOrder({
   busyNow,
   handback,
 }: Props): JSX.Element {
-  const headless = handback !== undefined
   const ready = engine?.state === 'ready'
   const { state: runState, reordered } = useSnapshot(run)
   const running = runState === 'running'
@@ -122,7 +121,6 @@ export default function LineOrder({
   // machine, finishing sooner, did not.
   const focusOn = useRef<string | null>(null)
   const buttons = useRef(new Map<string, HTMLElement>())
-  const headingRef = useRef<HTMLHeadingElement>(null)
 
   const commitRef = useRef<(next: Order) => void>(() => undefined)
   const schedule = useMemo(
@@ -265,10 +263,10 @@ export default function LineOrder({
     // Nothing is following a line any more.
     focusOn.current = null
     // This button removes the last thing it had to remove and so disables
-    // itself, and Chromium blurs a disabled element; the heading is where
-    // focus goes, so a screen reader stays in the panel (A3-04 learned
-    // this, and the Colours panel's resets do the same).
-    ;(handback ?? headingRef).current?.focus()
+    // itself, and Chromium blurs a disabled element; the cell's heading is
+    // where focus goes, so a screen reader stays in the cell (A3-04 learned
+    // this, and the colours section's resets do the same).
+    handback.current?.focus()
     const next = alphabetical()
     setOrder(next)
     schedule(next)
@@ -276,17 +274,12 @@ export default function LineOrder({
   }
 
   return (
-    <section
-      className="line-order"
-      aria-label={headless ? NAME : undefined}
-      aria-labelledby={headless ? undefined : 'line-order-heading'}
-      aria-busy={busy}
-    >
-      {!headless && (
-        <h2 id="line-order-heading" tabIndex={-1} ref={headingRef}>
-          {NAME}
-        </h2>
-      )}
+    <section className="line-order" aria-labelledby="line-order-heading" aria-busy={busy}>
+      {/* The second of cell 05's two sections, named by its own heading a
+          level below the cell's, for the reason the colours section gives:
+          one heading cannot name two sections. It takes no focus - the
+          cell's heading is where focus is handed (A5.5-18). */}
+      <h3 id="line-order-heading">{NAME}</h3>
       <p className="prose">
         Where two lines share track the map draws the later of them over the earlier, and the page
         lists them in this order too. The stations do not move: the stored layout is drawn again,

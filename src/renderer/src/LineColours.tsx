@@ -78,20 +78,21 @@ interface Props {
    */
   busyNow?: () => boolean
   /**
-   * Where focus goes when a control that held it is disabled or removed,
-   * and, by being given at all, that a cell of the notebook renders the
-   * heading (A5.5-08): the section is then named by what its own heading
-   * said and draws no heading of its own.
+   * Where focus goes when a control that held it is disabled or removed:
+   * cell 05's own heading, which is the one thing above both sections that
+   * takes focus and does nothing with it. Not the heading below, which
+   * names this section but is not the cell's, and not the cell's toggle -
+   * a reflexive Space after "Reset every line" would collapse the cell the
+   * person is working in (A5.5-18).
    *
-   * One prop and not two, because a headless panel with nowhere to hand
-   * focus back to is the A6-07 defect itself - Chromium blurs a disabled
-   * element and focus falls to the body - and a shape that cannot say it
-   * cannot ship it.
+   * Required, because a panel with nowhere to hand focus back to is the
+   * A6-07 defect itself - Chromium blurs a disabled element and focus falls
+   * to the body - and a shape that cannot say it cannot ship it.
    */
-  handback?: RefObject<HTMLElement | null>
+  handback: RefObject<HTMLElement | null>
 }
 
-/** What the section is called, as its heading and as its name while headless. */
+/** What the section is called, as its heading and as the name of its region. */
 const NAME = 'Line colours'
 
 export default function LineColours({
@@ -103,7 +104,6 @@ export default function LineColours({
   busyNow,
   handback,
 }: Props): JSX.Element {
-  const headless = handback !== undefined
   const ready = engine?.state === 'ready'
   const { state: runState, recoloured } = useSnapshot(run)
   const running = runState === 'running'
@@ -117,7 +117,6 @@ export default function LineColours({
   const [state, setState] = useState<State>({ status: 'waiting' })
   const [palette, setPalette] = useState<Palette>(() => paletteOf(project))
   const [open, setOpen] = useState<string | null>(null)
-  const headingRef = useRef<HTMLHeadingElement>(null)
 
   // The debounce, made once: a person dragging through a hue must not start
   // a map build per frame. The current project, engine and run are read
@@ -207,11 +206,11 @@ export default function LineColours({
     schedule(next)
   }
   // A button that removes the last thing it had to remove disables itself,
-  // and Chromium blurs a disabled element; the heading is where focus goes
-  // so a screen reader stays in the panel (A3-04 learned this).
+  // and Chromium blurs a disabled element; the cell's heading is where
+  // focus goes so a screen reader stays in the cell (A3-04 learned this).
   const changeAndKeepFocus = (next: Palette): void => {
     change(next)
-    ;(handback ?? headingRef).current?.focus()
+    handback.current?.focus()
   }
 
   const inspection = state.status === 'ready' ? state.inspection : null
@@ -226,17 +225,14 @@ export default function LineColours({
   const nothingToReset = isReset(palette)
 
   return (
-    <section
-      className="line-colours"
-      aria-label={headless ? NAME : undefined}
-      aria-labelledby={headless ? undefined : 'line-colours-heading'}
-      aria-busy={busy}
-    >
-      {!headless && (
-        <h2 id="line-colours-heading" tabIndex={-1} ref={headingRef}>
-          {NAME}
-        </h2>
-      )}
+    <section className="line-colours" aria-labelledby="line-colours-heading" aria-busy={busy}>
+      {/* Cell 05 holds two sections, so the cell's own heading cannot name
+          either of them: it says Lines, and a person reading down the cell
+          has to be told where the colours end and the order begins. The
+          heading is a level below the cell's, takes no focus of its own -
+          the cell's heading is where focus is handed (A5.5-18) - and is
+          what names the region. */}
+      <h3 id="line-colours-heading">{NAME}</h3>
       <p className="prose">
         A line is drawn in the colour its feed publishes. Choose another here and the map, the chips
         over it and the time chart all follow. The stations do not move: the stored layout is drawn

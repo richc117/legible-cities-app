@@ -1,7 +1,8 @@
-// The Line colours panel against the stand-in engine: the feed's colours
-// beside the lines, an override that redraws the map once and is stored,
-// the resets, the default for a line the feed leaves uncoloured, and the
-// colours still there when the project is opened again (specs/018-colours).
+// The Line colours section of cell 05 against the stand-in engine: the
+// feed's colours beside the lines, an override that redraws the map once
+// and is stored, the resets, the default for a line the feed leaves
+// uncoloured, the sentence the collapsed cell carries, and the colours
+// still there when the project is opened again (specs/018-colours).
 //
 // The stand-in's LA feed publishes a colour for each of its six routes, so
 // the feed's own colours, an override over them and the default a line
@@ -14,7 +15,14 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { _electron as electron, expect, test, type Page } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
-import { cell, laidOutProject, openProject } from '../support/project'
+import {
+  cell,
+  cellHeading,
+  closeCell,
+  laidOutProject,
+  openCell,
+  openProject,
+} from '../support/project'
 
 const repoRoot = resolve(__dirname, '../..')
 const PYTHON = findPython()
@@ -76,6 +84,42 @@ test('lists the feed lines with the colours the feed publishes', async () => {
     // Nothing to reset yet.
     await expect(panel.getByRole('button', { name: /^Reset line A/ })).toBeDisabled()
     await expect(panel.getByRole('button', { name: 'Reset every line' })).toBeDisabled()
+    // Cell 05 is one cell of two sections, each named by a heading of its
+    // own a level below the cell's: the cell is called Lines, and one
+    // heading cannot say where the colours end and the order begins
+    // (A5.5-18).
+    await expect(panel.getByRole('heading', { name: 'Line colours' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Line order' })).toBeVisible()
+  })
+})
+
+test('the collapsed cell says what its lines carry', async () => {
+  const engineHome = home()
+  await withApp(engineHome, async (page) => {
+    await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
+    const panel = cell(page, 'lines')
+    const row = cellHeading(page, 'lines')
+
+    // Nothing chosen yet: the record's own colours and the engine's own
+    // order, said as what they are rather than left blank.
+    await closeCell(page, 'lines')
+    await expect(row).toContainText('no line recoloured, alphabetical order')
+
+    await openCell(page, 'lines')
+    await panel.getByRole('button', { name: /^Choose the colour of line A/ }).click()
+    const picker = panel.getByRole('group', { name: 'Colour for line A' })
+    await picker.getByLabel('Hex value').fill('#ff0000')
+    await picker.getByRole('button', { name: 'Use this colour' }).click()
+    // The summary is of the record, so it waits for the record: the build
+    // writes it and the screen reads it back.
+    await expect
+      .poll(() => readRecord(engineHome).colors, { timeout: 30_000 })
+      .toEqual({
+        A: '#ff0000',
+      })
+
+    await closeCell(page, 'lines')
+    await expect(row).toContainText('1 line recoloured, alphabetical order')
   })
 })
 
