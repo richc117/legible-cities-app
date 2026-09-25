@@ -1,7 +1,7 @@
-// The Line order panel against the stand-in engine: the lines in the order
-// they are drawn, a move that redraws the map once and is stored, the way
-// back to alphabetical, and the arrangement still there when the project is
-// opened again (specs/020-line-order).
+// The Line order section of cell 05 against the stand-in engine: the lines
+// in the order they are drawn, a move that redraws the map once and is
+// stored, the way back to alphabetical, and the arrangement still there
+// when the project is opened again (specs/020-line-order).
 //
 // The stand-in's LA feed publishes six routes, so a move can be read off one
 // project, and `fake-engine.received` is where the `line_order` the engine
@@ -12,7 +12,14 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { _electron as electron, expect, test, type Page } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
-import { cellHandback, laidOutProject, panel } from '../support/project'
+import {
+  cellHandback,
+  cellHeading,
+  closeCell,
+  laidOutProject,
+  openCell,
+  panel,
+} from '../support/project'
 
 const repoRoot = resolve(__dirname, '../..')
 const PYTHON = findPython()
@@ -115,6 +122,12 @@ test('a move redraws the map once, is stored, and is there on the next open', as
       .toEqual(['B', 'A', 'C', 'D', 'E', 'K'])
     await expect(rowsOf(page).nth(0)).toContainText('B')
 
+    // The cell says so while it is collapsed: the order has moved from the
+    // engine's, and no line was recoloured to move it (A5.5-18).
+    await closeCell(page, 'lines')
+    await expect(cellHeading(page, 'lines')).toContainText('no line recoloured, an order you chose')
+    await openCell(page, 'lines')
+
     // Back to the Library and in again: the same order, and nothing built.
     const built = received(engineHome, 'map.build').length
     await page.getByRole('button', { name: 'Back to Library' }).click()
@@ -190,9 +203,11 @@ test('back to alphabetical empties the order and disables itself', async () => {
     const maps = received(engineHome, 'map.build')
     expect(maps[maps.length - 1]).not.toContain('line_order')
     // The button disabled itself under the press, and Chromium blurs a
-    // disabled element: focus is on the cell's heading row, which is the
-    // panel's heading now (A5.5-08), rather than on the body, so a screen
-    // reader is still in the cell.
+    // disabled element: focus is on the cell's heading row rather than on
+    // the body, so a screen reader is still in the cell. The cell's and not
+    // this section's own heading, which names the section but takes no
+    // focus, and not the row's toggle, which a reflexive Space would use to
+    // collapse the cell (A5.5-18).
     await expect(cellHandback(page, 'lines')).toBeFocused()
   })
 })

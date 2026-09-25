@@ -14,14 +14,17 @@
    disclosure under the row it belongs to. A line's own colour is data and
    arrives as an inline style from the record, never from here. */
 
-.line-colours h2 {
+/* Cell 05 holds two sections, so each is named by a heading of its own, a
+   level below the cell's (A5.5-18): one heading cannot name two sections,
+   and a person reading down the cell has to be told where the colours end
+   and the order begins. Neither takes focus - a control that disables
+   itself hands focus to the cell's heading, the row above them both - so
+   neither carries a focus ring. This one opens the cell, so it has no
+   space above it; the order's, below, keeps the space that separates the
+   two sections. */
+.line-colours h3 {
   font-size: var(--font-ui-medium);
-  margin: var(--space-4-6) 0 var(--space-2-2);
-}
-
-.line-colours h2:focus-visible {
-  outline: var(--focus-ring-width) solid var(--focus);
-  outline-offset: var(--focus-ring-offset);
+  margin: 0 0 var(--space-2-2);
 }
 
 .theme-switch h2 {
@@ -34,14 +37,9 @@
   outline-offset: var(--focus-ring-offset);
 }
 
-.line-order h2 {
+.line-order h3 {
   font-size: var(--font-ui-medium);
   margin: var(--space-4-6) 0 var(--space-2-2);
-}
-
-.line-order h2:focus-visible {
-  outline: var(--focus-ring-width) solid var(--focus);
-  outline-offset: var(--focus-ring-offset);
 }
 
 /* The place a line stands in the order, beside its swatch: a figure, quiet,
