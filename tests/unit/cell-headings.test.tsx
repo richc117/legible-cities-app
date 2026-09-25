@@ -23,6 +23,7 @@
 import type { JSX } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
+import ConfirmDialog from '../../src/renderer/src/ConfirmDialog'
 import { DiagnosticsReport } from '../../src/renderer/src/Diagnostics'
 import Inspect from '../../src/renderer/src/Inspect'
 import StageView from '../../src/renderer/src/StageView'
@@ -137,6 +138,72 @@ const inCell = (panel: JSX.Element, cell: { number: number; name: string }): str
 /** Every heading of one level in some markup, by what it contains. */
 const headings = (html: string, level: 2 | 3): string[] =>
   [...html.matchAll(new RegExp(`<h${level}\\b[^>]*>(.*?)</h${level}>`, 'gs'))].map((m) => m[1])
+
+/** Every heading in some markup, by level, in the order they are drawn. */
+const levels = (html: string): string[] => [...html.matchAll(/<(h[1-6])\b/g)].map((m) => m[1])
+
+/**
+ * The same markup with every `<dialog>` taken out, which is how this layer
+ * asks for the cell's own headings. Dialogs do not nest, so a non-greedy
+ * match is enough.
+ */
+const withoutDialogs = (html: string): string => html.replace(/<dialog\b[\s\S]*?<\/dialog>/g, '')
+
+describe('a cell holding a closed dialog', () => {
+  // The case the end-to-end check was written blind to, and the reason it
+  // now reads `checkVisibility()` rather than the markup: `LayoutRun` keeps
+  // a `ConfirmDialog` - the re-layout warning - inside cell 02 at all
+  // times, and `ConfirmDialog` always draws its `<dialog>` with an `<h2>`
+  // for the title; `open` only drives `showModal()`. So cell 02's markup
+  // holds two `h2`s whenever the app is running, and exactly one of them is
+  // ever met.
+  //
+  // **The dialog's `h2` is right and is not to be demoted.** It names the
+  // dialog rather than a section of the cell it happens to be written
+  // inside, and while it is open it should be a top-level heading of what
+  // is then on screen. The rule "a cell is exactly one second-level
+  // heading" is about the cell's own sections.
+  //
+  // This layer cannot ask whether a heading is met - `renderToStaticMarkup`
+  // gives a string, and `checkVisibility()` needs a document - so it asks
+  // the question it can and leaves the other to the end-to-end check, which
+  // reads the outline with the warning open as well as shut.
+  const drawn = (): string =>
+    inCell(
+      <>
+        <DiagnosticsReport name="Los Angeles" report={report} />
+        <ConfirmDialog
+          open={false}
+          title="Lay this project out from scratch?"
+          description="The layout engine is heuristic."
+          confirmLabel="Re-layout"
+          variant="primary"
+          onConfirm={async () => {}}
+          onCancel={() => {}}
+          busyLabel="Starting the re-layout…"
+        />
+      </>,
+      { number: 2, name: 'Process' },
+    )
+
+  it('really does draw that second heading, so the case below is not vacuous', () => {
+    // Asserted first and on purpose. Without it the filtered assertion
+    // would pass just as well against a dialog that drew no heading at all,
+    // which is the shape of test this lane has been told to stop shipping.
+    const html = drawn()
+    expect(html).toContain('<dialog')
+    expect(html).toContain('Lay this project out from scratch?')
+    expect(levels(html)).toEqual(['h2', 'h3', 'h2'])
+  })
+
+  it('keeps exactly one second-level heading of its own, the row', () => {
+    const own = withoutDialogs(drawn())
+    expect(levels(own)).toEqual(['h2', 'h3'])
+    expect(own).not.toContain('Lay this project out from scratch?')
+    // The one that is left is the cell's row, not the dialog's title.
+    expect(headings(own, 2)[0]).toContain('class="cell-name"')
+  })
+})
 
 describe('a panel inside a cell', () => {
   for (const { name, cell, id, panel } of PANELS) {

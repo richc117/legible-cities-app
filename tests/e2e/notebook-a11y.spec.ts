@@ -108,8 +108,9 @@ test('the notebook, Inspect, the geographic view, the inspector and its dialogs'
     // `h2` of the window rather than of the notebook (ADR-036). The check is
     // made before it is opened for that reason, and not by excluding it.
     //
-    // A cell that is collapsed keeps its controls in the document, so this
-    // sees cell 06's contents too though its row is shut.
+    // Cell 06 is shut here, and a collapsed cell's contents are hidden, so
+    // this does not see inside it: the same outline is read again in 'cell
+    // 06, and focus through an export', where every cell is open.
     //
     // Polled, not read once. The panels above arrive at their own pace - the
     // diagnostics comes with the run's report and the geographic view with
@@ -220,8 +221,21 @@ test('the notebook, Inspect, the geographic view, the inspector and its dialogs'
     await page.getByRole('button', { name: 'Re-layout' }).click()
     const relayout = page.getByRole('dialog', { name: 'Lay this project out from scratch?' })
     await sweep(page, 'the re-layout warning', relayout)
+    // This warning is written inside cell 02, so while it is open the cell
+    // does hold two `h2`s and the outline does say so. The heading walk
+    // follows what is on screen, and a person in this dialog meets its
+    // title; the outline check above is only true because the dialog is
+    // shut, and this is what says the check can tell the two apart rather
+    // than never counting a dialog at all.
+    const warned = await outline(page)
+    expect(warned.second).toContain('Lay this project out from scratch?')
+    expect(warned.perCell).toContain('02: 2')
     await relayout.getByRole('button', { name: 'Cancel' }).click()
     await expect(relayout).toBeHidden()
+    // And shut again, it is out of the outline once more.
+    await expect
+      .poll(async () => (await outline(page)).perCell, { message: 'the warning closed' })
+      .toContain('02: 1')
     await page.getByRole('button', { name: 'Delete project' }).click()
     const remove = page.getByRole('dialog', { name: 'Delete Los Angeles?' })
     await sweep(page, 'the delete confirmation', remove)
@@ -278,6 +292,27 @@ test('cell 06, and focus through an export', async () => {
 
       const tab = await openCell(page, 'export')
       await expect(tab.getByRole('combobox', { name: 'Preset' })).toBeVisible({ timeout: 20_000 })
+
+      // The heading outline with every cell open (issue 197). The other
+      // reading of it is taken with cell 06 shut, and a collapsed cell's
+      // contents are hidden from a screen reader and from the check alike,
+      // so this is the one that sees inside cell 06: its export panel is
+      // drawn headless under the row (#171), and the row is the only `h2`.
+      await expect
+        .poll(() => outline(page), { message: 'the heading outline, every cell open' })
+        .toEqual({
+          second: [
+            '01 Data',
+            '02 Process',
+            '03 Frame and service day',
+            '04 Style',
+            '05 Lines',
+            '06 Export',
+          ],
+          perCell: ['01: 1', '02: 1', '03: 1', '04: 1', '05: 1', '06: 1'],
+          deeper: [],
+        })
+
       await sweep(page, 'the project, cell 06 open')
 
       // Export gives way to Cancel, and Cancel to Reveal: focus follows.
@@ -312,25 +347,53 @@ test('cell 06, and focus through an export', async () => {
 async function outline(
   page: Page,
 ): Promise<{ second: string[]; perCell: string[]; deeper: string[] }> {
-  return page.evaluate(() => ({
-    second: [...document.querySelectorAll('h2')].map((h) => {
-      const number = h.querySelector('.cell-number')?.textContent ?? ''
-      const name = h.querySelector('.cell-name')?.textContent ?? ''
-      return number === '' && name === '' ? (h.textContent ?? '').trim() : `${number} ${name}`
-    }),
-    perCell: [...document.querySelectorAll('section.cell')].map(
-      (cell) => `${cell.getAttribute('data-cell')}: ${cell.querySelectorAll('h2').length}`,
-    ),
-    // Every heading inside a cell that is neither the row nor a panel's own
-    // level: an `h1`, or an `h4` and below, which skips one and reads as a
-    // hole in the outline.
-    deeper: [...document.querySelectorAll('section.cell')].flatMap((cell) =>
-      [...cell.querySelectorAll('h1, h4, h5, h6')].map(
-        (h) =>
-          `${cell.getAttribute('data-cell')}: ${h.tagName.toLowerCase()} ${(h.textContent ?? '').trim()}`,
+  return page.evaluate(() => {
+    // Only the headings a person would meet, which is not the same as the
+    // headings in the markup. The project screen keeps two `ConfirmDialog`s
+    // in the document at all times, each with a real `<h2>` for its title:
+    // the re-layout warning, which `LayoutRun` renders inside cell 02, and
+    // the delete confirmation under the notebook. Both are shut.
+    //
+    // Their `h2`s are right and are not to be demoted. A dialog's title
+    // names the dialog rather than a section of the cell it happens to be
+    // written in, and while one is open it should be a top-level heading of
+    // what is then on screen. They are simply not part of this outline
+    // while they are closed, and a check that counted them would be
+    // asserting markup while claiming to describe a heading walk.
+    //
+    // `checkVisibility()` and not a list of `dialog` and `[role="dialog"]`
+    // subtrees to exclude: a list has to be kept current, and the next
+    // hidden thing to land inside a cell would come back as this same
+    // failure. It is also the general answer - a `display: none` subtree is
+    // out of the accessibility tree whatever put it there - and it makes a
+    // collapsed cell's contents absent too, which is again what a person
+    // meets. That last part is why the outline is read a second time in
+    // 'cell 06, and focus through an export', where all six are open.
+    const met = (h: Element): boolean => h.checkVisibility()
+    const cells = [...document.querySelectorAll('section.cell')]
+    return {
+      second: [...document.querySelectorAll('h2')].filter(met).map((h) => {
+        const number = h.querySelector('.cell-number')?.textContent ?? ''
+        const name = h.querySelector('.cell-name')?.textContent ?? ''
+        return number === '' && name === '' ? (h.textContent ?? '').trim() : `${number} ${name}`
+      }),
+      perCell: cells.map(
+        (cell) =>
+          `${cell.getAttribute('data-cell')}: ${[...cell.querySelectorAll('h2')].filter(met).length}`,
       ),
-    ),
-  }))
+      // Every heading inside a cell that is neither the row nor a panel's
+      // own level: an `h1`, or an `h4` and below, which skips one and reads
+      // as a hole in the outline.
+      deeper: cells.flatMap((cell) =>
+        [...cell.querySelectorAll('h1, h4, h5, h6')]
+          .filter(met)
+          .map(
+            (h) =>
+              `${cell.getAttribute('data-cell')}: ${h.tagName.toLowerCase()} ${(h.textContent ?? '').trim()}`,
+          ),
+      ),
+    }
+  })
 }
 
 /**
