@@ -108,7 +108,7 @@ test('the row says its number, its name and its state as one name', async () => 
     // A collapsed cell's summary is part of what the row says, because the
     // row's name is its contents rather than a string beside them.
     await expect(
-      page.getByRole('button', { name: /^02 Process running Laid out d1deeb11/ }).first(),
+      page.getByRole('button', { name: /^02 Process running d1deeb11, made / }).first(),
       'the summary is in the row a person hears',
     ).toBeVisible()
     // And a cell with no summary says only its number, name and state.

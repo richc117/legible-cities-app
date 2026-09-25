@@ -611,7 +611,13 @@ a table).
   Press "Trips": sorted descending (most trips first) on its first press;
   press "Type": ascending on its first press. Every further press on the
   column already sorted reverses it. The arrow beside it is not read.
-- **Layout run and its progress line.** Press **Lay out again** (or
+- **Layout run and its progress line.** Before pressing anything, cell 02
+  draws the eight stages at rest (A5.5-10): listen for an image named "The
+  layout run's 8 stages, none started." on a project never laid out, or
+  "The layout run's 8 stages." on one already laid out. The stations carry
+  the app's words - `parse`, `collapse`, `order`, `octilinear`, `trips`,
+  `draw`, `animate`, `write` - while the sentences spoken beside them stay
+  the engine's own. Then press **Lay out again** (or
   **Lay out**). Listen for focus moving to **Cancel** (D1), a region
   "Layout run", an image named "Running: `<sentence>`", and the polite
   status reading the engine's sentence for each stage as it finishes. At the
@@ -678,13 +684,16 @@ a table).
   `<n>`." and focus staying on that line's button as the list redraws. Move
   a line to the end and listen for focus handed to its **Up** when **Down**
   is dimmed. Press **Back to alphabetical**: "The lines are in alphabetical
-  order again." and focus on the "Line order" heading.
-- **Theme switch.** Listen for the heading "Theme" and the group "The theme
+  order again." and focus on the cell's own heading (D3) - not on the "Line
+  order" heading, which is a label and takes no focus.
+- **Theme switch.** Listen for the region "Theme" and the group "The theme
   this map is drawn in" with the buttons "Warm dark" and "Sepia", the
   current one pressed. Press the other and listen for it pressed and the
   first not. Start a run (Lay out again) and listen for both buttons dimmed,
   the status "The theme waits until the run that is going has finished: …",
-  and focus on the "Theme" heading if it was on a button.
+  and focus on the cell's own heading (D3) if it was on a button. Cell 04
+  draws its one control headless (A5.5-17), so "Theme" is the region's name
+  and there is no heading of that name to land on.
 - **Geographic view.** Listen for the heading "Where the routes run", the
   group "Stage" with toggle buttons "gtfs2graph" and "loom" (the current one
   pressed), the description list "Counts" (Nodes, Stations, Junctions,
@@ -717,8 +726,10 @@ a table).
 
 ### Project, Export tab
 
-- **Preset, storyboard, view, quality.** Choose the **Export** tab. Listen
-  for the heading "Export" and the pop-up buttons "Preset" (its options
+- **Preset, storyboard, view, quality.** Open cell **06 Export**. Cell 06
+  draws its choices headless under the cell's own row (A5.5-19), so there
+  is no heading "Export" inside it; the row is what names the cell. Listen
+  for the pop-up buttons "Preset" (its options
   grouped by platform: listen for the group names Instagram, LinkedIn,
   Bluesky and X), "Storyboard" (for a video or GIF preset), "View" (for a
   still), and "Quality". Choose the preset "bluesky: 1200 by 900, still,
@@ -734,6 +745,16 @@ a table).
   as 07:30" read with the field when you return; clear it. The text field
   "Filename tag", read with "Added to the file’s name, so a draft does not
   replace the last good export."
+- **Where it goes.** Listen for the field "Where it goes" and, with no
+  folder of the project's own chosen, the sentence "This project's exports
+  go to the app's export folder, which Settings names, in a folder named
+  after the project." and one button, **Choose folder**, described by that
+  sentence. Press it, choose a folder in the platform's own dialog, and
+  listen for the path read in its place and a second button, **Use the
+  app's folder**. Press that and listen for the first sentence back and
+  focus on **Choose folder**. Choose a folder inside the app itself and
+  listen for the refusal under the pair, as an alert: "that folder is
+  inside the app itself; nothing can be kept there" (A5.5-19).
 - **Export, its progress line, Cancel, Reveal.** Choose a still preset (it
   is quick) and press **Export**. Listen for focus moving to **Cancel**
   (D2), a region "Export", an image "Running: `<sentence>`", and the

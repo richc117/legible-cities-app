@@ -15,10 +15,10 @@ const STATES: CellState[] = ['ready', 'running', 'stale', 'error']
 
 const SUMMARY: Record<CellId, string | null> = {
   data: 'LA Metro Rail, rail and subway, Los Angeles County MTA, 110 stops in the feed',
-  process: 'Laid out d1deeb11, made 13 September',
+  process: 'd1deeb11, made 13/09/2026, 14:03:00',
   frame: 'Tuesday 17 March, the engine’s choice',
   style: 'Warm dark',
-  lines: 'Six lines, three with a colour of their own',
+  lines: '3 lines recoloured, an order you chose',
   export: null,
 }
 

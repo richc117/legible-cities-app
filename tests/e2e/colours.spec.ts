@@ -74,7 +74,10 @@ test('lists the feed lines with the colours the feed publishes', async () => {
     await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
     const panel = cell(page, 'lines')
     await expect(panel).toBeVisible()
-    const rows = panel.getByRole('list', { name: 'Lines' }).getByRole('listitem')
+    // `exact`, because cell 05's other section lists "Lines in the order
+    // they are drawn" and Playwright matches an accessible name by
+    // substring: without it this counts both lists (A5.5-18).
+    const rows = panel.getByRole('list', { name: 'Lines', exact: true }).getByRole('listitem')
     await expect(rows).toHaveCount(6)
     await expect(rows.nth(0)).toContainText('A')
     // The engine's route_color, hashed and lower-cased, and where the

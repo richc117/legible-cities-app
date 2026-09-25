@@ -279,8 +279,11 @@ to "Laid out.". Then open **Caltrain** and press **Lay out** there too.
 
 **See.**
 - A region with a progress line of eight named stages, in this order:
-  `gtfs2graph`, `topo`, `loom`, `octi`, `schedule`, `render`, `animate`,
-  `write`. Each stage's station is filled as the engine finishes it, and
+  `parse`, `collapse`, `order`, `octilinear`, `trips`, `draw`, `animate`,
+  `write`. These are the app's words for the engine's eight stages, one
+  each, in the engine's own order (A5.5-10); the engine's own names are
+  still what the jobs inspector's log and the geographic view's two
+  buttons say. Each stage's station is filled as the engine finishes it, and
   the sentence beside the line is the engine's for the last stage that
   finished. **Cancel** is beside it while it runs.
 - It ends with "Laid out." and a **Lay out again** button and a

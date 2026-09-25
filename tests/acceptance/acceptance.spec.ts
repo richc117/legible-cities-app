@@ -105,13 +105,35 @@ const STILL_MS = 20 * MINUTE
 const QUIT_MS = 30 * SECOND
 const SHORT_MS = 30 * SECOND
 
-const LAYOUT_STAGES = [
+/**
+ * The stations on cell 02's line, as a release before A5.5-10 drew them:
+ * the engine's own eight, in the engine's own order.
+ */
+const ENGINE_STAGES = [
   'gtfs2graph',
   'topo',
   'loom',
   'octi',
   'schedule',
   'render',
+  'animate',
+  'write',
+]
+
+/**
+ * And as it draws them since: one word of the app's per engine stage, in
+ * the engine's order still (`src/renderer/src/stages.ts`). The engine's own
+ * names did not go anywhere - the jobs inspector's copied log and the
+ * geographic view's two buttons are still in them, because those are what a
+ * person quotes at the engine.
+ */
+const STAGE_WORDS = [
+  'parse',
+  'collapse',
+  'order',
+  'octilinear',
+  'trips',
+  'draw',
   'animate',
   'write',
 ]
@@ -136,6 +158,11 @@ const FEATURES = {
     name: 'Skip past the map',
     commit: '55e3b4aa12737cf579ac74ed9f3930dd674e654d',
     landed: 'pull request 122 (issue 106)',
+  },
+  stageWords: {
+    name: "The layout line's stations in the app's words",
+    commit: 'bee42842d56b0f34a668276c62b4e4c3db62dd82',
+    landed: 'pull request 202 (issue 162)',
   },
 } satisfies Record<string, Feature>
 
@@ -1191,9 +1218,21 @@ test('a release, installed, through docs/acceptance.md', async () => {
         await window.getByRole('main').getByRole('button', { name: 'Lay out', exact: true }).click()
         const region = window.getByRole('region', { name: 'Layout run' })
         await expect(region).toBeVisible({ timeout: SHORT_MS })
+        // Which eight words to expect is the release's to say, not ours: a
+        // build from before A5.5-10 draws the engine's own names and is not
+        // wrong for doing so. A tag that does not contain that commit is
+        // held to the old list; one that does, or no tag at all, to the new.
+        const wordsExpected = tagContains(FEATURES.stageWords)
+        const { name: wordsName, commit: wordsCommit, landed: wordsLanded } = FEATURES.stageWords
+        if (TAG !== '' && wordsExpected === null) {
+          log.problems.push(
+            `git could not tell whether ${TAG} contains ${wordsCommit.slice(0, 7)} (${wordsName}, ${wordsLanded}): the tag or the commit is not in this clone, or the clone is shallow`,
+          )
+        }
+        const stages = wordsExpected === false ? ENGINE_STAGES : STAGE_WORDS
         await log.soft(`${name}: the eight stages in order`, async () => {
           const labels = (await region.locator('svg text').allTextContents()).map((l) => l.trim())
-          expect(labels).toEqual(LAYOUT_STAGES)
+          expect(labels).toEqual(stages)
         })
         const cancel = await region.getByRole('button', { name: 'Cancel', exact: true }).isVisible()
         if (!cancel) {
@@ -1205,7 +1244,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
             const marks = await region
               .locator('svg circle.mark')
               .evaluateAll((stations) => stations.map((s) => s.getAttribute('class') ?? ''))
-            expect(marks.map((m) => m.includes('mark-done'))).toEqual(LAYOUT_STAGES.map(() => true))
+            expect(marks.map((m) => m.includes('mark-done'))).toEqual(stages.map(() => true))
           })
         }
         return end
