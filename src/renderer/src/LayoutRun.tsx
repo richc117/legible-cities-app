@@ -3,7 +3,8 @@ import Button from './kit/Button'
 import Icon from './icons/Icon'
 import ConfirmDialog from './ConfirmDialog'
 import { useFocusHandback } from './focusHandback'
-import ProgressLine from './ProgressLine'
+import ProgressLine, { type Stage } from './ProgressLine'
+import { inWords } from './stages'
 import type { EngineState } from '../../shared/engine'
 import { shortLayoutId } from '../../shared/layout'
 import { drawnDate, type ProjectRecord } from '../../shared/project'
@@ -15,6 +16,13 @@ import { useSnapshot } from './useSnapshot'
 // document puts the progress line on the layout screen (section 10) and
 // makes cancel a text button beside it (section 8.2), which is what this is
 // until the jobs drawer generalises it (A1-03).
+//
+// Since A5.5-10 the eight stages are drawn before the run starts as well as
+// during it, so cell 02 says what the work is made of rather than only what
+// it is doing: the same line, every station pending, at the head of the
+// cell. They carry the words of `stages.ts` rather than the engine's own
+// names; the engine's sentence beside the line is still its own, word for
+// word, because a sentence from the engine is the engine's (DESIGN.md 11).
 
 export default function LayoutRun({
   run,
@@ -96,6 +104,13 @@ export default function LayoutRun({
   if (state === 'idle') {
     return (
       <div className="focus-region" ref={region}>
+        {/* The stages a run goes through, before one has: the line the run
+            itself draws, with every station waiting. An idle run's stages
+            are the fresh eight, so this is the same data the run reports
+            from and not a second list that could disagree with it. */}
+        <div className="layout-stages">
+          <ProgressLine stages={inWords(stages)} ariaLabel={waiting(stages)} />
+        </div>
         {project.layout !== null && (
           <p className="prose" role="status">
             Drawn from layout {shortLayoutId(project.layout)}
@@ -122,7 +137,10 @@ export default function LayoutRun({
   return (
     <div className="focus-region" ref={region}>
       <section className="layout-run" aria-label="Layout run">
-        <ProgressLine stages={stages} ariaLabel={describe(state, stages.length, message)} />
+        <ProgressLine
+          stages={inWords(stages)}
+          ariaLabel={describe(state, stages.length, message)}
+        />
         <div className="layout-run-foot">
           <p className="progress-message" role="status" aria-live="polite">
             {error ?? message ?? 'Starting the layout.'}
@@ -260,6 +278,15 @@ export function stoppedSentence(
   return state === 'cancelled'
     ? 'The run was cancelled. The project is as it was.'
     : 'Nothing was saved. The project is as it was.'
+}
+
+/**
+ * The line's name before a run has started: the stages are there to be
+ * read, and what a screen reader would otherwise hear is eight stations
+ * with no sentence saying that none of them has run.
+ */
+export function waiting(stages: Stage[]): string {
+  return `The layout run's ${stages.length} stages, none started.`
 }
 
 /** One sentence for the whole line, for a screen reader. */
