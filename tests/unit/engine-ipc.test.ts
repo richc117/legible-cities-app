@@ -258,6 +258,52 @@ describe('registerEngineHandlers', () => {
     expect(sent).toHaveLength(3)
     expect(sent[2].channel).toBe(CHANNELS.engineSettled)
   })
+
+  // A `job/log` line reaches the page with its secrets already out
+  // (A5.5-13). The engine prints a feed's URL as it was given when a
+  // download fails, and until cell 02 drew these lines the page only held
+  // them for a copy, which `jobs-ipc.ts` redacted on its way to the
+  // clipboard. Redacting at this door covers the screen, the run's own
+  // buffer and that copy at once, and redaction being stable under a
+  // second pass means the copy's own is still a no-op.
+  it('takes the secrets out of a log line before the page ever sees it', async () => {
+    const { call, sent, notify } = harness()
+    await call(CHANNELS.engineRequest, 'tok-r', 'feeds.add', { key: 'x' })
+    const key = ['s3cr3t', 'bridge', 'key'].join('-')
+    notify({
+      method: 'job/log',
+      params: {
+        id: 1,
+        level: 'error',
+        line: `fetching https://someone:pw@agency.example/gtfs.zip?api_key=${key}#part`,
+      },
+    })
+    expect(sent).toEqual([
+      {
+        channel: CHANNELS.engineLog,
+        payload: {
+          id: 'tok-r',
+          level: 'error',
+          line: 'fetching https://<redacted>@agency.example/gtfs.zip?api_key=<redacted>#<redacted>',
+        },
+      },
+    ])
+    const payload = sent[0].payload as { line: string }
+    expect(payload.line).not.toContain(key)
+    expect(payload.line).not.toContain('someone:pw')
+  })
+
+  it('leaves a line with nothing to hide exactly as the engine wrote it', async () => {
+    const { call, sent, notify } = harness()
+    await call(CHANNELS.engineRequest, 'tok-q', 'graph.build', { key: 'x' })
+    notify({
+      method: 'job/log',
+      params: { id: 1, level: 'info', line: 'schedule: matched 114/114 stops on A/C/E' },
+    })
+    expect((sent[0].payload as { line: string }).line).toBe(
+      'schedule: matched 114/114 stops on A/C/E',
+    )
+  })
 })
 
 describe('the guard in front of the engine', () => {

@@ -1022,7 +1022,7 @@ test('opening the engine log leaves the notebook where it was', async () => {
   })
 })
 
-test("cell 02's Copy log hides the feed key and writes the home folder as ~", async () => {
+test("cell 02 draws the engine's lines with the keys out, and its Copy log writes the home folder as ~", async () => {
   const key = ['s3cr3t', 'cell', 'two'].join('-')
   const engineHome = home({
     map_draws: true,
@@ -1037,6 +1037,11 @@ test("cell 02's Copy log hides the feed key and writes the home folder as ~", as
     await page.getByRole('button', { name: /lay out/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     await logToggle(page).click()
+    // On screen first: the line is redacted before it ever reaches the page
+    // (`src/main/engine-ipc.ts`), so the panel can draw it without being
+    // the thing that leaks it.
+    await expect(logLines(page)).toContainText('https://agency.example/gtfs.zip?api_key=<redacted>')
+    expect(await logLines(page).innerText()).not.toContain(key)
 
     await processCell(page)
       .getByRole('button', { name: "Copy log: the engine's log for this run" })

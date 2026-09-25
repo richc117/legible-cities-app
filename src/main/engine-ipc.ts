@@ -6,11 +6,25 @@
 // lines and after them, because an invoke reply is not ordered against
 // events and the page must never see a result before the last progress.
 // Contract: specs/004-sidecar-supervisor/contracts/bridge.md.
+//
+// A `job/log` line is redacted on the way out (A5.5-13). The engine prints
+// a feed's URL as it was given - key in the query and all - when a download
+// fails, and every other way that line is kept has been redacted since
+// A6-03: `log.ts` and `log-file.ts` redact it into `engine.log`, and
+// `jobs-ipc.ts` redacts it again into the clipboard. Only the copy sent to
+// the page was raw, which was invisible while the inspector merely held the
+// lines for a copy, and stopped being invisible when cell 02 started
+// drawing them. This is the one door they come through, so it is the one
+// place to do it: from here the screen, the run's own `LogBuffer` and the
+// copy made from it are all redacted, with no second implementation
+// anywhere. `redactUrls` is stable under a second pass, so the copy's own
+// redaction still changes nothing.
 
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { CHANNELS, type EngineAccepted, type EngineSettled } from '../shared/api'
 import type { EngineState, JobLog, JobProgress } from '../shared/engine'
 import { badCall, isObject, TOKEN, toShape } from './ipc-shape'
+import { redactUrls } from './redact'
 import type { Notification, RequestOptions } from './sidecar'
 
 /** What the handlers need from the supervisor; a test hands in a fake. */
@@ -151,7 +165,13 @@ export function registerEngineHandlers(
       LEVELS.has(params.level) &&
       typeof params.line === 'string'
     ) {
-      const line: JobLog = { id: token, level: params.level as JobLog['level'], line: params.line }
+      // Redacted here, at the one door the engine's log lines come through
+      // on their way to the page: see the note at the top of this file.
+      const line: JobLog = {
+        id: token,
+        level: params.level as JobLog['level'],
+        line: redactUrls(params.line),
+      }
       send(CHANNELS.engineLog, line)
     } else {
       log(`dropped a ${method} notification of an unexpected shape`)

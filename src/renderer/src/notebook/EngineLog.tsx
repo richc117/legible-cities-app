@@ -31,14 +31,17 @@ import Disclosure from '../kit/Disclosure'
 // renderer writes nothing to disk; `engine.log` in the platform's log
 // folder is where the rest is, and the main process put it there.
 //
-// **Redaction** is the main process's, through the path that already does
-// it: "Copy log" sends the composed text to `window.api.jobs.copyLog`,
-// which redacts every web address's user information, query values and
-// fragment and writes the home folder as `~` before anything reaches the
-// clipboard (`src/main/jobs-ipc.ts`). There is deliberately no second
-// implementation on this side: `src/main/redact.ts` is the main project's
-// and the renderer cannot import it, and a copy of it here is the thing
-// that goes stale.
+// **Redaction** is the main process's, twice over, and none of it is here.
+// A line arrives with its secrets already out: `src/main/engine-ipc.ts`
+// redacts every `job/log` line at the one door they come through, so what
+// this draws, what the run buffers and what a copy is made from are the
+// same redacted bytes (A5.5-13). "Copy log" then sends the composed text to
+// `window.api.jobs.copyLog`, which redacts again - the function is stable
+// under a second pass - and writes the home folder as `~`, which only that
+// side can do, before anything reaches the clipboard. There is deliberately
+// no second implementation on this side: `src/main/redact.ts` is the main
+// project's, the renderer cannot import it, and a copy of it here is the
+// thing that goes stale.
 
 /** The lines on screen and which job they belong to. */
 export interface LogView {
