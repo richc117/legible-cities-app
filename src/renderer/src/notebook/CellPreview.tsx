@@ -2,7 +2,7 @@ import { useState, type JSX } from 'react'
 import type { EngineInfo } from '../../../shared/protocol'
 import { CELL_LIST, type CellId, type CellState } from '../runGraph'
 import Cell from './Cell'
-import CellFooter, { exportFooter, frameFooter, processFacts } from './CellFooter'
+import { exportFooter, frameFooter, processStrip } from './CellFooter'
 
 // The cell's sample page, for a person or the end-to-end test to walk:
 // `?cell-preview`. Nothing in the app links to it, as nothing links to the
@@ -32,8 +32,9 @@ const SUMMARY: Record<CellId, string | null> = {
 //
 // `processFooter` itself is not used, and cannot be: it asks the project
 // screen's context for the engine's state, and there is no project on this
-// page. Its facts builder takes the engine's answer as an argument, so the
-// fixture supplies one and the strip below is the one cell 02 draws.
+// page. `processStrip` is the composition underneath it, which takes the
+// engine's answer as an argument - so this page draws the strip cell 02
+// draws, rather than a second composition of the same parts.
 const SAMPLE_INFO: EngineInfo = {
   engine: '0.8.3',
   protocol: 1,
@@ -46,17 +47,13 @@ const SAMPLE_INFO: EngineInfo = {
 const FOOTER: Record<CellId, JSX.Element | undefined> = {
   // Cells 01, 04 and 05 have no provenance and draw no strip at all.
   data: undefined,
-  process: (
-    <CellFooter
-      facts={processFacts(
-        {
-          layout: 'd1deeb11f0c4ab93e2f5d0a7b6c5e4d3c2b1a09876543210fedcba9876543210',
-          made: '2026-09-13T14:03:00+00:00',
-          built: { mode: 'rail', agency: 'LACMTA' },
-        },
-        SAMPLE_INFO,
-      )}
-    />
+  process: processStrip(
+    {
+      layout: 'd1deeb11f0c4ab93e2f5d0a7b6c5e4d3c2b1a09876543210fedcba9876543210',
+      made: '2026-09-13T14:03:00+00:00',
+      built: { mode: 'rail', agency: 'LACMTA' },
+    },
+    SAMPLE_INFO,
   ),
   frame: frameFooter({
     date: '2026-03-17',

@@ -1139,23 +1139,27 @@ test('the three cells with provenance carry it, the other three carry none, and 
     // The exact moment on the element; the text beside it is the person's
     // own locale, which is the machine's business and not this test's.
     await expect(process.locator('time')).toHaveAttribute('datetime', String(record.made))
-    await expect(process).toContainText('Engine running')
+    await expect(process).toContainText('Engine now')
     await expect(process).toContainText(PINNED_ENGINE)
-    await expect(process).toContainText('LOOM running')
+    await expect(process).toContainText('LOOM now')
     await expect(process).toContainText('the host reported no commit')
     // And A2-02's moved-inputs sentence is the panel's, not the strip's: it
     // ends in a prompt to act, and it sits beside the button that acts.
     await expect(process).not.toContainText('lay out to draw with')
 
-    // Cell 03: the day against the window the same run stored, whose choice
-    // the day was, and what the engine counted from - as facts, never as
-    // the clause `ServiceDay` says in prose a few lines above.
+    // Cell 03: the day, and the engine's own three answers beside it, so a
+    // person can compare them. Whose choice the day was is not said: it
+    // cannot be read off the record once a second run has moved the
+    // window's busiest weekday off a day that was kept.
     const frame = group('frame').locator('.cell-footer')
     await expect(frame).toContainText('2026-06-16')
     await expect(frame).toContainText('2026-03-01 to 2026-11-30')
-    await expect(frame).toContainText('by the engine')
+    await expect(frame).toContainText('busiest weekday')
     await expect(frame).toContainText(String((record.service as { anchor: string }).anchor))
-    await expect(frame).not.toContainText('busiest weekday')
+    await expect(frame).not.toContainText('by you')
+    await expect(frame).not.toContainText('by the engine')
+    // And not the panel's own sentence, whose words those terms share.
+    await expect(frame).not.toContainText('busiest weekday, counted from')
 
     // Cells 01, 04 and 05 have nothing true to report and say nothing.
     for (const id of ['data', 'style', 'lines'] as const) {
