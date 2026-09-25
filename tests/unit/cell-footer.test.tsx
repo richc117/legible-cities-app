@@ -8,7 +8,7 @@
 // running app. The strip itself is rendered to static markup, as the
 // cell's own test is: what is asserted is what the component draws.
 
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
@@ -332,4 +332,87 @@ describe('which cells reach for a footer at all', () => {
     }
     expect(preview).not.toMatch(/<span>[^<]*LOOM[^<]*<\/span>/)
   })
+})
+
+describe('no term the strip draws is caught by a page-wide locator in the e2e suite', () => {
+  // **The check that would have caught #212.** Cell 06's `Exported` term
+  // collided with the export run's own status sentence, "Exported
+  // <file>.", and `page.getByText(/^Exported/)` in `export.spec.ts` then
+  // resolved to two elements and failed strict mode on all three
+  // platforms. No unit test saw it, because the collision is between two
+  // components that no single test renders together - but it is not really
+  // a fact about the components at all. It is a fact about the suite: a
+  // locator rooted at the page matches anything on the page, so a term
+  // added here can break a spec that never mentions this file.
+  //
+  // So the terms are enumerated from the builders themselves (every one of
+  // them, fixtures aside) and checked against every page-rooted
+  // `getByText` in the suite. A locator already scoped to a region, a row
+  // or a definition list cannot widen, and `getByRole` cannot reach a
+  // `<dt>`, which has no accessible name - so `getByText` is the vector.
+  // The `<dd>` values are dates, versions and filenames, which are data
+  // rather than a list this file could hold, and the one page-rooted
+  // `getByRole('definition')` filter in the suite (`layout.spec.ts`,
+  // `hasText: /made/`) was read by hand: the strip's term is `Made`, on a
+  // `<dt>`, and no value it draws carries the word.
+  //
+  // What to do when it fails: **scope the locator to what it means**, as
+  // `export.spec.ts` now scopes that one to the export run's status line.
+  // A person's word on a screen is not the test suite's to choose.
+  const suite = resolve(__dirname, '../e2e')
+
+  const strip = [
+    ...processFacts(project(), INFO),
+    ...frameFacts({ date: '2026-03-17', service: WINDOW }),
+    ...exportFacts({ state: 'done', file: 'los-angeles-reel.mp4' }),
+  ].map((fact) => fact.term)
+
+  /** Every `page.getByText(...)` in a spec, with the literal it was given. */
+  const pageWide = (): { file: string; line: number; literal: string; exact: boolean }[] => {
+    const found: { file: string; line: number; literal: string; exact: boolean }[] = []
+    const call = /(?:page|window)\.getByText\(\s*(\/(?:[^/\\\n]|\\.)+\/[a-z]*|'(?:[^'\\]|\\.)*')/
+    for (const name of readdirSync(suite).filter((f) => f.endsWith('.ts'))) {
+      readFileSync(join(suite, name), 'utf8')
+        .split('\n')
+        .forEach((line, i) => {
+          const match = call.exec(line)
+          // A template literal carries a value from the run and cannot be
+          // read here; there is one, and it is a settings sentence.
+          if (match)
+            found.push({
+              file: name,
+              line: i + 1,
+              literal: match[1],
+              exact: /exact: true/.test(line),
+            })
+        })
+    }
+    return found
+  }
+
+  const matches = (locator: { literal: string; exact: boolean }, term: string): boolean => {
+    if (locator.literal.startsWith('/')) {
+      const end = locator.literal.lastIndexOf('/')
+      return new RegExp(locator.literal.slice(1, end), locator.literal.slice(end + 1)).test(term)
+    }
+    const needle = locator.literal.slice(1, -1)
+    // Playwright matches a string by case-insensitive substring unless it
+    // is told otherwise.
+    return locator.exact ? needle === term : term.toLowerCase().includes(needle.toLowerCase())
+  }
+
+  it('reads the suite it is checking', () => {
+    const locators = pageWide()
+    expect(locators.length, 'page-rooted getByText calls in tests/e2e').toBeGreaterThan(50)
+    expect(strip.length).toBeGreaterThan(6)
+  })
+
+  for (const term of [...new Set(strip)]) {
+    it(`"${term}"`, () => {
+      const caught = pageWide()
+        .filter((locator) => matches(locator, term))
+        .map((l) => `${l.file}:${l.line} getByText(${l.literal})`)
+      expect(caught, caught.join('\n')).toEqual([])
+    })
+  }
 })

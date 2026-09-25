@@ -206,7 +206,16 @@ test('exports the day the page was drawn for, not a day chosen and not yet drawn
     await openCell(page, 'export')
 
     await exportButton(page).click()
-    await expect(page.getByText(/^Exported/)).toBeVisible({ timeout: 60_000 })
+    // What this waits for is the run's own status line saying the export
+    // finished, not any text on the screen beginning "Exported": cell 06's
+    // provenance strip has an `Exported` term of its own since A5.5-11, and
+    // a page-wide match resolves to both.
+    await expect(
+      page
+        .getByRole('region', { name: 'Export' })
+        .getByRole('status')
+        .filter({ hasText: /^Exported / }),
+    ).toBeVisible({ timeout: 60_000 })
     const sidecar = JSON.parse(readFileSync(deliverable(h) + '.json', 'utf8')) as Record<
       string,
       unknown
