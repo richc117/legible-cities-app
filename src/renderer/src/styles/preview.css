@@ -84,33 +84,22 @@
   height: calc((100vh - var(--header-height)) / 2);
 }
 
-/* Nothing is scrolled to behind the band.
+/* What the band hides, and why there is no rule here for it.
 
-   A browser scrolls a newly focused element to the top of the scrollport,
-   and the top of the scrollport is now under the header and then under
-   half a window of map: Shift+Tab out of a cell would land on a control
-   nobody can see, which is worse than the scrolling the pinning replaced.
-   So everything in the column carries a scroll margin as deep as what is
-   pinned over it - the header, the band and the space below it, with the
-   header's rule and the shape's own edges in the slack.
+   A pinned band obscures the top of the scrollport, so anything scrolled
+   to the top of it - a control reached with Shift+Tab, a row a test
+   scrolls to before pressing it - can end up behind the map. The obvious
+   remedy, a `scroll-margin-top` on everything in the column as deep as the
+   band, was written and withdrawn: measured against the colour panel's own
+   geometry it moved the picker's square 139 pixels *up*, to 381 where the
+   band ends at 398, so the press that begins a colour drag landed on the
+   map instead of on the square and the picker was dismissed - the drag
+   issue 87 exists for. `scroll-padding-top` on the scrollport measured the
+   same. Both change where every scroll lands, not only the ones that would
+   have been hidden, and the direction is not predictable from the rule.
 
-   On everything, rather than on a list of what can take focus: the list
-   would be wrong the first time a cell grew a control it did not name, and
-   the margin costs nothing on an element nothing ever scrolls to. Not on
-   the cells alone either, since the browser scrolls to the control and not
-   to the cell that holds it, and a margin only helps the element that is
-   the target.
-
-   The preview is out of it, and so is everything inside it: it is the
-   thing being cleared, a margin on it would scroll the column down by its
-   own height for nothing, and the skip link within it is never behind the
-   map, being part of it - `app.css` already clears that one of the header.
-
-   The rule lives here and not in the cell's own chrome because it is the
-   pinning that creates the need, and it would be wrong the moment the
-   pinning changed. */
-.notebook *:not(.preview, .preview *) {
-  scroll-margin-top: calc(
-    var(--header-height) + (100vh - var(--header-height)) / 2 + var(--space-4-6)
-  );
-}
+   So this is a known gap rather than a solved problem, and it wants a
+   remedy that does not move what is already in view: a shallower band, or
+   a scroll container of the notebook's own. It is written down here
+   because the next person to reach for the one-line answer should know it
+   was tried. */

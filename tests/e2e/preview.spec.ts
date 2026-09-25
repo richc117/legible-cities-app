@@ -264,11 +264,27 @@ test('the map comes back to its clock, view and labels when the export takes the
     // the start of the day.
     await closeCell(page, 'export')
     await expect(frame(page)).toHaveAttribute('src', /controls=1/, { timeout: 60_000 })
-    await expect(told(page)).toHaveText(`showView=time/0 setLabels=false seek=${left}`, {
+    await expect(told(page)).toHaveText(/^showView=time\/0 setLabels=false seek=\d/, {
       timeout: 30_000,
     })
+
+    // The view and the labels exactly, and the clock within a deadline of
+    // where the map was. Not the figure: the page runs at sixty
+    // service-seconds a second and the app cannot stop it, having no way to
+    // learn it was running (engine issue 29), so the clock the app read at
+    // the moment it navigated is later than the one read here and the two
+    // are not the same number. What it promises is that the map is put back
+    // where it was rather than at the start of the day, and the tolerance
+    // is a deadline - ten seconds of running - not a turn count.
+    const said = (await told(page).textContent()) ?? ''
+    const seeked = Number(said.slice(said.indexOf('seek=') + 'seek='.length))
+    expect(
+      seeked,
+      'given the clock the map was at, not the start of the day',
+    ).toBeGreaterThanOrEqual(left)
+    expect(seeked - left, 'and not some other moment').toBeLessThan(600)
     const back = ((await drive(page, 'state')) as { now: number }).now
-    expect(back, 'the clock went on from where it was left').toBeGreaterThanOrEqual(left)
+    expect(back, 'the clock went on from where it was put').toBeGreaterThanOrEqual(seeked)
     expect(await drive(page, 'state')).toMatchObject({ viewName: 'time', labels: false })
 
     // All of it on the one element.
@@ -282,6 +298,16 @@ test('the preview is pinned under the header, and above the cells at every width
   await withApp(h, async (page, app) => {
     await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
     await expect(preview(page)).toBeVisible()
+
+    // A window this test chooses, rather than whatever one the machine
+    // gave it. Wide and short on purpose: the two bounds this rule is
+    // choosing between - half the window, and half the window at 16:10 -
+    // give the same width when the window is tall enough, and telling them
+    // apart is what the width is measured for.
+    await app.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0].setContentSize(1200, 700)
+    })
+    await expect.poll(() => page.evaluate(() => window.innerWidth)).toBeGreaterThan(1100)
 
     // Pinned by the stylesheet alone, from the top of the column: sticky,
     // offset by the header's own token, and one step under the header's
@@ -334,12 +360,14 @@ test('the preview is pinned under the header, and above the cells at every width
     // 1024 it has, measured - so this is the assertion that tells the two
     // bounds apart, and `viewerWidth` is what it is measured against
     // because that is the width the breakout gives the map.
-    expect(band?.width ?? 0, 'the width it already had').toBeGreaterThanOrEqual(
-      (band?.viewerWidth ?? 0) - 1,
-    )
-    expect(band?.width ?? 0, 'not shrunk to the band\u2019s own ratio').toBeGreaterThan(
-      ((band?.height ?? 0) * 16) / 10 + 1,
-    )
+    expect(
+      band?.width ?? 0,
+      `the width it already had (the map ${band?.width}, its box ${band?.viewerWidth})`,
+    ).toBeGreaterThanOrEqual((band?.viewerWidth ?? 0) - 1)
+    expect(
+      band?.width ?? 0,
+      `not shrunk to the band\u2019s own ratio (the map ${band?.width} by ${band?.height})`,
+    ).toBeGreaterThan(((band?.height ?? 0) * 16) / 10 + 1)
 
     // Scrolled to the foot of the notebook, the map is still on screen and
     // still below the header rather than off the top of it. Not asserted as
