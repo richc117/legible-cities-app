@@ -313,23 +313,31 @@ test('the project screen: one press skips past the map to its toolbar, and the m
       // its preview after the tab is pressed, so the two facts are read
       // together and re-read as a pair: asked one after the other, a load
       // that lands between them fails the second for a frame that is
-      // perfectly correct a moment later (issue 147, item 3 - it failed on
-      // the macOS runner once in 125 runs and never here).
-      const loaded = async (): Promise<{ address: boolean; lastControl: number }> => {
+      // perfectly correct a moment later (issue 147, item 3).
+      //
+      // Both facts come out of one snapshot, taken inside the frame. Asked
+      // as two Playwright calls they are two round trips, and a load
+      // landing between them answers the address from the document that is
+      // going and the controls from the one arriving, which has parsed
+      // nothing yet: `address: true, lastControl: 0`, forever, however long
+      // the poll runs. That is the exact pair every failure of this test
+      // has reported - on macOS, then on Ubuntu and Windows - and it never
+      // happened here, where the frame settles before the first look.
+      const loaded = async (): Promise<{ address: boolean; controls: number }> => {
         try {
-          const where = await frame.locator('#where').innerText({ timeout: 1_000 })
-          const lastControl = await frame
-            .getByRole('button', { name: `Map control ${controls}`, exact: true })
-            .count()
-          return { address: where.includes(address), lastControl }
+          return await frame.locator('body').evaluate((body, last: string) => {
+            const where = body.querySelector('#where')?.textContent ?? ''
+            const controls = body.querySelectorAll('button').length
+            return { address: where.includes(last), controls }
+          }, address)
         } catch {
-          // Mid-load the frame answers nothing; that is a retry, not a failure.
-          return { address: false, lastControl: 0 }
+          // Mid-load the frame answers nothing at all; a retry, not a failure.
+          return { address: false, controls: 0 }
         }
       }
       await expect
         .poll(loaded, { timeout: 60_000, message: `${tab}: the busy page at ${address}` })
-        .toEqual({ address: true, lastControl: 1 })
+        .toEqual({ address: true, controls })
 
       // Out of sight while it does not hold focus, and in the document.
       await expect.poll(width, { message: `${tab}: hidden at rest` }).toBeLessThanOrEqual(1)
