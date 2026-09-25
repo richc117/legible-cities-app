@@ -60,10 +60,10 @@ describe('a press on cell 06', () => {
   })
 })
 
-// Cell 03's collapsed row (A5.5-15). Prose, and a unit test because the
-// sentence has to answer three questions at once - which day, whose choice,
-// and whether the map shows it - and the third is now reachable, which is
-// the whole of the issue.
+// Cell 03's collapsed row (A5.5-15, issue 210). Prose, and a unit test
+// because the sentence has to answer two questions at once - which day, and
+// whether the map shows it - and carry the engine's own answer beside them
+// without drawing a conclusion from the two.
 describe("cell 03's summary", () => {
   const WINDOW = {
     start: '2026-01-01',
@@ -112,17 +112,17 @@ describe("cell 03's summary", () => {
     expect(frameSummary(project({ date: null, service: null, drawn: null }))).toBeNull()
   })
 
-  it("credits the engine's own day to the engine", () => {
-    expect(frameSummary(project())).toBe('2026-09-15, the busiest weekday')
+  it("draws the engine's own answer beside the day, rather than judging it", () => {
+    expect(frameSummary(project())).toBe('2026-09-15; the engine’s busiest weekday is 2026-09-15')
   })
 
-  it('credits any other day to the person, and says the map does not show it', () => {
+  it('says the map does not show a day that has been chosen and not drawn', () => {
     expect(frameSummary(project({ date: '2026-09-12' }))).toBe(
-      '2026-09-12, the day you chose, not drawn yet',
+      '2026-09-12, not drawn yet; the engine’s busiest weekday is 2026-09-15',
     )
   })
 
-  it('drops the credit when there is no window to judge it by', () => {
+  it('has only the day when there is no window to put beside it', () => {
     expect(frameSummary(project({ service: null, date: '2026-09-12' }))).toBe(
       '2026-09-12, not drawn yet',
     )
@@ -131,13 +131,37 @@ describe("cell 03's summary", () => {
   it('says nothing about a map it cannot prove is behind', () => {
     // A record from before `drawn` existed: unknown is not stale.
     expect(frameSummary(project({ date: '2026-09-12', drawn: null }))).toBe(
-      '2026-09-12, the day you chose',
+      '2026-09-12; the engine’s busiest weekday is 2026-09-15',
     )
   })
 
   it("is the drawn day's own sentence once the rebuild has answered", () => {
     expect(frameSummary(project({ date: '2026-09-12', drawn: drawn('2026-09-12') }))).toBe(
-      '2026-09-12, the day you chose',
+      '2026-09-12; the engine’s busiest weekday is 2026-09-15',
+    )
+  })
+
+  // Issue 210. `feeds.service` is asked on every layout run with today as
+  // the anchor and the fresh window is written while the day is kept
+  // (`tests/unit/projects-store.test.ts`, "replaces the window on a later
+  // run, keeping the day"), so this record - a day the **engine** chose at
+  // the first run, under a window whose busiest weekday has since moved -
+  // is one the app reaches by itself, without a person touching the date
+  // control. The row said "the day you chose" about it.
+  it('never credits a day to the person because the window moved under it', () => {
+    const engines = project({
+      date: '2026-09-15',
+      service: { ...WINDOW, busiest: '2026-09-22', anchor: '2026-09-15' },
+      drawn: drawn('2026-09-15'),
+    })
+    const said = frameSummary(engines) as string
+    expect(said).toBe('2026-09-15; the engine’s busiest weekday is 2026-09-22')
+    // Asserted as the whole sentence above, and again as the claim itself:
+    // no wording of this row may assert whose choice the day was, in
+    // either direction.
+    expect(said).not.toMatch(/you chose|your choice/)
+    expect(said, 'and the engine is credited with nothing either').not.toMatch(
+      /the engine’s (own )?(day|choice)/,
     )
   })
 })

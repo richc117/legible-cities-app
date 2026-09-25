@@ -639,7 +639,7 @@ test('a chosen day is written at once, starts nothing, and takes the cells below
     // The engine's own day, on cell 03's collapsed row.
     await closeCell(page, 'frame')
     await expect(cellHeading(page, 'frame')).toHaveAccessibleName(
-      '03 Frame and service day ready 2026-06-16, the busiest weekday',
+      '03 Frame and service day ready 2026-06-16; the engine’s busiest weekday is 2026-06-16',
     )
     const section = await openCell(page, 'frame')
 
@@ -666,7 +666,7 @@ test('a chosen day is written at once, starts nothing, and takes the cells below
       await expect(cellHeading(page, id)).toHaveAccessibleName(/ not drawn yet/)
     await closeCell(page, 'frame')
     await expect(cellHeading(page, 'frame')).toHaveAccessibleName(
-      '03 Frame and service day ready 2026-06-20, the day you chose, not drawn yet',
+      '03 Frame and service day ready 2026-06-20, not drawn yet; the engine’s busiest weekday is 2026-06-16',
     )
     await openCell(page, 'frame')
 

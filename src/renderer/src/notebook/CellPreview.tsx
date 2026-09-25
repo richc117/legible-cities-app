@@ -2,6 +2,7 @@ import { useState, type JSX } from 'react'
 import { CELL_LIST, type CellId, type CellState } from '../runGraph'
 import Cell from './Cell'
 import { exportFooter, frameFooter, processFooter } from './CellFooter'
+import { frameSummary } from './cells/FrameCell'
 
 // The cell's sample page, for a person or the end-to-end test to walk:
 // `?cell-preview`. Nothing in the app links to it, as nothing links to the
@@ -14,10 +15,29 @@ import { exportFooter, frameFooter, processFooter } from './CellFooter'
 
 const STATES: CellState[] = ['ready', 'running', 'stale', 'error']
 
+/**
+ * Cell 03's fixture, used twice below: its collapsed row is built from it
+ * by the cell's own `frameSummary` and its strip by the cell's own
+ * `frameFooter`, so the sample page cannot say one thing where the notebook
+ * says another. The day is not the engine's busiest weekday, because that
+ * is the comparison the row exists to let a person make (issue 210) and a
+ * fixture where the two agree shows it doing nothing.
+ */
+const FRAME = {
+  date: '2026-03-17',
+  service: {
+    start: '2026-03-01',
+    end: '2026-06-30',
+    busiest: '2026-03-10',
+    anchor: '2026-03-08',
+  },
+  drawn: null,
+}
+
 const SUMMARY: Record<CellId, string | null> = {
   data: 'LA Metro Rail, rail and subway, Los Angeles County MTA, 110 stops in the feed',
   process: 'd1deeb11, made 13/09/2026, 14:03:00',
-  frame: 'Tuesday 17 March, the engine’s choice',
+  frame: frameSummary(FRAME),
   style: 'Warm dark',
   lines: '3 lines recoloured, an order you chose',
   export: null,
@@ -33,6 +53,10 @@ const SUMMARY: Record<CellId, string | null> = {
 // and the notebook cannot draw the same strip differently. Cell 02's takes
 // the engine's state as an argument, which is what the project screen hands
 // it, so a page with no project can hand it one of its own.
+//
+// Cell 03's collapsed row is built the same way now (issue 210): the
+// sentence was written out here and had already drifted from the one the
+// cell draws.
 
 const FOOTER: Record<CellId, JSX.Element | undefined> = {
   // Cells 01, 04 and 05 have no provenance and draw no strip at all.
@@ -45,15 +69,7 @@ const FOOTER: Record<CellId, JSX.Element | undefined> = {
     },
     { state: 'ready', version: '0.8.3', protocol: 1 },
   ),
-  frame: frameFooter({
-    date: '2026-03-17',
-    service: {
-      start: '2026-03-01',
-      end: '2026-06-30',
-      busiest: '2026-03-17',
-      anchor: '2026-03-10',
-    },
-  }),
+  frame: frameFooter(FRAME),
   style: undefined,
   lines: undefined,
   export: exportFooter({ state: 'done', file: 'los-angeles-reel.mp4' }),
