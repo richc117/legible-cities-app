@@ -32,6 +32,7 @@ import { registerExportHandlers } from './export-ipc'
 import { engineCommand, engineEnvironment, resolveInterpreter } from './interpreter'
 import { registerClipboardHandler, registerProjectHandlers, registerViewerHandlers } from './ipc'
 import { registerJobsHandlers } from './jobs-ipc'
+import { Outputs, registerOutputHandlers } from './outputs'
 import { byTag, holdingSink, log, setSink, toStderrRedacted } from './log'
 import { LOG_WAIT_MS, openLogFile, within, type LogFile } from './log-file'
 import { shortHomeFrom } from './diagnostics-text'
@@ -696,6 +697,21 @@ if (!hasLock) {
       // the home a reset is removing: it is refused while that runs, as
       // every other record write is.
       resetInProgress,
+    )
+    // What the project has already made, read from the sidecars beside the
+    // files rather than from this session (A5.5-21). A read reaches the
+    // project's record, which lives under the home a reset is removing, so
+    // it is held exactly as every other read of one is.
+    registerOutputHandlers(
+      ipcMain,
+      new Outputs({
+        projects: store,
+        exportFolder: () => settingsService.exportFolderNow(),
+        show: (path) => shell.showItemInFolder(path),
+        blocked: resetInProgress,
+        log: (message) => log.info('export', message),
+      }),
+      isTopFrame,
     )
     mainWindow = createWindow()
 

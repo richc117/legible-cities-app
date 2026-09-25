@@ -393,14 +393,25 @@ test('the project screen: one press skips past the map to its toolbar, and the m
       expect(shown.height, `${tab}: the map keeps its size`).toBeCloseTo(atRest.height, 0)
 
       // The map is the notebook column's first child (ADR-045), so the skip
-      // is the first stop in the column and the stop before it is the
-      // project's own header: nothing focusable sits between the two.
-      // Asserted as that button and not as "somewhere in the notebook",
-      // which the skip being inside the column makes true of itself.
+      // is still the first stop in the column - but the stop before it is
+      // no longer the project's header. A5.5-21 puts the rail between them,
+      // and its focus order follows its visual position on the left rather
+      // than the DOM order that would have kept this assertion: a
+      // navigation rail last in the Tab order is worse than a moved
+      // assertion (WCAG 2.4.3). So the stop before the skip is the rail's
+      // last control.
+      //
+      // Named as that element and not as "somewhere in the rail", which the
+      // rail preceding the column makes true of itself - the same reason
+      // the original named a button rather than a region. `.last()` is DOM
+      // order, and nothing in the rail reorders itself with `tabindex`, so
+      // it is the last stop too: step 06 while the project has exported
+      // nothing, the final Reveal once it has.
+      const railControls = page.locator('.rail').getByRole('button')
       await page.keyboard.press('Shift+Tab')
       await expect(
-        page.getByRole('button', { name: 'Back to Library' }),
-        `${tab}: the stop before the skip is the project's header`,
+        railControls.last(),
+        `${tab}: the stop before the skip is the rail's last control`,
       ).toBeFocused()
       await page.keyboard.press('Tab')
       await expect(skip).toBeFocused()

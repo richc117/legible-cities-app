@@ -1,13 +1,268 @@
-/* The rail (ADR-045, docs/DESIGN.md 8.2, "The rail and its stepper"): the
-   project's own left region, narrow while it is collapsed and the
-   stepper's own width while it is open, holding the six cells as a
+/* The rail (ADR-045, docs/DESIGN.md 8.2, "The rail and its stepper" and
+   "Outputs"): the project's own left region, narrow while it is collapsed
+   and the stepper's own width while it is open, holding the six cells as a
    numbered stepper and, below them, what the project has made.
 
-   Empty. `Rail.tsx` is a stub that draws nothing, and this is where its
-   rules go when A5.5-10 draws the stepper and A5.5-11 the outputs. It is
-   separate from `notebook.css` so those two branches do not meet in the
-   cell's own chrome, which nine issues of this milestone also edit.
+   Fixed under the header and scrolled on its own, which is what the
+   inspector already does on the other side of the window at the narrow
+   width. Fixed rather than in the flow, for one reason: the map breaks out
+   of the reading column to the window's own width (`panels.css`,
+   `.viewer`), and that width is arithmetic over `100vw`. A region in the
+   flow would be invisible to that arithmetic and the map would be drawn
+   over it. So the rail takes its space the way the inspector takes its
+   space - through a variable the same arithmetic subtracts. That variable
+   is `--rail-space`, declared in `project.css` beside the padding that
+   matches it, and this file only spends it.
 
    A stylesheet is named for a region of the interface, not for a
    component, and the four token files stay the only place a literal may
    appear (A5.5-07). */
+
+/* The width is `--rail-space` and not a width of its own, and that is
+   load-bearing rather than tidy. The same variable is the main region's
+   `padding-left` and the term the map subtracts from `100vw`
+   (`project.css`, `panels.css`), so the rail's box and the space reserved
+   for it are one value and cannot drift apart. If they ever did, the band
+   is opaque and would take the presses meant for a step, with nothing to
+   fail. A rule that gave this a width of its own would be that bug.
+
+   Drawn one step under the header's layer, for the reason `preview.css`
+   gives at length: how the header's forty pixels and its one-pixel rule
+   divide between its box and its border is not something a stylesheet can
+   read, and this is pinned at the token. Under the header, any pixel of
+   overlap is behind it. */
+.rail {
+  position: fixed;
+  left: 0;
+  top: var(--header-height);
+  bottom: 0;
+  z-index: calc(var(--layer-raised) - 1);
+  box-sizing: border-box;
+  width: var(--rail-space);
+  overflow-y: auto;
+  padding: var(--space-4-4) var(--space-4-3);
+  border-right: var(--border-width) solid var(--border);
+  background: var(--surface);
+}
+
+.rail-steps ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* A step: a button drawn as a row rather than as a control, as the cell's
+   own heading row is, so the two read as one family. */
+.rail-step {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4-2);
+  width: 100%;
+  box-sizing: border-box;
+  min-height: var(--target-min);
+  padding: var(--space-4-2);
+  border: none;
+  border-radius: var(--radius);
+  background: none;
+  font: inherit;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.rail-step:hover {
+  background: var(--surface-hover);
+}
+
+/* The current step, which follows the scroll: a ground and the name's
+   weight, never a colour alone, and `aria-current="step"` says the same
+   thing to a screen reader. Both grounds are ones section 3 allows --text
+   and --text-muted on, which is every colour a step draws. */
+.rail-step[aria-current='step'] {
+  background: var(--surface-selected);
+}
+
+.rail-step[aria-current='step'] .rail-name {
+  font-weight: var(--weight-strong);
+}
+
+.rail-number {
+  flex: none;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  font-variant-numeric: var(--numerals);
+}
+
+.rail-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The state: the same icon and the same word the cell itself draws
+   (notebook.css, `Cell.tsx`'s one table), in the state's own colour.
+
+   **Measured before it was drawn.** The first version of this left the word
+   grey on the claim that a step 240 pixels wide had room for a number, a
+   name and a word and not for a fourth thing. That was wrong: in plain
+   Chromium with these stylesheets, at the rail's own width and against the
+   longest state word there is ("not drawn yet"), the icon and its gap cost
+   twenty pixels and add no truncation anywhere. Five of the six names measure 28 to 48
+   pixels and have 71 left for them, where they had 91; the sixth, "Frame
+   and service day" at 137, is cut with the icon and cut without it, since
+   it is longer than the rail either way. Nothing overflows, and the row
+   goes from 37 pixels tall to 40.
+
+   And the colour is worth those twenty pixels: the rail is the only place
+   a person sees all six states at once, so "which one failed?" is a glance
+   rather than six words read in turn.
+
+   The hues follow section 3's scoping table, which is not one rule for all
+   three. `--accent-text` clears its threshold on **every** ground, so a
+   running step keeps its colour under the pointer and as the current step.
+   `--warning` and `--error` are drawn on `--surface` and `--surface-raised`
+   only, so on `--surface-hover` and `--surface-selected` those two go back
+   to `--text-muted` - the icon and the word still say which state it is,
+   which is the whole reason the rule permits that. */
+.rail-state {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2-2);
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.rail-step[data-state='running'] .rail-state {
+  color: var(--accent-text);
+}
+
+.rail-step[data-state='stale'] .rail-state {
+  color: var(--warning);
+}
+
+.rail-step[data-state='error'] .rail-state {
+  color: var(--error);
+}
+
+/* The two grounds section 3 does not allow --warning and --error on. */
+.rail-step:hover[data-state='stale'] .rail-state,
+.rail-step:hover[data-state='error'] .rail-state,
+.rail-step[aria-current='step'][data-state='stale'] .rail-state,
+.rail-step[aria-current='step'][data-state='error'] .rail-state {
+  color: var(--text-muted);
+}
+
+/* Outputs: what the project has produced, newest first, read from the
+   sidecars on disk. A row says the preset and when it was made, and never
+   where the file is (constitution V). */
+
+.rail-outputs {
+  margin-top: var(--space-4-6);
+}
+
+.rail-outputs h2 {
+  margin: 0 0 var(--space-4-2);
+  font-size: var(--font-ui-medium);
+  line-height: var(--line-ui-large);
+  font-weight: var(--weight-strong);
+}
+
+.rail-empty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.outputs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.output {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-2-2);
+  padding: var(--space-4-2) 0;
+}
+
+.output + .output {
+  border-top: var(--border-width) solid var(--border);
+}
+
+/* A preset's name has no spaces in it, and the rail is narrow. */
+.output-preset {
+  overflow-wrap: anywhere;
+}
+
+.output-made {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  font-variant-numeric: var(--numerals);
+}
+
+/* A file moved or deleted since: the row stays, because what was made is
+   still worth saying, and there is nothing to press.
+
+   The one status the rail does draw, and it draws it in full: the warning
+   icon and the sentence, never the hue alone (principle 1, section 3), on
+   --surface, which is the ground that table allows --warning on. It is a
+   condition of the row rather than a label on a control, so unlike the
+   step's state word it has somewhere to put the icon. */
+.output-gone {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2-2);
+  color: var(--warning);
+  font-size: var(--font-ui-small);
+}
+
+.output-gone .icon {
+  flex: none;
+}
+
+/* Collapsed to its numbers below 900px, where the media query says
+   56.25rem because a media query cannot read a token, as the inspector's
+   does.
+
+   The name and the state are hidden from the eye and not from the
+   accessibility tree: `display: none` would take them out of both, and a
+   step whose visible label is "03" still has to say which cell it is. The
+   step's own `aria-label` says all three whatever is drawn.
+
+   The state's icon goes with its word rather than staying behind as the
+   one thing that still fits. An icon alone would be the status as a mark
+   and a hue with no word, which is the thing principle 1 refuses; a number
+   that says nothing about state is honest, and the label still says it.
+   Outputs goes too, because a list of file names has nowhere to be at that
+   width. */
+@media (max-width: 56.25rem) {
+  .rail {
+    padding: var(--space-4-2) var(--space-2-2);
+  }
+
+  .rail-step {
+    justify-content: center;
+    padding: var(--space-4-2) 0;
+  }
+
+  .rail-name,
+  .rail-state {
+    position: absolute;
+    width: var(--border-width);
+    height: var(--border-width);
+    margin: calc(-1 * var(--border-width));
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .rail-outputs {
+    display: none;
+  }
+}

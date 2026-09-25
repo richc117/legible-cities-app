@@ -177,7 +177,9 @@ test('exports the reel from one click: three stages, a file, its sidecar, and no
 
     // Nothing on the screen is a path; the reveal is how the file is found.
     expect(await run.innerText()).not.toMatch(/[/\\]/)
-    await page.getByRole('button', { name: 'Reveal' }).click()
+    // Scoped to the export's own region: the rail's Outputs list carries a
+    // Reveal per row as well (A5.5-21), so an unscoped name matches two.
+    await run.getByRole('button', { name: 'Reveal' }).click()
     await expect
       .poll(() => app.evaluate(() => (globalThis as { __revealed?: string[] }).__revealed))
       .toEqual([file])
