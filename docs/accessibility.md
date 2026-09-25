@@ -1,5 +1,19 @@
 # Accessibility pass
 
+> **This record describes the project screen as a tab strip, and is rewritten
+> once, at the end of the notebook's work, against the interface that ships
+> (ADR-045).** A5.5-08 replaced the Map and Export tabs with six numbered
+> cells, so the two "Project, … tab" sections below, and the "Tab strip (Map,
+> Export)" row, name a control no screen uses any more. The rows themselves
+> mostly still hold - the panels they describe moved into cells rather than
+> going - but the framing does not, and neither does the walkthrough's order.
+> [Parts added since this pass](#parts-added-since-this-pass) lists what the
+> rewrite has to cover and has no row here yet.
+>
+> [`acceptance.md`](acceptance.md) carries the same warning for the same
+> reason. The release gate does not run against this text until the rewrite
+> lands.
+
 Principle VI of the constitution, checked over every screen of the app
 (issue A6-07). This is the record of the **machine half**: keyboard reach,
 labels, visible focus, reduced motion and contrast, checked in code and in
@@ -166,6 +180,63 @@ coordinator's full runs on macOS (2026-09-13).
 | Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (warm-dark) | Contrast (sepia) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
 | The dialog and OK | pass | pass | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
+
+### Parts added since this pass
+
+The pass above was taken at `45b5fff` on 2026-09-13. These parts landed after
+it and have **no row of their own**. They are listed here rather than added to
+the tables above, because the tables are arranged by a tab strip that no
+longer exists and the whole record is rewritten once (see the note at the
+top). Each says what a machine already checks and what is still owed to a
+person, so the rewrite has a list rather than a memory.
+
+| Part | Where | What the machine checks today | Owed to a person |
+|---|---|---|---|
+| The engine's log (A5.5-13, #165) | cell 02, a closed disclosure under the stages | the disclosure's row and region are named apart from the box of lines inside it - `The engine's log for this run` and `Log lines` - after both carried one name and a screen reader heard it nested inside itself; a unit test now refuses two elements in the panel sharing an accessible name. The box is `tabindex="0"`, takes the focus ring and scrolls by its own `scrollTop`. "Copy log" is a named button with a `role="status"` line | VoiceOver and Narrator over the disclosure, the scrolling box and the copy |
+| The cell's provenance footer (A5.5-11, #163) | cells 02, 03 and 06, a definition list under each one's controls | the strip is a `<dl>` of text with no control in it, so nothing is focusable and nothing is announced as interactive; contrast for `--text-muted` on the cell's ground is in `tests/unit/contrast.test.ts` | VoiceOver and Narrator reading a term and its value as a pair, in three cells |
+
+The pinned preview (A5.5-20, #172) changes the geometry every row above is
+recorded against, so it is listed here rather than as a row of its own: the
+map is no longer a panel inside a tab but a band pinned under the header,
+about half the window below it tall, while the cells scroll beneath. Two
+consequences the rewrite has to carry:
+
+- **A control reached with Shift+Tab can be scrolled to a place behind the
+  band, and that is not solved** (#213). The obvious remedy - a scroll margin
+  as deep as the band - was tried and withdrawn, because it moves where every
+  scroll lands and not only the ones that would have been hidden: against the
+  colour panel it moved the picker's square 139px *up*, behind the map, so the
+  press that begins a colour drag landed on the map and the picker was
+  dismissed. `scroll-padding-top` measured identically. Nothing in the sweep
+  asserts occlusion, so no run reports it; the figures are in `preview.css`
+  and in #213.
+- **"Skip past the map" still sits immediately before the frame**, and its
+  assertion in `notebook-a11y.spec.ts` was corrected rather than relaxed: it
+  measured the map against its region, which with a pinned map grows with the
+  scroll offset, and now measures against the viewport with both readings
+  taken at one offset.
+
+**The Tab walk steps over a frame** (A5.5-20). A document cannot see into a
+cross-origin frame, so once focus entered the viewer's the walk's probe saw
+the same `<iframe>` element on every press inside it and read that as having
+come round to a control it had already reached - ending the walk early and
+reporting everything after the map as unreachable. It now finds the first
+wanted control that follows the frame in document order and focuses it
+directly, so **no press of Tab is made while focus is inside a frame** and
+nothing the walk does depends on how a platform leaves one.
+
+The honest cost: the press that arrives at the first control *after* a frame
+is now made by hand, so the walk no longer proves that Tab crosses a frame's
+far edge. On the project screen that is one control - cell 01's heading row -
+still swept for its name and its focus ring. A person's path is unaffected and
+is the documented one: "Skip past the map" is one Tab before the frame, and
+whoever wants the map presses Tab again and walks into it.
+
+The sweep in `tests/e2e/accessibility.spec.ts` cannot see a **duplicated**
+accessible name at all: `expectNamed` looks only at `CONTROL_ROLES` and only
+asks whether a name is present. That is #208, and it is why the engine log's
+nested name reached a pull request. The walkthrough below is what would have
+caught it by ear.
 
 ## Defects fixed in this pass
 
