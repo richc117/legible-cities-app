@@ -15,11 +15,27 @@ import { nextWrite, writeThrough } from './themeWrites'
 // map, which is exported and published, rather than to the room the person
 // making it is sitting in.
 
-/** What each theme is called on the screen; the values are the engine page's own. */
+/**
+ * What each theme is called on the screen; the values are the engine page's
+ * own.
+ *
+ * Deliberately not Night and Parchment, which is what Settings calls the
+ * *interface's* two themes: ADR-044 rethemed the interface and left the
+ * map where it was, so the two palettes are no longer one and naming them
+ * alike would say they are. These are the map's words, and a project's map
+ * is what this sets.
+ */
 const WORDS: Record<Theme, string> = {
   'warm-dark': 'Warm dark',
   sepia: 'Sepia',
 }
+
+/**
+ * The theme in the map's own words, for the buttons here and for cell 04's
+ * collapsed summary (A5.5-17). Beside the buttons that say it rather than
+ * in a module of its own, so the row and the summary cannot drift apart.
+ */
+export const themeWord = (theme: Theme): string => WORDS[theme]
 
 interface Props {
   project: ProjectRecord

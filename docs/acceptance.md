@@ -390,6 +390,9 @@ Result: ____
   pressed.
 - The viewer reloads in the sepia theme at once, with no progress line and
   no layout run; the interface around it keeps its own theme.
+- Beneath the two buttons, one sentence says that line width, station size
+  and label size are the engine's own for now. Nothing else in this section
+  offers to set them, not even a control that cannot be pressed.
 - **Warm dark** brings it back. Leave it on **Warm dark** for the exports,
   or their file names gain `-light` (step 13).
 
