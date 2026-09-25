@@ -27,10 +27,13 @@ import type { Stage } from './ProgressLine'
 // stages run, because a progress line that ran backwards through its own
 // labels would be worse than either vocabulary.
 //
-// **Where the wireframes name nothing, the engine's own word stands.**
-// Nothing in them covers `animate` or `write`, and inventing a word for a
-// stage nobody has named would be the app describing work it does not do.
-// Both are plain English as they are.
+// **A stage is named for the first thing it does.** Nothing in the
+// wireframes covers `animate` or `write`, and both are plain English as the
+// engine has them, so they stand. `render` is the one place the wireframes
+// offer a word and it is not taken: the engine's own docstring for it is
+// "Draw the graph", and the labels are placed in the room that is left, so
+// the wireframes' "labels" names the part that happens last and may not
+// happen at all (`labels_dropped` is a diagnostic for exactly that).
 //
 // The mapping is deliberately not in `src/shared/layout.ts`: those are the
 // engine's names in the engine's order, asserted against the real engine by
@@ -39,9 +42,11 @@ import type { Stage } from './ProgressLine'
 // able to move it.
 //
 // It is also not applied in `engine/layoutRun.ts`, where the stages are
-// made: a run's snapshot is what the jobs inspector reports and what a
-// copied log is read beside, and there the engine's own names are what
-// matches the engine's own lines.
+// made. A run's snapshot is what a copied log and a failure's detail are
+// composed from, and those are quoted at the engine: `composeJobLog` writes
+// `gtfs2graph: failed`, whatever a screen calls it. The words go on at the
+// screen, and every line a person reads - cell 02's and the inspector's -
+// puts them on.
 
 /**
  * The engine's stage names, in the words cell 02 draws.
@@ -63,8 +68,11 @@ export const STAGE_WORDS: Record<LayoutStage, string> = {
   octi: 'octilinear',
   // Reads the timetable into the trips the map will run.
   schedule: 'trips',
-  // Draws the map, and places the labels it has room for.
-  render: 'labels',
+  // Draws the graph - the engine's own first sentence for it - and places
+  // the labels in the room that is left. Named for the first thing it does,
+  // as `gtfs2graph` is; "labels", which the wireframes offer, names the part
+  // that happens last and may not happen at all.
+  render: 'draw',
   // The engine's own word: the wireframes name no step for it.
   animate: 'animate',
   // The engine's own word again; its sentence is "Wrote the map and its page."
@@ -75,11 +83,14 @@ export const STAGE_WORDS: Record<LayoutStage, string> = {
  * The word for one stage, or the engine's own name for a stage this table
  * does not know.
  *
- * A stage that is not in the table is drawn under the name the engine sent,
- * rather than under nothing: a pipeline that grows a stage between a
- * release of the engine and one of the app should show the stage it is on,
- * in whatever words it has, and the test above is what makes that a
- * temporary state rather than a permanent one.
+ * The fallback is a backstop and not a behaviour anyone can see: the stages
+ * a run draws are the fresh eight, and `advance` in `engine/layoutRun.ts`
+ * drops a report whose stage is not already among them, so a stage this
+ * table has never heard of cannot reach a screen through the app as it
+ * stands. It is here because the alternative - a lookup that answers
+ * `undefined` - would put a station with no name on the line if that ever
+ * changed, and because nothing should have to be true for this function to
+ * be safe to call.
  */
 export function stageWord(id: string): string {
   return Object.prototype.hasOwnProperty.call(STAGE_WORDS, id) ? STAGE_WORDS[id as LayoutStage] : id

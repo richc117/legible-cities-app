@@ -1,6 +1,7 @@
 import type { JSX } from 'react'
 import { LAYOUT_STAGES } from '../../shared/layout'
 import ProgressLine, { type Stage } from './ProgressLine'
+import { inWords } from './stages'
 
 // Sample data for the progress line, reached through ?progress-preview on
 // the interface's URL in development and in the end-to-end test; nothing
@@ -46,11 +47,15 @@ export default function ProgressPreview(): JSX.Element {
         ariaLabel="Four stages, loom failed"
       />
       {/* The counts a run really has, at both ends: a feed add's download
-          alone, and the layout run's own eight stages. */}
+          alone, and the layout run's own eight stages - the last in the
+          words the app draws them in (A5.5-10), so the design system's page
+          does not show a vocabulary the app has stopped using. The four
+          lines above keep the engine's names, because their sentences are
+          the engine's and the two are read together. */}
       <ProgressLine stages={counted(['download'], 0)} ariaLabel="One stage, downloading" />
       <ProgressLine
-        stages={counted(LAYOUT_STAGES, 4)}
-        ariaLabel="The layout run's eight stages, schedule running"
+        stages={inWords(counted(LAYOUT_STAGES, 4))}
+        ariaLabel="The layout run's eight stages, trips running"
       />
     </main>
   )

@@ -101,7 +101,7 @@ const STAGE_WORDS = [
   'order',
   'octilinear',
   'trips',
-  'labels',
+  'draw',
   'animate',
   'write',
 ]
@@ -318,13 +318,20 @@ test('a cancelled run writes nothing and says so', async () => {
     // failure, and the cell says ready rather than failed (A5.5-10,
     // contracts/run-graph.md). The stations it stopped at are waiting again.
     await expect(cellHeading(page, 'process')).toHaveAccessibleName(/\bready\b/)
+    const marks = await page
+      .getByRole('group', { name: cellLabel('process'), exact: true })
+      .locator('svg circle.mark')
+      .evaluateAll((stations) => stations.map((s) => s.getAttribute('class') ?? ''))
+    // The count first: everything below it is true of an empty list, which
+    // is what a locator that has stopped matching anything hands back.
+    expect(marks, 'the eight stations are all still drawn').toHaveLength(STAGE_WORDS.length)
+    // How far the run got before the press is the engine's business and the
+    // timing's, so which stations are done is not asserted - only that none
+    // was left running or failed, which is what Stop promises.
     expect(
-      await page
-        .getByRole('group', { name: cellLabel('process'), exact: true })
-        .locator('svg circle.mark')
-        .evaluateAll((marks) => marks.map((mark) => mark.getAttribute('class') ?? '')),
+      marks.filter((mark) => mark !== 'mark mark-pending' && mark !== 'mark mark-done'),
       'no station was left running or failed',
-    ).not.toContain('mark mark-failed')
+    ).toEqual([])
     // A cancelled run has to be repeatable, or the project is stuck.
     await expect(page.getByRole('button', { name: /lay out/i })).toBeVisible()
     await page.getByRole('button', { name: /lay out/i }).click()

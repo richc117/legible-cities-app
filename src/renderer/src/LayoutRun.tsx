@@ -104,12 +104,16 @@ export default function LayoutRun({
   if (state === 'idle') {
     return (
       <div className="focus-region" ref={region}>
-        {/* The stages a run goes through, before one has: the line the run
-            itself draws, with every station waiting. An idle run's stages
-            are the fresh eight, so this is the same data the run reports
-            from and not a second list that could disagree with it. */}
+        {/* The stages a run goes through, before one has gone in this
+            session: the line the run itself draws, with every station
+            waiting. An idle run's stages are the fresh eight, so this is
+            the same data the run reports from and not a second list that
+            could disagree with it. */}
         <div className="layout-stages">
-          <ProgressLine stages={inWords(stages)} ariaLabel={waiting(stages)} />
+          <ProgressLine
+            stages={inWords(stages)}
+            ariaLabel={waiting(stages, project.layout !== null)}
+          />
         </div>
         {project.layout !== null && (
           <p className="prose" role="status">
@@ -281,12 +285,21 @@ export function stoppedSentence(
 }
 
 /**
- * The line's name before a run has started: the stages are there to be
- * read, and what a screen reader would otherwise hear is eight stations
- * with no sentence saying that none of them has run.
+ * The line's name while no run is going: the stages are there to be read,
+ * and what a screen reader would otherwise hear is eight stations with no
+ * sentence saying what they are.
+ *
+ * "None started" is said only of a project that has never been laid out.
+ * The stations are pending either way - this run has not started, and a
+ * run is a session's, not a record's - but a project laid out last week
+ * has a map on disk and a sentence beside this line saying which layout it
+ * was drawn from, and telling that person nothing has started would
+ * contradict it.
  */
-export function waiting(stages: Stage[]): string {
-  return `The layout run's ${stages.length} stages, none started.`
+export function waiting(stages: Stage[], laidOut: boolean): string {
+  return laidOut
+    ? `The layout run's ${stages.length} stages.`
+    : `The layout run's ${stages.length} stages, none started.`
 }
 
 /** One sentence for the whole line, for a screen reader. */

@@ -42,13 +42,18 @@ describe('the stage table', () => {
       loom: 'order',
       octi: 'octilinear',
       schedule: 'trips',
-      render: 'labels',
+      render: 'draw',
       animate: 'animate',
       write: 'write',
     })
   })
 
-  it('leaves a stage it does not know under the name the engine sent', () => {
+  it('answers a name it has never heard rather than nothing', () => {
+    // A backstop, not a behaviour a person can reach: `advance` drops a
+    // report whose stage is not among the fresh eight, so an unknown stage
+    // cannot get this far in the app as it stands. What is asserted is that
+    // the lookup is total - it answers a string for any input - because the
+    // alternative is a station drawn with no name at all.
     expect(stageWord('gtfs2graph')).toBe('parse')
     expect(stageWord('quantise')).toBe('quantise')
   })
@@ -84,11 +89,18 @@ describe("a run's stages in those words", () => {
     expect(JSON.stringify(stages)).toBe(before)
   })
 
-  it('names the resting line for a screen reader, which sees eight stations and no run', () => {
+  it('names the resting line for a screen reader, which meets stations and no run', () => {
     // The other sentences of the run's panel are tested beside the run
     // itself (`tests/unit/layout-run.test.ts`); this one belongs to the
-    // stages a cell draws before any run has started.
-    expect(waiting(stages)).toBe("The layout run's 3 stages, none started.")
+    // stages a cell draws while no run is going.
+    expect(waiting(stages, false)).toBe("The layout run's 3 stages, none started.")
+  })
+
+  it('does not tell a project laid out last week that nothing has started', () => {
+    // The stations are pending either way - a run is a session's - but the
+    // sentence beside this line says which layout the map was drawn from,
+    // and "none started" would contradict it.
+    expect(waiting(stages, true)).toBe("The layout run's 3 stages.")
   })
 })
 
