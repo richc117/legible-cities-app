@@ -13,9 +13,9 @@ import ProgressPreview from './ProgressPreview'
 // order they are read against each other: the shell, the panels a project
 // is made of, the project's own screen, then the three regions of that
 // screen - the notebook's column and the cell's chrome, the rail, the
-// pinned preview (A5.5-07, A5.5-08). No component imports a stylesheet;
-// they are all imported here, and this block is edited once per region
-// rather than once per issue.
+// pinned preview, and the export's own (A5.5-07, A5.5-08, A5.5-19). No
+// component imports a stylesheet; they are all imported here, and this
+// block is edited once per region rather than once per issue.
 import './styles/theme.css'
 import './styles/scale.css'
 import './kit'
@@ -26,6 +26,7 @@ import './styles/project.css'
 import './styles/notebook.css'
 import './styles/rail.css'
 import './styles/preview.css'
+import './styles/export.css'
 // The theme, applied before anything is drawn: the system's preference
 // until App has read what a person chose in Settings (A1-04).
 import './theme'

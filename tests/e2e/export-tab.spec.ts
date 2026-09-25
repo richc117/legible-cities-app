@@ -77,7 +77,10 @@ function launch(h: Home): Promise<ElectronApplication> {
 /** Where the current launch logs - its own profile's folder - and when it started. */
 let launched = { folder: '', since: new Date() }
 
-async function withApp(h: Home, run: (page: Page) => Promise<void>): Promise<void> {
+async function withApp(
+  h: Home,
+  run: (page: Page, app: ElectronApplication) => Promise<void>,
+): Promise<void> {
   // LEGIBLE_USER_DATA moves the logs with the profile, ahead of LEGIBLE_LOGS
   // (src/main/index.ts), so this launch's lines are under its own profile.
   launched = { folder: join(h.userData, 'logs'), since: new Date() }
@@ -87,7 +90,7 @@ async function withApp(h: Home, run: (page: Page) => Promise<void>): Promise<voi
     await expect(page.getByRole('status', { name: 'Engine' })).toContainText(/ready/i, {
       timeout: 20_000,
     })
-    await run(page)
+    await run(page, app)
   } finally {
     await app.close()
   }
@@ -155,6 +158,20 @@ async function laidOut(page: Page, h: Home): Promise<void> {
   await page.getByRole('button', { name: /lay out/i }).click()
   await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
   copyFileSync(fixture, join(h.engineHome, 'out', projectId(h), 'la-metro-rail.html'))
+}
+
+/**
+ * The platform's folder chooser cannot be driven from a test, so Electron's
+ * dialog is replaced in the main process itself: the app's own handler
+ * still runs, remembers its answer, judges it and applies it, as in use.
+ * Copied from `settings.spec.ts`, which drives the two folders there the
+ * same way (A1-04).
+ */
+async function chooserAnswers(app: ElectronApplication, path: string | null): Promise<void> {
+  await app.evaluate(({ dialog }, p) => {
+    dialog.showOpenDialog = (async () =>
+      p === null ? { canceled: true, filePaths: [] } : { canceled: false, filePaths: [p] }) as never
+  }, path)
 }
 
 const exportPanel = (page: Page): Locator => cell(page, 'export')
@@ -483,5 +500,83 @@ test('the choice is the project’s, and it is there when the project is opened 
       'reveal',
     )
     await expect(exportPanel(page).getByRole('checkbox', { name: 'The clock' })).not.toBeChecked()
+  })
+})
+
+test('a folder chosen for this project is where its export lands, and the app’s folder is unchanged', async () => {
+  const h = home()
+  const mine = mkdtempSync(join(tmpdir(), 'legible-cities-destination-'))
+  await withApp(h, async (page, app) => {
+    await laidOut(page, h)
+    await openExportTab(page)
+    const panel = exportPanel(page)
+    // A project starts on the app's folder, said in words and not as a path.
+    await expect(panel.getByText(/exports go to the app’s export folder/)).toBeVisible()
+    await expect(panel.getByRole('button', { name: 'Use the app’s folder' })).toHaveCount(0)
+    expect(readRecord(h).destination).toBeNull()
+
+    // Cancelling changes nothing: the record comes back as it stands.
+    await chooserAnswers(app, null)
+    await panel.getByRole('button', { name: 'Choose folder' }).click()
+    await expect(panel.getByText(/exports go to the app’s export folder/)).toBeVisible()
+    expect(readRecord(h).destination).toBeNull()
+
+    // The dialog's answer is applied in the main process; the path the page
+    // then shows is the record's, and no path was ever sent inward.
+    await chooserAnswers(app, mine)
+    await panel.getByRole('button', { name: 'Choose folder' }).click()
+    await expect(panel.locator('#export-destination-where')).toHaveText(mine)
+    await expect.poll(() => readRecord(h).destination).toBe(mine)
+
+    // A still, so the export is quick. The preview has answered when the
+    // frame is at this preset's own frame.
+    await presetSelect(page).selectOption('instagram-post')
+    await expect
+      .poll(async () => (await frameQuery(page)).get('frame'), { timeout: 20_000 })
+      .toBe('1080:1350')
+    await exportButton(page).click()
+    const name = 'la-metro-rail-instagram-post.png'
+    await expect(panel.getByText(`Exported ${name}.`)).toBeVisible({ timeout: 60_000 })
+    expect(existsSync(join(mine, 'Los Angeles', name)), 'in the chosen folder').toBe(true)
+    expect(existsSync(join(h.exportFolder, 'Los Angeles', name)), "and not in the app's").toBe(
+      false,
+    )
+
+    // Back to the app's folder: nothing crosses the bridge for this at all.
+    await panel.getByRole('button', { name: 'Use the app’s folder' }).click()
+    await expect(panel.getByText(/exports go to the app’s export folder/)).toBeVisible()
+    await expect.poll(() => readRecord(h).destination).toBeNull()
+    // The button that went took focus with it; "Choose folder" has it now.
+    await expect(panel.getByRole('button', { name: 'Choose folder' })).toBeFocused()
+  })
+  // And it is the project's, so it is there when the project is opened
+  // again: the record kept it, and nothing but this project's exports moved.
+  await withApp(h, async (page, app) => {
+    await chooserAnswers(app, mine)
+    await page.getByRole('button', { name: 'Open Los Angeles' }).click()
+    await openExportTab(page)
+    await exportPanel(page).getByRole('button', { name: 'Choose folder' }).click()
+    await expect.poll(() => readRecord(h).destination).toBe(mine)
+  })
+  await withApp(h, async (page) => {
+    await page.getByRole('button', { name: 'Open Los Angeles' }).click()
+    await openExportTab(page)
+    await expect(exportPanel(page).locator('#export-destination-where')).toHaveText(mine)
+  })
+})
+
+test('the app refuses a folder inside itself, and says so under the control that asked', async () => {
+  const h = home()
+  await withApp(h, async (page, app) => {
+    await laidOut(page, h)
+    await openExportTab(page)
+    const panel = exportPanel(page)
+    // The chooser will make a folder anywhere the platform lets it, the
+    // app's own checkout included; nothing may be kept there (ADR-016).
+    const inside = await app.evaluate(({ app: electronApp }) => electronApp.getAppPath())
+    await chooserAnswers(app, join(inside, 'exports'))
+    await panel.getByRole('button', { name: 'Choose folder' }).click()
+    await expect(panel.getByRole('alert')).toContainText('inside the app itself')
+    expect(readRecord(h).destination, 'and nothing was written').toBeNull()
   })
 })

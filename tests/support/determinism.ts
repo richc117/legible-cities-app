@@ -181,6 +181,7 @@ export async function prepareProject(
       lineOrder: [],
       theme: DEFAULT_THEME,
       export: { preset: 'instagram-reel-gif', options: { quality: 'draft' } },
+      destination: null,
       layout,
       made,
       drawn: null,

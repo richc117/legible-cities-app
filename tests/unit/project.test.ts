@@ -19,6 +19,7 @@ import {
   validateLineOrder,
   validateServiceWindow,
   validateTheme,
+  validateDestination,
   withinWindow,
   type ProjectRecord,
   AGENCY_MAX,
@@ -48,6 +49,7 @@ const full: ProjectRecord = {
   lineOrder: [],
   theme: 'warm-dark',
   export: { preset: 'instagram-reel', options: {} },
+  destination: null,
   layout: null,
   made: null,
   drawn: null,
@@ -217,7 +219,34 @@ describe('validateTheme', () => {
   })
 })
 
+describe('validateDestination (A5.5-19)', () => {
+  it('takes an absolute folder, and none at all', () => {
+    expect(validateDestination(null)).toBeNull()
+    expect(validateDestination('/videos/legible')).toBeNull()
+    expect(validateDestination('D:\\videos\\legible')).toBeNull()
+  })
+
+  it('refuses anything a folder chosen in a dialog could not be', () => {
+    for (const value of [undefined, '', 'relative/folder', 42, ['/tmp'], '/tmp/\u0000x'])
+      expect(validateDestination(value), JSON.stringify(value) ?? 'undefined').toMatch(
+        /chosen in the app/,
+      )
+  })
+})
+
 describe('parseRecord', () => {
+  it('reads a folder a project exports to, and nothing else as one', () => {
+    const kept = parseRecord({ ...structuredClone(full), destination: '/videos/legible' })
+    expect('record' in kept && kept.record.destination).toBe('/videos/legible')
+    // Half-valid is not half-trusted: whatever the store would refuse to
+    // write reads back as the app's own folder, which is what a record
+    // that has never chosen one means.
+    for (const broken of ['', 'relative/folder', 42, null, ['/tmp']]) {
+      const read = parseRecord({ ...structuredClone(full), destination: broken })
+      expect('record' in read && read.record.destination, JSON.stringify(broken)).toBeNull()
+    }
+  })
+
   it('reads what a project was set to export whole, or as the reel', () => {
     const choice = {
       preset: 'bluesky-video',
@@ -262,6 +291,9 @@ describe('parseRecord', () => {
       lineOrder: [],
       theme: DEFAULT_THEME,
       export: { preset: 'instagram-reel', options: {} },
+      // A record from before A5.5-19 has no destination, and that reads as
+      // "the app's export folder" - what it meant - never as somewhere else.
+      destination: null,
       layout: null,
       made: null,
       built: null,

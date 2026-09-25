@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type JSX } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type JSX,
+  type RefObject,
+} from 'react'
 import { VIEWS, type View } from '../../shared/capture'
 import { withoutPaths, type EngineState } from '../../shared/engine'
 import {
@@ -36,6 +44,9 @@ import {
   type ExportTables,
   type PreviewAddress,
 } from './exportChoice'
+import { focusLost } from './focusHandback'
+import Icon from './icons/Icon'
+import Button from './kit/Button'
 import Select from './kit/Select'
 import TextInput from './kit/TextInput'
 import { useSnapshot } from './useSnapshot'
@@ -55,6 +66,15 @@ import { useSnapshot } from './useSnapshot'
 // Every list and every refusal is the engine's. A choice is written to the
 // project record the moment it is made (a text field when it is committed),
 // so a project opens on what it was last set to export.
+//
+// Where the file goes is the one choice that is not the engine's and not
+// the page's either (A5.5-19). A folder is chosen in the platform's own
+// dialog, which only the main process can open, and applied there: the
+// page asks for the chooser by naming its project and is told the record
+// that came back, so no path crosses the bridge inward - the rule
+// Settings' two folders have followed since A1-04. What comes back *out*
+// is the folder itself, shown to the person whose folder it is and to
+// nobody else; it is in no message the app sends anywhere.
 
 type Tables =
   | { status: 'waiting' }
@@ -82,6 +102,15 @@ interface Props {
   onChoice: (choice: ExportChoice) => Promise<void>
   /** The address the map's frame should show, when a plan answers. */
   onPreview: (address: PreviewAddress) => void
+  /**
+   * The heading of the cell this is drawn in (A5.5-19). Given, the panel is
+   * headless - the cell's own row is its heading - and focus that a
+   * disabling control drops lands there rather than on a second heading
+   * saying "Export" inside a cell already called "06 Export". It is the
+   * heading and not the toggle inside it, which a reflexive Space after the
+   * handback would collapse.
+   */
+  handback?: RefObject<HTMLHeadingElement | null>
 }
 
 /**
@@ -105,7 +134,9 @@ export default function ExportTab({
   inspect,
   onChoice,
   onPreview,
+  handback,
 }: Props): JSX.Element {
+  const headless = handback !== undefined
   const ready = engine?.state === 'ready'
   const runState = useSnapshot(run).state
   const exporting = runState === 'running'
@@ -117,6 +148,18 @@ export default function ExportTab({
   const [inspection, setInspection] = useState<Inspection | null>(null)
   const headingRef = useRef<HTMLHeadingElement>(null)
   const choicesRef = useRef<HTMLFormElement>(null)
+
+  // Where this project's exports go (A5.5-19). Held here rather than read
+  // from the record on every render because the two calls that change it
+  // answer the written record themselves, and the screen around this panel
+  // is not re-read for a folder: nothing else on it shows one. A record
+  // read again for any other reason - a run finishing, the project opened
+  // afresh - brings the folder with it, and the effect below takes it.
+  const [destination, setDestination] = useState<string | null>(project.destination)
+  const [folderProblem, setFolderProblem] = useState<string | null>(null)
+  useEffect(() => {
+    setDestination(project.destination)
+  }, [project.destination])
 
   // The engine's two tables, once while it stays up. A restarted engine
   // may be another version, so they are asked again.
@@ -298,14 +341,63 @@ export default function ExportTab({
 
   // An export locks the choices: it planned from them, and a change now
   // could not reach the file being made. Chromium blurs a disabled control,
-  // so focus goes to the heading first.
+  // so focus goes to the heading first - the cell's own, where this is a
+  // cell's panel.
   const locked = project.readOnly || exporting
+  // Where focus goes when a control here can no longer hold it: the cell's
+  // own heading, or this panel's where it is a screen of its own.
+  const headingTarget = handback ?? headingRef
   useEffect(() => {
     if (!exporting) return
     const focused = document.activeElement
     if (focused !== null && choicesRef.current?.contains(focused) === true)
-      headingRef.current?.focus()
-  }, [exporting])
+      headingTarget.current?.focus()
+  }, [exporting, headingTarget])
+
+  // The destination's two presses. Neither sends a path: `chooseDestination`
+  // asks the main process to open the platform's dialog and apply what it
+  // answers, and `useAppFolder` takes nothing at all. A cancelled chooser
+  // comes back as the record unchanged, so nothing here has to tell the two
+  // apart.
+  //
+  // "Use the app's folder" is the only control in this panel that removes
+  // itself: it is drawn only while there is a folder to forget. Chromium
+  // blurs an element that leaves the document, so focus is handed to
+  // "Choose folder", where the next press about this would go (A6-07).
+  const chooserRef = useRef<HTMLElement>(null)
+  const handBackToChooser = useRef(false)
+  useEffect(() => {
+    if (!handBackToChooser.current) return
+    handBackToChooser.current = false
+    if (focusLost(document.activeElement, document.body)) chooserRef.current?.focus()
+  }, [destination])
+  // Neither button disables itself while its call is out. The chooser is
+  // modal to the window, so a second press cannot reach it anyway, and a
+  // control that disables itself under a person's hands drops the focus it
+  // holds - which is exactly what the handback above exists to repair. The
+  // guard is a ref rather than state for the same reason it is not drawn:
+  // two presses in one render would both read the same `false`.
+  const changing = useRef(false)
+  const changeFolder = async (
+    ask: () => Promise<ProjectRecord>,
+    /** This press may remove its own button, so focus needs somewhere to go. */
+    handBack = false,
+  ): Promise<void> => {
+    if (changing.current) return
+    changing.current = true
+    try {
+      const record = await ask()
+      setFolderProblem(null)
+      // Only when the button that was pressed has actually gone: a refused
+      // or cancelled change leaves it where it was, holding its own focus.
+      handBackToChooser.current = handBack && record.destination === null
+      setDestination(record.destination)
+    } catch (error) {
+      setFolderProblem(error instanceof Error ? error.message : String(error))
+    } finally {
+      changing.current = false
+    }
+  }
 
   const commitAt = (): void => {
     if (preset === null || preset === undefined) return
@@ -329,7 +421,10 @@ export default function ExportTab({
     commitTag()
   }
 
-  const heading = (
+  // Drawn only where this panel is a screen of its own. In a cell the
+  // cell's heading row says "06 Export" already, and a second heading
+  // saying "Export" under it is one a screen reader reads twice.
+  const heading = headless ? null : (
     <h2 id="export-tab-heading" tabIndex={-1} ref={headingRef}>
       Export
     </h2>
@@ -609,6 +704,58 @@ export default function ExportTab({
                 {tagProblem ??
                   'Added to the file’s name, so a draft does not replace the last good export.'}
               </p>
+            </div>
+
+            {/* Where the file goes. Inside the form with the rest of the
+                choices, so an export that starts takes focus off these two
+                as it does off every other control here; neither is a
+                submit, so neither ends the two typed fields' commit. */}
+            <div className="field export-destination">
+              <p className="field-label" id="export-destination-label">
+                Where it goes
+              </p>
+              {destination === null ? (
+                <p className="message" id="export-destination-where">
+                  This project&rsquo;s exports go to the app&rsquo;s export folder, which Settings
+                  names, in a folder named after the project.
+                </p>
+              ) : (
+                /* A folder's path is shown to the person whose folder it
+                   is, as Settings shows its two; it is in no message the
+                   app sends anywhere else. */
+                <p className="path" id="export-destination-where">
+                  {destination}
+                </p>
+              )}
+              <div className="toolbar">
+                <Button
+                  ref={chooserRef}
+                  disabled={locked}
+                  aria-describedby="export-destination-where"
+                  onClick={() => {
+                    void changeFolder(() => window.api.export.chooseDestination(project.id))
+                  }}
+                >
+                  <Icon name="layers" />
+                  Choose folder
+                </Button>
+                {destination !== null && (
+                  <Button
+                    disabled={locked}
+                    aria-describedby="export-destination-where"
+                    onClick={() => {
+                      void changeFolder(() => window.api.export.useAppFolder(project.id), true)
+                    }}
+                  >
+                    Use the app&rsquo;s folder
+                  </Button>
+                )}
+              </div>
+              {folderProblem !== null && (
+                <p className="message error" role="alert">
+                  {folderProblem}
+                </p>
+              )}
             </div>
             <button type="submit" hidden />
           </form>

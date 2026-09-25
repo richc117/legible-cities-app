@@ -26,7 +26,7 @@ import { FIXTURE_FOLDER, FirstRunCheck, LOG_TAG as FIRST_RUN_TAG } from './first
 import { registerFirstRunHandlers } from './first-run-ipc'
 import { LicencesService, registerLicencesHandlers } from './licences-ipc'
 import { PickedPaths, registerFeedsHandlers, registryDeadline, registryGuard } from './feeds-ipc'
-import { Exporter, keptFramesFolder } from './export'
+import { Destinations, Exporter, keptFramesFolder } from './export'
 import { claimFramesRoot, clearFrames, describeSweep, FRAMES_FOLDER } from './frames'
 import { registerExportHandlers } from './export-ipc'
 import { engineCommand, engineEnvironment, resolveInterpreter } from './interpreter'
@@ -36,7 +36,7 @@ import { byTag, holdingSink, log, setSink, toStderrRedacted } from './log'
 import { LOG_WAIT_MS, openLogFile, within, type LogFile } from './log-file'
 import { shortHomeFrom } from './diagnostics-text'
 import { ProjectStore } from './projects'
-import { SettingsStore } from './settings'
+import { contains, SettingsStore } from './settings'
 import { registerSettingsHandlers, SettingsService } from './settings-ipc'
 import { Viewer } from './viewer'
 import { registerAppProtocol } from './protocol'
@@ -454,6 +454,13 @@ if (!hasLock) {
       picked,
       isTopFrame,
     )
+    // Nothing may be kept inside the app itself, whoever chose it. In
+    // development that is the checkout; packaged, the bundle and the
+    // resources beside it. Read by Settings' two folders and by a
+    // project's own export destination (A5.5-19).
+    const bundleRoots = app.isPackaged
+      ? [app.getAppPath(), process.resourcesPath]
+      : [app.getAppPath()]
     // What the app decides for itself. The export folder is asked at each
     // export, so a change here needs no restart; the engine's home was
     // resolved above and moves at the next start (specs/019-settings).
@@ -507,10 +514,7 @@ if (!hasLock) {
       // Asked for when it is wanted: a path Electron cannot answer must
       // cost one dead button, not the whole startup.
       logsFolder: () => app.getPath('logs'),
-      // Nothing may be kept inside the app itself, whoever chose it. In
-      // development that is the checkout; packaged, the bundle and the
-      // resources beside it.
-      bundleRoots: app.isPackaged ? [app.getAppPath(), process.resourcesPath] : [app.getAppPath()],
+      bundleRoots,
       guards: { userData: app.getPath('userData'), homeDir: homedir() },
       // "Copy diagnostics": everything from this process, and the engine's
       // own answer; the clipboard is written in the main process, as the
@@ -642,12 +646,42 @@ if (!hasLock) {
       log.warn('export', 'the frames folder could not be claimed'),
     )
     log.info('export', describeSweep(await clearFrames(framesRoot)))
+    // Where a project's own exports may not go (A5.5-19). Inside the app
+    // itself, which is read-only on macOS and wiped on update (ADR-016);
+    // and inside the engine's home, because "Reset engine data" removes
+    // four folders under it and the confirmation promises that exported
+    // files are not touched. Textual, on the folder the chooser answered,
+    // as the bundle check in Settings is.
+    const destinationRefusal = (folder: string): string | null => {
+      if (bundleRoots.some((root) => contains(root, folder)))
+        return 'that folder is inside the app itself; nothing can be kept there'
+      if (contains(config.home, folder))
+        return 'that folder is inside the engine data folder, which “Reset engine data” removes'
+      return null
+    }
+    const destinations = new Destinations({
+      projects: store,
+      // Parented to the window, so it is modal to it (rules/main.md); only
+      // the window's own top frame can ask, so the window is there.
+      chooseFolder: async (current) => {
+        if (mainWindow === null || mainWindow.isDestroyed()) return null
+        const answer = await dialog.showOpenDialog(mainWindow, {
+          title: 'Choose where this project exports to',
+          defaultPath: current,
+          properties: ['openDirectory', 'createDirectory'],
+        })
+        return answer.canceled || answer.filePaths.length === 0 ? null : answer.filePaths[0]
+      },
+      appFolder: () => settingsService.exportFolderNow(),
+      refuse: destinationRefusal,
+    })
     exporter = new Exporter({
       engine,
       projects: store,
       capture,
       framesRoot,
       exportFolder: () => settingsService.exportFolderNow(),
+      destinationRefusal,
       // The frames live under the engine home, so no export may begin while
       // that folder is being removed.
       blocked: resetInProgress,
@@ -663,6 +697,7 @@ if (!hasLock) {
           mainWindow.webContents.send(channel, payload)
       },
       (path) => shell.showItemInFolder(path),
+      destinations,
     )
     mainWindow = createWindow()
 

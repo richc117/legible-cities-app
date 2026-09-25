@@ -1,0 +1,33 @@
+/* The export's own region (A5.5-19): cell 06's destination.
+ *
+ * A region of the interface earns a file once it has rules of its own to
+ * keep (.claude/rules/renderer.md). The export's older rules - the tab's
+ * heading, the choices grid, the two fieldsets - are still in panels.css
+ * where A5-01 wrote them and still apply; moving them is a change of its
+ * own and not this one's. This file holds what cell 06 gained: the folder
+ * a project exports to, shown as a path rather than as prose.
+ *
+ * It is read after panels.css, so a rule here may refine one there. It
+ * does not: the two selectors below are this region's alone.
+ */
+
+/* Where it goes: the same block Settings draws a folder in, so a path
+   reads as a path wherever the app shows one. Not `.settings .path`,
+   which is that screen's own selector. */
+.export-destination .path {
+  margin: 0;
+  padding: var(--space-2-3) var(--space-4-2);
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--font-ui-small);
+  line-height: var(--line-ui-tight);
+  overflow-wrap: anywhere;
+}
+
+/* The two buttons sit under whichever of the two the folder is said by,
+   with the gap a field's rows have. */
+.export-destination .toolbar {
+  margin: var(--space-2-2) 0 0;
+}

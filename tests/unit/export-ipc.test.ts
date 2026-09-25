@@ -5,7 +5,11 @@
 
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { describe, expect, it } from 'vitest'
-import { registerExportHandlers, type ExportSource } from '../../src/main/export-ipc'
+import {
+  registerExportHandlers,
+  type DestinationSource,
+  type ExportSource,
+} from '../../src/main/export-ipc'
 import { CHANNELS } from '../../src/shared/api'
 import { EngineError, ERROR_CODES } from '../../src/shared/engine'
 import type { ExportChoice, ExportProgress, ExportResult } from '../../src/shared/export'
@@ -26,6 +30,21 @@ function harness(topFrame = true) {
   const started: { token: string; projectId: string; choice: ExportChoice }[] = []
   const previewed: { projectId: string; choice: ExportChoice }[] = []
   const cancelled: string[] = []
+  // The two destination handlers: a project's identifier and nothing else
+  // reaches them, and neither answers a path to the page's caller by any
+  // route but the record it writes (A5.5-19).
+  const chosen: string[] = []
+  const cleared: string[] = []
+  const destinations: DestinationSource = {
+    choose: async (projectId) => {
+      chosen.push(projectId)
+      return { id: projectId } as never
+    },
+    useAppFolder: async (projectId) => {
+      cleared.push(projectId)
+      return { id: projectId } as never
+    },
+  }
   let listener: ((p: ExportProgress) => void) | null = null
   let settle!: (v: ExportResult) => void
   let fail!: (e: unknown) => void
@@ -69,6 +88,7 @@ function harness(topFrame = true) {
     () => topFrame,
     (channel, payload) => sent.push({ channel, payload }),
     (path) => revealed.push(path),
+    destinations,
   )
   const event = {} as IpcMainInvokeEvent
   const call = (channel: string, ...args: unknown[]) => handlers.get(channel)!(event, ...args)
@@ -80,6 +100,8 @@ function harness(topFrame = true) {
     started,
     previewed,
     cancelled,
+    chosen,
+    cleared,
     files,
     settle: (v: ExportResult) => settle(v),
     fail: (e: unknown) => fail(e),
@@ -88,7 +110,7 @@ function harness(topFrame = true) {
 }
 
 describe('registerExportHandlers', () => {
-  it('registers the four channels and nothing else', () => {
+  it('registers the six channels and nothing else', () => {
     const { handlers } = harness()
     expect([...handlers.keys()].sort()).toEqual(
       [
@@ -96,6 +118,8 @@ describe('registerExportHandlers', () => {
         CHANNELS.exportCancel,
         CHANNELS.exportReveal,
         CHANNELS.exportPreview,
+        CHANNELS.exportChooseDestination,
+        CHANNELS.exportUseAppFolder,
       ].sort(),
     )
   })
@@ -129,6 +153,37 @@ describe('registerExportHandlers', () => {
     }
     expect(started).toEqual([])
   })
+  // The destination (A5.5-19): the page names a project and nothing else,
+  // and the dialog is opened and its answer applied on this side. There is
+  // no channel here that takes a path.
+  it('opens the chooser for a project, and takes the app’s folder again', async () => {
+    const h = harness()
+    await h.call(CHANNELS.exportChooseDestination, 'abcdefghijk1')
+    await h.call(CHANNELS.exportUseAppFolder, 'abcdefghijk1')
+    expect(h.chosen).toEqual(['abcdefghijk1'])
+    expect(h.cleared).toEqual(['abcdefghijk1'])
+  })
+
+  it('refuses a destination call that does not name a project, and one from another frame', async () => {
+    const h = harness()
+    for (const channel of [CHANNELS.exportChooseDestination, CHANNELS.exportUseAppFolder])
+      for (const bad of ['not-an-id', '../escape', undefined, 42, { id: 'abcdefghijk1' }])
+        await expect(h.call(channel, bad)).rejects.toThrow('a destination needs a project')
+    // A second argument is ignored: a path sent beside the project reaches
+    // nothing, because no handler here reads one.
+    await h.call(CHANNELS.exportChooseDestination, 'abcdefghijk1', '/somewhere/else')
+    expect(h.chosen).toEqual(['abcdefghijk1'])
+
+    const other = harness(false)
+    await expect(other.call(CHANNELS.exportChooseDestination, 'abcdefghijk1')).rejects.toThrow(
+      'forbidden',
+    )
+    await expect(other.call(CHANNELS.exportUseAppFolder, 'abcdefghijk1')).rejects.toThrow(
+      'forbidden',
+    )
+    expect(other.chosen).toEqual([])
+  })
+
   it('answers a refusal the exporter made as data, not a rejection', async () => {
     const { call } = harness()
     const answer = await call(CHANNELS.exportRun, 'busy', 'abcdefghijk1', REEL)

@@ -8,7 +8,8 @@
 //
 // The frames are the export's own: written under the engine home while the
 // export lasts and removed when it ends, whichever way. The file goes under
-// the export folder from the configuration, in a folder named after the
+// the project's own destination, or the export folder from the
+// configuration where it has none (A5.5-19), in a folder named after the
 // project, and its name is the engine's. Nothing here writes anywhere else.
 // Contract: specs/010-export/contracts/bridge.md.
 
@@ -25,7 +26,7 @@ import {
   type ExportResult,
   type ExportStage,
 } from '../shared/export'
-import { drawnDate, type ProjectRecord, type Theme } from '../shared/project'
+import { drawnDate, validateDestination, type ProjectRecord, type Theme } from '../shared/project'
 import type {
   CaptureJob as PlannedJob,
   ExportEncodeParams,
@@ -41,6 +42,7 @@ import {
 } from './capture'
 import { isObject, toShape } from './ipc-shape'
 import { RESERVED_NAME } from './paths'
+import { PickedPaths } from './picked'
 import type { Notification } from './sidecar'
 
 /** What the export needs from the supervisor; a test hands in a fake. */
@@ -60,11 +62,20 @@ export interface ExporterOptions {
   /** Where a running export's frames go: `<framesRoot>/<token>/`. */
   framesRoot: string
   /**
-   * Where the file goes: `<exportFolder()>/<project>/<filename>`. Asked at
-   * each export rather than held, so a folder changed in Settings takes
-   * effect without a restart (specs/019-settings, FR-005).
+   * Where the file goes when the project has chosen nowhere else:
+   * `<exportFolder()>/<project>/<filename>`. Asked at each export rather
+   * than held, so a folder changed in Settings takes effect without a
+   * restart (specs/019-settings, FR-005).
    */
   exportFolder: () => string
+  /**
+   * Why a project's own destination may not be written to, or null: inside
+   * the app's own bundle, or inside the engine's home (A5.5-19). The same
+   * function the chooser refuses by, asked again here because a record is a
+   * file on disk and the folder it names may have become one of those since
+   * - or never have come from the chooser at all.
+   */
+  destinationRefusal?: (folder: string) => string | null
   /**
    * Why no export may start at all, or null. Settings sets this while it is
    * removing the engine's home: an export begun during that `rm` would be
@@ -103,6 +114,13 @@ interface Control {
   /** The engine request in flight, so a cancel reaches it; 0 when there is none. */
   engineId: number
 }
+
+/**
+ * A record written by a newer build: this app may not change it, and may
+ * not export it either. One sentence, so the two refusals cannot drift.
+ */
+export const READ_ONLY =
+  'This project was made by a newer version of the app and cannot be exported here.'
 
 /** The engine's theme names for the record's. */
 export function themeFor(theme: Theme): 'dark' | 'light' {
@@ -434,14 +452,25 @@ export class Exporter {
     // Read once, at the start, and held: an export that was planned for one
     // folder must not be written to another because the plan's round trip
     // to the engine gave someone time to change it in Settings (A1-04).
-    const destination = exportFolder()
+    const appFolder = exportFolder()
     const project = await projects.get(projectId)
-    if (project.readOnly)
-      throw engineError(
-        ERROR_CODES.badCall,
-        'This project was made by a newer version of the app and cannot be exported here.',
-        'params',
-      )
+    if (project.readOnly) throw engineError(ERROR_CODES.badCall, READ_ONLY, 'params')
+    // The project's own destination over the app's, if it has chosen one
+    // (A5.5-19). Held from here for the same reason the app's folder is:
+    // one export, one folder, whatever is changed while the engine plans.
+    // The refusal is asked again rather than trusted from the moment it was
+    // chosen - the engine's home can move between two starts, and a record
+    // is a file anything on the machine can write.
+    if (project.destination !== null) {
+      const why = this.#options.destinationRefusal?.(project.destination) ?? null
+      if (why !== null)
+        throw engineError(
+          ERROR_CODES.badCall,
+          `The folder this project exports to cannot be written to: ${why}.`,
+          'params',
+        )
+    }
+    const destination = project.destination ?? appFolder
     // The service day the map on disk was drawn for. Not `project.date`,
     // which a person may have moved without drawing it (A5.5-15): the
     // capture navigates to the page the last draw wrote, so a plan or a
@@ -610,5 +639,84 @@ export class Exporter {
         log(`could not remove the frames (${reasonOf(error)})`),
       )
     }
+  }
+}
+
+/**
+ * What choosing a destination needs. Everything Electron - the dialog, the
+ * folders it may not answer with - is injected, so every rule below is
+ * asserted in a unit test without a window.
+ */
+export interface DestinationsOptions {
+  projects: {
+    get(id: string): Promise<ProjectRecord & { readOnly: boolean }>
+    setDestination(id: string, folder: string | null): Promise<ProjectRecord>
+  }
+  /**
+   * The platform's folder chooser, parented to the window; null when the
+   * person cancelled or there is no window to parent to. The only way a
+   * path enters this process.
+   */
+  chooseFolder: (current: string) => Promise<string | null>
+  /** The app's own export folder now, where a project that has chosen none starts. */
+  appFolder: () => string
+  /**
+   * Why this folder may not be an export's destination, or null: inside
+   * the app's own bundle, which is read-only on macOS and wiped on update,
+   * or inside the engine's home, which "Reset engine data" removes.
+   */
+  refuse: (folder: string) => string | null
+}
+
+/**
+ * Where one project's exports go (A5.5-19), on the shape Settings set for
+ * its two folders (A1-04).
+ *
+ * **No path crosses the bridge inward.** The page asks for the chooser by
+ * naming a project and nothing else; this process opens the platform's own
+ * dialog, remembers what it answered, spends that answer here, and hands
+ * back the record. `apply` is exported past `choose` so the rule is
+ * testable on its own: a path this process's own dialog did not answer, or
+ * has already spent, is refused before the store is touched.
+ */
+export class Destinations {
+  readonly #options: DestinationsOptions
+  readonly #picked = new PickedPaths()
+
+  constructor(options: DestinationsOptions) {
+    this.#options = options
+  }
+
+  /** Open the chooser for this project and store what it answered. */
+  async choose(projectId: string): Promise<ProjectRecord> {
+    const project = await this.#options.projects.get(projectId)
+    if (project.readOnly) throw new Error(READ_ONLY)
+    // The dialog opens where this project's exports go now, which is its
+    // own folder if it has one and the app's if it has not.
+    const answer = await this.#options.chooseFolder(
+      project.destination ?? this.#options.appFolder(),
+    )
+    // Cancelled: the record as it stands, so the screen puts back exactly
+    // what it had rather than guessing that nothing changed.
+    if (answer === null) return project
+    this.#picked.remember(answer)
+    return this.apply(projectId, answer)
+  }
+
+  /** Store a folder the app's own dialog answered. */
+  async apply(projectId: string, folder: unknown): Promise<ProjectRecord> {
+    const problem = validateDestination(folder)
+    if (problem !== null) throw new Error(problem)
+    if (folder === null) return this.useAppFolder(projectId)
+    if (!this.#picked.take(folder as string))
+      throw new Error("a folder is chosen in the app's own dialog")
+    const why = this.#options.refuse(folder as string)
+    if (why !== null) throw new Error(why)
+    return this.#options.projects.setDestination(projectId, folder as string)
+  }
+
+  /** Forget this project's own folder and take the app's again. Nothing crosses inward. */
+  async useAppFolder(projectId: string): Promise<ProjectRecord> {
+    return this.#options.projects.setDestination(projectId, null)
   }
 }

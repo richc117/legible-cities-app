@@ -111,6 +111,11 @@ const api: Api = {
     preview: (projectId, choice) => invoke(CHANNELS.exportPreview, projectId, choice),
     cancel: (id) => invoke(CHANNELS.exportCancel, id),
     reveal: (id) => invoke(CHANNELS.exportReveal, id),
+    // Neither takes a path: the main process opens the platform's chooser
+    // and applies its own answer, as Settings does for its two folders
+    // (A5.5-19).
+    chooseDestination: (projectId) => invoke(CHANNELS.exportChooseDestination, projectId),
+    useAppFolder: (projectId) => invoke(CHANNELS.exportUseAppFolder, projectId),
     onProgress: (listener) => subscribe(CHANNELS.exportProgress, listener),
   },
   // Only the theme and the diagnostics' report text cross inward, each

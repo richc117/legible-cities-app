@@ -18,6 +18,7 @@ The on-disk form of `ProjectRecord` (`data-model.md`), version 1:
   "lineOrder": [],
   "theme": "warm-dark",
   "export": { "preset": "instagram-reel", "options": {} },
+  "destination": null,
   "layout": null,
   "made": null,
   "drawn": null,
@@ -93,6 +94,26 @@ The on-disk form of `ProjectRecord` (`data-model.md`), version 1:
   shape reads as the reel with no options, which is what the one button
   exported before, and is refused on write
   (specs/022-export-tab).
+- `destination` (added by A5.5-19, still version 1) is the folder this
+  project's exports are written to, over the app's own export folder:
+  an absolute path, or `null` for the app's. The file goes to
+  `<destination>/<project name as a folder>/<the engine's filename>`,
+  exactly as it goes under the app's folder, and `export.encode` has always
+  taken an absolute destination, so nothing about the plan or the capture
+  changes with it. Anything that is not a folder the app would store -
+  relative, empty, over 4,096 characters, or carrying a control character -
+  reads as `null` and is refused on write; whether a particular folder may
+  be written into (inside the app's own bundle, inside the engine's home)
+  is the main process's judgement, made when it is chosen and again at each
+  export, because the home can move between two starts. `null` means "not
+  told otherwise", which is what every record meant before this field
+  existed, so an older project is unaffected and an older build that drops
+  the field sends the next export to the app's folder rather than misreading
+  anything. The rule that let it be added without moving the version is in
+  `specs/028-the-notebook/contracts/run-graph.md`, "Adding a field to
+  `ProjectRecord` without moving `RECORD_VERSION`". The folder never
+  crosses the bridge inward: it is chosen in the platform's own dialog,
+  which the main process opens, and applied there (A1-04's shape).
 - A write stores the record as the reader normalised it, stamped with the
   current `version`: unknown keys are dropped, an invalid colour, theme or
   date falls back to its default, and a missing timestamp becomes the epoch.

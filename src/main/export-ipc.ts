@@ -1,9 +1,13 @@
-// The export bridge's main side: four handlers over the exporter and two
+// The export bridge's main side: the handlers over the exporter and two
 // events to the window, on the pattern the engine bridge set. The page
 // addresses an export by a token it minted; the answer travels as an event
 // on the same channel as the progress and after it, because an invoke reply
 // is not ordered against events. The reveal takes the token, never a path:
 // the main process remembers what it wrote, and the page never sees where.
+// The two destination handlers take a project and nothing else: the
+// platform's folder chooser is opened here and its answer applied here, so
+// no path crosses the bridge inward, which is the rule Settings' two
+// folders follow (A1-04, A5.5-19).
 // Contract: specs/010-export/contracts/bridge.md.
 
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
@@ -18,7 +22,7 @@ import {
 } from '../shared/export'
 import { EngineError, ERROR_CODES, type EngineErrorShape } from '../shared/engine'
 import { validateId } from '../shared/project'
-import type { Exporter } from './export'
+import type { Destinations, Exporter } from './export'
 import { badCall, TOKEN, toShape } from './ipc-shape'
 import { RESERVED_NAME } from './paths'
 
@@ -31,6 +35,9 @@ const refusal = (what: string): EngineErrorShape =>
 /** What the handlers need from the exporter; a test hands in a fake. */
 export type ExportSource = Pick<Exporter, 'start' | 'cancel' | 'fileOf' | 'onProgress' | 'preview'>
 
+/** What the two destination handlers need; a test hands in a fake. */
+export type DestinationSource = Pick<Destinations, 'choose' | 'useAppFolder'>
+
 export function registerExportHandlers(
   ipcMain: IpcMain,
   exporter: ExportSource,
@@ -38,6 +45,8 @@ export function registerExportHandlers(
   send: Send,
   /** Show a file in the platform's file browser: `shell.showItemInFolder`. */
   reveal: (path: string) => void,
+  /** Where one project's exports go, and the dialog that chooses it (A5.5-19). */
+  destinations: DestinationSource,
 ): () => void {
   const handle = (channel: string, handler: (...args: unknown[]) => Promise<unknown>): void => {
     ipcMain.handle(channel, async (event, ...args: unknown[]) => {
@@ -88,6 +97,22 @@ export function registerExportHandlers(
 
   handle(CHANNELS.exportCancel, async (token) => {
     if (typeof token === 'string') exporter.cancel(token)
+  })
+
+  // A folder is chosen by naming a project; the dialog and its answer never
+  // leave this process. An error is thrown rather than answered, as the
+  // project handlers throw theirs: the page shows the sentence beside the
+  // control that asked.
+  handle(CHANNELS.exportChooseDestination, async (projectId) => {
+    if (typeof projectId !== 'string' || validateId(projectId) !== null)
+      throw new Error('a destination needs a project')
+    return destinations.choose(projectId)
+  })
+
+  handle(CHANNELS.exportUseAppFolder, async (projectId) => {
+    if (typeof projectId !== 'string' || validateId(projectId) !== null)
+      throw new Error('a destination needs a project')
+    return destinations.useAppFolder(projectId)
   })
 
   handle(CHANNELS.exportReveal, async (token) => {

@@ -67,6 +67,7 @@ function record(id: string, overrides: Partial<ProjectRecord> = {}): ProjectReco
     lineOrder: [],
     theme: DEFAULT_THEME,
     export: { preset: 'instagram-reel', options: {} },
+    destination: null,
     layout: null,
     made: null,
     drawn: null,
@@ -144,6 +145,7 @@ describe('create', () => {
       lineOrder: [],
       theme: 'warm-dark',
       export: { preset: 'instagram-reel', options: {} },
+      destination: null,
       layout: null,
       made: null,
       drawn: null,
@@ -1140,6 +1142,48 @@ describe('setExport', () => {
     const current = await store.get(project.id)
     await writeFile(file, JSON.stringify({ ...current, version: 99 }), 'utf8')
     await expect(store.setExport(project.id, LINKEDIN as never)).rejects.toThrow('read-only')
+  })
+})
+
+// Where this project's exports go (A5.5-19): a folder the main process's
+// own dialog answered, or none, in which case the app's export folder is
+// used. It is not part of any plan, so nothing is built for it.
+describe('setDestination', () => {
+  const MINE = '/videos/legible-cities'
+
+  it('writes the folder and the time, and takes it back again', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    const before = await store.get(project.id)
+    expect(before.destination, "every project starts on the app's folder").toBeNull()
+
+    const after = await store.setDestination(project.id, MINE)
+    expect(after.destination).toBe(MINE)
+    expect(after.export, 'a folder is not a choice about the file').toEqual(before.export)
+    expect(after.layout, 'nor a build of any kind').toBe(before.layout)
+    expect(after.modified >= before.modified).toBe(true)
+    const fresh = new ProjectStore(home, (message) => lines.push(message))
+    expect((await fresh.get(project.id)).destination, 'and it is on disk').toBe(MINE)
+
+    expect((await store.setDestination(project.id, null)).destination).toBeNull()
+  })
+
+  it('refuses anything that is not a folder a dialog answered, and writes nothing', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    await store.setDestination(project.id, MINE)
+    for (const folder of ['', 'relative/folder', 42, ['/tmp'], undefined])
+      await expect(
+        store.setDestination(project.id, folder as never),
+        JSON.stringify(folder) ?? 'undefined',
+      ).rejects.toThrow(/chosen in the app/)
+    expect((await store.get(project.id)).destination, 'nothing was written').toBe(MINE)
+  })
+
+  it('refuses a record a newer version of the app wrote', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    const file = join(home, 'projects', project.id, 'project.json')
+    const current = await store.get(project.id)
+    await writeFile(file, JSON.stringify({ ...current, version: 99 }), 'utf8')
+    await expect(store.setDestination(project.id, MINE)).rejects.toThrow('read-only')
   })
 })
 

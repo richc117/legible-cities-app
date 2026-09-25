@@ -4,6 +4,7 @@
 
 import { copyChoice, DEFAULT_CHOICE, validateExportChoice, type ExportChoice } from './export'
 import { isLayoutId } from './layout'
+import { isStorableFolder } from './settings'
 
 export const RECORD_VERSION = 1
 
@@ -39,6 +40,26 @@ export function isTheme(value: unknown): value is Theme {
  */
 export function validateTheme(theme: unknown): string | null {
   return isTheme(theme) ? null : 'the theme must be warm-dark or sepia'
+}
+
+/**
+ * Where a project's exports go, or null for the app's own folder
+ * (A5.5-19). Checked in the store because the store is the trusted layer,
+ * and again on the way in - though nothing on the bridge can send a folder
+ * of its own choosing: the main process opens the chooser and applies the
+ * answer itself, and a path that no dialog of ours answered is refused
+ * before this is reached.
+ *
+ * The rule itself is `isStorableFolder`, the one Settings stores a folder
+ * by: absolute, of a sane length, and free of the control characters a
+ * filesystem call would carry into a surprise. Whether a particular folder
+ * may be written to - inside the app's own bundle, inside the engine's
+ * home - is the main process's to say, because only it knows where those
+ * are.
+ */
+export function validateDestination(folder: unknown): string | null {
+  if (folder === null) return null
+  return isStorableFolder(folder) ? null : "a folder is chosen in the app's own dialog"
 }
 
 /**
@@ -102,6 +123,21 @@ export interface ProjectRecord {
    * from before the export tab, which is what the one button exported.
    */
   export: ExportChoice
+  /**
+   * Where this project's exports go, over the app's own export folder
+   * (A5.5-19); null to use the app's, which is what every project did
+   * before and what a project that has never been told otherwise still
+   * does. The folder is the platform's dialog's own answer: no path
+   * crosses the bridge inward, so the only two values that reach a record
+   * are one this process's own chooser handed out and null.
+   *
+   * Added at `RECORD_VERSION` 1 and it does not move it: a record without
+   * it reads as "the app's folder", which is what an older record meant,
+   * and an older build that drops it sends the next export to the app's
+   * folder rather than misreading anything
+   * (specs/028-the-notebook/contracts/run-graph.md).
+   */
+  destination: string | null
   /** The stored layout's identifier; null until the first layout produces one (ADR-027). */
   layout: string | null
   /**
@@ -509,6 +545,10 @@ export function parseRecord(json: unknown): Parsed {
       validateExportChoice(json.export) === null
         ? copyChoice(json.export as ExportChoice)
         : copyChoice(DEFAULT_CHOICE),
+    // Missing, or anything that is not a folder this app would store, is
+    // the app's own export folder: absent means "not told otherwise", never
+    // "somewhere else" (A5.5-19).
+    destination: isStorableFolder(json.destination) ? json.destination : null,
     layout: isLayoutId(json.layout) ? json.layout : null,
     made: validateMade(json.made) === null ? (json.made as string) : null,
     drawn: readDrawn(json.drawn),
