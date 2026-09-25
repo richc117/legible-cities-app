@@ -112,3 +112,33 @@
   color: var(--text-muted);
   font-size: var(--font-ui-small);
 }
+
+/* The strip's pairs: a definition list drawn as one run of "term: value",
+   wrapped where the cell is narrow rather than cut with an ellipsis as the
+   collapsed row is - a provenance a person cannot finish reading is not
+   provenance. Both halves keep the strip's own --text-muted: the colon
+   tells them apart, and a second colour here would be a pair the contrast
+   test has to hold for the sake of a decoration. */
+.cell-provenance {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2-2) var(--space-4-3);
+  margin: 0;
+}
+
+.cell-provenance dt::after {
+  content: ':';
+}
+
+.cell-provenance dd {
+  margin: 0;
+  font-variant-numeric: var(--numerals);
+}
+
+/* The one sentence a strip may carry beside its pairs: the layout's inputs
+   having moved since it was made (A2-02), what the engine wrote beside an
+   exported file. */
+.cell-provenance-note {
+  margin: var(--space-4-2) 0 0;
+}
