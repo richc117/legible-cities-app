@@ -30,7 +30,7 @@ import {
   sweep,
   withApp,
 } from '../support/a11y'
-import { cell, cellHandback, cellHeading, closeCell, openCell } from '../support/project'
+import { cellHandback, cellHeading, closeCell, openCell } from '../support/project'
 
 test.skip(PYTHON === null, 'no python3 or python on the PATH to run the stand-in engine')
 
@@ -297,39 +297,63 @@ test('the project screen: one press skips past the map to its toolbar, and the m
       const previewing = address === 'safe=1'
       if (previewing) await openCell(page, 'export')
       else await closeCell(page, 'export')
-      // Cell 06 plans its preview from the presets the engine answers, so
-      // until they arrive the address it asks the frame for is not the one
-      // it will settle on. The macOS failure in issue 147 was taken with
-      // this combobox empty and the Storyboard's eight options already
-      // listed: the frame was being re-pointed while the test read it. Wait
-      // for the presets before looking at the frame at all.
-      if (previewing)
-        await expect(
-          cell(page, 'export').getByRole('combobox', { name: 'Preset' }).locator('option').first(),
-        ).toBeAttached({ timeout: 30_000 })
-      // The frame holds the busy page at this tab's address: the plain map
-      // under Map, the planned preview under Export. The frame loads the
-      // page again whenever the address changes, and the Export tab plans
-      // its preview after the tab is pressed, so the two facts are read
-      // together and re-read as a pair: asked one after the other, a load
-      // that lands between them fails the second for a frame that is
-      // perfectly correct a moment later (issue 147, item 3 - it failed on
-      // the macOS runner once in 125 runs and never here).
-      const loaded = async (): Promise<{ address: boolean; lastControl: number }> => {
+      // The frame holds the busy page at this tab's address - the plain map
+      // under Map, the export's planned preview under Export - and has
+      // stopped moving. Everything below walks the Tab order through that
+      // frame, and a frame that reloads mid-walk loses the focus the walk
+      // just gave it, so both halves are waited for here.
+      //
+      // The two facts come out of one snapshot taken inside the frame.
+      // Asked as two Playwright calls they are two round trips, and a load
+      // landing between them answers the address from the document that is
+      // going and the controls from the one arriving, which has parsed
+      // nothing yet: `address: true, controls: 0`, however long the poll
+      // runs (issue 147, item 3).
+      //
+      // Stillness is the other half, and the one the failures were really
+      // about. Cell 06 does not plan its preview when the engine lists its
+      // presets: the plan is asked for after them, debounced, and the write
+      // that settles the choice in the record can ask for another. Measured
+      // with the frame's address watched over time, the frame was still on
+      // the map's own address when the presets were listed and moved to the
+      // planned one afterwards - so waiting for the presets, which is what
+      // this test used to do, waits for the wrong thing. The snapshot
+      // carries the document's own birth time, which is new for every
+      // document, and two readings a second apart agreeing on it is what
+      // tells a settled frame from one between two loads.
+      type Frame = { address: boolean; controls: number; born: number }
+      const gone: Frame = { address: false, controls: 0, born: 0 }
+      const look = async (): Promise<Frame> => {
         try {
-          const where = await frame.locator('#where').innerText({ timeout: 1_000 })
-          const lastControl = await frame
-            .getByRole('button', { name: `Map control ${controls}`, exact: true })
-            .count()
-          return { address: where.includes(address), lastControl }
+          return await frame.locator('body').evaluate((body, last: string) => {
+            const where = body.querySelector('#where')?.textContent ?? ''
+            return {
+              address: where.includes(last),
+              controls: body.querySelectorAll('button').length,
+              born: performance.timeOrigin,
+            }
+          }, address)
         } catch {
-          // Mid-load the frame answers nothing; that is a retry, not a failure.
-          return { address: false, lastControl: 0 }
+          // Mid-load the frame answers nothing at all; a retry, not a failure.
+          return gone
         }
       }
+      let before = gone
+      const settled = async (): Promise<Frame & { still: boolean }> => {
+        const now = await look()
+        const still = now.born !== 0 && now.born === before.born
+        before = now
+        return { ...now, still }
+      }
       await expect
-        .poll(loaded, { timeout: 60_000, message: `${tab}: the busy page at ${address}` })
-        .toEqual({ address: true, lastControl: 1 })
+        .poll(settled, {
+          // One second between readings, so `still` means a second of quiet
+          // rather than whatever gap the default escalation had reached.
+          intervals: [1000],
+          timeout: 60_000,
+          message: `${tab}: the busy page at ${address}, and not about to reload`,
+        })
+        .toEqual({ address: true, controls, born: expect.any(Number), still: true })
 
       // Out of sight while it does not hold focus, and in the document.
       await expect.poll(width, { message: `${tab}: hidden at rest` }).toBeLessThanOrEqual(1)
@@ -376,9 +400,24 @@ test('the project screen: one press skips past the map to its toolbar, and the m
       expect(shown.height, `${tab}: the map keeps its size`).toBeCloseTo(atRest.height, 0)
 
       // Not used, the next Tab goes into the map: its first control, whatever
-      // else the page holds.
+      // else the page holds. Read from inside the frame, in one snapshot
+      // again, so that a failure says what the frame was holding when the
+      // press landed - the document's own controls - instead of only that a
+      // button could not be found.
       await page.keyboard.press('Tab')
-      await expect(frame.getByRole('button', { name: 'Map control 1', exact: true })).toBeFocused()
+      const inside = async (): Promise<{ focused: string; controls: number }> => {
+        try {
+          return await frame.locator('body').evaluate((body) => ({
+            focused: (body.ownerDocument.activeElement as HTMLElement | null)?.textContent ?? '',
+            controls: body.querySelectorAll('button').length,
+          }))
+        } catch {
+          return { focused: 'the frame answered nothing', controls: 0 }
+        }
+      }
+      await expect
+        .poll(inside, { message: `${tab}: one press past the skip is the map's first control` })
+        .toEqual({ focused: 'Map control 1', controls })
       expect(await activeTag(), `${tab}: focus is in the frame`).toBe('iframe')
       await expect(rename).not.toBeFocused()
       await expect.poll(width, { message: `${tab}: hidden again` }).toBeLessThanOrEqual(1)
