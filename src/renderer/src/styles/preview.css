@@ -5,12 +5,76 @@
    threshold, and above the notebook rather than beside it at the narrow
    width.
 
-   Empty. A5.5-08 moved the frame into `Preview.tsx` and left it exactly
-   where the tabs had it, because the frame must never be reparented and
-   its address must never change by accident: both reload the engine's
-   page, and a reload loses its clock, its view and its scrub position.
-   Pinning it is A5.5-20's, and these are its rules.
+   All of it is CSS, and that is the point (A5.5-20). The frame is never
+   moved between parents and never remounted, because both reload the
+   engine's page and a reload loses its clock, its view and its scrub
+   position. A layout that pinned the map by putting it somewhere else
+   would be a reparent under another name, so the wrapper stays exactly
+   where `Notebook.tsx` puts it - the column's first child - and only
+   these rules move.
 
    A stylesheet is named for a region of the interface, not for a
    component, and the four token files stay the only place a literal may
    appear (A5.5-07). */
+
+/* Pinned from the top, so cells 01 and 02 are read with the map in view as
+   the rest are. Not at a scroll threshold: a threshold needs a hysteresis
+   band, a reduced-motion story, a story for a region that changes its
+   relationship to the document mid-scroll, and a test that is flaky by
+   construction.
+
+   `--layer-raised` is the header's own layer, and the two never overlap -
+   this sticks at exactly the header's height. The layer is what keeps the
+   positioned parts of the cells, a colour picker's disclosure among them,
+   from being painted over the map as they scroll under it.
+
+   At the narrow width nothing here changes, and that is the rule rather
+   than an omission: the preview is a child of the notebook's column at
+   every width, so it is above the cells and never beside them. The region
+   that moves at that width is the rail (A5.5-21). */
+.preview {
+  position: sticky;
+  /* The header's own height and the rule under it. Without the border in
+     the sum the pinned map covers that rule by a pixel, and because this
+     is on the header's layer and comes after it in the document, it is the
+     map that wins and the header loses its edge. */
+  top: calc(var(--header-height) + var(--border-width));
+  z-index: var(--layer-raised);
+  /* The ground the cells pass behind. The padding is the viewer's own
+     bottom margin, moved inside the pinned box: a transparent margin there
+     would let the top of the cell below show through the gap between the
+     map and that cell. */
+  padding-bottom: var(--space-4-4);
+  background: var(--surface);
+}
+
+/* The map is wider than the reading column, which panels.css breaks it out
+   of, so the pinned ground has to be the map's own box as well as this
+   wrapper's. Between them they cover everything a cell can occupy. */
+.preview .viewer {
+  margin-bottom: 0;
+  background: var(--surface);
+}
+
+/* Pinned, the map is a band: the whole width it already had, and half the
+   window below the header tall.
+
+   It has to be bounded. A 16:10 map at the map's own width is very nearly
+   the height of the window - 640 of the 680 a 720-tall window leaves under
+   the header - so pinned without a bound it would be the only thing on
+   screen, and the cells it is pinned above could not be read, which is the
+   whole reason it is pinned rather than merely present. A sticky box taller
+   than its scrollport also sticks by its top edge, so the foot of it could
+   never be scrolled to at all.
+
+   And the bound is on the height rather than on the shape. A `max-height`
+   against `aspect-ratio` shrinks the width to keep the ratio: the map would
+   step back from both edges of the window and sit small and off-centre on a
+   large screen, which measured 546 wide where it had been 1024. So the
+   ratio gives way instead. The page fits itself to whatever box it is given
+   - present.js refits the frame on every resize - so this is a map drawn to
+   a band, not a map with its edges cut off. */
+.preview .viewer-shape {
+  aspect-ratio: auto;
+  height: calc((100vh - var(--header-height)) / 2);
+}
