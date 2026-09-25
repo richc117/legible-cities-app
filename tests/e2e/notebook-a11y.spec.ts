@@ -17,7 +17,7 @@
 
 import { copyFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import {
   PYTHON,
   controlsOf,
@@ -96,6 +96,59 @@ test('the notebook, Inspect, the geographic view, the inspector and its dialogs'
     await expect(page.getByRole('region', { name: 'Line colours' })).toBeVisible()
     await expect(page.getByRole('region', { name: 'What the build had to fudge' })).toBeVisible()
     await expect(page.getByRole('group', { name: /^The gtfs2graph stage/ })).toBeVisible()
+
+    // The heading outline (issue 197). A screen reader walks a long document
+    // by heading, and the notebook is one: its six cells are the screen's
+    // second-level headings and nothing inside a cell is their sibling. It
+    // is asserted here, in the test that already has a laid-out project with
+    // every panel drawn, rather than in a test of its own: a second launch
+    // and a second layout run would cost minutes to see the same document.
+    //
+    // Its subject is the notebook and not the screen: the rail's "Outputs"
+    // and the inspector's "Jobs" are second-level headings of the project
+    // screen and of the window, both correct where they are, and `outline()`
+    // is scoped to the column so that neither has to be listed here.
+    //
+    // Cell 06 is shut here, and a collapsed cell's contents are hidden, so
+    // this does not see inside it: the same outline is read again in 'cell
+    // 06, and focus through an export', where every cell is open.
+    //
+    // Polled, not read once. The panels above arrive at their own pace - the
+    // diagnostics comes with the run's report and the geographic view with
+    // the engine's drawing - and a single `evaluate` is a fixed budget
+    // wherever it lands, which this suite has been bitten by before.
+    await expect
+      .poll(() => outline(page), { message: "the notebook's heading outline" })
+      .toEqual({
+        second: [
+          '01 Data',
+          '02 Process',
+          '03 Frame and service day',
+          '04 Style',
+          '05 Lines',
+          '06 Export',
+        ],
+        perCell: ['01: 1', '02: 1', '03: 1', '04: 1', '05: 1', '06: 1'],
+        // Nothing inside a cell skips a level either: the rule is that a
+        // panel's heading is one below the row, and a check that only
+        // counted `h2`s would pass an `h4` that reads as a hole in the
+        // outline to anyone walking it.
+        deeper: [],
+      })
+    // And the panels that keep a name of their own carry it a level below,
+    // which is what the region each one is named by still answers to: cell
+    // 01's two sections, cell 02's report, and cell 05's two (A5.5-18).
+    for (const name of [
+      'In the feed',
+      'Where the routes run',
+      'What the build had to fudge',
+      'Line colours',
+      'Line order',
+    ]) {
+      await expect(page.getByRole('heading', { level: 3, name, exact: true })).toBeVisible()
+      await expect(page.getByRole('region', { name, exact: true })).toBeVisible()
+    }
+
     await sweep(page, 'the project, its notebook')
     // A sortable column's header is a target of at least 24px, though its
     // label's line is 16.
@@ -169,8 +222,21 @@ test('the notebook, Inspect, the geographic view, the inspector and its dialogs'
     await page.getByRole('button', { name: 'Re-layout' }).click()
     const relayout = page.getByRole('dialog', { name: 'Lay this project out from scratch?' })
     await sweep(page, 'the re-layout warning', relayout)
+    // This warning is written inside cell 02, so while it is open the cell
+    // does hold two `h2`s and the outline does say so. The heading walk
+    // follows what is on screen, and a person in this dialog meets its
+    // title; the outline check above is only true because the dialog is
+    // shut, and this is what says the check can tell the two apart rather
+    // than never counting a dialog at all.
+    const warned = await outline(page)
+    expect(warned.second).toContain('Lay this project out from scratch?')
+    expect(warned.perCell).toContain('02: 2')
     await relayout.getByRole('button', { name: 'Cancel' }).click()
     await expect(relayout).toBeHidden()
+    // And shut again, it is out of the outline once more.
+    await expect
+      .poll(async () => (await outline(page)).perCell, { message: 'the warning closed' })
+      .toContain('02: 1')
     await page.getByRole('button', { name: 'Delete project' }).click()
     const remove = page.getByRole('dialog', { name: 'Delete Los Angeles?' })
     await sweep(page, 'the delete confirmation', remove)
@@ -227,6 +293,27 @@ test('cell 06, and focus through an export', async () => {
 
       const tab = await openCell(page, 'export')
       await expect(tab.getByRole('combobox', { name: 'Preset' })).toBeVisible({ timeout: 20_000 })
+
+      // The heading outline with every cell open (issue 197). The other
+      // reading of it is taken with cell 06 shut, and a collapsed cell's
+      // contents are hidden from a screen reader and from the check alike,
+      // so this is the one that sees inside cell 06: its export panel is
+      // drawn headless under the row (#171), and the row is the only `h2`.
+      await expect
+        .poll(() => outline(page), { message: 'the heading outline, every cell open' })
+        .toEqual({
+          second: [
+            '01 Data',
+            '02 Process',
+            '03 Frame and service day',
+            '04 Style',
+            '05 Lines',
+            '06 Export',
+          ],
+          perCell: ['01: 1', '02: 1', '03: 1', '04: 1', '05: 1', '06: 1'],
+          deeper: [],
+        })
+
       await sweep(page, 'the project, cell 06 open')
 
       // Export gives way to Cancel, and Cancel to Reveal: focus follows.
@@ -238,6 +325,118 @@ test('cell 06, and focus through an export', async () => {
     { env: { LEGIBLE_EXPORT_FOLDER: exportFolder } },
   )
 })
+
+/**
+ * The notebook's heading outline, as a screen reader's heading list would
+ * read it (issue 197): every `h2` in the column that is not hidden, and how
+ * many each cell holds. What "not hidden" and "in the column" mean exactly
+ * is in `met` and `column` below; the scope is the point rather than an
+ * implementation detail, because the project screen carries second-level
+ * headings that are not the notebook's and are right where they are.
+ *
+ * Read from the document rather than through roles because what is being
+ * asserted is the outline itself - the levels and their order - and
+ * `getByRole('heading')` would answer the same for an `h2` and an `h3`
+ * given a level filter each time. A cell's row is named by its contents, so
+ * it is read as the number and name it draws; anything else answers its own
+ * text, which is how a panel heading that came back would be seen.
+ *
+ * The suite's own sweep cannot see this class of defect at all: `expectNamed`
+ * looks at `CONTROL_ROLES` and asks only whether a name is present, never
+ * whether an outline is sane. That is why this check is here and not in
+ * `tests/support/a11y.ts`, which every screen goes through: Settings' six
+ * `h2`s under its `h1` are correct, and a rule saying "six second-level
+ * headings, the cells'" is the notebook's alone.
+ */
+async function outline(
+  page: Page,
+): Promise<{ second: string[]; perCell: string[]; deeper: string[] }> {
+  return page.evaluate(() => {
+    // The headings that are not inside a `display: none` subtree, which is
+    // what `checkVisibility()` answers and is narrower than "the headings a
+    // person would meet" - a heading hidden by `visibility`, by `opacity` or
+    // off the side of the screen still counts here. That is the safe
+    // direction: this check can only over-count, and over-counting fails
+    // rather than passes. A visually hidden heading counts too, and should,
+    // because a screen reader meets it.
+    //
+    // It matters because the project screen keeps two `ConfirmDialog`s in
+    // the document at all times, each with a real `<h2>` for its title:
+    // the re-layout warning, which `LayoutRun` renders inside cell 02, and
+    // the delete confirmation under the notebook. Both are shut.
+    //
+    // Their `h2`s are right and are not to be demoted. A dialog's title
+    // names the dialog rather than a section of the cell it happens to be
+    // written in, and while one is open it should be a top-level heading of
+    // what is then on screen. They are simply not part of this outline
+    // while they are closed, and a check that counted them would be
+    // asserting markup while claiming to describe a heading walk.
+    //
+    // `checkVisibility()` and not a list of `dialog` and `[role="dialog"]`
+    // subtrees to exclude: a list has to be kept current, and the next
+    // hidden thing to land inside a cell would come back as this same
+    // failure. It is also the general answer - a `display: none` subtree is
+    // out of the accessibility tree whatever put it there - and it makes a
+    // collapsed cell's contents absent too, which is again what a person
+    // meets. That last part is why the outline is read a second time in
+    // 'cell 06, and focus through an export', where all six are open.
+    const met = (h: Element): boolean => h.checkVisibility()
+
+    // `second` is the notebook's own outline and not the whole screen's.
+    // The column is `.notebook`, whose children are the map and the six
+    // cells (`Notebook.tsx`, `notebook.css`); the rail sits outside it, as
+    // do the header, the footer and the inspector.
+    //
+    // Scoped rather than given a list of what else to expect, because the
+    // screen's furniture is not this check's subject. The rail's "Outputs"
+    // (A5.5-21) is a real second-level heading of the project screen and
+    // belongs exactly where it is, as the inspector's "Jobs" does
+    // (ADR-036). Neither is part of the notebook's outline, and a check
+    // that named them would be rewritten by every branch that puts another
+    // region beside the column.
+    //
+    // What that gives up, plainly: an `h2` outside a cell but inside the
+    // column is still caught - the map's own part of it included - and one
+    // anywhere else on the project screen is no longer this check's
+    // business. The inspector used to be kept out by reading the outline
+    // before it was opened; the scope is what keeps it out now, which is
+    // the better of the two, since an ordering that has to be remembered
+    // is an exclusion that rots.
+    //
+    // A missing column answers nothing and fails against six expected
+    // rows, rather than passing empty.
+    const column = document.querySelector('.notebook')
+    // `cells` is deliberately not scoped the same way: a cell is a cell
+    // wherever it is drawn, and the two fields below should follow one that
+    // ever appears outside the column rather than stop seeing it. Every
+    // `section.cell` on this screen is inside it today (`Notebook.tsx`), so
+    // a panel `h2` returning inside a cell is caught twice over - once here
+    // and once in `second`.
+    const cells = [...document.querySelectorAll('section.cell')]
+    return {
+      second: [...(column?.querySelectorAll('h2') ?? [])].filter(met).map((h) => {
+        const number = h.querySelector('.cell-number')?.textContent ?? ''
+        const name = h.querySelector('.cell-name')?.textContent ?? ''
+        return number === '' && name === '' ? (h.textContent ?? '').trim() : `${number} ${name}`
+      }),
+      perCell: cells.map(
+        (cell) =>
+          `${cell.getAttribute('data-cell')}: ${[...cell.querySelectorAll('h2')].filter(met).length}`,
+      ),
+      // Every heading inside a cell that is neither the row nor a panel's
+      // own level: an `h1`, or an `h4` and below, which skips one and reads
+      // as a hole in the outline.
+      deeper: cells.flatMap((cell) =>
+        [...cell.querySelectorAll('h1, h4, h5, h6')]
+          .filter(met)
+          .map(
+            (h) =>
+              `${cell.getAttribute('data-cell')}: ${h.tagName.toLowerCase()} ${(h.textContent ?? '').trim()}`,
+          ),
+      ),
+    }
+  })
+}
 
 /**
  * A page for the viewer's frame with many controls of its own, as the

@@ -21,10 +21,22 @@
    itself hands focus to the cell's heading, the row above them both - so
    neither carries a focus ring. This one opens the cell, so it has no
    space above it; the order's, below, keeps the space that separates the
-   two sections. */
+   two sections.
+
+   One rhythm for one level (issue 197): a heading inside a cell is
+   `--space-4-6` above - except this one, which opens its cell and has
+   nothing above to be separated from - and `--space-4-3` below, here and in
+   cells 01 and 02 alike. The two below were `--space-2-2` and drew the same
+   as `--space-4-3` anyway: `.prose` sets no margin of its own, so a
+   paragraph's 1em of `--font-text` collapses over either value, and a
+   paragraph is what follows four of the five. The gap shows where nothing
+   larger follows: the geographic view's stage toolbar, and Inspect's field
+   list once the feed has been read - a grid container's own margins still
+   collapse, and `.fields` brings none above. So the declared value is the
+   one that is true where it is seen. */
 .line-colours h3 {
   font-size: var(--font-ui-medium);
-  margin: 0 0 var(--space-2-2);
+  margin: 0 0 var(--space-4-3);
 }
 
 .theme-switch h2 {
@@ -39,7 +51,7 @@
 
 .line-order h3 {
   font-size: var(--font-ui-medium);
-  margin: var(--space-4-6) 0 var(--space-2-2);
+  margin: var(--space-4-6) 0 var(--space-4-3);
 }
 
 /* The place a line stands in the order, beside its swatch: a figure, quiet,
@@ -259,7 +271,10 @@ th .sort:focus-visible {
   vertical-align: middle;
 }
 
-.inspect h2 {
+/* A level below the cell's own heading, as cell 05's two sections are: the
+   size is the panel heading's either way, so only the selector moved
+   (issue 197). */
+.inspect h3 {
   font-size: var(--font-ui-medium);
   margin: var(--space-4-6) 0 var(--space-4-3);
 }
@@ -279,7 +294,7 @@ th .sort:focus-visible {
    prose, its figures as a table, and each row's explanation on a small
    control that answers a pointer and the keyboard alike. */
 
-.diagnostics h2 {
+.diagnostics h3 {
   font-size: var(--font-ui-medium);
   margin: var(--space-4-6) 0 var(--space-4-3);
 }
@@ -539,7 +554,7 @@ th .sort:focus-visible {
    from here. The frame is sized to the drawing and never scrolls; the
    pane clips it and is what takes focus and the wheel. */
 
-.stage-view h2 {
+.stage-view h3 {
   font-size: var(--font-ui-medium);
   margin: var(--space-4-6) 0 var(--space-4-3);
 }

@@ -207,7 +207,19 @@ export default function Inspect({
 
   return (
     <section className="inspect" aria-labelledby="inspect-heading">
-      <h2 id="inspect-heading">In the feed</h2>
+      {/* Cell 01 is called Data and holds three things - the record's three
+          stored fields, this panel and the geographic view - so the cell's
+          own heading cannot name any one of them, and a person reading down
+          the cell has to be told where the stored fields end and the feed's
+          own contents begin. The heading is a level below the cell's, as
+          cell 05's two sections are (A5.5-18), and is what names this
+          region (issue 197). It takes no focus, and nothing hands it any:
+          cell 01 has no handback of any kind - `DataCell` gives `Cell` no
+          `headingRef`, as cells 03 to 06 do, and this panel does not use
+          `focusHandback`, as cell 02's run does - although its controls are
+          disabled under a person while a run or an export goes. That is a
+          gap rather than a decision, and not this heading's to close. */}
+      <h3 id="inspect-heading">In the feed</h3>
       {state.status === 'waiting' && (
         <p className="hint" role="status">
           {ready

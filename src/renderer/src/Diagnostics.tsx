@@ -139,7 +139,17 @@ export function DiagnosticsReport({
 
   return (
     <section className="diagnostics" aria-labelledby="diagnostics-heading">
-      <h2 id="diagnostics-heading">What the build had to fudge</h2>
+      {/* The one section of cell 02 that comes and goes under a person: the
+          panel is the run's and not the record's, so it is absent until a
+          run has drawn a map and gone again when the next one starts. A
+          section that appears by itself is what a heading is for - without
+          one, a person who opened cell 02 before a run and came back after
+          it has nothing new to jump to, only a longer cell. So the heading
+          stays, a level below the cell's, as cell 05's sections are
+          (A5.5-18, issue 197). The run's own panel above it carries no
+          heading, which is the ordinary shape: what a cell holds before its
+          first subsection belongs to the cell. */}
+      <h3 id="diagnostics-heading">What the build had to fudge</h3>
       <p className="prose" role="status">
         {caveatsSentence(report)}
       </p>

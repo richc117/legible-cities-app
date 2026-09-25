@@ -76,6 +76,12 @@ export default function CellPreview(): JSX.Element {
             return (
               <Cell
                 key={key}
+                // A level below this section's own `h2`, which is the state
+                // being shown. Without it every row here would be a sibling
+                // of that heading rather than a child, which is the flat
+                // outline issue 197 exists to end - on the one page
+                // `Cell.tsx` means when it says the sample page sets its own.
+                headingLevel={3}
                 number={cell.number}
                 name={cell.name}
                 state={state}
