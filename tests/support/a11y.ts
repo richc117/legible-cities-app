@@ -146,7 +146,7 @@ export async function chooserAnswers(app: ElectronApplication, path: string): Pr
 // elements themselves rather than to descriptions of them.
 
 interface StepAnswer {
-  state: 'none' | 'same' | 'stop' | 'repeat'
+  state: 'none' | 'same' | 'stop' | 'repeat' | 'frame'
   /** Every control expected has been reached. */
   complete: boolean
   /** What holds focus, for the message when the walk does not end. */
@@ -162,6 +162,8 @@ interface Finding {
 type Probe = {
   begin(): number
   step(): StepAnswer
+  /** Put the walk down on the far side of the frame holding focus. */
+  past(): string | null
   finish(): Finding
   moving(): string[]
 }
@@ -272,8 +274,16 @@ function installProbe(): void {
       if (deep === null || deep === document.body || deep.tagName === 'DIALOG')
         return { state: 'none', complete: complete(), at: where() }
       const control = controlOf(deep)
-      // A date control's fields, or a frame's own controls, are several
-      // presses on one element of this document.
+      // A frame is where this document stops being able to say anything.
+      // Focus inside one is reported as the <iframe> element and nothing
+      // more - the viewer's page runs at an opaque origin and the probe
+      // runs out here (ADR-028) - so the presses that walk its own controls
+      // all look alike, and what the platform does on the way out is not
+      // visible either. It is answered as itself so the walk can step over
+      // it deliberately rather than read it as a stop it has seen before.
+      if (control.tagName === 'IFRAME') return { state: 'frame', complete: complete(), at: where() }
+      // A date control's fields are several presses on one element of this
+      // document.
       if (control === last) return { state: 'same', complete: complete(), at: where() }
       if (visited.has(control)) return { state: 'repeat', complete: complete(), at: where() }
       last = control
@@ -281,6 +291,33 @@ function installProbe(): void {
       const chain = chainOf(deep)
       stops.push({ control, chain, focused: chain.map(ring) })
       return { state: 'stop', complete: complete(), at: where() }
+    },
+    past() {
+      const deep = deepActive()
+      if (deep === null || deep.tagName !== 'IFRAME') return null
+      // The first control this walk still wants that comes after the frame
+      // in the document. `want` is in document order, so the first match is
+      // the one Tab would have arrived at had the frame been transparent.
+      const after = want.find(
+        (el) =>
+          el.isConnected &&
+          !visited.has(el) &&
+          (deep.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
+      )
+      if (after === undefined) return null
+      ;(after as HTMLElement).focus?.()
+      const landed = deepActive()
+      if (landed === null || !want.includes(controlOf(landed))) return null
+      const control = controlOf(landed)
+      // Recorded as a stop like any other, so its ring is still looked at;
+      // the one thing not proved about it is that a press of Tab is what
+      // brought focus here, which is the frame's business and not this
+      // document's.
+      last = control
+      visited.add(control)
+      const chain = chainOf(landed)
+      stops.push({ control, chain, focused: chain.map(ring) })
+      return describe(control)
     },
     finish() {
       ;(document.activeElement as HTMLElement | null)?.blur?.()
@@ -402,6 +439,7 @@ export async function expectTabWalk(page: Page, where: string): Promise<void> {
   // or a frame's own controls, and the walk goes on.
   const deadline = Date.now() + 20_000
   let ended = false
+  let frameIsEnd = false
   const trace: string[] = []
   while (Date.now() < deadline) {
     await page.keyboard.press('Tab')
@@ -410,6 +448,31 @@ export async function expectTabWalk(page: Page, where: string): Promise<void> {
     )
     trace.push(`${state} ${at}`)
     if (trace.length > 12) trace.shift()
+    // A frame is stepped over rather than walked through. What it holds is
+    // its page's, the engine's, and the walk could not see it in any case:
+    // the viewer's page runs at an opaque origin, so from out here every
+    // press inside it reports the same <iframe> element and the press that
+    // leaves it reports whatever the platform does next. On macOS that was
+    // a control the walk had already reached, which read as the walk coming
+    // back round - it ended there and called the 58 controls after the frame
+    // unreachable, on a screen where a person reaches them by pressing Tab
+    // once more or by using "Skip past the map" (issue 213's neighbourhood;
+    // the walk into the frame is asserted on its own in
+    // `notebook-a11y.spec.ts`). So focus is put down on the first control
+    // after the frame, by hand and in document order. Everything outside a
+    // frame is still reached by Tab and still has to show its ring; the one
+    // thing no longer proved is that Tab is what crosses the frame's far
+    // edge.
+    if (state === 'frame' && !frameIsEnd) {
+      const landed = await page.evaluate(() =>
+        (window as unknown as { __a11y: Probe }).__a11y.past(),
+      )
+      trace[trace.length - 1] = `frame ${at} -> ${landed ?? 'nothing after it'}`
+      // Nothing after it that this walk still wants: stop asking, and let
+      // the presses carry on to wherever the platform takes them.
+      frameIsEnd = landed === null
+      continue
+    }
     if (
       state === 'repeat' ||
       (state === 'none' && complete) ||
