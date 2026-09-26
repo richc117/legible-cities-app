@@ -1,6 +1,7 @@
 import { useRef, type JSX } from 'react'
 import type { ProjectRecord } from '../../../../shared/project'
 import ServiceDay, { dayUndrawn } from '../../ServiceDay'
+import Transport from '../../Transport'
 import Cell from '../Cell'
 import { frameFooter } from '../CellFooter'
 import type { CellViewProps } from '../cells'
@@ -21,36 +22,64 @@ import { useProject } from '../context'
 // nowhere to send its value teaches a person a lie (ADR-045). One sentence
 // says what the cell will gain instead.
 //
-// The slot below is where the page's own transport - the scrub, Play day
-// and the speed, already on the engine page's seam - arrives as one new
-// file (A5.5-16), so that branch never rewrites this one.
+// The cell holds two sections now (A5.5-16). Below the day is the
+// transport - the scrub, Play day and the speed - which drives the engine's
+// own page through the seam the app already has, and is therefore about the
+// map on screen rather than about anything the project keeps: it writes no
+// record, asks the engine nothing and marks no cell stale. It names itself
+// with an `h3` while the day is named by this cell's own heading and an
+// `aria-label`: a panel takes one form or the other and never an `h2`, and
+// which one is a judgement about the panel (lane 197's rule). The reasoning
+// for each of the two is where the second one is drawn, in `Transport.tsx`.
+//
+// It is offered to a read-only project as well as a writable one, and that
+// is deliberate: looking is not editing, and a project this build may not
+// write still has a map worth watching.
 
 /**
  * What the cell says on its collapsed row: the day the project is set to,
- * whose choice it was, and whether the map has been drawn for it.
+ * whether the map has been drawn for it, and the engine's own answer beside
+ * it.
  *
- * Whose choice it was is read from the window rather than recorded: the
- * engine's own answer at the first layout is the busiest weekday (ADR-031),
- * so a day that is not it is one a person picked. A person who picks the
- * busiest weekday themselves is credited to the engine, which is a
- * difference the record does not hold and nothing here turns on.
+ * **It does not say whose choice the day was, and must not** (issue 210).
+ * That looks like `service.busiest === date`, and it is not: every layout
+ * run asks `feeds.service` again with today as the anchor and writes the
+ * fresh window while deliberately keeping the day (`engine/layoutRun.ts`,
+ * `tests/unit/projects-store.test.ts` "replaces the window on a later run,
+ * keeping the day"), so a project laid out a second time a week later holds
+ * a day the **engine** chose beside a busiest weekday that has moved off
+ * it - and the inference then told a person they had picked a day they
+ * never saw. The claim was wrong in the other direction too: a person who
+ * picks the busiest weekday themselves was credited to the engine.
+ *
+ * So the engine's own answer is drawn as itself and the day above it, and a
+ * person who wants to know whose day it is reads the two. That is the fix
+ * #163 made to the provenance strip, which `frameFacts` in `CellFooter.tsx`
+ * now carries under the open cell - this is the same rule for the row a
+ * collapsed cell shows instead.
  *
  * "Not drawn yet" is the cell's own business and not its state: the day is
  * cell 03's, so a day that has moved marks the cells *below* stale and
  * leaves this one ready (contracts/run-graph.md). Without the summary the
  * cell that holds the change would be the one cell saying nothing about it.
+ * It sits against the day and not at the end, because it is the day that
+ * has not been drawn and never the engine's answer.
+ *
+ * A `Pick` and not the whole record, so the sample page can build its row
+ * from this function over the same fixture its footer is built from
+ * (`CellPreview.tsx`) rather than from a copy of the sentence that drifts.
  */
-export function frameSummary(project: ProjectRecord | null): string | null {
+export function frameSummary(
+  project: Pick<ProjectRecord, 'date' | 'service' | 'drawn'> | null,
+): string | null {
   if (project === null || project.date === null) return null
   const undrawn = dayUndrawn(project) ? ', not drawn yet' : ''
   if (project.service === null) return `${project.date}${undrawn}`
-  const whose =
-    project.service.busiest === project.date ? 'the busiest weekday' : 'the day you chose'
-  return `${project.date}, ${whose}${undrawn}`
+  return `${project.date}${undrawn}; the engine’s busiest weekday is ${project.service.busiest}`
 }
 
 export default function FrameCell({ cell, state, open, onToggle }: CellViewProps): JSX.Element {
-  const { project, engine, run, setDate, exporting } = useProject()
+  const { project, engine, run, setDate, exporting, layingOut, preview, drawn } = useProject()
   const heading = useRef<HTMLHeadingElement>(null)
   return (
     <Cell
@@ -97,7 +126,21 @@ export default function FrameCell({ cell, state, open, onToggle }: CellViewProps
             of it is drawn: the engine takes no such setting yet, so the cell holds the day alone
             until it can.
           </p>
-          {/* Slot: the page's own transport - scrub, Play day and speed (A5.5-16). */}
+          {/* The page's own transport (A5.5-16). Only where there is a page
+              to drive: a project with no layout has no frame on the screen
+              at all, so there is nothing for a scrub to be a scrub of. It
+              draws itself once the page has said what day it has, and
+              nothing before. */}
+          {project.layout !== null && (
+            <Transport
+              projectId={project.id}
+              redraw={drawn}
+              open={open}
+              laying={layingOut}
+              exporting={exporting}
+              previewing={preview !== null}
+            />
+          )}
         </>
       )}
     </Cell>
