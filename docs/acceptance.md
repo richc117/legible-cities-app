@@ -417,8 +417,10 @@ range the section gives and pressing **Draw for this day**.
   stays at "Jobs, none running". The section says "`<new day>` is chosen;
   the map still shows `<old day>`.", cell 03's own state stays **ready**,
   and cells **04 Style**, **05 Lines** and **06 Export** say **not drawn
-  yet**. Collapsed, cell 03's row reads "`<new day>`, the day you chose, not
-  drawn yet".
+  yet**. Collapsed, cell 03's row reads "`<new day>`, not drawn yet; the
+  engine's busiest weekday is `<busiest>`" - it names the engine's own answer
+  beside the day rather than saying whose choice the day was, because the
+  engine is asked again at every layout run and its answer moves (A5.5-16).
 - **Draw for this day** then runs the progress line and ends with "Drawn for
   `<day>` from the stored layout. The stations have not moved."; the
   fields' Service day changes to the new date, the Layout does not, and
