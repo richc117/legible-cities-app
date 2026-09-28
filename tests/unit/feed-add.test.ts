@@ -3,8 +3,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { FeedAdd, sentenceFor, type AddClient } from '../../src/renderer/src/engine/feedAdd'
-import { validateFeedUrl } from '../../src/renderer/src/AddFeedDialog'
-import { startingFeed } from '../../src/renderer/src/CreateProjectDialog'
+import { filledName, startingFeed, validateFeedUrl } from '../../src/renderer/src/NewProjectSheet'
 import { placeOf } from '../../src/renderer/src/FeedList'
 import { ERROR_CODES, type EngineState } from '../../src/shared/engine'
 import type { FeedRecord } from '../../src/shared/protocol'
@@ -249,5 +248,21 @@ describe('the add as a job', () => {
     })
     run.reset()
     expect(run.job()).toBeNull()
+  })
+})
+
+describe('the name the new-project sheet fills in', () => {
+  it('takes the feed’s own name until a person has typed one', () => {
+    expect(filledName('', false, 'Caltrain')).toBe('Caltrain')
+    expect(filledName('LA Metro Rail', false, 'Caltrain')).toBe('Caltrain')
+  })
+
+  it('never overwrites a name a person typed, even an empty one', () => {
+    expect(filledName('My map', true, 'Caltrain')).toBe('My map')
+    expect(filledName('', true, 'Caltrain')).toBe('')
+  })
+
+  it('keeps what it has when there is no name to give', () => {
+    expect(filledName('My map', false, null)).toBe('My map')
   })
 })

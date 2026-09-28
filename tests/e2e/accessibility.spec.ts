@@ -80,7 +80,7 @@ test('the Library, its empty state and its three dialogs', async () => {
     await expect(page.getByRole('listitem', { name: 'Metro de Prueba' })).toBeVisible()
     await sweep(page, 'Library, empty')
 
-    // The create dialog.
+    // The new project sheet, on a listed feed.
     await page.getByRole('button', { name: 'New project' }).click()
     const create = page.getByRole('dialog', { name: 'New project' })
     await expect(create.getByRole('combobox', { name: 'Feed' })).toBeVisible()
@@ -88,18 +88,23 @@ test('the Library, its empty state and its three dialogs', async () => {
     await page.keyboard.press('Escape')
     await expect(create).toBeHidden()
 
-    // The add dialog, from a file and from an address.
+    // The same sheet on its other two sources (A5.6-05): a zip chosen, and
+    // an address refused on its own field. Cancel has focus first.
     await chooserAnswers(app, zip)
-    await page.getByRole('button', { name: 'Add feed' }).click()
-    const add = page.getByRole('dialog', { name: 'Add a feed' })
+    await page.getByRole('button', { name: 'New project' }).click()
+    const add = page.getByRole('dialog', { name: 'New project' })
+    await expect(add.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused()
+    await add.getByRole('radio', { name: 'A GTFS zip on this computer' }).check()
     await add.getByRole('button', { name: 'Choose a zip' }).click()
     await expect(add.getByText('Metro de Prueba.zip')).toBeVisible()
-    await sweep(page, 'the add dialog, a file chosen', add)
-    await add.getByLabel('Or from an address').fill('not an address')
-    await add.getByRole('button', { name: 'Add feed' }).click()
-    await expect(add.getByRole('alert')).toHaveText(/http/)
-    await sweep(page, 'the add dialog, an address refused', add)
-    await add.getByRole('button', { name: 'Close' }).click()
+    await sweep(page, 'the new project sheet, a file chosen', add)
+    await add.getByRole('radio', { name: 'A feed at an address' }).check()
+    await add.getByLabel('Feed address').fill('not an address')
+    await add.getByRole('button', { name: 'Add the feed' }).click()
+    await expect(add.getByRole('alert').filter({ hasText: /\S/ })).toHaveText(/http/)
+    await expect(add.getByLabel('Feed address')).toBeFocused()
+    await sweep(page, 'the new project sheet, an address refused', add)
+    await add.getByRole('button', { name: 'Cancel', exact: true }).click()
     await expect(add).toBeHidden()
 
     // The remove confirmation.

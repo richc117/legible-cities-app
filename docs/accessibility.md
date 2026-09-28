@@ -95,7 +95,7 @@ listed below for filing. *engine's*: inside the engine's page.
 
 | Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (warm-dark) | Contrast (sepia) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
-| Toolbar (New project, Add feed) | pass | pass | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
+| Toolbar (New project; Add feed until A5.6-05) | pass | pass | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
 | Empty state | fixed (D4) | pass | pass | pass | fixed (C6) | fixed (C1, C6) | not yet run: a person's | not yet run: a person's |
 | Project rows | pass | pass (`Open <name>`, the meta as description) | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
 | Feed rows (Start a project, Remove) and sample city cards (A5.6-02) | fixed (D5) | pass (each names its feed; a card is named by its facts) | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
@@ -603,10 +603,9 @@ a table).
 
 ### Library
 
-- **Toolbar (New project, Add feed).** On opening, listen for the heading
-  "Library" read first, at level 1 (focus is put there). Tab: **New project**
-  and **Add feed**, both buttons; **Add feed** is dimmed until the engine
-  is ready.
+- **Toolbar (New project).** On opening, listen for the heading
+  "Library" read first, at level 1 (focus is put there). Tab: **New
+  project**, a button. Adding a feed is inside it since A5.6-05.
 - **Empty state.** This part needs a Library with no projects, which the
   sitting only has on a new install or after **Reset engine data** at the
   end of Settings below: if you already have projects, skip it now and come
@@ -632,31 +631,32 @@ a table).
   confirmation closes, listen for "Caltrain was removed." and focus on the
   "Your feeds" heading while an added feed is left, or "Sample cities" once
   none is (D5).
-- **Create-project dialog.** Press **New project**. Listen for a dialog
-  "New project" with its description "A project draws one feed. Add a feed
-  to the Library to see it here.", and focus in the text field "Name",
-  required. Tab: the "Feed" pop-up button, **Cancel**, **Create**. Press
-  **Create** with the name empty: focus returns to "Name", invalid, with
-  "name is required" read with it (`CreateProjectDialog.tsx`). Press Escape
-  and listen for focus back on the button that opened it.
-- **Add-feed dialog, from a zip.** Press **Add feed**. Listen for a dialog
-  "Add a feed", described by "A GTFS zip from your disk, or the address the
-  agency publishes it at. …", and focus on **Choose a zip** with
-  "No file chosen." read as its description. Press it: the platform's file
-  chooser opens (its own reader support is the platform's); cancel it and
-  listen for focus back on **Choose a zip**.
-- **Add-feed dialog, from an address.** Tab to the text field
-  "Or from an address". Type `abc` and press **Add feed**: listen for the
+- **New project sheet (A5.6-05).** Press **New project**. Listen for a
+  dialog "New project" described by "A project draws one feed: a sample
+  city, or a GTFS feed of your own from a file or an address.", with focus
+  on **Cancel**. Tab: the "Start from" group of three radio buttons, the
+  "Feed" pop-up button, the text field "Name" (filled with the feed's
+  name), **Cancel**, **Create**. Clear the name and press **Create**: focus
+  moves to "Name", invalid, with "name is required" read with it. Press
+  Escape and listen for focus back on the button that opened it.
+- **The sheet, from a zip.** Choose **A GTFS zip on this computer**.
+  Listen for **Choose a zip** with "No file chosen." read as its
+  description. Press it: the platform's file chooser opens (its own reader
+  support is the platform's); cancel it and listen for focus back on
+  **Choose a zip**.
+- **The sheet, from an address.** Choose **A feed at an address**. Type
+  `abc` into "Feed address" and press **Add the feed**: listen for the
   alert "a feed address starts with http:// or https://" and focus back in
   the field, invalid.
-- **Add-feed progress line.** Paste the Caltrain address from the
-  checklist's step 5 again and press **Add feed**; the engine keeps it as a
-  second feed of the same name. Listen
-  for focus moving to **Cancel the add**, a region "Adding the feed", an
-  image named "Adding the feed: `<the engine's sentence>`", and the polite
-  status reading "downloaded `<n>` of `<n>` bytes" and "checked the feed's
-  tables" as they change. Listen for whether the byte count floods speech;
-  if it does, that is a finding. (`AddFeedDialog.tsx`)
+- **The sheet's progress line.** Paste the Caltrain address from the
+  checklist's step 5 again and press **Add the feed**; the engine keeps it
+  as a second feed of the same name. Listen for focus moving to **Cancel
+  the add**, a region "Adding the feed", an image named "Adding the feed:
+  `<the engine's sentence>`", and the polite status reading "downloaded
+  `<n>` of `<n>` bytes" and "checked the feed's tables" as they change.
+  When it ends, listen for "The feed is in." and focus landing in "Name",
+  filled with "Caltrain". Listen for whether the byte count floods speech;
+  if it does, that is a finding. (`NewProjectSheet.tsx`)
 - **Remove-feed confirmation.** Press **Remove** on an added feed a project
   uses. Listen for a dialog "Remove `<feed>`?", its description, and focus
   on **Cancel**. Press **Remove**: while it runs, listen for the status

@@ -5,9 +5,8 @@ import type { FeedRecord } from '../../shared/protocol'
 import { sentenceFor } from './engine/feedAdd'
 import { forgetFeedList, forgetInspection } from './engine/inspections'
 import { engineClient, feedAdd, peekLayoutRun, subscribeToRuns } from './engine/runs'
-import AddFeedDialog from './AddFeedDialog'
 import ConfirmDialog from './ConfirmDialog'
-import CreateProjectDialog from './CreateProjectDialog'
+import NewProjectSheet, { type SheetStart } from './NewProjectSheet'
 import FeedList, { FEEDS_HEADING_ID } from './FeedList'
 import SampleCities, { SAMPLES_HEADING_ID } from './SampleCities'
 import { afterRendering, focusLost } from './focusHandback'
@@ -111,12 +110,15 @@ export type FeedsRead = 'unread' | 'listed' | 'failed'
 // region holds what the Library already showed, so nothing a person could
 // do here before is lost on the way.
 
+/** What the sheet is given while it is shut; one object, so its effect does not see a new start on every render. */
+const NO_START: SheetStart = { source: 'feed' }
+
 export default function Library({ notice, onOpen }: Props): JSX.Element {
   const [library, setLibrary] = useState<LibraryState>({ status: 'loading' })
   const [feeds, setFeeds] = useState<FeedRecord[]>([])
   const [feedsRead, setFeedsRead] = useState<FeedsRead>('unread')
-  const [creating, setCreating] = useState<{ feed?: string } | null>(null)
-  const [adding, setAdding] = useState(false)
+  // What the New project sheet opens on, while it is open (A5.6-05).
+  const [creating, setCreating] = useState<SheetStart | null>(null)
   const [removing, setRemoving] = useState<FeedRecord | null>(null)
   const [feedNotice, setFeedNotice] = useState<string | null>(null)
   const engine = useEngineState()
@@ -287,8 +289,9 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
     settleRef.current()
   })
 
+  // A feed added from the sheet is listed at once, whether or not the
+  // project it was added for is then created.
   const added = useCallback((): void => {
-    setAdding(false)
     void refreshFeeds()
   }, [refreshFeeds])
 
@@ -347,7 +350,7 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
   const addedFeeds = feeds.filter((feed) => feed.source === 'user')
   const startFrom = (feed: FeedRecord): void => {
     setFeedNotice(null)
-    setCreating({ feed: feed.key })
+    setCreating({ source: 'feed', feed: feed.key })
   }
   const askToRemove = (feed: FeedRecord): void => {
     setFeedNotice(null)
@@ -364,21 +367,11 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
         {/* The empty state carries the primary action instead, so a first
             visit has one thing to press (DESIGN.md 8.2). */}
         {!(library.status === 'ready' && library.projects.length === 0) && (
-          <Button variant="primary" onClick={() => setCreating({})}>
+          <Button variant="primary" onClick={() => setCreating({ source: 'feed' })}>
             <Icon name="add" />
             New project
           </Button>
         )}
-        <Button
-          onClick={() => {
-            setFeedNotice(null)
-            setAdding(true)
-          }}
-          disabled={!ready}
-        >
-          <Icon name="layers" />
-          Add feed
-        </Button>
       </div>
       {notice && (
         <p role="alert" className="notice">
@@ -391,7 +384,7 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
           <p role="status" className="prose">
             {INTRODUCTION}
           </p>
-          <Button variant="primary" onClick={() => setCreating({})}>
+          <Button variant="primary" onClick={() => setCreating({ source: 'feed' })}>
             <Icon name="add" />
             New project
           </Button>
@@ -453,20 +446,19 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
           onRemove={askToRemove}
         />
       )}
-      <CreateProjectDialog
+      {/* One sheet for every way a project starts (A5.6-05): a listed feed,
+          a zip or an address. Adding a feed is part of starting a project on
+          it; the feed stays listed if the project is then not made. */}
+      <NewProjectSheet
         open={creating !== null}
+        start={creating ?? NO_START}
         feeds={feeds}
-        initialFeed={creating?.feed}
-        onCreate={create}
-        onCancel={() => setCreating(null)}
-      />
-      <AddFeedDialog
-        open={adding}
         run={adder}
         engine={engine}
         pickZip={() => window.api.feeds.pickZip()}
+        onCreate={create}
         onAdded={added}
-        onCancel={() => setAdding(false)}
+        onCancel={() => setCreating(null)}
       />
       <ConfirmDialog
         open={removing !== null}

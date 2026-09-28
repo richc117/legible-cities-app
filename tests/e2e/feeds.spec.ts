@@ -12,6 +12,7 @@ import {
   expect,
   test,
   type ElectronApplication,
+  type Locator,
   type Page,
 } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
@@ -128,6 +129,25 @@ async function chooserAnswers(app: ElectronApplication, path: string | null): Pr
   }, path)
 }
 
+/**
+ * The New project sheet (A5.6-05), opened on a source: a listed feed, a zip
+ * or an address. The toolbar's button when there are projects, the empty
+ * state's when there are none; either opens the same sheet.
+ */
+async function openSheet(page: Page, source: 'feed' | 'zip' | 'address'): Promise<Locator> {
+  await page.getByRole('button', { name: 'New project' }).first().click()
+  const dialog = page.getByRole('dialog', { name: 'New project' })
+  await expect(dialog).toBeVisible()
+  if (source === 'zip')
+    await dialog.getByRole('radio', { name: 'A GTFS zip on this computer' }).check()
+  if (source === 'address')
+    await dialog.getByRole('radio', { name: 'A feed at an address' }).check()
+  return dialog
+}
+
+/** The sheet's message that has something to say: each field has its own line. */
+const sheetAlert = (dialog: Locator): Locator => dialog.getByRole('alert').filter({ hasText: /\S/ })
+
 test('lists the presets and lets a project start from one, in two steps from empty', async () => {
   const engineHome = home()
   await withApp(engineHome, async (page) => {
@@ -240,14 +260,19 @@ test('adds a feed from a file, and it survives a relaunch', async () => {
   const zip = gtfsZip(join(engineHome, 'Metro de Prueba.zip'))
   await withApp(engineHome, async (page, app) => {
     await chooserAnswers(app, zip)
-    await page.getByRole('button', { name: 'Add feed' }).click()
-    const dialog = page.getByRole('dialog', { name: 'Add a feed' })
-    await expect(dialog.getByRole('button', { name: 'Choose a zip' })).toBeFocused()
+    const dialog = await openSheet(page, 'zip')
     await dialog.getByRole('button', { name: 'Choose a zip' }).click()
     await expect(dialog).toContainText('Metro de Prueba.zip')
     await expect(dialog, 'the name, never the folder').not.toContainText(engineHome)
-    await dialog.getByRole('button', { name: 'Add feed' }).click()
-    await expect(dialog).toBeHidden({ timeout: 20_000 })
+    await dialog.getByRole('button', { name: 'Add the feed' }).click()
+    // The feed is in: the name is filled from it, and the next press would
+    // make a project. Cancel leaves the feed listed without one.
+    await expect(dialog.getByLabel('Name', { exact: true })).toHaveValue('Metro de Prueba', {
+      timeout: 20_000,
+    })
+    await expect(dialog.getByRole('button', { name: 'Create', exact: true })).toBeVisible()
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+    await expect(dialog).toBeHidden()
     expect(await page.locator('body').innerText()).not.toContain(engineHome)
     const added = page.getByRole('list', { name: 'Added' })
     await expect(added.getByRole('listitem', { name: 'Metro de Prueba' })).toBeVisible()
@@ -268,12 +293,15 @@ test("a zip without a timetable is refused with the engine's sentence, and nothi
   const zip = gtfsZip(join(engineHome, 'partial.zip'), ['stop_times'])
   await withApp(engineHome, async (page, app) => {
     await chooserAnswers(app, zip)
-    await page.getByRole('button', { name: 'Add feed' }).click()
-    const dialog = page.getByRole('dialog', { name: 'Add a feed' })
+    const dialog = await openSheet(page, 'zip')
     await dialog.getByRole('button', { name: 'Choose a zip' }).click()
-    await dialog.getByRole('button', { name: 'Add feed' }).click()
-    await expect(dialog.getByRole('alert')).toHaveText(
+    await dialog.getByRole('button', { name: 'Add the feed' }).click()
+    // Said on the field that caused it: the zip's.
+    await expect(sheetAlert(dialog)).toHaveText(
       'partial.zip has no stop_times.txt, so there is no timetable to animate',
+    )
+    await expect(dialog.getByRole('button', { name: 'Choose a zip' })).toHaveAccessibleDescription(
+      /partial\.zip has no stop_times\.txt/,
     )
     await expect(dialog, 'the dialog stays, to try again').toBeVisible()
     await expect(page.getByRole('list', { name: 'Added' })).toHaveCount(0)
@@ -284,11 +312,10 @@ test("a zip without a timetable is refused with the engine's sentence, and nothi
 test('a feed address on this machine is refused before the engine sees it', async () => {
   const engineHome = home()
   await withApp(engineHome, async (page) => {
-    await page.getByRole('button', { name: 'Add feed' }).click()
-    const dialog = page.getByRole('dialog', { name: 'Add a feed' })
-    await dialog.getByLabel('Or from an address').fill('http://127.0.0.1:631/')
-    await dialog.getByRole('button', { name: 'Add feed' }).click()
-    await expect(dialog.getByRole('alert')).toContainText('must name a public host')
+    const dialog = await openSheet(page, 'address')
+    await dialog.getByLabel('Feed address').fill('http://127.0.0.1:631/')
+    await dialog.getByRole('button', { name: 'Add the feed' }).click()
+    await expect(sheetAlert(dialog)).toContainText('must name a public host')
     const received = readFileSync(join(engineHome, 'fake-engine.received'), 'utf8')
     expect(received.includes('feeds.add')).toBe(false)
   })
@@ -322,10 +349,9 @@ test('a path no chooser answered is refused before the engine sees it', async ()
 test('adds a feed from a URL with its download on the line, and a cancel keeps nothing', async () => {
   const engineHome = home({ add_delay_ms: 150 })
   await withApp(engineHome, async (page) => {
-    await page.getByRole('button', { name: 'Add feed' }).click()
-    const dialog = page.getByRole('dialog', { name: 'Add a feed' })
-    await dialog.getByLabel('Or from an address').fill('https://agency.example/gtfs.zip')
-    await dialog.getByRole('button', { name: 'Add feed' }).click()
+    const dialog = await openSheet(page, 'address')
+    await dialog.getByLabel('Feed address').fill('https://agency.example/gtfs.zip')
+    await dialog.getByRole('button', { name: 'Add the feed' }).click()
     const run = dialog.getByRole('region', { name: 'Adding the feed' })
     await expect(run.getByText('download', { exact: true })).toBeVisible()
     await expect(run.getByRole('status')).toContainText(/downloaded [\d,]+ of 10,240 bytes/)
@@ -341,9 +367,17 @@ test('adds a feed from a URL with its download on the line, and a cancel keeps n
       readdirSync(join(engineHome, 'data', 'feeds')).filter((f) => f.endsWith('.zip')),
     ).toEqual([])
 
-    // Again, to the end: the feed carries the address it came from.
-    await dialog.getByRole('button', { name: 'Add feed' }).click()
-    await expect(dialog).toBeHidden({ timeout: 20_000 })
+    // Again, to the end: the feed carries the address it came from, and a
+    // name typed before it arrived is the person's and stays.
+    await dialog.getByLabel('Name', { exact: true }).fill('My transit')
+    await dialog.getByRole('button', { name: 'Add the feed' }).click()
+    await expect(dialog.getByRole('button', { name: 'Create', exact: true })).toBeVisible({
+      timeout: 20_000,
+    })
+    await expect(dialog.getByLabel('Name', { exact: true })).toHaveValue('My transit')
+    await dialog.getByRole('button', { name: 'Create', exact: true }).click()
+    await expect(dialog).toBeHidden()
+    await expect(page.getByRole('button', { name: 'Open My transit' })).toBeVisible()
     await expect(feedRow(page, 'Remote Transit')).toBeVisible()
     await expect(feedRow(page, 'Remote Transit')).toContainText('downloaded')
     const records = JSON.parse(
@@ -365,10 +399,9 @@ test('a failed download keeps the key in its address off the screen', async () =
     add_refuses: `${address} could not be fetched: HTTP Error 403: Forbidden`,
   })
   await withApp(engineHome, async (page) => {
-    await page.getByRole('button', { name: 'Add feed' }).click()
-    const dialog = page.getByRole('dialog', { name: 'Add a feed' })
-    await dialog.getByLabel('Or from an address').fill(address)
-    await dialog.getByRole('button', { name: 'Add feed' }).click()
+    const dialog = await openSheet(page, 'address')
+    await dialog.getByLabel('Feed address').fill(address)
+    await dialog.getByRole('button', { name: 'Add the feed' }).click()
     await expect(dialog).toContainText(
       'https://agency.example/gtfs.zip?api_key=<redacted> could not be fetched: HTTP Error 403: Forbidden',
     )
@@ -398,11 +431,14 @@ test('removes an added feed behind a confirmation, and refuses one a project use
   const zip = gtfsZip(join(engineHome, 'Metro de Prueba.zip'))
   await withApp(engineHome, async (page, app) => {
     await chooserAnswers(app, zip)
-    await page.getByRole('button', { name: 'Add feed' }).click()
-    const dialog = page.getByRole('dialog', { name: 'Add a feed' })
+    const dialog = await openSheet(page, 'zip')
     await dialog.getByRole('button', { name: 'Choose a zip' }).click()
-    await dialog.getByRole('button', { name: 'Add feed' }).click()
-    await expect(dialog).toBeHidden({ timeout: 20_000 })
+    await dialog.getByRole('button', { name: 'Add the feed' }).click()
+    await expect(dialog.getByRole('button', { name: 'Create', exact: true })).toBeVisible({
+      timeout: 20_000,
+    })
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+    await expect(dialog).toBeHidden()
 
     // A project on it: the main process refuses the removal, naming it.
     await feedRow(page, 'Metro de Prueba')
@@ -566,7 +602,6 @@ test('without an engine the create dialog takes a typed key, as before', async (
     await expect(page.getByRole('status', { name: 'Engine' })).toContainText(/unavailable/i, {
       timeout: 20_000,
     })
-    await expect(page.getByRole('button', { name: 'Add feed' })).toBeDisabled()
     // The samples' region is there, and says why it lists nothing.
     await expect(page.getByRole('region', { name: 'Sample cities' }).getByRole('list')).toHaveCount(
       0,
@@ -578,6 +613,9 @@ test('without an engine the create dialog takes a typed key, as before', async (
     const dialog = page.getByRole('dialog', { name: 'New project' })
     await expect(dialog.getByLabel('Feed key')).toHaveValue('la-metro-rail')
     await expect(dialog).toContainText('not ready to list the feeds')
+    // A zip or an address needs the engine to add it, so neither is offered.
+    await expect(dialog.getByRole('radio', { name: 'A GTFS zip on this computer' })).toBeDisabled()
+    await expect(dialog.getByRole('radio', { name: 'A feed at an address' })).toBeDisabled()
   } finally {
     await app.close()
   }
