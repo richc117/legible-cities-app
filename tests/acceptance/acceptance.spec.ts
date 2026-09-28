@@ -952,6 +952,12 @@ test('a release, installed, through docs/acceptance.md', async () => {
         )
         expect(shown).toBe('LA Metro Rail (Los Angeles · Metro Rail)')
       })
+      // What the checklist promises of the sheet (A5.6-05): the safe action
+      // first, and the name already filled from the feed.
+      await log.soft('Cancel has focus, and the name is filled', async () => {
+        await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused()
+        await expect(dialog.getByLabel('Name', { exact: true })).toHaveValue('LA Metro Rail')
+      })
       await dialog.getByLabel('Name', { exact: true }).fill('Los Angeles')
       await dialog.getByRole('button', { name: 'Create', exact: true }).click()
       await expect(dialog).toBeHidden()
@@ -1054,6 +1060,10 @@ test('a release, installed, through docs/acceptance.md', async () => {
         () => 'the feed was neither added nor refused',
       )
       if (ended.refused !== null) throw new Error(`the add was refused: "${ended.refused}"`)
+      // The feed's own name, which for Caltrain is its first agency's.
+      await log.soft('the name is filled from the feed', () =>
+        expect(dialog.getByLabel('Name', { exact: true })).toHaveValue('Caltrain'),
+      )
       await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
       await expect(dialog).toBeHidden()
       log.note(`The add took ${Math.round((Date.now() - pressed) / SECOND)} s.`)

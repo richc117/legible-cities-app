@@ -41,8 +41,9 @@ import { useSnapshot } from './useSnapshot'
 // the add is said under the field that caused it.
 //
 // The zip is chosen in the platform's own dialog, which the main process
-// opens and remembers; no path crosses the bridge inward, and the guard in
-// the main process that refuses a path no dialog answered is unchanged.
+// opens and remembers. Its answer does come back inward, as `feeds.add`'s
+// source, and what makes that safe is the guard in the main process that
+// takes only a path its own dialog answered, once - unchanged here.
 
 /** Where a new project's feed comes from. */
 export type Source = 'feed' | 'zip' | 'address'
@@ -134,8 +135,22 @@ export default function NewProjectSheet({
   // The feed this sheet added, once it is in: Create then makes the
   // project on it.
   const [added, setAdded] = useState<FeedRecord | null>(null)
+  // Which add this opening started, counted, or 0 for none. The add run is
+  // the front door's one run and outlives the sheet: an add left going by
+  // an earlier opening (a second Escape closes the dialog; the engine's
+  // check cannot be interrupted) can end while a later opening is up, and
+  // must not fill that opening's name or claim its Create (review of
+  // A5.6-05). A count and not a flag, so that a second press that fails as
+  // the first did is still answered: the run's state alone does not move
+  // from failed to failed.
+  const [attempt, setAttempt] = useState(0)
   const snapshot = useSnapshot(run)
   const running = snapshot.state === 'running'
+  // Ours: this opening started the add that is going.
+  const adding = running && attempt > 0
+  // An add another opening left behind, still finishing: nothing new can
+  // start until it has, and the sheet says so rather than going quiet.
+  const elsewhere = running && attempt === 0
   const listed = feeds.length > 0
   const presets = feeds.filter((f) => f.source === 'preset')
   const yours = feeds.filter((f) => f.source === 'user')
@@ -155,6 +170,15 @@ export default function NewProjectSheet({
       setSource(start.source)
       setFeed(first)
       setName(start.source === 'feed' ? (nameOf(first) ?? '') : '')
+      // Nothing of an earlier opening carries into this one.
+      setEdited(false)
+      setUrl('')
+      setFile(null)
+      setMessages({})
+      setAdded(null)
+      setBusy(false)
+      setAttempt(0)
+      if (run.snapshot.state !== 'running') run.reset()
       dialog.showModal()
       cancelRef.current?.focus()
     } else if (!open && dialog.open) {
@@ -167,12 +191,28 @@ export default function NewProjectSheet({
   // The list can arrive while the sheet is open (the engine became ready):
   // the typed key gives way to the select, and a key the list does not hold
   // is not sent to a feed that does not exist.
+  // The list can arrive while the sheet is open (the engine became ready):
+  // the typed key gives way to the select, a key the list does not hold is
+  // not sent to a feed that does not exist, and the name follows when it
+  // has not been typed - a sheet opened while the engine was still
+  // starting had no feed name to fill. Keyed on the list alone and not on
+  // opening: at the opening render `feed` still holds the last opening's
+  // key, and acting on it then undid the feed a card or a row asked for.
   useEffect(() => {
-    if (!open) return
-    setFeed((current) => startingFeed(feeds, listed ? current : undefined))
-  }, [open, feeds, listed])
+    if (!dialogRef.current?.open) return
+    const next = startingFeed(feeds, listed ? feed : undefined)
+    setFeed(next)
+    if (source === 'feed') setName((current) => filledName(current, edited, nameOf(next)))
+    // The list arriving is the change; the rest is read as it stands.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [feeds, listed])
 
-  const fail = (field: Field, message: string): void => {
+  const fail = (asked: Field, message: string): void => {
+    // A message about the feed goes where a feed field is on screen and can
+    // hold it; otherwise - the zip, the address, or the listed select, which
+    // references no message - it goes under the name, so it is never said
+    // into a field nobody can see (review of A5.6-05).
+    const field = asked === 'feed' && (source !== 'feed' || listed) ? 'name' : asked
     setMessages({ [field]: message })
     const target =
       field === 'name'
@@ -194,6 +234,8 @@ export default function NewProjectSheet({
       // the message would only surface, stale, on the next opening.
       if (!dialogRef.current?.open) return
       const message = error instanceof Error ? error.message : String(error)
+      // Not busy before focus moves: a disabled field cannot take it.
+      setBusy(false)
       fail(fieldFor(message), message)
     } finally {
       setBusy(false)
@@ -206,9 +248,14 @@ export default function NewProjectSheet({
   // (the main process forgets a path once it has let it through), and the
   // engine's sentence is said under the field it concerns.
   useEffect(() => {
+    // An add this opening did not start, or a sheet already shut, is not
+    // this form's business: the front door lists again on its own.
+    if (attempt === 0 || !dialogRef.current?.open) return
     if (snapshot.state === 'done' && snapshot.feed !== null) {
       const feedAdded = snapshot.feed
       setAdded(feedAdded)
+      // The file is spent by the add, as by a refusal.
+      setFile(null)
       onAdded()
       setName((current) => filledName(current, edited, feedAdded.name))
       nameRef.current?.focus()
@@ -217,15 +264,16 @@ export default function NewProjectSheet({
       if (snapshot.state === 'failed' && snapshot.error !== null)
         fail(source === 'zip' ? 'file' : 'url', snapshot.error)
     }
-    // Only the add's own state moves this; the rest is read as it stands.
+    // The add's own state and this opening's attempts move this; the rest
+    // is read as it stands.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [snapshot.state])
+  }, [snapshot.state, attempt])
 
   // Submitting disables the controls, and a disabled element drops focus;
   // the one control left is where a person would go next.
   useEffect(() => {
-    if (running) cancelRef.current?.focus()
-  }, [running])
+    if (adding) cancelRef.current?.focus()
+  }, [adding])
 
   const reset = (): void => {
     setName('')
@@ -235,15 +283,20 @@ export default function NewProjectSheet({
     setMessages({})
     setBusy(false)
     setAdded(null)
+    setAttempt(0)
     run.reset()
   }
 
   // The engine's last refusal goes with the next edit, as a typed message
   // does, so an old sentence does not sit under a new choice.
+  //
+  // A finished add goes too, whatever its outcome: once the source or the
+  // address has changed, "The feed is in." is about a feed no longer in
+  // view, and leaving it would offer the same add again.
   const changed = (): void => {
     setMessages({})
     setAdded(null)
-    if (snapshot.state === 'failed' || snapshot.state === 'cancelled') run.reset()
+    if (run.snapshot.state !== 'running') run.reset()
   }
 
   const chooseZip = async (): Promise<void> => {
@@ -262,8 +315,18 @@ export default function NewProjectSheet({
 
   const submit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault()
-    if (running || busy) return
+    if (adding || busy) return
     const trimmed = name.trim()
+    const begin = (source: { file: string } | { url: string }): void => {
+      if (elsewhere)
+        return fail(
+          'file' in source ? 'file' : 'url',
+          'an earlier add is still finishing; try again once it has',
+        )
+      setMessages({})
+      setAttempt((n) => n + 1)
+      run.start(source, engine)
+    }
 
     if (source === 'feed') {
       const nameProblem = validateName(trimmed)
@@ -290,14 +353,11 @@ export default function NewProjectSheet({
     }
     if (source === 'zip') {
       if (file === null) return fail('file', 'choose a GTFS zip first')
-      setMessages({})
-      run.start({ file: file.path }, engine)
-      return
+      return begin({ file: file.path })
     }
     const problem = validateFeedUrl(url)
     if (problem !== null) return fail('url', problem)
-    setMessages({})
-    run.start({ url: url.trim() }, engine)
+    begin({ url: url.trim() })
   }
 
   // Escape while an add is going cancels the add and keeps the sheet: a
@@ -306,14 +366,14 @@ export default function NewProjectSheet({
   // cancelable while the window holds an unspent activation), so the close
   // handler tells the parent whenever the element closed on its own.
   const cancel = (): void => {
-    if (running) {
+    if (adding) {
       run.cancel()
       return
     }
     onCancel()
   }
   const closed = (): void => {
-    if (running) run.cancel()
+    if (adding) run.cancel()
     reset()
     if (open) onCancel()
   }
@@ -326,8 +386,16 @@ export default function NewProjectSheet({
   }
 
   const field = (id: Field): string => `${ids}-${id}`
+  // The zip's and the address's lines are alerts: the engine's refusal
+  // arrives after the press, whenever the download ends. The name's and the
+  // typed key's are not - a refusal there is said by moving focus into the
+  // field that references it, and an alert as well would say it twice.
   const message = (id: Field): JSX.Element => (
-    <p id={`${field(id)}-message`} className="message error" role="alert">
+    <p
+      id={`${field(id)}-message`}
+      className="message error"
+      role={id === 'file' || id === 'url' ? 'alert' : undefined}
+    >
       {messages[id]}
     </p>
   )
@@ -349,7 +417,7 @@ export default function NewProjectSheet({
           A project draws one feed: a sample city, or a GTFS feed of your own from a file or an
           address.
         </p>
-        <fieldset className="field source-choice" disabled={running || busy}>
+        <fieldset className="field source-choice" disabled={adding || busy}>
           <legend className="field-label">Start from</legend>
           {(
             [
@@ -443,7 +511,7 @@ export default function NewProjectSheet({
               <Button
                 ref={chooseRef}
                 onClick={() => void chooseZip()}
-                disabled={running || busy || picking}
+                disabled={adding || busy || picking}
                 aria-describedby={`${field('file')}-name ${field('file')}-message`}
               >
                 <Icon name="layers" />
@@ -471,7 +539,7 @@ export default function NewProjectSheet({
               }}
               placeholder="https://"
               spellCheck={false}
-              disabled={running || busy}
+              disabled={adding || busy}
               aria-describedby={`${field('url')}-message`}
               aria-invalid={messages.url ? true : undefined}
             />
@@ -491,7 +559,7 @@ export default function NewProjectSheet({
               setEdited(true)
               setMessages({})
             }}
-            disabled={running || busy}
+            disabled={adding}
             aria-describedby={
               source === 'feed'
                 ? `${field('name')}-message`
@@ -508,7 +576,7 @@ export default function NewProjectSheet({
           {message('name')}
         </div>
 
-        {source !== 'feed' && snapshot.state !== 'idle' && (
+        {source !== 'feed' && attempt > 0 && snapshot.state !== 'idle' && (
           <section className="add-run" aria-label="Adding the feed">
             <ProgressLine
               stages={snapshot.stages}
@@ -534,9 +602,9 @@ export default function NewProjectSheet({
 
         <div className="actions">
           <Button ref={cancelRef} onClick={cancel}>
-            {running ? 'Cancel the add' : 'Cancel'}
+            {adding ? 'Cancel the add' : 'Cancel'}
           </Button>
-          <Button variant="primary" type="submit" disabled={running || busy}>
+          <Button variant="primary" type="submit" disabled={adding || busy}>
             {source !== 'feed' && added === null ? 'Add the feed' : 'Create'}
           </Button>
         </div>

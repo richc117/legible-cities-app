@@ -288,6 +288,43 @@ test('adds a feed from a file, and it survives a relaunch', async () => {
   })
 })
 
+// The sheet fills what it knows (A5.6-05): a listed feed's name as it is
+// chosen, never over a name a person typed; and a finished add does not
+// outlive a change of source, or the same add would be offered again with
+// a file the main process has already forgotten.
+test('the new project sheet fills the name it knows, and forgets a finished add on a change', async () => {
+  const engineHome = home()
+  const zip = gtfsZip(join(engineHome, 'Metro de Prueba.zip'))
+  await withApp(engineHome, async (page, app) => {
+    const dialog = await openSheet(page, 'feed')
+    const name = dialog.getByLabel('Name', { exact: true })
+    await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused()
+    await expect(name).toHaveValue('LA Metro Rail')
+    await dialog.getByRole('combobox', { name: 'Feed' }).selectOption('cdmx-metro')
+    await expect(name, 'another feed, another name').toHaveValue('Mexico City Metro')
+    await name.fill('My map')
+    await dialog.getByRole('combobox', { name: 'Feed' }).selectOption('la-metro-rail')
+    await expect(name, 'a typed name is the person’s').toHaveValue('My map')
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+    await expect(dialog).toBeHidden()
+
+    await chooserAnswers(app, zip)
+    await openSheet(page, 'zip')
+    await dialog.getByRole('button', { name: 'Choose a zip' }).click()
+    await dialog.getByRole('button', { name: 'Add the feed' }).click()
+    await expect(dialog.getByRole('button', { name: 'Create', exact: true })).toBeVisible({
+      timeout: 20_000,
+    })
+    await expect(name, 'the feed’s own name, once it is in').toHaveValue('Metro de Prueba')
+    // Away and back: the add is finished with, the file spent.
+    await dialog.getByRole('radio', { name: 'A feed at an address' }).check()
+    await dialog.getByRole('radio', { name: 'A GTFS zip on this computer' }).check()
+    await expect(dialog.getByRole('region', { name: 'Adding the feed' })).toHaveCount(0)
+    await expect(dialog).toContainText('No file chosen.')
+    await expect(dialog.getByRole('button', { name: 'Add the feed' })).toBeVisible()
+  })
+})
+
 test("a zip without a timetable is refused with the engine's sentence, and nothing is kept", async () => {
   const engineHome = home()
   const zip = gtfsZip(join(engineHome, 'partial.zip'), ['stop_times'])

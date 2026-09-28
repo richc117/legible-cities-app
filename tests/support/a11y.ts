@@ -219,6 +219,19 @@ function installProbe(): void {
       }
       if (el.matches(':disabled') || (el as HTMLInputElement).type === 'hidden') continue
       if ((el as HTMLElement).tabIndex < 0) continue
+      // A radio group is one Tab stop: its checked radio, or its first when
+      // none is checked; the arrow keys move within it (the new project
+      // sheet's "Start from", A5.6-05).
+      const radio = el as HTMLInputElement
+      if (radio.type === 'radio' && radio.name !== '') {
+        const group = [...scope.querySelectorAll('input[type="radio"]')].filter(
+          (other) =>
+            (other as HTMLInputElement).name === radio.name &&
+            !(other as HTMLInputElement).disabled,
+        ) as HTMLInputElement[]
+        const stop = group.find((other) => other.checked) ?? group[0]
+        if (stop !== radio) continue
+      }
       // A button inside a kit element's light tree is the kit's own.
       if (el.parentElement?.closest('fig-button')) continue
       out.push(el)
