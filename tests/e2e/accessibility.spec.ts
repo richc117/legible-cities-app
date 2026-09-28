@@ -136,11 +136,13 @@ test('the Library, its empty state and its three dialogs', async () => {
       ['Tren Ligero', '#samples-heading'],
     ]) {
       await pressWithKeyboard(page.getByRole('button', { name: `Remove ${name}` }))
-      await pressWithKeyboard(
-        page.getByRole('dialog', { name: `Remove ${name}?` }).getByRole('button', {
-          name: 'Remove',
-        }),
-      )
+      // The confirmation is one element for every feed: waited for open
+      // before its button is pressed, and shut before the next row's, or a
+      // slow runner presses into one still closing (Linux CI, PR 233).
+      const confirm = page.getByRole('dialog', { name: `Remove ${name}?` })
+      await expect(confirm).toBeVisible()
+      await pressWithKeyboard(confirm.getByRole('button', { name: 'Remove', exact: true }))
+      await expect(confirm).toBeHidden()
       await expect(page.getByRole('listitem', { name })).toHaveCount(0)
       await expect.poll(focused, { message: `after removing ${name}` }).toBe(lands)
     }
