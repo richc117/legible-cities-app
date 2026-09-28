@@ -35,7 +35,8 @@
 // follows a colon. `toShape` and `badCall` now put all three fields through
 // the same `redactUrls`, so the progress message, the log line and the
 // error are the three doors, each redacted in the main process. The engine
-// state the page also reads carries only the supervisor's own sentences.
+// state the page also reads is the fourth: a reason can quote the engine's
+// stray stdout or its last stderr lines, so `Sidecar.setState` redacts it.
 //
 // It costs the ordinary sentence nothing: `redactUrls` returns any text
 // without a `?`, `#`, `@` or `%` in it untouched, so "topo: 3 nodes, 2

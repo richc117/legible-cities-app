@@ -14,6 +14,7 @@ import {
   type EnginePin,
   type EngineState,
 } from '../shared/engine'
+import { redactUrls } from './redact'
 import { JsonRpcClient, ProtocolError } from './jsonrpc'
 
 export { describeState }
@@ -731,7 +732,13 @@ export class Sidecar {
 
   // -- state --
 
-  private setState(state: EngineState): void {
+  private setState(next: EngineState): void {
+    // A reason can hold text the engine wrote - the head of a line on
+    // stdout that was not a frame, or the last lines of its stderr - and
+    // the state is sent to the page as it is (the status line, the
+    // mismatch dialog). So its web addresses are redacted here, once, for
+    // every reader, as an error's are in `ipc-shape.ts` (issue 207).
+    const state = 'reason' in next ? { ...next, reason: redactUrls(next.reason) } : next
     this._state = state
     this.log(`state: ${describeState(state)}`)
     for (const listener of this.stateListeners) listener(state)

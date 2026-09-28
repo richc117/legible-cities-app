@@ -313,7 +313,15 @@ test('a failed download keeps the key in its address off the screen', async () =
     await page.keyboard.press('Escape')
     await expect(dialog).toBeHidden()
     await page.getByRole('button', { name: /^Jobs, / }).click()
-    await expect(page.getByRole('complementary', { name: 'Inspector' })).toBeVisible()
+    const inspector = page.getByRole('complementary', { name: 'Inspector' })
+    await expect(inspector).toContainText('Feed add from a web address')
+    // The detail is the one field the dialog never draws, and it sits
+    // behind a closed disclosure, which `innerText` does not read - so it
+    // is opened, and shown to hold the address, redacted.
+    await inspector.getByText('Details', { exact: true }).click()
+    await expect(inspector.locator('.job-detail')).toContainText(
+      'FeedError: https://agency.example/gtfs.zip?api_key=<redacted> could not be fetched',
+    )
     // Everything drawn, the inspector included. The field the person typed
     // into still holds what they typed, which is theirs and not drawn text.
     expect(await page.locator('body').innerText()).not.toContain(planted)

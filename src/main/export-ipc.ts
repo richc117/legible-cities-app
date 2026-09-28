@@ -24,14 +24,20 @@ import { EngineError, ERROR_CODES, type EngineErrorShape } from '../shared/engin
 import { validateId } from '../shared/project'
 import type { Destinations, Exporter } from './export'
 import type { StoreBlocked } from './ipc'
-import { badCall, TOKEN, toShape } from './ipc-shape'
+import { badCall, redactShape, TOKEN, toShape } from './ipc-shape'
 import { RESERVED_NAME } from './paths'
 
 export type Send = (channel: string, payload: unknown) => void
 
 /** A refusal in the engine's shape, for an answer that is not an `Accepted`. */
 const refusal = (what: string): EngineErrorShape =>
-  new EngineError(ERROR_CODES.badCall, what, { kind: 'params', detail: what, hint: what }).toJSON()
+  redactShape(
+    new EngineError(ERROR_CODES.badCall, what, {
+      kind: 'params',
+      detail: what,
+      hint: what,
+    }).toJSON(),
+  )
 
 /** What the handlers need from the exporter; a test hands in a fake. */
 export type ExportSource = Pick<Exporter, 'start' | 'cancel' | 'fileOf' | 'onProgress' | 'preview'>

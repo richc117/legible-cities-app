@@ -6,7 +6,8 @@ writes before the app starts (every key optional):
     version           what engine.info reports as "engine"      (default "0.2.0")
     protocol          what it reports as "protocol"             (default 1)
     exit              "at-once" | "after-handshake" | null       exit code 3 at that moment
-    garbage           true: write a line that is not a frame before anything else
+    garbage           true: write a line that is not a frame before anything else; a
+                      string: write that string as the line
     ignore_shutdown   true: answer engine.shutdown and keep running
     silent            true: long requests send no progress and never answer
     mute              true: answer nothing at all, not even engine.info
@@ -216,10 +217,10 @@ def record(message: dict) -> None:
         pass
 
 
-def error(msg_id, code: int, message: str, kind: str) -> None:
+def error(msg_id, code: int, message: str, kind: str, detail: str | None = None) -> None:
     write({"jsonrpc": "2.0", "id": msg_id,
            "error": {"code": code, "message": message,
-                     "data": {"kind": kind, "detail": message, "hint": message}}})
+                     "data": {"kind": kind, "detail": detail or message, "hint": message}}})
 
 
 class Engine:
@@ -739,7 +740,11 @@ class Engine:
         delay = self.control.get("add_delay_ms", 20) / 1000
         if source.startswith(("http://", "https://")):
             if self.control.get("add_refuses"):
-                error(msg_id, -32000, self.control["add_refuses"], "feed")
+                # The engine's own shape (v0.8.3, `serve.classify`): the
+                # sentence as message and hint, and the detail the exception
+                # line with where it was raised.
+                sentence = self.control["add_refuses"]
+                error(msg_id, -32000, sentence, "feed", f"FeedError: {sentence} (feeds.py:583)")
                 return
             total = 10240
             for i in range(1, 11):
@@ -1032,7 +1037,8 @@ def main() -> int:
         sys.stderr.write("fake engine: exiting at once as told\n")
         return 3
     if control.get("garbage"):
-        OUT.write(b"this is not a frame\n")
+        stray = control["garbage"] if isinstance(control["garbage"], str) else "this is not a frame"
+        OUT.write(stray.encode() + b"\n")
         OUT.flush()
     if control.get("ignore_sigterm") and os.name != "nt":
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
