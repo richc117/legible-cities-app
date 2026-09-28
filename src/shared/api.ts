@@ -144,6 +144,12 @@ export interface Api {
      */
     setTheme(id: string, theme: Theme): Promise<ProjectRecord>
     /**
+     * That the project's screen has just been opened (A5.6-04): writes
+     * `opened` and nothing else, so the front door lists projects newest
+     * opened first. A read-only project is answered unchanged.
+     */
+    markOpened(id: string): Promise<ProjectRecord>
+    /**
      * What a person set the project to export (A5-01): the preset, the
      * storyboard and the options, written the moment they are chosen, as
      * the theme is. The main process checks every field against the
@@ -340,6 +346,7 @@ export const CHANNELS = {
   projectsCompleteOrder: 'projects:complete-order',
   projectsSetDate: 'projects:set-date',
   projectsSetTheme: 'projects:set-theme',
+  projectsMarkOpened: 'projects:mark-opened',
   projectsSetExport: 'projects:set-export',
   viewerAttach: 'viewer:attach',
   viewerRelease: 'viewer:release',

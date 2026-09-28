@@ -32,6 +32,7 @@ import {
   openCell,
   openProject,
   panel,
+  withoutOpened,
 } from '../support/project'
 
 const repoRoot = resolve(__dirname, '../..')
@@ -87,7 +88,9 @@ async function openNewProject(page: Page, name: string): Promise<void> {
 
 const readRecord = (engineHome: string): Record<string, unknown> => {
   const [id] = readdirSync(join(engineHome, 'projects'))
-  return JSON.parse(readFileSync(join(engineHome, 'projects', id, 'project.json'), 'utf8'))
+  return withoutOpened(
+    JSON.parse(readFileSync(join(engineHome, 'projects', id, 'project.json'), 'utf8')),
+  )
 }
 
 /**
@@ -1853,3 +1856,60 @@ test('the breadcrumb goes back to the Library, and a returning person starts at 
     expect(await page.evaluate(() => window.scrollY), 'the top of the notebook').toBe(0)
   })
 })
+
+// The projects list (A5.6-04): newest opened first, written when a project
+// opens and not when it is edited, and each row saying how far its project
+// has got in words, from the notebook's own run graph.
+test('the projects list is newest opened first, and says how far each project has got', async () => {
+  const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
+  await withApp(engineHome, async (page) => {
+    const list = page.getByRole('list', { name: 'Projects' })
+    const names = (): Promise<string[]> =>
+      list
+        .getByRole('button')
+        .evaluateAll((rows) =>
+          rows.map((row) => row.querySelector('.entry-name')?.textContent ?? ''),
+        )
+
+    await openNewProject(page, 'First')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    await page.getByRole('button', { name: 'Back to Library' }).click()
+    await expect(page.getByRole('button', { name: 'Open First' })).toContainText(
+      'finished up to 05 Lines',
+    )
+
+    // A second project, made and never opened, comes first: it is newer.
+    await page.getByRole('button', { name: 'New project' }).click()
+    const dialog = page.getByRole('dialog', { name: 'New project' })
+    await dialog.getByLabel('Name', { exact: true }).fill('Second')
+    await dialog.getByRole('button', { name: 'Create', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'Open Second' })).toContainText(
+      'finished up to 01 Data; not laid out yet',
+    )
+    await expect.poll(names).toEqual(['Second', 'First'])
+
+    // Opening First puts it back on top; nothing about it was edited.
+    const modified = readRecordNamed(engineHome, 'First').modified
+    await openProject(page, 'First')
+    await expect
+      .poll(() => readRecordNamed(engineHome, 'First').opened, { message: 'written on opening' })
+      .not.toBeNull()
+    expect(readRecordNamed(engineHome, 'First').modified, 'an opening is not an edit').toBe(
+      modified,
+    )
+    await page.getByRole('button', { name: 'Back to Library' }).click()
+    await expect.poll(names).toEqual(['First', 'Second'])
+    await expect(page.getByRole('button', { name: 'Open First' })).toContainText(/Opened /)
+  })
+})
+
+function readRecordNamed(engineHome: string, name: string): Record<string, unknown> {
+  for (const id of readdirSync(join(engineHome, 'projects'))) {
+    const record = JSON.parse(
+      readFileSync(join(engineHome, 'projects', id, 'project.json'), 'utf8'),
+    ) as Record<string, unknown>
+    if (record.name === name) return record
+  }
+  throw new Error(`no project named ${name}`)
+}

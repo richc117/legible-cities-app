@@ -79,6 +79,7 @@ const api: Api = {
     completeOrder: (id, order) => invoke(CHANNELS.projectsCompleteOrder, id, order),
     setDate: (id, date) => invoke(CHANNELS.projectsSetDate, id, date),
     setTheme: (id, theme) => invoke(CHANNELS.projectsSetTheme, id, theme),
+    markOpened: (id) => invoke(CHANNELS.projectsMarkOpened, id),
     setExport: (id, choice) => invoke(CHANNELS.projectsSetExport, id, choice),
   },
   viewer: {

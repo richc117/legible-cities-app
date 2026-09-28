@@ -78,6 +78,7 @@ const project = (over: Partial<ProjectRecord> = {}): ProjectRecord => ({
   theme: 'warm-dark',
   export: { preset: 'instagram-reel', options: {} },
   destination: null,
+  opened: null,
   layout: 'a'.repeat(64),
   made: null,
   drawn: null,

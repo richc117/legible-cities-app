@@ -23,6 +23,7 @@ The on-disk form of `ProjectRecord` (`data-model.md`), version 1:
   "made": null,
   "drawn": null,
   "built": null,
+  "opened": null,
   "created": "2026-09-07T20:00:00.000Z",
   "modified": "2026-09-07T20:00:00.000Z"
 }
@@ -94,6 +95,16 @@ The on-disk form of `ProjectRecord` (`data-model.md`), version 1:
   shape reads as the reel with no options, which is what the one button
   exported before, and is refused on write
   (specs/022-export-tab).
+- `opened` (added by A5.6-04, still version 1) is when the project's
+  screen was last opened, an ISO timestamp, written by `projects.markOpened`
+  as the screen loads and by nothing else: it does not move `modified`,
+  which says when a person last changed something, and a read-only project
+  is not written at all. The front door lists projects newest opened first,
+  and a project with `null` - never opened since the field was kept - by
+  its `created`. Anything that is not a moment reads as `null`. It meets
+  all three criteria of the rule below: optional on read, its absence means
+  "not known" and sorts by `created`, and an older build that drops it
+  loses only an order the next opening puts back.
 - `destination` (added by A5.5-19, still version 1) is the folder this
   project's exports are written to, over the app's own export folder:
   an absolute path, or `null` for the app's. The file goes to

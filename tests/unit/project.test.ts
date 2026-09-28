@@ -50,6 +50,7 @@ const full: ProjectRecord = {
   theme: 'warm-dark',
   export: { preset: 'instagram-reel', options: {} },
   destination: null,
+  opened: null,
   layout: null,
   made: null,
   drawn: null,
@@ -294,6 +295,7 @@ describe('parseRecord', () => {
       // A record from before A5.5-19 has no destination, and that reads as
       // "the app's export folder" - what it meant - never as somewhere else.
       destination: null,
+      opened: null,
       layout: null,
       made: null,
       built: null,
@@ -502,12 +504,23 @@ describe('drawn', () => {
 })
 
 describe('summarise', () => {
-  it('keeps what the Library shows and nothing else', () => {
+  it('keeps what the front door shows and what its run graph reads, and nothing else', () => {
+    // The row's own words, and the fields the notebook's run graph reads to
+    // say how far the project has got (A5.6-04). Not the colours, the
+    // order, the theme, the export or the service window.
     expect(summarise({ ...full, date: '2026-09-07' }, true)).toEqual({
       id: full.id,
       name: full.name,
       feed: full.feed,
       date: '2026-09-07',
+      mode: full.mode,
+      agency: full.agency,
+      layout: full.layout,
+      made: full.made,
+      built: full.built,
+      drawn: full.drawn,
+      opened: full.opened,
+      created: full.created,
       modified: full.modified,
       readOnly: true,
     })

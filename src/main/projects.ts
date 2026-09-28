@@ -16,6 +16,7 @@ import {
   DEFAULT_STYLE,
   DEFAULT_THEME,
   drawnFrom,
+  openedOrder,
   ID_PATTERN,
   RECORD_VERSION,
   parseRecord,
@@ -332,10 +333,12 @@ export class ProjectStore {
         this.log(`projects/${entry.name}: ${'reason' in result ? result.reason : 'no record'}`)
       }
     }
-    // Timestamps share one format, so they order as strings; the id breaks
-    // a tie so the list is stable between two calls.
+    // Newest opened first (A5.6-04), a project never opened since that was
+    // kept by when it was made. Timestamps share one format, so they order
+    // as strings; the id breaks a tie so the list is stable between two
+    // calls.
     return summaries.sort(
-      (a, b) => b.modified.localeCompare(a.modified) || a.id.localeCompare(b.id),
+      (a, b) => openedOrder(b).localeCompare(openedOrder(a)) || a.id.localeCompare(b.id),
     )
   }
 
@@ -387,6 +390,7 @@ export class ProjectStore {
       made: null,
       drawn: null,
       built: null,
+      opened: null,
       created: now,
       modified: now,
     }
@@ -613,6 +617,27 @@ export class ProjectStore {
       lineOrder: [...order],
       modified: new Date().toISOString(),
     })
+    await this.writeAtomic(id, updated)
+    return updated
+  }
+
+  /**
+   * That the project's screen has just been opened (A5.6-04), so the front
+   * door can list projects newest opened first. It writes `opened` and
+   * nothing else: not `modified`, which says when a person last changed
+   * something, and not the version, since opening a project a newer build
+   * made must not rewrite it as this build's. A read-only project is left
+   * alone - this build may not write it at all - and lists by `created`.
+   */
+  async markOpened(id: string): Promise<ProjectRecord> {
+    return this.#track(() => this.#serial(id, () => this.#markOpenedTracked(id)))
+  }
+
+  async #markOpenedTracked(id: string): Promise<ProjectRecord> {
+    this.checkId(id)
+    const { record, readOnly } = await this.load(id)
+    if (readOnly) return record
+    const updated: ProjectRecord = { ...record, opened: new Date().toISOString() }
     await this.writeAtomic(id, updated)
     return updated
   }

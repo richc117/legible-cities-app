@@ -28,6 +28,7 @@ import {
   createProject,
   openCell,
   openProject,
+  withoutOpened,
 } from '../support/project'
 
 const repoRoot = resolve(__dirname, '../..')
@@ -85,7 +86,9 @@ async function withApp(h: Home, run: (page: Page) => Promise<void>): Promise<voi
 
 const readRecord = (h: Home): Record<string, unknown> => {
   const [id] = readdirSync(join(h.engineHome, 'projects'))
-  return JSON.parse(readFileSync(join(h.engineHome, 'projects', id, 'project.json'), 'utf8'))
+  return withoutOpened(
+    JSON.parse(readFileSync(join(h.engineHome, 'projects', id, 'project.json'), 'utf8')),
+  )
 }
 
 /** Every message of one method the stand-in read, in order. */

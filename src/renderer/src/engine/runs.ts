@@ -273,6 +273,16 @@ export function layoutRunFor(projectId: string): LayoutRun {
 }
 
 /** Forget a project's run: it was deleted, so nothing will ask again. */
+/**
+ * The project's layout run if this session has one, and null otherwise -
+ * never a new one. For a reader that only wants to know what a run is
+ * doing, such as the front door's list (A5.6-04): `layoutRunFor` would make
+ * and register a run for every project it was asked about.
+ */
+export function peekLayoutRun(projectId: string): LayoutRun | null {
+  return runs.get(projectId) ?? null
+}
+
 export function forgetLayoutRun(projectId: string): void {
   const run = runs.get(projectId)
   if (run !== undefined) registry.untrack(run)

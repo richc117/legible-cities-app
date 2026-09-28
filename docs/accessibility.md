@@ -618,7 +618,8 @@ a table).
   "Open `<name>`" (D4), not on nothing.
 - **Project rows.** In the list "Projects", each row is a button
   "Open `<name>`", with its feed and service day read as its description
-  ("Feed la-metro-rail, Service day `<day>`").
+  ("Feed la-metro-rail, Service day `<day>`, Opened `<when>`, finished up
+  to 05 Lines", A5.6-04).
 - **Sample cards and feed rows (Start a project, Remove).** Listen for the
   headings "Sample cities" and, once a feed has been added, "Your feeds",
   over the lists "Presets" and "Added". Each sample is one button named by

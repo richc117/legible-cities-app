@@ -4,7 +4,7 @@ import { ERROR_CODES, isEngineErrorShape } from '../../shared/engine'
 import type { FeedRecord } from '../../shared/protocol'
 import { sentenceFor } from './engine/feedAdd'
 import { forgetFeedList, forgetInspection } from './engine/inspections'
-import { engineClient, feedAdd } from './engine/runs'
+import { engineClient, feedAdd, peekLayoutRun, subscribeToRuns } from './engine/runs'
 import AddFeedDialog from './AddFeedDialog'
 import ConfirmDialog from './ConfirmDialog'
 import CreateProjectDialog from './CreateProjectDialog'
@@ -13,6 +13,8 @@ import SampleCities, { SAMPLES_HEADING_ID } from './SampleCities'
 import { afterRendering, focusLost } from './focusHandback'
 import Icon from './icons/Icon'
 import Button from './kit/Button'
+import Time from './notebook/Time'
+import { progressWords } from './projectProgress'
 import { useEngineState } from './useEngineState'
 
 type LibraryState = { status: 'loading' } | { status: 'ready'; projects: ProjectSummary[] }
@@ -199,6 +201,39 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
     }
   }, [])
 
+  // A project's run goes on while this screen is open (the runs outlive the
+  // views that started them), and its row says how far the project has got
+  // (A5.6-04). So the rows follow the runs' states: a change of state
+  // redraws them, and a run that stops has written its record, so the list
+  // is read again. Keyed on the states alone, because a run tells its
+  // listeners about every progress tick and the list must not be read on
+  // each of those.
+  const projectIds =
+    library.status === 'ready' ? library.projects.map((project) => project.id).join(',') : ''
+  const [runStates, setRunStates] = useState('')
+  useEffect(() => {
+    const ids = projectIds === '' ? [] : projectIds.split(',')
+    const key = (): string =>
+      ids.map((id) => `${id}:${peekLayoutRun(id)?.snapshot.state ?? 'none'}`).join(',')
+    setRunStates(key())
+    return subscribeToRuns(() => setRunStates(key()))
+  }, [projectIds])
+  const firstStates = useRef(true)
+  useEffect(() => {
+    // Not on the first key, which is the list just read.
+    if (firstStates.current) {
+      firstStates.current = runStates === ''
+      return
+    }
+    let cancelled = false
+    void listProjects().then((projects) => {
+      if (!cancelled) setLibrary({ status: 'ready', projects })
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [runStates])
+
   // Focus the heading when the screen appears, so a screen reader says
   // where the person is; on the way back from a project the element that
   // had focus no longer exists.
@@ -383,6 +418,13 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
                   <span className="entry-meta" id={`entry-${project.id}-meta`}>
                     <span>Feed {project.feed}</span>
                     <span>Service day {project.date ?? 'not yet chosen'}</span>
+                    <span>
+                      {project.opened === null ? 'Made ' : 'Opened '}
+                      <Time iso={project.opened ?? project.created} />
+                    </span>
+                    <span>
+                      {progressWords(project, peekLayoutRun(project.id)?.snapshot ?? null)}
+                    </span>
                     {project.readOnly && <span>read-only</span>}
                   </span>
                 </button>

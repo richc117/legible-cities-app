@@ -142,6 +142,7 @@ const project = (over: Partial<ProjectRecord & { readOnly: boolean }> = {}) => (
   theme: 'warm-dark' as const,
   export: { preset: 'instagram-reel' as const, options: {} },
   destination: null,
+  opened: null,
   layout: 'a'.repeat(64),
   made: null,
   drawn: null,
