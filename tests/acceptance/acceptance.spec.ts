@@ -838,16 +838,19 @@ test('a release, installed, through docs/acceptance.md', async () => {
           const words = oneLine(await row.innerText())
           const name = (await row.getAttribute('aria-label')) ?? ''
           if (!words.includes('·') || !words.includes('not downloaded yet')) wrong.push(words)
+          // One card, one button, named by its name and its facts (A5.6-02).
+          const buttons = row.getByRole('button')
           if (
-            (await row.getByRole('button', { name: `Start a project on ${name}` }).count()) !== 1
+            (await buttons.count()) !== 1 ||
+            !((await buttons.first().getAttribute('aria-label')) ?? '').startsWith(`${name}, `)
           ) {
-            wrong.push(`${name} has no Start a project`)
+            wrong.push(`${name} is not one card named by its facts`)
           }
         }
         log.note(`${count} presets listed.`)
         if (wrong.length > 0)
           throw new Error(
-            `rows without a city and network, "not downloaded yet" or Start a project: ${wrong.join('; ')}`,
+            `cards without a city and network, "not downloaded yet" or one button: ${wrong.join('; ')}`,
           )
       })
 
@@ -1172,7 +1175,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
       await toLibrary(window)
       await window
         .getByRole('listitem', { name: 'Mexico City Metro', exact: true })
-        .getByRole('button', { name: /Start a project/ })
+        .getByRole('button')
         .click()
       const create = window.getByRole('dialog', { name: 'New project' })
       await log.soft('the create dialog opens on cdmx-metro', () =>

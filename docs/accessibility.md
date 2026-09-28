@@ -98,7 +98,7 @@ listed below for filing. *engine's*: inside the engine's page.
 | Toolbar (New project, Add feed) | pass | pass | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
 | Empty state | fixed (D4) | pass | pass | pass | fixed (C6) | fixed (C1, C6) | not yet run: a person's | not yet run: a person's |
 | Project rows | pass | pass (`Open <name>`, the meta as description) | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
-| Feed rows (Start a project, Remove) | fixed (D5) | pass (each names its feed) | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
+| Feed rows (Start a project, Remove) and sample city cards (A5.6-02) | fixed (D5) | pass (each names its feed; a card is named by its facts) | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
 | Create-project dialog | pass | pass | pass | pass | fixed (C2) | fixed (C1, C2) | not yet run: a person's | not yet run: a person's |
 | Add-feed dialog, from a zip | pass | pass | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
 | Add-feed dialog, from an address | pass | pass | pass | pass | fixed (C5) | fixed (C1, C5) | not yet run: a person's | not yet run: a person's |
@@ -619,10 +619,12 @@ a table).
 - **Project rows.** In the list "Projects", each row is a button
   "Open `<name>`", with its feed and service day read as its description
   ("Feed la-metro-rail, Service day `<day>`").
-- **Feed rows (Start a project, Remove).** Listen for the headings "Sample cities"
-  and, once a feed has been added, "Your feeds", over the lists "Presets"
-  and "Added", each row named for its feed, and the
-  buttons "Start a project on `<feed>`" and, on an added feed,
+- **Sample cards and feed rows (Start a project, Remove).** Listen for the
+  headings "Sample cities" and, once a feed has been added, "Your feeds",
+  over the lists "Presets" and "Added". Each sample is one button named by
+  what its card shows, "`<name>`, `<city · network>`, keeps `<mode>`,
+  downloaded" or "not downloaded yet" (A5.6-02); an added feed's row is
+  named for its feed, with the buttons "Start a project on `<feed>`" and
   "Remove `<feed>`". Then, after the add-feed progress line below has
   added a second Caltrain, remove the one no project uses (the two rows
   have the same name; if the removal is refused, it was the other): when the
@@ -676,8 +678,8 @@ a table).
   **Use the feed's entry**; press it, and listen for focus landing on
   "Mode" with the entry's value (D7). The "Operator" pop-up button appears
   whenever the project has an agency, or its feed names more than one
-  operator: go back to the Library, press **Start a project on Mexico City
-  Metro**, name it `Mexico City`, open it, and listen for "Operator" with
+  operator: go back to the Library, press the "Mexico City Metro" card
+  under "Sample cities", name it `Mexico City`, open it, and listen for "Operator" with
   "every operator" first among its options. Delete this project afterwards
   (it can be the throwaway project for **Delete confirmation** below).
 - **Inspect: the two tables.** With T (Narrator) or the rotor (VoiceOver),

@@ -135,9 +135,12 @@ export async function engineReady(page: Page): Promise<void> {
 /** Create a project on a feed from the Library, and leave it listed. */
 export async function createProject(page: Page, feed: string, name: string): Promise<void> {
   await engineReady(page)
+  // A sample city is one card, named by its name and facts (A5.6-02); an
+  // added feed's row keeps its "Start a project on" button beside Remove.
+  const escaped = feed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   await page
     .getByRole('listitem', { name: feed, exact: true })
-    .getByRole('button', { name: /Start a project/ })
+    .getByRole('button', { name: new RegExp(`^(Start a project on ${escaped}$|${escaped}, )`) })
     .click()
   const dialog = page.getByRole('dialog', { name: 'New project' })
   await dialog.getByLabel('Name', { exact: true }).fill(name)

@@ -163,9 +163,9 @@ Result: ____
   run" or "LOOM and ffmpeg will not run" is a failure of this step. Write
   down its sentences and press **Copy diagnostics** in it before you close
   it.
-- Under **Sample cities**, a **Presets** list of the engine's networks, each row
-  with its city and network and "not downloaded yet", and a
-  **Start a project** button.
+- Under **Sample cities**, a card for each of the engine's networks, each
+  with its city and network, what its mode keeps and "not downloaded yet";
+  pressing a card opens **New project** on it.
 - In Settings, **Bundled tools** says "The bundled LOOM and ffmpeg ran.",
   with **LOOM tools** "ran (`<n>` ms)." and **ffmpeg and ffprobe**
   "ran (`<n>` ms)."
@@ -244,8 +244,8 @@ Result: ____
 **Do.** Open **Los Angeles** and read **In the feed**. Press the **Label**,
 **Type** and **Trips** headers of the routes table. Open the **Mode**
 select and look at its options without changing it. Then, for the
-operator: go back to the Library, press **Start a project** on
-**Mexico City Metro**, name it `Mexico City`, create and open it, and read
+operator: go back to the Library, press the **Mexico City Metro** card
+under **Sample cities**, name it `Mexico City`, create and open it, and read
 **In the feed** again.
 
 **See.**
