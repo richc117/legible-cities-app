@@ -1,11 +1,11 @@
 /* The panels a project's screen is made of (A5.5-07): the line colours and
    the order they are drawn in, the feeds on the Library, the tables, the
-   diagnostics, the viewer and the export's preview, the tab strip, the
-   export's own choices, and the geographic view.
+   diagnostics, the viewer and the export's preview, the export's own
+   choices, and the geographic view.
 
-   Lifted out of app.css unchanged. These become the bodies of the
-   notebook's cells (ADR-045), at which point the rules that are about the
-   tab strip go with it. The shell's rules are in app.css and the cells'
+   Lifted out of app.css unchanged, and now the bodies of the notebook's
+   cells (ADR-045); the tab strip's rules went with the strip (A5.5-23).
+   The shell's rules are in app.css and the cells'
    own chrome in notebook.css; this file is imported after the shell so a
    panel reads against it, which is the order the rules were written in. */
 
@@ -37,16 +37,6 @@
 .line-colours h3 {
   font-size: var(--font-ui-medium);
   margin: 0 0 var(--space-4-3);
-}
-
-.theme-switch h2 {
-  font-size: var(--font-ui-medium);
-  margin: var(--space-4-6) 0 var(--space-2-2);
-}
-
-.theme-switch h2:focus-visible {
-  outline: var(--focus-ring-width) solid var(--focus);
-  outline-offset: var(--focus-ring-offset);
 }
 
 .line-order h3 {
@@ -456,58 +446,9 @@ th .sort:focus-visible {
   }
 }
 
-/* The project panel's tab strip (A5-01, DESIGN.md 8.2): text tabs on the
-   panel's ground over a rule, the chosen one in --text with an --accent
-   underline, the rest in --text-muted, each at least a control high. */
-.tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2-2);
-  margin: var(--space-4-6) 0 var(--space-4-4);
-  border-bottom: var(--border-width) solid var(--border);
-}
-
-.tab {
-  min-height: var(--control-height-large);
-  margin: 0 0 calc(-1 * var(--border-width));
-  padding: 0 var(--space-4-3);
-  border: 0;
-  border-bottom: var(--focus-ring-width) solid transparent;
-  border-radius: var(--radius) var(--radius) 0 0;
-  background: transparent;
-  color: var(--text-muted);
-  font: inherit;
-  font-size: var(--font-ui);
-  cursor: pointer;
-}
-
-.tab:hover {
-  background: var(--surface-hover);
-}
-
-.tab[aria-selected='true'] {
-  color: var(--text);
-  font-weight: var(--weight-strong);
-  border-bottom-color: var(--accent);
-}
-
-.tab-panel:focus-visible {
-  outline: var(--focus-ring-width) solid var(--focus);
-  outline-offset: var(--focus-ring-offset);
-}
-
-/* The export tab (A5-01): the choices as panel rows, one column, the two
-   groups of switches as fieldsets whose legend reads as a field's label. */
-.export-tab h2 {
-  font-size: var(--font-ui-medium);
-  margin: 0 0 var(--space-2-2);
-}
-
-.export-tab h2:focus-visible {
-  outline: var(--focus-ring-width) solid var(--focus);
-  outline-offset: var(--focus-ring-offset);
-}
-
+/* The export, cell 06 (A5-01, A5.5-19): the choices as panel rows, one
+   column, the two groups of switches as fieldsets whose legend reads as a
+   field's label. */
 .export-choices {
   margin: 0 0 var(--space-4-4);
 }

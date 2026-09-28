@@ -3,7 +3,7 @@
 // says so (A5-04). The project is the committed BART fixture - the feed and
 // a stored layout - with a page the real engine draws from that layout; the
 // app, against the real engine at the pin and the vendored ffmpeg, exports
-// its draft `instagram-reel-gif` through the Export tab twice.
+// its draft `instagram-reel-gif` through cell 06, Export, twice.
 //
 // The verdict is the capture's. The app keeps each export's captured frames
 // (LEGIBLE_KEEP_FRAMES, which this test sets and a packaged app ignores), and

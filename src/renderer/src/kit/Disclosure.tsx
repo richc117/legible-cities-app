@@ -4,9 +4,11 @@ import { useId, type JSX, type ReactNode } from 'react'
 // names, on the WAI-ARIA disclosure pattern (docs/DESIGN.md 8.2, "The
 // cell").
 //
-// Not FigUI3's, for the reason `kit/Tabs.tsx` already records: the kit's
-// composite controls watch their children with a mutation observer and add
-// elements of their own among them, and React owns those children.
+// Not FigUI3's: the kit's composite controls watch their children with a
+// mutation observer and add elements of their own among them, and React
+// owns those children, so the two fight over the same nodes. The tab strip
+// (A5-01, deleted in A5.5-23) was built on its own buttons for the same
+// reason.
 //
 // And not `<details>`/`<summary>`, which is the other obvious answer. The
 // cell's heading row carries three things beside the toggle's name - the
@@ -24,8 +26,7 @@ import { useId, type JSX, type ReactNode } from 'react'
 //
 // The disclosed part is always in the document. A collapsed cell keeps its
 // controls mounted, hidden, because a half-typed value and a running
-// Cancel both live inside one and unmounting loses them silently; that is
-// the same rule `kit/Tabs.tsx`'s `TabPanel` already follows.
+// Cancel both live inside one and unmounting loses them silently.
 
 export interface DisclosureProps {
   /** What the button says: the row's own contents, not a string. */

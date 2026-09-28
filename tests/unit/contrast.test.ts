@@ -110,11 +110,11 @@ const PAIRS: [string, string, number][] = [
   // --surface-raised, all above, and the running station's ring is --accent
   // at 3.0 as a mark rather than text. A state drawn in any other colour, or
   // on any other ground, adds its pair here.
-  // The tab strip (A5-01): a tab not chosen, under the pointer, and the
-  // chosen tab's underline there too. On the panel's own ground the tabs
-  // and the export tab's switches use pairs already above: --text and
-  // --text-muted for a tab, --accent for the underline and a checkbox,
-  // --text-faint for a switch an export holds.
+  // Text and a mark under the pointer. Added for the tab strip (A5-01),
+  // which the notebook replaced (A5.5-23). The first pair still has users -
+  // a rail step's number under the pointer (A5.5-21) and a Library row's.
+  // The second has none today and is kept as a guard: an --accent mark on
+  // a hovered row is the next thing anyone would draw there.
   ['--text-muted', '--surface-hover', 4.5],
   ['--accent', '--surface-hover', 3.0],
   // The accessibility pass (A6-07). A primary button's text on its fill:
