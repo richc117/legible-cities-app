@@ -35,7 +35,8 @@ sentence, a way to cancel, and when it fails the engine's hint in full with
 the engine's detail behind a disclosure and a way to copy its log.
 
 The runs themselves do not move and do not change behaviour. The project
-screen, the Export tab and the add-feed dialog still show their own run
+screen, the Export tab and the add-feed dialog (the New project sheet
+since A5.6-05) still show their own run
 where they show it today. The inspector is a second view of the same
 runs, not a second place they live.
 

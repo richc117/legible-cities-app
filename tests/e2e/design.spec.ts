@@ -115,7 +115,7 @@ test('follows the platform theme and measures as the design document says', asyn
   })
 })
 
-test('the create dialog is the kit at the document density, keyboard first', async () => {
+test('the New project sheet is the kit at the document density, keyboard first', async () => {
   await withApp(async (page) => {
     await page.getByRole('button', { name: 'New project' }).click()
     const dialog = page.getByRole('dialog')

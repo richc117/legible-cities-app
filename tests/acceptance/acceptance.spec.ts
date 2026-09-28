@@ -1097,7 +1097,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
 
       await row.getByRole('button', { name: `Start a project on ${name}` }).click()
       const create = window.getByRole('dialog', { name: 'New project' })
-      await log.soft('the create dialog opens on the added feed', async () => {
+      await log.soft('the New project sheet opens on the added feed', async () => {
         // The dialog chooses its feed in an effect after it opens, which a
         // slow machine may not have run by the first look: poll, as a person
         // would read it once the dialog has settled.

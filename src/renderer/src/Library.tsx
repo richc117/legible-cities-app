@@ -37,8 +37,8 @@ async function listProjects(): Promise<ProjectSummary[]> {
   }
 }
 
-// The feeds the engine lists; none when it cannot be asked, and the create
-// dialog falls back to a typed key. Null when it was asked and the read
+// The feeds the engine lists; none when it cannot be asked, and the New
+// project sheet falls back to a typed key. Null when it was asked and the read
 // failed: that says nothing about which feeds there are, so the list keeps
 // what it last showed rather than empty itself (issue 107). Nothing polls:
 // the list is read when the Library opens and after an add or a remove.
@@ -103,14 +103,8 @@ export type FeedsRead = 'unread' | 'listed' | 'failed'
 // The front door (A5.6-01, ADR-045). The screen answers the question a
 // person arrives with. With no projects it is the sample cities, under one
 // sentence saying what the app is; with projects it is the projects list,
-// with the samples still below it. The feeds a person added stay in a
-// region of their own after both until A5.6-06 gives them their place.
-//
-// This is the frame, not the contents: the regions are what later issues
-// fill - the sample cards (A5.6-02), opening one (A5.6-03), the projects
-// list's rows (A5.6-04), the source menu (A5.6-05). Until they land each
-// region holds what the Library already showed, so nothing a person could
-// do here before is lost on the way.
+// with the samples still below it. The feeds a person added are a region
+// of their own after both (A5.6-06).
 
 /** What the sheet is given while it is shut; one object, so its effect does not see a new start on every render. */
 const NO_START: SheetStart = { source: 'feed' }

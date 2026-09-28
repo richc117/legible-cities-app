@@ -32,8 +32,8 @@ what.
   app starts.
 - **Preload** (`src/preload/`): a `contextBridge` exposing `window.api` and
   nothing else. `contextIsolation` on, `nodeIntegration` off, `sandbox` on.
-- **Renderer** (`src/renderer/`): React. It draws the Library, the create
-  dialog, and a project view with rename, delete, the layout run's progress
+- **Renderer** (`src/renderer/`): React. It draws the Library (the front
+  door) and its New project sheet, and a project view with rename, delete, the layout run's progress
   line and the viewer's sandboxed frame; it knows projects by identifier
   and never sees a path. It never draws a map: the engine's animation page
   is the viewer (constitution, principle I).
@@ -311,8 +311,8 @@ becomes the engine's choice, and changing it is an explicit action
 (A3-04). The layout is the stored layout's id, produced by that same
 first layout: the engine's own, the hash of everything that went into the
 layout (ADR-033; a record from before carries the app's digest of the stage
-graphs, which the next run replaces). Until the engine's registry is
-reachable (A2-01), the feed key is typed into the create dialog and
+graphs, which the next run replaces). While the engine cannot list
+the feeds, the feed key is typed into the New project sheet (A5.6-05) and
 validated for form only.
 
 The Library has no record of its own: it is the set of readable records
@@ -852,9 +852,11 @@ The engine finishes the removal regardless, and the list reflects it once
 the engine answers: the read the app sends at the deadline waits behind
 the removal, and closing the confirmation reads the list once more.
 
-The create dialog offers the listed feeds as a native select, and falls
-back to a typed key when the engine cannot be asked, so a project can
-still be made without it.
+The New project sheet (A5.6-05), which replaced the create dialog and the
+add-a-feed dialog, offers the listed feeds as a native select - the sample
+cities and the feeds a person added, a group each - and falls back to a
+typed key when the engine cannot be asked, so a project can still be made
+without it.
 
 ## The Inspect view
 

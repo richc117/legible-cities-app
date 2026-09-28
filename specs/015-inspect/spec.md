@@ -1,5 +1,11 @@
 # Feature Specification: The Inspect view, and choosing mode and agency with the data in view
 
+> **Superseded in part by the New project sheet (A5.6-05).** FR-005's create
+> dialog is gone; the sheet seeds mode and agency from the registry entry
+> for a listed feed, as FR-005 says, but a feed added from a zip or an
+> address starts with every operator (`agency` null) until the Inspect view
+> chooses one.
+
 **Feature Branch**: `A2-02-inspect`
 
 **Created**: 2026-09-11

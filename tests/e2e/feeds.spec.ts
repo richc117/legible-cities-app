@@ -632,7 +632,7 @@ test('a removal the engine does not answer in time ends with a sentence, and the
   )
 })
 
-test('without an engine the create dialog takes a typed key, as before', async () => {
+test('without an engine the New project sheet takes a typed key, as before', async () => {
   const engineHome = home()
   const app = await electron.launch({
     args: ['.'],
