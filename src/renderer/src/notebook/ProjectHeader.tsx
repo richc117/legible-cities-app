@@ -2,8 +2,8 @@ import { useId, useRef, type JSX } from 'react'
 import { useFocusHandback } from '../focusHandback'
 import Icon from '../icons/Icon'
 import Button from '../kit/Button'
-import { EXPORT_NOTE, notebookSentence, runAllPlan, runAllRefusal } from '../runAll'
-import { runGraph } from '../runGraph'
+import { EXPORT_NOTE, notebookSentence, runAllOffered, runAllPlan } from '../runAll'
+import { cellOfRun, runGraph } from '../runGraph'
 import { useProject } from './context'
 
 // The project's own header, above the notebook (ADR-045, A5.5-22,
@@ -37,6 +37,7 @@ export default function ProjectHeader(): JSX.Element {
     runSnapshot,
     exportSnapshot,
     layingOut,
+    settling,
     exporting,
   } = useProject()
   const noteId = useId()
@@ -50,27 +51,43 @@ export default function ProjectHeader(): JSX.Element {
       ? null
       : runGraph({ record: project, run: runSnapshot, exportRun: exportSnapshot })
   const plan = project === null ? null : runAllPlan(project, runSnapshot)
-  const refusal =
-    project === null || plan === null
+  const offered =
+    project !== null &&
+    plan !== null &&
+    runAllOffered(plan, { readOnly: project.readOnly, running: layingOut, settling, exporting })
+
+  // The sentence is held, not recomputed, in two beats. While a finished
+  // run's record is read back it would be the record from before the run -
+  // "Nothing has been laid out yet." between "running" and the truth - and
+  // it is a live region, so that would be spoken. And while cell 05 redraws
+  // itself: a colour or an order is a cheap edit that is never stale
+  // (ADR-045), and a drag with pauses would otherwise have the header say
+  // "running" and "drawn" once per redraw, beside the cell's own words.
+  const held = useRef<string | null>(null)
+  const holding =
+    settling || (layingOut && cellOfRun(runSnapshot) === 'lines' && held.current !== null)
+  const sentence =
+    project === null || states === null
       ? null
-      : runAllRefusal(plan, { readOnly: project.readOnly, running: layingOut, exporting })
-  // Stop goes when the run ends, and Run all comes back - disabled, when
-  // the run left nothing to do, which Chromium will not let hold focus. The
-  // sentence saying why is where focus goes then: it is the answer to the
-  // question the disabled button raises.
+      : holding && held.current !== null
+        ? held.current
+        : notebookSentence(project, states)
+  if (!holding) held.current = sentence
+  // Stop goes when the run ends, and Run all comes back - disabled, while
+  // the record is read back or when the run left nothing to do, and
+  // Chromium will not let a disabled button hold focus. The notebook's
+  // sentence is where focus goes then: it says what the notebook now is.
   //
-  // Watched on the refusal as well as on the run's state, because the two
-  // move a beat apart: the run says it is done before the record it wrote
-  // has been read back, so Run all returns still enabled, takes the focus,
-  // and is disabled only when the record lands - with no change of state
-  // to hand focus on by then.
+  // Watched on whether Run all is offered as well as on the run's state,
+  // because the two move a beat apart: the run says it is done before the
+  // record it wrote has been read back.
   useFocusHandback(
     region,
-    () => (layingOut ? stopRef.current : refusal === null ? runAllRef.current : stateRef.current),
-    `${runSnapshot.state}/${refusal === null}`,
+    () => (layingOut ? stopRef.current : offered ? runAllRef.current : stateRef.current),
+    `${runSnapshot.state}/${offered}`,
   )
   const runAll = (): void => {
-    if (project === null || plan === null || refusal !== null) return
+    if (project === null || plan === null || !offered) return
     if (plan.kind === 'layout') run.start(project, engine)
     else if (plan.kind === 'rebuild') run.rebuild(project, engine, plan.date)
   }
@@ -95,32 +112,37 @@ export default function ProjectHeader(): JSX.Element {
           </li>
         </ol>
       </nav>
-      {project !== null && states !== null && !project.readOnly && (
-        <div className="project-run focus-region" ref={region}>
-          <p className="project-run-state" role="status" tabIndex={-1} ref={stateRef}>
-            {notebookSentence(project, states)}
-          </p>
-          <div className="toolbar">
-            {layingOut ? (
-              <Button ref={stopRef} onClick={() => run.cancel()}>
-                <Icon name="close" />
-                Stop
-              </Button>
-            ) : (
-              <Button
-                ref={runAllRef}
-                variant="primary"
-                disabled={refusal !== null}
-                aria-describedby={noteId}
-                onClick={runAll}
-              >
-                <Icon name="map" />
-                Run all
-              </Button>
-            )}
-            <p id={noteId} className="project-run-note">
-              {EXPORT_NOTE}
+      {project !== null && sentence !== null && !project.readOnly && (
+        // The focus region wraps the row rather than sharing its element:
+        // `.focus-region` is `display: contents`, and on one element the
+        // row's flex would hold only by the order the stylesheets load in.
+        <div className="focus-region" ref={region}>
+          <div className="project-run">
+            <p className="project-run-state" role="status" tabIndex={-1} ref={stateRef}>
+              {sentence}
             </p>
+            <div className="toolbar">
+              {layingOut ? (
+                <Button ref={stopRef} onClick={() => run.cancel()}>
+                  <Icon name="close" />
+                  Stop
+                </Button>
+              ) : (
+                <Button
+                  ref={runAllRef}
+                  variant="primary"
+                  disabled={!offered}
+                  aria-describedby={noteId}
+                  onClick={runAll}
+                >
+                  <Icon name="map" />
+                  Run all
+                </Button>
+              )}
+              <p id={noteId} className="project-run-note">
+                {EXPORT_NOTE}
+              </p>
+            </div>
           </div>
         </div>
       )}

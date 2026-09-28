@@ -64,15 +64,18 @@ export function runAllPlan(record: ProjectRecord, run: RunFacts | null): RunAllP
   return { kind: 'none' }
 }
 
-/** Why Run all is not offered, or null when it is. */
-export function runAllRefusal(
+/**
+ * Whether Run all can be pressed. Not while anything runs, nor while the
+ * record a finished run wrote is still being read back (`settling`), when
+ * the plan would be made from the record as it was before the run and a
+ * second press would start the same run again.
+ */
+export function runAllOffered(
   plan: RunAllPlan,
-  busy: { readOnly: boolean; running: boolean; exporting: boolean },
-): string | null {
-  if (busy.readOnly) return 'This project is read-only here.'
-  if (busy.running || busy.exporting) return 'Something is already running.'
-  if (plan.kind === 'none') return 'The map is drawn from everything above the export.'
-  return null
+  busy: { readOnly: boolean; running: boolean; settling: boolean; exporting: boolean },
+): boolean {
+  if (busy.readOnly || busy.running || busy.settling || busy.exporting) return false
+  return plan.kind !== 'none'
 }
 
 /** The sentence beside Run all, saying what it leaves out. */
@@ -85,7 +88,7 @@ export const EXPORT_NOTE = 'Run all stops at the map. It never exports.'
  * read out; the cells say the particulars.
  */
 export function notebookSentence(
-  record: Pick<ProjectRecord, 'layout'>,
+  record: Pick<ProjectRecord, 'layout' | 'drawn'>,
   states: Record<CellId, CellStatus>,
 ): string {
   // Written as the rail and the cell rows write it (`cellLabel` in
@@ -104,13 +107,14 @@ export function notebookSentence(
   if (failed.length > 0) return `${named(failed[0])} failed.`
   if (record.layout === null) return 'Nothing has been laid out yet.'
   const stale = inState('stale')
-  if (stale.length === 0) return 'The map is drawn from every cell.'
+  // A record from before `drawn` existed reads ready, which is "we cannot
+  // prove this map is current" and not a proof that it is (run-graph
+  // contract), so it is not told its map is drawn from every cell.
+  if (stale.length === 0)
+    return record.drawn === null ? 'Every cell is ready.' : 'The map is drawn from every cell.'
   if (stale.length === 1) return `${named(stale[0])} is not drawn yet.`
-  const first = CELL_LIST.findIndex((c) => c.id === stale[0])
-  const last = CELL_LIST.findIndex((c) => c.id === stale[stale.length - 1])
-  // Named as a range only when it is one; a cell in error between two stale
-  // ones would make "03 to 06" claim a cell it is not.
-  return last - first + 1 === stale.length
-    ? `${named(stale[0])} to ${named(stale[stale.length - 1])} are not drawn yet.`
-    : `${stale.length} cells are not drawn yet.`
+  // Always a range, down to 06: a source marks every cell below it, and
+  // the only cells that break the run are a running or a failed one, which
+  // this sentence has already named above.
+  return `${named(stale[0])} to ${named(stale[stale.length - 1])} are not drawn yet.`
 }

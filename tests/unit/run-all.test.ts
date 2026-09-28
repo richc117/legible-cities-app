@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   EXPORT_NOTE,
   notebookSentence,
+  runAllOffered,
   runAllPlan,
-  runAllRefusal,
 } from '../../src/renderer/src/runAll'
 import { runGraph, type RunFacts } from '../../src/renderer/src/runGraph'
 import { drawnFrom, type ProjectRecord } from '../../src/shared/project'
@@ -110,17 +110,23 @@ describe('what Run all starts', () => {
   })
 })
 
-describe('when Run all is not offered', () => {
-  const free = { readOnly: false, running: false, exporting: false }
+describe('when Run all is offered', () => {
+  const free = { readOnly: false, running: false, settling: false, exporting: false }
   it('is offered when there is something to run and nothing running', () => {
-    expect(runAllRefusal({ kind: 'layout' }, free)).toBeNull()
+    expect(runAllOffered({ kind: 'layout' }, free)).toBe(true)
+    expect(runAllOffered({ kind: 'rebuild', date: '2026-09-20' }, free)).toBe(true)
   })
 
-  it('says why not, in a sentence, for everything else', () => {
-    expect(runAllRefusal({ kind: 'none' }, free)).toMatch(/drawn from everything/)
-    expect(runAllRefusal({ kind: 'layout' }, { ...free, running: true })).toMatch(/running/)
-    expect(runAllRefusal({ kind: 'layout' }, { ...free, exporting: true })).toMatch(/running/)
-    expect(runAllRefusal({ kind: 'layout' }, { ...free, readOnly: true })).toMatch(/read-only/)
+  it('is not, when there is nothing to run or something in the way', () => {
+    expect(runAllOffered({ kind: 'none' }, free)).toBe(false)
+    for (const busy of ['running', 'exporting', 'readOnly'] as const)
+      expect(runAllOffered({ kind: 'layout' }, { ...free, [busy]: true })).toBe(false)
+  })
+
+  it("is not while a finished run's record is being read back", () => {
+    // The plan would be made from the record as it was before the run, and
+    // a second press would start the same run again.
+    expect(runAllOffered({ kind: 'layout' }, { ...free, settling: true })).toBe(false)
   })
 
   it('says beside the button that the export is not part of it', () => {
@@ -157,6 +163,11 @@ describe("the header's sentence", () => {
 
   it('names the failed cell', () => {
     expect(sentence(current, run('failed', { recoloured: true }))).toBe('05 Lines failed.')
+  })
+
+  it('does not claim a map it cannot prove is current', () => {
+    // A record from before `drawn`: ready, which is not the same as drawn.
+    expect(sentence(base)).toBe('Every cell is ready.')
   })
 
   it('names the cells not drawn yet as a range', () => {

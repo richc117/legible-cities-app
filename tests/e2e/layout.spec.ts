@@ -1584,12 +1584,16 @@ const header = (page: Page): Locator => page.locator('.project-run')
 const runAllButton = (page: Page): Locator => page.getByRole('button', { name: 'Run all' })
 
 test('Run all lays out a new project and draws its day, then says the map is current', async () => {
-  const engineHome = home({ map_draws: true, progress_delay_ms: 150 })
+  // Slow at `feeds.service`, so the running state is still there to be read.
+  const engineHome = home({ map_draws: true, progress_delay_ms: 10, service_delay_ms: 1500 })
   await withApp(engineHome, async (page) => {
     await openNewProject(page, 'Los Angeles')
     const said = header(page).getByRole('status')
     await expect(said).toHaveText('Nothing has been laid out yet.')
     await expect(header(page)).toContainText('Run all stops at the map. It never exports.')
+    await expect(runAllButton(page)).toHaveAccessibleDescription(
+      'Run all stops at the map. It never exports.',
+    )
 
     await runAllButton(page).focus()
     await page.keyboard.press('Enter')
@@ -1623,6 +1627,13 @@ test('Run all draws a chosen day from the stored layout, and lays nothing out', 
     await expect(runAllButton(page)).toBeEnabled()
     await runAllButton(page).click()
     await expect(said).toHaveText('The map is drawn from every cell.', { timeout: 30_000 })
+    // The rebuild it started is the job cell 03 would have started.
+    await page.getByRole('button', { name: /^Jobs, / }).click()
+    await expect(
+      page
+        .getByRole('complementary', { name: 'Inspector' })
+        .getByRole('listitem', { name: 'Los Angeles Rebuild for 2026-06-20' }),
+    ).toBeVisible()
     expect((readRecord(engineHome).drawn as { date: string }).date).toBe('2026-06-20')
     expect(received(engineHome, 'graph.build'), 'nothing was laid out').toHaveLength(1)
     expect(received(engineHome, 'map.build')).toHaveLength(2)
@@ -1667,6 +1678,10 @@ test('Stop cancels the stage in flight and runs nothing after it', async () => {
   })
 })
 
+// The second half is a guard rather than a proof: nothing in the header
+// scrolls, and the screen focuses its heading on opening, which scrolls to
+// the top. It is here so that whatever later keeps a project's scroll
+// position across a visit has to meet the issue's words on the way.
 test('the breadcrumb goes back to the Library, and a returning person starts at the top', async () => {
   const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
   await withApp(engineHome, async (page) => {
