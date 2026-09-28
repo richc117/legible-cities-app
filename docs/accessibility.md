@@ -663,8 +663,9 @@ a table).
   uses. Listen for a dialog "Remove `<feed>`?", its description, and focus
   on **Cancel**. Press **Remove**: while it runs, listen for the status
   "Removing `<feed>`… It cannot be stopped." and both buttons read as
-  dimmed or unavailable while they keep focus (D8); then the alert "One
-  project uses this feed; delete the project first." The busy window may
+  dimmed or unavailable while they keep focus (D8); then the alert "The
+  project “`<name>`” uses this feed; delete it first.", naming the project
+  (A5.6-06). The busy window may
   be too short to hear; write "busy state too quick to hear" in the cell
   beside the result rather than failing it.
 

@@ -1089,7 +1089,8 @@ test('a release, installed, through docs/acceptance.md', async () => {
       await log.soft('the Added row', async () => {
         expect(name).toBe('Caltrain')
         await expect(added.getByRole('listitem')).toHaveCount(1)
-        await expect(row).toContainText('downloaded')
+        await expect(row.getByText('downloaded', { exact: true })).toBeVisible()
+        await expect(row).not.toContainText('not downloaded')
         await expect(row.getByRole('button', { name: `Start a project on ${name}` })).toBeVisible()
         await expect(row.getByRole('button', { name: `Remove ${name}` })).toBeVisible()
       })
@@ -1124,7 +1125,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
       await confirm.getByRole('button', { name: 'Remove', exact: true }).click()
       await log.soft('the refusal', () =>
         expect(confirm.getByRole('alert')).toHaveText(
-          'One project uses this feed; delete the project first.',
+          'The project “Caltrain” uses this feed; delete it first.',
           { timeout: SHORT_MS },
         ),
       )

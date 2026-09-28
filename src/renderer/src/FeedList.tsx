@@ -3,8 +3,8 @@ import type { FeedRecord } from '../../shared/protocol'
 import Icon from './icons/Icon'
 import Button from './kit/Button'
 
-// The feeds a person added, on the front door (A5.6-01), in a region of
-// their own until A5.6-06 gives them their place; the presets are the
+// The feeds a person added, on the front door (A5.6-01, A5.6-06), in a
+// region of their own below the samples; the presets are the
 // sample cities, drawn as cards by `SampleCities.tsx` (A5.6-02). A row is
 // not a button here, since an added feed has two things a person does
 // with it; the row is named for a screen reader and its actions are text

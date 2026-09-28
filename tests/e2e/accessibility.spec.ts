@@ -140,7 +140,16 @@ test('the Library, its empty state and its three dialogs', async () => {
       ['Metro de Prueba', '#feeds-heading'],
       ['Tren Ligero', '#samples-heading'],
     ]) {
-      await pressWithKeyboard(page.getByRole('button', { name: `Remove ${name}` }))
+      // Focus is taken and held before Enter, rather than in one step: the
+      // list is read again after the previous removal, and on a slow runner
+      // focus could move between locator.press's focus and its key, so the
+      // key opened nothing (Linux CI, PR 242).
+      const remove = page.getByRole('button', { name: `Remove ${name}` })
+      await expect(async () => {
+        await remove.focus()
+        await expect(remove).toBeFocused({ timeout: 500 })
+      }).toPass({ timeout: 10_000 })
+      await page.keyboard.press('Enter')
       // The confirmation is one element for every feed: waited for open
       // before its button is pressed, and shut before the next row's, or a
       // slow runner presses into one still closing (Linux CI, PR 233).

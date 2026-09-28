@@ -441,6 +441,10 @@ body {
 
 .message {
   margin: 0;
+  /* A message can quote something a person typed, such as a project's name
+     in a refusal, 120 characters with no space in it; it wraps rather than
+     pushing a dialog wider than --dialog-width. */
+  overflow-wrap: anywhere;
   font-size: var(--font-ui-small);
   line-height: var(--line-ui-tight);
   color: var(--text-muted);

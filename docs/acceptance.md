@@ -239,7 +239,7 @@ the Caltrain row, and **Remove** in the confirmation.
   **Start a project** and **Remove**.
 - The confirmation is titled "Remove Caltrain?", with **Cancel** focused.
   Pressing **Remove** while the Caltrain project exists is refused in the
-  dialog: "One project uses this feed; delete the project first." Press
+  dialog: "The project “Caltrain” uses this feed; delete it first." Press
   **Cancel**; the row is still there.
 
 Result: ____

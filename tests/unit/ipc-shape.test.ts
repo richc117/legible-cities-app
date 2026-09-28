@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { badCall, redactShape, toShape } from '../../src/main/ipc-shape'
 import { EngineError, ERROR_CODES } from '../../src/shared/engine'
+import { inUseSentence } from '../../src/main/feeds-ipc'
 
 // The one door an error goes through on its way to the page (issue 207).
 // The engine at the pin names a failed download's whole URL in its error:
@@ -81,5 +82,17 @@ describe('an error on its way to the page', () => {
     toShape(error)
     expect(error.message).toContain(SECRET)
     expect(error.data?.hint).toContain(SECRET)
+  })
+})
+
+describe('a person’s own text in a refusal', () => {
+  it('comes through the page’s redaction whole, a project named like a path with a query included', () => {
+    // Review of A5.6-06: a name quoted with curly quotes read as a path
+    // whose query was the closing quote.
+    const sentence = inUseSentence(['24/7?'])
+    const answer = badCall(sentence)
+    const error = (answer as { error: ReturnType<typeof toShape> }).error
+    expect(error.data?.hint).toBe(sentence)
+    expect(error.message).toBe(sentence)
   })
 })

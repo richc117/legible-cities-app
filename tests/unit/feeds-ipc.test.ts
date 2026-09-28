@@ -11,6 +11,7 @@ import {
   FEEDS_REMOVE_DEADLINE_MS,
   registerFeedsHandlers,
   registryDeadline,
+  inUseSentence,
   registryGuard,
   type FeedsInUse,
 } from '../../src/main/feeds-ipc'
@@ -61,10 +62,15 @@ describe('feeds.pickZip', () => {
 })
 
 describe('the registry guard', () => {
+  // Each project as "name:feed", or a bare feed key for a project whose
+  // name the test does not care about.
   const inUse =
-    (feeds: string[]): FeedsInUse =>
+    (projects: string[]): FeedsInUse =>
     async () =>
-      feeds
+      projects.map((p, i) => {
+        const [name, feed] = p.includes(':') ? p.split(':') : [`Project ${i + 1}`, p]
+        return { feed, name }
+      })
   it('lets a public URL through and a path it handed out once, and refuses any other path', async () => {
     const picked = new PickedPaths()
     picked.remember('/chosen/feed.zip')
@@ -142,13 +148,16 @@ describe('the registry guard', () => {
     expect(isLocalHost('2001:4860:4860::8888')).toBe(false)
   })
 
-  it('refuses to remove a feed a project names, naming how many', async () => {
-    const guard = registryGuard(new PickedPaths(), inUse(['mine', 'mine', 'other']))
+  it('refuses to remove a feed a project names, naming the projects', async () => {
+    const guard = registryGuard(
+      new PickedPaths(),
+      inUse(['Los Angeles:mine', 'LA again:mine', 'Prueba:other']),
+    )
     expect(await guard('feeds.remove', { key: 'mine' })).toBe(
-      '2 projects use this feed; delete them first.',
+      'The projects “Los Angeles” and “LA again” use this feed; delete them first.',
     )
     expect(await guard('feeds.remove', { key: 'other' })).toBe(
-      'One project uses this feed; delete the project first.',
+      'The project “Prueba” uses this feed; delete it first.',
     )
     expect(await guard('feeds.remove', { key: 'unused' })).toBeNull()
     expect(await guard('feeds.remove', {})).toMatch(/needs a key/)
@@ -171,5 +180,17 @@ describe('registryDeadline (issue 107)', () => {
       expect(registryDeadline(method), method).toBeUndefined()
       expect(registryDeadline(method, 1_000), method).toBeUndefined()
     }
+  })
+})
+
+describe('the sentence that names the projects on a feed', () => {
+  it('names one, two or three, and past that two and a count', () => {
+    expect(inUseSentence(['A'])).toBe('The project “A” uses this feed; delete it first.')
+    expect(inUseSentence(['A', 'B', 'C'])).toBe(
+      'The projects “A”, “B” and “C” use this feed; delete them first.',
+    )
+    expect(inUseSentence(['A', 'B', 'C', 'D', 'E'])).toBe(
+      'The projects “A”, “B” and 3 others use this feed; delete them first.',
+    )
   })
 })

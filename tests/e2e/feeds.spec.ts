@@ -234,6 +234,8 @@ test('every preset is a card named by its facts, and nothing is fetched to draw 
     const cards = page.getByRole('list', { name: 'Presets' })
     await expect(cards.getByRole('listitem')).toHaveCount(2)
     await expect(cards.getByRole('button')).toHaveCount(2)
+    // A preset cannot be removed, and nothing on its card says it can (A5.6-06).
+    await expect(cards.getByRole('button', { name: /Remove/ })).toHaveCount(0)
     await expect(feedRow(page, 'LA Metro Rail').getByRole('button')).toHaveAccessibleName(
       'LA Metro Rail, Los Angeles · Metro Rail, keeps every mode, downloaded',
     )
@@ -278,7 +280,11 @@ test('adds a feed from a file, and it survives a relaunch', async () => {
     expect(await page.locator('body').innerText()).not.toContain(engineHome)
     const added = page.getByRole('list', { name: 'Added' })
     await expect(added.getByRole('listitem', { name: 'Metro de Prueba' })).toBeVisible()
-    await expect(feedRow(page, 'Metro de Prueba')).toContainText('downloaded')
+    // Exactly "downloaded": the words "not downloaded yet" contain it too.
+    await expect(
+      feedRow(page, 'Metro de Prueba').getByText('downloaded', { exact: true }),
+    ).toBeVisible()
+    await expect(feedRow(page, 'Metro de Prueba')).not.toContainText('not downloaded')
     // The record is the engine's, under its home.
     const records = JSON.parse(
       readFileSync(join(engineHome, 'data', 'feeds', 'user-feeds.json'), 'utf8'),
@@ -418,7 +424,10 @@ test('adds a feed from a URL with its download on the line, and a cancel keeps n
     await expect(dialog).toBeHidden()
     await expect(page.getByRole('button', { name: 'Open My transit' })).toBeVisible()
     await expect(feedRow(page, 'Remote Transit')).toBeVisible()
-    await expect(feedRow(page, 'Remote Transit')).toContainText('downloaded')
+    await expect(
+      feedRow(page, 'Remote Transit').getByText('downloaded', { exact: true }),
+    ).toBeVisible()
+    await expect(feedRow(page, 'Remote Transit')).not.toContainText('not downloaded')
     const records = JSON.parse(
       readFileSync(join(engineHome, 'data', 'feeds', 'user-feeds.json'), 'utf8'),
     ) as { url: string }[]
@@ -494,7 +503,7 @@ test('removes an added feed behind a confirmation, and refuses one a project use
     await expect(confirm.getByRole('button', { name: 'Cancel' })).toBeFocused()
     await confirm.getByRole('button', { name: 'Remove' }).click()
     await expect(confirm.getByRole('alert')).toHaveText(
-      'One project uses this feed; delete the project first.',
+      'The project “Prueba” uses this feed; delete it first.',
     )
     await confirm.getByRole('button', { name: 'Cancel' }).click()
     await expect(feedRow(page, 'Metro de Prueba')).toBeVisible()
