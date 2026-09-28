@@ -147,7 +147,8 @@ test('a hostile page in the viewer cannot reach the app', async () => {
     const tried = (await app.evaluate(async ({ BrowserWindow }) => {
       const win = BrowserWindow.getAllWindows()[0]
       const main = win.webContents.mainFrame
-      const frame = main.frames.find((f) => f !== main)
+      // The viewer's frame, never cell 01's stage view, which is `srcdoc`.
+      const frame = main.frames.find((f) => f !== main && f.url !== 'about:srcdoc')
       return frame ? ((await frame.executeJavaScript('window.__tried')) as unknown) : null
     })) as Record<string, string> | null
 

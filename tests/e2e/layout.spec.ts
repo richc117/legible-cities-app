@@ -1390,7 +1390,11 @@ async function seenByPage(app: ElectronApplication): Promise<[string, unknown][]
     const answer = (await app.evaluate(async ({ BrowserWindow }) => {
       const win = BrowserWindow.getAllWindows()[0]
       const main = win.webContents.mainFrame
-      const frame = main.frames.find((f) => f !== main)
+      // The viewer's frame, not merely the first child: once a layout has
+      // run, cell 01's stage view draws an iframe of its own from `srcdoc`,
+      // and which of the two comes first is a matter of timing - a read of
+      // the stage frame answered [] and failed this on Windows (PR 225).
+      const frame = main.frames.find((f) => f !== main && f.url !== 'about:srcdoc')
       return frame ? ((await frame.executeJavaScript('window.__seen || []')) as unknown) : []
     })) as [string, unknown][] | undefined
     return answer ?? []
