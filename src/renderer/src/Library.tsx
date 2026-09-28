@@ -356,9 +356,11 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
   // A sample city opens in one press (A5.6-03): the project is made from the
   // registry's entry - its name, its mode, its operator - and its notebook
   // opens at once with the layout starting, so a person presses a city and
-  // lands in a notebook that is already working. The download and the
-  // layout report in the notebook's own cells, and so does anything that
-  // fails. A second press while the first is being made is the same press.
+  // lands in a notebook that is already working. The layout reports in cell
+  // 02 and so does anything that fails; at engine v0.8.3 a preset's download
+  // happens inside that layout with no progress and no cancel of its own,
+  // which engine issue E36 asks for. A second press while the first is being
+  // made is the same press.
   const opening = useRef(false)
   const openSample = async (feed: FeedRecord): Promise<void> => {
     if (opening.current) return
@@ -373,12 +375,14 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
       })
       onOpen(record.id, true)
     } catch (error) {
-      // Nothing was made, so there is no notebook to say it in.
+      // Nothing was made, so there is no notebook to say it in. The guard
+      // comes down here only: on success the screen is replaced, and letting
+      // it down before that render would let a queued click make a second
+      // project and orphan the first.
+      opening.current = false
       setFeedNotice(
         `${feed.name} could not be opened: ${error instanceof Error ? error.message : String(error)}`,
       )
-    } finally {
-      opening.current = false
     }
   }
   const askToRemove = (feed: FeedRecord): void => {

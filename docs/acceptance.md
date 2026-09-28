@@ -166,7 +166,7 @@ Result: ____
 - Under **Sample cities**, a card for each of the engine's networks - 22 at
   the pinned engine - each with its city and network, what its mode keeps
   and "not downloaded yet";
-  pressing a card opens **New project** on it.
+  pressing a card opens that city's notebook, its layout already running.
 - In Settings, **Bundled tools** says "The bundled LOOM and ffmpeg ran.",
   with **LOOM tools** "ran (`<n>` ms)." and **ffmpeg and ffprobe**
   "ran (`<n>` ms)."

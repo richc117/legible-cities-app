@@ -202,6 +202,10 @@ export default function App(): JSX.Element {
             )
           ) : screen.screen === 'project' ? (
             <ProjectView
+              // Keyed by the project, so nothing a screen holds - the
+              // lay-out-on-arrival flag among it - can carry over should
+              // anything ever move straight from one project to another.
+              key={screen.id}
               id={screen.id}
               layOut={screen.layOut === true}
               onBack={(notice) => setScreen({ screen: 'library', notice: notice ?? null })}

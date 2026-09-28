@@ -1971,5 +1971,12 @@ test('cancelling a sample’s layout keeps the project and its feed, ready to la
     expect(readRecord(engineHome)).toMatchObject({ feed: 'la-metro-rail', layout: null })
     await expect(cell(page, 'process').getByRole('button', { name: 'Lay out' })).toBeVisible()
     expect(received(engineHome, 'map.build'), 'nothing was drawn').toHaveLength(0)
+    // Opened again the ordinary way, it starts nothing: laying out on
+    // arrival is the card's, once, and not a property of a project with no
+    // layout.
+    await page.getByRole('button', { name: 'Back to Library' }).click()
+    await openProject(page, 'LA Metro Rail')
+    await expect(cell(page, 'process').getByRole('button', { name: 'Lay out' })).toBeVisible()
+    expect(received(engineHome, 'graph.build'), 'no second layout').toHaveLength(1)
   })
 })

@@ -246,7 +246,8 @@ export function useProjectState(
   // A project just made from a sample city starts its layout as its screen
   // opens (A5.6-03), once, and only while there is nothing laid out and
   // nothing running: a person who presses a city lands in a notebook
-  // already at work, with the download and the stages in cells 01 and 02.
+  // already at work, its stages in cell 02. (At engine v0.8.3 the preset's
+  // download is inside that run, with no progress of its own; E36.)
   // It waits for an engine that is still starting, and gives up the moment
   // it has started or been made pointless - a read-only record, a layout
   // already there, a run already going.
