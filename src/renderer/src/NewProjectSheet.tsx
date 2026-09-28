@@ -126,7 +126,12 @@ export default function NewProjectSheet({
     startingFeed(feeds, start.source === 'feed' ? start.feed : undefined),
   )
   const [name, setName] = useState('')
-  const [edited, setEdited] = useState(false)
+  // Whether a person has typed a name, as a ref and not state: it is read
+  // inside the fills, which can run later than the render that scheduled
+  // them. As state, an effect scheduled before a keystroke read "not typed"
+  // after it, and put the feed's name over the name just typed - the
+  // end-to-end suite caught it as projects made under the wrong name.
+  const edited = useRef(false)
   const [url, setUrl] = useState('')
   const [file, setFile] = useState<PickedZip | null>(null)
   const [picking, setPicking] = useState(false)
@@ -162,6 +167,16 @@ export default function NewProjectSheet({
   // the return of focus to the opener; the open prop only drives it. The
   // safe action takes focus first: a sheet opened by accident is left with
   // one Enter, and nothing is added or created by a reflexive press.
+  //
+  // Two steps, so the sheet is never shown before its fields hold what it
+  // opens with. The first sets them and asks for the showing; the second,
+  // in the commit that carries those values, shows it - after the kit's
+  // text field has pushed its value into the page, which it does in an
+  // effect of its own, run before this component's. Shown in the same
+  // effect that set the name, the sheet was up a frame before the name
+  // was, and text typed at once landed beside the name that arrived after
+  // it ("LA Metro RailLos Angeles", which the end-to-end suite caught).
+  const [showing, setShowing] = useState(0)
   useEffect(() => {
     const dialog = dialogRef.current
     if (!dialog) return
@@ -171,7 +186,7 @@ export default function NewProjectSheet({
       setFeed(first)
       setName(start.source === 'feed' ? (nameOf(first) ?? '') : '')
       // Nothing of an earlier opening carries into this one.
-      setEdited(false)
+      edited.current = false
       setUrl('')
       setFile(null)
       setMessages({})
@@ -179,14 +194,21 @@ export default function NewProjectSheet({
       setBusy(false)
       setAttempt(0)
       if (run.snapshot.state !== 'running') run.reset()
-      dialog.showModal()
-      cancelRef.current?.focus()
+      setShowing((n) => n + 1)
     } else if (!open && dialog.open) {
       dialog.close()
     }
     // `feeds` is read at opening only; a list arriving later is the effect below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, start])
+  useEffect(() => {
+    const dialog = dialogRef.current
+    if (showing === 0 || !dialog || !open || dialog.open) return
+    dialog.showModal()
+    cancelRef.current?.focus()
+    // Only a new showing moves this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showing])
 
   // The list can arrive while the sheet is open (the engine became ready):
   // the typed key gives way to the select, and a key the list does not hold
@@ -202,7 +224,7 @@ export default function NewProjectSheet({
     if (!dialogRef.current?.open) return
     const next = startingFeed(feeds, listed ? feed : undefined)
     setFeed(next)
-    if (source === 'feed') setName((current) => filledName(current, edited, nameOf(next)))
+    if (source === 'feed') setName((current) => filledName(current, edited.current, nameOf(next)))
     // The list arriving is the change; the rest is read as it stands.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [feeds, listed])
@@ -257,7 +279,7 @@ export default function NewProjectSheet({
       // The file is spent by the add, as by a refusal.
       setFile(null)
       onAdded()
-      setName((current) => filledName(current, edited, feedAdded.name))
+      setName((current) => filledName(current, edited.current, feedAdded.name))
       nameRef.current?.focus()
     } else if (snapshot.state === 'failed' || snapshot.state === 'cancelled') {
       setFile(null)
@@ -277,7 +299,7 @@ export default function NewProjectSheet({
 
   const reset = (): void => {
     setName('')
-    setEdited(false)
+    edited.current = false
     setUrl('')
     setFile(null)
     setMessages({})
@@ -381,8 +403,8 @@ export default function NewProjectSheet({
   const pickSource = (next: Source): void => {
     setSource(next)
     changed()
-    if (next === 'feed' && !edited) setName(nameOf(feed) ?? '')
-    if (next !== 'feed' && !edited) setName('')
+    if (next === 'feed' && !edited.current) setName(nameOf(feed) ?? '')
+    if (next !== 'feed' && !edited.current) setName('')
   }
 
   const field = (id: Field): string => `${ids}-${id}`
@@ -454,7 +476,7 @@ export default function NewProjectSheet({
                   onChange={(key) => {
                     setFeed(key)
                     setMessages({})
-                    setName((current) => filledName(current, edited, nameOf(key)))
+                    setName((current) => filledName(current, edited.current, nameOf(key)))
                   }}
                   className="feed-select"
                 >
@@ -556,7 +578,7 @@ export default function NewProjectSheet({
             value={name}
             onChange={(value) => {
               setName(value)
-              setEdited(true)
+              edited.current = true
               setMessages({})
             }}
             disabled={adding}
