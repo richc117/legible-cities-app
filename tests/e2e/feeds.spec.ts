@@ -218,8 +218,18 @@ test('every preset is a card named by its facts, and nothing is fetched to draw 
     await expect(feedRow(page, 'Mexico City Metro').getByRole('button')).toHaveAccessibleName(
       /^Mexico City Metro, .*keeps subway, not downloaded yet$/,
     )
-    // Drawn from the list alone: no feed was inspected, downloaded or laid out.
-    const asked = readFileSync(join(engineHome, 'fake-engine.received'), 'utf8')
+    // Drawn from the list alone: no feed was inspected, downloaded or laid
+    // out. Read after the screen has been left and opened again, so its
+    // second feeds.list has been answered: anything the first opening set
+    // off after its cards were drawn has had its turn by then.
+    const received = (): string => readFileSync(join(engineHome, 'fake-engine.received'), 'utf8')
+    const lists = (): number => received().split('"feeds.list"').length - 1
+    const before = lists()
+    await page.getByRole('button', { name: 'Settings' }).click()
+    await page.getByRole('button', { name: 'Back to Library' }).click()
+    await expect(cards.getByRole('button')).toHaveCount(2)
+    await expect.poll(lists).toBeGreaterThan(before)
+    const asked = received()
     for (const method of ['feeds.inspect', 'feeds.add', 'graph.build', 'map.build'])
       expect(asked, method).not.toContain(`"${method}"`)
   })
