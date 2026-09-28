@@ -287,6 +287,33 @@ export function validateName(name: string): string | null {
   return null
 }
 
+/**
+ * A name no listed project has, for a project the app names itself - a
+ * sample city pressed, or the new project sheet's filled-in name: the name
+ * as it is when it is free, else the name followed by " 2", " 3" and on,
+ * the first free (the macOS Finder's form, which keeps the first one bare).
+ * Compared without regard to case or surrounding space, as a person reads
+ * two names. A name a person types is never passed through this: two
+ * projects may share a name when someone chooses so.
+ *
+ * Why it matters beyond the list: an export goes to a folder named after
+ * the project, so two projects of one name write into one folder, and the
+ * front door would draw two rows with the same accessible name.
+ *
+ * The number is kept whole at the length limit: the name is shortened
+ * instead, so "… 2" never becomes a name the store refuses.
+ */
+export function uniqueName(base: string, taken: readonly string[]): string {
+  const name = base.trim()
+  const used = new Set(taken.map((t) => t.trim().toLocaleLowerCase()))
+  if (!used.has(name.toLocaleLowerCase())) return name
+  for (let n = 2; ; n += 1) {
+    const suffix = ` ${n}`
+    const candidate = name.slice(0, NAME_MAX - suffix.length).trimEnd() + suffix
+    if (!used.has(candidate.toLocaleLowerCase())) return candidate
+  }
+}
+
 export function validateFeedKey(feed: string): string | null {
   if (!FEED_PATTERN.test(feed)) {
     return 'feed key must be lowercase letters, digits and hyphens'

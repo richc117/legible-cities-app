@@ -24,6 +24,7 @@ import {
   type ProjectRecord,
   AGENCY_MAX,
   MODE_PATTERN,
+  uniqueName,
 } from '../../src/shared/project'
 
 const WINDOW = {
@@ -526,5 +527,35 @@ describe('summarise', () => {
       readOnly: true,
     })
     expect(summarise(full, false).readOnly).toBe(false)
+  })
+})
+
+describe('a name the app chooses for a project', () => {
+  it('is the name itself while no project has it', () => {
+    expect(uniqueName('LA Metro Rail', [])).toBe('LA Metro Rail')
+    expect(uniqueName('LA Metro Rail', ['BART'])).toBe('LA Metro Rail')
+  })
+
+  it('counts from 2, the first one staying bare', () => {
+    expect(uniqueName('LA Metro Rail', ['LA Metro Rail'])).toBe('LA Metro Rail 2')
+    expect(uniqueName('LA Metro Rail', ['LA Metro Rail', 'LA Metro Rail 2'])).toBe(
+      'LA Metro Rail 3',
+    )
+  })
+
+  it('takes the first number free, not one past the highest', () => {
+    expect(uniqueName('BART', ['BART', 'BART 3'])).toBe('BART 2')
+  })
+
+  it('reads names as a person does: without case or surrounding space', () => {
+    expect(uniqueName('LA Metro Rail', [' la metro rail '])).toBe('LA Metro Rail 2')
+  })
+
+  it('shortens the name rather than the number at the length limit', () => {
+    const long = 'x'.repeat(120)
+    const named = uniqueName(long, [long])
+    expect(named.endsWith(' 2')).toBe(true)
+    expect(named.length).toBe(120)
+    expect(validateName(named)).toBeNull()
   })
 })
