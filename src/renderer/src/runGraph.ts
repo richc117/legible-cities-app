@@ -91,8 +91,18 @@ export type RunFacts = Pick<
 /** What the derivation reads of an export. */
 export type ExportFacts = Pick<ExportSnapshot, 'state'>
 
+/**
+ * The record's fields the derivation reads, and nothing else - so the
+ * front door's list, which holds a summary rather than a record, derives a
+ * project's progress with this same function (A5.6-04).
+ */
+export type GraphRecord = Pick<
+  ProjectRecord,
+  'built' | 'mode' | 'agency' | 'drawn' | 'layout' | 'made' | 'date'
+>
+
 export interface RunGraphInput {
-  record: ProjectRecord
+  record: GraphRecord
   /** The project's one layout run, whatever kind it last was; null before one exists. */
   run: RunFacts | null
   /** The project's one export; null before one exists. */
@@ -145,7 +155,7 @@ const at = (cell: CellId): number => CELLS.indexOf(cell)
  * against `built`, which is what the engine made the stored layout with and
  * has been on the record since A2-02.
  */
-export function stalenessOf(record: ProjectRecord, run: RunFacts | null): StaleSource[] {
+export function stalenessOf(record: GraphRecord, run: RunFacts | null): StaleSource[] {
   const sources: StaleSource[] = []
   const { built, drawn } = record
   // Cell 01 holds the mode and the operator, and a change to either is the

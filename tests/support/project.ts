@@ -166,3 +166,16 @@ export async function laidOutProject(page: Page, feed: string, name: string): Pr
   await openProject(page, name)
   await layOut(page)
 }
+
+/**
+ * A record as the tests that compare one before and after an action read
+ * it: without `opened`, which the project screen writes a moment after it
+ * opens (A5.6-04). Those tests are about what an edit, a run or a refusal
+ * wrote; the opening is not theirs, and a "before" read in that moment
+ * would otherwise race it.
+ */
+export function withoutOpened(record: Record<string, unknown>): Record<string, unknown> {
+  const rest = { ...record }
+  delete rest.opened
+  return rest
+}

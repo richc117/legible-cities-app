@@ -37,7 +37,11 @@ Rules:
 ## ProjectSummary (what the Library lists)
 
 `{ id, name, feed, date, modified, readOnly }` — derived from the record;
-sorted by `modified`, newest first.
+sorted by `modified`, newest first. Since A5.6-04 it also carries the
+fields the notebook's run graph reads and `opened` and `created`, and is
+sorted by when a project was last opened (`opened`, or `created` for one
+never opened since that was kept), newest first
+(`specs/003-project/contracts/record.md`).
 
 ## The Library
 

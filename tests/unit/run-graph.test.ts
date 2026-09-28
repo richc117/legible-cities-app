@@ -42,6 +42,7 @@ const rc4: ProjectRecord = {
   theme: 'warm-dark',
   export: { preset: 'instagram-reel', options: {} },
   destination: null,
+  opened: null,
   layout: LAYOUT,
   made: MADE,
   drawn: null,

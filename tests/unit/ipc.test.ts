@@ -78,6 +78,8 @@ describe('registerProjectHandlers', () => {
       [CHANNELS.projectsSetDate, 'aaaaaaaaaaaa', '2026-09-15'],
       [CHANNELS.projectsSetTheme, 'aaaaaaaaaaaa', 'sepia'],
       [CHANNELS.projectsSetExport, 'aaaaaaaaaaaa', { preset: 'instagram-reel', options: {} }],
+      // Opening a project writes too (A5.6-04), so a reset holds it as well.
+      [CHANNELS.projectsMarkOpened, 'aaaaaaaaaaaa'],
     ] as const
     for (const [channel, ...args] of writes) {
       await expect(h.call(channel, ...args), channel).rejects.toThrow(why)

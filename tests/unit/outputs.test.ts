@@ -37,6 +37,7 @@ const PROJECT = {
   id: 'kq7x2mzp4dna',
   name: 'Los Angeles',
   destination: null,
+  opened: null,
   readOnly: false,
 } as unknown as ProjectRecord & { readOnly: boolean }
 

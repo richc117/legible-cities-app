@@ -269,6 +269,7 @@ export function registerProjectHandlers(
   )
   handle(CHANNELS.projectsSetDate, (id, date) => store.setDate(readId(id), readServiceDay(date)))
   handle(CHANNELS.projectsSetTheme, (id, theme) => store.setTheme(readId(id), readTheme(theme)))
+  handle(CHANNELS.projectsMarkOpened, (id) => store.markOpened(readId(id)))
   handle(CHANNELS.projectsSetExport, (id, choice) =>
     store.setExport(readId(id), readExportChoice(choice)),
   )

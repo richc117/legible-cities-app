@@ -21,6 +21,7 @@ import {
   openCell,
   openProject,
   panel,
+  withoutOpened,
 } from '../support/project'
 import { withWhatTheScreenSaid } from '../support/store-lines'
 
@@ -75,7 +76,9 @@ async function openProjectOn(page: Page, feedName: string, name: string): Promis
 
 const readRecord = (engineHome: string): Record<string, unknown> => {
   const [id] = readdirSync(join(engineHome, 'projects'))
-  return JSON.parse(readFileSync(join(engineHome, 'projects', id, 'project.json'), 'utf8'))
+  return withoutOpened(
+    JSON.parse(readFileSync(join(engineHome, 'projects', id, 'project.json'), 'utf8')),
+  )
 }
 
 test('shows what is in the feed, sorts the routes, and marks what the mode keeps', async () => {

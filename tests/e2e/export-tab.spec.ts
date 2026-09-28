@@ -31,7 +31,7 @@ import {
   type Page,
 } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
-import { cell, cellHeading, closeCell, openCell } from '../support/project'
+import { cell, cellHeading, closeCell, openCell, withoutOpened } from '../support/project'
 import { withWhatTheScreenSaid } from '../support/store-lines'
 
 const repoRoot = resolve(__dirname, '../..')
@@ -99,7 +99,9 @@ async function withApp(
 const projectId = (h: Home): string => readdirSync(join(h.engineHome, 'projects'))[0]
 
 const readRecord = (h: Home): Record<string, unknown> =>
-  JSON.parse(readFileSync(join(h.engineHome, 'projects', projectId(h), 'project.json'), 'utf8'))
+  withoutOpened(
+    JSON.parse(readFileSync(join(h.engineHome, 'projects', projectId(h), 'project.json'), 'utf8')),
+  )
 
 /** Every request of one method the stand-in received, as the lines it logged. */
 const received = (h: Home, method: string): string[] =>

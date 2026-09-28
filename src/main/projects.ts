@@ -16,6 +16,7 @@ import {
   DEFAULT_STYLE,
   DEFAULT_THEME,
   drawnFrom,
+  openedOrder,
   ID_PATTERN,
   RECORD_VERSION,
   parseRecord,
@@ -260,7 +261,10 @@ export class ProjectStore {
     throw new Error('not found')
   }
 
-  private async writeAtomic(id: string, record: ProjectRecord): Promise<void> {
+  private async writeAtomic(
+    id: string,
+    record: ProjectRecord | Record<string, unknown>,
+  ): Promise<void> {
     const text = JSON.stringify(record, null, 2) + '\n'
     const temp = join(this.dir(id), tempFile())
     await this.#track(async () => {
@@ -332,10 +336,12 @@ export class ProjectStore {
         this.log(`projects/${entry.name}: ${'reason' in result ? result.reason : 'no record'}`)
       }
     }
-    // Timestamps share one format, so they order as strings; the id breaks
-    // a tie so the list is stable between two calls.
+    // Newest opened first (A5.6-04), a project never opened since that was
+    // kept by when it was made. Timestamps share one format, so they order
+    // as strings; the id breaks a tie so the list is stable between two
+    // calls.
     return summaries.sort(
-      (a, b) => b.modified.localeCompare(a.modified) || a.id.localeCompare(b.id),
+      (a, b) => openedOrder(b).localeCompare(openedOrder(a)) || a.id.localeCompare(b.id),
     )
   }
 
@@ -387,6 +393,7 @@ export class ProjectStore {
       made: null,
       drawn: null,
       built: null,
+      opened: null,
       created: now,
       modified: now,
     }
@@ -615,6 +622,43 @@ export class ProjectStore {
     })
     await this.writeAtomic(id, updated)
     return updated
+  }
+
+  /**
+   * That the project's screen has just been opened (A5.6-04), so the front
+   * door can list projects newest opened first. It writes `opened` and
+   * nothing else: not `modified`, which says when a person last changed
+   * something, and not the version, since opening a project a newer build
+   * made must not rewrite it as this build's. A read-only project is left
+   * alone - this build may not write it at all - and lists by `created`.
+   */
+  async markOpened(id: string): Promise<ProjectRecord> {
+    return this.#track(() => this.#serial(id, () => this.#markOpenedTracked(id)))
+  }
+
+  async #markOpenedTracked(id: string): Promise<ProjectRecord> {
+    this.checkId(id)
+    // Read through the parser first: it proves the record is one this build
+    // reads, and answers read-only for one a newer build made.
+    const { record, readOnly } = await this.load(id)
+    if (readOnly) return record
+    const opened = new Date().toISOString()
+    // Then written onto the file as it stands, not onto what the parser made
+    // of it. Every other writer is an edit and writes the record whole, as
+    // this build understands it; an opening is not an edit, and writing the
+    // parsed record back would turn an export choice, a colour or a field
+    // this build does not know into its defaults just because a person
+    // looked at the project (review of A5.6-04). Placed before `created`,
+    // where the contract's order has it, when the record does not hold one.
+    const stored = JSON.parse(await readFile(this.file(id), 'utf8')) as Record<string, unknown>
+    const written: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(stored)) {
+      if (key === 'created' && !('opened' in stored)) written.opened = opened
+      written[key] = key === 'opened' ? opened : value
+    }
+    if (!('opened' in written)) written.opened = opened
+    await this.writeAtomic(id, written)
+    return { ...record, opened }
   }
 
   /**

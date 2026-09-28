@@ -72,6 +72,7 @@ function record(id: string, overrides: Partial<ProjectRecord> = {}): ProjectReco
     made: null,
     drawn: null,
     built: null,
+    opened: null,
     created: '2026-09-01T00:00:00.000Z',
     modified: '2026-09-01T00:00:00.000Z',
     ...overrides,
@@ -150,6 +151,7 @@ describe('create', () => {
       made: null,
       drawn: null,
       built: null,
+      opened: null,
       created: created.created,
       modified: created.modified,
     }
@@ -206,8 +208,9 @@ describe('list', () => {
     expect(lines).toEqual([])
   })
   it('returns summaries newest first and skips what is not a project, naming the folder', async () => {
-    await seed(A, record(A, { name: 'Older', modified: '2026-09-01T00:00:00.000Z' }))
-    await seed(B, record(B, { name: 'Newer', modified: '2026-09-02T00:00:00.000Z' }))
+    // Neither has been opened, so they order by when they were made (A5.6-04).
+    await seed(A, record(A, { name: 'Older', created: '2026-09-01T00:00:00.000Z' }))
+    await seed(B, record(B, { name: 'Newer', created: '2026-09-02T00:00:00.000Z' }))
     await mkdir(join(root, 'cccccccccccc')) // a folder with no record
     await seed('dddddddddddd', '{ "version": 1, ') // invalid JSON
     await seed('eeeeeeeeeeee', { version: 1, name: 'No id', feed: 'x' })
@@ -215,24 +218,16 @@ describe('list', () => {
     await writeFile(join(root, '.DS_Store'), '') // a stray file is not a folder
 
     const summaries = await store.list()
-    expect(summaries).toEqual([
-      {
-        id: B,
-        name: 'Newer',
-        feed: 'la-metro-rail',
-        date: null,
-        modified: '2026-09-02T00:00:00.000Z',
-        readOnly: false,
-      },
-      {
-        id: A,
-        name: 'Older',
-        feed: 'la-metro-rail',
-        date: null,
-        modified: '2026-09-01T00:00:00.000Z',
-        readOnly: false,
-      },
-    ])
+    expect(summaries.map((s) => s.id)).toEqual([B, A])
+    expect(summaries[0]).toMatchObject({
+      id: B,
+      name: 'Newer',
+      feed: 'la-metro-rail',
+      date: null,
+      opened: null,
+      created: '2026-09-02T00:00:00.000Z',
+      readOnly: false,
+    })
     expect(lines.sort()).toEqual([
       'projects/cccccccccccc: no record',
       'projects/dddddddddddd: invalid JSON',
@@ -243,6 +238,83 @@ describe('list', () => {
   it('marks a record from a later version read-only', async () => {
     await seed(A, record(A, { version: 2 }))
     expect((await store.list())[0]).toMatchObject({ id: A, readOnly: true })
+  })
+  it('orders by when a project was last opened, not when it was last changed', async () => {
+    await seed(A, record(A, { name: 'Edited', modified: '2026-09-20T00:00:00.000Z' }))
+    await seed(
+      B,
+      record(B, {
+        name: 'Opened',
+        modified: '2026-09-01T00:00:00.000Z',
+        opened: '2026-09-10T00:00:00.000Z',
+      }),
+    )
+    // A made after B was opened, and never opened, still comes after B:
+    // made on the 5th against opened on the 10th.
+    await seed(
+      'cccccccccccc',
+      record('cccccccccccc', { name: 'Made', created: '2026-09-05T00:00:00.000Z' }),
+    )
+    expect((await store.list()).map((s) => s.name)).toEqual(['Opened', 'Made', 'Edited'])
+  })
+})
+
+describe('markOpened', () => {
+  it('writes when the project was opened, and not that it was changed', async () => {
+    const before = record(A, { modified: '2026-09-01T00:00:00.000Z' })
+    await seed(A, before)
+    const after = await store.markOpened(A)
+    expect(after.opened).not.toBeNull()
+    expect(Number.isNaN(Date.parse(after.opened as string))).toBe(false)
+    const written = await readRecord(A)
+    expect(written.opened).toBe(after.opened)
+    expect(written.modified, 'an opening is not an edit').toBe('2026-09-01T00:00:00.000Z')
+    expect({ ...written, opened: null }).toEqual(before)
+  })
+
+  it('writes onto the record as stored, not as this build reads it', async () => {
+    // A field this build does not know, and an export choice it does not
+    // offer: an opening must leave both exactly as they were, where an edit
+    // would write its own reading of them (review of A5.6-04).
+    const stored = {
+      ...record(A),
+      export: { preset: 'a-preset-from-a-later-build', options: {} },
+      somethingNewer: { kept: true },
+    }
+    await seed(A, stored)
+    await store.markOpened(A)
+    const written = await readRecord(A)
+    expect(written.export).toEqual(stored.export)
+    expect(written.somethingNewer).toEqual({ kept: true })
+    expect(typeof written.opened).toBe('string')
+    const rest: Record<string, unknown> = { ...written }
+    delete rest.opened
+    const before: Record<string, unknown> = { ...stored }
+    delete before.opened
+    expect(rest, 'everything but the opening, as stored').toEqual(before)
+    // In the contract's place, before `created`, as a record written whole has it.
+    const keys = Object.keys(written)
+    expect(keys.indexOf('opened')).toBe(keys.indexOf('created') - 1)
+  })
+
+  it('leaves a project a newer build made exactly as it was', async () => {
+    await seed(A, record(A, { version: 2 }))
+    const before = await readFile(join(root, A, 'project.json'), 'utf8')
+    await store.markOpened(A)
+    expect(await readFile(join(root, A, 'project.json'), 'utf8')).toBe(before)
+  })
+
+  it('reads a record without the field, or with one that is not a moment, as never opened', async () => {
+    const older: Record<string, unknown> = { ...record(A) }
+    delete older.opened
+    await seed(A, older)
+    expect((await store.get(A)).opened).toBeNull()
+    await seed(B, { ...record(B), opened: 'last Tuesday' })
+    expect((await store.get(B)).opened).toBeNull()
+    // A date alone parses, but would sort among full moments as a string
+    // in the wrong place, so it is not one.
+    await seed(B, { ...record(B), opened: '2026-09-10' })
+    expect((await store.get(B)).opened).toBeNull()
   })
 })
 

@@ -210,7 +210,13 @@ export function useProjectState(id: string, onBack: (notice?: string) => void): 
     let cancelled = false
     window.api.projects.get(id).then(
       (project) => {
-        if (!cancelled) setState({ status: 'ready', project })
+        if (cancelled) return
+        setState({ status: 'ready', project })
+        // Opened, for the front door's order (A5.6-04). Nothing waits on it
+        // and nothing is said if it fails: an order one opening out of date
+        // is not a thing to put in front of a person who is working. A
+        // read-only project is not written at all.
+        if (!project.readOnly) void window.api.projects.markOpened(id).catch(() => undefined)
       },
       (error: unknown) => {
         if (cancelled) return

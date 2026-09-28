@@ -159,16 +159,45 @@ export interface ProjectRecord {
    * map is current - never that it is stale.
    */
   drawn: DrawnFrom | null
+  /**
+   * When the project's screen was last opened (A5.6-04), an ISO timestamp,
+   * written by `projects.markOpened` as the screen opens and by nothing
+   * else - an edit moves `modified`, never this. The front door lists
+   * projects newest opened first.
+   *
+   * Added at `RECORD_VERSION` 1 without moving it
+   * (specs/028-the-notebook/contracts/run-graph.md): null means "not
+   * opened since this was kept", which sorts by `created` instead, and an
+   * older build that drops it loses only an order the next opening puts
+   * back.
+   */
+  opened: string | null
   created: string
   modified: string
 }
 
-export interface ProjectSummary {
-  id: string
-  name: string
-  feed: string
-  date: string | null
-  modified: string
+/**
+ * What the front door lists for each project: the row's own words, and the
+ * record's fields the run graph reads to say how far the project has got
+ * (A5.6-04), so the renderer derives it with the notebook's own function
+ * rather than with a second rule in the main process.
+ */
+export interface ProjectSummary extends Pick<
+  ProjectRecord,
+  | 'id'
+  | 'name'
+  | 'feed'
+  | 'date'
+  | 'mode'
+  | 'agency'
+  | 'layout'
+  | 'made'
+  | 'built'
+  | 'drawn'
+  | 'opened'
+  | 'created'
+  | 'modified'
+> {
   readOnly: boolean
 }
 
@@ -393,6 +422,13 @@ export function validateServiceWindow(service: unknown): string | null {
   return null
 }
 
+/**
+ * The one shape `opened` is written in, `Date.prototype.toISOString`'s: the
+ * list orders by it as a string, which is right only while every value
+ * shares the format (A5.6-04).
+ */
+const OPENED_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
+
 const MADE_MAX = 64
 // ISO 8601 with a time and an offset, as the engine writes it beside a
 // stored layout (isoformat with seconds, in UTC). Compared as a string, so
@@ -553,6 +589,14 @@ export function parseRecord(json: unknown): Parsed {
     made: validateMade(json.made) === null ? (json.made as string) : null,
     drawn: readDrawn(json.drawn),
     built: readInputs(json.built),
+    // A moment the way every other one here is written, or null: an
+    // unreadable value is "not opened since this was kept" (A5.6-04).
+    opened:
+      isString(json.opened) &&
+      OPENED_PATTERN.test(json.opened) &&
+      !Number.isNaN(Date.parse(json.opened))
+        ? json.opened
+        : null,
     created: isString(json.created) ? json.created : epoch,
     modified: isString(json.modified) ? json.modified : epoch,
   }
@@ -629,7 +673,24 @@ export function summarise(record: ProjectRecord, readOnly: boolean): ProjectSumm
     name: record.name,
     feed: record.feed,
     date: record.date,
+    mode: record.mode,
+    agency: record.agency,
+    layout: record.layout,
+    made: record.made,
+    built: record.built,
+    drawn: record.drawn,
+    opened: record.opened,
+    created: record.created,
     modified: record.modified,
     readOnly,
   }
+}
+
+/**
+ * When a project was last opened, for ordering: its `opened`, or its
+ * `created` for one not opened since that was kept - so a project made a
+ * moment ago comes first rather than last.
+ */
+export function openedOrder(summary: Pick<ProjectSummary, 'opened' | 'created'>): string {
+  return summary.opened ?? summary.created
 }

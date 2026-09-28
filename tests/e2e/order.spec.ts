@@ -19,6 +19,7 @@ import {
   laidOutProject,
   openCell,
   panel,
+  withoutOpened,
 } from '../support/project'
 
 const repoRoot = resolve(__dirname, '../..')
@@ -56,7 +57,9 @@ async function withApp(engineHome: string, run: (page: Page) => Promise<void>): 
 
 const readRecord = (engineHome: string): Record<string, unknown> => {
   const [id] = readdirSync(join(engineHome, 'projects'))
-  return JSON.parse(readFileSync(join(engineHome, 'projects', id, 'project.json'), 'utf8'))
+  return withoutOpened(
+    JSON.parse(readFileSync(join(engineHome, 'projects', id, 'project.json'), 'utf8')),
+  )
 }
 
 /** Every message of one method the stand-in read, in order. */
