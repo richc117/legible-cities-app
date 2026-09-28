@@ -101,8 +101,8 @@ test('opens to an empty Library on the app://local origin, and quits', async () 
       await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.getTitle()),
     ).toBe('Legible Cities')
     await expect(window.getByRole('heading', { level: 1 })).toHaveText('Library')
-    await expect(window.getByRole('status').filter({ hasText: /projects/i })).toContainText(
-      /no projects/i,
+    await expect(window.locator('.empty').getByRole('status')).toContainText(
+      'Legible Cities draws a transit network',
     )
 
     // The origin, and the refusals, from inside the page (User Story 2).
@@ -176,8 +176,8 @@ test('creates, opens, renames and deletes a project, and serves its output', asy
   // Create one from the empty Library, and read the record it left on disk
   // (User Story 1).
   await withApp(home, async (window) => {
-    await expect(window.getByRole('status').filter({ hasText: /projects/i })).toContainText(
-      /no projects/i,
+    await expect(window.locator('.empty').getByRole('status')).toContainText(
+      'Legible Cities draws a transit network',
     )
     // Keyboard first (User Story 4): Enter opens the dialog from the button,
     // Escape closes it and returns focus to the button.
@@ -207,7 +207,8 @@ test('creates, opens, renames and deletes a project, and serves its output', asy
     await expect(entry).toContainText('la-metro-rail')
     await expect(entry).toContainText('not yet chosen')
     await expect(window.getByRole('list', { name: 'Projects' })).toBeVisible()
-    await expect(window.getByText(/no projects yet/i)).toHaveCount(0)
+    // The empty state went with the first project.
+    await expect(window.locator('.empty')).toHaveCount(0)
 
     // One folder, named by the identifier, holding a version-1 record with
     // nothing chosen or laid out yet.
@@ -288,8 +289,9 @@ test('creates, opens, renames and deletes a project, and serves its output', asy
     await expect(confirm).toBeVisible()
     await confirm.getByRole('button', { name: 'Delete', exact: true }).click()
     await expect(heading).toHaveText('Library')
-    await expect(window.getByRole('status').filter({ hasText: /projects/i })).toContainText(
-      /no projects yet/i,
+    // The empty state is back, with its one sentence (A5.6-01).
+    await expect(window.locator('.empty').getByRole('status')).toContainText(
+      'Legible Cities draws a transit network',
     )
 
     // On disk, the project folder and its output are gone; the origin no

@@ -270,7 +270,8 @@ was thrown to the top of the document with nothing said.
   opened the dialog goes with the empty state; focus lands on the new
   project's row (`Library.tsx`). Asserted in the sweep.
 - **D5. A removed feed.** Its row takes its Remove with it; focus goes to the
-  Feeds heading once the confirmation has closed and the list has been
+  "Your feeds" heading while an added feed is left, or "Sample cities" once
+  none is (A5.6-01), once the confirmation has closed and the list has been
   drawn, in either order, checked on every render and once more after the
   browser's next rendering update, since Chromium may move focus off the
   removed button only then (`Library.tsx`, `FeedList.tsx`). Asserted in the sweep.
@@ -609,22 +610,25 @@ a table).
 - **Empty state.** This part needs a Library with no projects, which the
   sitting only has on a new install or after **Reset engine data** at the
   end of Settings below: if you already have projects, skip it now and come
-  back to it after the reset. Listen for the status "No projects yet. Pick one of the feeds
-  below, or add your own, and make a project from it." and a **New project**
+  back to it after the reset. Listen for the status "Legible Cities draws a
+  transit network as a schematic map and plays a day of its service on it:
+  start from a sample city below, or add a feed of your own." and a **New project**
   button after it. Create a project from that button: when the dialog
   closes, listen for focus landing on the new project's row,
   "Open `<name>`" (D4), not on nothing.
 - **Project rows.** In the list "Projects", each row is a button
   "Open `<name>`", with its feed and service day read as its description
   ("Feed la-metro-rail, Service day `<day>`").
-- **Feed rows (Start a project, Remove).** Listen for the heading "Feeds",
-  the lists "Presets" and "Added", each row named for its feed, and the
+- **Feed rows (Start a project, Remove).** Listen for the headings "Sample cities"
+  and, once a feed has been added, "Your feeds", over the lists "Presets"
+  and "Added", each row named for its feed, and the
   buttons "Start a project on `<feed>`" and, on an added feed,
   "Remove `<feed>`". Then, after the add-feed progress line below has
   added a second Caltrain, remove the one no project uses (the two rows
   have the same name; if the removal is refused, it was the other): when the
   confirmation closes, listen for "Caltrain was removed." and focus on the
-  "Feeds" heading (D5).
+  "Your feeds" heading while an added feed is left, or "Sample cities" once
+  none is (D5).
 - **Create-project dialog.** Press **New project**. Listen for a dialog
   "New project" with its description "A project draws one feed. Add a feed
   to the Library to see it here.", and focus in the text field "Name",

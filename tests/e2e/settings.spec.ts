@@ -301,8 +301,8 @@ test('resets the engine data behind a confirmation, and leaves the Library empty
     expect(readdirSync(userData)).toContain('settings.json')
 
     await page.getByRole('button', { name: 'Back to Library' }).click()
-    await expect(page.getByRole('status').filter({ hasText: /projects/i })).toContainText(
-      /no projects/i,
+    await expect(page.locator('.empty').getByRole('status')).toContainText(
+      'Legible Cities draws a transit network',
     )
   })
 })
