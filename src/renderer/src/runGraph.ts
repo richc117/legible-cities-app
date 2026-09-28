@@ -136,7 +136,8 @@ const at = (cell: CellId): number => CELLS.indexOf(cell)
  * The cheap edits are deliberately absent: the colours, the order and the
  * theme redraw themselves as A4-01, A4-02 and A4-03 built them, so their
  * cell reads `running` while they do and never `stale` (ADR-045). Their
- * values are still kept in `drawn`, because Revert reads them (A5.5-12).
+ * values are still kept in `drawn`, which is what any draw copies whole;
+ * Revert reads only its day (A5.5-12, contracts/run-graph.md).
  *
  * A record with no `drawn` raises nothing but the inputs: a project from
  * before the field existed cannot be proved current, and an old project's
@@ -250,7 +251,10 @@ function nearestAbove(sources: readonly StaleSource[], cell: CellId): StaleSourc
 /**
  * Whether the record's colours and order are the ones the map on screen
  * carries. Not a staleness source - the cheap edits redraw themselves - but
- * Revert and a cell's summary both need the answer (A5.5-12, A5.5-18).
+ * a cell's summary may want the answer (A5.5-18). Revert does not: the
+ * store writes the colours and the order together with `drawn`, so for a
+ * record this build wrote the answer is always yes, and a no means the
+ * file was changed by something else.
  *
  * The theme is deliberately not in it, although `drawn` carries one. A
  * theme reaches the page on its address and the page restyles itself within
@@ -259,9 +263,9 @@ function nearestAbove(sources: readonly StaleSource[], cell: CellId): StaleSourc
  * Asking this function about the theme would answer "the map does not show
  * it" about the one field of which that is never true.
  *
- * `drawn.theme` is kept for Revert, which puts a cell back to the state the
- * map on screen agrees with: for cell 04 that is a matter of the record,
- * not of the pixels.
+ * `drawn.theme` is kept because every draw copies the record whole, and
+ * for nothing else: there is no Revert for cell 04, because the map already
+ * shows the record's theme (A5.5-12).
  *
  * The order is compared as a value. An empty order and one naming every
  * line in the engine's own alphabetical order draw the same map, and this

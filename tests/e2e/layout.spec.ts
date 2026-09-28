@@ -684,6 +684,58 @@ test('a chosen day is written at once, starts nothing, and takes the cells below
   })
 })
 
+// Revert (A5.5-12): back to the day the map shows. A choice like any
+// other, so one write and nothing drawn, and the gap closes because the two
+// days agree again. The pressed button goes with its press, so focus is
+// handed to the control now holding the day.
+test('Revert puts the day back to the one the map shows, and runs nothing', async () => {
+  const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    const section = await openCell(page, 'frame')
+    const revert = section.getByRole('button', { name: /^Revert/ })
+    await expect(revert, 'nothing to go back to while the day is drawn').toHaveCount(0)
+
+    const control = section.getByLabel('Draw for another day')
+    await control.fill('2026-06-20')
+    await expect
+      .poll(() => readRecord(engineHome).date, { message: 'the choice reaches the record' })
+      .toBe('2026-06-20')
+    await expect(revert).toHaveAccessibleName('Revert to 2026-06-16')
+    const modified = readRecord(engineHome).modified
+
+    // A later day typed and not yet written - the debounce is still
+    // waiting - is one the press goes back from, so it must never land.
+    await control.fill('2026-06-21')
+    await revert.focus()
+    await page.keyboard.press('Enter')
+    await expect
+      .poll(() => readRecord(engineHome).date, { message: 'the day goes back' })
+      .toBe('2026-06-16')
+    expect(readRecord(engineHome).modified, 'written').not.toBe(modified)
+    // Longer than the choice's debounce: the typed day was dropped, not
+    // merely overtaken.
+    await page.waitForTimeout(600)
+    expect(readRecord(engineHome).date, 'the waiting day never lands').toBe('2026-06-16')
+    expect((readRecord(engineHome).drawn as { date: string }).date).toBe('2026-06-16')
+    await expect(page.getByRole('button', { name: /^Jobs, / })).toHaveAccessibleName(
+      'Jobs, none running',
+    )
+    await expect(section).toContainText('Drawn for 2026-06-16.')
+    for (const id of ['style', 'lines', 'export'] as const)
+      await expect(cellHeading(page, id)).toHaveAccessibleName(/ ready/)
+    await expect(revert, 'and the gap it closed takes it away').toHaveCount(0)
+    await expect(control).toHaveValue('2026-06-16')
+    await expect(control, 'focus is in the control holding the day').toBeFocused()
+    // Counted last, after everything above has settled, so a request sent
+    // late by a stray rebuild would be here too.
+    expect(received(engineHome, 'map.build'), 'nothing was drawn').toHaveLength(1)
+    expect(received(engineHome, 'graph.build'), 'nothing was laid out').toHaveLength(1)
+  })
+})
+
 // The frame's other settings are engine work and are not drawn at all, not
 // even disabled: a control with nowhere to send its value teaches a person
 // a lie (ADR-045). One sentence says what the cell will gain.

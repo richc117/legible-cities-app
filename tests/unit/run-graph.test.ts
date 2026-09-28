@@ -237,12 +237,12 @@ describe('the cheap edits ADR-045 exempts', () => {
     )
   })
 
-  it('are still visible to Revert through `drawn`', () => {
+  it('are still on the record through `drawn`', () => {
     expect(drawnMatchesEdits(current)).toBe(true)
     for (const record of [colours, defaults, order]) {
       expect(drawnMatchesEdits(record)).toBe(false)
     }
-    // A record from before `drawn` has nothing to put back, and says so
+    // A record from before `drawn` has nothing to compare, and says so
     // rather than claiming a difference it cannot see.
     expect(drawnMatchesEdits(rc4)).toBe(true)
   })
@@ -251,7 +251,7 @@ describe('the cheap edits ADR-045 exempts', () => {
     // A theme reaches the page on its address and the page restyles itself
     // within a frame of the press (A4-03), so the map on screen carries the
     // record's theme however long ago it was last drawn. `drawn.theme` is
-    // still kept, because Revert puts the record back and not the pixels.
+    // still kept, because a draw copies the record whole.
     expect(drawnMatchesEdits(theme)).toBe(true)
     expect(theme.drawn?.theme, 'and the last draw is still on the record').toBe('warm-dark')
   })

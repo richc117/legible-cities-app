@@ -175,19 +175,59 @@ ADR-045 says why: a control that disables itself under a person's hands
 takes the focus with it, and a refused change is a lost one. Stale is for
 the edits that cost a re-layout.
 
-Their values are still kept in `drawn`, because Revert reads them
-(A5.5-12). `drawnMatchesEdits` answers whether the record's colours and
-order are the ones the map carries, for a summary or a Revert, without
-being a state. Two things a caller has to know about that answer:
+Their values are still kept in `drawn`, because a draw copies the record
+whole; Revert reads only the day (A5.5-12, below). `drawnMatchesEdits`
+answers whether the record's colours and order are the ones the map
+carries, for a summary, without being a state. For a record this build
+wrote the answer is always yes - the store writes the two together with
+`drawn` - so a no means the file was changed by something else. Two things
+a caller has to know about that answer:
 
 - **The theme is not in it**, although `drawn` carries one. See below.
 - **The order is compared as a value.** An empty order and one naming every
   line in the engine's own alphabetical order draw the same map, and this
   says they differ, because the lines a layout carries are not in the
-  record and a pure module cannot tell. A5.5-18 and A5.5-12 have the line
-  list and can: `isAlphabetical` in `src/renderer/src/order.ts` is the same
-  question asked where the answer exists. Without it, cell 05 would offer a
-  Revert that changes nothing a person can see.
+  record and a pure module cannot tell. A5.5-18 has the line list and can:
+  `isAlphabetical` in `src/renderer/src/order.ts` is the same question
+  asked where the answer exists.
+
+## Revert
+
+A5.5-12 asked for a Revert on three cells - the day for 03, the theme for
+04, the colours and the order for 05 - each writing back what `drawn` holds.
+Only cell 03's exists, because only cell 03's has anything to go back to:
+
+- **Cell 03, the day.** `setDate` writes a chosen day at once and draws
+  nothing (A5.5-15), so `date` and `drawn.date` differ for as long as a
+  person leaves them apart. While they do, and `drawn.date` is a day the
+  stored window still covers, the service day's form offers "Revert to
+  `<drawn.date>`". The window matters because a later layout keeps the
+  day and replaces the window without comparing them, so a map can be
+  drawn for a day `setDate` would refuse; a Revert to it would fail on
+  every press, so none is offered. A refused Revert puts the control
+  back to the record's day. It is
+  `projects.setDate` with that day: one write, no engine request, no job,
+  and the cells below read `ready` again because the two days agree, not
+  because anything ran. Focus goes to the date control, which now holds
+  the day, before the write takes the button away.
+- **Cell 05, the colours and the order: none.** They are written by
+  `completeColors` and `completeOrder` only once the map carries them, and
+  `redrew` copies them into `drawn` in the same write, so a record this
+  build wrote never holds colours or an order the map does not. A redraw
+  that stops puts the panel's own swatches and rows back to the record's
+  already (A4-01, A4-02). A Revert here could only ever appear over a file
+  edited by hand.
+- **Cell 04, the theme: none.** The map always carries `record.theme`
+  (below); `drawn.theme` is the theme of the last draw, not of the screen.
+  Going back to it would be the theme switch's other button under a second
+  name, and would say the map had been showing something it had not.
+
+The issue said Revert "appears only on a stale cell". The cell holding a
+change is never the stale one - its source marks the cells below it - so
+Revert sits on the cell that holds the undrawn day, which reads `ready`
+with "not drawn yet" in its summary.
+
+A record with `drawn: null` offers no Revert, rather than one to nothing.
 
 ## Each cell's state
 
@@ -266,9 +306,8 @@ of the press (A4-03), with no draw at all, so the map on screen always
 carries `record.theme` while `drawn.theme` holds the theme of the last
 draw. It is exempt from staleness either way, and it is deliberately not in
 `drawnMatchesEdits`, which would otherwise answer "the map does not show
-it" about the one field of which that is never true. A5.5-12's Revert for
-cell 04 puts the record back, not the pixels, and its issue's phrase "what
-the map shows" should be read that way.
+it" about the one field of which that is never true. It is also why cell 04
+has no Revert (above).
 
 **Neither `made` nor `layout` has a live path to divergence yet, and
 `replaced` does not survive.** All three are worth stating together,
