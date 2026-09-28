@@ -692,7 +692,11 @@ The day is written to the record the moment it is chosen, through
 was made for. "Draw for this day" is the press that closes the gap: a
 rebuild, `map.build` from the stored layout's id, never `graph.build`, so
 the stations do not move, and `completeRebuild` writes the day again with
-`drawn` beside it. Both writers refuse the same days in the same sentences,
+`drawn` beside it. "Revert to `<day>`" is the other way to close it
+(A5.5-12): `setDate` with `drawn.date`, one write and nothing drawn, offered
+only while the gap is open and the record knows what the map was drawn for.
+It is the notebook's only Revert; the run-graph contract says why cells 04
+and 05 have none. Both writers refuse the same days in the same sentences,
 in the main process, a day outside the window included. A cancelled or
 failed rebuild keeps the chosen day and leaves the map where it was, so the
 cells below stay stale and the press is still offered. The app parses and

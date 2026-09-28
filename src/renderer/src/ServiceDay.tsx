@@ -43,6 +43,21 @@ import { useSnapshot } from './useSnapshot'
 // choice, `project.drawn.date` is the map. A cancelled or failed rebuild no
 // longer puts the choice back, because the choice was never the rebuild's
 // to undo.
+//
+// Revert (A5.5-12) is the other way to close it: back to the day the map
+// already shows. It is a choice like any other - `onDate` with
+// `drawn.date` - so it writes the record once and draws nothing, and the
+// gap closes because the two days agree again, not because anything ran.
+// It is offered only while the gap is open and the map has a day to go
+// back to; a record from before `drawn` existed cannot say what the map was
+// drawn for, and gets no Revert rather than one to nothing.
+//
+// It is the notebook's only Revert. The issue named cells 04 and 05 as
+// well, and neither can use one: the colours and the order are written
+// together with `drawn` only once the map carries them, so the two never
+// differ, and the map always shows the record's theme, so going back to
+// `drawn.theme` would be the theme switch's other button under another
+// name (specs/028-the-notebook/contracts/run-graph.md, "Revert").
 
 /** The sentence a day outside the window gets, on the form and from the store alike. */
 export function outsideWindow(start: string, end: string): string {
@@ -74,6 +89,16 @@ const CHOICE_DELAY = 250
  */
 export function dayUndrawn(record: Pick<ProjectRecord, 'date' | 'drawn'>): boolean {
   return record.drawn !== null && record.drawn.date !== record.date
+}
+
+/**
+ * The day Revert goes back to (A5.5-12): the one the map shows, while the
+ * record holds another. Null when there is no Revert to offer - the day is
+ * drawn, or the record cannot say what the map was drawn for, which is
+ * never a reason to revert to nothing.
+ */
+export function revertDay(record: Pick<ProjectRecord, 'date' | 'drawn'>): string | null {
+  return dayUndrawn(record) ? (record.drawn?.date ?? null) : null
 }
 
 export default function ServiceDay({
@@ -234,6 +259,19 @@ export default function ServiceDay({
   writeRef.current = (date: string): void => {
     void choose(date)
   }
+  const shown = revertDay(project)
+  const revert = (day: string): void => {
+    setValue(day)
+    setMessage(null)
+    // The press takes this button away once the write lands, and Chromium
+    // would put focus on the body; the control now holding the day is
+    // where it belongs, as for "Use the busiest weekday", and it takes it
+    // before the write that redraws this form.
+    input.current?.focus()
+    // A day waiting to be written is one the person is going back from.
+    schedule.cancel()
+    void choose(day)
+  }
   const covers =
     service.start === service.end
       ? `The feed covers one day, ${service.start}`
@@ -288,6 +326,11 @@ export default function ServiceDay({
           </p>
         </div>
         <div className="actions">
+          {shown !== null && (
+            <Button disabled={disabled || running} onClick={() => revert(shown)}>
+              Revert to {shown}
+            </Button>
+          )}
           <Button
             disabled={disabled || running || value === service.busiest}
             onClick={() => {

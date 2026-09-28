@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest'
 import { START_OPEN } from '../../src/renderer/src/notebook/Notebook'
 import { toggleExportCell } from '../../src/renderer/src/notebook/cells/ExportCell'
 import { frameSummary } from '../../src/renderer/src/notebook/cells/FrameCell'
+import { revertDay } from '../../src/renderer/src/ServiceDay'
 import { CELLS } from '../../src/renderer/src/runGraph'
 import {
   DEFAULT_COLOR,
@@ -163,5 +164,26 @@ describe("cell 03's summary", () => {
     expect(said, 'and the engine is credited with nothing either').not.toMatch(
       /the engine’s (own )?(day|choice)/,
     )
+  })
+
+  // Revert (A5.5-12), the notebook's only one: back to the day the map
+  // shows, offered exactly while the record holds another.
+  describe('Revert', () => {
+    it('goes back to the day the map was drawn for, while another is chosen', () => {
+      expect(revertDay(project({ date: '2026-09-12' }))).toBe('2026-09-15')
+    })
+
+    it('is not offered once the day is drawn', () => {
+      expect(revertDay(project())).toBeNull()
+    })
+
+    it('is not offered over a record that cannot say what the map shows', () => {
+      // From before `drawn` existed: unknown is not a day to go back to.
+      expect(revertDay(project({ date: '2026-09-12', drawn: null }))).toBeNull()
+    })
+
+    it('never offers to go back to no day at all', () => {
+      expect(revertDay(project({ date: '2026-09-12', drawn: drawn(null) }))).toBeNull()
+    })
   })
 })
