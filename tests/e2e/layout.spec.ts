@@ -1391,6 +1391,20 @@ async function seenByPage(app: ElectronApplication): Promise<[string, unknown][]
 }
 
 /**
+ * What the page recorded, from a read that answered: a read can meet its
+ * deadline and say nothing (issue 232), and a check made on one single
+ * read would take that silence for an empty record. Asked again until one
+ * answers, for up to ten seconds.
+ */
+async function seenSettled(app: ElectronApplication): Promise<[string, unknown][]> {
+  const until = Date.now() + 10_000
+  for (;;) {
+    const read = await readPage(app)
+    if (read.seen !== null || Date.now() > until) return read.seen ?? []
+  }
+}
+
+/**
  * What the viewer's frame holds, and why when it holds nothing (issue 232):
  * no frame, a read that threw, or a page that simply was not told. The
  * three used to be one empty list, so a CI failure said only that a call
@@ -1589,7 +1603,7 @@ test('cell 03 drives the page and changes nothing the project keeps', async () =
     await expect(playPause).toHaveAccessibleName('Pause')
     await playPause.click()
     await expect(playPause).toHaveAccessibleName('Play day')
-    expect(await seenByPage(app)).toContainEqual(['setPlaying', false])
+    expect(await seenSettled(app)).toContainEqual(['setPlaying', false])
 
     // The speed is the kit's select over the platform's own.
     await speed(page).selectOption('300')
@@ -1600,7 +1614,7 @@ test('cell 03 drives the page and changes nothing the project keeps', async () =
     // 02:00 of the next one.
     await scrub(page).press('End')
     await expect(scrub(page)).toHaveAttribute('aria-valuetext', '02:00 +1d', { timeout: 20_000 })
-    expect(await seenByPage(app)).toContainEqual(['seek', 93600])
+    expect(await seenSettled(app)).toContainEqual(['seek', 93600])
 
     // And none of it touched the project or the engine. `map.build` was
     // asked once, by the layout; no job ran; every cell is still ready; the
@@ -1647,15 +1661,27 @@ test('a theme change gives the map back the speed and the pause it had', async (
     // Issue 232: this wait fails on CI runners and never here. Said with
     // everything that tells its causes apart, so the next failure explains
     // itself rather than only timing out.
+    //
+    // What the poll read is kept and checked below, rather than read again:
+    // a second read can meet the one-second deadline and answer [], which
+    // failed this on Windows (PR 233) with the page already restored.
+    let asked: [string, unknown][] = []
     try {
-      await expect.poll(() => seenByPage(app), { timeout: 20_000 }).toContainEqual(['setSpeed', 30])
+      await expect
+        .poll(
+          async () => {
+            asked = await seenByPage(app)
+            return asked
+          },
+          { timeout: 20_000 },
+        )
+        .toContainEqual(['setSpeed', 30])
     } catch (error) {
       throw new Error(
         `the page that arrived was never given its speed back:\n${await pageDiagnosis(app, page)}`,
         { cause: error },
       )
     }
-    const asked = await seenByPage(app)
     expect(asked, 'and it was not left running').toContainEqual(['setPlaying', false])
     expect(
       asked.filter(([method]) => method === 'setPlaying').pop(),
@@ -1675,7 +1701,7 @@ test('a scrub while a run holds the page is refused with a sentence', async () =
   await withApp(engineHome, async (page, app) => {
     await projectWithASeam(page, engineHome)
     await expect(transport(page)).toBeVisible({ timeout: 20_000 })
-    const before = (await seenByPage(app)).length
+    const before = (await seenSettled(app)).length
 
     // A rebuild: the one press that draws the map again from the stored
     // layout, which rewrites the page this scrub would be scrubbing.
@@ -1688,7 +1714,7 @@ test('a scrub while a run holds the page is refused with a sentence', async () =
     await expect(transport(page).getByRole('alert')).toContainText('The map is being drawn')
     // Refused and not queued: the page was asked nothing, and the control
     // still says what the page is actually doing.
-    expect(await seenByPage(app), 'the page was not asked').toHaveLength(before)
+    expect(await seenSettled(app), 'the page was not asked').toHaveLength(before)
     await expect(transport(page).getByRole('button', { name: 'Pause' })).toBeVisible()
 
     // The sentence goes when the reason does, rather than sitting there
