@@ -8,7 +8,7 @@ import { engineClient, feedAdd } from './engine/runs'
 import AddFeedDialog from './AddFeedDialog'
 import ConfirmDialog from './ConfirmDialog'
 import CreateProjectDialog from './CreateProjectDialog'
-import FeedList, { FEEDS_HEADING_ID } from './FeedList'
+import FeedList, { FEEDS_HEADING_ID, SAMPLES_HEADING_ID } from './FeedList'
 import { afterRendering, focusLost } from './focusHandback'
 import Icon from './icons/Icon'
 import Button from './kit/Button'
@@ -60,6 +60,30 @@ export const UNANSWERED_REMOVAL =
 export function unanswered(error: unknown): boolean {
   return isEngineErrorShape(error) && error.code === ERROR_CODES.inactive
 }
+
+/**
+ * What a first start says about the app, in one sentence, above the sample
+ * cities (A5.6-01). A person who has made nothing yet arrives with one
+ * question - what is this - and the samples are the answer they can press.
+ */
+export const INTRODUCTION =
+  'Legible Cities draws a transit network as a schematic map and plays a day of its service on it: start from a sample city below, or add a feed of your own.'
+
+/** What the samples region says while the engine cannot list them. */
+export const SAMPLES_AWAY =
+  'The sample cities are listed once the engine is ready; the status line above says what it is doing.'
+
+// The front door (A5.6-01, ADR-045). The screen answers the question a
+// person arrives with. With no projects it is the sample cities, under one
+// sentence saying what the app is; with projects it is the projects list,
+// with the samples still below it. The feeds a person added stay in a
+// region of their own after both until A5.6-06 gives them their place.
+//
+// This is the frame, not the contents: the regions are what later issues
+// fill - the sample cards (A5.6-02), opening one (A5.6-03), the projects
+// list's rows (A5.6-04), the source menu (A5.6-05). Until they land each
+// region holds what the Library already showed, so nothing a person could
+// do here before is lost on the way.
 
 export default function Library({ notice, onOpen }: Props): JSX.Element {
   const [library, setLibrary] = useState<LibraryState>({ status: 'loading' })
@@ -172,7 +196,13 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
         if (focusTarget === null) return
       } else {
         if (removing !== null || feeds.some((feed) => feed.key === target.feed)) return
-        focusTarget = document.getElementById(FEEDS_HEADING_ID) ?? headingRef.current
+        // The added feeds' heading while any are left; once the last one
+        // has gone its region goes too, and the samples' heading is the
+        // nearest thing still there.
+        focusTarget =
+          document.getElementById(FEEDS_HEADING_ID) ??
+          document.getElementById(SAMPLES_HEADING_ID) ??
+          headingRef.current
       }
       if (focusLost(document.activeElement, document.body)) {
         handBack.current = null
@@ -241,6 +271,18 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
     afterRendering(() => settleRef.current())
   }
 
+  const presets = feeds.filter((feed) => feed.source === 'preset')
+  const addedFeeds = feeds.filter((feed) => feed.source === 'user')
+  const startFrom = (feed: FeedRecord): void => {
+    setFeedNotice(null)
+    setCreating({ feed: feed.key })
+  }
+  const askToRemove = (feed: FeedRecord): void => {
+    setFeedNotice(null)
+    handBack.current = null
+    setRemoving(feed)
+  }
+
   return (
     <main className="panel library" aria-labelledby="library-heading">
       <h1 id="library-heading" tabIndex={-1} ref={headingRef}>
@@ -275,8 +317,7 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
         <div className="empty">
           <Icon name="mark" size={24} />
           <p role="status" className="prose">
-            No projects yet. Pick one of the feeds below, or add your own, and make a project from
-            it.
+            {INTRODUCTION}
           </p>
           <Button variant="primary" onClick={() => setCreating({})}>
             <Icon name="add" />
@@ -285,48 +326,67 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
         </div>
       )}
       {library.status === 'ready' && library.projects.length > 0 && (
-        <ul className="entries" aria-label="Projects">
-          {library.projects.map((project) => (
-            <li key={project.id}>
-              <button
-                ref={(element) => {
-                  if (element === null) rows.current.delete(project.id)
-                  else rows.current.set(project.id, element)
-                }}
-                type="button"
-                className="entry"
-                aria-label={`Open ${project.name}`}
-                aria-describedby={`entry-${project.id}-meta`}
-                onClick={() => onOpen(project.id)}
-              >
-                <span className="entry-name">{project.name}</span>
-                <span className="entry-meta" id={`entry-${project.id}-meta`}>
-                  <span>Feed {project.feed}</span>
-                  <span>Service day {project.date ?? 'not yet chosen'}</span>
-                  {project.readOnly && <span>read-only</span>}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
+        <section className="front-door-region" aria-labelledby="projects-heading">
+          <h2 id="projects-heading">Your projects</h2>
+          <ul className="entries" aria-label="Projects">
+            {library.projects.map((project) => (
+              <li key={project.id}>
+                <button
+                  ref={(element) => {
+                    if (element === null) rows.current.delete(project.id)
+                    else rows.current.set(project.id, element)
+                  }}
+                  type="button"
+                  className="entry"
+                  aria-label={`Open ${project.name}`}
+                  aria-describedby={`entry-${project.id}-meta`}
+                  onClick={() => onOpen(project.id)}
+                >
+                  <span className="entry-name">{project.name}</span>
+                  <span className="entry-meta" id={`entry-${project.id}-meta`}>
+                    <span>Feed {project.feed}</span>
+                    <span>Service day {project.date ?? 'not yet chosen'}</span>
+                    {project.readOnly && <span>read-only</span>}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
       {feedNotice && (
         <p role="status" className="notice">
           {feedNotice}
         </p>
       )}
-      {feeds.length > 0 && (
+      {/* Drawn once the projects are read, so the regions do not trade
+          places under a person's eyes when a returning start finds some. */}
+      {library.status === 'ready' &&
+        (presets.length > 0 ? (
+          <FeedList
+            feeds={presets}
+            heading="Sample cities"
+            headingId={SAMPLES_HEADING_ID}
+            listName="Presets"
+            onNewProject={startFrom}
+            onRemove={askToRemove}
+          />
+        ) : (
+          <section className="front-door-region" aria-labelledby={SAMPLES_HEADING_ID}>
+            <h2 id={SAMPLES_HEADING_ID} tabIndex={-1}>
+              Sample cities
+            </h2>
+            <p className="prose">{SAMPLES_AWAY}</p>
+          </section>
+        ))}
+      {library.status === 'ready' && addedFeeds.length > 0 && (
         <FeedList
-          feeds={feeds}
-          onNewProject={(feed) => {
-            setFeedNotice(null)
-            setCreating({ feed: feed.key })
-          }}
-          onRemove={(feed) => {
-            setFeedNotice(null)
-            handBack.current = null
-            setRemoving(feed)
-          }}
+          feeds={addedFeeds}
+          heading="Your feeds"
+          headingId={FEEDS_HEADING_ID}
+          listName="Added"
+          onNewProject={startFrom}
+          onRemove={askToRemove}
         />
       )}
       <CreateProjectDialog

@@ -808,7 +808,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
       const empty = window.locator('.empty')
       await log.soft('the empty state', async () => {
         await expect(empty.getByRole('status')).toHaveText(
-          'No projects yet. Pick one of the feeds below, or add your own, and make a project from it.',
+          'Legible Cities draws a transit network as a schematic map and plays a day of its service on it: start from a sample city below, or add a feed of your own.',
         )
         await expect(empty.getByRole('button', { name: 'New project' })).toBeVisible()
       })
@@ -826,7 +826,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
       })
 
       await log.soft('the presets', async () => {
-        await expect(window.getByRole('heading', { name: 'Feeds' })).toBeVisible({
+        await expect(window.getByRole('heading', { name: 'Sample cities' })).toBeVisible({
           timeout: SHORT_MS,
         })
         const rows = window.getByRole('list', { name: 'Presets' }).getByRole('listitem')
@@ -2500,14 +2500,16 @@ test('a release, installed, through docs/acceptance.md', async () => {
       })
       await window.getByRole('button', { name: 'Back to Library' }).click()
       await log.soft('the empty state again', () =>
-        expect(window.locator('.empty').getByRole('status')).toContainText('No projects yet.'),
+        expect(window.locator('.empty').getByRole('status')).toContainText(
+          'Legible Cities draws a transit network',
+        ),
       )
 
       await quit()
       window = await launch()
       await engineReady(window)
       await log.soft('after a start: no Added list, presets not downloaded', async () => {
-        await expect(window.getByRole('heading', { name: 'Feeds' })).toBeVisible({
+        await expect(window.getByRole('heading', { name: 'Sample cities' })).toBeVisible({
           timeout: SHORT_MS,
         })
         await expect(window.getByRole('list', { name: 'Added' })).toHaveCount(0)

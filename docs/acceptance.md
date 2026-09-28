@@ -151,8 +151,10 @@ Result: ____
 
 **See.**
 - The Library opens with its heading, **Library**, and the empty state:
-  "No projects yet. Pick one of the feeds below, or add your own, and make
-  a project from it." with a **New project** button.
+  "Legible Cities draws a transit network as a schematic map and plays a
+  day of its service on it: start from a sample city below, or add a feed
+  of your own." with a **New project** button, and
+  below it the **Sample cities**.
 - The engine's status line starts at "Checking the engine…" or "Starting
   the engine." and becomes "Engine ready (`<engine version>`)." The version is the engine pin in
   `vendor/pins.json` at the release tag (0.8.3 when this was written).
@@ -161,7 +163,7 @@ Result: ____
   run" or "LOOM and ffmpeg will not run" is a failure of this step. Write
   down its sentences and press **Copy diagnostics** in it before you close
   it.
-- Under **Feeds**, a **Presets** list of the engine's networks, each row
+- Under **Sample cities**, a **Presets** list of the engine's networks, each row
   with its city and network and "not downloaded yet", and a
   **Start a project** button.
 - In Settings, **Bundled tools** says "The bundled LOOM and ffmpeg ran.",

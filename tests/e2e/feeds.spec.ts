@@ -131,7 +131,7 @@ async function chooserAnswers(app: ElectronApplication, path: string | null): Pr
 test('lists the presets and lets a project start from one, in two steps from empty', async () => {
   const engineHome = home()
   await withApp(engineHome, async (page) => {
-    await expect(page.getByRole('heading', { name: 'Feeds' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Sample cities' })).toBeVisible()
     const presets = page.getByRole('list', { name: 'Presets' })
     await expect(presets.getByRole('listitem')).toHaveCount(2)
     await expect(feedRow(page, 'LA Metro Rail')).toContainText('Los Angeles · Metro Rail')
@@ -143,7 +143,7 @@ test('lists the presets and lets a project start from one, in two steps from emp
 
     // Step one: the empty state's action. Step two: Create.
     const empty = page.locator('.empty')
-    await expect(empty.getByRole('status')).toContainText(/pick one of the feeds/i)
+    await expect(empty.getByRole('status')).toContainText(/start from a sample city below/i)
     await empty.getByRole('button', { name: 'New project' }).click()
     const dialog = page.getByRole('dialog', { name: 'New project' })
     await dialog.getByLabel('Name', { exact: true }).fill('Los Angeles')
@@ -167,6 +167,41 @@ test('lists the presets and lets a project start from one, in two steps from emp
         JSON.parse(readFileSync(join(engineHome, 'projects', id, 'project.json'), 'utf8')).feed,
     )
     expect(records.sort()).toEqual(['cdmx-metro', 'la-metro-rail'])
+  })
+})
+
+// The front door (A5.6-01): a first start is the sample cities under one
+// sentence saying what the app is; a start with a project is the projects
+// list, with the samples still below it. One first-level heading, and each
+// region named by its own.
+test('the front door shows the samples first, then the projects above them', async () => {
+  const engineHome = home()
+  await withApp(engineHome, async (page) => {
+    const projects = page.getByRole('region', { name: 'Your projects' })
+    const samples = page.getByRole('region', { name: 'Sample cities' })
+    await expect(samples.getByRole('list', { name: 'Presets' })).toBeVisible()
+    await expect(projects).toHaveCount(0)
+    await expect(page.locator('.empty').getByRole('status')).toContainText(
+      'Legible Cities draws a transit network as a schematic map',
+    )
+    await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1)
+
+    await page.locator('.empty').getByRole('button', { name: 'New project' }).click()
+    const dialog = page.getByRole('dialog', { name: 'New project' })
+    await dialog.getByLabel('Name', { exact: true }).fill('Los Angeles')
+    await dialog.getByRole('button', { name: 'Create', exact: true }).click()
+    await expect(projects.getByRole('button', { name: 'Open Los Angeles' })).toBeVisible()
+    await expect(samples).toBeVisible()
+    await expect(page.locator('.empty')).toHaveCount(0)
+    await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1)
+    // The projects first, in the document and so in reading order.
+    const projectsFirst = await page.evaluate(() => {
+      const [a, b] = ['projects-heading', 'samples-heading'].map((id) =>
+        document.getElementById(id),
+      )
+      return a !== null && b !== null && (a.compareDocumentPosition(b) & 4) !== 0
+    })
+    expect(projectsFirst, 'the projects come before the samples').toBe(true)
   })
 })
 
@@ -471,8 +506,9 @@ test('a removal the engine does not answer in time ends with a sentence, and the
       await expect(confirm).toBeHidden()
       await expect(feedRow(page, 'Metro de Prueba')).toHaveCount(0, { timeout: 10_000 })
       await expect(page.getByRole('list', { name: 'Added' })).toHaveCount(0)
-      // The row whose Remove opened the dialog went with the feed.
-      await expect(page.getByRole('heading', { name: 'Feeds' })).toBeFocused()
+      // The row whose Remove opened the dialog went with the feed, and the
+      // last added feed took its region with it: the samples' heading.
+      await expect(page.getByRole('heading', { name: 'Sample cities' })).toBeFocused()
       // The engine read the app's cancel only after the removal, and it
       // changed nothing; read on a poll, since a slow runner records late.
       await expect.poll(() => received(engineHome, '$/cancelRequest')).toBe(1)
@@ -501,7 +537,13 @@ test('without an engine the create dialog takes a typed key, as before', async (
       timeout: 20_000,
     })
     await expect(page.getByRole('button', { name: 'Add feed' })).toBeDisabled()
-    await expect(page.getByRole('heading', { name: 'Feeds' })).toHaveCount(0)
+    // The samples' region is there, and says why it lists nothing.
+    await expect(page.getByRole('region', { name: 'Sample cities' }).getByRole('list')).toHaveCount(
+      0,
+    )
+    await expect(page.getByRole('region', { name: 'Sample cities' })).toContainText(
+      'listed once the engine is ready',
+    )
     await page.locator('.empty').getByRole('button', { name: 'New project' }).click()
     const dialog = page.getByRole('dialog', { name: 'New project' })
     await expect(dialog.getByLabel('Feed key')).toHaveValue('la-metro-rail')

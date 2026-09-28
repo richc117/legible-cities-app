@@ -72,7 +72,9 @@ test('the Library, its empty state and its three dialogs', async () => {
   writeFileSync(zip, 'not read: the add is not submitted')
   await withApp(p, async (page, app) => {
     await expect(heading(page)).toHaveText('Library')
-    await expect(page.getByText('No projects yet.', { exact: false })).toBeVisible()
+    await expect(
+      page.getByText('Legible Cities draws a transit network', { exact: false }),
+    ).toBeVisible()
     await expect(page.getByRole('listitem', { name: 'Metro de Prueba' })).toBeVisible()
     await sweep(page, 'Library, empty')
 
@@ -116,7 +118,8 @@ test('the Library, its empty state and its three dialogs', async () => {
     await expect(page.getByRole('button', { name: 'Open Los Angeles' })).toBeFocused()
     await sweep(page, 'Library, with a project')
 
-    // A removed feed takes its row, and focus goes to the list's heading.
+    // A removed feed takes its row, and the last added feed its region, so
+    // focus goes to the samples' heading.
     await pressWithKeyboard(page.getByRole('button', { name: 'Remove Metro de Prueba' }))
     await pressWithKeyboard(
       page.getByRole('dialog', { name: 'Remove Metro de Prueba?' }).getByRole('button', {
@@ -134,7 +137,7 @@ test('the Library, its empty state and its three dialogs', async () => {
           return active.id !== '' ? `#${active.id}` : active.tagName.toLowerCase()
         }),
       )
-      .toBe('#feeds-heading')
+      .toBe('#samples-heading')
   })
 })
 
