@@ -103,8 +103,8 @@ export type FeedsRead = 'unread' | 'listed' | 'failed'
 // The front door (A5.6-01, ADR-045). The screen answers the question a
 // person arrives with. With no projects it is the sample cities, under one
 // sentence saying what the app is; with projects it is the projects list,
-// with the samples still below it. The feeds a person added stay in a
-// region of their own after both until A5.6-06 gives them their place.
+// with the samples still below it. The feeds a person added are a region
+// of their own after both (A5.6-06).
 
 /** What the sheet is given while it is shut; one object, so its effect does not see a new start on every render. */
 const NO_START: SheetStart = { source: 'feed' }
