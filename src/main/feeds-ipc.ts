@@ -22,7 +22,7 @@ export type FeedsInUse = () => Promise<{ feed: string; name: string }[]>
  * Why a feed may not be removed, naming the projects that draw it (A5.6-06)
  * so a person knows which to delete rather than having to go and look. Two
  * or three are all named; past that, two and a count, so the sentence stays
- * one line in the confirmation it is said in.
+ * short in the confirmation it is said in (which wraps a long name).
  */
 export function inUseSentence(names: readonly string[]): string {
   const quoted = names.map((name) => `“${name}”`)

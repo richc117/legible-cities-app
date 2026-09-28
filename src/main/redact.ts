@@ -72,7 +72,10 @@ function firstScheme(text: string): string | null {
 const MIGHT_HAVE_SECRET = /[?#@%]/
 
 /** What may close a sentence, a quotation or a bracket after an address, and is not part of it. */
-const TRAILING = new Set(["'", '"', ')', ']', '>', '}', '.', ','])
+// The curly quotes too: the app's own sentences quote with them, and a
+// project name such as "24/7?" quoted in a refusal reads as a path with a
+// query, whose "query" was the closing quote (review of A5.6-06).
+const TRAILING = new Set(["'", '"', '’', '”', ')', ']', '>', '}', '.', ','])
 
 /**
  * Every run of percent-escapes decoded where it decodes, escape by escape
