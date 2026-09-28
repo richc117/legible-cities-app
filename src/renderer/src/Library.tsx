@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type JSX } from 'react'
 import type { CreateProjectInput, ProjectSummary } from '../../shared/api'
 import { ERROR_CODES, isEngineErrorShape } from '../../shared/engine'
 import type { FeedRecord } from '../../shared/protocol'
+import { uniqueName } from '../../shared/project'
 import { sentenceFor } from './engine/feedAdd'
 import { forgetFeedList, forgetInspection } from './engine/inspections'
 import { engineClient, feedAdd, peekLayoutRun, subscribeToRuns } from './engine/runs'
@@ -362,13 +363,15 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
   // which engine issue E36 asks for. A second press while the first is being
   // made is the same press.
   const opening = useRef(false)
+  const projectNames = library.status === 'ready' ? library.projects.map((p) => p.name) : []
   const openSample = async (feed: FeedRecord): Promise<void> => {
     if (opening.current) return
     opening.current = true
     setFeedNotice(null)
     try {
       const record = await window.api.projects.create({
-        name: feed.name,
+        // "LA Metro Rail 2" when there is already an "LA Metro Rail".
+        name: uniqueName(feed.name, projectNames),
         feed: feed.key,
         mode: feed.mode,
         agency: feed.agency,
@@ -399,7 +402,10 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
       <div className="toolbar">
         {/* The empty state carries the primary action instead, so a first
             visit has one thing to press (DESIGN.md 8.2). */}
-        {!(library.status === 'ready' && library.projects.length === 0) && (
+        {/* Not while the projects are still being read: the sheet numbers
+            the name it fills against them ("LA Metro Rail 2"), as the
+            sample cards do, which wait for the same list. */}
+        {library.status === 'ready' && library.projects.length > 0 && (
           <Button variant="primary" onClick={() => setCreating({ source: 'feed' })}>
             <Icon name="add" />
             New project
@@ -495,6 +501,7 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
         pickZip={() => window.api.feeds.pickZip()}
         onCreate={create}
         onAdded={added}
+        taken={projectNames}
         onCancel={() => setCreating(null)}
       />
       <ConfirmDialog

@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type JSX } from 'react'
 import type { CreateProjectInput, PickedZip } from '../../shared/api'
 import type { EngineState } from '../../shared/engine'
-import { DEFAULT_FEED, validateFeedKey, validateName } from '../../shared/project'
+import { DEFAULT_FEED, uniqueName, validateFeedKey, validateName } from '../../shared/project'
 import type { FeedRecord } from '../../shared/protocol'
 import type { FeedAdd } from './engine/feedAdd'
 import { placeOf } from './FeedList'
@@ -100,6 +100,8 @@ interface Props {
   onCreate: (input: CreateProjectInput) => Promise<void>
   /** A feed was added: the front door reads the list again. */
   onAdded: () => void
+  /** The names of the projects listed, so a name the sheet fills is not one of them. */
+  taken: readonly string[]
   onCancel: () => void
 }
 
@@ -112,6 +114,7 @@ export default function NewProjectSheet({
   pickZip,
   onCreate,
   onAdded,
+  taken,
   onCancel,
 }: Props): JSX.Element {
   const dialogRef = useRef<HTMLDialogElement>(null)
@@ -161,7 +164,13 @@ export default function NewProjectSheet({
   const yours = feeds.filter((f) => f.source === 'user')
   const ready = engine?.state === 'ready'
 
-  const nameOf = (key: string): string | null => feeds.find((f) => f.key === key)?.name ?? null
+  // The name the sheet fills for a feed: its own, made unique among the
+  // projects listed ("LA Metro Rail 2"), since it is the app's choice and
+  // not a person's. A name typed is left exactly as typed.
+  const nameOf = (key: string): string | null => {
+    const own = feeds.find((f) => f.key === key)?.name
+    return own === undefined ? null : uniqueName(own, taken)
+  }
 
   // showModal() makes the browser own modality, the focus trap, Escape and
   // the return of focus to the opener; the open prop only drives it. The
@@ -279,7 +288,7 @@ export default function NewProjectSheet({
       // The file is spent by the add, as by a refusal.
       setFile(null)
       onAdded()
-      setName((current) => filledName(current, edited.current, feedAdded.name))
+      setName((current) => filledName(current, edited.current, uniqueName(feedAdded.name, taken)))
       nameRef.current?.focus()
     } else if (snapshot.state === 'failed' || snapshot.state === 'cancelled') {
       setFile(null)

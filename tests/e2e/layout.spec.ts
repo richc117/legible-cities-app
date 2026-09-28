@@ -1980,3 +1980,27 @@ test('cancelling a sample’s layout keeps the project and its feed, ready to la
     expect(received(engineHome, 'graph.build'), 'no second layout').toHaveLength(1)
   })
 })
+
+// A second project from the same city is named for it with a number, the
+// first staying bare ("LA Metro Rail 2"): an export goes to a folder named
+// after the project, and the front door names each row by it.
+test('a second project from one city is named "2", from its card and in the sheet', async () => {
+  const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
+  await withApp(engineHome, async (page) => {
+    await sampleCard(page, 'LA Metro Rail').click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    await page.getByRole('button', { name: 'Back to Library' }).click()
+    await sampleCard(page, 'LA Metro Rail').click()
+    await expect(page.getByRole('heading', { level: 1, name: 'LA Metro Rail 2' })).toBeVisible()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    await page.getByRole('button', { name: 'Back to Library' }).click()
+    await expect(
+      page.getByRole('button', { name: 'Open LA Metro Rail', exact: true }),
+    ).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Open LA Metro Rail 2' })).toBeVisible()
+    // The sheet fills the next free one; a name typed is left as typed.
+    await page.getByRole('button', { name: 'New project' }).click()
+    const dialog = page.getByRole('dialog', { name: 'New project' })
+    await expect(dialog.getByLabel('Name', { exact: true })).toHaveValue('LA Metro Rail 3')
+  })
+})
