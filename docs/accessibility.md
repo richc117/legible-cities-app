@@ -623,7 +623,9 @@ a table).
   headings "Sample cities" and, once a feed has been added, "Your feeds",
   over the lists "Presets" and "Added". Each sample is one button named by
   what its card shows, "`<name>`, `<city · network>`, keeps `<mode>`,
-  downloaded" or "not downloaded yet" (A5.6-02); an added feed's row is
+  downloaded" or "not downloaded yet" (A5.6-02); pressing one opens the
+  sample's notebook with its layout starting, and listen for the project's
+  heading read first and cell 02's progress line after it (A5.6-03); an added feed's row is
   named for its feed, with the buttons "Start a project on `<feed>`" and
   "Remove `<feed>`". Then, after the add-feed progress line below has
   added a second Caltrain, remove the one no project uses (the two rows
@@ -679,8 +681,8 @@ a table).
   **Use the feed's entry**; press it, and listen for focus landing on
   "Mode" with the entry's value (D7). The "Operator" pop-up button appears
   whenever the project has an agency, or its feed names more than one
-  operator: go back to the Library, press the "Mexico City Metro" card
-  under "Sample cities", name it `Mexico City`, open it, and listen for "Operator" with
+  operator: go back to the Library, press **New project**, choose
+  "Mexico City Metro" under "Feed", name it `Mexico City`, open it, and listen for "Operator" with
   "every operator" first among its options. Delete this project afterwards
   (it can be the throwaway project for **Delete confirmation** below).
 - **Inspect: the two tables.** With T (Narrator) or the rotor (VoiceOver),

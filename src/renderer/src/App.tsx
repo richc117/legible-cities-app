@@ -39,7 +39,9 @@ import { useEngineState } from './useEngineState'
 // is announced once, politely, whether it is open or not.
 type Screen =
   | { screen: 'library'; notice: string | null }
-  | { screen: 'project'; id: string }
+  // `layOut`: the project was just made from a sample city, and its screen
+  // starts the layout as it opens (A5.6-03).
+  | { screen: 'project'; id: string; layOut?: boolean }
   | { screen: 'settings' }
 
 export default function App(): JSX.Element {
@@ -201,12 +203,13 @@ export default function App(): JSX.Element {
           ) : screen.screen === 'project' ? (
             <ProjectView
               id={screen.id}
+              layOut={screen.layOut === true}
               onBack={(notice) => setScreen({ screen: 'library', notice: notice ?? null })}
             />
           ) : (
             <Library
               notice={screen.screen === 'library' ? screen.notice : null}
-              onOpen={(id) => setScreen({ screen: 'project', id })}
+              onOpen={(id, layOut) => setScreen({ screen: 'project', id, layOut })}
             />
           )}
         </div>

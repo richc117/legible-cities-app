@@ -249,8 +249,8 @@ Result: ____
 **Do.** Open **Los Angeles** and read **In the feed**. Press the **Label**,
 **Type** and **Trips** headers of the routes table. Open the **Mode**
 select and look at its options without changing it. Then, for the
-operator: go back to the Library, press the **Mexico City Metro** card
-under **Sample cities**, name it `Mexico City`, create and open it, and read
+operator: go back to the Library, press **New project**, choose
+**Mexico City Metro** under **Feed**, name it `Mexico City`, create and open it, and read
 **In the feed** again.
 
 **See.**

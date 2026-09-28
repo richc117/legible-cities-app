@@ -25,12 +25,14 @@ import { useProjectState } from './notebook/useProjectState'
 
 interface Props {
   id: string
+  /** Start the layout as the screen opens: a sample city just pressed (A5.6-03). */
+  layOut?: boolean
   /** Back to the Library, with an optional sentence for it to show. */
   onBack: (notice?: string) => void
 }
 
-export default function ProjectView({ id, onBack }: Props): JSX.Element {
-  const state = useProjectState(id, onBack)
+export default function ProjectView({ id, layOut = false, onBack }: Props): JSX.Element {
+  const state = useProjectState(id, onBack, layOut)
   return (
     <ProjectProvider value={state}>
       <main className="panel project" aria-labelledby="project-heading">

@@ -1915,3 +1915,61 @@ function readRecordNamed(engineHome: string, name: string): Record<string, unkno
   }
   throw new Error(`no project named ${name}`)
 }
+
+// Opening a sample (A5.6-03): one press on a city's card makes the project
+// from the registry's entry, opens its notebook at once, and starts the
+// layout, whose stages report in cell 02; whatever goes wrong is said in
+// the cell it happened in, never in a dialog over an empty screen.
+const sampleCard = (page: Page, name: string): Locator =>
+  page
+    .getByRole('list', { name: 'Presets' })
+    .getByRole('listitem', { name, exact: true })
+    .getByRole('button')
+
+test('a sample city opens in one press, its notebook already laying it out', async () => {
+  const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
+  await withApp(engineHome, async (page) => {
+    await sampleCard(page, 'LA Metro Rail').click()
+    await expect(page.getByRole('heading', { level: 1, name: 'LA Metro Rail' })).toBeVisible()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    const record = readRecord(engineHome)
+    expect(record).toMatchObject({ name: 'LA Metro Rail', feed: 'la-metro-rail', mode: 'all' })
+    expect(record.layout, 'laid out, and recorded').not.toBeNull()
+    expect(received(engineHome, 'graph.build')).toHaveLength(1)
+    await page.getByRole('button', { name: 'Back to Library' }).click()
+    await expect(page.getByRole('button', { name: 'Open LA Metro Rail' })).toBeVisible()
+  })
+})
+
+test('a sample whose layout the engine refuses says so in cell 02, not in a dialog', async () => {
+  const engineHome = home({
+    map_draws: true,
+    progress_delay_ms: 10,
+    service_refuses: 'This feed has no calendar.',
+  })
+  await withApp(engineHome, async (page) => {
+    await sampleCard(page, 'LA Metro Rail').click()
+    await expect(cellHeading(page, 'process')).toHaveAccessibleName(/ failed/, { timeout: 30_000 })
+    await expect(cell(page, 'process')).toContainText('This feed has no calendar.')
+    await expect(page.locator('dialog[open]')).toHaveCount(0)
+    // The project is there, with its feed, to be laid out again.
+    expect(readRecord(engineHome)).toMatchObject({ feed: 'la-metro-rail', layout: null })
+  })
+})
+
+test('cancelling a sample’s layout keeps the project and its feed, ready to lay out', async () => {
+  const engineHome = home({ map_draws: true, progress_delay_ms: 10, service_delay_ms: 3000 })
+  await withApp(engineHome, async (page) => {
+    await sampleCard(page, 'LA Metro Rail').click()
+    // At once: the notebook is up while the layout is still going.
+    await expect(page.getByRole('heading', { level: 1, name: 'LA Metro Rail' })).toBeVisible()
+    await expect(cellHeading(page, 'process')).toHaveAccessibleName(/ running/)
+    await cell(page, 'process').getByRole('button', { name: 'Cancel', exact: true }).click()
+    await expect(cellHeading(page, 'process')).not.toHaveAccessibleName(/ running/, {
+      timeout: 20_000,
+    })
+    expect(readRecord(engineHome)).toMatchObject({ feed: 'la-metro-rail', layout: null })
+    await expect(cell(page, 'process').getByRole('button', { name: 'Lay out' })).toBeVisible()
+    expect(received(engineHome, 'map.build'), 'nothing was drawn').toHaveLength(0)
+  })
+})

@@ -135,14 +135,26 @@ export async function engineReady(page: Page): Promise<void> {
 /** Create a project on a feed from the Library, and leave it listed. */
 export async function createProject(page: Page, feed: string, name: string): Promise<void> {
   await engineReady(page)
-  // A sample city is one card, named by its name and facts (A5.6-02); an
-  // added feed's row keeps its "Start a project on" button beside Remove.
-  const escaped = feed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  await page
-    .getByRole('listitem', { name: feed, exact: true })
-    .getByRole('button', { name: new RegExp(`^(Start a project on ${escaped}$|${escaped}, )`) })
-    .click()
+  // An added feed's row keeps its "Start a project on" button. A sample
+  // city's card opens the sample outright (A5.6-03), laying it out, so a
+  // project on a preset is made from New project, its feed chosen by name.
   const dialog = page.getByRole('dialog', { name: 'New project' })
+  const fromRow = page
+    .getByRole('listitem', { name: feed, exact: true })
+    .getByRole('button', { name: `Start a project on ${feed}`, exact: true })
+  if ((await fromRow.count()) > 0) {
+    await fromRow.click()
+  } else {
+    await page.getByRole('button', { name: 'New project' }).first().click()
+    const escaped = feed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const key = await dialog
+      .locator('option')
+      .filter({ hasText: new RegExp(`^${escaped}( \\(|$)`) })
+      .first()
+      .getAttribute('value')
+    if (key === null) throw new Error(`no feed named ${feed} in the sheet`)
+    await dialog.getByRole('combobox', { name: 'Feed' }).selectOption(key)
+  }
   await dialog.getByLabel('Name', { exact: true }).fill(name)
   await control(dialog, 'Create', { exact: true }).click()
   await expect(page.getByRole('button', { name: `Open ${name}` })).toBeVisible()

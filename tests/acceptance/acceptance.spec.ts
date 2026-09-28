@@ -1201,12 +1201,10 @@ test('a release, installed, through docs/acceptance.md', async () => {
       )
 
       await toLibrary(window)
-      await window
-        .getByRole('listitem', { name: 'Mexico City Metro', exact: true })
-        .getByRole('button')
-        .click()
+      await window.getByRole('main').getByRole('button', { name: 'New project' }).first().click()
       const create = window.getByRole('dialog', { name: 'New project' })
-      await log.soft('the create dialog opens on cdmx-metro', () =>
+      await create.getByRole('combobox', { name: 'Feed' }).selectOption('cdmx-metro')
+      await log.soft('the sheet is on cdmx-metro', () =>
         expect(create.getByRole('combobox', { name: 'Feed' })).toHaveValue('cdmx-metro'),
       )
       await create.getByLabel('Name', { exact: true }).fill('Mexico City')
