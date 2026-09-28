@@ -288,6 +288,46 @@ test('adds a feed from a URL with its download on the line, and a cancel keeps n
   })
 })
 
+// Issue 207. At the pin, a failed download's error is the engine's
+// `FeedError`: "{url} could not be fetched: ...", message, hint and detail
+// alike. A key in the address a person typed must not come back onto the
+// screen in it - not in the dialog, and not in the jobs inspector.
+test('a failed download keeps the key in its address off the screen', async () => {
+  // A made-up value, planted so it can be looked for on the screen.
+  const planted = 'planted207'
+  const address = `https://agency.example/gtfs.zip?api_key=${planted}`
+  const engineHome = home({
+    add_refuses: `${address} could not be fetched: HTTP Error 403: Forbidden`,
+  })
+  await withApp(engineHome, async (page) => {
+    await page.getByRole('button', { name: 'Add feed' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Add a feed' })
+    await dialog.getByLabel('Or from an address').fill(address)
+    await dialog.getByRole('button', { name: 'Add feed' }).click()
+    await expect(dialog).toContainText(
+      'https://agency.example/gtfs.zip?api_key=<redacted> could not be fetched: HTTP Error 403: Forbidden',
+    )
+    // What the dialog drew, the sentence and anything behind it.
+    expect(await dialog.innerText()).not.toContain(planted)
+    // The dialog is modal; the inspector is behind it.
+    await page.keyboard.press('Escape')
+    await expect(dialog).toBeHidden()
+    await page.getByRole('button', { name: /^Jobs, / }).click()
+    const inspector = page.getByRole('complementary', { name: 'Inspector' })
+    await expect(inspector).toContainText('Feed add from a web address')
+    // The detail is the one field the dialog never draws, and it sits
+    // behind a closed disclosure, which `innerText` does not read - so it
+    // is opened, and shown to hold the address, redacted.
+    await inspector.getByText('Details', { exact: true }).click()
+    await expect(inspector.locator('.job-detail')).toContainText(
+      'FeedError: https://agency.example/gtfs.zip?api_key=<redacted> could not be fetched',
+    )
+    // Everything drawn, the inspector included. The field the person typed
+    // into still holds what they typed, which is theirs and not drawn text.
+    expect(await page.locator('body').innerText()).not.toContain(planted)
+  })
+})
+
 test('removes an added feed behind a confirmation, and refuses one a project uses', async () => {
   const engineHome = home()
   const zip = gtfsZip(join(engineHome, 'Metro de Prueba.zip'))

@@ -221,6 +221,21 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
     if (state.state === 'restarting') expect(state.reason).toContain('not a message')
   })
 
+  // Issue 207: the reason quotes the head of the stray line, and the state
+  // goes to the page as it is, so a web address in it is redacted here. A
+  // percent-encoded one, because a line with a colon in it reads as a frame
+  // header, and because an encoded address has no slash for the stderr
+  // tail's own filter to catch either.
+  it('redacts a web address the stray line quotes, in the state the page reads', async () => {
+    const h = harness({ garbage: 'https%3A%2F%2Ffeeds.example.org%2Fg.zip%3Fapi_key%3Dplanted207' })
+    h.sidecar.start()
+    const state = await h.until((s) => s.state === 'restarting')
+    if (state.state !== 'restarting') throw new Error('expected restarting')
+    expect(state.reason).toContain('not a message')
+    expect(state.reason).not.toContain('planted207')
+    expect(JSON.stringify(h.sidecar.state)).not.toContain('planted207')
+  })
+
   it('is unavailable with the reason when there is no interpreter, or it cannot be started', async () => {
     const none = new Sidecar({
       command: null,

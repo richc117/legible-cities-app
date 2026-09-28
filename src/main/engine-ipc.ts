@@ -26,22 +26,17 @@
 // in `layoutRun.ts` replaces a message that looks like a path, which is a
 // different hazard and catches none of this.
 //
-// **This is not yet the only way a secret reaches the page, and issue #207
-// is the rest of it.** Two functions above, a settled request carries the
-// engine's error through `toShape`, which passes `data.hint` and
-// `data.detail` whole. `jsonrpc.ts` puts `hint` through `withoutPaths` and
-// `detail` through nothing, and `withoutPaths` cannot help here whatever it
-// is given: its pattern needs whitespace or `(` before the slash it
-// matches, and a URL's `//` follows a colon, so a query value is matched
-// nowhere in it. The sentence is then drawn - `feedAdd.ts` into the add-a-
-// feed dialog, `layoutRun.ts` into the run's own panel - so a failed
-// download puts the key on screen through the error instead of through the
-// message, one element away from the sentence redacted here.
-// `specs/023-logs-and-diagnostics/spec.md` records that the engine does
-// exactly this at v0.8.2. Closing it means touching every engine error in
-// the app, including the mismatch dialog and the tests that pin error
-// text, which is why it is #207 and not this change. Until #207 lands, do
-// not read the two lines below as saying the page is safe.
+// **The other way a secret reached the page was the error**, and issue
+// 207 closed it in `ipc-shape.ts`: a settled request carries the engine's
+// error through `toShape`, and a failed download's error names the whole
+// URL in its message, hint and detail (engine v0.8.3, `serve.classify`).
+// `jsonrpc.ts`'s `withoutPaths` on the hint could never have caught it -
+// its pattern needs whitespace or `(` before the slash, and a URL's `//`
+// follows a colon. `toShape` and `badCall` now put all three fields through
+// the same `redactUrls`, so the progress message, the log line and the
+// error are the three doors, each redacted in the main process. The engine
+// state the page also reads is the fourth: a reason can quote the engine's
+// stray stdout or its last stderr lines, so `Sidecar.setState` redacts it.
 //
 // It costs the ordinary sentence nothing: `redactUrls` returns any text
 // without a `?`, `#`, `@` or `%` in it untouched, so "topo: 3 nodes, 2

@@ -138,9 +138,12 @@ function errorData(data: unknown, message: string): ErrorData | undefined {
   if (data === undefined || data === null) return undefined
   if (isObject(data) && typeof data.detail === 'string' && typeof data.hint === 'string') {
     if (isEngineErrorKind(data.kind)) {
-      // `hint` is shown; `detail` is logged. The engine puts a filename in
-      // the hint for an I/O failure, so the path comes out of the sentence
-      // here and stays in the detail.
+      // `hint` is shown; `detail` is logged, and shown behind the jobs
+      // inspector's disclosure. The engine puts a filename in the hint for
+      // an I/O failure, so the path comes out of the sentence here and
+      // stays in the detail. This is not where a URL's key is taken out:
+      // `withoutPaths` does not match a URL, and every error is redacted on
+      // its way to the page in `ipc-shape.ts` (issue 207).
       return { kind: data.kind, detail: data.detail, hint: withoutPaths(data.hint) }
     }
     return { kind: 'engine', detail: JSON.stringify(data), hint: data.hint }

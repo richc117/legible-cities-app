@@ -152,8 +152,9 @@ can confirm the app sends nothing.
   is applied before a line is sent to the window as well - the page is a
   third destination, now that cell 02 draws the running job's log - so the
   lines on screen, the runs' own buffers and the copy made from them are
-  the log file's bytes. The engine's error `hint` and `detail` still reach
-  the page whole and are drawn on a failure, which issue #207 covers. What it covers, and nothing more:
+  the log file's bytes. Since issue 207 an error's `message`, `hint` and
+  `detail` are redacted on their way to the page too, in
+  `src/main/ipc-shape.ts`. What it covers, and nothing more:
   - an `http` or `https` address, with its slashes plain or JSON-escaped
     (`https:\/\/`) and its host a name or an IPv6 literal: the scheme,
     the host, the path and the query's parameter names stay, and the user
