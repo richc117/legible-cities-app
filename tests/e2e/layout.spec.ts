@@ -1386,21 +1386,96 @@ function standInPage(engineHome: string): void {
  * where an empty list simply does not match and is asked again.
  */
 async function seenByPage(app: ElectronApplication): Promise<[string, unknown][]> {
+  const read = await readPage(app)
+  return read.seen ?? []
+}
+
+/**
+ * What the viewer's frame holds, and why when it holds nothing (issue 232):
+ * no frame, a read that threw, or a page that simply was not told. The
+ * three used to be one empty list, so a CI failure said only that a call
+ * never arrived.
+ */
+interface PageRead {
+  /** Every child frame's address, the stage view's `about:srcdoc` included. */
+  frames: string[]
+  /** The frame read, or null when there was none that is not `srcdoc`. */
+  frame: string | null
+  /** What the page recorded, or null when it could not be read. */
+  seen: [string, unknown][] | null
+  /** How long ago the document in the frame began, in milliseconds. */
+  age: number | null
+  error: string | null
+}
+
+async function readPage(app: ElectronApplication): Promise<PageRead> {
   try {
-    const answer = (await app.evaluate(async ({ BrowserWindow }) => {
+    return (await app.evaluate(async ({ BrowserWindow }) => {
       const win = BrowserWindow.getAllWindows()[0]
       const main = win.webContents.mainFrame
+      const frames = main.frames.filter((f) => f !== main).map((f) => f.url)
       // The viewer's frame, not merely the first child: once a layout has
       // run, cell 01's stage view draws an iframe of its own from `srcdoc`,
       // and which of the two comes first is a matter of timing - a read of
       // the stage frame answered [] and failed this on Windows (PR 225).
       const frame = main.frames.find((f) => f !== main && f.url !== 'about:srcdoc')
-      return frame ? ((await frame.executeJavaScript('window.__seen || []')) as unknown) : []
-    })) as [string, unknown][] | undefined
-    return answer ?? []
-  } catch {
-    return []
+      if (frame === undefined) return { frames, frame: null, seen: null, age: null, error: null }
+      try {
+        const { seen, age } = (await frame.executeJavaScript(
+          '({ seen: window.__seen || [], age: Math.round(performance.now()) })',
+        )) as { seen: [string, unknown][]; age: number }
+        return { frames, frame: frame.url, seen, age, error: null }
+      } catch (error) {
+        return { frames, frame: frame.url, seen: null, age: null, error: String(error) }
+      }
+    })) as PageRead
+  } catch (error) {
+    return { frames: [], frame: null, seen: null, age: null, error: `evaluate: ${String(error)}` }
   }
+}
+
+/**
+ * Everything a failed wait on the page can be told apart by, as one block
+ * for the failure's message (issue 232): what the frame held, what the
+ * screen said, and the end of the app's own log.
+ */
+async function pageDiagnosis(app: ElectronApplication, page: Page): Promise<string> {
+  const read = await readPage(app)
+  const src = await page
+    .locator('iframe.viewer-frame')
+    .getAttribute('src')
+    .catch((error: unknown) => `unreadable: ${String(error)}`)
+  const alerts = await page
+    .getByRole('alert')
+    .allInnerTexts()
+    .catch(() => [])
+  // Kit buttons: the label is slotted, so innerText reads empty.
+  const controls = await transport(page)
+    .getByRole('button')
+    .evaluateAll((buttons) => buttons.map((b) => (b.textContent ?? '').trim()))
+    .catch(() => [])
+  const speedNow = await speed(page)
+    .inputValue()
+    .catch(() => 'unreadable')
+  const logs = process.env.LEGIBLE_LOGS
+  let tail = '(no log folder)'
+  if (logs !== undefined && logs !== '') {
+    try {
+      const lines = readFileSync(join(logs, 'main.log'), 'utf8').trimEnd().split('\n')
+      tail = lines.slice(-40).join('\n')
+    } catch (error) {
+      tail = `(main.log unreadable: ${String(error)})`
+    }
+  }
+  return [
+    `frames: ${JSON.stringify(read.frames)}`,
+    `read from: ${read.frame ?? 'no viewer frame'}; document age ${read.age ?? '?'} ms`,
+    `seen: ${read.seen === null ? `unreadable (${read.error ?? 'no error'})` : JSON.stringify(read.seen)}`,
+    `iframe src: ${src}`,
+    `transport buttons: ${JSON.stringify(controls)}; speed ${speedNow}`,
+    `alerts: ${JSON.stringify(alerts)}`,
+    `main.log, last lines:\n${tail}`,
+  ].join('\n')
 }
 
 /**
@@ -1534,7 +1609,17 @@ test('a theme change gives the map back the speed and the pause it had', async (
 
     // `__seen` went with the old document, so everything read now was asked
     // of the page that arrived.
-    await expect.poll(() => seenByPage(app), { timeout: 20_000 }).toContainEqual(['setSpeed', 30])
+    // Issue 232: this wait fails on CI runners and never here. Said with
+    // everything that tells its causes apart, so the next failure explains
+    // itself rather than only timing out.
+    try {
+      await expect.poll(() => seenByPage(app), { timeout: 20_000 }).toContainEqual(['setSpeed', 30])
+    } catch (error) {
+      throw new Error(
+        `the page that arrived was never given its speed back:\n${await pageDiagnosis(app, page)}`,
+        { cause: error },
+      )
+    }
     const asked = await seenByPage(app)
     expect(asked, 'and it was not left running').toContainEqual(['setPlaying', false])
     expect(
