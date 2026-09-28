@@ -50,20 +50,17 @@ interface Props {
    */
   disabled?: boolean
   /**
-   * Where focus goes when a control that held it is disabled or removed,
-   * and, by being given at all, that a cell of the notebook renders the
-   * heading (A5.5-08): the section is then named by what its own heading
-   * said and draws no heading of its own.
-   *
-   * One prop and not two, because a headless panel with nowhere to hand
-   * focus back to is the A6-07 defect itself - Chromium blurs a disabled
-   * element and focus falls to the body - and a shape that cannot say it
-   * cannot ship it.
+   * Where focus goes when a control that held it is disabled: the heading
+   * of the cell the switch is drawn in (A5.5-08). Required, because the
+   * switch draws no heading of its own - the cell's names it - and a panel
+   * with nowhere to hand focus back to is the A6-07 defect itself: Chromium
+   * blurs a disabled element and focus falls to the body. Until the tab
+   * strip went (A5.5-23) it was optional, and its absence drew an `h2`.
    */
-  handback?: RefObject<HTMLElement | null>
+  handback: RefObject<HTMLElement | null>
 }
 
-/** What the section is called, as its heading and as its name while headless. */
+/** What the section is called, as its name inside cell 04. */
 const NAME = 'Theme'
 
 export default function ThemeSwitch({
@@ -72,7 +69,6 @@ export default function ThemeSwitch({
   disabled = false,
   handback,
 }: Props): JSX.Element {
-  const headless = handback !== undefined
   const [problem, setProblem] = useState<string | null>(null)
   // Whether a write is in flight, and the theme pressed while it was: refs
   // rather than state, because a press reads them in the same tick it
@@ -83,11 +79,10 @@ export default function ThemeSwitch({
   const writing = useRef(false)
   const kept = useRef<Theme | null>(null)
   const section = useRef<HTMLElement>(null)
-  const headingRef = useRef<HTMLHeadingElement>(null)
 
   // A run can start from a timer rather than a press: a colour or an order
   // change is debounced, so the way closes with nobody touching anything.
-  // Chromium blurs a disabled element, so focus is handed to the heading
+  // Chromium blurs a disabled element, so focus is handed to the cell's heading
   // before the buttons go, and a press kept from before is forgotten -
   // applying it after the way closed is what the closing is for.
   useEffect(() => {
@@ -95,7 +90,7 @@ export default function ThemeSwitch({
     kept.current = null
     const active = document.activeElement
     if (active !== null && section.current?.contains(active) === true) {
-      ;(handback ?? headingRef).current?.focus()
+      handback.current?.focus()
     }
   }, [disabled, handback])
 
@@ -123,18 +118,7 @@ export default function ThemeSwitch({
   }
 
   return (
-    <section
-      className="theme-switch"
-      aria-label={headless ? NAME : undefined}
-      aria-labelledby={headless ? undefined : 'theme-switch-heading'}
-      aria-busy={disabled}
-      ref={section}
-    >
-      {!headless && (
-        <h2 id="theme-switch-heading" tabIndex={-1} ref={headingRef}>
-          {NAME}
-        </h2>
-      )}
+    <section className="theme-switch" aria-label={NAME} aria-busy={disabled} ref={section}>
       <p className="prose">
         The map is drawn in one of the engine&rsquo;s two themes, and so is every export of it. The
         interface has its own theme in Settings; neither follows the other.

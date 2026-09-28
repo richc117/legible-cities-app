@@ -64,7 +64,7 @@ export function outsideWindow(start: string, end: string): string {
   return `The feed covers ${start} to ${end}.`
 }
 
-/** What the section is called, as its heading and as its name while headless. */
+/** What the section is called, as its name inside cell 03. */
 const NAME = 'Service day'
 
 /**
@@ -131,19 +131,16 @@ export default function ServiceDay({
   /** True while something else, such as an export, is reading the project's page. */
   disabled?: boolean
   /**
-   * Where focus goes when a control that held it is disabled or removed,
-   * and, by being given at all, that a cell of the notebook renders the
-   * heading (A5.5-08): the section is then named by what its own heading
-   * said and draws no heading of its own.
-   *
-   * One prop and not two, because a headless panel with nowhere to hand
-   * focus back to is the A6-07 defect itself - Chromium blurs a disabled
-   * element and focus falls to the body - and a shape that cannot say it
-   * cannot ship it.
+   * Where focus goes when a control that held it is disabled or removed:
+   * the heading of the cell the form is drawn in (A5.5-08). Required,
+   * because the form draws no heading of its own - the cell's names it -
+   * and a panel with nowhere to hand focus back to is the A6-07 defect
+   * itself: Chromium blurs a disabled element and focus falls to the body.
+   * Until the tab strip went (A5.5-23) it was optional, and its absence
+   * drew an `h2`.
    */
-  handback?: RefObject<HTMLElement | null>
+  handback: RefObject<HTMLElement | null>
 }): JSX.Element {
-  const headless = handback !== undefined
   const { state, rebuilt } = useSnapshot(run)
   const running = state === 'running'
   const [value, setValue] = useState(project.date ?? '')
@@ -151,7 +148,6 @@ export default function ServiceDay({
   const inputId = useId()
   const messageId = useId()
   const input = useRef<HTMLInputElement>(null)
-  const heading = useRef<HTMLHeadingElement>(null)
 
   // The control follows the stored day, which is now the chosen one: a
   // choice lands on the record before the map is drawn for it, so this
@@ -190,12 +186,7 @@ export default function ServiceDay({
 
   if (service === null) {
     return (
-      <section
-        className="service-day"
-        aria-label={headless ? NAME : undefined}
-        aria-labelledby={headless ? undefined : 'service-day-heading'}
-      >
-        {!headless && <h2 id="service-day-heading">{NAME}</h2>}
+      <section className="service-day" aria-label={NAME}>
         <p className="prose" role="status">
           {project.date === null ? 'Not yet chosen. ' : `Drawn for ${project.date}. `}
           Lay the project out again to learn which days the feed covers.
@@ -260,9 +251,9 @@ export default function ServiceDay({
       // agree about the day the moment the rebuild ends.
       if (value !== project.date && !(await choose(value))) return
       // The rebuild disables the control and the button that asked for it,
-      // and Chromium blurs a disabled element; the heading keeps focus in
-      // the section, as the theme switch's does (A6-07).
-      ;(handback ?? heading).current?.focus()
+      // and Chromium blurs a disabled element; the cell's heading keeps
+      // focus in the cell, as the theme switch's does (A6-07).
+      handback.current?.focus()
       run.rebuild(project, engine, value)
     })()
   }
@@ -303,16 +294,7 @@ export default function ServiceDay({
           : `${project.date} is chosen; the map still shows ${project.drawn.date}.`
 
   return (
-    <section
-      className="service-day"
-      aria-label={headless ? NAME : undefined}
-      aria-labelledby={headless ? undefined : 'service-day-heading'}
-    >
-      {!headless && (
-        <h2 id="service-day-heading" tabIndex={-1} ref={heading}>
-          {NAME}
-        </h2>
-      )}
+    <section className="service-day" aria-label={NAME}>
       <p className="prose" role="status">
         {said} {covers}; the busiest weekday, counted from {service.anchor}, is {service.busiest}.
       </p>

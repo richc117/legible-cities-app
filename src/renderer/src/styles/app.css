@@ -494,11 +494,6 @@ body {
   color: var(--text-faint);
 }
 
-.service-day h2 {
-  font-size: var(--font-ui-medium);
-  margin: 0 0 var(--space-2-2);
-}
-
 /* The project's fields. */
 
 .fields {

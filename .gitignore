@@ -1,5 +1,7 @@
 # Build output and dependencies
-node_modules/
+# No slash: a worktree's node_modules is often a link to another checkout's,
+# and `node_modules/` matches only a directory, so the link was committed.
+node_modules
 dist/
 out/
 release/

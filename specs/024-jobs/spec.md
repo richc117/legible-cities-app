@@ -1,5 +1,9 @@
 # Feature Specification: Jobs, in an inspector that spans projects
 
+> **Since the notebook (ADR-045, A5.5-23)** there is no Export tab: the
+> export and its run are in cell 06 of the project's notebook. Read "the
+> Export tab" below as that cell; nothing about the jobs changed.
+
 **Feature Branch**: `A1-03-jobs`
 
 **Created**: 2026-09-12

@@ -1016,7 +1016,7 @@ Whether that order is enough is measured, not assumed (A5-04).
 committed BART fixture - the feed's zip and one stored layout, whose id
 `tests/unit/determinism-real.test.ts` checks is the one the pinned engine
 addresses - has the real engine draw the project's page from it, and
-exports the project's draft `instagram-reel-gif` through the Export tab
+exports the project's draft `instagram-reel-gif` through cell 06
 twice. The app keeps each export's captured frames for the test
 (`LEGIBLE_KEEP_FRAMES`, which the test sets and which `keptFramesFolder` in
 `src/main/export.ts` ignores in a packaged app), and **the verdict is the
@@ -1099,7 +1099,7 @@ this test to measure, is still unmeasured.
 
 The first reel (A5-02b) was one preset, `instagram-reel`, from one button on
 the project screen; since A5-01 it is any of the thirteen social presets,
-chosen on the project panel's Export tab with a storyboard and options, over
+chosen in cell 06 of the project's notebook with a storyboard and options, over
 the engine's `export.plan` and `export.encode` with the capture above in
 the middle. The flow runs in the main process
 (`src/main/export.ts`), because the capture does and is never exposed to
@@ -1162,14 +1162,14 @@ export of one project cannot overlap, because the export reads the page a
 layout would rewrite: each button is disabled while the other runs, and so
 is delete.
 
-### The export tab
+### The export's choices
 
-The project panel has two tabs (A5-01, `specs/022-export-tab`), a
-`Tabs` control in the kit on the WAI-ARIA pattern: Map holds the
-diagnostics, the service day, the line colours, the line order, the theme
-and the geographic view, as the screen held them before; Export holds the
-export. A panel not chosen stays mounted, so a debounced colour waiting to
-be drawn is not thrown away by a look at the other tab.
+The export's choices were an Export tab beside a Map tab (A5-01,
+`specs/022-export-tab`) until the notebook replaced both with six cells
+(ADR-045); the tab strip was deleted in A5.5-23. They are cell 06 now,
+which starts closed. A collapsed cell stays mounted, as a tab not chosen
+did, so a debounced colour waiting to be drawn is not thrown away by
+closing a cell.
 
 Every list is the engine's. `export.presets` and `export.storyboards` are
 asked once while the engine stays up, and the presets are narrowed to

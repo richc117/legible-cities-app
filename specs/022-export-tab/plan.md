@@ -1,5 +1,11 @@
 # Implementation Plan: The export tab
 
+> **Superseded in part by the notebook (ADR-045, A5.5-23).** The tab strip
+> this plan describes is gone: the project screen is six cells, and what
+> the Export tab held is cell 06, Export, which starts closed and makes the
+> map's frame the export's preview only while it is open. `kit/Tabs.tsx` was
+> deleted with it. The export's choices, plan and run are unchanged.
+
 **Branch**: `A5-01-export-tab` | **Date**: 2026-09-12 | **Spec**: [spec.md](spec.md)
 
 ## Summary

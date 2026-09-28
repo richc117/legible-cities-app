@@ -101,8 +101,9 @@ async function withApp(
 }
 
 /**
- * The export's button, on the export tab (A5-01). The tab is opened first;
- * the button was "Export reel" while the reel was the only thing it made.
+ * The export's button, in cell 06 (A5-01; the Export tab until A5.5-08). The
+ * cell is opened first; the button was "Export reel" while the reel was the
+ * only thing it made.
  */
 function exportButton(page: Page) {
   return page.getByRole('button', { name: 'Export', exact: true })

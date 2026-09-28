@@ -1,5 +1,5 @@
 // The export tab in the built app, against the stand-in engine
-// (specs/022-export-tab): the Map | Export strip from the keyboard, the
+// (specs/022-export-tab), in cell 06 since the notebook replaced the tabs: the
 // thirteen presets grouped by platform, the preview's address as each
 // option changes and the safe zones only where a preset has them, a still,
 // a video and a GIF for each of Instagram, LinkedIn and Bluesky from one

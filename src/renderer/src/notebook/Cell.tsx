@@ -22,7 +22,7 @@ import type { CellState } from '../runGraph'
 // debounced edit in flight and `ExportTab` a half-typed filename tag; a
 // cell that unmounted them would lose a person's work for the sake of a
 // closed disclosure. Which cells are open is where a person is looking,
-// not a setting, and is not stored - the same rule the tab strip follows.
+// not a setting, and is not stored - the same rule the tab strip followed.
 
 /** What each state says and how it is drawn. */
 const STATES: Record<CellState, { word: string; icon: IconName }> = {
