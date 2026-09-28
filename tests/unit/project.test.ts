@@ -559,3 +559,14 @@ describe('a name the app chooses for a project', () => {
     expect(validateName(named)).toBeNull()
   })
 })
+
+describe('a name the app chooses, compared as the file systems compare', () => {
+  it('does not depend on the machine’s locale or on Unicode composition', () => {
+    expect(uniqueName('LIMA', ['Lima'])).toBe('LIMA 2')
+    expect(uniqueName('Café', ['Café'])).toBe('Café 2')
+  })
+
+  it('holds an over-long name to the limit whether or not it is taken', () => {
+    expect(uniqueName('y'.repeat(130), []).length).toBe(120)
+  })
+})

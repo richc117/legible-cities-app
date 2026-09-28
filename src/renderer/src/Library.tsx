@@ -402,7 +402,10 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
       <div className="toolbar">
         {/* The empty state carries the primary action instead, so a first
             visit has one thing to press (DESIGN.md 8.2). */}
-        {!(library.status === 'ready' && library.projects.length === 0) && (
+        {/* Not while the projects are still being read: the sheet numbers
+            the name it fills against them ("LA Metro Rail 2"), as the
+            sample cards do, which wait for the same list. */}
+        {library.status === 'ready' && library.projects.length > 0 && (
           <Button variant="primary" onClick={() => setCreating({ source: 'feed' })}>
             <Icon name="add" />
             New project
