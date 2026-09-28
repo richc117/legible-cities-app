@@ -182,14 +182,15 @@ Result: ____
 
 ### 4. Create a project from the LA preset
 
-**Do.** In the Library, press **New project**. Leave the **Feed** as it
-opens, type the name `Los Angeles`, and press **Create**. Then press the
-new row.
+**Do.** In the Library, press **New project**. Leave **Start from** on
+the sample city and the **Feed** as it opens, replace the name with
+`Los Angeles`, and press **Create**. Then press the new row.
 
 **See.**
-- The dialog is titled **New project**, and its **Feed** select opens on
+- The sheet is titled **New project**, with **Cancel** focused, and three
+  sources under **Start from**. Its **Feed** select opens on
   "LA Metro Rail (Los Angeles · Metro Rail)", the app's default feed
-  (`la-metro-rail`).
+  (`la-metro-rail`), and **Name** is already filled with "LA Metro Rail".
 - After **Create**, the Library lists one project, read aloud as
   "Open Los Angeles", with "Feed la-metro-rail" and "Service day not yet
   chosen" beneath it.
@@ -217,22 +218,25 @@ name. If the address has stopped answering, record that and use another
 small, rail-only, current GTFS zip, and say which in the notes.
 
 **Do.** Press **Library** at the top of the project's screen (a screen
-reader names it "Back to Library"), then **Add feed**. Paste the address
-into **Or from an address** and press **Add feed** in the dialog. When the
-dialog has closed, press **Start a project** on the new row, name it
-`Caltrain`, and press **Create**. Then press **Remove** on the Caltrain
-row, and **Remove** in the confirmation.
+reader names it "Back to Library"), then **New project**. Under
+**Start from** choose **A feed at an address**, paste the address into
+**Feed address** and press **Add the feed**. When the feed is in, press
+**Cancel**, which keeps the feed. Then press **Start a project** on the new
+row, name it `Caltrain`, and press **Create**. Then press **Remove** on
+the Caltrain row, and **Remove** in the confirmation.
 
 **See.**
-- The dialog is titled **Add a feed**, with **Choose a zip** and
-  **Or from an address**.
+- The sheet is titled **New project**; **Start from** offers **A sample
+  city, or a feed you added**, **A GTFS zip on this computer** and **A feed
+  at an address**.
 - While it runs, a progress line with two stages, `download` and `check`,
   and beside it "downloaded `<n>` of `<n>` bytes" (or "downloaded `<n>`
-  bytes"), then "checked the feed's tables". The dialog's left button reads
+  bytes"), then "checked the feed's tables". The sheet's left button reads
   **Cancel the add** while it runs.
-- The dialog closes by itself, and the Library shows an **Added** list with
-  a row **Caltrain**, "downloaded", with **Start a project** and
-  **Remove**.
+- When the feed is in, **Name** is filled with "Caltrain", the primary
+  button reads **Create**, and after **Cancel** the Library shows a
+  **Your feeds** list with a row **Caltrain**, "downloaded", with
+  **Start a project** and **Remove**.
 - The confirmation is titled "Remove Caltrain?", with **Cancel** focused.
   Pressing **Remove** while the Caltrain project exists is refused in the
   dialog: "One project uses this feed; delete the project first." Press

@@ -952,6 +952,12 @@ test('a release, installed, through docs/acceptance.md', async () => {
         )
         expect(shown).toBe('LA Metro Rail (Los Angeles · Metro Rail)')
       })
+      // What the checklist promises of the sheet (A5.6-05): the safe action
+      // first, and the name already filled from the feed.
+      await log.soft('Cancel has focus, and the name is filled', async () => {
+        await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused()
+        await expect(dialog.getByLabel('Name', { exact: true })).toHaveValue('LA Metro Rail')
+      })
       await dialog.getByLabel('Name', { exact: true }).fill('Los Angeles')
       await dialog.getByRole('button', { name: 'Create', exact: true }).click()
       await expect(dialog).toBeHidden()
@@ -1001,17 +1007,22 @@ test('a release, installed, through docs/acceptance.md', async () => {
     await runStep(5, [3], async (log) => {
       const window = page()
       await toLibrary(window)
-      await window.getByRole('main').getByRole('button', { name: 'Add feed', exact: true }).click()
-      const dialog = window.getByRole('dialog', { name: 'Add a feed' })
+      // Adding a feed is part of New project (A5.6-05): the sheet's address
+      // source, then Cancel once the feed is in, which keeps it listed.
+      await window.getByRole('main').getByRole('button', { name: 'New project' }).first().click()
+      const dialog = window.getByRole('dialog', { name: 'New project' })
       await expect(dialog).toBeVisible()
-      await log.soft('the dialog', async () => {
-        await expect(dialog.getByRole('button', { name: 'Choose a zip' })).toBeVisible()
-        await expect(dialog.getByLabel('Or from an address')).toBeVisible()
+      await log.soft('the sheet', async () => {
+        await expect(
+          dialog.getByRole('radio', { name: 'A GTFS zip on this computer' }),
+        ).toBeVisible()
+        await expect(dialog.getByRole('radio', { name: 'A feed at an address' })).toBeVisible()
       })
-      await dialog.getByLabel('Or from an address').fill(CALTRAIN_URL)
+      await dialog.getByRole('radio', { name: 'A feed at an address' }).check()
+      await dialog.getByLabel('Feed address').fill(CALTRAIN_URL)
       const mark = (await saidSoFar(window)).length
       const pressed = Date.now()
-      await dialog.getByRole('button', { name: 'Add feed', exact: true }).click()
+      await dialog.getByRole('button', { name: 'Add the feed', exact: true }).click()
 
       // While it runs, if the check is quick enough to see it.
       const cancelSeen = await dialog
@@ -1038,14 +1049,23 @@ test('a release, installed, through docs/acceptance.md', async () => {
 
       const ended = await until(
         async () => {
-          if (!(await dialog.isVisible())) return { refused: null }
-          const refused = oneLine((await dialog.getByRole('alert').textContent()) ?? '')
+          if (await dialog.getByRole('button', { name: 'Create', exact: true }).isVisible())
+            return { refused: null }
+          const refused = oneLine(
+            (await dialog.getByRole('alert').filter({ hasText: /\S/ }).allTextContents()).join(' '),
+          )
           return refused === '' ? undefined : { refused }
         },
         FEED_ADD_MS,
-        () => 'the Add a feed dialog did not close',
+        () => 'the feed was neither added nor refused',
       )
       if (ended.refused !== null) throw new Error(`the add was refused: "${ended.refused}"`)
+      // The feed's own name, which for Caltrain is its first agency's.
+      await log.soft('the name is filled from the feed', () =>
+        expect(dialog.getByLabel('Name', { exact: true })).toHaveValue('Caltrain'),
+      )
+      await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+      await expect(dialog).toBeHidden()
       log.note(`The add took ${Math.round((Date.now() - pressed) / SECOND)} s.`)
       const said = (await saidSoFar(window)).slice(mark)
       await log.soft('the download on the line', () =>

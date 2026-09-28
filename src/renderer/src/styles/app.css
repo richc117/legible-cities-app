@@ -601,6 +601,22 @@ dialog p {
   margin: 0 0 var(--space-4-3);
 }
 
+/* New project's source choice (A5.6-05): three radios in a fieldset whose
+   legend reads as a field's label, as the export's switches do. */
+dialog .source-choice {
+  display: grid;
+  gap: var(--space-2-2);
+  margin: 0 0 var(--space-4-3);
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+dialog .source-choice legend {
+  padding: 0;
+  margin: 0 0 var(--space-2-2);
+}
+
 dialog::backdrop {
   background: var(--surface);
   opacity: var(--backdrop-opacity);

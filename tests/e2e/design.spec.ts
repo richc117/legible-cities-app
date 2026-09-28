@@ -129,20 +129,28 @@ test('the create dialog is the kit at the document density, keyboard first', asy
       ),
     ).toBe(15)
 
+    // Keyboard first, and the safe action first (A5.6-05): the sheet opens
+    // on Cancel, so a reflexive Enter creates nothing.
+    await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused()
     // Dialog controls sit at the document's dialog height, the kit's large size.
-    const name = dialog.getByLabel('Name')
-    await expect(name).toBeFocused()
     const inputBox = await dialog.locator('fig-input-text').first().boundingBox()
     expect(inputBox?.height).toBe(32)
 
+    // Forward from Cancel to Create, then back up the sheet: Name, the
+    // feed, and the source group as one stop.
     await page.keyboard.press('Tab')
+    await expect(dialog.getByRole('button', { name: 'Create' })).toBeFocused()
+    await page.keyboard.press('Shift+Tab')
+    await page.keyboard.press('Shift+Tab')
+    await expect(dialog.getByLabel('Name', { exact: true })).toBeFocused()
+    await page.keyboard.press('Shift+Tab')
     await expect(
       dialog.getByLabel('Feed key').or(dialog.getByRole('combobox', { name: 'Feed' })),
     ).toBeFocused()
-    await page.keyboard.press('Tab')
-    await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeFocused()
-    await page.keyboard.press('Tab')
-    await expect(dialog.getByRole('button', { name: 'Create' })).toBeFocused()
+    await page.keyboard.press('Shift+Tab')
+    await expect(
+      dialog.getByRole('radio', { name: 'A sample city, or a feed you added' }),
+    ).toBeFocused()
     await page.keyboard.press('Escape')
     await expect(dialog).toBeHidden()
   })

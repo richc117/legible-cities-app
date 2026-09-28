@@ -192,7 +192,8 @@ test('creates, opens, renames and deletes a project, and serves its output', asy
     const dialog = window.getByRole('dialog')
     await expect(dialog).toBeVisible()
     const name = dialog.getByLabel('Name', { exact: true })
-    await expect(name).toBeFocused()
+    // The safe action first (A5.6-05): the sheet opens on Cancel.
+    await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused()
     await name.fill('Los Angeles')
     // A typed key when no engine lists the feeds (as on the runners), the
     // engine's list as a select when one does (as on a developer's machine).
