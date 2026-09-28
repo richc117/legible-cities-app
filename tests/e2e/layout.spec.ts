@@ -1409,6 +1409,25 @@ interface PageRead {
 }
 
 async function readPage(app: ElectronApplication): Promise<PageRead> {
+  // The whole read has a deadline too, in case what hangs is the call into
+  // the main process rather than the frame's own answer.
+  const late = new Promise<PageRead>((resolve) =>
+    setTimeout(
+      () =>
+        resolve({
+          frames: [],
+          frame: null,
+          seen: null,
+          age: null,
+          error: 'evaluate: no answer within 2s',
+        }),
+      2000,
+    ),
+  )
+  return Promise.race([readPageNow(app), late])
+}
+
+async function readPageNow(app: ElectronApplication): Promise<PageRead> {
   try {
     return (await app.evaluate(async ({ BrowserWindow }) => {
       const win = BrowserWindow.getAllWindows()[0]
@@ -1421,10 +1440,20 @@ async function readPage(app: ElectronApplication): Promise<PageRead> {
       const frame = main.frames.find((f) => f !== main && f.url !== 'about:srcdoc')
       if (frame === undefined) return { frames, frame: null, seen: null, age: null, error: null }
       try {
-        const { seen, age } = (await frame.executeJavaScript(
+        // Raced against a deadline (issue 232). A frame being replaced can
+        // take the read and never answer it: macOS CI's diagnosis showed the
+        // page restored at once, with setSpeed in what it recorded, while
+        // the poll sat twenty seconds on its first read and never asked
+        // again. A read that does not answer in a second is "not yet", and
+        // the poll asks once more.
+        const read = frame.executeJavaScript(
           '({ seen: window.__seen || [], age: Math.round(performance.now()) })',
-        )) as { seen: [string, unknown][]; age: number }
-        return { frames, frame: frame.url, seen, age, error: null }
+        ) as Promise<{ seen: [string, unknown][]; age: number }>
+        const late = new Promise<null>((resolve) => setTimeout(() => resolve(null), 1000))
+        const answer = await Promise.race([read, late])
+        if (answer === null)
+          return { frames, frame: frame.url, seen: null, age: null, error: 'no answer within 1s' }
+        return { frames, frame: frame.url, seen: answer.seen, age: answer.age, error: null }
       } catch (error) {
         return { frames, frame: frame.url, seen: null, age: null, error: String(error) }
       }
@@ -1449,11 +1478,17 @@ async function pageDiagnosis(app: ElectronApplication, page: Page): Promise<stri
     .getByRole('alert')
     .allInnerTexts()
     .catch(() => [])
-  // Kit buttons: the label is slotted, so innerText reads empty.
-  const controls = await transport(page)
-    .getByRole('button')
-    .evaluateAll((buttons) => buttons.map((b) => (b.textContent ?? '').trim()))
-    .catch(() => [])
+  // By accessible name: a kit button's label is slotted, and neither its
+  // innerText nor, on a CI runner, its textContent carried it.
+  const buttons = transport(page).getByRole('button')
+  const controls: string[] = []
+  for (let i = 0; i < (await buttons.count().catch(() => 0)); i += 1)
+    controls.push(
+      (await buttons
+        .nth(i)
+        .evaluate((b) => b.getAttribute('aria-label') ?? (b as HTMLElement).innerText)
+        .catch(() => '')) ?? '',
+    )
   const speedNow = await speed(page)
     .inputValue()
     .catch(() => 'unreadable')
