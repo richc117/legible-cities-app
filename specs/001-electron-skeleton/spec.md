@@ -1,5 +1,16 @@
 # Feature Specification: Electron skeleton
 
+> **Superseded in part by the front door (Phase 5.6, A5.6-01 to A5.6-06).**
+> What this spec says of the window opens to the Library as this spec describes it is no longer the screen. `Library.tsx` was
+> reshaped in place into the front door: the sample cities as cards
+> (A5.6-02), opened in one press (A5.6-03); **Your projects**, newest opened
+> first, with how far each has got (A5.6-04); one **New project** sheet with
+> three sources, which took over the create and add-a-feed dialogs
+> (A5.6-05); and **Your feeds** for the feeds a person added (A5.6-06). The
+> screen is still called "Library" and the way back to it is still "Back to
+> Library". `docs/DESIGN.md` 8.2's front door, sample card and new project
+> sheet rows describe it now.
+
 **Feature Branch**: `main` (committed directly until this feature's CI workflow lands; branches and pull requests after)
 
 **Created**: 2026-09-07
