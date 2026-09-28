@@ -782,7 +782,9 @@ test('reopening a laid-out project runs nothing and shows the same day and windo
     await expect(section).toContainText('Drawn for 2026-06-16')
     await expect(section).toContainText('2026-03-01 to 2026-11-30')
     await expect(section.getByLabel('Draw for another day')).toHaveValue('2026-06-16')
-    expect(JSON.stringify(readRecord(engineHome)), 'nothing was rewritten').toBe(stored)
+    expect(JSON.stringify(readRecord(engineHome)), 'nothing but the opening was rewritten').toBe(
+      stored,
+    )
     expect(
       received(engineHome, 'graph.build').length + received(engineHome, 'map.build').length,
       'nothing ran',

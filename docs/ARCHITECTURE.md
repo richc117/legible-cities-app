@@ -75,11 +75,12 @@ app's own settings under `api.settings`:
 
 | Method | Does |
 |---|---|
-| `list()` | the Library's entries, newest modified first; an unreadable record is skipped and logged, never shown broken |
+| `list()` | the Library's entries, newest opened first (a project never opened since `opened` was kept by when it was made, A5.6-04); an unreadable record is skipped and logged, never shown broken |
 | `get(id)` | one record, with `readOnly` set when a newer version of the app wrote it |
 | `create({ name, feed, mode?, agency? })` | a new record, every other field at its default |
 | `rename(id, name)` | changes `name` and `modified` and nothing else |
 | `delete(id)` | removes the project and its output, and reports what could not be removed by folder role |
+| `markOpened(id)` | writes `opened` onto the record as stored and nothing else - not `modified`, and not a read-only project (A5.6-04) |
 | `completeLayout(id, done)` | records the layout's id, the feed's window and the service day a finished run produced; the id is the engine's own, as `graph.build` answered it (A3-01, ADR-033), the window is `feeds.service`'s answer (A3-04, ADR-031) |
 | `completeRebuild(id, done)` | records the day a finished rebuild drew the map for, inside the stored window or not at all (A3-04) |
 | `setInputs(id, { mode, agency })` | stores the mode and agency a person chose with the feed in view; the next layout passes them to the engine, which names a layout for them (A2-02) |
@@ -315,7 +316,7 @@ reachable (A2-01), the feed key is typed into the create dialog and
 validated for form only.
 
 The Library has no record of its own: it is the set of readable records
-under `projects/`, sorted by modified time, newest first.
+under `projects/`, sorted by when each was last opened, newest first.
 
 ## Configuration and the startup log
 

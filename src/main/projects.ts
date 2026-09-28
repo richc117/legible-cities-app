@@ -261,7 +261,10 @@ export class ProjectStore {
     throw new Error('not found')
   }
 
-  private async writeAtomic(id: string, record: ProjectRecord): Promise<void> {
+  private async writeAtomic(
+    id: string,
+    record: ProjectRecord | Record<string, unknown>,
+  ): Promise<void> {
     const text = JSON.stringify(record, null, 2) + '\n'
     const temp = join(this.dir(id), tempFile())
     await this.#track(async () => {
@@ -635,11 +638,27 @@ export class ProjectStore {
 
   async #markOpenedTracked(id: string): Promise<ProjectRecord> {
     this.checkId(id)
+    // Read through the parser first: it proves the record is one this build
+    // reads, and answers read-only for one a newer build made.
     const { record, readOnly } = await this.load(id)
     if (readOnly) return record
-    const updated: ProjectRecord = { ...record, opened: new Date().toISOString() }
-    await this.writeAtomic(id, updated)
-    return updated
+    const opened = new Date().toISOString()
+    // Then written onto the file as it stands, not onto what the parser made
+    // of it. Every other writer is an edit and writes the record whole, as
+    // this build understands it; an opening is not an edit, and writing the
+    // parsed record back would turn an export choice, a colour or a field
+    // this build does not know into its defaults just because a person
+    // looked at the project (review of A5.6-04). Placed before `created`,
+    // where the contract's order has it, when the record does not hold one.
+    const stored = JSON.parse(await readFile(this.file(id), 'utf8')) as Record<string, unknown>
+    const written: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(stored)) {
+      if (key === 'created' && !('opened' in stored)) written.opened = opened
+      written[key] = key === 'opened' ? opened : value
+    }
+    if (!('opened' in written)) written.opened = opened
+    await this.writeAtomic(id, written)
+    return { ...record, opened }
   }
 
   /**

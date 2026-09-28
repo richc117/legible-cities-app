@@ -506,8 +506,9 @@ describe('drawn', () => {
 describe('summarise', () => {
   it('keeps what the front door shows and what its run graph reads, and nothing else', () => {
     // The row's own words, and the fields the notebook's run graph reads to
-    // say how far the project has got (A5.6-04). Not the colours, the
-    // order, the theme, the export or the service window.
+    // say how far the project has got (A5.6-04). Not the theme, the export,
+    // the style or the service window; the colours and the order come only
+    // inside `drawn`, which the graph reads whole.
     expect(summarise({ ...full, date: '2026-09-07' }, true)).toEqual({
       id: full.id,
       name: full.name,

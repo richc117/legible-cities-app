@@ -422,6 +422,13 @@ export function validateServiceWindow(service: unknown): string | null {
   return null
 }
 
+/**
+ * The one shape `opened` is written in, `Date.prototype.toISOString`'s: the
+ * list orders by it as a string, which is right only while every value
+ * shares the format (A5.6-04).
+ */
+const OPENED_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
+
 const MADE_MAX = 64
 // ISO 8601 with a time and an offset, as the engine writes it beside a
 // stored layout (isoformat with seconds, in UTC). Compared as a string, so
@@ -586,7 +593,7 @@ export function parseRecord(json: unknown): Parsed {
     // unreadable value is "not opened since this was kept" (A5.6-04).
     opened:
       isString(json.opened) &&
-      json.opened.length <= MADE_MAX &&
+      OPENED_PATTERN.test(json.opened) &&
       !Number.isNaN(Date.parse(json.opened))
         ? json.opened
         : null,

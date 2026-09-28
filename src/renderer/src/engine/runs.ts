@@ -272,7 +272,6 @@ export function layoutRunFor(projectId: string): LayoutRun {
   return run
 }
 
-/** Forget a project's run: it was deleted, so nothing will ask again. */
 /**
  * The project's layout run if this session has one, and null otherwise -
  * never a new one. For a reader that only wants to know what a run is
@@ -283,6 +282,7 @@ export function peekLayoutRun(projectId: string): LayoutRun | null {
   return runs.get(projectId) ?? null
 }
 
+/** Forget a project's run: it was deleted, so nothing will ask again. */
 export function forgetLayoutRun(projectId: string): void {
   const run = runs.get(projectId)
   if (run !== undefined) registry.untrack(run)

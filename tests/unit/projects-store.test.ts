@@ -272,6 +272,31 @@ describe('markOpened', () => {
     expect({ ...written, opened: null }).toEqual(before)
   })
 
+  it('writes onto the record as stored, not as this build reads it', async () => {
+    // A field this build does not know, and an export choice it does not
+    // offer: an opening must leave both exactly as they were, where an edit
+    // would write its own reading of them (review of A5.6-04).
+    const stored = {
+      ...record(A),
+      export: { preset: 'a-preset-from-a-later-build', options: {} },
+      somethingNewer: { kept: true },
+    }
+    await seed(A, stored)
+    await store.markOpened(A)
+    const written = await readRecord(A)
+    expect(written.export).toEqual(stored.export)
+    expect(written.somethingNewer).toEqual({ kept: true })
+    expect(typeof written.opened).toBe('string')
+    const rest: Record<string, unknown> = { ...written }
+    delete rest.opened
+    const before: Record<string, unknown> = { ...stored }
+    delete before.opened
+    expect(rest, 'everything but the opening, as stored').toEqual(before)
+    // In the contract's place, before `created`, as a record written whole has it.
+    const keys = Object.keys(written)
+    expect(keys.indexOf('opened')).toBe(keys.indexOf('created') - 1)
+  })
+
   it('leaves a project a newer build made exactly as it was', async () => {
     await seed(A, record(A, { version: 2 }))
     const before = await readFile(join(root, A, 'project.json'), 'utf8')
@@ -285,6 +310,10 @@ describe('markOpened', () => {
     await seed(A, older)
     expect((await store.get(A)).opened).toBeNull()
     await seed(B, { ...record(B), opened: 'last Tuesday' })
+    expect((await store.get(B)).opened).toBeNull()
+    // A date alone parses, but would sort among full moments as a string
+    // in the wrong place, so it is not one.
+    await seed(B, { ...record(B), opened: '2026-09-10' })
     expect((await store.get(B)).opened).toBeNull()
   })
 })
