@@ -178,7 +178,7 @@ describe("the dialogs' rules", () => {
     expect(validateFeedUrl('  https://agency.example/gtfs.zip ')).toBeNull()
   })
 
-  it('opens the create dialog on the feed asked for, else the default, else the first', () => {
+  it('opens the New project sheet on the feed asked for, else the default, else the first', () => {
     const la = { ...FEED, key: 'la-metro-rail', source: 'preset' as const }
     const other = { ...FEED, key: 'other' }
     expect(startingFeed([other, la], 'other')).toBe('other')

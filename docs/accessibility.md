@@ -99,10 +99,10 @@ listed below for filing. *engine's*: inside the engine's page.
 | Empty state | fixed (D4) | pass | pass | pass | fixed (C6) | fixed (C1, C6) | not yet run: a person's | not yet run: a person's |
 | Project rows | pass | pass (`Open <name>`, the meta as description) | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
 | Feed rows (Start a project, Remove) and sample city cards (A5.6-02) | fixed (D5) | pass (each names its feed; a card is named by its facts) | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
-| Create-project dialog | pass | pass | pass | pass | fixed (C2) | fixed (C1, C2) | not yet run: a person's | not yet run: a person's |
-| Add-feed dialog, from a zip | pass | pass | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
-| Add-feed dialog, from an address | pass | pass | pass | pass | fixed (C5) | fixed (C1, C5) | not yet run: a person's | not yet run: a person's |
-| Add-feed progress line | pass (Cancel takes focus) | pass (`role="img"` sentence, a live sentence beside it) | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
+| New project sheet, a listed feed (A5.6-05) | asserted in the sweep | asserted in the sweep | asserted in the sweep | asserted in the sweep | not yet audited on the sheet | not yet audited on the sheet | not yet run: a person's | not yet run: a person's |
+| New project sheet, a zip chosen | asserted in the sweep | asserted in the sweep | asserted in the sweep | asserted in the sweep | not yet audited on the sheet | not yet audited on the sheet | not yet run: a person's | not yet run: a person's |
+| New project sheet, an address refused | asserted in the sweep | asserted in the sweep | asserted in the sweep | asserted in the sweep | not yet audited on the sheet | not yet audited on the sheet | not yet run: a person's | not yet run: a person's |
+| New project sheet, the add's progress line | not yet swept | not yet swept | not yet swept | not yet swept | not yet audited on the sheet | not yet audited on the sheet | not yet run: a person's | not yet run: a person's |
 | Remove-feed confirmation | fixed (D8) | pass | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
 
 ### Project, above the tabs

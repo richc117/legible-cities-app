@@ -84,7 +84,7 @@ test('the Library, its empty state and its three dialogs', async () => {
     await page.getByRole('button', { name: 'New project' }).click()
     const create = page.getByRole('dialog', { name: 'New project' })
     await expect(create.getByRole('combobox', { name: 'Feed' })).toBeVisible()
-    await sweep(page, 'the create dialog', create)
+    await sweep(page, 'the new project sheet, a listed feed', create)
     await page.keyboard.press('Escape')
     await expect(create).toBeHidden()
 
