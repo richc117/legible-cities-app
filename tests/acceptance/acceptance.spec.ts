@@ -1124,7 +1124,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
       await confirm.getByRole('button', { name: 'Remove', exact: true }).click()
       await log.soft('the refusal', () =>
         expect(confirm.getByRole('alert')).toHaveText(
-          'One project uses this feed; delete the project first.',
+          'The project “Caltrain” uses this feed; delete it first.',
           { timeout: SHORT_MS },
         ),
       )

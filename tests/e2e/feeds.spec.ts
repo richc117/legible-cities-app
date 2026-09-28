@@ -494,7 +494,7 @@ test('removes an added feed behind a confirmation, and refuses one a project use
     await expect(confirm.getByRole('button', { name: 'Cancel' })).toBeFocused()
     await confirm.getByRole('button', { name: 'Remove' }).click()
     await expect(confirm.getByRole('alert')).toHaveText(
-      'One project uses this feed; delete the project first.',
+      'The project “Prueba” uses this feed; delete it first.',
     )
     await confirm.getByRole('button', { name: 'Cancel' }).click()
     await expect(feedRow(page, 'Metro de Prueba')).toBeVisible()

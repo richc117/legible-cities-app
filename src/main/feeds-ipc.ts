@@ -15,8 +15,24 @@ import { PickedPaths } from './picked'
 /** What the handler needs from Electron's dialog; a test hands in a fake. */
 export type OpenZipDialog = () => Promise<string | null>
 
-/** What the guard needs from the project store: the feeds projects name. */
-export type FeedsInUse = () => Promise<string[]>
+/** What the guard needs from the project store: each project's feed, and its name to say. */
+export type FeedsInUse = () => Promise<{ feed: string; name: string }[]>
+
+/**
+ * Why a feed may not be removed, naming the projects that draw it (A5.6-06)
+ * so a person knows which to delete rather than having to go and look. Two
+ * or three are all named; past that, two and a count, so the sentence stays
+ * one line in the confirmation it is said in.
+ */
+export function inUseSentence(names: readonly string[]): string {
+  const quoted = names.map((name) => `“${name}”`)
+  if (quoted.length === 1) return `The project ${quoted[0]} uses this feed; delete it first.`
+  const listed =
+    quoted.length <= 3
+      ? `${quoted.slice(0, -1).join(', ')} and ${quoted[quoted.length - 1]}`
+      : `${quoted.slice(0, 2).join(', ')} and ${quoted.length - 2} others`
+  return `The projects ${listed} use this feed; delete them first.`
+}
 
 /** A guard's answer: null to let the request through, else the sentence to refuse it with. */
 export type Guard = (
@@ -152,13 +168,8 @@ export function registryGuard(picked: PickedPaths, inUse: FeedsInUse): Guard {
     if (method === 'feeds.remove') {
       const key = params?.key
       if (typeof key !== 'string') return 'a feed to remove needs a key'
-      const users = (await inUse()).filter((feed) => feed === key).length
-      if (users > 0) {
-        return users === 1
-          ? 'One project uses this feed; delete the project first.'
-          : `${users} projects use this feed; delete them first.`
-      }
-      return null
+      const users = (await inUse()).filter((project) => project.feed === key)
+      return users.length === 0 ? null : inUseSentence(users.map((project) => project.name))
     }
     return null
   }

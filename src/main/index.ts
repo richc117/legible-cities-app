@@ -598,7 +598,9 @@ if (!hasLock) {
     // the loop turns while it does: a reset confirmed in that window would
     // otherwise be answered with the null from before it started, and the
     // remove would unlink inside data/feeds while the removal walks data/.
-    const registry = registryGuard(picked, async () => (await store.list()).map((p) => p.feed))
+    const registry = registryGuard(picked, async () =>
+      (await store.list()).map((p) => ({ feed: p.feed, name: p.name })),
+    )
     // A feed's removal ends in a sentence if the engine stalls (issue 107);
     // the suite shortens the wait in development, never in a package.
     const removeDeadline = feedsRemoveDeadlineOverride(process.env, app.isPackaged)
