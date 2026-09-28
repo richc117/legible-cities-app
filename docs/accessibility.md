@@ -270,7 +270,8 @@ was thrown to the top of the document with nothing said.
   opened the dialog goes with the empty state; focus lands on the new
   project's row (`Library.tsx`). Asserted in the sweep.
 - **D5. A removed feed.** Its row takes its Remove with it; focus goes to the
-  Feeds heading once the confirmation has closed and the list has been
+  "Your feeds" heading while an added feed is left, or "Sample cities" once
+  none is (A5.6-01), once the confirmation has closed and the list has been
   drawn, in either order, checked on every render and once more after the
   browser's next rendering update, since Chromium may move focus off the
   removed button only then (`Library.tsx`, `FeedList.tsx`). Asserted in the sweep.

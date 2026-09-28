@@ -73,6 +73,29 @@ export const INTRODUCTION =
 export const SAMPLES_AWAY =
   'The sample cities are listed once the engine is ready; the status line above says what it is doing.'
 
+/** What it says when the engine is ready and its answer to `feeds.list` failed. */
+export const SAMPLES_UNREAD =
+  'The engine did not list the sample cities this time. They are read again when this screen opens.'
+
+/** What it says when the engine answered and holds no presets at all. */
+export const SAMPLES_NONE = 'The engine lists no sample cities.'
+
+/**
+ * What the samples region holds when there are no presets to draw: which
+ * of the three reasons it is, or nothing while the first read is still on
+ * its way - a sentence saying the engine is not ready, under a status line
+ * that says it is, would be the screen contradicting itself for a beat.
+ */
+export function samplesSentence(ready: boolean, read: FeedsRead): string | null {
+  if (!ready) return SAMPLES_AWAY
+  if (read === 'failed') return SAMPLES_UNREAD
+  if (read === 'listed') return SAMPLES_NONE
+  return null
+}
+
+/** Whether the feeds have been read since the screen opened, and how that went. */
+export type FeedsRead = 'unread' | 'listed' | 'failed'
+
 // The front door (A5.6-01, ADR-045). The screen answers the question a
 // person arrives with. With no projects it is the sample cities, under one
 // sentence saying what the app is; with projects it is the projects list,
@@ -88,6 +111,7 @@ export const SAMPLES_AWAY =
 export default function Library({ notice, onOpen }: Props): JSX.Element {
   const [library, setLibrary] = useState<LibraryState>({ status: 'loading' })
   const [feeds, setFeeds] = useState<FeedRecord[]>([])
+  const [feedsRead, setFeedsRead] = useState<FeedsRead>('unread')
   const [creating, setCreating] = useState<{ feed?: string } | null>(null)
   const [adding, setAdding] = useState(false)
   const [removing, setRemoving] = useState<FeedRecord | null>(null)
@@ -124,8 +148,13 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
     const mine = ++listing.current
     forgetFeedList()
     const listed = await listFeeds(ready)
-    if (listing.current !== mine || listed === null) return null
+    if (listing.current !== mine) return null
+    if (listed === null) {
+      setFeedsRead('failed')
+      return null
+    }
     setFeeds(listed)
+    setFeedsRead('listed')
     return listed
   }, [ready])
   // The feed whose removal went unanswered, while its dialog is open:
@@ -146,7 +175,13 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
     let cancelled = false
     const mine = ++listing.current
     void listFeeds(ready).then((listed) => {
-      if (!cancelled && listing.current === mine && listed !== null) setFeeds(listed)
+      if (cancelled || listing.current !== mine) return
+      if (listed === null) {
+        setFeedsRead('failed')
+        return
+      }
+      setFeeds(listed)
+      setFeedsRead('listed')
     })
     return () => {
       cancelled = true
@@ -272,6 +307,7 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
   }
 
   const presets = feeds.filter((feed) => feed.source === 'preset')
+  const samples = samplesSentence(ready, feedsRead)
   const addedFeeds = feeds.filter((feed) => feed.source === 'user')
   const startFrom = (feed: FeedRecord): void => {
     setFeedNotice(null)
@@ -376,7 +412,7 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
             <h2 id={SAMPLES_HEADING_ID} tabIndex={-1}>
               Sample cities
             </h2>
-            <p className="prose">{SAMPLES_AWAY}</p>
+            {samples !== null && <p className="prose">{samples}</p>}
           </section>
         ))}
       {library.status === 'ready' && addedFeeds.length > 0 && (

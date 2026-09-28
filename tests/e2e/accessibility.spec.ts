@@ -67,7 +67,9 @@ test.skip(PYTHON === null, 'no python3 or python on the PATH to run the stand-in
 test('the Library, its empty state and its three dialogs', async () => {
   test.setTimeout(240_000)
   const p = profile()
-  addedFeed(p)
+  // Two, so a removal can be seen from both sides: with another added feed
+  // left, and with none (A5.6-01).
+  addedFeed(p, ['Metro de Prueba', 'Tren Ligero'])
   const zip = join(p.userData, 'Metro de Prueba.zip')
   writeFileSync(zip, 'not read: the add is not submitted')
   await withApp(p, async (page, app) => {
@@ -118,26 +120,30 @@ test('the Library, its empty state and its three dialogs', async () => {
     await expect(page.getByRole('button', { name: 'Open Los Angeles' })).toBeFocused()
     await sweep(page, 'Library, with a project')
 
-    // A removed feed takes its row, and the last added feed its region, so
-    // focus goes to the samples' heading.
-    await pressWithKeyboard(page.getByRole('button', { name: 'Remove Metro de Prueba' }))
-    await pressWithKeyboard(
-      page.getByRole('dialog', { name: 'Remove Metro de Prueba?' }).getByRole('button', {
-        name: 'Remove',
-      }),
-    )
-    await expect(page.getByRole('listitem', { name: 'Metro de Prueba' })).toHaveCount(0)
+    // A removed feed takes its row. With another added feed left, focus
+    // goes to the added feeds' heading; the last one takes its region with
+    // it, and focus goes to the samples' heading instead.
     // Polled as a description of whatever holds focus, so a failure says
     // where it went rather than only that the heading does not have it.
-    await expect
-      .poll(() =>
-        page.evaluate(() => {
-          const active = document.activeElement
-          if (active === null) return 'nothing'
-          return active.id !== '' ? `#${active.id}` : active.tagName.toLowerCase()
+    const focused = (): Promise<string> =>
+      page.evaluate(() => {
+        const active = document.activeElement
+        if (active === null) return 'nothing'
+        return active.id !== '' ? `#${active.id}` : active.tagName.toLowerCase()
+      })
+    for (const [name, lands] of [
+      ['Metro de Prueba', '#feeds-heading'],
+      ['Tren Ligero', '#samples-heading'],
+    ]) {
+      await pressWithKeyboard(page.getByRole('button', { name: `Remove ${name}` }))
+      await pressWithKeyboard(
+        page.getByRole('dialog', { name: `Remove ${name}?` }).getByRole('button', {
+          name: 'Remove',
         }),
       )
-      .toBe('#samples-heading')
+      await expect(page.getByRole('listitem', { name })).toHaveCount(0)
+      await expect.poll(focused, { message: `after removing ${name}` }).toBe(lands)
+    }
   })
 })
 
