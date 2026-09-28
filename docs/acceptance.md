@@ -213,7 +213,8 @@ draws from, and is not one of the engine's presets, so it lands in the
 name. If the address has stopped answering, record that and use another
 small, rail-only, current GTFS zip, and say which in the notes.
 
-**Do.** Press **Back to Library**, then **Add feed**. Paste the address
+**Do.** Press **Library** at the top of the project's screen (a screen
+reader names it "Back to Library"), then **Add feed**. Paste the address
 into **Or from an address** and press **Add feed** in the dialog. When the
 dialog has closed, press **Start a project** on the new row, name it
 `Caltrain`, and press **Create**. Then press **Remove** on the Caltrain

@@ -1390,7 +1390,11 @@ async function seenByPage(app: ElectronApplication): Promise<[string, unknown][]
     const answer = (await app.evaluate(async ({ BrowserWindow }) => {
       const win = BrowserWindow.getAllWindows()[0]
       const main = win.webContents.mainFrame
-      const frame = main.frames.find((f) => f !== main)
+      // The viewer's frame, not merely the first child: once a layout has
+      // run, cell 01's stage view draws an iframe of its own from `srcdoc`,
+      // and which of the two comes first is a matter of timing - a read of
+      // the stage frame answered [] and failed this on Windows (PR 225).
+      const frame = main.frames.find((f) => f !== main && f.url !== 'about:srcdoc')
       return frame ? ((await frame.executeJavaScript('window.__seen || []')) as unknown) : []
     })) as [string, unknown][] | undefined
     return answer ?? []
@@ -1573,5 +1577,133 @@ test('a scrub while a run holds the page is refused with a sentence', async () =
       timeout: 30_000,
     })
     await expect(transport(page).getByRole('alert')).toHaveCount(0)
+  })
+})
+
+// The project's header (A5.5-22): the breadcrumb, the notebook's one
+// sentence, and Run all, which brings the map up to date with cells 01 to
+// 05 through the runs those cells already have and never runs the export.
+
+const header = (page: Page): Locator => page.locator('.project-run')
+const runAllButton = (page: Page): Locator => page.getByRole('button', { name: 'Run all' })
+
+test('Run all lays out a new project and draws its day, then says the map is current', async () => {
+  // Slow at `feeds.service`, so the running state is still there to be read.
+  const engineHome = home({ map_draws: true, progress_delay_ms: 10, service_delay_ms: 1500 })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    const said = header(page).getByRole('status')
+    await expect(said).toHaveText('Nothing has been laid out yet.')
+    await expect(header(page)).toContainText('Run all stops at the map. It never exports.')
+    await expect(runAllButton(page)).toHaveAccessibleDescription(
+      'Run all stops at the map. It never exports.',
+    )
+
+    await runAllButton(page).focus()
+    await page.keyboard.press('Enter')
+    const stop = page.getByRole('button', { name: 'Stop', exact: true })
+    await expect(stop, 'Run all gives way to Stop, and focus goes with it').toBeFocused()
+    await expect(said).toHaveText('02 Process is running.')
+    await expect(page.getByRole('button', { name: /^Jobs, / })).toHaveAccessibleName(
+      'Jobs, 1 running',
+    )
+
+    await expect(said).toHaveText('The map is drawn from every cell.', { timeout: 30_000 })
+    await expect(runAllButton(page), 'nothing left to run').toBeDisabled()
+    await expect(said, 'focus lands on the sentence saying why').toBeFocused()
+    expect(received(engineHome, 'graph.build')).toHaveLength(1)
+    expect(received(engineHome, 'map.build')).toHaveLength(1)
+    expect((readRecord(engineHome).drawn as { date: string }).date).toBe('2026-06-16')
+    expect(received(engineHome, 'export.plan'), 'never the export').toHaveLength(0)
+  })
+})
+
+test('Run all draws a chosen day from the stored layout, and lays nothing out', async () => {
+  const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    await runAllButton(page).click()
+    const said = header(page).getByRole('status')
+    await expect(said).toHaveText('The map is drawn from every cell.', { timeout: 30_000 })
+
+    await cell(page, 'frame').getByLabel('Draw for another day').fill('2026-06-20')
+    await expect(said).toHaveText('04 Style to 06 Export are not drawn yet.')
+    await expect(runAllButton(page)).toBeEnabled()
+    await runAllButton(page).click()
+    await expect(said).toHaveText('The map is drawn from every cell.', { timeout: 30_000 })
+    // The rebuild it started is the job cell 03 would have started.
+    await page.getByRole('button', { name: /^Jobs, / }).click()
+    await expect(
+      page
+        .getByRole('complementary', { name: 'Inspector' })
+        .getByRole('listitem', { name: 'Los Angeles Rebuild for 2026-06-20' }),
+    ).toBeVisible()
+    expect((readRecord(engineHome).drawn as { date: string }).date).toBe('2026-06-20')
+    expect(received(engineHome, 'graph.build'), 'nothing was laid out').toHaveLength(1)
+    expect(received(engineHome, 'map.build')).toHaveLength(2)
+    expect(received(engineHome, 'export.plan')).toHaveLength(0)
+  })
+})
+
+test('Run all stops at the first failure and leaves that cell in error', async () => {
+  const engineHome = home({
+    map_draws: true,
+    progress_delay_ms: 10,
+    service_refuses: 'This feed has no calendar.',
+  })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    await runAllButton(page).click()
+    await expect(header(page).getByRole('status')).toHaveText('02 Process failed.', {
+      timeout: 30_000,
+    })
+    await expect(cellHeading(page, 'process')).toHaveAccessibleName(/ failed/)
+    expect(received(engineHome, 'map.build'), 'nothing after the failure ran').toHaveLength(0)
+    await expect(runAllButton(page), 'and it can be run again').toBeEnabled()
+  })
+})
+
+test('Stop cancels the stage in flight and runs nothing after it', async () => {
+  const engineHome = home({ map_draws: true, progress_delay_ms: 10, service_delay_ms: 3000 })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    await runAllButton(page).focus()
+    await page.keyboard.press('Enter')
+    const stop = page.getByRole('button', { name: 'Stop', exact: true })
+    await expect(stop).toBeFocused()
+    await expect.poll(() => received(engineHome, 'feeds.service').length).toBe(1)
+    await page.keyboard.press('Enter')
+    await expect(runAllButton(page), 'focus is handed back to Run all').toBeFocused({
+      timeout: 10_000,
+    })
+    await expect(header(page).getByRole('status')).toHaveText('Nothing has been laid out yet.')
+    expect(received(engineHome, 'map.build'), 'the draw never ran').toHaveLength(0)
+    expect(readRecord(engineHome).layout, 'nothing was written').toBeNull()
+  })
+})
+
+// The second half is a guard rather than a proof: nothing in the header
+// scrolls, and the screen focuses its heading on opening, which scrolls to
+// the top. It is here so that whatever later keeps a project's scroll
+// position across a visit has to meet the issue's words on the way.
+test('the breadcrumb goes back to the Library, and a returning person starts at the top', async () => {
+  const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    const breadcrumb = page.getByRole('navigation', { name: 'Breadcrumb' })
+    await expect(breadcrumb.getByRole('heading', { level: 1 })).toHaveText('Los Angeles')
+    await expect(breadcrumb.locator('[aria-current="page"]')).toContainText('Los Angeles')
+    await runAllButton(page).click()
+    await expect(header(page).getByRole('status')).toHaveText('The map is drawn from every cell.', {
+      timeout: 30_000,
+    })
+    await cellHeading(page, 'export').scrollIntoViewIfNeeded()
+    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0)
+
+    await breadcrumb.getByRole('button', { name: 'Back to Library' }).click()
+    await expect(page.getByRole('button', { name: 'Open Los Angeles' })).toBeVisible()
+    await openProject(page, 'Los Angeles')
+    await expect(page.getByRole('heading', { level: 1, name: 'Los Angeles' })).toBeFocused()
+    expect(await page.evaluate(() => window.scrollY), 'the top of the notebook').toBe(0)
   })
 })

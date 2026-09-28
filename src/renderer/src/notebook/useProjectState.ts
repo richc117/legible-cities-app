@@ -69,6 +69,13 @@ export interface ProjectState {
   exportSnapshot: ExportSnapshot
   layingOut: boolean
   exporting: boolean
+  /**
+   * True from a run's `done` until the record it wrote has been read back
+   * (A5.5-22). In that beat the run is over and the record is the old one,
+   * so anything that decides what is left to run from the record would
+   * decide it from before the run.
+   */
+  settling: boolean
   /** How many runs have drawn the page while this screen is open; the viewer's address carries it. */
   drawn: number
   /** The address the export planned for the map's frame, while cell 06 is open. */
@@ -163,18 +170,25 @@ export function useProjectState(id: string, onBack: (notice?: string) => void): 
   const exporting = exportSnapshot.state === 'running'
 
   // When a run finishes it has written the record; read it back so the
-  // screen shows the layout and the day it just stored.
+  // screen shows the layout and the day it just stored. `settling` covers
+  // the read, and comes down however it ends: a read that failed leaves
+  // the screen on the record it had, which is what it showed before.
+  const [settling, setSettling] = useState(false)
   useEffect(() => {
     let previous = run.snapshot.state
     return run.subscribe((snapshot) => {
       if (snapshot.state === 'done' && previous !== 'done') {
-        window.api.projects.get(id).then(
-          (project) => {
-            setState({ status: 'ready', project })
-            setDrawn((n) => n + 1)
-          },
-          () => undefined,
-        )
+        setSettling(true)
+        window.api.projects
+          .get(id)
+          .then(
+            (project) => {
+              setState({ status: 'ready', project })
+              setDrawn((n) => n + 1)
+            },
+            () => undefined,
+          )
+          .finally(() => setSettling(false))
       }
       previous = snapshot.state
     })
@@ -354,6 +368,7 @@ export function useProjectState(id: string, onBack: (notice?: string) => void): 
     runSnapshot,
     exportSnapshot,
     layingOut,
+    settling,
     exporting,
     drawn,
     preview,
