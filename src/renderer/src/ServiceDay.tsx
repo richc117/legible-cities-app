@@ -96,9 +96,19 @@ export function dayUndrawn(record: Pick<ProjectRecord, 'date' | 'drawn'>): boole
  * record holds another. Null when there is no Revert to offer - the day is
  * drawn, or the record cannot say what the map was drawn for, which is
  * never a reason to revert to nothing.
+ *
+ * Null too when the drawn day is outside the window. A later layout keeps
+ * the project's day and replaces the window without checking one against
+ * the other (`completeLayout`), so a map can be drawn for a day the feed no
+ * longer covers - and the store refuses that day to `setDate`, so a Revert
+ * to it would be a button that fails on every press.
  */
-export function revertDay(record: Pick<ProjectRecord, 'date' | 'drawn'>): string | null {
-  return dayUndrawn(record) ? (record.drawn?.date ?? null) : null
+export function revertDay(
+  record: Pick<ProjectRecord, 'date' | 'drawn' | 'service'>,
+): string | null {
+  const day = dayUndrawn(record) ? (record.drawn?.date ?? null) : null
+  if (day === null || record.service === null || !withinWindow(day, record.service)) return null
+  return day
 }
 
 export default function ServiceDay({
@@ -270,7 +280,12 @@ export default function ServiceDay({
     input.current?.focus()
     // A day waiting to be written is one the person is going back from.
     schedule.cancel()
-    void choose(day)
+    void (async () => {
+      // Refused, the record still holds the chosen day, and so must the
+      // control: otherwise it shows the day the status line says is not
+      // chosen, and "Draw for this day" offers a write that fails again.
+      if (!(await choose(day))) setValue(project.date ?? '')
+    })()
   }
   const covers =
     service.start === service.end

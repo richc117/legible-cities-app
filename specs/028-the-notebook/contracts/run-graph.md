@@ -199,8 +199,13 @@ Only cell 03's exists, because only cell 03's has anything to go back to:
 
 - **Cell 03, the day.** `setDate` writes a chosen day at once and draws
   nothing (A5.5-15), so `date` and `drawn.date` differ for as long as a
-  person leaves them apart. While they do, and `drawn.date` is not null,
-  the service day's form offers "Revert to `<drawn.date>`". It is
+  person leaves them apart. While they do, and `drawn.date` is a day the
+  stored window still covers, the service day's form offers "Revert to
+  `<drawn.date>`". The window matters because a later layout keeps the
+  day and replaces the window without comparing them, so a map can be
+  drawn for a day `setDate` would refuse; a Revert to it would fail on
+  every press, so none is offered. A refused Revert puts the control
+  back to the record's day. It is
   `projects.setDate` with that day: one write, no engine request, no job,
   and the cells below read `ready` again because the two days agree, not
   because anything ran. Focus goes to the date control, which now holds

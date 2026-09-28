@@ -706,14 +706,20 @@ test('Revert puts the day back to the one the map shows, and runs nothing', asyn
     await expect(revert).toHaveAccessibleName('Revert to 2026-06-16')
     const modified = readRecord(engineHome).modified
 
+    // A later day typed and not yet written - the debounce is still
+    // waiting - is one the press goes back from, so it must never land.
+    await control.fill('2026-06-21')
     await revert.focus()
     await page.keyboard.press('Enter')
     await expect
       .poll(() => readRecord(engineHome).date, { message: 'the day goes back' })
       .toBe('2026-06-16')
-    expect(readRecord(engineHome).modified, 'written, once').not.toBe(modified)
+    expect(readRecord(engineHome).modified, 'written').not.toBe(modified)
+    // Longer than the choice's debounce: the typed day was dropped, not
+    // merely overtaken.
+    await page.waitForTimeout(600)
+    expect(readRecord(engineHome).date, 'the waiting day never lands').toBe('2026-06-16')
     expect((readRecord(engineHome).drawn as { date: string }).date).toBe('2026-06-16')
-    expect(received(engineHome, 'map.build'), 'nothing was drawn').toHaveLength(1)
     await expect(page.getByRole('button', { name: /^Jobs, / })).toHaveAccessibleName(
       'Jobs, none running',
     )
@@ -723,6 +729,10 @@ test('Revert puts the day back to the one the map shows, and runs nothing', asyn
     await expect(revert, 'and the gap it closed takes it away').toHaveCount(0)
     await expect(control).toHaveValue('2026-06-16')
     await expect(control, 'focus is in the control holding the day').toBeFocused()
+    // Counted last, after everything above has settled, so a request sent
+    // late by a stray rebuild would be here too.
+    expect(received(engineHome, 'map.build'), 'nothing was drawn').toHaveLength(1)
+    expect(received(engineHome, 'graph.build'), 'nothing was laid out').toHaveLength(1)
   })
 })
 

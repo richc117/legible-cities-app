@@ -182,6 +182,15 @@ describe("cell 03's summary", () => {
       expect(revertDay(project({ date: '2026-09-12', drawn: null }))).toBeNull()
     })
 
+    it('is not offered for a drawn day the window no longer covers', () => {
+      // A later layout keeps the day and replaces the window, so the map can
+      // be of a day the store would refuse to set.
+      const moved = { ...WINDOW, start: '2026-09-01' }
+      expect(
+        revertDay(project({ date: '2026-09-12', drawn: drawn('2026-08-20'), service: moved })),
+      ).toBeNull()
+    })
+
     it('never offers to go back to no day at all', () => {
       expect(revertDay(project({ date: '2026-09-12', drawn: drawn(null) }))).toBeNull()
     })
