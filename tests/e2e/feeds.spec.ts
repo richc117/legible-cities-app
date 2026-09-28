@@ -172,9 +172,11 @@ test('lists the presets and lets a project start from one, in two steps from emp
     await expect(page.getByRole('button', { name: 'Open Los Angeles' })).toBeVisible()
     await expect(page.locator('.empty')).toHaveCount(0)
 
-    // From a sample city's card: the dialog opens on that feed.
-    await feedRow(page, 'Mexico City Metro').getByRole('button').click()
-    await expect(dialog.getByRole('combobox', { name: 'Feed' })).toHaveValue('cdmx-metro')
+    // Another, on a feed chosen in the sheet. (A sample city's card opens
+    // the sample outright; its own test is below.)
+    await page.getByRole('button', { name: 'New project' }).click()
+    await dialog.getByRole('combobox', { name: 'Feed' }).selectOption('cdmx-metro')
+    await expect(dialog.getByLabel('Name', { exact: true })).toHaveValue('Mexico City Metro')
     await dialog.getByLabel('Name', { exact: true }).fill('CDMX')
     await dialog.getByRole('button', { name: 'Create', exact: true }).click()
     // The Library lists it once the record is on disk; read after that,

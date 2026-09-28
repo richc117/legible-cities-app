@@ -166,7 +166,7 @@ Result: ____
 - Under **Sample cities**, a card for each of the engine's networks - 22 at
   the pinned engine - each with its city and network, what its mode keeps
   and "not downloaded yet";
-  pressing a card opens **New project** on it.
+  pressing a card opens that city's notebook, its layout already running.
 - In Settings, **Bundled tools** says "The bundled LOOM and ffmpeg ran.",
   with **LOOM tools** "ran (`<n>` ms)." and **ffmpeg and ffprobe**
   "ran (`<n>` ms)."
@@ -249,8 +249,8 @@ Result: ____
 **Do.** Open **Los Angeles** and read **In the feed**. Press the **Label**,
 **Type** and **Trips** headers of the routes table. Open the **Mode**
 select and look at its options without changing it. Then, for the
-operator: go back to the Library, press the **Mexico City Metro** card
-under **Sample cities**, name it `Mexico City`, create and open it, and read
+operator: go back to the Library, press **New project**, choose
+**Mexico City Metro** under **Feed**, name it `Mexico City`, create and open it, and read
 **In the feed** again.
 
 **See.**

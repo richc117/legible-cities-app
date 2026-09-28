@@ -19,8 +19,9 @@ import { placeOf } from './FeedList'
 // the engine does not (constitution II).
 //
 // A card is one button, whose accessible name is what it shows, in the
-// order it shows it (WCAG 2.5.3). Until A5.6-03 makes a press open the
-// sample, a press starts a project on it, as "Start a project" did.
+// order it shows it (WCAG 2.5.3). A press opens the sample (A5.6-03): the
+// front door makes the project and opens its notebook with the layout
+// already starting.
 
 /** The section's heading, focusable: where focus goes when the last added feed's row took it. */
 export const SAMPLES_HEADING_ID = 'samples-heading'

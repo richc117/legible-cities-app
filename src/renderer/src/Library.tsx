@@ -21,7 +21,8 @@ type LibraryState = { status: 'loading' } | { status: 'ready'; projects: Project
 interface Props {
   /** A sentence carried over from the project view, such as what a delete could not remove. */
   notice: string | null
-  onOpen: (id: string) => void
+  /** Open a project; `layOut` starts its layout as it opens (a sample city, A5.6-03). */
+  onOpen: (id: string, layOut?: boolean) => void
 }
 
 // list() never rejects by contract (an unreadable record is skipped and
@@ -352,6 +353,38 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
     setFeedNotice(null)
     setCreating({ source: 'feed', feed: feed.key })
   }
+  // A sample city opens in one press (A5.6-03): the project is made from the
+  // registry's entry - its name, its mode, its operator - and its notebook
+  // opens at once with the layout starting, so a person presses a city and
+  // lands in a notebook that is already working. The layout reports in cell
+  // 02 and so does anything that fails; at engine v0.8.3 a preset's download
+  // happens inside that layout with no progress and no cancel of its own,
+  // which engine issue E36 asks for. A second press while the first is being
+  // made is the same press.
+  const opening = useRef(false)
+  const openSample = async (feed: FeedRecord): Promise<void> => {
+    if (opening.current) return
+    opening.current = true
+    setFeedNotice(null)
+    try {
+      const record = await window.api.projects.create({
+        name: feed.name,
+        feed: feed.key,
+        mode: feed.mode,
+        agency: feed.agency,
+      })
+      onOpen(record.id, true)
+    } catch (error) {
+      // Nothing was made, so there is no notebook to say it in. The guard
+      // comes down here only: on success the screen is replaced, and letting
+      // it down before that render would let a queued click make a second
+      // project and orphan the first.
+      opening.current = false
+      setFeedNotice(
+        `${feed.name} could not be opened: ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
+  }
   const askToRemove = (feed: FeedRecord): void => {
     setFeedNotice(null)
     handBack.current = null
@@ -434,7 +467,11 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
       {/* Drawn once the projects are read, so the regions do not trade
           places under a person's eyes when a returning start finds some. */}
       {library.status === 'ready' && (
-        <SampleCities presets={presets} sentence={samples} onOpen={startFrom} />
+        <SampleCities
+          presets={presets}
+          sentence={samples}
+          onOpen={(feed) => void openSample(feed)}
+        />
       )}
       {library.status === 'ready' && addedFeeds.length > 0 && (
         <FeedList
