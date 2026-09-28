@@ -8,7 +8,8 @@ import { engineClient, feedAdd } from './engine/runs'
 import AddFeedDialog from './AddFeedDialog'
 import ConfirmDialog from './ConfirmDialog'
 import CreateProjectDialog from './CreateProjectDialog'
-import FeedList, { FEEDS_HEADING_ID, SAMPLES_HEADING_ID } from './FeedList'
+import FeedList, { FEEDS_HEADING_ID } from './FeedList'
+import SampleCities, { SAMPLES_HEADING_ID } from './SampleCities'
 import { afterRendering, focusLost } from './focusHandback'
 import Icon from './icons/Icon'
 import Button from './kit/Button'
@@ -397,24 +398,9 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
       )}
       {/* Drawn once the projects are read, so the regions do not trade
           places under a person's eyes when a returning start finds some. */}
-      {library.status === 'ready' &&
-        (presets.length > 0 ? (
-          <FeedList
-            feeds={presets}
-            heading="Sample cities"
-            headingId={SAMPLES_HEADING_ID}
-            listName="Presets"
-            onNewProject={startFrom}
-            onRemove={askToRemove}
-          />
-        ) : (
-          <section className="front-door-region" aria-labelledby={SAMPLES_HEADING_ID}>
-            <h2 id={SAMPLES_HEADING_ID} tabIndex={-1}>
-              Sample cities
-            </h2>
-            {samples !== null && <p className="prose">{samples}</p>}
-          </section>
-        ))}
+      {library.status === 'ready' && (
+        <SampleCities presets={presets} sentence={samples} onOpen={startFrom} />
+      )}
       {library.status === 'ready' && addedFeeds.length > 0 && (
         <FeedList
           feeds={addedFeeds}

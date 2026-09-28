@@ -152,10 +152,8 @@ test('lists the presets and lets a project start from one, in two steps from emp
     await expect(page.getByRole('button', { name: 'Open Los Angeles' })).toBeVisible()
     await expect(page.locator('.empty')).toHaveCount(0)
 
-    // From a row: the dialog opens on that feed.
-    await feedRow(page, 'Mexico City Metro')
-      .getByRole('button', { name: /Start a project/ })
-      .click()
+    // From a sample city's card: the dialog opens on that feed.
+    await feedRow(page, 'Mexico City Metro').getByRole('button').click()
     await expect(dialog.getByRole('combobox', { name: 'Feed' })).toHaveValue('cdmx-metro')
     await dialog.getByLabel('Name', { exact: true }).fill('CDMX')
     await dialog.getByRole('button', { name: 'Create', exact: true }).click()
@@ -202,6 +200,38 @@ test('the front door shows the samples first, then the projects above them', asy
       return a !== null && b !== null && (a.compareDocumentPosition(b) & 4) !== 0
     })
     expect(projectsFirst, 'the projects come before the samples').toBe(true)
+  })
+})
+
+// The sample cities (A5.6-02): every preset as a card, from `feeds.list`
+// alone, before anything is downloaded; each card one button named by what
+// it shows, whether it is downloaded included.
+test('every preset is a card named by its facts, and nothing is fetched to draw them', async () => {
+  const engineHome = home({ presets_cached: ['la-metro-rail'] })
+  await withApp(engineHome, async (page) => {
+    const cards = page.getByRole('list', { name: 'Presets' })
+    await expect(cards.getByRole('listitem')).toHaveCount(2)
+    await expect(cards.getByRole('button')).toHaveCount(2)
+    await expect(feedRow(page, 'LA Metro Rail').getByRole('button')).toHaveAccessibleName(
+      'LA Metro Rail, Los Angeles · Metro Rail, keeps every mode, downloaded',
+    )
+    await expect(feedRow(page, 'Mexico City Metro').getByRole('button')).toHaveAccessibleName(
+      /^Mexico City Metro, .*keeps subway, not downloaded yet$/,
+    )
+    // Drawn from the list alone: no feed was inspected, downloaded or laid
+    // out. Read after the screen has been left and opened again, so its
+    // second feeds.list has been answered: anything the first opening set
+    // off after its cards were drawn has had its turn by then.
+    const received = (): string => readFileSync(join(engineHome, 'fake-engine.received'), 'utf8')
+    const lists = (): number => received().split('"feeds.list"').length - 1
+    const before = lists()
+    await page.getByRole('button', { name: 'Settings' }).click()
+    await page.getByRole('button', { name: 'Back to Library' }).click()
+    await expect(cards.getByRole('button')).toHaveCount(2)
+    await expect.poll(lists).toBeGreaterThan(before)
+    const asked = received()
+    for (const method of ['feeds.inspect', 'feeds.add', 'graph.build', 'map.build'])
+      expect(asked, method).not.toContain(`"${method}"`)
   })
 })
 

@@ -70,6 +70,9 @@ import type { ProjectRecord } from '../../src/shared/project'
 import { tagContains as gitTagContains, writtenSince } from './pure.mjs'
 import { RunRecord, STEP_TITLES, redact, type Result } from './record'
 
+/** The presets in the engine's registry at the pin (`vendor/pins.json`, v0.8.3). */
+const PRESETS_AT_PIN = 22
+
 const repoRoot = resolve(__dirname, '../..')
 const APP = process.env.LEGIBLE_ACCEPTANCE_APP ?? ''
 // Not under test-results/, which `npm run test:e2e` empties.
@@ -838,16 +841,24 @@ test('a release, installed, through docs/acceptance.md', async () => {
           const words = oneLine(await row.innerText())
           const name = (await row.getAttribute('aria-label')) ?? ''
           if (!words.includes('·') || !words.includes('not downloaded yet')) wrong.push(words)
+          // One card, one button, named by its name and its facts (A5.6-02).
+          const buttons = row.getByRole('button')
           if (
-            (await row.getByRole('button', { name: `Start a project on ${name}` }).count()) !== 1
+            (await buttons.count()) !== 1 ||
+            !((await buttons.first().getAttribute('aria-label')) ?? '').startsWith(`${name}, `)
           ) {
-            wrong.push(`${name} has no Start a project`)
+            wrong.push(`${name} is not one card named by its facts`)
           }
         }
         log.note(`${count} presets listed.`)
+        // Every preset the registry holds is a card (A5.6-02): twenty-two at
+        // the pinned engine, v0.8.3. A pin bump that changes the registry
+        // changes this number, and docs/acceptance.md says it too.
+        if (count !== PRESETS_AT_PIN)
+          wrong.push(`${count} cards, where the engine at the pin holds ${PRESETS_AT_PIN} presets`)
         if (wrong.length > 0)
           throw new Error(
-            `rows without a city and network, "not downloaded yet" or Start a project: ${wrong.join('; ')}`,
+            `cards without a city and network, "not downloaded yet" or one button: ${wrong.join('; ')}`,
           )
       })
 
@@ -1172,7 +1183,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
       await toLibrary(window)
       await window
         .getByRole('listitem', { name: 'Mexico City Metro', exact: true })
-        .getByRole('button', { name: /Start a project/ })
+        .getByRole('button')
         .click()
       const create = window.getByRole('dialog', { name: 'New project' })
       await log.soft('the create dialog opens on cdmx-metro', () =>
