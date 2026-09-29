@@ -103,6 +103,23 @@ export default function FrameCell({ cell, state, open, onToggle }: CellViewProps
             // A cell with nothing to offer says so in one sentence and
             // offers no disabled stand-in, as cells 04 and 05 do
             // (DESIGN.md 8.2).
+            //
+            // **What this branch does not draw** (issue 209): the day of a
+            // read-only project whose record holds a day and no window.
+            // The strip needs the window (`frameFacts`), `ServiceDay` is
+            // not drawn here, and the field that said the day regardless
+            // is gone, so in that state the open cell would state the day
+            // nowhere and only the collapsed row would. It cannot arise
+            // today. A day reaches a record with its window, in the one
+            // write `completeLayout` makes, and every later write of a day
+            // is refused where there is no window (`serviceDayRefusal`).
+            // So the only records with a day and no window are from before
+            // the window was kept (A3-04), and those are this version's
+            // own, which it may write: they never reach this branch, and
+            // over their layout `ServiceDay` says "Drawn for <day>.". A
+            // read-only record is a later version's, and would have to
+            // keep its window in a shape `readServiceWindow` refuses
+            // whole. Should one ever do so, say the day here in a sentence.
             <p className="prose">
               This project was made by a newer version of the app, so its service day cannot be
               changed here.

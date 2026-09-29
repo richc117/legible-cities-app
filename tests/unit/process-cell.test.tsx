@@ -8,7 +8,9 @@
 // 13/09/2026, 14:03", both through the same `Time`. The list is gone, and
 // what is held here is that it stays gone and that the one case the strip
 // cannot speak for - a project with no layout, where it draws nothing - is
-// said in one plain line.
+// said in one plain line. A project this version may not write is offered
+// no run, so the list was all its cell drew: it is told so in a sentence,
+// which is held here too.
 //
 // Rendered to static markup, as the notebook's other cell tests are: what
 // is asserted is what the adapter draws. The cell is drawn **open**, since
@@ -121,6 +123,10 @@ function draw(
 /** The one line the cell says for a project with no layout, as it is drawn. */
 const NOT_LAID_OUT = '<p class="prose">This project is not laid out yet.</p>'
 
+/** What it says instead of a run to a project this version may not write, as it is drawn. */
+const READ_ONLY =
+  '<p class="prose">This project was made by a newer version of the app, so it cannot be laid out here.</p>'
+
 const count = (html: string, needle: string): number => html.split(needle).length - 1
 
 describe('cell 02, Process, open', () => {
@@ -176,20 +182,42 @@ describe('cell 02, Process, open', () => {
     expect(above).not.toContain('<dl')
   })
 
-  it('draws no list for a project this version may not write, with or without a layout', () => {
+  it('says a read-only project cannot be laid out here, over a strip that says the rest', () => {
     // A read-only project has no run to offer, so the list was the whole
-    // of what its cell drew. With a layout the strip now says it all.
-    const laidOut = draw(record, { readOnly: true })
-    expect(laidOut.above).not.toContain('<dl')
-    expect(laidOut.above).not.toContain('<time')
-    expect(laidOut.above).not.toContain('fig-button')
-    expect(laidOut.strip).toContain('<dt>Layout</dt><dd>aaaaaaaa</dd>')
-    expect(laidOut.strip).toContain('<dt>Made</dt>')
-    // Without one the line is true of it too, and promises no button.
-    const never = draw(fresh, { readOnly: true })
-    expect(never.strip).toBe('')
-    expect(count(never.above, NOT_LAID_OUT)).toBe(1)
-    expect(never.above).not.toContain('<dl')
-    expect(never.above).not.toContain('fig-button')
+    // of what its cell drew, and taking the list out left an empty body
+    // over the strip. It says so in one sentence instead, as cells 03, 04
+    // and 05 do (DESIGN.md 8.2).
+    const { above, strip } = draw(record, { readOnly: true })
+    expect(count(above, READ_ONLY)).toBe(1)
+    expect(above).not.toContain(NOT_LAID_OUT)
+    // And no list, no moment and no control: the strip states the layout,
+    // and nothing stands in for a run that cannot be started.
+    expect(above).not.toContain('<dl')
+    expect(above).not.toContain('<time')
+    expect(above).not.toContain('fig-button')
+    expect(strip).toContain('<dt>Layout</dt><dd>aaaaaaaa</dd>')
+    expect(strip).toContain('<dt>Made</dt>')
+  })
+
+  it('says both of a read-only project never laid out: what it is, then what cannot be done', () => {
+    const { above, strip } = draw(fresh, { readOnly: true })
+    expect(strip).toBe('')
+    expect(count(above, NOT_LAID_OUT)).toBe(1)
+    expect(count(above, READ_ONLY)).toBe(1)
+    // In that order, and as the cell's first two children.
+    expect(above).toContain(`<div class="cell-body">${NOT_LAID_OUT}${READ_ONLY}`)
+    expect(above).not.toContain('<dl')
+    expect(above).not.toContain('fig-button')
+  })
+
+  it('says neither of those to a project it can lay out', () => {
+    // The sentence is about the record and not about the layout: a project
+    // this version may write is offered the run, laid out or not.
+    for (const project of [record, fresh]) {
+      const { above, strip } = draw(project)
+      expect(above + strip).not.toContain('made by a newer version')
+      expect(above + strip).not.toContain('cannot be laid out')
+      expect(above).toContain('fig-button')
+    }
   })
 })

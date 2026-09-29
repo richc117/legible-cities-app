@@ -75,7 +75,18 @@ export default function ProcessCell({ cell, state, open, onToggle }: CellViewPro
               so it promises no button: the run's own panel is below it
               wherever there is one to press. */}
           {project.layout === null && <p className="prose">This project is not laid out yet.</p>}
-          {!project.readOnly && (
+          {project.readOnly ? (
+            // A cell with nothing to offer says so in one sentence and
+            // offers no disabled stand-in, as cells 03, 04 and 05 do
+            // (DESIGN.md 8.2). The field list was all a read-only project's
+            // cell drew, so without this its body would be empty over a
+            // strip (issue 209). Said whether or not there is a layout, and
+            // after the line above where there is none: what the project
+            // is comes before what cannot be done to it.
+            <p className="prose">
+              This project was made by a newer version of the app, so it cannot be laid out here.
+            </p>
+          ) : (
             <LayoutRunView run={run} project={project} engine={engine} disabled={exporting} />
           )}
           {/* The engine's log for the run that is going: a closed

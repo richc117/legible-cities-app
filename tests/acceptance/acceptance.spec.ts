@@ -452,18 +452,25 @@ const cellStrip = (page: Page, id: CellId): Locator =>
   )
 
 /**
- * What a row says, or null where it is not drawn. It never throws and never
- * waits, so it is for a row read *beside* one that was waited for: a strip
- * draws all its rows at once, and leaves out the one its record lacks.
+ * What a row says, or null where it is never drawn. **It waits for the row
+ * itself**, as `text` does and to the same deadline, and answers null at
+ * the deadline where `text` throws.
+ *
+ * The wait is the point. A strip is drawn from the record, and the record
+ * reaches the screen a round trip after the run has said "Laid out." (the
+ * screen reads it back then, `useProjectState`), so for that moment the
+ * sentence is on the screen and no strip is. A read that counted the rows
+ * and did not wait could answer null for a row about to be drawn, and
+ * every later comparison with it would then be skipped as if there were
+ * nothing to compare.
  *
  * When the layout was made is read this way. The field list said it inside
  * the Layout field's own text, so a layout with no moment was a soft
  * problem and the run went on; read as a row of its own it must not become
- * a step that stops, and the soft checks beside each read say what is
- * missing.
+ * a step that stops. A null costs the deadline once, and the soft check
+ * beside the read has recorded by then what is missing.
  */
-const rowText = async (row: Locator): Promise<string | null> =>
-  (await row.count()) === 0 ? null : text(row).catch(() => null)
+const rowText = (row: Locator): Promise<string | null> => text(row).catch(() => null)
 
 async function projectsNow(
   page: Page,
@@ -1352,15 +1359,20 @@ test('a release, installed, through docs/acceptance.md', async () => {
       await openProject(window, LA)
       await log.soft("the cell's footer", async () => {
         const footer = cellStrip(window, 'process')
-        const terms = (await footer.locator('dt').allTextContents()).map((t) => t.trim())
-        expect(terms).toEqual(['Layout', 'Made', 'Built with', 'Engine now'])
         // The layout step 4 made, and when: the two the field list stated
-        // above this strip until issue 209.
+        // above this strip until issue 209. **The rows that are waited for
+        // come first**, and the terms are listed once they are there: a
+        // list of terms is read without a wait, the record reaches a screen
+        // a round trip after it opens and the engine's state another, and
+        // the check of the Layout field, which stood before this one and
+        // waited for the record, went with the field.
         await expect(definition(footer, 'Layout')).toHaveText(session.laLayout ?? '')
         if (session.laMade !== null) {
           await expect(definition(footer, 'Made')).toHaveText(session.laMade)
         }
         await expect(definition(footer, 'Engine now')).toHaveText(pins.engine.version)
+        const terms = (await footer.locator('dt').allTextContents()).map((t) => t.trim())
+        expect(terms).toEqual(['Layout', 'Made', 'Built with', 'Engine now'])
       })
 
       await log.soft("the engine's log", async () => {
