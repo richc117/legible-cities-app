@@ -32,11 +32,24 @@ updates:
       prefix: "deps"
       prefix-development: "deps-dev"
     groups:
+      # React and its types move together or not at all: react-dom refuses
+      # another react, and @types/react-dom another @types/react, so a pull
+      # request for either alone fails at npm ci or in the unit tests.
+      # Listed first, because a dependency joins the first group it matches
+      # and the two type packages are development dependencies.
+      react:
+        patterns: ["react", "react-dom", "@types/react", "@types/react-dom"]
       # One pull request for the build and test tooling; production
       # dependencies stay separate so each is read on its own.
       development:
         dependency-type: development
         update-types: ["minor", "patch"]
+        # Electron arrives alone. Every bump must move the whole
+        # electron_ffmpeg block in vendor/pins.json by hand (ADR-043), which
+        # Dependabot cannot write, so a group that carries Electron fails
+        # its unit tests and cannot be packaged, and takes the rest of the
+        # group down with it.
+        exclude-patterns: ["electron"]
     # Majors that cannot install until upstream moves, so a pull request for
     # them fails at npm ci on every job. Lift each when its blocker clears.
     ignore:
@@ -46,10 +59,11 @@ updates:
         versions: [">=8"]
       - dependency-name: "@vitejs/plugin-react"
         versions: [">=6"]
-      # TypeScript 7.0 ships no compiler API: typescript-eslint accepts
-      # <6.1.0 and @rogieking/figui3 accepts ^5.0.0.
+      # @rogieking/figui3 accepts typescript ^5.0.0 and nothing later, so
+      # 6 fails at npm ci. (TypeScript 7.0 also ships no compiler API, and
+      # typescript-eslint accepts <6.1.0.)
       - dependency-name: "typescript"
-        versions: [">=7"]
+        versions: [">=6"]
 
   # The Python sidecar's own requirements, once it has any.
   - package-ecosystem: pip
