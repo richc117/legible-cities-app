@@ -5,8 +5,8 @@ paths:
 
 # The renderer process
 
-There is no application code yet; these rules exist so the first commit that
-adds `src/renderer/` does not have to rediscover them. See `CLAUDE.md` for
+These rules were written before the first commit that added
+`src/renderer/`, and every one has been paid for since. See `CLAUDE.md` for
 the short form and `docs/adr/` for why.
 
 ## No Node APIs

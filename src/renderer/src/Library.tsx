@@ -354,8 +354,8 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
   // lands in a notebook that is already working. The layout reports in cell
   // 02 and so does anything that fails. A preset's download happens inside
   // that layout: since engine v0.10.0 it reports stage download and stops on
-  // a cancel (E36), which the line does not draw yet (issue 178). A second
-  // press while the first is being made is the same press.
+  // a cancel (E36), and cell 01 draws it (issue 178, `DownloadLine.tsx`). A
+  // second press while the first is being made is the same press.
   const opening = useRef(false)
   const projectNames = library.status === 'ready' ? library.projects.map((p) => p.name) : []
   const openSample = async (feed: FeedRecord): Promise<void> => {

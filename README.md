@@ -7,30 +7,45 @@ exports them as stills, reels and GIFs. It is the
 window, for people who do not use a terminal.
 
 **To install it**, download the file for your computer from the
-[Releases page](https://github.com/richc117/legible-cities-app/releases),
-which has installers once the first release is published, and follow
-[the install guide](docs/install.md): the installers are not signed
-yet, and it shows how to open the app past macOS's and Windows' warnings,
-what the app writes and where, and how to remove it completely.
+[Releases page](https://github.com/richc117/legible-cities-app/releases)
+and follow [the install guide](docs/install.md): the installers are not
+signed, and it shows how to open the app past macOS's and Windows'
+warnings, what the app writes and where, and how to remove it completely.
+Until the first release, the newest build there is a release candidate,
+marked "Pre-release".
 
-**Status: pre-alpha.** The application exists and shows a map: one window
-opening to a Library of projects, the pinned engine started as a child
-process and spoken to over JSON-RPC, a layout run with per-stage progress,
-the engine's animation page shown in a sandboxed frame, and exports for the
-social presets the engine defines. Installers for both Macs and Windows are
-built in CI and attached to a GitHub Release drafted from each release tag.
-Work proceeds through the
-issues and milestones on this repository.
+**Status: release candidates.** Everything below works. Each candidate's
+installers for both Macs and for Windows are built in CI, attached to a
+GitHub Release drafted from its tag, and then installed and driven through
+most of [the acceptance checklist](docs/acceptance.md) on a macOS and a
+Windows runner. The first release waits on the same checklist walked by people.
+Work proceeds through the issues and milestones on this repository.
 
-## What it will do
+## What it does
 
-1. **Add a feed** from a file, a URL or a built-in list of networks.
-2. **Inspect it**: routes, agencies, service window, and the network drawn
-   where it really runs.
-3. **Schematise** it with one button.
-4. **Style** the lines: colours, order, theme.
-5. **Export** for Instagram, LinkedIn, Bluesky and a portfolio, using the
-   export presets the engine already defines.
+The first screen lists your projects, the sample cities and the feeds you
+have added.
+
+1. **Start from a sample city**, one of the networks the engine knows
+   already. One press makes a project, downloads the feed and lays it
+   out. Nothing is downloaded before you press.
+2. **Or start from your own feed**: a GTFS zip on your computer, or one at
+   an address.
+
+A project opens as a notebook of six numbered cells, under a map that stays
+in view while you work down them:
+
+| Cell | What you do there |
+| --- | --- |
+| 01 Data | Read what is in the feed: its routes, operators and service window, and the network drawn where it really runs. Choose which mode and operator to keep. |
+| 02 Process | Lay the network out, stage by stage, and read what the build had to fudge. |
+| 03 Frame and service day | Pick the day the map is drawn for, scrub its clock, play the day and set the speed. |
+| 04 Style | Choose the map's theme. |
+| 05 Lines | Set each line's colour and the order the lines stack in. |
+| 06 Export | Make stills, reels and GIFs for Instagram, LinkedIn, Bluesky and X, from the social presets the engine defines. |
+
+What a project has exported is listed beside the cells, each with a Reveal
+button that shows the file in its folder.
 
 ## How it is built
 
@@ -51,12 +66,15 @@ existed and are being written up as its first decision records under
 
 ## Developing
 
-What runs today: one window, the Library and its projects, the `app://local`
-origin, the pinned engine started as a child process and spoken to over
-JSON-RPC, a layout run drawn stage by stage, the engine's page as the
-viewer, one preset exported as a reel with its sidecar into a folder on the
-desktop, and checks on three platforms. `docs/ARCHITECTURE.md` says what
-exists and what each later issue adds.
+What runs today: one window on the `app://local` origin, the front door
+and the notebook described above, the pinned engine started as a child
+process and spoken to over JSON-RPC, the engine's page as the viewer in a
+sandboxed frame, each of the thirteen social presets exported with its
+sidecar into a `Legible Cities` folder on the desktop or a folder you
+choose, and checks on three platforms. `docs/ARCHITECTURE.md` says how the
+processes and the bridge are put together; `docs/DESIGN.md` sections 8.2
+and 9 and `specs/028-the-notebook/contracts/run-graph.md` say how the
+notebook is.
 
 You need Node.js 22 or later. Optionally, for the development loop and the
 tokens test, check out the engine beside this repository and point
