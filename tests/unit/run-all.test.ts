@@ -45,6 +45,8 @@ const unlaid: ProjectRecord = { ...base, layout: null, made: null, date: null, b
 
 const run = (state: RunFacts['state'], patch: Partial<RunFacts> = {}): RunFacts => ({
   state,
+  download: null,
+  feedMissing: false,
   rebuilt: false,
   recoloured: false,
   reordered: false,
@@ -178,5 +180,15 @@ describe("the header's sentence", () => {
     expect(sentence({ ...current, mode: 'subway' })).toBe(
       '02 Process to 06 Export are not drawn yet.',
     )
+  })
+})
+
+describe('after a download that failed (issue 178)', () => {
+  it('lays out, since nothing was laid out', () => {
+    const failed = run('failed', {
+      download: { message: 'downloaded 65,536 bytes', fraction: 0.2 },
+    })
+    expect(runAllPlan(unlaid, failed)).toEqual({ kind: 'layout' })
+    expect(runAllPlan(current, failed)).toEqual({ kind: 'layout' })
   })
 })

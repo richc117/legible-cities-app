@@ -231,9 +231,11 @@ run.
   `loom` and `octi` under a second each (`docs/adr/spikes/loom-native.md`).
   This time includes the feed's download. **check:** write down the whole
   time. On Windows it has not been measured before this run.
-- **check:** the download itself has no progress line of its own yet
-  (issue 178 waits on the engine for one); the run is at `parse` while it
-  downloads. Write down how long it sat there.
+- While the feed downloads, cell **01 Data** shows a line of one station,
+  `download`, with "downloaded `<n>` of `<n>` bytes" beside it counting up,
+  and reads **running**; cell 02 says "Waiting for the feed to download
+  (cell 01)." and its line waits at `parse`. **In the feed** fills in only
+  once the download is done (issue 178, engine v0.10.0).
 
 Result: ____
 

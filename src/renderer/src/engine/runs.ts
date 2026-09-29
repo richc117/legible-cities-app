@@ -17,6 +17,7 @@ import { keepFinished, orderJobs, type Job } from '../../../shared/jobs'
 import { copyText } from './diagnostics'
 import { ExportRun, type ExportBridge } from './exportRun'
 import { FeedAdd } from './feedAdd'
+import { feedRecordFor, forgetFeedList } from './inspections'
 import { LayoutRun } from './layoutRun'
 import { EngineClient } from './client'
 
@@ -266,6 +267,12 @@ export function layoutRunFor(projectId: string): LayoutRun {
     completeColors: (id, palette) => window.api.projects.completeColors(id, palette),
     completeOrder: (id, order) => window.api.projects.completeOrder(id, order),
     today,
+    // Asked afresh as a layout ends before its first stage: the list the
+    // screens hold was read before the download (issue 178).
+    onDisk: async (key) => {
+      forgetFeedList()
+      return (await feedRecordFor(engineClient(), key))?.cached === true
+    },
   })
   runs.set(projectId, run)
   registry.track(run)

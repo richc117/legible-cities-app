@@ -6,6 +6,7 @@ import { validateName, type Theme } from '../../../shared/project'
 import type { Inspection, RenderStageResult, StageName } from '../../../shared/protocol'
 import type { ExportRun, ExportSnapshot } from '../engine/exportRun'
 import { feedRecordFor, inspectionFor } from '../engine/inspections'
+import { afterRunDownload } from '../engine/downloadGate'
 import type { LayoutRun, RunSnapshot } from '../engine/layoutRun'
 import {
   engineClient,
@@ -127,6 +128,13 @@ export interface ProjectState {
   }
 }
 
+/**
+ * What the front door says when a sample was cancelled while its feed
+ * downloaded, and so was not kept (issue 178).
+ */
+export const sampleNotKept = (name: string): string =>
+  `Opening ${name} was cancelled while its feed downloaded, so the project was not kept.`
+
 export function useProjectState(
   id: string,
   onBack: (notice?: string) => void,
@@ -169,6 +177,19 @@ export function useProjectState(
   const run = layoutRunFor(id)
   const exporter = exportRunFor(id)
   const runSnapshot = useSnapshot(run)
+  // The run is past its feed: its first stage is done, or it ended with the
+  // feed on disk. After cell 01's held inspection was refused because the
+  // feed never arrived, the first run past it asks again (issue 178).
+  const feedHere =
+    runSnapshot.stages[0]?.state === 'done' ||
+    (runSnapshot.state !== 'running' && runSnapshot.feedMissing === false)
+  const inspectionRefused = useRef(false)
+  const [retry, setRetry] = useState(0)
+  useEffect(() => {
+    if (!feedHere || !inspectionRefused.current) return
+    inspectionRefused.current = false
+    setRetry((n) => n + 1)
+  }, [feedHere])
   const exportSnapshot = useSnapshot(exporter)
   const layingOut = runSnapshot.state === 'running'
   const exporting = exportSnapshot.state === 'running'
@@ -247,8 +268,8 @@ export function useProjectState(
   // opens (A5.6-03), once, and only while there is nothing laid out and
   // nothing running: a person who presses a city lands in a notebook
   // already at work, its stages in cell 02. (The preset's download is inside
-  // that run; since engine v0.10.0 it reports stage download and a cancel
-  // stops it (E36), which the line does not draw yet: issue 178.)
+  // that run; since engine v0.10.0 it reports stage download, which cell 01
+  // draws, and a cancel stops it: E36, issue 178.)
   // It waits for an engine that is still starting, and gives up the moment
   // it has started or been made pointless - a read-only record, a layout
   // already there, a run already going.
@@ -265,6 +286,41 @@ export function useProjectState(
     // The record and the engine becoming ready are what move this.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project, engine?.state])
+
+  // A sample opened from its card and cancelled while its feed downloaded
+  // leaves nothing behind: not the zip (the engine keeps none, v0.10.0), and
+  // not the project, which names a feed that never arrived (issue 178). A
+  // cancel once the download is done leaves the project with its feed, and
+  // cell 02 ready to run, as a cancelled layout always has. Which of the two
+  // it was is the registry's answer as the run ended (`feedMissing`), not
+  // how far the bytes had come.
+  const unkept = useRef(false)
+  useEffect(() => {
+    if (!layOut) return
+    return run.subscribe((snapshot) => {
+      const record = state.status === 'ready' ? state.project : null
+      if (
+        unkept.current ||
+        record === null ||
+        record.layout !== null ||
+        snapshot.state !== 'cancelled' ||
+        snapshot.feedMissing !== true
+      )
+        return
+      unkept.current = true
+      void window.api.projects.delete(id).then(
+        () => {
+          forgetProjectJobs(id)
+          if (mounted.current) onBack(sampleNotKept(record.name))
+        },
+        () => {
+          // Not deleted: the project stays, naming a feed not on disk, which
+          // its screen already says (A5.6-03's closed-mid-download case).
+          unkept.current = false
+        },
+      )
+    })
+  }, [layOut, run, id, state, onBack])
 
   const openRename = (): void => {
     if (!project) return
@@ -356,7 +412,35 @@ export function useProjectState(
     const pad = (n: number): string => String(n).padStart(2, '0')
     return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
   }
-  const inspect = useCallback((key: string) => inspectionFor(engineClient(), key, today()), [])
+  // A sample's feed not yet on disk downloads inside its layout run, and
+  // cell 01's inspection waits for that download rather than racing it: the
+  // bytes are then the run's to report, and a cancel of the run stops the
+  // only download there is (issue 178, `downloadGate.ts`). Any other
+  // project, and a sample once its run is past the download, inspects at
+  // once.
+  const inspect = useCallback(
+    (key: string) => {
+      if (!layOut) return inspectionFor(engineClient(), key, today())
+      const cached = feedRecordFor(engineClient(), key).then(
+        (record) => record?.cached === true,
+        () => false,
+      )
+      return afterRunDownload(run, () => layOutAsked.current, cached).then(
+        () => inspectionFor(engineClient(), key, today()),
+        (error: unknown) => {
+          inspectionRefused.current = true
+          throw error
+        },
+      )
+    },
+    // `layOutAsked` and `inspectionRefused` are refs, read when asked.
+    // `retry` moves only after an inspection was refused because the feed
+    // never arrived, the first time a later run gets past the download -
+    // whether or not it goes on to lay the project out - so cell 01 asks
+    // again then, and only then.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [layOut, run, retry],
+  )
   const readStage = useCallback(
     (key: string, layout: string, made: string | null, stage: StageName, width: number) =>
       stageFor(engineClient(), key, layout, made, stage, width),

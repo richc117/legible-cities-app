@@ -147,6 +147,7 @@ The two reader columns are a person's, recorded per run in
 | In the feed: mode, operator, the feed's entry | fixed (D7) | pass | pass | pass | fixed (C2) | fixed (C1, C2) | not yet run: a person's | not yet run: a person's |
 | In the feed: the two tables | pass | pass (captions, `th scope`, `aria-sort`) | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
 | In the feed: sortable headers | fixed (D11) | pass | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
+| The feed's download (issue 178) | swept while it downloads (`notebook-a11y.spec.ts`, "a sample's download…"); no control of its own: the header's Stop and cell 02's Cancel stop it | swept (a region "Download"; the byte count a polite `role="status"`); a refusal's `role="alert"` asserted in `layout.spec.ts` | n/a | swept | pass (the progress line's pairs; `--text-muted` on `--surface`) | pass | not yet run: a person's | not yet run: a person's |
 | Where the routes run | pass (`+`, `-`, arrows, `0`) | pass (pane named, the counts); finding (F2, #105) | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
 
 ### Cell 02, Process

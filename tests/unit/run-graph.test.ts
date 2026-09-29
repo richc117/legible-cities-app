@@ -56,6 +56,8 @@ const current: ProjectRecord = { ...rc4, drawn: drawnFrom(rc4) }
 
 const idle: RunFacts = {
   state: 'idle',
+  download: null,
+  feedMissing: false,
   rebuilt: false,
   recoloured: false,
   reordered: false,
@@ -378,5 +380,39 @@ describe('a re-layout that replaced the stored set and drew no map', () => {
     expect(states(current, layoutRun('failed', { replaced: true }))).toEqual(
       cells({ process: 'error', frame: 'stale', style: 'stale', lines: 'stale', export: 'stale' }),
     )
+  })
+})
+
+// Issue 178, on engine v0.10.0 (E36): a layout at its feed's download is
+// cell 01's, so a refusal or a cancel there is the feed's and not the
+// layout's.
+describe('a layout at its download', () => {
+  const at = (fraction: number) => ({ message: 'downloaded 65,536 bytes', fraction })
+
+  it('is cell 01 while the bytes come, and cell 02 once they have all come', () => {
+    // Ended: the registry's answer decides, never the fraction.
+    expect(cellOfRun({ ...idle, state: 'cancelled', download: at(0.4) })).toBe('process')
+    expect(cellOfRun({ ...idle, state: 'failed', download: null, feedMissing: true })).toBe('data')
+    expect(cellOfRun({ ...idle, state: 'running', download: at(0.4) })).toBe('data')
+    expect(cellOfRun({ ...idle, state: 'running', download: at(1) })).toBe('process')
+    expect(cellOfRun({ ...idle, state: 'running', download: null })).toBe('process')
+  })
+
+  it('runs cell 01, and a refusal there is cell 01 in error with the map below it behind', () => {
+    const running = runGraph({
+      record: current,
+      run: { ...idle, state: 'running', download: at(0.4) },
+      exportRun: null,
+    })
+    expect(running.data.state).toBe('running')
+    expect(running.process.state).toBe('ready')
+
+    const refused = runGraph({
+      record: current,
+      run: { ...idle, state: 'failed', download: at(1), feedMissing: true },
+      exportRun: null,
+    })
+    expect(refused.data).toEqual({ state: 'error', because: 'failed' })
+    expect(refused.process.state).toBe('stale')
   })
 })

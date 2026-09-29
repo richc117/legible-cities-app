@@ -1072,9 +1072,17 @@ test('a release, installed, through docs/acceptance.md', async () => {
       log.notAutomated(
         "that the sentence beside the line is the engine's for the last stage that finished: each is replaced by the next, and a short one can go before it is drawn.",
       )
-      log.notAutomated(
-        'how long the run sat at parse while the feed downloaded: the download has no line of its own yet (issue 178).',
-      )
+      // The feed was not on disk in this run's fresh profile, so the layout
+      // downloaded it first and cell 01 drew the bytes (issue 178, engine
+      // v0.10.0, E36). The sentences go as the next replaces them, so they are
+      // read from what the status lines said.
+      await log.soft('the download counted in cell 01', () => {
+        const counted = said.filter((s) => /^downloaded [\d,]+ (of [\d,]+ )?bytes$/.test(s))
+        expect(counted.length, said.join(' / ')).toBeGreaterThan(0)
+        log.note(
+          `The download reported ${counted.length} times, ending "${counted[counted.length - 1]}".`,
+        )
+      })
 
       await log.soft('the map', async () => {
         const viewer = window.getByRole('region', { name: 'Map' })

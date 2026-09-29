@@ -1,6 +1,6 @@
 import type { ProjectRecord } from '../../shared/project'
 import type { ExportSnapshot } from './engine/exportRun'
-import type { RunSnapshot } from './engine/layoutRun'
+import { downloading, type RunSnapshot } from './engine/layoutRun'
 import { sameOrder } from './order'
 
 // The run graph: the six cells of the notebook, the order they run in, and
@@ -85,7 +85,7 @@ export interface CellStatus {
  */
 export type RunFacts = Pick<
   RunSnapshot,
-  'state' | 'rebuilt' | 'recoloured' | 'reordered' | 'replaced'
+  'state' | 'rebuilt' | 'recoloured' | 'reordered' | 'replaced' | 'download' | 'feedMissing'
 >
 
 /** What the derivation reads of an export. */
@@ -121,6 +121,12 @@ export interface RunGraphInput {
  */
 export function cellOfRun(run: RunFacts | null): CellId | null {
   if (run === null || run.state === 'idle') return null
+  // A layout at its feed's download is cell 01's while the bytes come, and
+  // one that ended with its feed not on disk stays cell 01's: the feed is
+  // the data, and a refusal or a cancel there is about the feed, not the
+  // layout (issue 178, engine v0.10.0). Whether it ended there is the
+  // registry's answer (`feedMissing`), never how far the bytes had come.
+  if (run.state === 'running' ? downloading(run) : run.feedMissing === true) return 'data'
   if (run.rebuilt) return 'frame'
   if (run.recoloured || run.reordered) return 'lines'
   return 'process'

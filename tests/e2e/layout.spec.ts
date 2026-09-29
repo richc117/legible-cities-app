@@ -1970,3 +1970,109 @@ test('a second project from one city is named "2", from its card and in the shee
     await expect(dialog.getByLabel('Name', { exact: true })).toHaveValue('LA Metro Rail 3')
   })
 })
+
+// A sample whose feed is not on disk (issue 178, engine v0.10.0): the layout
+// downloads it first and reports the bytes as stage download, which the app
+// draws in cell 01 while cell 02 waits; cell 01's inspection is held until
+// the download is behind the layout, so the bytes are the layout's to report
+// and a cancel of it stops the only download there is.
+/** Cell 01 as a whole: its download line sits beside "In the feed", not in it. */
+const cellOne = (page: Page): Locator => page.locator('section.cell[data-cell="01"]')
+
+test('a sample’s download reports in cell 01, and its inspection waits for it', async () => {
+  const engineHome = home({
+    map_draws: true,
+    progress_delay_ms: 10,
+    presets_cached: [],
+    preset_download_delay_ms: 150,
+  })
+  await withApp(engineHome, async (page) => {
+    await sampleCard(page, 'LA Metro Rail').click()
+    await expect(page.getByRole('heading', { level: 1, name: 'LA Metro Rail' })).toBeVisible()
+    const download = cellOne(page).getByRole('region', { name: 'Download' })
+    await expect(download.getByRole('status')).toHaveText(/^downloaded [\d,]+ of 20,480 bytes$/)
+    await expect(cellHeading(page, 'data')).toHaveAccessibleName(/ running/)
+    await expect(cellHeading(page, 'process')).not.toHaveAccessibleName(/ running/)
+    await expect(cell(page, 'process')).toContainText('Waiting for the feed to download (cell 01).')
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    await expect(download, 'gone once the layout is past it').toHaveCount(0)
+    expect(
+      existsSync(join(engineHome, 'fake-engine.inspect-downloaded')),
+      'the inspection did not race the layout for the download',
+    ).toBe(false)
+    expect(received(engineHome, 'feeds.inspect').length).toBeGreaterThan(0)
+    await expect(cell(page, 'data')).toBeVisible()
+  })
+})
+
+test('cancelling a sample during its download keeps no project, and says so', async () => {
+  const engineHome = home({
+    map_draws: true,
+    progress_delay_ms: 10,
+    presets_cached: [],
+    preset_download_delay_ms: 400,
+  })
+  await withApp(engineHome, async (page) => {
+    await sampleCard(page, 'LA Metro Rail').click()
+    const download = cellOne(page).getByRole('region', { name: 'Download' })
+    await expect(download.getByRole('status')).toHaveText(/^downloaded /)
+    await page.getByRole('button', { name: 'Stop', exact: true }).click()
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Library', {
+      timeout: 20_000,
+    })
+    await expect(page.getByRole('alert')).toHaveText(
+      'Opening LA Metro Rail was cancelled while its feed downloaded, so the project was not kept.',
+    )
+    await expect(page.getByRole('button', { name: 'Open LA Metro Rail' })).toHaveCount(0)
+    expect(readdirSync(join(engineHome, 'projects'))).toEqual([])
+    expect(existsSync(join(engineHome, 'fake-engine.inspect-downloaded'))).toBe(false)
+    await expect(sampleCard(page, 'LA Metro Rail')).toHaveAccessibleName(/not downloaded yet$/)
+    expect(received(engineHome, 'feeds.inspect'), 'held, so never asked').toHaveLength(0)
+  })
+})
+
+test('a sample whose download the engine refuses says so in cell 01, not in a dialog', async () => {
+  const engineHome = home({
+    map_draws: true,
+    progress_delay_ms: 10,
+    presets_cached: [],
+    preset_download_refuses: 'https://example.test/la.zip did not return a zip (21 bytes)',
+  })
+  await withApp(engineHome, async (page) => {
+    await sampleCard(page, 'LA Metro Rail').click()
+    await expect(cellHeading(page, 'data')).toHaveAccessibleName(/ failed/, { timeout: 30_000 })
+    await expect(
+      cellOne(page).getByRole('region', { name: 'Download' }).getByRole('alert'),
+    ).toHaveText('https://example.test/la.zip did not return a zip (21 bytes)')
+    await expect(cell(page, 'process')).toContainText(
+      'Nothing was laid out: the feed did not download. Cell 01 says why.',
+    )
+    await expect(page.locator('dialog[open]')).toHaveCount(0)
+    // Kept, with its feed, to try again: a refusal is not a cancel.
+    expect(readRecord(engineHome)).toMatchObject({ feed: 'la-metro-rail', layout: null })
+    await expect(page.getByRole('button', { name: 'Run all' })).toBeEnabled()
+  })
+})
+
+test('a sample whose download fails before its first byte says so in cell 01 too', async () => {
+  // Offline, or a 404: the engine fails before any byte is reported, so the
+  // run has no download to draw. The registry's answer that the feed is
+  // not on disk is what puts the failure in cell 01 (issue 178).
+  const engineHome = home({
+    map_draws: true,
+    progress_delay_ms: 10,
+    presets_cached: [],
+    preset_download_fails_early: 'https://example.test/la.zip could not be fetched: 404',
+  })
+  await withApp(engineHome, async (page) => {
+    await sampleCard(page, 'LA Metro Rail').click()
+    await expect(cellHeading(page, 'data')).toHaveAccessibleName(/ failed/, { timeout: 30_000 })
+    await expect(
+      cellOne(page).getByRole('region', { name: 'Download' }).getByRole('alert'),
+    ).toHaveText('https://example.test/la.zip could not be fetched: 404')
+    await expect(cell(page, 'process')).toContainText(
+      'Nothing was laid out: the feed did not download. Cell 01 says why.',
+    )
+    expect(readRecord(engineHome)).toMatchObject({ feed: 'la-metro-rail', layout: null })
+  })
+})

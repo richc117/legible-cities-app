@@ -751,7 +751,8 @@ dialog::backdrop {
    to stop. */
 
 .layout-run,
-.export-run {
+.export-run,
+.download-run {
   display: grid;
   gap: var(--space-4-3);
   margin: 0 0 var(--space-4-4);
