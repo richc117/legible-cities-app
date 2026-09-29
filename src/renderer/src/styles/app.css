@@ -376,11 +376,15 @@ body {
 
 /* Lists: each entry one full-width button, a dense row. */
 
+/* One column, as wide as the list and no wider: left to size itself, the
+   column grows to the longest word in it, and a name with no space in it
+   made every row wider than the page. */
 .entries {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   border-top: var(--border-width) solid var(--border);
 }
 
@@ -388,9 +392,16 @@ body {
    height is said, because the kit's base stylesheet gives every native
    button the control's height and a minimum does not undo it: a project
    whose name or facts took a second line hung below its own rule, over
-   the row after it (issue 269). */
+   the row after it (issue 269).
+
+   It wraps, as a feed's row does: where the name and the facts do not fit
+   on one line the facts go under the name, so neither is squeezed to make
+   room for the other. And it reads from its near edge, which the kit's
+   buttons do not: they centre what they hold. */
 .entry {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
   align-items: baseline;
   gap: var(--space-4-3);
   width: 100%;
@@ -412,14 +423,21 @@ body {
   background: var(--surface-hover);
 }
 
+/* A name can be as long as a name may be with no space in it. It is never
+   wider than its row and breaks where it must, rather than run out of the
+   row's far edge; a name that fits is never broken to make room. */
 .entry-name {
+  max-width: 100%;
+  overflow-wrap: break-word;
   font-weight: var(--weight-strong);
 }
 
 .entry-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-4-3);
+  /* Facts that take a second line are one project's still, so the lines sit
+     closer than the facts do. */
+  gap: var(--space-2-2) var(--space-4-3);
   margin-left: auto;
   font-size: var(--font-ui-small);
   line-height: var(--line-ui-tight);
