@@ -77,13 +77,21 @@ export interface LogView {
   lines: string[]
   /** How many earlier lines the run's buffer dropped to stay inside its bound. */
   dropped: number
+  /**
+   * Whether the run is still going. An empty log means something different
+   * on either side of its end (issue 246): while it runs, the lines may yet
+   * come; once it has ended, none will, and the panel says why.
+   */
+  running: boolean
 }
 
-export const NO_LOG: LogView = { id: null, lines: [], dropped: 0 }
+export const NO_LOG: LogView = { id: null, lines: [], dropped: 0, running: false }
 
 /** What a job's log looks like to this panel; nothing at all before a run. */
 export function logOf(job: Job | null): LogView {
-  return job === null ? NO_LOG : { id: job.id, lines: job.log, dropped: job.dropped }
+  return job === null
+    ? NO_LOG
+    : { id: job.id, lines: job.log, dropped: job.dropped, running: job.state === 'running' }
 }
 
 /**
@@ -95,6 +103,7 @@ export function sameLog(a: LogView, b: LogView): boolean {
   return (
     a.id === b.id &&
     a.dropped === b.dropped &&
+    a.running === b.running &&
     a.lines.length === b.lines.length &&
     a.lines[a.lines.length - 1] === b.lines[b.lines.length - 1]
   )
@@ -119,9 +128,34 @@ export function readLog(run: Pick<LayoutRun, 'job'>, was: LogView): LogView {
   return sameLog(was, next) ? was : next
 }
 
-/** How many lines there are, in the words the row says them. */
-export function lineCount(lines: number): string {
-  if (lines === 0) return 'no lines yet'
+/** While the run goes and nothing has been written. */
+export const NOTHING_YET = 'The engine has not said anything yet.'
+
+/**
+ * After a run whose log is empty, however it ended: every run that went
+ * well, a run stopped before a tool ran or for a reason of its own, and a
+ * tool that died without a word. It names the log, and does not begin
+ * "Nothing was written.", which is the app's sentence for a file or a
+ * record that was not saved (`ExportRun.tsx`, `LayoutRun.tsx`) and would
+ * read, under a layout that was saved, as though it had not been.
+ *
+ * The lines are the LOOM tools' own stderr, which the engine passes on as it
+ * reads it (`loom.py`, `pump_stderr`). Measured on the native tools at the
+ * pin over the LA feed (issue 246): gtfs2graph, topo, loom and octi each
+ * exit 0 having written nothing, and none has a flag to say more. They
+ * write when something goes wrong - a feed they cannot read, a graph they
+ * cannot parse - so an empty log after a finished run is the ordinary case,
+ * and the panel says so rather than sounding as if lines were on their way.
+ */
+export const NOTHING_SAID =
+  'The LOOM tools wrote nothing to this log. They write here only when one of them has something to report, and a run that goes well gives them nothing to say.'
+
+/**
+ * How many lines there are, in the words the row says them. "Yet" only
+ * while the run is going: after it, no line is on its way.
+ */
+export function lineCount(lines: number, running = true): string {
+  if (lines === 0) return running ? 'no lines yet' : 'no lines'
   return lines === 1 ? '1 line' : `${lines} lines`
 }
 
@@ -315,12 +349,13 @@ export default function EngineLog({
         label={PANEL_LABEL}
         summary={
           <>
-            Engine log <span className="engine-log-count">{lineCount(log.lines.length)}</span>
+            Engine log{' '}
+            <span className="engine-log-count">{lineCount(log.lines.length, log.running)}</span>
           </>
         }
       >
         {log.lines.length === 0 ? (
-          <p className="hint">The engine has not said anything yet.</p>
+          <p className="hint">{log.running ? NOTHING_YET : NOTHING_SAID}</p>
         ) : (
           <pre
             className="engine-log-lines"

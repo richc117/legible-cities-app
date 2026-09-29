@@ -1321,11 +1321,21 @@ test('a release, installed, through docs/acceptance.md', async () => {
         await toggle.click()
         await expect(logRegion).toBeVisible()
         // The lines are the LOOM tools' own stderr, which the engine passes
-        // on as it reads it; how much a real run says is the tools' to decide,
-        // so the count is written down, as the checklist's check: line asks.
-        log.note(`check: the toggle read "${count}" after the layout run.`)
-        if (!/no lines/.test(count)) {
-          await expect(logRegion.getByRole('group', { name: 'Log lines' })).not.toBeEmpty()
+        // on as it reads it, and the native tools write nothing when they
+        // succeed (issue 246). A run that went well leaves the log empty and
+        // the panel says why; one with lines has them in the box, and the
+        // first is noted.
+        if (count === 'Engine log no lines') {
+          await expect(logRegion).toContainText(
+            'The LOOM tools wrote nothing to this log. They write here only when one of them has something to report, and a run that goes well gives them nothing to say.',
+          )
+        } else {
+          expect(count).toMatch(/^Engine log \d+ lines?$/)
+          const lines = logRegion.getByRole('group', { name: 'Log lines' })
+          await expect(lines).not.toBeEmpty()
+          log.note(
+            `The engine log held ${count.replace('Engine log ', '')}, beginning "${oneLine((await lines.innerText()).split('\n')[0] ?? '', 200)}".`,
+          )
         }
         await logRegion
           .getByRole('button', { name: "Copy log: the engine's log for this run" })

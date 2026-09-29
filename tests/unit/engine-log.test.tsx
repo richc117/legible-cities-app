@@ -27,6 +27,8 @@ import EngineLog, {
   droppedNote,
   isOpen,
   lineCount,
+  NOTHING_SAID,
+  NOTHING_YET,
   logOf,
   NO_LOG,
   sameLog,
@@ -97,7 +99,12 @@ describe('whose lines they are', () => {
   it('is the run’s own job, and nothing before a run', () => {
     expect(logOf(null)).toEqual(NO_LOG)
     const one = job({ log: ['[info] parsed 3 stops'], dropped: 2 })
-    expect(logOf(one)).toEqual({ id: 'job-1', lines: ['[info] parsed 3 stops'], dropped: 2 })
+    expect(logOf(one)).toEqual({
+      id: 'job-1',
+      lines: ['[info] parsed 3 stops'],
+      dropped: 2,
+      running: true,
+    })
   })
 
   // The property is that the panel adds no bound of its own and keeps no
@@ -143,21 +150,25 @@ describe('the bound', () => {
 
   it('counts the lines in the row in words', () => {
     expect(lineCount(0)).toBe('no lines yet')
+    expect(lineCount(0, false)).toBe('no lines')
+    expect(lineCount(3, false)).toBe('3 lines')
     expect(lineCount(1)).toBe('1 line')
     expect(lineCount(212)).toBe('212 lines')
   })
 })
 
 describe('a tick that brought nothing costs no render', () => {
-  const view = { id: 'job-1', lines: ['a', 'b'], dropped: 0 }
+  const view = { id: 'job-1', lines: ['a', 'b'], dropped: 0, running: true }
   it('is the same read twice', () => {
-    expect(sameLog(view, { id: 'job-1', lines: ['a', 'b'], dropped: 0 })).toBe(true)
+    expect(sameLog(view, { id: 'job-1', lines: ['a', 'b'], dropped: 0, running: true })).toBe(true)
   })
   it('is not a new line, a replaced last line, a drop, or another run', () => {
     expect(sameLog(view, { ...view, lines: ['a', 'b', 'c'] })).toBe(false)
     expect(sameLog(view, { ...view, lines: ['a', 'z'] })).toBe(false)
     expect(sameLog(view, { ...view, dropped: 1 })).toBe(false)
     expect(sameLog(view, { ...view, id: 'job-2' })).toBe(false)
+    // The run's end, with no new line: the empty state's words change.
+    expect(sameLog(view, { ...view, running: false })).toBe(false)
   })
 })
 
@@ -420,5 +431,34 @@ describe('cell 02', () => {
     // Under the run's own panel, and above the diagnostics, which is where
     // the stage doing the work is.
     expect(html.indexOf('engine-log')).toBeGreaterThan(html.indexOf('progress'))
+  })
+})
+
+// Issue 246. A real layout run's log is empty: the lines are the LOOM tools'
+// stderr, and the native tools write nothing when they succeed. While the
+// run goes an empty log may still fill; once it has ended the panel says
+// why nothing came, rather than "yet".
+describe('an empty log', () => {
+  it('turns from waiting to saying why when the run ends, with no new line', () => {
+    let current = job({ state: 'running' })
+    const run = { job: () => current }
+    const running = readLog(run, NO_LOG)
+    expect(running.running).toBe(true)
+    current = { ...current, state: 'done' }
+    const ended = readLog(run, running)
+    expect(ended).not.toBe(running)
+    expect(ended.running).toBe(false)
+    expect(lineCount(ended.lines.length, ended.running)).toBe('no lines')
+  })
+
+  it('says why once the run has ended, however it ended', () => {
+    for (const state of ['done', 'failed', 'cancelled'] as const) {
+      const html = renderToStaticMarkup(
+        <EngineLog projectName="Los Angeles" run={runWith(job({ state }))} />,
+      )
+      expect(html, state).toContain(NOTHING_SAID)
+      expect(html, state).not.toContain('no lines yet')
+      expect(html, state).not.toContain(NOTHING_YET)
+    }
   })
 })
