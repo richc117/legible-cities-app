@@ -609,6 +609,14 @@ test('the project screen: one press skips past the map to its toolbar, and the m
     const activeTag = (): Promise<string> =>
       page.evaluate(() => document.activeElement?.tagName.toLowerCase() ?? 'nothing')
 
+    // What kind of box the frame is, and every box around it, in each of
+    // the two states (issue 222). The viewer sends the frame on in the
+    // commit that changes its shape, and a box made again in that commit
+    // can leave the new document with nothing laid out - about one time in
+    // fifty, so the press below would seldom notice. What the two states
+    // may differ in is the frame's size, and this is read every time.
+    const boxes = new Map<string, string[]>()
+
     // The two things the one frame shows: the plain map while cell 06 is
     // closed, and the export's planned preview while it is open (A5-01).
     for (const [tab, address] of [
@@ -675,6 +683,18 @@ test('the project screen: one press skips past the map to its toolbar, and the m
           message: `${tab}: the busy page at ${address}, and not about to reload`,
         })
         .toEqual({ address: true, controls, born: expect.any(Number), still: true })
+
+      boxes.set(
+        tab,
+        await page.locator('iframe.viewer-frame').evaluate((el) => {
+          const kinds: string[] = []
+          for (let at: Element | null = el; at !== null; at = at.parentElement) {
+            const style = getComputedStyle(at)
+            kinds.push(`${at.tagName.toLowerCase()}: ${style.display}, ${style.containerType}`)
+          }
+          return kinds
+        }),
+      )
 
       // Out of sight while it does not hold focus, and in the document.
       await expect.poll(width, { message: `${tab}: hidden at rest` }).toBeLessThanOrEqual(1)
@@ -780,5 +800,11 @@ test('the project screen: one press skips past the map to its toolbar, and the m
       await page.keyboard.press('Tab')
       await expect(page.getByRole('button', { name: 'Delete project', exact: true })).toBeFocused()
     }
+
+    expect(boxes.get('the map')?.[0], 'the frame itself was read').toMatch(/^iframe: /)
+    expect(
+      boxes.get("the export's preview"),
+      'the frame and every box around it are the same kind of box in both states',
+    ).toEqual(boxes.get('the map'))
   })
 })

@@ -52,13 +52,21 @@ commit that sends the frame somewhere.** The viewer sets the frame's address
 and its wrapper's class in one commit. A change of `display` on the wrapper
 makes the frame's box again, and when that lands after the frame has been
 sent and before the new document arrives, the document is left with nothing
-laid out: it draws nothing, takes no focus, and a press of Tab passes over
-it. It was about one run in fifty on a macOS runner and never by hand, and
-it looked like a test that fails now and then until it was looped with
-logging (issue 222). So the map's shape is a grid and a size container in
-both of its states, the plain map's and the export's preview's, and only the
-frame's size differs between them; `tests/unit/viewer-shape.test.ts` refuses
-a `display` on the planned state.
+laid out: it takes no focus, a press of Tab passes over it, and it would
+draw nothing. It does not recover. It was about one run in fifty on a macOS
+runner and never by hand, and it looked like a test that fails now and then
+until it was looped with logging (issue 222). With the timing forced, a
+change of `display` alone did it and a change of `container-type` alone
+was not seen to, in 360 tries each.
+
+So the map's shape is a grid and a size container in both of its states,
+the plain map's and the export's preview's, and only the frame's size
+differs between them. `tests/unit/viewer-shape.test.ts` refuses a rule for
+the planned state that sets `display`, `container-type`, `contain` or
+`all`, and the skip's journey in `tests/e2e/notebook-a11y.spec.ts` reads
+what kind of box the frame and every box around it is in both states and
+expects the same, which covers a style written on an element and a box
+further out.
 
 ## Components
 
