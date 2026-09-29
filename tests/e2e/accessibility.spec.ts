@@ -194,10 +194,14 @@ async function tokenRgb(page: Page, token: string): Promise<string> {
 }
 
 test('the new project sheet while its add runs: the progress line and Cancel the add', async () => {
-  // Ten download reports three seconds apart: long enough for a sweep in
+  // Ten download reports six seconds apart: long enough for a sweep in
   // both themes while the add is still going, which is the one state of the
-  // sheet a quick add never leaves on screen (A5.6-09).
-  const p = profile({ add_delay_ms: 3000 })
+  // sheet a quick add never leaves on screen (A5.6-09). The first report is
+  // waited for generously: on a slow Windows runner a stand-in busy with the
+  // requests before it held the sheet at "Starting." for ten seconds (PR
+  // 249's CI), and a minute of add leaves the sweeps room after that.
+  test.setTimeout(180_000)
+  const p = profile({ add_delay_ms: 6000 })
   await withApp(p, async (page) => {
     await page.locator('.empty').getByRole('button', { name: 'New project' }).click()
     const sheet = page.getByRole('dialog', { name: 'New project' })
@@ -205,7 +209,9 @@ test('the new project sheet while its add runs: the progress line and Cancel the
     await sheet.getByLabel('Feed address').fill('https://agency.example/gtfs.zip')
     await sheet.getByRole('button', { name: 'Add the feed' }).click()
     const run = sheet.getByRole('region', { name: 'Adding the feed' })
-    await expect(run.getByRole('status')).toContainText(/downloaded [\d,]+ of/)
+    await expect(run.getByRole('status')).toContainText(/downloaded [\d,]+ of/, {
+      timeout: 30_000,
+    })
     await expect(sheet.getByRole('button', { name: 'Cancel the add' })).toBeFocused()
     await sweep(page, 'the new project sheet, its add running', sheet)
     // Still running when the sweep ended, or the sweep saw another state.

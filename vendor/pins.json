@@ -67,10 +67,10 @@
   },
   "engine": {
     "repo": "https://github.com/richc117/legible-cities",
-    "tag": "v0.8.3",
-    "version": "0.8.3",
+    "tag": "v0.9.1",
+    "version": "0.9.1",
     "protocol": 1,
-    "note": "The same bytes on every machine. At v0.8.3 every text file the engine reads or writes is UTF-8 with LF, the service day is formatted without %-d or the locale's names, and --schema writes its bytes past the console's text layer, so a Windows sidecar can build a map, plan an export and print the schema the fingerprint below was taken from (E19; engine issue 22). Before it, v0.8.2 made map.build's line_order a preference rather than a whitelist (A4-02, engine issue 28). Additive at protocol 1 and the schema is byte-identical, so the tag is the gate. The handshake compares version and protocol with engine.info and refuses any other; the vendoring job installs the package at the tag.",
+    "note": "A line for every stage. At v0.9.0 a long request's log carries a line of the engine's own for each stage - the LOOM stages with the graph's summary, the draw's with their sentence, write with its three files by name, one line for a layout read from the store - each with its time, so cell 02's engine log is no longer empty after a good run (E37; engine issue 48; app issue 246); v0.9.1 drops \"; nothing was laid out\" from the store line, which in the app's one log for a layout and its draw followed the layout's own four lines and denied them. Before it, v0.8.3 made every text file UTF-8 with LF so a Windows sidecar builds maps and prints the schema (E19). Additive at protocol 1 and the schema is byte-identical, so the tag is the gate. The handshake compares version and protocol with engine.info and refuses any other; the vendoring job installs the package at the tag.",
     "licence": "GPL-3.0-or-later",
     "schema_sha256": "908af7aba329a3e8ff42c7e9ebbd898d8efc3aaeffd1e7a68f3df3b622d55067"
   },
