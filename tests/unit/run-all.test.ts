@@ -46,6 +46,7 @@ const unlaid: ProjectRecord = { ...base, layout: null, made: null, date: null, b
 const run = (state: RunFacts['state'], patch: Partial<RunFacts> = {}): RunFacts => ({
   state,
   download: null,
+  feedMissing: false,
   rebuilt: false,
   recoloured: false,
   reordered: false,

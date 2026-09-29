@@ -51,11 +51,13 @@ export default function LayoutRun({
     reordered,
     day,
     download,
+    feedMissing,
   } = useSnapshot(run)
-  // The run is at, or ended at, its feed's download, which cell 01 draws
-  // (issue 178): this cell's layout has not begun, so it says what it is
-  // waiting on, or that nothing was laid out, and leaves the why to cell 01.
-  const atDownload = downloading({ download })
+  // The run is at its feed's download, or failed with its feed not on disk,
+  // which cell 01 draws (issue 178): this cell's layout has not begun, so it
+  // says what it is waiting on, or that nothing was laid out, and leaves the
+  // why to cell 01. A cancel is the run's, and says so as any cancel does.
+  const waitingOnFeed = state === 'running' && downloading({ download })
   const [confirming, setConfirming] = useState(false)
   // The run's controls are replaced as it moves: "Lay out" gives way to
   // Cancel, and Cancel to "Lay out again" when the run ends. Focus on the
@@ -153,9 +155,9 @@ export default function LayoutRun({
         />
         <div className="layout-run-foot">
           <p className="progress-message" role="status" aria-live="polite">
-            {state === 'failed' && atDownload
+            {state === 'failed' && feedMissing
               ? NOT_LAID_OUT
-              : (error ?? message ?? (atDownload ? WAITING_FOR_FEED : 'Starting the layout.'))}
+              : (error ?? message ?? (waitingOnFeed ? WAITING_FOR_FEED : 'Starting the layout.'))}
           </p>
           {state === 'running' && (
             <Button ref={cancelRef} onClick={() => run.cancel()}>

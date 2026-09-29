@@ -38,8 +38,11 @@ writes before the app starts (every key optional):
                       nothing, and a feeds.inspect that reaches the preset first records its
                       key in fake-engine.inspect-downloaded
     preset_download_delay_ms  wait between those ten reports (default 20)
-    preset_download_refuses   a sentence: that download refuses with it after its first
+    preset_download_refuses   a sentence: that download refuses with it after its last
                       report, kind feed, as the engine does for a page that is not a zip
+                      (it checks the file once every byte has come)
+    preset_download_fails_early  a sentence: that download fails with it before its first
+                      report, kind feed, as the engine does offline or on a 404
     add_delay_ms      wait between the download's ten progress reports for a URL (default 20)
     add_refuses       a sentence: feeds.add from a URL refuses with it, kind feed
     remove_delay_ms   wait before feeds.remove answers, on a thread of its own (default 0), so
@@ -748,6 +751,13 @@ class Engine:
             return True
         delay = self.control.get("preset_download_delay_ms", 20) / 1000
         total = 20480
+        early = self.control.get("preset_download_fails_early")
+        if early:
+            write({"jsonrpc": "2.0", "id": msg_id,
+                   "error": {"code": -32000, "message": early,
+                             "data": {"kind": "feed", "hint": early,
+                                      "detail": f"FeedError: {early} (feeds.py:582)"}}})
+            return False
         for i in range(1, 11):
             time.sleep(delay)
             if msg_id in self.cancelled:
@@ -757,13 +767,13 @@ class Engine:
             write({"jsonrpc": "2.0", "method": "job/progress",
                    "params": {"id": msg_id, "stage": "download", "fraction": i / 10,
                               "message": f"downloaded {i * 2048:,} of {total:,} bytes"}})
-            refused = self.control.get("preset_download_refuses")
-            if refused:
-                write({"jsonrpc": "2.0", "id": msg_id,
-                       "error": {"code": -32000, "message": refused,
-                                 "data": {"kind": "feed", "hint": refused,
-                                          "detail": f"FeedError: {refused} (feeds.py:600)"}}})
-                return False
+        refused = self.control.get("preset_download_refuses")
+        if refused:
+            write({"jsonrpc": "2.0", "id": msg_id,
+                   "error": {"code": -32000, "message": refused,
+                             "data": {"kind": "feed", "hint": refused,
+                                      "detail": f"FeedError: {refused} (feeds.py:600)"}}})
+            return False
         self.downloaded.add(key)
         return True
 

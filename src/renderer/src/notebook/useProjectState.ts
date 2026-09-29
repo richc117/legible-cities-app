@@ -7,7 +7,7 @@ import type { Inspection, RenderStageResult, StageName } from '../../../shared/p
 import type { ExportRun, ExportSnapshot } from '../engine/exportRun'
 import { feedRecordFor, inspectionFor } from '../engine/inspections'
 import { afterRunDownload } from '../engine/downloadGate'
-import { downloading, type LayoutRun, type RunSnapshot } from '../engine/layoutRun'
+import type { LayoutRun, RunSnapshot } from '../engine/layoutRun'
 import {
   engineClient,
   exportRunFor,
@@ -255,8 +255,8 @@ export function useProjectState(
   // opens (A5.6-03), once, and only while there is nothing laid out and
   // nothing running: a person who presses a city lands in a notebook
   // already at work, its stages in cell 02. (The preset's download is inside
-  // that run; since engine v0.10.0 it reports stage download and a cancel
-  // stops it (E36), which the line does not draw yet: issue 178.)
+  // that run; since engine v0.10.0 it reports stage download, which cell 01
+  // draws, and a cancel stops it: E36, issue 178.)
   // It waits for an engine that is still starting, and gives up the moment
   // it has started or been made pointless - a read-only record, a layout
   // already there, a run already going.
@@ -278,7 +278,9 @@ export function useProjectState(
   // leaves nothing behind: not the zip (the engine keeps none, v0.10.0), and
   // not the project, which names a feed that never arrived (issue 178). A
   // cancel once the download is done leaves the project with its feed, and
-  // cell 02 ready to run, as a cancelled layout always has.
+  // cell 02 ready to run, as a cancelled layout always has. Which of the two
+  // it was is the registry's answer as the run ended (`feedMissing`), not
+  // how far the bytes had come.
   const unkept = useRef(false)
   useEffect(() => {
     if (!layOut) return
@@ -289,7 +291,7 @@ export function useProjectState(
         record === null ||
         record.layout !== null ||
         snapshot.state !== 'cancelled' ||
-        !downloading(snapshot)
+        !snapshot.feedMissing
       )
         return
       unkept.current = true
@@ -414,8 +416,11 @@ export function useProjectState(
         inspectionFor(engineClient(), key, today()),
       )
     },
-    // `layOutAsked` is a ref declared above and read when asked.
-    [layOut, run],
+    // `layOutAsked` is a ref declared above and read when asked. The layout
+    // is here so that an inspection refused because the feed never arrived
+    // is asked again once a later run has laid the project out.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [layOut, run, project?.layout],
   )
   const readStage = useCallback(
     (key: string, layout: string, made: string | null, stage: StageName, width: number) =>

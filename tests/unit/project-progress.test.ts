@@ -36,6 +36,7 @@ const current: ProjectRecord = { ...base, drawn: drawnFrom(base) }
 const run = (state: RunFacts['state'], patch: Partial<RunFacts> = {}): RunFacts => ({
   state,
   download: null,
+  feedMissing: false,
   rebuilt: false,
   recoloured: false,
   reordered: false,

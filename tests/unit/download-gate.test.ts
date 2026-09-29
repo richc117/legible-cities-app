@@ -25,6 +25,7 @@ const snapshot = (patch: Partial<RunSnapshot> = {}): RunSnapshot => ({
   day: null,
   report: null,
   download: null,
+  feedMissing: false,
   ...patch,
 })
 
@@ -45,15 +46,24 @@ describe('where a run stands with its download', () => {
   it('waits while the bytes come or before anything has reported, and goes after', () => {
     expect(downloadPhase(snapshot({ state: 'running' }), false)).toBe('wait')
     expect(downloadPhase(snapshot({ state: 'running', download: midway }), false)).toBe('wait')
-    expect(downloadPhase(snapshot({ state: 'running', download: whole }), false)).toBe('go')
+    // The last byte is not the end: the engine checks the zip after it.
+    expect(downloadPhase(snapshot({ state: 'running', download: whole }), false)).toBe('wait')
     expect(downloadPhase(snapshot({ state: 'running', stages: firstDone() }), false)).toBe('go')
     expect(downloadPhase(snapshot({ state: 'done', stages: firstDone() }), false)).toBe('go')
   })
 
-  it('stops for a run that ended at its download, and goes for one that ended after it', () => {
-    expect(downloadPhase(snapshot({ state: 'cancelled', download: midway }), false)).toBe('stop')
-    expect(downloadPhase(snapshot({ state: 'failed', download: midway }), false)).toBe('stop')
-    expect(downloadPhase(snapshot({ state: 'failed' }), false)).toBe('stop')
+  it('stops for a run that ended with its feed not on disk, however far the bytes had come', () => {
+    // The registry's answer, not the fraction: a refusal comes after the
+    // last byte, and a failure can come before the first.
+    expect(
+      downloadPhase(snapshot({ state: 'failed', download: whole, feedMissing: true }), false),
+    ).toBe('stop')
+    expect(downloadPhase(snapshot({ state: 'failed', feedMissing: true }), false)).toBe('stop')
+    expect(
+      downloadPhase(snapshot({ state: 'cancelled', download: midway, feedMissing: true }), false),
+    ).toBe('stop')
+    // A zip that was kept, whatever the fraction said: the inspection goes.
+    expect(downloadPhase(snapshot({ state: 'cancelled', download: midway }), false)).toBe('go')
     expect(downloadPhase(snapshot({ state: 'cancelled', stages: firstDone() }), false)).toBe('go')
   })
 })
@@ -111,7 +121,7 @@ describe('holding the inspection', () => {
   it('does not start after a run cancelled at its download, so nothing downloads behind it', async () => {
     const run = watched(snapshot({ state: 'running', download: midway }))
     const gate = afterRunDownload(run, () => false, Promise.resolve(false), 5)
-    run.move({ state: 'cancelled' })
+    run.move({ state: 'cancelled', feedMissing: true })
     expect(await settled(gate)).toBe(NOT_DOWNLOADED)
   })
 

@@ -24,8 +24,12 @@ export const NOT_LAID_OUT = 'Nothing was laid out: the feed did not download. Ce
 export const DOWNLOAD_CANCELLED = 'The download was cancelled, and nothing of it was kept.'
 
 export default function DownloadLine({ run }: { run: LayoutRun }): JSX.Element | null {
-  const { state, download, error } = useSnapshot(run)
-  if (download === null) return null
+  const { state, download, error, feedMissing } = useSnapshot(run)
+  // While the bytes come, or once a run ended with its feed not on disk -
+  // which includes a download that failed before its first byte, and never
+  // one that ended after the zip was kept (issue 178).
+  const shown = state === 'running' ? download !== null : feedMissing
+  if (!shown) return null
   const going = downloading({ download })
   const station: StageState =
     state === 'failed'
@@ -41,7 +45,7 @@ export default function DownloadLine({ run }: { run: LayoutRun }): JSX.Element |
       : state === 'cancelled'
         ? DOWNLOAD_CANCELLED
         : going
-          ? `Downloading the feed: ${download.message}`
+          ? `Downloading the feed: ${download?.message ?? ''}`
           : 'The feed has downloaded.'
   return (
     <section className="download-run" aria-label="Download">
@@ -51,7 +55,7 @@ export default function DownloadLine({ run }: { run: LayoutRun }): JSX.Element |
       />
       <div className="layout-run-foot">
         <p className="progress-message" role="status" aria-live="polite">
-          {state === 'cancelled' ? DOWNLOAD_CANCELLED : download.message}
+          {state === 'cancelled' ? DOWNLOAD_CANCELLED : (download?.message ?? '')}
         </p>
       </div>
       {state === 'failed' && error !== null && (

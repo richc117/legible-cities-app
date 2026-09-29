@@ -57,6 +57,7 @@ const current: ProjectRecord = { ...rc4, drawn: drawnFrom(rc4) }
 const idle: RunFacts = {
   state: 'idle',
   download: null,
+  feedMissing: false,
   rebuilt: false,
   recoloured: false,
   reordered: false,
@@ -389,6 +390,9 @@ describe('a layout at its download', () => {
   const at = (fraction: number) => ({ message: 'downloaded 65,536 bytes', fraction })
 
   it('is cell 01 while the bytes come, and cell 02 once they have all come', () => {
+    // Ended: the registry's answer decides, never the fraction.
+    expect(cellOfRun({ ...idle, state: 'cancelled', download: at(0.4) })).toBe('process')
+    expect(cellOfRun({ ...idle, state: 'failed', download: null, feedMissing: true })).toBe('data')
     expect(cellOfRun({ ...idle, state: 'running', download: at(0.4) })).toBe('data')
     expect(cellOfRun({ ...idle, state: 'running', download: at(1) })).toBe('process')
     expect(cellOfRun({ ...idle, state: 'running', download: null })).toBe('process')
@@ -405,7 +409,7 @@ describe('a layout at its download', () => {
 
     const refused = runGraph({
       record: current,
-      run: { ...idle, state: 'failed', download: at(0.4) },
+      run: { ...idle, state: 'failed', download: at(1), feedMissing: true },
       exportRun: null,
     })
     expect(refused.data).toEqual({ state: 'error', because: 'failed' })

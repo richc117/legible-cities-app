@@ -78,15 +78,23 @@ export interface RunSnapshot {
   /** What the map call said about the map it drew; null until one has. */
   report: RunReport | null
   /**
-   * The feed's download inside this run, while it is the run's business:
-   * a preset's zip fetched the first time the layout needs it, which engine
-   * v0.10.0 reports as stage `download` (E36, issue 178). Set by the first
-   * download report and left null by a run whose feed was on disk. It stays
-   * once the run ends where it was downloading, so a cancel or a refusal
-   * there is known to be cell 01's; the first stage the layout itself
-   * reports clears it.
+   * The feed's download inside this run, for drawing: a preset's zip
+   * fetched the first time the layout needs it, which engine v0.10.0
+   * reports as stage `download` (E36, issue 178). Set by the download's
+   * reports and left null by a run whose feed was on disk; the first stage
+   * the layout itself reports clears it. It says how far the bytes have
+   * come, and nothing about whether the zip was kept: see `feedMissing`.
    */
   download: RunDownload | null
+  /**
+   * Set when a layout run ended before its first stage finished and the
+   * feed is not on disk, asked of the engine's registry as the run ended
+   * (issue 178). That, and not how far the bytes had come, is what makes an
+   * ending the feed's: the engine refuses a page that is not a zip only
+   * after its last byte, a download can fail before its first, and one of
+   * unknown size reports a fraction of 0 to its end.
+   */
+  feedMissing: boolean
 }
 
 /** Where a download inside a run has got, in the engine's words. */
@@ -239,6 +247,12 @@ export interface RunOptions {
   completeOrder(id: string, order: LineOrder): Promise<unknown>
   /** The anchor the engine's choice is made from: the machine's date, injected so a test can fix it. */
   today(): string
+  /**
+   * Whether a feed's zip is on disk now, asked afresh of the engine's
+   * registry when a layout run ends before its first stage (issue 178).
+   * Left out, a feed is taken to be on disk and no ending is the feed's.
+   */
+  onDisk?(key: string): Promise<boolean>
 }
 
 export const freshStages = (): Stage[] =>
@@ -299,6 +313,7 @@ const IDLE: RunSnapshot = {
   day: null,
   report: null,
   download: null,
+  feedMissing: false,
 }
 
 /**
@@ -325,6 +340,10 @@ export class LayoutRun {
   #inFlight: { cancel(): void } | null = null
   #cancelled = false
   #attempt: Attempt | null = null
+  /** The feed of the layout run going, the one that may download; null for a redraw. */
+  #feedKey: string | null = null
+  /** When the last download report was drawn, so a large feed's thousands of chunks are not. */
+  #drawnDownload = 0
   readonly #options: RunOptions
 
   constructor(options: RunOptions) {
@@ -421,6 +440,9 @@ export class LayoutRun {
       })
     )
       return
+    // Only a layout can download its feed; a redraw works from the stored
+    // layout, whose feed is on disk.
+    this.#feedKey = project.feed
 
     void (async () => {
       try {
@@ -670,10 +692,14 @@ export class LayoutRun {
             ? 'The engine is still starting. Try again in a moment.'
             : `The engine is not ready to run a layout: ${engine.state}.`,
         replaced: false,
+        // A failed start is not the last run's download (issue 178).
+        download: null,
+        feedMissing: false,
         ...kind,
       })
       return false
     }
+    this.#feedKey = null
     this.#cancelled = false
     const started = freshStages()
     started[0] = { ...started[0], state: 'running' }
@@ -689,6 +715,7 @@ export class LayoutRun {
       // figures go now rather than when this one answers.
       report: null,
       download: null,
+      feedMissing: false,
       ...kind,
     })
     return true
@@ -754,7 +781,7 @@ export class LayoutRun {
   #failed(reason: unknown): void {
     this.#inFlight = null
     if (isEngineErrorShape(reason) && reason.code === ERROR_CODES.cancelled) {
-      this.#set({
+      this.#end({
         state: 'cancelled',
         stages: this.#snapshot.stages.map((s) =>
           s.state === 'running' ? { ...s, state: 'pending' as const } : s,
@@ -764,7 +791,7 @@ export class LayoutRun {
       return
     }
     if (this.#attempt !== null) Object.assign(this.#attempt, failureOf(reason))
-    this.#set({
+    this.#end({
       state: 'failed',
       error: sentenceFor(reason),
       stages: this.#snapshot.stages.map((s) =>
@@ -774,9 +801,34 @@ export class LayoutRun {
     })
   }
 
+  /**
+   * A run that did not finish, ended. A layout that ended before its first
+   * stage may have ended at its feed: the registry is asked, afresh,
+   * whether the zip is on disk, and the answer goes out with the ending in
+   * one change, so nothing reading the snapshot sees one without the other
+   * (issue 178). The run stays `running` for that moment, which is also
+   * what keeps a second start out.
+   */
+  #end(patch: Partial<RunSnapshot>): void {
+    const feed = this.#feedKey
+    const onDisk = this.#options.onDisk
+    this.#feedKey = null
+    if (feed === null || onDisk === undefined || this.#snapshot.stages[0]?.state === 'done') {
+      this.#set({ ...patch, feedMissing: false })
+      return
+    }
+    void onDisk(feed)
+      .then(
+        (there) => !there,
+        // Unanswered: nothing is claimed about the feed.
+        () => false,
+      )
+      .then((missing) => this.#set({ ...patch, feedMissing: missing }))
+  }
+
   /** Cancelled between the awaits: nothing was written, and nothing is. */
   #stopped(): void {
-    this.#set({
+    this.#end({
       state: 'cancelled',
       stages: this.#snapshot.stages.map((s) =>
         s.state === 'running' ? { ...s, state: 'pending' as const } : s,
@@ -792,7 +844,15 @@ export class LayoutRun {
     // A feed downloading inside the run (engine v0.10.0, E36): cell 01's,
     // not a stage of the line, so it is kept apart from the stages.
     if (p.stage === 'download') {
-      this.#set({ download: { message: p.message, fraction: p.fraction ?? 0 } })
+      // The engine reports every 64 KiB; drawn at most four times a second,
+      // and always at the last byte, a large feed's thousands of chunks do
+      // not re-render the screen or refill a live region each time.
+      const fraction = p.fraction ?? 0
+      const now = Date.now()
+      if (this.#snapshot.download !== null && fraction < 1 && now - this.#drawnDownload < 250)
+        return
+      this.#drawnDownload = now
+      this.#set({ download: { message: p.message, fraction } })
       return
     }
     if (this.#snapshot.download !== null) {

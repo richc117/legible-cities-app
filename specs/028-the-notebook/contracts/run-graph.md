@@ -41,7 +41,7 @@ has to be told, and nothing is registered:
 
 | Snapshot | Cell |
 | --- | --- |
-| `download` set and short of its last byte (issue 178) | 01 `data` |
+| running, with `download` short of its last byte; or ended with `feedMissing` (issue 178) | 01 `data` |
 | `rebuilt` | 03 `frame` |
 | `recoloured` or `reordered` | 05 `lines` |
 | anything else, including a re-layout | 02 `process` |
@@ -57,10 +57,15 @@ name, which is how a failure lands where it happened.
 The first row is the one that is not a flag. Since engine v0.10.0 a
 layout whose feed is not on disk downloads it first and reports the bytes
 as stage `download` (E36); the run keeps that as `download`, apart from its
-stages, until the layout's own first stage reports. While it lasts the run
-is cell 01's, so a refusal or a cancel there is the feed's: cell 01 in
-error with the engine's sentence, cell 02 not begun. `downloading()` in
-`engine/layoutRun.ts` is the test, shared by the table and the views.
+stages, until the layout's own first stage reports, and while the bytes
+come the run is cell 01's. Whether an *ending* is the feed's is not read
+from the bytes: the engine refuses a page that is not a zip after its last
+byte, a download can fail before its first, and one of unknown size
+reports a fraction of 0 to its end. So a layout that ends before its first
+stage asks the engine's registry, afresh, whether the zip is on disk, and
+the run ends with `feedMissing` set from the answer, in the same change as
+its state. An ending with the feed missing is cell 01's - in error with the
+engine's sentence, cell 02 not begun; any other is cell 02's as before.
 
 ## What the page was drawn from
 

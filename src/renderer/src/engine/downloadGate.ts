@@ -1,4 +1,4 @@
-import { downloading, type RunSnapshot } from './layoutRun'
+import type { RunSnapshot } from './layoutRun'
 
 // Cell 01's inspection, held behind a sample's download (issue 178).
 //
@@ -23,11 +23,11 @@ export const NOT_DOWNLOADED = 'The feed was not downloaded, so there is nothing 
 
 /**
  * Where a run stands with respect to its feed's download: still to come or
- * under way (`wait`), behind it (`go`), or ended at it (`stop`).
+ * under way (`wait`), behind it (`go`), or ended with the feed not on disk
+ * (`stop`).
  *
- * A run that has reported neither a download nor a stage of its own may be
- * about to download, so it is waited for; one whose first stage is done, or
- * whose download reached its last byte, is past it.
+ * A running run is past its download once the layout's first stage is done,
+ * and not before, whatever the bytes say.
  */
 export function downloadPhase(run: RunSnapshot, starting: boolean): 'wait' | 'go' | 'stop' {
   const firstDone = run.stages[0]?.state === 'done'
@@ -35,13 +35,19 @@ export function downloadPhase(run: RunSnapshot, starting: boolean): 'wait' | 'go
     case 'idle':
       return starting ? 'wait' : 'go'
     case 'running':
-      if (downloading(run)) return 'wait'
-      return run.download === null && !firstDone ? 'wait' : 'go'
+      // Only the layout's first stage says the download is over and kept:
+      // the last byte is not enough, because the engine checks the zip after
+      // it and may still refuse it, and a download of unknown size reports
+      // a fraction of 0 to its end. Going sooner would let the inspection
+      // fetch the feed itself, where no cancel reaches.
+      return firstDone ? 'go' : 'wait'
     case 'done':
       return 'go'
     case 'cancelled':
     case 'failed':
-      return downloading(run) || (run.download === null && !firstDone) ? 'stop' : 'go'
+      // Whether the feed arrived is the registry's answer at the ending,
+      // not how far the bytes had come: a refusal comes after the last byte.
+      return run.feedMissing ? 'stop' : 'go'
   }
 }
 

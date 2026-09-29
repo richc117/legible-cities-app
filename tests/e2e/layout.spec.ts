@@ -2053,3 +2053,26 @@ test('a sample whose download the engine refuses says so in cell 01, not in a di
     await expect(page.getByRole('button', { name: 'Run all' })).toBeEnabled()
   })
 })
+
+test('a sample whose download fails before its first byte says so in cell 01 too', async () => {
+  // Offline, or a 404: the engine fails before any byte is reported, so the
+  // run has no download to draw. The registry's answer that the feed is
+  // not on disk is what puts the failure in cell 01 (issue 178).
+  const engineHome = home({
+    map_draws: true,
+    progress_delay_ms: 10,
+    presets_cached: [],
+    preset_download_fails_early: 'https://example.test/la.zip could not be fetched: 404',
+  })
+  await withApp(engineHome, async (page) => {
+    await sampleCard(page, 'LA Metro Rail').click()
+    await expect(cellHeading(page, 'data')).toHaveAccessibleName(/ failed/, { timeout: 30_000 })
+    await expect(
+      cellOne(page).getByRole('region', { name: 'Download' }).getByRole('alert'),
+    ).toHaveText('https://example.test/la.zip could not be fetched: 404')
+    await expect(cell(page, 'process')).toContainText(
+      'Nothing was laid out: the feed did not download. Cell 01 says why.',
+    )
+    expect(readRecord(engineHome)).toMatchObject({ feed: 'la-metro-rail', layout: null })
+  })
+})
