@@ -1068,8 +1068,11 @@ class Engine:
         preset = PRESETS.get(plan.get("preset"), {})
         feed = FEEDS.get(plan.get("key"), {})
         board = plan.get("storyboard") or ""
-        # The engine's `_write_sidecar` fields at v0.8.2, in its order, so a
-        # test that reads a sidecar reads what the engine writes.
+        # The engine's `_write_sidecar` fields, in its order, so a test that
+        # reads a sidecar reads what the engine writes. One difference since
+        # v0.10.1: the engine names a person's own feed without the secrets
+        # in its address (`source`), and this stand-in has only presets,
+        # whose public addresses the engine writes whole as well.
         meta = {"file": dest.name, "bytes": dest.stat().st_size, "feed": plan.get("key"),
                 "city": feed.get("city"), "network": feed.get("network"),
                 "preset": plan.get("preset"), "platform": preset.get("platform"),

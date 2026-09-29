@@ -4,10 +4,12 @@ import { EngineError, ERROR_CODES } from '../../src/shared/engine'
 import { inUseSentence } from '../../src/main/feeds-ipc'
 
 // The one door an error goes through on its way to the page (issue 207).
-// The engine at the pin names a failed download's whole URL in its error:
-// `FeedError("{url} could not be fetched: {exc}")`, which the serve loop
-// makes the message, the hint and the head of the detail. These are the
-// engine's own sentences with a key in the query.
+// Until v0.10.1 the engine named a failed download's whole URL in its
+// error: `FeedError("{url} could not be fetched: {exc}")`, which the serve
+// loop makes the message, the hint and the head of the detail. These are
+// the engine's sentences as they were then, with a key in the query. The
+// engine redacts a person's feed at source now (engine issue 32); this
+// door stays, for an older engine's sentence and for anyone else's.
 
 const URL_WITH_KEY = 'https://feeds.example.org/gtfs.zip?api_key=s3cret'
 const SECRET = 's3cret'

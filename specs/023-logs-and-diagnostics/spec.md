@@ -144,7 +144,10 @@ can confirm the app sends nothing.
   header, but the engine's do: at v0.8.2 a failed download raises an error
   naming the whole URL, query string included, and the engine logs it with
   a traceback on the stderr the supervisor writes to `engine.log` (engine
-  issue 32 redacts it at source). So every line is passed through one
+  issue 32 redacts it at source, and did at v0.10.1, which the app pins
+  since 29 Sep 2026; this redaction stays as the second guard, and is the
+  only one for anything else that prints an address, the engine's debug
+  level included). So every line is passed through one
   redaction before it is written, to either log and to standard error (in
   development, or when the log folder cannot be used), and the copy is
   passed through it again, because a log written before

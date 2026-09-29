@@ -3,13 +3,15 @@
 // shape. Small on purpose; each bridge keeps its own channels and rules.
 //
 // It is also the one door an error goes through on its way to the page
-// (issue 207), so the redaction is here and nowhere else. The engine writes
-// a failed download's whole URL into its error - `FeedError`'s sentence is
-// "{url} could not be fetched: ...", and the serve loop makes that the
-// message, the hint and the start of the detail (engine v0.8.3,
-// `serve.classify`) - so a key in a feed's query string would otherwise be
-// drawn on screen by the New project sheet and every panel's failure line,
-// and kept in the jobs inspector. The logs have been redacted since A6-03;
+// (issue 207), so the redaction is here and nowhere else. Until v0.10.1 the
+// engine wrote a failed download's whole URL into its error - `FeedError`'s
+// sentence was "{url} could not be fetched: ...", and the serve loop makes
+// that the message, the hint and the start of the detail
+// (`serve.classify`) - so a key in a feed's query string would otherwise
+// have been drawn on screen by the New project sheet and every panel's
+// failure line, and kept in the jobs inspector. Since v0.10.1 the engine
+// redacts a person's feed at source (engine issue 32), and this door
+// stays: for an older engine's sentence, and for anyone else's. The logs have been redacted since A6-03;
 // this is the same `redactUrls`, applied to all three fields of every shape
 // that crosses, the app's own refusals included. Text with none of `? # @ %`
 // in it comes back exactly as it was.

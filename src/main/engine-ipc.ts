@@ -28,8 +28,9 @@
 //
 // **The other way a secret reached the page was the error**, and issue
 // 207 closed it in `ipc-shape.ts`: a settled request carries the engine's
-// error through `toShape`, and a failed download's error names the whole
-// URL in its message, hint and detail (engine v0.8.3, `serve.classify`).
+// error through `toShape`, and until engine v0.10.1 a failed download's
+// error named the whole URL in its message, hint and detail
+// (`serve.classify`).
 // `jsonrpc.ts`'s `withoutPaths` on the hint could never have caught it -
 // its pattern needs whitespace or `(` before the slash, and a URL's `//`
 // follows a colon. `toShape` and `badCall` now put all three fields through

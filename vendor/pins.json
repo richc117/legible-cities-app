@@ -67,10 +67,10 @@
   },
   "engine": {
     "repo": "https://github.com/richc117/legible-cities",
-    "tag": "v0.10.0",
-    "version": "0.10.0",
+    "tag": "v0.10.1",
+    "version": "0.10.1",
     "protocol": 1,
-    "note": "A preset's first download is seen and can be stopped. At v0.10.0 a preset's zip fetched inside any long request - graph.build, feeds.inspect, feeds.service or map.build - reports job/progress stage download once per chunk, with the fraction of its own bytes, and a cancel during it answers -32800 and caches nothing (E36; engine issue 47; app issue 178). The protocol's methods and shapes are unchanged at protocol 1, but its descriptions of job/progress, feeds.service and the cancel say so, which moved the fingerprint below. Before it, v0.9.0 and v0.9.1 gave every stage a log line of the engine's own (E37). The handshake compares version and protocol with engine.info and refuses any other; the vendoring job installs the package at the tag.",
+    "note": "A feed's address leaves the engine without its secrets. At v0.10.1 (engine issue 32) a feed a person added from a keyed link is named without its user information, its query's values or its fragment in the sentence of a failed download, in the traceback logged with it and in the .json beside every export, whose source is the feed's address; a preset's public address is written as the registry has it, and the record and feeds.list keep a person's address whole, since that is what a later fetch asks for. The app's own redaction of what it logs and shows (src/main/redact.ts) stays as the second guard. No method or shape changed and the schema's bytes did not move from v0.10.0. Before it: a preset's first download is seen and can be stopped. At v0.10.0 a preset's zip fetched inside any long request - graph.build, feeds.inspect, feeds.service or map.build - reports job/progress stage download once per chunk, with the fraction of its own bytes, and a cancel during it answers -32800 and caches nothing (E36; engine issue 47; app issue 178). The protocol's methods and shapes are unchanged at protocol 1, but its descriptions of job/progress, feeds.service and the cancel say so, which moved the fingerprint below. Before it, v0.9.0 and v0.9.1 gave every stage a log line of the engine's own (E37). The handshake compares version and protocol with engine.info and refuses any other; the vendoring job installs the package at the tag.",
     "licence": "GPL-3.0-or-later",
     "schema_sha256": "7cf9ae419363057132f7e0d2cb19a777248a721383110d15b046018706768ad2"
   },

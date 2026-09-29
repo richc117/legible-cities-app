@@ -435,10 +435,12 @@ test('adds a feed from a URL with its download on the line, and a cancel keeps n
   })
 })
 
-// Issue 207. At the pin, a failed download's error is the engine's
-// `FeedError`: "{url} could not be fetched: ...", message, hint and detail
-// alike. A key in the address a person typed must not come back onto the
-// screen in it - not in the dialog, and not in the jobs inspector.
+// Issue 207. Until v0.10.1 a failed download's error was the engine's
+// `FeedError` with the address whole: "{url} could not be fetched: ...",
+// message, hint and detail alike, and the stand-in engine still answers
+// that way here. A key in the address a person typed must not come back
+// onto the screen in it - not in the dialog, and not in the jobs
+// inspector - whichever engine wrote the sentence.
 test('a failed download keeps the key in its address off the screen', async () => {
   // A made-up value, planted so it can be looked for on the screen.
   const planted = 'planted207'
