@@ -317,6 +317,39 @@ describe('destinations', () => {
     ])
   })
 
+  // Two failures that end differently on purpose (issue 206). A folder
+  // that cannot be listed hides every project, so whoever asked must be
+  // told; the list, which the front door reads, still answers.
+  it('rejects when the projects folder cannot be listed, by the failure’s code and never its path, where the list still answers', async () => {
+    // A file where the folder should be: the same failure on every platform.
+    await writeFile(root, 'not a folder')
+    const failure = await store.destinations().then(
+      () => null,
+      (error: unknown) => error as NodeJS.ErrnoException,
+    )
+    expect(failure, 'it did not answer "none"').not.toBeNull()
+    expect(failure?.code).toBe('ENOTDIR')
+    expect(failure?.message).toBe('the projects folder could not be listed')
+    expect(failure?.message, 'a message for the screen names no folder').not.toContain(home)
+    expect(lines).toEqual(['projects: cannot list (ENOTDIR)'])
+
+    lines.length = 0
+    expect(await store.list(), 'the front door still opens').toEqual([])
+    expect(lines).toEqual(['projects: cannot list (ENOTDIR)'])
+  })
+
+  it('skips a record it cannot read, by its folder and the failure’s code, and answers the rest', async () => {
+    await seed(A, record(A, { name: 'Kept', destination: videos('kept') }))
+    // A folder where the record should be: it can be found and not read.
+    await mkdir(join(root, B, 'project.json'), { recursive: true })
+    expect(await store.destinations()).toEqual([
+      { id: A, name: 'Kept', destination: videos('kept') },
+    ])
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).toMatch(/^projects\/bbbbbbbbbbbb: unreadable \(E[A-Z]+\)$/)
+    expect(lines[0], 'and the line names no path').not.toContain(home)
+  })
+
   it('counts a project a newer version of the app made, which is read-only here', async () => {
     await seed(A, record(A, { version: 2, name: 'Newer', destination: videos('newer') }))
     expect((await store.get(A)).readOnly).toBe(true)

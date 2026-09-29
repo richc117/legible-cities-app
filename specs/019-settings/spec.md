@@ -20,17 +20,27 @@
 >
 > **Every sentence says what is in the way, what would happen, and what
 > to do first, which is two things:** move the exported files out, and
-> change the folder. Changing a folder moves nothing. The two refusals
-> FR-009 already asked for over the app's own export folder were reworded
-> to say the same. No sentence shows a path.
+> change the folder. Changing a folder moves nothing, and files already
+> exported into one of the four folders are removed by a reset that goes
+> ahead. The two refusals FR-009 already asked for over the app's own
+> export folder were reworded to say the same. No sentence shows a path,
+> and a project's name is shown to 120 characters at most.
+>
+> **Which failure refuses.** A projects folder that cannot be listed, for
+> any reason but its not being there, refuses the choice and the reset:
+> every project in it is hidden, so nothing is known. One record that
+> cannot be read or parsed is skipped, as the project list skips it, and
+> the choice or the reset goes ahead, because the reset exists for a home
+> whose contents have gone wrong. And the folders are checked under one
+> deadline of five seconds at each door: a folder on a share that stalls
+> refuses, with nothing changed or removed, rather than holding the
+> reset's flag up.
 >
 > **What no door sees:** a project whose record was left behind in a home
-> the app used before. A record this build cannot read is skipped, as the
-> project list skips it, and does not refuse the reset, which exists for
-> a home whose contents have gone wrong; only the read itself failing
-> refuses. SC-001 gains the unit tests over each composed rule, and SC-002
-> an end-to-end test of each refusal. Contract: `contracts/bridge.md`,
-> "The guards, on the main side".
+> the app used before, and any one record this build cannot read. SC-001
+> gains the unit tests over each composed rule, and SC-002 an end-to-end
+> test of each refusal. Contract: `contracts/bridge.md`, "The guards, on
+> the main side".
 
 **Feature Branch**: `A1-04-settings`
 

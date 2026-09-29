@@ -16,9 +16,10 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CaptureError, type CaptureOptions, type CaptureResult } from '../../src/main/capture'
 import {
+  DESTINATION_LATE,
   destinationRefusal,
   Destinations,
   Exporter,
@@ -48,9 +49,27 @@ import {
 } from '../../src/shared/export'
 import { DEFAULT_STYLE, type ProjectRecord } from '../../src/shared/project'
 import type { CaptureJob as PlannedJob, Preset } from '../../src/shared/protocol'
+import { FOLDERS_TIMEOUT_MS, realOrResolved } from '../../src/main/settings'
 import { FAKE_ENGINE, findPython } from '../support/python'
 
 const tick = (): Promise<void> => new Promise((r) => setImmediate(r))
+
+/**
+ * Whether this machine lets the run make a symbolic link, asked once: a
+ * locked-down Windows account does not. A test that needs one is skipped
+ * where it cannot be made, and says so (issue 206).
+ */
+const canLink = ((): boolean => {
+  const dir = mkdtempSync(join(tmpdir(), 'legible-cities-link-probe-'))
+  try {
+    symlinkSync(dir, join(dir, 'link'), 'dir')
+    return true
+  } catch {
+    return false
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})()
 
 /** What the one button exported before the export tab: the reel, with the engine's defaults. */
 const REEL: ExportChoice = { preset: 'instagram-reel', options: {} }
@@ -229,6 +248,20 @@ function fakeCapture() {
     })
   return { capture, calls }
 }
+
+/**
+ * Until a folder that stalls has been asked about, or whatever would have
+ * asked has ended without asking: so a test of a deadline fails at once,
+ * and not at its own timeout, when the thing it waits for never comes.
+ */
+const askedOrEnded = (asked: Promise<void>, call: Promise<unknown>): Promise<void> =>
+  Promise.race([
+    asked,
+    call.then(
+      () => undefined,
+      () => undefined,
+    ),
+  ])
 
 const dirs: string[] = []
 afterEach(() => {
@@ -1634,20 +1667,23 @@ describe('where a project may not export to', () => {
       )
     })
 
-    it('follows a link in the folder it is given, and in the folder that waits', async () => {
-      const t = tree()
-      mkdirSync(join(t.next, 'out'), { recursive: true })
-      const link = join(t.root, 'looks-harmless')
-      symlinkSync(join(t.next, 'out'), link, 'dir')
-      t.waiting.now = t.next
-      expect(await destinationRefusal(link, t.where)).toBe(INSIDE)
+    it.skipIf(!canLink)(
+      'follows a link in the folder it is given, and in the folder that waits',
+      async () => {
+        const t = tree()
+        mkdirSync(join(t.next, 'out'), { recursive: true })
+        const link = join(t.root, 'looks-harmless')
+        symlinkSync(join(t.next, 'out'), link, 'dir')
+        t.waiting.now = t.next
+        expect(await destinationRefusal(link, t.where)).toBe(INSIDE)
 
-      const linked = join(t.root, 'linked-next')
-      symlinkSync(t.next, linked, 'dir')
-      t.waiting.now = linked
-      expect(await destinationRefusal(join(t.next, 'out'), t.where)).toBe(INSIDE)
-      expect(await destinationRefusal(t.elsewhere, t.where)).toBeNull()
-    })
+        const linked = join(t.root, 'linked-next')
+        symlinkSync(t.next, linked, 'dir')
+        t.waiting.now = linked
+        expect(await destinationRefusal(join(t.next, 'out'), t.where)).toBe(INSIDE)
+        expect(await destinationRefusal(t.elsewhere, t.where)).toBeNull()
+      },
+    )
 
     it('judges a folder that waits and is not there yet', async () => {
       const t = tree()
@@ -1718,6 +1754,125 @@ describe('where a project may not export to', () => {
       expect(refusal).toBe(`The folder this project exports to cannot be written to: ${INSIDE}.`)
       expect(h.cap.calls, 'nothing more was captured').toHaveLength(1)
       expect(h.exporter.live, 'the export was let go').toBe(0)
+    })
+  })
+
+  // A folder on a network share or an automounted volume can stall rather
+  // than fail (issue 206). The chooser would never answer, and an export,
+  // which asks the refusal again before it plans, would never start.
+  describe('when a folder it must judge never answers', () => {
+    /** The rule with a resolver that never answers for one folder, and says when it was asked. */
+    const stalling = (t: ReturnType<typeof tree>, stalled: string) => {
+      let asked = (): void => undefined
+      const wasAsked = new Promise<void>((resolve) => {
+        asked = resolve
+      })
+      const where = {
+        ...t.where,
+        realFolder: (path: string): Promise<string> => {
+          if (path !== stalled) return realOrResolved(path)
+          asked()
+          return new Promise<string>(() => undefined)
+        },
+      }
+      return { where, wasAsked }
+    }
+
+    it('refuses the folder when the deadline lapses, in a sentence that says it was not checked', async () => {
+      const t = tree()
+      const share = join(t.root, 'on-a-share')
+      for (const stalled of [share, t.home, t.bundle, t.next]) {
+        t.waiting.now = t.next
+        const { where, wasAsked } = stalling(t, stalled)
+        vi.useFakeTimers()
+        try {
+          const judging = destinationRefusal(share, where)
+          await askedOrEnded(wasAsked, judging)
+          await vi.advanceTimersByTimeAsync(FOLDERS_TIMEOUT_MS)
+          expect(await judging, stalled).toBe(DESTINATION_LATE)
+          expect(vi.getTimerCount(), 'the timer was cleared').toBe(0)
+        } finally {
+          vi.useRealTimers()
+        }
+      }
+      expect(DESTINATION_LATE).toBe(
+        'that folder could not be checked in time against the folders it must stay out of, so nothing was changed or written; try again',
+      )
+      expect(DESTINATION_LATE, 'a sentence for the screen names no folder').not.toContain(t.root)
+    })
+
+    it('leaves no timer behind a judgement that ended in time, either way', async () => {
+      const t = tree()
+      vi.useFakeTimers()
+      try {
+        expect(await destinationRefusal(t.elsewhere, t.where)).toBeNull()
+        expect(vi.getTimerCount()).toBe(0)
+        expect(await destinationRefusal(t.home, t.where)).toMatch(/inside the engine data folder/)
+        expect(vi.getTimerCount()).toBe(0)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('is refused by the chooser, which stores nothing', async () => {
+      const t = tree()
+      const share = join(t.root, 'on-a-share')
+      const { where, wasAsked } = stalling(t, share)
+      const written: (string | null)[] = []
+      const destinations = new Destinations({
+        projects: {
+          get: async (id) => project({ id }),
+          setDestination: async (id, folder) => {
+            written.push(folder)
+            return { ...project({ id }), destination: folder }
+          },
+        },
+        chooseFolder: async () => share,
+        appFolder: () => t.elsewhere,
+        refuse: (folder) => destinationRefusal(folder, where),
+      })
+      vi.useFakeTimers()
+      try {
+        const refused = expect(destinations.choose('abcdefghijk1')).rejects.toThrow(
+          DESTINATION_LATE,
+        )
+        await askedOrEnded(wasAsked, refused)
+        await vi.advanceTimersByTimeAsync(FOLDERS_TIMEOUT_MS)
+        await refused
+      } finally {
+        vi.useRealTimers()
+      }
+      expect(written).toEqual([])
+    })
+
+    // The export is refused once the deadline lapses, rather than never
+    // starting and never ending; what it leaves is what any export refused
+    // over its folder leaves, which is nothing.
+    it('refuses an export to a folder that never answers, and leaves what a refused export leaves', async () => {
+      const t = tree()
+      const share = join(t.root, 'on-a-share')
+      const { where, wasAsked } = stalling(t, share)
+      const h = harness({
+        project: { destination: share },
+        destinationRefusal: (folder) => destinationRefusal(folder, where),
+      })
+      vi.useFakeTimers()
+      try {
+        const { result } = h.exporter.start('tok-1', 'abcdefghijk1', REEL)
+        const refused = expect(result).rejects.toThrow(
+          `The folder this project exports to cannot be written to: ${DESTINATION_LATE}.`,
+        )
+        await askedOrEnded(wasAsked, refused)
+        expect(h.exporter.live, 'it is an export until it is refused').toBe(1)
+        await vi.advanceTimersByTimeAsync(FOLDERS_TIMEOUT_MS)
+        await refused
+      } finally {
+        vi.useRealTimers()
+      }
+      expect(h.eng.requests, 'the engine was never asked for a plan').toHaveLength(0)
+      expect(h.cap.calls, 'nothing was captured').toHaveLength(0)
+      expect(h.exporter.live, 'the export was let go').toBe(0)
+      expect(existsSync(h.framesRoot), 'and no frames were made').toBe(false)
     })
   })
 })

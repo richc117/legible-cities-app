@@ -43,7 +43,7 @@ import {
 import { isObject, toShape } from './ipc-shape'
 import { RESERVED_NAME } from './paths'
 import { PickedPaths } from './picked'
-import { contains, realOrResolved } from './settings'
+import { contains, inTime, LAPSED, realOrResolved } from './settings'
 import type { Notification } from './sidecar'
 
 /** What the export needs from the supervisor; a test hands in a fake. */
@@ -665,7 +665,22 @@ export interface ForbiddenFolders {
    * runs - and the chooser and every export both judge through here.
    */
   waitingHome: () => string | null
+  /**
+   * A folder through its links: `realOrResolved`, which is what the app
+   * uses. Here so a test can hand in a folder that never answers, as a
+   * stalled network share does not, and prove the deadline over it.
+   */
+  realFolder?: (path: string) => Promise<string>
 }
+
+/**
+ * What the chooser and the exporter say when the folders did not answer in
+ * time (issue 206). Lower case and unstopped, like the refusals beside it:
+ * the exporter says it after "The folder this project exports to cannot be
+ * written to: ".
+ */
+export const DESTINATION_LATE =
+  'that folder could not be checked in time against the folders it must stay out of, so nothing was changed or written; try again'
 
 /**
  * Why a project may not export to this folder, or null (A5.5-19).
@@ -711,20 +726,36 @@ export interface ForbiddenFolders {
  * the engine data folder yet, and saying it was would send a person to
  * look at the wrong one. Settings keeps the other half: it refuses an
  * engine folder that a project already exports into or around.
+ *
+ * **One deadline over the whole judgement.** Every folder here is asked of
+ * the disk, and one on a network share or an automounted volume can stall
+ * rather than fail. The chooser would then never answer, and an export -
+ * which asks this again before it plans anything - would never start and
+ * never end. When the deadline lapses the folder is refused, in a sentence
+ * that says it could not be checked: a folder nobody could judge is not
+ * one to write into. The judgement is abandoned then, not stopped, which
+ * is safe because it only reads.
  */
 export async function destinationRefusal(
   folder: string,
   where: ForbiddenFolders,
 ): Promise<string | null> {
-  const real = await realOrResolved(folder)
+  const judged = await inTime(judgeDestination(folder, where))
+  return judged === LAPSED ? DESTINATION_LATE : judged
+}
+
+/** The judgement itself, unbounded: `destinationRefusal` puts the deadline over it. */
+async function judgeDestination(folder: string, where: ForbiddenFolders): Promise<string | null> {
+  const realOf = where.realFolder ?? realOrResolved
+  const real = await realOf(folder)
   for (const root of where.bundleRoots) {
-    const bundle = await realOrResolved(root)
+    const bundle = await realOf(root)
     if (contains(bundle, real))
       return 'that folder is inside the app itself; nothing can be kept there'
     if (contains(real, bundle))
       return 'that folder holds the app itself; an export goes into a folder named after the project, which could be the app'
   }
-  const home = await realOrResolved(where.engineHome)
+  const home = await realOf(where.engineHome)
   if (contains(home, real))
     return 'that folder is inside the engine data folder, which “Reset engine data” removes'
   if (contains(real, home))
@@ -733,7 +764,7 @@ export async function destinationRefusal(
   // is the folder waiting at this judgement and not at an earlier one.
   const waiting = where.waitingHome()
   if (waiting !== null) {
-    const next = await realOrResolved(waiting)
+    const next = await realOf(waiting)
     if (contains(next, real))
       return 'that folder is inside the folder the engine data moves to at the next start, which “Reset engine data” removes from then on'
     if (contains(real, next))

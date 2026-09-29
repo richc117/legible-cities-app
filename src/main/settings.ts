@@ -324,6 +324,46 @@ export async function realOrResolved(path: string): Promise<string> {
   }
 }
 
+/**
+ * How long a check over folders may take before it is given up (issue 206).
+ * Resolving a folder through its links asks the disk, and a folder on a
+ * network share or an automounted volume can stall rather than fail. With
+ * no bound, a reset that stalled would keep its flag up until the app was
+ * quit, with every engine request, export and record write refused
+ * meanwhile, and a choice of the engine's folder that stalled would hold
+ * every later one behind it.
+ */
+export const FOLDERS_TIMEOUT_MS = 5_000
+
+/** What `inTime` answers when the deadline came first. */
+export const LAPSED: unique symbol = Symbol('the folders were not checked in time')
+
+/**
+ * `check`'s answer, or `LAPSED` once `ms` has passed, as `#homes` in
+ * `settings-ipc.ts` bounds its own lookup. The timer is cleared whichever
+ * way it ends, so nothing is left to hold a process open.
+ *
+ * **A check that lapsed is abandoned, not stopped**: nothing can take back
+ * a question already put to the disk. So `check` must only read, and
+ * whatever acts on its answer - a removal, a write - comes after this and
+ * only on an answer that came in time. A check that fails after it was
+ * abandoned fails unheard.
+ */
+export async function inTime<T>(
+  check: Promise<T>,
+  ms: number = FOLDERS_TIMEOUT_MS,
+): Promise<T | typeof LAPSED> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const deadline = new Promise<typeof LAPSED>((resolve) => {
+    timer = setTimeout(() => resolve(LAPSED), ms)
+  })
+  try {
+    return await Promise.race([check, deadline])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 export function refuseReset(home: string, guards: ResetGuards): string | null {
   if (!isAbsolute(home)) return 'the engine data folder is not a folder the app can reset'
   const resolved = resolve(home)
@@ -384,6 +424,23 @@ export function destinationsInTheWay(
 export type DestinationDoor = 'chosen' | 'default' | 'reset'
 
 /**
+ * How much of a project's name a sentence shows: what `validateName` lets
+ * a name be when it is written. A record is a file, and the reader takes
+ * any name that is not blank, so one edited by hand can carry a name of
+ * any length; the sentence is shown in a dialog and must stay one.
+ */
+export const NAME_SHOWN = 120
+
+/** A name as a sentence shows it: whole, or its beginning and an ellipsis. */
+function shown(name: string): string {
+  // By character, not by code unit, so a name is never cut through the
+  // middle of one.
+  const letters = Array.from(name)
+  if (letters.length <= NAME_SHOWN) return name
+  return `${letters.slice(0, NAME_SHOWN).join('').trimEnd()}…`
+}
+
+/**
  * Why a folder may not be the engine's data folder, or may not be reset,
  * naming the projects in the way as the feeds' `inUseSentence` names them:
  * two or three are all named; past that, two and a count. Never a path:
@@ -396,7 +453,7 @@ export type DestinationDoor = 'chosen' | 'default' | 'reset'
  * whose exports were still under the home when the reset then ran.
  */
 export function destinationsSentence(names: readonly string[], door: DestinationDoor): string {
-  const quoted = names.map((name) => `“${name}”`)
+  const quoted = names.map((name) => `“${shown(name)}”`)
   const one = quoted.length === 1
   const listed = one
     ? quoted[0]

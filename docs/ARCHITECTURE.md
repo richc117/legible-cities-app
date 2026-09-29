@@ -464,31 +464,77 @@ so a sentence that asked only for that would be followed to the letter by
 somebody whose exports were still under the home when the reset then ran.
 The two refusals over the app's own export folder say the same. A
 sentence names the project, or the first two and how many more, and shows
-no path.
+no path; a name is shown whole up to the 120 characters a name may be, and
+past that as its beginning and an ellipsis, since a record edited by hand
+can carry a name of any length.
+
+**What a reset that goes ahead removes.** The rule is over where a project
+exports now, not over what it has exported. Files already exported into
+one of the four folders are removed by a reset that goes ahead, and
+changing where a project exports moves nothing: a person who changes the
+folder and leaves the files loses the files. That is decided, and a test
+says so by name; it is why the sentence asks for the files first.
+
+**A project this version cannot change.** A project made by a newer
+version of the app is read-only here, and its export folder still counts,
+because its exports are as much a person's as any other's. But this
+version cannot change where it exports, so that half of the advice cannot
+be followed for it. A person moves the files out and then either deletes
+the project, which this version can do, or opens it in the version that
+made it and changes its folder there.
 
 The project store hands Settings the list - `destinations()`, each record
 under its own `projects` folder that has a folder of its own, a read-only
 project's included - as it hands the feeds' guard the projects' feeds, so
 the settings service never holds the store; it is read once at each press.
 
-**Which failure of that read refuses, and which does not.** If the read
-itself rejects - `destinations()` throwing rather than answering - the
-choice or the reset is refused, in the service's own sentence, because a
-filesystem message names the path. The store never rejects over anything a
-disk does, so this is the unforeseen, and the unforeseen in front of a
-removal stops. Everything the store survives does **not** refuse: a
-projects folder that is missing or cannot be listed, a record that cannot
-be read, is not JSON or fails the parser, a record carrying another
-folder's identity, a folder that is a link or is not named as an
-identifier. The store skips each as the project list does, says so in the
-log, and answers with the projects it could read; the export folders of
-the rest are not seen, and the choice or the reset goes ahead. Refusing
-over those would block the reset in exactly the case it exists for, a home
-whose contents have gone wrong.
+**Which failure of that read refuses, and which does not.** Two things
+can go wrong, and they end differently on purpose.
+
+- **The projects folder cannot be listed**, for any reason but its not
+  being there - no permission, a disk error, too many files open, a file
+  where the folder should be. `destinations()` rejects, by the failure's
+  code, and the choice or the reset is **refused**: "The projects folder
+  could not be read, so the app cannot tell where the projects export, and
+  nothing was changed or removed." The sentence is the service's own,
+  because a filesystem message names the path. `list()` reads the same
+  folder leniently and answers no projects, as it always has, because the
+  front door must still open on a folder that has gone wrong.
+- **One record cannot be read or parsed** - it cannot be opened, is not
+  JSON, fails the parser, carries another folder's identity, or sits in a
+  link or under a name that is no identifier. It is **skipped**, as the
+  project list skips it, and named in the log by its folder and the reason
+  or the failure's code, never a path; the choice or the reset goes ahead
+  on the rest.
+
+The difference is what each hides. A folder that cannot be listed hides
+every project, so nothing at all is known and "none" would be a guess in
+front of a removal. One bad record hides one project, and the reset is the
+remedy for bad records: refusing would let a single corrupt file block the
+tool a person reaches for when things are broken. A projects folder that
+is not there is a home with no projects, and refuses nothing.
+
+**A deadline over the folders.** Resolving a folder through its links asks
+the disk, and a folder on a network share or an automounted volume can
+stall rather than fail. So each door puts one deadline, `FOLDERS_TIMEOUT_MS`
+(five seconds), over its whole check, as the diagnostics copy bounds its
+lookup of the home folder. When it lapses the choice or the reset is
+refused - "The folders could not be checked in time, so nothing was
+changed or removed; try again." - the reset's flag comes down, and the
+engine folder's queue moves on. Without it a stalled folder would keep the
+flag up until the app was quit, with every engine request, export and
+record write refused meanwhile. A check that lapsed is abandoned, not
+stopped, since nothing can take back a question already put to the disk:
+so the checks only read, and the removal is made after them and only on
+an answer that came in time. The timer is cleared whichever way a check
+ends. `destinationRefusal` is bounded the same way, in its own sentence,
+which the chooser shows and the exporter says after "The folder this
+project exports to cannot be written to:"; the export section below says
+what that leaves.
 
 **What no door sees.** A record left behind in a home the app used before:
 it is not under the home in force, so nothing reads it, and a reset of the
-home its project exports into is not refused. That, and the records the
+home its project exports into is not refused. That, and any one record the
 store could not read, are all that is out of reach.
 
 The Licences section (issue 108, ADR-042) names the app's licence and every
@@ -1227,11 +1273,20 @@ project, under the engine's own file name; nothing is written inside the
 user-data folder or the bundle (ADR-016). A project's destination is a
 folder the platform's own dialog answered, judged when it was chosen and
 again at each export. The app's own bundle and the engine's home are
-refused, **and so is any folder that holds either**: the file lands at
+refused, and so is the engine folder waiting for a restart, where Settings
+has taken one that is not in force yet (issue 206): it is asked of
+Settings at each judgement and never kept, and its refusal does not call
+it the engine data folder, which it is not yet. The judgement has a
+deadline, because a folder on a share that stalls neither answers nor
+fails; when it lapses the folder is refused as one that could not be
+checked, so an export to it is refused after five seconds rather than
+never starting, before a plan is asked for and before any frames are made,
+and is let go as any refused export is. **Any folder that holds one of
+the three is refused too**: the file lands at
 `<destination>/<project name>/`, and `folderName` passes "engine", "out",
 "data", "projects", "frames" and the app's own name through unchanged, so
 the folder one of them sits in is a single project name away from it.
-Each refusal says which of the two it is and which way round. Every path is
+Each refusal says which of them it is and which way round. Every path is
 resolved through its links first, because the comparison is textual and
 `SCHEMATIC_HOME` reaches the app unfiltered. The home's half is the
 relation Settings already keeps in both directions over the app-wide export

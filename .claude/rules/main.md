@@ -44,7 +44,11 @@ Never inside the app bundle: it is read-only on macOS and it is wiped on
 update. The engine's home is `SCHEMATIC_HOME` under the user-data folder;
 exports go where the user chose: a project's own folder where it chose
 one, else `LEGIBLE_EXPORT_FOLDER`, else the folder Settings names, else a
-`Legible Cities` folder on the desktop; in a folder per project. An
+`Legible Cities` folder on the desktop; in a folder per project. A
+project's own folder is refused inside or around the engine's home, and
+inside or around the engine folder waiting for a restart where Settings
+has taken one, which is asked of Settings each time a folder is judged
+(`destinationRefusal`, issue 206). An
 export's frames live under the engine home (`frames/<token>/`) only while
 it runs, and a start empties that folder - **but only if the app
 made it**. The home is a setting and can name anybody's directory, so a

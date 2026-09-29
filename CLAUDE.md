@@ -202,13 +202,21 @@ project's own folder is judged against the engine folder **waiting for a
 restart** as well as the one in force, where it is chosen and again at
 each export (`destinationRefusal` in `src/main/export.ts`, which is handed
 a function for the folder waiting and asks it at every judgement). **No
-door sees a record left behind in a previous home.** A record the store
-cannot read is skipped and does not refuse the reset; only the read itself
-failing does. **Every refusal over exported files asks for the files to be
-moved out and the folder changed, in that order**, because changing a
-folder moves nothing. `destinationsInTheWay` is the pure rule on Settings'
-side, on real paths; the list is the project store's `destinations()`,
-handed in and read once at a press.
+door sees a record left behind in a previous home.** **A projects folder
+that cannot be listed refuses** the choice and the reset, because it hides
+every project (`destinations()` reads strictly; `list()` does not, so the
+front door still opens); **one record that cannot be read is skipped** and
+refuses nothing, because the reset is the remedy for bad records. **Every
+check over folders has one deadline** (`FOLDERS_TIMEOUT_MS`, `inTime`): a
+folder on a share that stalls refuses, with nothing changed or removed,
+rather than keeping the reset's flag up; a check that lapsed is abandoned,
+so checks only read and the removal comes after them. **Every refusal over
+exported files asks for the files to be moved out and the folder changed,
+in that order**, because changing a folder moves nothing and a reset that
+goes ahead removes what was exported into one of the four.
+`destinationsInTheWay` is the pure rule on Settings' side, on real paths;
+the list is the project store's `destinations()`, handed in and read once
+at a press.
 
 The export's options (A5-01) widened the reel's one button. They were a tab
 once and are cell 06 now. Export offers the thirteen social presets

@@ -197,20 +197,42 @@ settings: {
   be that folder itself". So whichever of the two folders is chosen second
   is the one refused.
 
+  A project's name is shown whole up to 120 characters, the most a name
+  may be when it is written, and past that as its beginning and an
+  ellipsis: a record edited by hand can carry a name of any length.
+
+  **What a reset that goes ahead removes.** The rule is over where a
+  project exports now. Files already exported into one of the four folders
+  are removed by a reset that goes ahead, and changing where a project
+  exports moves nothing; that is why each sentence asks for the files
+  first.
+
   **Which failure of the list's read refuses, and which does not.** If the
-  read itself rejects, the call rejects: "the projects could not be read,
-  so the app cannot tell whether one of them exports there; try again".
-  The project store never rejects over anything a disk does, so that is
-  the unforeseen. What the store survives does not refuse: a projects
-  folder that is missing or cannot be listed, and a record it cannot read
-  or parse, are skipped as the project list skips them, logged, and
-  answered without; their export folders are not seen and the call goes
-  ahead. Refusing over those would block the reset in the case it exists
-  for.
+  projects folder cannot be listed, for any reason but its not being there
+  (no permission, a disk error, too many files open, a file where the
+  folder should be), the call rejects and nothing is stored or removed:
+  "The projects folder could not be read, so the app cannot tell where the
+  projects export, and nothing was changed or removed." A folder that
+  cannot be listed hides every project, so nothing at all is known. If one
+  record cannot be read or parsed, it is skipped as the project list skips
+  it, logged by its folder's name and the failure's code, and the call
+  goes ahead on the rest: one bad record hides one project, and the reset
+  is the remedy for bad records. The project list itself still answers
+  over a folder it cannot list, so the front door opens.
+
+  **The deadline.** Each call puts one deadline of five seconds over its
+  whole check, because resolving a folder asks the disk and a folder on a
+  network share can stall rather than fail. When it lapses the call
+  rejects, with nothing stored or removed: "The folders could not be
+  checked in time, so nothing was changed or removed; try again." The
+  reset's flag comes down with it. The project's own chooser and the
+  exporter are bounded the same way: "that folder could not be checked in
+  time against the folders it must stay out of, so nothing was changed or
+  written; try again".
 
   **What no door sees.** Records live under the engine's home and are not
   moved with it, so a record left behind in a home the app used before is
   read by nobody, and a reset of the folder its project exports into is
   not refused; that is why the choice is guarded, while the record is
-  still in reach. That, and the records the store could not read, are all
-  that is out of reach.
+  still in reach. That, and any one record the store could not read, are
+  all that is out of reach.

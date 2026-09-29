@@ -4,6 +4,7 @@
 // interface's own top frame can ask at all.
 
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
+import { existsSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -12,10 +13,17 @@ import { destinationRefusal, Destinations } from '../../src/main/export'
 import { LOG_WAIT_MS } from '../../src/main/log-file'
 import { ProjectStore } from '../../src/main/projects'
 import { WINDOWS_RETRY_CODES, type ReplaceOptions } from '../../src/main/replace-file'
-import { SettingsStore, type ProjectDestination } from '../../src/main/settings'
+import {
+  FOLDERS_TIMEOUT_MS,
+  realOrResolved,
+  SettingsStore,
+  type ProjectDestination,
+} from '../../src/main/settings'
 import {
   ENGINE_INFO_TIMEOUT_MS,
+  FOLDERS_LATE,
   HOMES_TIMEOUT_MS,
+  PROJECTS_UNREAD,
   registerSettingsHandlers,
   SettingsService,
   type SettingsDeps,
@@ -39,6 +47,24 @@ const FIRST_RUN: FirstRunResult = {
 }
 
 type Handler = (event: IpcMainInvokeEvent, ...args: unknown[]) => Promise<unknown>
+
+/**
+ * Whether this machine lets the run make a symbolic link, asked once: a
+ * locked-down Windows account does not. A test that needs one is skipped
+ * where it cannot be made, and says so, rather than passing having tested
+ * nothing (issue 206).
+ */
+const canLink = ((): boolean => {
+  const dir = mkdtempSync(join(tmpdir(), 'legible-cities-link-probe-'))
+  try {
+    symlinkSync(dir, join(dir, 'link'), 'dir')
+    return true
+  } catch {
+    return false
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})()
 
 const roots: string[] = []
 
@@ -77,6 +103,8 @@ async function harness(
       read: () => Promise<ProjectDestination[]>,
       call: number,
     ) => Promise<ProjectDestination[]>
+    /** A folder through its links, for one that never answers: a share that has stalled. */
+    realFolder?: (path: string) => Promise<string>
     /** The person's own folder, which the reset must never reach. */
     homeDir?: (root: string) => string
     /** The engine's `engine.info`, for the diagnostics copy. */
@@ -108,8 +136,13 @@ async function harness(
   await store.load()
   // The real project store, on the home in force as the app builds it
   // (issue 206): the guard over the projects' export folders is proved
-  // against the records it will really read, never against a stand-in.
-  const projects = new ProjectStore(engineHome, () => undefined)
+  // against the records it will really read, a folder that cannot be
+  // listed included. `over.destinations` stands in front of that read, and
+  // only for what the real store cannot be made to do: answer slowly, and
+  // reject with a message that names a path.
+  const projects = new ProjectStore(engineHome, (m) => storeLines.push(m))
+  /** What the project store logged. */
+  const storeLines: string[] = []
   /** Whether a reset was running each time the projects were read. */
   const asked: boolean[] = []
   const opened: Which[] = []
@@ -133,6 +166,7 @@ async function harness(
       const read = (): Promise<ProjectDestination[]> => projects.destinations()
       return over.destinations === undefined ? read() : over.destinations(read, asked.length)
     },
+    realFolder: over.realFolder,
     openFolder: async (path) => {
       shown.push(path)
     },
@@ -163,6 +197,7 @@ async function harness(
     settings,
     store,
     projects,
+    storeLines,
     asked,
     handlers,
     call,
@@ -189,6 +224,20 @@ async function exporting(
   await h.projects.setDestination(project.id, folder)
   return project.id
 }
+
+/**
+ * Until a folder that stalls has been asked about, or whatever would have
+ * asked has ended without asking: so a test of a deadline fails at once,
+ * and not at its own timeout, when the thing it waits for never comes.
+ */
+const askedOrEnded = (asked: Promise<void>, call: Promise<unknown>): Promise<void> =>
+  Promise.race([
+    asked,
+    call.then(
+      () => undefined,
+      () => undefined,
+    ),
+  ])
 
 /** What a call was refused with, or null when it was not refused. */
 async function refusalOf(call: Promise<unknown>): Promise<string | null> {
@@ -523,28 +572,20 @@ describe('choosing the engine folder while a project exports to a folder of its 
   // The comparison is textual. Without the real path of each side, a folder
   // chosen through a link passes it and the app starts on the very folder
   // the project exports into.
-  it('refuses a folder that is a link to where the project exports', async () => {
+  it.skipIf(!canLink)('refuses a folder that is a link to where the project exports', async () => {
     const h = await harness({ answer: (root) => join(root, 'shortcut') })
     const videos = join(h.root, 'videos')
     await mkdir(join(videos, 'exports'), { recursive: true })
     await exporting(h, 'Los Angeles', join(videos, 'exports'))
-    try {
-      await symlink(videos, join(h.root, 'shortcut'), 'dir')
-    } catch {
-      return // a locked-down Windows account cannot make one
-    }
+    await symlink(videos, join(h.root, 'shortcut'), 'dir')
     await expect(h.call(CHANNELS.settingsChooseEngineFolder)).rejects.toThrow(/“Los Angeles”/)
     expect(h.store.current.engineFolder).toBeNull()
   })
 
-  it('refuses a folder the project exports into through a link', async () => {
+  it.skipIf(!canLink)('refuses a folder the project exports into through a link', async () => {
     const h = await harness({ answer: (root) => join(root, 'videos') })
     await mkdir(join(h.root, 'videos', 'exports'), { recursive: true })
-    try {
-      await symlink(join(h.root, 'videos', 'exports'), join(h.root, 'shortcut'), 'dir')
-    } catch {
-      return // a locked-down Windows account cannot make one
-    }
+    await symlink(join(h.root, 'videos', 'exports'), join(h.root, 'shortcut'), 'dir')
     await exporting(h, 'Los Angeles', join(h.root, 'shortcut'))
     await expect(h.call(CHANNELS.settingsChooseEngineFolder)).rejects.toThrow(/“Los Angeles”/)
     expect(h.store.current.engineFolder).toBeNull()
@@ -645,7 +686,48 @@ describe('choosing the engine folder while a project exports to a folder of its 
     })
   })
 
-  it('refuses in its own words, never the filesystem’s, when the projects cannot be read', async () => {
+  // The real store, and a projects path that is a file and not a folder:
+  // it cannot be listed, so every project in it is hidden, and "no project
+  // exports there" would be a guess.
+  it('refuses when the projects folder cannot be listed, in its own words, and stores nothing', async () => {
+    const h = await harness({ answer: (root) => join(root, 'videos') })
+    await mkdir(h.engineHome, { recursive: true })
+    await writeFile(join(h.engineHome, 'projects'), 'a file where the folder should be')
+    const refusal = await refusalOf(h.call(CHANNELS.settingsChooseEngineFolder))
+    expect(refusal).toBe(PROJECTS_UNREAD)
+    expect(refusal).toBe(
+      'The projects folder could not be read, so the app cannot tell where the projects export, and nothing was changed or removed.',
+    )
+    expect(h.store.current.engineFolder, 'a folder nobody could check is not stored').toBeNull()
+    expect(h.storeLines).toEqual(['projects: cannot list (ENOTDIR)'])
+    expect(h.logs).toEqual(['the projects folder could not be read (ENOTDIR)'])
+    // The default is refused for the same reason, and the next change is not held up.
+    expect(await refusalOf(h.call(CHANNELS.settingsDefaultEngineFolder))).toBe(PROJECTS_UNREAD)
+    await expect(h.call(CHANNELS.settingsSetTheme, 'sepia')).resolves.toBeDefined()
+  })
+
+  // One record that cannot be used hides one project, not all of them.
+  it('skips a record that is not JSON and judges by the rest', async () => {
+    const h = await harness({ answer: (root) => join(root, 'videos') })
+    await exporting(h, 'Bart', join(h.root, 'elsewhere'))
+    await mkdir(join(h.engineHome, 'projects', 'brokenbroken'), { recursive: true })
+    await writeFile(join(h.engineHome, 'projects', 'brokenbroken', 'project.json'), '{ "name": ')
+    await h.call(CHANNELS.settingsChooseEngineFolder)
+    expect(h.store.current.engineFolder, 'the folder was taken').toBe(join(h.root, 'videos'))
+    expect(h.storeLines).toEqual(['projects/brokenbroken: invalid JSON'])
+
+    // And a good record beside it still refuses, by its own name alone.
+    await h.call(CHANNELS.settingsDefaultEngineFolder)
+    await exporting(h, 'Los Angeles', join(h.root, 'videos', 'exports'))
+    const refusal = await refusalOf(h.call(CHANNELS.settingsChooseEngineFolder))
+    expect(refusal).toMatch(/^The project “Los Angeles” exports to a folder inside that one/)
+    expect(h.store.current.engineFolder).toBeNull()
+  })
+
+  // The one thing here a stand-in is for: the real store never rejects
+  // with a message of the filesystem's, so only something standing in its
+  // place can show that such a message would not reach the screen.
+  it('refuses in its own words, never the filesystem’s, whatever the read rejects with', async () => {
     const where = (root: string): string => join(root, 'userData', 'engine', 'projects')
     const h = await harness({
       destinations: async () => {
@@ -655,14 +737,56 @@ describe('choosing the engine folder while a project exports to a folder of its 
       },
     })
     const refusal = await refusalOf(h.call(CHANNELS.settingsChooseEngineFolder))
-    expect(refusal).toBe(
-      'the projects could not be read, so the app cannot tell whether one of them exports there; try again',
-    )
+    expect(refusal).toBe(PROJECTS_UNREAD)
+    expect(refusal, 'a sentence for the screen names no folder').not.toContain(h.root)
     expect(h.store.current.engineFolder, 'a folder nobody could check is not stored').toBeNull()
     expect(h.logs.join('\n')).toContain('(EIO)')
     expect(h.logs.join('\n'), 'and the log names no folder either').not.toContain(h.root)
-    // One that failed does not hold up the next.
-    await expect(h.call(CHANNELS.settingsSetTheme, 'sepia')).resolves.toBeDefined()
+  })
+
+  // A folder on a share that has stalled neither answers nor fails. With
+  // no deadline this change would never settle, and every later change of
+  // the engine's folder would wait behind it.
+  it('gives up on a project’s folder that never answers, stores nothing, and does not hold up the next change', async () => {
+    const stalled = { now: true }
+    let asked = (): void => undefined
+    const stalledWasAsked = new Promise<void>((resolve) => {
+      asked = resolve
+    })
+    const h = await harness({
+      answer: (root) => join(root, 'videos'),
+      realFolder: (path) => {
+        if (stalled.now && path === join(h.root, 'on-a-share')) {
+          asked()
+          return new Promise(() => undefined)
+        }
+        return realOrResolved(path)
+      },
+    })
+    await exporting(h, 'Los Angeles', join(h.root, 'on-a-share'))
+    vi.useFakeTimers()
+    try {
+      const choosing = h.call(CHANNELS.settingsChooseEngineFolder)
+      const refused = expect(choosing).rejects.toThrow(FOLDERS_LATE)
+      await askedOrEnded(stalledWasAsked, choosing)
+      await vi.advanceTimersByTimeAsync(FOLDERS_TIMEOUT_MS - 1)
+      expect(h.store.current.engineFolder, 'not yet given up, and nothing stored').toBeNull()
+      await vi.advanceTimersByTimeAsync(1)
+      await refused
+      expect(h.store.current.engineFolder, 'nothing was stored').toBeNull()
+      expect(vi.getTimerCount(), 'the timer was cleared').toBe(0)
+
+      // The share answers again: the next change is made, not left waiting.
+      stalled.now = false
+      await h.call(CHANNELS.settingsChooseEngineFolder)
+      expect(h.store.current.engineFolder).toBe(join(h.root, 'videos'))
+      expect(vi.getTimerCount(), 'and a check that ended in time leaves no timer').toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+    expect(FOLDERS_LATE).toBe(
+      'The folders could not be checked in time, so nothing was changed or removed; try again.',
+    )
   })
 })
 
@@ -925,10 +1049,33 @@ describe('resetting the engine data', () => {
     expect(await readFile(join(exports, 'Los Angeles', 'reel.mp4'), 'utf8')).toBe('an export')
     expect(await readdir(join(h.engineHome, 'projects')), 'the record is still there').toEqual([id])
     expect(h.settings.resetting, 'and the flag came down with the refusal').toBe(false)
-    // Once the project exports somewhere else, the reset runs.
-    await h.projects.setDestination(id, join(h.root, 'videos'))
+  })
+
+  // Decided, not overlooked (issue 206): the guard is over where a project
+  // exports now. Changing that folder moves nothing, so what was exported
+  // into one of the four is still there when the reset then goes ahead, and
+  // goes with it. That is why every refusal asks for the files to be moved
+  // before the folder is changed.
+  it('removes what a project had exported into one of the four once the reset goes ahead: changing where it exports moved nothing', async () => {
+    const h = await harness()
+    const exports = join(h.engineHome, 'out', 'exports')
+    const reel = join(exports, 'Los Angeles', 'reel.mp4')
+    const id = await exporting(h, 'Los Angeles', exports)
+    await mkdir(join(exports, 'Los Angeles'), { recursive: true })
+    await writeFile(reel, 'an export')
+    await expect(h.call(CHANNELS.settingsResetEngineData)).rejects.toThrow(/“Los Angeles”/)
+    expect(existsSync(reel), 'refused, so reel.mp4 is still there').toBe(true)
+
+    // The folder is changed and the files are not moved: half the advice.
+    const elsewhere = join(h.root, 'videos')
+    await h.projects.setDestination(id, elsewhere)
+    expect(existsSync(reel), 'changing the folder moved nothing').toBe(true)
+    expect(existsSync(elsewhere), 'and nothing arrived in the new one').toBe(false)
+
     const outcome = (await h.call(CHANNELS.settingsResetEngineData)) as ResetOutcome
     expect(outcome.removed.sort()).toEqual(['out', 'projects'])
+    expect(existsSync(reel), 'reel.mp4 went with the out folder').toBe(false)
+    expect(existsSync(join(h.engineHome, 'out'))).toBe(false)
   })
 
   it('refuses while a project in this home exports to the home itself, or to a folder that holds it', async () => {
@@ -946,35 +1093,32 @@ describe('resetting the engine data', () => {
     }
   })
 
-  it('refuses while a project exports into the home through a link', async () => {
+  it.skipIf(!canLink)('refuses while a project exports into the home through a link', async () => {
     const h = await harness()
     const exports = join(h.engineHome, 'out', 'exports')
     await mkdir(exports, { recursive: true })
     await writeFile(join(exports, 'reel.mp4'), 'an export')
-    try {
-      await symlink(exports, join(h.root, 'shortcut'), 'dir')
-    } catch {
-      return // a locked-down Windows account cannot make one
-    }
+    await symlink(exports, join(h.root, 'shortcut'), 'dir')
     await exporting(h, 'Los Angeles', join(h.root, 'shortcut'))
     await expect(h.call(CHANNELS.settingsResetEngineData)).rejects.toThrow(/“Los Angeles”/)
     expect(await readdir(exports), 'nothing was removed').toEqual(['reel.mp4'])
   })
 
-  it('refuses while the home is a link and a project exports beneath where it points', async () => {
-    const h = await harness({ engineHome: (root) => join(root, 'cities') })
-    const real = join(h.root, 'somewhere', 'engine')
-    await mkdir(join(real, 'out', 'exports'), { recursive: true })
-    await writeFile(join(real, 'out', 'exports', 'reel.mp4'), 'an export')
-    try {
+  it.skipIf(!canLink)(
+    'refuses while the home is a link and a project exports beneath where it points',
+    async () => {
+      const h = await harness({ engineHome: (root) => join(root, 'cities') })
+      const real = join(h.root, 'somewhere', 'engine')
+      await mkdir(join(real, 'out', 'exports'), { recursive: true })
+      await writeFile(join(real, 'out', 'exports', 'reel.mp4'), 'an export')
       await symlink(real, join(h.root, 'cities'), 'dir')
-    } catch {
-      return // a locked-down Windows account cannot make one
-    }
-    await exporting(h, 'Los Angeles', join(real, 'out', 'exports'))
-    await expect(h.call(CHANNELS.settingsResetEngineData)).rejects.toThrow(/“Los Angeles”/)
-    expect(await readdir(join(real, 'out', 'exports')), 'nothing was removed').toEqual(['reel.mp4'])
-  })
+      await exporting(h, 'Los Angeles', join(real, 'out', 'exports'))
+      await expect(h.call(CHANNELS.settingsResetEngineData)).rejects.toThrow(/“Los Angeles”/)
+      expect(await readdir(join(real, 'out', 'exports')), 'nothing was removed').toEqual([
+        'reel.mp4',
+      ])
+    },
+  )
 
   it('leaves alone a project that exports somewhere the reset does not reach, and one that chose no folder', async () => {
     const h = await harness()
@@ -1014,22 +1158,131 @@ describe('resetting the engine data', () => {
     expect(h.settings.resetting).toBe(false)
   })
 
-  it('refuses when the projects cannot be read, in its own words, and removes nothing', async () => {
+  // The real store, and a projects path that is a file and not a folder.
+  it('refuses when the projects folder cannot be listed, in its own words, and removes nothing', async () => {
+    const h = await harness()
+    await mkdir(join(h.engineHome, 'out'), { recursive: true })
+    await writeFile(join(h.engineHome, 'out', 'reel.mp4'), 'an export')
+    await writeFile(join(h.engineHome, 'projects'), 'a file where the folder should be')
+    const refusal = await refusalOf(h.call(CHANNELS.settingsResetEngineData))
+    expect(refusal).toBe(PROJECTS_UNREAD)
+    expect(refusal, 'a sentence for the screen names no folder').not.toContain(h.root)
+    expect((await readdir(h.engineHome)).sort(), 'nothing was removed').toEqual(['out', 'projects'])
+    expect(await readdir(join(h.engineHome, 'out'))).toEqual(['reel.mp4'])
+    expect(h.storeLines).toEqual(['projects: cannot list (ENOTDIR)'])
+    expect(h.logs).toEqual(['the projects folder could not be read (ENOTDIR)'])
+    expect(h.settings.resetting, 'and the flag came down with the refusal').toBe(false)
+  })
+
+  // One bad record must not block the tool a person reaches for when
+  // things are broken: it hides one project, and the reset is the remedy.
+  it('goes ahead past a record that is not JSON, which it removes with the rest', async () => {
+    const h = await harness()
+    await exporting(h, 'Bart', join(h.root, 'videos'))
+    await mkdir(join(h.engineHome, 'projects', 'brokenbroken'), { recursive: true })
+    await writeFile(join(h.engineHome, 'projects', 'brokenbroken', 'project.json'), '{ "name": ')
+    const outcome = (await h.call(CHANNELS.settingsResetEngineData)) as ResetOutcome
+    expect(outcome).toEqual({ removed: ['projects'], failed: [] })
+    expect(h.storeLines).toEqual(['projects/brokenbroken: invalid JSON'])
+    expect(existsSync(join(h.engineHome, 'projects'))).toBe(false)
+  })
+
+  // A folder on a share that has stalled neither answers nor fails. With
+  // no deadline the flag would stay up until the app was quit, and every
+  // engine request, export and record write would be refused meanwhile.
+  it('gives up on a project’s folder that never answers: the flag comes down and nothing is removed, then or later', async () => {
+    let answer: (real: string) => void = () => undefined
+    let asked = (): void => undefined
+    const stalledWasAsked = new Promise<void>((resolve) => {
+      asked = resolve
+    })
     const h = await harness({
-      destinations: async () => {
-        throw Object.assign(new Error(`EIO: i/o error, scandir '${h.engineHome}'`), {
-          code: 'EIO',
+      realFolder: (path) => {
+        if (path !== join(h.root, 'on-a-share')) return realOrResolved(path)
+        asked()
+        return new Promise((resolve) => {
+          answer = resolve
         })
       },
     })
+    await exporting(h, 'Los Angeles', join(h.root, 'on-a-share'))
     await mkdir(join(h.engineHome, 'out'), { recursive: true })
     await writeFile(join(h.engineHome, 'out', 'reel.mp4'), 'an export')
-    const refusal = await refusalOf(h.call(CHANNELS.settingsResetEngineData))
-    expect(refusal).toBe(
-      'the projects could not be read, so the app cannot tell whether one of them exports there; try again',
-    )
-    expect(await readdir(join(h.engineHome, 'out')), 'nothing was removed').toEqual(['reel.mp4'])
-    expect(h.settings.resetting).toBe(false)
+    vi.useFakeTimers()
+    try {
+      const resetting = h.call(CHANNELS.settingsResetEngineData)
+      const refused = expect(resetting).rejects.toThrow(FOLDERS_LATE)
+      await askedOrEnded(stalledWasAsked, resetting)
+      await vi.advanceTimersByTimeAsync(FOLDERS_TIMEOUT_MS - 1)
+      expect(h.settings.resetting, 'still checking, so the flag is still up').toBe(true)
+      await vi.advanceTimersByTimeAsync(1)
+      await refused
+      expect(h.settings.resetting, 'the flag came down').toBe(false)
+      expect(h.settings.refuseWhileResetting()).toBeNull()
+      expect(vi.getTimerCount(), 'the timer was cleared').toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+    // The share answers at last, to a check nobody is waiting for: what it
+    // would have allowed must not happen now.
+    answer(join(h.root, 'on-a-share'))
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect((await readdir(h.engineHome)).sort(), 'nothing was removed').toEqual(['out', 'projects'])
+    expect(await readdir(join(h.engineHome, 'out'))).toEqual(['reel.mp4'])
+  })
+
+  it('gives up on a home that never answers, as on any folder it must check', async () => {
+    let asked = (): void => undefined
+    const stalledWasAsked = new Promise<void>((resolve) => {
+      asked = resolve
+    })
+    const h = await harness({
+      realFolder: (path) => {
+        if (path !== h.engineHome) return realOrResolved(path)
+        asked()
+        return new Promise(() => undefined)
+      },
+    })
+    await mkdir(join(h.engineHome, 'out'), { recursive: true })
+    vi.useFakeTimers()
+    try {
+      const resetting = h.call(CHANNELS.settingsResetEngineData)
+      const refused = expect(resetting).rejects.toThrow(FOLDERS_LATE)
+      await askedOrEnded(stalledWasAsked, resetting)
+      await vi.advanceTimersByTimeAsync(FOLDERS_TIMEOUT_MS)
+      await refused
+      expect(h.settings.resetting).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+    expect(await readdir(h.engineHome), 'nothing was removed').toEqual(['out'])
+  })
+
+  it('leaves no timer behind a reset whose checks ended in time', async () => {
+    const h = await harness()
+    await exporting(h, 'Los Angeles', join(h.root, 'videos'))
+    vi.useFakeTimers()
+    try {
+      await h.call(CHANNELS.settingsResetEngineData)
+      expect(vi.getTimerCount()).toBe(0)
+      await exporting(h, 'Bart', join(h.engineHome, 'out'))
+      await expect(h.call(CHANNELS.settingsResetEngineData)).rejects.toThrow(/“Bart”/)
+      expect(vi.getTimerCount(), 'nor behind one that was refused').toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // A record is a file, and the reader takes any name that is not blank.
+  it('keeps a name from a record edited by hand to the length a name may be', async () => {
+    const h = await harness()
+    const id = await exporting(h, 'Los Angeles', join(h.engineHome, 'out'))
+    const file = join(h.engineHome, 'projects', id, 'project.json')
+    const record = JSON.parse(await readFile(file, 'utf8')) as Record<string, unknown>
+    await writeFile(file, JSON.stringify({ ...record, name: 'x'.repeat(5000) }), 'utf8')
+    const refusal = (await refusalOf(h.call(CHANNELS.settingsResetEngineData))) ?? ''
+    expect(refusal).toContain(`The project “${'x'.repeat(120)}…” exports to a folder`)
+    expect(refusal.length).toBeLessThan(400)
   })
 
   it('lets nothing start while it is removing the folder, and lifts that afterwards', async () => {

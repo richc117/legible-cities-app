@@ -15,11 +15,15 @@ import {
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, parse } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   destinationsInTheWay,
   destinationsSentence,
+  FOLDERS_TIMEOUT_MS,
   folderSize,
+  inTime,
+  LAPSED,
+  NAME_SHOWN,
   realOrResolved,
   refuseReset,
   resetContents,
@@ -419,10 +423,88 @@ describe('destinationsSentence', () => {
     )
   })
 
+  // `validateName` keeps a name to 120 characters when it is written, but
+  // a record is a file and the reader takes any name that is not blank.
+  it('shows a name as long as a name may be whole, and the beginning of a longer one with an ellipsis', () => {
+    expect(NAME_SHOWN).toBe(120)
+    const longest = 'n'.repeat(120)
+    expect(destinationsSentence([longest], 'reset')).toContain(`“${longest}” exports`)
+    expect(destinationsSentence([`${longest}n`], 'reset')).toContain(`“${longest}…” exports`)
+    const sentence = destinationsSentence(['x'.repeat(100_000), 'Bart'], 'chosen')
+    expect(sentence).toContain(`“${'x'.repeat(120)}…” and “Bart” export to folders`)
+    expect(sentence.length).toBeLessThan(500)
+  })
+
+  it('cuts a long name between characters, never through one, and leaves no space before the ellipsis', () => {
+    // Each of these is two code units: a cut by code unit would halve the last.
+    const trains = '🚆'.repeat(121)
+    expect(destinationsSentence([trains], 'reset')).toContain(`“${'🚆'.repeat(120)}…”`)
+    const spaced = `${'n'.repeat(119)} and the rest of a very long name`
+    expect(destinationsSentence([spaced], 'reset')).toContain(`“${'n'.repeat(119)}…”`)
+  })
+
   it('names two and counts the rest past three, so the sentence stays short', () => {
     expect(destinationsSentence(['Bart', 'Caltrain', 'Metra', 'Muni', 'VTA'], 'default')).toBe(
       'The projects “Bart”, “Caltrain” and 3 others export to folders inside the default folder, or around it, so “Reset engine data” could remove their exported files; move them out of the default folder and change where those projects export first.',
     )
+  })
+})
+
+// Issue 206. A folder on a network share can stall rather than fail, so a
+// check over folders is given a deadline and abandoned when it lapses.
+describe('inTime', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('answers what the check answered, and leaves no timer', async () => {
+    vi.useFakeTimers()
+    expect(await inTime(Promise.resolve(['Bart']))).toEqual(['Bart'])
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('answers that the deadline lapsed for a check that never ends, at the deadline and not before', async () => {
+    vi.useFakeTimers()
+    let answered: unknown = 'nothing yet'
+    void inTime(new Promise<string>(() => undefined)).then((answer) => {
+      answered = answer
+    })
+    await vi.advanceTimersByTimeAsync(FOLDERS_TIMEOUT_MS - 1)
+    expect(answered).toBe('nothing yet')
+    await vi.advanceTimersByTimeAsync(1)
+    expect(answered).toBe(LAPSED)
+    expect(vi.getTimerCount(), 'and the timer is gone').toBe(0)
+    expect(FOLDERS_TIMEOUT_MS).toBe(5_000)
+  })
+
+  it('fails as the check failed, and leaves no timer', async () => {
+    vi.useFakeTimers()
+    await expect(inTime(Promise.reject(new Error('refused')))).rejects.toThrow('refused')
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('lets a check that fails after it was given up fail unheard', async () => {
+    vi.useFakeTimers()
+    const unheard: unknown[] = []
+    const listen = (reason: unknown): void => {
+      unheard.push(reason)
+    }
+    process.on('unhandledRejection', listen)
+    try {
+      let fail: (error: Error) => void = () => undefined
+      const check = new Promise<string>((_, reject) => {
+        fail = reject
+      })
+      const waiting = inTime(check, 10)
+      await vi.advanceTimersByTimeAsync(10)
+      expect(await waiting).toBe(LAPSED)
+      fail(new Error('the share answered at last, with a failure'))
+      vi.useRealTimers()
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      expect(unheard).toEqual([])
+    } finally {
+      process.off('unhandledRejection', listen)
+    }
   })
 })
 
