@@ -19,6 +19,7 @@ import {
   cellHeading,
   closeCell,
   createProject,
+  engineReady,
   layOut,
   openCell,
   openProject,
@@ -363,11 +364,16 @@ test('a change of operator marks 02 to 06 stale and starts nothing', async () =>
 // stand-in is slow from its first call, because it reads its control file
 // once and the rebuild has to be going still when focus is read.
 
-/** Give line A a colour of its own: a rebuild starts when the debounce runs out. */
-async function recolour(page: Page): Promise<void> {
+/**
+ * Give a line a colour of its own: a rebuild starts when the debounce runs
+ * out. The label is followed by a word's end, so that line 1 is not line 10.
+ */
+async function recolour(page: Page, line = 'A'): Promise<void> {
   const colours = cell(page, 'lines')
-  await colours.getByRole('button', { name: /^Choose the colour of line A/ }).click()
-  const picker = colours.getByRole('group', { name: 'Colour for line A' })
+  await colours
+    .getByRole('button', { name: new RegExp(`^Choose the colour of line ${line}\\b`) })
+    .click()
+  const picker = colours.getByRole('group', { name: `Colour for line ${line}`, exact: true })
   await picker.getByLabel('Hex value').fill('#ff0000')
   await picker.getByRole('button', { name: 'Use this colour' }).click()
 }
@@ -388,6 +394,51 @@ test("focus on the mode is handed to cell 01's heading when a run disables it", 
     await expect(mode).toBeDisabled({ timeout: 30_000 })
     // The heading the row sits in, not the row's button: a reflexive Space
     // there would collapse the cell the person is working in.
+    await expect(cellHandback(page, 'data')).toBeFocused()
+  })
+})
+
+// The same, from a kit button. The mode is a native select in the kit
+// dropdown's own children, so the document reports the select itself; a kit
+// button's own button is inside a shadow root that delegates focus, so the
+// document reports the host, and the host is what the wrapper's ref holds.
+// The unit test takes both on trust, through objects of its own making.
+test("focus on the feed's entry is handed to cell 01's heading when a run disables it", async () => {
+  const engineHome = home({ progress_delay_ms: 400 })
+  // A record from before the choice was stored holds the app's defaults,
+  // which are not Mexico City's entry, so the button is drawn with nothing
+  // chosen: a press that made it appear would be a press on the mode.
+  const id = 'olderinputs2'
+  const { mkdirSync } = await import('node:fs')
+  mkdirSync(join(engineHome, 'projects', id), { recursive: true })
+  const now = new Date().toISOString()
+  writeFileSync(
+    join(engineHome, 'projects', id, 'project.json'),
+    JSON.stringify({
+      version: 1,
+      id,
+      name: 'Older',
+      feed: 'cdmx-metro',
+      mode: 'all',
+      agency: null,
+      created: now,
+      modified: now,
+    }),
+  )
+  await withApp(engineHome, async (page) => {
+    await engineReady(page)
+    await openProject(page, 'Older')
+    await layOut(page)
+    const entry = cell(page, 'data').getByRole('button', { name: "Use the feed's entry" })
+    await expect(entry).toBeEnabled()
+
+    // Every route of every operator is kept, so the lines are 1, 2 and 10.
+    await recolour(page, '2')
+    // Inside the debounce, with focus moved onto the button.
+    await entry.focus()
+    await expect(entry).toBeFocused()
+
+    await expect(entry).toBeDisabled({ timeout: 30_000 })
     await expect(cellHandback(page, 'data')).toBeFocused()
   })
 })
@@ -436,7 +487,11 @@ test('a collapsed cell 01 hands nothing over, and focus on its row stays on its 
     const row = cellHeading(page, 'data')
     // The mode where it is now: in the document, and out of the tree a role
     // is looked up in unless the lookup is told to look there.
-    const hidden = page.getByRole('combobox', { name: 'Mode', includeHidden: true })
+    const hidden = page.getByRole('combobox', {
+      name: 'Mode',
+      exact: true,
+      includeHidden: true,
+    })
 
     await recolour(page)
     await row.focus()

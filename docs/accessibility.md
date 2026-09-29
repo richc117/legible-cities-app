@@ -341,7 +341,14 @@ was thrown to the top of the document with nothing said.
   and a collapsed cell hands nothing over, since nothing hidden holds focus
   and the press that collapsed it left focus on its row (`Inspect.tsx`,
   `DataCell.tsx`). Asserted in `tests/unit/inspect.test.ts` and in
-  `tests/e2e/inspect.spec.ts`; not in the sweep.
+  `tests/e2e/inspect.spec.ts`; not in the sweep. Cell 06's handback has the
+  window this one closes by being a layout effect: `ExportTab.tsx` hands
+  focus back from a passive effect over the kit's selects and two
+  fieldsets, which are disabled in the commit itself, and it is safe only
+  because an export starts from the press on Export, a discrete update
+  whose passive effects run with its commit, made with focus on that button
+  and outside the choices; the day an export can start from anything but
+  that press, that effect has to become a layout effect too.
 
 The rest:
 

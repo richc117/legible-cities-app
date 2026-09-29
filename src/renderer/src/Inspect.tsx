@@ -114,12 +114,12 @@ interface Props {
   /**
    * Where focus goes when one of those controls held it: the heading of the
    * cell the panel is drawn in (issue 221), since Chromium blurs a disabled
-   * element and focus would fall to the body. `DataCell` always gives it.
-   * It is optional only for the heading outline's unit test, which draws
-   * the panel with no cell's heading to give; a call site in the app that
-   * leaves it out drops the focus this exists to keep.
+   * element and focus would fall to the body. Required, as it is on the
+   * theme switch, the service day and the export: this panel's own heading
+   * takes no focus, so a call site that left it out would drop the focus
+   * this exists to keep, and the type refuses the omission.
    */
-  handback?: RefObject<HTMLElement | null>
+  handback: RefObject<HTMLElement | null>
 }
 
 type State =
@@ -178,7 +178,7 @@ export default function Inspect({
       entryRef.current,
     ])
     was.current = disabled
-    if (hand) handback?.current?.focus()
+    if (hand) handback.current?.focus()
   }, [disabled, handback])
 
   useEffect(() => {

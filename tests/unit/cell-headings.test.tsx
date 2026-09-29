@@ -103,6 +103,10 @@ const PANELS: {
           throw new Error('not asked while the engine is away')
         }}
         onInputs={async () => {}}
+        // Required since issue 221, and pointing at nothing here: the cell
+        // this file draws the panel in is given no ref, and static markup
+        // runs no effect to read one.
+        handback={{ current: null }}
       />
     ),
   },
@@ -234,8 +238,10 @@ describe('a panel inside a cell', () => {
         // that moved level must not have moved its id.
         //
         // Matched rather than compared whole, so that an attribute the
-        // heading may want later - a `tabIndex`, were cell 01 ever given the
-        // handback it has not got - is not forbidden by a test about a name.
+        // heading may want later is not forbidden by a test about a name.
+        // None of the three wants one today. Cell 01 has its handback since
+        // issue 221 and it goes to the cell's own heading, so the panel's
+        // heading takes no focus and carries no `tabIndex`.
         const html = renderToStaticMarkup(panel)
         expect(html).toContain(`aria-labelledby="${id}"`)
         expect(html).toMatch(new RegExp(`<h3\\b[^>]*\\bid="${id}"[^>]*>${name}</h3>`))
