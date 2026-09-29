@@ -352,10 +352,10 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
   // registry's entry - its name, its mode, its operator - and its notebook
   // opens at once with the layout starting, so a person presses a city and
   // lands in a notebook that is already working. The layout reports in cell
-  // 02 and so does anything that fails; at engine v0.8.3 a preset's download
-  // happens inside that layout with no progress and no cancel of its own,
-  // which engine issue E36 asks for. A second press while the first is being
-  // made is the same press.
+  // 02 and so does anything that fails. A preset's download happens inside
+  // that layout: since engine v0.10.0 it reports stage download and stops on
+  // a cancel (E36), which the line does not draw yet (issue 178). A second
+  // press while the first is being made is the same press.
   const opening = useRef(false)
   const projectNames = library.status === 'ready' ? library.projects.map((p) => p.name) : []
   const openSample = async (feed: FeedRecord): Promise<void> => {
