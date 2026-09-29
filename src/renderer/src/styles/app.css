@@ -384,11 +384,17 @@ body {
   border-top: var(--border-width) solid var(--border);
 }
 
+/* A row is as tall as what it holds, and one control tall at least. The
+   height is said, because the kit's base stylesheet gives every native
+   button the control's height and a minimum does not undo it: a project
+   whose name or facts took a second line hung below its own rule, over
+   the row after it (issue 269). */
 .entry {
   display: flex;
   align-items: baseline;
   gap: var(--space-4-3);
   width: 100%;
+  height: auto;
   min-height: var(--control-height);
   padding: var(--space-2-2) var(--space-4-2);
   border: 0;

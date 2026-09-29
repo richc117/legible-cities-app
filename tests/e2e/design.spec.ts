@@ -115,6 +115,66 @@ test('follows the platform theme and measures as the design document says', asyn
   })
 })
 
+test('a Library row holds what it has, however many lines that takes', async () => {
+  // Issue 269. The kit gives every native button one control's height, and
+  // a row that wrapped hung below its own rule, over the row after it.
+  await withApp(async (page) => {
+    const long = 'Los Angeles County Metropolitan Transportation Authority, Metro Rail'
+    for (const name of ['Short', long])
+      await page.evaluate(
+        (name) =>
+          (globalThis as unknown as Bridge).api.projects.create({ name, feed: 'la-metro-rail' }),
+        name,
+      )
+    await page.reload()
+    const rows = page.getByRole('list', { name: 'Projects' }).getByRole('button')
+    await expect(rows).toHaveCount(2)
+
+    const measured = await rows.evaluateAll((all) =>
+      all.map((row) => {
+        const box = row.getBoundingClientRect()
+        const words = document.createRange()
+        words.selectNodeContents(row)
+        const lines = [...words.getClientRects()]
+        return {
+          name: row.getAttribute('aria-label'),
+          top: box.top,
+          bottom: box.bottom,
+          height: box.height,
+          above: Math.max(...lines.map((line) => box.top - line.top)),
+          below: Math.max(...lines.map((line) => line.bottom - box.bottom)),
+          beside: Math.max(...lines.map((line) => line.right - box.right)),
+          lines: new Set(lines.map((line) => Math.round(line.top))).size,
+        }
+      }),
+    )
+    const wrapped = measured.find((row) => row.name === `Open ${long}`)
+    expect(wrapped, 'the long name has a row').toBeDefined()
+    // The test is about a row that wraps, so it says so if this one did not.
+    expect(wrapped?.lines, 'the long row takes more than one line').toBeGreaterThan(1)
+    for (const row of measured) {
+      expect(row.above, `${row.name}: nothing above its box`).toBeLessThanOrEqual(1)
+      expect(row.below, `${row.name}: nothing below its box`).toBeLessThanOrEqual(1)
+      expect(row.beside, `${row.name}: nothing beside its box`).toBeLessThanOrEqual(1)
+    }
+    // One under the other, neither over the other.
+    const [first, second] = [...measured].sort((a, b) => a.top - b.top)
+    expect(second.top, 'the second row starts where the first ends').toBeGreaterThanOrEqual(
+      first.bottom - 1,
+    )
+    // And whatever comes after the list is under the last row. Without an
+    // engine there are no sample cities, so it is looked for, not expected.
+    const next = page.getByRole('heading', { level: 2 }).filter({ hasNotText: 'Your projects' })
+    if ((await next.count()) > 0) {
+      const after = await next.first().evaluate((el) => el.getBoundingClientRect().top)
+      expect(after, 'the heading after the list is under it').toBeGreaterThanOrEqual(second.bottom)
+    }
+    // One control tall at the least, and as tall as its lines beyond that.
+    // A short name's row wraps as well: its facts alone take two lines.
+    for (const row of measured) expect(row.height, `${row.name}`).toBeGreaterThanOrEqual(28)
+  })
+})
+
 test('the New project sheet is the kit at the document density, keyboard first', async () => {
   await withApp(async (page) => {
     await page.getByRole('button', { name: 'New project' }).click()
