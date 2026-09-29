@@ -2,26 +2,35 @@
 
 > **Amended 2026-09-29 (issue 206): a project's own export folder.** Since
 > A5.5-19 a project can export to a folder of its own, which FR-009 and
-> User Story 4 below were written before. One rule is now kept at two
-> doors. **Choosing the engine data folder**, and going back to its
+> User Story 4 below were written before. One relation is now kept at
+> three doors. **Choosing the engine data folder**, and going back to its
 > default, is refused while any project's export folder is inside that
 > folder, is it, or holds it. **The reset** is refused on the same
-> condition for the projects under the home in force. Either way the
-> sentence names the project, says why and what to do, and shows no path;
-> and both sides are resolved through their symbolic links before they are
-> compared, as FR-009 asks of every comparison. The choice is guarded, and
-> not the reset alone, because of A-003: nothing is moved when the home
-> changes, the project records included, so once the app has started on
-> the new home the project that exports there is a record in the old one.
-> The choice is the last moment the app can still see it.
+> condition for the projects under the home in force. And **a project's
+> own folder** is refused, where it is chosen and again at each export,
+> when it is inside or around the engine folder waiting for a restart as
+> well as the one in force - so whichever of the two folders is chosen
+> second is the one refused. Both sides are resolved through their
+> symbolic links before they are compared, as FR-009 asks of every
+> comparison. The choice is guarded, and not the reset alone, because of
+> A-003: nothing is moved when the home changes, the project records
+> included, so once the app has started on the new home the project that
+> exports there is a record in the old one. The choice is the last moment
+> the app can still see it.
 >
-> **What neither door sees:** a project whose record was left behind in a
-> home the app used before; a record this build cannot read; an export
-> folder a project is given after a new home was chosen and before the
-> restart, which is judged against the home in force; and files a project
-> exported to a folder it has since changed. SC-001 gains the unit
-> tests over both composed rules, and SC-002 an end-to-end test of each
-> refusal. Contract: `contracts/bridge.md`, "The guards, on the main side".
+> **Every sentence says what is in the way, what would happen, and what
+> to do first, which is two things:** move the exported files out, and
+> change the folder. Changing a folder moves nothing. The two refusals
+> FR-009 already asked for over the app's own export folder were reworded
+> to say the same. No sentence shows a path.
+>
+> **What no door sees:** a project whose record was left behind in a home
+> the app used before. A record this build cannot read is skipped, as the
+> project list skips it, and does not refuse the reset, which exists for
+> a home whose contents have gone wrong; only the read itself failing
+> refuses. SC-001 gains the unit tests over each composed rule, and SC-002
+> an end-to-end test of each refusal. Contract: `contracts/bridge.md`,
+> "The guards, on the main side".
 
 **Feature Branch**: `A1-04-settings`
 

@@ -398,30 +398,30 @@ describe('destinationsInTheWay', () => {
 })
 
 describe('destinationsSentence', () => {
-  it('names one project, says why, and says what to do, for each door', () => {
+  it('names one project, says what would happen, and asks for the files to be moved and the folder changed, for each door', () => {
     expect(destinationsSentence(['Los Angeles'], 'chosen')).toBe(
-      'The project “Los Angeles” exports to a folder inside that one, or around it, so “Reset engine data” could remove its exports; choose another folder, or change where the project exports first.',
+      'The project “Los Angeles” exports to a folder inside that one, or around it, so “Reset engine data” could remove its exported files; choose another folder, or move them out of that one and change where the project exports first.',
     )
     expect(destinationsSentence(['Los Angeles'], 'default')).toBe(
-      'The project “Los Angeles” exports to a folder inside the default folder, or around it, so “Reset engine data” could remove its exports; change where the project exports first.',
+      'The project “Los Angeles” exports to a folder inside the default folder, or around it, so “Reset engine data” could remove its exported files; move them out of the default folder and change where the project exports first.',
     )
     expect(destinationsSentence(['Los Angeles'], 'reset')).toBe(
-      'The project “Los Angeles” exports to a folder inside the engine data folder, or around it, so the reset could remove its exports; change where the project exports first.',
+      'The project “Los Angeles” exports to a folder inside the engine data folder, or around it, so the reset could remove its exported files; move them out of the engine data folder and change where the project exports first.',
     )
   })
 
   it('names two and three projects in full', () => {
     expect(destinationsSentence(['Bart', 'Metra'], 'reset')).toBe(
-      'The projects “Bart” and “Metra” export to folders inside the engine data folder, or around it, so the reset could remove their exports; change where they export first.',
+      'The projects “Bart” and “Metra” export to folders inside the engine data folder, or around it, so the reset could remove their exported files; move them out of the engine data folder and change where those projects export first.',
     )
     expect(destinationsSentence(['Bart', 'Caltrain', 'Metra'], 'chosen')).toBe(
-      'The projects “Bart”, “Caltrain” and “Metra” export to folders inside that one, or around it, so “Reset engine data” could remove their exports; choose another folder, or change where they export first.',
+      'The projects “Bart”, “Caltrain” and “Metra” export to folders inside that one, or around it, so “Reset engine data” could remove their exported files; choose another folder, or move them out of that one and change where those projects export first.',
     )
   })
 
   it('names two and counts the rest past three, so the sentence stays short', () => {
     expect(destinationsSentence(['Bart', 'Caltrain', 'Metra', 'Muni', 'VTA'], 'default')).toBe(
-      'The projects “Bart”, “Caltrain” and 3 others export to folders inside the default folder, or around it, so “Reset engine data” could remove their exports; change where they export first.',
+      'The projects “Bart”, “Caltrain” and 3 others export to folders inside the default folder, or around it, so “Reset engine data” could remove their exported files; move them out of the default folder and change where those projects export first.',
     )
   })
 })

@@ -696,14 +696,20 @@ to a folder of its own, chosen in cell 06. While a project in this engine
 data folder exports to a folder that is inside the engine data folder, is
 that folder, or holds it, the reset is refused: the dialog stays open and
 says "The project “`<name>`” exports to a folder inside the engine data
-folder, or around it, so the reset could remove its exports; change where
-the project exports first." Choosing such a folder as the engine data
-folder is refused in Settings on the same rule, where the sentence begins
-the same way and ends "choose another folder, or change where the project
-exports first." Neither sees a project whose record was left behind in an
-engine data folder the app used before: projects are kept in the engine
-data folder and are not moved when another is chosen, so after the restart
-the app no longer reads them.
+folder, or around it, so the reset could remove its exported files; move
+them out of the engine data folder and change where the project exports
+first." Choosing such a folder as the engine data folder is refused in
+Settings on the same rule: "The project “`<name>`” exports to a folder
+inside that one, or around it, so “Reset engine data” could remove its
+exported files; choose another folder, or move them out of that one and
+change where the project exports first." And while a chosen engine data
+folder is waiting for a restart, cell 06 refuses a folder inside it or
+around it: "that folder is inside the folder the engine data moves to at
+the next start, which “Reset engine data” removes from then on". None of
+the three sees a project whose record was left behind in an engine data
+folder the app used before: projects are kept in the engine data folder
+and are not moved when another is chosen, so after the restart the app no
+longer reads them.
 
 Result: ____
 

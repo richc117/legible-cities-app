@@ -357,9 +357,10 @@ export interface ProjectDestination {
  * in one of the four and a destination that is the home puts a project
  * named `out` there. It is the relation a project's own chooser already
  * refuses (`destinationRefusal` in `export.ts`), asked from the other side:
- * that one judges a destination against the home in force, and this judges
- * a home - the one in force before a reset, one being chosen in Settings -
- * against the destinations already stored.
+ * that one judges a destination against the home in force and the one
+ * waiting for a restart, and this judges a home - the one in force before
+ * a reset, one being chosen in Settings - against the destinations already
+ * stored. Between them, whichever folder is chosen second is refused.
  *
  * **Both sides must already be real paths.** The comparison is `contains`,
  * which is textual, and a home or a destination reached through a link
@@ -385,8 +386,14 @@ export type DestinationDoor = 'chosen' | 'default' | 'reset'
 /**
  * Why a folder may not be the engine's data folder, or may not be reset,
  * naming the projects in the way as the feeds' `inUseSentence` names them:
- * two or three are all named; past that, two and a count. It says why and
- * what to do, and never a path: the screen shows it as it is.
+ * two or three are all named; past that, two and a count. Never a path:
+ * the screen shows it as it is.
+ *
+ * In this order: what is in the way, what would happen, and what to do
+ * first. **What to do is two things, and the files come before the
+ * folder.** Changing where a project exports moves nothing, so a sentence
+ * that asked only for that would be followed to the letter by somebody
+ * whose exports were still under the home when the reset then ran.
  */
 export function destinationsSentence(names: readonly string[], door: DestinationDoor): string {
   const quoted = names.map((name) => `“${name}”`)
@@ -407,10 +414,18 @@ export function destinationsSentence(names: readonly string[], door: Destination
         : 'inside the engine data folder, or around it'
   const why =
     door === 'reset'
-      ? `so the reset could remove ${one ? 'its' : 'their'} exports`
-      : `so “Reset engine data” could remove ${one ? 'its' : 'their'} exports`
-  const change = one ? 'change where the project exports first' : 'change where they export first'
-  const what = door === 'chosen' ? `choose another folder, or ${change}` : change
+      ? `so the reset could remove ${one ? 'its' : 'their'} exported files`
+      : `so “Reset engine data” could remove ${one ? 'its' : 'their'} exported files`
+  const from =
+    door === 'chosen'
+      ? 'that one'
+      : door === 'default'
+        ? 'the default folder'
+        : 'the engine data folder'
+  const both = `move them out of ${from} and change where ${
+    one ? 'the project exports' : 'those projects export'
+  } first`
+  const what = door === 'chosen' ? `choose another folder, or ${both}` : both
   return `${who} ${where}, ${why}; ${what}.`
 }
 

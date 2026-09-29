@@ -192,16 +192,23 @@ the renderer can see the gaps. The flag goes up before the first `await`,
 and while it is up every engine request, every export and every write to a
 project record is refused, so nothing lands in a folder being walked away
 (`src/main/settings.ts`, `src/main/settings-ipc.ts`). **A project's own
-export folder is kept out of the reset's reach at two doors** (issue 206):
-the reset refuses while a project under the home in force exports to a
-folder inside the home or around it, and so does the choice of the
-engine's folder in Settings, the default included, which is the door that
-matters - records live under the home and nothing moves them, so after the
-restart the project that exports there is a record in the old home.
-**Neither door sees a record left behind in a previous home**, nor one this
-build cannot read. One pure rule, `destinationsInTheWay`, on real paths;
-the list is the project store's `destinations()`, handed in and read once
-at a press.
+export folder is kept out of the reset's reach at three doors** (issue
+206): the reset refuses while a project under the home in force exports to
+a folder inside the home or around it; so does the choice of the engine's
+folder in Settings, the default included, which is the door that matters -
+records live under the home and nothing moves them, so after the restart
+the project that exports there is a record in the old home; and a
+project's own folder is judged against the engine folder **waiting for a
+restart** as well as the one in force, where it is chosen and again at
+each export (`destinationRefusal` in `src/main/export.ts`, which is handed
+a function for the folder waiting and asks it at every judgement). **No
+door sees a record left behind in a previous home.** A record the store
+cannot read is skipped and does not refuse the reset; only the read itself
+failing does. **Every refusal over exported files asks for the files to be
+moved out and the folder changed, in that order**, because changing a
+folder moves nothing. `destinationsInTheWay` is the pure rule on Settings'
+side, on real paths; the list is the project store's `destinations()`,
+handed in and read once at a press.
 
 The export's options (A5-01) widened the reel's one button. They were a tab
 once and are cell 06 now. Export offers the thirteen social presets

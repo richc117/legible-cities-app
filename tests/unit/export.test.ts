@@ -1455,13 +1455,20 @@ describe('where a project may not export to', () => {
     mkdirSync(bundle, { recursive: true })
     const elsewhere = join(root, 'Movies')
     mkdirSync(elsewhere, { recursive: true })
+    // The folder an engine folder chosen in Settings would be, and whether
+    // one is waiting for a restart: none, unless a test says so.
+    const next = join(root, 'Videos')
+    mkdirSync(next, { recursive: true })
+    const waiting: { now: string | null } = { now: null }
     return {
       root,
       appRoot,
       home,
       bundle,
       elsewhere,
-      where: { bundleRoots: [bundle], engineHome: home },
+      next,
+      waiting,
+      where: { bundleRoots: [bundle], engineHome: home, waitingHome: () => waiting.now },
     }
   }
 
@@ -1523,7 +1530,7 @@ describe('where a project may not export to', () => {
     mkdirSync(join(real, 'out'), { recursive: true })
     const linked = join(t.root, 'linked-home')
     symlinkSync(real, linked, 'dir')
-    const where = { bundleRoots: [t.bundle], engineHome: linked }
+    const where = { bundleRoots: [t.bundle], engineHome: linked, waitingHome: () => null }
     // The home is a link; the folder names where it really is.
     expect(await destinationRefusal(join(real, 'out'), where)).toMatch(
       /inside the engine data folder/,
@@ -1536,7 +1543,7 @@ describe('where a project may not export to', () => {
     const t = tree()
     const linked = join(t.root, 'linked-app')
     symlinkSync(t.bundle, linked, 'dir')
-    const where = { bundleRoots: [linked], engineHome: t.home }
+    const where = { bundleRoots: [linked], engineHome: t.home, waitingHome: () => null }
     expect(await destinationRefusal(join(t.bundle, 'Contents'), where)).toMatch(
       /inside the app itself/,
     )
@@ -1553,5 +1560,164 @@ describe('where a project may not export to', () => {
       /inside the engine data folder/,
     )
     expect(await destinationRefusal(join(t.elsewhere, 'not-yet'), t.where)).toBeNull()
+  })
+
+  // Issue 206. An engine folder chosen in Settings takes effect at the next
+  // start and the project records do not move with it, so a project given a
+  // folder inside the one waiting would, after the restart, be a record
+  // nothing reads, exporting into the home a reset empties.
+  describe('while another engine folder waits for a restart', () => {
+    const INSIDE =
+      'that folder is inside the folder the engine data moves to at the next start, which “Reset engine data” removes from then on'
+    const HOLDS =
+      'that folder holds the folder the engine data moves to at the next start; an export goes into a folder named after the project, which could be that folder itself'
+
+    it('refuses the folder that waits and anything inside it, without calling it the engine data folder', async () => {
+      const t = tree()
+      t.waiting.now = t.next
+      for (const folder of [t.next, join(t.next, 'out'), join(t.next, 'exports', '2026')]) {
+        const refusal = await destinationRefusal(folder, t.where)
+        expect(refusal, folder).toBe(INSIDE)
+        expect(refusal, 'it is not the engine data folder yet').not.toMatch(
+          /inside the engine data folder/,
+        )
+        expect(refusal, 'a sentence for the screen names no folder').not.toContain(t.root)
+      }
+    })
+
+    it('refuses a folder that holds the one that waits, in its own sentence', async () => {
+      const t = tree()
+      t.waiting.now = join(t.next, 'engine')
+      expect(await destinationRefusal(t.next, t.where)).toBe(HOLDS)
+    })
+
+    it('allows the same folders when none waits, and a neighbour whose name begins the same when one does', async () => {
+      const t = tree()
+      for (const folder of [t.next, join(t.next, 'out')])
+        expect(await destinationRefusal(folder, t.where), folder).toBeNull()
+      t.waiting.now = t.next
+      expect(await destinationRefusal(`${t.next}-2025`, t.where)).toBeNull()
+      expect(await destinationRefusal(t.elsewhere, t.where)).toBeNull()
+    })
+
+    // A person can choose an engine folder, or take one back, while the app
+    // runs: a folder read once and kept would judge by the one before.
+    it('asks which folder waits each time it judges, and never keeps the answer', async () => {
+      const t = tree()
+      const asked: (string | null)[] = []
+      const where = {
+        ...t.where,
+        waitingHome: () => {
+          asked.push(t.waiting.now)
+          return t.waiting.now
+        },
+      }
+      const folder = join(t.next, 'exports')
+      expect(await destinationRefusal(folder, where)).toBeNull()
+      t.waiting.now = t.next
+      expect(await destinationRefusal(folder, where)).toBe(INSIDE)
+      t.waiting.now = null
+      expect(await destinationRefusal(folder, where)).toBeNull()
+      expect(asked).toEqual([null, t.next, null])
+    })
+
+    it('keeps the sentences of the folder in force for a folder that is in both', async () => {
+      const t = tree()
+      // The folder waiting holds the home in force, so a folder in the home
+      // is inside both, and one above both holds both.
+      t.waiting.now = join(t.root, 'support')
+      expect(await destinationRefusal(join(t.home, 'out'), t.where)).toMatch(
+        /^that folder is inside the engine data folder, which “Reset engine data” removes$/,
+      )
+      expect(await destinationRefusal(t.root, t.where)).toMatch(
+        /^that folder holds the engine data folder; /,
+      )
+    })
+
+    it('follows a link in the folder it is given, and in the folder that waits', async () => {
+      const t = tree()
+      mkdirSync(join(t.next, 'out'), { recursive: true })
+      const link = join(t.root, 'looks-harmless')
+      symlinkSync(join(t.next, 'out'), link, 'dir')
+      t.waiting.now = t.next
+      expect(await destinationRefusal(link, t.where)).toBe(INSIDE)
+
+      const linked = join(t.root, 'linked-next')
+      symlinkSync(t.next, linked, 'dir')
+      t.waiting.now = linked
+      expect(await destinationRefusal(join(t.next, 'out'), t.where)).toBe(INSIDE)
+      expect(await destinationRefusal(t.elsewhere, t.where)).toBeNull()
+    })
+
+    it('judges a folder that waits and is not there yet', async () => {
+      const t = tree()
+      t.waiting.now = join(t.root, 'not-made-yet')
+      expect(await destinationRefusal(join(t.root, 'not-made-yet', 'exports'), t.where)).toBe(
+        INSIDE,
+      )
+    })
+
+    // The chooser and the exporter, each through the rule itself and not a
+    // stand-in for it: the two places index.ts hands the one function to.
+    it('is refused by the chooser, which stores nothing', async () => {
+      const t = tree()
+      t.waiting.now = t.next
+      const written: (string | null)[] = []
+      const destinations = new Destinations({
+        projects: {
+          get: async (id) => project({ id }),
+          setDestination: async (id, folder) => {
+            written.push(folder)
+            return { ...project({ id }), destination: folder }
+          },
+        },
+        chooseFolder: async () => join(t.next, 'exports'),
+        appFolder: () => t.elsewhere,
+        refuse: (folder) => destinationRefusal(folder, t.where),
+      })
+      await expect(destinations.choose('abcdefghijk1')).rejects.toThrow(INSIDE)
+      expect(written).toEqual([])
+      // The engine folder is taken back in Settings: the same folder is stored.
+      t.waiting.now = null
+      await destinations.choose('abcdefghijk1')
+      expect(written).toEqual([join(t.next, 'exports')])
+    })
+
+    it('is asked again at each export: a folder stored before an engine folder was chosen is refused after it', async () => {
+      const t = tree()
+      const h = harness({
+        project: { destination: join(t.next, 'exports') },
+        destinationRefusal: (folder) => destinationRefusal(folder, t.where),
+      })
+      // Nothing waits: the export runs to its end, into the project's folder.
+      const first = h.exporter.start('tok-1', 'abcdefghijk1', REEL)
+      await until('the plan', () => h.eng.requests.length === 1)
+      h.eng.requests[0].resolve(plan())
+      await until('the capture', () => h.cap.calls.length === 1)
+      h.cap.calls[0].finish(60)
+      await until('the encode', () => h.eng.requests.length === 2)
+      const dest = (h.eng.requests[1].params as { dest: string }).dest
+      expect(dest).toBe(join(t.next, 'exports', 'Los Angeles', 'la-metro-rail-instagram-reel.mp4'))
+      h.eng.requests[1].resolve({ files: [{ path: dest, bytes: 1 }], sidecar: {} })
+      await expect(first.result).resolves.toBeTruthy()
+
+      // An engine folder is chosen in Settings, around where the project exports.
+      t.waiting.now = t.next
+      const second = h.exporter.start('tok-2', 'abcdefghijk1', REEL)
+      // Refused, or - were the folder that waits not judged - planned: the
+      // wait ends on either, so a guard that has gone says so at once.
+      let refusal: string | null = null
+      second.result.catch((error: unknown) => {
+        refusal = error instanceof Error ? error.message : String(error)
+      })
+      await until(
+        'the second export to be refused, or planned',
+        () => refusal !== null || h.eng.requests.length > 2,
+      )
+      expect(h.eng.requests, 'the engine was not asked for a second plan').toHaveLength(2)
+      expect(refusal).toBe(`The folder this project exports to cannot be written to: ${INSIDE}.`)
+      expect(h.cap.calls, 'nothing more was captured').toHaveLength(1)
+      expect(h.exporter.live, 'the export was let go').toBe(0)
+    })
   })
 })

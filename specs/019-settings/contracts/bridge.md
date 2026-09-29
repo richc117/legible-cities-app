@@ -140,8 +140,8 @@ settings: {
   path.
 
 - **A project's own export folder** _(added 2026-09-29, issue 206)_ is
-  kept out of the reset's reach at two doors, on one rule:
-  `destinationsInTheWay` in `src/main/settings.ts`, which answers the
+  kept out of the reset's reach at three doors. Two are here and ask one
+  rule, `destinationsInTheWay` in `src/main/settings.ts`, which answers the
   projects whose export folder is inside a home, is it, or holds it. No
   method is added to the bridge and none takes anything new: a refusal is a
   rejection the existing calls already carry.
@@ -149,35 +149,68 @@ settings: {
   `chooseEngineFolder()` and `useDefaultEngineFolder()` reject, and store
   nothing, while any project's export folder is inside the folder asked
   for or around it: "The project “Los Angeles” exports to a folder inside
-  that one, or around it, so “Reset engine data” could remove its exports;
-  choose another folder, or change where the project exports first." For
-  the default, "inside the default folder, or around it", and no "choose
-  another folder". A path the dialog answered is spent by a refusal as by
-  any other outcome. The engine folder's changes are applied one after
-  another, in the order they were asked for.
+  that one, or around it, so “Reset engine data” could remove its exported
+  files; choose another folder, or move them out of that one and change
+  where the project exports first." For the default: "... inside the
+  default folder, or around it, so “Reset engine data” could remove its
+  exported files; move them out of the default folder and change where the
+  project exports first." A path the dialog answered is spent by a refusal
+  as by any other outcome. The engine folder's changes are applied one
+  after another, in the order they were asked for.
 
   `resetEngineData()` rejects on the same condition for the projects under
   the home in force, after every check above and before anything is
   removed, with the flag up: "The project “Los Angeles” exports to a folder
   inside the engine data folder, or around it, so the reset could remove
-  its exports; change where the project exports first."
+  its exported files; move them out of the engine data folder and change
+  where the project exports first."
 
   Two or three projects are all named; past that, two and how many more.
   Never a path. The folder asked about and every project's export folder
   are resolved through their symbolic links before the comparison, which
   is textual. The list is the project store's, handed in so this service
   never holds the store, and is read once at each press; a project made by
-  a newer version of the app is read-only here and still counts. If the
-  list cannot be read the call rejects: "the projects could not be read, so
-  the app cannot tell whether one of them exports there; try again".
+  a newer version of the app is read-only here and still counts.
 
-  **What neither door sees.** Records live under the engine's home and are
-  not moved with it, so a record left behind in a home the app used before
-  is read by nobody, and a reset of the folder its project exports into is
+  **Every sentence asks for two things, the files before the folder.**
+  Changing a folder moves nothing, so a person who did only that would
+  lose what they had exported to the reset that then ran. The two refusals
+  over the app's own export folder, which are older than this note, were
+  reworded with it: "Your export folder holds the engine data folder, so
+  the reset could remove your exported files; move them out of the engine
+  data folder and choose another export folder first." and "Your export
+  folder is inside the `out` folder, which the reset removes, so your
+  exported files would go with it; move them out of the engine data folder
+  and choose another export folder first." (`out`, `data`, `projects` or
+  `frames`, whichever it is inside).
+
+  **The third door is the project's own chooser**, not this bridge:
+  `destinationRefusal` in `src/main/export.ts` judges a folder a project
+  is being given against the home in force and against the folder waiting
+  for a restart, which is this view's `engine.pending`, read each time a
+  folder is judged and never kept. The exporter asks it again before every
+  export. Its sentence does not call the folder waiting the engine data
+  folder: "that folder is inside the folder the engine data moves to at
+  the next start, which “Reset engine data” removes from then on", or
+  "that folder holds the folder the engine data moves to at the next
+  start; an export goes into a folder named after the project, which could
+  be that folder itself". So whichever of the two folders is chosen second
+  is the one refused.
+
+  **Which failure of the list's read refuses, and which does not.** If the
+  read itself rejects, the call rejects: "the projects could not be read,
+  so the app cannot tell whether one of them exports there; try again".
+  The project store never rejects over anything a disk does, so that is
+  the unforeseen. What the store survives does not refuse: a projects
+  folder that is missing or cannot be listed, and a record it cannot read
+  or parse, are skipped as the project list skips them, logged, and
+  answered without; their export folders are not seen and the call goes
+  ahead. Refusing over those would block the reset in the case it exists
+  for.
+
+  **What no door sees.** Records live under the engine's home and are not
+  moved with it, so a record left behind in a home the app used before is
+  read by nobody, and a reset of the folder its project exports into is
   not refused; that is why the choice is guarded, while the record is
-  still in reach. A record this build cannot read is skipped, as the
-  project list skips it. An export folder a project is given after a new
-  home was chosen and before the restart is judged by the project's own
-  chooser against the home in force, not the one waiting. And the rule is
-  over where a project exports now: changing that folder moves nothing, so
-  files exported to the folder before stay where they were.
+  still in reach. That, and the records the store could not read, are all
+  that is out of reach.

@@ -8,6 +8,7 @@ import { mkdir, mkdtemp, readdir, readFile, rename, rm, symlink, writeFile } fro
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { destinationRefusal, Destinations } from '../../src/main/export'
 import { LOG_WAIT_MS } from '../../src/main/log-file'
 import { ProjectStore } from '../../src/main/projects'
 import { WINDOWS_RETRY_CODES, type ReplaceOptions } from '../../src/main/replace-file'
@@ -480,7 +481,7 @@ describe('choosing the engine folder while a project exports to a folder of its 
     await exporting(h, 'Los Angeles', join(h.root, 'videos', 'exports'))
     const refusal = await refusalOf(h.call(CHANNELS.settingsChooseEngineFolder))
     expect(refusal).toBe(
-      'The project “Los Angeles” exports to a folder inside that one, or around it, so “Reset engine data” could remove its exports; choose another folder, or change where the project exports first.',
+      'The project “Los Angeles” exports to a folder inside that one, or around it, so “Reset engine data” could remove its exported files; choose another folder, or move them out of that one and change where the project exports first.',
     )
     expect(refusal, 'a sentence for the screen names no folder').not.toContain(h.root)
     expect(h.store.current.engineFolder, 'nothing was stored').toBeNull()
@@ -566,7 +567,7 @@ describe('choosing the engine folder while a project exports to a folder of its 
       await exporting(h, name, join(h.root, 'videos', name))
     }
     expect(await refusalOf(h.call(CHANNELS.settingsChooseEngineFolder))).toBe(
-      'The projects “Bart”, “Caltrain” and 2 others export to folders inside that one, or around it, so “Reset engine data” could remove their exports; choose another folder, or change where they export first.',
+      'The projects “Bart”, “Caltrain” and 2 others export to folders inside that one, or around it, so “Reset engine data” could remove their exported files; choose another folder, or move them out of that one and change where those projects export first.',
     )
   })
 
@@ -579,7 +580,7 @@ describe('choosing the engine folder while a project exports to a folder of its 
     expect(h.store.current.engineFolder).toBe(join(h.root, 'chosen'))
     await exporting(h, 'Los Angeles', join(h.root, 'default-home', 'out', 'exports'))
     expect(await refusalOf(h.call(CHANNELS.settingsDefaultEngineFolder))).toBe(
-      'The project “Los Angeles” exports to a folder inside the default folder, or around it, so “Reset engine data” could remove its exports; change where the project exports first.',
+      'The project “Los Angeles” exports to a folder inside the default folder, or around it, so “Reset engine data” could remove its exported files; move them out of the default folder and change where the project exports first.',
     )
     expect(h.store.current.engineFolder, 'the stored folder was not cleared').toBe(
       join(h.root, 'chosen'),
@@ -662,6 +663,91 @@ describe('choosing the engine folder while a project exports to a folder of its 
     expect(h.logs.join('\n'), 'and the log names no folder either').not.toContain(h.root)
     // One that failed does not hold up the next.
     await expect(h.call(CHANNELS.settingsSetTheme, 'sepia')).resolves.toBeDefined()
+  })
+})
+
+// The third door (issue 206), from Settings' side. A project's own chooser
+// and every export judge a folder against the home in force and against
+// the folder waiting for a restart, which is this service's own `pending`.
+// The rule is `destinationRefusal`, proved over its folders in
+// export.test.ts; what is proved here is that the folder it is handed is
+// the one Settings holds now, read as index.ts reads it.
+describe('a project’s export folder while a chosen engine folder waits for a restart', () => {
+  const INSIDE =
+    'that folder is inside the folder the engine data moves to at the next start, which “Reset engine data” removes from then on'
+  const HOLDS =
+    'that folder holds the folder the engine data moves to at the next start; an export goes into a folder named after the project, which could be that folder itself'
+
+  /** The refusal as index.ts builds it: the folder waiting is asked of Settings at each judgement. */
+  const judge =
+    (h: { bundle: string; engineHome: string; settings: SettingsService }) =>
+    (folder: string): Promise<string | null> =>
+      destinationRefusal(folder, {
+        bundleRoots: [h.bundle],
+        engineHome: h.engineHome,
+        waitingHome: () => h.settings.view().engine.pending,
+      })
+
+  it('is refused inside or around the folder Settings has just taken, and allowed once that is taken back', async () => {
+    const h = await harness({ answer: (root) => join(root, 'videos', 'engine') })
+    const refuse = judge(h)
+    const inside = join(h.root, 'videos', 'engine', 'exports')
+    const around = join(h.root, 'videos')
+    expect(await refuse(inside), 'nothing waits yet').toBeNull()
+    expect(await refuse(around)).toBeNull()
+
+    await h.call(CHANNELS.settingsChooseEngineFolder)
+    expect(await refuse(inside)).toBe(INSIDE)
+    expect(await refuse(around)).toBe(HOLDS)
+    expect(await refuse(join(h.root, 'pictures')), 'a folder elsewhere is still taken').toBeNull()
+
+    await h.call(CHANNELS.settingsDefaultEngineFolder)
+    expect(await refuse(inside), 'nothing waits any more').toBeNull()
+    expect(await refuse(around)).toBeNull()
+  })
+
+  it('is judged against the default folder when that is what the app goes back to', async () => {
+    // The app started on a folder of a person's own and they have pressed
+    // "Use the default": the default waits, and it is nowhere in settings.json.
+    const h = await harness({
+      engineHome: (root) => join(root, 'a-folder-of-mine'),
+      defaultEngine: (root) => join(root, 'default-home'),
+      sources: { engine: 'settings' },
+      answer: (root) => join(root, 'a-folder-of-mine'),
+    })
+    const refuse = judge(h)
+    expect(h.store.current.engineFolder).toBeNull()
+    expect(await refuse(join(h.root, 'default-home', 'out'))).toBe(INSIDE)
+    // The folder in force is chosen again, so nothing waits.
+    await h.call(CHANNELS.settingsChooseEngineFolder)
+    expect(await refuse(join(h.root, 'default-home', 'out'))).toBeNull()
+  })
+
+  // The two doors together, over the real store, the real chooser and the
+  // real service: whichever of the two folders is chosen second is refused.
+  it('closes the way in from both sides, whichever folder is chosen second', async () => {
+    const h = await harness({ answer: (root) => join(root, 'videos') })
+    const exports = join(h.root, 'videos', 'exports')
+    const project = await h.projects.create({ name: 'Los Angeles', feed: 'la-metro-rail' })
+    const destinations = new Destinations({
+      projects: h.projects,
+      chooseFolder: async () => exports,
+      appFolder: () => h.exportFolder,
+      refuse: judge(h),
+    })
+
+    // The engine folder first, then the project's: the project's is refused.
+    await h.call(CHANNELS.settingsChooseEngineFolder)
+    await expect(destinations.choose(project.id)).rejects.toThrow(INSIDE)
+    expect((await h.projects.get(project.id)).destination, 'nothing was stored').toBeNull()
+
+    // The engine folder taken back, the project's first, then the engine
+    // folder again: the engine folder is refused, naming the project.
+    await h.call(CHANNELS.settingsDefaultEngineFolder)
+    await destinations.choose(project.id)
+    expect((await h.projects.get(project.id)).destination).toBe(exports)
+    await expect(h.call(CHANNELS.settingsChooseEngineFolder)).rejects.toThrow(/“Los Angeles”/)
+    expect(h.store.current.engineFolder, 'nothing was stored').toBeNull()
   })
 })
 
@@ -782,6 +868,47 @@ describe('resetting the engine data', () => {
     expect(await readdir(h.engineHome)).toEqual(['keep.txt'])
   })
 
+  // The sentences of the two refusals over the app's own export folder,
+  // whole (issue 206): each asks for the files to be moved as well as the
+  // folder changed, because choosing another folder moves nothing and the
+  // reset that then ran would take what was exported to the one before.
+  it('says, of an export folder inside one of the four, to move the files and choose another folder', async () => {
+    for (const folder of ['out', 'data', 'projects', 'frames']) {
+      const h = await harness({
+        exportFolder: (root) => join(root, 'userData', 'engine', folder, 'exports'),
+      })
+      await mkdir(join(h.exportFolder, 'Los Angeles'), { recursive: true })
+      await writeFile(join(h.exportFolder, 'Los Angeles', 'reel.mp4'), 'an export')
+      const refusal = await refusalOf(h.call(CHANNELS.settingsResetEngineData))
+      expect(refusal).toBe(
+        `Your export folder is inside the ${folder} folder, which the reset removes, so your exported files would go with it; move them out of the engine data folder and choose another export folder first.`,
+      )
+      expect(refusal, 'a sentence for the screen names no folder').not.toContain(h.root)
+      expect(await readdir(join(h.exportFolder, 'Los Angeles')), 'nothing was removed').toEqual([
+        'reel.mp4',
+      ])
+    }
+  })
+
+  it('says, of an export folder that is the home or holds it, to move the files and choose another folder', async () => {
+    for (const folder of [
+      (root: string) => join(root, 'userData', 'engine'),
+      (root: string) => join(root, 'userData'),
+    ]) {
+      const h = await harness({ exportFolder: folder })
+      // An export goes to <folder>/<project name>/, so a project named
+      // "out" under an export folder that is the home lands in out/.
+      await mkdir(join(h.engineHome, 'out'), { recursive: true })
+      await writeFile(join(h.engineHome, 'out', 'reel.mp4'), 'an export')
+      const refusal = await refusalOf(h.call(CHANNELS.settingsResetEngineData))
+      expect(refusal).toBe(
+        'Your export folder holds the engine data folder, so the reset could remove your exported files; move them out of the engine data folder and choose another export folder first.',
+      )
+      expect(refusal, 'a sentence for the screen names no folder').not.toContain(h.root)
+      expect(await readdir(join(h.engineHome, 'out')), 'nothing was removed').toEqual(['reel.mp4'])
+    }
+  })
+
   // Issue 206. The same promise, for a folder a project chose for itself:
   // the real store on the home in force, the real paths, the real removal.
   it('refuses while a project in this home exports into a folder the reset removes, naming it, and removes nothing', async () => {
@@ -792,7 +919,7 @@ describe('resetting the engine data', () => {
     await writeFile(join(exports, 'Los Angeles', 'reel.mp4'), 'an export')
     const refusal = await refusalOf(h.call(CHANNELS.settingsResetEngineData))
     expect(refusal).toBe(
-      'The project “Los Angeles” exports to a folder inside the engine data folder, or around it, so the reset could remove its exports; change where the project exports first.',
+      'The project “Los Angeles” exports to a folder inside the engine data folder, or around it, so the reset could remove its exported files; move them out of the engine data folder and change where the project exports first.',
     )
     expect(refusal, 'a sentence for the screen names no folder').not.toContain(h.root)
     expect(await readFile(join(exports, 'Los Angeles', 'reel.mp4'), 'utf8')).toBe('an export')

@@ -68,7 +68,9 @@ export interface SettingsDeps {
    * Every project that exports to a folder of its own, from the records
    * under the home in force: the project store's answer, injected so this
    * service never holds the store. Asked once at each press that needs it.
-   * Records left behind in a home the app used before are not in it.
+   * Records left behind in a home the app used before are not in it, and
+   * neither is a record the store could not read, which it skips and
+   * answers without; only a rejection refuses what asked.
    */
   destinations: () => Promise<ProjectDestination[]>
   /** Make a folder if it is missing and show it in the platform's file browser. */
@@ -279,9 +281,11 @@ export class SettingsService {
    * there is a record in the folder before, which no reset will read. Here
    * the store is still on the home in force and holds it.
    *
-   * What it cannot see: a record in a home the app used before this one,
-   * and a destination a project is given after this press and before the
-   * restart, which is judged against the home in force and not this one.
+   * What it cannot see is a record in a home the app used before this
+   * one. A destination a project is given after this press and before the
+   * restart is the other half of the same rule, and is kept where it is
+   * chosen: `destinationRefusal` in `export.ts` judges a project's folder
+   * against the folder waiting here as well as the home in force.
    */
   #changeEngineFolder(folder: string | null, door: DestinationDoor): Promise<SettingsView> {
     const change = async (): Promise<SettingsView> => {
@@ -312,9 +316,23 @@ export class SettingsService {
    * comparison, which is textual: a destination that is a link into the
    * home would otherwise pass.
    *
-   * A list that cannot be read refuses whatever asked, because an export
-   * folder nobody could look for may be in the way; the sentence is this
-   * side's own, since a filesystem message names the path.
+   * **Which failure refuses, and which does not.** Two different things
+   * can go wrong with the read, and they end differently on purpose.
+   *
+   * - *Refused:* the read itself rejecting - `destinations()` throwing
+   *   rather than answering. Whatever asked is refused, in this side's own
+   *   sentence, since a filesystem message names the path. The project
+   *   store never does this over anything a disk does, so it is the
+   *   unforeseen, and the unforeseen in front of a removal stops.
+   * - *Not refused:* everything the store itself survives, which it
+   *   answers as fewer projects and a line in the log. A projects folder
+   *   that is not there, or that cannot be listed; a record that cannot be
+   *   read or is not JSON or fails the parser; a record carrying another
+   *   folder's identity; a folder that is a link or is not named as an
+   *   identifier. Their export folders are not seen, and the choice or
+   *   the reset goes ahead. Refusing over those would block the reset in
+   *   exactly the case it exists for, a home whose contents have gone
+   *   wrong (decided on issue 206).
    */
   async #projectsInTheWay(home: string): Promise<string[]> {
     let stored: ProjectDestination[]
@@ -510,16 +528,21 @@ export class SettingsService {
     // is it, is refused too: an export writes to <folder>/<project name>/,
     // so a project called "out" under a folder that is the home would land
     // in one of the four.
+    //
+    // Each sentence asks for two things, the files before the folder
+    // (issue 206): choosing another export folder moves nothing, so a
+    // person who did only that would lose what they had exported to the
+    // reset that then ran.
     const exportFolder = await realOrResolved(this.#exportFolder)
     if (contains(exportFolder, home)) {
       throw new Error(
-        'your export folder holds the engine data folder; choose another one first, or the reset would reach your exports',
+        'Your export folder holds the engine data folder, so the reset could remove your exported files; move them out of the engine data folder and choose another export folder first.',
       )
     }
     for (const folder of RESET_FOLDERS) {
       if (contains(join(home, folder), exportFolder)) {
         throw new Error(
-          `your export folder is inside the ${folder} folder, which the reset removes; choose another one first`,
+          `Your export folder is inside the ${folder} folder, which the reset removes, so your exported files would go with it; move them out of the engine data folder and choose another export folder first.`,
         )
       }
     }

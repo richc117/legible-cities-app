@@ -374,8 +374,11 @@ export class ProjectStore {
    *
    * Only this store's records are read, the ones under the home in force.
    * A record left behind in a home the app used before is not seen, and
-   * neither is one this build cannot read. By name, then by identifier, so
-   * two calls answer in one order.
+   * neither is one this build cannot read: that one is skipped and logged
+   * as the list skips it, and a folder that cannot be listed answers no
+   * projects at all. Nothing here rejects over what a disk does, so
+   * whoever asks is answered with fewer projects, never refused. By name,
+   * then by identifier, so two calls answer in one order.
    */
   async destinations(): Promise<{ id: string; name: string; destination: string }[]> {
     const found: { id: string; name: string; destination: string }[] = []

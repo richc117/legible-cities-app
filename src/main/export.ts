@@ -73,7 +73,9 @@ export interface ExporterOptions {
    * Why a project's own destination may not be written to, or null
    * (A5.5-19). The same function the chooser refuses by, asked again here
    * because a record is a file on disk and the folder it names may have
-   * become one of those since - or never have come from the chooser at all.
+   * become one of those since - an engine folder chosen in Settings after
+   * it, and now waiting for a restart, included (issue 206) - or never
+   * have come from the chooser at all.
    */
   destinationRefusal?: (folder: string) => Promise<string | null>
   /**
@@ -655,6 +657,14 @@ export interface ForbiddenFolders {
    * exported files are not touched.
    */
   engineHome: string
+  /**
+   * The folder the engine's data moves to at the next start, or null when
+   * none is waiting: what Settings answers as `pending` (issue 206). It is
+   * a function, asked each time a folder is judged and never held, because
+   * a person can choose an engine folder, or take one back, while the app
+   * runs - and the chooser and every export both judge through here.
+   */
+  waitingHome: () => string | null
 }
 
 /**
@@ -690,6 +700,17 @@ export interface ForbiddenFolders {
  * first. `SCHEMATIC_HOME` and a hand-edited settings file reach the app
  * unfiltered, and a home reached through a link passes every textual check
  * and then points at somewhere a reset will remove.
+ *
+ * **The home in force, and the one waiting for a restart** (issue 206). An
+ * engine folder chosen in Settings takes effect at the next start, and the
+ * project records do not move with it. A folder judged against the home in
+ * force alone could be given to a project while another home waits: after
+ * the restart the project is a record in the home before, which nothing
+ * reads, exporting into the home a reset empties. So the folder waiting is
+ * judged too, on the same relation, in a sentence of its own - it is not
+ * the engine data folder yet, and saying it was would send a person to
+ * look at the wrong one. Settings keeps the other half: it refuses an
+ * engine folder that a project already exports into or around.
  */
 export async function destinationRefusal(
   folder: string,
@@ -708,6 +729,16 @@ export async function destinationRefusal(
     return 'that folder is inside the engine data folder, which “Reset engine data” removes'
   if (contains(real, home))
     return 'that folder holds the engine data folder; an export goes into a folder named after the project, which could be that folder itself'
+  // Asked now, after everything above has been read from the disk, so it
+  // is the folder waiting at this judgement and not at an earlier one.
+  const waiting = where.waitingHome()
+  if (waiting !== null) {
+    const next = await realOrResolved(waiting)
+    if (contains(next, real))
+      return 'that folder is inside the folder the engine data moves to at the next start, which “Reset engine data” removes from then on'
+    if (contains(real, next))
+      return 'that folder holds the folder the engine data moves to at the next start; an export goes into a folder named after the project, which could be that folder itself'
+  }
   return null
 }
 

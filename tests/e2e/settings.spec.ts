@@ -27,6 +27,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test'
+import { openCell } from '../support/project'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 
 const repoRoot = resolve(__dirname, '../..')
@@ -355,7 +356,7 @@ test('refuses an engine folder that holds a project’s own export folder, namin
     await page.getByRole('button', { name: 'Choose the engine data folder' }).click()
     const refusal = screen.getByRole('alert')
     await expect(refusal).toHaveText(
-      'The project “Los Angeles” exports to a folder inside that one, or around it, so “Reset engine data” could remove its exports; choose another folder, or change where the project exports first.',
+      'The project “Los Angeles” exports to a folder inside that one, or around it, so “Reset engine data” could remove its exported files; choose another folder, or move them out of that one and change where the project exports first.',
     )
     // Nothing was taken: no folder waits for a restart and none is stored.
     await expect(page.locator('#engine-folder-path')).toHaveText(join(userData, 'engine'))
@@ -403,7 +404,7 @@ test('refuses the reset while a project exports into the engine data folder, and
     await confirm.getByRole('button', { name: 'Reset', exact: true }).click()
     // A refusal stays in the dialog, under the words that promised.
     await expect(confirm.getByRole('alert')).toHaveText(
-      'The project “Los Angeles” exports to a folder inside the engine data folder, or around it, so the reset could remove its exports; change where the project exports first.',
+      'The project “Los Angeles” exports to a folder inside the engine data folder, or around it, so the reset could remove its exported files; move them out of the engine data folder and change where the project exports first.',
     )
     await expect(confirm).toBeVisible()
     expect(readFileSync(join(exports, 'Los Angeles', 'reel.mp4'), 'utf8')).toBe('an export')
@@ -414,6 +415,98 @@ test('refuses the reset while a project exports into the engine data folder, and
     await page.getByRole('button', { name: 'Back to Library' }).click()
     await expect(page.getByRole('button', { name: 'Open Los Angeles' })).toBeVisible()
   })
+})
+
+// The third door (issue 206): the same rule from the project's side. A
+// folder chosen for the engine waits for a restart, and a project given a
+// folder inside it meanwhile would, after the restart, be a record nothing
+// reads. No restart is needed to reach it: the folder waits from the press.
+test('refuses a project an export folder inside or around the engine folder that waits for a restart', async () => {
+  test.slow()
+  // The stand-in draws a map, because cell 06 offers nothing until there is one.
+  const userData = profile({ map_draws: true, progress_delay_ms: 5 })
+  const videos = mkdtempSync(join(tmpdir(), 'legible-cities-videos-'))
+  const exports = mkdtempSync(join(tmpdir(), 'legible-cities-exports-'))
+  const record = (): Record<string, unknown> => {
+    const projects = join(userData, 'engine', 'projects')
+    const [id] = readdirSync(projects)
+    return JSON.parse(readFileSync(join(projects, id, 'project.json'), 'utf8')) as Record<
+      string,
+      unknown
+    >
+  }
+  /** Cell 06 of the one project, from the Library. */
+  const exportCell = async (page: Page) => {
+    await page.getByRole('button', { name: 'Open Los Angeles' }).click()
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Los Angeles')
+    const panel = await openCell(page, 'export')
+    await expect(panel.getByRole('combobox', { name: 'Preset' })).toBeVisible({ timeout: 20_000 })
+    return panel
+  }
+  /** Settings, from the project's screen. */
+  const settings = async (page: Page): Promise<void> => {
+    await page.getByRole('button', { name: 'Back to Library' }).click()
+    await open(page)
+  }
+
+  await withApp(
+    userData,
+    async (page, app) => {
+      await expect(page.getByRole('status', { name: 'Engine' })).toContainText(/ready/i, {
+        timeout: 20_000,
+      })
+      await newProject(page, 'Los Angeles')
+      await page.getByRole('button', { name: 'Open Los Angeles' }).click()
+      await expect(page.getByRole('heading', { level: 1 })).toHaveText('Los Angeles')
+      await page.getByRole('button', { name: /lay out/i }).click()
+      await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+
+      // An engine folder is chosen, and waits.
+      await settings(page)
+      await chooserAnswers(app, join(videos, 'engine'))
+      await page.getByRole('button', { name: 'Choose the engine data folder' }).click()
+      await expect(page.getByText(`Waiting for a restart: ${join(videos, 'engine')}`)).toBeVisible()
+      await page.getByRole('button', { name: 'Back to Library' }).click()
+
+      // The project is given a folder inside it, then the folder around it.
+      let panel = await exportCell(page)
+      await chooserAnswers(app, join(videos, 'engine', 'exports'))
+      await panel.getByRole('button', { name: 'Choose folder' }).click()
+      await expect(panel.getByRole('alert')).toHaveText(
+        'that folder is inside the folder the engine data moves to at the next start, which “Reset engine data” removes from then on',
+      )
+      await chooserAnswers(app, videos)
+      await panel.getByRole('button', { name: 'Choose folder' }).click()
+      await expect(panel.getByRole('alert')).toHaveText(
+        'that folder holds the folder the engine data moves to at the next start; an export goes into a folder named after the project, which could be that folder itself',
+      )
+      expect(record().destination, 'and neither was written').toBeNull()
+      await expect(panel.getByText(/exports go to the app’s export folder/)).toBeVisible()
+
+      // The engine folder is taken back: the same folder is the project's.
+      await settings(page)
+      await page.getByRole('button', { name: 'Use the default engine data folder' }).click()
+      await expect(page.getByText(/Waiting for a restart/)).toHaveCount(0)
+      await page.getByRole('button', { name: 'Back to Library' }).click()
+      panel = await exportCell(page)
+      await chooserAnswers(app, videos)
+      await panel.getByRole('button', { name: 'Choose folder' }).click()
+      await expect(panel.locator('#export-destination-where')).toHaveText(videos)
+      await expect.poll(() => record().destination).toBe(videos)
+
+      // And now the engine folder is the one refused, naming the project.
+      await settings(page)
+      await chooserAnswers(app, join(videos, 'engine'))
+      await page.getByRole('button', { name: 'Choose the engine data folder' }).click()
+      await expect(page.getByRole('main').getByRole('alert')).toContainText(
+        'The project “Los Angeles” exports to a folder inside that one, or around it',
+      )
+      await expect(page.getByText(/Waiting for a restart/)).toHaveCount(0)
+    },
+    // Nothing is exported here, but the app's own export folder is this
+    // suite's all the same, never the one on a person's desktop.
+    { LEGIBLE_EXPORT_FOLDER: exports },
+  )
 })
 
 // Issue 113. The reset's reason while runs are going is the button's

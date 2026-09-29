@@ -505,11 +505,11 @@ if (!hasLock) {
         if (store.writing > 0) return 'A project is being saved; try again in a moment.'
         return null
       },
-      // Where the projects export, for the two doors that must not let a
-      // reset reach an export (issue 206): a fact about the projects, handed
-      // in as the feeds' guard is handed theirs, so the service never holds
-      // the store. The store is on the home in force; a record left behind
-      // in a home used before this one is not in its answer.
+      // Where the projects export, for Settings' two doors that must not
+      // let a reset reach an export (issue 206): a fact about the projects,
+      // handed in as the feeds' guard is handed theirs, so the service never
+      // holds the store. The store is on the home in force; a record left
+      // behind in a home used before this one is not in its answer.
       destinations: () => store.destinations(),
       openFolder: async (path) => {
         await mkdir(path, { recursive: true }).catch((error: Error) =>
@@ -656,12 +656,18 @@ if (!hasLock) {
     )
     log.info('export', describeSweep(await clearFrames(framesRoot)))
     // Where a project's own exports may not go (A5.5-19): the app's own
-    // bundle and the engine's home, in either direction and through their
-    // links. The rule itself is `destinationRefusal`, which is where it is
-    // said and where it is tested; this only names the two folders, which
-    // only this file knows.
+    // bundle, the engine's home and the home waiting for a restart (issue
+    // 206), in either direction and through their links. The rule itself is
+    // `destinationRefusal`, which is where it is said and where it is
+    // tested; this only names the folders, which only this file knows. The
+    // one waiting is Settings' own answer, asked at each judgement: it
+    // changes while the app runs, so it is never read here and kept.
     const refuseDestination = (folder: string): Promise<string | null> =>
-      destinationRefusal(folder, { bundleRoots, engineHome: config.home })
+      destinationRefusal(folder, {
+        bundleRoots,
+        engineHome: config.home,
+        waitingHome: () => settingsService.view().engine.pending,
+      })
     const destinations = new Destinations({
       projects: store,
       // Parented to the window, so it is modal to it (rules/main.md); only
