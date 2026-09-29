@@ -154,7 +154,7 @@ The two reader columns are a person's, recorded per run in
 
 | Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
-| Layout field, the layout run and its progress line | fixed (D1) | pass | pass | pass (the marks' transitions off) | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
+| The layout run and its progress line | fixed (D1) | pass | pass | pass (the marks' transitions off) | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
 | Re-layout warning | fixed (D1, D8) | pass | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
 | Engine log: a closed disclosure, the box of lines, Copy log (A5.5-13) | swept, open and closed (the box `tabindex="0"`, scrolled by its own `scrollTop`) | swept (the disclosure "The engine's log for this run" and the box "Log lines" named apart; a unit test refuses two elements in the panel sharing a name) | swept | swept | pass (`--text`, `--text-muted` on `--surface-sunken`) | pass | not yet run: a person's | not yet run: a person's |
 | What the build had to fudge | fixed (D9) | pass | pass | pass (the tooltip's fade off) | pass | pass | not yet run: a person's | not yet run: a person's |
@@ -818,7 +818,11 @@ a table).
 
 #### Cell 02, Process
 
-- **Layout run and its progress line.** Before pressing anything, cell 02
+- **Layout run and its progress line.** On a project never laid out the
+  cell opens on one sentence of plain text, "This project is not laid out
+  yet."; on one already laid out there is no such sentence, and the layout
+  and when it was made are the footer's to say (issue 209). Before pressing
+  anything, cell 02
   draws the eight stages at rest (A5.5-10): listen for an image named "The
   layout run's 8 stages, none started." on a project never laid out, or
   "The layout run's 8 stages." on one already laid out. The stations carry

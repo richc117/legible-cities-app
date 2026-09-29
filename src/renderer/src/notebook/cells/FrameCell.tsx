@@ -9,12 +9,17 @@ import { useProject } from '../context'
 
 // Cell 03, Frame and service day: the day the map is drawn for (ADR-045).
 //
-// The day itself comes from the `<dl class="fields">` the project screen
-// carried whole, and the control is `ServiceDay` (A3-04, A5.5-15) - drawn
-// headless, since this cell's heading is the section's heading now, and
-// that heading is where its focus handback lands. The heading and not the
-// toggle inside it: a reflexive Enter after "Draw for this day" would
-// otherwise collapse the cell a person is working in.
+// The day itself is the footer strip's to say (`frameFooter`, A5.5-11), and
+// nothing above the strip states it as a field again (issue 209, DESIGN.md
+// 8.2): the field list the project screen carried whole is gone from this
+// cell. The strip draws nothing until a layout run has answered a window:
+// before a layout the sentence below says the day is the engine's to
+// choose, and over a layout from before the window was kept `ServiceDay`
+// says the day the map was drawn for. The control is `ServiceDay` (A3-04,
+// A5.5-15) - drawn headless, since this cell's heading is the section's
+// heading now, and that heading is where its focus handback lands. The
+// heading and not the toggle inside it: a reflexive Enter after "Draw for
+// this day" would otherwise collapse the cell a person is working in.
 //
 // The cell is named for the frame as well, and holds none of it. Crop,
 // rotate, margin and a clip mask are engine work that the protocol cannot
@@ -94,10 +99,6 @@ export default function FrameCell({ cell, state, open, onToggle }: CellViewProps
     >
       {project !== null && (
         <>
-          <dl className="fields">
-            <dt>Service day</dt>
-            <dd>{project.date ?? 'not yet chosen'}</dd>
-          </dl>
           {project.readOnly ? (
             // A cell with nothing to offer says so in one sentence and
             // offers no disabled stand-in, as cells 04 and 05 do

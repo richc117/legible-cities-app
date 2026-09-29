@@ -424,9 +424,46 @@ const definition = (scope: Locator, term: string): Locator =>
 const text = async (locator: Locator): Promise<string> =>
   ((await locator.textContent({ timeout: SHORT_MS })) ?? '').replace(/\s+/g, ' ').trim()
 
-/** A cell's own fields, the definition list at the top of its body, never its footer's strip. */
+/**
+ * A cell's own fields, the definition list at the top of its body, never
+ * its footer's strip. **Cell 01 is the one cell that has one**: it has no
+ * strip, so nothing else states its Feed, Mode and Agency. Cells 02 and 03
+ * drew one each until issue 209, over a strip stating the same facts; what
+ * those two hold is read from `cellStrip`.
+ */
 const cellFields = (page: Page, id: CellId): Locator =>
   page.locator(`section.cell[data-cell="0${CELL_IDS.indexOf(id) + 1}"] .cell-body > dl.fields`)
+
+/**
+ * A cell's provenance strip, the definition list in its footer: where the
+ * layout, when it was made and the service day are stated, and the only
+ * place they are stated as a term and its value (issue 209). Cells 02, 03
+ * and 06 have one, and only once there is something to be the provenance
+ * of - a layout, a window, a file.
+ *
+ * The strip is older than the checklist this spec follows (pull request
+ * 212, before `FEATURES.checklist`), so reading it is true of every
+ * release the spec accepts, and of the ones that still drew the lists
+ * above it.
+ */
+const cellStrip = (page: Page, id: CellId): Locator =>
+  page.locator(
+    `section.cell[data-cell="0${CELL_IDS.indexOf(id) + 1}"] .cell-footer > dl.cell-provenance`,
+  )
+
+/**
+ * What a row says, or null where it is not drawn. It never throws and never
+ * waits, so it is for a row read *beside* one that was waited for: a strip
+ * draws all its rows at once, and leaves out the one its record lacks.
+ *
+ * When the layout was made is read this way. The field list said it inside
+ * the Layout field's own text, so a layout with no moment was a soft
+ * problem and the run went on; read as a row of its own it must not become
+ * a step that stops, and the soft checks beside each read say what is
+ * missing.
+ */
+const rowText = async (row: Locator): Promise<string | null> =>
+  (await row.count()) === 0 ? null : text(row).catch(() => null)
 
 async function projectsNow(
   page: Page,
@@ -509,8 +546,10 @@ interface Session {
   /** What earlier steps learned, for later ones. */
   caltrainFeed: string | null
   laDay: string | null
+  /** The layout's eight characters, as cell 02's strip shows them. */
   laLayout: string | null
-  laLayoutText: string | null
+  /** When the engine made it, as the strip shows it: the machine's own locale. */
+  laMade: string | null
   exports: string[]
   appVersion: string | null
 }
@@ -601,7 +640,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
     caltrainFeed: null,
     laDay: null,
     laLayout: null,
-    laLayoutText: null,
+    laMade: null,
     exports: [],
     appVersion: null,
   }
@@ -1058,17 +1097,22 @@ test('a release, installed, through docs/acceptance.md', async () => {
         await expect(definition(cellFields(window, 'data'), 'Mode')).toHaveText(record.mode)
         const agency = await text(definition(cellFields(window, 'data'), 'Agency'))
         log.note(`Mode ${record.mode}, Agency ${agency}.`)
-        await expect(definition(cellFields(window, 'frame'), 'Service day')).toHaveText(
+      })
+      // The day, the layout and when it was made are the strips' to say
+      // (issue 209), under cells 03 and 02.
+      await log.soft('the day and the layout, in the strips', async () => {
+        await expect(definition(cellStrip(window, 'frame'), 'Service day')).toHaveText(
           /^\d{4}-\d{2}-\d{2}$/,
         )
-        await expect(definition(cellFields(window, 'process'), 'Layout')).toHaveText(
-          /^[0-9a-f]{8}, made .+$/,
-        )
+        await expect(definition(cellStrip(window, 'process'), 'Layout')).toHaveText(/^[0-9a-f]{8}$/)
+        await expect(definition(cellStrip(window, 'process'), 'Made')).toHaveText(/\S/)
       })
-      session.laDay = await text(definition(cellFields(window, 'frame'), 'Service day'))
-      session.laLayoutText = await text(definition(cellFields(window, 'process'), 'Layout'))
-      session.laLayout = session.laLayoutText.slice(0, 8)
-      log.note(`Drawn for ${session.laDay}, layout ${session.laLayoutText}.`)
+      session.laDay = await text(definition(cellStrip(window, 'frame'), 'Service day'))
+      session.laLayout = await text(definition(cellStrip(window, 'process'), 'Layout'))
+      session.laMade = await rowText(definition(cellStrip(window, 'process'), 'Made'))
+      log.note(
+        `Drawn for ${session.laDay}, layout ${session.laLayout}, made ${session.laMade ?? 'at a time the strip does not say'}.`,
+      )
       log.notAutomated(
         "that the sentence beside the line is the engine's for the last stage that finished: each is replaced by the next, and a short one can go before it is drawn.",
       )
@@ -1306,15 +1350,16 @@ test('a release, installed, through docs/acceptance.md', async () => {
     await runStep(6, [4], async (log) => {
       const window = page()
       await openProject(window, LA)
-      await log.soft('the Layout field', () =>
-        expect(definition(cellFields(window, 'process'), 'Layout')).toHaveText(
-          session.laLayoutText ?? '',
-        ),
-      )
       await log.soft("the cell's footer", async () => {
-        const footer = window.locator('section.cell[data-cell="02"] dl.cell-provenance')
+        const footer = cellStrip(window, 'process')
         const terms = (await footer.locator('dt').allTextContents()).map((t) => t.trim())
         expect(terms).toEqual(['Layout', 'Made', 'Built with', 'Engine now'])
+        // The layout step 4 made, and when: the two the field list stated
+        // above this strip until issue 209.
+        await expect(definition(footer, 'Layout')).toHaveText(session.laLayout ?? '')
+        if (session.laMade !== null) {
+          await expect(definition(footer, 'Made')).toHaveText(session.laMade)
+        }
         await expect(definition(footer, 'Engine now')).toHaveText(pins.engine.version)
       })
 
@@ -1427,7 +1472,8 @@ test('a release, installed, through docs/acceptance.md', async () => {
         await expect(control).toHaveAttribute('min', startDay)
         await expect(control).toHaveAttribute('max', endDay)
       })
-      const layoutBefore = await text(definition(cellFields(window, 'process'), 'Layout'))
+      const layoutBefore = await text(definition(cellStrip(window, 'process'), 'Layout'))
+      const madeBefore = await rowText(definition(cellStrip(window, 'process'), 'Made'))
       const run = window.getByRole('region', { name: 'Layout run' })
 
       const drawFor = async (day: string): Promise<void> => {
@@ -1442,10 +1488,13 @@ test('a release, installed, through docs/acceptance.md', async () => {
         if (!end.ok)
           throw new Error(`the rebuild for ${day} stopped: "${end.sentence}" "${end.message}"`)
         log.note(`Drawn for ${day} in ${end.seconds} s.`)
-        await expect(definition(cellFields(window, 'frame'), 'Service day')).toHaveText(day)
-        await log.soft(`the Layout after ${day}`, () =>
-          expect(definition(cellFields(window, 'process'), 'Layout')).toHaveText(layoutBefore),
-        )
+        await expect(definition(cellStrip(window, 'frame'), 'Service day')).toHaveText(day)
+        await log.soft(`the Layout after ${day}`, async () => {
+          await expect(definition(cellStrip(window, 'process'), 'Layout')).toHaveText(layoutBefore)
+          if (madeBefore !== null) {
+            await expect(definition(cellStrip(window, 'process'), 'Made')).toHaveText(madeBefore)
+          }
+        })
         await log.soft(`cells 04 to 06 ready again after ${day}`, async () => {
           for (const id of ['style', 'lines', 'export'] as const) {
             await expect(cellHeading(window, id)).toHaveAccessibleName(/ ready\b/)
@@ -2507,12 +2556,17 @@ test('a release, installed, through docs/acceptance.md', async () => {
             exact: true,
           }),
         ).toBeVisible()
-        await expect(definition(cellFields(reopened, 'frame'), 'Service day')).toHaveText(
+        await expect(definition(cellStrip(reopened, 'frame'), 'Service day')).toHaveText(
           session.laDay ?? '',
         )
-        if (session.laLayoutText !== null) {
-          await expect(definition(cellFields(reopened, 'process'), 'Layout')).toHaveText(
-            session.laLayoutText,
+        if (session.laLayout !== null) {
+          await expect(definition(cellStrip(reopened, 'process'), 'Layout')).toHaveText(
+            session.laLayout,
+          )
+        }
+        if (session.laMade !== null) {
+          await expect(definition(cellStrip(reopened, 'process'), 'Made')).toHaveText(
+            session.laMade,
           )
         }
         await expect(reopened.getByRole('region', { name: 'Map' })).toBeVisible()

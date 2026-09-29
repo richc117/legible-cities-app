@@ -317,6 +317,13 @@ describe('which cells reach for a footer at all', () => {
   }
   const without = ['DataCell.tsx', 'StyleCell.tsx', 'LinesCell.tsx']
 
+  /** A cell's source without its comments, which name things to say they are gone. */
+  const codeOf = (file: string): string =>
+    readFileSync(join(cells, file), 'utf8')
+      .split('\n')
+      .filter((line) => !/^\s*(\*|\/\/|\/\*)/.test(line))
+      .join('\n')
+
   for (const [file, builder] of Object.entries(withFooter)) {
     it(`${file} draws its own`, () => {
       const source = readFileSync(join(cells, file), 'utf8')
@@ -325,7 +332,25 @@ describe('which cells reach for a footer at all', () => {
       // one cell handing another cell's strip to `Cell`.
       expect(source).toMatch(new RegExp(`footer=\\{${builder.replace('(', '\\(')}`))
     })
+
+    it(`${file} draws no field list above it`, () => {
+      // A fact the strip states is not stated again above it in the open
+      // cell (issue 209, DESIGN.md 8.2). Cells 02 and 03 each drew a
+      // `<dl class="fields">` whose terms were the strip's own first rows;
+      // `process-cell.test.tsx` and `frame-cell.test.tsx` hold what those
+      // two render, and this holds the next cell to gain a strip, or the
+      // next branch to give one of these three its list back.
+      expect(codeOf(file)).not.toMatch(/className="fields"/)
+    })
   }
+
+  it('DataCell.tsx keeps its field list, having no strip to say it for it', () => {
+    // The other half of the same rule, so the guard above cannot pass by
+    // the class having been renamed under it: cell 01's Feed, Mode and
+    // Agency are stated once, by the list, because nothing else states
+    // them.
+    expect(codeOf('DataCell.tsx')).toMatch(/className="fields"/)
+  })
 
   for (const file of without) {
     it(`${file} draws none`, () => {
@@ -367,10 +392,11 @@ describe('no term the strip draws is caught by a page-wide locator in the e2e su
   // or a definition list cannot widen, and `getByRole` cannot reach a
   // `<dt>`, which has no accessible name - so `getByText` is the vector.
   // The `<dd>` values are dates, versions and filenames, which are data
-  // rather than a list this file could hold, and the one page-rooted
-  // `getByRole('definition')` filter in the suite (`layout.spec.ts`,
-  // `hasText: /made/`) was read by hand: the strip's term is `Made`, on a
-  // `<dt>`, and no value it draws carries the word.
+  // rather than a list this file could hold. `layout.spec.ts` had a
+  // page-rooted `getByRole('definition')` filtered by `hasText: /made/`,
+  // which found the moment in cell 02's field list and was read by hand
+  // against the strip; the list is gone (issue 209), and that test now
+  // reads the strip's own `Made` row, scoped to cell 02.
   //
   // What to do when it fails: **scope the locator to what it means**, as
   // `export.spec.ts` now scopes that one to the export run's status line.

@@ -8,16 +8,19 @@ import { processFooter } from '../CellFooter'
 import type { CellViewProps } from '../cells'
 import { useProject } from '../context'
 import EngineLog from '../EngineLog'
-import Time from '../Time'
 
 // Cell 02, Process: the layout the map is drawn from, and the run that
 // made it (ADR-045).
 //
-// The layout's id and when it was made come from the `<dl class="fields">`
-// the project screen carried whole (A3-05, A3-06); the run's own panel is
-// `LayoutRun`, which since A5.5-10 draws the eight stages before the run
-// starts as well as during it, and the diagnostics are the panel A3-03
-// built.
+// The layout's id and when it was made are the footer strip's to say
+// (`processFooter`, A5.5-11), and nothing above the strip says them again
+// (issue 209, DESIGN.md 8.2): the field list the project screen carried
+// whole (A3-05, A3-06) stated both five lines above the strip stating
+// both, through the same `Time`. The strip draws nothing before there is a
+// layout, so that is the one case the cell says in a line of its own. The
+// run's own panel is `LayoutRun`, which since A5.5-10 draws the eight
+// stages before the run starts as well as during it, and the diagnostics
+// are the panel A3-03 built.
 //
 // Between the two sits the engine's own log for the run that is going
 // (A5.5-13), which is where a run doing something inexplicable can be read
@@ -30,14 +33,16 @@ import Time from '../Time'
  * from, in the eight characters a screen shows it by, and when the engine
  * made it.
  *
- * The same two facts as the field list inside the open cell, and read the
- * same way - the moment in the person's own locale, as `Time` renders it -
- * because a row and the field below it saying the same thing differently
- * is a difference a person has to stop and resolve.
+ * The same two facts as the strip under the open cell, and read the same
+ * way - the moment in the person's own locale, as `Time` renders it -
+ * because a row and the strip below it saying the same thing differently
+ * is a difference a person has to stop and resolve. The row is drawn only
+ * while the cell is collapsed and the strip only while it is open, so the
+ * two are never on the screen together (issue 209).
  *
  * A project with no layout says so rather than saying nothing: "not laid
  * out yet" is the most useful thing this cell can tell someone, and it is
- * what the field says too.
+ * what the open cell says too, as a sentence.
  */
 export function processSummary(
   project: Pick<ProjectRecord, 'layout' | 'made'> | null,
@@ -64,20 +69,12 @@ export default function ProcessCell({ cell, state, open, onToggle }: CellViewPro
     >
       {project !== null && (
         <>
-          <dl className="fields">
-            <dt>Layout</dt>
-            <dd>
-              {project.layout === null ? (
-                'not laid out yet'
-              ) : project.made === null ? (
-                shortLayoutId(project.layout)
-              ) : (
-                <>
-                  {shortLayoutId(project.layout)}, made <Time iso={project.made} />
-                </>
-              )}
-            </dd>
-          </dl>
+          {/* The one thing the strip cannot say, because it draws nothing
+              until there is a layout to be the provenance of. A plain
+              line, true of a project this version may not write as well,
+              so it promises no button: the run's own panel is below it
+              wherever there is one to press. */}
+          {project.layout === null && <p className="prose">This project is not laid out yet.</p>}
           {!project.readOnly && (
             <LayoutRunView run={run} project={project} engine={engine} disabled={exporting} />
           )}
