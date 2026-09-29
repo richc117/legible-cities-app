@@ -5,7 +5,7 @@ transit timetable (a GTFS feed) into a schematic map and an animation, and
 exports stills, reels and GIFs. This page is for installing it from a
 release. You do not need anything else: the app carries everything it runs.
 
-The app is **pre-alpha**, and its installers are **not signed** yet. Your
+The app is a **pre-release**, and its installers are **not signed**. Your
 computer will warn you before it opens the app the first time, and this page
 shows you how to get past that warning on each system.
 

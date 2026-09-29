@@ -60,8 +60,11 @@ canonical set: a phase (`phase:0` … `phase:6`), a type (`type:spike`,
 `type:spec`, `type:feature`, `type:bug`, `type:chore`, `type:docs`), an area
 (`area:engine`, `area:shell`, `area:sidecar`, `area:capture`, `area:export`,
 `area:ui`, `area:ci`, `area:release`) and a size (`size:S`, `size:M`,
-`size:L`). The milestones are the seven phases and `Phase 1.5 - First
-reel` between Engine boundary and Library and inspect.
+`size:L`). The milestones are the seven phases, `Phase 1.5 - First
+reel` between Engine boundary and Library and inspect, `Phase 5.5 - The
+notebook` and `Phase 5.6 - The front door` between Export and Release
+readiness, and `After 0.1.0`. `CONTRIBUTING.md` has the labels as the
+board holds them.
 
 ## Checking it later
 

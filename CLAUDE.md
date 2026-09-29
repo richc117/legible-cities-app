@@ -7,14 +7,78 @@ this app never draws a map of its own.
 
 ## Where things stand
 
-Pre-alpha. The repository holds its charter (licence, contribution guide,
+Pre-release: release candidates (`v0.1.0-rc.N`) are published and pass the
+automated acceptance run, and `v0.1.0` waits on the people at the release
+gate. The screen has been rebuilt twice over since the features below were
+first written, so read this before the history under it.
+
+**The project screen is a notebook of six numbered cells** (ADR-045, Phase
+5.5; `specs/028-the-notebook/contracts/run-graph.md` is its one
+specification), in one scrolling column under a map that is
+pinned while the cells are edited. The panels the history below describes
+still exist as files; each now sits inside a cell, and **there are no tabs**:
+the kit's `Tabs` control was deleted with the tab strip (A5.5-23).
+
+| Cell | Holds | Adapter under `src/renderer/src/notebook/cells/` |
+| --- | --- | --- |
+| 01 Data | `Inspect`, `StageView`, the feed's download (`DownloadLine`) | `DataCell.tsx` |
+| 02 Process | `LayoutRun`, the engine's log (`EngineLog`), `Diagnostics` | `ProcessCell.tsx` |
+| 03 Frame and service day | `ServiceDay`, the transport (`Transport`: scrub, play, speed) | `FrameCell.tsx` |
+| 04 Style | `ThemeSwitch` | `StyleCell.tsx` |
+| 05 Lines | `LineColours`, `LineOrder` | `LinesCell.tsx` |
+| 06 Export | `ExportTab` (the export's options), which draws `ExportRun` itself | `ExportCell.tsx` |
+
+Around the cells, under `src/renderer/src/notebook/` unless a path says
+otherwise: the project's own header with its one status line and **Run
+all**, which brings the map up to date with cells 01 to 05 and never runs
+the export (`ProjectHeader.tsx`, and `src/renderer/src/runAll.ts`); the
+rail, a numbered stepper that is a `<nav>` and
+deliberately not a tablist, with the project's **Outputs** under it
+(`Rail.tsx`, `Outputs.tsx`); the pinned preview, the one place the engine's
+page is on screen (`Preview.tsx`, and
+`src/renderer/src/styles/preview.css`); and the foot,
+where a project is renamed and deleted (`ProjectFooter.tsx`). A cell's
+state is derived, never stored: `src/renderer/src/runGraph.ts` computes it
+from the record and the runs in flight, and the record's `drawn` says what
+the map on screen was drawn from
+(`specs/028-the-notebook/contracts/run-graph.md`). Cheap edits (colours,
+order, theme) still redraw themselves; *stale* is for the expensive edges
+only. `useProjectState.ts` holds what the cells share (the record and its
+writers, the two runs and whether either is going, the rename and the
+delete) and `context.ts` carries it to them. What belongs to one component
+stays in it: which cells are open is `Notebook.tsx`'s, the outputs list is
+`Outputs.tsx`'s.
+
+**The Library is the front door** (Phase 5.6): "Your projects", then
+"Sample cities" - every preset in the engine's registry as a card, drawn
+from `feeds.list` alone with nothing downloaded - then "Your feeds"
+(`Library.tsx`, `SampleCities.tsx`). A press on a card makes the project
+and opens its notebook with the layout already starting; the feed is
+fetched then, its download drawn in cell 01 and stopped by the run's own
+cancel, which keeps nothing (issue 178, engine v0.10.0). New project is one
+sheet with three sources, which replaced the create dialog and the
+add-a-feed dialog (`NewProjectSheet.tsx`).
+
+**The interface's palette is the app's own** (ADR-044): Night and
+Parchment in Settings, in `styles/theme.css`, no longer a copy of the
+engine page's. A project's map still says Warm dark and Sepia, because
+those are what the engine draws. The mark is the brand icon, and the
+progress line is drawn in the line vocabulary of `docs/DESIGN.md` section
+10.
+
+What follows is the order things were built in, and it is still accurate
+about why each feature is as it is. Where it and the paragraphs above
+disagree about where something is or what it is called, the paragraphs
+above are right.
+
+The repository holds its charter (licence, contribution guide,
 security policy, templates, decision-record convention), its hygiene tooling
 (`bin/preflight`, gitleaks, the git hooks, the CI checks), its specs
 (Spec Kit, the constitution), and the Phase 0 spike reports and decision
 records under `docs/adr/` - and the Electron skeleton (A0-09): one window
 opening to the Library on the `app://local` origin, the project object
 (A1-05: a versioned record under the engine home, created, renamed and
-deleted from the Library through a five-method preload bridge), the engine's
+deleted through the preload bridge, five methods then and fourteen now), the engine's
 supervisor (A1-01: the pinned engine started as a child process and spoken
 to over JSON-RPC on its stdio, with a handshake, restart and a clean
 shutdown; `docs/ARCHITECTURE.md`, "The engine process"), the dev loop
@@ -70,7 +134,7 @@ stale or the wrong architecture (`scripts/check-vendored.mjs`), compiles
 the runtime's bytecode as unchecked hashes so nothing is written inside a
 signed bundle, packages a dmg per Mac and an nsis installer, launches the
 packaged app once and runs every bundled tool from inside it, and checks
-the bundle did not change (ADR-035). They are unsigned until A6-05. The ffmpeg they carry is our own build (#95, ADR-040):
+the bundle did not change (ADR-035). They are unsigned. The maintainer decided that the first release ships that way (issue 38, A6-05); ADR-037 records it and stays Proposed until the results of the person's runs are written into it. The ffmpeg they carry is our own build (#95, ADR-040):
 `scripts/vendor-ffmpeg.sh` builds FFmpeg 9.0.1 and x264 at a pinned commit
 natively on each target (MSYS2 UCRT64 on Windows), with
 `--disable-everything` and only what the export and its checks use, x264
@@ -129,20 +193,20 @@ and while it is up every engine request, every export and every write to a
 project record is refused, so nothing lands in a folder being walked away
 (`src/main/settings.ts`, `src/main/settings-ipc.ts`).
 
-The export tab (A5-01) widened the reel's one button: the project panel is
-two tabs, Map (what the screen held before) and Export, a `Tabs` control in
-the kit on the WAI-ARIA pattern. Export offers the thirteen social presets
+The export's options (A5-01) widened the reel's one button. They were a tab
+once and are cell 06 now. Export offers the thirteen social presets
 from `export.presets` grouped by platform, a storyboard from
 `export.storyboards` for a video or GIF, and view, labels, title, clock,
 start time, lines, quality and a filename tag; the choice is the project's,
-written to the record's `export` the moment it is made. While the tab is
+written to the record's `export` the moment it is made. While cell 06 is
 open the map's own frame is the preview, sent to the address
 `export.plan` answers with `safe` on exactly where the preset has safe
 zones, and **an export's plan never carries `safe`**. A still is captured as
 one beat of one frame pinned at the plan's `at`, since the app's capture
 takes frames from beats and a still plan has none
 (`src/renderer/src/ExportTab.tsx`, `src/renderer/src/exportChoice.ts`,
-`src/main/export.ts`).
+`src/main/export.ts`). An export goes to the folder Settings names, or to
+the project's own where it has one (A5.5-19).
 
 The logs (A6-03) came next: `main.log` and `engine.log` in the platform's
 log folder behind the sink in `src/main/log.ts`, routed by the `engine`
@@ -183,7 +247,7 @@ once, emptied and refilled a frame later so a repeat is spoken; nothing is
 written to disk.
 
 The determinism test (A5-04) exports the committed BART fixture twice
-through the Export tab against the real engine and the vendored ffmpeg and
+through cell 06 against the real engine and the vendored ffmpeg and
 compares the two captures frame by frame in RGB at a tolerance of 8, with
 the capture required to move, the stored layout checked unmoved and no
 `graph.build` sent; the delivered GIFs are checked for structure only,
@@ -209,8 +273,10 @@ dialog for keyboard reach, names, visible focus, reduced motion and
 contrast in both themes, fixed the small defects it found (focus handed on
 when a pressed control goes, `src/renderer/src/focusHandback.ts`; control
 edges, placeholders and the sepia primary fill), sweeps them in
-`tests/e2e/accessibility.spec.ts`, and records the result per screen in
-`docs/accessibility.md`, whose VoiceOver and Narrator columns are a person's.
+`tests/e2e/accessibility.spec.ts` and, for the notebook,
+`tests/e2e/notebook-a11y.spec.ts` (A5.6-09), in Night and then in
+Parchment, and records the result per screen in `docs/accessibility.md`,
+whose VoiceOver and Narrator columns are a person's.
 The people at the release gate follow documents that quote the app's own
 sentences and control names, so changing one means changing them too
 (A6-04): the acceptance checklist (`docs/acceptance.md`), the stranger's
@@ -283,8 +349,8 @@ npm run test:acceptance               # the acceptance checklist over an install
 ```
 
 `.github/workflows/ci.yml` runs lint, typecheck, test, build and the smoke
-test on Ubuntu (under xvfb), macOS and Windows for every push and pull
-request. Add a script here, and a permission rule if it is a check, at the
+test on Ubuntu (under xvfb), macOS and Windows for every pull request and
+every push to `main`. A branch with no pull request runs none of it. Add a script here, and a permission rule if it is a check, at the
 same time.
 
 `gitleaks` and `pre-commit` are development tools, not dependencies; install
@@ -398,8 +464,9 @@ Stated before the first implementation, and kept since.
   wrong, and ADR-028 records why.
 - **Never write inside the app bundle.** The engine's home is
   `SCHEMATIC_HOME` under the user-data folder; exports go where the user
-  chooses (`LEGIBLE_EXPORT_FOLDER`, or a `Legible Cities` folder on the
-  desktop until Settings exist), and an export's frames sit under the
+  chooses (a project's own folder where it chose one; else
+  `LEGIBLE_EXPORT_FOLDER`, else the folder Settings names, else a `Legible
+  Cities` folder on the desktop), and an export's frames sit under the
   engine home only while it runs.
 - **Child processes**: argument arrays, never shell strings; `windowsHide:
   true`; a timeout; stderr captured to the log; a clean shutdown on quit.

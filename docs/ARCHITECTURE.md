@@ -33,9 +33,11 @@ what.
 - **Preload** (`src/preload/`): a `contextBridge` exposing `window.api` and
   nothing else. `contextIsolation` on, `nodeIntegration` off, `sandbox` on.
 - **Renderer** (`src/renderer/`): React. It draws the Library (the front
-  door) and its New project sheet, and a project view with rename, delete, the layout run's progress
-  line and the viewer's sandboxed frame; it knows projects by identifier
-  and never sees a path. It never draws a map: the engine's animation page
+  door) and its New project sheet, and a project as a notebook of six
+  cells under the viewer's sandboxed frame, with a header, a rail and a
+  foot (ADR-045; `docs/DESIGN.md` sections 8.2 and 9, and
+  `specs/028-the-notebook/contracts/run-graph.md`, say how); it knows
+  projects by identifier and never sees a path. It never draws a map: the engine's animation page
   is the viewer (constitution, principle I).
 
 ## The origin: `app://local`
@@ -68,7 +70,7 @@ into it from the privileged side (ADR-028).
 ## The bridge: `window.api`
 
 Typed in `src/shared/api.ts`, which the preload and the renderer both
-import. Nine methods under `api.projects`, three under `api.viewer`, the
+import. Fourteen methods under `api.projects`, three under `api.viewer`, the
 engine under `api.engine`, the export under `api.export`, one clipboard
 write under `api.clipboard`, a job's copied log under `api.jobs`, and the
 app's own settings under `api.settings`:
@@ -104,7 +106,7 @@ app's own settings under `api.settings`:
 | `engine.onState`, `onProgress`, `onLog` | subscriptions; each returns its unsubscribe |
 
 | `export.run(projectId, choice)` | an export of one preset with its storyboard and options, as `{ id, result }`: the main process asks the engine for the plan, takes the page's frames itself and asks the engine to encode them; the result is the file's name and size, never its path (A5-02b, A5-01) |
-| `export.preview(projectId, choice)` | the address the map's frame shows while the export tab is open: the engine's plan for the choice with the safe zones asked for exactly where the preset has them; `{ ok, url, width, height, notes }` or the engine's refusal as data; nothing is captured or written (A5-01) |
+| `export.preview(projectId, choice)` | the address the map's frame shows while cell 06 is open: the engine's plan for the choice with the safe zones asked for exactly where the preset has them; `{ ok, url, width, height, notes }` or the engine's refusal as data; nothing is captured or written (A5-01) |
 | `export.cancel(id)` | stops it wherever it is: the plan or encode request is cancelled, the capture aborted |
 | `export.reveal(id)` | shows a finished export's file in the platform's file browser; the page names the export, the main process knows the file |
 | `export.onProgress` | a subscription; each report names the stage (plan, capture, encode), how far it is, and a sentence |
@@ -945,8 +947,8 @@ ADR-028.
 
 ## Checks
 
-`.github/workflows/ci.yml` runs on Ubuntu, macOS and Windows for every push
-and pull request: lint, typecheck, unit tests, a build, and the Playwright
+`.github/workflows/ci.yml` runs on Ubuntu, macOS and Windows for every pull
+request and every push to `main`: lint, typecheck, unit tests, a build, and the Playwright
 Electron tests over the built app. The smoke test launches it, asserts the
 title, reads the empty Library, probes the origin's refusals from inside
 the page, and quits; the lifecycle test creates a project from the Library,
@@ -1207,10 +1209,10 @@ and is in no message the app sends anywhere (`Destinations` in
 take turns through a per-project chain in the store, so a choice made during
 a re-layout cannot write back the old layout. A saved
 preset or storyboard the engine no longer lists falls back to the reel,
-and the tab says which name was dropped.
+and cell 06 says which name was dropped.
 
-While the tab is open the map's own frame is the preview: not a second
-frame, because the viewer's bridge holds one per project. The tab asks
+While cell 06 is open the map's own frame is the preview: not a second
+frame, because the viewer's bridge holds one per project. The cell asks
 `export.preview` 250 ms after the last change, drops an answer to anything
 but the newest question, and hands the answer's address to the viewer,
 which sends the same sandboxed frame there at the plan's aspect ratio. The

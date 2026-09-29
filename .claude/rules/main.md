@@ -6,9 +6,9 @@ paths:
 
 # The main and preload processes
 
-There is no application code yet; these rules exist so the first commit that
-adds `src/main/` or `src/preload/` does not have to rediscover them. See
-`CLAUDE.md` for the short form and `docs/adr/` for why.
+These rules were written before the first commit that added `src/main/` and
+`src/preload/`, and every one has been paid for since. See `CLAUDE.md` for
+the short form and `docs/adr/` for why.
 
 ## Child processes
 
@@ -42,10 +42,11 @@ channel and let the preload make the promise.
 
 Never inside the app bundle: it is read-only on macOS and it is wiped on
 update. The engine's home is `SCHEMATIC_HOME` under the user-data folder;
-exports go where the user chose: `LEGIBLE_EXPORT_FOLDER`, or a `Legible
-Cities` folder on the desktop until Settings exist, in a folder per
-project. An export's frames live under the engine home (`frames/<token>/`)
-only while it runs, and a start empties that folder - **but only if the app
+exports go where the user chose: a project's own folder where it chose
+one, else `LEGIBLE_EXPORT_FOLDER`, else the folder Settings names, else a
+`Legible Cities` folder on the desktop; in a folder per project. An
+export's frames live under the engine home (`frames/<token>/`) only while
+it runs, and a start empties that folder - **but only if the app
 made it**. The home is a setting and can name anybody's directory, so a
 `frames` folder the app did not create carries no mark and is left alone.
 Every folder above it is resolved through its links, and a link where the

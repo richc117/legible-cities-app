@@ -6,27 +6,32 @@ what keeps it coherent as it grows.
 ## Where things stand
 
 The repository holds its charter, the Phase 0 spike reports and decision
-records, and the application so far: one window, a Library of projects,
-the `app://local` origin, the engine supervised as a child process, a
-layout run and the viewer, with checks on three platforms (`README.md`,
-"Developing"). The roadmap is the milestones on this repository, in
-order: Phase 0 (foundation and spikes),
-Phase 1 (engine boundary), First reel (one preset feed through layout,
-viewer and export, before anything broadens), then Phases 2 to 6 through
-release readiness. An issue with the `type:spike` label is a timeboxed
+records, and the application: a front door of projects and sample cities,
+a project as a notebook of six cells under its map, the engine supervised
+as a child process, and exports for the engine's social presets, with
+checks on three
+platforms (`README.md`, "What it does" and "Developing"). The roadmap is
+the milestones on this repository, in order: Phase 0 (foundation and
+spikes), Phase 1 (engine boundary), First reel (one preset feed through
+layout, viewer and export, before anything broadens), Phases 2 to 5, then
+5.5 (the notebook) and 5.6 (the front door), and Phase 6, release
+readiness. An issue with the `type:spike` label is a timeboxed
 experiment whose deliverable is a decision record, not code.
 
 ### Labels, milestones and issue codes
 
-Issues carry four labels: a phase (`phase:0` to `phase:6`), a type
-(`type:spike`, `type:spec`, `type:feature`, `type:bug`, `type:chore`,
-`type:docs`), an area (`area:engine`, `area:shell`, `area:sidecar`,
-`area:capture`, `area:export`, `area:ui`, `area:ci`, `area:release`) and a
-size (`size:S`, `size:M`, `size:L`). The milestones are the seven phases and one
-between them: Foundation, Engine boundary, First reel, Library and inspect,
-Schematic, Style, Export, Release readiness. First reel carries no phase
-label of its own; its issues keep the label of the capability they belong
-to, and the milestone says when. The maintainer creates labels and milestones before the
+Planned issues carry four labels: a phase (`phase:0` to `phase:6`, and
+`phase:5.5`), a type (`type:spike`, `type:feature`, `type:chore`,
+`type:docs`), an area (`area:shell`, `area:sidecar`, `area:capture`,
+`area:export`, `area:ui`, `area:ci`, `area:release`) and a size (`size:S`,
+`size:M`, `size:L`). A defect found along the way carries `bug`, and
+`accessibility` where it is one. The milestones are the seven phases,
+three between them and one after: Foundation, Engine boundary, First reel
+(1.5), Library and inspect, Schematic, Style, Export, The notebook (5.5),
+The front door (5.6), Release readiness, and After 0.1.0. First reel
+carries no phase label of its own; its issues keep the label of the
+capability they belong to, and the milestone says when. The front door's
+issues carry `phase:5.5`. The maintainer creates labels and milestones before the
 first issues are posted; the issue templates apply a type label only when it
 already exists.
 
@@ -48,6 +53,14 @@ number. It is a reading aid, not something a tool checks.
    branch protection refuses a direct push, the maintainer's included.
 4. **Review.** A maintainer reviews; automated checks must pass; the pull
    request template's checklist must be honest.
+   **A failed check is re-run once before it is believed**
+   (`gh run rerun <id> --failed`). The end-to-end tests launch a real
+   application on shared runners, and a few of them still fail now and
+   then for reasons of their own (issue 222 tracks the one seen most
+   often so far). A
+   failure that comes back is the change's until `main` has been run the
+   same number of times; one that does not is recorded on the issue that
+   tracks it, with the run's id, rather than forgotten.
 5. **Squash merge.** `main` reads as one commit per issue.
 
 ## Commits
@@ -170,7 +183,7 @@ there.
 - No new secret-scanner finding; no absolute path, address or key in the
   diff. `pre-commit run --all-files` is clean.
 - The pull request says what was tested by hand and on which operating system.
-- The installer still builds after the merge, once there is one.
+- The installers still build after the merge (`build.yml`).
 
 ## Decisions
 
