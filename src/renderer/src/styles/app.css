@@ -376,19 +376,40 @@ body {
 
 /* Lists: each entry one full-width button, a dense row. */
 
+/* One column, as wide as the list and no wider: left to size itself, the
+   column grows to the longest word in it, and a name with no space in it
+   made every row wider than the page. */
 .entries {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   border-top: var(--border-width) solid var(--border);
 }
 
+/* A row is as tall as what it holds, and one control tall at least. The
+   height is said, because the kit's base stylesheet gives every native
+   button the control's height and a minimum does not undo it: a project
+   whose name or facts took a second line hung below its own rule, over
+   the row after it (issue 269).
+
+   It wraps, as a feed's row does: where the name and the facts do not fit
+   on one line the facts go under the name, so neither is squeezed to make
+   room for the other, and the facts start where the name does. On one
+   line the name is at the near edge and the facts at the far one. The
+   kit's buttons centre what they hold, which a row does not.
+
+   The name and its facts are one project's, so their lines sit closer than
+   two rows do. */
 .entry {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
   align-items: baseline;
-  gap: var(--space-4-3);
+  gap: var(--space-2-2) var(--space-4-3);
   width: 100%;
+  height: auto;
   min-height: var(--control-height);
   padding: var(--space-2-2) var(--space-4-2);
   border: 0;
@@ -406,15 +427,21 @@ body {
   background: var(--surface-hover);
 }
 
+/* A name can be as long as a name may be with no space in it. It is never
+   wider than its row and breaks where it must, rather than run out of the
+   row's far edge; a name that fits is never broken to make room. */
 .entry-name {
+  max-width: 100%;
+  overflow-wrap: break-word;
   font-weight: var(--weight-strong);
 }
 
 .entry-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-4-3);
-  margin-left: auto;
+  /* Facts that take a second line are one project's still, so the lines sit
+     closer than the facts do. */
+  gap: var(--space-2-2) var(--space-4-3);
   font-size: var(--font-ui-small);
   line-height: var(--line-ui-tight);
   color: var(--text-faint);

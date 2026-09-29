@@ -115,6 +115,92 @@ test('follows the platform theme and measures as the design document says', asyn
   })
 })
 
+test('a Library row holds what it has, however many lines that takes', async () => {
+  // Issue 269. The kit gives every native button one control's height, and
+  // a row that wrapped hung below its own rule, over the row after it.
+  await withApp(async (page) => {
+    const long = 'Los Angeles County Metropolitan Transportation Authority, Metro Rail'
+    // As long as a name may be, with nowhere in it to break.
+    const unbroken = 'Metropolitan'.repeat(10)
+    for (const name of ['Short', long, unbroken])
+      await page.evaluate(
+        (name) =>
+          (globalThis as unknown as Bridge).api.projects.create({ name, feed: 'la-metro-rail' }),
+        name,
+      )
+    await page.reload()
+    const rows = page.getByRole('list', { name: 'Projects' }).getByRole('button')
+    await expect(rows).toHaveCount(3)
+
+    const measured = await rows.evaluateAll((all) =>
+      all.map((row) => {
+        const box = row.getBoundingClientRect()
+        const words = document.createRange()
+        words.selectNodeContents(row)
+        const drawn = [...words.getClientRects()]
+        // The name's own lines: one rectangle for each line its text takes.
+        const name = document.createRange()
+        name.selectNodeContents(row.querySelector('.entry-name') as Element)
+        return {
+          name: row.getAttribute('aria-label'),
+          top: box.top,
+          bottom: box.bottom,
+          height: box.height,
+          above: Math.max(...drawn.map((one) => box.top - one.top)),
+          below: Math.max(...drawn.map((one) => one.bottom - box.bottom)),
+          beside: Math.max(
+            ...drawn.map((one) => Math.max(one.right - box.right, box.left - one.left)),
+          ),
+          // Whatever the row holds, words or not.
+          held: row.scrollHeight <= row.clientHeight && row.scrollWidth <= row.clientWidth,
+          nameLines: [...name.getClientRects()].filter((one) => one.width > 0).length,
+          nameFrom: name.getBoundingClientRect().left - box.left,
+          wide: box.width,
+        }
+      }),
+    )
+    const lines = (name: string): number | undefined =>
+      measured.find((row) => row.name === `Open ${name}`)?.nameLines
+    // The test is about a row that has to break its name, so it says so if
+    // this one did not; and a name that fits is never broken to make room,
+    // which a rule that lets a name break anywhere does to "Short".
+    expect(lines(unbroken), 'the name with no space in it is broken').toBeGreaterThan(1)
+    expect(lines('Short'), 'a short name is on one line').toBe(1)
+    expect(lines(long), 'a name that fits its row is on one line').toBe(1)
+    // Every row is as wide as the list: a column left to size itself grows
+    // to the longest word in it, and takes every row with it.
+    const list = await page
+      .getByRole('list', { name: 'Projects' })
+      .evaluate((el) => el.getBoundingClientRect().width)
+    for (const row of measured) {
+      expect(row.wide, `${row.name}: as wide as the list`).toBeCloseTo(list, 0)
+      // From the near edge, which the kit's buttons do not do by themselves.
+      expect(row.nameFrom, `${row.name}: the name reads from the near edge`).toBeLessThan(28)
+      expect(row.above, `${row.name}: nothing above its box`).toBeLessThanOrEqual(1)
+      expect(row.below, `${row.name}: nothing below its box`).toBeLessThanOrEqual(1)
+      expect(row.beside, `${row.name}: nothing beside its box`).toBeLessThanOrEqual(1)
+      expect(row.held, `${row.name}: the row holds all it has`).toBe(true)
+      // One control tall at the least, and as tall as its lines beyond that.
+      expect(row.height, `${row.name}`).toBeGreaterThanOrEqual(28)
+    }
+    // One under the other, none over another.
+    const down = [...measured].sort((a, b) => a.top - b.top)
+    for (let at = 1; at < down.length; at += 1)
+      expect(
+        down[at].top,
+        `${down[at].name} starts where the row above it ends`,
+      ).toBeGreaterThanOrEqual(down[at - 1].bottom - 1)
+    // And the sample cities, which are there with or without an engine,
+    // are under the last row.
+    const after = await page
+      .getByRole('heading', { level: 2, name: 'Sample cities' })
+      .evaluate((el) => el.getBoundingClientRect().top)
+    expect(after, 'the heading after the list is under it').toBeGreaterThanOrEqual(
+      down[down.length - 1].bottom,
+    )
+  })
+})
+
 test('the New project sheet is the kit at the document density, keyboard first', async () => {
   await withApp(async (page) => {
     await page.getByRole('button', { name: 'New project' }).click()

@@ -23,6 +23,7 @@ import {
   type Locator,
   type Page,
 } from '@playwright/test'
+import type { Api } from '../../src/shared/api'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 import { standInPage } from '../support/standInPage'
 import {
@@ -1901,6 +1902,94 @@ test('the projects list is newest opened first, and says how far each project ha
     await page.getByRole('button', { name: 'Back to Library' }).click()
     await expect.poll(names).toEqual(['First', 'Second'])
     await expect(page.getByRole('button', { name: 'Open First' })).toContainText(/Opened /)
+  })
+})
+
+// Where a row's facts sit (issue 269). On the name's line they are at the
+// row's far edge; on a line of their own they start where the name does.
+// Which of the two a row is depends on the face its words are set in: a
+// laid-out project's facts are a little narrower than the row, so they fit
+// beside a short name on one platform and not on another. Both are made
+// here, and whichever a row turns out to be, its rule is held.
+test('a row’s facts end at the far edge of the name’s line, or start under the name', async () => {
+  const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
+  await withApp(engineHome, async (page) => {
+    const list = page.getByRole('list', { name: 'Projects' })
+    // The shorter feed key is what lets the second row's facts fit.
+    for (const [name, feed] of [
+      ['First', 'la-metro-rail'],
+      ['Bay', 'bart'],
+    ] as const) {
+      await page.evaluate(
+        (project) =>
+          (globalThis as unknown as { api: Api }).api.projects.create({
+            name: project.name,
+            feed: project.feed,
+          }),
+        { name, feed },
+      )
+      await page.reload()
+      await openProject(page, name)
+      await page.getByRole('button', { name: /lay out/i }).click()
+      await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+      await page.getByRole('button', { name: 'Back to Library' }).click()
+      await expect(page.getByRole('button', { name: `Open ${name}` })).toContainText(
+        'finished up to 05 Lines',
+      )
+    }
+    // And one that is not laid out, whose facts take two lines anywhere.
+    await page.evaluate(() =>
+      (globalThis as unknown as { api: Api }).api.projects.create({
+        name: 'Not laid out',
+        feed: 'la-metro-rail',
+      }),
+    )
+    await page.reload()
+    await expect(list.getByRole('button')).toHaveCount(3)
+
+    const rows = await list.getByRole('button').evaluateAll((all) =>
+      all.map((row) => {
+        const box = row.getBoundingClientRect()
+        const style = getComputedStyle(row)
+        const name = (row.querySelector('.entry-name') as Element).getBoundingClientRect()
+        const facts = (row.querySelector('.entry-meta') as Element).getBoundingClientRect()
+        return {
+          name: row.getAttribute('aria-label'),
+          under: facts.top >= name.bottom - 1,
+          nameFrom: name.left - (box.left + Number.parseFloat(style.paddingLeft)),
+          factsFrom: facts.left - name.left,
+          factsAfterName: facts.left - name.right,
+          factsTo: box.right - Number.parseFloat(style.paddingRight) - facts.right,
+        }
+      }),
+    )
+    for (const row of rows) {
+      expect(
+        Math.abs(row.nameFrom),
+        `${row.name}: the name is at the near edge`,
+      ).toBeLessThanOrEqual(1)
+      if (row.under)
+        expect(
+          Math.abs(row.factsFrom),
+          `${row.name}: facts under the name start where it does`,
+        ).toBeLessThanOrEqual(1)
+      else {
+        expect(
+          Math.abs(row.factsTo),
+          `${row.name}: facts on the name's line end at the far edge`,
+        ).toBeLessThanOrEqual(1)
+        expect(row.factsAfterName, `${row.name}: and come after the name`).toBeGreaterThan(0)
+      }
+    }
+    expect(
+      rows.find((row) => row.name === 'Open Not laid out')?.under,
+      'facts that take two lines are under the name on any face',
+    ).toBe(true)
+    // Said, so a reader of the run knows which rule each row was held to.
+    test.info().annotations.push({
+      type: 'rows',
+      description: rows.map((row) => `${row.name}: ${row.under ? 'under' : 'beside'}`).join('; '),
+    })
   })
 })
 
