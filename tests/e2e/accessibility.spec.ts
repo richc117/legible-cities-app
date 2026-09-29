@@ -144,17 +144,37 @@ test('the Library, its empty state and its three dialogs', async () => {
       // list is read again after the previous removal, and on a slow runner
       // focus could move between locator.press's focus and its key, so the
       // key opened nothing (Linux CI, PR 242).
+      //
+      // And the pair is retried until the confirmation opens, not only the
+      // focus: an Enter that opened nothing failed this loop two runs in
+      // five on macOS before A5.6-09 touched it, and its cause is not
+      // known - the rows are keyed by feed, so a re-read does not replace
+      // the button, and a late focus handback from the previous removal is
+      // as likely. What held focus when an Enter opened nothing is recorded
+      // as an annotation on the test, so the cause can be read off a run
+      // rather than assumed.
       const remove = page.getByRole('button', { name: `Remove ${name}` })
-      await expect(async () => {
-        await remove.focus()
-        await expect(remove).toBeFocused({ timeout: 500 })
-      }).toPass({ timeout: 10_000 })
-      await page.keyboard.press('Enter')
       // The confirmation is one element for every feed: waited for open
       // before its button is pressed, and shut before the next row's, or a
       // slow runner presses into one still closing (Linux CI, PR 233).
       const confirm = page.getByRole('dialog', { name: `Remove ${name}?` })
-      await expect(confirm).toBeVisible()
+      await expect(async () => {
+        // A dialog that opened slowly on the last attempt is open: the
+        // button behind it is inert now, and focusing it would fail.
+        if (await confirm.isVisible()) return
+        await remove.focus()
+        await expect(remove).toBeFocused({ timeout: 500 })
+        await page.keyboard.press('Enter')
+        try {
+          await expect(confirm).toBeVisible({ timeout: 2_000 })
+        } catch (error) {
+          test.info().annotations.push({
+            type: 'enter-opened-nothing',
+            description: `Remove ${name}: focus was on ${await focused()}`,
+          })
+          throw error
+        }
+      }).toPass({ timeout: 15_000 })
       await pressWithKeyboard(confirm.getByRole('button', { name: 'Remove', exact: true }))
       await expect(confirm).toBeHidden()
       await expect(page.getByRole('listitem', { name })).toHaveCount(0)
@@ -172,6 +192,28 @@ async function tokenRgb(page: Page, token: string): Promise<string> {
   const n = Number.parseInt(hex.slice(1), 16)
   return `rgb(${n >> 16}, ${(n >> 8) & 255}, ${n & 255})`
 }
+
+test('the new project sheet while its add runs: the progress line and Cancel the add', async () => {
+  // Ten download reports three seconds apart: long enough for a sweep in
+  // both themes while the add is still going, which is the one state of the
+  // sheet a quick add never leaves on screen (A5.6-09).
+  const p = profile({ add_delay_ms: 3000 })
+  await withApp(p, async (page) => {
+    await page.locator('.empty').getByRole('button', { name: 'New project' }).click()
+    const sheet = page.getByRole('dialog', { name: 'New project' })
+    await sheet.getByRole('radio', { name: 'A feed at an address' }).check()
+    await sheet.getByLabel('Feed address').fill('https://agency.example/gtfs.zip')
+    await sheet.getByRole('button', { name: 'Add the feed' }).click()
+    const run = sheet.getByRole('region', { name: 'Adding the feed' })
+    await expect(run.getByRole('status')).toContainText(/downloaded [\d,]+ of/)
+    await expect(sheet.getByRole('button', { name: 'Cancel the add' })).toBeFocused()
+    await sweep(page, 'the new project sheet, its add running', sheet)
+    // Still running when the sweep ended, or the sweep saw another state.
+    await expect(sheet.getByRole('button', { name: 'Cancel the add' })).toBeVisible()
+    await sheet.getByRole('button', { name: 'Cancel the add' }).click()
+    await expect(run.getByRole('status')).toContainText(/^Cancelled\./)
+  })
+})
 
 test('a confirmation takes nothing while its action runs, and says so', async () => {
   test.setTimeout(120_000)

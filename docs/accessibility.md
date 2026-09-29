@@ -1,32 +1,20 @@
 # Accessibility pass
 
-> **This record describes the project screen as a tab strip, and is rewritten
-> once, at the end of the notebook's work, against the interface that ships
-> (ADR-045).** A5.5-08 replaced the Map and Export tabs with six numbered
-> cells, so the two "Project, … tab" sections below, and the "Tab strip (Map,
-> Export)" row, name a control no screen uses any more. The rows themselves
-> mostly still hold - the panels they describe moved into cells rather than
-> going - but the framing does not, and neither does the walkthrough's order.
-> [Parts added since this pass](#parts-added-since-this-pass) lists what the
-> rewrite has to cover and has no row here yet.
->
-> [`acceptance.md`](acceptance.md) carries the same warning for the same
-> reason. The release gate does not run against this text until the rewrite
-> lands.
-
-Principle VI of the constitution, checked over every screen of the app
-(issue A6-07). This is the record of the **machine half**: keyboard reach,
-labels, visible focus, reduced motion and contrast, checked in code and in
-an end-to-end sweep, with the small defects fixed. The **person's half** -
-every screen with VoiceOver on macOS and Narrator on Windows - comes after
-the release tag, and its two columns are left for it.
+Principle VI of the constitution, checked over every screen of the app.
+The pass was taken over the tab strip (issue A6-07, 2026-09-13) and
+rebuilt for the notebook that replaced it (A5.6-09, 2026-09-28; ADR-045).
+This is the record of the **machine half**: keyboard reach, labels,
+visible focus, reduced motion and contrast, checked in code and in an
+end-to-end sweep, with the small defects fixed. The **person's half** -
+every screen with VoiceOver on macOS and Narrator on Windows - is a
+person's, recorded in [Reader runs](#reader-runs).
 
 | | |
 |---|---|
-| App version | `0.0.0` (`package.json`), branched from `main` at `45b5fff` |
-| Engine pin | as `vendor/pins.json` at that commit |
-| Date | 2026-09-13 |
-| Themes | warm-dark (the default) and sepia |
+| App version | `0.1.0` (`package.json`), the rebuild branched from `main` at `e019cce` |
+| Engine pin | as `vendor/pins.json` at that commit (v0.8.3) |
+| Date | 2026-09-13 (the pass), 2026-09-28 (the rebuild) |
+| Themes | the interface's two, Night (the default) and Parchment (ADR-044); a project's map has its own, Warm dark and Sepia, which the interface's does not follow |
 
 ## Method
 
@@ -42,10 +30,11 @@ the release tag, and its two columns are left for it.
 2. **End-to-end sweep**, `tests/e2e/accessibility.spec.ts` and, since
    A5.5-08, `tests/e2e/notebook-a11y.spec.ts`, which took every check over a
    project's own screen when that screen became a notebook of six cells
-   (ADR-045); the machinery both use is `tests/support/a11y.ts`. This
-   document still describes that screen as a tab strip below, and is
-   rewritten once, at the end of the notebook's work, against the interface
-   that ships (ADR-045). Against the
+   (ADR-045); the machinery both use is `tests/support/a11y.ts`. **Since
+   A5.6-09 every sweep runs twice**, once in each of the interface's
+   themes (Night, then Parchment, chosen by the emulated colour scheme
+   and asserted to have taken effect), so a ring or a control only one
+   theme draws cannot hide. Against the
    stand-in engine: for each screen and each dialog, every control in the
    accessibility tree has a name (`ariaSnapshot()`); a Tab walk from the
    top reaches every enabled control and each shows a ring it did not have
@@ -77,170 +66,207 @@ the rest is finding F1. The platform's own popups - the native select's
 list and the date control's calendar - render in the platform's style
 (ADR-026) and were not measured.
 
-**Legend.** *pass*: nothing found. *fixed (Dn/Cn)*: a defect this pass
-fixed, listed below. *finding (Fn)*: a defect too large for this pass,
+**Legend.** *pass*: nothing found. *swept*: the end-to-end sweep checks
+it (names, the Tab walk and its ring, motion), in both themes. *fixed
+(Dn/Cn)*: a defect this pass fixed, listed below. *finding (Fn)*: a defect too large for this pass,
 listed below for filing. *engine's*: inside the engine's page.
 
 ## Results by screen
 
+Rebuilt for the notebook (A5.6-09, ADR-045): the front door, the project's
+header, rail, pinned map, six cells and footer, and the screens around
+them. A part that moved into a cell from the tab strip keeps the result the
+pass gave it, since the component is the one that was audited, and is swept
+again where it now stands. A part that is new since the pass says what the
+sweep checks of it; **swept** means the end-to-end sweep checks its names,
+its Tab walk and focus ring, and its motion, in both of the interface's
+themes. Contrast is `tests/unit/contrast.test.ts`, by token pair.
+
+The two reader columns are a person's, recorded per run in
+[Reader runs](#reader-runs).
+
 ### Header, on every screen
 
-| Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (warm-dark) | Contrast (sepia) | VoiceOver (macOS) | Narrator (Windows) |
+| Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
 | Jobs toggle, Settings | pass | pass | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
 | Engine status line | pass (not a control) | pass (`role="status"`, named "Engine") | n/a | pass (the icon never moves) | pass | pass | not yet run: a person's | not yet run: a person's |
 | Job-end announcement | n/a | pass (polite, visually hidden) | n/a | n/a | n/a | n/a | not yet run: a person's | not yet run: a person's |
 
-### Library
+### The front door (Library)
 
-| Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (warm-dark) | Contrast (sepia) | VoiceOver (macOS) | Narrator (Windows) |
+| Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
-| Toolbar (New project; Add feed until A5.6-05) | pass | pass | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
-| Empty state | fixed (D4) | pass | pass | pass | fixed (C6) | fixed (C1, C6) | not yet run: a person's | not yet run: a person's |
-| Project rows | pass | pass (`Open <name>`, the meta as description) | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
-| Feed rows (Start a project, Remove) and sample city cards (A5.6-02) | fixed (D5) | pass (each names its feed; a card is named by its facts) | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
-| New project sheet, a listed feed (A5.6-05) | asserted in the sweep | asserted in the sweep | asserted in the sweep | asserted in the sweep | not yet audited on the sheet | not yet audited on the sheet | not yet run: a person's | not yet run: a person's |
-| New project sheet, a zip chosen | asserted in the sweep | asserted in the sweep | asserted in the sweep | asserted in the sweep | not yet audited on the sheet | not yet audited on the sheet | not yet run: a person's | not yet run: a person's |
-| New project sheet, an address refused | asserted in the sweep | asserted in the sweep | asserted in the sweep | asserted in the sweep | not yet audited on the sheet | not yet audited on the sheet | not yet run: a person's | not yet run: a person's |
-| New project sheet, the add's progress line | not yet swept | not yet swept | not yet swept | not yet swept | not yet audited on the sheet | not yet audited on the sheet | not yet run: a person's | not yet run: a person's |
-| Remove-feed confirmation | fixed (D8) | pass | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
+| Heading and New project | swept | swept | swept | swept | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
+| Empty state | fixed (D4) | swept | swept | swept | fixed (C6) | fixed (C1, C6) | not yet run: a person's | not yet run: a person's |
+| Your projects: one button a row, `Open <name>`, the meta (feed, day, opened, how far it has got) its description (A5.6-04) | swept | swept | swept | swept | pass (`--text`, `--text-muted`; `--text-muted` on `--surface-hover` under the pointer) | pass | not yet run: a person's | not yet run: a person's |
+| Sample cities: one button a card, named by its facts (A5.6-02); one press opens it laying out (A5.6-03) | swept | swept | swept | swept | pass (the same pairs) | pass | not yet run: a person's | not yet run: a person's |
+| Your feeds: Start a project, Remove (A5.6-06) | fixed (D5) | swept (each names its feed) | swept | swept | pass | pass | not yet run: a person's | not yet run: a person's |
+| New project sheet, a listed feed (A5.6-05) | swept | swept | swept | swept | pass (the dialog's pairs, the kit's controls) | fixed (C1) | not yet run: a person's | not yet run: a person's |
+| New project sheet, a zip chosen | swept | swept | swept | swept | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
+| New project sheet, an address refused | swept | swept (the alert, the field invalid) | swept | swept | pass (`--error` on `--surface-raised`) | pass | not yet run: a person's | not yet run: a person's |
+| New project sheet, its add running: the progress line and Cancel the add | swept (held open by the stand-in's `add_delay_ms`; Cancel the add takes focus) | swept | swept | swept | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
+| Remove-feed confirmation, and a refusal naming the projects (A5.6-06) | fixed (D8) | swept idle; the refusal is an alert naming the projects, asserted in `feeds.spec.ts` and not swept | swept idle | swept idle | pass | pass | not yet run: a person's | not yet run: a person's |
 
-### Project, above the tabs
+### Project: the header
 
-| Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (warm-dark) | Contrast (sepia) | VoiceOver (macOS) | Narrator (Windows) |
+| Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
+|---|---|---|---|---|---|---|---|---|
+| Breadcrumb: "Back to Library" (reading "Library") and the `h1`, its list item `aria-current="page"` (A5.5-22) | swept | swept (a `<nav>` "Breadcrumb"; the separator is drawn, not read) | swept | swept | pass (`--text`; the separator `--text-muted`) | pass | not yet run: a person's | not yet run: a person's |
+| The notebook's sentence, Run all and Stop | Run all's handover to Stop and back, and focus to the sentence when Run all comes back disabled, asserted in `layout.spec.ts` ("Run all…" tests); not swept, since every sweep is of a project already drawn, where Run all is disabled and not a Tab stop, and Stop exists only during a run | swept (the sentence one `role="status"`; Run all's name and its description "Run all stops at the map. It never exports.") | Run all and Stop not swept: audit only (the kit button's ring) | audit only | pass (`--text`, the note `--text-muted`; the primary button C1) | fixed (C1) | not yet run: a person's | not yet run: a person's |
+| Read-only notice | n/a | pass (`role="status"`) | n/a | n/a | pass | pass | not yet run: a person's | not yet run: a person's |
+
+### Project: the rail
+
+| Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
+|---|---|---|---|---|---|---|---|---|
+| Steps: six buttons, each "`<nn> <name>`, `<state>`", `aria-current="step"` following the scroll (A5.5-21) | swept; **a step moves focus on activation**, to its cell's heading, landing it clear of the pinned map, with no smooth scroll under reduced motion (`rail.spec.ts`) | swept (a `<nav>` "Steps"; the state an icon and a word, never a colour alone) | swept | swept | pass (the state words on `--surface`, and on `--surface-hover` and `--surface-selected` the warning and error words fall back to `--text-muted`; a running step's `--accent-text` on `--surface-selected` and on `--surface-hover`, both added to the contrast test by A5.6-09) | pass (the same) | not yet run: a person's | not yet run: a person's |
+| Outputs: a row per export, Reveal named "Reveal `<preset>`, `<file>`", a sentence for a file moved or deleted | swept (focus to the Outputs heading when a pressed Reveal goes) | swept (a region "Outputs") | swept | swept | pass (`--text`, `--text-muted`, the warning icon with its words) | pass | not yet run: a person's | not yet run: a person's |
+| Below 900px | audit only: the rail keeps its names and clips them, and is `inert` while the inspector covers the main region | audit only | audit only | audit only | pass | pass | not yet run: a person's | not yet run: a person's |
+
+### Project: the pinned map
+
+| Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
+|---|---|---|---|---|---|---|---|---|
+| Skip past the map | fixed (F3, issue 106: one Tab before the frame, sends focus to Rename; asserted in `notebook-a11y.spec.ts`, "the project screen: one press skips past the map…", with forty controls in the frame) | swept (a native button named by its text) | swept (a `--surface` halo under the ring, over the map) | swept | pass (`--focus` on `--surface`) | pass | not yet run: a person's | not yet run: a person's |
+| The map's frame, and the export's frame while cell 06 is open | the walk steps over the frame rather than through it (below) | pass (the frame's title: "`<project>`, animated", or "`<project>`, as the export will frame it") | engine's (F1) | engine's (F1) | engine's (F1) | engine's (F1) | not yet run: a person's | not yet run: a person's |
+| A control scrolled behind the band | **open, #213**: a control reached with Shift+Tab can land behind the pinned map; nothing in the sweep measures occlusion | n/a | n/a | n/a | n/a | n/a | not yet run: a person's | not yet run: a person's |
+
+### Project: the cells' rows
+
+| Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
+|---|---|---|---|---|---|---|---|---|
+| Six rows, each a plain `<button>` inside an `h2` over a named group: "`<nn> <name>` `<state>`", and the collapsed row's summary | swept, with every cell open and with every cell closed | swept; the heading outline asserted (six `h2`, one a cell, nothing skipping a level); **`aria-controls` resolves** (below, #121) | swept | swept | pass (the state words, as the rail's) | pass | not yet run: a person's | not yet run: a person's |
+| The provenance footer of cells 02, 03 and 06 (A5.5-11) | n/a (no control) | swept (a `<dl>` of text; nothing announced as interactive) | n/a | n/a | pass (`--text-muted` on `--surface`) | pass | not yet run: a person's | not yet run: a person's |
+
+### Cell 01, Data
+
+| Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
 | Fields | n/a | pass (a definition list) | n/a | n/a | pass | pass | not yet run: a person's | not yet run: a person's |
-| Inspect: mode, operator, the feed's entry | fixed (D7) | pass | pass | pass | fixed (C2) | fixed (C1, C2) | not yet run: a person's | not yet run: a person's |
-| Inspect: the two tables | pass | pass (captions, `th scope`, `aria-sort`) | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
-| Inspect: sortable headers | fixed (D11) | pass | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
-| Layout run and its progress line | fixed (D1) | pass | pass | pass (the marks' transitions off) | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
-| Re-layout warning | fixed (D1, D8) | pass | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
-| Tab strip (Map, Export) | pass (one stop, arrows, Home, End) | pass | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
+| In the feed: mode, operator, the feed's entry | fixed (D7) | pass | pass | pass | fixed (C2) | fixed (C1, C2) | not yet run: a person's | not yet run: a person's |
+| In the feed: the two tables | pass | pass (captions, `th scope`, `aria-sort`) | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
+| In the feed: sortable headers | fixed (D11) | pass | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
+| Where the routes run | pass (`+`, `-`, arrows, `0`) | pass (pane named, the counts); finding (F2, #105) | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
 
-### Project, Map tab
+### Cell 02, Process
 
-| Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (warm-dark) | Contrast (sepia) | VoiceOver (macOS) | Narrator (Windows) |
+| Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
-| Diagnostics panel | fixed (D9) | pass | pass | pass (the tooltip's fade off) | pass | pass | not yet run: a person's | not yet run: a person's |
+| Layout field, the layout run and its progress line | fixed (D1) | pass | pass | pass (the marks' transitions off) | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
+| Re-layout warning | fixed (D1, D8) | pass | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
+| Engine log: a closed disclosure, the box of lines, Copy log (A5.5-13) | swept, open and closed (the box `tabindex="0"`, scrolled by its own `scrollTop`) | swept (the disclosure "The engine's log for this run" and the box "Log lines" named apart; a unit test refuses two elements in the panel sharing a name) | swept | swept | pass (`--text`, `--text-muted` on `--surface-sunken`) | pass | not yet run: a person's | not yet run: a person's |
+| What the build had to fudge | fixed (D9) | pass | pass | pass (the tooltip's fade off) | pass | pass | not yet run: a person's | not yet run: a person's |
+
+### Cell 03, Frame and service day
+
+| Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
+|---|---|---|---|---|---|---|---|---|
 | Service day and date control | fixed (D3) | pass | pass | pass | fixed (C4) | fixed (C1, C4) | not yet run: a person's | not yet run: a person's |
+| Revert, while a chosen day is not drawn (A5.5-12) | goes with its own press, focus to the date control holding the day; a refusal to the form's alert and focus to the control | pass (named with its day, "Revert to `<day>`") | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
+| Transport: Time of day, Play day and Pause, Speed (A5.5-16) | swept on a page that answers what day it has (`notebook-a11y.spec.ts`, "cell 03's transport…"); refused with an alert rather than disabled while a run, an export or the export's preview holds the page | swept (a region named by its `h3`, "Transport"; the range's `aria-valuetext` the page's clock) | swept | swept | pass (`--text`, the range's `--accent`) | pass | not yet run: a person's | not yet run: a person's |
+
+### Cell 04, Style
+
+| Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
+|---|---|---|---|---|---|---|---|---|
+| Theme switch | pass | fixed (issue 124: `aria-pressed`, a named group; asserted in `theme.spec.ts`) | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
+
+### Cell 05, Lines
+
+| Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
+|---|---|---|---|---|---|---|---|---|
 | Line colours | pass | pass (every control names its line) | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
-| Colour picker | pass (sliders take the arrows; hex field) | pass | fixed (D10) | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
+| Colour picker | pass (sliders take the arrows; hex field) | pass; the Choose button controls its picker (F6) | fixed (D10) | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
 | Line order | pass | pass | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
-| Theme switch | pass | fixed (issue 124: `aria-pressed`, a named group; after any rebuild both buttons had lost `aria-pressed`, because the kit re-syncs its inner button when `disabled` changes and removes it, and the wrapper did not write it back; it now writes `disabled` and the mirrored state in one effect, in that order, asserted in `theme.spec.ts`, "the switch still says which theme is chosen after a rebuild…") | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
-| Geographic view | pass (`+`, `-`, arrows, `0`) | pass (pane named, the counts); finding (F2) | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
-| Viewer frame | fixed (F3, issue 106: a "Skip past the map" button just before the frame, shown on focus, sends focus to Rename; Tab without it still walks into the map; asserted in `notebook-a11y.spec.ts`, "the project screen: one press skips past the map…", with a page of forty controls in the frame) | pass (the frame's title; the skip a native button named by its text) | engine's (F1) | engine's (F1) | engine's (F1) | engine's (F1) | not yet run: a person's | not yet run: a person's |
-| Rename form | pass (focus returns to Rename) | pass | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
-| Delete confirmation | fixed (D8) | pass | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
 
-### Project, Export tab
+### Cell 06, Export
 
-| Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (warm-dark) | Contrast (sepia) | VoiceOver (macOS) | Narrator (Windows) |
+| Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
 | Preset, storyboard, view, quality | pass | pass | pass | pass | fixed (C2) | fixed (C2) | not yet run: a person's | not yet run: a person's |
 | Frame switches, lines to keep | pass | pass (`fieldset` and `legend`) | pass | pass | fixed (C3) | fixed (C3) | not yet run: a person's | not yet run: a person's |
 | Start time, filename tag | pass | pass | pass | pass | fixed (C5) | fixed (C5) | not yet run: a person's | not yet run: a person's |
+| Where it goes: Choose folder, and Use the app's folder once a folder is chosen (A5.5-19) | Choose folder swept; Use the app's folder not swept (it is drawn only once a folder is chosen, which no sweep does) | Choose folder swept (the sentence its description); "Where it goes" is a label's text, not a field | Choose folder swept | Choose folder swept | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
 | Export, its progress line, Cancel, Reveal | fixed (D2) | pass | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
-| Preview in the viewer's frame | fixed (F3, issue 106: the same skip, before the same frame; asserted in `notebook-a11y.spec.ts`, "the project screen: one press skips past the map…") | pass | engine's (F1) | engine's (F1) | engine's (F1) | engine's (F1) | not yet run: a person's | not yet run: a person's |
+
+### Project: the footer
+
+| Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
+|---|---|---|---|---|---|---|---|---|
+| Created and Modified | n/a | pass (a definition list) | n/a | n/a | pass | pass | not yet run: a person's | not yet run: a person's |
+| Rename form | pass (focus returns to Rename) | pass | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
+| Delete confirmation | fixed (D8) | pass | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
 
 ### Settings
 
-| Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (warm-dark) | Contrast (sepia) | VoiceOver (macOS) | Narrator (Windows) |
+| Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
 | Folder rows | fixed (D6) | pass (each names its folder) | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
 | Logs, Copy diagnostics | pass | pass | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
 | Theme select | pass | pass | pass | pass | fixed (C2) | fixed (C2) | not yet run: a person's | not yet run: a person's |
 | Versions | n/a | pass (a definition list; a null said in words) | n/a | n/a | pass | pass | not yet run: a person's | not yet run: a person's |
 | Reset engine data and its confirmation | fixed (D8) | pass | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
-| Licences section (issue 108) | asserted in the sweep (three buttons `aria-disabled` in a development run, kept in the Tab order) | asserted in the sweep and in `settings.spec.ts` (a named region; a definition list; each unavailable button's reason shown beneath it and said in a polite `role="status"` line on every press, a second press included); **fixed (F5, issue 113)**: each unavailable button's reason is its accessible description, asserted in `settings.spec.ts` (`toHaveAccessibleDescription`) with no `aria-describedby` left on the button or its host | asserted in the sweep | asserted in the sweep | pass (existing pairs: `--text-muted` and `--text` on `--surface`; the unavailable button's look is the kit's existing one) | pass (the same pairs) | not yet run: a person's | not yet run: a person's |
-| Bundled tools rows (A6-02) | n/a (no control; the screen's walk is swept with the rows present: asserted in the sweep) | pass (a named region; the summary a polite `role="status"`; a definition list, "LOOM tools" and "ffmpeg and ffprobe"): asserted in the sweep | n/a | asserted in the sweep | pass (existing pairs: `--text-muted` and `--text` on `--surface`) | pass (the same pairs) | not yet run: a person's | not yet run: a person's |
+| Licences section (issue 108) | swept (three buttons `aria-disabled` in a development run, kept in the Tab order) | swept, and in `settings.spec.ts`; **fixed (F5, issue 113)**: each unavailable button's reason is its accessible description | swept | swept | pass | pass | not yet run: a person's | not yet run: a person's |
+| Bundled tools rows (A6-02) | n/a (no control) | swept (a named region; the summary a polite `role="status"`; a definition list) | n/a | swept | pass | pass | not yet run: a person's | not yet run: a person's |
 
 ### Jobs inspector
 
-| Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (warm-dark) | Contrast (sepia) | VoiceOver (macOS) | Narrator (Windows) |
+| Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
-| Toggle, heading, Close, Escape | pass | pass | pass | pass (no slide at any setting) | pass | pass | not yet run: a person's | not yet run: a person's |
+| Toggle, heading, Close, Escape | pass; the toggle controls the Inspector while it is open (F6) | pass | pass | pass (no slide at any setting) | pass | pass | not yet run: a person's | not yet run: a person's |
 | Jobs: progress line, Cancel, Copy log, Details | pass | pass (each names its job) | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
 | Below 900px, over the main region | audit only (the main region `inert`; not in the sweep) | audit only | audit only | audit only | pass | pass | not yet run: a person's | not yet run: a person's |
 
 ### First-run dialog (A6-02)
 
-Added after the pass, with the first-run check (specs/026): the sweep's
-test "the first-run dialog, and Settings with the Bundled tools rows",
-launched with `SCHEMATIC_LOOM_BIN` an empty folder. It passed in the
-coordinator's full runs on macOS (2026-09-13).
-
-| Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (warm-dark) | Contrast (sepia) | VoiceOver (macOS) | Narrator (Windows) |
+| Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
-| The dialog: its details disclosure, Copy diagnostics, How to install, OK | asserted in the sweep: OK focused on opening, the Tab walk reaches the disclosure and the three buttons, Escape closes it | asserted in the sweep (labelled by its title, described by its sentences) | asserted in the sweep (the global `:focus-visible` ring) | asserted in the sweep | pass (existing pairs: `--text`, `--text-muted` on `--surface-raised`, the kit's buttons) | pass (the same pairs; the primary button as C1) | not yet run: a person's | not yet run: a person's |
-| Focus after it closes | asserted in the sweep: back on the Library's heading; if what held focus when it opened has gone, the open screen's heading takes it (`FirstRunDialog.tsx`, with `focusHandback.ts`'s `focusLost`) | n/a | n/a | n/a | n/a | n/a | not yet run: a person's | not yet run: a person's |
-| Waiting for another dialog | audit and e2e (`tests/e2e/first-run.spec.ts`): it never opens over a dialog a person has open, or over the mismatch dialog, and opens when that one closes, taking focus then | n/a | n/a | n/a | n/a | n/a | not yet run: a person's | not yet run: a person's |
+| The dialog: its details disclosure, Copy diagnostics, How to install, OK | swept: OK focused on opening, the Tab walk reaches the disclosure and the three buttons, Escape closes it | swept (labelled by its title, described by its sentences) | swept | swept | pass | pass (the primary button as C1) | not yet run: a person's | not yet run: a person's |
+| Focus after it closes | asserted: back on the front door's heading; if what held focus when it opened has gone, the open screen's heading takes it | n/a | n/a | n/a | n/a | n/a | not yet run: a person's | not yet run: a person's |
+| Waiting for another dialog | e2e (`first-run.spec.ts`): never over a dialog a person has open, or over the mismatch dialog | n/a | n/a | n/a | n/a | n/a | not yet run: a person's | not yet run: a person's |
 
 ### Mismatch dialog
 
-| Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (warm-dark) | Contrast (sepia) | VoiceOver (macOS) | Narrator (Windows) |
+| Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
-| The dialog and OK | pass | pass | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
+| The dialog and OK | swept | swept | swept | swept | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
 
-### Parts added since this pass
+### Issue 121 in the notebook
 
-The pass above was taken at `45b5fff` on 2026-09-13. These parts landed after
-it and have **no row of their own**. They are listed here rather than added to
-the tables above, because the tables are arranged by a tab strip that no
-longer exists and the whole record is rewritten once (see the note at the
-top). Each says what a machine already checks and what is still owed to a
-person, so the rewrite has a list rather than a memory.
+#121 (F6 below) was closed on 2026-09-23 for the kit's buttons, whose
+`aria-controls` is now an element reference on the button inside the
+kit's shadow root. **The notebook does not have the problem by
+construction**: a cell's row and the engine log's toggle are plain
+`<button>` elements over a named group in the same document
+(`kit/Disclosure.tsx`; a group rather than a region, so six cells do not
+put six landmarks in a reader's menu),
+so their `aria-controls` is an id that resolves. Measured rather than
+assumed: `notebook-a11y.spec.ts` reads each relation from the built app's
+accessibility tree through the DevTools protocol. Each open cell's row
+controls the group named for it ("01 Data" to "05 Lines"); cell 06, which
+starts closed, controls nothing until it opens and then "06 Export"; the
+engine log's toggle controls "The engine's log for this run" once open.
+A closed group is `hidden`, which takes it out of the tree, so a closed
+disclosure's relation is honestly empty, and its `aria-expanded` says
+which it is.
 
-| Part | Where | What the machine checks today | Owed to a person |
-|---|---|---|---|
-| The engine's log (A5.5-13, #165) | cell 02, a closed disclosure under the stages | the disclosure's row and region are named apart from the box of lines inside it - `The engine's log for this run` and `Log lines` - after both carried one name and a screen reader heard it nested inside itself; a unit test now refuses two elements in the panel sharing an accessible name. The box is `tabindex="0"`, takes the focus ring and scrolls by its own `scrollTop`. "Copy log" is a named button with a `role="status"` line | VoiceOver and Narrator over the disclosure, the scrolling box and the copy |
-| The cell's provenance footer (A5.5-11, #163) | cells 02, 03 and 06, a definition list under each one's controls | the strip is a `<dl>` of text with no control in it, so nothing is focusable and nothing is announced as interactive; contrast for `--text-muted` on the cell's ground is in `tests/unit/contrast.test.ts` | VoiceOver and Narrator reading a term and its value as a pair, in three cells |
-| The rail (A5.5-21, #173) | the project's own left region, outside the notebook's column | **two landmarks**: a `<nav>` named "Steps" and a `<section>` named "Outputs". Each step is one button whose accessible name is its number, name and state as one string ("01 Data, ready"), so the eye and the tree read the same row; the state is also an icon and a word, never a colour alone. **A step moves focus on activation** - it opens its cell, lands it clear of the header *and* the pinned band, and focuses the cell's heading, with no smooth scroll under reduced motion. `aria-current="step"` follows the scroll without taking focus. Outputs draws a Reveal per present row, a sentence for a file since moved or deleted, and hands focus to its own heading when a pressed Reveal goes. Below 900px the rail keeps its names and clips them rather than hiding them, and it is `inert` while the inspector covers the main region | VoiceOver and Narrator over the two landmarks, a step's three-part name, the jump a step makes, and Outputs' rows - **the focus move on activation is the part most worth hearing** |
-| The project's header (A5.5-22, #174) | the top of the project screen, above the map | a `<nav>` named "Breadcrumb" whose `<ol>` holds "Back to Library" (reading "Library") and the `h1`, marked `aria-current="page"`, with a drawn separator nothing reads. One `role="status"` sentence for the notebook as a whole. Run all carries "Run all stops at the map. It never exports." as its description; it gives way to Stop with focus handed over, and back again; when it comes back disabled (the record still being read back, or nothing left to do) focus goes to the status sentence (`tabindex="-1"`). The sentence is held while a finished run's record is read back and while cell 05 redraws itself, so it neither speaks the record from before the run nor chatters through a colour drag. The `h1` now sits inside the Breadcrumb landmark, so a screen reader that skips navigation skips the heading too. **The header puts one more Tab stop before the map**: Run all (or Stop) sits between "Back to Library" and "Skip past the map", and is not a stop while it is disabled | VoiceOver and Narrator over the breadcrumb (that the landmark and the current page are announced), the status sentence as it changes during a run, Run all's description, and where focus is heard landing when a run ends |
-| Revert (A5.5-12, #164) | cell 03, in the service day's row of buttons, only while a chosen day is not drawn | a kit button whose accessible name carries the day it goes back to ("Revert to 2026-06-16"), so two Reverts could never share a name. It **goes with its own press**: the write that lands closes the gap, and focus is handed to the date control, which now holds that day, before the write redraws the form - the pattern "Use the busiest weekday" follows. A refused write puts its sentence in the form's `role="alert"` and focus back on the control | VoiceOver and Narrator over the press: that focus is heard landing in the date field with the reverted day, and that the status line's "Drawn for" is read |
-| Cell 03's transport (A5.5-16, #168) | cell 03, a second named section beside the service day | a range named "Time of day", bounded by the service day, stepped a minute, with `aria-valuetext` set to the clock the page reports rather than the raw seconds; "Play day" and "Pause" as one button that says which it is; a "Speed" select. Where a run, an export or cell 06's preview holds the page the controls are **refused with a sentence in a `role="alert"` rather than disabled**, because a control that disables itself under a person's hands takes the focus with it. The clock beside the scrub is deliberately not a live region | VoiceOver and Narrator over the scrub's value text as it moves, the Play/Pause label change, and whether the refusal is heard on a second press (it is announced once; a repeat says nothing) |
+### What the sweep cannot see
 
-The pinned preview (A5.5-20, #172) changes the geometry every row above is
-recorded against, so it is listed here rather than as a row of its own: the
-map is no longer a panel inside a tab but a band pinned under the header,
-about half the window below it tall, while the cells scroll beneath. Two
-consequences the rewrite has to carry:
-
-- **A control reached with Shift+Tab can be scrolled to a place behind the
-  band, and that is not solved** (#213). The obvious remedy - a scroll margin
-  as deep as the band - was tried and withdrawn, because it moves where every
-  scroll lands and not only the ones that would have been hidden: against the
-  colour panel it moved the picker's square 139px *up*, behind the map, so the
-  press that begins a colour drag landed on the map and the picker was
-  dismissed. `scroll-padding-top` measured identically. Nothing in the sweep
-  asserts occlusion, so no run reports it; the figures are in `preview.css`
-  and in #213.
-- **"Skip past the map" still sits immediately before the frame**, and its
-  assertion in `notebook-a11y.spec.ts` was corrected rather than relaxed: it
-  measured the map against its region, which with a pinned map grows with the
-  scroll offset, and now measures against the viewport with both readings
-  taken at one offset.
-
-**The Tab walk steps over a frame** (A5.5-20). A document cannot see into a
-cross-origin frame, so once focus entered the viewer's the walk's probe saw
-the same `<iframe>` element on every press inside it and read that as having
-come round to a control it had already reached - ending the walk early and
-reporting everything after the map as unreachable. It now finds the first
-wanted control that follows the frame in document order and focuses it
-directly, so **no press of Tab is made while focus is inside a frame** and
-nothing the walk does depends on how a platform leaves one.
-
-The honest cost: the press that arrives at the first control *after* a frame
-is now made by hand, so the walk no longer proves that Tab crosses a frame's
-far edge. On the project screen that is one control - cell 01's heading row -
-still swept for its name and its focus ring. A person's path is unaffected and
-is the documented one: "Skip past the map" is one Tab before the frame, and
-whoever wants the map presses Tab again and walks into it.
-
-The sweep in `tests/e2e/accessibility.spec.ts` cannot see a **duplicated**
-accessible name at all: `expectNamed` looks only at `CONTROL_ROLES` and only
-asks whether a name is present. That is #208, and it is why the engine log's
-nested name reached a pull request. The walkthrough below is what would have
-caught it by ear.
+- **The Tab walk steps over a frame** (A5.5-20). A document cannot see into
+  a cross-origin frame, so the walk finds the first wanted control that
+  follows the frame in document order and focuses it directly; **no press
+  of Tab is made while focus is inside a frame**. The cost: the walk no
+  longer proves that Tab crosses a frame's far edge. On the project screen
+  that is one control, cell 01's row, still swept for its name and ring. A
+  person's path is the documented one: "Skip past the map" is one Tab
+  before the frame.
+- **Occlusion by the pinned map** (#213, above).
+- **A duplicated accessible name** (#208): `expectNamed` asks only whether
+  a control has a name. The engine log's nested name reached a pull
+  request that way; a unit test now guards that panel, and the
+  walkthrough is what catches the rest by ear.
+- **The engine's page** (F1) and **the geographic view's drawing** (F2).
 
 ## Defects fixed in this pass
 
@@ -372,7 +398,7 @@ Each too large for this pass: a change to the engine's page, a new control,
 or a design decision.
 
 - **F1. The animation page's own accessibility is unchecked.** *Screen:*
-  project, Map and Export tabs (the viewer's frame). *Steps:* open a laid-out
+  the project's pinned map (the viewer's frame). *Steps:* open a laid-out
   project; Tab past the panels into the map; use its controls; turn on
   reduced motion; switch the project's theme. *What a person meets:* the
   page's controls, their names and focus, whether its moving trains honour
@@ -381,7 +407,7 @@ or a design decision.
   and does not draw. An engine issue: an accessibility pass over
   `page.html`.
 - **F2. The geographic view has no text alternative beyond its counts.**
-  *Screen:* project, Map tab, "Where the routes run". *Steps:* lay a project
+  *Screen:* cell 01, "Where the routes run" (#105). *Steps:* lay a project
   out; reach the pane with Tab; listen. *What a person meets:* a named,
   focusable pane that pans and zooms, the node, station, junction, edge and
   line counts, and nothing about where the routes run: the drawing is the
@@ -404,7 +430,10 @@ or a design decision.
   that the map does not move when the skip appears; it passed in a full
   end-to-end run on macOS (2026-09-13), and CI runs it on three platforms. Going backwards is unchanged: Shift+Tab from the toolbar walks
   back through the map. The VoiceOver and Narrator columns are still a
-  person's.
+  person's. *In the notebook* (ADR-045) there are no tabs: the skip sits
+  before the pinned map at the top of the column and sends focus to Rename
+  at the notebook's foot, past all six cells, and the same test asserts it
+  there.
 
 - **F4. A stalled engine request holds a destructive confirmation.**
   *Closed by issue 107.* *Screen:* the Library's feed removal. *Steps:*
@@ -536,9 +565,10 @@ state are said at all, and are the right ones.
   (Windows) cell of the row named in bold in each step below, replacing
   "not yet run: a person's" with one of: `pass`; `finding: #<issue>` (file
   one issue per defect, `type:bug`, with the screen, the steps and what was
-  heard); or `not reachable: <why>`. Add a line under the table at the top
-  of this file giving the app version, the reader and OS versions and the
-  date. The results go in as a pull request that changes only those cells
+  heard); or `not reachable: <why>`. Fill in the run's row in
+  [Reader runs](#reader-runs): the app version, the reader and OS
+  versions, the date, and who walked it. The results go in as a pull
+  request that changes only those cells
   and that line; the other columns are the machine half's and stay as they
   are.
 
@@ -601,9 +631,9 @@ a table).
   Leave the project screen while a run is going and listen for it on the
   Library.
 
-### Library
+### The front door (Library)
 
-- **Toolbar (New project).** On opening, listen for the heading
+- **Heading and New project.** On opening, listen for the heading
   "Library" read first, at level 1 (focus is put there). Tab: **New
   project**, a button. Adding a feed is inside it since A5.6-05.
 - **Empty state.** This part needs a Library with no projects, which the
@@ -669,11 +699,69 @@ a table).
   be too short to hear; write "busy state too quick to hear" in the cell
   beside the result rather than failing it.
 
-### Project, above the tabs
+### Project: the header, the rail and the map
 
-- **Fields.** Open **Los Angeles**. Listen for its name read first as a
-  level-1 heading (focus is put there), then a description list: Feed, Mode,
-  Agency, Service day, Layout, Created, Modified, each term with its value.
+- **The breadcrumb.** Open **Los Angeles** from **Your projects**. Listen
+  for its name read first as a level-1 heading (focus is put there),
+  marked as the current page, inside a navigation landmark "Breadcrumb"
+  whose other item is the button "Back to Library" (it reads "Library" on
+  screen). Nothing is read for the separator between them.
+- **The notebook's sentence, Run all and Stop.** After the heading, listen
+  for one status sentence about the notebook as a whole ("The map is drawn
+  from every cell." on a project laid out and drawn; "Nothing has been
+  laid out yet." on one that is not), and **Run all**, read with its
+  description "Run all stops at the map. It never exports." - dimmed, and
+  not a Tab stop, when there is nothing to run. On a project not yet laid
+  out, press **Run all**: listen for focus moving to **Stop**, the
+  sentence changing to "02 Process is running." as the run goes, and at
+  its end focus on the sentence (Run all having come back dimmed), the
+  sentence "The map is drawn from every cell.", and the job-end
+  announcement. Listen for whether the sentence is heard too often during
+  the run; if it floods speech, that is a finding.
+- **The rail: Steps.** With the reader's own navigation, find the
+  landmark "Steps", a navigation holding six buttons, each read as its
+  number, name and state as one, "01 Data, ready" to "06 Export, ready".
+  Listen for which is marked as the current step, and that it follows as
+  you scroll the notebook without taking focus. Press "04 Style, ready":
+  **focus moves** to cell 04's heading, and the cell is brought into view
+  below the map. This move on activation is the part of the rail most
+  worth hearing: note what is read when focus lands.
+- **The rail: Outputs.** Find the region "Outputs": "Nothing exported
+  yet." before any export, and afterwards a row per export read as its
+  preset and when it was made, with a button "Reveal `<preset>`,
+  `<file>`". A file since moved or deleted is read as "the file has been
+  moved or deleted", with no button.
+- **Skip past the map.** Tab past the panels. Listen for a button "Skip
+  past the map" and look for it appearing over the top edge of the map.
+  Press it: listen for focus on **Rename** (or **Delete project** on a
+  read-only project), with the map not read. Look for the focus ring on a
+  band of the interface's ground, clear against the map in either of the
+  project's themes. Shift+Tab from **Rename**
+  walks back through the map, which is expected (F3, issue 106).
+- **Viewer frame.** From **Skip past the map**, press Tab without pressing
+  it. Listen for the frame named "`<project>`, animated" in a region "Map".
+  Going on into it reaches the engine's page and its own controls, which are
+  the engine's (F1); note what is read in the cell.
+
+### Project: the cells
+
+- **The cells' rows.** With the reader's heading navigation, listen for
+  six level-2 headings, "01 Data" to "06 Export", each holding one button
+  read with the cell's number, name and state ("01 Data ready") and,
+  collapsed, the one-line summary after it; the button is expanded or
+  collapsed. Collapse cell 03 and listen for its summary (its day, and the
+  engine's busiest weekday). Nothing inside a cell is another level-2
+  heading: the panels' names are level 3.
+- **The provenance footer.** Under cells 02, 03 and 06 (06 once
+  something is exported), a description list read as term and value
+  pairs: Layout, Made, Built with, Engine now; Service day, The feed
+  covers, The engine's busiest weekday, Counted from; Exported, and the
+  sentence about the sidecar. Nothing in it is announced as interactive.
+
+#### Cell 01, Data
+
+- **Fields.** Listen for a description list: Feed, Mode and Agency, each
+  term with its value.
 - **Inspect: mode, operator, the feed's entry.** Listen for the heading
   "In the feed", the status "Reading the feed, and downloading it first if
   it is not on this machine yet…" if it is still reading, and the pop-up
@@ -696,6 +784,17 @@ a table).
   Press "Trips": sorted descending (most trips first) on its first press;
   press "Type": ascending on its first press. Every further press on the
   column already sorted reverses it. The arrow beside it is not read.
+- **Geographic view.** Listen for the heading "Where the routes run", the
+  group "Stage" with toggle buttons "gtfs2graph" and "loom" (the current one
+  pressed), the description list "Counts" (Nodes, Stations, Junctions,
+  Edges, Lines), and a focusable group "The gtfs2graph stage, as the feed
+  draws its routes" described by "Zoom with the wheel or plus and minus, pan
+  by dragging or with the arrows, 0 to fit." Press `+`, `-`, an arrow and
+  `0` on it; nothing is announced for them, and the drawing itself is not
+  read (F2).
+
+#### Cell 02, Process
+
 - **Layout run and its progress line.** Before pressing anything, cell 02
   draws the eight stages at rest (A5.5-10): listen for an image named "The
   layout run's 8 stages, none started." on a project never laid out, or
@@ -713,13 +812,14 @@ a table).
   Press **Cancel** and listen for focus back on **Re-layout**. Open it
   again and press **Re-layout**: the dialog closes and the run starts with
   focus on **Cancel** (D1, D8).
-- **Tab strip (Map, Export).** Tab to the tab list "The project's map, and
-  its export". Listen for the tab "Map", selected, 1 of 2. Right Arrow:
-  "Export", selected, and its panel shown; Left Arrow, Home and End move
-  too, and Tab leaves the strip in one press.
-
-### Project, Map tab
-
+- **The engine log.** Under the stages, a button "Engine log" with its
+  line count, collapsed, which opens a group named "The engine's log for
+  this run". Press it: listen for expanded and a scrolling box "Log lines"
+  (Tab reaches it; the arrow keys scroll it), then **Copy log**, read as
+  "Copy log: the engine's log for this run"; press it and listen for "The
+  log is on the clipboard, with the keys in web addresses taken out and
+  your home folder written as ~." Listen that the box's name and the
+  disclosure's are not heard nested in each other.
 - **Diagnostics panel.** After a run in this session, listen for the heading
   "What the build had to fudge", the status sentence ("No caveats: nothing
   was fudged, and the issues score is `<n>`." or "`<n>` caveats, and an
@@ -729,6 +829,9 @@ a table).
   as its description; press it (expanded), press Escape, and check that the
   explanation is no longer shown and focus has not moved (D9). Press **Copy as text** and
   listen for "The figures and the caveats are on the clipboard."
+
+#### Cell 03, Frame and service day
+
 - **Service day and date control.** In cell **03 Frame and service day**,
   listen for the section "Service day" (its name is the cell's heading, so
   there is no heading of its own inside it), the status "Drawn for `<day>`.
@@ -745,6 +848,35 @@ a table).
   an alert, because taking focus there would shut the platform's calendar.
   Then press **Draw for this day** and listen for focus back in the field,
   invalid, with the same sentence read with it.
+- **Revert.** Choose another day and, **before drawing it**, listen for a
+  button "Revert to `<day>`" in the row with **Draw for this day**. Press
+  it: listen for focus landing in the date field, which holds that day
+  again, and the status reading "Drawn for `<day>`." The button goes with
+  its own press.
+- **Transport.** Listen for the heading "Transport" (level 3), the
+  sentence "Where the map is in its service day. …", the slider "Time of
+  day" read with the clock (such as "07:20"), the button **Play day** or
+  **Pause** (it says which it is), and the pop-up button "Speed". Move the
+  slider with the arrow keys and listen for the clock read as its value.
+  Press **Play day** and listen for it becoming **Pause**. Start a layout
+  (Lay out again) and press the slider or **Play day** during it: listen
+  for "The map is being drawn. It can be moved again when the run ends."
+  as an alert, with focus not moved, and for nothing said on a second
+  press.
+
+#### Cell 04, Style
+
+- **Theme switch.** Listen for the region "Theme" and the group "The theme
+  this map is drawn in" with the buttons "Warm dark" and "Sepia", the
+  current one pressed. Press the other and listen for it pressed and the
+  first not. Start a run (Lay out again) and listen for both buttons dimmed,
+  the status "The theme waits until the run that is going has finished: …",
+  and focus on the cell's own heading (D3) if it was on a button. Cell 04
+  draws its one control headless (A5.5-17), so "Theme" is the region's name
+  and there is no heading of that name to land on.
+
+#### Cell 05, Lines
+
 - **Line colours.** Listen for the heading "Line colours", the list
   "Lines", and in each row the line's label, the feed's colour, where the
   shown colour comes from ("the colour in the feed, `#rrggbb`"), a button
@@ -771,45 +903,8 @@ a table).
   is dimmed. Press **Back to alphabetical**: "The lines are in alphabetical
   order again." and focus on the cell's own heading (D3) - not on the "Line
   order" heading, which is a label and takes no focus.
-- **Theme switch.** Listen for the region "Theme" and the group "The theme
-  this map is drawn in" with the buttons "Warm dark" and "Sepia", the
-  current one pressed. Press the other and listen for it pressed and the
-  first not. Start a run (Lay out again) and listen for both buttons dimmed,
-  the status "The theme waits until the run that is going has finished: …",
-  and focus on the cell's own heading (D3) if it was on a button. Cell 04
-  draws its one control headless (A5.5-17), so "Theme" is the region's name
-  and there is no heading of that name to land on.
-- **Geographic view.** Listen for the heading "Where the routes run", the
-  group "Stage" with toggle buttons "gtfs2graph" and "loom" (the current one
-  pressed), the description list "Counts" (Nodes, Stations, Junctions,
-  Edges, Lines), and a focusable group "The gtfs2graph stage, as the feed
-  draws its routes" described by "Zoom with the wheel or plus and minus, pan
-  by dragging or with the arrows, 0 to fit." Press `+`, `-`, an arrow and
-  `0` on it; nothing is announced for them, and the drawing itself is not
-  read (F2).
-- **Skip past the map.** Tab past the panels. Listen for a button "Skip
-  past the map" and look for it appearing over the top edge of the map.
-  Press it: listen for focus on **Rename** (or **Delete project** on a
-  read-only project), with the map not read. Look for the focus ring on a
-  band of the interface's ground, clear against the map in either of the
-  project's themes. Shift+Tab from **Rename**
-  walks back through the map, which is expected (F3, issue 106).
-- **Viewer frame.** From **Skip past the map**, press Tab without pressing
-  it. Listen for the frame named "`<project>`, animated" in a region "Map".
-  Going on into it reaches the engine's page and its own controls, which are
-  the engine's (F1); note what is read in the cell.
-- **Rename form.** Press **Rename**: expanded, focus stays on it; Tab past
-  **Delete project** to the text field "New name", required. Empty it and press **Save**: "name is
-  required" read with the field. Press **Cancel** and listen for focus back
-  on **Rename**, collapsed.
-- **Delete confirmation.** On the throwaway project, press
-  **Delete project**. Listen for a dialog "Delete `<project>`?", the
-  description "This removes the project and its generated output. The feed
-  stays.", and focus on **Cancel**. Press **Delete**: listen for the status
-  "Deleting `<project>`… It cannot be stopped." if it is long enough to
-  hear (D8), then the Library, with its heading read.
 
-### Project, Export tab
+#### Cell 06, Export
 
 - **Preset, storyboard, view, quality.** Open cell **06 Export**. Cell 06
   draws its choices headless under the cell's own row (A5.5-19), so there
@@ -830,7 +925,8 @@ a table).
   as 07:30" read with the field when you return; clear it. The text field
   "Filename tag", read with "Added to the file’s name, so a draft does not
   replace the last good export."
-- **Where it goes.** Listen for the field "Where it goes" and, with no
+- **Where it goes.** Listen for the label "Where it goes" (text, not a
+  field: nothing refers to it, which is itself worth noting) and, with no
   folder of the project's own chosen, the sentence "This project's exports
   go to the app's export folder, which Settings names, in a folder named
   after the project." and one button, **Choose folder**, described by that
@@ -855,10 +951,25 @@ a table).
   floods speech over its minutes: note it in the cell if it does. Start
   another export and press **Cancel**: "The export was cancelled. Nothing
   was written." and focus on **Export**.
-- **Preview in the viewer's frame.** With the tab open, listen for the
+- **Preview in the viewer's frame.** With cell 06 open, listen for the
   frame now named "`<project>`, as the export will frame it", with
-  **Skip past the map** the stop before it, as under the Map tab. What is in
+  **Skip past the map** the stop before it, as for the map alone. What is in
   it is the engine's (F1).
+
+### Project: the footer
+
+- **Created and Modified.** A description list at the foot of the
+  notebook: Created and Modified, each read with its date and time.
+- **Rename form.** Press **Rename**: expanded, focus stays on it; Tab past
+  **Delete project** to the text field "New name", required. Empty it and press **Save**: "name is
+  required" read with the field. Press **Cancel** and listen for focus back
+  on **Rename**, collapsed.
+- **Delete confirmation.** On the throwaway project, press
+  **Delete project**. Listen for a dialog "Delete `<project>`?", the
+  description "This removes the project and its generated output. The feed
+  stays.", and focus on **Cancel**. Press **Delete**: listen for the status
+  "Deleting `<project>`… It cannot be stopped." if it is long enough to
+  hear (D8), then the Library, with its heading read.
 
 ### Settings
 
@@ -981,9 +1092,28 @@ start the app normally.
   description, focus on **OK**, and the engine status line still saying
   the mismatch after it closes.
 
+## Reader runs
+
+The person's half, one row per run. A run is the walkthrough above from
+start to end on one machine; a finding is filed as its own issue and
+linked from the row of the table it belongs to, as well as here. The
+keyboard-only run is the same walk with no reader, once in each of the
+interface's themes (Settings, **Theme**, **Night** and then
+**Parchment**) and with the system's reduced motion on (macOS: System
+Settings, Accessibility, Display, **Reduce motion**; Windows: Settings,
+Accessibility, Visual effects, **Animation effects** off): every control
+reached, its focus seen, nothing moving that is not the map's own
+animation (the engine's, F1).
+
+| Run | App version | OS and version | Reader and version | Date | Walked by | Findings |
+|---|---|---|---|---|---|---|
+| Keyboard only, Night and Parchment, reduced motion on | | | none | | | |
+| VoiceOver | | macOS | VoiceOver, as the macOS version | | | |
+| Narrator | | Windows | Narrator, as the Windows version | | | |
+
 ## Left for a person
 
-- VoiceOver on macOS and Narrator on Windows over every row above, after the
-  release tag: the two columns in each table, following
-  [Walking it with a screen reader](#walking-it-with-a-screen-reader).
-- A look at the sepia primary button (C1).
+- The three runs above, after the release tag, following
+  [Walking it with a screen reader](#walking-it-with-a-screen-reader); the
+  two reader columns of each table fill in from them.
+- A look at the Parchment primary button (C1).
