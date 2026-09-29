@@ -117,6 +117,12 @@ const PAIRS: [string, string, number][] = [
   // a hovered row is the next thing anyone would draw there.
   ['--text-muted', '--surface-hover', 4.5],
   ['--accent', '--surface-hover', 3.0],
+  // A running rail step that is also the current one: its state word in
+  // --accent-text on the current step's --surface-selected (A5.6-09; the
+  // retheme darkened --accent-text by day for exactly this ground).
+  ['--accent-text', '--surface-selected', 4.5],
+  // And the same word under the pointer, on --surface-hover.
+  ['--accent-text', '--surface-hover', 4.5],
   // The accessibility pass (A6-07). A primary button's text on its fill:
   // the kit's brand fill is --accent-text. That began as a workaround, for
   // an --on-accent that reached only 4.40 on the old sepia accent; the

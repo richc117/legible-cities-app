@@ -24,6 +24,7 @@ import {
   type Page,
 } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
+import { standInPage } from '../support/standInPage'
 import {
   cell,
   cellHeading,
@@ -1337,46 +1338,11 @@ test('the three cells with provenance carry it, the other three carry none, and 
 // Cell 03's transport (A5.5-16): the scrub, Play day and the speed, driving
 // the engine's page through the seam the app already has.
 //
-// The stand-in engine writes `{}` where the page goes, so its "map" has no
-// `__present` at all and the transport draws nothing over it - correctly,
-// and uselessly for a test. So the page is written over afterwards with a
-// stand-in seam that records what it was asked, which is the same device
-// `tests/e2e/viewer.spec.ts` uses to drive the five methods from the
-// bridge. What this adds is the controls a person actually presses, and
-// what the app remembers on their behalf across a navigation.
-
-/** A page with the seam on it, recording every call, at the address a run wrote. */
-function standInPage(engineHome: string): void {
-  const id = readdirSync(join(engineHome, 'projects'))[0]
-  writeFileSync(
-    join(engineHome, 'out', id, 'la-metro-rail.html'),
-    [
-      '<!doctype html><meta charset="utf-8"><title>stand-in map</title><body>',
-      '<script>',
-      // 06:00 to 26:00 of the service day, which is a real feed's shape.
-      'var T0 = 21600, T1 = 93600;',
-      'var at = T0, speed = 60, playing = true;',
-      'window.__seen = [];',
-      'function fmt(s) {',
-      '  var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);',
-      '  return String(h % 24).padStart(2, "0") + ":" + String(m).padStart(2, "0")',
-      '       + (h >= 24 ? " +1d" : "");',
-      '}',
-      'window.__present = {',
-      '  showView: function (name) { window.__seen.push(["showView", name]) },',
-      '  setLabels: function (on) { window.__seen.push(["setLabels", !!on]) },',
-      '  setRoutes: function (keep) { window.__seen.push(["setRoutes", keep]) },',
-      '  seek: function (sec) { at = Math.max(T0, Math.min(T1, sec)); window.__seen.push(["seek", at]) },',
-      '  setSpeed: function (x) { speed = x; window.__seen.push(["setSpeed", x]) },',
-      '  setPlaying: function (on) { playing = !!on; window.__seen.push(["setPlaying", !!on]) },',
-      '  hasGeo: function () { return true },',
-      '  bounds: function () { return { t0: T0, t1: T1 } },',
-      '  state: function () { return { now: at, clock: fmt(at), viewName: "schematic", labels: true } },',
-      '};',
-      '</script></body>',
-    ].join('\n'),
-  )
-}
+// The stand-in engine's own page has no seam, so the page is written over
+// with one that records what it was asked (`tests/support/standInPage.ts`),
+// the same device `tests/e2e/viewer.spec.ts` uses to drive the five methods
+// from the bridge. What this adds is the controls a person actually
+// presses, and what the app remembers on their behalf across a navigation.
 
 /**
  * What the page in the frame was asked, in order, from the only side that

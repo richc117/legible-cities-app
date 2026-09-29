@@ -537,10 +537,52 @@ export async function expectStill(page: Page, where: string): Promise<void> {
   ).toEqual([])
 }
 
+/**
+ * The interface's two themes, by the colour scheme that chooses each while
+ * Settings follows the system, and the `data-theme` `theme.ts` writes for it.
+ */
+const THEMES = [
+  { scheme: 'dark', attribute: null, name: 'Night' },
+  { scheme: 'light', attribute: 'sepia', name: 'Parchment' },
+] as const
+
+/** The interface in one theme, and only once `theme.ts` has written it: the attribute lands a turn after the emulation. */
+async function inTheme(page: Page, theme: (typeof THEMES)[number]): Promise<void> {
+  await page.emulateMedia({ colorScheme: theme.scheme, reducedMotion: 'reduce' })
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.getAttribute('data-theme')), {
+      message: `the interface is in ${theme.name} (Settings must follow the system for a sweep)`,
+    })
+    .toBe(theme.attribute)
+}
+
+/**
+ * Names, the Tab walk and motion, in both of the interface's themes (A5.6-09):
+ * a focus ring or a control that only one theme draws is a defect the other
+ * would hide. The session is left in the default theme, Night, as it began.
+ */
 export async function sweep(page: Page, where: string, scope?: Locator): Promise<void> {
-  await expectNamed(scope ?? page.locator('body'), where)
-  await expectTabWalk(page, where)
-  await expectStill(page, where)
+  let failure: unknown = null
+  try {
+    for (const theme of THEMES) {
+      await inTheme(page, theme)
+      const here = `${where} (${theme.name})`
+      await expectNamed(scope ?? page.locator('body'), here)
+      await expectTabWalk(page, here)
+      await expectStill(page, here)
+    }
+  } catch (error) {
+    failure = error
+  }
+  // Back to Night, as the session began. A failure above is the one worth
+  // reading: one here, on a page that has crashed or closed, must not
+  // replace it.
+  try {
+    await inTheme(page, THEMES[0])
+  } catch (error) {
+    failure ??= error
+  }
+  if (failure !== null) throw failure
 }
 
 export const heading = (page: Page): Locator => page.getByRole('heading', { level: 1 })

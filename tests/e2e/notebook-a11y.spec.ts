@@ -31,6 +31,7 @@ import {
   withApp,
 } from '../support/a11y'
 import { cellHandback, cellHeading, closeCell, openCell } from '../support/project'
+import { standInPage } from '../support/standInPage'
 
 test.skip(PYTHON === null, 'no python3 or python on the PATH to run the stand-in engine')
 
@@ -83,7 +84,8 @@ test('focus through a layout run and a confirmed re-layout, and left where a per
 })
 
 test('the notebook, Inspect, the geographic view, the inspector and its dialogs', async () => {
-  // Seven walks of at most 20 s each, a layout run and a rebuild: a stuck
+  // Eight sweeps, so sixteen walks (each sweep walks once in each theme)
+  // of at most 20 s each, a layout run and a rebuild: a stuck
   // walk reports its own message well before the test's time runs out.
   test.setTimeout(420_000)
   const p = profile({ map_caveats: ['4 of 116 stops could not be placed on the map'] })
@@ -149,7 +151,50 @@ test('the notebook, Inspect, the geographic view, the inspector and its dialogs'
       await expect(page.getByRole('region', { name, exact: true })).toBeVisible()
     }
 
+    await expect(page.getByRole('navigation', { name: 'Steps' })).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Outputs', exact: true })).toBeVisible()
+    await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).toBeVisible()
     await sweep(page, 'the project, its notebook')
+
+    // Issue 121, for the cells: a cell's row is a plain button over a
+    // region in the same document, so its aria-controls resolves, where a
+    // kit button's had to be set as an element reference. Measured in the
+    // tree rather than assumed, for each of the six and for the engine log.
+    // A closed cell's region is hidden, and a hidden element is not in the
+    // tree: cell 06 starts closed and relates to nothing until it opens,
+    // while its row's aria-expanded says which it is.
+    const cellRow = (label: string): RegExp =>
+      new RegExp(`^${label} (ready|running|not drawn yet|failed)`)
+    for (const label of [
+      '01 Data',
+      '02 Process',
+      '03 Frame and service day',
+      '04 Style',
+      '05 Lines',
+    ])
+      await expect.poll(() => controlsOf(page, cellRow(label))).toEqual([label])
+    await expect.poll(() => controlsOf(page, cellRow('06 Export'))).toEqual([])
+    await openCell(page, 'export')
+    await expect.poll(() => controlsOf(page, cellRow('06 Export'))).toEqual(['06 Export'])
+    await closeCell(page, 'export')
+    const engineLog = page
+      .locator('section.cell[data-cell="02"]')
+      .getByRole('button', { name: /^Engine log\b/ })
+    await expect.poll(() => controlsOf(page, /^Engine log\b/)).toEqual([])
+    await engineLog.click()
+    await expect(page.getByRole('group', { name: "The engine's log for this run" })).toBeVisible()
+    await expect
+      .poll(() => controlsOf(page, /^Engine log\b/))
+      .toEqual(["The engine's log for this run"])
+    await sweep(page, 'the project, the engine log open')
+    await engineLog.click()
+
+    // Every cell closed: six rows, each with its summary, and the rail.
+    for (const id of ['data', 'process', 'frame', 'style', 'lines'] as const)
+      await closeCell(page, id)
+    await sweep(page, 'the project, every cell closed')
+    for (const id of ['data', 'process', 'frame', 'style', 'lines'] as const)
+      await openCell(page, id)
     // A sortable column's header is a target of at least 24px, though its
     // label's line is 16.
     for (const sort of await page.locator('th button.sort').all())
@@ -277,6 +322,32 @@ test('the notebook, Inspect, the geographic view, the inspector and its dialogs'
     await inspector.getByRole('button', { name: 'Close the inspector' }).click()
     await expect(inspector).toHaveCount(0)
     await expect.poll(() => controlsOf(page, /^Jobs, /)).toEqual([])
+  })
+})
+
+test("cell 03's transport, on a page that answers what day it has", async () => {
+  // The stand-in engine's own page answers nothing, so the transport never
+  // draws over it and the notebook's sweep above cannot see it. Here the
+  // page is one that carries the seam (A5.5-16), and the project is swept
+  // with the scrub, Play day and Speed on screen (A5.6-09). A launch, a
+  // layout run and two walks of the whole project screen: the budget
+  // layout.spec.ts gives the same setup.
+  test.setTimeout(180_000)
+  const p = profile()
+  await withApp(p, async (page) => {
+    await openLaidOut(page, 'Los Angeles')
+    standInPage(p.engineHome)
+    // Reopened so the frame loads the page just written: the viewer
+    // navigates on a redraw and on nothing else.
+    await page.getByRole('button', { name: 'Back to Library' }).click()
+    await page.getByRole('button', { name: 'Open Los Angeles' }).click()
+    const transport = page.getByRole('region', { name: 'Transport', exact: true })
+    await expect(transport).toBeVisible({ timeout: 20_000 })
+    await expect(transport.getByRole('slider', { name: 'Time of day' })).toHaveAttribute(
+      'aria-valuetext',
+      /^\d{2}:\d{2}/,
+    )
+    await sweep(page, 'the project, the transport drawn')
   })
 })
 
