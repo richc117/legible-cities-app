@@ -472,10 +472,16 @@ third destination: `src/main/engine-ipc.ts` redacts `job/log`'s line and
 and the log cell 02 draws carry the same bytes the log file does. An
 error is the fourth: `src/main/ipc-shape.ts` redacts the `message`, `hint`
 and `detail` of every error shape that crosses to the page, the engine's
-and the app's own refusals alike, since a failed download's error names
-the whole URL in all three (issue 207). What redacts is one function
-(`src/main/redact.ts`): the engine prints a feed's whole URL when a
-download fails, and a URL can carry a key. For an `http` or `https`
+and the app's own refusals alike, since until engine v0.10.1 a failed
+download's error named the whole URL in all three (issue 207). What
+redacts is one function (`src/main/redact.ts`): a URL can carry a key, and
+whatever prints one on the engine's stderr or into an error is redacted
+here, whoever wrote it. Since v0.10.1 the engine redacts a person's feed
+at source by the same rule and marker (engine issue 32), which makes this
+the second guard for the engine's own sentences and leaves it the only
+one for anything else. **The `.json` the engine writes beside an export
+is guarded by the engine alone**: the app never rewrites that file, and
+its `source` is the feed's address as the engine names it. For an `http` or `https`
 address - slashes plain or JSON-escaped, host a name or an IPv6 literal -
 the scheme, the host, the path and the query's parameter names stay; the
 user information, every query value (after `?`, `&` or `;`), a nameless

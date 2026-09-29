@@ -3,9 +3,14 @@
 //
 // A feed can be added from a URL, and a URL can carry a key: in its query
 // (`?api_key=…`), in its user information (`https://user:pass@host`) or in
-// its fragment. The engine prints the whole URL when a download fails, with
-// a traceback, on the stderr the supervisor logs (engine issue 32 redacts
-// it at source); this is the app's own guard. It keeps what a bug report
+// its fragment. Until v0.10.1 the engine printed the whole URL when a
+// download failed, with a traceback, on the stderr the supervisor logs;
+// since then it redacts a person's feed at source, by this file's own rule
+// and marker (engine issue 32, `feeds.shown`), and this is the second
+// guard, and the only one for whatever else prints an address: the
+// engine's debug level, where its protocol library prints each request as
+// it arrived (the app asks for `info` and never sets another), urllib3's
+// own warnings, a library added later. It keeps what a bug report
 // needs - the scheme, the host, the path and the names of the query's
 // parameters - and replaces the rest with a marker.
 //
