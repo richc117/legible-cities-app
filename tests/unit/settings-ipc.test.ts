@@ -864,7 +864,13 @@ describe('choosing the engine folder while a project exports to a folder of its 
     // The share answers at last, and the project's folder is not in the
     // way of the one chosen: an answer that would have let it through.
     answer(join(h.root, 'on-a-share'))
-    await new Promise((resolve) => setTimeout(resolve, 50))
+    // Not a pause of some length, which a slow disk outlasts. The
+    // abandoned check has only promises left to settle, and one turn of
+    // the loop settles them; a write it made then is in the store's
+    // queue, ahead of this change, which changes nothing and writes
+    // nothing.
+    await new Promise((resolve) => setImmediate(resolve))
+    await h.store.update(() => null)
     expect(h.store.current.engineFolder, 'nothing was stored later either').toBeNull()
     const view = (await h.call(CHANNELS.settingsRead)) as { engine: { pending: string | null } }
     expect(view.engine.pending, 'and nothing waits for a restart').toBeNull()

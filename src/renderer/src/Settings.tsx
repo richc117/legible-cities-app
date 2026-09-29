@@ -564,7 +564,7 @@ export default function Settings({ settings, onChanged, engine, onBack }: Props)
           <code>projects</code>, <code>out</code>, <code>data</code> and <code>frames</code> — every
           project, every downloaded feed, every stored layout and everything drawn from them.
           Anything else in that folder is left alone, and exported files are not touched unless they
-          are inside one of those four. It cannot be undone.
+          are inside one of those four folders. It cannot be undone.
         </p>
         {going > 0 && (
           <p className="message pending" role="status" id="reset-running">

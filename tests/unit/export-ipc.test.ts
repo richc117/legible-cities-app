@@ -273,6 +273,37 @@ describe('registerExportHandlers', () => {
     await call(CHANNELS.exportChooseDestination, 'abcdefghijk1')
     await call(CHANNELS.exportUseAppFolder, 'abcdefghijk1')
     expect(written).toEqual(['/chosen/folder', null])
+
+    // Taken back, there is no dialog to leave open, and the record is
+    // still read between the two askings: a reset confirmed during that
+    // read must not have the record written either.
+    written.length = 0
+    const during = new Destinations({
+      projects: {
+        get: async (id) => {
+          gate.now = why
+          return record(id)
+        },
+        setDestination: async (id, folder) => {
+          written.push(folder)
+          return { id, destination: folder } as never
+        },
+      },
+      chooseFolder: async () => '/chosen/folder',
+      appFolder: () => '/the/app/folder',
+      refuse: async () => null,
+    })
+    registerExportHandlers(
+      ipc,
+      { onProgress: () => () => undefined } as unknown as ExportSource,
+      () => true,
+      () => undefined,
+      () => undefined,
+      during,
+      () => gate.now,
+    )
+    await expect(call(CHANNELS.exportUseAppFolder, 'abcdefghijk1')).rejects.toThrow(why)
+    expect(written, 'nothing was written when it was taken back').toEqual([])
   })
 
   it('answers a refusal the exporter made as data, not a rejection', async () => {

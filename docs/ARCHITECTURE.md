@@ -570,6 +570,15 @@ waits on the same answer and puts nothing more to the disk; once it has
 answered, either way, the next asking asks afresh. It is by the folder as
 written, so two spellings of one folder are two questions.
 
+That bounds one folder asked again, which is what "try again" does. It
+does not bound different folders on one mount that has stalled - four
+projects each exporting to a folder of its own there, each exported - and
+a check abandoned on a mount that is slow rather than dead goes on to its
+next folder when the late one answers, to nobody. Either can hold the
+four threads until the mount answers. Time is lost and nothing else: no
+check writes, and nothing acts on an answer that came late. It is
+accepted for now.
+
 **The gate is asked again at a destination's write.** The bridge asks
 whether a reset is running before it opens a project's folder chooser.
 The dialog then stays open as long as a person likes and the folder is
