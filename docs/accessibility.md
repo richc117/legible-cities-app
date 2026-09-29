@@ -36,7 +36,8 @@ person's, recorded in [Reader runs](#reader-runs).
    and asserted to have taken effect), so a ring or a control only one
    theme draws cannot hide. Against the
    stand-in engine: for each screen and each dialog, every control in the
-   accessibility tree has a name (`ariaSnapshot()`); a Tab walk from the
+   accessibility tree has a name (`ariaSnapshot()`), and nothing in it has
+   the name of something it is inside (#208, below); a Tab walk from the
    top reaches every enabled control and each shows a ring it did not have
    at rest; with reduced motion emulated, and the emulation asserted to
    take effect, no element or open shadow root has a running animation or
@@ -53,6 +54,42 @@ person's, recorded in [Reader runs](#reader-runs).
    host and a select's and text field's focusable parts are ordinary
    children, so no kit control focusable only inside a shadow root is on
    screen, and one added later would be outside it.
+
+   **A name said twice, nested** (#208) is read from the same snapshot,
+   which a sweep takes once and hands to both checks of it, over every
+   role and not only the controls: a node whose name is the
+   name of one of its ancestors is a finding, as the engine log's box of
+   lines was inside the region of the same name. Three things are not. A
+   `heading`, because a section named by its own heading is the correct
+   pattern and every dialog and every section of Settings is one. An
+   ancestor of a role that takes its name from what it holds, because a
+   cell's row is a heading around its toggle and says the toggle's words.
+   Those roles are eighteen and the list is Playwright's own, since it is
+   Playwright that computes the names: `button`, `cell`, `checkbox`,
+   `columnheader`, `gridcell`, `heading`, `link`, `menuitem`,
+   `menuitemcheckbox`, `menuitemradio`, `option`, `radio`, `row`,
+   `rowheader`, `switch`, `tab`, `tooltip` and `treeitem`; a unit test
+   holds it to the list in the installed version. And the pairs listed in
+   `tests/support/a11y-names.ts`, each one name under two roles, decided
+   with a run of the sweep in hand and naming the issue that decided it.
+   The rule is a function of the snapshot's text and is tested without the
+   app (`tests/unit/a11y-names.test.ts`); a line of the snapshot it cannot
+   read fails the sweep rather than being stepped over. It is the sweep's
+   one soft check: a repeated name stops nothing after it, so the test
+   carries on and one run lists every screen's pairs, with the snapshot
+   they were read from attached to the test as a file. With a known pair
+   in place a sweep is green whether the rule reads the tree or has
+   stopped, so `notebook-a11y.spec.ts` also asks the rule with no known
+   pair at all, over the project once an export has finished, and expects
+   the one pair that screen holds. **Its first run**
+   (macOS, 2026-09-29, by the coordinator, not by the lane that wrote it) went
+   over every swept screen and dialog in Night and in Parchment, read
+   every line of every snapshot, and found one pair: in cell 06, once an
+   export has run, a region named "Export" around a button named
+   "Export". It is a real duplicate and not a false positive. It is not
+   mended yet, because renaming the region changes an accessible name the
+   release gate's documents follow; it is carried as a known pair under
+   issue 258, and the entry goes when that issue closes.
 3. **Contrast** is arithmetic, not a screenshot: `tests/unit/contrast.test.ts`
    recomputes every text and control pair the stylesheets use, in both
    themes, now including the kit's filled buttons at rest, under the
@@ -67,7 +104,8 @@ list and the date control's calendar - render in the platform's style
 (ADR-026) and were not measured.
 
 **Legend.** *pass*: nothing found. *swept*: the end-to-end sweep checks
-it (names, the Tab walk and its ring, motion), in both themes. *fixed
+it (names, and that none is repeated inside the element it names, the Tab
+walk and its ring, motion), in both themes. *fixed
 (Dn/Cn)*: a defect this pass fixed, listed below. *finding (Fn)*: a defect too large for this pass,
 listed below for filing. *engine's*: inside the engine's page.
 
@@ -263,10 +301,31 @@ which it is.
   person's path is the documented one: "Skip past the map" is one Tab
   before the frame.
 - **Occlusion by the pinned map** (#213, above).
-- **A duplicated accessible name** (#208): `expectNamed` asks only whether
-  a control has a name. The engine log's nested name reached a pull
-  request that way; a unit test now guards that panel, and the
-  walkthrough is what catches the rest by ear.
+- **A name said twice, where the rule does not look** (#208). The engine
+  log's nested name reached a pull request because `expectNamed` asks only
+  whether a control has a name; the sweep now flags a node named as one of
+  its ancestors is (Method, 2), and a unit test guards that panel. What it
+  still cannot see: two siblings under one name, which are not nested; a
+  name inside a closed disclosure, whose contents are `hidden` and out of
+  the tree until a sweep opens it; a name longer than 900 characters,
+  which Playwright's snapshot drops; and a repetition under an ancestor
+  that is named by what it holds, which the rule allows by role. Two more
+  are Playwright's. **A frame's title**: its snapshot gives every `iframe`
+  an empty name, so a region around a frame of the same title is never
+  seen as a pair. And **the roles it refuses a name** - `caption`, `code`,
+  `definition`, `deletion`, `emphasis`, `generic`, `insertion`, `mark`,
+  `paragraph`, `presentation`, `strong`, `subscript`, `suggestion`,
+  `superscript`, `term` and `time` - so an `aria-label` on a `<p>`, a
+  `<dd>` or a bare `<span>` never arrives, as either half of one. Both
+  were read in `playwright-core` 1.63.0 (`toAriaNode` in its
+  `ariaSnapshot.ts`, `elementProhibitsNaming` in its `roleUtils.ts`) and
+  seen on a page in Chromium. The
+  walkthrough is what catches those by ear. And one pair it found and no
+  longer reports: the region named "Export" around the button named
+  "Export" in cell 06 once an export has run, from the rule's first run
+  (macOS, 2026-09-29), a known pair under issue 258 until it is mended. A known
+  pair is matched by its two roles and its name on any screen, so while
+  the entry stands a second region and button of that name would pass.
 - **The engine's page** (F1) and **the geographic view's drawing** (F2).
 
 ## Defects fixed in this pass
