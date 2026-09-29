@@ -62,6 +62,9 @@ describe('where a run stands with its download', () => {
     expect(
       downloadPhase(snapshot({ state: 'cancelled', download: midway, feedMissing: true }), false),
     ).toBe('stop')
+    // Not known (the registry did not answer): stop, since going could
+    // download the feed where no cancel reaches.
+    expect(downloadPhase(snapshot({ state: 'cancelled', feedMissing: null }), false)).toBe('stop')
     // A zip that was kept, whatever the fraction said: the inspection goes.
     expect(downloadPhase(snapshot({ state: 'cancelled', download: midway }), false)).toBe('go')
     expect(downloadPhase(snapshot({ state: 'cancelled', stages: firstDone() }), false)).toBe('go')

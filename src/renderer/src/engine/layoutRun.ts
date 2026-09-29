@@ -92,9 +92,11 @@ export interface RunSnapshot {
    * (issue 178). That, and not how far the bytes had come, is what makes an
    * ending the feed's: the engine refuses a page that is not a zip only
    * after its last byte, a download can fail before its first, and one of
-   * unknown size reports a fraction of 0 to its end.
+   * unknown size reports a fraction of 0 to its end. Null when the
+   * registry did not answer in time: unknown, which keeps the project and
+   * does not let cell 01's inspection start a download of its own.
    */
-  feedMissing: boolean
+  feedMissing: boolean | null
 }
 
 /** Where a download inside a run has got, in the engine's words. */
@@ -347,6 +349,8 @@ export class LayoutRun {
   #feedKey: string | null = null
   /** When the last download report was drawn, so a large feed's thousands of chunks are not. */
   #drawnDownload = 0
+  /** A report the throttle held back, drawn if the run ends before the next one. */
+  #heldDownload: RunDownload | null = null
   readonly #options: RunOptions
 
   constructor(options: RunOptions) {
@@ -546,6 +550,8 @@ export class LayoutRun {
         recoloured: false,
         reordered: false,
         day: date,
+        download: null,
+        feedMissing: false,
       })
       return
     }
@@ -598,6 +604,8 @@ export class LayoutRun {
         recoloured: true,
         reordered: false,
         day: date,
+        download: null,
+        feedMissing: false,
       })
       return
     }
@@ -648,6 +656,8 @@ export class LayoutRun {
         recoloured: false,
         reordered: true,
         day: date,
+        download: null,
+        feedMissing: false,
       })
       return
     }
@@ -812,25 +822,31 @@ export class LayoutRun {
    * (issue 178). The run stays `running` for that moment, which is also
    * what keeps a second start out.
    */
-  #end(patch: Partial<RunSnapshot>): void {
+  #end(ending: Partial<RunSnapshot>): void {
+    let patch = ending
     const feed = this.#feedKey
     const onDisk = this.#options.onDisk
     this.#feedKey = null
+    // A download report the throttle held back is the last word on the bytes.
+    const held = this.#heldDownload
+    this.#heldDownload = null
+    if (held !== null) patch = { ...patch, download: held }
     if (feed === null || onDisk === undefined || this.#snapshot.stages[0]?.state === 'done') {
       this.#set({ ...patch, feedMissing: false })
       return
     }
     // A deadline, so an engine that has stopped answering cannot hold the
-    // run at `running`: unanswered, or answered late, nothing is claimed
-    // about the feed and the run ends as it always has.
+    // run at `running`. Unanswered, answered late or refused, the answer is
+    // unknown (null): the project is kept, as for any ending that is not the
+    // feed's, and the gate does not let the inspection download on its own.
     let timer: ReturnType<typeof setTimeout> | undefined
-    const late = new Promise<boolean>((settle) => {
-      timer = setTimeout(() => settle(false), ON_DISK_DEADLINE)
+    const late = new Promise<boolean | null>((settle) => {
+      timer = setTimeout(() => settle(null), ON_DISK_DEADLINE)
     })
     void Promise.race([
       onDisk(feed).then(
         (there) => !there,
-        () => false,
+        () => null,
       ),
       late,
     ]).then((missing) => {
@@ -862,15 +878,21 @@ export class LayoutRun {
       // not re-render the screen or refill a live region each time.
       const fraction = p.fraction ?? 0
       const now = Date.now()
-      if (this.#snapshot.download !== null && fraction < 1 && now - this.#drawnDownload < 250)
+      if (this.#snapshot.download !== null && fraction < 1 && now - this.#drawnDownload < 250) {
+        // Kept, so a download of unknown size - a fraction of 0 to its end -
+        // still ends on its last count if the run ends here.
+        this.#heldDownload = { message: p.message, fraction }
         return
+      }
       this.#drawnDownload = now
+      this.#heldDownload = null
       this.#set({ download: { message: p.message, fraction } })
       return
     }
     if (this.#snapshot.download !== null) {
       // The layout's own first stage: the download is behind it, whatever
       // its last report said.
+      this.#heldDownload = null
       this.#set({ download: null })
     }
     const stages = advance(this.#snapshot.stages, p.stage)

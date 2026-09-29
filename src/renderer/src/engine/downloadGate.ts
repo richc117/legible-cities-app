@@ -47,7 +47,9 @@ export function downloadPhase(run: RunSnapshot, starting: boolean): 'wait' | 'go
     case 'failed':
       // Whether the feed arrived is the registry's answer at the ending,
       // not how far the bytes had come: a refusal comes after the last byte.
-      return run.feedMissing ? 'stop' : 'go'
+      // Unknown (the registry did not answer) stops as well: going would let
+      // the inspection download the feed where no cancel reaches.
+      return run.feedMissing === false ? 'go' : 'stop'
   }
 }
 

@@ -28,7 +28,7 @@ export default function DownloadLine({ run }: { run: LayoutRun }): JSX.Element |
   // While the bytes come, or once a run ended with its feed not on disk -
   // which includes a download that failed before its first byte, and never
   // one that ended after the zip was kept (issue 178).
-  const shown = state === 'running' ? download !== null : feedMissing
+  const shown = state === 'running' ? download !== null : feedMissing === true
   if (!shown) return null
   const going = downloading({ download })
   const station: StageState =

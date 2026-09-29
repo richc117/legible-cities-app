@@ -155,9 +155,15 @@ export default function LayoutRun({
         />
         <div className="layout-run-foot">
           <p className="progress-message" role="status" aria-live="polite">
-            {state === 'failed' && feedMissing
+            {state === 'failed' && feedMissing === true
               ? NOT_LAID_OUT
-              : (error ?? message ?? (waitingOnFeed ? WAITING_FOR_FEED : 'Starting the layout.'))}
+              : (error ??
+                message ??
+                (waitingOnFeed
+                  ? WAITING_FOR_FEED
+                  : state === 'running'
+                    ? 'Starting the layout.'
+                    : ''))}
           </p>
           {state === 'running' && (
             <Button ref={cancelRef} onClick={() => run.cancel()}>

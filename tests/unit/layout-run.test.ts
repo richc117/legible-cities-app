@@ -1435,7 +1435,18 @@ describe("a feed's download inside the run", () => {
     expect(past.run.snapshot.feedMissing).toBe(false)
   })
 
-  it('ends at the deadline, claiming nothing, when the registry never answers', async () => {
+  it('ends not knowing, rather than claiming either, when the registry fails', async () => {
+    const broken = setup({}, READY, () => Promise.reject(new Error('engine gone')))
+    broken.begin()
+    broken.calls[0].report('download', 'downloaded 65,536 bytes', 0.1)
+    broken.calls[0].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
+    await tick()
+    await tick()
+    expect(broken.run.snapshot.state).toBe('cancelled')
+    expect(broken.run.snapshot.feedMissing).toBeNull()
+  })
+
+  it('ends at the deadline, not knowing, when the registry never answers', async () => {
     vi.useFakeTimers()
     try {
       const hung = setup({}, READY, () => new Promise<boolean>(() => undefined))
@@ -1446,7 +1457,7 @@ describe("a feed's download inside the run", () => {
       expect(hung.run.snapshot.state, 'still ending').toBe('running')
       await vi.advanceTimersByTimeAsync(ON_DISK_DEADLINE)
       expect(hung.run.snapshot.state).toBe('cancelled')
-      expect(hung.run.snapshot.feedMissing).toBe(false)
+      expect(hung.run.snapshot.feedMissing).toBeNull()
     } finally {
       vi.useRealTimers()
     }

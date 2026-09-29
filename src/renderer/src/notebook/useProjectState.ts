@@ -177,6 +177,19 @@ export function useProjectState(
   const run = layoutRunFor(id)
   const exporter = exportRunFor(id)
   const runSnapshot = useSnapshot(run)
+  // The run is past its feed: its first stage is done, or it ended with the
+  // feed on disk. After cell 01's held inspection was refused because the
+  // feed never arrived, the first run past it asks again (issue 178).
+  const feedHere =
+    runSnapshot.stages[0]?.state === 'done' ||
+    (runSnapshot.state !== 'running' && runSnapshot.feedMissing === false)
+  const inspectionRefused = useRef(false)
+  const [retry, setRetry] = useState(0)
+  useEffect(() => {
+    if (!feedHere || !inspectionRefused.current) return
+    inspectionRefused.current = false
+    setRetry((n) => n + 1)
+  }, [feedHere])
   const exportSnapshot = useSnapshot(exporter)
   const layingOut = runSnapshot.state === 'running'
   const exporting = exportSnapshot.state === 'running'
@@ -291,7 +304,7 @@ export function useProjectState(
         record === null ||
         record.layout !== null ||
         snapshot.state !== 'cancelled' ||
-        !snapshot.feedMissing
+        snapshot.feedMissing !== true
       )
         return
       unkept.current = true
@@ -412,15 +425,21 @@ export function useProjectState(
         (record) => record?.cached === true,
         () => false,
       )
-      return afterRunDownload(run, () => layOutAsked.current, cached).then(() =>
-        inspectionFor(engineClient(), key, today()),
+      return afterRunDownload(run, () => layOutAsked.current, cached).then(
+        () => inspectionFor(engineClient(), key, today()),
+        (error: unknown) => {
+          inspectionRefused.current = true
+          throw error
+        },
       )
     },
-    // `layOutAsked` is a ref declared above and read when asked. The layout
-    // is here so that an inspection refused because the feed never arrived
-    // is asked again once a later run has laid the project out.
+    // `layOutAsked` and `inspectionRefused` are refs, read when asked.
+    // `retry` moves only after an inspection was refused because the feed
+    // never arrived, the first time a later run gets past the download -
+    // whether or not it goes on to lay the project out - so cell 01 asks
+    // again then, and only then.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [layOut, run, project?.layout],
+    [layOut, run, retry],
   )
   const readStage = useCallback(
     (key: string, layout: string, made: string | null, stage: StageName, width: number) =>
