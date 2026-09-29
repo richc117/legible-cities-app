@@ -71,7 +71,7 @@ import { cell, cellHeading, closeCell, openCell, type CellId } from '../support/
 import { tagContains as gitTagContains, writtenSince } from './pure.mjs'
 import { RunRecord, STEP_TITLES, redact, type Result } from './record'
 
-/** The presets in the engine's registry at the pin (`vendor/pins.json`, v0.8.3). */
+/** The presets in the engine's registry at the pin (`vendor/pins.json`, v0.9.1). */
 const PRESETS_AT_PIN = 22
 
 const repoRoot = resolve(__dirname, '../..')
@@ -874,7 +874,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
         }
         log.note(`${count} presets listed.`)
         // Every preset the registry holds is a card (A5.6-02): twenty-two at
-        // the pinned engine, v0.8.3. A pin bump that changes the registry
+        // the pinned engine, v0.9.1. A pin bump that changes the registry
         // changes this number, and docs/acceptance.md says it too.
         if (count !== PRESETS_AT_PIN)
           wrong.push(`${count} cards, where the engine at the pin holds ${PRESETS_AT_PIN} presets`)
@@ -1320,23 +1320,34 @@ test('a release, installed, through docs/acceptance.md', async () => {
         const count = await text(toggle)
         await toggle.click()
         await expect(logRegion).toBeVisible()
-        // The lines are the LOOM tools' own stderr, which the engine passes
-        // on as it reads it, and the native tools write nothing when they
-        // succeed (issue 246). A run that went well leaves the log empty and
-        // the panel says why; one with lines has them in the box, and the
-        // first is noted.
-        if (count === 'Engine log no lines') {
-          await expect(logRegion).toContainText(
-            'The LOOM tools wrote nothing to this log. They write here only when one of them has something to report, and a run that goes well gives them nothing to say.',
-          )
-        } else {
-          expect(count).toMatch(/^Engine log \d+ lines?$/)
-          const lines = logRegion.getByRole('group', { name: 'Log lines' })
-          await expect(lines).not.toBeEmpty()
-          log.note(
-            `The engine log held ${count.replace('Engine log ', '')}, beginning "${oneLine((await lines.innerText()).split('\n')[0] ?? '', 200)}".`,
-          )
-        }
+        // One line of the engine's own for each stage it finished, since
+        // v0.9.0 (E37), each drawn after its level ("[info] "), beside
+        // whatever the LOOM tools wrote: step 4's layout ran every stage, so
+        // gtfs2graph's line and write's are there, and no line names a
+        // folder.
+        expect(count).toMatch(/^Engine log \d+ lines$/)
+        const box = logRegion.getByRole('group', { name: 'Log lines' })
+        const lines = (await box.innerText()).split('\n').filter((l) => l.trim() !== '')
+        log.note(
+          `The engine log held ${lines.length} lines, from "${oneLine(lines[0] ?? '', 160)}".`,
+        )
+        expect(
+          lines.some((l) => /^\[info\] gtfs2graph: \d+ nodes .* \(\d+\.\d s\)$/.test(l)),
+          lines.join(' / '),
+        ).toBe(true)
+        expect(
+          lines.some((l) =>
+            /^\[info\] write: la-metro-rail\.svg, la-metro-rail\.html and la-metro-rail\.positions\.json \(\d+\.\d s\)$/.test(
+              l,
+            ),
+          ),
+          lines.join(' / '),
+        ).toBe(true)
+        expect(lines.filter((l) => /(^|[\s(])(?:[A-Za-z]:[\\/]|[\\/][^\s\\/])/.test(l))).toEqual([])
+        // A layout run is two requests, a layout and a draw from it, in one
+        // log: the draw's line about the stored layout must not deny the
+        // layout's own four (engine v0.9.1).
+        expect(lines.filter((l) => l.includes('nothing was laid out'))).toEqual([])
         await logRegion
           .getByRole('button', { name: "Copy log: the engine's log for this run" })
           .click()

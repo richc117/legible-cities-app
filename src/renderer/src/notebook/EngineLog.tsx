@@ -132,23 +132,24 @@ export function readLog(run: Pick<LayoutRun, 'job'>, was: LogView): LogView {
 export const NOTHING_YET = 'The engine has not said anything yet.'
 
 /**
- * After a run whose log is empty, however it ended: every run that went
- * well, a run stopped before a tool ran or for a reason of its own, and a
- * tool that died without a word. It names the log, and does not begin
- * "Nothing was written.", which is the app's sentence for a file or a
- * record that was not saved (`ExportRun.tsx`, `LayoutRun.tsx`) and would
- * read, under a layout that was saved, as though it had not been.
+ * After a run whose log is empty, however it ended.
  *
- * The lines are the LOOM tools' own stderr, which the engine passes on as it
- * reads it (`loom.py`, `pump_stderr`). Measured on the native tools at the
- * pin over the LA feed (issue 246): gtfs2graph, topo, loom and octi each
- * exit 0 having written nothing, and none has a flag to say more. They
- * write when something goes wrong - a feed they cannot read, a graph they
- * cannot parse - so an empty log after a finished run is the ordinary case,
- * and the panel says so rather than sounding as if lines were on their way.
+ * Since engine v0.9.0 every stage logs a line of the engine's own - what it
+ * made and how long it took (E37, engine issue 48) - beside the LOOM tools'
+ * stderr, so a run that got as far as one stage has something here. An
+ * empty log once the run has ended is a run that stopped before its first
+ * stage finished: cancelled early, refused before it started, or failed in
+ * the first stage with a tool that said nothing. Before v0.9.0 it was every
+ * run that went well, because the native tools write nothing when they
+ * succeed (issue 246), and the panel then said so.
+ *
+ * It names the log, and does not begin "Nothing was written.", which is the
+ * app's sentence for a file or a record that was not saved (`ExportRun.tsx`,
+ * `LayoutRun.tsx`) and would read, beside a layout that was saved, as
+ * though it had not been.
  */
 export const NOTHING_SAID =
-  'The LOOM tools wrote nothing to this log. They write here only when one of them has something to report, and a run that goes well gives them nothing to say.'
+  'This run logged nothing: it ended before any stage finished, and no LOOM tool had anything to report.'
 
 /**
  * How many lines there are, in the words the row says them. "Yet" only

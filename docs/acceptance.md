@@ -169,7 +169,7 @@ Result: ____
   yet.
 - The engine's status line starts at "Checking the engine…" or "Starting
   the engine." and becomes "Engine ready (`<engine version>`)." The version
-  is the engine pin in `vendor/pins.json` at the release tag (0.8.3 when
+  is the engine pin in `vendor/pins.json` at the release tag (0.9.1 when
   this was written).
 - **No dialog opens.** The first-run check of the bundled LOOM and ffmpeg
   passes silently; a dialog titled "LOOM will not run", "ffmpeg will not
@@ -299,13 +299,13 @@ Press **Re-layout**, then **Cancel** in the dialog.
   opened (a screen reader names what it opens "The engine's log for this
   run"); **Copy log** says "The log is on the clipboard, with the keys in
   web addresses taken out and your home folder written as ~." The lines are
-  what the LOOM tools wrote while they ran, passed on by the engine, and
-  the tools write only when something goes wrong (issue 246). So after a
-  layout that went well it reads "no lines", and opened it says "The LOOM
-  tools wrote nothing to this log. They write here only when one of them
-  has something to report, and a run that goes well gives them nothing to
-  say." If it holds lines
-  instead, write down the first in the notes.
+  the engine's own, one for each stage it finished, and anything the LOOM
+  tools wrote while they ran (engine v0.9.0, E37). After step 4's layout it
+  holds a line per stage, each after its level, from "[info] gtfs2graph:
+  `<n>` nodes (`<n>` stations, `<n>` junctions), `<n>` edges, lines:
+  `<labels>` (`<n>` s)" to "[info] write: la-metro-rail.svg,
+  la-metro-rail.html and la-metro-rail.positions.json (`<n>` s)", and none
+  of them names a folder.
 - The diagnostics open with either "No caveats: nothing was fudged, and
   the issues score is `<n>`." or "`<n>` caveats, and an issues score of
   `<n>`, where 0 is clean.", a table captioned "What the engine measured
