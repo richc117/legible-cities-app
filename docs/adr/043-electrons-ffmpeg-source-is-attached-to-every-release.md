@@ -122,16 +122,24 @@ to control compilation", not a lawyer's.
   its pinned commit and its DEPS names the pinned FFmpeg revision;
 - shallow-fetches FFmpeg at its commit, checks the commit's tree id, exports
   it and checks the exported files' tree id;
-- checks that gitiles lists each Chromium directory at the pinned commit
-  as the pinned tree, and that Chromium's tree records nasm's pinned
-  repository and revision; fetches each directory as a gitiles archive,
-  retried with backoff on a 5xx, a 429 or a failed transfer (a truncated
-  body included), and checks the tree id its files make. googlesource's archives are written at download time and are never
-  the same bytes twice, so an archive's hash cannot be pinned, but the tree
-  can. Every tree id is taken with no git configuration but its own,
+- fetches Chromium's pinned commit with git, its trees and none of its
+  files, from `chromium.fetch` in the pins (GitHub's `chromium/chromium`
+  mirror of `chromium.repo`), and checks that the commit records each
+  Chromium directory as the pinned tree and nasm at its pinned revision,
+  and that Chromium's DEPS names nasm's pinned repository; fetches the
+  directories' files together through a sparse checkout, and nasm with git
+  at its revision, exports each and checks the tree id its files make.
+  Every tree id is taken with no git configuration but its own,
   `core.autocrlf=false`, and every conversion attribute unset in the
   repository's `info/attributes`, so an in-tree `.gitattributes` cannot
-  change what files hash to;
+  change what files hash to. (Amended 2026-09-29, issue 183: this read
+  gitiles' listings and `+archive` tarballs until googlesource's web pages
+  answered 503 for a day, and its batched object fetches for chromium/src
+  stalled, while its git protocol for FFmpeg and nasm did not. Git checks
+  every object it receives against its id, so a mirror serves the same
+  bytes the pins name or fails; the tags are still asked of
+  googlesource, and the archive's source tree was byte-identical to
+  rc.4's made the old way.)
 - fetches Electron's files at the pinned commit and checks each blob id;
 - writes `BUILD.txt`: what each part is, the pins, how Electron's gn args
   build the library, what is left out, and what this project takes to be
@@ -180,7 +188,11 @@ build until someone does this, which is the point.
 
 **googlesource can hold a run back.** Its 503s are frequent and the retries
 absorb them, but an outage fails the source job and so every packaging job,
-where it once failed nothing.
+where it once failed nothing. Since 2026-09-29 (issue 183) the job
+depends on googlesource's git protocol (the tags, FFmpeg and nasm) and on
+GitHub's `chromium/chromium` mirror, and no longer on gitiles, whose outage
+on 2026-09-28 is what moved it; a stalled git transfer is abandoned after a
+minute and tried again.
 
 **The reading of the licence is this project's**, not a lawyer's: that
 section 4 applies to the library copy the installers carry, whatever

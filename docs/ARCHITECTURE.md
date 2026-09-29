@@ -1487,9 +1487,11 @@ names outside itself - Chromium's `build`, `third_party/opus`,
 `third_party/nasm` and `tools/generate_stubs` - with `media/ffmpeg`, and
 Electron's FFmpeg patch, gn args and patches to Chromium's `build/`, each
 verified by its git object id against `electron_ffmpeg` in
-`vendor/pins.json` - by tree id for the directories, both as gitiles lists
-them and as their archives unpack, since googlesource's archives are never
-the same bytes twice - and packed reproducibly. The job
+`vendor/pins.json` - by tree id for the directories, both as the pinned
+commit records them and as their exported files make them, everything
+fetched with git (Chromium's own repository from the GitHub mirror the pins
+name, since an object id names the same bytes wherever they come from) -
+and packed reproducibly. The job
 refuses a `package-lock.json` for another Electron, so every Electron bump
 moves that block. Each packaging job refuses, before `npm ci`, to go on
 without the artefact, so no installer is made in a run whose Electron

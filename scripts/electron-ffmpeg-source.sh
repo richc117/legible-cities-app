@@ -37,12 +37,18 @@
 # imports name outside themselves, checked when the pins were taken; the pins'
 # note says how.
 #
-# Nothing is trusted for its bytes. googlesource's +archive tarballs are
-# written at download time and differ from one fetch to the next, so each
-# Chromium directory is unpacked and judged by the git tree id it makes,
-# against the id the pins record and the id gitiles lists for that path at
-# the pinned commit; FFmpeg is fetched with git at its commit and judged the
-# same way once exported; Electron's files by their blob ids. The tree ids
+# Nothing is trusted for its bytes. Everything from Chromium comes over git,
+# which checks every object it receives against its id: Chromium's commit
+# with its trees and none of its files, then the files of the pinned
+# directories only; FFmpeg and nasm each at their commit. Each directory is
+# judged by the tree id the pinned commit records for it and again by the
+# tree id its exported files make, against the pins; Electron's files by
+# their blob ids. Chromium's own repository is fetched from `chromium.fetch`
+# in the pins, a mirror of `chromium.repo`: an object id names the same
+# bytes wherever they come from, and googlesource's web pages (gitiles) and
+# its batched object fetches for chromium/src failed for a day in September
+# 2026 while its git protocol for the smaller repositories did not (issue
+# 183). The tags are still asked of `chromium.repo`. The tree ids
 # are taken with no git configuration but the script's own, core.autocrlf
 # off and every attribute that could change a file's bytes unset, so a
 # .gitattributes inside a tree cannot make the same files hash differently.
@@ -51,10 +57,10 @@
 # another Electron than the pins name, and then an Electron tag that no
 # longer names the pinned commit, an Electron DEPS that names another
 # Chromium, a Chromium tag that no longer names its pinned commit, a
-# Chromium DEPS that names another FFmpeg revision, and a Chromium tree that
-# records another repository or revision for nasm.
+# Chromium DEPS that names another FFmpeg revision, and a Chromium tree or
+# DEPS that records another revision or repository for nasm.
 #
-# Needs bash, git, curl, python3, base64, GNU tar and xz: the job runs on
+# Needs bash, git, curl, python3, GNU tar and xz: the job runs on
 # ubuntu-22.04. The archive is packed with names sorted, owner and group 0,
 # modes normalised and every time the FFmpeg commit's, and compressed with
 # one xz thread, so the same pins and the same copies make the same bytes on
@@ -80,14 +86,17 @@ fail() {
 }
 
 # Git is asked with no configuration but what is given here, so a person's
-# global settings cannot change what a tree hashes to.
+# global settings cannot change what a tree hashes to. A transfer slower than
+# a kilobyte a second for a minute is abandoned, so a stalled fetch fails and
+# is tried again rather than holding the job until its timeout.
 export GIT_CONFIG_NOSYSTEM=1
 export GIT_CONFIG_GLOBAL=/dev/null
 export GIT_TERMINAL_PROMPT=0
 gitc() {
   git -c core.autocrlf=false -c core.eol=lf -c core.safecrlf=false -c core.filemode=true \
     -c core.symlinks=true -c core.ignorecase=false -c core.precomposeunicode=false \
-    -c advice.detachedHead=false -c init.defaultBranch=main "$@"
+    -c advice.detachedHead=false -c init.defaultBranch=main \
+    -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=60 "$@"
 }
 
 # The attributes that would change a file's bytes on the way into git, unset
@@ -174,6 +183,7 @@ chromium_version=$(pin chromium version)
 chromium_repo=$(pin chromium repo)
 chromium_tag=$(pin chromium tag)
 chromium_commit=$(pin chromium commit)
+chromium_fetch=$(pin chromium fetch)
 ffmpeg_repo=$(pin ffmpeg repo)
 ffmpeg_commit=$(pin ffmpeg commit)
 ffmpeg_tree=$(pin ffmpeg tree)
@@ -196,7 +206,7 @@ if [ "$installed" != "$electron_version" ]; then
 fi
 echo "Electron $electron_version, as package-lock.json installs it"
 
-for tool in git curl base64 tar xz; do
+for tool in git curl tar xz; do
   command -v "$tool" >/dev/null 2>&1 || fail "electron-ffmpeg-source.sh needs $tool"
 done
 tar --version 2>/dev/null | head -1 | grep -q 'GNU tar' || fail "electron-ffmpeg-source.sh needs GNU tar, for --sort=name"
@@ -245,23 +255,6 @@ get() {
   fail "fetching $url failed five times, the last with $code and curl exit $status"
 }
 
-# gitiles <url> <field>: a field of gitiles' JSON answer for a path, which
-# comes behind a )]}' line.
-gitiles() {
-  local file
-  file=$(mktemp)
-  get "$1" "$file"
-  python3 - "$file" "$2" <<'PY'
-import json, sys
-text = open(sys.argv[1], encoding="utf-8").read()
-if text.startswith(")]}'"):
-    text = text.split("\n", 1)[1]
-value = json.loads(text).get(sys.argv[2], "")
-print(value if isinstance(value, str) else "")
-PY
-  rm -f "$file"
-}
-
 # peeled <repo> <tag>: the commit a tag names on its remote, peeled through
 # an annotated tag, or nothing when there is no such tag.
 peeled() {
@@ -277,17 +270,25 @@ peeled() {
   fail "could not ask $1 for the tag $2"
 }
 
-# unpack <url> <dir> <tree> <what>: a gitiles archive unpacked into <dir>,
-# whose files must make <tree>.
-unpack() {
-  local url=$1 dir=$2 want=$3 what=$4 file found
-  file="$work/unpack.tar.gz"
-  get "$url" "$file"
-  mkdir -p "$dir"
-  tar -x -z -f "$file" -C "$dir"
-  rm -f "$file"
-  found=$(tree_id "$dir")
-  [ "$found" = "$want" ] || fail "$what makes tree $found, and the pins say $want"
+# shallow <git dir> <repo> <commit> [<fetch option>...]: one commit fetched
+# with no history, tried three times; the commit fetched must be the one asked.
+shallow() {
+  local gd=$1 from=$2 want=$3 attempt found
+  shift 3
+  for attempt in 1 2 3; do
+    if gitc --git-dir="$gd" fetch --quiet --no-tags --depth 1 "$@" "$from" "$want"; then break; fi
+    [ "$attempt" -lt 3 ] || fail "could not fetch $want from $from"
+    sleep $((attempt * 10))
+  done
+  found=$(gitc --git-dir="$gd" rev-parse FETCH_HEAD)
+  [ "$found" = "$want" ] || fail "fetching $want from $from gave $found"
+}
+
+# A repository to fetch into, bare, with every conversion attribute unset.
+bare() {
+  gitc init --quiet --bare "$1"
+  mkdir -p "$1/info"
+  printf '%s\n' "$NO_CONVERSION" > "$1/info/attributes"
 }
 
 # The tags still name the pinned commits, and each DEPS names the next pin.
@@ -310,8 +311,25 @@ found=$(peeled "$chromium_repo" "$chromium_tag")
 [ "$found" = "$chromium_commit" ] || fail "Chromium's tag $chromium_tag names ${found:-nothing} on $chromium_repo, and the pins say $chromium_commit"
 echo "Chromium $chromium_tag is commit $chromium_commit"
 
-get "$chromium_repo/+/$chromium_commit/DEPS?format=TEXT" "$work/chromium-DEPS.b64"
-base64 -d < "$work/chromium-DEPS.b64" > "$work/chromium-DEPS" || fail "Chromium's DEPS at $chromium_commit did not decode"
+# Chromium: the commit with every tree and no file, from the mirror; a file
+# is fetched when it is read, and the pinned directories' files together
+# below. A promisor remote is what lets git fetch the rest later, and the
+# repository has a work tree only so that a sparse checkout can do that.
+checkout="$work/chromium"
+chromium="$checkout/.git"
+gitc init --quiet "$checkout"
+mkdir -p "$chromium/info"
+printf '%s\n' "$NO_CONVERSION" > "$chromium/info/attributes"
+gitc --git-dir="$chromium" remote add origin "$chromium_fetch"
+gitc --git-dir="$chromium" config remote.origin.promisor true
+gitc --git-dir="$chromium" config remote.origin.partialclonefilter blob:none
+shallow "$chromium" origin "$chromium_commit" --filter=blob:none
+echo "Chromium $chromium_commit fetched from $chromium_fetch, its trees without their files"
+for attempt in 1 2 3; do
+  if gitc --git-dir="$chromium" cat-file blob "$chromium_commit:DEPS" > "$work/chromium-DEPS"; then break; fi
+  [ "$attempt" -lt 3 ] || fail "could not read Chromium's DEPS at $chromium_commit from $chromium_fetch"
+  sleep $((attempt * 10))
+done
 found=$(python3 - "$work/chromium-DEPS" <<'PY'
 import re, sys
 match = re.search(r"'ffmpeg_revision'\s*:\s*'([0-9a-f]{40})'", open(sys.argv[1], encoding="utf-8").read())
@@ -324,16 +342,8 @@ echo "Chromium's DEPS names FFmpeg $ffmpeg_commit"
 # FFmpeg: one commit, fetched shallow; git checks every object it receives
 # against its id. The commit's tree is checked, then the exported files'.
 repo="$work/ffmpeg.git"
-gitc init --quiet --bare "$repo"
-mkdir -p "$repo/info"
-printf '%s\n' "$NO_CONVERSION" > "$repo/info/attributes"
-for attempt in 1 2 3; do
-  if gitc --git-dir="$repo" fetch --quiet --depth 1 "$ffmpeg_repo" "$ffmpeg_commit"; then break; fi
-  [ "$attempt" -lt 3 ] || fail "could not fetch FFmpeg $ffmpeg_commit from $ffmpeg_repo"
-  sleep $((attempt * 10))
-done
-found=$(gitc --git-dir="$repo" rev-parse FETCH_HEAD)
-[ "$found" = "$ffmpeg_commit" ] || fail "fetching $ffmpeg_commit from $ffmpeg_repo gave $found"
+bare "$repo"
+shallow "$repo" "$ffmpeg_repo" "$ffmpeg_commit"
 found=$(gitc --git-dir="$repo" rev-parse "$ffmpeg_commit^{tree}")
 [ "$found" = "$ffmpeg_tree" ] || fail "FFmpeg $ffmpeg_commit has tree $found, and the pins say $ffmpeg_tree"
 when=$(gitc --git-dir="$repo" log -1 --format=%ct "$ffmpeg_commit")
@@ -346,33 +356,70 @@ version=$(grep -h '#define FFMPEG_VERSION ' "$root"/src/third_party/ffmpeg/chrom
 rm -rf "$repo"
 echo "FFmpeg $ffmpeg_commit: tree $ffmpeg_tree, $(find "$root/src/third_party/ffmpeg" -type f | wc -l | tr -d ' ') files, reports $ffmpeg_reports"
 
-# The Chromium directories: the tree gitiles lists for the path at the pinned
-# commit, and the tree the unpacked archive makes, must both be the pin.
+# The Chromium directories: the tree the pinned commit records for each path
+# must be the pin, and so must the tree its exported files make. Their files
+# are fetched in one request by a sparse checkout, which asks for every
+# missing file it needs at once rather than one at a time as an archive
+# would; the checkout is only the fetch, and the files are exported from the
+# commit itself.
+sparse=()
 while IFS= read -r path; do
   want=$(pin chromium_trees "$path" tree)
-  found=$(gitiles "$chromium_repo/+/$chromium_commit/$path/?format=JSON" id)
+  found=$(gitc --git-dir="$chromium" rev-parse --verify --quiet "$chromium_commit:$path" || true)
   [ "$found" = "$want" ] || fail "Chromium's $path at $chromium_commit is tree ${found:-nothing}, and the pins say $want"
-  unpack "$chromium_repo/+archive/$chromium_commit/$path.tar.gz" "$root/src/$path" "$want" \
-    "Chromium's $path at $chromium_commit, unpacked,"
+  sparse+=("/$path/")
+done <<< "$tree_keys"
+gitc -C "$checkout" sparse-checkout set --no-cone "${sparse[@]}"
+for attempt in 1 2 3; do
+  if gitc -C "$checkout" checkout --quiet --force "$chromium_commit"; then break; fi
+  [ "$attempt" -lt 3 ] || fail "could not fetch the files of Chromium's pinned directories from $chromium_fetch"
+  sleep $((attempt * 10))
+done
+while IFS= read -r path; do
+  want=$(pin chromium_trees "$path" tree)
+  mkdir -p "$root/src/$path"
+  gitc --git-dir="$chromium" archive --format=tar "$chromium_commit:$path" | tar -x -C "$root/src/$path"
+  found=$(tree_id "$root/src/$path")
+  [ "$found" = "$want" ] || fail "Chromium's $path at $chromium_commit, exported, makes tree $found, and the pins say $want"
   echo "src/$path: tree $want, $(find "$root/src/$path" -type f | wc -l | tr -d ' ') files"
 done <<< "$tree_keys"
 
-# The DEPS entries: Chromium's tree records each one's repository and
-# revision, which must be the pins', and its tree is judged the same way.
+# The DEPS entries: Chromium's tree records each one's revision as a gitlink
+# and its DEPS the repository, which must be the pins'; each is fetched with
+# git at that revision and judged the same way.
 while IFS= read -r path; do
   dep_repo=$(pin chromium_deps "$path" repo)
   dep_commit=$(pin chromium_deps "$path" commit)
   want=$(pin chromium_deps "$path" tree)
-  found=$(gitiles "$chromium_repo/+/$chromium_commit/$path?format=JSON" url)
-  [ "$found" = "$dep_repo" ] || fail "Chromium $chromium_commit takes $path from ${found:-nowhere}, and the pins say $dep_repo"
-  found=$(gitiles "$chromium_repo/+/$chromium_commit/$path?format=JSON" revision)
+  found=$(gitc --git-dir="$chromium" ls-tree "$chromium_commit" -- "$path" | awk '$2 == "commit" { print $3 }')
   [ "$found" = "$dep_commit" ] || fail "Chromium $chromium_commit takes $path at ${found:-no revision}, and the pins say $dep_commit"
-  found=$(gitiles "$dep_repo/+/$dep_commit/?format=JSON" id)
-  [ "$found" = "$want" ] || fail "$dep_repo at $dep_commit is tree ${found:-nothing}, and the pins say $want"
-  unpack "$dep_repo/+archive/$dep_commit.tar.gz" "$root/src/$path" "$want" \
-    "$dep_repo at $dep_commit, unpacked,"
+  found=$(python3 - "$work/chromium-DEPS" "src/$path" "$dep_commit" <<'PY'
+import re, sys
+text, key, commit = open(sys.argv[1], encoding="utf-8").read(), sys.argv[2], sys.argv[3]
+vars_ = dict(re.findall(r"'(\w+)'\s*:\s*'([^']*)'", text.split("deps = {", 1)[0]))
+entry = re.search(re.escape(f"'{key}'") + r"\s*:\s*\{\s*'url'\s*:\s*([^}]*?)\s*,?\s*\}", text)
+if not entry:
+    raise SystemExit(0)
+parts = re.findall(r"Var\('(\w+)'\)|'([^']*)'", entry.group(1))
+url = "".join(vars_.get(name, "\0") if name else literal for name, literal in parts)
+repo, _, revision = url.rpartition("@")
+print(repo.removesuffix(".git") if revision == commit else "")
+PY
+)
+  [ "$found" = "$dep_repo" ] || fail "Chromium's DEPS at $chromium_commit takes $path from ${found:-another repository or revision}, and the pins say $dep_repo at $dep_commit"
+  dep="$work/dep.git"
+  bare "$dep"
+  shallow "$dep" "$dep_repo" "$dep_commit"
+  found=$(gitc --git-dir="$dep" rev-parse "$dep_commit^{tree}")
+  [ "$found" = "$want" ] || fail "$dep_repo at $dep_commit is tree $found, and the pins say $want"
+  mkdir -p "$root/src/$path"
+  gitc --git-dir="$dep" archive --format=tar "$dep_commit" | tar -x -C "$root/src/$path"
+  rm -rf "$dep"
+  found=$(tree_id "$root/src/$path")
+  [ "$found" = "$want" ] || fail "$dep_repo at $dep_commit, exported, makes tree $found, and the pins say $want"
   echo "src/$path: $dep_repo at $dep_commit, tree $want, $(find "$root/src/$path" -type f | wc -l | tr -d ' ') files"
 done <<< "$deps_keys"
+rm -rf "$checkout"
 
 # Electron's files, each judged by its blob id.
 while IFS= read -r path; do
