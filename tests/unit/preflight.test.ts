@@ -25,11 +25,24 @@
 // `git add -A` staged the one that was found, and one writes the index entry
 // alone, the way a checkout on Windows holds a link.
 //
+// The last block holds the script to one sentence: it never says clean
+// about something it could not read. An index, a history, a message file or
+// a working tree that cannot be read is a refusal, in the script's own
+// words and never in git's, which name files.
+//
 // The script is bash, so this skips on Windows, where the hooks that run it
 // do not run either.
 
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -51,8 +64,8 @@ interface Run {
   out: string
 }
 
-function preflight(args: string[], cwd = root): Run {
-  const r = spawnSync(PREFLIGHT, args, { cwd, encoding: 'utf8' })
+function preflight(args: string[], cwd = root, script = PREFLIGHT): Run {
+  const r = spawnSync(script, args, { cwd, encoding: 'utf8' })
   return { code: r.status ?? -1, out: `${r.stdout ?? ''}${r.stderr ?? ''}` }
 }
 
@@ -473,6 +486,287 @@ describe.skipIf(onWindows)('a range of commits that cannot be read', () => {
     expect(r.out).not.toContain('could not be read')
     expect(r.code).toBe(0)
     expect(r.out).toContain('commit messages clean')
+  })
+})
+
+/** A repository whose index is not one: what was there, written over. */
+function withoutAnIndex(): string {
+  const repo = repoWith(['Add a thing'])
+  writeFileSync(join(repo, '.git/index'), 'not an index at all')
+  return repo
+}
+
+/**
+ * A history that cannot be read to its end: the tip is there, and so is the
+ * commit before it, which names a parent nobody wrote. git prints the tip
+ * and then fails. Made with git's own plumbing, which takes a parent's id
+ * on trust, so nothing is deleted to make it.
+ */
+function withoutAParent(message: string): string {
+  const repo = repoWith(['Add a thing'])
+  const who = 'Test <test@example.invalid> 0 +0000'
+  const tree = gitIn(repo, ['rev-parse', 'HEAD^{tree}']).trim()
+  const commit = (parent: string, text: string): string =>
+    gitIn(
+      repo,
+      ['hash-object', '-t', 'commit', '-w', '--stdin'],
+      [`tree ${tree}`, `parent ${parent}`, `author ${who}`, `committer ${who}`, '', text, ''].join(
+        '\n',
+      ),
+    ).trim()
+  const before = commit(neverWritten(repo, 'a parent'), 'Names a parent nobody wrote')
+  gitIn(repo, ['update-ref', 'refs/heads/main', commit(before, message)])
+  return repo
+}
+
+/** What git says of its own accord, and where the repository is. */
+function expectOnlyItsOwnWords(r: Run, repo: string): void {
+  expect(r.out).not.toMatch(/fatal|error:|warning:/i)
+  expect(r.out).not.toContain('.git')
+  expect(r.out).not.toContain(repo)
+  for (const line of r.out.trim().split('\n')) expect(line).toMatch(/^preflight: /)
+}
+
+describe.skipIf(onWindows)('what could not be read is not called clean', () => {
+  it('refuses to search the files of an index it cannot read', () => {
+    const repo = withoutAnIndex()
+    const r = preflight([], repo)
+    expect(r.code).toBe(1)
+    expect(r.out).toMatch(
+      /preflight: the files in the index could not be searched \(git grep answered \d+\), so none of them was scanned\./,
+    )
+    expect(r.out).not.toContain('clean')
+    expectOnlyItsOwnWords(r, repo)
+  })
+
+  it('refuses to look for links in an index it cannot read', () => {
+    const repo = withoutAnIndex()
+    const r = preflight([], repo)
+    expect(r.code).toBe(1)
+    expect(r.out).toMatch(
+      /preflight: the index could not be read \(git ls-files answered \d+\), so no link in it was scanned\./,
+    )
+    expect(r.out).not.toContain('clean')
+  })
+
+  it('refuses to look for private files in a working tree it cannot list', () => {
+    const repo = withoutAnIndex()
+    const r = preflight([], repo)
+    expect(r.code).toBe(1)
+    expect(r.out).toMatch(
+      /preflight: the working tree could not be listed \(git status answered \d+\), so it was not looked through/,
+    )
+  })
+
+  it('refuses a history it cannot read to the end', () => {
+    const repo = withoutAParent('Add another')
+    const r = preflight([], repo)
+    expect(r.code).toBe(1)
+    expect(r.out).toMatch(
+      /preflight: the commit messages in the history could not be read \(git log answered \d+\), so not all of them/,
+    )
+    expect(r.out).not.toContain('clean')
+    expectOnlyItsOwnWords(r, repo)
+  })
+
+  it('still reports what it did read of such a history', () => {
+    const repo = withoutAParent(`Write to ${ADDRESS}`)
+    const r = preflight([], repo)
+    expect(r.code).toBe(1)
+    expect(r.out).toContain('the commit messages in the history could not be read')
+    expect(r.out).toContain('an unpushed commit message contains something that must not be')
+  })
+
+  it('refuses a branch whose own reference cannot be read', () => {
+    // HEAD names no commit here either, as on a branch with none yet, and
+    // git will say so in the same words. It is not the same thing.
+    const repo = repoWith(['Add a thing'])
+    writeFileSync(join(repo, '.git/refs/heads/main'), 'not a reference\n')
+    const r = preflight([], repo)
+    expect(r.code).toBe(1)
+    expect(r.out).toContain('preflight: the history could not be read')
+    expect(r.out).not.toContain('clean')
+  })
+
+  it('passes a repository nothing has been committed to yet', () => {
+    // Nothing to read is not a failure to read, and a first commit must
+    // be able to pass its own hook.
+    const repo = mkdtempSync(join(dir, 'repo-'))
+    gitIn(repo, ['init', '--quiet', '--initial-branch=main'])
+    writeFileSync(join(repo, 'f0.txt'), '0\n')
+    gitIn(repo, ['add', '-A'])
+    const r = preflight([], repo)
+    expect(r.out).toBe('preflight: clean\n')
+    expect(r.code).toBe(0)
+  })
+
+  it('refuses where there is no repository to read', () => {
+    const nowhere = mkdtempSync(join(dir, 'plain-'))
+    for (const args of [[], ['--commit-range', 'HEAD~1..HEAD']]) {
+      const r = preflight(args, nowhere)
+      expect(r.code).toBe(1)
+      expect(r.out).toMatch(
+        /^preflight: no repository could be read from here \(git rev-parse answered \d+\), so nothing was scanned\.\n$/,
+      )
+    }
+  })
+
+  it('scans a commit message where there is no repository, since it needs none', () => {
+    const nowhere = mkdtempSync(join(dir, 'plain-'))
+    const clean = join(nowhere, 'clean.txt')
+    const closes = join(nowhere, 'closes.txt')
+    writeFileSync(clean, 'Do a thing\n\nWhy it was done.\n')
+    writeFileSync(closes, 'Do a thing\n\nCloses #22.\n')
+    expect(preflight(['--message-file', clean], nowhere)).toEqual({
+      code: 0,
+      out: 'preflight: commit message clean\n',
+    })
+    expect(preflight(['--message-file', closes], nowhere).code).toBe(1)
+  })
+
+  it('refuses a commit message it cannot read', () => {
+    for (const file of [join(dir, 'no-such-message.txt'), dir]) {
+      const r = preflight(['--message-file', file])
+      expect(r.code).toBe(1)
+      expect(r.out).toContain('preflight: this commit message could not be read')
+      expect(r.out).toContain('so it was not scanned')
+      expect(r.out).not.toContain('clean')
+      // Not grep's words, which name the file.
+      expect(r.out).not.toContain(file)
+    }
+  })
+
+  describe('and neither is a search that could not be run', () => {
+    // The pattern is the script's own, so the way to a search that cannot
+    // be run is a copy of the script whose pattern grep cannot compile. It
+    // is what a slip while adding to the never list would make, and before
+    // this it made a script that called everything clean.
+    let broken: string
+
+    beforeAll(() => {
+      const text = readFileSync(PREFLIGHT, 'utf8')
+      expect(text.match(/^pattern='/gm)).toHaveLength(1)
+      broken = join(dir, 'preflight-with-a-pattern-that-cannot-compile')
+      writeFileSync(broken, text.replace(/^pattern='/m, "pattern='("))
+      chmodSync(broken, 0o755)
+    })
+
+    it('in a commit message', () => {
+      const file = join(dir, 'a-message.txt')
+      writeFileSync(file, `Do a thing\n\n${HOME_FOLDER}/thing\n`)
+      const r = preflight(['--message-file', file], root, broken)
+      expect(r.code).toBe(1)
+      expect(r.out).toMatch(
+        /^preflight: this commit message could not be searched \(grep answered \d+\), so it was not scanned\.\n$/,
+      )
+    })
+
+    it('in the index, its links and the history', () => {
+      const repo = repoWith(['Add a thing'])
+      stageLink(repo, 'alias', 'f0.txt')
+      const r = preflight([], repo, broken)
+      expect(r.code).toBe(1)
+      expect(r.out).toMatch(
+        /the files in the index could not be searched \(git grep answered \d+\)/,
+      )
+      expect(r.out).toContain('alias: its target could not be searched')
+      expect(r.out).toMatch(
+        /the commit messages in the history could not be searched \(grep answered \d+\)/,
+      )
+      expect(r.out).not.toContain('clean')
+    })
+
+    it('in a range of commits', () => {
+      const repo = repoWith(['Add a thing', 'Add another'])
+      const r = preflight(['--commit-range', 'HEAD~1..HEAD'], repo, broken)
+      expect(r.code).toBe(1)
+      expect(r.out).toMatch(
+        /the messages of this range could not be searched \(grep answered \d+\)/,
+      )
+      expect(r.out).not.toContain('clean')
+    })
+
+    it('in the listing of a range that could be read a moment before', () => {
+      // The range is checked and then listed, and the listing says how git
+      // answered it. To part the two, a git put first on the path that
+      // fails the listing alone and is the real one for everything else.
+      const real = spawnSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).stdout.trim()
+      const shim = mkdtempSync(join(dir, 'shim-'))
+      const asked = 'case "$*" in *--abbrev-commit*) exit 128 ;; esac'
+      writeFileSync(join(shim, 'git'), `#!/bin/sh\n${asked}\nexec '${real}' "$@"\n`)
+      chmodSync(join(shim, 'git'), 0o755)
+      const repo = repoWith(['Add a thing', 'Add another'])
+      const r = spawnSync(PREFLIGHT, ['--commit-range', 'HEAD~1..HEAD'], {
+        cwd: repo,
+        encoding: 'utf8',
+        env: { ...process.env, PATH: `${shim}:${process.env.PATH}` },
+      })
+      expect(`${r.stdout}${r.stderr}`).toBe(
+        'preflight: the commits of this range could not be listed (git rev-list answered 128), ' +
+          'so not all of their links were scanned.\n',
+      )
+      expect(r.status).toBe(1)
+    })
+
+    it('in the look for private files', () => {
+      // That search has a pattern of its own, so a broken never list does
+      // not reach it. The way to it is a grep that cannot run it: one put
+      // first on the path, which fails for that pattern alone and hands
+      // every other search to the real one. It fails the first of two
+      // searches in a row, where only the last one's answer is kept unless
+      // it is asked for.
+      const real = spawnSync('sh', ['-c', 'command -v grep'], { encoding: 'utf8' }).stdout.trim()
+      const shim = mkdtempSync(join(dir, 'shim-'))
+      const asked = 'case "$*" in *settings*) exit 2 ;; esac'
+      writeFileSync(join(shim, 'grep'), `#!/bin/sh\n${asked}\nexec '${real}' "$@"\n`)
+      chmodSync(join(shim, 'grep'), 0o755)
+      const repo = repoWith(['Add a thing'])
+      const r = spawnSync(PREFLIGHT, [], {
+        cwd: repo,
+        encoding: 'utf8',
+        env: { ...process.env, PATH: `${shim}:${process.env.PATH}` },
+      })
+      expect(`${r.stdout}${r.stderr}`).toBe(
+        "preflight: the working tree's listing could not be searched (grep answered 2), " +
+          'so it was not looked through for private files.\n',
+      )
+      expect(r.status).toBe(1)
+    })
+  })
+
+  describe('and what could be read is as it was', () => {
+    it('says one line of a clean tree', () => {
+      const repo = repoWith(['Add a thing'])
+      expect(preflight([], repo)).toEqual({ code: 0, out: 'preflight: clean\n' })
+    })
+
+    it('refuses a file on the never list in the words it always has', () => {
+      const repo = repoWith(['Add a thing'])
+      writeFileSync(join(repo, 'notes.txt'), `a line\nsee ${HOME_FOLDER}/thing\n`)
+      gitIn(repo, ['add', '-A'])
+      expect(preflight([], repo)).toEqual({
+        code: 1,
+        out: [
+          'preflight: files about to be committed contain something that must not be public:',
+          `notes.txt:2:see ${HOME_FOLDER}/thing`,
+          '',
+        ].join('\n'),
+      })
+    })
+
+    it('refuses a private file in the working tree in the words it always has', () => {
+      const repo = repoWith(['Add a thing'])
+      writeFileSync(join(repo, '.env'), 'X=1\n')
+      writeFileSync(join(repo, '.env.example'), 'X=\n')
+      expect(preflight([], repo)).toEqual({
+        code: 1,
+        out: [
+          'preflight: a private file is in the working tree and not ignored:',
+          '?? .env',
+          '',
+        ].join('\n'),
+      })
+    })
   })
 })
 

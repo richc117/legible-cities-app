@@ -61,12 +61,15 @@ index and in the commits a pull request adds, and refuses a target that is
 absolute, that begins with what only a shell would expand (`~`, `$`, `%`),
 that carries anything on the never list, that climbs out of the
 repository or climbs after naming a folder, or that cannot be read. The
-refusal names the link and never its target. Over a range of commits it
-refuses the range, or a commit in it, that it cannot read, rather than
-report clean over what it never saw. (Amended 2026-09-29, issue 227: a
-link's blob is its target and `git grep` does not open one, so a
-worktree's `node_modules`, a link into another checkout, was staged with
-every hook green and was caught by a reviewer reading the diff.)
+refusal names the link and never its target. It never reports clean over
+what it could not read: an index, a history, a range of commits or a
+commit in one, a message file or a working tree that cannot be read, and
+a search that cannot be run, are each a refusal, in the script's words and
+not in git's. (Amended 2026-09-29, issue 227: a link's blob is its target
+and `git grep` does not open one, so a worktree's `node_modules`, a link
+into another checkout, was staged with every hook green and was caught by
+a reviewer reading the diff. The same change found that a failure to read
+had been taken for nothing found.)
 
 `.gitleaks.toml` extends the default rule set with an allowlist for this
 project's false positives, each entry narrow and each carrying its reason.

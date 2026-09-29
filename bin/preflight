@@ -20,9 +20,13 @@
 #
 # The message forms refuse one thing the file passes do not: a keyword that
 # closes an issue. See `closing` below for why that is a message-only rule.
-# The range form reads links as well as messages; see `link_fault`. It
-# refuses a range it cannot read, and a commit in it that it cannot read,
-# rather than call clean what it never saw.
+# The range form reads links as well as messages; see `link_fault`.
+#
+# It never says clean about something it could not read. Clean is a claim
+# about what was read, so every question put to git or to grep has its
+# answer looked at, and "I could not" is a refusal: an index, a history, a
+# range, a commit, a link's target, a message file or a working tree that
+# could not be read, and a search that could not be run. See `unread`.
 set -u
 usage() {
   echo "usage: preflight [--message-file FILE | --commit-range A..B]" >&2
@@ -39,9 +43,42 @@ while [ $# -gt 0 ]; do
   esac
 done
 if [ -n "$msgfile" ] && [ -n "$range" ]; then usage; fi
-cd "$(git rev-parse --show-toplevel)" || exit 1
+# From the top of the repository, which the two forms that read one cannot
+# do without. A message in a file needs none, and is scanned where it is.
+top=$(git rev-parse --show-toplevel 2>/dev/null); rc=$?
+if [ "$rc" -eq 0 ]; then
+  cd "$top" 2>/dev/null || {
+    echo "preflight: the top of the repository could not be entered, so nothing was scanned." >&2
+    exit 1
+  }
+elif [ -z "$msgfile" ]; then
+  echo "preflight: no repository could be read from here (git rev-parse answered $rc), so nothing was scanned." >&2
+  exit 1
+fi
 pattern='/Users/[A-Za-z]|/home/[A-Za-z0-9._-]+|[A-Za-z]:[\\/]{1,2}[Uu]sers[\\/]|@gmail\.com|@icloud\.com|@outlook\.com|100\.[0-9]+\.[0-9]+\.[0-9]+|192\.168\.[0-9]+\.[0-9]+|172\.(1[6-9]|2[0-9]|3[01])\.[0-9]+\.[0-9]+|10\.[0-9]+\.[0-9]+\.[0-9]+:[0-9]+|\.ts\.net\b|fd7a:115c:a1e0:|ghp_[A-Za-z0-9]{20,}|github_pat_|-----BEGIN [A-Z ]*PRIVATE KEY|AKIA[0-9A-Z]{16}|claude\.ai/code/|Claude-Session:'
 status=0
+
+# The refusal for whatever could not be read or searched. It is in this
+# script's words, with who was asked and the status they answered with, and
+# never in the tool's own: git's message for an index it cannot read names
+# the file, and this is printed wherever CI prints.
+unread() {   # $1 = what could not be done, $2 = who answered what, $3 = what follows
+  echo "preflight: $1 ($2), so $3." >&2
+  status=1
+}
+
+# grep gives three answers, and `|| true` kept two of them: 0 is a match, 1
+# is none, and anything above is that it could not look - a file that is not
+# there, a pattern it cannot compile. This prints what matched and answers 0
+# for the first two alike, since neither is a failure, and grep's own status
+# for the third.
+look() {   # grep's own arguments; it reads the file they name, or stdin
+  local out rc
+  out=$(grep "$@" 2>/dev/null); rc=$?
+  [ -n "$out" ] && printf '%s\n' "$out"
+  [ "$rc" -le 1 ] && return 0
+  return "$rc"
+}
 
 # A keyword that closes an issue. Not a leak - a different mistake with the
 # same shape, caught in the same place.
@@ -129,9 +166,12 @@ link_fault() {   # $1 = the link's path from the top, $2 = its target
     /*|\\*|[A-Za-z]:*) echo 'its target is an absolute path'; return ;;
     '~'*|'$'*|%*) echo 'its target begins with what only a shell would expand'; return ;;
   esac
-  if printf '%s\n' "$target" | grep -qE "$pattern"; then
-    echo 'its target contains something that must not be public'; return
-  fi
+  printf '%s\n' "$target" | grep -qE "$pattern" 2>/dev/null
+  case $? in
+    0) echo 'its target contains something that must not be public'; return ;;
+    1) ;;
+    *) echo 'its target could not be searched'; return ;;
+  esac
   # How far the link sits below the top is how far its target may climb.
   slashes=${link//[^\/]/}
   depth=${#slashes}
@@ -176,14 +216,24 @@ why_link() {
 if [ -n "$msgfile" ]; then
   # 0. A commit message being written, read from the file git is about to
   #    use. One file, so grep prints line numbers without a path prefix.
-  found=$(grep -nE "$pattern" -- "$msgfile" || true)
+  if ! [ -f "$msgfile" ] || ! [ -r "$msgfile" ]; then
+    unread "this commit message could not be read" "it is not a file that can be opened" "it was not scanned"
+    exit 1
+  fi
+  found=$(look -nE "$pattern" -- "$msgfile") || {
+    unread "this commit message could not be searched" "grep answered $?" "it was not scanned"
+    exit 1
+  }
   if [ -n "$found" ]; then
     echo "preflight: this commit message contains something that must not be public:" >&2
     echo "$found" >&2
     echo "preflight: edit the message; nothing has been committed." >&2
     exit 1
   fi
-  shut=$(grep -niE "$closing" -- "$msgfile" || true)
+  shut=$(look -niE "$closing" -- "$msgfile") || {
+    unread "this commit message could not be searched" "grep answered $?" "it was not scanned"
+    exit 1
+  }
   if [ -n "$shut" ]; then
     echo "preflight: this commit message closes an issue by number:" >&2
     echo "$shut" >&2
@@ -219,13 +269,16 @@ if [ -n "$range" ]; then
   # be edited; this catches it when the hook was never installed or was
   # bypassed, which is the invariant the rest of the tooling keeps: whatever
   # a hook enforces, CI enforces again.
-  msgs=$(git log --format='%h %B' "$range" -- 2>/dev/null || true)
-  found=$(printf '%s\n' "$msgs" | grep -nE "$pattern" || true)
+  msgs=$(git log --format='%h %B' "$range" -- 2>/dev/null) ||
+    unread "the messages of this range could not be read" "git log answered $?" "not all of them were scanned"
+  found=$(printf '%s\n' "$msgs" | look -nE "$pattern") ||
+    unread "the messages of this range could not be searched" "grep answered $?" "they were not scanned"
   if [ -n "$found" ]; then
     echo "preflight: a commit message in this range must not be public:" >&2
     echo "$found" >&2; status=1
   fi
-  shut=$(printf '%s\n' "$msgs" | grep -niE "$closing" || true)
+  shut=$(printf '%s\n' "$msgs" | look -niE "$closing") ||
+    unread "the messages of this range could not be searched" "grep answered $?" "they were not scanned"
   if [ -n "$shut" ]; then
     echo "preflight: a commit message in this range closes an issue by number:" >&2
     echo "$shut" >&2
@@ -236,26 +289,34 @@ if [ -n "$range" ]; then
   # made on (`-m`, so a merge is read too). One committed with the hooks
   # bypassed is caught here even when a later commit took it out again: the
   # branch is public with every commit it carries.
+  #
+  # A loop that reads a listing cannot tell one git could not make from one
+  # with nothing in it, and only the second is clean. So each listing ends
+  # with how git answered, written after it by the same run that made it:
+  # `answered 0`, which no entry of either listing can be taken for. A
+  # listing that ends any other way, or that never says, was not read.
   linked=''
-  unread=''
+  unreadable=''
+  listed=''
   while IFS= read -r commit; do
-    # Asked once for whether it answers at all, and again for what it says:
-    # the loop below cannot tell a commit git could not read from one that
-    # changed nothing, and the first is not clean.
-    if ! git diff-tree -r --root -m "$commit" >/dev/null 2>&1; then
-      unread="$unread$commit"$'\n'
-      continue
-    fi
+    case "$commit" in answered\ *) listed=${commit#answered }; continue ;; esac
+    changed=''
     while IFS= read -r -d '' entry && IFS= read -r -d '' link; do
+      case "$entry" in answered\ *) changed=${entry#answered }; continue ;; esac
       read -r _ mode _ id _ <<<"$entry"
       [ "$mode" = 120000 ] || continue
       fault=$(link_at "$link" "$id")
       [ -n "$fault" ] && linked="$linked$commit $link: $fault"$'\n'
-    done < <(git diff-tree -r -z --no-commit-id --root -m "$commit" 2>/dev/null)
-  done < <(git rev-list --abbrev-commit "$range" -- 2>/dev/null)
-  if [ -n "$unread" ]; then
+    done < <(git diff-tree -r -z --no-commit-id --root -m "$commit" 2>/dev/null
+             printf 'answered %s\0\0' "$?")
+    [ "$changed" = 0 ] || unreadable="$unreadable$commit"$'\n'
+  done < <(git rev-list --abbrev-commit "$range" -- 2>/dev/null; echo "answered $?")
+  if [ "$listed" != 0 ]; then
+    unread "the commits of this range could not be listed" "git rev-list answered ${listed:-nothing}" "not all of their links were scanned"
+  fi
+  if [ -n "$unreadable" ]; then
     echo "preflight: a commit in this range could not be read, so the links it adds were not scanned:" >&2
-    printf '%s' "$unread" >&2
+    printf '%s' "$unreadable" >&2
     status=1
   fi
   if [ -n "$linked" ]; then
@@ -269,21 +330,36 @@ if [ -n "$range" ]; then
 fi
 
 # 1. The index: tracked files plus staged changes, real path:line output.
-hits=$(git grep --cached -nE "$pattern" -- . ':(exclude)bin/preflight' 2>/dev/null || true)
+#    git grep answers 1 when nothing matched and more when it could not
+#    search, and only the first is clean.
+hits=$(git grep --cached -nE "$pattern" -- . ':(exclude)bin/preflight' 2>/dev/null); rc=$?
+if [ "$rc" -gt 1 ]; then
+  unread "the files in the index could not be searched" "git grep answered $rc" "none of them was scanned"
+fi
 if [ -n "$hits" ]; then
   echo "preflight: files about to be committed contain something that must not be public:" >&2
   echo "$hits" >&2; status=1
 fi
 
 #    And the links in it, which `git grep` does not open. See `link_fault`.
+#    The listing ends with how git answered, as the listings of the range
+#    form do, since an index git could not read lists no link either.
 linked=''
+listed=''
 while IFS= read -r -d '' entry; do
-  case "$entry" in 120000\ *) ;; *) continue ;; esac
+  case "$entry" in
+    answered\ *) listed=${entry#answered }; continue ;;
+    120000\ *) ;;
+    *) continue ;;
+  esac
   link=${entry#*$'\t'}
   id=${entry#* }; id=${id%% *}
   fault=$(link_at "$link" "$id")
   [ -n "$fault" ] && linked="$linked$link: $fault"$'\n'
-done < <(git ls-files -s -z)
+done < <(git ls-files -s -z 2>/dev/null; printf 'answered %s\0' "$?")
+if [ "$listed" != 0 ]; then
+  unread "the index could not be read" "git ls-files answered ${listed:-nothing}" "no link in it was scanned"
+fi
 if [ -n "$linked" ]; then
   echo "preflight: a symbolic link about to be committed is one a public repository cannot carry:" >&2
   printf '%s' "$linked" >&2
@@ -297,17 +373,38 @@ fi
 #    this repository had a second remote. CI scans everything for the same
 #    reason; this way the answer is the same in both places.
 if git rev-parse -q --verify HEAD >/dev/null 2>&1; then
-  msgs=$(git log --format='%h %B' HEAD 2>/dev/null | grep -nE "$pattern" || true)
+  said=$(git log --format='%h %B' HEAD -- 2>/dev/null) ||
+    unread "the commit messages in the history could not be read" "git log answered $?" "not all of them were scanned"
+  msgs=$(printf '%s\n' "$said" | look -nE "$pattern") ||
+    unread "the commit messages in the history could not be searched" "grep answered $?" "they were not scanned"
   if [ -n "$msgs" ]; then
     echo "preflight: an unpushed commit message contains something that must not be public:" >&2
     echo "$msgs" >&2; status=1
+  fi
+else
+  # HEAD names no commit. Either nothing has been committed to this branch
+  # yet, and there is no message to read, or the branch's own reference
+  # cannot be read, which is not the same thing. git tells them apart: the
+  # first is a branch it can name and finds no reference for (1).
+  born=''
+  if branch=$(git symbolic-ref -q HEAD 2>/dev/null); then
+    git show-ref --verify --quiet "$branch" 2>/dev/null; born=$?
+  fi
+  if [ "$born" != 1 ]; then
+    unread "the history could not be read" "HEAD names no commit, and not because there is none yet" "no commit message was scanned"
   fi
 fi
 
 # 3. Private files present and not ignored.
 # .env.example is the documented, tracked example with no real value in it;
 # every other .env* file is private.
-stray=$(git status --porcelain 2>/dev/null | grep -E 'CLAUDE\.local\.md|settings\.local\.json|\.env|\.p12|\.pem|\.key$' | grep -vE '(^|[ /])\.env\.example$' || true)
+there=$(git status --porcelain 2>/dev/null) ||
+  unread "the working tree could not be listed" "git status answered $?" "it was not looked through for private files"
+stray=$(set -o pipefail
+  printf '%s\n' "$there" |
+    look -E 'CLAUDE\.local\.md|settings\.local\.json|\.env|\.p12|\.pem|\.key$' |
+    look -vE '(^|[ /])\.env\.example$') ||
+  unread "the working tree's listing could not be searched" "grep answered $?" "it was not looked through for private files"
 if [ -n "$stray" ]; then
   echo "preflight: a private file is in the working tree and not ignored:" >&2
   echo "$stray" >&2; status=1

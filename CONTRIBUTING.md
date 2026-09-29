@@ -74,8 +74,9 @@ number. It is a reading aid, not something a tool checks.
   with what only a shell would expand (`~`, `$`, `%`), leaves the
   repository, climbs after naming a folder or cannot be read: a path from
   someone's machine by another name, or one nobody can check. CI runs it
-  again over the commits a pull request adds, and refuses a range of them
-  it cannot read.
+  again over the commits a pull request adds. Whatever it cannot read, an
+  index or a history or a range of commits, it refuses rather than call
+  clean.
 
 ## Local hooks
 
