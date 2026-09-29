@@ -121,8 +121,10 @@ settings: {
   is the home, or holds it - because an export writes to
   `<folder>/<project name>/`, so a project named `out` would land in a
   folder the reset removes, and the confirmation promises that exported
-  files are not touched. The home it works on is the configuration's own,
-  never anything the page sent.
+  files are not touched unless they are inside one of the four folders
+  _(so qualified 2026-09-29, issue 206: a reset that goes ahead removes
+  what was already exported into one of them)_. The home it works on is
+  the configuration's own, never anything the page sent.
 
   The flag goes up before the first `await` - before even the checks that
   need one - because a second reset arriving while the first resolves paths
@@ -138,3 +140,125 @@ settings: {
 
   The answer says which folders went and which would not, by role. Never a
   path.
+
+- **A project's own export folder** _(added 2026-09-29, issue 206)_ is
+  kept out of the reset's reach at three doors. Two are here and ask one
+  rule, `destinationsInTheWay` in `src/main/settings.ts`, which answers the
+  projects whose export folder is inside a home, is it, or holds it. No
+  method is added to the bridge and none takes anything new: a refusal is a
+  rejection the existing calls already carry.
+
+  `chooseEngineFolder()` and `useDefaultEngineFolder()` reject, and store
+  nothing, while any project's export folder is inside the folder asked
+  for or around it: "The project “Los Angeles” exports to a folder inside
+  that one, or around it, so “Reset engine data” could remove its exported
+  files; choose another folder, or move them out of that one and change
+  where the project exports first." For the default: "... inside the
+  default folder, or around it, so “Reset engine data” could remove its
+  exported files; move them out of the default folder and change where the
+  project exports first." A path the dialog answered is spent by a refusal
+  as by any other outcome. The engine folder's changes are applied one
+  after another, in the order they were asked for.
+
+  `resetEngineData()` rejects on the same condition for the projects under
+  the home in force, after every check above and before anything is
+  removed, with the flag up: "The project “Los Angeles” exports to a folder
+  inside the engine data folder, or around it, so the reset could remove
+  its exported files; move them out of the engine data folder and change
+  where the project exports first."
+
+  Two or three projects are all named; past that, two and how many more.
+  Never a path. The folder asked about and every project's export folder
+  are resolved through their symbolic links before the comparison, which
+  is textual. The list is the project store's, handed in so this service
+  never holds the store, and is read once at each press; a project made by
+  a newer version of the app is read-only here and still counts.
+
+  **Every sentence asks for two things, the files before the folder.**
+  Changing a folder moves nothing, so a person who did only that would
+  lose what they had exported to the reset that then ran. The two refusals
+  over the app's own export folder, which are older than this note, were
+  reworded with it: "Your export folder holds the engine data folder, so
+  the reset could remove your exported files; move them out of the engine
+  data folder and choose another export folder first." and "Your export
+  folder is inside the `out` folder, which the reset removes, so your
+  exported files would go with it; move them out of the engine data folder
+  and choose another export folder first." (`out`, `data`, `projects` or
+  `frames`, whichever it is inside).
+
+  **The third door is the project's own chooser**, not this bridge:
+  `destinationRefusal` in `src/main/export.ts` judges a folder a project
+  is being given against the home in force and against the folder waiting
+  for a restart, which is this view's `engine.pending`, read each time a
+  folder is judged and never kept. The exporter asks it again before every
+  export. Its sentence does not call the folder waiting the engine data
+  folder: "that folder is inside the folder the engine data moves to at
+  the next start, which “Reset engine data” removes from then on", or
+  "that folder holds the folder the engine data moves to at the next
+  start; an export goes into a folder named after the project, which could
+  be that folder itself". So whichever of the two folders is chosen second
+  is the one refused.
+
+  A project's name is shown whole up to 120 characters, the most a name
+  may be when it is written, and past that as its beginning and an
+  ellipsis: a record edited by hand can carry a name of any length.
+
+  **What a reset that goes ahead removes.** The rule is over where a
+  project exports now. Files already exported into one of the four folders
+  are removed by a reset that goes ahead, and changing where a project
+  exports moves nothing; that is why each sentence asks for the files
+  first.
+
+  **Which failure of the list's read refuses, and which does not.** If the
+  projects folder cannot be listed, for any reason but its not being there
+  (no permission, a disk error, too many files open, a file where the
+  folder should be), the call rejects and nothing is stored or removed:
+  "The projects folder could not be read, so the app cannot tell where the
+  projects export, and nothing was changed or removed; look in the engine
+  data folder, which Settings shows, at “projects”, which is what cannot
+  be read." A folder that cannot be listed hides every project, so nothing
+  at all is known. If one
+  record cannot be read or parsed, it is skipped as the project list skips
+  it, logged by its folder's name and the failure's code, and the call
+  goes ahead on the rest: one bad record hides one project, and the reset
+  is the remedy for bad records. The project list itself still answers
+  over a folder it cannot list, so the front door opens.
+
+  **The deadline.** Each call puts one deadline of five seconds over its
+  whole check, because resolving a folder asks the disk and a folder on a
+  network share can stall rather than fail. When it lapses the call
+  rejects, with nothing stored or removed, and the reset's flag comes
+  down with it. The sentence says which folder did not answer. For a
+  project's: "The folder the project “Los Angeles” exports to did not
+  answer in time, so nothing was changed or removed; change where the
+  project exports, or try again when it can be reached." For the others,
+  the same sentence begins "The engine data folder", "That folder" (one
+  chosen, which adds "choose another folder, or"), "The default folder",
+  "Your export folder" (which adds "choose another export folder, or"),
+  "Your home folder" or "The folder the app keeps its settings in"; and
+  where it was the reading of the records that did not end, "The projects
+  in the engine data folder could not be read in time, so nothing was
+  changed or removed; try again." The project's own chooser and the
+  exporter are bounded the same way and say which folder it was: "that
+  folder did not answer in time, so it could not be checked and nothing
+  was changed or written; choose another folder, or try again when it can
+  be reached", or, of the app itself, the engine data folder or the folder
+  the engine data moves to at the next start, that it "did not answer in
+  time, so that folder could not be checked against it and nothing was
+  changed or written".
+
+  A check that lapsed is abandoned, not stopped, so what acts on its
+  answer - the removal, the write of the engine's folder - is made after
+  it and only on an answer that came in time: a folder that answers a
+  minute after the refusal changes nothing. And a folder that has not
+  answered is not asked about again: every door asks through one
+  resolver, which answers a second asking with the first one's promise
+  until that has settled, because each unanswered question holds one of
+  the few threads files are read with.
+
+  **What no door sees.** Records live under the engine's home and are not
+  moved with it, so a record left behind in a home the app used before is
+  read by nobody, and a reset of the folder its project exports into is
+  not refused; that is why the choice is guarded, while the record is
+  still in reach. That, and any one record the store could not read, are
+  all that is out of reach.

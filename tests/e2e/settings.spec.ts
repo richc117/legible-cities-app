@@ -27,6 +27,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test'
+import { openCell } from '../support/project'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 
 const repoRoot = resolve(__dirname, '../..')
@@ -305,6 +306,225 @@ test('resets the engine data behind a confirmation, and leaves the Library empty
       'Legible Cities draws a transit network',
     )
   })
+})
+
+/** A project made through the app, so the record is the app's own. */
+async function newProject(page: Page, name: string): Promise<void> {
+  await page.getByRole('button', { name: 'New project' }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByLabel('Name', { exact: true }).fill(name)
+  await dialog.getByRole('button', { name: 'Create', exact: true }).click()
+  await expect(page.getByRole('button', { name: `Open ${name}` })).toBeVisible()
+}
+
+/**
+ * Give the one project under a home an export folder of its own, written
+ * into its record. Not through cell 06's chooser, for two reasons: that
+ * chooser rightly refuses a folder inside the engine's home or around it,
+ * so the record the reset must refuse over is one the app would not write
+ * today - one from before that guard, one edited by hand, or a folder that
+ * became a link afterwards; and the chooser needs a project laid out and
+ * drawn, which is another suite's business. Both doors read the records
+ * from disk at the press, so what is written here is what they see.
+ */
+function exportsTo(home: string, folder: string): void {
+  const [id] = readdirSync(join(home, 'projects'))
+  const file = join(home, 'projects', id, 'project.json')
+  const record = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>
+  writeFileSync(file, JSON.stringify({ ...record, destination: folder }, null, 2) + '\n')
+}
+
+// Issue 206. Project records live under the engine's home and do not move
+// with it, so the moment a new home is chosen is the last at which the app
+// can see the project that exports there; after the restart its record is
+// in the folder before, out of reach. The choice is where it is refused.
+test('refuses an engine folder that holds a project’s own export folder, naming the project', async () => {
+  test.slow()
+  const userData = profile()
+  const videos = mkdtempSync(join(tmpdir(), 'legible-cities-videos-'))
+  const elsewhere = mkdtempSync(join(tmpdir(), 'legible-cities-engine-'))
+  // The app's own export folder is this suite's, never the one on a
+  // person's desktop: the check resolves it through its links.
+  const exports = mkdtempSync(join(tmpdir(), 'legible-cities-exports-'))
+
+  await withApp(
+    userData,
+    async (page, app) => {
+      await expect(page.getByRole('status', { name: 'Engine' })).toContainText(/ready/i, {
+        timeout: 20_000,
+      })
+      await newProject(page, 'Los Angeles')
+      exportsTo(join(userData, 'engine'), join(videos, 'exports'))
+
+      await open(page)
+      const screen = page.getByRole('main')
+      await chooserAnswers(app, videos)
+      await page.getByRole('button', { name: 'Choose the engine data folder' }).click()
+      const refusal = screen.getByRole('alert')
+      await expect(refusal).toHaveText(
+        'The project “Los Angeles” exports to a folder inside that one, or around it, so “Reset engine data” could remove its exported files; choose another folder, or move them out of that one and change where the project exports first.',
+      )
+      // Nothing was taken: no folder waits for a restart and none is stored.
+      await expect(page.locator('#engine-folder-path')).toHaveText(join(userData, 'engine'))
+      await expect(page.locator('#engine-folder-source')).toHaveText('the default')
+      await expect(page.getByText(/Waiting for a restart/)).toHaveCount(0)
+      const stored: { engineFolder?: unknown } = existsSync(join(userData, 'settings.json'))
+        ? (JSON.parse(readFileSync(join(userData, 'settings.json'), 'utf8')) as {
+            engineFolder?: unknown
+          })
+        : {}
+      expect(stored.engineFolder ?? null).toBeNull()
+
+      // A refusal does not stop the next choice, and takes its sentence away.
+      await chooserAnswers(app, elsewhere)
+      await page.getByRole('button', { name: 'Choose the engine data folder' }).click()
+      await expect(page.getByText(`Waiting for a restart: ${elsewhere}`)).toBeVisible()
+      await expect(screen.getByRole('alert')).toHaveCount(0)
+    },
+    { LEGIBLE_EXPORT_FOLDER: exports },
+  )
+})
+
+// The same rule at the reset, for the projects in the home in force: the
+// confirmation says exported files are not touched unless they are inside
+// one of the four folders, and this is what keeps a project's folder, and
+// so what it exports from now on, out of them.
+test('refuses the reset while a project exports into the engine data folder, and removes nothing', async () => {
+  test.slow()
+  const userData = profile()
+  const home = join(userData, 'engine')
+  const exports = join(home, 'out', 'exports')
+  // The app's own export folder is this suite's: a reset resolves it
+  // through its links, and it must never be the one on a person's desktop.
+  const appExports = mkdtempSync(join(tmpdir(), 'legible-cities-exports-'))
+
+  await withApp(
+    userData,
+    async (page) => {
+      // Ready first: a reset asked for while the engine is still answering
+      // its handshake is refused for that, and this is about another refusal.
+      await expect(page.getByRole('status', { name: 'Engine' })).toContainText(/ready/i, {
+        timeout: 20_000,
+      })
+      await newProject(page, 'Los Angeles')
+      exportsTo(home, exports)
+      mkdirSync(join(exports, 'Los Angeles'), { recursive: true })
+      writeFileSync(join(exports, 'Los Angeles', 'reel.mp4'), 'an export')
+
+      await open(page)
+      // The screen asks the engine for its versions as it opens, and a reset
+      // asked for while that is in flight is refused for that instead.
+      await expect(definition(page, 'Engine')).toHaveText(PINNED_ENGINE)
+      await page.getByRole('button', { name: 'Reset engine data' }).click()
+      const confirm = page.getByRole('dialog')
+      await confirm.getByRole('button', { name: 'Reset', exact: true }).click()
+      // A refusal stays in the dialog, under the words that promised.
+      await expect(confirm.getByRole('alert')).toHaveText(
+        'The project “Los Angeles” exports to a folder inside the engine data folder, or around it, so the reset could remove its exported files; move them out of the engine data folder and change where the project exports first.',
+      )
+      await expect(confirm).toBeVisible()
+      expect(readFileSync(join(exports, 'Los Angeles', 'reel.mp4'), 'utf8')).toBe('an export')
+      expect(readdirSync(join(home, 'projects'))).toHaveLength(1)
+
+      await confirm.getByRole('button', { name: 'Cancel', exact: true }).click()
+      await expect(confirm).toBeHidden()
+      await page.getByRole('button', { name: 'Back to Library' }).click()
+      await expect(page.getByRole('button', { name: 'Open Los Angeles' })).toBeVisible()
+    },
+    { LEGIBLE_EXPORT_FOLDER: appExports },
+  )
+})
+
+// The third door (issue 206): the same rule from the project's side. A
+// folder chosen for the engine waits for a restart, and a project given a
+// folder inside it meanwhile would, after the restart, be a record nothing
+// reads. No restart is needed to reach it: the folder waits from the press.
+test('refuses a project an export folder inside or around the engine folder that waits for a restart', async () => {
+  test.slow()
+  // The stand-in draws a map, because cell 06 offers nothing until there is one.
+  const userData = profile({ map_draws: true, progress_delay_ms: 5 })
+  const videos = mkdtempSync(join(tmpdir(), 'legible-cities-videos-'))
+  const exports = mkdtempSync(join(tmpdir(), 'legible-cities-exports-'))
+  const record = (): Record<string, unknown> => {
+    const projects = join(userData, 'engine', 'projects')
+    const [id] = readdirSync(projects)
+    return JSON.parse(readFileSync(join(projects, id, 'project.json'), 'utf8')) as Record<
+      string,
+      unknown
+    >
+  }
+  /** Cell 06 of the one project, from the Library. */
+  const exportCell = async (page: Page) => {
+    await page.getByRole('button', { name: 'Open Los Angeles' }).click()
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Los Angeles')
+    const panel = await openCell(page, 'export')
+    await expect(panel.getByRole('combobox', { name: 'Preset' })).toBeVisible({ timeout: 20_000 })
+    return panel
+  }
+  /** Settings, from the project's screen. */
+  const settings = async (page: Page): Promise<void> => {
+    await page.getByRole('button', { name: 'Back to Library' }).click()
+    await open(page)
+  }
+
+  await withApp(
+    userData,
+    async (page, app) => {
+      await expect(page.getByRole('status', { name: 'Engine' })).toContainText(/ready/i, {
+        timeout: 20_000,
+      })
+      await newProject(page, 'Los Angeles')
+      await page.getByRole('button', { name: 'Open Los Angeles' }).click()
+      await expect(page.getByRole('heading', { level: 1 })).toHaveText('Los Angeles')
+      await page.getByRole('button', { name: /lay out/i }).click()
+      await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+
+      // An engine folder is chosen, and waits.
+      await settings(page)
+      await chooserAnswers(app, join(videos, 'engine'))
+      await page.getByRole('button', { name: 'Choose the engine data folder' }).click()
+      await expect(page.getByText(`Waiting for a restart: ${join(videos, 'engine')}`)).toBeVisible()
+      await page.getByRole('button', { name: 'Back to Library' }).click()
+
+      // The project is given a folder inside it, then the folder around it.
+      let panel = await exportCell(page)
+      await chooserAnswers(app, join(videos, 'engine', 'exports'))
+      await panel.getByRole('button', { name: 'Choose folder' }).click()
+      await expect(panel.getByRole('alert')).toHaveText(
+        'that folder is inside the folder the engine data moves to at the next start, which “Reset engine data” removes from then on',
+      )
+      await chooserAnswers(app, videos)
+      await panel.getByRole('button', { name: 'Choose folder' }).click()
+      await expect(panel.getByRole('alert')).toHaveText(
+        'that folder holds the folder the engine data moves to at the next start; an export goes into a folder named after the project, which could be that folder itself',
+      )
+      expect(record().destination, 'and neither was written').toBeNull()
+      await expect(panel.getByText(/exports go to the app’s export folder/)).toBeVisible()
+
+      // The engine folder is taken back: the same folder is the project's.
+      await settings(page)
+      await page.getByRole('button', { name: 'Use the default engine data folder' }).click()
+      await expect(page.getByText(/Waiting for a restart/)).toHaveCount(0)
+      await page.getByRole('button', { name: 'Back to Library' }).click()
+      panel = await exportCell(page)
+      await chooserAnswers(app, videos)
+      await panel.getByRole('button', { name: 'Choose folder' }).click()
+      await expect(panel.locator('#export-destination-where')).toHaveText(videos)
+      await expect.poll(() => record().destination).toBe(videos)
+
+      // And now the engine folder is the one refused, naming the project.
+      await settings(page)
+      await chooserAnswers(app, join(videos, 'engine'))
+      await page.getByRole('button', { name: 'Choose the engine data folder' }).click()
+      await expect(page.getByRole('main').getByRole('alert')).toContainText(
+        'The project “Los Angeles” exports to a folder inside that one, or around it',
+      )
+      await expect(page.getByText(/Waiting for a restart/)).toHaveCount(0)
+    },
+    // Nothing is exported here, but the app's own export folder is this
+    // suite's all the same, never the one on a person's desktop.
+    { LEGIBLE_EXPORT_FOLDER: exports },
+  )
 })
 
 // Issue 113. The reset's reason while runs are going is the button's

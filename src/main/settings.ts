@@ -12,6 +12,7 @@
 import { randomBytes } from 'node:crypto'
 import { lstat, mkdir, readdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, parse, resolve, sep } from 'node:path'
+import { NAME_MAX } from '../shared/project'
 import {
   DEFAULT_SETTINGS,
   parseSettings,
@@ -324,6 +325,149 @@ export async function realOrResolved(path: string): Promise<string> {
   }
 }
 
+/** A folder through its links: `realOrResolved`, or what a test stands in for it. */
+export type FolderResolver = (path: string) => Promise<string>
+
+const sharing = new WeakMap<FolderResolver, FolderResolver>()
+
+/**
+ * `resolver`, asked about each folder once at a time (issue 206): while a
+ * question about a folder has not been answered, asking again answers with
+ * the same promise and puts nothing more to the disk. Once it is answered,
+ * either way, the next asking asks afresh.
+ *
+ * A check that lapses abandons its question; it cannot take it back. Each
+ * one holds a thread of the four the runtime reads files with until the
+ * kernel answers, and a mount that has stalled may never. Before the
+ * deadline, the reset's flag and an export's own state kept a second
+ * attempt from being made at all. With it, "try again" four times on a
+ * folder that never answers would use up every thread, and then every
+ * read and write the app makes would wait behind them, a project's record
+ * included.
+ *
+ * One resolver is shared by everything that was handed the same function,
+ * so Settings' two doors and a project's own chooser ask through the same
+ * one and a mix of them is no way round it. By the folder as it was
+ * written: two spellings of one folder are two questions.
+ */
+export function oneAtATime(resolver: FolderResolver = realOrResolved): FolderResolver {
+  const already = sharing.get(resolver)
+  if (already !== undefined) return already
+  const asked = new Map<string, Promise<string>>()
+  const shared: FolderResolver = (path) => {
+    const asking = asked.get(path)
+    if (asking !== undefined) return asking
+    let answer: Promise<string>
+    try {
+      answer = resolver(path)
+    } catch (error) {
+      return Promise.reject(error instanceof Error ? error : new Error(String(error)))
+    }
+    const settled = answer.finally(() => {
+      if (asked.get(path) === settled) asked.delete(path)
+    })
+    asked.set(path, settled)
+    return settled
+  }
+  sharing.set(resolver, shared)
+  return shared
+}
+
+/**
+ * What a check was asking the disk about, so that a deadline that lapses
+ * can say which folder did not answer. Kept by the check as it goes, in an
+ * `Asking` it is handed, and read by the door the moment the deadline
+ * lapses.
+ */
+export type Asked =
+  /** The engine data folder in force. */
+  | { what: 'engine' }
+  /** A folder chosen for the engine's data, or the default one. */
+  | { what: 'chosen' }
+  | { what: 'default' }
+  /** The app's own export folder. */
+  | { what: 'export' }
+  /** The person's home folder, and the folder the app's settings are in. */
+  | { what: 'home' }
+  | { what: 'settings' }
+  /** The projects themselves, being read. */
+  | { what: 'projects' }
+  /** One project's own export folder. */
+  | { what: 'project'; name: string }
+
+export interface Asking {
+  now: Asked
+}
+
+/**
+ * What a door says when the folder it was asking about did not answer in
+ * time (issue 206): which folder, that nothing was changed or removed, and
+ * what a person can do about that folder. A project is named, its name
+ * bounded as in every other sentence. Never a path.
+ */
+export function lateSentence(asked: Asked): string {
+  const nothing = 'so nothing was changed or removed'
+  const again = 'try again when it can be reached'
+  switch (asked.what) {
+    case 'project':
+      return `The folder the project “${shown(asked.name)}” exports to did not answer in time, ${nothing}; change where the project exports, or ${again}.`
+    case 'engine':
+      return `The engine data folder did not answer in time, ${nothing}; ${again}.`
+    case 'chosen':
+      return `That folder did not answer in time, ${nothing}; choose another folder, or ${again}.`
+    case 'default':
+      return `The default folder did not answer in time, ${nothing}; ${again}.`
+    case 'export':
+      return `Your export folder did not answer in time, ${nothing}; choose another export folder, or ${again}.`
+    case 'home':
+      return `Your home folder did not answer in time, ${nothing}; ${again}.`
+    case 'settings':
+      return `The folder the app keeps its settings in did not answer in time, ${nothing}; ${again}.`
+    case 'projects':
+      return `The projects in the engine data folder could not be read in time, ${nothing}; try again.`
+  }
+}
+
+/**
+ * How long a check over folders may take before it is given up (issue 206).
+ * Resolving a folder through its links asks the disk, and a folder on a
+ * network share or an automounted volume can stall rather than fail. With
+ * no bound, a reset that stalled would keep its flag up until the app was
+ * quit, with every engine request, export and record write refused
+ * meanwhile, and a choice of the engine's folder that stalled would hold
+ * every later one behind it.
+ */
+export const FOLDERS_TIMEOUT_MS = 5_000
+
+/** What `inTime` answers when the deadline came first. */
+export const LAPSED: unique symbol = Symbol('the folders were not checked in time')
+
+/**
+ * `check`'s answer, or `LAPSED` once `ms` has passed, as `#homes` in
+ * `settings-ipc.ts` bounds its own lookup. The timer is cleared whichever
+ * way it ends, so nothing is left to hold a process open.
+ *
+ * **A check that lapsed is abandoned, not stopped**: nothing can take back
+ * a question already put to the disk. So `check` must only read, and
+ * whatever acts on its answer - a removal, a write - comes after this and
+ * only on an answer that came in time. A check that fails after it was
+ * abandoned fails unheard.
+ */
+export async function inTime<T>(
+  check: Promise<T>,
+  ms: number = FOLDERS_TIMEOUT_MS,
+): Promise<T | typeof LAPSED> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const deadline = new Promise<typeof LAPSED>((resolve) => {
+    timer = setTimeout(() => resolve(LAPSED), ms)
+  })
+  try {
+    return await Promise.race([check, deadline])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 export function refuseReset(home: string, guards: ResetGuards): string | null {
   if (!isAbsolute(home)) return 'the engine data folder is not a folder the app can reset'
   const resolved = resolve(home)
@@ -340,6 +484,133 @@ export function refuseReset(home: string, guards: ResetGuards): string | null {
     return "the engine data folder holds the app's own settings; the app will not reset that"
   }
   return null
+}
+
+/** A project that exports to a folder of its own, as the project store answers it. */
+export interface ProjectDestination {
+  id: string
+  name: string
+  destination: string
+}
+
+/**
+ * The projects whose own export folder is in the way of `home`: inside it,
+ * the home itself, or a folder that holds it (issue 206). A reset removes
+ * folders beneath the home, and an export is written to
+ * `<destination>/<project name>/`, so a destination under the home can sit
+ * in one of the four and a destination that is the home puts a project
+ * named `out` there. It is the relation a project's own chooser already
+ * refuses (`destinationRefusal` in `export.ts`), asked from the other side:
+ * that one judges a destination against the home in force and the one
+ * waiting for a restart, and this judges a home - the one in force before
+ * a reset, one being chosen in Settings - against the destinations already
+ * stored. Between them, whichever folder is chosen second is refused.
+ *
+ * **Both sides must already be real paths.** The comparison is `contains`,
+ * which is textual, and a home or a destination reached through a link
+ * passes every textual check; the caller resolves each through
+ * `realOrResolved` first.
+ *
+ * It judges what it is given, and the store gives the records under the
+ * home in force. A record left behind in a home the app used before is not
+ * among them, so nothing here can see it.
+ */
+export function destinationsInTheWay(
+  home: string,
+  projects: readonly ProjectDestination[],
+): ProjectDestination[] {
+  return projects.filter(
+    (project) => contains(home, project.destination) || contains(project.destination, home),
+  )
+}
+
+/** Which folder a refusal over the projects' export folders is about. */
+export type DestinationDoor = 'chosen' | 'default' | 'reset'
+
+/**
+ * A name's characters as a person sees them: a letter with the marks on
+ * it, an emoji joined from several, each as one. `Intl.Segmenter` where
+ * the runtime has it; by code point where it does not, which keeps a pair
+ * of surrogates together and nothing more.
+ */
+function characters(name: string): string[] {
+  if (typeof Intl.Segmenter !== 'function') return Array.from(name)
+  return Array.from(new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(name)).map(
+    (part) => part.segment,
+  )
+}
+
+/**
+ * A name as a sentence shows it: whole, or its beginning and an ellipsis.
+ *
+ * Whole while it is as long as a name may be, counted as `validateName`
+ * counts it when a name is written (`NAME_MAX`). A record is a file, and
+ * the reader takes any name that is not blank, so one edited by hand can
+ * carry a name of any length; the sentence is shown in a dialog and must
+ * stay one. Past that it is cut between characters, never through one: as
+ * many whole ones as fit in that length. A single character can be of any
+ * length too, a letter under a thousand marks, so where not even the first
+ * fits the cut is by code point; and half a pair left at the cut is
+ * dropped, since half a character is not text.
+ */
+export function shown(name: string): string {
+  if (name.length <= NAME_MAX) return name
+  const fitting = (parts: string[]): string => {
+    let kept = ''
+    for (const part of parts) {
+      if (kept.length + part.length > NAME_MAX) break
+      kept += part
+    }
+    return kept
+  }
+  const kept = fitting(characters(name)) || fitting(Array.from(name))
+  return `${kept.replace(/[\uD800-\uDFFF]$/u, '').trimEnd()}…`
+}
+
+/**
+ * Why a folder may not be the engine's data folder, or may not be reset,
+ * naming the projects in the way as the feeds' `inUseSentence` names them:
+ * two or three are all named; past that, two and a count. Never a path:
+ * the screen shows it as it is.
+ *
+ * In this order: what is in the way, what would happen, and what to do
+ * first. **What to do is two things, and the files come before the
+ * folder.** Changing where a project exports moves nothing, so a sentence
+ * that asked only for that would be followed to the letter by somebody
+ * whose exports were still under the home when the reset then ran.
+ */
+export function destinationsSentence(names: readonly string[], door: DestinationDoor): string {
+  const quoted = names.map((name) => `“${shown(name)}”`)
+  const one = quoted.length === 1
+  const listed = one
+    ? quoted[0]
+    : quoted.length <= 3
+      ? `${quoted.slice(0, -1).join(', ')} and ${quoted[quoted.length - 1]}`
+      : `${quoted.slice(0, 2).join(', ')} and ${quoted.length - 2} others`
+  const who = one
+    ? `The project ${listed} exports to a folder`
+    : `The projects ${listed} export to folders`
+  const where =
+    door === 'chosen'
+      ? 'inside that one, or around it'
+      : door === 'default'
+        ? 'inside the default folder, or around it'
+        : 'inside the engine data folder, or around it'
+  const why =
+    door === 'reset'
+      ? `so the reset could remove ${one ? 'its' : 'their'} exported files`
+      : `so “Reset engine data” could remove ${one ? 'its' : 'their'} exported files`
+  const from =
+    door === 'chosen'
+      ? 'that one'
+      : door === 'default'
+        ? 'the default folder'
+        : 'the engine data folder'
+  const both = `move them out of ${from} and change where ${
+    one ? 'the project exports' : 'those projects export'
+  } first`
+  const what = door === 'chosen' ? `choose another folder, or ${both}` : both
+  return `${who} ${where}, ${why}; ${what}.`
 }
 
 /**

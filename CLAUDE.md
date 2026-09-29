@@ -191,7 +191,38 @@ export is open, because a run is four steps with gaps between them and only
 the renderer can see the gaps. The flag goes up before the first `await`,
 and while it is up every engine request, every export and every write to a
 project record is refused, so nothing lands in a folder being walked away
-(`src/main/settings.ts`, `src/main/settings-ipc.ts`).
+(`src/main/settings.ts`, `src/main/settings-ipc.ts`). **A project's own
+export folder is kept out of the reset's reach at three doors** (issue
+206): the reset refuses while a project under the home in force exports to
+a folder inside the home or around it; so does the choice of the engine's
+folder in Settings, the default included, which is the door that matters -
+records live under the home and nothing moves them, so after the restart
+the project that exports there is a record in the old home; and a
+project's own folder is judged against the engine folder **waiting for a
+restart** as well as the one in force, where it is chosen and again at
+each export (`destinationRefusal` in `src/main/export.ts`, which is handed
+a function for the folder waiting and asks it at every judgement). **No
+door sees a record left behind in a previous home.** **A projects folder
+that cannot be listed refuses** the choice and the reset, because it hides
+every project (`destinations()` reads strictly; `list()` does not, so the
+front door still opens); **one record that cannot be read is skipped** and
+refuses nothing, because the reset is the remedy for bad records. **Every
+check over folders has one deadline** (`FOLDERS_TIMEOUT_MS`, `inTime`): a
+folder on a share that stalls refuses, with nothing changed or removed,
+rather than keeping the reset's flag up; a check that lapsed is abandoned,
+so checks only read and whatever acts on their answer, the removal or a
+write, comes after them; the refusal names the project whose folder did
+not answer; and **a folder that has not answered is not asked again**
+(`oneAtATime`), because each unanswered question holds one of the four
+threads files are read with. **The screen's promise is qualified**:
+exported files are not touched unless they are inside one of the four
+folders. **Every refusal over
+exported files asks for the files to be moved out and the folder changed,
+in that order**, because changing a folder moves nothing and a reset that
+goes ahead removes what was exported into one of the four.
+`destinationsInTheWay` is the pure rule on Settings' side, on real paths;
+the list is the project store's `destinations()`, handed in and read once
+at a press.
 
 The export's options (A5-01) widened the reel's one button. They were a tab
 once and are cell 06 now. Export offers the thirteen social presets

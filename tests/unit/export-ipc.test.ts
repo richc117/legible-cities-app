@@ -10,6 +10,7 @@ import {
   type DestinationSource,
   type ExportSource,
 } from '../../src/main/export-ipc'
+import { Destinations } from '../../src/main/export'
 import { CHANNELS } from '../../src/shared/api'
 import { EngineError, ERROR_CODES } from '../../src/shared/engine'
 import type { ExportChoice, ExportProgress, ExportResult } from '../../src/shared/export'
@@ -199,6 +200,110 @@ describe('registerExportHandlers', () => {
     // not held here: a cancel and a reveal touch no record at all.
     await h.call(CHANNELS.exportCancel, 't1')
     expect(h.cancelled).toEqual(['t1'])
+  })
+
+  // The gate is asked before the dialog, above; and again at the write,
+  // by the real chooser, which the handlers hand their own gate to (issue
+  // 206). A person can leave the dialog open as long as they like, and the
+  // folder is judged after it, so a reset confirmed meanwhile must not
+  // have the record written into the folder it is removing.
+  it('refuses a destination at the write when a reset began after the dialog opened, and one taken back', async () => {
+    const why = 'The engine data is being reset; wait for it to finish.'
+    const gate = { now: null as string | null }
+    const written: (string | null)[] = []
+    const record = (id: string) => ({ id, readOnly: false, destination: null }) as never
+    const destinations = new Destinations({
+      projects: {
+        get: async (id) => record(id),
+        setDestination: async (id, folder) => {
+          written.push(folder)
+          return { id, destination: folder } as never
+        },
+      },
+      // The reset is confirmed while the dialog is open.
+      chooseFolder: async () => {
+        gate.now = why
+        return '/chosen/folder'
+      },
+      appFolder: () => '/the/app/folder',
+      refuse: async () => null,
+    })
+    const handlers = new Map<string, Handler>()
+    const ipc = {
+      handle: (channel: string, h: Handler) => handlers.set(channel, h),
+    } as unknown as IpcMain
+    registerExportHandlers(
+      ipc,
+      { onProgress: () => () => undefined } as unknown as ExportSource,
+      () => true,
+      () => undefined,
+      () => undefined,
+      destinations,
+      () => gate.now,
+    )
+    const call = (channel: string, ...args: unknown[]) =>
+      handlers.get(channel)!({} as IpcMainInvokeEvent, ...args)
+
+    await expect(call(CHANNELS.exportChooseDestination, 'abcdefghijk1')).rejects.toThrow(why)
+    expect(written, 'nothing was written').toEqual([])
+
+    // With no reset, the same press stores the folder: the gate let it by twice.
+    gate.now = null
+    const quiet = new Destinations({
+      projects: {
+        get: async (id) => record(id),
+        setDestination: async (id, folder) => {
+          written.push(folder)
+          return { id, destination: folder } as never
+        },
+      },
+      chooseFolder: async () => '/chosen/folder',
+      appFolder: () => '/the/app/folder',
+      refuse: async () => null,
+    })
+    registerExportHandlers(
+      ipc,
+      { onProgress: () => () => undefined } as unknown as ExportSource,
+      () => true,
+      () => undefined,
+      () => undefined,
+      quiet,
+      () => gate.now,
+    )
+    await call(CHANNELS.exportChooseDestination, 'abcdefghijk1')
+    await call(CHANNELS.exportUseAppFolder, 'abcdefghijk1')
+    expect(written).toEqual(['/chosen/folder', null])
+
+    // Taken back, there is no dialog to leave open, and the record is
+    // still read between the two askings: a reset confirmed during that
+    // read must not have the record written either.
+    written.length = 0
+    const during = new Destinations({
+      projects: {
+        get: async (id) => {
+          gate.now = why
+          return record(id)
+        },
+        setDestination: async (id, folder) => {
+          written.push(folder)
+          return { id, destination: folder } as never
+        },
+      },
+      chooseFolder: async () => '/chosen/folder',
+      appFolder: () => '/the/app/folder',
+      refuse: async () => null,
+    })
+    registerExportHandlers(
+      ipc,
+      { onProgress: () => () => undefined } as unknown as ExportSource,
+      () => true,
+      () => undefined,
+      () => undefined,
+      during,
+      () => gate.now,
+    )
+    await expect(call(CHANNELS.exportUseAppFolder, 'abcdefghijk1')).rejects.toThrow(why)
+    expect(written, 'nothing was written when it was taken back').toEqual([])
   })
 
   it('answers a refusal the exporter made as data, not a rejection', async () => {

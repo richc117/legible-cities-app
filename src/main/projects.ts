@@ -306,20 +306,41 @@ export class ProjectStore {
     }
   }
 
-  private async entries(): Promise<Dirent[]> {
+  /**
+   * What is in the projects folder. No folder yet means no projects;
+   * anything else is worth a line, and answers no projects either - unless
+   * the read is `strict`, which rejects instead, by the failure's code and
+   * never its message, which names the path. The list is lenient, because
+   * the front door must still open on a folder that has gone wrong; what a
+   * removal is decided on is strict, because a folder that cannot be listed
+   * hides every project in it and "none" would be a guess.
+   */
+  private async entries(strict = false): Promise<Dirent[]> {
     try {
       return await readdir(this.root, { withFileTypes: true })
     } catch (error) {
-      // No folder yet means no projects; anything else is worth a line.
       const code = reasonOf(error)
-      if (code !== 'ENOENT') this.log(`projects: cannot list (${code})`)
-      return []
+      if (code === 'ENOENT') return []
+      this.log(`projects: cannot list (${code})`)
+      if (!strict) return []
+      throw Object.assign(new Error('the projects folder could not be listed', { cause: error }), {
+        code,
+      })
     }
   }
 
-  async list(): Promise<ProjectSummary[]> {
-    const summaries: ProjectSummary[] = []
-    for (const entry of await this.entries()) {
+  /**
+   * Every record in the store's own folder that this build can read, a
+   * project a newer build made included. What is not a project is skipped
+   * and named in the log by its folder: a link, a name no identifier has,
+   * a folder with no record, a record that does not parse or that carries
+   * another folder's identity. `list` and `destinations` both read through
+   * here, so the two never disagree about what a project is. `strict` is
+   * about the folder and not the records in it: see `entries`.
+   */
+  private async readable(strict = false): Promise<Loaded[]> {
+    const loaded: Loaded[] = []
+    for (const entry of await this.entries(strict)) {
       if (entry.isSymbolicLink()) {
         this.log(`projects/${entry.name}: symbolic link ignored`)
         continue
@@ -331,11 +352,18 @@ export class ProjectStore {
       }
       const result = await this.read(entry.name)
       if ('record' in result) {
-        summaries.push(summarise(result.record, result.readOnly))
+        loaded.push(result)
       } else {
         this.log(`projects/${entry.name}: ${'reason' in result ? result.reason : 'no record'}`)
       }
     }
+    return loaded
+  }
+
+  async list(): Promise<ProjectSummary[]> {
+    const summaries = (await this.readable()).map(({ record, readOnly }) =>
+      summarise(record, readOnly),
+    )
     // Newest opened first (A5.6-04), a project never opened since that was
     // kept by when it was made. Timestamps share one format, so they order
     // as strings; the id breaks a tie so the list is stable between two
@@ -343,6 +371,46 @@ export class ProjectStore {
     return summaries.sort(
       (a, b) => openedOrder(b).localeCompare(openedOrder(a)) || a.id.localeCompare(b.id),
     )
+  }
+
+  /**
+   * Where each project exports, for every project that chose a folder of
+   * its own (A5.5-19); one whose exports go to the app's folder is not in
+   * the answer. Settings asks before it takes a folder for the engine's
+   * data and before a reset, because a reset removes folders beneath the
+   * engine's home and a project's exports must not be in them (issue 206).
+   *
+   * A project a newer build made is read-only here and still counts: its
+   * exports are as much a person's as any other's. The folder is the
+   * record's own text, not resolved through its links; whoever compares it
+   * resolves both sides.
+   *
+   * Only this store's records are read, the ones under the home in force.
+   * A record left behind in a home the app used before is not seen.
+   *
+   * **Two failures, which end differently on purpose** (issue 206).
+   *
+   * - *The projects folder cannot be listed*, for any reason but its not
+   *   being there: this rejects, with the failure's code. A folder that
+   *   cannot be listed hides every project, so nothing at all is known
+   *   about where they export, and whoever asked - a reset, a choice of
+   *   the engine's folder - must refuse rather than go ahead on "none".
+   *   `list` does not reject over the same folder, and must not.
+   * - *One record cannot be read or parsed*: it is skipped as `list` skips
+   *   it, named in the log by its folder and the reason, and the answer is
+   *   the rest. One bad record hides one project, and a reset is the
+   *   remedy for bad records; refusing would let a single corrupt file
+   *   block the tool a person reaches for when things are broken.
+   *
+   * By name, then by identifier, so two calls answer in one order.
+   */
+  async destinations(): Promise<{ id: string; name: string; destination: string }[]> {
+    const found: { id: string; name: string; destination: string }[] = []
+    for (const { record } of await this.readable(true)) {
+      if (record.destination === null) continue
+      found.push({ id: record.id, name: record.name, destination: record.destination })
+    }
+    return found.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
   }
 
   async get(id: string): Promise<ProjectRecord & { readOnly: boolean }> {

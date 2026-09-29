@@ -686,7 +686,36 @@ again.
 - **check:** by the time the app has started again, **Your feeds** and
   Caltrain are gone (the engine keeps its record of added feeds in the
   removed `data` folder), and the sample cards say "not downloaded yet".
-- The exports from steps 11 and 12 are still in the export folder.
+- The exports from steps 11 and 12 are still in the export folder. They
+  are outside the engine data folder. Files already inside one of the
+  four folders, `data`, `out`, `projects` or `frames`, are removed by a
+  reset that goes ahead, exported files included.
+- The reset is not refused. Nothing in this checklist gives a project an
+  export folder of its own, so a refusal here is a failure: write down the
+  sentence the dialog showed.
+
+**What the reset refuses, and what it does not see.** A project can export
+to a folder of its own, chosen in cell 06. While a project in this engine
+data folder exports to a folder that is inside the engine data folder, is
+that folder, or holds it, the reset is refused: the dialog stays open and
+says "The project “`<name>`” exports to a folder inside the engine data
+folder, or around it, so the reset could remove its exported files; move
+them out of the engine data folder and change where the project exports
+first." Choosing such a folder as the engine data folder is refused in
+Settings on the same rule: "The project “`<name>`” exports to a folder
+inside that one, or around it, so “Reset engine data” could remove its
+exported files; choose another folder, or move them out of that one and
+change where the project exports first." And while a chosen engine data
+folder is waiting for a restart, cell 06 refuses a folder inside it or
+around it: "that folder is inside the folder the engine data moves to at
+the next start, which “Reset engine data” removes from then on". None of
+the three sees a project whose record was left behind in an engine data
+folder the app used before: projects are kept in the engine data folder
+and are not moved when another is chosen, so after the restart the app no
+longer reads them. Each sentence asks for the files to be moved as well as
+the folder changed, because changing where a project exports moves
+nothing, and a reset that then goes ahead removes whatever was exported
+into one of the four folders.
 
 Result: ____
 

@@ -563,8 +563,8 @@ export default function Settings({ settings, onChanged, engine, onBack }: Props)
           Resetting removes the four folders the app and the engine keep in the folder above:{' '}
           <code>projects</code>, <code>out</code>, <code>data</code> and <code>frames</code> — every
           project, every downloaded feed, every stored layout and everything drawn from them.
-          Anything else in that folder is left alone, and exported files are not touched. It cannot
-          be undone.
+          Anything else in that folder is left alone, and exported files are not touched unless they
+          are inside one of those four folders. It cannot be undone.
         </p>
         {going > 0 && (
           <p className="message pending" role="status" id="reset-running">
@@ -592,7 +592,7 @@ export default function Settings({ settings, onChanged, engine, onBack }: Props)
       <ConfirmDialog
         open={confirming}
         title="Reset the engine's data?"
-        description="This removes the projects, out, data and frames folders from the engine's data folder: every project, every downloaded feed and every stored layout. Anything else in that folder stays, and exported files are not touched. It cannot be undone."
+        description="This removes the projects, out, data and frames folders from the engine's data folder: every project, every downloaded feed and every stored layout. Anything else in that folder stays, and exported files are not touched unless they are inside one of those four folders. It cannot be undone."
         confirmLabel="Reset"
         onConfirm={reset}
         onCancel={() => setConfirming(false)}

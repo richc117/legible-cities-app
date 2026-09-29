@@ -30,11 +30,20 @@ import { LOG_WAIT_MS, within } from './log-file'
 import { PickedPaths } from './picked'
 import {
   contains,
+  destinationsInTheWay,
+  destinationsSentence,
   folderSize,
-  realOrResolved,
+  inTime,
+  LAPSED,
+  lateSentence,
+  oneAtATime,
   refuseReset,
   resetContents,
   RESET_FOLDERS,
+  type Asking,
+  type DestinationDoor,
+  type FolderResolver,
+  type ProjectDestination,
   type ResetGuards,
   type ResetOutcome,
   type SettingsStore,
@@ -60,6 +69,24 @@ export interface SettingsDeps {
   chooseFolder: (which: Which, current: string) => Promise<string | null>
   /** Why a reset may not run now, or null: an export or an engine request in flight. */
   busy: () => string | null
+  /**
+   * Every project that exports to a folder of its own, from the records
+   * under the home in force: the project store's answer, injected so this
+   * service never holds the store. Asked once at each press that needs it.
+   * Records left behind in a home the app used before are not in it, and
+   * neither is a record the store could not read, which it skips and
+   * answers without. It rejects when the projects folder itself cannot be
+   * listed, and a rejection refuses whatever asked.
+   */
+  destinations: () => Promise<ProjectDestination[]>
+  /**
+   * A folder through its links: `realOrResolved`, which is what the app
+   * uses. Here so a test can hand in a folder that never answers, as a
+   * stalled network share does not, and prove the deadline over it.
+   * Whichever it is, it is asked through `oneAtATime`, so a folder that
+   * has not answered is not asked again.
+   */
+  realFolder?: FolderResolver
   /** Make a folder if it is missing and show it in the platform's file browser. */
   openFolder: (path: string) => Promise<void>
   /**
@@ -116,6 +143,17 @@ export interface DiagnosticsDeps {
 }
 
 /**
+ * What a door says when the projects folder cannot be listed, so nothing
+ * is known about where any project exports. It ends on what a person can
+ * do, because on a home like this one they can neither reset it nor move
+ * off it in Settings, by decision (issue 206): the folder is the one
+ * Settings shows, and the entry in it is named. No path: the screen that
+ * says this shows the folder itself a few lines above.
+ */
+export const PROJECTS_UNREAD =
+  'The projects folder could not be read, so the app cannot tell where the projects export, and nothing was changed or removed; look in the engine data folder, which Settings shows, at “projects”, which is what cannot be read.'
+
+/**
  * The settings, as the screen sees them and as the rest of the main
  * process asks them. Everything Electron - the dialog, the shell, the
  * paths - is injected, so every rule here is asserted in a unit test.
@@ -130,6 +168,14 @@ export class SettingsService {
   /** The export folder in force right now: the start's, until a person changes it. */
   #exportFolder: string
   #resetting = false
+  /**
+   * The engine folder's changes, one after another. Each asks where the
+   * projects export before it writes, which reads the disk, so two presses
+   * a moment apart could otherwise be written in the order their reads
+   * finished rather than the order they were made, and the folder left
+   * waiting for a restart would be the one from the press before the last.
+   */
+  #engineChanges: Promise<unknown> = Promise.resolve()
 
   constructor(deps: SettingsDeps) {
     this.#deps = deps
@@ -232,24 +278,136 @@ export class SettingsService {
     if (this.#deps.bundleRoots.some((root) => contains(root, path))) {
       throw new Error('that folder is inside the app itself; nothing can be kept there')
     }
+    if (which === 'engine') return this.#changeEngineFolder(path, 'chosen')
     // Changed in the store's queue, so a theme or the other folder written
     // at the same moment is kept rather than put back.
-    await this.#deps.store.update((stored) =>
-      which === 'engine' ? { ...stored, engineFolder: path } : { ...stored, exportFolder: path },
-    )
+    await this.#deps.store.update((stored) => ({ ...stored, exportFolder: path }))
     // The export folder moves at once; the engine's waits for a start.
-    if (which === 'export') this.#exportFolder = path
+    this.#exportFolder = path
     return this.view()
   }
 
   /** Forget the stored folder and take the default again. */
   async useDefault(which: Which): Promise<SettingsView> {
     if (this.locked(which)) throw new Error(refusalForLocked(which))
-    await this.#deps.store.update((stored) =>
-      which === 'engine' ? { ...stored, engineFolder: null } : { ...stored, exportFolder: null },
-    )
-    if (which === 'export') this.#exportFolder = this.#deps.defaults.export
+    if (which === 'engine') return this.#changeEngineFolder(null, 'default')
+    await this.#deps.store.update((stored) => ({ ...stored, exportFolder: null }))
+    this.#exportFolder = this.#deps.defaults.export
     return this.view()
+  }
+
+  /**
+   * Store the engine's folder, or null for the default, unless a project's
+   * own export folder is inside it or around it (issue 206).
+   *
+   * This is the door that can still see the conflict. The records live
+   * under the home in force and nothing moves them when the home does, so
+   * once the app has started on the new folder the project that exports
+   * there is a record in the folder before, which no reset will read. Here
+   * the store is still on the home in force and holds it.
+   *
+   * What it cannot see is a record in a home the app used before this
+   * one. A destination a project is given after this press and before the
+   * restart is the other half of the same rule, and is kept where it is
+   * chosen: `destinationRefusal` in `export.ts` judges a project's folder
+   * against the folder waiting here as well as the home in force.
+   */
+  #changeEngineFolder(folder: string | null, door: DestinationDoor): Promise<SettingsView> {
+    const change = async (): Promise<SettingsView> => {
+      // One deadline over the whole check. Without it a project's folder
+      // on a share that stalls would leave this change unsettled, and
+      // every later change of the engine's folder waiting behind it.
+      //
+      // The check is abandoned when the deadline lapses and may answer
+      // later, to nobody. So it only reads, and the write below is made
+      // after it, on an answer that came in time: were it the check's own
+      // last step, a folder that answered a minute after the refusal
+      // would be stored then, behind a screen that had said it was not.
+      const asking: Asking = { now: { what: door === 'chosen' ? 'chosen' : 'default' } }
+      const inTheWay = await inTime(
+        this.#real(folder ?? this.#deps.defaults.engine).then((home) =>
+          this.#projectsInTheWay(home, asking),
+        ),
+      )
+      if (inTheWay === LAPSED) throw new Error(lateSentence(asking.now))
+      if (inTheWay.length > 0) {
+        this.#deps.log(
+          `an engine data folder was refused: ${inTheWay.length} of the projects export inside it or around it`,
+        )
+        throw new Error(destinationsSentence(inTheWay, door))
+      }
+      // Changed in the store's queue, so a theme or the other folder
+      // written at the same moment is kept rather than put back. The
+      // engine's folder waits for a start.
+      await this.#deps.store.update((stored) => ({ ...stored, engineFolder: folder }))
+      return this.view()
+    }
+    const run = this.#engineChanges.then(change)
+    this.#engineChanges = run.catch(() => undefined)
+    return run
+  }
+
+  /**
+   * The names of the projects whose own export folder is inside `home` or
+   * around it; `home` is already a real path. The list is read once, and
+   * every destination in it is resolved through its links before the
+   * comparison, which is textual: a destination that is a link into the
+   * home would otherwise pass.
+   *
+   * **Which failure refuses, and which does not.** Two different things
+   * can go wrong with the read, and they end differently on purpose
+   * (decided on issue 206).
+   *
+   * - *Refused:* the projects folder cannot be listed, for any reason but
+   *   its not being there - no permission, a disk error, too many files
+   *   open, a file where the folder should be. The store rejects, and
+   *   whatever asked is refused in this side's own sentence, since a
+   *   filesystem message names the path; nothing is changed or removed. A
+   *   folder that cannot be listed hides every project in it, so nothing
+   *   at all is known and "none" would be a guess in front of a removal.
+   *   Anything else that rejects is refused the same way.
+   * - *Not refused:* a projects folder that is not there, which is a home
+   *   with no projects; and any one record the store cannot use - it
+   *   cannot be read, is not JSON, fails the parser, carries another
+   *   folder's identity, sits in a link or under a name that is no
+   *   identifier. The store skips it as the project list does, names it in
+   *   the log by its folder and the reason, and answers with the rest. Its
+   *   export folder is not seen, and the choice or the reset goes ahead:
+   *   one bad record hides one project, and the reset is the remedy for
+   *   bad records.
+   *
+   * It only reads. The doors put a deadline over it and abandon it when
+   * that lapses, so nothing here may write, and nothing here decides. It
+   * says in `asking` what it is asking the disk about as it goes, so the
+   * door can name the folder that did not answer.
+   */
+  async #projectsInTheWay(home: string, asking: Asking): Promise<string[]> {
+    let stored: ProjectDestination[]
+    try {
+      asking.now = { what: 'projects' }
+      stored = await this.#deps.destinations()
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      this.#deps.log(
+        `the projects folder could not be read (${typeof code === 'string' ? code : 'unknown error'})`,
+      )
+      throw new Error(PROJECTS_UNREAD, { cause: error })
+    }
+    const real: ProjectDestination[] = []
+    for (const project of stored) {
+      asking.now = { what: 'project', name: project.name }
+      real.push({ ...project, destination: await this.#real(project.destination) })
+    }
+    return destinationsInTheWay(home, real).map((project) => project.name)
+  }
+
+  /**
+   * A folder through its links, as the filesystem really sees it, asked
+   * once at a time: a folder that has not answered an earlier check is not
+   * asked again by this one, which waits on the same answer.
+   */
+  #real(path: string): Promise<string> {
+    return oneAtATime(this.#deps.realFolder)(path)
   }
 
   engineSize(): Promise<FolderSize> {
@@ -383,8 +541,13 @@ export class SettingsService {
    * Refused while a reset is already running, while anything else is
    * writing under the home, for a home so high up that these folder names
    * would mean something else, and for an export folder that a reset would
-   * reach - because the confirmation promises that exported files are not
-   * touched.
+   * reach - the app's own, or one a project in this home chose for itself -
+   * because the confirmation promises that exported files are not touched
+   * unless they are inside one of the four folders, and this is what keeps
+   * the folders exports go to out of those four.
+   * A project whose record was left behind in a home the app used before
+   * is not seen: its record is not under this home, so nothing here reads
+   * it (issue 206).
    *
    * The flag is raised for the length of the removal, so no engine request,
    * no export and no write to a project record can begin while it runs.
@@ -400,8 +563,12 @@ export class SettingsService {
     // Raised here, before the first await and before any check that needs
     // one, because a second call arriving while this one resolves paths
     // would find the flag still down and there is no other moment that is
-    // safe. It covers the checks as well as the removal, which costs a few
-    // refused requests in the milliseconds a refusal takes to decide.
+    // safe. It covers the checks as well as the removal. That costs
+    // refused requests for as long as a refusal takes to decide, which is
+    // milliseconds on a disk that answers and up to `FOLDERS_TIMEOUT_MS`,
+    // five seconds, on one that does not. For that long "The engine data is
+    // being reset; wait for it to finish." is said of a reset that may
+    // end refused, having removed nothing.
     this.#resetting = true
     try {
       return await this.#reset()
@@ -411,30 +578,17 @@ export class SettingsService {
   }
 
   async #reset(): Promise<ResetOutcome> {
-    const home = await realOrResolved(this.#deps.engineHome)
-    const guards = {
-      userData: await realOrResolved(this.#deps.guards.userData),
-      homeDir: await realOrResolved(this.#deps.guards.homeDir),
-    }
-    const refusal = refuseReset(home, guards)
-    if (refusal !== null) throw new Error(refusal)
-    // Only what the promise needs. An export folder that holds the home, or
-    // is it, is refused too: an export writes to <folder>/<project name>/,
-    // so a project called "out" under a folder that is the home would land
-    // in one of the four.
-    const exportFolder = await realOrResolved(this.#exportFolder)
-    if (contains(exportFolder, home)) {
-      throw new Error(
-        'your export folder holds the engine data folder; choose another one first, or the reset would reach your exports',
-      )
-    }
-    for (const folder of RESET_FOLDERS) {
-      if (contains(join(home, folder), exportFolder)) {
-        throw new Error(
-          `your export folder is inside the ${folder} folder, which the reset removes; choose another one first`,
-        )
-      }
-    }
+    // One deadline over every check, and the removal only on an answer
+    // that came in time (issue 206). Each check asks the disk about a
+    // folder, and a folder on a share that stalls, rather than failing,
+    // would otherwise keep the flag up until the app was quit, with every
+    // engine request, export and record write refused meanwhile. A check
+    // that lapsed is abandoned, not stopped: it may still answer, to
+    // nobody, after the flag has come down, which is why it only reads and
+    // why `resetContents` is here and not at its end.
+    const asking: Asking = { now: { what: 'engine' } }
+    const home = await inTime(this.#resetChecks(asking))
+    if (home === LAPSED) throw new Error(lateSentence(asking.now))
     const outcome = await resetContents(home)
     this.#deps.log(
       `reset removed ${outcome.removed.join(', ') || 'nothing'}` +
@@ -443,6 +597,55 @@ export class SettingsService {
           : ''),
     )
     return outcome
+  }
+
+  /**
+   * Every reason the home may not be reset, in order, each thrown as its
+   * sentence; the home's real path when there is none. It reads and
+   * compares and does nothing else, because `#reset` abandons it when its
+   * deadline lapses; and it says in `asking` which folder it is asking the
+   * disk about, so a lapse can name it.
+   */
+  async #resetChecks(asking: Asking): Promise<string> {
+    asking.now = { what: 'engine' }
+    const home = await this.#real(this.#deps.engineHome)
+    asking.now = { what: 'settings' }
+    const userData = await this.#real(this.#deps.guards.userData)
+    asking.now = { what: 'home' }
+    const homeDir = await this.#real(this.#deps.guards.homeDir)
+    const guards = { userData, homeDir }
+    const refusal = refuseReset(home, guards)
+    if (refusal !== null) throw new Error(refusal)
+    // Only what the promise needs. An export folder that holds the home, or
+    // is it, is refused too: an export writes to <folder>/<project name>/,
+    // so a project called "out" under a folder that is the home would land
+    // in one of the four.
+    //
+    // Each sentence asks for two things, the files before the folder
+    // (issue 206): choosing another export folder moves nothing, so a
+    // person who did only that would lose what they had exported to the
+    // reset that then ran.
+    asking.now = { what: 'export' }
+    const exportFolder = await this.#real(this.#exportFolder)
+    if (contains(exportFolder, home)) {
+      throw new Error(
+        'Your export folder holds the engine data folder, so the reset could remove your exported files; move them out of the engine data folder and choose another export folder first.',
+      )
+    }
+    for (const folder of RESET_FOLDERS) {
+      if (contains(join(home, folder), exportFolder)) {
+        throw new Error(
+          `Your export folder is inside the ${folder} folder, which the reset removes, so your exported files would go with it; move them out of the engine data folder and choose another export folder first.`,
+        )
+      }
+    }
+    // And the folders the projects chose for themselves (issue 206). The
+    // records are the ones under this home: the flag is up, so no record is
+    // being written while they are read, and the read is the last thing
+    // before the removal that takes them.
+    const inTheWay = await this.#projectsInTheWay(home, asking)
+    if (inTheWay.length > 0) throw new Error(destinationsSentence(inTheWay, 'reset'))
+    return home
   }
 
   #folderOf(which: Which): string {

@@ -60,6 +60,12 @@ export function registerExportHandlers(
    * is removing, so both are held exactly as `registerProjectHandlers`
    * holds its writes (A1-04). The exporter has its own copy of this gate,
    * which is why the other four handlers do not read it here.
+   *
+   * It is asked twice: here, before the dialog, and by `Destinations` at
+   * the write, which is handed this same function (issue 206). Between the
+   * two a person chooses a folder and the folder is judged, which can take
+   * until its deadline; a reset confirmed in that time must not have the
+   * record land in the folder it is removing.
    */
   blocked: StoreBlocked = () => null,
 ): () => void {
@@ -130,11 +136,11 @@ export function registerExportHandlers(
   }
 
   handle(CHANNELS.exportChooseDestination, async (projectId) =>
-    destinations.choose(readProject(projectId)),
+    destinations.choose(readProject(projectId), blocked),
   )
 
   handle(CHANNELS.exportUseAppFolder, async (projectId) =>
-    destinations.useAppFolder(readProject(projectId)),
+    destinations.useAppFolder(readProject(projectId), blocked),
   )
 
   handle(CHANNELS.exportReveal, async (token) => {

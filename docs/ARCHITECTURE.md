@@ -113,11 +113,11 @@ app's own settings under `api.settings`:
 
 | `settings.read()` | the two folders in force, where each came from, whether the environment names it, any folder waiting for a restart, and the theme (A1-04) |
 | `settings.setTheme(theme)` | one of system, warm-dark and sepia; anything else is refused |
-| `settings.chooseEngineFolder()`, `chooseExportFolder()` | opens the platform's folder chooser and applies its own answer; no path crosses the bridge inward |
-| `settings.useDefaultEngineFolder()`, `useDefaultExportFolder()` | forgets the stored folder and takes the default again |
+| `settings.chooseEngineFolder()`, `chooseExportFolder()` | opens the platform's folder chooser and applies its own answer; no path crosses the bridge inward; the engine's folder is refused, and nothing stored, while a project exports to a folder of its own that is inside the folder chosen, is it, or holds it, naming the project (issue 206) |
+| `settings.useDefaultEngineFolder()`, `useDefaultExportFolder()` | forgets the stored folder and takes the default again; for the engine's folder it is refused, and the stored folder kept, on the rule that refuses a chosen one: while a project exports to a folder of its own that is inside the default folder, is it, or holds it (issue 206) |
 | `settings.engineSize()` | walks the engine's home, bounded and never through a symbolic link |
 | `settings.openLogsFolder()` | makes the platform's log folder for this app if it is missing, and opens it |
-| `settings.resetEngineData()` | removes `projects`, `out`, `data` and `frames` beneath the engine's home, never the home itself; answers what went and what would not; refused while anything is writing under it |
+| `settings.resetEngineData()` | removes `projects`, `out`, `data` and `frames` beneath the engine's home, never the home itself; answers what went and what would not; refused while anything is writing under it, and while a project under this home exports to a folder of its own that is inside the home, is it, or holds it, naming the project (issue 206; choosing the engine's folder is refused on the same rule, a project's folder is refused against the engine folder waiting for a restart, and none of the three sees a record left behind in a previous home) |
 | `settings.copyDiagnostics(reports)` | puts what a bug report needs on the clipboard: the versions, the operating system, `engine.info`, the last 200 lines of both logs and the reports given, each project's diagnostics as its panel copies them (at most 20 of at most 64 KB, checked in main); composed in the main process with the home folder written as `~`; nothing is sent (A6-03) |
 | `jobs.copyLog(text)` | puts one job's log on the clipboard: the page composes the text (at most 256 KB, checked in main), and the main process redacts every web address's secrets and writes the home folder as `~` through the same lookup and deadline as the diagnostics copy, refusing if a home survives (A1-03) |
 
@@ -413,6 +413,185 @@ the registry's own check, which reads the project list from disk - every
 export through the exporter's own, and every write to a project record
 through the project handlers', so nothing lands in a folder being walked
 away.
+
+The confirmation promises that exported files are not touched unless they
+are inside one of the four folders, and since A5.5-19 a project can export
+to a folder of its own, so that folder must never be inside the home a
+reset empties, be it, or hold it (issue 206): that is what keeps the
+folders exports go to out of those four. An
+export is written to `<folder>/<project name>/`: a folder under the home
+can sit in one of the four, and a folder that is the home puts a project
+named `out` there. The relation is kept at three doors, each of which
+resolves both sides through `realOrResolved` first, because the comparison
+is textual and a folder reached through a link passes every textual check.
+Two of them ask one pure function, `destinationsInTheWay` in
+`src/main/settings.ts`, which judges a home against the folders the
+projects already have; the third is `destinationRefusal` in
+`src/main/export.ts`, which judges a folder a project is being given
+against the homes.
+
+- **The reset** refuses for the projects under the home in force, under
+  the flag and after every other check, as the last thing before the
+  removal.
+- **The choice of the engine's folder** in Settings refuses a folder, the
+  default included, that any project's export folder is inside or around.
+  This is the door that closes the way a person actually gets there: the
+  records live under the home and nothing moves them when the home moves,
+  so once the app has started on the new home the project that exports
+  there is a record in the old one. The choice is the last moment the
+  store still holds it. The engine folder's changes take turns, since each
+  reads the disk before it writes and two presses must land in the order
+  they were made.
+- **A project's own folder** is judged against the home in force and
+  against the folder waiting for a restart, where there is one: without
+  the second, a project could be given a folder inside an engine folder
+  chosen a minute before, and after the restart be a record nothing reads.
+  The folder waiting is what Settings answers as `pending`, and the rule
+  is handed a function for it, asked each time a folder is judged and
+  never kept, because a person can choose an engine folder or take one
+  back while the app runs. The exporter asks the same refusal again before
+  every export, so a folder stored before the engine folder was chosen is
+  refused at the next export. The sentence does not call the folder
+  waiting the engine data folder, which it is not yet: "that folder is
+  inside the folder the engine data moves to at the next start, which
+  “Reset engine data” removes from then on".
+
+So whichever of the two folders is chosen second is the one refused.
+
+Every refusal over exported files says, in this order, what is in the way,
+what would happen, and what to do first - and what to do is two things,
+the files before the folder: "move them out of the engine data folder and
+change where the project exports first". Changing a folder moves nothing,
+so a sentence that asked only for that would be followed to the letter by
+somebody whose exports were still under the home when the reset then ran.
+The two refusals over the app's own export folder say the same. A
+sentence names the project, or the first two and how many more, and shows
+no path; a name is shown whole up to the 120 characters a name may be, and
+past that as its beginning and an ellipsis, since a record edited by hand
+can carry a name of any length.
+
+**What a reset that goes ahead removes.** The rule is over where a project
+exports now, not over what it has exported. Files already exported into
+one of the four folders are removed by a reset that goes ahead, and
+changing where a project exports moves nothing: a person who changes the
+folder and leaves the files loses the files. That is decided, and a test
+says so by name; it is why the sentence asks for the files first.
+
+**A project this version cannot change.** A project made by a newer
+version of the app is read-only here, and its export folder still counts,
+because its exports are as much a person's as any other's. But this
+version cannot change where it exports, so that half of the advice cannot
+be followed for it. A person moves the files out and then either deletes
+the project, which this version can do, or opens it in the version that
+made it and changes its folder there.
+
+The project store hands Settings the list - `destinations()`, each record
+under its own `projects` folder that has a folder of its own, a read-only
+project's included - as it hands the feeds' guard the projects' feeds, so
+the settings service never holds the store; it is read once at each press.
+
+**Which failure of that read refuses, and which does not.** Two things
+can go wrong, and they end differently on purpose.
+
+- **The projects folder cannot be listed**, for any reason but its not
+  being there - no permission, a disk error, too many files open, a file
+  where the folder should be. `destinations()` rejects, by the failure's
+  code, and the choice or the reset is **refused**: "The projects folder
+  could not be read, so the app cannot tell where the projects export, and
+  nothing was changed or removed; look in the engine data folder, which
+  Settings shows, at “projects”, which is what cannot be read." It ends on
+  what a person can do, because on such a home they can neither reset it
+  nor move off it in Settings. The sentence is the service's own,
+  because a filesystem message names the path. `list()` reads the same
+  folder leniently and answers no projects, as it always has, because the
+  front door must still open on a folder that has gone wrong.
+- **One record cannot be read or parsed** - it cannot be opened, is not
+  JSON, fails the parser, carries another folder's identity, or sits in a
+  link or under a name that is no identifier. It is **skipped**, as the
+  project list skips it, and named in the log by its folder and the reason
+  or the failure's code, never a path; the choice or the reset goes ahead
+  on the rest.
+
+The difference is what each hides. A folder that cannot be listed hides
+every project, so nothing at all is known and "none" would be a guess in
+front of a removal. One bad record hides one project, and the reset is the
+remedy for bad records: refusing would let a single corrupt file block the
+tool a person reaches for when things are broken. A projects folder that
+is not there is a home with no projects, and refuses nothing. That has a
+consequence worth knowing: an engine data folder on a volume that is not
+mounted reads as having no projects, since a folder that is not there
+answers `ENOENT` like any other, so neither door sees the projects on it.
+
+**A deadline over the folders.** Resolving a folder through its links asks
+the disk, and a folder on a network share or an automounted volume can
+stall rather than fail. So each door puts one deadline, `FOLDERS_TIMEOUT_MS`
+(five seconds), over its whole check, as the diagnostics copy bounds its
+lookup of the home folder. When it lapses the choice or the reset is
+refused, the reset's flag comes down, and the engine folder's queue moves
+on. Without it a stalled folder would keep the flag up until the app was
+quit, with every engine request, export and record write refused
+meanwhile. With it the flag is up for as long as a refusal takes to
+decide, which is up to the five seconds, and for that long "The engine
+data is being reset; wait for it to finish." is said of a reset that may
+end refused. A check that lapsed is abandoned, not stopped, since nothing
+can take back a question already put to the disk: so the checks only
+read, and what acts on their answer - the removal, the write of the
+engine's folder to the settings - is made after them and only on an
+answer that came in time. The timer is cleared whichever way a check ends.
+
+**The sentence says which folder did not answer.** "The folders could not
+be checked" is nothing a person can act on, so each check keeps note of
+what it is asking the disk about, and the door reads the note when the
+deadline lapses. Where it was a project's folder the project is named,
+its name bounded as in every other sentence: "The folder the project “Los
+Angeles” exports to did not answer in time, so nothing was changed or
+removed; change where the project exports, or try again when it can be
+reached." Where it was another folder the sentence says which: the engine
+data folder, the folder chosen or the default one, the export folder, the
+home folder, the folder the app keeps its settings in, or the reading of
+the projects itself. No path in any. `destinationRefusal` is bounded the
+same way and says which of its folders it was - the folder being judged,
+the app itself, the engine data folder or the one waiting - in a sentence
+the chooser shows and the exporter says after "The folder this project
+exports to cannot be written to:"; the export section below says what
+that leaves.
+
+**One question to the disk per folder.** A check that lapses leaves its
+question unanswered, and each holds one of the four threads the runtime
+reads files with until the kernel answers, which on a mount that has
+stalled may be never. Before the deadline, the reset's flag and an
+export's own state kept a second attempt from being made. With it, "try
+again" four times, in any mix of doors, would use up every thread, after
+which every read and write the app makes would wait behind them, a
+project's record included. So both of Settings' doors and
+`destinationRefusal` ask through one resolver, `oneAtATime` in
+`src/main/settings.ts`: while a folder has not answered, asking again
+waits on the same answer and puts nothing more to the disk; once it has
+answered, either way, the next asking asks afresh. It is by the folder as
+written, so two spellings of one folder are two questions.
+
+That bounds one folder asked again, which is what "try again" does. It
+does not bound different folders on one mount that has stalled - four
+projects each exporting to a folder of its own there, each exported - and
+a check abandoned on a mount that is slow rather than dead goes on to its
+next folder when the late one answers, to nobody. Either can hold the
+four threads until the mount answers. Time is lost and nothing else: no
+check writes, and nothing acts on an answer that came late. It is
+accepted for now.
+
+**The gate is asked again at a destination's write.** The bridge asks
+whether a reset is running before it opens a project's folder chooser.
+The dialog then stays open as long as a person likes and the folder is
+judged after it, for up to the deadline, so the chooser is handed the
+same gate and asks it again with nothing awaited between the asking and
+the write: a reset confirmed in that time refuses the write, in the words
+the first asking uses, and the record is not written into a `projects`
+folder being removed.
+
+**What no door sees.** A record left behind in a home the app used before:
+it is not under the home in force, so nothing reads it, and a reset of the
+home its project exports into is not refused. That, and any one record the
+store could not read, are all that is out of reach.
 
 The Licences section (issue 108, ADR-042) names the app's licence and every
 component the installers carry, from `src/shared/licences.ts`, which a unit
@@ -1150,11 +1329,20 @@ project, under the engine's own file name; nothing is written inside the
 user-data folder or the bundle (ADR-016). A project's destination is a
 folder the platform's own dialog answered, judged when it was chosen and
 again at each export. The app's own bundle and the engine's home are
-refused, **and so is any folder that holds either**: the file lands at
+refused, and so is the engine folder waiting for a restart, where Settings
+has taken one that is not in force yet (issue 206): it is asked of
+Settings at each judgement and never kept, and its refusal does not call
+it the engine data folder, which it is not yet. The judgement has a
+deadline, because a folder on a share that stalls neither answers nor
+fails; when it lapses the folder is refused as one that could not be
+checked, so an export to it is refused after five seconds rather than
+never starting, before a plan is asked for and before any frames are made,
+and is let go as any refused export is. **Any folder that holds one of
+the three is refused too**: the file lands at
 `<destination>/<project name>/`, and `folderName` passes "engine", "out",
 "data", "projects", "frames" and the app's own name through unchanged, so
 the folder one of them sits in is a single project name away from it.
-Each refusal says which of the two it is and which way round. Every path is
+Each refusal says which of them it is and which way round. Every path is
 resolved through its links first, because the comparison is textual and
 `SCHEMATIC_HOME` reaches the app unfiltered. The home's half is the
 relation Settings already keeps in both directions over the app-wide export

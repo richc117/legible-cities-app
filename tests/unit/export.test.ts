@@ -16,9 +16,10 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CaptureError, type CaptureOptions, type CaptureResult } from '../../src/main/capture'
 import {
+  destinationLate,
   destinationRefusal,
   Destinations,
   Exporter,
@@ -48,9 +49,27 @@ import {
 } from '../../src/shared/export'
 import { DEFAULT_STYLE, type ProjectRecord } from '../../src/shared/project'
 import type { CaptureJob as PlannedJob, Preset } from '../../src/shared/protocol'
+import { FOLDERS_TIMEOUT_MS, realOrResolved } from '../../src/main/settings'
 import { FAKE_ENGINE, findPython } from '../support/python'
 
 const tick = (): Promise<void> => new Promise((r) => setImmediate(r))
+
+/**
+ * Whether this machine lets the run make a symbolic link, asked once: a
+ * locked-down Windows account does not. A test that needs one is skipped
+ * where it cannot be made, and says so (issue 206).
+ */
+const canLink = ((): boolean => {
+  const dir = mkdtempSync(join(tmpdir(), 'legible-cities-link-probe-'))
+  try {
+    symlinkSync(dir, join(dir, 'link'), 'dir')
+    return true
+  } catch {
+    return false
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})()
 
 /** What the one button exported before the export tab: the reel, with the engine's defaults. */
 const REEL: ExportChoice = { preset: 'instagram-reel', options: {} }
@@ -230,8 +249,26 @@ function fakeCapture() {
   return { capture, calls }
 }
 
+/**
+ * Until a folder that stalls has been asked about, or whatever would have
+ * asked has ended without asking: so a test of a deadline fails at once,
+ * and not at its own timeout, when the thing it waits for never comes.
+ */
+const askedOrEnded = (asked: Promise<void>, call: Promise<unknown>): Promise<void> =>
+  Promise.race([
+    asked,
+    call.then(
+      () => undefined,
+      () => undefined,
+    ),
+  ])
+
 const dirs: string[] = []
 afterEach(() => {
+  // Here as well as in each test's own `finally`: a test of a deadline that
+  // hangs is ended by its timeout and never reaches that, and the timers
+  // it left faked would turn every test after it into a timeout too.
+  vi.useRealTimers()
   for (const dir of dirs) rmSync(dir, { recursive: true, force: true })
   dirs.length = 0
 })
@@ -1427,6 +1464,86 @@ describe('choosing a destination', () => {
     expect(c.written).toEqual([])
   })
 
+  // The bridge asks its gate before the dialog opens. The dialog then
+  // stays open as long as a person likes and the folder is judged after
+  // it, for up to the judgement's deadline; a reset confirmed meanwhile
+  // must not have the record written into the folder it is removing
+  // (issue 206). So the gate is handed on and asked again at the write.
+  describe('the gate, asked again at the write', () => {
+    const RESETTING = 'The engine data is being reset; wait for it to finish.'
+
+    /** A chooser whose every step is written down in the order it happened. */
+    function gated(over: { resetDuring: 'the dialog' | 'the judgement' | 'the read' | null }) {
+      const steps: string[] = []
+      const gate = { now: null as string | null }
+      const at = (step: 'the dialog' | 'the judgement' | 'the read'): void => {
+        if (over.resetDuring === step) gate.now = RESETTING
+      }
+      const destinations = new Destinations({
+        projects: {
+          get: async (id) => {
+            steps.push('read')
+            at('the read')
+            return project({ id })
+          },
+          setDestination: async (id, folder) => {
+            steps.push(`write ${folder ?? 'none'}`)
+            return { ...project({ id }), destination: folder }
+          },
+        },
+        chooseFolder: async () => {
+          steps.push('dialog')
+          at('the dialog')
+          return '/chosen/folder'
+        },
+        appFolder: () => '/the/app/folder',
+        refuse: async () => {
+          steps.push('judged')
+          at('the judgement')
+          return null
+        },
+      })
+      const blocked = (): string | null => {
+        steps.push('gate')
+        return gate.now
+      }
+      return { destinations, blocked, steps }
+    }
+
+    it('is asked after the folder was judged and immediately before the write', async () => {
+      const c = gated({ resetDuring: null })
+      await c.destinations.choose('abcdefghijk1', c.blocked)
+      expect(c.steps).toEqual(['read', 'dialog', 'judged', 'gate', 'write /chosen/folder'])
+    })
+
+    it('refuses the write, in the gate’s own words, when a reset began while the dialog was open or the folder was judged', async () => {
+      for (const during of ['the dialog', 'the judgement'] as const) {
+        const c = gated({ resetDuring: during })
+        await expect(c.destinations.choose('abcdefghijk1', c.blocked), during).rejects.toThrow(
+          RESETTING,
+        )
+        expect(c.steps, during).toEqual(['read', 'dialog', 'judged', 'gate'])
+      }
+    })
+
+    it('refuses to take the app’s folder back the same way, when a reset began while the record was read', async () => {
+      const c = gated({ resetDuring: 'the read' })
+      await expect(c.destinations.useAppFolder('abcdefghijk1', c.blocked)).rejects.toThrow(
+        RESETTING,
+      )
+      expect(c.steps).toEqual(['read', 'gate'])
+      const clear = gated({ resetDuring: null })
+      await clear.destinations.useAppFolder('abcdefghijk1', clear.blocked)
+      expect(clear.steps).toEqual(['read', 'gate', 'write none'])
+    })
+
+    it('holds nothing when it is handed no gate, as a caller with none of its own is not', async () => {
+      const c = gated({ resetDuring: 'the judgement' })
+      await c.destinations.choose('abcdefghijk1')
+      expect(c.steps).toEqual(['read', 'dialog', 'judged', 'write /chosen/folder'])
+    })
+  })
+
   it("takes the app's folder again, sending nothing at all", async () => {
     const c = chooser()
     const record = await c.destinations.useAppFolder('abcdefghijk1')
@@ -1455,13 +1572,20 @@ describe('where a project may not export to', () => {
     mkdirSync(bundle, { recursive: true })
     const elsewhere = join(root, 'Movies')
     mkdirSync(elsewhere, { recursive: true })
+    // The folder an engine folder chosen in Settings would be, and whether
+    // one is waiting for a restart: none, unless a test says so.
+    const next = join(root, 'Videos')
+    mkdirSync(next, { recursive: true })
+    const waiting: { now: string | null } = { now: null }
     return {
       root,
       appRoot,
       home,
       bundle,
       elsewhere,
-      where: { bundleRoots: [bundle], engineHome: home },
+      next,
+      waiting,
+      where: { bundleRoots: [bundle], engineHome: home, waitingHome: () => waiting.now },
     }
   }
 
@@ -1523,7 +1647,7 @@ describe('where a project may not export to', () => {
     mkdirSync(join(real, 'out'), { recursive: true })
     const linked = join(t.root, 'linked-home')
     symlinkSync(real, linked, 'dir')
-    const where = { bundleRoots: [t.bundle], engineHome: linked }
+    const where = { bundleRoots: [t.bundle], engineHome: linked, waitingHome: () => null }
     // The home is a link; the folder names where it really is.
     expect(await destinationRefusal(join(real, 'out'), where)).toMatch(
       /inside the engine data folder/,
@@ -1536,7 +1660,7 @@ describe('where a project may not export to', () => {
     const t = tree()
     const linked = join(t.root, 'linked-app')
     symlinkSync(t.bundle, linked, 'dir')
-    const where = { bundleRoots: [linked], engineHome: t.home }
+    const where = { bundleRoots: [linked], engineHome: t.home, waitingHome: () => null }
     expect(await destinationRefusal(join(t.bundle, 'Contents'), where)).toMatch(
       /inside the app itself/,
     )
@@ -1553,5 +1677,346 @@ describe('where a project may not export to', () => {
       /inside the engine data folder/,
     )
     expect(await destinationRefusal(join(t.elsewhere, 'not-yet'), t.where)).toBeNull()
+  })
+
+  // Issue 206. An engine folder chosen in Settings takes effect at the next
+  // start and the project records do not move with it, so a project given a
+  // folder inside the one waiting would, after the restart, be a record
+  // nothing reads, exporting into the home a reset empties.
+  describe('while another engine folder waits for a restart', () => {
+    const INSIDE =
+      'that folder is inside the folder the engine data moves to at the next start, which “Reset engine data” removes from then on'
+    const HOLDS =
+      'that folder holds the folder the engine data moves to at the next start; an export goes into a folder named after the project, which could be that folder itself'
+
+    it('refuses the folder that waits and anything inside it, without calling it the engine data folder', async () => {
+      const t = tree()
+      t.waiting.now = t.next
+      for (const folder of [t.next, join(t.next, 'out'), join(t.next, 'exports', '2026')]) {
+        const refusal = await destinationRefusal(folder, t.where)
+        expect(refusal, folder).toBe(INSIDE)
+        expect(refusal, 'it is not the engine data folder yet').not.toMatch(
+          /inside the engine data folder/,
+        )
+        expect(refusal, 'a sentence for the screen names no folder').not.toContain(t.root)
+      }
+    })
+
+    it('refuses a folder that holds the one that waits, in its own sentence', async () => {
+      const t = tree()
+      t.waiting.now = join(t.next, 'engine')
+      expect(await destinationRefusal(t.next, t.where)).toBe(HOLDS)
+    })
+
+    it('allows the same folders when none waits, and a neighbour whose name begins the same when one does', async () => {
+      const t = tree()
+      for (const folder of [t.next, join(t.next, 'out')])
+        expect(await destinationRefusal(folder, t.where), folder).toBeNull()
+      t.waiting.now = t.next
+      expect(await destinationRefusal(`${t.next}-2025`, t.where)).toBeNull()
+      expect(await destinationRefusal(t.elsewhere, t.where)).toBeNull()
+    })
+
+    // A person can choose an engine folder, or take one back, while the app
+    // runs: a folder read once and kept would judge by the one before.
+    it('asks which folder waits each time it judges, and never keeps the answer', async () => {
+      const t = tree()
+      const asked: (string | null)[] = []
+      const where = {
+        ...t.where,
+        waitingHome: () => {
+          asked.push(t.waiting.now)
+          return t.waiting.now
+        },
+      }
+      const folder = join(t.next, 'exports')
+      expect(await destinationRefusal(folder, where)).toBeNull()
+      t.waiting.now = t.next
+      expect(await destinationRefusal(folder, where)).toBe(INSIDE)
+      t.waiting.now = null
+      expect(await destinationRefusal(folder, where)).toBeNull()
+      expect(asked).toEqual([null, t.next, null])
+    })
+
+    it('keeps the sentences of the folder in force for a folder that is in both', async () => {
+      const t = tree()
+      // The folder waiting holds the home in force, so a folder in the home
+      // is inside both, and one above both holds both.
+      t.waiting.now = join(t.root, 'support')
+      expect(await destinationRefusal(join(t.home, 'out'), t.where)).toMatch(
+        /^that folder is inside the engine data folder, which “Reset engine data” removes$/,
+      )
+      expect(await destinationRefusal(t.root, t.where)).toMatch(
+        /^that folder holds the engine data folder; /,
+      )
+    })
+
+    it.skipIf(!canLink)(
+      'follows a link in the folder it is given, and in the folder that waits',
+      async () => {
+        const t = tree()
+        mkdirSync(join(t.next, 'out'), { recursive: true })
+        const link = join(t.root, 'looks-harmless')
+        symlinkSync(join(t.next, 'out'), link, 'dir')
+        t.waiting.now = t.next
+        expect(await destinationRefusal(link, t.where)).toBe(INSIDE)
+
+        const linked = join(t.root, 'linked-next')
+        symlinkSync(t.next, linked, 'dir')
+        t.waiting.now = linked
+        expect(await destinationRefusal(join(t.next, 'out'), t.where)).toBe(INSIDE)
+        expect(await destinationRefusal(t.elsewhere, t.where)).toBeNull()
+      },
+    )
+
+    it('judges a folder that waits and is not there yet', async () => {
+      const t = tree()
+      t.waiting.now = join(t.root, 'not-made-yet')
+      expect(await destinationRefusal(join(t.root, 'not-made-yet', 'exports'), t.where)).toBe(
+        INSIDE,
+      )
+    })
+
+    // The chooser and the exporter, each through the rule itself and not a
+    // stand-in for it: the two places index.ts hands the one function to.
+    it('is refused by the chooser, which stores nothing', async () => {
+      const t = tree()
+      t.waiting.now = t.next
+      const written: (string | null)[] = []
+      const destinations = new Destinations({
+        projects: {
+          get: async (id) => project({ id }),
+          setDestination: async (id, folder) => {
+            written.push(folder)
+            return { ...project({ id }), destination: folder }
+          },
+        },
+        chooseFolder: async () => join(t.next, 'exports'),
+        appFolder: () => t.elsewhere,
+        refuse: (folder) => destinationRefusal(folder, t.where),
+      })
+      await expect(destinations.choose('abcdefghijk1')).rejects.toThrow(INSIDE)
+      expect(written).toEqual([])
+      // The engine folder is taken back in Settings: the same folder is stored.
+      t.waiting.now = null
+      await destinations.choose('abcdefghijk1')
+      expect(written).toEqual([join(t.next, 'exports')])
+    })
+
+    it('is asked again at each export: a folder stored before an engine folder was chosen is refused after it', async () => {
+      const t = tree()
+      const h = harness({
+        project: { destination: join(t.next, 'exports') },
+        destinationRefusal: (folder) => destinationRefusal(folder, t.where),
+      })
+      // Nothing waits: the export runs to its end, into the project's folder.
+      const first = h.exporter.start('tok-1', 'abcdefghijk1', REEL)
+      await until('the plan', () => h.eng.requests.length === 1)
+      h.eng.requests[0].resolve(plan())
+      await until('the capture', () => h.cap.calls.length === 1)
+      h.cap.calls[0].finish(60)
+      await until('the encode', () => h.eng.requests.length === 2)
+      const dest = (h.eng.requests[1].params as { dest: string }).dest
+      expect(dest).toBe(join(t.next, 'exports', 'Los Angeles', 'la-metro-rail-instagram-reel.mp4'))
+      h.eng.requests[1].resolve({ files: [{ path: dest, bytes: 1 }], sidecar: {} })
+      await expect(first.result).resolves.toBeTruthy()
+
+      // An engine folder is chosen in Settings, around where the project exports.
+      t.waiting.now = t.next
+      const second = h.exporter.start('tok-2', 'abcdefghijk1', REEL)
+      // Refused, or - were the folder that waits not judged - planned: the
+      // wait ends on either, so a guard that has gone says so at once.
+      let refusal: string | null = null
+      second.result.catch((error: unknown) => {
+        refusal = error instanceof Error ? error.message : String(error)
+      })
+      await until(
+        'the second export to be refused, or planned',
+        () => refusal !== null || h.eng.requests.length > 2,
+      )
+      expect(h.eng.requests, 'the engine was not asked for a second plan').toHaveLength(2)
+      expect(refusal).toBe(`The folder this project exports to cannot be written to: ${INSIDE}.`)
+      expect(h.cap.calls, 'nothing more was captured').toHaveLength(1)
+      expect(h.exporter.live, 'the export was let go').toBe(0)
+    })
+  })
+
+  // A folder on a network share or an automounted volume can stall rather
+  // than fail (issue 206). The chooser would never answer, and an export,
+  // which asks the refusal again before it plans, would never start.
+  describe('when a folder it must judge never answers', () => {
+    /** The rule with a resolver that never answers for one folder, and says when it was asked. */
+    const stalling = (t: ReturnType<typeof tree>, stalled: string) => {
+      let asked = (): void => undefined
+      const wasAsked = new Promise<void>((resolve) => {
+        asked = resolve
+      })
+      const where = {
+        ...t.where,
+        realFolder: (path: string): Promise<string> => {
+          if (path !== stalled) return realOrResolved(path)
+          asked()
+          return new Promise<string>(() => undefined)
+        },
+      }
+      return { where, wasAsked }
+    }
+
+    const LATE = {
+      folder:
+        'that folder did not answer in time, so it could not be checked and nothing was changed or written; choose another folder, or try again when it can be reached',
+      app: 'the app itself did not answer in time, so that folder could not be checked against it and nothing was changed or written; try again',
+      engine:
+        'the engine data folder did not answer in time, so that folder could not be checked against it and nothing was changed or written; try again when it can be reached',
+      waiting:
+        'the folder the engine data moves to at the next start did not answer in time, so that folder could not be checked against it and nothing was changed or written; try again when it can be reached',
+    } as const
+
+    it('says each of its four sentences as written', () => {
+      for (const asked of ['folder', 'app', 'engine', 'waiting'] as const)
+        expect(destinationLate(asked)).toBe(LATE[asked])
+    })
+
+    it('refuses the folder when the deadline lapses, and says which folder did not answer', async () => {
+      const t = tree()
+      const share = join(t.root, 'on-a-share')
+      for (const [stalled, sentence] of [
+        [share, LATE.folder],
+        [t.bundle, LATE.app],
+        [t.home, LATE.engine],
+        [t.next, LATE.waiting],
+      ] as const) {
+        t.waiting.now = t.next
+        const { where, wasAsked } = stalling(t, stalled)
+        vi.useFakeTimers()
+        try {
+          const judging = destinationRefusal(share, where)
+          let judged: string | null | undefined
+          void judging.then((why) => {
+            judged = why
+          })
+          await askedOrEnded(wasAsked, judging)
+          await vi.advanceTimersByTimeAsync(FOLDERS_TIMEOUT_MS - 1)
+          expect(judged, 'not before the deadline').toBeUndefined()
+          await vi.advanceTimersByTimeAsync(1)
+          expect(await judging, stalled).toBe(sentence)
+          expect(sentence, 'a sentence for the screen names no folder').not.toContain(t.root)
+          expect(vi.getTimerCount(), 'the timer was cleared').toBe(0)
+        } finally {
+          vi.useRealTimers()
+        }
+      }
+    })
+
+    // A judgement that lapsed leaves its question with the disk, holding a
+    // thread files are read with; so the folder is not asked about again
+    // while that question is unanswered.
+    it('asks once about a folder that has not answered, however many times it is judged', async () => {
+      const t = tree()
+      const share = join(t.root, 'on-a-share')
+      const asked: string[] = []
+      let answer: (real: string) => void = () => undefined
+      const stalled = { now: true }
+      const where = {
+        ...t.where,
+        realFolder: (path: string): Promise<string> => {
+          if (path !== share) return realOrResolved(path)
+          asked.push(path)
+          if (!stalled.now) return realOrResolved(path)
+          return new Promise<string>((resolve) => {
+            answer = resolve
+          })
+        },
+      }
+      vi.useFakeTimers()
+      try {
+        for (let attempt = 0; attempt < 4; attempt += 1) {
+          const judging = destinationRefusal(share, where)
+          await vi.advanceTimersByTimeAsync(FOLDERS_TIMEOUT_MS)
+          expect(await judging).toBe(LATE.folder)
+        }
+      } finally {
+        vi.useRealTimers()
+      }
+      expect(asked, 'four judgements, one question').toHaveLength(1)
+      // It answers, and the next judgement asks afresh.
+      stalled.now = false
+      answer(share)
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      expect(await destinationRefusal(share, where)).toBeNull()
+      expect(asked).toHaveLength(2)
+    })
+
+    it('leaves no timer behind a judgement that ended in time, either way', async () => {
+      const t = tree()
+      vi.useFakeTimers()
+      try {
+        expect(await destinationRefusal(t.elsewhere, t.where)).toBeNull()
+        expect(vi.getTimerCount()).toBe(0)
+        expect(await destinationRefusal(t.home, t.where)).toMatch(/inside the engine data folder/)
+        expect(vi.getTimerCount()).toBe(0)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('is refused by the chooser, which stores nothing', async () => {
+      const t = tree()
+      const share = join(t.root, 'on-a-share')
+      const { where, wasAsked } = stalling(t, share)
+      const written: (string | null)[] = []
+      const destinations = new Destinations({
+        projects: {
+          get: async (id) => project({ id }),
+          setDestination: async (id, folder) => {
+            written.push(folder)
+            return { ...project({ id }), destination: folder }
+          },
+        },
+        chooseFolder: async () => share,
+        appFolder: () => t.elsewhere,
+        refuse: (folder) => destinationRefusal(folder, where),
+      })
+      vi.useFakeTimers()
+      try {
+        const refused = expect(destinations.choose('abcdefghijk1')).rejects.toThrow(LATE.folder)
+        await askedOrEnded(wasAsked, refused)
+        await vi.advanceTimersByTimeAsync(FOLDERS_TIMEOUT_MS)
+        await refused
+      } finally {
+        vi.useRealTimers()
+      }
+      expect(written).toEqual([])
+    })
+
+    // The export is refused once the deadline lapses, rather than never
+    // starting and never ending; what it leaves is what any export refused
+    // over its folder leaves, which is nothing.
+    it('refuses an export to a folder that never answers, and leaves what a refused export leaves', async () => {
+      const t = tree()
+      const share = join(t.root, 'on-a-share')
+      const { where, wasAsked } = stalling(t, share)
+      const h = harness({
+        project: { destination: share },
+        destinationRefusal: (folder) => destinationRefusal(folder, where),
+      })
+      vi.useFakeTimers()
+      try {
+        const { result } = h.exporter.start('tok-1', 'abcdefghijk1', REEL)
+        const refused = expect(result).rejects.toThrow(
+          `The folder this project exports to cannot be written to: ${LATE.folder}.`,
+        )
+        await askedOrEnded(wasAsked, refused)
+        expect(h.exporter.live, 'it is an export until it is refused').toBe(1)
+        await vi.advanceTimersByTimeAsync(FOLDERS_TIMEOUT_MS)
+        await refused
+      } finally {
+        vi.useRealTimers()
+      }
+      expect(h.eng.requests, 'the engine was never asked for a plan').toHaveLength(0)
+      expect(h.cap.calls, 'nothing was captured').toHaveLength(0)
+      expect(h.exporter.live, 'the export was let go').toBe(0)
+      expect(existsSync(h.framesRoot), 'and no frames were made').toBe(false)
+    })
   })
 })

@@ -1,5 +1,54 @@
 # Feature Specification: Settings
 
+> **Amended 2026-09-29 (issue 206): a project's own export folder.** Since
+> A5.5-19 a project can export to a folder of its own, which FR-009 and
+> User Story 4 below were written before. One relation is now kept at
+> three doors. **Choosing the engine data folder**, and going back to its
+> default, is refused while any project's export folder is inside that
+> folder, is it, or holds it. **The reset** is refused on the same
+> condition for the projects under the home in force. And **a project's
+> own folder** is refused, where it is chosen and again at each export,
+> when it is inside or around the engine folder waiting for a restart as
+> well as the one in force - so whichever of the two folders is chosen
+> second is the one refused. Both sides are resolved through their
+> symbolic links before they are compared, as FR-009 asks of every
+> comparison. The choice is guarded, and not the reset alone, because of
+> A-003: nothing is moved when the home changes, the project records
+> included, so once the app has started on the new home the project that
+> exports there is a record in the old one. The choice is the last moment
+> the app can still see it.
+>
+> **Every sentence says what is in the way, what would happen, and what
+> to do first, which is two things:** move the exported files out, and
+> change the folder. Changing a folder moves nothing, and files already
+> exported into one of the four folders are removed by a reset that goes
+> ahead. The two refusals FR-009 already asked for over the app's own
+> export folder were reworded to say the same. No sentence shows a path,
+> and a project's name is shown to 120 characters at most.
+>
+> **Which failure refuses.** A projects folder that cannot be listed, for
+> any reason but its not being there, refuses the choice and the reset:
+> every project in it is hidden, so nothing is known. One record that
+> cannot be read or parsed is skipped, as the project list skips it, and
+> the choice or the reset goes ahead, because the reset exists for a home
+> whose contents have gone wrong. And the folders are checked under one
+> deadline of five seconds at each door: a folder on a share that stalls
+> refuses, with nothing changed or removed, rather than holding the
+> reset's flag up; the sentence names the project whose folder did not
+> answer, or says which other folder it was, and a folder that has not
+> answered is not asked about again until it has.
+>
+> **The confirmation's own promise is qualified to match:** exported files
+> are not touched unless they are inside one of those four folders. User
+> Story 4's first scenario and FR-009 quote the confirmation in outline
+> and stand; the screen and `docs/install.md` say the qualified sentence.
+>
+> **What no door sees:** a project whose record was left behind in a home
+> the app used before, and any one record this build cannot read. SC-001
+> gains the unit tests over each composed rule, and SC-002 an end-to-end
+> test of each refusal. Contract: `contracts/bridge.md`, "The guards, on
+> the main side".
+
 **Feature Branch**: `A1-04-settings`
 
 **Created**: 2026-09-11
