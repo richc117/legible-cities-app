@@ -396,14 +396,18 @@ body {
 
    It wraps, as a feed's row does: where the name and the facts do not fit
    on one line the facts go under the name, so neither is squeezed to make
-   room for the other. And it reads from its near edge, which the kit's
-   buttons do not: they centre what they hold. */
+   room for the other, and the facts start where the name does. On one
+   line the name is at the near edge and the facts at the far one. The
+   kit's buttons centre what they hold, which a row does not.
+
+   The name and its facts are one project's, so their lines sit closer than
+   two rows do. */
 .entry {
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-start;
+  justify-content: space-between;
   align-items: baseline;
-  gap: var(--space-4-3);
+  gap: var(--space-2-2) var(--space-4-3);
   width: 100%;
   height: auto;
   min-height: var(--control-height);
@@ -438,7 +442,6 @@ body {
   /* Facts that take a second line are one project's still, so the lines sit
      closer than the facts do. */
   gap: var(--space-2-2) var(--space-4-3);
-  margin-left: auto;
   font-size: var(--font-ui-small);
   line-height: var(--line-ui-tight);
   color: var(--text-faint);

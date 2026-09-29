@@ -1889,6 +1889,27 @@ test('the projects list is newest opened first, and says how far each project ha
     )
     await expect.poll(names).toEqual(['Second', 'First'])
 
+    // Facts that take a line of their own start where the name does (issue
+    // 269). A laid-out project's are the ones that can tell: they are a
+    // little narrower than the row, so pushed to the far edge they started
+    // a few pixels in from the name, and a different few in every row.
+    const starts = await list.getByRole('button').evaluateAll((rows) =>
+      rows.map((row) => {
+        const name = (row.querySelector('.entry-name') as Element).getBoundingClientRect()
+        const facts = (row.querySelector('.entry-meta') as Element).getBoundingClientRect()
+        return {
+          name: row.getAttribute('aria-label'),
+          under: facts.top >= name.bottom - 1,
+          in: facts.left - name.left,
+        }
+      }),
+    )
+    expect(starts.map((row) => row.name)).toEqual(['Open Second', 'Open First'])
+    for (const row of starts) {
+      expect(row.under, `${row.name}: the facts are under the name`).toBe(true)
+      expect(Math.abs(row.in), `${row.name}: and start where it does`).toBeLessThanOrEqual(1)
+    }
+
     // Opening First puts it back on top; nothing about it was edited.
     const modified = readRecordNamed(engineHome, 'First').modified
     await openProject(page, 'First')

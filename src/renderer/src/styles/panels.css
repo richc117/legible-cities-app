@@ -202,16 +202,16 @@
   color: var(--text-muted);
 }
 
+/* A feed's facts stay beside its name, and its actions go to the row's
+   end, a control's gap under the name where they take a line of their own. */
 .entry.feed {
+  justify-content: flex-start;
+  row-gap: var(--space-4-3);
   cursor: default;
 }
 
 .entry.feed:hover {
   background: transparent;
-}
-
-.entry.feed .entry-meta {
-  margin-left: 0;
 }
 
 .feed-actions {
