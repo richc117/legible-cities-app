@@ -169,7 +169,7 @@ Result: ____
   yet.
 - The engine's status line starts at "Checking the engine…" or "Starting
   the engine." and becomes "Engine ready (`<engine version>`)." The version
-  is the engine pin in `vendor/pins.json` at the release tag (0.9.1 when
+  is the engine pin in `vendor/pins.json` at the release tag (0.10.0 when
   this was written).
 - **No dialog opens.** The first-run check of the bundled LOOM and ffmpeg
   passes silently; a dialog titled "LOOM will not run", "ffmpeg will not

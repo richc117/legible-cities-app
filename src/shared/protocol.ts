@@ -1,7 +1,7 @@
 // Generated from the engine's own description of its protocol.
 // Run `npm run typegen` to regenerate; edits here are lost.
 //
-// Engine: v0.9.1, protocol 1.
+// Engine: v0.10.0, protocol 1.
 // Source: vendor/protocol.schema.json, printed by the engine's
 // `python -m schematic.serve --schema` and committed verbatim.
 
@@ -34,8 +34,9 @@ export type Token = string
 /**
  * Ask when a feed runs and which day to draw: its service window and the
  * busiest weekday scanning from an anchor. A long request, like graph.build:
- * it downloads the feed when it is not cached and reads its calendar and
- * trips, and sends no progress.
+ * it downloads the feed when it is not cached, reporting that download's
+ * bytes as job/progress (stage download), and reads its calendar and trips,
+ * which sends no progress.
  */
 export interface FeedsServiceParams {
   key: FeedKey
@@ -335,7 +336,14 @@ export interface MapBuildResult {
 }
 
 /**
- * Sent while a long request runs, once per step as it finishes.
+ * Sent while a long request runs, once per step as it finishes. A feed
+ * downloaded inside any long request -- a preset's zip fetched the first
+ * time a layout, an inspection, a service-day read or a draw needs it --
+ * reports stage download when that download happens, once per chunk: its
+ * fraction is of the download's own bytes (0 when the server did not say how
+ * many), not of the request, and its message counts them; the request's own
+ * steps follow with their fractions of the request. A feed already on disk
+ * reports no download.
  */
 export interface JobProgress {
   id: RequestId
