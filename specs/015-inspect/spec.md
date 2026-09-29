@@ -6,6 +6,12 @@
 > address starts with every operator (`agency` null) until the Inspect view
 > chooses one.
 
+> **Since issue 221 (2026-09-29)** the view has somewhere to hand focus.
+> While a layout run or an export is going the mode, the operator and the
+> two buttons beside them are disabled, and the one a person is on hands
+> focus to cell 01's heading first; focus anywhere else is left where it
+> is. Nothing the view reads, shows or stores changed.
+
 **Feature Branch**: `A2-02-inspect`
 
 **Created**: 2026-09-11

@@ -2,10 +2,11 @@
 // sort, the mode and the agency chosen with the histogram in view, the
 // choice stored and passed to the layout, and the engine-away case.
 //
-// It is cell 01's spec since the notebook (A5.5-08, A5.5-09), so the two
+// It is cell 01's spec since the notebook (A5.5-08, A5.5-09), so the
 // things the cell adds to the panel are here too: the sentence the row
-// carries while it is collapsed, and what a change of mode or operator does
-// to the five cells below it.
+// carries while it is collapsed, what a change of mode or operator does to
+// the five cells below it, and where focus goes when a run disables the
+// control a person is on (issue 221).
 
 import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -14,6 +15,7 @@ import { _electron as electron, expect, test, type Page } from '@playwright/test
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 import {
   cell,
+  cellHandback,
   cellHeading,
   closeCell,
   createProject,
@@ -347,6 +349,108 @@ test('a change of operator marks 02 to 06 stale and starts nothing', async () =>
     await expect(cellHeading(page, 'export')).toHaveAccessibleName(/not drawn yet/)
     expect(builds()).toBe(before)
     await expect(page.getByRole('region', { name: 'Map' })).toBeVisible()
+  })
+})
+
+// Cell 01's handback (issue 221). The mode, the operator and the two buttons
+// beside them are disabled while a run or an export is going, and Chromium
+// blurs a disabled element, so the one a person is on would take focus to
+// the body with it.
+//
+// A run that starts under a person who is in cell 01 starts from a timer: a
+// colour change is debounced, so its rebuild begins with nobody pressing
+// anything, which is how `theme.spec.ts` closes the way on cell 04. The
+// stand-in is slow from its first call, because it reads its control file
+// once and the rebuild has to be going still when focus is read.
+
+/** Give line A a colour of its own: a rebuild starts when the debounce runs out. */
+async function recolour(page: Page): Promise<void> {
+  const colours = cell(page, 'lines')
+  await colours.getByRole('button', { name: /^Choose the colour of line A/ }).click()
+  const picker = colours.getByRole('group', { name: 'Colour for line A' })
+  await picker.getByLabel('Hex value').fill('#ff0000')
+  await picker.getByRole('button', { name: 'Use this colour' }).click()
+}
+
+test("focus on the mode is handed to cell 01's heading when a run disables it", async () => {
+  const engineHome = home({ progress_delay_ms: 400 })
+  await withApp(engineHome, async (page) => {
+    await openProjectOn(page, 'LA Metro Rail', 'Los Angeles')
+    await layOut(page)
+    const mode = cell(page, 'data').getByRole('combobox', { name: 'Mode' })
+    await expect(mode).toBeEnabled()
+
+    await recolour(page)
+    // Inside the debounce, with focus moved onto the mode.
+    await mode.focus()
+    await expect(mode).toBeFocused()
+
+    await expect(mode).toBeDisabled({ timeout: 30_000 })
+    // The heading the row sits in, not the row's button: a reflexive Space
+    // there would collapse the cell the person is working in.
+    await expect(cellHandback(page, 'data')).toBeFocused()
+  })
+})
+
+test('focus on a control the run leaves alone in cell 01 stays where it is', async () => {
+  const engineHome = home({ progress_delay_ms: 400 })
+  await withApp(engineHome, async (page) => {
+    await openProjectOn(page, 'LA Metro Rail', 'Los Angeles')
+    await layOut(page)
+    const inspect = cell(page, 'data')
+    const mode = inspect.getByRole('combobox', { name: 'Mode' })
+    await expect(mode).toBeEnabled()
+    // A sortable header is inside the same panel as the mode and is never
+    // disabled, so focus on it has lost nothing and is the person's own:
+    // "inside the panel" would be too wide a reason to move it.
+    const header = inspect
+      .getByRole('table', { name: /^Routes/ })
+      .getByRole('button', { name: 'Label' })
+
+    await recolour(page)
+    await header.focus()
+    await expect(header).toBeFocused()
+    // Read at once, not waited for: the header takes focus whether or not
+    // the run has begun, so this is what says focus was there first.
+    expect(await mode.isEnabled(), 'the rebuild began before focus was placed').toBe(true)
+
+    await expect(mode).toBeDisabled({ timeout: 30_000 })
+    await expect(header).toBeFocused()
+    // And through the whole of the run, not only at its start.
+    await expect(mode).toBeEnabled({ timeout: 30_000 })
+    await expect(header).toBeFocused()
+  })
+})
+
+test('a collapsed cell 01 hands nothing over, and focus on its row stays on its row', async () => {
+  const engineHome = home({ progress_delay_ms: 400 })
+  await withApp(engineHome, async (page) => {
+    await openProjectOn(page, 'LA Metro Rail', 'Los Angeles')
+    await layOut(page)
+    await expect(cell(page, 'data').getByRole('combobox', { name: 'Mode' })).toBeEnabled()
+    // Collapsed, the panel stays in the document with its controls, hidden.
+    // Nothing hidden holds focus, and the press that collapses a cell leaves
+    // focus on the row's button - which is inside the heading a handback
+    // would go to, so a move of any kind shows here as the button losing it.
+    await closeCell(page, 'data')
+    const row = cellHeading(page, 'data')
+    // The mode where it is now: in the document, and out of the tree a role
+    // is looked up in unless the lookup is told to look there.
+    const hidden = page.getByRole('combobox', { name: 'Mode', includeHidden: true })
+
+    await recolour(page)
+    await row.focus()
+    await expect(row).toBeFocused()
+    expect(await hidden.isEnabled(), 'the rebuild began before focus was placed').toBe(true)
+
+    // The run is going, and the collapsed panel was told so: its mode went
+    // with every control that waits for a run, as cell 04's theme did.
+    await expect(hidden).toBeDisabled({ timeout: 30_000 })
+    await expect(
+      panel(page, 'Theme').getByRole('button', { name: 'Sepia', exact: true }),
+    ).toBeDisabled()
+    await expect(row).toBeFocused()
+    await expect(row).toHaveAttribute('aria-expanded', 'false')
   })
 })
 

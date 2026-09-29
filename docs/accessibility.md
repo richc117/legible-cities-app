@@ -144,7 +144,7 @@ The two reader columns are a person's, recorded per run in
 | Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
 | Fields | n/a | pass (a definition list) | n/a | n/a | pass | pass | not yet run: a person's | not yet run: a person's |
-| In the feed: mode, operator, the feed's entry | fixed (D7) | pass | pass | pass | fixed (C2) | fixed (C1, C2) | not yet run: a person's | not yet run: a person's |
+| In the feed: mode, operator, the feed's entry | fixed (D7, D12) | pass | pass | pass | fixed (C2) | fixed (C1, C2) | not yet run: a person's | not yet run: a person's |
 | In the feed: the two tables | pass | pass (captions, `th scope`, `aria-sort`) | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
 | In the feed: sortable headers | fixed (D11) | pass | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
 | The feed's download (issue 178) | swept while it downloads (`notebook-a11y.spec.ts`, "a sample's download…"); no control of its own: the header's Stop and cell 02's Cancel stop it | swept (a region "Download"; the byte count a polite `role="status"`); a refusal's `role="alert"` asserted in `layout.spec.ts` | n/a | swept | pass (the progress line's pairs; `--text-muted` on `--surface`) | pass | not yet run: a person's | not yet run: a person's |
@@ -327,6 +327,21 @@ was thrown to the top of the document with nothing said.
   inner button, and a dialog closed by two Escapes mid-removal letting the
   next one open idle and stay open. A stalled request holding the dialog
   was a finding, F4 below, closed by issue 107.
+- **D12. Cell 01's mode and operator, disabled by a run** (issue 221; of
+  this kind, and numbered after the rest because it was found after them).
+  While a layout run or an export is going the mode, the operator, "Use
+  this mode" and "Use the feed's entry" are disabled, and a run can start
+  with nobody pressing anything, since a colour or an order change is
+  debounced, so the control a person was on went under them. Cell 01 was
+  the one cell with nowhere to hand focus: its heading takes it first now,
+  as the headings of cells 03 to 06 do. Only when focus was on one of the
+  controls that go: on a sortable header, in the typed mode's field, in the
+  geographic view or in another cell it is left where it is; a cell drawn
+  already disabled, as a sample city's is, takes no focus for being drawn;
+  and a collapsed cell hands nothing over, since nothing hidden holds focus
+  and the press that collapsed it left focus on its row (`Inspect.tsx`,
+  `DataCell.tsx`). Asserted in `tests/unit/inspect.test.ts` and in
+  `tests/e2e/inspect.spec.ts`; not in the sweep.
 
 The rest:
 

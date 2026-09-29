@@ -1,9 +1,17 @@
 // The Inspect view's own arithmetic: sorting what the engine sent,
 // which types a mode keeps from the engine's mode per type, the modes
-// offered, and the routes an agency keeps. No React.
+// offered, the routes an agency keeps, and when focus is handed to the
+// cell's heading. No React.
 
 import { describe, expect, it } from 'vitest'
-import { keeps, modeOptions, routesOf, sortRoutes } from '../../src/renderer/src/Inspect'
+import {
+  handsBack,
+  keeps,
+  modeOptions,
+  routesOf,
+  sortRoutes,
+  type Holds,
+} from '../../src/renderer/src/Inspect'
 import {
   feedRecordFor,
   forgetAllInspections,
@@ -90,6 +98,52 @@ describe('modeOptions and routesOf', () => {
     ]
     expect(routesOf(routes, null).map((r) => r.route_id)).toEqual(['a', 'b'])
     expect(routesOf(routes, 'S').map((r) => r.route_id)).toEqual(['b'])
+  })
+})
+
+// Cell 01's handback (issue 221), as a decision: the effect that acts on it
+// and the focus it moves need a browser, and are `tests/e2e/inspect.spec.ts`.
+describe('handsBack', () => {
+  // Elements as the check reads them, by identity. A control holds itself
+  // and what is inside it: the kit's dropdown holds the native select that
+  // takes focus, and a kit button is itself what the document reports,
+  // since its own button is inside its shadow root.
+  const select = { is: 'the native select inside the Mode dropdown' }
+  const mode: Holds<object> = { contains: (element) => element === mode || element === select }
+  const operator: Holds<object> = { contains: (element) => element === operator }
+  const entry: Holds<object> = { contains: (element) => element === entry }
+  const header = { is: 'a sortable header: inside the panel, and never disabled' }
+  const row = { is: "the cell's own row, which is where a press that collapses it leaves focus" }
+  const body = { is: 'the body' }
+  // The typed mode's button is not drawn while nothing is being typed.
+  const going = [mode, null, operator, entry]
+
+  it('hands focus over when the control that holds it is disabled under a person', () => {
+    expect(handsBack(false, true, select, going)).toBe(true)
+    expect(handsBack(false, true, entry, going)).toBe(true)
+  })
+
+  it('takes no focus for being drawn already disabled', () => {
+    // A sample city opens with its layout starting (issue 178): `disabled`
+    // is true from the first render, and was never anything else.
+    expect(handsBack(true, true, select, going)).toBe(false)
+  })
+
+  it('leaves focus on a control that stays, in the panel or out of it', () => {
+    expect(handsBack(false, true, header, going)).toBe(false)
+    expect(handsBack(false, true, row, going)).toBe(false)
+    expect(handsBack(false, true, body, going)).toBe(false)
+    expect(handsBack(false, true, null, going)).toBe(false)
+  })
+
+  it('does nothing when a run ends, or when nothing turned', () => {
+    expect(handsBack(true, false, select, going)).toBe(false)
+    expect(handsBack(false, false, select, going)).toBe(false)
+  })
+
+  it('holds nothing while no control is drawn', () => {
+    // Before the inspection arrives the panel is a heading and a sentence.
+    expect(handsBack(false, true, select, [null, null, null, null])).toBe(false)
   })
 })
 
