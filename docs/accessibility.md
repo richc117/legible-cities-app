@@ -446,7 +446,7 @@ or a design decision.
   stays open, its buttons take presses again, and the alert says "The
   engine did not answer in time, so the feed may or may not have been
   removed. The list of feeds is read again to show what the engine has
-  now." The pinned engine (v0.8.3, and v0.9.1 unchanged) does not stop for that: it runs
+  now." The pinned engine (v0.8.3, and unchanged to v0.10.0) does not stop for that: it runs
   `feeds.remove` on the one thread that reads requests, so it finishes the
   removal regardless, reads the app's `$/cancelRequest` only afterwards and
   ignores it, and answers nothing else meanwhile. The list the app asks for
