@@ -70,7 +70,14 @@ number. It is a reading aid, not something a tool checks.
   Do not add trailers that link to tool sessions or private services.
 - Run `bin/preflight` before pushing. It refuses personal file paths,
   private addresses, keys and session links, none of which belong in a
-  public repository.
+  public repository, and a symbolic link whose target is absolute, begins
+  with what only a shell would expand (`~`, `$`, `%`), carries any of
+  those, leaves the repository, climbs after naming a folder or cannot be
+  read: a path from someone's machine by another name, or one nobody can
+  check. CI runs it again over the commits a pull request adds. Whatever
+  it cannot read it refuses rather than call clean: a folder that is no
+  repository, or whose top it cannot enter, an index or a file in it, a
+  history, a range of commits.
 
 ## Local hooks
 
@@ -96,7 +103,8 @@ pre-commit run --all-files
 ```
 
 Note what that does and does not cover: `bin/preflight` reads the whole
-tracked tree, but the `gitleaks` hook reads only what is **staged**, because
+tracked tree, the target of every symbolic link in it included, but the
+`gitleaks` hook reads only what is **staged**, because
 that is the job it has at commit time. For a scan of everything in the
 working tree you need `gitleaks` itself on your `PATH`:
 

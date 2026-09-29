@@ -418,7 +418,18 @@ machine-local `feature.json` is ignored.
   commit message is for why a change was made, and a second remote would
   bring the hazard back silently.
 - **Run `bin/preflight` before every push.** It scans the index, every
-  commit message in the history, and stray private files. `gitleaks` covers what it does
+  commit message in the history, and stray private files. In the index it
+  reads where every symbolic link points, which `git grep` does not, and
+  refuses a target that is absolute, that begins with what only a shell
+  would expand (`~`, `$`, `%`), that names anything on the never list, that
+  climbs out of the repository or climbs after naming a folder, or that
+  cannot be read; `--commit-range` does the same for the links a branch's
+  commits add. It never says clean about what it could not read: a folder
+  that is no repository, or whose top it cannot enter, an index or a file
+  in it, a history, a range, a commit, a message file or a working tree it
+  cannot read, or a search it cannot run, is a refusal; an option given
+  nothing, or a range given one of its ends, is a usage error.
+  `gitleaks` covers what it does
   not: keys, tokens and certificates. Both run from `.pre-commit-config.yaml`
   on every commit, from `.claude/hooks/guard-git.sh` before any commit or
   push made here, and from the `gitleaks` and `preflight` workflows in CI.

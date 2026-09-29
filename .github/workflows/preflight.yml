@@ -6,8 +6,9 @@
 # every commit message in the history it was given, not just the new ones, so
 # a leak that arrived through a merge is still a red check.
 #
-# On a pull request it also reads the commits the branch adds, for the one
-# thing the file passes do not cover: a keyword that closes an issue.
+# On a pull request it also reads the commits the branch adds, for what the
+# passes above do not cover: a keyword that closes an issue, and a symbolic
+# link that one commit added and a later one took out again.
 name: preflight
 
 on:
@@ -33,14 +34,6 @@ jobs:
       - name: Personal paths, addresses, keys and session links
         run: bin/preflight
 
-      # A closing keyword in a *commit* message is a different mistake from
-      # a leak: the squash commit reaches both servers, whose boards number
-      # the same issues differently, so it closes the wrong issue on one of
-      # them. The commit-msg hook refuses it while it can still be edited;
-      # this is the same check for a machine without the hooks installed.
-      #
-      # Only the commits this pull request adds. The history already carries
-      # five, and they cannot now be unmade.
       # The hooks decide what the assistant may run, so they are tested
       # like anything else that makes a decision. Committed again as of
       # ADR-029; before that they lived outside this repository and this
@@ -48,7 +41,27 @@ jobs:
       - name: The assistant's allow and refuse tables
         run: bin/test-hooks
 
-      - name: Closing keywords in the commits this pull request adds
+      # The commits this pull request adds, read for three things: the never
+      # list in their messages, a keyword that closes an issue, and where
+      # every symbolic link they add points.
+      #
+      # A closing keyword in a *commit* message is a different mistake from
+      # a leak. A commit message is for why a change was made, and which
+      # issue it settles belongs in the pull request. There is one board now
+      # (ADR-030), so a keyword would close the right issue and the check is
+      # precautionary. The commit-msg hook refuses it while it can still be
+      # edited; this is the same check for a machine without the hooks
+      # installed.
+      #
+      # A link is read here as well as in the index, so that one committed
+      # with the hooks bypassed is caught though a later commit took it out.
+      #
+      # Only the commits this pull request adds. The history already carries
+      # five closing keywords, and they cannot now be unmade. The range is
+      # the two commit ids the event names, and the checkout above fetches
+      # the whole history, so both are there to read; a range that cannot be
+      # read fails this step, where it used to pass it.
+      - name: Messages and links in the commits this pull request adds
         if: github.event_name == 'pull_request'
         run: >-
           bin/preflight --commit-range
