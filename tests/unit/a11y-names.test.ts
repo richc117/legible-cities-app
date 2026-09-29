@@ -15,11 +15,24 @@ import {
   KNOWN_PAIRS,
   NAMED_BY_CONTENT,
   type KnownPair,
+  type Reading,
 } from '../support/a11y-names'
 
-/** The pairs of a snapshot, each on its one line. */
-const pairsOf = (snapshot: string, known?: readonly KnownPair[]): string[] =>
-  duplicatedNames(snapshot, known).pairs.map(describePair)
+// Two ways to ask, and every test says which it means. `read` and `pairsOf`
+// are the rule alone, with no pair decided, so that what is asserted about
+// the rule does not move when an entry joins `KNOWN_PAIRS` or leaves it.
+// `swept` is the rule as the sweep runs it, with that list.
+
+/** The rule alone over a snapshot, or with the pairs given. */
+const read = (snapshot: string, known: readonly KnownPair[] = []): Reading =>
+  duplicatedNames(snapshot, known)
+
+/** The pairs of a snapshot, each on its one line: the rule alone, or with the pairs given. */
+const pairsOf = (snapshot: string, known: readonly KnownPair[] = []): string[] =>
+  read(snapshot, known).pairs.map(describePair)
+
+/** The pairs the sweep would report: the rule with the list it ships with. */
+const swept = (snapshot: string): string[] => duplicatedNames(snapshot).pairs.map(describePair)
 
 // What the engine log's panel drew before it was fixed: the disclosure's
 // region and the box of lines inside it, under one name.
@@ -33,7 +46,7 @@ const ENGINE_LOG = [
 
 describe('a name repeated inside the element it names', () => {
   it('is found: a region and, inside it, a group with the region’s name', () => {
-    const { pairs, unread } = duplicatedNames(ENGINE_LOG)
+    const { pairs, unread } = read(ENGINE_LOG)
     expect(unread).toEqual([])
     expect(pairs).toEqual([
       {
@@ -51,7 +64,7 @@ describe('a name repeated inside the element it names', () => {
   it('is not found once the inner name is its own', () => {
     const fixed = ENGINE_LOG.replace('group "The engine\'s log for this run"', 'group "Log lines"')
     expect(fixed).not.toBe(ENGINE_LOG)
-    expect(duplicatedNames(fixed)).toEqual({ pairs: [], unread: [] })
+    expect(read(fixed)).toEqual({ pairs: [], unread: [] })
   })
 
   it('is found however far down the node is', () => {
@@ -72,9 +85,7 @@ describe('a name repeated inside the element it names', () => {
       'region "Log" contains group "Log"',
       'group "Log" contains group "Log"',
     ])
-    expect(
-      duplicatedNames(thrice).pairs.map((pair) => [pair.ancestor.line, pair.node.line]),
-    ).toEqual([
+    expect(read(thrice).pairs.map((pair) => [pair.ancestor.line, pair.node.line])).toEqual([
       [1, 2],
       [1, 3],
       [2, 3],
@@ -121,7 +132,7 @@ describe('what is nested and what is not', () => {
       'region "Export" contains group "Export"',
       'region "Export" contains group "Export"',
     ])
-    expect(duplicatedNames(uneven).pairs.map((pair) => pair.node.line)).toEqual([2, 3])
+    expect(read(uneven).pairs.map((pair) => pair.node.line)).toEqual([2, 3])
   })
 })
 
@@ -137,7 +148,7 @@ describe('the heading that names its section', () => {
   ].join('\n')
 
   it('is not a pair', () => {
-    expect(duplicatedNames(SECTION)).toEqual({ pairs: [], unread: [] })
+    expect(read(SECTION)).toEqual({ pairs: [], unread: [] })
   })
 
   it('and the same names on anything but a heading are', () => {
@@ -169,7 +180,7 @@ describe('an ancestor named by what it holds', () => {
   ].join('\n')
 
   it('is not half of a pair', () => {
-    expect(duplicatedNames(BY_CONTENT)).toEqual({ pairs: [], unread: [] })
+    expect(read(BY_CONTENT)).toEqual({ pairs: [], unread: [] })
   })
 
   it.each(NAMED_BY_CONTENT.map((role) => [role]))('%s around a group with its name', (role) => {
@@ -220,7 +231,7 @@ describe('the snapshot’s text', () => {
     ].join('\n')
     // What `expectNamed` reads a line with: it does not match this one.
     expect(/^\s*- ([a-z]+)(.*)$/.test(quoted.split('\n')[1])).toBe(false)
-    expect(duplicatedNames(quoted)).toEqual({
+    expect(read(quoted)).toEqual({
       pairs: [
         {
           ancestor: { role: 'group', name: 'Copy log: the last run', line: 1 },
@@ -236,7 +247,7 @@ describe('the snapshot’s text', () => {
     const doubled = ["- 'region \"It''s: here\"':", "  - 'group \"It''s: here\" [disabled]'"].join(
       '\n',
     )
-    const { pairs, unread } = duplicatedNames(doubled)
+    const { pairs, unread } = read(doubled)
     expect(unread).toEqual([])
     expect(pairs.map((pair) => pair.node)).toEqual([{ role: 'group', name: "It's: here", line: 2 }])
   })
@@ -258,7 +269,7 @@ describe('the snapshot’s text', () => {
       '  - text: group "Log"',
       '  - paragraph: "\'group \\"Log\\"\'"',
     ].join('\n')
-    expect(duplicatedNames(text)).toEqual({ pairs: [], unread: [] })
+    expect(read(text)).toEqual({ pairs: [], unread: [] })
   })
 
   it('a property of a node is not a node', () => {
@@ -269,7 +280,7 @@ describe('the snapshot’s text', () => {
       '  - link "Home":',
       '    - /url: https://example.org/a?b=c',
     ].join('\n')
-    expect(duplicatedNames(properties)).toEqual({ pairs: [], unread: [] })
+    expect(read(properties)).toEqual({ pairs: [], unread: [] })
   })
 
   it('attributes follow the name and are not part of it', () => {
@@ -292,7 +303,7 @@ describe('the snapshot’s text', () => {
       '  - group "She said \\"hi\\" \\\\ bye"',
       '  - group "She said \\"hi\\""',
     ].join('\n')
-    const { pairs, unread } = duplicatedNames(escaped)
+    const { pairs, unread } = read(escaped)
     expect(unread).toEqual([])
     expect(pairs.map((pair) => [pair.node.name, pair.node.line])).toEqual([
       ['She said "hi" \\ bye', 2],
@@ -306,7 +317,7 @@ describe('the snapshot’s text', () => {
       '    - link /:',
       '      - /url: https://example.org/',
     ].join('\n')
-    const { pairs, unread } = duplicatedNames(bare)
+    const { pairs, unread } = read(bare)
     expect(unread).toEqual([])
     expect(pairs.map(describePair)).toEqual(['group "/tmp/" contains group "/tmp/"'])
   })
@@ -315,12 +326,12 @@ describe('the snapshot’s text', () => {
     // Which is also what a name over 900 characters becomes: Playwright
     // drops it, and the node arrives bare.
     const bare = ['- group:', '  - group:', '    - button: long'].join('\n')
-    expect(duplicatedNames(bare)).toEqual({ pairs: [], unread: [] })
+    expect(read(bare)).toEqual({ pairs: [], unread: [] })
   })
 
   it('an empty snapshot holds nothing, and nothing unread', () => {
-    expect(duplicatedNames('')).toEqual({ pairs: [], unread: [] })
-    expect(duplicatedNames('\n')).toEqual({ pairs: [], unread: [] })
+    expect(read('')).toEqual({ pairs: [], unread: [] })
+    expect(read('\n')).toEqual({ pairs: [], unread: [] })
   })
 })
 
@@ -336,7 +347,7 @@ describe('a line the rule cannot read', () => {
       '  - Group "Log"',
       '  - group "Log"',
     ].join('\n')
-    const { pairs, unread } = duplicatedNames(odd)
+    const { pairs, unread } = read(odd)
     expect(unread).toEqual([
       { line: 2, text: '  group "Log"' },
       { line: 3, text: '  - group "Log' },
@@ -373,23 +384,106 @@ describe('the pairs that were decided', () => {
     ])
   })
 
-  it('the list the sweep uses does not excuse the defect the rule was written for', () => {
-    expect(pairsOf(ENGINE_LOG)).toEqual(pairsOf(ENGINE_LOG, []))
-    expect(pairsOf(ENGINE_LOG)).toHaveLength(1)
+  it('with nothing said about them, the list is the one the sweep ships with', () => {
+    expect(duplicatedNames(EXPORT)).toEqual(duplicatedNames(EXPORT, KNOWN_PAIRS))
+  })
+})
+
+describe('the list the sweep ships with', () => {
+  // Cell 06 once an export has run, cut down to the pair the sweep's first
+  // run found (29 Sep 2026), and beside it the three nearest things that
+  // pair is not: another role inside, another role outside, another name.
+  const CELL_06 = [
+    '- main:',
+    '  - heading "06 Export" [level=2]:',
+    '    - button "06 Export" [expanded]',
+    '  - group "06 Export":',
+    '    - region "Export":',
+    '      - button "Export"',
+    '      - link "Export":',
+    '        - /url: "#export"',
+    '    - group "Export":',
+    '      - button "Export"',
+    '    - region "Reveal":',
+    '      - button "Reveal"',
+  ].join('\n')
+
+  // These two tests and the entry go together, when issue 258 closes.
+  it('holds the pair the first run found, under issue 258', () => {
+    expect(KNOWN_PAIRS).toContainEqual({
+      ancestorRole: 'region',
+      role: 'button',
+      name: 'Export',
+      issue: 258,
+    })
   })
 
-  it('each entry of that list names the issue that decided it, and is one the rule would find', () => {
-    // Over the list as it stands, which may be empty; the fixture above it
-    // is what shows the mechanism working.
-    for (const pair of KNOWN_PAIRS) {
-      expect(Number.isInteger(pair.issue) && pair.issue > 0, JSON.stringify(pair)).toBe(true)
-      const one = [
+  it('so the sweep leaves that pair alone, and nothing beside it', () => {
+    // The rule alone finds four, the first of them that pair.
+    expect(pairsOf(CELL_06)).toEqual([
+      'region "Export" contains button "Export"',
+      'region "Export" contains link "Export"',
+      'group "Export" contains button "Export"',
+      'region "Reveal" contains button "Reveal"',
+    ])
+    // The sweep reports the other three.
+    expect(swept(CELL_06)).toEqual([
+      'region "Export" contains link "Export"',
+      'group "Export" contains button "Export"',
+      'region "Reveal" contains button "Reveal"',
+    ])
+  })
+
+  it('does not excuse the defect the rule was written for', () => {
+    expect(pairsOf(ENGINE_LOG)).toHaveLength(1)
+    expect(swept(ENGINE_LOG)).toEqual(pairsOf(ENGINE_LOG))
+    expect(swept(ENGINE_LOG)).toEqual([
+      'region "The engine\'s log for this run" contains group "The engine\'s log for this run"',
+    ])
+  })
+
+  // Over the list as it stands. It is not empty while the test above it is
+  // here, and once it is there is nothing for this to say.
+  it.each(KNOWN_PAIRS.map((pair) => [JSON.stringify(pair), pair] as const))(
+    '%s names the issue that decided it, is one the rule would find, and is said once',
+    (_, pair) => {
+      // An issue, by its number.
+      expect(Number.isInteger(pair.issue) && pair.issue > 0).toBe(true)
+      // The two roles and the name, alone on a screen: the rule finds that
+      // pair and no other, so the entry is not one a heading or an ancestor
+      // named by what it holds had excused already, which would be an entry
+      // that does nothing and looks as though it does.
+      const alone = [
         `- ${pair.ancestorRole} ${JSON.stringify(pair.name)}:`,
         `  - ${pair.role} ${JSON.stringify(pair.name)}`,
       ].join('\n')
-      expect(pairsOf(one, []), `${JSON.stringify(pair)} excuses nothing`).toHaveLength(1)
-    }
-  })
+      expect(read(alone)).toEqual({
+        pairs: [
+          {
+            ancestor: { role: pair.ancestorRole, name: pair.name, line: 1 },
+            node: { role: pair.role, name: pair.name, line: 2 },
+            path: [
+              `${pair.ancestorRole} ${JSON.stringify(pair.name)}`,
+              `${pair.role} ${JSON.stringify(pair.name)}`,
+            ],
+          },
+        ],
+        unread: [],
+      })
+      // And the sweep, with the list, does not report it.
+      expect(swept(alone)).toEqual([])
+      // Once in the list: a second entry for the same pair would outlive
+      // the first one's issue.
+      expect(
+        KNOWN_PAIRS.filter(
+          (other) =>
+            other.ancestorRole === pair.ancestorRole &&
+            other.role === pair.role &&
+            other.name === pair.name,
+        ),
+      ).toHaveLength(1)
+    },
+  )
 })
 
 describe('what a red run says', () => {
@@ -402,27 +496,27 @@ describe('what a red run says', () => {
       '  - \'region "Copy log: the last run"\':',
       '    - \'group "Copy log: the last run"\'',
     ].join('\n')
-    expect(describeReading(duplicatedNames(screen))).toBe(
+    expect(describeReading(read(screen))).toBe(
       [
         'a name repeated inside the element it names (2):',
         '  1. region "Export" contains button "Export"',
         '     at lines 3 and 4 of the snapshot: main > group "06 Export" > region "Export" > button "Export"',
-        "     if it is right as it stands, in KNOWN_PAIRS: { ancestorRole: 'region', role: 'button', name: 'Export', issue: <the issue that decided it> }",
+        "     once an issue has decided it, in KNOWN_PAIRS: { ancestorRole: 'region', role: 'button', name: 'Export', issue: <that issue> }",
         '  2. region "Copy log: the last run" contains group "Copy log: the last run"',
         '     at lines 5 and 6 of the snapshot: main > region "Copy log: the last run" > group "Copy log: the last run"',
-        "     if it is right as it stands, in KNOWN_PAIRS: { ancestorRole: 'region', role: 'group', name: 'Copy log: the last run', issue: <the issue that decided it> }",
+        "     once an issue has decided it, in KNOWN_PAIRS: { ancestorRole: 'region', role: 'group', name: 'Copy log: the last run', issue: <that issue> }",
       ].join('\n'),
     )
   })
 
   it('the entry is written as the formatter would leave it, an apostrophe and all', () => {
-    expect(describeReading(duplicatedNames(ENGINE_LOG)).split('\n')[3]).toBe(
-      `     if it is right as it stands, in KNOWN_PAIRS: { ancestorRole: 'region', role: 'group', name: "The engine's log for this run", issue: <the issue that decided it> }`,
+    expect(describeReading(read(ENGINE_LOG)).split('\n')[3]).toBe(
+      `     once an issue has decided it, in KNOWN_PAIRS: { ancestorRole: 'region', role: 'group', name: "The engine's log for this run", issue: <that issue> }`,
     )
   })
 
   it('and every line that could not be read', () => {
-    expect(describeReading(duplicatedNames('- region "Log":\n  - Group "Log"'))).toBe(
+    expect(describeReading(read('- region "Log":\n  - Group "Log"'))).toBe(
       ['lines of the snapshot the rule could not read (1):', '  line 2:   - Group "Log"'].join(
         '\n',
       ),
@@ -430,8 +524,6 @@ describe('what a red run says', () => {
   })
 
   it('and nothing when there is nothing to say', () => {
-    expect(describeReading(duplicatedNames(ENGINE_LOG.replace('group "The', 'group "Its')))).toBe(
-      '',
-    )
+    expect(describeReading(read(ENGINE_LOG.replace('group "The', 'group "Its')))).toBe('')
   })
 })

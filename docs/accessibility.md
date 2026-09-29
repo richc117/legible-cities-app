@@ -71,7 +71,15 @@ person's, recorded in [Reader runs](#reader-runs).
    app (`tests/unit/a11y-names.test.ts`); a line of the snapshot it cannot
    read fails the sweep rather than being stepped over. It is the sweep's
    one soft check: a repeated name stops nothing after it, so the test
-   carries on and one run lists every screen's pairs.
+   carries on and one run lists every screen's pairs. **Its first run**
+   (29 Sep 2026, by the coordinator, not by the lane that wrote it) went
+   over every swept screen and dialog in Night and in Parchment, read
+   every line of every snapshot, and found one pair: in cell 06, once an
+   export has run, a region named "Export" around a button named
+   "Export". It is a real duplicate and not a false positive. It is not
+   mended yet, because renaming the region changes an accessible name the
+   release gate's documents follow; it is carried as a known pair under
+   issue 258, and the entry goes when that issue closes.
 3. **Contrast** is arithmetic, not a screenshot: `tests/unit/contrast.test.ts`
    recomputes every text and control pair the stylesheets use, in both
    themes, now including the kit's filled buttons at rest, under the
@@ -86,7 +94,8 @@ list and the date control's calendar - render in the platform's style
 (ADR-026) and were not measured.
 
 **Legend.** *pass*: nothing found. *swept*: the end-to-end sweep checks
-it (names, the Tab walk and its ring, motion), in both themes. *fixed
+it (names, and that none is repeated inside the element it names, the Tab
+walk and its ring, motion), in both themes. *fixed
 (Dn/Cn)*: a defect this pass fixed, listed below. *finding (Fn)*: a defect too large for this pass,
 listed below for filing. *engine's*: inside the engine's page.
 
@@ -291,7 +300,12 @@ which it is.
   the tree until a sweep opens it; a name longer than 900 characters,
   which Playwright's snapshot drops; and a repetition under an ancestor
   that is named by what it holds, which the rule allows by role. The
-  walkthrough is what catches those by ear.
+  walkthrough is what catches those by ear. And one pair it found and no
+  longer reports: the region named "Export" around the button named
+  "Export" in cell 06 once an export has run, from the rule's first run
+  (29 Sep 2026), a known pair under issue 258 until it is mended. A known
+  pair is matched by its two roles and its name on any screen, so while
+  the entry stands a second region and button of that name would pass.
 - **The engine's page** (F1) and **the geographic view's drawing** (F2).
 
 ## Defects fixed in this pass

@@ -25,7 +25,8 @@
 //   (`kit/Disclosure.tsx`) and cell 01's sortable columns are a
 //   `columnheader` around a button; or
 // - the pair is in `KNOWN_PAIRS`, by name and by both roles, with the issue
-//   that decided it.
+//   that decided it: a pair that is right as it stands, or a real one
+//   carried until its issue closes.
 //
 // The exemptions are judged pair by pair. A button inside a heading inside
 // a region, all three with one name, is still flagged against the region.
@@ -77,7 +78,10 @@ export const NAMED_BY_CONTENT: readonly string[] = [
   'option',
 ]
 
-/** A pair that was looked at and is right as it stands. */
+/**
+ * A pair that was looked at and decided: right as it stands, or a defect
+ * carried under the issue that will mend it.
+ */
 export interface KnownPair {
   ancestorRole: string
   role: string
@@ -88,13 +92,25 @@ export interface KnownPair {
 
 /**
  * The exact pairs the rule leaves alone. Each is one name under two roles,
- * decided with the sweep's own run in hand, and each says in a comment why
- * the repetition is right and names the issue that says so.
+ * decided with the sweep's own run in hand, and each says in a comment what
+ * it is, whether the repetition is right or is a defect being carried, the
+ * issue that decides it, and when the entry goes.
  *
  * Nothing is added here to make a red run green: a pair the rule finds is
- * a defect until someone has listened to it.
+ * a defect until someone has listened to it. An entry is matched wherever
+ * its two roles and its name meet, on any screen, so each one is also a
+ * place the rule has stopped looking.
  */
-export const KNOWN_PAIRS: readonly KnownPair[] = []
+export const KNOWN_PAIRS: readonly KnownPair[] = [
+  // Cell 06, once an export has run: a region named "Export" holds a button
+  // named "Export". **A real duplicate, not a false positive.** The sweep
+  // found it on its first run (29 Sep 2026), the one pair on any screen or
+  // dialog in either theme. It is carried and not mended here because
+  // renaming the region changes an accessible name that the release gate's
+  // documents follow. Issue 258 decides it, and this entry goes when that
+  // issue closes.
+  { ancestorRole: 'region', role: 'button', name: 'Export', issue: 258 },
+]
 
 /** A named node of the snapshot, and the line it was read from, from 1. */
 export interface NamedNode {
@@ -243,8 +259,8 @@ export const describePair = (pair: DuplicatedPair): string =>
 
 /**
  * What a red run says: every pair, each with where it is and the entry
- * that would exempt it, so the pairs of one run can be decided from that
- * run; and every line that could not be read.
+ * that would make it a known one, so the pairs of one run can be decided
+ * from that run; and every line that could not be read.
  */
 export function describeReading(reading: Reading): string {
   const out: string[] = []
@@ -254,7 +270,7 @@ export function describeReading(reading: Reading): string {
       out.push(
         `  ${i + 1}. ${describePair(pair)}`,
         `     at lines ${pair.ancestor.line} and ${pair.node.line} of the snapshot: ${pair.path.join(' > ')}`,
-        `     if it is right as it stands, in KNOWN_PAIRS: { ancestorRole: '${pair.ancestor.role}', role: '${pair.node.role}', name: ${literal(pair.node.name)}, issue: <the issue that decided it> }`,
+        `     once an issue has decided it, in KNOWN_PAIRS: { ancestorRole: '${pair.ancestor.role}', role: '${pair.node.role}', name: ${literal(pair.node.name)}, issue: <that issue> }`,
       )
     })
   }
