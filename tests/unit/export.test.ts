@@ -19,7 +19,7 @@ import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CaptureError, type CaptureOptions, type CaptureResult } from '../../src/main/capture'
 import {
-  DESTINATION_LATE,
+  destinationLate,
   destinationRefusal,
   Destinations,
   Exporter,
@@ -265,6 +265,10 @@ const askedOrEnded = (asked: Promise<void>, call: Promise<unknown>): Promise<voi
 
 const dirs: string[] = []
 afterEach(() => {
+  // Here as well as in each test's own `finally`: a test of a deadline that
+  // hangs is ended by its timeout and never reaches that, and the timers
+  // it left faked would turn every test after it into a timeout too.
+  vi.useRealTimers()
   for (const dir of dirs) rmSync(dir, { recursive: true, force: true })
   dirs.length = 0
 })
@@ -1460,6 +1464,86 @@ describe('choosing a destination', () => {
     expect(c.written).toEqual([])
   })
 
+  // The bridge asks its gate before the dialog opens. The dialog then
+  // stays open as long as a person likes and the folder is judged after
+  // it, for up to the judgement's deadline; a reset confirmed meanwhile
+  // must not have the record written into the folder it is removing
+  // (issue 206). So the gate is handed on and asked again at the write.
+  describe('the gate, asked again at the write', () => {
+    const RESETTING = 'The engine data is being reset; wait for it to finish.'
+
+    /** A chooser whose every step is written down in the order it happened. */
+    function gated(over: { resetDuring: 'the dialog' | 'the judgement' | 'the read' | null }) {
+      const steps: string[] = []
+      const gate = { now: null as string | null }
+      const at = (step: 'the dialog' | 'the judgement' | 'the read'): void => {
+        if (over.resetDuring === step) gate.now = RESETTING
+      }
+      const destinations = new Destinations({
+        projects: {
+          get: async (id) => {
+            steps.push('read')
+            at('the read')
+            return project({ id })
+          },
+          setDestination: async (id, folder) => {
+            steps.push(`write ${folder ?? 'none'}`)
+            return { ...project({ id }), destination: folder }
+          },
+        },
+        chooseFolder: async () => {
+          steps.push('dialog')
+          at('the dialog')
+          return '/chosen/folder'
+        },
+        appFolder: () => '/the/app/folder',
+        refuse: async () => {
+          steps.push('judged')
+          at('the judgement')
+          return null
+        },
+      })
+      const blocked = (): string | null => {
+        steps.push('gate')
+        return gate.now
+      }
+      return { destinations, blocked, steps }
+    }
+
+    it('is asked after the folder was judged and immediately before the write', async () => {
+      const c = gated({ resetDuring: null })
+      await c.destinations.choose('abcdefghijk1', c.blocked)
+      expect(c.steps).toEqual(['read', 'dialog', 'judged', 'gate', 'write /chosen/folder'])
+    })
+
+    it('refuses the write, in the gate’s own words, when a reset began while the dialog was open or the folder was judged', async () => {
+      for (const during of ['the dialog', 'the judgement'] as const) {
+        const c = gated({ resetDuring: during })
+        await expect(c.destinations.choose('abcdefghijk1', c.blocked), during).rejects.toThrow(
+          RESETTING,
+        )
+        expect(c.steps, during).toEqual(['read', 'dialog', 'judged', 'gate'])
+      }
+    })
+
+    it('refuses to take the app’s folder back the same way, when a reset began while the record was read', async () => {
+      const c = gated({ resetDuring: 'the read' })
+      await expect(c.destinations.useAppFolder('abcdefghijk1', c.blocked)).rejects.toThrow(
+        RESETTING,
+      )
+      expect(c.steps).toEqual(['read', 'gate'])
+      const clear = gated({ resetDuring: null })
+      await clear.destinations.useAppFolder('abcdefghijk1', clear.blocked)
+      expect(clear.steps).toEqual(['read', 'gate', 'write none'])
+    })
+
+    it('holds nothing when it is handed no gate, as a caller with none of its own is not', async () => {
+      const c = gated({ resetDuring: 'the judgement' })
+      await c.destinations.choose('abcdefghijk1')
+      expect(c.steps).toEqual(['read', 'dialog', 'judged', 'write /chosen/folder'])
+    })
+  })
+
   it("takes the app's folder again, sending nothing at all", async () => {
     const c = chooser()
     const record = await c.destinations.useAppFolder('abcdefghijk1')
@@ -1778,27 +1862,89 @@ describe('where a project may not export to', () => {
       return { where, wasAsked }
     }
 
-    it('refuses the folder when the deadline lapses, in a sentence that says it was not checked', async () => {
+    const LATE = {
+      folder:
+        'that folder did not answer in time, so it could not be checked and nothing was changed or written; choose another folder, or try again when it can be reached',
+      app: 'the app itself did not answer in time, so that folder could not be checked against it and nothing was changed or written; try again',
+      engine:
+        'the engine data folder did not answer in time, so that folder could not be checked against it and nothing was changed or written; try again when it can be reached',
+      waiting:
+        'the folder the engine data moves to at the next start did not answer in time, so that folder could not be checked against it and nothing was changed or written; try again when it can be reached',
+    } as const
+
+    it('says each of its four sentences as written', () => {
+      for (const asked of ['folder', 'app', 'engine', 'waiting'] as const)
+        expect(destinationLate(asked)).toBe(LATE[asked])
+    })
+
+    it('refuses the folder when the deadline lapses, and says which folder did not answer', async () => {
       const t = tree()
       const share = join(t.root, 'on-a-share')
-      for (const stalled of [share, t.home, t.bundle, t.next]) {
+      for (const [stalled, sentence] of [
+        [share, LATE.folder],
+        [t.bundle, LATE.app],
+        [t.home, LATE.engine],
+        [t.next, LATE.waiting],
+      ] as const) {
         t.waiting.now = t.next
         const { where, wasAsked } = stalling(t, stalled)
         vi.useFakeTimers()
         try {
           const judging = destinationRefusal(share, where)
+          let judged: string | null | undefined
+          void judging.then((why) => {
+            judged = why
+          })
           await askedOrEnded(wasAsked, judging)
-          await vi.advanceTimersByTimeAsync(FOLDERS_TIMEOUT_MS)
-          expect(await judging, stalled).toBe(DESTINATION_LATE)
+          await vi.advanceTimersByTimeAsync(FOLDERS_TIMEOUT_MS - 1)
+          expect(judged, 'not before the deadline').toBeUndefined()
+          await vi.advanceTimersByTimeAsync(1)
+          expect(await judging, stalled).toBe(sentence)
+          expect(sentence, 'a sentence for the screen names no folder').not.toContain(t.root)
           expect(vi.getTimerCount(), 'the timer was cleared').toBe(0)
         } finally {
           vi.useRealTimers()
         }
       }
-      expect(DESTINATION_LATE).toBe(
-        'that folder could not be checked in time against the folders it must stay out of, so nothing was changed or written; try again',
-      )
-      expect(DESTINATION_LATE, 'a sentence for the screen names no folder').not.toContain(t.root)
+    })
+
+    // A judgement that lapsed leaves its question with the disk, holding a
+    // thread files are read with; so the folder is not asked about again
+    // while that question is unanswered.
+    it('asks once about a folder that has not answered, however many times it is judged', async () => {
+      const t = tree()
+      const share = join(t.root, 'on-a-share')
+      const asked: string[] = []
+      let answer: (real: string) => void = () => undefined
+      const stalled = { now: true }
+      const where = {
+        ...t.where,
+        realFolder: (path: string): Promise<string> => {
+          if (path !== share) return realOrResolved(path)
+          asked.push(path)
+          if (!stalled.now) return realOrResolved(path)
+          return new Promise<string>((resolve) => {
+            answer = resolve
+          })
+        },
+      }
+      vi.useFakeTimers()
+      try {
+        for (let attempt = 0; attempt < 4; attempt += 1) {
+          const judging = destinationRefusal(share, where)
+          await vi.advanceTimersByTimeAsync(FOLDERS_TIMEOUT_MS)
+          expect(await judging).toBe(LATE.folder)
+        }
+      } finally {
+        vi.useRealTimers()
+      }
+      expect(asked, 'four judgements, one question').toHaveLength(1)
+      // It answers, and the next judgement asks afresh.
+      stalled.now = false
+      answer(share)
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      expect(await destinationRefusal(share, where)).toBeNull()
+      expect(asked).toHaveLength(2)
     })
 
     it('leaves no timer behind a judgement that ended in time, either way', async () => {
@@ -1833,9 +1979,7 @@ describe('where a project may not export to', () => {
       })
       vi.useFakeTimers()
       try {
-        const refused = expect(destinations.choose('abcdefghijk1')).rejects.toThrow(
-          DESTINATION_LATE,
-        )
+        const refused = expect(destinations.choose('abcdefghijk1')).rejects.toThrow(LATE.folder)
         await askedOrEnded(wasAsked, refused)
         await vi.advanceTimersByTimeAsync(FOLDERS_TIMEOUT_MS)
         await refused
@@ -1860,7 +2004,7 @@ describe('where a project may not export to', () => {
       try {
         const { result } = h.exporter.start('tok-1', 'abcdefghijk1', REEL)
         const refused = expect(result).rejects.toThrow(
-          `The folder this project exports to cannot be written to: ${DESTINATION_LATE}.`,
+          `The folder this project exports to cannot be written to: ${LATE.folder}.`,
         )
         await askedOrEnded(wasAsked, refused)
         expect(h.exporter.live, 'it is an export until it is refused').toBe(1)

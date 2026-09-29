@@ -277,7 +277,7 @@ const FEED_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/
 // takes, names or route_type numbers, comma-joined; an agency_id is at most
 // 64 characters. Held to the engine's schema by tests/unit/project.test.ts.
 export const MODE_PATTERN = /^[a-z0-9-]+(,[a-z0-9-]+)*$/
-const NAME_MAX = 120
+export const NAME_MAX = 120
 export const AGENCY_MAX = 64
 
 export function validateName(name: string): string | null {

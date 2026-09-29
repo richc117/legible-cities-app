@@ -686,7 +686,10 @@ again.
 - **check:** by the time the app has started again, **Your feeds** and
   Caltrain are gone (the engine keeps its record of added feeds in the
   removed `data` folder), and the sample cards say "not downloaded yet".
-- The exports from steps 11 and 12 are still in the export folder.
+- The exports from steps 11 and 12 are still in the export folder. They
+  are outside the engine data folder. Files already inside one of the
+  four folders, `data`, `out`, `projects` or `frames`, are removed by a
+  reset that goes ahead, exported files included.
 - The reset is not refused. Nothing in this checklist gives a project an
   export folder of its own, so a refusal here is a failure: write down the
   sentence the dialog showed.
@@ -709,7 +712,10 @@ the next start, which “Reset engine data” removes from then on". None of
 the three sees a project whose record was left behind in an engine data
 folder the app used before: projects are kept in the engine data folder
 and are not moved when another is chosen, so after the restart the app no
-longer reads them.
+longer reads them. Each sentence asks for the files to be moved as well as
+the folder changed, because changing where a project exports moves
+nothing, and a reset that then goes ahead removes whatever was exported
+into one of the four folders.
 
 Result: ____
 

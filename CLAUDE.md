@@ -210,7 +210,13 @@ refuses nothing, because the reset is the remedy for bad records. **Every
 check over folders has one deadline** (`FOLDERS_TIMEOUT_MS`, `inTime`): a
 folder on a share that stalls refuses, with nothing changed or removed,
 rather than keeping the reset's flag up; a check that lapsed is abandoned,
-so checks only read and the removal comes after them. **Every refusal over
+so checks only read and whatever acts on their answer, the removal or a
+write, comes after them; the refusal names the project whose folder did
+not answer; and **a folder that has not answered is not asked again**
+(`oneAtATime`), because each unanswered question holds one of the four
+threads files are read with. **The screen's promise is qualified**:
+exported files are not touched unless they are inside one of the four
+folders. **Every refusal over
 exported files asks for the files to be moved out and the folder changed,
 in that order**, because changing a folder moves nothing and a reset that
 goes ahead removes what was exported into one of the four.

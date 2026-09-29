@@ -191,7 +191,8 @@ do these in order.
    in the engine data folder, `projects`, `out`, `data` and `frames`: every
    project, every downloaded feed, every stored layout and everything drawn
    from them. It leaves anything else in that folder alone, and it does not
-   touch your exports. It cannot be undone. Then quit the app.
+   touch your exports unless they are inside one of those four folders. It
+   cannot be undone. Then quit the app.
 2. **Remove the app.**
    - **Mac**: quit Legible Cities, then drag it from Applications to the
      Trash.
@@ -213,7 +214,8 @@ do these in order.
    - If you chose your own engine data folder in Settings, it is not inside
      these folders: after step 1, delete it yourself if nothing else of yours
      is in it.
-4. **Your exports** are yours and are not removed by any of this. Delete
+4. **Your exports** are yours and are not removed by any of this, unless
+   they were inside one of the four folders step 1 removes. Delete
    the `Legible Cities` folder on your desktop (inside OneDrive, if OneDrive
    backs up your desktop), or the export folder you chose, if you no longer
    want them.

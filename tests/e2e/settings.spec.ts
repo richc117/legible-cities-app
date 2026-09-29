@@ -339,82 +339,100 @@ function exportsTo(home: string, folder: string): void {
 // can see the project that exports there; after the restart its record is
 // in the folder before, out of reach. The choice is where it is refused.
 test('refuses an engine folder that holds a project’s own export folder, naming the project', async () => {
+  test.slow()
   const userData = profile()
   const videos = mkdtempSync(join(tmpdir(), 'legible-cities-videos-'))
   const elsewhere = mkdtempSync(join(tmpdir(), 'legible-cities-engine-'))
+  // The app's own export folder is this suite's, never the one on a
+  // person's desktop: the check resolves it through its links.
+  const exports = mkdtempSync(join(tmpdir(), 'legible-cities-exports-'))
 
-  await withApp(userData, async (page, app) => {
-    await expect(page.getByRole('status', { name: 'Engine' })).toContainText(/ready/i, {
-      timeout: 20_000,
-    })
-    await newProject(page, 'Los Angeles')
-    exportsTo(join(userData, 'engine'), join(videos, 'exports'))
+  await withApp(
+    userData,
+    async (page, app) => {
+      await expect(page.getByRole('status', { name: 'Engine' })).toContainText(/ready/i, {
+        timeout: 20_000,
+      })
+      await newProject(page, 'Los Angeles')
+      exportsTo(join(userData, 'engine'), join(videos, 'exports'))
 
-    await open(page)
-    const screen = page.getByRole('main')
-    await chooserAnswers(app, videos)
-    await page.getByRole('button', { name: 'Choose the engine data folder' }).click()
-    const refusal = screen.getByRole('alert')
-    await expect(refusal).toHaveText(
-      'The project “Los Angeles” exports to a folder inside that one, or around it, so “Reset engine data” could remove its exported files; choose another folder, or move them out of that one and change where the project exports first.',
-    )
-    // Nothing was taken: no folder waits for a restart and none is stored.
-    await expect(page.locator('#engine-folder-path')).toHaveText(join(userData, 'engine'))
-    await expect(page.locator('#engine-folder-source')).toHaveText('the default')
-    await expect(page.getByText(/Waiting for a restart/)).toHaveCount(0)
-    const stored: { engineFolder?: unknown } = existsSync(join(userData, 'settings.json'))
-      ? (JSON.parse(readFileSync(join(userData, 'settings.json'), 'utf8')) as {
-          engineFolder?: unknown
-        })
-      : {}
-    expect(stored.engineFolder ?? null).toBeNull()
+      await open(page)
+      const screen = page.getByRole('main')
+      await chooserAnswers(app, videos)
+      await page.getByRole('button', { name: 'Choose the engine data folder' }).click()
+      const refusal = screen.getByRole('alert')
+      await expect(refusal).toHaveText(
+        'The project “Los Angeles” exports to a folder inside that one, or around it, so “Reset engine data” could remove its exported files; choose another folder, or move them out of that one and change where the project exports first.',
+      )
+      // Nothing was taken: no folder waits for a restart and none is stored.
+      await expect(page.locator('#engine-folder-path')).toHaveText(join(userData, 'engine'))
+      await expect(page.locator('#engine-folder-source')).toHaveText('the default')
+      await expect(page.getByText(/Waiting for a restart/)).toHaveCount(0)
+      const stored: { engineFolder?: unknown } = existsSync(join(userData, 'settings.json'))
+        ? (JSON.parse(readFileSync(join(userData, 'settings.json'), 'utf8')) as {
+            engineFolder?: unknown
+          })
+        : {}
+      expect(stored.engineFolder ?? null).toBeNull()
 
-    // A refusal does not stop the next choice, and takes its sentence away.
-    await chooserAnswers(app, elsewhere)
-    await page.getByRole('button', { name: 'Choose the engine data folder' }).click()
-    await expect(page.getByText(`Waiting for a restart: ${elsewhere}`)).toBeVisible()
-    await expect(screen.getByRole('alert')).toHaveCount(0)
-  })
+      // A refusal does not stop the next choice, and takes its sentence away.
+      await chooserAnswers(app, elsewhere)
+      await page.getByRole('button', { name: 'Choose the engine data folder' }).click()
+      await expect(page.getByText(`Waiting for a restart: ${elsewhere}`)).toBeVisible()
+      await expect(screen.getByRole('alert')).toHaveCount(0)
+    },
+    { LEGIBLE_EXPORT_FOLDER: exports },
+  )
 })
 
-// The same promise at the reset, for the projects in the home in force:
-// the confirmation says exported files are not touched.
+// The same rule at the reset, for the projects in the home in force: the
+// confirmation says exported files are not touched unless they are inside
+// one of the four folders, and this is what keeps a project's folder, and
+// so what it exports from now on, out of them.
 test('refuses the reset while a project exports into the engine data folder, and removes nothing', async () => {
+  test.slow()
   const userData = profile()
   const home = join(userData, 'engine')
   const exports = join(home, 'out', 'exports')
+  // The app's own export folder is this suite's: a reset resolves it
+  // through its links, and it must never be the one on a person's desktop.
+  const appExports = mkdtempSync(join(tmpdir(), 'legible-cities-exports-'))
 
-  await withApp(userData, async (page) => {
-    // Ready first: a reset asked for while the engine is still answering
-    // its handshake is refused for that, and this is about another refusal.
-    await expect(page.getByRole('status', { name: 'Engine' })).toContainText(/ready/i, {
-      timeout: 20_000,
-    })
-    await newProject(page, 'Los Angeles')
-    exportsTo(home, exports)
-    mkdirSync(join(exports, 'Los Angeles'), { recursive: true })
-    writeFileSync(join(exports, 'Los Angeles', 'reel.mp4'), 'an export')
+  await withApp(
+    userData,
+    async (page) => {
+      // Ready first: a reset asked for while the engine is still answering
+      // its handshake is refused for that, and this is about another refusal.
+      await expect(page.getByRole('status', { name: 'Engine' })).toContainText(/ready/i, {
+        timeout: 20_000,
+      })
+      await newProject(page, 'Los Angeles')
+      exportsTo(home, exports)
+      mkdirSync(join(exports, 'Los Angeles'), { recursive: true })
+      writeFileSync(join(exports, 'Los Angeles', 'reel.mp4'), 'an export')
 
-    await open(page)
-    // The screen asks the engine for its versions as it opens, and a reset
-    // asked for while that is in flight is refused for that instead.
-    await expect(definition(page, 'Engine')).toHaveText(PINNED_ENGINE)
-    await page.getByRole('button', { name: 'Reset engine data' }).click()
-    const confirm = page.getByRole('dialog')
-    await confirm.getByRole('button', { name: 'Reset', exact: true }).click()
-    // A refusal stays in the dialog, under the words that promised.
-    await expect(confirm.getByRole('alert')).toHaveText(
-      'The project “Los Angeles” exports to a folder inside the engine data folder, or around it, so the reset could remove its exported files; move them out of the engine data folder and change where the project exports first.',
-    )
-    await expect(confirm).toBeVisible()
-    expect(readFileSync(join(exports, 'Los Angeles', 'reel.mp4'), 'utf8')).toBe('an export')
-    expect(readdirSync(join(home, 'projects'))).toHaveLength(1)
+      await open(page)
+      // The screen asks the engine for its versions as it opens, and a reset
+      // asked for while that is in flight is refused for that instead.
+      await expect(definition(page, 'Engine')).toHaveText(PINNED_ENGINE)
+      await page.getByRole('button', { name: 'Reset engine data' }).click()
+      const confirm = page.getByRole('dialog')
+      await confirm.getByRole('button', { name: 'Reset', exact: true }).click()
+      // A refusal stays in the dialog, under the words that promised.
+      await expect(confirm.getByRole('alert')).toHaveText(
+        'The project “Los Angeles” exports to a folder inside the engine data folder, or around it, so the reset could remove its exported files; move them out of the engine data folder and change where the project exports first.',
+      )
+      await expect(confirm).toBeVisible()
+      expect(readFileSync(join(exports, 'Los Angeles', 'reel.mp4'), 'utf8')).toBe('an export')
+      expect(readdirSync(join(home, 'projects'))).toHaveLength(1)
 
-    await confirm.getByRole('button', { name: 'Cancel', exact: true }).click()
-    await expect(confirm).toBeHidden()
-    await page.getByRole('button', { name: 'Back to Library' }).click()
-    await expect(page.getByRole('button', { name: 'Open Los Angeles' })).toBeVisible()
-  })
+      await confirm.getByRole('button', { name: 'Cancel', exact: true }).click()
+      await expect(confirm).toBeHidden()
+      await page.getByRole('button', { name: 'Back to Library' }).click()
+      await expect(page.getByRole('button', { name: 'Open Los Angeles' })).toBeVisible()
+    },
+    { LEGIBLE_EXPORT_FOLDER: appExports },
+  )
 })
 
 // The third door (issue 206): the same rule from the project's side. A

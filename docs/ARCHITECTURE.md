@@ -114,7 +114,7 @@ app's own settings under `api.settings`:
 | `settings.read()` | the two folders in force, where each came from, whether the environment names it, any folder waiting for a restart, and the theme (A1-04) |
 | `settings.setTheme(theme)` | one of system, warm-dark and sepia; anything else is refused |
 | `settings.chooseEngineFolder()`, `chooseExportFolder()` | opens the platform's folder chooser and applies its own answer; no path crosses the bridge inward; the engine's folder is refused, and nothing stored, while a project exports to a folder of its own that is inside the folder chosen, is it, or holds it, naming the project (issue 206) |
-| `settings.useDefaultEngineFolder()`, `useDefaultExportFolder()` | forgets the stored folder and takes the default again |
+| `settings.useDefaultEngineFolder()`, `useDefaultExportFolder()` | forgets the stored folder and takes the default again; for the engine's folder it is refused, and the stored folder kept, on the rule that refuses a chosen one: while a project exports to a folder of its own that is inside the default folder, is it, or holds it (issue 206) |
 | `settings.engineSize()` | walks the engine's home, bounded and never through a symbolic link |
 | `settings.openLogsFolder()` | makes the platform's log folder for this app if it is missing, and opens it |
 | `settings.resetEngineData()` | removes `projects`, `out`, `data` and `frames` beneath the engine's home, never the home itself; answers what went and what would not; refused while anything is writing under it, and while a project under this home exports to a folder of its own that is inside the home, is it, or holds it, naming the project (issue 206; choosing the engine's folder is refused on the same rule, a project's folder is refused against the engine folder waiting for a restart, and none of the three sees a record left behind in a previous home) |
@@ -414,9 +414,11 @@ export through the exporter's own, and every write to a project record
 through the project handlers', so nothing lands in a folder being walked
 away.
 
-The confirmation promises that exported files are not touched, and since
-A5.5-19 a project can export to a folder of its own, so that folder must
-never be inside the home a reset empties, be it, or hold it (issue 206). An
+The confirmation promises that exported files are not touched unless they
+are inside one of the four folders, and since A5.5-19 a project can export
+to a folder of its own, so that folder must never be inside the home a
+reset empties, be it, or hold it (issue 206): that is what keeps the
+folders exports go to out of those four. An
 export is written to `<folder>/<project name>/`: a folder under the home
 can sit in one of the four, and a folder that is the home puts a project
 named `out` there. The relation is kept at three doors, each of which
@@ -496,7 +498,10 @@ can go wrong, and they end differently on purpose.
   where the folder should be. `destinations()` rejects, by the failure's
   code, and the choice or the reset is **refused**: "The projects folder
   could not be read, so the app cannot tell where the projects export, and
-  nothing was changed or removed." The sentence is the service's own,
+  nothing was changed or removed; look in the engine data folder, which
+  Settings shows, at “projects”, which is what cannot be read." It ends on
+  what a person can do, because on such a home they can neither reset it
+  nor move off it in Settings. The sentence is the service's own,
   because a filesystem message names the path. `list()` reads the same
   folder leniently and answers no projects, as it always has, because the
   front door must still open on a folder that has gone wrong.
@@ -512,25 +517,67 @@ every project, so nothing at all is known and "none" would be a guess in
 front of a removal. One bad record hides one project, and the reset is the
 remedy for bad records: refusing would let a single corrupt file block the
 tool a person reaches for when things are broken. A projects folder that
-is not there is a home with no projects, and refuses nothing.
+is not there is a home with no projects, and refuses nothing. That has a
+consequence worth knowing: an engine data folder on a volume that is not
+mounted reads as having no projects, since a folder that is not there
+answers `ENOENT` like any other, so neither door sees the projects on it.
 
 **A deadline over the folders.** Resolving a folder through its links asks
 the disk, and a folder on a network share or an automounted volume can
 stall rather than fail. So each door puts one deadline, `FOLDERS_TIMEOUT_MS`
 (five seconds), over its whole check, as the diagnostics copy bounds its
 lookup of the home folder. When it lapses the choice or the reset is
-refused - "The folders could not be checked in time, so nothing was
-changed or removed; try again." - the reset's flag comes down, and the
-engine folder's queue moves on. Without it a stalled folder would keep the
-flag up until the app was quit, with every engine request, export and
-record write refused meanwhile. A check that lapsed is abandoned, not
-stopped, since nothing can take back a question already put to the disk:
-so the checks only read, and the removal is made after them and only on
-an answer that came in time. The timer is cleared whichever way a check
-ends. `destinationRefusal` is bounded the same way, in its own sentence,
-which the chooser shows and the exporter says after "The folder this
-project exports to cannot be written to:"; the export section below says
-what that leaves.
+refused, the reset's flag comes down, and the engine folder's queue moves
+on. Without it a stalled folder would keep the flag up until the app was
+quit, with every engine request, export and record write refused
+meanwhile. With it the flag is up for as long as a refusal takes to
+decide, which is up to the five seconds, and for that long "The engine
+data is being reset; wait for it to finish." is said of a reset that may
+end refused. A check that lapsed is abandoned, not stopped, since nothing
+can take back a question already put to the disk: so the checks only
+read, and what acts on their answer - the removal, the write of the
+engine's folder to the settings - is made after them and only on an
+answer that came in time. The timer is cleared whichever way a check ends.
+
+**The sentence says which folder did not answer.** "The folders could not
+be checked" is nothing a person can act on, so each check keeps note of
+what it is asking the disk about, and the door reads the note when the
+deadline lapses. Where it was a project's folder the project is named,
+its name bounded as in every other sentence: "The folder the project “Los
+Angeles” exports to did not answer in time, so nothing was changed or
+removed; change where the project exports, or try again when it can be
+reached." Where it was another folder the sentence says which: the engine
+data folder, the folder chosen or the default one, the export folder, the
+home folder, the folder the app keeps its settings in, or the reading of
+the projects itself. No path in any. `destinationRefusal` is bounded the
+same way and says which of its folders it was - the folder being judged,
+the app itself, the engine data folder or the one waiting - in a sentence
+the chooser shows and the exporter says after "The folder this project
+exports to cannot be written to:"; the export section below says what
+that leaves.
+
+**One question to the disk per folder.** A check that lapses leaves its
+question unanswered, and each holds one of the four threads the runtime
+reads files with until the kernel answers, which on a mount that has
+stalled may be never. Before the deadline, the reset's flag and an
+export's own state kept a second attempt from being made. With it, "try
+again" four times, in any mix of doors, would use up every thread, after
+which every read and write the app makes would wait behind them, a
+project's record included. So both of Settings' doors and
+`destinationRefusal` ask through one resolver, `oneAtATime` in
+`src/main/settings.ts`: while a folder has not answered, asking again
+waits on the same answer and puts nothing more to the disk; once it has
+answered, either way, the next asking asks afresh. It is by the folder as
+written, so two spellings of one folder are two questions.
+
+**The gate is asked again at a destination's write.** The bridge asks
+whether a reset is running before it opens a project's folder chooser.
+The dialog then stays open as long as a person likes and the folder is
+judged after it, for up to the deadline, so the chooser is handed the
+same gate and asks it again with nothing awaited between the asking and
+the write: a reset confirmed in that time refuses the write, in the words
+the first asking uses, and the record is not written into a `projects`
+folder being removed.
 
 **What no door sees.** A record left behind in a home the app used before:
 it is not under the home in force, so nothing reads it, and a reset of the

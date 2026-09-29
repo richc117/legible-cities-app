@@ -34,7 +34,14 @@
 > whose contents have gone wrong. And the folders are checked under one
 > deadline of five seconds at each door: a folder on a share that stalls
 > refuses, with nothing changed or removed, rather than holding the
-> reset's flag up.
+> reset's flag up; the sentence names the project whose folder did not
+> answer, or says which other folder it was, and a folder that has not
+> answered is not asked about again until it has.
+>
+> **The confirmation's own promise is qualified to match:** exported files
+> are not touched unless they are inside one of those four folders. User
+> Story 4's first scenario and FR-009 quote the confirmation in outline
+> and stand; the screen and `docs/install.md` say the qualified sentence.
 >
 > **What no door sees:** a project whose record was left behind in a home
 > the app used before, and any one record this build cannot read. SC-001

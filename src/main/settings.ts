@@ -12,6 +12,7 @@
 import { randomBytes } from 'node:crypto'
 import { lstat, mkdir, readdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, parse, resolve, sep } from 'node:path'
+import { NAME_MAX } from '../shared/project'
 import {
   DEFAULT_SETTINGS,
   parseSettings,
@@ -324,6 +325,109 @@ export async function realOrResolved(path: string): Promise<string> {
   }
 }
 
+/** A folder through its links: `realOrResolved`, or what a test stands in for it. */
+export type FolderResolver = (path: string) => Promise<string>
+
+const sharing = new WeakMap<FolderResolver, FolderResolver>()
+
+/**
+ * `resolver`, asked about each folder once at a time (issue 206): while a
+ * question about a folder has not been answered, asking again answers with
+ * the same promise and puts nothing more to the disk. Once it is answered,
+ * either way, the next asking asks afresh.
+ *
+ * A check that lapses abandons its question; it cannot take it back. Each
+ * one holds a thread of the four the runtime reads files with until the
+ * kernel answers, and a mount that has stalled may never. Before the
+ * deadline, the reset's flag and an export's own state kept a second
+ * attempt from being made at all. With it, "try again" four times on a
+ * folder that never answers would use up every thread, and then every
+ * read and write the app makes would wait behind them, a project's record
+ * included.
+ *
+ * One resolver is shared by everything that was handed the same function,
+ * so Settings' two doors and a project's own chooser ask through the same
+ * one and a mix of them is no way round it. By the folder as it was
+ * written: two spellings of one folder are two questions.
+ */
+export function oneAtATime(resolver: FolderResolver = realOrResolved): FolderResolver {
+  const already = sharing.get(resolver)
+  if (already !== undefined) return already
+  const asked = new Map<string, Promise<string>>()
+  const shared: FolderResolver = (path) => {
+    const asking = asked.get(path)
+    if (asking !== undefined) return asking
+    let answer: Promise<string>
+    try {
+      answer = resolver(path)
+    } catch (error) {
+      return Promise.reject(error instanceof Error ? error : new Error(String(error)))
+    }
+    const settled = answer.finally(() => {
+      if (asked.get(path) === settled) asked.delete(path)
+    })
+    asked.set(path, settled)
+    return settled
+  }
+  sharing.set(resolver, shared)
+  return shared
+}
+
+/**
+ * What a check was asking the disk about, so that a deadline that lapses
+ * can say which folder did not answer. Kept by the check as it goes, in an
+ * `Asking` it is handed, and read by the door the moment the deadline
+ * lapses.
+ */
+export type Asked =
+  /** The engine data folder in force. */
+  | { what: 'engine' }
+  /** A folder chosen for the engine's data, or the default one. */
+  | { what: 'chosen' }
+  | { what: 'default' }
+  /** The app's own export folder. */
+  | { what: 'export' }
+  /** The person's home folder, and the folder the app's settings are in. */
+  | { what: 'home' }
+  | { what: 'settings' }
+  /** The projects themselves, being read. */
+  | { what: 'projects' }
+  /** One project's own export folder. */
+  | { what: 'project'; name: string }
+
+export interface Asking {
+  now: Asked
+}
+
+/**
+ * What a door says when the folder it was asking about did not answer in
+ * time (issue 206): which folder, that nothing was changed or removed, and
+ * what a person can do about that folder. A project is named, its name
+ * bounded as in every other sentence. Never a path.
+ */
+export function lateSentence(asked: Asked): string {
+  const nothing = 'so nothing was changed or removed'
+  const again = 'try again when it can be reached'
+  switch (asked.what) {
+    case 'project':
+      return `The folder the project “${shown(asked.name)}” exports to did not answer in time, ${nothing}; change where the project exports, or ${again}.`
+    case 'engine':
+      return `The engine data folder did not answer in time, ${nothing}; ${again}.`
+    case 'chosen':
+      return `That folder did not answer in time, ${nothing}; choose another folder, or ${again}.`
+    case 'default':
+      return `The default folder did not answer in time, ${nothing}; ${again}.`
+    case 'export':
+      return `Your export folder did not answer in time, ${nothing}; choose another export folder, or ${again}.`
+    case 'home':
+      return `Your home folder did not answer in time, ${nothing}; ${again}.`
+    case 'settings':
+      return `The folder the app keeps its settings in did not answer in time, ${nothing}; ${again}.`
+    case 'projects':
+      return `The projects in the engine data folder could not be read in time, ${nothing}; try again.`
+  }
+}
+
 /**
  * How long a check over folders may take before it is given up (issue 206).
  * Resolving a folder through its links asks the disk, and a folder on a
@@ -424,20 +528,43 @@ export function destinationsInTheWay(
 export type DestinationDoor = 'chosen' | 'default' | 'reset'
 
 /**
- * How much of a project's name a sentence shows: what `validateName` lets
- * a name be when it is written. A record is a file, and the reader takes
- * any name that is not blank, so one edited by hand can carry a name of
- * any length; the sentence is shown in a dialog and must stay one.
+ * A name's characters as a person sees them: a letter with the marks on
+ * it, an emoji joined from several, each as one. `Intl.Segmenter` where
+ * the runtime has it; by code point where it does not, which keeps a pair
+ * of surrogates together and nothing more.
  */
-export const NAME_SHOWN = 120
+function characters(name: string): string[] {
+  if (typeof Intl.Segmenter !== 'function') return Array.from(name)
+  return Array.from(new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(name)).map(
+    (part) => part.segment,
+  )
+}
 
-/** A name as a sentence shows it: whole, or its beginning and an ellipsis. */
-function shown(name: string): string {
-  // By character, not by code unit, so a name is never cut through the
-  // middle of one.
-  const letters = Array.from(name)
-  if (letters.length <= NAME_SHOWN) return name
-  return `${letters.slice(0, NAME_SHOWN).join('').trimEnd()}…`
+/**
+ * A name as a sentence shows it: whole, or its beginning and an ellipsis.
+ *
+ * Whole while it is as long as a name may be, counted as `validateName`
+ * counts it when a name is written (`NAME_MAX`). A record is a file, and
+ * the reader takes any name that is not blank, so one edited by hand can
+ * carry a name of any length; the sentence is shown in a dialog and must
+ * stay one. Past that it is cut between characters, never through one: as
+ * many whole ones as fit in that length. A single character can be of any
+ * length too, a letter under a thousand marks, so where not even the first
+ * fits the cut is by code point; and half a pair left at the cut is
+ * dropped, since half a character is not text.
+ */
+export function shown(name: string): string {
+  if (name.length <= NAME_MAX) return name
+  const fitting = (parts: string[]): string => {
+    let kept = ''
+    for (const part of parts) {
+      if (kept.length + part.length > NAME_MAX) break
+      kept += part
+    }
+    return kept
+  }
+  const kept = fitting(characters(name)) || fitting(Array.from(name))
+  return `${kept.replace(/[\uD800-\uDFFF]$/u, '').trimEnd()}…`
 }
 
 /**

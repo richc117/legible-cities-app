@@ -43,7 +43,7 @@ import {
 import { isObject, toShape } from './ipc-shape'
 import { RESERVED_NAME } from './paths'
 import { PickedPaths } from './picked'
-import { contains, inTime, LAPSED, realOrResolved } from './settings'
+import { contains, inTime, LAPSED, oneAtATime, type FolderResolver } from './settings'
 import type { Notification } from './sidecar'
 
 /** What the export needs from the supervisor; a test hands in a fake. */
@@ -654,7 +654,9 @@ export interface ForbiddenFolders {
   /**
    * The engine's home as the configuration resolved it. "Reset engine data"
    * removes four folders under it, and its confirmation promises that
-   * exported files are not touched.
+   * exported files are not touched unless they are inside one of those
+   * four; keeping a project's folder out of the home is what keeps its
+   * exports out of them.
    */
   engineHome: string
   /**
@@ -669,18 +671,38 @@ export interface ForbiddenFolders {
    * A folder through its links: `realOrResolved`, which is what the app
    * uses. Here so a test can hand in a folder that never answers, as a
    * stalled network share does not, and prove the deadline over it.
+   * Whichever it is, it is asked through `oneAtATime`, the resolver
+   * Settings' two doors ask through, so a folder that has not answered one
+   * of them is not asked again by this.
    */
-  realFolder?: (path: string) => Promise<string>
+  realFolder?: FolderResolver
 }
 
+/** Which folder a judgement was asking the disk about when its deadline lapsed. */
+export type DestinationAsked = 'folder' | 'app' | 'engine' | 'waiting'
+
 /**
- * What the chooser and the exporter say when the folders did not answer in
- * time (issue 206). Lower case and unstopped, like the refusals beside it:
- * the exporter says it after "The folder this project exports to cannot be
- * written to: ".
+ * What the chooser and the exporter say when a folder did not answer in
+ * time (issue 206): which folder, that nothing was changed or written, and
+ * what can be done about it. Lower case and unstopped, like the refusals
+ * beside it: the exporter says it after "The folder this project exports
+ * to cannot be written to: ", which is where the project is named. No
+ * path.
  */
-export const DESTINATION_LATE =
-  'that folder could not be checked in time against the folders it must stay out of, so nothing was changed or written; try again'
+export function destinationLate(asked: DestinationAsked): string {
+  const unchecked =
+    'so that folder could not be checked against it and nothing was changed or written'
+  switch (asked) {
+    case 'folder':
+      return 'that folder did not answer in time, so it could not be checked and nothing was changed or written; choose another folder, or try again when it can be reached'
+    case 'app':
+      return `the app itself did not answer in time, ${unchecked}; try again`
+    case 'engine':
+      return `the engine data folder did not answer in time, ${unchecked}; try again when it can be reached`
+    case 'waiting':
+      return `the folder the engine data moves to at the next start did not answer in time, ${unchecked}; try again when it can be reached`
+  }
+}
 
 /**
  * Why a project may not export to this folder, or null (A5.5-19).
@@ -740,21 +762,33 @@ export async function destinationRefusal(
   folder: string,
   where: ForbiddenFolders,
 ): Promise<string | null> {
-  const judged = await inTime(judgeDestination(folder, where))
-  return judged === LAPSED ? DESTINATION_LATE : judged
+  const asking: { now: DestinationAsked } = { now: 'folder' }
+  const judged = await inTime(judgeDestination(folder, where, asking))
+  return judged === LAPSED ? destinationLate(asking.now) : judged
 }
 
-/** The judgement itself, unbounded: `destinationRefusal` puts the deadline over it. */
-async function judgeDestination(folder: string, where: ForbiddenFolders): Promise<string | null> {
-  const realOf = where.realFolder ?? realOrResolved
+/**
+ * The judgement itself, unbounded: `destinationRefusal` puts the deadline
+ * over it, and reads from `asking` which folder it was asking the disk
+ * about when that lapsed.
+ */
+async function judgeDestination(
+  folder: string,
+  where: ForbiddenFolders,
+  asking: { now: DestinationAsked },
+): Promise<string | null> {
+  const realOf = oneAtATime(where.realFolder)
+  asking.now = 'folder'
   const real = await realOf(folder)
   for (const root of where.bundleRoots) {
+    asking.now = 'app'
     const bundle = await realOf(root)
     if (contains(bundle, real))
       return 'that folder is inside the app itself; nothing can be kept there'
     if (contains(real, bundle))
       return 'that folder holds the app itself; an export goes into a folder named after the project, which could be the app'
   }
+  asking.now = 'engine'
   const home = await realOf(where.engineHome)
   if (contains(home, real))
     return 'that folder is inside the engine data folder, which “Reset engine data” removes'
@@ -764,6 +798,7 @@ async function judgeDestination(folder: string, where: ForbiddenFolders): Promis
   // is the folder waiting at this judgement and not at an earlier one.
   const waiting = where.waitingHome()
   if (waiting !== null) {
+    asking.now = 'waiting'
     const next = await realOf(waiting)
     if (contains(next, real))
       return 'that folder is inside the folder the engine data moves to at the next start, which “Reset engine data” removes from then on'
@@ -796,6 +831,13 @@ export interface DestinationsOptions {
 }
 
 /**
+ * Why a project's record may not be written right now, or null: the gate
+ * the bridge asks before it opens the chooser, handed on so it is asked
+ * again at the write.
+ */
+export type WriteBlocked = () => string | null
+
+/**
  * Where one project's exports go (A5.5-19), on the shape Settings set for
  * its two folders (A1-04).
  *
@@ -814,8 +856,18 @@ export class Destinations {
     this.#options = options
   }
 
-  /** Open the chooser for this project and store what it answered. */
-  async choose(projectId: string): Promise<ProjectRecord> {
+  /**
+   * Open the chooser for this project and store what it answered.
+   *
+   * `blocked` is the bridge's own gate, asked again at the write (issue
+   * 206). The bridge asks it before the dialog opens; but the dialog stays
+   * open as long as a person likes, and the judgement after it can take
+   * until its deadline, so a reset confirmed in between would have the
+   * record written into a `projects` folder being removed. It is asked
+   * with nothing awaited between it and the write, and refuses in the
+   * words the first ask uses, being the same function.
+   */
+  async choose(projectId: string, blocked: WriteBlocked = () => null): Promise<ProjectRecord> {
     const project = await this.#options.projects.get(projectId)
     if (project.readOnly) throw new Error(READ_ONLY)
     // The dialog opens where this project's exports go now, which is its
@@ -827,19 +879,30 @@ export class Destinations {
     // what it had rather than guessing that nothing changed.
     if (answer === null) return project
     this.#picked.remember(answer)
-    return this.apply(projectId, answer)
+    return this.apply(projectId, answer, blocked)
   }
 
   /** Store a folder the app's own dialog answered. */
-  async apply(projectId: string, folder: unknown): Promise<ProjectRecord> {
+  async apply(
+    projectId: string,
+    folder: unknown,
+    blocked: WriteBlocked = () => null,
+  ): Promise<ProjectRecord> {
     const problem = validateDestination(folder)
     if (problem !== null) throw new Error(problem)
-    if (folder === null) return this.useAppFolder(projectId)
+    if (folder === null) return this.useAppFolder(projectId, blocked)
     if (!this.#picked.take(folder as string))
       throw new Error("a folder is chosen in the app's own dialog")
     const why = await this.#options.refuse(folder as string)
     if (why !== null) throw new Error(why)
-    return this.#options.projects.setDestination(projectId, folder as string)
+    return this.#write(projectId, folder as string, blocked)
+  }
+
+  /** The write, behind the gate: asked and written in one turn, nothing awaited between. */
+  #write(projectId: string, folder: string | null, blocked: WriteBlocked): Promise<ProjectRecord> {
+    const held = blocked()
+    if (held !== null) throw new Error(held)
+    return this.#options.projects.setDestination(projectId, folder)
   }
 
   /**
@@ -848,9 +911,12 @@ export class Destinations {
    * build may not write: the store would refuse it too, but with its own
    * bare "read-only", which is not a sentence to put in front of anybody.
    */
-  async useAppFolder(projectId: string): Promise<ProjectRecord> {
+  async useAppFolder(
+    projectId: string,
+    blocked: WriteBlocked = () => null,
+  ): Promise<ProjectRecord> {
     const project = await this.#options.projects.get(projectId)
     if (project.readOnly) throw new Error(READ_ONLY)
-    return this.#options.projects.setDestination(projectId, null)
+    return this.#write(projectId, null, blocked)
   }
 }

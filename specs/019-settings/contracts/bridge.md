@@ -121,8 +121,10 @@ settings: {
   is the home, or holds it - because an export writes to
   `<folder>/<project name>/`, so a project named `out` would land in a
   folder the reset removes, and the confirmation promises that exported
-  files are not touched. The home it works on is the configuration's own,
-  never anything the page sent.
+  files are not touched unless they are inside one of the four folders
+  _(so qualified 2026-09-29, issue 206: a reset that goes ahead removes
+  what was already exported into one of them)_. The home it works on is
+  the configuration's own, never anything the page sent.
 
   The flag goes up before the first `await` - before even the checks that
   need one - because a second reset arriving while the first resolves paths
@@ -212,8 +214,10 @@ settings: {
   (no permission, a disk error, too many files open, a file where the
   folder should be), the call rejects and nothing is stored or removed:
   "The projects folder could not be read, so the app cannot tell where the
-  projects export, and nothing was changed or removed." A folder that
-  cannot be listed hides every project, so nothing at all is known. If one
+  projects export, and nothing was changed or removed; look in the engine
+  data folder, which Settings shows, at “projects”, which is what cannot
+  be read." A folder that cannot be listed hides every project, so nothing
+  at all is known. If one
   record cannot be read or parsed, it is skipped as the project list skips
   it, logged by its folder's name and the failure's code, and the call
   goes ahead on the rest: one bad record hides one project, and the reset
@@ -223,12 +227,34 @@ settings: {
   **The deadline.** Each call puts one deadline of five seconds over its
   whole check, because resolving a folder asks the disk and a folder on a
   network share can stall rather than fail. When it lapses the call
-  rejects, with nothing stored or removed: "The folders could not be
-  checked in time, so nothing was changed or removed; try again." The
-  reset's flag comes down with it. The project's own chooser and the
-  exporter are bounded the same way: "that folder could not be checked in
-  time against the folders it must stay out of, so nothing was changed or
-  written; try again".
+  rejects, with nothing stored or removed, and the reset's flag comes
+  down with it. The sentence says which folder did not answer. For a
+  project's: "The folder the project “Los Angeles” exports to did not
+  answer in time, so nothing was changed or removed; change where the
+  project exports, or try again when it can be reached." For the others,
+  the same sentence begins "The engine data folder", "That folder" (one
+  chosen, which adds "choose another folder, or"), "The default folder",
+  "Your export folder" (which adds "choose another export folder, or"),
+  "Your home folder" or "The folder the app keeps its settings in"; and
+  where it was the reading of the records that did not end, "The projects
+  in the engine data folder could not be read in time, so nothing was
+  changed or removed; try again." The project's own chooser and the
+  exporter are bounded the same way and say which folder it was: "that
+  folder did not answer in time, so it could not be checked and nothing
+  was changed or written; choose another folder, or try again when it can
+  be reached", or, of the app itself, the engine data folder or the folder
+  the engine data moves to at the next start, that it "did not answer in
+  time, so that folder could not be checked against it and nothing was
+  changed or written".
+
+  A check that lapsed is abandoned, not stopped, so what acts on its
+  answer - the removal, the write of the engine's folder - is made after
+  it and only on an answer that came in time: a folder that answers a
+  minute after the refusal changes nothing. And a folder that has not
+  answered is not asked about again: every door asks through one
+  resolver, which answers a second asking with the first one's promise
+  until that has settled, because each unanswered question holds one of
+  the few threads files are read with.
 
   **What no door sees.** Records live under the engine's home and are not
   moved with it, so a record left behind in a home the app used before is

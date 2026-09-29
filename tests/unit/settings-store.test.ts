@@ -23,7 +23,8 @@ import {
   folderSize,
   inTime,
   LAPSED,
-  NAME_SHOWN,
+  lateSentence,
+  oneAtATime,
   realOrResolved,
   refuseReset,
   resetContents,
@@ -36,6 +37,7 @@ import {
   WINDOWS_RETRY_CODES,
   type Rename,
 } from '../../src/main/replace-file'
+import { NAME_MAX, validateName } from '../../src/shared/project'
 import { DEFAULT_SETTINGS, SETTINGS_VERSION } from '../../src/shared/settings'
 
 let dir: string
@@ -423,30 +425,204 @@ describe('destinationsSentence', () => {
     )
   })
 
-  // `validateName` keeps a name to 120 characters when it is written, but
-  // a record is a file and the reader takes any name that is not blank.
-  it('shows a name as long as a name may be whole, and the beginning of a longer one with an ellipsis', () => {
-    expect(NAME_SHOWN).toBe(120)
-    const longest = 'n'.repeat(120)
-    expect(destinationsSentence([longest], 'reset')).toContain(`“${longest}” exports`)
-    expect(destinationsSentence([`${longest}n`], 'reset')).toContain(`“${longest}…” exports`)
-    const sentence = destinationsSentence(['x'.repeat(100_000), 'Bart'], 'chosen')
-    expect(sentence).toContain(`“${'x'.repeat(120)}…” and “Bart” export to folders`)
-    expect(sentence.length).toBeLessThan(500)
-  })
+  // `validateName` keeps a name to 120 when it is written, but a record
+  // is a file and the reader takes any name that is not blank.
+  describe('a name longer than a name may be', () => {
+    const named = (name: string): string => {
+      const sentence = destinationsSentence([name], 'reset')
+      return sentence.slice(sentence.indexOf('“') + 1, sentence.indexOf('” exports'))
+    }
 
-  it('cuts a long name between characters, never through one, and leaves no space before the ellipsis', () => {
-    // Each of these is two code units: a cut by code unit would halve the last.
-    const trains = '🚆'.repeat(121)
-    expect(destinationsSentence([trains], 'reset')).toContain(`“${'🚆'.repeat(120)}…”`)
-    const spaced = `${'n'.repeat(119)} and the rest of a very long name`
-    expect(destinationsSentence([spaced], 'reset')).toContain(`“${'n'.repeat(119)}…”`)
+    it('is shown whole while it is as long as a name may be, by the count that refuses a longer one', () => {
+      expect(NAME_MAX).toBe(120)
+      const longest = 'n'.repeat(NAME_MAX)
+      expect(validateName(longest)).toBeNull()
+      expect(validateName(`${longest}n`)).not.toBeNull()
+      expect(named(longest)).toBe(longest)
+      expect(named(`${longest}n`)).toBe(`${longest}…`)
+    })
+
+    it('keeps the sentence one sentence, however long the name', () => {
+      const sentence = destinationsSentence(['x'.repeat(100_000), 'Bart'], 'chosen')
+      expect(sentence).toContain(`“${'x'.repeat(120)}…” and “Bart” export to folders`)
+      expect(sentence.length).toBeLessThan(500)
+    })
+
+    it('leaves no space before the ellipsis', () => {
+      expect(named(`${'n'.repeat(119)} and the rest of a very long name`)).toBe(
+        `${'n'.repeat(119)}…`,
+      )
+    })
+
+    it('is cut between characters: never through a pair, a joined emoji or a letter and its marks', () => {
+      // Two code units each: a cut by code unit would halve the last.
+      expect(named('🚆'.repeat(61))).toBe(`${'🚆'.repeat(60)}…`)
+      // Four people joined into one family, eleven code units and one
+      // character: a cut by code point would keep two of them.
+      const family = '👨\u200D👩\u200D👧\u200D👦'
+      expect(family).toHaveLength(11)
+      expect(named(`${'n'.repeat(115)}${family} and more`)).toBe(`${'n'.repeat(115)}…`)
+      expect(named(`${'n'.repeat(109)}${family} and more`)).toBe(`${'n'.repeat(109)}${family}…`)
+      // A letter and the accent on it: a cut by code point would take the
+      // letter and leave the accent.
+      expect(named(`${'n'.repeat(119)}e\u0301 and more`)).toBe(`${'n'.repeat(119)}…`)
+    })
+
+    it('drops half a pair left at the cut, which is not text', () => {
+      const broken = `${'n'.repeat(119)}\uD83D${'x'.repeat(10)}`
+      expect(named(broken)).toBe(`${'n'.repeat(119)}…`)
+    })
+
+    it('is still bounded when one character alone is longer than a name may be', () => {
+      const marked = `a${'\u0301'.repeat(500)} and the rest`
+      const said = named(marked)
+      expect(said.length).toBeLessThanOrEqual(NAME_MAX + 1)
+      expect(said.startsWith('a\u0301')).toBe(true)
+      expect(said.endsWith('…')).toBe(true)
+    })
+
+    it('is cut by code point where the runtime has no Intl.Segmenter, keeping a pair together', () => {
+      vi.stubGlobal('Intl', { ...Intl, Segmenter: undefined })
+      try {
+        expect(named('🚆'.repeat(61))).toBe(`${'🚆'.repeat(60)}…`)
+        expect(named(`${'n'.repeat(119)}🚆 and more`)).toBe(`${'n'.repeat(119)}…`)
+        expect(named(`${'n'.repeat(119)}\uD83D${'x'.repeat(10)}`)).toBe(`${'n'.repeat(119)}…`)
+      } finally {
+        vi.unstubAllGlobals()
+      }
+    })
   })
 
   it('names two and counts the rest past three, so the sentence stays short', () => {
     expect(destinationsSentence(['Bart', 'Caltrain', 'Metra', 'Muni', 'VTA'], 'default')).toBe(
       'The projects “Bart”, “Caltrain” and 3 others export to folders inside the default folder, or around it, so “Reset engine data” could remove their exported files; move them out of the default folder and change where those projects export first.',
     )
+  })
+})
+
+// Issue 206. What a door says when its deadline lapsed: which folder did
+// not answer, that nothing was changed or removed, and what can be done.
+describe('lateSentence', () => {
+  it('names the project whose folder did not answer, and says to change where it exports', () => {
+    expect(lateSentence({ what: 'project', name: 'Los Angeles' })).toBe(
+      'The folder the project “Los Angeles” exports to did not answer in time, so nothing was changed or removed; change where the project exports, or try again when it can be reached.',
+    )
+  })
+
+  it('says which folder it was when it was not a project’s', () => {
+    expect(lateSentence({ what: 'engine' })).toBe(
+      'The engine data folder did not answer in time, so nothing was changed or removed; try again when it can be reached.',
+    )
+    expect(lateSentence({ what: 'chosen' })).toBe(
+      'That folder did not answer in time, so nothing was changed or removed; choose another folder, or try again when it can be reached.',
+    )
+    expect(lateSentence({ what: 'default' })).toBe(
+      'The default folder did not answer in time, so nothing was changed or removed; try again when it can be reached.',
+    )
+    expect(lateSentence({ what: 'export' })).toBe(
+      'Your export folder did not answer in time, so nothing was changed or removed; choose another export folder, or try again when it can be reached.',
+    )
+    expect(lateSentence({ what: 'home' })).toBe(
+      'Your home folder did not answer in time, so nothing was changed or removed; try again when it can be reached.',
+    )
+    expect(lateSentence({ what: 'settings' })).toBe(
+      'The folder the app keeps its settings in did not answer in time, so nothing was changed or removed; try again when it can be reached.',
+    )
+    expect(lateSentence({ what: 'projects' })).toBe(
+      'The projects in the engine data folder could not be read in time, so nothing was changed or removed; try again.',
+    )
+  })
+
+  it('keeps a project’s name to the length a name may be', () => {
+    const sentence = lateSentence({ what: 'project', name: 'x'.repeat(5000) })
+    expect(sentence).toContain(`the project “${'x'.repeat(120)}…” exports to`)
+    expect(sentence.length).toBeLessThan(400)
+  })
+})
+
+// Issue 206. A check that lapses abandons its question to the disk, which
+// holds one of the few threads files are read with until the kernel
+// answers. So a folder that has not answered is not asked again.
+describe('oneAtATime', () => {
+  /** A resolver that answers when the test says, and counts what it was asked. */
+  const counting = () => {
+    const asked: string[] = []
+    const waiting = new Map<string, { answer: (real: string) => void; fail: (e: Error) => void }>()
+    const resolver = (path: string): Promise<string> => {
+      asked.push(path)
+      return new Promise<string>((answer, fail) => {
+        waiting.set(path, { answer, fail })
+      })
+    }
+    return { asked, waiting, resolver }
+  }
+  const share = join(tmpdir(), 'legible-cities-on-a-share')
+
+  it('asks once about a folder that has not answered, however many times it is asked', async () => {
+    const c = counting()
+    const real = oneAtATime(c.resolver)
+    const first = real(share)
+    const second = real(share)
+    const third = real(share)
+    expect(c.asked, 'one question put to the disk').toEqual([share])
+    expect(second, 'and one answer waited for').toBe(first)
+    expect(third).toBe(first)
+    c.waiting.get(share)?.answer('the real folder')
+    expect(await Promise.all([first, second, third])).toEqual([
+      'the real folder',
+      'the real folder',
+      'the real folder',
+    ])
+  })
+
+  it('asks afresh about a folder that answered, the next time', async () => {
+    const c = counting()
+    const real = oneAtATime(c.resolver)
+    const first = real(share)
+    c.waiting.get(share)?.answer('as it was')
+    expect(await first).toBe('as it was')
+    const second = real(share)
+    expect(c.asked, 'a second question, since the first was answered').toEqual([share, share])
+    c.waiting.get(share)?.answer('as it is now')
+    expect(await second).toBe('as it is now')
+  })
+
+  it('asks afresh about a folder that failed, the next time', async () => {
+    const c = counting()
+    const real = oneAtATime(c.resolver)
+    const first = real(share)
+    c.waiting.get(share)?.fail(new Error('no such share'))
+    await expect(first).rejects.toThrow('no such share')
+    void real(share)
+    expect(c.asked).toEqual([share, share])
+  })
+
+  it('asks about each folder: one that has not answered holds up no other', async () => {
+    const c = counting()
+    const real = oneAtATime(c.resolver)
+    void real(share)
+    const other = real(join(tmpdir(), 'legible-cities-elsewhere'))
+    expect(c.asked).toHaveLength(2)
+    c.waiting.get(join(tmpdir(), 'legible-cities-elsewhere'))?.answer('elsewhere')
+    expect(await other).toBe('elsewhere')
+  })
+
+  it('is one resolver for everything handed the same function, so a mix of doors shares it', () => {
+    const c = counting()
+    expect(oneAtATime(c.resolver)).toBe(oneAtATime(c.resolver))
+    void oneAtATime(c.resolver)(share)
+    void oneAtATime(c.resolver)(share)
+    expect(c.asked).toEqual([share])
+    expect(oneAtATime(counting().resolver)).not.toBe(oneAtATime(c.resolver))
+  })
+
+  it('is over realOrResolved when it is handed nothing, which is what the app asks through', async () => {
+    const real = oneAtATime()
+    expect(real).toBe(oneAtATime())
+    expect(real).toBe(oneAtATime(realOrResolved))
+    const asking = real(dir)
+    expect(real(dir), 'the same question while it is unanswered').toBe(asking)
+    expect(await asking).toBe(await realOrResolved(dir))
   })
 })
 

@@ -21,7 +21,6 @@ import {
 } from '../../src/main/settings'
 import {
   ENGINE_INFO_TIMEOUT_MS,
-  FOLDERS_LATE,
   HOMES_TIMEOUT_MS,
   PROJECTS_UNREAD,
   registerSettingsHandlers,
@@ -79,6 +78,10 @@ const ABOUT = {
 const bundleOf = (root: string): string => join(root, 'bundle', 'Legible Cities.app')
 
 afterEach(async () => {
+  // Here as well as in each test's own `finally`: a test of a deadline that
+  // hangs is ended by its timeout and never reaches that, and the timers
+  // it left faked would turn every test after it into a timeout too.
+  vi.useRealTimers()
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true })
 })
 
@@ -696,8 +699,9 @@ describe('choosing the engine folder while a project exports to a folder of its 
     const refusal = await refusalOf(h.call(CHANNELS.settingsChooseEngineFolder))
     expect(refusal).toBe(PROJECTS_UNREAD)
     expect(refusal).toBe(
-      'The projects folder could not be read, so the app cannot tell where the projects export, and nothing was changed or removed.',
+      'The projects folder could not be read, so the app cannot tell where the projects export, and nothing was changed or removed; look in the engine data folder, which Settings shows, at “projects”, which is what cannot be read.',
     )
+    expect(refusal, 'a sentence for the screen names no folder').not.toContain(h.root)
     expect(h.store.current.engineFolder, 'a folder nobody could check is not stored').toBeNull()
     expect(h.storeLines).toEqual(['projects: cannot list (ENOTDIR)'])
     expect(h.logs).toEqual(['the projects folder could not be read (ENOTDIR)'])
@@ -747,8 +751,7 @@ describe('choosing the engine folder while a project exports to a folder of its 
   // A folder on a share that has stalled neither answers nor fails. With
   // no deadline this change would never settle, and every later change of
   // the engine's folder would wait behind it.
-  it('gives up on a project’s folder that never answers, stores nothing, and does not hold up the next change', async () => {
-    const stalled = { now: true }
+  it('gives up on a project’s folder that never answers, names the project, stores nothing, and does not hold up the next change', async () => {
     let asked = (): void => undefined
     const stalledWasAsked = new Promise<void>((resolve) => {
       asked = resolve
@@ -756,18 +759,18 @@ describe('choosing the engine folder while a project exports to a folder of its 
     const h = await harness({
       answer: (root) => join(root, 'videos'),
       realFolder: (path) => {
-        if (stalled.now && path === join(h.root, 'on-a-share')) {
-          asked()
-          return new Promise(() => undefined)
-        }
-        return realOrResolved(path)
+        if (path !== join(h.root, 'on-a-share')) return realOrResolved(path)
+        asked()
+        return new Promise(() => undefined)
       },
     })
-    await exporting(h, 'Los Angeles', join(h.root, 'on-a-share'))
+    const id = await exporting(h, 'Los Angeles', join(h.root, 'on-a-share'))
     vi.useFakeTimers()
     try {
       const choosing = h.call(CHANNELS.settingsChooseEngineFolder)
-      const refused = expect(choosing).rejects.toThrow(FOLDERS_LATE)
+      const refused = expect(choosing).rejects.toThrow(
+        'The folder the project “Los Angeles” exports to did not answer in time, so nothing was changed or removed; change where the project exports, or try again when it can be reached.',
+      )
       await askedOrEnded(stalledWasAsked, choosing)
       await vi.advanceTimersByTimeAsync(FOLDERS_TIMEOUT_MS - 1)
       expect(h.store.current.engineFolder, 'not yet given up, and nothing stored').toBeNull()
@@ -776,17 +779,96 @@ describe('choosing the engine folder while a project exports to a folder of its 
       expect(h.store.current.engineFolder, 'nothing was stored').toBeNull()
       expect(vi.getTimerCount(), 'the timer was cleared').toBe(0)
 
-      // The share answers again: the next change is made, not left waiting.
-      stalled.now = false
+      // The advice is taken, and the next change is made: it was not left
+      // waiting behind the one that never settled.
+      await h.projects.setDestination(id, join(h.root, 'elsewhere'))
       await h.call(CHANNELS.settingsChooseEngineFolder)
       expect(h.store.current.engineFolder).toBe(join(h.root, 'videos'))
       expect(vi.getTimerCount(), 'and a check that ended in time leaves no timer').toBe(0)
     } finally {
       vi.useRealTimers()
     }
-    expect(FOLDERS_LATE).toBe(
-      'The folders could not be checked in time, so nothing was changed or removed; try again.',
-    )
+  })
+
+  it('says it was the chosen folder, or the default one, when that is what never answered', async () => {
+    for (const [channel, sentence] of [
+      [
+        CHANNELS.settingsChooseEngineFolder,
+        'That folder did not answer in time, so nothing was changed or removed; choose another folder, or try again when it can be reached.',
+      ],
+      [
+        CHANNELS.settingsDefaultEngineFolder,
+        'The default folder did not answer in time, so nothing was changed or removed; try again when it can be reached.',
+      ],
+    ] as const) {
+      let asked = (): void => undefined
+      const stalledWasAsked = new Promise<void>((resolve) => {
+        asked = resolve
+      })
+      const h = await harness({
+        answer: (root) => join(root, 'on-a-share'),
+        defaultEngine: (root) => join(root, 'on-a-share'),
+        engineHome: (root) => join(root, 'a-folder-of-mine'),
+        sources: { engine: 'settings' },
+        realFolder: (path) => {
+          if (path !== join(h.root, 'on-a-share')) return realOrResolved(path)
+          asked()
+          return new Promise(() => undefined)
+        },
+      })
+      vi.useFakeTimers()
+      try {
+        const changing = h.call(channel)
+        const refused = expect(changing, channel).rejects.toThrow(sentence)
+        await askedOrEnded(stalledWasAsked, changing)
+        await vi.advanceTimersByTimeAsync(FOLDERS_TIMEOUT_MS)
+        await refused
+        expect(h.store.current.engineFolder, 'nothing was stored').toBeNull()
+      } finally {
+        vi.useRealTimers()
+      }
+    }
+  })
+
+  // The check is abandoned when its deadline lapses, not stopped, and the
+  // folder may answer a minute later. What it would have allowed must not
+  // happen then, behind a screen that has said the folder was not taken.
+  it('stores nothing when the folder answers after the refusal, then or later', async () => {
+    let answer: (real: string) => void = () => undefined
+    let asked = (): void => undefined
+    const stalledWasAsked = new Promise<void>((resolve) => {
+      asked = resolve
+    })
+    const h = await harness({
+      answer: (root) => join(root, 'videos'),
+      realFolder: (path) => {
+        if (path !== join(h.root, 'on-a-share')) return realOrResolved(path)
+        asked()
+        return new Promise((resolve) => {
+          answer = resolve
+        })
+      },
+    })
+    await exporting(h, 'Los Angeles', join(h.root, 'on-a-share'))
+    vi.useFakeTimers()
+    try {
+      const choosing = h.call(CHANNELS.settingsChooseEngineFolder)
+      const refused = expect(choosing).rejects.toThrow(/did not answer in time/)
+      await askedOrEnded(stalledWasAsked, choosing)
+      await vi.advanceTimersByTimeAsync(FOLDERS_TIMEOUT_MS)
+      await refused
+    } finally {
+      vi.useRealTimers()
+    }
+    expect(h.store.current.engineFolder, 'refused, and nothing stored').toBeNull()
+    // The share answers at last, and the project's folder is not in the
+    // way of the one chosen: an answer that would have let it through.
+    answer(join(h.root, 'on-a-share'))
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(h.store.current.engineFolder, 'nothing was stored later either').toBeNull()
+    const view = (await h.call(CHANNELS.settingsRead)) as { engine: { pending: string | null } }
+    expect(view.engine.pending, 'and nothing waits for a restart').toBeNull()
+    expect(existsSync(join(h.userData, 'settings.json')), 'the file was never written').toBe(false)
   })
 })
 
@@ -981,9 +1063,11 @@ describe('resetting the engine data', () => {
     expect(await readdir(root), 'nothing was removed').toContain('userData')
   })
 
-  // The confirmation promises that exported files are not touched. A person
-  // whose export folder sits under the engine's home would lose them, so the
-  // reset is refused rather than the promise broken.
+  // The confirmation promises that exported files are not touched unless
+  // they are inside one of the four folders the reset removes. A person
+  // whose export folder sits in one of them would go on exporting into
+  // what a reset removes, so the reset is refused until the files are
+  // moved and the folder changed.
   it('refuses while the export folder is inside the home it would remove', async () => {
     const h = await harness({ exportFolder: (root) => join(root, 'userData', 'engine', 'out') })
     await mkdir(h.engineHome, { recursive: true })
@@ -1211,7 +1295,9 @@ describe('resetting the engine data', () => {
     vi.useFakeTimers()
     try {
       const resetting = h.call(CHANNELS.settingsResetEngineData)
-      const refused = expect(resetting).rejects.toThrow(FOLDERS_LATE)
+      const refused = expect(resetting).rejects.toThrow(
+        'The folder the project “Los Angeles” exports to did not answer in time, so nothing was changed or removed; change where the project exports, or try again when it can be reached.',
+      )
       await askedOrEnded(stalledWasAsked, resetting)
       await vi.advanceTimersByTimeAsync(FOLDERS_TIMEOUT_MS - 1)
       expect(h.settings.resetting, 'still checking, so the flag is still up').toBe(true)
@@ -1231,14 +1317,60 @@ describe('resetting the engine data', () => {
     expect(await readdir(join(h.engineHome, 'out'))).toEqual(['reel.mp4'])
   })
 
-  it('gives up on a home that never answers, as on any folder it must check', async () => {
+  it('gives up on any folder it must check, and says which it was: the home, the export folder, the home folder, the settings', async () => {
+    for (const [stalled, sentence] of [
+      [
+        (h: { engineHome: string }) => h.engineHome,
+        'The engine data folder did not answer in time, so nothing was changed or removed; try again when it can be reached.',
+      ],
+      [
+        (h: { exportFolder: string }) => h.exportFolder,
+        'Your export folder did not answer in time, so nothing was changed or removed; choose another export folder, or try again when it can be reached.',
+      ],
+      [
+        (h: { root: string }) => join(h.root, 'somebody'),
+        'Your home folder did not answer in time, so nothing was changed or removed; try again when it can be reached.',
+      ],
+      [
+        (h: { userData: string }) => h.userData,
+        'The folder the app keeps its settings in did not answer in time, so nothing was changed or removed; try again when it can be reached.',
+      ],
+    ] as const) {
+      let asked = (): void => undefined
+      const stalledWasAsked = new Promise<void>((resolve) => {
+        asked = resolve
+      })
+      const h = await harness({
+        homeDir: (root) => join(root, 'somebody'),
+        realFolder: (path) => {
+          if (path !== stalled(h)) return realOrResolved(path)
+          asked()
+          return new Promise(() => undefined)
+        },
+      })
+      await mkdir(join(h.engineHome, 'out'), { recursive: true })
+      vi.useFakeTimers()
+      try {
+        const resetting = h.call(CHANNELS.settingsResetEngineData)
+        const refused = expect(resetting, sentence).rejects.toThrow(sentence)
+        await askedOrEnded(stalledWasAsked, resetting)
+        await vi.advanceTimersByTimeAsync(FOLDERS_TIMEOUT_MS)
+        await refused
+        expect(h.settings.resetting).toBe(false)
+      } finally {
+        vi.useRealTimers()
+      }
+      expect(await readdir(h.engineHome), 'nothing was removed').toEqual(['out'])
+    }
+  })
+
+  it('says the projects could not be read in time when it is the reading that never ends', async () => {
     let asked = (): void => undefined
-    const stalledWasAsked = new Promise<void>((resolve) => {
+    const readWasAsked = new Promise<void>((resolve) => {
       asked = resolve
     })
     const h = await harness({
-      realFolder: (path) => {
-        if (path !== h.engineHome) return realOrResolved(path)
+      destinations: () => {
         asked()
         return new Promise(() => undefined)
       },
@@ -1247,8 +1379,10 @@ describe('resetting the engine data', () => {
     vi.useFakeTimers()
     try {
       const resetting = h.call(CHANNELS.settingsResetEngineData)
-      const refused = expect(resetting).rejects.toThrow(FOLDERS_LATE)
-      await askedOrEnded(stalledWasAsked, resetting)
+      const refused = expect(resetting).rejects.toThrow(
+        'The projects in the engine data folder could not be read in time, so nothing was changed or removed; try again.',
+      )
+      await askedOrEnded(readWasAsked, resetting)
       await vi.advanceTimersByTimeAsync(FOLDERS_TIMEOUT_MS)
       await refused
       expect(h.settings.resetting).toBe(false)
@@ -1256,6 +1390,89 @@ describe('resetting the engine data', () => {
       vi.useRealTimers()
     }
     expect(await readdir(h.engineHome), 'nothing was removed').toEqual(['out'])
+  })
+
+  // Each check that lapses leaves its question with the disk, holding one
+  // of the four threads files are read with. "Try again" on a folder that
+  // never answers, four times in any mix of doors, would use them all up;
+  // so a folder that has not answered is not asked again.
+  it('asks once about a folder that has not answered, however many times and at whichever door it is tried again', async () => {
+    const asked: string[] = []
+    const stalled = { now: true }
+    let reads = 0
+    let answer: (real: string) => void = () => undefined
+    const resolver = (path: string): Promise<string> => {
+      if (path !== join(h.root, 'on-a-share')) return realOrResolved(path)
+      asked.push(path)
+      if (!stalled.now) return realOrResolved(path)
+      return new Promise((resolve) => {
+        answer = resolve
+      })
+    }
+    const h = await harness({
+      answer: (root) => join(root, 'videos'),
+      realFolder: resolver,
+      destinations: async (read) => {
+        const list = await read()
+        reads += 1
+        return list
+      },
+    })
+    await exporting(h, 'Los Angeles', join(h.root, 'on-a-share'))
+    const late = /did not answer in time/
+    /**
+     * Until something is so, by real turns of the loop against a real
+     * deadline: the checks read the disk, which no faked timer moves.
+     */
+    const until = async (what: string, ok: () => boolean): Promise<void> => {
+      const deadline = Date.now() + 10_000
+      while (!ok() && Date.now() < deadline) await new Promise<void>((r) => setImmediate(r))
+      if (!ok()) throw new Error(`${what} never happened`)
+    }
+    // Four attempts, in a mix of doors. Each has read the projects, and so
+    // gone on to the folder that stalls, before its deadline is let lapse:
+    // were the folder asked about each time, every one would have asked.
+    const attempts = [
+      { start: () => h.call(CHANNELS.settingsResetEngineData), reads: 1 },
+      { start: () => h.call(CHANNELS.settingsResetEngineData), reads: 2 },
+      { start: () => h.call(CHANNELS.settingsChooseEngineFolder), reads: 3 },
+      {
+        start: () =>
+          destinationRefusal(join(h.root, 'on-a-share'), {
+            bundleRoots: [h.bundle],
+            engineHome: h.engineHome,
+            waitingHome: () => null,
+            realFolder: resolver,
+          }).then((why) => {
+            if (why !== null) throw new Error(why)
+          }),
+        reads: 3,
+      },
+    ]
+    // Only the timeouts are faked, so the loop still turns for the disk.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      for (const attempt of attempts) {
+        const refused = expect(attempt.start()).rejects.toThrow(late)
+        await until('the read of the projects', () => reads === attempt.reads)
+        await until('the deadline to be set', () => vi.getTimerCount() === 1)
+        await vi.advanceTimersByTimeAsync(FOLDERS_TIMEOUT_MS)
+        await refused
+        expect(vi.getTimerCount(), 'the timer was cleared').toBe(0)
+      }
+    } finally {
+      vi.useRealTimers()
+    }
+    expect(asked, 'four attempts, one question').toHaveLength(1)
+
+    // The folder answers at last: the question is over, and the next
+    // attempt asks afresh.
+    stalled.now = false
+    answer(join(h.root, 'on-a-share'))
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    const outcome = (await h.call(CHANNELS.settingsResetEngineData)) as ResetOutcome
+    expect(outcome.removed).toEqual(['projects'])
+    expect(asked, 'asked afresh, once it had answered').toHaveLength(2)
   })
 
   it('leaves no timer behind a reset whose checks ended in time', async () => {
