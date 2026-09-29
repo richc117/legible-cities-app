@@ -20,7 +20,9 @@
 #
 # The message forms refuse one thing the file passes do not: a keyword that
 # closes an issue. See `closing` below for why that is a message-only rule.
-# The range form reads links as well as messages; see `link_fault`.
+# The range form reads links as well as messages; see `link_fault`. It
+# refuses a range it cannot read, and a commit in it that it cannot read,
+# rather than call clean what it never saw.
 set -u
 usage() {
   echo "usage: preflight [--message-file FILE | --commit-range A..B]" >&2
@@ -84,21 +86,26 @@ why_closing() {
 # checkout's, `node_modules/` in .gitignore matches only a directory, and
 # `git add -A` staged the link with every hook green.
 #
-# Three things are refused:
+# What is refused, each with its own reason:
 #
 # - An absolute target, whatever it points at. It is a machine path where it
 #   names one, and broken on every other machine where it does not. A drive
 #   letter and a leading backslash count as absolute.
+# - A target that begins with `~`, `$` or `%`. Nothing expands those in a
+#   link, so by its text `~/x` is a folder called `~` inside the repository
+#   and would pass. It was written as a path on one machine, it is broken as
+#   a link on every machine, and `~name/` carries a user's name.
 # - A target carrying anything on the never list, by the same pattern the
 #   file pass applies to text.
 # - A relative target that climbs out of the repository (`../../x` from a
 #   link one folder down), since it names something outside the tree: another
 #   checkout on this machine, and nothing at all on anyone else's.
-#
-# A relative target may climb only at its front. `a/../x` is refused as
-# well, though by its text it stays inside: `a` may itself be a link, and
-# then the text does not say where its `..` lands. Written in its simplest
-# form, the same link passes.
+# - A relative target that climbs after naming a folder. `a/../x` is
+#   refused though by its text it stays inside: `a` may itself be a link,
+#   and then the text does not say where its `..` lands. A target may climb
+#   only at its front; written in its simplest form, the same link passes.
+# - A target that cannot be read, because the blob is not there. What was
+#   not read was not scanned, and saying clean would claim it had been.
 #
 # What is left passes: a relative link that stays inside the repository.
 #
@@ -107,11 +114,20 @@ why_closing() {
 #
 # The target is read from the index or from the commit, never from the
 # working tree. Git for Windows may check a link out as a plain file that
-# holds the target, and the entry is mode 120000 all the same.
+# holds the target, and the entry is mode 120000 all the same. Only that
+# mode is a link: a submodule's entry (160000) names a commit, and is left
+# alone.
+#
+# A link is reported once for each time git lists it, which can be more
+# than once: a link a merge adds is listed against each parent the merge is
+# compared with, and in the index a link left unmerged is listed at each
+# stage. That is the listing and not a fault, and the link is as wrong each
+# time.
 link_fault() {   # $1 = the link's path from the top, $2 = its target
   local link=$1 target=$2 slashes depth rest part named=0
   case "$target" in
     /*|\\*|[A-Za-z]:*) echo 'its target is an absolute path'; return ;;
+    '~'*|'$'*|%*) echo 'its target begins with what only a shell would expand'; return ;;
   esac
   if printf '%s\n' "$target" | grep -qE "$pattern"; then
     echo 'its target contains something that must not be public'; return
@@ -180,12 +196,30 @@ if [ -n "$msgfile" ]; then
 fi
 
 if [ -n "$range" ]; then
+  # A range that cannot be read - a name that is not a commit, a parent that
+  # is not there, the all-zero id a push gives for a branch that is new - is
+  # refused before either pass. Both would read nothing from it and find
+  # nothing in it, and clean is a claim about what was read. So is one that
+  # begins with a dash, which git would take for an option and not a range.
+  # A range that can be read and holds no commit is a different thing, and
+  # is clean.
+  #
+  # Every reader below names the range the way this does, with `--` after
+  # it. Without that, a range that is also the name of a file is one git
+  # will not guess at, and a reader that failed where this passed would be
+  # the same silence again.
+  if [ "${range#-}" != "$range" ] || ! git rev-list "$range" -- >/dev/null 2>&1; then
+    echo "preflight: this range of commits could not be read, so nothing in it was scanned:" >&2
+    printf '%s\n' "$range" >&2
+    exit 1
+  fi
+
   # The messages of the commits a branch adds, which is what a squash commit
   # is built from. The hook above catches this while the message can still
   # be edited; this catches it when the hook was never installed or was
   # bypassed, which is the invariant the rest of the tooling keeps: whatever
   # a hook enforces, CI enforces again.
-  msgs=$(git log --format='%h %B' "$range" 2>/dev/null || true)
+  msgs=$(git log --format='%h %B' "$range" -- 2>/dev/null || true)
   found=$(printf '%s\n' "$msgs" | grep -nE "$pattern" || true)
   if [ -n "$found" ]; then
     echo "preflight: a commit message in this range must not be public:" >&2
@@ -203,14 +237,27 @@ if [ -n "$range" ]; then
   # bypassed is caught here even when a later commit took it out again: the
   # branch is public with every commit it carries.
   linked=''
+  unread=''
   while IFS= read -r commit; do
+    # Asked once for whether it answers at all, and again for what it says:
+    # the loop below cannot tell a commit git could not read from one that
+    # changed nothing, and the first is not clean.
+    if ! git diff-tree -r --root -m "$commit" >/dev/null 2>&1; then
+      unread="$unread$commit"$'\n'
+      continue
+    fi
     while IFS= read -r -d '' entry && IFS= read -r -d '' link; do
       read -r _ mode _ id _ <<<"$entry"
       [ "$mode" = 120000 ] || continue
       fault=$(link_at "$link" "$id")
       [ -n "$fault" ] && linked="$linked$commit $link: $fault"$'\n'
     done < <(git diff-tree -r -z --no-commit-id --root -m "$commit" 2>/dev/null)
-  done < <(git rev-list --abbrev-commit "$range" 2>/dev/null)
+  done < <(git rev-list --abbrev-commit "$range" -- 2>/dev/null)
+  if [ -n "$unread" ]; then
+    echo "preflight: a commit in this range could not be read, so the links it adds were not scanned:" >&2
+    printf '%s' "$unread" >&2
+    status=1
+  fi
   if [ -n "$linked" ]; then
     echo "preflight: a commit in this range adds a symbolic link a public repository cannot carry:" >&2
     printf '%s' "$linked" >&2

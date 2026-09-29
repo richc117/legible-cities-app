@@ -103,6 +103,40 @@ function commitLink(repo: string, path: string, target: string, text: string): v
   gitIn(repo, ['commit', '--quiet', '--no-verify', '-m', text])
 }
 
+/**
+ * The id of something nobody wrote. It is a real id, of the right length
+ * for this repository, and the object is in no store: asked for, git fails.
+ * Nothing is deleted to make it, so no repository is damaged to be tested.
+ */
+function neverWritten(repo: string, what: string): string {
+  return gitIn(repo, ['hash-object', '--stdin'], `never written: ${what}`).trim()
+}
+
+/** An entry written into the index as it stands, with nothing beside it. */
+function stageEntry(repo: string, mode: string, id: string, path: string): void {
+  gitIn(repo, ['update-index', '--add', '--cacheinfo', `${mode},${id},${path}`])
+}
+
+/**
+ * A commit on `main` that names a tree nobody wrote: git lists it, prints
+ * its message, and cannot say what it changed.
+ */
+function commitWithoutItsTree(repo: string): string {
+  const who = 'Test <test@example.invalid> 0 +0000'
+  const text = [
+    `tree ${neverWritten(repo, 'a tree')}`,
+    `parent ${gitIn(repo, ['rev-parse', 'HEAD']).trim()}`,
+    `author ${who}`,
+    `committer ${who}`,
+    '',
+    'Name a tree that is not here',
+    '',
+  ].join('\n')
+  const id = gitIn(repo, ['hash-object', '-t', 'commit', '-w', '--stdin'], text).trim()
+  gitIn(repo, ['update-ref', 'refs/heads/main', id])
+  return gitIn(repo, ['rev-parse', '--short', id]).trim()
+}
+
 // Assembled at run time on purpose, like the paths further down: written
 // out, a path under a home folder would fail the pass that reads every
 // tracked file, which would be this file failing the scanner it tests.
@@ -133,6 +167,21 @@ describe.skipIf(onWindows)('a symbolic link about to be committed', () => {
       const r = preflight([], repo)
       expect(r.code, `allowed: ${target}`).toBe(1)
       expect(r.out).toContain('deep/dir/link: its target is an absolute path')
+    }
+  })
+
+  it('is refused when its target begins with what only a shell would expand', () => {
+    // Nothing expands these in a link, so by its text each is a relative
+    // path that stays inside the repository, and no other rule refuses it.
+    for (const target of ['~/thing', '~someone/thing', '$HOME/thing', '%USERPROFILE%\\thing']) {
+      const repo = repoWith(['Add a thing'])
+      stageLink(repo, 'deep/dir/link', target)
+      const r = preflight([], repo)
+      expect(r.code, `allowed: ${target}`).toBe(1)
+      expect(r.out).toContain(
+        'deep/dir/link: its target begins with what only a shell would expand',
+      )
+      expect(r.out).not.toContain(target)
     }
   })
 
@@ -198,6 +247,29 @@ describe.skipIf(onWindows)('a symbolic link about to be committed', () => {
     expect(r.out).toContain('first: its target is an absolute path')
     expect(r.out).toContain('a folder/søndre link: its target climbs out of the repository')
     expect(r.out).not.toContain('alias')
+  })
+
+  it('is refused when its target cannot be read', () => {
+    // What was not read was not scanned, and clean would say it had been.
+    const repo = repoWith(['Add a thing'])
+    stageEntry(repo, '120000', neverWritten(repo, 'a target'), 'deep/dir/link')
+    const r = preflight([], repo)
+    expect(r.code).toBe(1)
+    expect(r.out).toContain('deep/dir/link: its target could not be read')
+    expect(r.out).not.toContain('preflight: clean')
+  })
+
+  it("leaves a submodule's entry alone", () => {
+    // Mode 160000 names a commit in another repository. It is not a link,
+    // there is no blob to read, and it is neither refused nor tripped over.
+    const repo = repoWith(['Add a thing'])
+    stageEntry(repo, '160000', gitIn(repo, ['rev-parse', 'HEAD']).trim(), 'vendor/sub')
+    mkdirSync(join(repo, 'vendor/sub'), { recursive: true })
+    expect(gitIn(repo, ['ls-files', '-s', 'vendor/sub'])).toMatch(/^160000 /)
+    const r = preflight([], repo)
+    expect(r.out).not.toContain('symbolic link')
+    expect(r.code).toBe(0)
+    expect(r.out).toContain('preflight: clean')
   })
 
   it('reads the index, not the working tree', () => {
@@ -281,6 +353,59 @@ describe.skipIf(onWindows)('the links a range of commits adds', () => {
     expect(r.out).toContain('made-in-the-merge: its target is an absolute path')
   })
 
+  it('names a link git would quote, as it is called', () => {
+    const repo = repoWith(['Add a thing'])
+    commitLink(repo, 'a folder/søndre link', '../../elsewhere', 'Add a link')
+    const r = preflight(['--commit-range', 'HEAD~1..HEAD'], repo)
+    expect(r.code).toBe(1)
+    expect(r.out).toContain('a folder/søndre link: its target climbs out of the repository')
+  })
+
+  it('refuses a link whose target begins with what only a shell would expand', () => {
+    const repo = repoWith(['Add a thing'])
+    commitLink(repo, 'deep/dir/link', '~someone/thing', 'Add a link')
+    const r = preflight(['--commit-range', 'HEAD~1..HEAD'], repo)
+    expect(r.code).toBe(1)
+    expect(r.out).toContain('deep/dir/link: its target begins with what only a shell')
+  })
+
+  it('refuses a link whose target cannot be read', () => {
+    // A commit made from a tree that names a blob nobody wrote.
+    const repo = repoWith(['Add a thing'])
+    stageEntry(repo, '120000', neverWritten(repo, 'a target'), 'deep/dir/link')
+    const tree = gitIn(repo, ['write-tree', '--missing-ok']).trim()
+    const made = gitIn(repo, ['commit-tree', '-p', 'HEAD', '-m', 'Add a link', tree]).trim()
+    gitIn(repo, ['update-ref', 'refs/heads/main', made])
+    const r = preflight(['--commit-range', 'HEAD~1..HEAD'], repo)
+    expect(r.code).toBe(1)
+    expect(r.out).toContain('deep/dir/link: its target could not be read')
+    expect(r.out).not.toContain('clean')
+  })
+
+  it("leaves a submodule's entry alone", () => {
+    const repo = repoWith(['Add a thing'])
+    stageEntry(repo, '160000', gitIn(repo, ['rev-parse', 'HEAD']).trim(), 'vendor/sub')
+    mkdirSync(join(repo, 'vendor/sub'), { recursive: true })
+    gitIn(repo, ['commit', '--quiet', '--no-verify', '-m', 'Add a submodule'])
+    expect(gitIn(repo, ['ls-tree', '-r', 'HEAD', 'vendor/sub'])).toMatch(/^160000 commit /)
+    const r = preflight(['--commit-range', 'HEAD~1..HEAD'], repo)
+    expect(r.out).not.toContain('symbolic link')
+    expect(r.code).toBe(0)
+    expect(r.out).toContain('commit messages clean')
+  })
+
+  it('refuses a commit it cannot read, by name, and does not call the range clean', () => {
+    const repo = repoWith(['Add a thing'])
+    const commit = commitWithoutItsTree(repo)
+    // The range itself can be read: the commit is there, its tree is not.
+    expect(gitIn(repo, ['rev-list', 'HEAD~1..HEAD']).trim()).not.toBe('')
+    const r = preflight(['--commit-range', 'HEAD~1..HEAD'], repo)
+    expect(r.code).toBe(1)
+    expect(r.out).toContain('a commit in this range could not be read')
+    expect(r.out).toContain(`\n${commit}\n`)
+    expect(r.out).not.toContain('clean')
+  })
+
   it('passes a range whose links stay inside the repository', () => {
     const repo = repoWith(['Add a thing'])
     commitLink(repo, 'deep/dir/up', '../../f0.txt', 'Add a link that stays inside')
@@ -298,6 +423,56 @@ describe.skipIf(onWindows)('the links a range of commits adds', () => {
     gitIn(repo, ['commit', '--quiet', '--no-verify', '-m', 'New and clean'])
     const r = preflight(['--commit-range', 'HEAD~1..HEAD'], repo)
     expect(r.code).toBe(0)
+  })
+})
+
+describe.skipIf(onWindows)('a range of commits that cannot be read', () => {
+  it('is refused, and nothing is called clean', () => {
+    // One commit, so there is no fifth parent; a name that is no commit; the
+    // id a push gives as the base of a branch that is new; and an option,
+    // which git would follow rather than read.
+    const repo = repoWith(['Add a thing'])
+    for (const range of ['no-such-ref..HEAD', 'HEAD~5..HEAD', `${'0'.repeat(40)}..HEAD`, '--all']) {
+      const r = preflight(['--commit-range', range], repo)
+      expect(r.code, `read: ${range}`).toBe(1)
+      expect(r.out).toContain('could not be read, so nothing in it was scanned')
+      expect(r.out).toContain(range)
+      expect(r.out, `called clean: ${range}`).not.toContain('clean')
+    }
+  })
+
+  it('is refused though what it would have found is in the history', () => {
+    // The old behaviour at its worst: a keyword and a link, both there to
+    // find, and a range that names neither, reported clean.
+    const repo = repoWith(['Add a thing', 'Add another\n\nCloses #22.\n'])
+    commitLink(repo, 'node_modules', '/opt/thing/node_modules', 'Add a link')
+    const r = preflight(['--commit-range', 'main~9..main'], repo)
+    expect(r.code).toBe(1)
+    expect(r.out).not.toContain('clean')
+  })
+
+  it('is read the same way by the check and by what reads it afterwards', () => {
+    // A range that is also the name of a file is one git will not guess
+    // at. Were the check to read it and the passes not, they would find
+    // nothing, which is the silence the check is there to end.
+    const repo = repoWith(['Add a thing', 'Add another\n\nCloses #22.\n'])
+    writeFileSync(join(repo, 'main'), 'a file with the name of the branch\n')
+    commitLink(repo, 'node_modules', '/opt/thing/node_modules', 'Add a link')
+    const r = preflight(['--commit-range', 'main'], repo)
+    expect(r.code).toBe(1)
+    expect(r.out).not.toContain('could not be read')
+    expect(r.out).toContain('closes an issue by number')
+    expect(r.out).toContain('node_modules: its target is an absolute path')
+  })
+
+  it('is not an empty range, which can be read and is clean', () => {
+    // A branch with no commits of its own must not turn red.
+    const repo = repoWith(['Add a thing'])
+    expect(gitIn(repo, ['rev-list', 'HEAD..HEAD'])).toBe('')
+    const r = preflight(['--commit-range', 'HEAD..HEAD'], repo)
+    expect(r.out).not.toContain('could not be read')
+    expect(r.code).toBe(0)
+    expect(r.out).toContain('commit messages clean')
   })
 })
 

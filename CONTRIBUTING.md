@@ -70,9 +70,12 @@ number. It is a reading aid, not something a tool checks.
   Do not add trailers that link to tool sessions or private services.
 - Run `bin/preflight` before pushing. It refuses personal file paths,
   private addresses, keys and session links, none of which belong in a
-  public repository, and a symbolic link whose target is absolute or
-  leaves the repository, which is a path from someone's machine by another
-  name.
+  public repository, and a symbolic link whose target is absolute, begins
+  with what only a shell would expand (`~`, `$`, `%`), leaves the
+  repository, climbs after naming a folder or cannot be read: a path from
+  someone's machine by another name, or one nobody can check. CI runs it
+  again over the commits a pull request adds, and refuses a range of them
+  it cannot read.
 
 ## Local hooks
 

@@ -420,9 +420,12 @@ machine-local `feature.json` is ignored.
 - **Run `bin/preflight` before every push.** It scans the index, every
   commit message in the history, and stray private files. In the index it
   reads where every symbolic link points, which `git grep` does not, and
-  refuses a target that is absolute, that names anything on the never list
-  or that climbs out of the repository; `--commit-range` does the same for
-  the links a branch's commits add. `gitleaks` covers what it does
+  refuses a target that is absolute, that begins with what only a shell
+  would expand (`~`, `$`, `%`), that names anything on the never list, that
+  climbs out of the repository or climbs after naming a folder, or that
+  cannot be read; `--commit-range` does the same for the links a branch's
+  commits add, and refuses a range or a commit it cannot read rather than
+  call it clean. `gitleaks` covers what it does
   not: keys, tokens and certificates. Both run from `.pre-commit-config.yaml`
   on every commit, from `.claude/hooks/guard-git.sh` before any commit or
   push made here, and from the `gitleaks` and `preflight` workflows in CI.
