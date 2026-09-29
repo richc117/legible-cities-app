@@ -19,9 +19,10 @@
 // - the node is a `heading`: a section named by its own heading,
 //   `<section aria-labelledby="x">` around `<h2 id="x">`, is the correct
 //   pattern, and every dialog and every section of Settings is one; or
-// - the ancestor takes its name from its content (`NAMED_BY_CONTENT`): a
-//   heading around a button says the button's words because they are the
-//   only words it has. Each cell's row is a heading around its toggle
+// - the ancestor takes its name from its content (`NAMED_BY_CONTENT`,
+//   which is Playwright's own list of those roles): a heading around a
+//   button says the button's words because they are the only words it
+//   has. Each cell's row is a heading around its toggle
 //   (`kit/Disclosure.tsx`) and cell 01's sortable columns are a
 //   `columnheader` around a button; or
 // - the pair is in `KNOWN_PAIRS`, by name and by both roles, with the issue
@@ -60,22 +61,66 @@
 // accessibility tree holds when it is taken: a closed disclosure's
 // contents are `hidden`, so a name repeated inside one is seen only by a
 // sweep that opens it.
+//
+// Two more, which are Playwright's and were read in `playwright-core`
+// 1.63.0, in the injected script that `lib/coreBundle.js` carries as a
+// string:
+//
+// - **A frame's title.** Every `iframe` is written with an empty name,
+//   whatever its `title` (`toAriaNode`, in
+//   `packages/injected/src/ariaSnapshot.ts`), so a region around a frame
+//   of the same title is a pair a screen reader says and this rule never
+//   meets.
+// - **The roles Playwright refuses a name**: `caption`, `code`,
+//   `definition`, `deletion`, `emphasis`, `generic`, `insertion`, `mark`,
+//   `paragraph`, `presentation`, `strong`, `subscript`, `suggestion`,
+//   `superscript`, `term` and `time` (`elementProhibitsNaming`, in
+//   `computeAccessibleNameComposite`, in
+//   `packages/injected/src/roleUtils.ts`). An `aria-label` on a `<p>`, a
+//   `<dd>` or a bare `<span>` never arrives, so it can be neither half of
+//   a pair.
+//
+// Both were confirmed against a page in Chromium as well as read: the
+// frame arrives as `- iframe`, the paragraph as `- paragraph: words`.
 
 /**
  * Roles that take their name from their content when nothing else names
  * them, so that what they hold repeats it by construction. As an
  * **ancestor**, one of these never makes a pair.
+ *
+ * **The list is Playwright's and not a choice made here**, since it is
+ * Playwright that computes the names the rule compares:
+ * `alwaysAllowsNameFromContent`, in `allowsNameFromContent`, in
+ * `packages/injected/src/roleUtils.ts`, which ships inside the injected
+ * script that `node_modules/playwright-core/lib/coreBundle.js` holds as a
+ * string. Read at 1.63.0, in its order. A unit test reads the list out of
+ * the installed bundle and compares, so a version that moves it fails
+ * until this is reread.
+ *
+ * It began as nine, the roles this app's screens happened to hold. The
+ * app has no grid, tree, menu or switch yet, which is the only reason the
+ * first run did not meet the difference: a `treeitem "Lines"` around a
+ * `button "Lines"` would have turned a required check red for nothing.
  */
 export const NAMED_BY_CONTENT: readonly string[] = [
-  'heading',
-  'columnheader',
-  'rowheader',
-  'cell',
-  'row',
   'button',
+  'cell',
+  'checkbox',
+  'columnheader',
+  'gridcell',
+  'heading',
   'link',
-  'tab',
+  'menuitem',
+  'menuitemcheckbox',
+  'menuitemradio',
   'option',
+  'radio',
+  'row',
+  'rowheader',
+  'switch',
+  'tab',
+  'tooltip',
+  'treeitem',
 ]
 
 /**
@@ -104,8 +149,8 @@ export interface KnownPair {
 export const KNOWN_PAIRS: readonly KnownPair[] = [
   // Cell 06, once an export has run: a region named "Export" holds a button
   // named "Export". **A real duplicate, not a false positive.** The sweep
-  // found it on its first run (29 Sep 2026), the one pair on any screen or
-  // dialog in either theme. It is carried and not mended here because
+  // found it on its first run (macOS, 2026-09-29), the one pair on any
+  // screen or dialog in either theme. It is carried and not mended here because
   // renaming the region changes an accessible name that the release gate's
   // documents follow. Issue 258 decides it, and this entry goes when that
   // issue closes.
@@ -144,9 +189,16 @@ interface Key {
 
 const ATTRIBUTES = /^(?: \[[^\]\s]+\])*$/
 
+// Every expression below that reads to the end of a line with `.` carries
+// the `s` flag. The snapshot is split on the line feed and on nothing else,
+// but `.` without the flag also stops at a carriage return and at U+2028
+// and U+2029, which Playwright writes as they are in a `/placeholder` or a
+// `/url`: a line holding one would not be read to its end, and would be
+// answered as unread.
+
 /** `role`, then a name, then attributes; null when the key is not that. */
 function readKey(key: string): Key | null {
-  const m = /^([a-z][a-z0-9-]*)(.*)$/.exec(key)
+  const m = /^([a-z][a-z0-9-]*)(.*)$/s.exec(key)
   if (m === null) return null
   const role = m[1]
   const rest = m[2]
@@ -164,7 +216,7 @@ function readKey(key: string): Key | null {
   }
   if (rest.startsWith(' /')) {
     // A name written bare: the shortest that leaves only attributes after it.
-    const bare = /^ (\/.*?)((?: \[[^\]\s]+\])*)$/.exec(rest)
+    const bare = /^ (\/.*?)((?: \[[^\]\s]+\])*)$/s.exec(rest)
     return bare === null ? null : { role, name: bare[1] }
   }
   return ATTRIBUTES.test(rest) ? { role, name: null } : null
@@ -188,7 +240,7 @@ function keyOf(item: string): string | null {
     } else break
   }
   if (at >= item.length) return null
-  return /^(?::(?:\s.*)?)?$/.test(item.slice(at + 1)) ? key : null
+  return /^(?::(?:\s.*)?)?$/s.test(item.slice(at + 1)) ? key : null
 }
 
 const said = (role: string, name: string | null): string =>
@@ -214,7 +266,7 @@ export function duplicatedNames(
   snapshot.split('\n').forEach((text, index) => {
     const line = index + 1
     if (text.trim() === '') return
-    const item = /^(\s*)- (.*)$/.exec(text)
+    const item = /^(\s*)- (.*)$/s.exec(text)
     const key = item === null ? null : keyOf(item[2])
     if (item === null || key === null) {
       unread.push({ line, text })

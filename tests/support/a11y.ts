@@ -17,7 +17,10 @@
 //   (issue 208). A section named by its own heading is the correct pattern
 //   and is not a finding, nor is a heading, a button or a table's cell
 //   around what it takes its name from; the rule, its exemptions and the
-//   pairs that were decided are `tests/support/a11y-names.ts`.
+//   pairs that were decided are `tests/support/a11y-names.ts`. The same
+//   snapshot in fact and not only in kind: a sweep takes it once and hands
+//   the text to both checks, so on a screen that is moving the two cannot
+//   have read different trees.
 // - Keyboard and focus. A Tab walk from the top of the screen, or from the
 //   top of an open dialog, reaches every enabled control, and each shows a
 //   focus indicator: an outline or a shadow it did not have at rest, on the
@@ -34,10 +37,11 @@
 
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { join, relative, resolve } from 'node:path'
 import {
   _electron as electron,
   expect,
+  test,
   type ElectronApplication,
   type Locator,
   type Page,
@@ -401,9 +405,21 @@ export const CONTROL_ROLES = [
   'spinbutton',
 ]
 
-/** Every control the accessibility tree holds under `scope` has a name. */
-export async function expectNamed(scope: Locator, where: string): Promise<void> {
-  const snapshot = await scope.ariaSnapshot()
+/**
+ * The snapshot of the accessibility tree under a scope, or the text of one
+ * already taken. The two checks that read it take either: a sweep takes the
+ * snapshot once and hands both the same text, and a test that wants one
+ * check alone hands it a locator.
+ */
+const snapshotOf = async (from: Locator | string): Promise<string> =>
+  typeof from === 'string' ? from : from.ariaSnapshot()
+
+/**
+ * Every control the accessibility tree holds under `scope` has a name.
+ * `scope` is a locator, or the text of a snapshot already taken.
+ */
+export async function expectNamed(scope: Locator | string, where: string): Promise<void> {
+  const snapshot = await snapshotOf(scope)
   const unnamed = snapshot.split('\n').filter((line) => {
     const m = /^\s*- ([a-z]+)(.*)$/.exec(line)
     if (!m || !CONTROL_ROLES.includes(m[1])) return false
@@ -415,7 +431,8 @@ export async function expectNamed(scope: Locator, where: string): Promise<void> 
 /**
  * Nothing in the accessibility tree under `scope` has the name of something
  * it is inside (issue 208). The rule is `duplicatedNames`, which is pure and
- * has its own unit tests; this hands it the snapshot.
+ * has its own unit tests; this hands it the snapshot. `scope` is a locator,
+ * or the text of a snapshot already taken.
  *
  * Every role is read and not only `CONTROL_ROLES`: the defect this was
  * written for was a `group` inside a `region`, and neither is a control.
@@ -428,19 +445,40 @@ export async function expectNamed(scope: Locator, where: string): Promise<void> 
  * node's, with where it is and the `KNOWN_PAIRS` entry that would exempt
  * it; a line the rule could not read fails here too, since a tree it has
  * stopped seeing is one it cannot pass.
+ *
+ * **The snapshot is attached to the test and not printed**, which is what
+ * "at lines 3 and 4 of the snapshot" is followed in. It is attached as a
+ * file, and the message names the file, because the list reporter prints
+ * the first 300 characters of an attachment that is text in memory and the
+ * path of one that is a file. Only when something was found: a run that
+ * passes attaches nothing. So this is called inside a test, as every sweep
+ * is.
  */
-export async function expectNoDuplicatedNames(scope: Locator, where: string): Promise<void> {
-  const reading = duplicatedNames(await scope.ariaSnapshot())
+export async function expectNoDuplicatedNames(
+  scope: Locator | string,
+  where: string,
+): Promise<void> {
+  const snapshot = await snapshotOf(scope)
+  const reading = duplicatedNames(snapshot)
   // The message is the step's title in a report as well, on a run that
   // passes too, so it says what was checked when there is nothing to list.
-  const found = describeReading(reading)
+  let found = describeReading(reading)
+  if (found === '') found = 'no name is repeated inside the element it names'
+  else {
+    const info = test.info()
+    const name = where.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '')
+    const file = info.outputPath(`${name}.snapshot.txt`)
+    writeFileSync(file, snapshot)
+    await info.attach(`${where}: the snapshot`, { path: file, contentType: 'text/plain' })
+    found += `\nthe snapshot: ${relative(repoRoot, file)}`
+  }
   expect
     .soft(
       [
         ...reading.pairs.map(describePair),
         ...reading.unread.map(({ line, text }) => `unread, line ${line}: ${text}`),
       ],
-      `${where}: ${found === '' ? 'no name is repeated inside the element it names' : found}`,
+      `${where}: ${found}`,
     )
     .toEqual([])
 }
@@ -608,8 +646,12 @@ export async function sweep(page: Page, where: string, scope?: Locator): Promise
     for (const theme of THEMES) {
       await inTheme(page, theme)
       const here = `${where} (${theme.name})`
-      await expectNamed(scope ?? page.locator('body'), here)
-      await expectNoDuplicatedNames(scope ?? page.locator('body'), here)
+      // One snapshot for both checks of it. Two would be two trees on a
+      // screen that is moving - a feed being added, a sample downloading -
+      // and a name found missing in one could not be looked up in the other.
+      const snapshot = await (scope ?? page.locator('body')).ariaSnapshot()
+      await expectNamed(snapshot, here)
+      await expectNoDuplicatedNames(snapshot, here)
       await expectTabWalk(page, here)
       await expectStill(page, here)
     }

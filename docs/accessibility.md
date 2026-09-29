@@ -56,23 +56,33 @@ person's, recorded in [Reader runs](#reader-runs).
    screen, and one added later would be outside it.
 
    **A name said twice, nested** (#208) is read from the same snapshot,
-   over every role and not only the controls: a node whose name is the
+   which a sweep takes once and hands to both checks of it, over every
+   role and not only the controls: a node whose name is the
    name of one of its ancestors is a finding, as the engine log's box of
    lines was inside the region of the same name. Three things are not. A
    `heading`, because a section named by its own heading is the correct
    pattern and every dialog and every section of Settings is one. An
-   ancestor that takes its name from what it holds - a heading, a button,
-   a link, a tab, an option, a table's row, cell, column header or row
-   header - because a cell's row is a heading around its toggle and says
-   the toggle's words. And the pairs listed in
+   ancestor of a role that takes its name from what it holds, because a
+   cell's row is a heading around its toggle and says the toggle's words.
+   Those roles are eighteen and the list is Playwright's own, since it is
+   Playwright that computes the names: `button`, `cell`, `checkbox`,
+   `columnheader`, `gridcell`, `heading`, `link`, `menuitem`,
+   `menuitemcheckbox`, `menuitemradio`, `option`, `radio`, `row`,
+   `rowheader`, `switch`, `tab`, `tooltip` and `treeitem`; a unit test
+   holds it to the list in the installed version. And the pairs listed in
    `tests/support/a11y-names.ts`, each one name under two roles, decided
    with a run of the sweep in hand and naming the issue that decided it.
    The rule is a function of the snapshot's text and is tested without the
    app (`tests/unit/a11y-names.test.ts`); a line of the snapshot it cannot
    read fails the sweep rather than being stepped over. It is the sweep's
    one soft check: a repeated name stops nothing after it, so the test
-   carries on and one run lists every screen's pairs. **Its first run**
-   (29 Sep 2026, by the coordinator, not by the lane that wrote it) went
+   carries on and one run lists every screen's pairs, with the snapshot
+   they were read from attached to the test as a file. With a known pair
+   in place a sweep is green whether the rule reads the tree or has
+   stopped, so `notebook-a11y.spec.ts` also asks the rule with no known
+   pair at all, over the project once an export has finished, and expects
+   the one pair that screen holds. **Its first run**
+   (macOS, 2026-09-29, by the coordinator, not by the lane that wrote it) went
    over every swept screen and dialog in Night and in Parchment, read
    every line of every snapshot, and found one pair: in cell 06, once an
    export has run, a region named "Export" around a button named
@@ -299,11 +309,21 @@ which it is.
   name inside a closed disclosure, whose contents are `hidden` and out of
   the tree until a sweep opens it; a name longer than 900 characters,
   which Playwright's snapshot drops; and a repetition under an ancestor
-  that is named by what it holds, which the rule allows by role. The
+  that is named by what it holds, which the rule allows by role. Two more
+  are Playwright's. **A frame's title**: its snapshot gives every `iframe`
+  an empty name, so a region around a frame of the same title is never
+  seen as a pair. And **the roles it refuses a name** - `caption`, `code`,
+  `definition`, `deletion`, `emphasis`, `generic`, `insertion`, `mark`,
+  `paragraph`, `presentation`, `strong`, `subscript`, `suggestion`,
+  `superscript`, `term` and `time` - so an `aria-label` on a `<p>`, a
+  `<dd>` or a bare `<span>` never arrives, as either half of one. Both
+  were read in `playwright-core` 1.63.0 (`toAriaNode` in its
+  `ariaSnapshot.ts`, `elementProhibitsNaming` in its `roleUtils.ts`) and
+  seen on a page in Chromium. The
   walkthrough is what catches those by ear. And one pair it found and no
   longer reports: the region named "Export" around the button named
   "Export" in cell 06 once an export has run, from the rule's first run
-  (29 Sep 2026), a known pair under issue 258 until it is mended. A known
+  (macOS, 2026-09-29), a known pair under issue 258 until it is mended. A known
   pair is matched by its two roles and its name on any screen, so while
   the entry stands a second region and button of that name would pass.
 - **The engine's page** (F1) and **the geographic view's drawing** (F2).

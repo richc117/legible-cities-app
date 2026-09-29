@@ -7,6 +7,8 @@
 // a guess at them. What only the running app shows - which pairs its
 // screens actually hold - is the sweep's, in `tests/e2e/`.
 
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   describePair,
@@ -27,12 +29,24 @@ import {
 const read = (snapshot: string, known: readonly KnownPair[] = []): Reading =>
   duplicatedNames(snapshot, known)
 
-/** The pairs of a snapshot, each on its one line: the rule alone, or with the pairs given. */
+/**
+ * The pairs of a reading, each on its one line, **and every line of the
+ * fixture was read**. Without that a fixture line the rule had stopped
+ * reading would leave a test that expects no pair green for the wrong
+ * reason: nothing found, because nothing was looked at. The one test about
+ * unreadable lines asks `read` and not this.
+ */
+const described = (reading: Reading): string[] => {
+  expect(reading.unread, 'every line of the fixture is read').toEqual([])
+  return reading.pairs.map(describePair)
+}
+
+/** The pairs of a snapshot: the rule alone, or with the pairs given. */
 const pairsOf = (snapshot: string, known: readonly KnownPair[] = []): string[] =>
-  read(snapshot, known).pairs.map(describePair)
+  described(read(snapshot, known))
 
 /** The pairs the sweep would report: the rule with the list it ships with. */
-const swept = (snapshot: string): string[] => duplicatedNames(snapshot).pairs.map(describePair)
+const swept = (snapshot: string): string[] => described(duplicatedNames(snapshot))
 
 // What the engine log's panel drew before it was fixed: the disclosure's
 // region and the box of lines inside it, under one name.
@@ -162,7 +176,9 @@ describe('the heading that names its section', () => {
 
 describe('an ancestor named by what it holds', () => {
   // A cell's row (`kit/Disclosure.tsx`), cell 01's sortable column, and a
-  // table's rows, as Chromium answers them.
+  // table's rows, as Chromium answers them; then what the app does not
+  // hold yet and one day will - a tree, a menu, a grid, a switch, a radio
+  // and a tooltip - each as Chromium answered a page that had one.
   const BY_CONTENT = [
     '- heading "06 Export" [level=2]:',
     '  - button "06 Export" [expanded]',
@@ -177,6 +193,22 @@ describe('an ancestor named by what it holds', () => {
     '      - rowheader "Red":',
     '        - link "Red":',
     '          - /url: "#red"',
+    '- tree "Layers":',
+    '  - treeitem "Lines" [expanded]:',
+    '    - button "Lines"',
+    '- menu "File":',
+    '  - menuitem "Open":',
+    '    - group "Open"',
+    '- grid "Grid":',
+    '  - row "Go":',
+    '    - gridcell "Go":',
+    '      - button "Go"',
+    '- switch "Follow" [checked]:',
+    '  - group "Follow"',
+    '- radio "One":',
+    '  - group "One"',
+    '- tooltip "Tip":',
+    '  - group "Tip"',
   ].join('\n')
 
   it('is not half of a pair', () => {
@@ -190,20 +222,51 @@ describe('an ancestor named by what it holds', () => {
     expect(pairsOf(held.replace(role, 'region'))).toEqual(['region "Map" contains group "Map"'])
   })
 
-  it('names nine roles, the brief’s', () => {
-    expect([...NAMED_BY_CONTENT].sort()).toEqual(
-      [
-        'button',
-        'cell',
-        'columnheader',
-        'heading',
-        'link',
-        'option',
-        'row',
-        'rowheader',
-        'tab',
-      ].sort(),
+  // Playwright's list, as `allowsNameFromContent` gives it in
+  // `packages/injected/src/roleUtils.ts` at 1.63.0.
+  const PLAYWRIGHTS = [
+    'button',
+    'cell',
+    'checkbox',
+    'columnheader',
+    'gridcell',
+    'heading',
+    'link',
+    'menuitem',
+    'menuitemcheckbox',
+    'menuitemradio',
+    'option',
+    'radio',
+    'row',
+    'rowheader',
+    'switch',
+    'tab',
+    'tooltip',
+    'treeitem',
+  ]
+
+  it('names the eighteen roles Playwright names from their content', () => {
+    expect(NAMED_BY_CONTENT).toEqual(PLAYWRIGHTS)
+    expect(new Set(NAMED_BY_CONTENT).size).toBe(18)
+  })
+
+  it('which is the list in the Playwright that is installed', () => {
+    // Read out of the bundle, where the injected script is a string. A
+    // version that renames the list, moves it or changes it fails here, and
+    // that is the day to reread `allowsNameFromContent` and
+    // `NAMED_BY_CONTENT` side by side.
+    const bundle = readFileSync(
+      resolve(__dirname, '../../node_modules/playwright-core/lib/coreBundle.js'),
+      'utf8',
     )
+    const lists = [
+      ...bundle.matchAll(/alwaysAllowsNameFromContent = (\[[^\]]*\])\.includes\(role\)/g),
+    ]
+    expect(
+      lists.map((list) => list[1]),
+      'one list named alwaysAllowsNameFromContent in playwright-core/lib/coreBundle.js',
+    ).toHaveLength(1)
+    expect(JSON.parse(lists[0][1])).toEqual([...NAMED_BY_CONTENT])
   })
 
   it('does not excuse the ancestor above it', () => {
@@ -281,6 +344,64 @@ describe('the snapshot’s text', () => {
       '    - /url: https://example.org/a?b=c',
     ].join('\n')
     expect(read(properties)).toEqual({ pairs: [], unread: [] })
+  })
+
+  it('a line separator inside a line does not end it', () => {
+    // U+2028 and U+2029, which Playwright writes as they are in a
+    // placeholder. Built from their numbers, so that no editor and no tool
+    // between here and the file can turn them into something else unseen.
+    const LS = String.fromCharCode(0x2028)
+    const PS = String.fromCharCode(0x2029)
+    const separated = [
+      '- region "Search":',
+      '  - textbox "Search":',
+      `    - /placeholder: a${LS}b${PS}c`,
+      '  - link "Search":',
+      `    - /url: https://example.org/${LS}`,
+      `  - paragraph: before${LS}after`,
+      `  - text: before${PS}after`,
+      `  - 'group "Search" [disabled]': before${LS}after`,
+    ].join('\n')
+    expect(separated.split('\n')).toHaveLength(8)
+    expect(read(separated)).toEqual({
+      pairs: [
+        {
+          ancestor: { role: 'region', name: 'Search', line: 1 },
+          node: { role: 'textbox', name: 'Search', line: 2 },
+          path: ['region "Search"', 'textbox "Search"'],
+        },
+        {
+          ancestor: { role: 'region', name: 'Search', line: 1 },
+          node: { role: 'link', name: 'Search', line: 4 },
+          path: ['region "Search"', 'link "Search"'],
+        },
+        {
+          ancestor: { role: 'region', name: 'Search', line: 1 },
+          node: { role: 'group', name: 'Search', line: 8 },
+          path: ['region "Search"', 'group "Search"'],
+        },
+      ],
+      unread: [],
+    })
+  })
+
+  it('nor does one inside a name, should Playwright ever leave one there', () => {
+    // It does not today: a name's separators arrive as spaces, which a
+    // page in Chromium showed. The key is read to its end all the same.
+    const LS = String.fromCharCode(0x2028)
+    const named = [
+      `- region "one${LS}two":`,
+      `  - group "one${LS}two"`,
+      `- region /one${LS}two/:`,
+      `  - group /one${LS}two/ [disabled]`,
+    ].join('\n')
+    expect(named.split('\n')).toHaveLength(4)
+    const { pairs, unread } = read(named)
+    expect(unread).toEqual([])
+    expect(pairs.map((pair) => [pair.ancestor.line, pair.node.line, pair.node.name])).toEqual([
+      [1, 2, `one${LS}two`],
+      [3, 4, `/one${LS}two/`],
+    ])
   })
 
   it('attributes follow the name and are not part of it', () => {
@@ -391,7 +512,7 @@ describe('the pairs that were decided', () => {
 
 describe('the list the sweep ships with', () => {
   // Cell 06 once an export has run, cut down to the pair the sweep's first
-  // run found (29 Sep 2026), and beside it the three nearest things that
+  // run found (macOS, 2026-09-29), and beside it the three nearest things that
   // pair is not: another role inside, another role outside, another name.
   const CELL_06 = [
     '- main:',
@@ -484,6 +605,37 @@ describe('the list the sweep ships with', () => {
       ).toHaveLength(1)
     },
   )
+})
+
+describe('the sweep', () => {
+  // Read from the source, which is as much as can be asked of it without
+  // the application. The two end-to-end specs are green with the known pair
+  // in place whether the sweep calls the rule or not, and the check beside
+  // cell 06 in `notebook-a11y.spec.ts` asks the rule itself and not the
+  // sweep: **this is the only thing that notices the call being deleted.**
+  // It notices the text of it and no more - a call that is there and handed
+  // the wrong thing is past it.
+  const source = readFileSync(resolve(__dirname, '../support/a11y.ts'), 'utf8')
+  const body = (name: string): string =>
+    new RegExp(`^export async function ${name}\\([\\s\\S]*?^}$`, 'm').exec(source)?.[0] ?? ''
+
+  it('takes the snapshot once and hands it to both checks of it', () => {
+    const sweep = body('sweep')
+    expect(sweep).toContain('for (const theme of THEMES)')
+    expect(sweep.match(/\.ariaSnapshot\(\)/g)).toHaveLength(1)
+    expect(sweep).toMatch(/^ +const snapshot = await .+\.ariaSnapshot\(\)$/m)
+    expect(sweep).toMatch(/^ +await expectNamed\(snapshot, here\)$/m)
+    expect(sweep).toMatch(/^ +await expectNoDuplicatedNames\(snapshot, here\)$/m)
+  })
+
+  it('whose check asks the rule, with the list it ships with, softly', () => {
+    const check = body('expectNoDuplicatedNames')
+    expect(check).toMatch(/^ +const reading = duplicatedNames\(snapshot\)$/m)
+    expect(check).toMatch(/^ +expect\n +\.soft\(/m)
+    expect(check).toContain('...reading.pairs.map(describePair),')
+    expect(check).toContain('...reading.unread.map(')
+    expect(check).toMatch(/^ +\.toEqual\(\[\]\)$/m)
+  })
 })
 
 describe('what a red run says', () => {

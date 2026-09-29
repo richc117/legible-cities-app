@@ -30,6 +30,7 @@ import {
   sweep,
   withApp,
 } from '../support/a11y'
+import { describePair, duplicatedNames } from '../support/a11y-names'
 import { cellHandback, cellHeading, closeCell, openCell } from '../support/project'
 import { standInPage } from '../support/standInPage'
 
@@ -413,6 +414,34 @@ test('cell 06, and focus through an export', async () => {
       await expect(tab.getByText(/^Exported /)).toBeVisible({ timeout: 60_000 })
       await expect(tab.getByRole('button', { name: 'Reveal' })).toBeFocused()
       await sweep(page, 'the project, an export finished')
+
+      // The rule, seen to see (issue 208). This screen holds the one pair
+      // the sweep's first run found, a region named "Export" around a
+      // button named "Export", and the sweep above leaves it alone because
+      // it is a known pair (issue 258, `KNOWN_PAIRS`). With that entry in
+      // place both accessibility specs are green whether the rule reads the
+      // tree or has stopped - a later Playwright writing a name where the
+      // rule takes it for text would pass every sweep there is. So the rule
+      // is asked here with no known pair at all, over this same screen, and
+      // has to answer that pair and only that pair, with every line read.
+      //
+      // **It goes red the day issue 258 is mended**, and is meant to: the
+      // pair is gone, and that is what takes the entry out of `KNOWN_PAIRS`
+      // and its two tests out of `tests/unit/a11y-names.test.ts`. This
+      // check then wants another pair to look for; expecting none would
+      // leave it proving that the screen is clean and no longer that the
+      // rule can see.
+      //
+      // What it does not notice is the call inside `sweep()` being
+      // deleted, since it asks the rule and not the sweep. A unit test
+      // reads the sweep's source for that call ("the sweep", in the same
+      // unit file), and nothing that runs the application does.
+      const alone = duplicatedNames(await page.locator('body').ariaSnapshot(), [])
+      expect(alone.unread, 'every line of the snapshot is read').toEqual([])
+      expect(
+        alone.pairs.map(describePair),
+        'the rule alone, with no known pair, over the project once an export has finished',
+      ).toEqual(['region "Export" contains button "Export"'])
     },
     { env: { LEGIBLE_EXPORT_FOLDER: exportFolder } },
   )
@@ -433,8 +462,9 @@ test('cell 06, and focus through an export', async () => {
  * it is read as the number and name it draws; anything else answers its own
  * text, which is how a panel heading that came back would be seen.
  *
- * The suite's own sweep cannot see this class of defect at all: `expectNamed`
- * looks at `CONTROL_ROLES` and asks only whether a name is present, never
+ * The suite's own sweep cannot see this class of defect at all: it asks
+ * whether a control has a name (`expectNamed`) and whether a name is said
+ * again inside the element it names (`expectNoDuplicatedNames`), never
  * whether an outline is sane. That is why this check is here and not in
  * `tests/support/a11y.ts`, which every screen goes through: Settings' six
  * `h2`s under its `h1` are correct, and a rule saying "six second-level
