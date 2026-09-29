@@ -56,8 +56,9 @@ number. It is a reading aid, not something a tool checks.
    **A failed check is re-run once before it is believed**
    (`gh run rerun <id> --failed`). The end-to-end tests launch a real
    application on shared runners, and a few of them still fail now and
-   then for reasons of their own (issue 222 tracks the one seen most
-   often so far). A
+   then for reasons of their own. (The one seen most often, issue 222,
+   turned out to be a defect in the app and not in its test, so a failure
+   that goes away on a re-run is still worth its record.) A
    failure that comes back is the change's until `main` has been run the
    same number of times; one that does not is recorded on the issue that
    tracks it, with the run's id, rather than forgotten.

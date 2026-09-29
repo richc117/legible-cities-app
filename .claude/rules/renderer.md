@@ -47,6 +47,19 @@ not stop. Ask through `window.api.viewer`; the driving happens in
 wrong; ADR-028 records the correction. `tests/e2e/viewer.spec.ts` asserts the
 sandbox's exact value and drives a hostile page at every route out.
 
+**Never change the `display` of a box that holds the viewer's frame in the
+commit that sends the frame somewhere.** The viewer sets the frame's address
+and its wrapper's class in one commit. A change of `display` on the wrapper
+makes the frame's box again, and when that lands after the frame has been
+sent and before the new document arrives, the document is left with nothing
+laid out: it draws nothing, takes no focus, and a press of Tab passes over
+it. It was about one run in fifty on a macOS runner and never by hand, and
+it looked like a test that fails now and then until it was looped with
+logging (issue 222). So the map's shape is a grid and a size container in
+both of its states, the plain map's and the export's preview's, and only the
+frame's size differs between them; `tests/unit/viewer-shape.test.ts` refuses
+a `display` on the planned state.
+
 ## Components
 
 Keep components pure and push logic into functions that can be called

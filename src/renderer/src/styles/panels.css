@@ -453,7 +453,23 @@ th .sort:focus-visible {
   max-width: none;
 }
 
+/* A grid and a size container in both of its shapes, the plain map's and
+   the export's preview's (issue 222). It was a block for the first and a
+   grid for the second, and the viewer sends the frame to the planned
+   address in the same commit that changes the shape: a change of `display`
+   makes the frame's box again, and a frame whose box is made again a few
+   milliseconds after it has been sent somewhere, before it arrives, is left
+   with a document in which nothing is laid out: it takes no focus, and a
+   press of Tab passes over it. Between the two shapes only the frame's size
+   changes now, which does not do that.
+
+   The plain map's frame fills the shape as it did: one item, centred in
+   one cell that is the whole of the box, at the whole of its width and
+   height. */
 .viewer-shape {
+  display: grid;
+  place-items: center;
+  container-type: size;
   aspect-ratio: 16 / 10;
   border: var(--border-width) solid var(--border);
   border-radius: var(--radius);
@@ -473,12 +489,6 @@ th .sort:focus-visible {
    centred, so a tall story and a wide link card are both seen whole. The
    width and height arrive as plain numbers from the plan; the ratio is
    theirs. Resized without motion under reduced motion, as everything is. */
-.viewer-shape-planned {
-  display: grid;
-  place-items: center;
-  container-type: size;
-}
-
 .viewer-shape-planned .viewer-frame {
   width: min(100cqw, 100cqh * var(--frame-width) / var(--frame-height));
   height: min(100cqh, 100cqw * var(--frame-height) / var(--frame-width));
