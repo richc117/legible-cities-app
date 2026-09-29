@@ -13,7 +13,7 @@ import {
   sentenceFor,
   type RunClient,
 } from '../../src/renderer/src/engine/layoutRun'
-import { downloading } from '../../src/renderer/src/engine/layoutRun'
+import { ON_DISK_DEADLINE, downloading } from '../../src/renderer/src/engine/layoutRun'
 import {
   doneSentence,
   drawnSentence,
@@ -1433,6 +1433,23 @@ describe("a feed's download inside the run", () => {
     await tick()
     expect(asked).toEqual([])
     expect(past.run.snapshot.feedMissing).toBe(false)
+  })
+
+  it('ends at the deadline, claiming nothing, when the registry never answers', async () => {
+    vi.useFakeTimers()
+    try {
+      const hung = setup({}, READY, () => new Promise<boolean>(() => undefined))
+      hung.begin()
+      hung.calls[0].report('download', 'downloaded 65,536 bytes', 0.1)
+      hung.calls[0].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(hung.run.snapshot.state, 'still ending').toBe('running')
+      await vi.advanceTimersByTimeAsync(ON_DISK_DEADLINE)
+      expect(hung.run.snapshot.state).toBe('cancelled')
+      expect(hung.run.snapshot.feedMissing).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('draws a large download at most four times a second, and always its last byte', () => {

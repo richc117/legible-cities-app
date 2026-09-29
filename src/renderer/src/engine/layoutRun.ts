@@ -111,6 +111,9 @@ export interface RunDownload {
  * never said reports fraction 0 throughout, and counts as going on until
  * the layout's first stage reports.
  */
+/** How long an ending waits on the registry's answer before claiming nothing (issue 178). */
+export const ON_DISK_DEADLINE = 10_000
+
 export const downloading = (run: Pick<RunSnapshot, 'download'> | null): boolean =>
   // Loosely: a snapshot made before the field existed has no download.
   run?.download != null && run.download.fraction < 1
@@ -817,13 +820,23 @@ export class LayoutRun {
       this.#set({ ...patch, feedMissing: false })
       return
     }
-    void onDisk(feed)
-      .then(
+    // A deadline, so an engine that has stopped answering cannot hold the
+    // run at `running`: unanswered, or answered late, nothing is claimed
+    // about the feed and the run ends as it always has.
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const late = new Promise<boolean>((settle) => {
+      timer = setTimeout(() => settle(false), ON_DISK_DEADLINE)
+    })
+    void Promise.race([
+      onDisk(feed).then(
         (there) => !there,
-        // Unanswered: nothing is claimed about the feed.
         () => false,
-      )
-      .then((missing) => this.#set({ ...patch, feedMissing: missing }))
+      ),
+      late,
+    ]).then((missing) => {
+      clearTimeout(timer)
+      this.#set({ ...patch, feedMissing: missing })
+    })
   }
 
   /** Cancelled between the awaits: nothing was written, and nothing is. */
