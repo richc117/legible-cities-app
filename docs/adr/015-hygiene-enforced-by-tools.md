@@ -56,6 +56,15 @@ push it makes (kept outside the repository), and from
 pull request. The local hooks are convenience; CI is the one that counts,
 because it cannot be skipped.
 
+`bin/preflight` reads where every symbolic link points as well, in the
+index and in the commits a pull request adds, and refuses a target that is
+absolute, that carries anything on the never list, or that climbs out of
+the repository. The refusal names the link and never its target. (Amended
+2026-09-29, issue 227: a link's blob is its target and `git grep` does not
+open one, so a worktree's `node_modules`, a link into another checkout,
+was staged with every hook green and was caught by a reviewer reading the
+diff.)
+
 `.gitleaks.toml` extends the default rule set with an allowlist for this
 project's false positives, each entry narrow and each carrying its reason.
 

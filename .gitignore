@@ -2,9 +2,12 @@
 # No slash: a worktree's node_modules is often a link to another checkout's,
 # and `node_modules/` matches only a directory, so the link was committed.
 node_modules
-dist/
-out/
-release/
+# The same for the three a build writes, which a worktree can link as well.
+# Anchored to the top, where they are made: a bare `out` would ignore any
+# file or folder of that name anywhere in the tree.
+/dist
+/out
+/release
 .vite/
 coverage/
 test-results/

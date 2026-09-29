@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 # Refuse to let personal paths, addresses, keys or tool-session links into a
 # public repository. Three passes: the index (everything that would be
-# committed), every commit message in the history, and private files that
-# have strayed into the working tree. Exit 1 on any hit. Run before every
-# push; the pull request template asks for it.
+# committed, and where every symbolic link in it points), every commit
+# message in the history, and private files that have strayed into the
+# working tree. Exit 1 on any hit. Run before every push; the pull request
+# template asks for it.
 #
 #   bin/preflight                     the three passes above
 #   bin/preflight --message-file FILE scan a commit message being written
-#   bin/preflight --commit-range A..B scan the messages of a range of commits
+#   bin/preflight --commit-range A..B scan the messages of a range of
+#                                     commits, and the links they add
 #
 # The second form is what the `commit-msg` hook in .pre-commit-config.yaml
 # runs, so a bad trailer is refused while it can still be edited rather than
@@ -18,6 +20,7 @@
 #
 # The message forms refuse one thing the file passes do not: a keyword that
 # closes an issue. See `closing` below for why that is a message-only rule.
+# The range form reads links as well as messages; see `link_fault`.
 set -u
 usage() {
   echo "usage: preflight [--message-file FILE | --commit-range A..B]" >&2
@@ -74,6 +77,86 @@ why_closing() {
   echo "preflight: \"closes issue 22\" is read by nobody." >&2
 }
 
+# A symbolic link. Its blob is its target, written out as text and committed
+# like any other text - but `git grep` does not search it, so pass 1 walked
+# straight past a link into someone's home folder. That is how this was
+# found (issue 227): a worktree's node_modules was a link to another
+# checkout's, `node_modules/` in .gitignore matches only a directory, and
+# `git add -A` staged the link with every hook green.
+#
+# Three things are refused:
+#
+# - An absolute target, whatever it points at. It is a machine path where it
+#   names one, and broken on every other machine where it does not. A drive
+#   letter and a leading backslash count as absolute.
+# - A target carrying anything on the never list, by the same pattern the
+#   file pass applies to text.
+# - A relative target that climbs out of the repository (`../../x` from a
+#   link one folder down), since it names something outside the tree: another
+#   checkout on this machine, and nothing at all on anyone else's.
+#
+# A relative target may climb only at its front. `a/../x` is refused as
+# well, though by its text it stays inside: `a` may itself be a link, and
+# then the text does not say where its `..` lands. Written in its simplest
+# form, the same link passes.
+#
+# What is left passes: a relative link that stays inside the repository.
+#
+# The refusal names the link and the reason, never the target. The target is
+# the leak, and a CI log is as public as the file would have been.
+#
+# The target is read from the index or from the commit, never from the
+# working tree. Git for Windows may check a link out as a plain file that
+# holds the target, and the entry is mode 120000 all the same.
+link_fault() {   # $1 = the link's path from the top, $2 = its target
+  local link=$1 target=$2 slashes depth rest part named=0
+  case "$target" in
+    /*|\\*|[A-Za-z]:*) echo 'its target is an absolute path'; return ;;
+  esac
+  if printf '%s\n' "$target" | grep -qE "$pattern"; then
+    echo 'its target contains something that must not be public'; return
+  fi
+  # How far the link sits below the top is how far its target may climb.
+  slashes=${link//[^\/]/}
+  depth=${#slashes}
+  # Either separator, and one at the end so the last part is a part.
+  rest=${target//\\//}/
+  while [ -n "$rest" ]; do
+    part=${rest%%/*}; rest=${rest#*/}
+    case "$part" in
+      ''|.) ;;
+      ..)
+        if [ "$named" -eq 1 ]; then
+          echo 'its target climbs back out of a folder it names'; return
+        fi
+        depth=$((depth - 1))
+        if [ "$depth" -lt 0 ]; then
+          echo 'its target climbs out of the repository'; return
+        fi ;;
+      *) named=1 ;;
+    esac
+  done
+}
+
+# The same judgment over a blob that may not be there to read. Failing to
+# read a target is a refusal, not a pass.
+link_at() {   # $1 = the link's path, $2 = the id of its blob
+  local target
+  if target=$(git cat-file blob "$2" 2>/dev/null); then
+    link_fault "$1" "$target"
+  else
+    echo 'its target could not be read'
+  fi
+}
+
+why_link() {
+  echo "preflight: a link's target is committed as written, and a public" >&2
+  echo "preflight: repository cannot follow one off this machine. A link that" >&2
+  echo "preflight: belongs here is relative and stays inside the repository." >&2
+  echo "preflight: One that does not is ignored by name with no trailing" >&2
+  echo "preflight: slash: 'name/' matches only a folder, and a link is not one." >&2
+}
+
 if [ -n "$msgfile" ]; then
   # 0. A commit message being written, read from the file git is about to
   #    use. One file, so grep prints line numbers without a path prefix.
@@ -115,7 +198,26 @@ if [ -n "$range" ]; then
     why_closing
     status=1
   fi
-  [ $status -eq 0 ] && echo "preflight: commit messages clean"
+  # The links those commits add or repoint, each against the parent it was
+  # made on (`-m`, so a merge is read too). One committed with the hooks
+  # bypassed is caught here even when a later commit took it out again: the
+  # branch is public with every commit it carries.
+  linked=''
+  while IFS= read -r commit; do
+    while IFS= read -r -d '' entry && IFS= read -r -d '' link; do
+      read -r _ mode _ id _ <<<"$entry"
+      [ "$mode" = 120000 ] || continue
+      fault=$(link_at "$link" "$id")
+      [ -n "$fault" ] && linked="$linked$commit $link: $fault"$'\n'
+    done < <(git diff-tree -r -z --no-commit-id --root -m "$commit" 2>/dev/null)
+  done < <(git rev-list --abbrev-commit "$range" 2>/dev/null)
+  if [ -n "$linked" ]; then
+    echo "preflight: a commit in this range adds a symbolic link a public repository cannot carry:" >&2
+    printf '%s' "$linked" >&2
+    why_link
+    status=1
+  fi
+  [ $status -eq 0 ] && echo "preflight: commit messages clean, and the links these commits add"
   exit $status
 fi
 
@@ -124,6 +226,22 @@ hits=$(git grep --cached -nE "$pattern" -- . ':(exclude)bin/preflight' 2>/dev/nu
 if [ -n "$hits" ]; then
   echo "preflight: files about to be committed contain something that must not be public:" >&2
   echo "$hits" >&2; status=1
+fi
+
+#    And the links in it, which `git grep` does not open. See `link_fault`.
+linked=''
+while IFS= read -r -d '' entry; do
+  case "$entry" in 120000\ *) ;; *) continue ;; esac
+  link=${entry#*$'\t'}
+  id=${entry#* }; id=${id%% *}
+  fault=$(link_at "$link" "$id")
+  [ -n "$fault" ] && linked="$linked$link: $fault"$'\n'
+done < <(git ls-files -s -z)
+if [ -n "$linked" ]; then
+  echo "preflight: a symbolic link about to be committed is one a public repository cannot carry:" >&2
+  printf '%s' "$linked" >&2
+  why_link
+  status=1
 fi
 
 # 2. Commit message bodies, all of them; author metadata is not scanned.

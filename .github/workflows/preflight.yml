@@ -48,7 +48,7 @@ jobs:
       - name: The assistant's allow and refuse tables
         run: bin/test-hooks
 
-      - name: Closing keywords in the commits this pull request adds
+      - name: Messages and links in the commits this pull request adds
         if: github.event_name == 'pull_request'
         run: >-
           bin/preflight --commit-range
