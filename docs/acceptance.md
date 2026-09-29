@@ -296,7 +296,7 @@ Press **Re-layout**, then **Cancel** in the dialog.
   sentence a later visit reads there is step 17's).
 - The cell's footer lists **Layout** (`<8 characters>`), **Made** (`<date
   and time>`), **Built with** and **Engine now** (the engine's version, the
-  same as the status line).
+  same as the status line). Write the Layout and the Made down for step 17.
 - **Engine log**, with the count of its lines beside it, is closed until
   opened (a screen reader names what it opens "The engine's log for this
   run"); **Copy log** says "The log is on the clipboard, with the keys in

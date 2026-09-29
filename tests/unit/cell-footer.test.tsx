@@ -317,9 +317,22 @@ describe('which cells reach for a footer at all', () => {
   }
   const without = ['DataCell.tsx', 'StyleCell.tsx', 'LinesCell.tsx']
 
-  /** A cell's source without its comments, which name things to say they are gone. */
+  /**
+   * The files a cell with a strip is read from for a list of its own, from
+   * the renderer's root: its adapter, and for cell 06 the two files its
+   * body is drawn by. `ExportCell.tsx` draws nothing of its own but
+   * `ExportTab`, and `ExportTab` draws the run's panel from `ExportRun`, so
+   * a guard that read the adapter alone would hold nothing about cell 06.
+   */
+  const bodyOf: Record<keyof typeof withFooter, string[]> = {
+    'ProcessCell.tsx': ['notebook/cells/ProcessCell.tsx'],
+    'FrameCell.tsx': ['notebook/cells/FrameCell.tsx'],
+    'ExportCell.tsx': ['notebook/cells/ExportCell.tsx', 'ExportTab.tsx', 'ExportRun.tsx'],
+  }
+
+  /** A source file without its comments, which name things to say they are gone. */
   const codeOf = (file: string): string =>
-    readFileSync(join(cells, file), 'utf8')
+    readFileSync(join(renderer, file), 'utf8')
       .split('\n')
       .filter((line) => !/^\s*(\*|\/\/|\/\*)/.test(line))
       .join('\n')
@@ -333,23 +346,38 @@ describe('which cells reach for a footer at all', () => {
       expect(source).toMatch(new RegExp(`footer=\\{${builder.replace('(', '\\(')}`))
     })
 
-    it(`${file} draws no field list above it`, () => {
-      // A fact the strip states is not stated again above it in the open
-      // cell (issue 209, DESIGN.md 8.2). Cells 02 and 03 each drew a
-      // `<dl class="fields">` whose terms were the strip's own first rows;
-      // `process-cell.test.tsx` and `frame-cell.test.tsx` hold what those
-      // two render, and this holds the next cell to gain a strip, or the
-      // next branch to give one of these three its list back.
-      expect(codeOf(file)).not.toMatch(/className="fields"/)
-    })
+    for (const body of bodyOf[file as keyof typeof withFooter]) {
+      it(`${file} draws no list of its own above it, in ${body}`, () => {
+        // A fact the strip states is not stated again above it in the open
+        // cell (issue 209, DESIGN.md 8.2). Cells 02 and 03 each drew a
+        // `<dl class="fields">` whose terms were the strip's own first
+        // rows; `process-cell.test.tsx` and `frame-cell.test.tsx` hold what
+        // those two render, and this holds the next cell to gain a strip,
+        // or the next branch to give one of these three its list back.
+        //
+        // **Any definition list, by its element and not by a class.** The
+        // class is `fields counts` where `StageView.tsx` draws one, which
+        // `className="fields"` does not match, and a bare `<dl>` has none.
+        // The strip itself is `CellFooter.tsx`'s and is in none of these.
+        expect(codeOf(body)).not.toMatch(/<dl\b/)
+      })
+    }
   }
 
   it('DataCell.tsx keeps its field list, having no strip to say it for it', () => {
-    // The other half of the same rule, so the guard above cannot pass by
-    // the class having been renamed under it: cell 01's Feed, Mode and
-    // Agency are stated once, by the list, because nothing else states
-    // them.
-    expect(codeOf('DataCell.tsx')).toMatch(/className="fields"/)
+    // The other half of the same rule, and what shows the pattern above is
+    // one a list is found by: cell 01's Feed, Mode and Agency are stated
+    // once, by the list, because nothing else states them.
+    expect(codeOf('notebook/cells/DataCell.tsx')).toMatch(/<dl\b/)
+  })
+
+  it('finds a list whose class is more than "fields", which StageView.tsx draws', () => {
+    // The form the first guard missed, read from the file that has it, so
+    // the pattern is held to a real one and not to a string written here.
+    const stage = codeOf('StageView.tsx')
+    expect(stage).toContain('className="fields counts"')
+    expect(stage).not.toMatch(/className="fields"/)
+    expect(stage).toMatch(/<dl\b/)
   })
 
   for (const file of without) {

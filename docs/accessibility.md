@@ -824,8 +824,7 @@ a table).
   and when it was made are the footer's to say (issue 209). A project made
   by a newer version of the app is offered no run, and the cell says so in
   plain text instead: "This project was made by a newer version of the app,
-  so it cannot be laid out here." Before pressing
-  anything, cell 02
+  so it cannot be laid out here." Before pressing anything, cell 02
   draws the eight stages at rest (A5.5-10): listen for an image named "The
   layout run's 8 stages, none started." on a project never laid out, or
   "The layout run's 8 stages." on one already laid out. The stations carry

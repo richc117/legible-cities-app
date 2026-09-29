@@ -306,8 +306,8 @@ path.
 
 **Until the first layout**, `date` and `layout` are `null`, and the
 interface says "not yet chosen" and "not laid out yet": the front door's
-row says both, and cell 02 says "This project is not laid out yet." where
-its footer would be. The service day is
+row says both, and cell 02 says "This project is not laid out yet." at
+the top of the cell, which has no footer yet. The service day is
 resolved once, at the project's first layout, and stored then; it is never
 re-resolved silently (ADR-031, which amends ADR-023 on the moment). Today
 it is the machine's date; once the engine can report a feed's window it

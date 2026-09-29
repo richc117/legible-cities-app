@@ -469,6 +469,10 @@ const cellStrip = (page: Page, id: CellId): Locator =>
  * problem and the run went on; read as a row of its own it must not become
  * a step that stops. A null costs the deadline once, and the soft check
  * beside the read has recorded by then what is missing.
+ *
+ * **A null is never a comparison skipped.** Every later step compares the
+ * row with `?? ''`, as the layout's is compared, and a row is never empty:
+ * a missing moment is a comparison that fails, whichever steps ran first.
  */
 const rowText = (row: Locator): Promise<string | null> => text(row).catch(() => null)
 
@@ -1367,9 +1371,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
         // the check of the Layout field, which stood before this one and
         // waited for the record, went with the field.
         await expect(definition(footer, 'Layout')).toHaveText(session.laLayout ?? '')
-        if (session.laMade !== null) {
-          await expect(definition(footer, 'Made')).toHaveText(session.laMade)
-        }
+        await expect(definition(footer, 'Made')).toHaveText(session.laMade ?? '')
         await expect(definition(footer, 'Engine now')).toHaveText(pins.engine.version)
         const terms = (await footer.locator('dt').allTextContents()).map((t) => t.trim())
         expect(terms).toEqual(['Layout', 'Made', 'Built with', 'Engine now'])
@@ -1503,9 +1505,9 @@ test('a release, installed, through docs/acceptance.md', async () => {
         await expect(definition(cellStrip(window, 'frame'), 'Service day')).toHaveText(day)
         await log.soft(`the Layout after ${day}`, async () => {
           await expect(definition(cellStrip(window, 'process'), 'Layout')).toHaveText(layoutBefore)
-          if (madeBefore !== null) {
-            await expect(definition(cellStrip(window, 'process'), 'Made')).toHaveText(madeBefore)
-          }
+          await expect(definition(cellStrip(window, 'process'), 'Made')).toHaveText(
+            madeBefore ?? '',
+          )
         })
         await log.soft(`cells 04 to 06 ready again after ${day}`, async () => {
           for (const id of ['style', 'lines', 'export'] as const) {
@@ -2576,11 +2578,9 @@ test('a release, installed, through docs/acceptance.md', async () => {
             session.laLayout,
           )
         }
-        if (session.laMade !== null) {
-          await expect(definition(cellStrip(reopened, 'process'), 'Made')).toHaveText(
-            session.laMade,
-          )
-        }
+        await expect(definition(cellStrip(reopened, 'process'), 'Made')).toHaveText(
+          session.laMade ?? '',
+        )
         await expect(reopened.getByRole('region', { name: 'Map' })).toBeVisible()
       })
       await log.soft('nothing runs', async () => {

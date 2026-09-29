@@ -109,6 +109,16 @@ function draw(
 
 const count = (html: string, needle: string): number => html.split(needle).length - 1
 
+/**
+ * The day said in a sentence, as it is drawn: what a read-only project is
+ * told where it has a day and no strip to say it.
+ */
+const THE_DAY = '<p class="prose">The service day is 2026-09-12.</p>'
+
+/** What a read-only project is told instead of being offered the control, as it is drawn. */
+const READ_ONLY =
+  '<p class="prose">This project was made by a newer version of the app, so its service day cannot be changed here.</p>'
+
 describe('cell 03, Frame and service day, open', () => {
   it('states the service day once as a field, in the strip and not above it', () => {
     const { above, strip } = draw(record)
@@ -147,11 +157,72 @@ describe('cell 03, Frame and service day, open', () => {
 
   it('draws no field for a project this version may not write', () => {
     const { above, strip } = draw(record, { readOnly: true })
-    expect(above).toContain('its service day cannot be changed here')
+    expect(count(above, READ_ONLY)).toBe(1)
     expect(above).not.toContain('<dl')
     expect(above).not.toContain('<dt>')
     // Its day is the strip's to say, as any project's is.
     expect(strip).toContain('<dt>Service day</dt><dd>2026-09-12</dd>')
     expect(count(above + strip, '<dt>Service day</dt>')).toBe(1)
+  })
+})
+
+describe('cell 03, open, for a read-only project with a day and no strip', () => {
+  // A record with a day and no window draws no strip (`frameFacts` needs
+  // both), and a read-only project is not drawn `ServiceDay`, whose sentence
+  // says the day for a writable one. With the field gone the open cell
+  // stated the day nowhere. No record this version writes is in that state,
+  // but this branch is for a record a later version wrote, and a window
+  // kept in a shape this version cannot read is the record that lands here.
+  const noWindow: ProjectRecord = { ...record, service: null }
+
+  it('says the day once, in a sentence, before it says the day cannot be changed', () => {
+    const { above, strip } = draw(noWindow, { readOnly: true })
+    expect(strip, 'no window, so no strip').toBe('')
+    expect(count(above, THE_DAY)).toBe(1)
+    expect(count(above, READ_ONLY)).toBe(1)
+    // What the project is, then what cannot be done to it: the cell's
+    // first two children, in that order.
+    expect(above).toContain(`<div class="cell-body">${THE_DAY}${READ_ONLY}`)
+    // A sentence and not a field.
+    expect(above).not.toContain('<dl')
+    expect(above).not.toContain('<dt>')
+  })
+
+  it('leaves the day to the strip where there is one', () => {
+    // The same record with its window: the strip's first row says the day,
+    // and a fact the strip states is not stated again above it.
+    const { above, strip } = draw(record, { readOnly: true })
+    expect(strip).toContain('<dt>Service day</dt><dd>2026-09-12</dd>')
+    expect(above).not.toContain('The service day is 2026-09-12')
+    expect(count(above, READ_ONLY)).toBe(1)
+  })
+
+  it('says nothing of a day the record does not hold', () => {
+    // Never laid out: no day, no window, no strip, and nothing to say but
+    // that the day cannot be changed here. Not "The service day is ."
+    const { above, strip } = draw(fresh, { readOnly: true })
+    expect(strip).toBe('')
+    expect(above).not.toContain('The service day is')
+    expect(above).toContain(`<div class="cell-body">${READ_ONLY}`)
+  })
+
+  it('is never said to a project this version can write', () => {
+    // A writable project is drawn the control, whose own sentence says the
+    // day, or the sentence that says the engine will choose one. Each of
+    // these has no strip, which is the state the sentence is drawn in for a
+    // read-only one; the last has a strip as well.
+    const writable: [string, ProjectRecord][] = [
+      ['a day and a layout, no window', noWindow],
+      ['a day, no layout, no window', { ...noWindow, layout: null, made: null, built: null }],
+      ['never laid out', fresh],
+      ['laid out, with its window', record],
+    ]
+    for (const [name, project] of writable) {
+      const { above, strip } = draw(project)
+      expect(above + strip, name).not.toContain('The service day is 2026-09-12')
+      expect(above + strip, name).not.toContain('made by a newer version')
+    }
+    // And the first of them does say its day, in the control's own words.
+    expect(draw(noWindow).above).toContain('Drawn for 2026-09-12. Lay the project out again')
   })
 })
