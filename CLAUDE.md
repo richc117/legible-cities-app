@@ -191,7 +191,17 @@ export is open, because a run is four steps with gaps between them and only
 the renderer can see the gaps. The flag goes up before the first `await`,
 and while it is up every engine request, every export and every write to a
 project record is refused, so nothing lands in a folder being walked away
-(`src/main/settings.ts`, `src/main/settings-ipc.ts`).
+(`src/main/settings.ts`, `src/main/settings-ipc.ts`). **A project's own
+export folder is kept out of the reset's reach at two doors** (issue 206):
+the reset refuses while a project under the home in force exports to a
+folder inside the home or around it, and so does the choice of the
+engine's folder in Settings, the default included, which is the door that
+matters - records live under the home and nothing moves them, so after the
+restart the project that exports there is a record in the old home.
+**Neither door sees a record left behind in a previous home**, nor one this
+build cannot read. One pure rule, `destinationsInTheWay`, on real paths;
+the list is the project store's `destinations()`, handed in and read once
+at a press.
 
 The export's options (A5-01) widened the reel's one button. They were a tab
 once and are cell 06 now. Export offers the thirteen social presets

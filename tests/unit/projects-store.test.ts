@@ -259,6 +259,94 @@ describe('list', () => {
   })
 })
 
+// Issue 206. What Settings asks before it takes a folder for the engine's
+// data and before a reset: where each project exports, from the records
+// under the home this store was built on and from nowhere else.
+describe('destinations', () => {
+  const videos = (...more: string[]): string => join(tmpdir(), 'legible-cities-videos', ...more)
+
+  it('is empty before the projects folder exists, without a word in the log', async () => {
+    expect(await store.destinations()).toEqual([])
+    expect(lines).toEqual([])
+  })
+
+  it('answers the id, the name and the folder of each project that chose one, by name, and leaves out the rest', async () => {
+    await seed(A, record(A, { name: 'Metra', destination: videos('metra') }))
+    await seed(B, record(B, { name: 'Bart', destination: videos() }))
+    await seed('cccccccccccc', record('cccccccccccc', { name: 'Caltrain', destination: null }))
+    expect(await store.destinations()).toEqual([
+      { id: B, name: 'Bart', destination: videos() },
+      { id: A, name: 'Metra', destination: videos('metra') },
+    ])
+    expect(lines).toEqual([])
+  })
+
+  it('answers the folder as the record holds it, through the store’s own writer', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    expect(await store.destinations(), 'a new project exports to the app’s folder').toEqual([])
+    await store.setDestination(project.id, videos('la'))
+    expect(await store.destinations()).toEqual([
+      { id: project.id, name: 'LA', destination: videos('la') },
+    ])
+    await store.setDestination(project.id, null)
+    expect(await store.destinations()).toEqual([])
+  })
+
+  it('skips what is not a project exactly as list does, naming the folder', async () => {
+    await seed(A, record(A, { name: 'Kept', destination: videos('kept') }))
+    await mkdir(join(root, 'cccccccccccc')) // a folder with no record
+    await seed('dddddddddddd', '{ "version": 1, ') // invalid JSON
+    await seed('eeeeeeeeeeee', { version: 1, name: 'No id', destination: videos('no-id') })
+    await seed('ffffffffffff', record(A, { destination: videos('copied') })) // copied by hand
+    await seed('not-an-id', record(A, { destination: videos('stray') }))
+    await writeFile(join(root, 'notes.json'), JSON.stringify({ destination: videos('notes') }))
+
+    expect(await store.destinations()).toEqual([
+      { id: A, name: 'Kept', destination: videos('kept') },
+    ])
+    const said = [...lines].sort()
+    lines.length = 0
+    await store.list()
+    expect(said, 'the same folders, for the same reasons').toEqual([...lines].sort())
+    expect(said).toEqual([
+      'projects/cccccccccccc: no record',
+      'projects/dddddddddddd: invalid JSON',
+      'projects/eeeeeeeeeeee: missing or invalid id',
+      'projects/ffffffffffff: record id does not match its folder',
+      'projects/not-an-id: not a project identifier',
+    ])
+  })
+
+  it('counts a project a newer version of the app made, which is read-only here', async () => {
+    await seed(A, record(A, { version: 2, name: 'Newer', destination: videos('newer') }))
+    expect((await store.get(A)).readOnly).toBe(true)
+    expect(await store.destinations()).toEqual([
+      { id: A, name: 'Newer', destination: videos('newer') },
+    ])
+  })
+
+  it('leaves out a folder the record could never have stored', async () => {
+    await seed(A, { ...record(A), destination: 'relative/folder' })
+    await seed(B, { ...record(B), destination: 42 })
+    expect(await store.destinations()).toEqual([])
+  })
+
+  it('does not see a record left behind in a previous home: it reads the home it was built on and no other', async () => {
+    const previous = await mkdtemp(join(tmpdir(), 'legible-cities-store-before-'))
+    try {
+      const before = new ProjectStore(previous, (message) => lines.push(message))
+      const left = await before.create({ name: 'Left behind', feed: 'la-metro-rail' })
+      await before.setDestination(left.id, home)
+      expect(await store.destinations(), 'this home holds no record of it').toEqual([])
+      expect(await before.destinations(), 'which is still where it was').toEqual([
+        { id: left.id, name: 'Left behind', destination: home },
+      ])
+    } finally {
+      await rm(previous, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('markOpened', () => {
   it('writes when the project was opened, and not that it was changed', async () => {
     const before = record(A, { modified: '2026-09-01T00:00:00.000Z' })

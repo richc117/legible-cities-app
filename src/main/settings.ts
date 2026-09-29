@@ -342,6 +342,78 @@ export function refuseReset(home: string, guards: ResetGuards): string | null {
   return null
 }
 
+/** A project that exports to a folder of its own, as the project store answers it. */
+export interface ProjectDestination {
+  id: string
+  name: string
+  destination: string
+}
+
+/**
+ * The projects whose own export folder is in the way of `home`: inside it,
+ * the home itself, or a folder that holds it (issue 206). A reset removes
+ * folders beneath the home, and an export is written to
+ * `<destination>/<project name>/`, so a destination under the home can sit
+ * in one of the four and a destination that is the home puts a project
+ * named `out` there. It is the relation a project's own chooser already
+ * refuses (`destinationRefusal` in `export.ts`), asked from the other side:
+ * that one judges a destination against the home in force, and this judges
+ * a home - the one in force before a reset, one being chosen in Settings -
+ * against the destinations already stored.
+ *
+ * **Both sides must already be real paths.** The comparison is `contains`,
+ * which is textual, and a home or a destination reached through a link
+ * passes every textual check; the caller resolves each through
+ * `realOrResolved` first.
+ *
+ * It judges what it is given, and the store gives the records under the
+ * home in force. A record left behind in a home the app used before is not
+ * among them, so nothing here can see it.
+ */
+export function destinationsInTheWay(
+  home: string,
+  projects: readonly ProjectDestination[],
+): ProjectDestination[] {
+  return projects.filter(
+    (project) => contains(home, project.destination) || contains(project.destination, home),
+  )
+}
+
+/** Which folder a refusal over the projects' export folders is about. */
+export type DestinationDoor = 'chosen' | 'default' | 'reset'
+
+/**
+ * Why a folder may not be the engine's data folder, or may not be reset,
+ * naming the projects in the way as the feeds' `inUseSentence` names them:
+ * two or three are all named; past that, two and a count. It says why and
+ * what to do, and never a path: the screen shows it as it is.
+ */
+export function destinationsSentence(names: readonly string[], door: DestinationDoor): string {
+  const quoted = names.map((name) => `“${name}”`)
+  const one = quoted.length === 1
+  const listed = one
+    ? quoted[0]
+    : quoted.length <= 3
+      ? `${quoted.slice(0, -1).join(', ')} and ${quoted[quoted.length - 1]}`
+      : `${quoted.slice(0, 2).join(', ')} and ${quoted.length - 2} others`
+  const who = one
+    ? `The project ${listed} exports to a folder`
+    : `The projects ${listed} export to folders`
+  const where =
+    door === 'chosen'
+      ? 'inside that one, or around it'
+      : door === 'default'
+        ? 'inside the default folder, or around it'
+        : 'inside the engine data folder, or around it'
+  const why =
+    door === 'reset'
+      ? `so the reset could remove ${one ? 'its' : 'their'} exports`
+      : `so “Reset engine data” could remove ${one ? 'its' : 'their'} exports`
+  const change = one ? 'change where the project exports first' : 'change where they export first'
+  const what = door === 'chosen' ? `choose another folder, or ${change}` : change
+  return `${who} ${where}, ${why}; ${what}.`
+}
+
 /**
  * Remove what the app and the engine keep under the home, and nothing else.
  *

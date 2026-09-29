@@ -117,7 +117,7 @@ app's own settings under `api.settings`:
 | `settings.useDefaultEngineFolder()`, `useDefaultExportFolder()` | forgets the stored folder and takes the default again |
 | `settings.engineSize()` | walks the engine's home, bounded and never through a symbolic link |
 | `settings.openLogsFolder()` | makes the platform's log folder for this app if it is missing, and opens it |
-| `settings.resetEngineData()` | removes `projects`, `out`, `data` and `frames` beneath the engine's home, never the home itself; answers what went and what would not; refused while anything is writing under it |
+| `settings.resetEngineData()` | removes `projects`, `out`, `data` and `frames` beneath the engine's home, never the home itself; answers what went and what would not; refused while anything is writing under it, and while a project under this home exports to a folder of its own that is inside the home, is it, or holds it, naming the project (issue 206; choosing the engine's folder is refused on the same rule, and neither sees a record left behind in a previous home) |
 | `settings.copyDiagnostics(reports)` | puts what a bug report needs on the clipboard: the versions, the operating system, `engine.info`, the last 200 lines of both logs and the reports given, each project's diagnostics as its panel copies them (at most 20 of at most 64 KB, checked in main); composed in the main process with the home folder written as `~`; nothing is sent (A6-03) |
 | `jobs.copyLog(text)` | puts one job's log on the clipboard: the page composes the text (at most 256 KB, checked in main), and the main process redacts every web address's secrets and writes the home folder as `~` through the same lookup and deadline as the diagnostics copy, refusing if a home survives (A1-03) |
 
@@ -413,6 +413,48 @@ the registry's own check, which reads the project list from disk - every
 export through the exporter's own, and every write to a project record
 through the project handlers', so nothing lands in a folder being walked
 away.
+
+The confirmation promises that exported files are not touched, and since
+A5.5-19 a project can export to a folder of its own, so that folder must
+never be inside the home a reset empties, be it, or hold it (issue 206). An
+export is written to `<folder>/<project name>/`: a folder under the home
+can sit in one of the four, and a folder that is the home puts a project
+named `out` there. The rule is one pure function, `destinationsInTheWay` in
+`src/main/settings.ts`, and it is asked at two doors, each of which
+resolves the home and every project's folder through `realOrResolved`
+first, because the comparison is textual and a folder reached through a
+link passes every textual check.
+
+- **The reset** refuses for the projects under the home in force, under
+  the flag and after every other check, as the last thing before the
+  removal.
+- **The choice of the engine's folder** in Settings refuses a folder, the
+  default included, that any project's export folder is inside or around.
+  This is the door that closes the way a person actually gets there: the
+  records live under the home and nothing moves them when the home moves,
+  so once the app has started on the new home the project that exports
+  there is a record in the old one. The choice is the last moment the
+  store still holds it. The engine folder's changes take turns, since each
+  reads the disk before it writes and two presses must land in the order
+  they were made.
+
+The sentence names the project, or the first two and how many more, says
+why and what to do, and shows no path. The project store hands Settings
+the list - `destinations()`, each record under its own `projects` folder
+that has a folder of its own, a read-only project's included - as it hands
+the feeds' guard the projects' feeds, so the settings service never holds
+the store; it is read once at each press. A list that cannot be read
+refuses.
+
+**What neither door sees.** A record left behind in a home the app used
+before: it is not under the home in force, so nothing reads it, and a
+reset of the home its project exports into is not refused. A record this
+build cannot read, which the store skips as the project list does. And an
+export folder a project is given after a new home was chosen and before
+the restart, which the project's own chooser judges against the home in
+force, not the one waiting. And the rule is over where a project exports
+now: changing that folder moves nothing, so files it exported to the folder
+before stay where they were.
 
 The Licences section (issue 108, ADR-042) names the app's licence and every
 component the installers carry, from `src/shared/licences.ts`, which a unit

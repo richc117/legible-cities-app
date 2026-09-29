@@ -505,6 +505,12 @@ if (!hasLock) {
         if (store.writing > 0) return 'A project is being saved; try again in a moment.'
         return null
       },
+      // Where the projects export, for the two doors that must not let a
+      // reset reach an export (issue 206): a fact about the projects, handed
+      // in as the feeds' guard is handed theirs, so the service never holds
+      // the store. The store is on the home in force; a record left behind
+      // in a home used before this one is not in its answer.
+      destinations: () => store.destinations(),
       openFolder: async (path) => {
         await mkdir(path, { recursive: true }).catch((error: Error) =>
           log.warn('settings', `could not make the log folder: ${error.message}`),

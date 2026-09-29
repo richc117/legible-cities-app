@@ -307,6 +307,115 @@ test('resets the engine data behind a confirmation, and leaves the Library empty
   })
 })
 
+/** A project made through the app, so the record is the app's own. */
+async function newProject(page: Page, name: string): Promise<void> {
+  await page.getByRole('button', { name: 'New project' }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByLabel('Name', { exact: true }).fill(name)
+  await dialog.getByRole('button', { name: 'Create', exact: true }).click()
+  await expect(page.getByRole('button', { name: `Open ${name}` })).toBeVisible()
+}
+
+/**
+ * Give the one project under a home an export folder of its own, written
+ * into its record. Not through cell 06's chooser, for two reasons: that
+ * chooser rightly refuses a folder inside the engine's home or around it,
+ * so the record the reset must refuse over is one the app would not write
+ * today - one from before that guard, one edited by hand, or a folder that
+ * became a link afterwards; and the chooser needs a project laid out and
+ * drawn, which is another suite's business. Both doors read the records
+ * from disk at the press, so what is written here is what they see.
+ */
+function exportsTo(home: string, folder: string): void {
+  const [id] = readdirSync(join(home, 'projects'))
+  const file = join(home, 'projects', id, 'project.json')
+  const record = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>
+  writeFileSync(file, JSON.stringify({ ...record, destination: folder }, null, 2) + '\n')
+}
+
+// Issue 206. Project records live under the engine's home and do not move
+// with it, so the moment a new home is chosen is the last at which the app
+// can see the project that exports there; after the restart its record is
+// in the folder before, out of reach. The choice is where it is refused.
+test('refuses an engine folder that holds a project’s own export folder, naming the project', async () => {
+  const userData = profile()
+  const videos = mkdtempSync(join(tmpdir(), 'legible-cities-videos-'))
+  const elsewhere = mkdtempSync(join(tmpdir(), 'legible-cities-engine-'))
+
+  await withApp(userData, async (page, app) => {
+    await expect(page.getByRole('status', { name: 'Engine' })).toContainText(/ready/i, {
+      timeout: 20_000,
+    })
+    await newProject(page, 'Los Angeles')
+    exportsTo(join(userData, 'engine'), join(videos, 'exports'))
+
+    await open(page)
+    const screen = page.getByRole('main')
+    await chooserAnswers(app, videos)
+    await page.getByRole('button', { name: 'Choose the engine data folder' }).click()
+    const refusal = screen.getByRole('alert')
+    await expect(refusal).toHaveText(
+      'The project “Los Angeles” exports to a folder inside that one, or around it, so “Reset engine data” could remove its exports; choose another folder, or change where the project exports first.',
+    )
+    // Nothing was taken: no folder waits for a restart and none is stored.
+    await expect(page.locator('#engine-folder-path')).toHaveText(join(userData, 'engine'))
+    await expect(page.locator('#engine-folder-source')).toHaveText('the default')
+    await expect(page.getByText(/Waiting for a restart/)).toHaveCount(0)
+    const stored: { engineFolder?: unknown } = existsSync(join(userData, 'settings.json'))
+      ? (JSON.parse(readFileSync(join(userData, 'settings.json'), 'utf8')) as {
+          engineFolder?: unknown
+        })
+      : {}
+    expect(stored.engineFolder ?? null).toBeNull()
+
+    // A refusal does not stop the next choice, and takes its sentence away.
+    await chooserAnswers(app, elsewhere)
+    await page.getByRole('button', { name: 'Choose the engine data folder' }).click()
+    await expect(page.getByText(`Waiting for a restart: ${elsewhere}`)).toBeVisible()
+    await expect(screen.getByRole('alert')).toHaveCount(0)
+  })
+})
+
+// The same promise at the reset, for the projects in the home in force:
+// the confirmation says exported files are not touched.
+test('refuses the reset while a project exports into the engine data folder, and removes nothing', async () => {
+  const userData = profile()
+  const home = join(userData, 'engine')
+  const exports = join(home, 'out', 'exports')
+
+  await withApp(userData, async (page) => {
+    // Ready first: a reset asked for while the engine is still answering
+    // its handshake is refused for that, and this is about another refusal.
+    await expect(page.getByRole('status', { name: 'Engine' })).toContainText(/ready/i, {
+      timeout: 20_000,
+    })
+    await newProject(page, 'Los Angeles')
+    exportsTo(home, exports)
+    mkdirSync(join(exports, 'Los Angeles'), { recursive: true })
+    writeFileSync(join(exports, 'Los Angeles', 'reel.mp4'), 'an export')
+
+    await open(page)
+    // The screen asks the engine for its versions as it opens, and a reset
+    // asked for while that is in flight is refused for that instead.
+    await expect(definition(page, 'Engine')).toHaveText(PINNED_ENGINE)
+    await page.getByRole('button', { name: 'Reset engine data' }).click()
+    const confirm = page.getByRole('dialog')
+    await confirm.getByRole('button', { name: 'Reset', exact: true }).click()
+    // A refusal stays in the dialog, under the words that promised.
+    await expect(confirm.getByRole('alert')).toHaveText(
+      'The project “Los Angeles” exports to a folder inside the engine data folder, or around it, so the reset could remove its exports; change where the project exports first.',
+    )
+    await expect(confirm).toBeVisible()
+    expect(readFileSync(join(exports, 'Los Angeles', 'reel.mp4'), 'utf8')).toBe('an export')
+    expect(readdirSync(join(home, 'projects'))).toHaveLength(1)
+
+    await confirm.getByRole('button', { name: 'Cancel', exact: true }).click()
+    await expect(confirm).toBeHidden()
+    await page.getByRole('button', { name: 'Back to Library' }).click()
+    await expect(page.getByRole('button', { name: 'Open Los Angeles' })).toBeVisible()
+  })
+})
+
 // Issue 113. The reset's reason while runs are going is the button's
 // description, and it follows the count: from two runs to one, React
 // changes the value of the text node it already has, a characterData

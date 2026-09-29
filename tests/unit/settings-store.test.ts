@@ -17,6 +17,8 @@ import { tmpdir } from 'node:os'
 import { join, parse } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
+  destinationsInTheWay,
+  destinationsSentence,
   folderSize,
   realOrResolved,
   refuseReset,
@@ -334,6 +336,93 @@ describe('refuseReset', () => {
   it("refuses a folder that holds the app's own settings", () => {
     expect(refuseReset(guards.userData, guards)).toMatch(/settings/)
     expect(refuseReset(join(person, 'profile'), guards)).toMatch(/settings/)
+  })
+})
+
+// Issue 206. Pure, like refuseReset, so nothing here need exist; it is
+// handed real paths and compares them. The rule composed with the project
+// store and the paths' real forms is proved in settings-ipc.test.ts.
+describe('destinationsInTheWay', () => {
+  const disk = join(tmpdir(), 'legible-cities-disk')
+  const home = join(disk, 'videos')
+  const project = (name: string, destination: string) => ({
+    id: `${name.toLowerCase()}aaaaaaaa`.slice(0, 12),
+    name,
+    destination,
+  })
+
+  it('answers a project that exports inside the home, at any depth', () => {
+    const inside = [
+      project('Out', join(home, 'out')),
+      project('Deep', join(home, 'out', 'exports', '2026')),
+      project('Beside', join(home, 'my exports')),
+    ]
+    expect(destinationsInTheWay(home, inside)).toEqual(inside)
+  })
+
+  it('answers a project that exports to the home itself', () => {
+    const same = [project('Same', home)]
+    expect(destinationsInTheWay(home, same)).toEqual(same)
+  })
+
+  it('answers a project that exports to a folder that holds the home', () => {
+    const around = [project('Around', disk), project('Above', tmpdir())]
+    expect(destinationsInTheWay(home, around)).toEqual(around)
+  })
+
+  it('answers nothing for a folder elsewhere, or a neighbour whose name begins the same', () => {
+    expect(
+      destinationsInTheWay(home, [
+        project('Elsewhere', join(disk, 'pictures')),
+        project('Neighbour', join(disk, 'videos-2025')),
+        project('Shorter', join(disk, 'video')),
+      ]),
+    ).toEqual([])
+  })
+
+  it('answers only the projects in the way, in the order it was given them', () => {
+    const bart = project('Bart', join(home, 'bart'))
+    const la = project('Los Angeles', disk)
+    expect(
+      destinationsInTheWay(home, [bart, project('Metra', join(disk, 'pictures')), la]),
+    ).toEqual([bart, la])
+  })
+
+  // `contains` is what compares, so a folder differs by case exactly where
+  // the platform's own filesystem says it does.
+  it('compares as the platform does: without regard to case on macOS and Windows', () => {
+    const shouted = [project('Shouted', join(home.toUpperCase(), 'OUT'))]
+    const insensitive = process.platform === 'darwin' || process.platform === 'win32'
+    expect(destinationsInTheWay(home, shouted)).toEqual(insensitive ? shouted : [])
+  })
+})
+
+describe('destinationsSentence', () => {
+  it('names one project, says why, and says what to do, for each door', () => {
+    expect(destinationsSentence(['Los Angeles'], 'chosen')).toBe(
+      'The project “Los Angeles” exports to a folder inside that one, or around it, so “Reset engine data” could remove its exports; choose another folder, or change where the project exports first.',
+    )
+    expect(destinationsSentence(['Los Angeles'], 'default')).toBe(
+      'The project “Los Angeles” exports to a folder inside the default folder, or around it, so “Reset engine data” could remove its exports; change where the project exports first.',
+    )
+    expect(destinationsSentence(['Los Angeles'], 'reset')).toBe(
+      'The project “Los Angeles” exports to a folder inside the engine data folder, or around it, so the reset could remove its exports; change where the project exports first.',
+    )
+  })
+
+  it('names two and three projects in full', () => {
+    expect(destinationsSentence(['Bart', 'Metra'], 'reset')).toBe(
+      'The projects “Bart” and “Metra” export to folders inside the engine data folder, or around it, so the reset could remove their exports; change where they export first.',
+    )
+    expect(destinationsSentence(['Bart', 'Caltrain', 'Metra'], 'chosen')).toBe(
+      'The projects “Bart”, “Caltrain” and “Metra” export to folders inside that one, or around it, so “Reset engine data” could remove their exports; choose another folder, or change where they export first.',
+    )
+  })
+
+  it('names two and counts the rest past three, so the sentence stays short', () => {
+    expect(destinationsSentence(['Bart', 'Caltrain', 'Metra', 'Muni', 'VTA'], 'default')).toBe(
+      'The projects “Bart”, “Caltrain” and 3 others export to folders inside the default folder, or around it, so “Reset engine data” could remove their exports; change where they export first.',
+    )
   })
 })
 
