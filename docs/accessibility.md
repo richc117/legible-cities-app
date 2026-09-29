@@ -36,7 +36,8 @@ person's, recorded in [Reader runs](#reader-runs).
    and asserted to have taken effect), so a ring or a control only one
    theme draws cannot hide. Against the
    stand-in engine: for each screen and each dialog, every control in the
-   accessibility tree has a name (`ariaSnapshot()`); a Tab walk from the
+   accessibility tree has a name (`ariaSnapshot()`), and nothing in it has
+   the name of something it is inside (#208, below); a Tab walk from the
    top reaches every enabled control and each shows a ring it did not have
    at rest; with reduced motion emulated, and the emulation asserted to
    take effect, no element or open shadow root has a running animation or
@@ -53,6 +54,24 @@ person's, recorded in [Reader runs](#reader-runs).
    host and a select's and text field's focusable parts are ordinary
    children, so no kit control focusable only inside a shadow root is on
    screen, and one added later would be outside it.
+
+   **A name said twice, nested** (#208) is read from the same snapshot,
+   over every role and not only the controls: a node whose name is the
+   name of one of its ancestors is a finding, as the engine log's box of
+   lines was inside the region of the same name. Three things are not. A
+   `heading`, because a section named by its own heading is the correct
+   pattern and every dialog and every section of Settings is one. An
+   ancestor that takes its name from what it holds - a heading, a button,
+   a link, a tab, an option, a table's row, cell, column header or row
+   header - because a cell's row is a heading around its toggle and says
+   the toggle's words. And the pairs listed in
+   `tests/support/a11y-names.ts`, each one name under two roles, decided
+   with a run of the sweep in hand and naming the issue that decided it.
+   The rule is a function of the snapshot's text and is tested without the
+   app (`tests/unit/a11y-names.test.ts`); a line of the snapshot it cannot
+   read fails the sweep rather than being stepped over. It is the sweep's
+   one soft check: a repeated name stops nothing after it, so the test
+   carries on and one run lists every screen's pairs.
 3. **Contrast** is arithmetic, not a screenshot: `tests/unit/contrast.test.ts`
    recomputes every text and control pair the stylesheets use, in both
    themes, now including the kit's filled buttons at rest, under the
@@ -263,10 +282,16 @@ which it is.
   person's path is the documented one: "Skip past the map" is one Tab
   before the frame.
 - **Occlusion by the pinned map** (#213, above).
-- **A duplicated accessible name** (#208): `expectNamed` asks only whether
-  a control has a name. The engine log's nested name reached a pull
-  request that way; a unit test now guards that panel, and the
-  walkthrough is what catches the rest by ear.
+- **A name said twice, where the rule does not look** (#208). The engine
+  log's nested name reached a pull request because `expectNamed` asks only
+  whether a control has a name; the sweep now flags a node named as one of
+  its ancestors is (Method, 2), and a unit test guards that panel. What it
+  still cannot see: two siblings under one name, which are not nested; a
+  name inside a closed disclosure, whose contents are `hidden` and out of
+  the tree until a sweep opens it; a name longer than 900 characters,
+  which Playwright's snapshot drops; and a repetition under an ancestor
+  that is named by what it holds, which the rule allows by role. The
+  walkthrough is what catches those by ear.
 - **The engine's page** (F1) and **the geographic view's drawing** (F2).
 
 ## Defects fixed in this pass

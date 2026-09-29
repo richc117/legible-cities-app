@@ -12,6 +12,12 @@
 //   slider and spinbutton in the accessibility tree has a name, read from
 //   Playwright's own snapshot of the tree (`ariaSnapshot()`), which pierces
 //   the kit's shadow roots as a screen reader does.
+// - Names said once. No node of that same snapshot has the name of a node
+//   it is inside, which a screen reader would say twice on the way in
+//   (issue 208). A section named by its own heading is the correct pattern
+//   and is not a finding, nor is a heading, a button or a table's cell
+//   around what it takes its name from; the rule, its exemptions and the
+//   pairs that were decided are `tests/support/a11y-names.ts`.
 // - Keyboard and focus. A Tab walk from the top of the screen, or from the
 //   top of an open dialog, reaches every enabled control, and each shows a
 //   focus indicator: an outline or a shadow it did not have at rest, on the
@@ -37,6 +43,7 @@ import {
   type Page,
 } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
+import { describePair, describeReading, duplicatedNames } from './a11y-names'
 
 export const repoRoot = resolve(__dirname, '../..')
 export const fixture = resolve(__dirname, '../fixtures/capture-page.html')
@@ -406,6 +413,39 @@ export async function expectNamed(scope: Locator, where: string): Promise<void> 
 }
 
 /**
+ * Nothing in the accessibility tree under `scope` has the name of something
+ * it is inside (issue 208). The rule is `duplicatedNames`, which is pure and
+ * has its own unit tests; this hands it the snapshot.
+ *
+ * Every role is read and not only `CONTROL_ROLES`: the defect this was
+ * written for was a `group` inside a `region`, and neither is a control.
+ *
+ * **A soft expectation**, the one check of the sweep that is. A repeated
+ * name stops nothing that follows it, so the test carries on and fails at
+ * its end with every screen's pairs in the one run, where a thrown failure
+ * would show the first screen's and hide the rest until that was settled.
+ * The message lists every pair as the ancestor's role and name and then the
+ * node's, with where it is and the `KNOWN_PAIRS` entry that would exempt
+ * it; a line the rule could not read fails here too, since a tree it has
+ * stopped seeing is one it cannot pass.
+ */
+export async function expectNoDuplicatedNames(scope: Locator, where: string): Promise<void> {
+  const reading = duplicatedNames(await scope.ariaSnapshot())
+  // The message is the step's title in a report as well, on a run that
+  // passes too, so it says what was checked when there is nothing to list.
+  const found = describeReading(reading)
+  expect
+    .soft(
+      [
+        ...reading.pairs.map(describePair),
+        ...reading.unread.map(({ line, text }) => `unread, line ${line}: ${text}`),
+      ],
+      `${where}: ${found === '' ? 'no name is repeated inside the element it names' : found}`,
+    )
+    .toEqual([])
+}
+
+/**
  * The names of the elements the one button named `name` controls, from
  * Chromium's accessibility tree through the DevTools protocol; none is an
  * empty list. The relation is read there because neither Playwright's
@@ -557,7 +597,8 @@ async function inTheme(page: Page, theme: (typeof THEMES)[number]): Promise<void
 }
 
 /**
- * Names, the Tab walk and motion, in both of the interface's themes (A5.6-09):
+ * Names, each said once, the Tab walk and motion, in both of the interface's
+ * themes (A5.6-09):
  * a focus ring or a control that only one theme draws is a defect the other
  * would hide. The session is left in the default theme, Night, as it began.
  */
@@ -568,6 +609,7 @@ export async function sweep(page: Page, where: string, scope?: Locator): Promise
       await inTheme(page, theme)
       const here = `${where} (${theme.name})`
       await expectNamed(scope ?? page.locator('body'), here)
+      await expectNoDuplicatedNames(scope ?? page.locator('body'), here)
       await expectTabWalk(page, here)
       await expectStill(page, here)
     }
