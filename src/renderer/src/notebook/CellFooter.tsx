@@ -145,9 +145,11 @@ export default function CellFooter({
  * a bug report is made of. A version that makes the notebook reflow after
  * every first layout is worth less than the same version one screen away.
  *
- * A project with no layout has no provenance at all: the cell's own field
- * says "not laid out yet", and a strip of empty terms under it would say
- * less than nothing.
+ * A project with no layout has no provenance at all: the cell says so in
+ * one sentence of its own, "This project is not laid out yet.", and a strip
+ * of empty terms under it would say less than nothing. The sentence is
+ * drawn only where the strip is not (issue 209): what the strip states as
+ * a term and its value is not stated as one again above it.
  */
 export function processFacts(
   project: Pick<ProjectRecord, 'layout' | 'made' | 'built'>,

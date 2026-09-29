@@ -25,6 +25,7 @@ import {
   type Locator,
   type Page,
 } from '@playwright/test'
+import { cellLabel } from '../support/project'
 
 const repoRoot = resolve(__dirname, '../..')
 
@@ -241,8 +242,19 @@ test('creates, opens, renames and deletes a project, and serves its output', asy
     await expect(heading).toHaveText('Los Angeles')
     await expect(definition(window, 'Feed')).toHaveText('la-metro-rail')
     await expect(definition(window, 'Mode')).toHaveText('all')
-    await expect(definition(window, 'Service day')).toHaveText('not yet chosen')
-    await expect(definition(window, 'Layout')).toHaveText('not laid out yet')
+    // Cells 02 and 03 say what they hold in a sentence each until there is
+    // a layout. Neither has a field list (issue 209: a fact the footer
+    // strip states is not stated again above it), and neither has a strip
+    // before a layout run has given it something to be the provenance of,
+    // so there is no list in either.
+    const cell02 = window.getByRole('group', { name: cellLabel('process'), exact: true })
+    await expect(
+      cell02.getByText('This project is not laid out yet.', { exact: true }),
+    ).toBeVisible()
+    const cell03 = window.getByRole('group', { name: cellLabel('frame'), exact: true })
+    await expect(cell03.getByText(/^The service day is the engine’s own choice/)).toBeVisible()
+    await expect(cell02.locator('dl')).toHaveCount(0)
+    await expect(cell03.locator('dl')).toHaveCount(0)
 
     // Rename: the heading follows, and so does the Library's entry.
     await window.getByRole('button', { name: 'Rename', exact: true }).click()

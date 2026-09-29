@@ -9,12 +9,17 @@ import { useProject } from '../context'
 
 // Cell 03, Frame and service day: the day the map is drawn for (ADR-045).
 //
-// The day itself comes from the `<dl class="fields">` the project screen
-// carried whole, and the control is `ServiceDay` (A3-04, A5.5-15) - drawn
-// headless, since this cell's heading is the section's heading now, and
-// that heading is where its focus handback lands. The heading and not the
-// toggle inside it: a reflexive Enter after "Draw for this day" would
-// otherwise collapse the cell a person is working in.
+// The day itself is the footer strip's to say (`frameFooter`, A5.5-11), and
+// nothing above the strip states it as a field again (issue 209, DESIGN.md
+// 8.2): the field list the project screen carried whole is gone from this
+// cell. The strip draws nothing until a layout run has answered a window:
+// before a layout the sentence below says the day is the engine's to
+// choose, and over a layout from before the window was kept `ServiceDay`
+// says the day the map was drawn for. The control is `ServiceDay` (A3-04,
+// A5.5-15) - drawn headless, since this cell's heading is the section's
+// heading now, and that heading is where its focus handback lands. The
+// heading and not the toggle inside it: a reflexive Enter after "Draw for
+// this day" would otherwise collapse the cell a person is working in.
 //
 // The cell is named for the frame as well, and holds none of it. Crop,
 // rotate, margin and a clip mask are engine work that the protocol cannot
@@ -81,6 +86,10 @@ export function frameSummary(
 export default function FrameCell({ cell, state, open, onToggle }: CellViewProps): JSX.Element {
   const { project, engine, run, setDate, exporting, layingOut, preview, drawn } = useProject()
   const heading = useRef<HTMLHeadingElement>(null)
+  // Whether there is a strip under this cell, asked of the builder that
+  // draws it and not restated here: the two would otherwise have to be kept
+  // in step, and the day below is said exactly where the strip is not.
+  const hasStrip = frameFooter(project) !== undefined
   return (
     <Cell
       number={cell.number}
@@ -94,18 +103,45 @@ export default function FrameCell({ cell, state, open, onToggle }: CellViewProps
     >
       {project !== null && (
         <>
-          <dl className="fields">
-            <dt>Service day</dt>
-            <dd>{project.date ?? 'not yet chosen'}</dd>
-          </dl>
           {project.readOnly ? (
-            // A cell with nothing to offer says so in one sentence and
-            // offers no disabled stand-in, as cells 04 and 05 do
-            // (DESIGN.md 8.2).
-            <p className="prose">
-              This project was made by a newer version of the app, so its service day cannot be
-              changed here.
-            </p>
+            <>
+              {/* The day of a read-only project whose record holds a day
+                  and no strip to say it (issue 209). The strip needs the
+                  window as well as the day (`frameFacts`), `ServiceDay` is
+                  not drawn in this branch, and the field that said the day
+                  regardless is gone, so without this the open cell would
+                  state the day nowhere and only the collapsed row would.
+                  Where the strip draws nothing the cell says what there is
+                  to say in a sentence (DESIGN.md 8.2), and this is that
+                  sentence; with a strip it is not drawn, since the strip's
+                  first row says the same.
+
+                  No record this version writes can reach it. A day reaches
+                  a record with its window, in the one write
+                  `completeLayout` makes, and every later write of a day is
+                  refused where there is no window (`serviceDayRefusal`).
+                  So the only records with a day and no window are from
+                  before the window was kept (A3-04), and those are this
+                  version's own, which it may write: over their layout
+                  `ServiceDay` says "Drawn for <day>.". But this branch is
+                  for a record a later version wrote, and a window kept in
+                  a shape `readServiceWindow` refuses whole is a plausible
+                  thing for a later version to have done - which is the
+                  record that lands here.
+
+                  The record's day and not `drawnDate`, as the strip's row
+                  is: what the project is set to. */}
+              {!hasStrip && project.date !== null && (
+                <p className="prose">The service day is {project.date}.</p>
+              )}
+              {/* A cell with nothing to offer says so in one sentence and
+                  offers no disabled stand-in, as cells 04 and 05 do
+                  (DESIGN.md 8.2). */}
+              <p className="prose">
+                This project was made by a newer version of the app, so its service day cannot be
+                changed here.
+              </p>
+            </>
           ) : project.layout === null ? (
             <p className="prose">
               The service day is the engine&rsquo;s own choice, made at the first layout from the

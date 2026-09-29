@@ -305,7 +305,9 @@ could not be removed is reported by role, project or output, never by
 path.
 
 **Until the first layout**, `date` and `layout` are `null`, and the
-interface says "not yet chosen" and "not laid out yet". The service day is
+interface says "not yet chosen" and "not laid out yet": the front door's
+row says both, and cell 02 says "This project is not laid out yet." at
+the top of the cell, which has no footer yet. The service day is
 resolved once, at the project's first layout, and stored then; it is never
 re-resolved silently (ADR-031, which amends ADR-023 on the moment). Today
 it is the machine's date; once the engine can report a feed's window it
@@ -677,8 +679,8 @@ one changes what the other draws from. The record therefore keeps the
 engine's `made` beside the id, the time the set was written, which an
 unforced answer repeats and a forced one rewrites. A run that answers the
 project's own id with a later `made` was drawn from a layout laid out
-again from another project, and the screen says so; the project's fields
-show the time beside the id (A3-06).
+again from another project, and the screen says so; cell 02's footer
+shows the time beside the id (A3-06).
 
 ### The service day
 

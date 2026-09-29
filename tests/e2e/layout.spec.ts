@@ -911,7 +911,14 @@ test('a project is told when another re-laid out the layout it draws from', asyn
     const before = records()
     expect(before.One.layout).toBe(before.Two.layout)
     expect(before.One.made, 'the same set, made once').toBe(before.Two.made)
-    const shown = page.getByRole('definition').filter({ hasText: /made/ })
+    // When the set was made is the strip's to say, under cell 02, and is
+    // said nowhere above it (issue 209): the field list that read
+    // "<id>, made <moment>" is gone, so the moment is read from the strip's
+    // own `Made` row, scoped to the cell it belongs to.
+    const shown = page
+      .getByRole('group', { name: cellLabel('process'), exact: true })
+      .locator('dl.cell-provenance dt', { hasText: /^Made$/ })
+      .locator('xpath=following-sibling::dd[1]')
     await expect(shown).toBeVisible()
     await expect(shown.locator('time'), 'the exact time kept on the element').toHaveAttribute(
       'datetime',
@@ -1276,10 +1283,35 @@ test('the three cells with provenance carry it, the other three carry none, and 
     // provenance: no strip, rather than a strip of empty terms.
     await expect(group('process').locator('.cell-footer')).toHaveCount(0)
     await expect(group('frame').locator('.cell-footer')).toHaveCount(0)
+    // That is the one thing a strip cannot say, so cell 02 says it in a
+    // line of its own (issue 209), and neither cell draws a list to say it
+    // in: a sentence each, and no term anywhere in either.
+    const notLaidOut = group('process').getByText('This project is not laid out yet.', {
+      exact: true,
+    })
+    await expect(notLaidOut).toBeVisible()
+    await expect(
+      group('frame').getByText(/^The service day is the engine’s own choice/),
+    ).toBeVisible()
+    await expect(group('process').locator('dl')).toHaveCount(0)
+    await expect(group('frame').locator('dl')).toHaveCount(0)
 
     await page.getByRole('button', { name: /lay out/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     const record = readRecord(engineHome)
+
+    // A fact the strip states is not stated again above it (issue 209,
+    // DESIGN.md 8.2). Each of the two cells drew a field list over its
+    // strip - "Layout: <id>, made <moment>" and "Service day: <day>" - so
+    // after the run each holds exactly one list, which is the strip, and
+    // the layout's moment is on the screen of cell 02 exactly once. The
+    // line that said there was no layout went when there was one.
+    await expect(notLaidOut).toHaveCount(0)
+    for (const id of ['process', 'frame'] as const) {
+      await expect(group(id).locator('.cell-footer dl.cell-provenance'), id).toHaveCount(1)
+      await expect(group(id).locator('dl'), id).toHaveCount(1)
+    }
+    await expect(group('process').locator('time')).toHaveCount(1)
 
     // Cell 02: the layout's eight characters, when the engine made it, what
     // it was made with, and - said as this moment's, in the term itself -

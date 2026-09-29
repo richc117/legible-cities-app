@@ -292,11 +292,11 @@ information button beside one measure (a screen reader names it
 Press **Re-layout**, then **Cancel** in the dialog.
 
 **See.**
-- The Layout field reads "`<8 characters>`, made `<date and time>`"; the
-  run's line still says "Laid out." beside **Lay out again** (the sentence
-  a later visit reads there is step 17's).
-- The cell's footer lists **Layout**, **Made**, **Built with** and
-  **Engine now** (the engine's version, the same as the status line).
+- The run's line still says "Laid out." beside **Lay out again** (the
+  sentence a later visit reads there is step 17's).
+- The cell's footer lists **Layout** (`<8 characters>`), **Made** (`<date
+  and time>`), **Built with** and **Engine now** (the engine's version, the
+  same as the status line). Write the Layout and the Made down for step 17.
 - **Engine log**, with the count of its lines beside it, is closed until
   opened (a screen reader names what it opens "The engine's log for this
   run"); **Copy log** says "The log is on the clipboard, with the keys in
@@ -337,8 +337,8 @@ and then **Pause**, and choose another **Speed**.
   `<end>`; the busiest weekday, counted from `<anchor>`, is `<day>`." and
   the date control's calendar offers only days in that range.
 - Choosing a date **starts nothing**: no progress line, and the Jobs toggle
-  stays at "Jobs, none running". The day is kept at once: the Service day
-  field already shows it. The section's sentence now begins "`<new day>`
+  stays at "Jobs, none running". The day is kept at once: **Service day**
+  in the cell's footer already shows it. The section's sentence now begins "`<new day>`
   is chosen; the map still shows `<old day>`.", cell 03's own state stays
   **ready**, and cells **04 Style**, **05 Lines** and **06 Export** say
   **not drawn yet**. The sentence under the heading names them: "04 Style
@@ -347,7 +347,8 @@ and then **Pause**, and choose another **Speed**.
   `<busiest>`".
 - **Draw for this day** then runs the progress line and ends with "Drawn
   for `<day>` from the stored layout. The stations have not moved."; the
-  Layout does not change, and cells 04 to 06 go back to **ready**.
+  **Layout** and **Made** in cell 02's footer do not change, and cells 04
+  to 06 go back to **ready**.
 - A date outside the range is refused under the control as soon as it is
   typed: "The feed covers `<start>` to `<end>`.", nothing is stored, and
   pressing **Draw for this day** refuses it again and runs nothing.
@@ -610,7 +611,7 @@ Press **Rename** at the foot of the notebook, type `Los Angeles` and press
   and "finished up to 05 Lines"; **Your feeds** still lists Caltrain.
 - LA Metro Rail opens on "Drawn from layout `<8 characters>` for
   `<day>`." in cell 02, the **same day** you wrote down in step 7, the same
-  Layout, and the map at the top.
+  **Layout** and **Made** in the cell's footer, and the map at the top.
 - **Nothing runs:** no progress line appears, the Jobs toggle stays at
   "Jobs, none running", the sentence under the heading is "The map is drawn
   from every cell.", and the diagnostics are absent (they are shown only
