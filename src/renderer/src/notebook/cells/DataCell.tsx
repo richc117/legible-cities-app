@@ -1,4 +1,4 @@
-import { useEffect, useState, type JSX } from 'react'
+import { useEffect, useRef, useState, type JSX } from 'react'
 import type { Inspection } from '../../../../shared/protocol'
 import type { ProjectRecord } from '../../../../shared/project'
 import Inspect from '../../Inspect'
@@ -18,6 +18,14 @@ import { useProject } from '../context'
 //
 // Nothing here is re-authored: `Inspect` and `StageView` are the panels
 // that were on the screen before, with the props they had.
+//
+// Of the cell's four children only `Inspect` is told that a run or an
+// export is going, and it disables the mode, the operator and the two
+// buttons beside them, so it is given the cell's heading to hand focus to
+// (issue 221), as cells 03 to 06 give theirs. The stored fields are text.
+// `DownloadLine` comes and goes with the run and holds no control.
+// `StageView` takes no `disabled`: its two stage buttons and its pane stay
+// live through a run, and it never leaves the cell once a layout exists.
 //
 // The one thing this file writes is the sentence the row carries while the
 // cell is collapsed. It is here and not in a table beside the six cells
@@ -115,6 +123,7 @@ export default function DataCell({ cell, state, open, onToggle }: CellViewProps)
   const { project, engine, inspect, setInputs, registry, readStage, layingOut, exporting, run } =
     useProject()
   const inspection = useInspection(project?.feed ?? null, engine?.state === 'ready', inspect)
+  const heading = useRef<HTMLHeadingElement>(null)
   return (
     <Cell
       number={cell.number}
@@ -123,6 +132,7 @@ export default function DataCell({ cell, state, open, onToggle }: CellViewProps)
       summary={project === null ? null : dataSummary(project, inspection)}
       open={open}
       onToggle={onToggle}
+      headingRef={heading}
     >
       {project !== null && (
         <>
@@ -145,6 +155,7 @@ export default function DataCell({ cell, state, open, onToggle }: CellViewProps)
               onInputs={setInputs}
               registry={registry}
               disabled={layingOut || exporting}
+              handback={heading}
             />
           )}
           {project.layout !== null && (

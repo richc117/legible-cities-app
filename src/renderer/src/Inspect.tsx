@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type JSX } from 'react'
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type JSX,
+  type RefObject,
+} from 'react'
 import type { EngineState } from '../../shared/engine'
 import { withoutPaths } from '../../shared/engine'
 import type { Inspection, Route, RouteType } from '../../shared/protocol'
@@ -57,6 +65,38 @@ export function routesOf(routes: Route[], agency: string | null): Route[] {
   return agency === null ? routes : routes.filter((r) => r.agency_id === agency)
 }
 
+/** What the handback reads of a control: whether it holds the element that has focus. */
+export interface Holds<E> {
+  contains(element: E): boolean
+}
+
+/**
+ * Whether focus is handed to the cell's heading (issue 221): `was` and
+ * `disabled` are the panel's `disabled` as it was last drawn and as it is
+ * now, `active` what holds focus, and `going` the controls `disabled` takes.
+ *
+ * Only when `disabled` has just turned true. A sample city opens with its
+ * layout already starting (issue 178), so the panel can be drawn disabled
+ * from the first, and being drawn is not a change: nothing takes focus
+ * because a screen opened. A run ending is not one either.
+ *
+ * And only when what holds focus is one of the controls that go, which is
+ * narrower than "inside the panel". The table's sortable headers and the
+ * typed mode's field stay live through a run, so focus on one of them is
+ * as much a person's own as focus in another cell, and is left where it is.
+ * A control that is not drawn - none yet, or the typed mode's button while
+ * nothing is being typed - is null here and holds nothing.
+ */
+export function handsBack<E>(
+  was: boolean,
+  disabled: boolean,
+  active: E | null,
+  going: readonly (Holds<E> | null)[],
+): boolean {
+  if (was || !disabled || active === null) return false
+  return going.some((control) => control !== null && control.contains(active))
+}
+
 interface Props {
   project: ProjectRecord
   engine: EngineState | null
@@ -65,7 +105,21 @@ interface Props {
   onInputs: (inputs: ProjectInputs) => Promise<void>
   /** The feed's registry entry's mode and agency, when the Library listed it. */
   registry?: { mode: string; agency: string | null } | null
+  /**
+   * True while a layout run or an export is going: the choice is what the
+   * run was started with, so the mode, the operator and the two buttons
+   * beside them wait for it to end.
+   */
   disabled?: boolean
+  /**
+   * Where focus goes when one of those controls held it: the heading of the
+   * cell the panel is drawn in (issue 221), since Chromium blurs a disabled
+   * element and focus would fall to the body. Required, as it is on the
+   * theme switch, the service day and the export: this panel's own heading
+   * takes no focus, so a call site that left it out would drop the focus
+   * this exists to keep, and the type refuses the omission.
+   */
+  handback: RefObject<HTMLElement | null>
 }
 
 type State =
@@ -80,6 +134,7 @@ export default function Inspect({
   onInputs,
   registry = null,
   disabled = false,
+  handback,
 }: Props): JSX.Element {
   const ready = engine?.state === 'ready'
   const [state, setState] = useState<State>({ status: 'waiting' })
@@ -96,6 +151,35 @@ export default function Inspect({
   const [agency, setAgency] = useState<string | null>(project.agency)
   const [message, setMessage] = useState<string | null>(null)
   const modeRef = useRef<HTMLElement>(null)
+  const typedRef = useRef<HTMLElement>(null)
+  const operatorRef = useRef<HTMLElement>(null)
+  const entryRef = useRef<HTMLElement>(null)
+
+  // A run can start with nobody pressing anything here: a colour or an order
+  // change is debounced, so its rebuild begins from a timer, and the control
+  // a person is on in this cell is disabled under them. Chromium blurs a
+  // disabled element, so focus is handed to the cell's heading first
+  // (`handsBack` says when).
+  //
+  // A layout effect, where the theme switch's is a passive one. The kit's
+  // buttons are disabled by their wrapper's own passive effect, which runs
+  // straight before a parent's, so nothing comes between the two. The kit's
+  // dropdown takes `disabled` as an attribute, which React writes in the
+  // commit itself: the browser may update the rendering, and move focus to
+  // the body, before any passive effect has run, and this would then find
+  // nothing of its own holding focus. A layout effect runs in that same
+  // commit, while the select just disabled is still what holds it.
+  const was = useRef(disabled)
+  useLayoutEffect(() => {
+    const hand = handsBack<Node>(was.current, disabled, document.activeElement, [
+      modeRef.current,
+      typedRef.current,
+      operatorRef.current,
+      entryRef.current,
+    ])
+    was.current = disabled
+    if (hand) handback.current?.focus()
+  }, [disabled, handback])
 
   useEffect(() => {
     if (!ready) {
@@ -213,12 +297,13 @@ export default function Inspect({
           the cell has to be told where the stored fields end and the feed's
           own contents begin. The heading is a level below the cell's, as
           cell 05's two sections are (A5.5-18), and is what names this
-          region (issue 197). It takes no focus, and nothing hands it any:
-          cell 01 has no handback of any kind - `DataCell` gives `Cell` no
-          `headingRef`, as cells 03 to 06 do, and this panel does not use
-          `focusHandback`, as cell 02's run does - although its controls are
-          disabled under a person while a run or an export goes. That is a
-          gap rather than a decision, and not this heading's to close. */}
+          region (issue 197). It takes no focus, and nothing hands it any.
+          When a run or an export disables the control a person is on here,
+          focus goes to the cell's own heading, which `DataCell` makes and
+          gives to `Cell` as `headingRef` and to this panel as `handback`,
+          as cells 03 to 06 do (issue 221): that heading is the one the rail
+          moves focus to, and a person sent there knows which cell they are
+          in, where this one would say only which part of it. */}
       <h3 id="inspect-heading">In the feed</h3>
       {state.status === 'waiting' && (
         <p className="hint" role="status">
@@ -309,7 +394,7 @@ export default function Inspect({
                     spellCheck={false}
                   />
                   <div className="actions">
-                    <Button variant="primary" type="submit" disabled={disabled}>
+                    <Button ref={typedRef} variant="primary" type="submit" disabled={disabled}>
                       Use this mode
                     </Button>
                   </div>
@@ -322,6 +407,7 @@ export default function Inspect({
                   Operator
                 </span>
                 <Select
+                  ref={operatorRef}
                   label="Operator"
                   value={agency ?? ''}
                   onChange={chooseAgency}
@@ -340,7 +426,7 @@ export default function Inspect({
               <p className="hint" role="status">
                 The feed's own entry draws {registry.mode}
                 {registry.agency === null ? ' for every operator' : ` for ${registry.agency}`}.{' '}
-                <Button onClick={useEntry} disabled={disabled}>
+                <Button ref={entryRef} onClick={useEntry} disabled={disabled}>
                   Use the feed's entry
                 </Button>
               </p>
