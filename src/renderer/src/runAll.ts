@@ -53,7 +53,13 @@ export function runAllPlan(record: ProjectRecord, run: RunFacts | null): RunAllP
   if (record.layout === null) return { kind: 'layout' }
   const failed = run !== null && run.state === 'failed' ? cellOfRun(run) : null
   const sources = stalenessOf(record, run)
-  if (failed === 'process' || sources.some((s) => s.cell === 'data' || s.cell === 'process'))
+  // A run that failed at its feed's download (cell 01, issue 178) laid
+  // nothing out, so Run all lays out, as it does after a layout that failed.
+  if (
+    failed === 'data' ||
+    failed === 'process' ||
+    sources.some((s) => s.cell === 'data' || s.cell === 'process')
+  )
     return { kind: 'layout' }
   // A failed rebuild, recolour or reorder may have left the page half
   // written ("the map on screen may be the old one until the next build"),

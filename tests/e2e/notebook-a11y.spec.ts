@@ -325,6 +325,27 @@ test('the notebook, Inspect, the geographic view, the inspector and its dialogs'
   })
 })
 
+test("a sample's download, drawn in cell 01 while its layout waits", async () => {
+  // Issue 178: a sample whose feed is not on disk downloads it inside its
+  // layout, and cell 01 draws the bytes. Ten reports two seconds apart hold
+  // the download on screen through a sweep in both themes.
+  test.setTimeout(180_000)
+  const p = profile({ presets_cached: [], preset_download_delay_ms: 2000 })
+  await withApp(p, async (page) => {
+    await page
+      .getByRole('list', { name: 'Presets' })
+      .getByRole('listitem', { name: 'LA Metro Rail', exact: true })
+      .getByRole('button')
+      .click()
+    const download = page
+      .locator('section.cell[data-cell="01"]')
+      .getByRole('region', { name: 'Download' })
+    await expect(download.getByRole('status')).toHaveText(/^downloaded /, { timeout: 20_000 })
+    await sweep(page, 'a sample, its download in cell 01')
+    await expect(download, 'still downloading when the sweep ended').toBeVisible()
+  })
+})
+
 test("cell 03's transport, on a page that answers what day it has", async () => {
   // The stand-in engine's own page answers nothing, so the transport never
   // draws over it and the notebook's sweep above cannot see it. Here the

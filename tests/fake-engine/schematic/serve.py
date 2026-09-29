@@ -31,7 +31,15 @@ writes before the app starts (every key optional):
                       storyboard visits the geographic view is refused, as the engine does
     encode_delay_ms   wait between export.encode's five progress notifications (default 30)
     encode_fails      true: export.encode fails after its progress, leaving no file
-    presets_cached    keys of the two stand-in presets whose zip is "on disk" (default both)
+    presets_cached    keys of the two stand-in presets whose zip is "on disk" (default both);
+                      one that is not is "downloaded" by the first graph.build that needs it,
+                      in ten reported steps of stage download before gtfs2graph, as engine
+                      v0.10.0 does (E36): a cancel between them answers -32800 and keeps
+                      nothing, and a feeds.inspect that reaches the preset first records its
+                      key in fake-engine.inspect-downloaded
+    preset_download_delay_ms  wait between those ten reports (default 20)
+    preset_download_refuses   a sentence: that download refuses with it after its first
+                      report, kind feed, as the engine does for a page that is not a zip
     add_delay_ms      wait between the download's ten progress reports for a URL (default 20)
     add_refuses       a sentence: feeds.add from a URL refuses with it, kind feed
     remove_delay_ms   wait before feeds.remove answers, on a thread of its own (default 0), so
@@ -233,6 +241,9 @@ class Engine:
         # rewrites it (A3-06).
         self.layouts: dict = {}
         self.layout_stages: dict = {}
+        # The presets not on disk at the start that a graph.build has since
+        # downloaded whole (E36).
+        self.downloaded: set = set()
         self.builds = 0
         self.child = None
         # The octi stage's children while they run, ended on shutdown or at
@@ -319,6 +330,13 @@ class Engine:
             elif self.control.get("inspect_refuses"):
                 error(msg_id, -32000, self.control["inspect_refuses"], "feed")
             else:
+                if not self.preset_on_disk(key):
+                    # An inspection that reached the preset before the layout
+                    # had downloaded it: the race the app holds its
+                    # inspection back from (issue 178).
+                    with open(HOME / "fake-engine.inspect-downloaded", "a") as out:
+                        out.write(f"{key}\n")
+                    self.downloaded.add(key)
                 anchor = params.get("anchor") or "2026-06-15"
                 write({"jsonrpc": "2.0", "id": msg_id,
                        "result": self.inspection(key, anchor)})
@@ -451,6 +469,8 @@ class Engine:
             write({"jsonrpc": "2.0", "method": "job/log",
                    "params": {"id": msg_id, "level": "info",
                               "line": line.replace("{home}", str(Path.home()))}})
+        if not self.preset_download(msg_id, params.get("key", "x")):
+            return
         for i, stage in enumerate(("gtfs2graph", "topo", "loom", "octi"), start=1):
             if stage == "octi" and self.control.get("octi_child"):
                 if self.octi(msg_id):
@@ -715,8 +735,40 @@ class Engine:
             staging.write_text(json.dumps(list(records.values()), indent=2))
             staging.replace(folder / "user-feeds.json")
 
+    def preset_on_disk(self, key) -> bool:
+        return (key not in FEEDS or key in self.control.get("presets_cached", list(FEEDS))
+                or key in self.downloaded)
+
+    def preset_download(self, msg_id, key) -> bool:
+        """A preset not on disk, downloaded inside the request that needs it,
+        as engine v0.10.0 does: ten reports of stage download, a cancel
+        between them answered with -32800 and nothing kept, a refusal after
+        the first. True when the request may go on."""
+        if self.preset_on_disk(key):
+            return True
+        delay = self.control.get("preset_download_delay_ms", 20) / 1000
+        total = 20480
+        for i in range(1, 11):
+            time.sleep(delay)
+            if msg_id in self.cancelled:
+                write({"jsonrpc": "2.0", "id": msg_id,
+                       "error": {"code": -32800, "message": "Request Cancelled"}})
+                return False
+            write({"jsonrpc": "2.0", "method": "job/progress",
+                   "params": {"id": msg_id, "stage": "download", "fraction": i / 10,
+                              "message": f"downloaded {i * 2048:,} of {total:,} bytes"}})
+            refused = self.control.get("preset_download_refuses")
+            if refused:
+                write({"jsonrpc": "2.0", "id": msg_id,
+                       "error": {"code": -32000, "message": refused,
+                                 "data": {"kind": "feed", "hint": refused,
+                                          "detail": f"FeedError: {refused} (feeds.py:600)"}}})
+                return False
+        self.downloaded.add(key)
+        return True
+
     def feed_records(self) -> list:
-        cached = set(self.control.get("presets_cached", list(FEEDS)))
+        cached = {k for k in FEEDS if self.preset_on_disk(k)}
         out = [dict(f, cached=k in cached) for k, f in FEEDS.items()]
         out += [dict(f, cached=(HOME / "data" / "feeds" / f"{f['key']}.zip").exists())
                 for f in self.user_feeds().values()]

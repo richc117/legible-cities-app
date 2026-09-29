@@ -6,7 +6,8 @@ import { validateName, type Theme } from '../../../shared/project'
 import type { Inspection, RenderStageResult, StageName } from '../../../shared/protocol'
 import type { ExportRun, ExportSnapshot } from '../engine/exportRun'
 import { feedRecordFor, inspectionFor } from '../engine/inspections'
-import type { LayoutRun, RunSnapshot } from '../engine/layoutRun'
+import { afterRunDownload } from '../engine/downloadGate'
+import { downloading, type LayoutRun, type RunSnapshot } from '../engine/layoutRun'
 import {
   engineClient,
   exportRunFor,
@@ -126,6 +127,13 @@ export interface ProjectState {
     setProblem: (problem: string | null) => void
   }
 }
+
+/**
+ * What the front door says when a sample was cancelled while its feed
+ * downloaded, and so was not kept (issue 178).
+ */
+export const sampleNotKept = (name: string): string =>
+  `Opening ${name} was cancelled while its feed downloaded, so the project was not kept.`
 
 export function useProjectState(
   id: string,
@@ -266,6 +274,39 @@ export function useProjectState(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project, engine?.state])
 
+  // A sample opened from its card and cancelled while its feed downloaded
+  // leaves nothing behind: not the zip (the engine keeps none, v0.10.0), and
+  // not the project, which names a feed that never arrived (issue 178). A
+  // cancel once the download is done leaves the project with its feed, and
+  // cell 02 ready to run, as a cancelled layout always has.
+  const unkept = useRef(false)
+  useEffect(() => {
+    if (!layOut) return
+    return run.subscribe((snapshot) => {
+      const record = state.status === 'ready' ? state.project : null
+      if (
+        unkept.current ||
+        record === null ||
+        record.layout !== null ||
+        snapshot.state !== 'cancelled' ||
+        !downloading(snapshot)
+      )
+        return
+      unkept.current = true
+      void window.api.projects.delete(id).then(
+        () => {
+          forgetProjectJobs(id)
+          if (mounted.current) onBack(sampleNotKept(record.name))
+        },
+        () => {
+          // Not deleted: the project stays, naming a feed not on disk, which
+          // its screen already says (A5.6-03's closed-mid-download case).
+          unkept.current = false
+        },
+      )
+    })
+  }, [layOut, run, id, state, onBack])
+
   const openRename = (): void => {
     if (!project) return
     setNewName(project.name)
@@ -356,7 +397,26 @@ export function useProjectState(
     const pad = (n: number): string => String(n).padStart(2, '0')
     return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
   }
-  const inspect = useCallback((key: string) => inspectionFor(engineClient(), key, today()), [])
+  // A sample's feed not yet on disk downloads inside its layout run, and
+  // cell 01's inspection waits for that download rather than racing it: the
+  // bytes are then the run's to report, and a cancel of the run stops the
+  // only download there is (issue 178, `downloadGate.ts`). Any other
+  // project, and a sample once its run is past the download, inspects at
+  // once.
+  const inspect = useCallback(
+    (key: string) => {
+      if (!layOut) return inspectionFor(engineClient(), key, today())
+      const cached = feedRecordFor(engineClient(), key).then(
+        (record) => record?.cached === true,
+        () => false,
+      )
+      return afterRunDownload(run, () => layOutAsked.current, cached).then(() =>
+        inspectionFor(engineClient(), key, today()),
+      )
+    },
+    // `layOutAsked` is a ref declared above and read when asked.
+    [layOut, run],
+  )
   const readStage = useCallback(
     (key: string, layout: string, made: string | null, stage: StageName, width: number) =>
       stageFor(engineClient(), key, layout, made, stage, width),

@@ -3,6 +3,7 @@ import type { Inspection } from '../../../../shared/protocol'
 import type { ProjectRecord } from '../../../../shared/project'
 import Inspect from '../../Inspect'
 import StageView from '../../StageView'
+import DownloadLine from '../../DownloadLine'
 import Cell from '../Cell'
 import type { CellViewProps } from '../cells'
 import { useProject } from '../context'
@@ -111,7 +112,7 @@ function useInspection(
 }
 
 export default function DataCell({ cell, state, open, onToggle }: CellViewProps): JSX.Element {
-  const { project, engine, inspect, setInputs, registry, readStage, layingOut, exporting } =
+  const { project, engine, inspect, setInputs, registry, readStage, layingOut, exporting, run } =
     useProject()
   const inspection = useInspection(project?.feed ?? null, engine?.state === 'ready', inspect)
   return (
@@ -133,6 +134,9 @@ export default function DataCell({ cell, state, open, onToggle }: CellViewProps)
             <dt>Agency</dt>
             <dd>{project.agency ?? 'none'}</dd>
           </dl>
+          {/* The feed's download, when the layout run is fetching it
+              (issue 178): here, with the feed, not in cell 02. */}
+          <DownloadLine run={run} />
           {!project.readOnly && (
             <Inspect
               project={project}

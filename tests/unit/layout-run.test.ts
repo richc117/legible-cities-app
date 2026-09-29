@@ -13,6 +13,7 @@ import {
   sentenceFor,
   type RunClient,
 } from '../../src/renderer/src/engine/layoutRun'
+import { downloading } from '../../src/renderer/src/engine/layoutRun'
 import {
   doneSentence,
   drawnSentence,
@@ -27,7 +28,7 @@ import type { ProjectRecord } from '../../src/shared/project'
 interface Pending {
   method: string
   params: Record<string, unknown>
-  report(stage: string, message: string): void
+  report(stage: string, message: string, fraction?: number): void
   /** A `job/log` line for this request, as the typed client delivers one. */
   log(level: string, line: string): void
   resolve(value: unknown): void
@@ -43,7 +44,7 @@ function stubClient() {
   const calls: Pending[] = []
   const client: RunClient = {
     request(method, params: unknown) {
-      const listeners: ((p: { stage: string; message: string }) => void)[] = []
+      const listeners: ((p: { stage: string; message: string; fraction?: number }) => void)[] = []
       const logs: ((l: { level: string; line: string }) => void)[] = []
       let settle!: (v: unknown) => void
       let fail!: (e: unknown) => void
@@ -55,7 +56,8 @@ function stubClient() {
         method,
         params: params as Record<string, unknown>,
         cancelled: false,
-        report: (stage, message) => listeners.forEach((l) => l({ stage, message })),
+        report: (stage, message, fraction) =>
+          listeners.forEach((l) => l({ stage, message, fraction })),
         log: (level, line) => logs.forEach((l) => l({ level, line })),
         resolve: settle,
         reject: fail,
@@ -63,7 +65,9 @@ function stubClient() {
       calls.push(pending)
       return {
         result,
-        onProgress: (listener: (p: { stage: string; message: string }) => void) => {
+        onProgress: (
+          listener: (p: { stage: string; message: string; fraction?: number }) => void,
+        ) => {
           listeners.push(listener)
           return () => {}
         },
@@ -1319,7 +1323,74 @@ describe('the run as a job', () => {
         'reordered',
         'day',
         'report',
+        // Added by issue 178 on purpose, not by the jobs: where the feed's
+        // download inside the run has got (engine v0.10.0, E36).
+        'download',
       ].sort(),
     )
+  })
+})
+
+// Issue 178, on engine v0.10.0 (E36). A preset's zip is fetched inside the
+// layout the first time, and the engine reports it as stage "download": the
+// run keeps it apart from its own stages, so the line does not move and the
+// run is cell 01's while it lasts.
+describe("a feed's download inside the run", () => {
+  it('is kept apart from the stages, and the first stage of the layout ends it', async () => {
+    const { run, calls, begin } = setup()
+    begin()
+    calls[0].report('download', 'downloaded 65,536 of 1,732,403 bytes', 0.0378)
+    expect(run.snapshot.download).toEqual({
+      message: 'downloaded 65,536 of 1,732,403 bytes',
+      fraction: 0.0378,
+    })
+    expect(run.snapshot.stages.map((s) => s.state)[0]).toBe('running')
+    expect(run.snapshot.message, "the stages' sentence is not the download's").toBeNull()
+    expect(downloading(run.snapshot)).toBe(true)
+    calls[0].report('download', 'downloaded 1,732,403 of 1,732,403 bytes', 1)
+    expect(downloading(run.snapshot), 'at its end, though no stage has reported yet').toBe(false)
+    calls[0].report('gtfs2graph', '114 nodes')
+    expect(run.snapshot.download).toBeNull()
+    expect(run.snapshot.stages[0].state).toBe('done')
+  })
+
+  it('stays when the run is refused or cancelled at it, so cell 01 is where that lands', async () => {
+    const refused = setup()
+    refused.begin()
+    refused.calls[0].report('download', 'downloaded 65,536 bytes', 0)
+    refused.calls[0].reject({
+      code: -32000,
+      message: 'feed',
+      data: { kind: 'feed', hint: 'https://example.test/t.zip did not return a zip (21 bytes)' },
+    })
+    await tick()
+    expect(refused.run.snapshot.state).toBe('failed')
+    expect(refused.run.snapshot.error).toBe(
+      'https://example.test/t.zip did not return a zip (21 bytes)',
+    )
+    expect(downloading(refused.run.snapshot)).toBe(true)
+    expect(refused.complete, 'nothing was written').not.toHaveBeenCalled()
+
+    const cancelled = setup()
+    cancelled.begin()
+    cancelled.calls[0].report('download', 'downloaded 65,536 of 1,732,403 bytes', 0.0378)
+    cancelled.run.cancel()
+    expect(cancelled.calls[0].cancelled).toBe(true)
+    cancelled.calls[0].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
+    await tick()
+    expect(cancelled.run.snapshot.state).toBe('cancelled')
+    expect(downloading(cancelled.run.snapshot)).toBe(true)
+  })
+
+  it('is gone when the next run begins, and a feed on disk never sets it', async () => {
+    const { run, calls, begin } = setup()
+    begin()
+    calls[0].report('download', 'downloaded 65,536 bytes', 0)
+    calls[0].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
+    await tick()
+    begin()
+    expect(run.snapshot.download).toBeNull()
+    calls[calls.length - 1].report('gtfs2graph', '114 nodes')
+    expect(run.snapshot.download).toBeNull()
   })
 })

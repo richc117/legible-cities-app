@@ -41,6 +41,7 @@ has to be told, and nothing is registered:
 
 | Snapshot | Cell |
 | --- | --- |
+| `download` set and short of its last byte (issue 178) | 01 `data` |
 | `rebuilt` | 03 `frame` |
 | `recoloured` or `reordered` | 05 `lines` |
 | anything else, including a re-layout | 02 `process` |
@@ -52,6 +53,14 @@ wrong cell for minutes at a time.
 
 An idle run belongs to no cell. A finished run keeps the cell its flags
 name, which is how a failure lands where it happened.
+
+The first row is the one that is not a flag. Since engine v0.10.0 a
+layout whose feed is not on disk downloads it first and reports the bytes
+as stage `download` (E36); the run keeps that as `download`, apart from its
+stages, until the layout's own first stage reports. While it lasts the run
+is cell 01's, so a refusal or a cancel there is the feed's: cell 01 in
+error with the engine's sentence, cell 02 not begun. `downloading()` in
+`engine/layoutRun.ts` is the test, shared by the table and the views.
 
 ## What the page was drawn from
 

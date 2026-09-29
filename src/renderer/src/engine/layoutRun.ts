@@ -77,7 +77,35 @@ export interface RunSnapshot {
   day: string | null
   /** What the map call said about the map it drew; null until one has. */
   report: RunReport | null
+  /**
+   * The feed's download inside this run, while it is the run's business:
+   * a preset's zip fetched the first time the layout needs it, which engine
+   * v0.10.0 reports as stage `download` (E36, issue 178). Set by the first
+   * download report and left null by a run whose feed was on disk. It stays
+   * once the run ends where it was downloading, so a cancel or a refusal
+   * there is known to be cell 01's; the first stage the layout itself
+   * reports clears it.
+   */
+  download: RunDownload | null
 }
+
+/** Where a download inside a run has got, in the engine's words. */
+export interface RunDownload {
+  /** "downloaded 65,536 of 1,732,403 bytes", as the engine counts them. */
+  message: string
+  /** Of the download's own bytes; 0 while the server has not said how many. */
+  fraction: number
+}
+
+/**
+ * Whether a run is at its download: it reported one that has not reached
+ * its end, and no stage of its own since. A download whose size the server
+ * never said reports fraction 0 throughout, and counts as going on until
+ * the layout's first stage reports.
+ */
+export const downloading = (run: Pick<RunSnapshot, 'download'> | null): boolean =>
+  // Loosely: a snapshot made before the field existed has no download.
+  run?.download != null && run.download.fraction < 1
 
 /**
  * What `map.build` answered about the map it drew, for the panel that
@@ -163,7 +191,9 @@ export function reportOf(result: MapBuildResult, date: string): RunReport | null
 
 interface Handle<T> {
   result: Promise<T>
-  onProgress(listener: (p: { stage: string; message: string }) => void): () => void
+  onProgress(
+    listener: (p: { stage: string; message: string; fraction?: number }) => void,
+  ): () => void
   /** The engine's log lines for this request; the typed client has it, a test stub may not. */
   onLog?(listener: (l: { level: string; line: string }) => void): () => void
   cancel(): void
@@ -268,6 +298,7 @@ const IDLE: RunSnapshot = {
   reordered: false,
   day: null,
   report: null,
+  download: null,
 }
 
 /**
@@ -657,6 +688,7 @@ export class LayoutRun {
       // The panel describes the build being started, so the last one's
       // figures go now rather than when this one answers.
       report: null,
+      download: null,
       ...kind,
     })
     return true
@@ -756,7 +788,18 @@ export class LayoutRun {
     })
   }
 
-  #report(p: { stage: string; message: string }): void {
+  #report(p: { stage: string; message: string; fraction?: number }): void {
+    // A feed downloading inside the run (engine v0.10.0, E36): cell 01's,
+    // not a stage of the line, so it is kept apart from the stages.
+    if (p.stage === 'download') {
+      this.#set({ download: { message: p.message, fraction: p.fraction ?? 0 } })
+      return
+    }
+    if (this.#snapshot.download !== null) {
+      // The layout's own first stage: the download is behind it, whatever
+      // its last report said.
+      this.#set({ download: null })
+    }
     const stages = advance(this.#snapshot.stages, p.stage)
     if (stages === this.#snapshot.stages) return
     const sentence = readableMessage(p.stage, p.message)

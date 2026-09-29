@@ -8,7 +8,8 @@ import { inWords } from './stages'
 import type { EngineState } from '../../shared/engine'
 import { shortLayoutId } from '../../shared/layout'
 import { drawnDate, type ProjectRecord } from '../../shared/project'
-import type { LayoutRun as Run } from './engine/layoutRun'
+import { downloading, type LayoutRun as Run } from './engine/layoutRun'
+import { NOT_LAID_OUT, WAITING_FOR_FEED } from './DownloadLine'
 import { useSnapshot } from './useSnapshot'
 
 // The layout run on screen: the stages as the engine finishes them, the
@@ -49,7 +50,12 @@ export default function LayoutRun({
     recoloured,
     reordered,
     day,
+    download,
   } = useSnapshot(run)
+  // The run is at, or ended at, its feed's download, which cell 01 draws
+  // (issue 178): this cell's layout has not begun, so it says what it is
+  // waiting on, or that nothing was laid out, and leaves the why to cell 01.
+  const atDownload = downloading({ download })
   const [confirming, setConfirming] = useState(false)
   // The run's controls are replaced as it moves: "Lay out" gives way to
   // Cancel, and Cancel to "Lay out again" when the run ends. Focus on the
@@ -147,7 +153,9 @@ export default function LayoutRun({
         />
         <div className="layout-run-foot">
           <p className="progress-message" role="status" aria-live="polite">
-            {error ?? message ?? 'Starting the layout.'}
+            {state === 'failed' && atDownload
+              ? NOT_LAID_OUT
+              : (error ?? message ?? (atDownload ? WAITING_FOR_FEED : 'Starting the layout.'))}
           </p>
           {state === 'running' && (
             <Button ref={cancelRef} onClick={() => run.cancel()}>
