@@ -19,10 +19,10 @@
 //                             checkout's)
 //   LEGIBLE_ACCEPTANCE_PRIOR  JSON of what the workflow found before the spec
 //                             ran: the installer, its checksum, steps 1 and 2
-//   LEGIBLE_ACCEPTANCE_TAG    the release's tag, so a check of something that
-//                             landed after it (FEATURES) is written as not
-//                             checked rather than failed; without it such a
-//                             check runs only if the build has the feature
+//   LEGIBLE_ACCEPTANCE_TAG    the release's tag, so a release older than the
+//                             checklist (FEATURES.checklist) is refused
+//                             before step 3 rather than failed step by step;
+//                             without it nothing is refused
 //
 // Steps 1, 2 and 21 (download, install, uninstall) are the workflow's
 // (.github/workflows/acceptance.yml). What a machine cannot judge - a drag's
@@ -67,6 +67,7 @@ import {
   type Page,
 } from '@playwright/test'
 import type { ProjectRecord } from '../../src/shared/project'
+import { cell, cellHeading, closeCell, openCell, type CellId } from '../support/project'
 import { tagContains as gitTagContains, writtenSince } from './pure.mjs'
 import { RunRecord, STEP_TITLES, redact, type Result } from './record'
 
@@ -90,8 +91,15 @@ const PRODUCT = 'Legible Cities'
 const PLATFORM =
   process.platform === 'darwin' ? 'macos' : process.platform === 'win32' ? 'windows' : 'linux'
 
-/** The checklist's own choice of feed to add by address (step 5). */
+/** The checklist's own choice of feed to add by address (step 14). */
 const CALTRAIN_URL = 'https://data.trilliumtransit.com/gtfs/caltrain-ca-us/caltrain-ca-us.zip'
+
+/** The sample city step 4 opens, and the project it makes, by the name the card gives it. */
+const LA = 'LA Metro Rail'
+/** What step 17 renames it to. */
+const RENAMED = 'Los Angeles'
+/** The notebook's six cells, in the order they are read (ADR-045). */
+const CELL_IDS: readonly CellId[] = ['data', 'process', 'frame', 'style', 'lines', 'export']
 
 const SECOND = 1_000
 const MINUTE = 60 * SECOND
@@ -109,22 +117,7 @@ const QUIT_MS = 30 * SECOND
 const SHORT_MS = 30 * SECOND
 
 /**
- * The stations on cell 02's line, as a release before A5.5-10 drew them:
- * the engine's own eight, in the engine's own order.
- */
-const ENGINE_STAGES = [
-  'gtfs2graph',
-  'topo',
-  'loom',
-  'octi',
-  'schedule',
-  'render',
-  'animate',
-  'write',
-]
-
-/**
- * And as it draws them since: one word of the app's per engine stage, in
+ * The stations on cell 02's line: one word of the app's per engine stage, in
  * the engine's order still (`src/renderer/src/stages.ts`). The engine's own
  * names did not go anywhere - the jobs inspector's copied log and the
  * geographic view's two buttons are still in them, because those are what a
@@ -149,6 +142,10 @@ const LOG_FILES = ['main.log', 'main.old.log', 'engine.log', 'engine.old.log']
  * checked, with the reason, and never passed. Add a row here whenever a
  * step of the checklist starts to rely on something newer than a release
  * that may still be accepted.
+ *
+ * `checklist` is the whole checklist's own row: a tag that does not contain
+ * it predates the front door and the notebook the steps follow, and is
+ * refused before step 3 rather than failed eighteen times.
  */
 interface Feature {
   name: string
@@ -157,15 +154,10 @@ interface Feature {
 }
 
 const FEATURES = {
-  skipPastMap: {
-    name: 'Skip past the map',
-    commit: '55e3b4aa12737cf579ac74ed9f3930dd674e654d',
-    landed: 'pull request 122 (issue 106)',
-  },
-  stageWords: {
-    name: "The layout line's stations in the app's words",
-    commit: 'bee42842d56b0f34a668276c62b4e4c3db62dd82',
-    landed: 'pull request 202 (issue 162)',
+  checklist: {
+    name: 'the front door and the notebook',
+    commit: '8ac7b8ac7094f30a3a2280bd1443f4514fb60247',
+    landed: 'pull request 243 (A5.6-06)',
   },
 } satisfies Record<string, Feature>
 
@@ -432,7 +424,9 @@ const definition = (scope: Locator, term: string): Locator =>
 const text = async (locator: Locator): Promise<string> =>
   ((await locator.textContent({ timeout: SHORT_MS })) ?? '').replace(/\s+/g, ' ').trim()
 
-const projectFields = (page: Page): Locator => page.locator('main.project > dl.fields')
+/** A cell's own fields, the definition list at the top of its body, never its footer's strip. */
+const cellFields = (page: Page, id: CellId): Locator =>
+  page.locator(`section.cell[data-cell="0${CELL_IDS.indexOf(id) + 1}"] .cell-body > dl.fields`)
 
 async function projectsNow(
   page: Page,
@@ -656,6 +650,25 @@ test('a release, installed, through docs/acceptance.md', async () => {
   }
   writeMade()
 
+  // A release from before the front door and the notebook cannot pass a
+  // checklist that follows them, and every step would fail for that one
+  // reason. Said once, as the reason, rather than eighteen times over.
+  if (TAG !== '') {
+    const { name, commit, landed } = FEATURES.checklist
+    const contains = tagContains(FEATURES.checklist)
+    const refusal =
+      contains === false
+        ? `${TAG} was tagged before ${landed} (${commit.slice(0, 7)}), and this checklist follows ${name}: accept it with the checklist and spec at its own tag, by dispatching the workflow on the tag itself.`
+        : contains === null
+          ? `git could not tell whether ${TAG} contains ${commit.slice(0, 7)} (${landed}): the tag or the commit is not in this clone, or the clone is shallow.`
+          : null
+    if (refusal !== null) {
+      for (let n = 3; n <= 20; n += 1) record.step(n, 'fail', `Not attempted: ${refusal}`)
+      record.write()
+      throw new Error(refusal)
+    }
+  }
+
   const page = (): Page => {
     if (session.page === null || session.app === null) throw new Error('the app is not running')
     return session.page
@@ -808,6 +821,10 @@ test('a release, installed, through docs/acceptance.md', async () => {
 
       const heading = window.getByRole('heading', { level: 1 })
       await log.soft('the Library heading', () => expect(heading).toHaveText('Library'))
+      await log.soft('no Your projects and no Your feeds yet', async () => {
+        await expect(window.getByRole('heading', { name: 'Your projects' })).toHaveCount(0)
+        await expect(window.getByRole('heading', { name: 'Your feeds' })).toHaveCount(0)
+      })
       const empty = window.locator('.empty')
       await log.soft('the empty state', async () => {
         await expect(empty.getByRole('status')).toHaveText(
@@ -840,7 +857,12 @@ test('a release, installed, through docs/acceptance.md', async () => {
           const row = rows.nth(i)
           const words = oneLine(await row.innerText())
           const name = (await row.getAttribute('aria-label')) ?? ''
-          if (!words.includes('·') || !words.includes('not downloaded yet')) wrong.push(words)
+          if (
+            !words.includes('·') ||
+            !/\bkeeps /.test(words) ||
+            !words.includes('not downloaded yet')
+          )
+            wrong.push(words)
           // One card, one button, named by its name and its facts (A5.6-02).
           const buttons = row.getByRole('button')
           if (
@@ -941,78 +963,1170 @@ test('a release, installed, through docs/acceptance.md', async () => {
     await runStep(4, [3], async (log) => {
       const window = page()
       await toLibrary(window)
-      await window.locator('.empty').getByRole('button', { name: 'New project' }).click()
-      const dialog = window.getByRole('dialog', { name: 'New project' })
-      await expect(dialog).toBeVisible()
-      const feed = dialog.getByRole('combobox', { name: 'Feed' })
-      await log.soft('the Feed select opens on LA Metro Rail', async () => {
-        await expect(feed).toHaveValue('la-metro-rail', { timeout: SHORT_MS })
-        const shown = await feed.evaluate(
-          (select) => (select as HTMLSelectElement).selectedOptions[0]?.textContent?.trim() ?? '',
-        )
-        expect(shown).toBe('LA Metro Rail (Los Angeles · Metro Rail)')
-      })
-      // What the checklist promises of the sheet (A5.6-05): the safe action
-      // first, and the name already filled from the feed.
-      await log.soft('Cancel has focus, and the name is filled', async () => {
-        await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused()
-        await expect(dialog.getByLabel('Name', { exact: true })).toHaveValue('LA Metro Rail')
-      })
-      await dialog.getByLabel('Name', { exact: true }).fill('Los Angeles')
-      await dialog.getByRole('button', { name: 'Create', exact: true }).click()
-      await expect(dialog).toBeHidden()
-      const entry = window.getByRole('button', { name: 'Open Los Angeles' })
-      await expect(entry).toBeVisible()
-      await log.soft('the Library row', async () => {
-        await expect(entry).toContainText('Feed la-metro-rail')
-        await expect(entry).toContainText('Service day not yet chosen')
-        await expect(
-          window.getByRole('list', { name: 'Projects' }).getByRole('listitem'),
-        ).toHaveCount(1)
-      })
-      const mark = (await saidSoFar(window)).length
-      await entry.click()
-      await expect(window.getByRole('heading', { level: 1 })).toHaveText('Los Angeles')
-      const fields = projectFields(window)
-      await log.soft('the fields', async () => {
-        await expect(definition(fields, 'Feed')).toHaveText('la-metro-rail')
-        await expect(definition(fields, 'Mode')).toHaveText('all')
-        await expect(definition(fields, 'Agency')).toHaveText('none')
-        await expect(definition(fields, 'Service day')).toHaveText('not yet chosen')
-        await expect(definition(fields, 'Layout')).toHaveText('not laid out yet')
-      })
-      const inFeed = window.getByRole('region', { name: 'In the feed' })
-      const readStarted = Date.now()
-      await expect(inFeed.locator('dl.fields').or(inFeed.getByRole('alert')).first()).toBeVisible({
-        timeout: FEED_READ_MS,
-      })
-      if ((await inFeed.locator('dl.fields').count()) === 0) {
-        throw new Error(`the feed was not read: "${oneLine(await inFeed.innerText())}"`)
-      }
-      const reading = (await saidSoFar(window))
-        .slice(mark)
-        .includes('Reading the feed, and downloading it first if it is not on this machine yet…')
-      log.note(
-        reading
-          ? `"Reading the feed, and downloading it first…" was shown; it filled in after ${Math.round((Date.now() - readStarted) / SECOND)} s.`
-          : `The feed filled in after ${Math.round((Date.now() - readStarted) / SECOND)} s; "Reading the feed…" was not seen.`,
+      const card = window
+        .getByRole('list', { name: 'Presets' })
+        .getByRole('listitem', { name: LA, exact: true })
+        .getByRole('button')
+      await log.soft('the card', () =>
+        expect(card).toHaveAccessibleName(
+          /^LA Metro Rail, Los Angeles · Metro Rail, keeps .+, not downloaded yet$/,
+        ),
       )
-      if (!reading)
-        log.problems.push(
-          '"Reading the feed, and downloading it first if it is not on this machine yet…" was never shown',
+      const mark = (await saidSoFar(window)).length
+      const pressed = Date.now()
+      await card.click()
+      const heading = window.getByRole('heading', { level: 1 })
+      await expect(heading).toHaveText(LA, { timeout: SHORT_MS })
+      await log.soft('no dialog, and the notebook', async () => {
+        await expect(window.locator('dialog[open]')).toHaveCount(0)
+        await expect(window.getByRole('button', { name: 'Back to Library' })).toBeVisible()
+        for (const id of CELL_IDS) {
+          await expect(cellHeading(window, id)).toHaveAttribute(
+            'aria-expanded',
+            id === 'export' ? 'false' : 'true',
+          )
+        }
+        await expect(
+          window.getByRole('navigation', { name: 'Steps' }).getByRole('button'),
+        ).toHaveCount(6)
+        await expect(window.getByRole('region', { name: 'Outputs' })).toContainText(
+          'Nothing exported yet.',
         )
+      })
+      await log.soft('the note beside Run all', () =>
+        expect(
+          window.getByText('Run all stops at the map. It never exports.', { exact: true }),
+        ).toBeVisible(),
+      )
+      const region = window.getByRole('region', { name: 'Layout run' })
+      await log.soft('the layout starts by itself', async () => {
+        await expect(region).toBeVisible({ timeout: SHORT_MS })
+        await expect(window.getByRole('button', { name: 'Stop', exact: true })).toBeVisible()
+      })
+      await log.soft('the eight stages in order', async () => {
+        const labels = (await region.locator('svg text').allTextContents()).map((l) => l.trim())
+        expect(labels).toEqual(STAGE_WORDS)
+      })
+      if (!(await region.getByRole('button', { name: 'Cancel', exact: true }).isVisible())) {
+        log.notAutomated('Cancel beside the line while it ran, which was not caught.')
+      }
+      const end = await runToEnd(region, /Laid out/, LAYOUT_MS)
+      const seconds = Math.round((Date.now() - pressed) / SECOND)
+      log.title = `Open a sample city, and watch it download and lay out (${seconds} s)`
+      if (!end.ok)
+        throw new Error(`LA Metro Rail was not laid out: "${end.sentence}" "${end.message}"`)
+      log.note(`${seconds} s from the press to "${end.sentence}".`)
+      await log.soft('"Laid out."', () => expect(end.sentence).toBe('Laid out.'))
+      await log.soft('every stage ticked', async () => {
+        const marks = await region
+          .locator('svg circle.mark')
+          .evaluateAll((stations) => stations.map((s) => s.getAttribute('class') ?? ''))
+        expect(marks.map((m) => m.includes('mark-done'))).toEqual(STAGE_WORDS.map(() => true))
+      })
+      await log.soft('the two buttons', async () => {
+        await expect(window.getByRole('button', { name: 'Lay out again' })).toBeVisible()
+        await expect(window.getByRole('button', { name: 'Re-layout' })).toBeVisible()
+      })
+      const said = (await saidSoFar(window)).slice(mark)
+      await log.soft('"02 Process is running." while it ran', () =>
+        expect(said, said.join(' / ')).toContain('02 Process is running.'),
+      )
+      await log.soft('"Reading the feed…" in cell 01', () =>
+        expect(said, said.join(' / ')).toContain(
+          'Reading the feed, and downloading it first if it is not on this machine yet…',
+        ),
+      )
+      await log.soft('the notebook after the run', async () => {
+        await expect(window.locator('p.project-run-state')).toHaveText(
+          'The map is drawn from every cell.',
+          { timeout: SHORT_MS },
+        )
+        await expect(window.getByRole('button', { name: 'Run all' })).toBeDisabled()
+        const states = await window
+          .locator('section.cell')
+          .evaluateAll((cells) => cells.map((c) => c.getAttribute('data-state')))
+        expect(states).toEqual(CELL_IDS.map(() => 'ready'))
+        const steps = await window
+          .getByRole('navigation', { name: 'Steps' })
+          .getByRole('button')
+          .evaluateAll((buttons) => buttons.map((b) => b.getAttribute('aria-label') ?? ''))
+        expect(steps.filter((name) => !name.endsWith(', ready'))).toEqual([])
+      })
+      await log.soft('the fields', async () => {
+        const record = await recordOf(window, LA)
+        await expect(definition(cellFields(window, 'data'), 'Feed')).toHaveText('la-metro-rail')
+        await expect(definition(cellFields(window, 'data'), 'Mode')).toHaveText(record.mode)
+        const agency = await text(definition(cellFields(window, 'data'), 'Agency'))
+        log.note(`Mode ${record.mode}, Agency ${agency}.`)
+        await expect(definition(cellFields(window, 'frame'), 'Service day')).toHaveText(
+          /^\d{4}-\d{2}-\d{2}$/,
+        )
+        await expect(definition(cellFields(window, 'process'), 'Layout')).toHaveText(
+          /^[0-9a-f]{8}, made .+$/,
+        )
+      })
+      session.laDay = await text(definition(cellFields(window, 'frame'), 'Service day'))
+      session.laLayoutText = await text(definition(cellFields(window, 'process'), 'Layout'))
+      session.laLayout = session.laLayoutText.slice(0, 8)
+      log.note(`Drawn for ${session.laDay}, layout ${session.laLayoutText}.`)
+      log.notAutomated(
+        "that the sentence beside the line is the engine's for the last stage that finished: each is replaced by the next, and a short one can go before it is drawn.",
+      )
+      log.notAutomated(
+        'how long the run sat at parse while the feed downloaded: the download has no line of its own yet (issue 178).',
+      )
+
+      await log.soft('the map', async () => {
+        const viewer = window.getByRole('region', { name: 'Map' })
+        await expect(viewer).toBeVisible()
+        const map = window.frameLocator('iframe.viewer-frame')
+        const clock = map.locator('#clock')
+        await expect(clock).toHaveText(/\d/, { timeout: SHORT_MS })
+        const frameElement = window.locator('iframe.viewer-frame')
+        await frameElement.scrollIntoViewIfNeeded()
+        const visibility = await bringToFront(session.app as ElectronApplication, window)
+        await window.waitForTimeout(SECOND)
+        const readings: string[] = [await text(clock)]
+        const first = readings[0]
+        const moved = await until(
+          async () => {
+            const now = await text(clock)
+            if (now !== readings[readings.length - 1]) readings.push(now)
+            return now !== first ? true : undefined
+          },
+          SHORT_MS,
+          () => 'the clock did not move',
+          250,
+        ).catch(() => false)
+        const count = await text(map.locator('#count'))
+        if (moved) {
+          log.note(`The page's clock moved from ${first}; ${count}.`)
+        } else if (visibility !== 'visible') {
+          log.notAutomated(
+            `whether the trains move: the window was ${visibility} to Chromium even after it was brought to the front, which stops the page's animation frames, and the clock stayed at ${first} (${count}).`,
+          )
+        } else {
+          throw new Error(
+            `the page's clock stayed at ${first} for ${SHORT_MS / SECOND} s with the map in view and the window in front: readings ${readings.join(', ')}; ${count}`,
+          )
+        }
+        const linear = map.getByRole('button', { name: 'Linear', exact: true })
+        await linear.click()
+        await expect(linear).toHaveAttribute('aria-pressed', 'true')
+        const schematic = map.getByRole('button', { name: 'Schematic', exact: true })
+        await schematic.click()
+        await expect(schematic).toHaveAttribute('aria-pressed', 'true')
+        await expect(
+          window.getByText("This project's map is not there. Lay it out again."),
+        ).toHaveCount(0)
+        await viewer
+          .screenshot({ path: join(OUT, `acceptance-${PLATFORM}-viewer.png`) })
+          .catch(() => undefined)
+      })
+      log.notAutomated(
+        "whether the map, its trains and the page's controls look right (a screenshot of the map is kept beside the record), and that it stays pinned while the cells scroll beneath it.",
+      )
     })
 
     // ---------------------------------------------------------------- 5
-    await runStep(5, [3], async (log) => {
+    await runStep(5, [4], async (log) => {
+      const window = page()
+      await openProject(window, LA)
+      const record = await recordOf(window, LA)
+      await log.soft('the fields', async () => {
+        await expect(definition(cellFields(window, 'data'), 'Feed')).toHaveText('la-metro-rail')
+        await expect(definition(cellFields(window, 'data'), 'Mode')).toHaveText(record.mode)
+        await expect(definition(cellFields(window, 'data'), 'Agency')).toHaveText(
+          record.agency ?? 'none',
+        )
+      })
+      const inFeed = window.getByRole('region', { name: 'In the feed' })
+      const fields = inFeed.locator('dl.fields')
+      await expect(fields).toBeVisible({ timeout: FEED_READ_MS })
+      await log.soft('the feed figures', async () => {
+        for (const term of ['Operators', 'Stops', 'Trips']) {
+          expect(await text(definition(fields, term)), term).not.toBe('')
+        }
+        expect(await text(definition(fields, 'Service'))).toMatch(
+          /^\S+ to \S+; the engine would draw \S+$/,
+        )
+      })
+      await log.soft('the route types', async () => {
+        const histogram = inFeed.locator('table.histogram')
+        await expect(histogram.locator('caption')).toHaveText(
+          'Route types, and what the chosen mode keeps',
+        )
+        const kept = (await histogram.locator('tbody tr td:last-child').allTextContents()).map(
+          (k) => k.trim(),
+        )
+        expect(kept.length).toBeGreaterThan(0)
+        log.note(`Under mode ${record.mode} the route types read: ${kept.join(', ')}.`)
+      })
+      const routes = inFeed.locator('table.routes')
+      await log.soft('the routes caption', () =>
+        expect(routes.locator('caption')).toHaveText(/^Routes: [\d,.\s]+$/),
+      )
+      const header = (label: string): Locator =>
+        routes.getByRole('columnheader', { name: new RegExp(`^${label}`) })
+      const press = (label: string): Promise<void> => header(label).getByRole('button').click()
+      await log.soft('the sort order', async () => {
+        await expect(header('Label')).toHaveAttribute('aria-sort', 'ascending')
+        await press('Label')
+        await expect(header('Label')).toHaveAttribute('aria-sort', 'descending')
+        await press('Trips')
+        await expect(header('Trips')).toHaveAttribute('aria-sort', 'descending')
+        const trips = (await routes.locator('tbody tr td:nth-child(4)').allTextContents()).map(
+          (t) => Number(t.replace(/\D/g, '')),
+        )
+        expect(
+          trips.every((t, i) => i === 0 || trips[i - 1] >= t),
+          trips.join(','),
+        ).toBe(true)
+        await press('Type')
+        await expect(header('Type')).toHaveAttribute('aria-sort', 'ascending')
+        await press('Type')
+        await expect(header('Type')).toHaveAttribute('aria-sort', 'descending')
+      })
+      await log.soft('the Mode select', async () => {
+        const mode = inFeed.getByRole('combobox', { name: 'Mode' })
+        const options = (await mode.locator('option').allTextContents()).map((o) => o.trim())
+        expect(options[0]).toBe('all (every type)')
+        expect(options[options.length - 1]).toBe('other…')
+        await expect(mode).toHaveValue(record.mode)
+        log.note(`Mode offers: ${options.join(', ')}.`)
+      })
+      log.notAutomated(
+        'which Mode option, if any, is marked "(the engine suggests it)", and the arrow beside the sorted header (aria-sort was checked).',
+      )
+      const operators = await inFeed.getByRole('combobox', { name: 'Operator' }).count()
+      log.note(
+        `check: LA Metro Rail shows ${operators === 0 ? 'no' : operators} Operator select; the feed names "${await text(definition(fields, 'Operators'))}".`,
+      )
+
+      const stages = window.getByRole('region', { name: 'Where the routes run' })
+      const group = stages.getByRole('group', { name: 'Stage' })
+      await expect(stages.locator('dl.counts')).toBeVisible({ timeout: FEED_READ_MS })
+      await log.soft('gtfs2graph first', async () => {
+        await expect(group.getByRole('button', { name: 'gtfs2graph' })).toHaveAttribute(
+          'aria-pressed',
+          'true',
+        )
+        await expect(group.locator('.hint')).toHaveText('as the feed draws its routes')
+      })
+      const frame = stages.locator('iframe.stage-frame')
+      const before = (await frame.getAttribute('srcdoc')) ?? ''
+      await group.getByRole('button', { name: 'gtfs2graph' }).click()
+      await group.getByRole('button', { name: 'loom' }).click()
+      let blank = false
+      const sampleUntil = Date.now() + 3 * SECOND
+      while (Date.now() < sampleUntil) {
+        if ((await frame.count()) === 0) blank = true
+        await sleep(100)
+      }
+      await log.soft('loom pressed, its description only, a new drawing', async () => {
+        await expect(group.getByRole('button', { name: 'loom' })).toHaveAttribute(
+          'aria-pressed',
+          'true',
+        )
+        await expect(group.getByRole('button', { name: 'gtfs2graph' })).toHaveAttribute(
+          'aria-pressed',
+          'false',
+        )
+        await expect(group.locator('.hint')).toHaveText('lines sorted onto shared track')
+        expect(await stages.innerText()).not.toContain('as the feed draws its routes')
+        await expect
+          .poll(async () => ((await frame.getAttribute('srcdoc')) ?? '') !== before, {
+            timeout: FEED_READ_MS,
+          })
+          .toBe(true)
+        expect(blank, 'the drawing went blank between the stages').toBe(false)
+      })
+      await log.soft('the counts', async () => {
+        const dl = stages.locator('dl.counts')
+        for (const term of ['Nodes', 'Stations', 'Junctions', 'Edges', 'Lines']) {
+          expect(await text(definition(dl, term)), term).toMatch(/^[\d,.\s]+$/)
+        }
+      })
+      await log.soft('zoom, pan and fit from the keyboard', async () => {
+        const pane = stages.getByRole('group', { name: /^The loom stage/ })
+        const transform = (): Promise<string> =>
+          frame.evaluate((el) => (el as HTMLElement).style.transform)
+        await pane.focus()
+        await window.keyboard.type('0')
+        const fitted = await transform()
+        await window.keyboard.type('+')
+        const zoomed = await transform()
+        expect(zoomed, '+ zooms').not.toBe(fitted)
+        await window.keyboard.type('-')
+        const out = await transform()
+        expect(out, '- zooms out').not.toBe(zoomed)
+        await window.keyboard.press('ArrowLeft')
+        const panned = await transform()
+        expect(panned, 'an arrow pans').not.toBe(out)
+        await window.keyboard.type('0')
+        expect(await transform(), '0 fits again').toBe(fitted)
+        await expect(stages.locator('#stage-keys')).toHaveText(
+          'Zoom with the wheel or plus and minus, pan by dragging or with the arrows, 0 to fit.',
+        )
+      })
+      await log.soft('Skip past the map, then Rename', async () => {
+        const skip = window.getByRole('button', { name: 'Skip past the map', exact: true })
+        await skip.focus()
+        await expect(skip).toBeFocused()
+        await expect
+          .poll(() => skip.evaluate((el) => el.getBoundingClientRect().width))
+          .toBeGreaterThan(1)
+        await window.keyboard.press('Enter')
+        await expect(window.getByRole('button', { name: 'Rename', exact: true })).toBeFocused()
+      })
+      log.notAutomated(
+        'that the Tab after the drawing reaches Skip past the map: the skip is focused directly, since what lies between the drawing and the map in the Tab order is the page, not the checklist.',
+      )
+      await log.soft("the collapsed row's summary", async () => {
+        await closeCell(window, 'data')
+        await expect(cellHeading(window, 'data').locator('.cell-summary')).toHaveText(
+          /^.+, .+, every operator, [\d,.\s]+ stops? in the feed$/,
+        )
+        log.note(
+          `Collapsed: "${await text(cellHeading(window, 'data').locator('.cell-summary'))}".`,
+        )
+        await openCell(window, 'data')
+      })
+    })
+
+    // ---------------------------------------------------------------- 6
+    await runStep(6, [4], async (log) => {
+      const window = page()
+      await openProject(window, LA)
+      await log.soft('the Layout field', () =>
+        expect(definition(cellFields(window, 'process'), 'Layout')).toHaveText(
+          session.laLayoutText ?? '',
+        ),
+      )
+      await log.soft("the cell's footer", async () => {
+        const footer = window.locator('section.cell[data-cell="02"] dl.cell-provenance')
+        const terms = (await footer.locator('dt').allTextContents()).map((t) => t.trim())
+        expect(terms).toEqual(['Layout', 'Made', 'Built with', 'Engine now'])
+        await expect(definition(footer, 'Engine now')).toHaveText(pins.engine.version)
+      })
+
+      await log.soft("the engine's log", async () => {
+        const processCell = window.locator('section.cell[data-cell="02"]')
+        const logRegion = processCell.getByRole('group', {
+          name: "The engine's log for this run",
+        })
+        const toggle = processCell.getByRole('button', { name: /^Engine log\b/ })
+        await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+        const count = await text(toggle)
+        await toggle.click()
+        await expect(logRegion).toBeVisible()
+        // The lines are the LOOM tools' own stderr, which the engine passes
+        // on as it reads it; how much a real run says is the tools' to decide,
+        // so the count is written down, as the checklist's check: line asks.
+        log.note(`check: the toggle read "${count}" after the layout run.`)
+        if (!/no lines/.test(count)) {
+          await expect(logRegion.getByRole('group', { name: 'Log lines' })).not.toBeEmpty()
+        }
+        await logRegion
+          .getByRole('button', { name: "Copy log: the engine's log for this run" })
+          .click()
+        const status = logRegion.getByRole('status').filter({ hasText: /clipboard/ })
+        await expect(status).toHaveText(/^The log is on the clipboard/)
+        log.note(`Copy log said "${await text(status)}".`)
+      })
+
+      const diagnostics = window.getByRole('region', { name: 'What the build had to fudge' })
+      await log.soft('the diagnostics', async () => {
+        await expect(diagnostics).toBeVisible()
+        const sentence = await text(diagnostics.getByRole('status').first())
+        expect(sentence).toMatch(
+          /^(No caveats: nothing was fudged, and the issues score is [\d.]+\.|\S+ caveats?, and an issues score of [\d.]+, where 0 is clean\.)$/,
+        )
+        log.note(`"${sentence}"`)
+        await expect(diagnostics.locator('caption')).toHaveText(
+          /^What the engine measured drawing the map for \d{4}-\d{2}-\d{2}$/,
+        )
+      })
+      await log.soft('an explanation on a press, gone on Escape', async () => {
+        const trigger = diagnostics.getByRole('button', { name: /^What .+ means$/ }).first()
+        const described = (await trigger.getAttribute('aria-describedby')) ?? ''
+        await trigger.click()
+        await expect(trigger).toHaveAttribute('aria-expanded', 'true')
+        const tip = window.locator(`[id="${described}"]`)
+        await expect(tip).toBeVisible()
+        await window.keyboard.press('Escape')
+        await expect(tip).toBeHidden()
+      })
+      await log.soft('Copy as text', async () => {
+        await diagnostics.getByRole('button', { name: 'Copy as text' }).click()
+        await expect(
+          diagnostics.getByText('The figures and the caveats are on the clipboard.', {
+            exact: true,
+          }),
+        ).toBeVisible()
+      })
+
+      await log.soft('Re-layout asks first, and Cancel starts nothing', async () => {
+        await window.getByRole('button', { name: 'Re-layout' }).click()
+        const dialog = window.getByRole('dialog', { name: 'Lay this project out from scratch?' })
+        await expect(dialog).toBeVisible()
+        await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused()
+        await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+        await expect(dialog).toBeHidden()
+        await expect(window.getByRole('button', { name: /^Jobs, / })).toHaveAccessibleName(
+          'Jobs, none running',
+        )
+        expect((await recordOf(window, LA)).layout?.slice(0, 8)).toBe(session.laLayout)
+      })
+    })
+
+    // ---------------------------------------------------------------- 7
+    await runStep(7, [4], async (log) => {
+      const window = page()
+      await openProject(window, LA)
+      const section = window.getByRole('region', { name: 'Service day' })
+      const sentence = await text(section.locator('p.prose[role="status"]'))
+      const parsed =
+        /^Drawn for (\d{4}-\d{2}-\d{2})\. The feed covers (\d{4}-\d{2}-\d{2}) to (\d{4}-\d{2}-\d{2}); the busiest weekday, counted from (\d{4}-\d{2}-\d{2}), is (\d{4}-\d{2}-\d{2})\.$/.exec(
+          sentence,
+        )
+      if (parsed === null) throw new Error(`the section says "${sentence}"`)
+      const [, drawn, startDay, endDay, anchor, busiest] = parsed
+      log.note(`"${sentence}"`)
+      const control = section.getByLabel('Draw for another day')
+      await log.soft('the calendar is bounded by the window', async () => {
+        await expect(control).toHaveAttribute('min', startDay)
+        await expect(control).toHaveAttribute('max', endDay)
+      })
+      const layoutBefore = await text(definition(cellFields(window, 'process'), 'Layout'))
+      const run = window.getByRole('region', { name: 'Layout run' })
+
+      const drawFor = async (day: string): Promise<void> => {
+        const before = oneLine((await run.locator('p.prose').allTextContents()).join(' '))
+        await section.getByRole('button', { name: 'Draw for this day' }).click()
+        const end = await runToEnd(
+          run,
+          new RegExp(`^Drawn for ${day} from the stored layout\\. The stations have not moved\\.$`),
+          REBUILD_MS,
+          before,
+        )
+        if (!end.ok)
+          throw new Error(`the rebuild for ${day} stopped: "${end.sentence}" "${end.message}"`)
+        log.note(`Drawn for ${day} in ${end.seconds} s.`)
+        await expect(definition(cellFields(window, 'frame'), 'Service day')).toHaveText(day)
+        await log.soft(`the Layout after ${day}`, () =>
+          expect(definition(cellFields(window, 'process'), 'Layout')).toHaveText(layoutBefore),
+        )
+        await log.soft(`cells 04 to 06 ready again after ${day}`, async () => {
+          for (const id of ['style', 'lines', 'export'] as const) {
+            await expect(cellHeading(window, id)).toHaveAccessibleName(/ ready\b/)
+          }
+        })
+      }
+
+      const other = [addDays(busiest, 1), addDays(busiest, -1), addDays(busiest, 2)].find(
+        (day) => day >= startDay && day <= endDay && day !== drawn && day !== busiest,
+      )
+      if (other === undefined) {
+        log.problems.push(`no day other than ${busiest} in ${startDay} to ${endDay} to choose`)
+      } else {
+        await control.fill(other)
+        // A5.5-15: choosing and drawing are two acts. The day reaches the
+        // record as it is chosen, the section says the map has not caught
+        // up, and nothing runs until the button is pressed.
+        await log.soft('the chosen day reaches the record before anything is drawn', async () => {
+          await expect.poll(async () => (await recordOf(window, LA)).date).toBe(other)
+        })
+        await log.soft('and the section says the map still shows the drawn day', () =>
+          expect(section.locator('p.prose[role="status"]')).toHaveText(
+            new RegExp(`^${other} is chosen; the map still shows ${drawn}\\. The feed covers `),
+          ),
+        )
+        await log.soft('and nothing ran for the choice', () =>
+          expect(window.getByRole('button', { name: /^Jobs, / })).toHaveAccessibleName(
+            'Jobs, none running',
+          ),
+        )
+        await log.soft(
+          'cell 03 ready, cells 04 to 06 not drawn yet, and the sentence',
+          async () => {
+            await expect(cellHeading(window, 'frame')).toHaveAccessibleName(/ ready\b/)
+            for (const id of ['style', 'lines', 'export'] as const) {
+              await expect(cellHeading(window, id)).toHaveAccessibleName(/ not drawn yet\b/)
+            }
+            await expect(window.locator('p.project-run-state')).toHaveText(
+              '04 Style to 06 Export are not drawn yet.',
+            )
+          },
+        )
+        await log.soft("cell 03's collapsed row", async () => {
+          await closeCell(window, 'frame')
+          await expect(cellHeading(window, 'frame').locator('.cell-summary')).toHaveText(
+            `${other}, not drawn yet; the engine’s busiest weekday is ${busiest}`,
+          )
+          await openCell(window, 'frame')
+        })
+        await drawFor(other)
+      }
+      // The button is unavailable while the control already holds the busiest
+      // weekday, which it does when no other day could be drawn.
+      if (other !== undefined || drawn !== busiest) {
+        await section.getByRole('button', { name: 'Use the busiest weekday' }).click()
+        await log.soft('the busiest weekday is put in the control', () =>
+          expect(control).toHaveValue(busiest),
+        )
+        await drawFor(busiest)
+      }
+
+      const outside = addDays(endDay, 1)
+      await control.fill(outside)
+      await section.getByRole('button', { name: 'Draw for this day' }).click()
+      await log.soft('a day outside is refused', () =>
+        expect(
+          section.getByText(`The feed covers ${startDay} to ${endDay}.`, { exact: true }),
+        ).toBeVisible(),
+      )
+      await log.soft('and nothing runs', async () => {
+        await expect(window.getByRole('button', { name: /^Jobs, / })).toHaveAccessibleName(
+          'Jobs, none running',
+        )
+        expect((await recordOf(window, LA)).date).toBe(busiest)
+      })
+      await control.fill(busiest)
+      session.laDay = busiest
+      log.note(`Ended on the busiest weekday, ${busiest}, counted from ${anchor}.`)
+
+      const transport = window.getByRole('region', { name: 'Transport' })
+      await log.soft('the transport', async () => {
+        await expect(transport).toBeVisible({ timeout: SHORT_MS })
+        await expect(transport).toContainText('Where the map is in its service day.')
+        const scrub = transport.getByRole('slider', { name: 'Time of day' })
+        const clock = transport.locator('.transport-clock')
+        await expect(clock).toHaveText(/^\d{2}:\d{2}$/, { timeout: SHORT_MS })
+        const speed = transport.getByRole('combobox', { name: 'Speed' })
+        const speeds = (await speed.locator('option').allTextContents()).map((o) => o.trim())
+        expect(speeds).toEqual([
+          '15 seconds a second',
+          '30 seconds a second',
+          'A minute a second',
+          'Two minutes a second',
+          'Five minutes a second',
+        ])
+        // The kit's button draws its words in a slot, so it is read by name.
+        const play = transport.getByRole('button', { name: /^(Play day|Pause)$/ })
+        if ((await transport.getByRole('button', { name: 'Pause', exact: true }).count()) > 0)
+          await play.click()
+        await expect(play).toHaveAccessibleName('Play day')
+        const min = Number(await scrub.getAttribute('min'))
+        const max = Number(await scrub.getAttribute('max'))
+        const before = await text(clock)
+        // A value on the slider's own step, which the range input refuses otherwise.
+        const step = Number((await scrub.getAttribute('step')) ?? '1')
+        await scrub.fill(String(min + Math.round(((max - min) * 0.6) / step) * step))
+        await expect.poll(() => text(clock), { timeout: SHORT_MS }).not.toBe(before)
+        log.note(`The clock read ${before}, then ${await text(clock)} after the slider moved.`)
+        await play.click()
+        await expect(play).toHaveAccessibleName('Pause')
+        await play.click()
+        await expect(play).toHaveAccessibleName('Play day')
+        await speed.selectOption({ label: 'Five minutes a second' })
+        await expect(window.getByRole('button', { name: /^Jobs, / })).toHaveAccessibleName(
+          'Jobs, none running',
+        )
+        expect((await recordOf(window, LA)).date).toBe(busiest)
+      })
+      log.notAutomated(
+        "the calendar's own days: min and max were checked, not the platform's date picker.",
+      )
+      log.notAutomated(
+        'that cell 03 offers no crop, rotation, margin or clip mask, not even greyed out, and that the map moves to the hour the slider is left at.',
+      )
+    })
+
+    // ---------------------------------------------------------------- 8
+    await runStep(8, [4], async (log) => {
+      const window = page()
+      await openProject(window, LA)
+      const group = cell(window, 'style').getByRole('group', {
+        name: 'The theme this map is drawn in',
+      })
+      const warm = group.getByRole('button', { name: 'Warm dark' })
+      const sepia = group.getByRole('button', { name: 'Sepia' })
+      const viewer = window.locator('iframe.viewer-frame')
+      // Both halves of each kit button: the host React renders, and the
+      // button inside its shadow root, which is what the role resolves to.
+      const pressedState = (): Promise<string> =>
+        group
+          .locator('fig-button')
+          .evaluateAll((hosts) =>
+            hosts
+              .map(
+                (host) =>
+                  `${(host.textContent ?? '').trim()}: variant ${host.getAttribute('variant')}, disabled ${host.hasAttribute('disabled')}, aria-pressed on the host ${host.getAttribute('aria-pressed')} and on its inner button ${host.shadowRoot?.querySelector('button')?.getAttribute('aria-pressed') ?? null}`,
+              )
+              .join('; '),
+          )
+      log.note(`Before any press: ${await pressedState()}.`)
+      await log.soft('two buttons, Warm dark pressed', async () => {
+        await expect(group.getByRole('button')).toHaveCount(2)
+        try {
+          await expect(warm).toHaveAttribute('aria-pressed', 'true', { timeout: 5 * SECOND })
+        } catch {
+          throw new Error(`Warm dark is not announced as pressed: ${await pressedState()}`)
+        }
+      })
+      await log.soft('the sentence about what the engine keeps', () =>
+        expect(window.locator('section.cell[data-cell="04"]')).toContainText(
+          'Line width, station size and label size are the engine’s own for now',
+        ),
+      )
+      const interfaceTheme = await window.locator('html').getAttribute('data-theme')
+      const mark = (await saidSoFar(window)).length
+      await sepia.click()
+      await log.soft('sepia at once, with no run', async () => {
+        await expect(viewer).toHaveAttribute('src', /theme=sepia/)
+        await expect(sepia).toHaveAttribute('aria-pressed', 'true')
+        await expect(window.frameLocator('iframe.viewer-frame').locator('html')).toHaveAttribute(
+          'data-theme',
+          'sepia',
+          { timeout: SHORT_MS },
+        )
+        await expect.poll(async () => (await recordOf(window, LA)).theme).toBe('sepia')
+        await expect(window.getByRole('button', { name: /^Jobs, / })).toHaveAccessibleName(
+          'Jobs, none running',
+        )
+        const said = (await saidSoFar(window)).slice(mark)
+        expect(said.filter((s) => /^(Laid out|Drawn )/.test(s))).toEqual([])
+        expect(await window.locator('html').getAttribute('data-theme')).toBe(interfaceTheme)
+      })
+      await warm.click()
+      await log.soft('Warm dark brings it back', async () => {
+        await expect(viewer).toHaveAttribute('src', /theme=warm-dark/)
+        await expect.poll(async () => (await recordOf(window, LA)).theme).toBe('warm-dark')
+      })
+      log.notAutomated(
+        'whether the page looks sepia and then warm dark, and that nothing else in cell 04 offers to set line width, station size or label size.',
+      )
+    })
+
+    // ---------------------------------------------------------------- 9
+    await runStep(9, [4], async (log) => {
+      const window = page()
+      await openProject(window, LA)
+      const mark = (await saidSoFar(window)).length
+      const panel = window.getByRole('region', { name: 'Line colours' })
+      const rows = panel.getByRole('list', { name: 'Lines' }).getByRole('listitem')
+      await expect(rows.first()).toBeVisible({ timeout: FEED_READ_MS })
+      const line = ((await rows.first().locator('.line-name').textContent()) ?? '').trim()
+      const source = rows.first().locator('.line-source')
+      const feedWords = await text(source)
+      log.note(`Line ${line}, "${feedWords}" to begin with.`)
+
+      await panel
+        .getByRole('button', { name: `Choose the colour of line ${line}`, exact: true })
+        .click()
+      const picker = panel.getByRole('group', { name: `Colour for line ${line}` })
+      await expect(picker).toBeVisible()
+      const sliders = picker.getByRole('slider')
+      let dragged = false
+      await log.soft('the picker stays open through a drag and its release', async () => {
+        for (const slider of [sliders.first(), sliders.last()]) {
+          // Below the pinned map, as a person would have it before reaching
+          // for it: the band covers the top of the window, and a press there
+          // lands on the map rather than on the picker beneath it.
+          await slider.evaluate((element) => {
+            const box = element.getBoundingClientRect()
+            const view = element.ownerDocument.defaultView as Window
+            view.scrollBy(0, box.top + box.height / 2 - view.innerHeight * 0.75)
+          })
+          const box = await slider.boundingBox()
+          if (box === null) throw new Error('a slider has no box')
+          const at = { x: box.x + box.width * 0.2, y: box.y + box.height * 0.5 }
+          const hit = await picker.evaluate((element, { x, y }) => {
+            const under = document.elementFromPoint(x, y)
+            return under !== null && element.contains(under)
+              ? ''
+              : (under?.outerHTML ?? 'nothing').slice(0, 120)
+          }, at)
+          if (hit !== '')
+            throw new Error(`the press at ${at.x},${at.y} would land on ${hit}, not the picker`)
+          await window.mouse.move(at.x, at.y)
+          await window.mouse.down()
+          await window.mouse.move(box.x + box.width * 0.7, box.y + box.height * 0.4, { steps: 12 })
+          await expect(picker).toBeVisible()
+          await window.mouse.move(box.x + box.width + 160, box.y + box.height + 160, { steps: 6 })
+          await expect(picker).toBeVisible()
+          await window.mouse.up()
+          await expect(picker).toBeVisible()
+        }
+        dragged = true
+      })
+      if (!dragged)
+        throw new Error('the drag did not keep the picker open, so no colour was chosen')
+      await log.soft('a click outside the row closes it', async () => {
+        await panel.getByRole('heading', { name: 'Line colours' }).click()
+        await expect(picker).toBeHidden()
+      })
+      await log.soft('the row says your colour', () =>
+        expect(source).toHaveText(/^your colour, #[0-9a-f]{6}$/),
+      )
+      await until(
+        async () => ((await recordOf(window, LA)).colors[line] !== undefined ? true : undefined),
+        REBUILD_MS,
+        () => 'the dragged colour was never written to the project',
+      )
+      await log.soft('the redraw sentence', async () => {
+        const said = (await saidSoFar(window)).slice(mark)
+        expect(said).toContain(
+          'Drawn in the colours you chose, from the stored layout. The stations have not moved.',
+        )
+      })
+
+      await panel.getByRole('button', { name: new RegExp(`^Reset line ${line} to`) }).click()
+      await log.soft('Reset puts the row back', () => expect(source).toHaveText(feedWords))
+      await until(
+        async () => ((await recordOf(window, LA)).colors[line] === undefined ? true : undefined),
+        REBUILD_MS,
+        () => 'the reset colour was never written to the project',
+      )
+
+      await panel
+        .getByRole('button', { name: 'Choose the colour of lines the feed leaves uncoloured' })
+        .click()
+      const fallback = panel.getByRole('group', {
+        name: 'Colour for lines the feed leaves uncoloured',
+      })
+      await fallback.getByLabel('Hex value').fill('#123456')
+      await fallback.getByRole('button', { name: 'Use this colour' }).click()
+      await until(
+        async () => ((await recordOf(window, LA)).defaultColor === '#123456' ? true : undefined),
+        REBUILD_MS,
+        () => 'the default colour was never written to the project',
+      )
+      await log.soft('the default row', () => expect(panel).toContainText('drawn in #123456'))
+
+      const resetAll = panel.getByRole('button', { name: 'Reset every line' })
+      await resetAll.click()
+      await until(
+        async () => {
+          const now = await recordOf(window, LA)
+          return Object.keys(now.colors).length === 0 && now.defaultColor === '#888888'
+            ? true
+            : undefined
+        },
+        REBUILD_MS,
+        () => 'Reset every line was never written to the project',
+      )
+      await log.soft('Reset every line is then unavailable', () => expect(resetAll).toBeDisabled())
+      await log.soft('nothing was laid out', async () => {
+        const said = (await saidSoFar(window)).slice(mark)
+        expect(said.filter((s) => s.startsWith('Laid out'))).toEqual([])
+      })
+      log.note(
+        'Dragged with the mouse through the colour square and the hue slider, each released outside the picker.',
+      )
+      log.notAutomated(
+        "the drag's feel, and whether the map, its chips and the time chart show the new colour.",
+      )
+    })
+
+    // ---------------------------------------------------------------- 10
+    await runStep(10, [4], async (log) => {
+      const window = page()
+      await openProject(window, LA)
+      const mark = (await saidSoFar(window)).length
+      const panel = window.getByRole('region', { name: 'Line order' })
+      const list = panel.getByRole('list', { name: 'Lines in the order they are drawn' })
+      await expect(list.getByRole('listitem').first()).toBeVisible({ timeout: FEED_READ_MS })
+      const labels = async (): Promise<string[]> =>
+        (await list.locator('.line-name').allTextContents()).map((l) => l.trim())
+      const start = await labels()
+      const total = start.length
+      if (total < 3) throw new Error(`the list has ${total} lines; the step needs three`)
+      const button = (label: string, way: 'up' | 'down'): Locator =>
+        panel.getByRole('button', { name: `Move line ${label} ${way}`, exact: true })
+      const status = panel.locator('p.hint[role="status"]')
+      await log.soft('the ends are unavailable', async () => {
+        await expect(button(start[0], 'up')).toBeDisabled()
+        await expect(button(start[total - 1], 'down')).toBeDisabled()
+      })
+      await button(start[0], 'down').click()
+      await log.soft('the first move is said', () =>
+        expect(status).toHaveText(`${start[0]} is now 2 of ${total}.`),
+      )
+      const other = start[total - 1]
+      await button(other, 'up').click()
+      await log.soft('the second move is said', () =>
+        expect(status).toHaveText(`${other} is now ${total - 1} of ${total}.`),
+      )
+      const shown = await labels()
+      await until(
+        async () => {
+          const order = (await recordOf(window, LA)).lineOrder
+          return JSON.stringify(order) === JSON.stringify(shown) ? true : undefined
+        },
+        REBUILD_MS,
+        async () =>
+          `the order was never written: the project has ${JSON.stringify((await recordOf(window, LA)).lineOrder)}`,
+      )
+      await log.soft('the redraw sentence', async () => {
+        const said = (await saidSoFar(window)).slice(mark)
+        expect(said).toContain(
+          'Drawn with the lines in the order you chose, from the stored layout. The stations have not moved.',
+        )
+      })
+      log.note(`Moved ${start[0]} down and ${other} up: ${shown.join(', ')}.`)
+      const back = panel.getByRole('button', { name: 'Back to alphabetical' })
+      await back.click()
+      await log.soft('Back to alphabetical', async () => {
+        await expect(status).toHaveText('The lines are in alphabetical order again.')
+        await expect(back).toBeDisabled()
+      })
+      await until(
+        async () => ((await recordOf(window, LA)).lineOrder.length === 0 ? true : undefined),
+        REBUILD_MS,
+        () => 'the alphabetical order was never written',
+      )
+      log.notAutomated("whether the page's line rows follow the order.")
+    })
+
+    // ---------------------------------------------------------------- 11
+    const exportTo = async (
+      log: StepLog,
+      file: string,
+      deadline: number,
+    ): Promise<{ seconds: number; path: string }> => {
+      const window = page()
+      const panel = cell(window, 'export')
+      const region = panel.getByRole('region', { name: 'Export' })
+      const before =
+        (await region.count()) === 0
+          ? ''
+          : oneLine((await region.locator('p.prose').allTextContents()).join(' '))
+      await panel.getByRole('button', { name: 'Export', exact: true }).click()
+      await expect(region).toBeVisible({ timeout: SHORT_MS })
+      const end = await runToEnd(region, /^Exported /, deadline, before)
+      if (!end.ok) throw new Error(`the export stopped: "${end.sentence}" "${end.message}"`)
+      await log.soft(`"Exported ${file}."`, () => expect(end.sentence).toBe(`Exported ${file}.`))
+      await log.soft('Reveal', () =>
+        expect(region.getByRole('button', { name: 'Reveal' })).toBeVisible(),
+      )
+      await log.soft("the cell's footer", async () => {
+        const footer = window.locator('section.cell[data-cell="06"] .cell-footer')
+        await expect(definition(footer, 'Exported')).toHaveText(file)
+        await expect(footer).toContainText(
+          'The engine wrote a sidecar beside it: what the file is, the caveats of the network it shows, and its alt text.',
+        )
+      })
+      await log.soft('no path on the screen', async () => {
+        for (const where of [
+          region,
+          window.locator('section.cell[data-cell="06"] .cell-footer'),
+          window.getByRole('region', { name: 'Outputs' }),
+        ]) {
+          // The app's own test of a path (CellFooter.tsx, carriesPath): a
+          // slash inside a date, which a locale may write, is not one.
+          expect(await where.innerText()).not.toMatch(/(^|[\s(])(?:[A-Za-z]:[\\/]|[\\/][^\s\\/])/)
+        }
+      })
+      const path = join(session.exportFolder, LA, file)
+      if (!existsSync(path)) throw new Error(`${file} is not in the export folder's ${LA} folder`)
+      await log.soft('its sidecar', () => expect(existsSync(`${path}.json`)).toBe(true))
+      session.exports.push(path)
+      await log.soft('Outputs gains its row', () =>
+        expect(
+          window.getByRole('region', { name: 'Outputs' }).getByRole('button', {
+            name: new RegExp(`^Reveal .+, ${file.replace(/\./g, '\\.')}$`),
+          }),
+        ).toBeVisible({ timeout: SHORT_MS }),
+      )
+      return { seconds: end.seconds, path }
+    }
+
+    const frameParams = async (window: Page): Promise<URLSearchParams> =>
+      new URL((await window.locator('iframe.viewer-frame').getAttribute('src')) ?? 'app://local/')
+        .searchParams
+
+    await runStep(11, [4], async (log) => {
+      const window = page()
+      await openProject(window, LA)
+      const panel = await openCell(window, 'export')
+      const preset = panel.getByRole('combobox', { name: 'Preset' })
+      await expect(preset).toBeVisible({ timeout: 2 * MINUTE })
+      await log.soft('the thirteen presets by platform', async () => {
+        await expect(preset).toHaveValue('instagram-reel')
+        const shown = await preset.evaluate(
+          (select) => (select as HTMLSelectElement).selectedOptions[0]?.textContent?.trim() ?? '',
+        )
+        expect(shown).toBe('instagram-reel: 1080 by 1920, video, MP4')
+        const options = (await preset.locator('option').allTextContents()).map((o) => o.trim())
+        expect(options).toHaveLength(13)
+        const odd = options.filter((o) => !/^\S+: \d+ by \d+, .+$/.test(o))
+        expect(odd).toEqual([])
+        expect(
+          await preset
+            .locator('optgroup')
+            .evaluateAll((g) => g.map((e) => e.getAttribute('label'))),
+        ).toEqual(['Instagram', 'LinkedIn', 'Bluesky', 'X'])
+        await expect(panel.getByRole('combobox', { name: 'Storyboard' })).toBeVisible()
+      })
+      await log.soft("the map shows the export's tall frame with the safe zones", async () => {
+        await expect
+          .poll(async () => (await frameParams(window)).get('frame'), { timeout: 2 * MINUTE })
+          .toBe('1080:1920')
+        expect((await frameParams(window)).get('safe')).toBe('1')
+      })
+      const mark = (await saidSoFar(window)).length
+      const pressed = Date.now()
+      // Watched beside the export rather than after it: these hold only while
+      // it runs. The outcome is kept, never left as a rejection nobody holds.
+      // Which stage the line marked as current, sampled while it ran: the
+      // capture takes most of the export and is always caught; the plan and
+      // the encode can be over between two looks, and are only noted.
+      const current = new Set<string>()
+      // The page's visibility, sampled with it: in a visible page the
+      // recorder sees every sentence React draws, and "Captured n of n"
+      // counts up for most of the export.
+      const visibilities = new Set<string>()
+      await bringToFront(session.app as ElectronApplication, window)
+      const watch = (async () => {
+        const region = panel.getByRole('region', { name: 'Export' })
+        const cancel = region.getByRole('button', { name: 'Cancel', exact: true })
+        await expect(cancel).toBeVisible({ timeout: SHORT_MS })
+        const labels = (await region.locator('svg text').allTextContents()).map((l) => l.trim())
+        expect(labels).toEqual(['plan', 'capture', 'encode'])
+        await expect(preset).toBeDisabled()
+        await expect(
+          panel.getByText(
+            'The choices wait until the export that is going has finished: it was planned from them.',
+          ),
+        ).toBeVisible()
+        const end = Date.now() + EXPORT_MS
+        while (Date.now() < end && (await cancel.count()) > 0) {
+          for (const label of await region.locator('svg text.label-current').allTextContents()) {
+            current.add(label.trim())
+          }
+          visibilities.add(await window.evaluate(() => document.visibilityState))
+          await sleep(200)
+        }
+      })().then(
+        () => null,
+        (error: unknown) => error,
+      )
+      const done = await exportTo(log, 'la-metro-rail-instagram-reel.mp4', EXPORT_MS)
+      await log.soft('while it ran: the stages, Cancel, and the choices unavailable', async () => {
+        const problem = await watch
+        if (problem !== null) throw problem
+      })
+      log.title = `Cell 06, Export: a reel (${done.seconds} s)`
+      log.note(
+        `${done.seconds} s from the press (${Math.round((Date.now() - pressed) / SECOND)} s with the checks).`,
+      )
+      await log.soft('the stages moved through to the end', async () => {
+        expect(current.has('capture'), `current stages seen: ${[...current].join(', ')}`).toBe(true)
+        const marks = await panel
+          .getByRole('region', { name: 'Export' })
+          .locator('svg circle.mark')
+          .evaluateAll((stations) => stations.map((s) => s.getAttribute('class') ?? ''))
+        expect(marks.map((m) => m.includes('mark-done'))).toEqual([true, true, true])
+        log.note(`The line marked as current: ${[...current].join(', ')}.`)
+      })
+      // The sentences beside the line are the engine's and the app's progress
+      // reports, each replaced by the next: a short one can be gone before it
+      // is drawn, so each is recorded as seen or not, and none is required.
+      const said = (await saidSoFar(window)).slice(mark)
+      const sentences: [string, RegExp][] = [
+        ['Planning the export.', /^Planning the export\.$/],
+        [
+          'Planned …',
+          /^Planned la-metro-rail-instagram-reel\.mp4: \d+ frames at \d+ frames per second\.$/,
+        ],
+        ['Capturing …', /^Capturing \d+ frames\.$/],
+        ['Captured … of …', /^Captured \d+ of \d+ frames\.$/],
+        ['Encoding …', /^Encoding \d+ frames\.$/],
+        ['Encoded … of …', /^Encoded \d+ of \d+ frames\.$/],
+      ]
+      const seen = sentences.filter(([, pattern]) => said.some((t) => pattern.test(t)))
+      const missed = sentences.filter(([, pattern]) => !said.some((t) => pattern.test(t)))
+      log.note(
+        `Sentences seen beside the line: ${seen.map(([name]) => `"${name}"`).join(', ') || 'none'}; not caught: ${missed.map(([name]) => `"${name}"`).join(', ') || 'none'}.`,
+      )
+      const capturedSeen = said.some((t) => /^Captured \d+ of \d+ frames\.$/.test(t))
+      if (visibilities.size === 1 && visibilities.has('visible')) {
+        if (!capturedSeen) {
+          log.problems.push(
+            '"Captured <n> of <n> frames." was never drawn, though the page was visible throughout the export',
+          )
+        }
+      } else if (!capturedSeen) {
+        log.notAutomated(
+          `"Captured <n> of <n> frames." counting up: the page was ${[...visibilities].join(' and ') || 'never sampled'} during the export, and a hidden page's drawing is throttled.`,
+        )
+      }
+      await log.soft('the file is a valid MP4', () => {
+        const probe = ffprobe(session.resources, done.path)
+        const video = probe.streams?.find((s) => s.codec_type === 'video')
+        expect(probe.format?.format_name ?? '').toContain('mp4')
+        expect(video?.width).toBe(1080)
+        expect(video?.height).toBe(1920)
+        expect(Number(probe.format?.duration ?? 0)).toBeGreaterThan(0)
+        log.note(
+          `${statSync(done.path).size} bytes; the bundled ffprobe reads ${probe.format?.format_name}, ${video?.codec_name} ${video?.width}x${video?.height}, ${probe.format?.duration} s.`,
+        )
+      })
+      log.notAutomated(
+        'whether the parts Instagram covers look shaded (the address asks for the safe zones).',
+      )
+    })
+
+    // ---------------------------------------------------------------- 12
+    await runStep(12, [4], async (log) => {
+      const window = page()
+      await openProject(window, LA)
+      const panel = await openCell(window, 'export')
+      const preset = panel.getByRole('combobox', { name: 'Preset' })
+      await expect(preset).toBeEnabled({ timeout: 2 * MINUTE })
+
+      await preset.selectOption('instagram-post')
+      await log.soft('a still: View and Start time, no Storyboard, no shading', async () => {
+        await expect(panel.getByRole('combobox', { name: 'View' })).toBeVisible()
+        await expect(panel.getByLabel('Start time')).toBeVisible()
+        await expect(panel.getByRole('combobox', { name: 'Storyboard' })).toHaveCount(0)
+        await expect
+          .poll(async () => (await frameParams(window)).get('frame'), { timeout: 2 * MINUTE })
+          .toBe('1080:1350')
+        expect((await frameParams(window)).get('safe')).toBeNull()
+      })
+      await expect
+        .poll(async () => (await recordOf(window, LA)).export.preset)
+        .toBe('instagram-post')
+      const post = await exportTo(log, 'la-metro-rail-instagram-post.png', STILL_MS)
+      await log.soft('the post is a PNG', () => {
+        expect(readFileSync(post.path).subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')
+        const video = ffprobe(session.resources, post.path).streams?.[0]
+        expect([video?.codec_name, video?.width, video?.height]).toEqual(['png', 1080, 1350])
+        log.note(`Post: ${post.seconds} s, ${statSync(post.path).size} bytes, 1080x1350 PNG.`)
+      })
+
+      await preset.selectOption('instagram-reel-gif')
+      await log.soft('Storyboard returns', () =>
+        expect(panel.getByRole('combobox', { name: 'Storyboard' })).toBeVisible(),
+      )
+      await expect
+        .poll(async () => (await recordOf(window, LA)).export.preset)
+        .toBe('instagram-reel-gif')
+      const gif = await exportTo(log, 'la-metro-rail-instagram-reel-gif.gif', EXPORT_MS)
+      await log.soft('the GIF has frames', () => {
+        expect(readFileSync(gif.path).subarray(0, 6).toString('latin1')).toMatch(/^GIF8[79]a$/)
+        const video = ffprobe(session.resources, gif.path, true).streams?.[0]
+        expect([video?.codec_name, video?.width, video?.height]).toEqual(['gif', 630, 1120])
+        expect(Number(video?.nb_read_packets ?? 0)).toBeGreaterThan(1)
+        log.note(
+          `GIF: ${gif.seconds} s, ${statSync(gif.path).size} bytes, ${video?.nb_read_packets} frames.`,
+        )
+      })
+      log.notAutomated(
+        'whether the post is a still of the map and the GIF plays as one (structure checked with the bundled ffprobe).',
+      )
+    })
+
+    // ---------------------------------------------------------------- 13
+    await runStep(13, [12], async (log) => {
+      const window = page()
+      const app = session.app as ElectronApplication
+      await openProject(window, LA)
+      await closeCell(window, 'export')
+      await log.soft('closing cell 06 gives the map its own frame back', () =>
+        expect.poll(async () => (await frameParams(window)).get('frame')).toBeNull(),
+      )
+      const outputs = window.getByRole('region', { name: 'Outputs' })
+      const reveals = outputs.getByRole('button', { name: /^Reveal / })
+      await log.soft('three rows, the newest first', async () => {
+        await expect(reveals).toHaveCount(3)
+        const names = (
+          await reveals.evaluateAll((all) => all.map((b) => b.getAttribute('aria-label') ?? ''))
+        ).map((name) => name.replace(/^Reveal /, ''))
+        expect(names).toEqual([
+          'instagram-reel-gif, la-metro-rail-instagram-reel-gif.gif',
+          'instagram-post, la-metro-rail-instagram-post.png',
+          'instagram-reel, la-metro-rail-instagram-reel.mp4',
+        ])
+      })
+      await app.evaluate(({ shell }) => {
+        const shown: string[] = []
+        ;(globalThis as { __revealed?: string[] }).__revealed = shown
+        shell.showItemInFolder = (path: string) => {
+          shown.push(path)
+        }
+      })
+      await reveals.first().click()
+      const gif = session.exports[session.exports.length - 1]
+      const revealed = await until(
+        async () => {
+          const shown = await app.evaluate(
+            () => (globalThis as { __revealed?: string[] }).__revealed ?? [],
+          )
+          return shown.length > 0 ? shown : undefined
+        },
+        SHORT_MS,
+        () => 'Reveal asked the platform to show nothing',
+      )
+      await log.soft('Reveal shows the newest export', () => {
+        expect(revealed).toHaveLength(1)
+        expect(samePath(revealed[0], gif), `${revealed[0]} is not ${gif}`).toBe(true)
+      })
+      await log.soft('the folder holds the three files and their sidecars', () => {
+        const names = readdirSync(dirname(gif)).sort()
+        expect(names).toEqual(
+          [
+            'la-metro-rail-instagram-post.png',
+            'la-metro-rail-instagram-post.png.json',
+            'la-metro-rail-instagram-reel-gif.gif',
+            'la-metro-rail-instagram-reel-gif.gif.json',
+            'la-metro-rail-instagram-reel.mp4',
+            'la-metro-rail-instagram-reel.mp4.json',
+          ].sort(),
+        )
+        expect(basename(dirname(gif))).toBe(LA)
+      })
+      log.note(
+        'shell.showItemInFolder was replaced in the main process to record what it was asked to show.',
+      )
+      log.notAutomated(
+        "that the Finder or File Explorer opens, comes to the front and selects the file, and install.md's place for the folder (the run's export folder is temporary).",
+      )
+    })
+
+    // ---------------------------------------------------------------- 14
+    await runStep(14, [3], async (log) => {
       const window = page()
       await toLibrary(window)
+      if ((await projectsNow(window)).some((p) => p.name === LA)) {
+        await log.soft('Your projects, and the card downloaded', async () => {
+          await expect(window.getByRole('heading', { name: 'Your projects' })).toBeVisible()
+          const entry = window.getByRole('button', { name: `Open ${LA}` })
+          await expect(entry).toContainText('Feed la-metro-rail')
+          await expect(entry).toContainText(`Service day ${session.laDay ?? ''}`)
+          await expect(entry).toContainText('Opened ')
+          await expect(entry).toContainText('finished up to 05 Lines')
+          await expect(
+            window
+              .getByRole('list', { name: 'Presets' })
+              .getByRole('listitem', { name: LA, exact: true })
+              .getByRole('button'),
+          ).toHaveAccessibleName(/, downloaded$/)
+        })
+      }
       // Adding a feed is part of New project (A5.6-05): the sheet's address
       // source, then Cancel once the feed is in, which keeps it listed.
       await window.getByRole('main').getByRole('button', { name: 'New project' }).first().click()
       const dialog = window.getByRole('dialog', { name: 'New project' })
       await expect(dialog).toBeVisible()
       await log.soft('the sheet', async () => {
+        await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused()
+        await expect(
+          dialog.getByRole('radio', { name: 'A sample city, or a feed you added' }),
+        ).toBeVisible()
         await expect(
           dialog.getByRole('radio', { name: 'A GTFS zip on this computer' }),
         ).toBeVisible()
@@ -1081,12 +2195,14 @@ test('a release, installed, through docs/acceptance.md', async () => {
         ).toBe(true),
       )
 
+      await expect(window.getByRole('heading', { name: 'Your feeds' })).toBeVisible({
+        timeout: SHORT_MS,
+      })
       const added = window.getByRole('list', { name: 'Added' })
-      await expect(added).toBeVisible({ timeout: SHORT_MS })
       const row = added.getByRole('listitem').first()
       const name = (await row.getAttribute('aria-label')) ?? ''
       session.caltrainFeed = name
-      await log.soft('the Added row', async () => {
+      await log.soft('the Your feeds row', async () => {
         expect(name).toBe('Caltrain')
         await expect(added.getByRole('listitem')).toHaveCount(1)
         await expect(row.getByText('downloaded', { exact: true })).toBeVisible()
@@ -1097,10 +2213,10 @@ test('a release, installed, through docs/acceptance.md', async () => {
 
       await row.getByRole('button', { name: `Start a project on ${name}` }).click()
       const create = window.getByRole('dialog', { name: 'New project' })
-      await log.soft('the New project sheet opens on the added feed', async () => {
-        // The dialog chooses its feed in an effect after it opens, which a
+      await log.soft('the New project sheet opens on the added feed, named for it', async () => {
+        // The sheet chooses its feed in an effect after it opens, which a
         // slow machine may not have run by the first look: poll, as a person
-        // would read it once the dialog has settled.
+        // would read it once the sheet has settled.
         const shown = (): Promise<string> =>
           create
             .getByRole('combobox', { name: 'Feed' })
@@ -1111,12 +2227,52 @@ test('a release, installed, through docs/acceptance.md', async () => {
         await expect
           .poll(async () => (await shown()).startsWith(name), { timeout: SHORT_MS })
           .toBe(true)
+        await expect(create.getByLabel('Name', { exact: true })).toHaveValue('Caltrain')
       })
       await create.getByLabel('Name', { exact: true }).fill('Caltrain')
       await create.getByRole('button', { name: 'Create', exact: true }).click()
-      await expect(window.getByRole('button', { name: 'Open Caltrain' })).toBeVisible()
+      await expect(create).toBeHidden()
+      const entry = window.getByRole('button', { name: 'Open Caltrain' })
+      await log.soft(
+        'Create lists it under Your projects, and focus is back on Start a project',
+        async () => {
+          await expect(entry).toBeVisible()
+          await expect(
+            row.getByRole('button', { name: `Start a project on ${name}` }),
+          ).toBeFocused()
+        },
+      )
 
-      await row.getByRole('button', { name: `Remove ${name}` }).click()
+      await entry.click()
+      await expect(window.getByRole('heading', { level: 1 })).toHaveText('Caltrain')
+      await log.soft('nothing laid out yet, and Run all available', async () => {
+        await expect(window.locator('p.project-run-state')).toHaveText(
+          'Nothing has been laid out yet.',
+        )
+        await expect(window.getByRole('button', { name: 'Run all' })).toBeEnabled()
+      })
+      const runPressed = Date.now()
+      await window.getByRole('button', { name: 'Run all' }).click()
+      const region = window.getByRole('region', { name: 'Layout run' })
+      await expect(region).toBeVisible({ timeout: SHORT_MS })
+      await log.soft('the eight stages', async () => {
+        const labels = (await region.locator('svg text').allTextContents()).map((l) => l.trim())
+        expect(labels).toEqual(STAGE_WORDS)
+      })
+      const run = await runToEnd(region, /Laid out/, LAYOUT_MS)
+      const seconds = Math.round((Date.now() - runPressed) / SECOND)
+      log.title = `A project from a feed at an address (Caltrain: ${run.ok ? seconds : `${seconds}, refused`} s)`
+      if (run.ok) log.note(`Caltrain: ${seconds} s, "${run.sentence}".`)
+      else
+        log.problems.push(
+          `Caltrain was not laid out: "${run.sentence}"; the engine said "${run.message}"`,
+        )
+
+      await toLibrary(window)
+      const feedRow = window
+        .getByRole('list', { name: 'Added' })
+        .getByRole('listitem', { name, exact: true })
+      await feedRow.getByRole('button', { name: `Remove ${name}` }).click()
       const confirm = window.getByRole('dialog', { name: `Remove ${name}?` })
       await expect(confirm).toBeVisible()
       await log.soft('Cancel is focused', () =>
@@ -1131,88 +2287,27 @@ test('a release, installed, through docs/acceptance.md', async () => {
       )
       await confirm.getByRole('button', { name: 'Cancel', exact: true }).click()
       await expect(confirm).toBeHidden()
-      await log.soft('the row is still there', () =>
-        expect(window.getByRole('listitem', { name, exact: true })).toBeVisible(),
-      )
+      await log.soft('the row is still there', () => expect(feedRow).toBeVisible())
     })
 
-    // ---------------------------------------------------------------- 6
-    await runStep(6, [4], async (log) => {
+    // ---------------------------------------------------------------- 15
+    await runStep(15, [3], async (log) => {
       const window = page()
-      await openProject(window, 'Los Angeles')
-      const inFeed = window.getByRole('region', { name: 'In the feed' })
-      const fields = inFeed.locator('dl.fields')
-      await expect(fields).toBeVisible({ timeout: FEED_READ_MS })
-      await log.soft('the feed figures', async () => {
-        for (const term of ['Operators', 'Stops', 'Trips']) {
-          expect(await text(definition(fields, term)), term).not.toBe('')
-        }
-        expect(await text(definition(fields, 'Service'))).toMatch(
-          /^\S+ to \S+; the engine would draw \S+$/,
-        )
-      })
-      await log.soft('the route types', async () => {
-        const histogram = inFeed.locator('table.histogram')
-        await expect(histogram.locator('caption')).toHaveText(
-          'Route types, and what the chosen mode keeps',
-        )
-        const kept = await histogram.locator('tbody tr td:last-child').allTextContents()
-        expect(kept.length).toBeGreaterThan(0)
-        expect(
-          kept.every((k) => k.trim() === 'kept'),
-          kept.join(', '),
-        ).toBe(true)
-      })
-      const routes = inFeed.locator('table.routes')
-      await log.soft('the routes caption', () =>
-        expect(routes.locator('caption')).toHaveText(/^Routes: [\d,.\s]+$/),
-      )
-      const header = (label: string): Locator =>
-        routes.getByRole('columnheader', { name: new RegExp(`^${label}`) })
-      const press = (label: string): Promise<void> => header(label).getByRole('button').click()
-      await log.soft('the sort order', async () => {
-        await expect(header('Label')).toHaveAttribute('aria-sort', 'ascending')
-        await press('Label')
-        await expect(header('Label')).toHaveAttribute('aria-sort', 'descending')
-        await press('Trips')
-        await expect(header('Trips')).toHaveAttribute('aria-sort', 'descending')
-        const trips = (await routes.locator('tbody tr td:nth-child(4)').allTextContents()).map(
-          (t) => Number(t.replace(/\D/g, '')),
-        )
-        expect(
-          trips.every((t, i) => i === 0 || trips[i - 1] >= t),
-          trips.join(','),
-        ).toBe(true)
-        await press('Type')
-        await expect(header('Type')).toHaveAttribute('aria-sort', 'ascending')
-        await press('Type')
-        await expect(header('Type')).toHaveAttribute('aria-sort', 'descending')
-      })
-      await log.soft('the Mode select', async () => {
-        const mode = inFeed.getByRole('combobox', { name: 'Mode' })
-        const options = (await mode.locator('option').allTextContents()).map((o) => o.trim())
-        expect(options[0]).toBe('all (every type)')
-        expect(options[options.length - 1]).toBe('other…')
-        await expect(mode).toHaveValue('all')
-        log.note(`Mode offers: ${options.join(', ')}.`)
-      })
-      const operators = await inFeed.getByRole('combobox', { name: 'Operator' }).count()
-      log.note(
-        `check: Los Angeles shows ${operators === 0 ? 'no' : operators} Operator select; the feed names "${await text(definition(fields, 'Operators'))}".`,
-      )
-
       await toLibrary(window)
       await window.getByRole('main').getByRole('button', { name: 'New project' }).first().click()
       const create = window.getByRole('dialog', { name: 'New project' })
       await create.getByRole('combobox', { name: 'Feed' }).selectOption('cdmx-metro')
-      await log.soft('the sheet is on cdmx-metro', () =>
-        expect(create.getByRole('combobox', { name: 'Feed' })).toHaveValue('cdmx-metro'),
+      const nameField = create.getByLabel('Name', { exact: true })
+      await expect(nameField).not.toHaveValue('', { timeout: SHORT_MS })
+      const name = await nameField.inputValue()
+      await log.soft('the sheet names it for the feed', () =>
+        expect(name).toBe('Mexico City Metro'),
       )
-      await create.getByLabel('Name', { exact: true }).fill('Mexico City')
       await create.getByRole('button', { name: 'Create', exact: true }).click()
-      await openProject(window, 'Mexico City')
+      await expect(create).toBeHidden()
+      await openProject(window, name)
       await log.soft('Agency METRO', () =>
-        expect(definition(projectFields(window), 'Agency')).toHaveText('METRO'),
+        expect(definition(cellFields(window, 'data'), 'Agency')).toHaveText('METRO'),
       )
       const cdmx = window.getByRole('region', { name: 'In the feed' })
       await expect(cdmx.locator('dl.fields').or(cdmx.getByRole('alert')).first()).toBeVisible({
@@ -1224,913 +2319,30 @@ test('a release, installed, through docs/acceptance.md', async () => {
         expect((await operator.locator('option').first().textContent())?.trim()).toBe(
           'every operator',
         )
+        expect(
+          await operator.locator('option').count(),
+          "the feed's operators after it",
+        ).toBeGreaterThan(1)
       })
       await log.soft('the routes caption for METRO', () =>
         expect(cdmx.locator('table.routes caption')).toHaveText(/^Routes of METRO: [\d,.\s]+$/),
       )
+      await log.soft('nothing laid out', () =>
+        expect(window.locator('p.project-run-state')).toHaveText('Nothing has been laid out yet.'),
+      )
       await window.getByRole('button', { name: 'Delete project' }).click()
-      const confirm = window.getByRole('dialog', { name: 'Delete Mexico City?' })
+      const confirm = window.getByRole('dialog', { name: `Delete ${name}?` })
       await expect(confirm).toBeVisible()
+      await log.soft('the confirmation', async () => {
+        await expect(confirm).toContainText(
+          'This removes the project and its generated output. The feed stays.',
+        )
+        await expect(confirm.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused()
+      })
       await confirm.getByRole('button', { name: 'Delete', exact: true }).click()
       await expect(window.getByRole('heading', { level: 1 })).toHaveText('Library')
-      await log.soft('Mexico City is gone', () =>
-        expect(window.getByRole('button', { name: 'Open Mexico City' })).toHaveCount(0),
-      )
-    })
-
-    // ---------------------------------------------------------------- 7
-    await runStep(7, [4], async (log) => {
-      const window = page()
-      const layOut = async (
-        name: string,
-      ): Promise<{ ok: boolean; seconds: number; sentence: string; message: string }> => {
-        await openProject(window, name)
-        await window.getByRole('main').getByRole('button', { name: 'Lay out', exact: true }).click()
-        const region = window.getByRole('region', { name: 'Layout run' })
-        await expect(region).toBeVisible({ timeout: SHORT_MS })
-        // Which eight words to expect is the release's to say, not ours: a
-        // build from before A5.5-10 draws the engine's own names and is not
-        // wrong for doing so. A tag that does not contain that commit is
-        // held to the old list; one that does, or no tag at all, to the new.
-        const wordsExpected = tagContains(FEATURES.stageWords)
-        const { name: wordsName, commit: wordsCommit, landed: wordsLanded } = FEATURES.stageWords
-        if (TAG !== '' && wordsExpected === null) {
-          log.problems.push(
-            `git could not tell whether ${TAG} contains ${wordsCommit.slice(0, 7)} (${wordsName}, ${wordsLanded}): the tag or the commit is not in this clone, or the clone is shallow`,
-          )
-        }
-        const stages = wordsExpected === false ? ENGINE_STAGES : STAGE_WORDS
-        await log.soft(`${name}: the eight stages in order`, async () => {
-          const labels = (await region.locator('svg text').allTextContents()).map((l) => l.trim())
-          expect(labels).toEqual(stages)
-        })
-        const cancel = await region.getByRole('button', { name: 'Cancel', exact: true }).isVisible()
-        if (!cancel) {
-          log.notAutomated(`${name}: Cancel beside the line while it ran, which was not caught.`)
-        }
-        const end = await runToEnd(region, /Laid out/, LAYOUT_MS)
-        if (end.ok) {
-          await log.soft(`${name}: every stage ticked`, async () => {
-            const marks = await region
-              .locator('svg circle.mark')
-              .evaluateAll((stations) => stations.map((s) => s.getAttribute('class') ?? ''))
-            expect(marks.map((m) => m.includes('mark-done'))).toEqual(stages.map(() => true))
-          })
-        }
-        return end
-      }
-      log.notAutomated(
-        "that the sentence beside the line is the engine's for the last stage that finished: each is replaced by the next, and a short one can go before it is drawn.",
-      )
-
-      const la = await layOut('Los Angeles')
-      if (!la.ok) throw new Error(`Los Angeles was not laid out: "${la.sentence}" "${la.message}"`)
-      const region = window.getByRole('region', { name: 'Layout run' })
-      await log.soft('"Laid out."', () => expect(la.sentence).toBe('Laid out.'))
-      await log.soft('the two buttons', async () => {
-        await expect(region.getByRole('button', { name: 'Lay out again' })).toBeVisible()
-        await expect(region.getByRole('button', { name: 'Re-layout' })).toBeVisible()
-      })
-      const fields = projectFields(window)
-      await expect(definition(fields, 'Service day')).toHaveText(/^\d{4}-\d{2}-\d{2}$/)
-      await expect(definition(fields, 'Layout')).toHaveText(/^[0-9a-f]{8}, made .+$/)
-      session.laDay = await text(definition(fields, 'Service day'))
-      session.laLayoutText = await text(definition(fields, 'Layout'))
-      session.laLayout = session.laLayoutText.slice(0, 8)
-      log.note(
-        `Los Angeles: ${la.seconds} s, drawn for ${session.laDay}, layout ${session.laLayoutText}.`,
-      )
-
-      let caltrain = 'not run'
-      if ((await projectsNow(window)).some((p) => p.name === 'Caltrain')) {
-        const run = await layOut('Caltrain')
-        caltrain = String(run.seconds)
-        if (run.ok) log.note(`Caltrain: ${run.seconds} s, "${run.sentence}".`)
-        else {
-          log.problems.push(
-            `Caltrain was not laid out: "${run.sentence}"; the engine said "${run.message}"`,
-          )
-          caltrain = `${run.seconds} (refused)`
-        }
-      } else {
-        log.problems.push('there is no Caltrain project to lay out (step 5)')
-      }
-      log.title = `Lay out (LA: ${la.seconds} s; Caltrain: ${caltrain} s)`
-    })
-
-    // ---------------------------------------------------------------- 8
-    await runStep(8, [7], async (log) => {
-      const window = page()
-      await openProject(window, 'Los Angeles')
-
-      const diagnostics = window.getByRole('region', { name: 'What the build had to fudge' })
-      await log.soft('the diagnostics', async () => {
-        await expect(diagnostics).toBeVisible()
-        const sentence = await text(diagnostics.getByRole('status').first())
-        expect(sentence).toMatch(
-          /^(No caveats: nothing was fudged, and the issues score is [\d.]+\.|\S+ caveats?, and an issues score of [\d.]+, where 0 is clean\.)$/,
-        )
-        log.note(`"${sentence}"`)
-        await expect(diagnostics.locator('caption')).toHaveText(
-          /^What the engine measured drawing the map for \d{4}-\d{2}-\d{2}$/,
-        )
-      })
-      await log.soft('an explanation on a press, gone on Escape', async () => {
-        const trigger = diagnostics.getByRole('button', { name: /^What .+ means$/ }).first()
-        const described = (await trigger.getAttribute('aria-describedby')) ?? ''
-        await trigger.click()
-        await expect(trigger).toHaveAttribute('aria-expanded', 'true')
-        const tip = window.locator(`[id="${described}"]`)
-        await expect(tip).toBeVisible()
-        await window.keyboard.press('Escape')
-        await expect(tip).toBeHidden()
-      })
-      await log.soft('Copy as text', async () => {
-        await diagnostics.getByRole('button', { name: 'Copy as text' }).click()
-        await expect(
-          diagnostics.getByText('The figures and the caveats are on the clipboard.', {
-            exact: true,
-          }),
-        ).toBeVisible()
-      })
-
-      const stages = window.getByRole('region', { name: 'Where the routes run' })
-      const group = stages.getByRole('group', { name: 'Stage' })
-      await expect(stages.locator('dl.counts')).toBeVisible({ timeout: FEED_READ_MS })
-      await log.soft('gtfs2graph first', async () => {
-        await expect(group.getByRole('button', { name: 'gtfs2graph' })).toHaveAttribute(
-          'aria-pressed',
-          'true',
-        )
-        await expect(group.locator('.hint')).toHaveText('as the feed draws its routes')
-      })
-      const frame = stages.locator('iframe.stage-frame')
-      const before = (await frame.getAttribute('srcdoc')) ?? ''
-      await group.getByRole('button', { name: 'gtfs2graph' }).click()
-      await group.getByRole('button', { name: 'loom' }).click()
-      let blank = false
-      const sampleUntil = Date.now() + 3 * SECOND
-      while (Date.now() < sampleUntil) {
-        if ((await frame.count()) === 0) blank = true
-        await sleep(100)
-      }
-      await log.soft('loom pressed, its description only, a new drawing', async () => {
-        await expect(group.getByRole('button', { name: 'loom' })).toHaveAttribute(
-          'aria-pressed',
-          'true',
-        )
-        await expect(group.getByRole('button', { name: 'gtfs2graph' })).toHaveAttribute(
-          'aria-pressed',
-          'false',
-        )
-        await expect(group.locator('.hint')).toHaveText('lines sorted onto shared track')
-        expect(await stages.innerText()).not.toContain('as the feed draws its routes')
-        await expect
-          .poll(async () => ((await frame.getAttribute('srcdoc')) ?? '') !== before, {
-            timeout: FEED_READ_MS,
-          })
-          .toBe(true)
-        expect(blank, 'the drawing went blank between the stages').toBe(false)
-      })
-      await log.soft('the counts', async () => {
-        const dl = stages.locator('dl.counts')
-        for (const term of ['Nodes', 'Stations', 'Junctions', 'Edges', 'Lines']) {
-          expect(await text(definition(dl, term)), term).toMatch(/^[\d,.\s]+$/)
-        }
-      })
-      await log.soft('zoom, pan and fit from the keyboard', async () => {
-        const pane = stages.getByRole('group', { name: /^The loom stage/ })
-        const transform = (): Promise<string> =>
-          frame.evaluate((el) => (el as HTMLElement).style.transform)
-        await pane.focus()
-        await window.keyboard.type('0')
-        const fitted = await transform()
-        await window.keyboard.type('+')
-        const zoomed = await transform()
-        expect(zoomed, '+ zooms').not.toBe(fitted)
-        await window.keyboard.type('-')
-        const out = await transform()
-        expect(out, '- zooms out').not.toBe(zoomed)
-        await window.keyboard.press('ArrowLeft')
-        const panned = await transform()
-        expect(panned, 'an arrow pans').not.toBe(out)
-        await window.keyboard.type('0')
-        expect(await transform(), '0 fits again').toBe(fitted)
-        await expect(stages.locator('#stage-keys')).toHaveText(
-          'Zoom with the wheel or plus and minus, pan by dragging or with the arrows, 0 to fit.',
-        )
-      })
-      // The control is checked whenever this build has it. Whether the tag
-      // contains the commit that brought it decides only what its absence
-      // is: a failure, not in this build, or - when a tag was named and git
-      // cannot tell - a problem of its own, never a quiet pass.
-      const skipExpected = tagContains(FEATURES.skipPastMap)
-      const skipPresent = (await window.locator('button.skip-link').count()) > 0
-      const { name: skipName, commit: skipCommit, landed: skipLanded } = FEATURES.skipPastMap
-      const skipShort = skipCommit.slice(0, 7)
-      if (TAG !== '' && skipExpected === null) {
-        log.problems.push(
-          `git could not tell whether ${TAG} contains ${skipShort} (${skipName}, ${skipLanded}): the tag or the commit is not in this clone, or the clone is shallow`,
-        )
-      }
-      if (skipPresent) {
-        if (skipExpected === false) {
-          log.note(`${skipName} is on the screen though ${TAG} was tagged before ${skipLanded}.`)
-        }
-        await log.soft('Skip past the map, then Rename', async () => {
-          await window.keyboard.press('Tab')
-          const skip = window.getByRole('button', { name: 'Skip past the map', exact: true })
-          await expect(skip).toBeFocused()
-          await expect
-            .poll(() => skip.evaluate((el) => el.getBoundingClientRect().width))
-            .toBeGreaterThan(1)
-          await window.keyboard.press('Enter')
-          await expect(window.getByRole('button', { name: 'Rename', exact: true })).toBeFocused()
-        })
-      } else if (skipExpected === true) {
-        log.problems.push(
-          `${skipName} is not on the screen, and ${TAG} contains ${skipShort}, which brought it`,
-        )
-      } else if (skipExpected === false) {
-        log.notChecked(`${skipName}: ${TAG} was tagged before ${skipLanded} (${skipShort}).`)
-      } else if (TAG === '') {
-        log.notChecked(
-          `${skipName}: the control is not in this build, and no tag was named (LEGIBLE_ACCEPTANCE_TAG) to say whether it should be; it landed in ${skipLanded} (${skipShort}).`,
-        )
-      }
-
-      await log.soft('the viewer', async () => {
-        const viewer = window.getByRole('region', { name: 'Map' })
-        await expect(viewer).toBeVisible()
-        const map = window.frameLocator('iframe.viewer-frame')
-        const clock = map.locator('#clock')
-        await expect(clock).toHaveText(/\d/, { timeout: SHORT_MS })
-        // As a person would watch it: the frame scrolled into view (it sits
-        // below the panels), and the window in front. Chromium throttles
-        // animation frames in a cross-origin frame outside the viewport, and
-        // in a window it reports as hidden. Only the app's page is scrolled;
-        // nothing runs inside the frame.
-        const frameElement = window.locator('iframe.viewer-frame')
-        await frameElement.scrollIntoViewIfNeeded()
-        const visibility = await bringToFront(session.app as ElectronApplication, window)
-        await window.waitForTimeout(SECOND)
-        const readings: string[] = [await text(clock)]
-        const first = readings[0]
-        const moved = await until(
-          async () => {
-            const now = await text(clock)
-            if (now !== readings[readings.length - 1]) readings.push(now)
-            return now !== first ? true : undefined
-          },
-          SHORT_MS,
-          () => 'the clock did not move',
-          250,
-        ).catch(() => false)
-        const count = await text(map.locator('#count'))
-        if (moved) {
-          log.note(
-            `With the map scrolled into view, the page's clock moved from ${first}; ${count}.`,
-          )
-        } else if (visibility !== 'visible') {
-          log.notAutomated(
-            `whether the trains move: the window was ${visibility} to Chromium even after it was brought to the front, which stops the page's animation frames, and the clock stayed at ${first} (${count}).`,
-          )
-        } else {
-          const where = await frameElement.evaluate((element) => {
-            const box = element.getBoundingClientRect()
-            return {
-              frame: `${Math.round(box.left)},${Math.round(box.top)} ${Math.round(box.width)}x${Math.round(box.height)}`,
-              viewport: `${document.documentElement.clientWidth}x${document.documentElement.clientHeight}`,
-              focused: document.hasFocus(),
-              visibility: document.visibilityState,
-            }
-          })
-          throw new Error(
-            `the page's clock stayed at ${first} for ${SHORT_MS / SECOND} s with the map scrolled into view and the window in front: readings ${readings.join(', ')}; the frame at ${where.frame} in a ${where.viewport} viewport; the page ${where.visibility}, focused ${where.focused}; ${count}`,
-          )
-        }
-        const linear = map.getByRole('button', { name: 'Linear', exact: true })
-        await linear.click()
-        await expect(linear).toHaveAttribute('aria-pressed', 'true')
-        const schematic = map.getByRole('button', { name: 'Schematic', exact: true })
-        await schematic.click()
-        await expect(schematic).toHaveAttribute('aria-pressed', 'true')
-        await expect(
-          window.getByText("This project's map is not there. Lay it out again."),
-        ).toHaveCount(0)
-        await viewer
-          .screenshot({ path: join(OUT, `acceptance-${PLATFORM}-viewer.png`) })
-          .catch(() => undefined)
-      })
-      log.notAutomated(
-        "whether the drawings, the trains and the page's controls look right (a screenshot of the viewer is kept beside the record).",
-      )
-    })
-
-    // ---------------------------------------------------------------- 9
-    await runStep(9, [7], async (log) => {
-      const window = page()
-      await openProject(window, 'Los Angeles')
-      const mark = (await saidSoFar(window)).length
-      const panel = window.getByRole('region', { name: 'Line colours' })
-      const rows = panel.getByRole('list', { name: 'Lines' }).getByRole('listitem')
-      await expect(rows.first()).toBeVisible({ timeout: FEED_READ_MS })
-      const line = ((await rows.first().locator('.line-name').textContent()) ?? '').trim()
-      const source = rows.first().locator('.line-source')
-      const feedWords = await text(source)
-      log.note(`Line ${line}, "${feedWords}" to begin with.`)
-
-      await panel
-        .getByRole('button', { name: `Choose the colour of line ${line}`, exact: true })
-        .click()
-      const picker = panel.getByRole('group', { name: `Colour for line ${line}` })
-      await expect(picker).toBeVisible()
-      const sliders = picker.getByRole('slider')
-      await log.soft('the picker stays open through a drag and its release', async () => {
-        for (const slider of [sliders.first(), sliders.last()]) {
-          const box = await slider.boundingBox()
-          if (box === null) throw new Error('a slider has no box')
-          await window.mouse.move(box.x + box.width * 0.2, box.y + box.height * 0.5)
-          await window.mouse.down()
-          await window.mouse.move(box.x + box.width * 0.7, box.y + box.height * 0.4, { steps: 12 })
-          await expect(picker).toBeVisible()
-          await window.mouse.move(box.x + box.width + 160, box.y + box.height + 160, { steps: 6 })
-          await expect(picker).toBeVisible()
-          await window.mouse.up()
-          await expect(picker).toBeVisible()
-        }
-      })
-      await log.soft('a click outside the row closes it', async () => {
-        await panel.getByRole('heading', { name: 'Line colours' }).click()
-        await expect(picker).toBeHidden()
-      })
-      await log.soft('the row says your colour', () =>
-        expect(source).toHaveText(/^your colour, #[0-9a-f]{6}$/),
-      )
-      await until(
-        async () =>
-          (await recordOf(window, 'Los Angeles')).colors[line] !== undefined ? true : undefined,
-        REBUILD_MS,
-        () => 'the dragged colour was never written to the project',
-      )
-      await log.soft('the redraw sentence', async () => {
-        const said = (await saidSoFar(window)).slice(mark)
-        expect(said).toContain(
-          'Drawn in the colours you chose, from the stored layout. The stations have not moved.',
-        )
-      })
-
-      await panel.getByRole('button', { name: new RegExp(`^Reset line ${line} to`) }).click()
-      await log.soft('Reset puts the row back', () => expect(source).toHaveText(feedWords))
-      await until(
-        async () =>
-          (await recordOf(window, 'Los Angeles')).colors[line] === undefined ? true : undefined,
-        REBUILD_MS,
-        () => 'the reset colour was never written to the project',
-      )
-
-      await panel
-        .getByRole('button', { name: 'Choose the colour of lines the feed leaves uncoloured' })
-        .click()
-      const fallback = panel.getByRole('group', {
-        name: 'Colour for lines the feed leaves uncoloured',
-      })
-      await fallback.getByLabel('Hex value').fill('#123456')
-      await fallback.getByRole('button', { name: 'Use this colour' }).click()
-      await until(
-        async () =>
-          (await recordOf(window, 'Los Angeles')).defaultColor === '#123456' ? true : undefined,
-        REBUILD_MS,
-        () => 'the default colour was never written to the project',
-      )
-      await log.soft('the default row', () => expect(panel).toContainText('drawn in #123456'))
-
-      const resetAll = panel.getByRole('button', { name: 'Reset every line' })
-      await resetAll.click()
-      await until(
-        async () => {
-          const now = await recordOf(window, 'Los Angeles')
-          return Object.keys(now.colors).length === 0 && now.defaultColor === '#888888'
-            ? true
-            : undefined
-        },
-        REBUILD_MS,
-        () => 'Reset every line was never written to the project',
-      )
-      await log.soft('Reset every line is then unavailable', () => expect(resetAll).toBeDisabled())
-      await log.soft('nothing was laid out', async () => {
-        const said = (await saidSoFar(window)).slice(mark)
-        expect(said.filter((s) => s.startsWith('Laid out'))).toEqual([])
-      })
-      log.note(
-        'Dragged with the mouse through the colour square and the hue slider, each released outside the picker.',
-      )
-      log.notAutomated(
-        "the drag's feel, and whether the map, its chips and the time chart show the new colour.",
-      )
-    })
-
-    // ---------------------------------------------------------------- 10
-    await runStep(10, [7], async (log) => {
-      const window = page()
-      await openProject(window, 'Los Angeles')
-      const mark = (await saidSoFar(window)).length
-      const panel = window.getByRole('region', { name: 'Line order' })
-      const list = panel.getByRole('list', { name: 'Lines in the order they are drawn' })
-      await expect(list.getByRole('listitem').first()).toBeVisible({ timeout: FEED_READ_MS })
-      const labels = async (): Promise<string[]> =>
-        (await list.locator('.line-name').allTextContents()).map((l) => l.trim())
-      const start = await labels()
-      const total = start.length
-      if (total < 3) throw new Error(`the list has ${total} lines; the step needs three`)
-      const button = (label: string, way: 'up' | 'down'): Locator =>
-        panel.getByRole('button', { name: `Move line ${label} ${way}`, exact: true })
-      const status = panel.locator('p.hint[role="status"]')
-      await log.soft('the ends are unavailable', async () => {
-        await expect(button(start[0], 'up')).toBeDisabled()
-        await expect(button(start[total - 1], 'down')).toBeDisabled()
-      })
-      await button(start[0], 'down').click()
-      await log.soft('the first move is said', () =>
-        expect(status).toHaveText(`${start[0]} is now 2 of ${total}.`),
-      )
-      const other = start[total - 1]
-      await button(other, 'up').click()
-      await log.soft('the second move is said', () =>
-        expect(status).toHaveText(`${other} is now ${total - 1} of ${total}.`),
-      )
-      const shown = await labels()
-      await until(
-        async () => {
-          const order = (await recordOf(window, 'Los Angeles')).lineOrder
-          return JSON.stringify(order) === JSON.stringify(shown) ? true : undefined
-        },
-        REBUILD_MS,
-        async () =>
-          `the order was never written: the project has ${JSON.stringify((await recordOf(window, 'Los Angeles')).lineOrder)}`,
-      )
-      await log.soft('the redraw sentence', async () => {
-        const said = (await saidSoFar(window)).slice(mark)
-        expect(said).toContain(
-          'Drawn with the lines in the order you chose, from the stored layout. The stations have not moved.',
-        )
-      })
-      log.note(`Moved ${start[0]} down and ${other} up: ${shown.join(', ')}.`)
-      const back = panel.getByRole('button', { name: 'Back to alphabetical' })
-      await back.click()
-      await log.soft('Back to alphabetical', async () => {
-        await expect(status).toHaveText('The lines are in alphabetical order again.')
-        await expect(back).toBeDisabled()
-      })
-      await until(
-        async () =>
-          (await recordOf(window, 'Los Angeles')).lineOrder.length === 0 ? true : undefined,
-        REBUILD_MS,
-        () => 'the alphabetical order was never written',
-      )
-      log.notAutomated("whether the page's line rows follow the order.")
-    })
-
-    // ---------------------------------------------------------------- 11
-    await runStep(11, [7], async (log) => {
-      const window = page()
-      await openProject(window, 'Los Angeles')
-      const group = window
-        .getByRole('region', { name: 'Theme' })
-        .getByRole('group', { name: 'The theme this map is drawn in' })
-      const warm = group.getByRole('button', { name: 'Warm dark' })
-      const sepia = group.getByRole('button', { name: 'Sepia' })
-      const viewer = window.locator('iframe.viewer-frame')
-      // Both halves of each kit button: the host React renders, and the
-      // button inside its shadow root, which is what the role resolves to.
-      const pressedState = (): Promise<string> =>
-        group
-          .locator('fig-button')
-          .evaluateAll((hosts) =>
-            hosts
-              .map(
-                (host) =>
-                  `${(host.textContent ?? '').trim()}: variant ${host.getAttribute('variant')}, disabled ${host.hasAttribute('disabled')}, aria-pressed on the host ${host.getAttribute('aria-pressed')} and on its inner button ${host.shadowRoot?.querySelector('button')?.getAttribute('aria-pressed') ?? null}`,
-              )
-              .join('; '),
-          )
-      log.note(`Before any press: ${await pressedState()}.`)
-      await log.soft('two buttons, Warm dark pressed', async () => {
-        await expect(group.getByRole('button')).toHaveCount(2)
-        try {
-          await expect(warm).toHaveAttribute('aria-pressed', 'true', { timeout: 5 * SECOND })
-        } catch {
-          throw new Error(`Warm dark is not announced as pressed: ${await pressedState()}`)
-        }
-      })
-      const interfaceTheme = await window.locator('html').getAttribute('data-theme')
-      const mark = (await saidSoFar(window)).length
-      await sepia.click()
-      await log.soft('sepia at once, with no run', async () => {
-        await expect(viewer).toHaveAttribute('src', /theme=sepia/)
-        await expect(sepia).toHaveAttribute('aria-pressed', 'true')
-        await expect(window.frameLocator('iframe.viewer-frame').locator('html')).toHaveAttribute(
-          'data-theme',
-          'sepia',
-          { timeout: SHORT_MS },
-        )
-        await expect.poll(async () => (await recordOf(window, 'Los Angeles')).theme).toBe('sepia')
-        await expect(window.getByRole('button', { name: /^Jobs, / })).toHaveAccessibleName(
-          'Jobs, none running',
-        )
-        const said = (await saidSoFar(window)).slice(mark)
-        expect(said.filter((s) => /^(Laid out|Drawn )/.test(s))).toEqual([])
-        expect(await window.locator('html').getAttribute('data-theme')).toBe(interfaceTheme)
-      })
-      await warm.click()
-      await log.soft('Warm dark brings it back', async () => {
-        await expect(viewer).toHaveAttribute('src', /theme=warm-dark/)
-        await expect
-          .poll(async () => (await recordOf(window, 'Los Angeles')).theme)
-          .toBe('warm-dark')
-      })
-      log.notAutomated('whether the page looks sepia and then warm dark.')
-    })
-
-    // ---------------------------------------------------------------- 12
-    await runStep(12, [7], async (log) => {
-      const window = page()
-      await openProject(window, 'Los Angeles')
-      const section = window.getByRole('region', { name: 'Service day' })
-      const sentence = await text(section.locator('p.prose[role="status"]'))
-      const parsed =
-        /^Drawn for (\d{4}-\d{2}-\d{2})\. The feed covers (\d{4}-\d{2}-\d{2}) to (\d{4}-\d{2}-\d{2}); the busiest weekday, counted from (\d{4}-\d{2}-\d{2}), is (\d{4}-\d{2}-\d{2})\.$/.exec(
-          sentence,
-        )
-      if (parsed === null) throw new Error(`the section says "${sentence}"`)
-      const [, drawn, startDay, endDay, anchor, busiest] = parsed
-      log.note(`"${sentence}"`)
-      const control = section.getByLabel('Draw for another day')
-      await log.soft('the calendar is bounded by the window', async () => {
-        await expect(control).toHaveAttribute('min', startDay)
-        await expect(control).toHaveAttribute('max', endDay)
-      })
-      const fields = projectFields(window)
-      const layoutBefore = await text(definition(fields, 'Layout'))
-      const run = window.getByRole('region', { name: 'Layout run' })
-
-      const drawFor = async (day: string): Promise<void> => {
-        const before = oneLine((await run.locator('p.prose').allTextContents()).join(' '))
-        await section.getByRole('button', { name: 'Draw for this day' }).click()
-        const end = await runToEnd(
-          run,
-          new RegExp(`^Drawn for ${day} from the stored layout\\. The stations have not moved\\.$`),
-          REBUILD_MS,
-          before,
-        )
-        if (!end.ok)
-          throw new Error(`the rebuild for ${day} stopped: "${end.sentence}" "${end.message}"`)
-        log.note(`Drawn for ${day} in ${end.seconds} s.`)
-        await expect(definition(fields, 'Service day')).toHaveText(day)
-        await log.soft(`the Layout after ${day}`, () =>
-          expect(definition(fields, 'Layout')).toHaveText(layoutBefore),
-        )
-      }
-
-      const other = [addDays(busiest, 1), addDays(busiest, -1), addDays(busiest, 2)].find(
-        (day) => day >= startDay && day <= endDay && day !== drawn && day !== busiest,
-      )
-      if (other === undefined) {
-        log.problems.push(`no day other than ${busiest} in ${startDay} to ${endDay} to choose`)
-      } else {
-        await control.fill(other)
-        // A5.5-15: choosing and drawing are two acts. The day reaches the
-        // record as it is chosen, the section says the map has not caught
-        // up, and nothing runs until the button is pressed.
-        await log.soft('the chosen day reaches the record before anything is drawn', async () => {
-          await expect.poll(async () => (await recordOf(window, 'Los Angeles')).date).toBe(other)
-        })
-        await log.soft('and the section says the map still shows the drawn day', () =>
-          expect(
-            section.getByText(`${other} is chosen; the map still shows ${drawn}.`, {
-              exact: true,
-            }),
-          ).toBeVisible(),
-        )
-        await log.soft('and nothing ran for the choice', () =>
-          expect(window.getByRole('button', { name: /^Jobs, / })).toHaveAccessibleName(
-            'Jobs, none running',
-          ),
-        )
-        await drawFor(other)
-      }
-      // The button is unavailable while the control already holds the busiest
-      // weekday, which it does when no other day could be drawn.
-      if (other !== undefined || drawn !== busiest) {
-        await section.getByRole('button', { name: 'Use the busiest weekday' }).click()
-        await log.soft('the busiest weekday is put in the control', () =>
-          expect(control).toHaveValue(busiest),
-        )
-        await drawFor(busiest)
-      }
-
-      const outside = addDays(endDay, 1)
-      await control.fill(outside)
-      await section.getByRole('button', { name: 'Draw for this day' }).click()
-      await log.soft('a day outside is refused', () =>
-        expect(
-          section.getByText(`The feed covers ${startDay} to ${endDay}.`, { exact: true }),
-        ).toBeVisible(),
-      )
-      await log.soft('and nothing runs', async () => {
-        await expect(window.getByRole('button', { name: /^Jobs, / })).toHaveAccessibleName(
-          'Jobs, none running',
-        )
-        expect((await recordOf(window, 'Los Angeles')).date).toBe(busiest)
-      })
-      session.laDay = busiest
-      log.note(`Ended on the busiest weekday, ${busiest}, counted from ${anchor}.`)
-      log.notAutomated(
-        "the calendar's own days: min and max were checked, not the platform's date picker.",
-      )
-      log.notAutomated(
-        "cell 03's collapsed row, which says the day, whether the map has been drawn for " +
-          "it, and the engine's own busiest weekday beside it.",
-      )
-      log.notAutomated(
-        'that cells 04, 05 and 06 say "not drawn yet" while a chosen day is waiting.',
-      )
-      log.notAutomated(
-        'that cell 03 offers no crop, rotation, margin or clip mask, not even greyed out.',
-      )
-    })
-
-    // ---------------------------------------------------------------- 13
-    const exportTo = async (
-      log: StepLog,
-      file: string,
-      deadline: number,
-    ): Promise<{ seconds: number; path: string }> => {
-      const window = page()
-      const panel = window.getByRole('tabpanel', { name: 'Export' })
-      const region = panel.getByRole('region', { name: 'Export' })
-      const before =
-        (await region.count()) === 0
-          ? ''
-          : oneLine((await region.locator('p.prose').allTextContents()).join(' '))
-      await panel.getByRole('button', { name: 'Export', exact: true }).click()
-      await expect(region).toBeVisible({ timeout: SHORT_MS })
-      const end = await runToEnd(region, /^Exported /, deadline, before)
-      if (!end.ok) throw new Error(`the export stopped: "${end.sentence}" "${end.message}"`)
-      await log.soft(`"Exported ${file}."`, () => expect(end.sentence).toBe(`Exported ${file}.`))
-      await log.soft('Reveal', () =>
-        expect(region.getByRole('button', { name: 'Reveal' })).toBeVisible(),
-      )
-      await log.soft('no path on the screen', async () =>
-        expect(await region.innerText()).not.toMatch(/[/\\]/),
-      )
-      const path = join(session.exportFolder, 'Los Angeles', file)
-      if (!existsSync(path))
-        throw new Error(`${file} is not in the export folder's Los Angeles folder`)
-      await log.soft('its sidecar', () => expect(existsSync(`${path}.json`)).toBe(true))
-      session.exports.push(path)
-      return { seconds: end.seconds, path }
-    }
-
-    const frameParams = async (window: Page): Promise<URLSearchParams> =>
-      new URL((await window.locator('iframe.viewer-frame').getAttribute('src')) ?? 'app://local/')
-        .searchParams
-
-    await runStep(13, [7], async (log) => {
-      const window = page()
-      await openProject(window, 'Los Angeles')
-      await window.getByRole('tab', { name: 'Export' }).click()
-      const panel = window.getByRole('tabpanel', { name: 'Export' })
-      const preset = panel.getByRole('combobox', { name: 'Preset' })
-      await expect(preset).toBeVisible({ timeout: 2 * MINUTE })
-      await log.soft('the thirteen presets by platform', async () => {
-        await expect(preset).toHaveValue('instagram-reel')
-        const shown = await preset.evaluate(
-          (select) => (select as HTMLSelectElement).selectedOptions[0]?.textContent?.trim() ?? '',
-        )
-        expect(shown).toBe('instagram-reel: 1080 by 1920, video, MP4')
-        const options = (await preset.locator('option').allTextContents()).map((o) => o.trim())
-        expect(options).toHaveLength(13)
-        const odd = options.filter((o) => !/^\S+: \d+ by \d+, .+$/.test(o))
-        expect(odd).toEqual([])
-        expect(
-          await preset
-            .locator('optgroup')
-            .evaluateAll((g) => g.map((e) => e.getAttribute('label'))),
-        ).toEqual(['Instagram', 'LinkedIn', 'Bluesky', 'X'])
-        await expect(panel.getByRole('combobox', { name: 'Storyboard' })).toBeVisible()
-      })
-      await log.soft("the viewer shows the export's tall frame with the safe zones", async () => {
-        await expect
-          .poll(async () => (await frameParams(window)).get('frame'), { timeout: 2 * MINUTE })
-          .toBe('1080:1920')
-        expect((await frameParams(window)).get('safe')).toBe('1')
-      })
-      const mark = (await saidSoFar(window)).length
-      const pressed = Date.now()
-      // Watched beside the export rather than after it: these hold only while
-      // it runs. The outcome is kept, never left as a rejection nobody holds.
-      // Which stage the line marked as current, sampled while it ran: the
-      // capture takes most of the export and is always caught; the plan and
-      // the encode can be over between two looks, and are only noted.
-      const current = new Set<string>()
-      // The page's visibility, sampled with it: in a visible page the
-      // recorder sees every sentence React draws, and "Captured n of n"
-      // counts up for most of the export.
-      const visibilities = new Set<string>()
-      await bringToFront(session.app as ElectronApplication, window)
-      const watch = (async () => {
-        const region = panel.getByRole('region', { name: 'Export' })
-        const cancel = region.getByRole('button', { name: 'Cancel', exact: true })
-        await expect(cancel).toBeVisible({ timeout: SHORT_MS })
-        const labels = (await region.locator('svg text').allTextContents()).map((l) => l.trim())
-        expect(labels).toEqual(['plan', 'capture', 'encode'])
-        await expect(preset).toBeDisabled()
-        await expect(
-          panel.getByText(
-            'The choices wait until the export that is going has finished: it was planned from them.',
-          ),
-        ).toBeVisible()
-        const end = Date.now() + EXPORT_MS
-        while (Date.now() < end && (await cancel.count()) > 0) {
-          for (const label of await region.locator('svg text.label-current').allTextContents()) {
-            current.add(label.trim())
-          }
-          visibilities.add(await window.evaluate(() => document.visibilityState))
-          await sleep(200)
-        }
-      })().then(
-        () => null,
-        (error: unknown) => error,
-      )
-      const done = await exportTo(log, 'la-metro-rail-instagram-reel.mp4', EXPORT_MS)
-      await log.soft('while it ran: the stages, Cancel, and the choices unavailable', async () => {
-        const problem = await watch
-        if (problem !== null) throw problem
-      })
-      log.title = `Export a reel (${done.seconds} s)`
-      log.note(
-        `${done.seconds} s from the press (${Math.round((Date.now() - pressed) / SECOND)} s with the checks).`,
-      )
-      await log.soft('the stages moved through to the end', async () => {
-        expect(current.has('capture'), `current stages seen: ${[...current].join(', ')}`).toBe(true)
-        const marks = await panel
-          .getByRole('region', { name: 'Export' })
-          .locator('svg circle.mark')
-          .evaluateAll((stations) => stations.map((s) => s.getAttribute('class') ?? ''))
-        expect(marks.map((m) => m.includes('mark-done'))).toEqual([true, true, true])
-        log.note(`The line marked as current: ${[...current].join(', ')}.`)
-      })
-      // The sentences beside the line are the engine's and the app's progress
-      // reports, each replaced by the next: a short one can be gone before it
-      // is drawn, so each is recorded as seen or not, and none is required.
-      const said = (await saidSoFar(window)).slice(mark)
-      const sentences: [string, RegExp][] = [
-        ['Planning the export.', /^Planning the export\.$/],
-        [
-          'Planned …',
-          /^Planned la-metro-rail-instagram-reel\.mp4: \d+ frames at \d+ frames per second\.$/,
-        ],
-        ['Capturing …', /^Capturing \d+ frames\.$/],
-        ['Captured … of …', /^Captured \d+ of \d+ frames\.$/],
-        ['Encoding …', /^Encoding \d+ frames\.$/],
-        ['Encoded … of …', /^Encoded \d+ of \d+ frames\.$/],
-      ]
-      const seen = sentences.filter(([, pattern]) => said.some((t) => pattern.test(t)))
-      const missed = sentences.filter(([, pattern]) => !said.some((t) => pattern.test(t)))
-      log.note(
-        `Sentences seen beside the line: ${seen.map(([name]) => `"${name}"`).join(', ') || 'none'}; not caught: ${missed.map(([name]) => `"${name}"`).join(', ') || 'none'}.`,
-      )
-      const capturedSeen = said.some((t) => /^Captured \d+ of \d+ frames\.$/.test(t))
-      if (visibilities.size === 1 && visibilities.has('visible')) {
-        if (!capturedSeen) {
-          log.problems.push(
-            '"Captured <n> of <n> frames." was never drawn, though the page was visible throughout the export',
-          )
-        }
-      } else if (!capturedSeen) {
-        log.notAutomated(
-          `"Captured <n> of <n> frames." counting up: the page was ${[...visibilities].join(' and ') || 'never sampled'} during the export, and a hidden page's drawing is throttled.`,
-        )
-      }
-      await log.soft('the file is a valid MP4', () => {
-        const probe = ffprobe(session.resources, done.path)
-        const video = probe.streams?.find((s) => s.codec_type === 'video')
-        expect(probe.format?.format_name ?? '').toContain('mp4')
-        expect(video?.width).toBe(1080)
-        expect(video?.height).toBe(1920)
-        expect(Number(probe.format?.duration ?? 0)).toBeGreaterThan(0)
-        log.note(
-          `${statSync(done.path).size} bytes; the bundled ffprobe reads ${probe.format?.format_name}, ${video?.codec_name} ${video?.width}x${video?.height}, ${probe.format?.duration} s.`,
-        )
-      })
-      log.notAutomated(
-        'whether the parts Instagram covers look shaded (the address asks for the safe zones).',
-      )
-    })
-
-    // ---------------------------------------------------------------- 14
-    await runStep(14, [7], async (log) => {
-      const window = page()
-      await openProject(window, 'Los Angeles')
-      await window.getByRole('tab', { name: 'Export' }).click()
-      const panel = window.getByRole('tabpanel', { name: 'Export' })
-      const preset = panel.getByRole('combobox', { name: 'Preset' })
-      await expect(preset).toBeEnabled({ timeout: 2 * MINUTE })
-
-      await preset.selectOption('instagram-post')
-      await log.soft('a still: View and Start time, no Storyboard, no shading', async () => {
-        await expect(panel.getByRole('combobox', { name: 'View' })).toBeVisible()
-        await expect(panel.getByLabel('Start time')).toBeVisible()
-        await expect(panel.getByRole('combobox', { name: 'Storyboard' })).toHaveCount(0)
-        await expect
-          .poll(async () => (await frameParams(window)).get('frame'), { timeout: 2 * MINUTE })
-          .toBe('1080:1350')
-        expect((await frameParams(window)).get('safe')).toBeNull()
-      })
-      await expect
-        .poll(async () => (await recordOf(window, 'Los Angeles')).export.preset)
-        .toBe('instagram-post')
-      const post = await exportTo(log, 'la-metro-rail-instagram-post.png', STILL_MS)
-      await log.soft('the post is a PNG', () => {
-        expect(readFileSync(post.path).subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')
-        const video = ffprobe(session.resources, post.path).streams?.[0]
-        expect([video?.codec_name, video?.width, video?.height]).toEqual(['png', 1080, 1350])
-        log.note(`Post: ${post.seconds} s, ${statSync(post.path).size} bytes, 1080x1350 PNG.`)
-      })
-
-      await preset.selectOption('instagram-reel-gif')
-      await log.soft('Storyboard returns', () =>
-        expect(panel.getByRole('combobox', { name: 'Storyboard' })).toBeVisible(),
-      )
-      await expect
-        .poll(async () => (await recordOf(window, 'Los Angeles')).export.preset)
-        .toBe('instagram-reel-gif')
-      const gif = await exportTo(log, 'la-metro-rail-instagram-reel-gif.gif', EXPORT_MS)
-      await log.soft('the GIF has frames', () => {
-        expect(readFileSync(gif.path).subarray(0, 6).toString('latin1')).toMatch(/^GIF8[79]a$/)
-        const video = ffprobe(session.resources, gif.path, true).streams?.[0]
-        expect([video?.codec_name, video?.width, video?.height]).toEqual(['gif', 630, 1120])
-        expect(Number(video?.nb_read_packets ?? 0)).toBeGreaterThan(1)
-        log.note(
-          `GIF: ${gif.seconds} s, ${statSync(gif.path).size} bytes, ${video?.nb_read_packets} frames.`,
-        )
-      })
-      log.notAutomated(
-        'whether the post is a still of the map and the GIF plays as one (structure checked with the bundled ffprobe).',
-      )
-    })
-
-    // ---------------------------------------------------------------- 15
-    await runStep(15, [14], async (log) => {
-      const window = page()
-      const app = session.app as ElectronApplication
-      await app.evaluate(({ shell }) => {
-        const shown: string[] = []
-        ;(globalThis as { __revealed?: string[] }).__revealed = shown
-        shell.showItemInFolder = (path: string) => {
-          shown.push(path)
-        }
-      })
-      const panel = window.getByRole('tabpanel', { name: 'Export' })
-      await panel
-        .getByRole('region', { name: 'Export' })
-        .getByRole('button', { name: 'Reveal' })
-        .click()
-      const gif = session.exports[session.exports.length - 1]
-      const revealed = await until(
-        async () => {
-          const shown = await app.evaluate(
-            () => (globalThis as { __revealed?: string[] }).__revealed ?? [],
-          )
-          return shown.length > 0 ? shown : undefined
-        },
-        SHORT_MS,
-        () => 'Reveal asked the platform to show nothing',
-      )
-      await log.soft('Reveal shows the last export', () => {
-        expect(revealed).toHaveLength(1)
-        expect(samePath(revealed[0], gif), `${revealed[0]} is not ${gif}`).toBe(true)
-      })
-      await log.soft('the folder holds the three files and their sidecars', () => {
-        const names = readdirSync(dirname(gif)).sort()
-        expect(names).toEqual(
-          [
-            'la-metro-rail-instagram-post.png',
-            'la-metro-rail-instagram-post.png.json',
-            'la-metro-rail-instagram-reel-gif.gif',
-            'la-metro-rail-instagram-reel-gif.gif.json',
-            'la-metro-rail-instagram-reel.mp4',
-            'la-metro-rail-instagram-reel.mp4.json',
-          ].sort(),
-        )
-        expect(basename(dirname(gif))).toBe('Los Angeles')
-      })
-      log.note(
-        'shell.showItemInFolder was replaced in the main process to record what it was asked to show.',
-      )
-      log.notAutomated(
-        "that the Finder or File Explorer opens, comes to the front and selects the file, and install.md's place for the folder (the run's export folder is temporary).",
+      await log.soft(`${name} is gone`, () =>
+        expect(window.getByRole('button', { name: `Open ${name}` })).toHaveCount(0),
       )
     })
 
@@ -2157,28 +2369,29 @@ test('a release, installed, through docs/acceptance.md', async () => {
       )
       log.note(`Listed: ${jobs.map((j) => `${j.title} (${j.state})`).join('; ')}.`)
       const titles = jobs.map((j) => j.title)
-      await log.soft('the exports first, newest first', () =>
-        expect(titles.slice(0, 3)).toEqual([
-          'Los Angeles Export as instagram-reel-gif',
-          'Los Angeles Export as instagram-post',
-          'Los Angeles Export as instagram-reel',
+      await log.soft('the newest first: Caltrain, the feed add, then the exports', () =>
+        expect(titles.slice(0, 5)).toEqual([
+          'Caltrain Layout run',
+          'Feeds Feed add of Caltrain',
+          `${LA} Export as instagram-reel-gif`,
+          `${LA} Export as instagram-post`,
+          `${LA} Export as instagram-reel`,
         ]),
       )
-      await log.soft('the rebuilds, the layout runs and the feed add', () => {
+      await log.soft('the rebuilds, and the first layout run last', () => {
         const missing = [
-          /^Los Angeles Rebuild for \d{4}-\d{2}-\d{2}$/,
-          /^Los Angeles Redraw in new colours$/,
-          /^Los Angeles Redraw in a new line order$/,
-          /^Los Angeles Layout run$/,
-          /^Caltrain Layout run$/,
-          /^Feeds Feed add of Caltrain$/,
+          new RegExp(`^${LA} Rebuild for \\d{4}-\\d{2}-\\d{2}$`),
+          new RegExp(`^${LA} Redraw in new colours$`),
+          new RegExp(`^${LA} Redraw in a new line order$`),
         ].filter((pattern) => !titles.some((t) => pattern.test(t)))
         expect(missing.map(String)).toEqual([])
         expect(
           titles.filter((t) => / Layout run$/.test(t)),
           'two layout runs and no more',
         ).toHaveLength(2)
-        expect(titles[titles.length - 1]).toBe('Feeds Feed add of Caltrain')
+        // The inspector keeps the last twenty finished; past that, the first
+        // layout run has rightly gone from the list.
+        if (jobs.length < 20) expect(titles[titles.length - 1]).toBe(`${LA} Layout run`)
         expect(jobs.length).toBeLessThanOrEqual(20)
       })
       await log.soft('each finished', () =>
@@ -2203,9 +2416,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
         const copied = await (session.app as ElectronApplication).evaluate(({ clipboard }) =>
           clipboard.readText(),
         )
-        expect(copied.startsWith(`# ${titles[0].replace(/^Los Angeles /, '')}, Los Angeles`)).toBe(
-          true,
-        )
+        expect(copied.startsWith('# Layout run, Caltrain'), copied.split('\n')[0]).toBe(true)
         const plain = (t: string): string => t.replace(/[\\/]+/g, '/').toLowerCase()
         expect(plain(copied)).not.toContain(plain(homedir()))
       })
@@ -2217,12 +2428,9 @@ test('a release, installed, through docs/acceptance.md', async () => {
     })
 
     // ---------------------------------------------------------------- 17
-    await runStep(17, [3], async (log) => {
+    await runStep(17, [4], async (log) => {
       const window = page()
-      const before = await projectsNow(window)
-      const la = before.some((p) => p.name === 'Los Angeles')
-        ? await recordOf(window, 'Los Angeles')
-        : null
+      const la = await recordOf(window, LA)
       await quit()
       log.note('Quit through Playwright, which asks the app to quit as its menu does.')
       await log.soft('no process of the app is left', async () => {
@@ -2243,12 +2451,18 @@ test('a release, installed, through docs/acceptance.md', async () => {
       await log.soft('no first-run dialog', () =>
         expect(reopened.locator('dialog[open]')).toHaveCount(0),
       )
-      await log.soft('the Library', async () => {
-        for (const project of before) {
-          const entry = reopened.getByRole('button', { name: `Open ${project.name}` })
-          await expect(entry).toBeVisible()
-          await expect(entry).toContainText(`Service day ${project.date ?? 'not yet chosen'}`)
+      await log.soft('Your projects, newest opened first, and Your feeds', async () => {
+        const list = reopened.getByRole('list', { name: 'Projects' })
+        await expect(list).toBeVisible({ timeout: SHORT_MS })
+        const rows = list.getByRole('button')
+        const names = await rows.evaluateAll((all) =>
+          all.map((row) => row.getAttribute('aria-label') ?? ''),
+        )
+        expect(names).toEqual(['Open Caltrain', `Open ${LA}`])
+        for (const row of await rows.all()) {
+          await expect(row).toContainText('finished up to 05 Lines')
         }
+        await expect(rows.nth(1)).toContainText(`Service day ${session.laDay ?? ''}`)
         if (session.caltrainFeed !== null) {
           await expect(
             reopened
@@ -2257,19 +2471,18 @@ test('a release, installed, through docs/acceptance.md', async () => {
           ).toBeVisible({ timeout: SHORT_MS })
         }
       })
-      if (la === null) throw new Error('there is no Los Angeles project to reopen')
-      await openProject(reopened, 'Los Angeles')
+      await openProject(reopened, LA)
       await log.soft('the same day and layout, drawn from the store', async () => {
         await expect(
           reopened.getByText(`Drawn from layout ${la.layout?.slice(0, 8)} for ${session.laDay}.`, {
             exact: true,
           }),
         ).toBeVisible()
-        await expect(definition(projectFields(reopened), 'Service day')).toHaveText(
+        await expect(definition(cellFields(reopened, 'frame'), 'Service day')).toHaveText(
           session.laDay ?? '',
         )
         if (session.laLayoutText !== null) {
-          await expect(definition(projectFields(reopened), 'Layout')).toHaveText(
+          await expect(definition(cellFields(reopened, 'process'), 'Layout')).toHaveText(
             session.laLayoutText,
           )
         }
@@ -2282,11 +2495,14 @@ test('a release, installed, through docs/acceptance.md', async () => {
           await expect(toggle).toHaveAccessibleName('Jobs, none running')
           await sleep(500)
         }
+        await expect(reopened.locator('p.project-run-state')).toHaveText(
+          'The map is drawn from every cell.',
+        )
         await expect(reopened.getByRole('region', { name: 'Layout run' })).toHaveCount(0)
         await expect(
           reopened.getByRole('region', { name: 'What the build had to fudge' }),
         ).toHaveCount(0)
-        const now = await recordOf(reopened, 'Los Angeles')
+        const now = await recordOf(reopened, LA)
         expect({
           colors: now.colors,
           lineOrder: now.lineOrder,
@@ -2298,15 +2514,37 @@ test('a release, installed, through docs/acceptance.md', async () => {
           date: la.date,
           layout: la.layout,
         })
-      })
-      await log.soft('the Export tab keeps the GIF', async () => {
-        await reopened.getByRole('tab', { name: 'Export' }).click()
         await expect(
           reopened
-            .getByRole('tabpanel', { name: 'Export' })
-            .getByRole('combobox', { name: 'Preset' }),
-        ).toHaveValue('instagram-reel-gif', { timeout: 2 * MINUTE })
+            .getByRole('region', { name: 'Outputs' })
+            .getByRole('button', { name: /^Reveal / }),
+        ).toHaveCount(3)
       })
+      await log.soft('cell 06 keeps the GIF', async () => {
+        const panel = await openCell(reopened, 'export')
+        await expect(panel.getByRole('combobox', { name: 'Preset' })).toHaveValue(
+          'instagram-reel-gif',
+          { timeout: 2 * MINUTE },
+        )
+        await closeCell(reopened, 'export')
+      })
+
+      await reopened.getByRole('button', { name: 'Rename', exact: true }).click()
+      const field = reopened.getByLabel('New name')
+      await field.fill(RENAMED)
+      await reopened.getByRole('button', { name: 'Save', exact: true }).click()
+      await log.soft('the new name', async () => {
+        await expect(reopened.getByRole('heading', { level: 1 })).toHaveText(RENAMED)
+        await expect
+          .poll(async () => (await projectsNow(reopened)).map((p) => p.name))
+          .toContain(RENAMED)
+      })
+      await toLibrary(reopened)
+      await log.soft('the front door lists it first', () =>
+        expect(
+          reopened.getByRole('list', { name: 'Projects' }).getByRole('button').first(),
+        ).toHaveAccessibleName(`Open ${RENAMED}`),
+      )
       log.notAutomated(
         'that the quit showed no dialog (the app has none of its own; a native one would have held the quit past its deadline).',
       )
@@ -2538,7 +2776,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
       await quit()
       window = await launch()
       await engineReady(window)
-      await log.soft('after a start: no Added list, presets not downloaded', async () => {
+      await log.soft('after a start: no Your feeds, samples not downloaded', async () => {
         await expect(window.getByRole('heading', { name: 'Sample cities' })).toBeVisible({
           timeout: SHORT_MS,
         })

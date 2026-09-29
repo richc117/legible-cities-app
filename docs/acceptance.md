@@ -1,12 +1,5 @@
 # Acceptance checklist
 
-> **This document still describes the project screen as a tab strip, and is
-> rewritten once, at the end of the notebook's work, against the interface
-> that ships (ADR-045).** A5.5-08 replaced the Map and Export tabs with six
-> numbered cells and moved or renamed several of the controls and sentences
-> quoted below, so a step here that names a tab will not be found on screen.
-> The release gate does not run against this text until that rewrite lands.
-
 The release gate's run over an installed app (issue A6-04): one person, one
 machine, an installer from a GitHub Release draft, and
 [`install.md`](install.md) open beside it. Run it once on a Windows PC and
@@ -14,6 +7,14 @@ once on a clean Mac, a Mac that has never had Legible Cities on it. The
 stranger's timed run is a separate document,
 [`acceptance-stranger.md`](acceptance-stranger.md); the screen-reader
 walkthrough is in [`accessibility.md`](accessibility.md#walking-it-with-a-screen-reader).
+
+The steps follow what a person does with the app: install it, open a
+sample city and watch it download and lay out, go down the project's six
+cells - the feed, the layout and what it had to fudge, the day and the
+clock, the style, the lines, the export - then add a feed of their own,
+reopen, rename, delete, reset and uninstall. The project screen is the
+notebook of ADR-045: a map pinned at the top, six numbered cells below it,
+and a rail of steps and outputs beside them.
 
 **Results are recorded in an issue, one per run, never committed.** Copy
 the [results template](#results-template) into a new issue, fill it in as
@@ -35,6 +36,14 @@ something that varies, such as a date or a version. A **status** sentence
 is text the screen shows and a screen reader announces without moving
 focus.
 
+A **cell** is one of the project's six numbered sections, "01 Data" to
+"06 Export". Each is opened and closed by pressing its heading, and each
+heading carries the cell's state as an icon and a word: **ready**,
+**running**, **not drawn yet** or **failed**. The **rail** beside the cells
+lists the same six as **Steps**; pressing a step opens its cell and scrolls
+it into view. Below the steps, **Outputs** lists what the project has
+exported.
+
 Before you start, note the time: the results template asks how long the
 run took.
 
@@ -54,7 +63,7 @@ paste into the run's issue. On a machine with the app already installed,
 the spec runs on its own:
 
 ```
-LEGIBLE_ACCEPTANCE_APP="/Applications/Legible Cities.app" LEGIBLE_ACCEPTANCE_TAG=v0.1.0-rc.3 npm run test:acceptance
+LEGIBLE_ACCEPTANCE_APP="/Applications/Legible Cities.app" LEGIBLE_ACCEPTANCE_TAG=v0.1.0-rc.5 npm run test:acceptance
 ```
 
 The record and the screenshots go to `acceptance-results/` (ignored by git;
@@ -76,12 +85,13 @@ Two things a local run leaves that a runner does not:
   log files it created, but its lines are appended to a `main.log` or
   `engine.log` that was already there, and can push one past its 5 MB cap,
   rotating your existing `main.log` into `main.old.log`; that file is left
-  alone. It brings the app's
-window to the front, takes focus and scrolls the map into view before
-watching it, because Chromium stops the map's animation in a window hidden
-behind others and in a frame scrolled out of sight; if the window still is not
-visible, the record says the trains' movement was not checked rather than
-failing it.
+  alone.
+
+It brings the app's window to the front, takes focus and scrolls the map
+into view before watching it, because Chromium stops the map's animation in
+a window hidden behind others and in a frame scrolled out of sight; if the
+window still is not visible, the record says the trains' movement was not
+checked rather than failing it.
 
 What it cannot do stays a person's, and the record says so step by step
 ("not automated"), never counting it as passed:
@@ -98,12 +108,13 @@ What it cannot do stays a person's, and the record says so step by step
   the system to show or open, and checks those files).
 - **Places**: the profile and export folder are temporary, so the folders
   in `install.md`'s tables are checked only in step 21.
-- **Newer than the release**: a check of something that landed on `main`
-  after the tag under test (the skip past the map in step 8 is newer than
-  `v0.1.0-rc.3`) is written as "not checked, not in this build" with the
-  commit that brought it. The workflow names the tag; a local run names it
-  with `LEGIBLE_ACCEPTANCE_TAG`, or the check runs only if the build has
-  the control.
+- **Older than the checklist**: a release tagged before the front door and
+  the notebook this checklist follows (A5.6-06, pull request 243) cannot
+  pass it, so the run refuses its tag before step 3 and says why, rather
+  than failing eighteen steps. Accept such a release with the checklist
+  and spec at its own tag: dispatch the workflow on the tag itself. The
+  workflow names the tag; a local run names it with
+  `LEGIBLE_ACCEPTANCE_TAG`, and without one nothing is refused.
 - **The stranger's timed run and the screen-reader walkthrough**, which
   are separate documents and entirely a person's.
 
@@ -144,29 +155,30 @@ steps past the unsigned-app warning for this version of macOS or Windows.
 
 Result: ____
 
-### 3. First run: the Library, the engine and the bundled tools
+### 3. First run: the front door, the engine and the bundled tools
 
 **Do.** Wait without pressing anything for about thirty seconds. Then press
 **Settings** and read the screen from the top. Press **Back to Library**.
 
 **See.**
-- The Library opens with its heading, **Library**, and the empty state:
+- The front door opens with its heading, **Library**, and the empty state:
   "Legible Cities draws a transit network as a schematic map and plays a
   day of its service on it: start from a sample city below, or add a feed
-  of your own." with a **New project** button, and
-  below it the **Sample cities**.
+  of your own." with a **New project** button, and below it the
+  **Sample cities**. There is no **Your projects** and no **Your feeds**
+  yet.
 - The engine's status line starts at "Checking the engine…" or "Starting
-  the engine." and becomes "Engine ready (`<engine version>`)." The version is the engine pin in
-  `vendor/pins.json` at the release tag (0.8.3 when this was written).
+  the engine." and becomes "Engine ready (`<engine version>`)." The version
+  is the engine pin in `vendor/pins.json` at the release tag (0.8.3 when
+  this was written).
 - **No dialog opens.** The first-run check of the bundled LOOM and ffmpeg
   passes silently; a dialog titled "LOOM will not run", "ffmpeg will not
   run" or "LOOM and ffmpeg will not run" is a failure of this step. Write
   down its sentences and press **Copy diagnostics** in it before you close
   it.
 - Under **Sample cities**, a card for each of the engine's networks - 22 at
-  the pinned engine - each with its city and network, what its mode keeps
-  and "not downloaded yet";
-  pressing a card opens that city's notebook, its layout already running.
+  the pinned engine - each with its name, its city and network, what its
+  mode keeps and "not downloaded yet".
 - In Settings, **Bundled tools** says "The bundled LOOM and ffmpeg ran.",
   with **LOOM tools** "ran (`<n>` ms)." and **ffmpeg and ffprobe**
   "ran (`<n>` ms)."
@@ -180,205 +192,213 @@ Result: ____
 
 Result: ____
 
-### 4. Create a project from the LA preset
+### 4. Open a sample city, and watch it download and lay out
 
-**Do.** In the Library, press **New project**. Leave **Start from** on
-the sample city and the **Feed** as it opens, replace the name with
-`Los Angeles`, and press **Create**. Then press the new row.
+**Do.** Press the **LA Metro Rail** card under **Sample cities**, and
+nothing else until the run ends. Time it from the press to the end of the
+run.
 
 **See.**
-- The sheet is titled **New project**, with **Cancel** focused, and three
-  sources under **Start from**. Its **Feed** select opens on
-  "LA Metro Rail (Los Angeles · Metro Rail)", the app's default feed
-  (`la-metro-rail`), and **Name** is already filled with "LA Metro Rail".
-- After **Create**, the Library lists one project, read aloud as
-  "Open Los Angeles", with "Feed la-metro-rail" and "Service day not yet
-  chosen" beneath it.
-- The project screen's heading is **Los Angeles**. Its fields say Feed
-  `la-metro-rail`, Mode `all`, Agency `none`, Service day "not yet chosen",
-  Layout "not laid out yet".
-- Below the fields, **In the feed** says "Reading the feed, and downloading
-  it first if it is not on this machine yet…" and then fills in; see step 6.
+- The card is read aloud as "LA Metro Rail, Los Angeles · Metro Rail,
+  keeps `<mode>`, not downloaded yet".
+- One press opens the project, without a dialog: a heading **LA Metro
+  Rail**, with **Library** before it (a screen reader names it "Back to
+  Library"), and the notebook's six cells, 01 to 06, with cells 01 to 05
+  open and 06 closed. The rail's **Steps** lists the same six, and its
+  **Outputs** says "Nothing exported yet."
+- The layout starts by itself. The status sentence under the heading reads
+  "02 Process is running." with **Stop** beside it, and "Run all stops at
+  the map. It never exports." beneath.
+- In cell **01 Data**, **In the feed** says "Reading the feed, and
+  downloading it first if it is not on this machine yet…" and then fills
+  in (step 5).
+- In cell **02 Process**, a progress line of eight named stages, in this
+  order: `parse`, `collapse`, `order`, `octilinear`, `trips`, `draw`,
+  `animate`, `write`. These are the app's words for the engine's eight
+  stages, one each, in the engine's own order (A5.5-10). Each stage's
+  station is filled as the engine finishes it, and the sentence beside the
+  line is the engine's for the last stage that finished. **Cancel** is
+  beside it while it runs.
+- It ends with "Laid out.", **Lay out again** and **Re-layout**. The map
+  appears at the top of the notebook, its trains moving, and stays there
+  while the cells scroll beneath it. The sentence under the heading becomes
+  "The map is drawn from every cell." and **Run all** is unavailable, since
+  there is nothing to run.
+- Every cell's heading, and every step in the rail, says **ready**.
+- **What it costs.** Nothing here is a promise. The only figures are from
+  the native-LOOM spike, which ran the LOOM tools by hand on a Mac, not the
+  app's layout run: `gtfs2graph` over LA took about 13 seconds and `topo`,
+  `loom` and `octi` under a second each (`docs/adr/spikes/loom-native.md`).
+  This time includes the feed's download. **check:** write down the whole
+  time. On Windows it has not been measured before this run.
+- **check:** the download itself has no progress line of its own yet
+  (issue 178 waits on the engine for one); the run is at `parse` while it
+  downloads. Write down how long it sat there.
 
 Result: ____
 
-### 5. Add a feed by its web address
+### 5. Cell 01, Data: the feed and where its routes run
 
-The feed is **Caltrain**, from
-`https://data.trilliumtransit.com/gtfs/caltrain-ca-us/caltrain-ca-us.zip`.
-It was chosen because it is small (about 170 KB, so the download is quick
-on any connection), public (the agency's official feed, published by its
-data vendor without a key), current (its calendar runs from 31 January
-2026 to 31 January 2027, and the host was updating it in August 2026), rail
-only (five routes, all of route type 2, so the app's `all` mode keeps a
-map rather than a city's buses), carries `shapes.txt`, which the engine
-draws from, and is not one of the engine's presets, so it lands in the
-**Added** list. Its agency is named "Caltrain", which becomes the feed's
-name. If the address has stopped answering, record that and use another
-small, rail-only, current GTFS zip, and say which in the notes.
-
-**Do.** Press **Library** at the top of the project's screen (a screen
-reader names it "Back to Library"), then **New project**. Under
-**Start from** choose **A feed at an address**, paste the address into
-**Feed address** and press **Add the feed**. When the feed is in, press
-**Cancel**, which keeps the feed. Then press **Start a project** on the new
-row, name it `Caltrain`, and press **Create**. Then press **Remove** on
-the Caltrain row, and **Remove** in the confirmation.
+**Do.** Read cell **01 Data**. Press the **Label**, **Type** and **Trips**
+headers of the routes table. Open the **Mode** select and look at its
+options without changing it. In **Where the routes run**, press
+**gtfs2graph**, then **loom**; press Tab until the drawing has focus, and
+press `+`, `-`, an arrow and `0`. Press Tab once more, and then **Enter**.
 
 **See.**
-- The sheet is titled **New project**; **Start from** offers **A sample
-  city, or a feed you added**, **A GTFS zip on this computer** and **A feed
-  at an address**.
-- While it runs, a progress line with two stages, `download` and `check`,
-  and beside it "downloaded `<n>` of `<n>` bytes" (or "downloaded `<n>`
-  bytes"), then "checked the feed's tables". The sheet's left button reads
-  **Cancel the add** while it runs.
-- When the feed is in, **Name** is filled with "Caltrain", the primary
-  button reads **Create**, and after **Cancel** the Library shows a
-  **Your feeds** list with a row **Caltrain**, "downloaded", with
-  **Start a project** and **Remove**.
-- The confirmation is titled "Remove Caltrain?", with **Cancel** focused.
-  Pressing **Remove** while the Caltrain project exists is refused in the
-  dialog: "The project “Caltrain” uses this feed; delete it first." Press
-  **Cancel**; the row is still there.
-
-Result: ____
-
-### 6. Inspect: mode and operator
-
-**Do.** Open **Los Angeles** and read **In the feed**. Press the **Label**,
-**Type** and **Trips** headers of the routes table. Open the **Mode**
-select and look at its options without changing it. Then, for the
-operator: go back to the Library, press **New project**, choose
-**Mexico City Metro** under **Feed**, name it `Mexico City`, create and open it, and read
-**In the feed** again.
-
-**See.**
-- For Los Angeles: **Operators**, **Stops**, **Trips** and **Service**
+- The fields say Feed `la-metro-rail`, Mode `<the card's mode>` and Agency
+  `none`.
+- **In the feed**: **Operators**, **Stops**, **Trips** and **Service**
   filled in; Service reads "`<start>` to `<end>`; the engine would draw
   `<day>`".
-- A table captioned "Route types, and what the chosen mode keeps", every
-  row "kept" under mode `all`, and a routes table captioned
-  "Routes: `<n>`". The routes open sorted by **Label**, ascending, so the
-  first press on **Label** reverses it; the first press on **Trips** sorts
-  most trips first, and on **Type** ascending; every further press on the
-  column already sorted reverses it (an arrow beside that header shows the
-  direction).
+- A table captioned "Route types, and what the chosen mode keeps", and a
+  routes table captioned "Routes: `<n>`". The routes open sorted by
+  **Label**, ascending, so the first press on **Label** reverses it; the
+  first press on **Trips** sorts most trips first, and on **Type**
+  ascending; every further press on the column already sorted reverses it
+  (an arrow beside that header shows the direction).
 - The **Mode** select offers "all (every type)", the mode names of the
   feed's route types (the engine's suggestion, if it is one of them, marked
   "(the engine suggests it)") and "other…".
 - **check:** Los Angeles shows no **Operator** select: the app offers one
   only when the feed names more than one operator or the project already
   has one (`Inspect.tsx`), and the LA rail feed is expected to name one.
-- For Mexico City: the fields say Agency `METRO`, and **In the feed** has an
-  **Operator** select whose first option is "every operator", followed by
-  the feed's operators. The routes table's caption reads
-  "Routes of METRO: `<n>`".
-- Do not lay Mexico City out. Delete it now: **Delete project**, then
-  **Delete** in the confirmation titled "Delete Mexico City?". The app goes
-  back to the Library, and the project is gone from the list.
+  Step 15 finds one.
+- **Where the routes run**: the two buttons **gtfs2graph** and **loom**,
+  the pressed one marked as pressed, and beside them the pressed stage's
+  description only ("as the feed draws its routes" for gtfs2graph, "lines
+  sorted onto shared track" for loom); a drawing that changes between the
+  two without going blank; the counts **Nodes**, **Stations**,
+  **Junctions**, **Edges** and **Lines**; and the drawing zooming, panning
+  and fitting again from the keyboard, as the line under it says: "Zoom
+  with the wheel or plus and minus, pan by dragging or with the arrows, 0
+  to fit."
+- The Tab after the drawing reaches **Skip past the map** over the top edge
+  of the pinned map, and **Enter** on it puts focus on **Rename**, at the
+  foot of the notebook, without passing through the map's own controls.
+- Collapsed, cell 01's row reads "`<feed name>`, `<mode>`, every operator,
+  `<n>` stops in the feed".
 
 Result: ____
 
-### 7. Lay out
+### 6. Cell 02, Process: the layout and what the build had to fudge
 
-**Do.** Open **Los Angeles** and press **Lay out**. Time it from the press
-to "Laid out.". Then open **Caltrain** and press **Lay out** there too.
-
-**See.**
-- A region with a progress line of eight named stages, in this order:
-  `parse`, `collapse`, `order`, `octilinear`, `trips`, `draw`, `animate`,
-  `write`. These are the app's words for the engine's eight stages, one
-  each, in the engine's own order (A5.5-10); the engine's own names are
-  still what the jobs inspector's log and the geographic view's two
-  buttons say. Each stage's station is filled as the engine finishes it, and
-  the sentence beside the line is the engine's for the last stage that
-  finished. **Cancel** is beside it while it runs.
-- It ends with "Laid out." and a **Lay out again** button and a
-  **Re-layout** button.
-- The fields now say Service day `<day>` and Layout `<8 characters>`,
-  made `<date and time>`.
-- **What it costs.** Nothing here is a promise. The only figures are from
-  the native-LOOM spike, which ran the LOOM tools by hand on a Mac, not the
-  app's layout run: `gtfs2graph` over LA took about 13 seconds and `topo`,
-  `loom` and `octi` under a second each (`docs/adr/spikes/loom-native.md`).
-  The download of LA's zip happened in step 4, and the last four stages
-  were not measured there. **check:** write down the whole time. On
-  Windows it has not been measured before this run.
-- Caltrain: **check:** the same eight stages and "Laid out.". Caltrain is
-  this checklist's choice of feed, not one the engine's tests lay out, so a
-  refusal here is recorded with the engine's sentence (it shows under the
-  line) and filed, and the run carries on with Los Angeles.
-
-Result: ____
-
-### 8. The views on the project screen
-
-The project screen has one frame showing the engine's page, and panels
-around it. Under the **Map** tab, from the top: **What the build had to
-fudge** (the diagnostics), **Service day**, **Line colours**,
-**Line order**, **Theme**, and **Where the routes run** (the geographic
-view's two stages); below the tabs, the viewer. Above the tabs sits
-**In the feed** (step 6).
-
-**Do.** In **Los Angeles**, read **What the build had to fudge**, press the
+**Do.** Read cell **02 Process**. Open **Engine log** and press **Copy
+log**. Read **What the build had to fudge**, press the
 information button beside one measure (a screen reader names it
-"What `<measure>` means"), press **Escape**, and press **Copy as text**. In **Where the routes run**, press **gtfs2graph**, then
-**loom**; press Tab until the drawing has focus, and press `+`, `-`, an
-arrow and `0`. Press Tab once more, and then **Enter**. Then use the map's
-own controls inside the viewer.
+"What `<measure>` means"), press **Escape**, and press **Copy as text**.
+Press **Re-layout**, then **Cancel** in the dialog.
 
 **See.**
+- The Layout field reads "`<8 characters>`, made `<date and time>`"; the
+  run's line still says "Laid out." beside **Lay out again** (the sentence
+  a later visit reads there is step 17's).
+- The cell's footer lists **Layout**, **Made**, **Built with** and
+  **Engine now** (the engine's version, the same as the status line).
+- **Engine log**, with the count of its lines beside it, is closed until
+  opened (a screen reader names what it opens "The engine's log for this
+  run"); **Copy log** says "The log is on the clipboard, with the keys in
+  web addresses taken out and your home folder written as ~." The lines are
+  what the LOOM tools wrote while they ran, passed on by the engine.
+  **check:** write down the count beside **Engine log**; in a local run of
+  this checklist on a Mac it read "no lines yet" after a real layout.
 - The diagnostics open with either "No caveats: nothing was fudged, and
   the issues score is `<n>`." or "`<n>` caveats, and an issues score of
   `<n>`, where 0 is clean.", a table captioned "What the engine measured
   drawing the map for `<day>`", and an explanation that appears on the
   press and goes on **Escape**. **Copy as text** says "The figures and the
   caveats are on the clipboard."
-- **Where the routes run**: the two buttons **gtfs2graph** and **loom**,
-  the pressed one marked as pressed, and beside them the pressed stage's
-  description only ("as the feed draws its routes" for gtfs2graph, "lines
-  sorted onto shared track" for loom); a drawing that changes between the two
-  without going blank; the counts **Nodes**, **Stations**, **Junctions**,
-  **Edges** and **Lines**; and the drawing zooming, panning and fitting
-  again from the keyboard, as the line under it says: "Zoom with the wheel
-  or plus and minus, pan by dragging or with the arrows, 0 to fit."
-- The Tab after the drawing shows **Skip past the map** over the top edge
-  of the viewer, and **Enter** on it puts focus on **Rename**, below the
-  map, without passing through the map's own controls.
-- The viewer shows the animated map, its trains moving, with the engine's
-  own view switcher and controls, and they respond. **check:** no message
-  "This project's map is not there. Lay it out again." under it.
+- **Re-layout** opens a dialog titled "Lay this project out from
+  scratch?", with **Cancel** focused; **Cancel** closes it and starts
+  nothing.
 
 Result: ____
 
-### 9. Restyle: line colours, by dragging
+### 7. Cell 03, Frame and service day: pick a day, scrub the clock
 
-**Do.** In **Line colours**, press **Choose** on one line and **drag**
-through the picker's colour square and hue slider without letting go for a
-moment, then release outside the picker. Click somewhere outside the row.
-Press **Reset** on that line. Choose a colour for the default row,
-"Lines with no colour in the feed", by typing a hex value and pressing
-**Use this colour**; then **Reset every line**.
+**Do.** In cell **03 Frame and service day**, choose another date in
+**Draw for another day** and look at the cells below before pressing
+anything; then press **Draw for this day**. Then press **Use the busiest
+weekday** and **Draw for this day** again. Try typing a date outside the
+range the section gives and pressing **Draw for this day**. Then, under
+**Transport**, drag **Time of day** to another hour, press **Play day**
+and then **Pause**, and choose another **Speed**.
+
+**See.**
+- The section says "Drawn for `<day>`. The feed covers `<start>` to
+  `<end>`; the busiest weekday, counted from `<anchor>`, is `<day>`." and
+  the date control's calendar offers only days in that range.
+- Choosing a date **starts nothing**: no progress line, and the Jobs toggle
+  stays at "Jobs, none running". The day is kept at once: the Service day
+  field already shows it. The section's sentence now begins "`<new day>`
+  is chosen; the map still shows `<old day>`.", cell 03's own state stays
+  **ready**, and cells **04 Style**, **05 Lines** and **06 Export** say
+  **not drawn yet**. The sentence under the heading names them: "04 Style
+  to 06 Export are not drawn yet." Collapsed, cell 03's row reads
+  "`<new day>`, not drawn yet; the engine’s busiest weekday is
+  `<busiest>`".
+- **Draw for this day** then runs the progress line and ends with "Drawn
+  for `<day>` from the stored layout. The stations have not moved."; the
+  Layout does not change, and cells 04 to 06 go back to **ready**.
+- A date outside the range is refused under the control as soon as it is
+  typed: "The feed covers `<start>` to `<end>`.", nothing is stored, and
+  pressing **Draw for this day** refuses it again and runs nothing.
+- The cell offers no crop, rotation, margin or clip mask, not even greyed
+  out, and says in one sentence that it will gain them.
+- **Transport**: "Where the map is in its service day." and **Time of
+  day**, a slider whose clock beside it reads `HH:MM`; the map moves to
+  the hour the slider is left at. **Play day** and **Pause** start and stop
+  the map's clock, and **Speed** offers "15 seconds a second", "30 seconds a
+  second", "A minute a second", "Two minutes a second" and "Five minutes a
+  second". None of this starts a job or changes the project.
+- End on the busiest weekday, and write the day down for step 17.
+
+Result: ____
+
+### 8. Cell 04, Style: the theme
+
+**Do.** In cell **04 Style**, press **Sepia**. Then press **Warm dark**.
+
+**See.**
+- Two buttons, **Warm dark** and **Sepia**, the map's current one marked as
+  pressed.
+- The map reloads in the sepia theme at once, with no progress line and no
+  layout run; the interface around it keeps its own theme.
+- Beneath the two buttons, one sentence says that line width, station size
+  and label size are the engine's own for now. Nothing else in this cell
+  offers to set them, not even a control that cannot be pressed.
+- **Warm dark** brings it back. Leave it on **Warm dark** for the exports,
+  or their file names gain `-light` (step 11).
+
+Result: ____
+
+### 9. Cell 05, Lines: colours, by dragging
+
+**Do.** In cell **05 Lines**, under **Line colours**, press **Choose** on
+one line and **drag** through the picker's colour square and hue slider
+without letting go for a moment, then release outside the picker. Click
+somewhere outside the row. Press **Reset** on that line. Choose a colour
+for the default row, "Lines with no colour in the feed", by typing a hex
+value and pressing **Use this colour**; then **Reset every line**.
 
 **See.**
 - The picker **stays open for the whole drag** and while you release; it
   closes on the click outside the row, not before (issue 87).
 - The line's row says "your colour, `#rrggbb`", and after a moment the
   progress line runs again and says "Drawn in the colours you chose, from
-  the stored layout. The stations have not moved." The map in the viewer
-  shows the new colour on the line, its chips and the time chart.
+  the stored layout. The stations have not moved." The map shows the new
+  colour on the line, its chips and the time chart.
 - **Reset** puts the row back to "the colour in the feed, `#rrggbb`" (or
   "the default, ...") and the map follows; **Reset every line** does the
   same for all and then is unavailable.
-- No step here says "Laid out."; nothing is laid out again.
+- Nothing is laid out again: no "Laid out." here.
 
 Result: ____
 
-### 10. Restyle: line order
+### 10. Cell 05, Lines: the order
 
-**Do.** In **Line order**, press **Down** on the first line, then **Up** on
-another. Wait for the map. Press **Back to alphabetical**.
+**Do.** Under **Line order**, press **Down** on the first line, then **Up**
+on another. Wait for the map. Press **Back to alphabetical**.
 
 **See.**
 - A list "Lines in the order they are drawn", each row with **Up** and
@@ -392,59 +412,9 @@ another. Wait for the map. Press **Back to alphabetical**.
 
 Result: ____
 
-### 11. Restyle: theme
+### 11. Cell 06, Export: a reel
 
-**Do.** In **Theme**, press **Sepia**. Then press **Warm dark**.
-
-**See.**
-- Two buttons, **Warm dark** and **Sepia**, the map's current one marked as
-  pressed.
-- The viewer reloads in the sepia theme at once, with no progress line and
-  no layout run; the interface around it keeps its own theme.
-- Beneath the two buttons, one sentence says that line width, station size
-  and label size are the engine's own for now. Nothing else in this section
-  offers to set them, not even a control that cannot be pressed.
-- **Warm dark** brings it back. Leave it on **Warm dark** for the exports,
-  or their file names gain `-light` (step 13).
-
-Result: ____
-
-### 12. The service day
-
-**Do.** Open cell **03 Frame and service day**. Choose another date in
-**Draw for another day** and look at the cells below before pressing
-anything; then press **Draw for this day**. Then press **Use the busiest
-weekday** and **Draw for this day** again. Try typing a date outside the
-range the section gives and pressing **Draw for this day**.
-
-**See.**
-- The section says "Drawn for `<day>`. The feed covers `<start>` to
-  `<end>`; the busiest weekday, counted from `<anchor>`, is `<day>`." and the
-  date control's calendar offers only days in that range.
-- Choosing a date **starts nothing**: no progress line, and the Jobs toggle
-  stays at "Jobs, none running". The section says "`<new day>` is chosen;
-  the map still shows `<old day>`.", cell 03's own state stays **ready**,
-  and cells **04 Style**, **05 Lines** and **06 Export** say **not drawn
-  yet**. Collapsed, cell 03's row reads "`<new day>`, not drawn yet; the
-  engine's busiest weekday is `<busiest>`" - it names the engine's own answer
-  beside the day rather than saying whose choice the day was, because the
-  engine is asked again at every layout run and its answer moves (A5.5-16).
-- **Draw for this day** then runs the progress line and ends with "Drawn for
-  `<day>` from the stored layout. The stations have not moved."; the
-  fields' Service day changes to the new date, the Layout does not, and
-  cells 04 to 06 go back to **ready**.
-- A date outside the range is refused under the control as soon as it is
-  typed: "The feed covers `<start>` to `<end>`.", nothing is stored, and
-  pressing **Draw for this day** refuses it again and runs nothing.
-- The cell offers no crop, rotation, margin or clip mask, not even greyed
-  out, and says in one sentence that it will gain them.
-- End on the busiest weekday, and write the day down for step 16.
-
-Result: ____
-
-### 13. Export a reel
-
-**Do.** Press the **Export** tab. Leave **Preset** on
+**Do.** Open cell **06 Export**. Leave **Preset** on
 "instagram-reel: 1080 by 1920, video, MP4" (under **Instagram**) and
 **Storyboard** on the preset's own. Press **Export**. Time it.
 
@@ -452,7 +422,7 @@ Result: ____
 - The **Preset** select lists thirteen presets under Instagram, LinkedIn,
   Bluesky and X, each "`<name>`: `<width>` by `<height>`, `<what it
   makes>`".
-- While the tab is open, the viewer shows the export's tall frame, with the
+- While the cell is open, the map shows the export's tall frame, with the
   parts Instagram covers shaded.
 - A progress line with `plan`, `capture` and `encode`, the current stage
   marked as it moves through them and each filled when done, and
@@ -462,11 +432,15 @@ Result: ____
   frames.", "Encoding `<n>` frames." and "Encoded `<n>` of `<n>` frames.";
   each is replaced by the next, and a short one can be gone before it can
   be read, so which of them you catch does not matter. "Captured `<n>` of
-  `<n>` frames." counting up is the one that stays long enough to read; the choices above are unavailable while it runs,
-  with "The choices wait until the export that is going has finished: it
-  was planned from them."
+  `<n>` frames." counting up is the one that stays long enough to read;
+  the choices above are unavailable while it runs, with "The choices wait
+  until the export that is going has finished: it was planned from them."
 - It ends with "Exported la-metro-rail-instagram-reel.mp4." and **Reveal**.
-  No folder path is shown anywhere.
+  The cell's footer says **Exported** `la-metro-rail-instagram-reel.mp4`
+  and "The engine wrote a sidecar beside it: what the file is, the caveats
+  of the network it shows, and its alt text." No folder path is shown
+  anywhere.
+- The rail's **Outputs** gains a row for it.
 - **What it costs.** Not a promise: the only figure is from development,
   where the same reel took about two minutes on an Apple silicon laptop
   against engine v0.3.0 and a development ffmpeg, not the bundled one
@@ -474,7 +448,7 @@ Result: ____
 
 Result: ____
 
-### 14. Export a post and a GIF
+### 12. Cell 06, Export: a post and a GIF
 
 **Do.** Choose **Preset** "instagram-post: 1080 by 1350, still, PNG" and
 press **Export**. Then choose "instagram-reel-gif: 630 by 1120, GIF" and
@@ -482,28 +456,110 @@ press **Export**.
 
 **See.**
 - For the post: a **View** select and a **Start time** field appear, and
-  **Storyboard** goes; the viewer's frame changes shape with no shaded
-  parts. It ends with "Exported la-metro-rail-instagram-post.png."
+  **Storyboard** goes; the map's frame changes shape with no shaded parts.
+  It ends with "Exported la-metro-rail-instagram-post.png."
 - For the GIF: **Storyboard** returns; it ends with
   "Exported la-metro-rail-instagram-reel-gif.gif."
 - **check:** open both files. The post is a still of the map, the GIF plays.
 
 Result: ____
 
-### 15. Reveal the export
+### 13. Outputs, and Reveal
 
 A named gate item **on Windows as much as on a Mac**.
 
-**Do.** Press **Reveal**.
+**Do.** Close cell **06 Export**. In the rail's **Outputs**, read the rows,
+and press **Reveal** on the newest.
 
 **See.**
+- Closing cell 06 gives the map its own frame back, without the export's
+  shape.
+- **Outputs** lists three rows, one per export of steps 11 and 12, the
+  newest first, each with its preset, when it was made and **Reveal** (a screen reader names
+  it "Reveal `<preset>`, `<file>`").
 - The platform's own file browser (the Finder, or File Explorer) opens on
-  the export folder's `Los Angeles` folder, with the last export selected.
+  the export folder's `LA Metro Rail` folder, with that export selected.
 - The folder is at the place install.md's table gives (on Windows, inside
   OneDrive if OneDrive backs up the desktop) and holds the three files of
-  steps 13 and 14, each with a `.json` file of the same name beside it.
+  steps 11 and 12, each with a `.json` file of the same name beside it.
 - On Windows, **check:** the window comes to the front, and the file is
   selected rather than only its folder opened.
+
+Result: ____
+
+### 14. A project from a feed at an address
+
+The feed is **Caltrain**, from
+`https://data.trilliumtransit.com/gtfs/caltrain-ca-us/caltrain-ca-us.zip`.
+It was chosen because it is small (about 170 KB, so the download is quick
+on any connection), public (the agency's official feed, published by its
+data vendor without a key), current (its calendar runs from 31 January
+2026 to 31 January 2027, and the host was updating it in August 2026), rail
+only (five routes, all of route type 2, so the app's `all` mode keeps a
+map rather than a city's buses), carries `shapes.txt`, which the engine
+draws from, and is not one of the engine's presets, so it lands in
+**Your feeds**. Its agency is named "Caltrain", which becomes the feed's
+name. If the address has stopped answering, record that and use another
+small, rail-only, current GTFS zip, and say which in the notes.
+
+**Do.** Press **Library** at the top of the project, then **New project**.
+Under **Start from** choose **A feed at an address**, paste the address
+into **Feed address** and press **Add the feed**. When the feed is in,
+press **Cancel**, which keeps the feed. Then press **Start a project** on
+the new row, leave the name, and press **Create**. Press the new project
+under **Your projects**, press **Run all**, and wait for it. Go back to the
+Library, press **Remove** on the Caltrain row, **Remove** in the
+confirmation, and then **Cancel**.
+
+**See.**
+- On the front door, **Your projects** lists "LA Metro Rail", with "Feed
+  la-metro-rail", "Service day `<day>`", "Opened `<when>`" and "finished up
+  to 05 Lines" beneath it; the LA Metro Rail card now says "downloaded".
+- The sheet is titled **New project**, with **Cancel** focused; **Start
+  from** offers **A sample city, or a feed you added**, **A GTFS zip on
+  this computer** and **A feed at an address**.
+- While it runs, a progress line with two stages, `download` and `check`,
+  and beside it "downloaded `<n>` of `<n>` bytes" (or "downloaded `<n>`
+  bytes"), then "checked the feed's tables". The sheet's left button reads
+  **Cancel the add** while it runs.
+- When the feed is in, **Name** is filled with "Caltrain" and the primary
+  button reads **Create**. After **Cancel**, the front door shows **Your
+  feeds** with a row **Caltrain**, "downloaded", with **Start a project**
+  and **Remove**.
+- **Start a project** opens the sheet on the Caltrain feed, named
+  "Caltrain". **Create** closes it and lists **Caltrain** under **Your
+  projects**, with focus back on **Start a project**. The project opens with "Nothing has
+  been laid out yet." under its heading and **Run all** available; **Run
+  all** runs the
+  same eight stages as step 4 and ends with "Laid out." Caltrain is this
+  checklist's choice of feed, not one the engine's tests lay out, so a
+  refusal here is recorded with the engine's sentence (it shows under the
+  line) and filed, and the run carries on. Time it.
+- The confirmation is titled "Remove Caltrain?", with **Cancel** focused.
+  **Remove** is refused in the dialog while the Caltrain project exists:
+  "The project “Caltrain” uses this feed; delete it first." After
+  **Cancel** the row is still there.
+
+Result: ____
+
+### 15. Another sample's operator, and deleting a project
+
+**Do.** On the front door, press **New project**, choose **Mexico City
+Metro** under **Feed**, leave the name, and press **Create**. Open it from
+**Your projects** and read cell **01 Data**. Then, without laying it out, press **Delete project** at the
+foot of the notebook and **Delete** in the confirmation.
+
+**See.**
+- The sheet names it "Mexico City Metro". Its fields say Agency `METRO`,
+  and **In the feed** has an **Operator** select whose first option is
+  "every operator", followed by the feed's operators. The routes table's
+  caption reads "Routes of METRO: `<n>`".
+- Nothing is laid out: the sentence under the heading is "Nothing has been
+  laid out yet."
+- The confirmation is titled "Delete Mexico City Metro?", says "This
+  removes the project and its generated output. The feed stays.", and has
+  **Cancel** focused. After **Delete** the app goes back to the front door,
+  and the project is gone from **Your projects**.
 
 Result: ____
 
@@ -515,12 +571,13 @@ disclosure, open it, and press **Copy log** on one job. Press **Escape**.
 **See.**
 - The toggle is read as "Jobs, none running" when nothing runs.
 - The inspector's heading **Jobs** takes focus, and lists this session's
-  jobs, the newest first and at most the last twenty finished: "Export as instagram-reel-gif",
-  "Export as instagram-post", "Export as instagram-reel", the rebuilds
-  ("Rebuild for `<day>`", "Redraw in new colours",
-  "Redraw in a new line order"), "Layout run" for both projects and the
-  feed add ("Feed add of Caltrain"), each "finished, started `<time>`",
-  headed by its project's name, or by "Feeds" for the feed add.
+  jobs, the newest first and at most the last twenty finished: "Layout run"
+  for Caltrain, the feed add ("Feed add of Caltrain"),
+  "Export as instagram-reel-gif", "Export as instagram-post",
+  "Export as instagram-reel", the rebuilds ("Redraw in a new line order",
+  "Redraw in new colours", "Rebuild for `<day>`") and "Layout run" for LA
+  Metro Rail, each "finished, started `<time>`", headed by its project's
+  name, or by "Feeds" for the feed add.
 - **Details** appears only on a failed job whose engine detail says more
   than its hint; a run where every job finished has none.
 - **Copy log** says "The log is on the clipboard, with the keys in web
@@ -529,25 +586,32 @@ disclosure, open it, and press **Copy log** on one job. Press **Escape**.
 
 Result: ____
 
-### 17. Quit, and reopen the project
+### 17. Quit, reopen, and rename
 
 **Do.** Quit the app (on a Mac, Legible Cities › Quit; on Windows, close the
-window). Open it again, and open **Los Angeles**.
+window). Open it again, and open **LA Metro Rail** from **Your projects**.
+Press **Rename** at the foot of the notebook, type `Los Angeles` and press
+**Save**. Press **Library**.
 
 **See.**
 - The app quits without a dialog, and **check:** no `Legible Cities`,
   `python` or LOOM tool process is left running (Activity Monitor, or Task
   Manager's Details tab).
-- On reopening: no first-run dialog; the Library lists Los Angeles and
-  Caltrain with their service days; **Added** still lists Caltrain.
-- Los Angeles opens on "Drawn from layout `<8 characters>` for
-  `<day>`.", the **same day** you wrote down in step 12, the same Layout
-  in the fields, and the map in the viewer.
+- On reopening: no first-run dialog; **Your projects** lists Caltrain first
+  and LA Metro Rail second (newest opened first), each with its service day
+  and "finished up to 05 Lines"; **Your feeds** still lists Caltrain.
+- LA Metro Rail opens on "Drawn from layout `<8 characters>` for
+  `<day>`." in cell 02, the **same day** you wrote down in step 7, the same
+  Layout, and the map at the top.
 - **Nothing runs:** no progress line appears, the Jobs toggle stays at
-  "Jobs, none running", and the diagnostics panel is absent (it is shown
-  only for a map drawn in this session). The line colours and order you
-  left are the map's.
-- On the **Export** tab, **Preset** is the GIF, the last choice made.
+  "Jobs, none running", the sentence under the heading is "The map is drawn
+  from every cell.", and the diagnostics are absent (they are shown only
+  for a map drawn in this session). The line colours and order you left are
+  the map's, and **Outputs** still lists the three exports.
+- In cell **06 Export**, **Preset** is the GIF, the last choice made.
+- **Rename** opens a **New name** field; after **Save** the heading reads
+  **Los Angeles**, and the front door lists it first (a screen reader
+  reads the row as "Open Los Angeles").
 
 Result: ____
 
@@ -609,11 +673,11 @@ again.
   `<the folders removed>`. Start the app again so the engine reads its
   folder afresh." The folders named are among `data`, `out`, `projects` and
   `frames`, and the engine folder's size goes down.
-- The Library shows the empty state again.
-- **check:** by the time the app has started again, the **Added** list and
+- The front door shows the empty state again.
+- **check:** by the time the app has started again, **Your feeds** and
   Caltrain are gone (the engine keeps its record of added feeds in the
-  removed `data` folder), and the presets say "not downloaded yet".
-- The exports from steps 13 and 14 are still in the export folder.
+  removed `data` folder), and the sample cards say "not downloaded yet".
+- The exports from steps 11 and 12 are still in the export folder.
 
 Result: ____
 
@@ -680,21 +744,21 @@ Copy everything in the block below into a new issue titled
 |---|---|---|---|
 | 1 | Download and check the installer | pass / fail | |
 | 2 | Install and open it the first time | pass / fail | |
-| 3 | First run: the Library, the engine and the bundled tools | pass / fail | |
-| 4 | Create a project from the LA preset | pass / fail | |
-| 5 | Add a feed by its web address | pass / fail | |
-| 6 | Inspect: mode and operator | pass / fail | |
-| 7 | Lay out (LA: ___ s; Caltrain: ___ s) | pass / fail | |
-| 8 | The views on the project screen | pass / fail | |
-| 9 | Restyle: line colours, by dragging | pass / fail | |
-| 10 | Restyle: line order | pass / fail | |
-| 11 | Restyle: theme | pass / fail | |
-| 12 | The service day | pass / fail | |
-| 13 | Export a reel (___ s) | pass / fail | |
-| 14 | Export a post and a GIF | pass / fail | |
-| 15 | Reveal the export | pass / fail | |
+| 3 | First run: the front door, the engine and the bundled tools | pass / fail | |
+| 4 | Open a sample city, and watch it download and lay out (___ s) | pass / fail | |
+| 5 | Cell 01, Data: the feed and where its routes run | pass / fail | |
+| 6 | Cell 02, Process: the layout and what the build had to fudge | pass / fail | |
+| 7 | Cell 03, Frame and service day: pick a day, scrub the clock | pass / fail | |
+| 8 | Cell 04, Style: the theme | pass / fail | |
+| 9 | Cell 05, Lines: colours, by dragging | pass / fail | |
+| 10 | Cell 05, Lines: the order | pass / fail | |
+| 11 | Cell 06, Export: a reel (___ s) | pass / fail | |
+| 12 | Cell 06, Export: a post and a GIF | pass / fail | |
+| 13 | Outputs, and Reveal | pass / fail | |
+| 14 | A project from a feed at an address (Caltrain: ___ s) | pass / fail | |
+| 15 | Another sample's operator, and deleting a project | pass / fail | |
 | 16 | The jobs inspector | pass / fail | |
-| 17 | Quit, and reopen the project | pass / fail | |
+| 17 | Quit, reopen, and rename | pass / fail | |
 | 18 | Copy diagnostics | pass / fail | |
 | 19 | Licences | pass / fail | |
 | 20 | Reset engine data | pass / fail | |
