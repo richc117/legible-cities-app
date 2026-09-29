@@ -434,10 +434,14 @@ describe('cell 02', () => {
   })
 })
 
-// Issue 246. A real layout run's log is empty: the lines are the LOOM tools'
-// stderr, and the native tools write nothing when they succeed. While the
-// run goes an empty log may still fill; once it has ended the panel says
-// why nothing came, rather than "yet".
+// Issue 246. While the run goes an empty log may still fill; once it has
+// ended the panel says why nothing came, rather than "yet". Since engine
+// v0.9.0 every stage logs a line of the engine's own and every map.build
+// logs the stored layout first, so a run that ended with nothing logged
+// stopped before any stage finished. The panel does not tell a done run
+// from a failed or cancelled one here, so all three are held to the one
+// sentence; a done run with an empty log is not one the pinned engine
+// produces.
 describe('an empty log', () => {
   it('turns from waiting to saying why when the run ends, with no new line', () => {
     let current = job({ state: 'running' })

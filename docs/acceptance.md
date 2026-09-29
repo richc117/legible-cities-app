@@ -304,8 +304,10 @@ Press **Re-layout**, then **Cancel** in the dialog.
   holds a line per stage, each after its level, from "[info] gtfs2graph:
   `<n>` nodes (`<n>` stations, `<n>` junctions), `<n>` edges, lines:
   `<labels>` (`<n>` s)" to "[info] write: la-metro-rail.svg,
-  la-metro-rail.html and la-metro-rail.positions.json (`<n>` s)", and none
-  of them names a folder.
+  la-metro-rail.html and la-metro-rail.positions.json (`<n>` s)", with
+  "[info] layout `<8 characters>`: read from the store" before the draw's
+  lines, where the draw reads the layout the run has just made; none of
+  them names a folder.
 - The diagnostics open with either "No caveats: nothing was fudged, and
   the issues score is `<n>`." or "`<n>` caveats, and an issues score of
   `<n>`, where 0 is clean.", a table captioned "What the engine measured
