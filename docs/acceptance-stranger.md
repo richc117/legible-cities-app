@@ -1,12 +1,5 @@
 # The stranger's timed run
 
-> **This document still describes the project screen as a tab strip, and is
-> rewritten once, at the end of the notebook's work, against the interface
-> that ships (ADR-045).** A5.5-08 replaced the Map and Export tabs with six
-> numbered cells and moved or renamed several of the controls and sentences
-> quoted below, so a step here that names a tab will not be found on screen.
-> The release gate does not run against this text until that rewrite lands.
-
 Part of the release gate (issue A6-04), beside the
 [acceptance checklist](acceptance.md). One person who is not the maintainer,
 and has never used Legible Cities, goes from the release on GitHub to a
@@ -93,12 +86,14 @@ Thank you. Say "ready" when you want to start.
 - **Start** when the person says "ready" with the release page in front of
   them.
 - **Stop** when the reel's file is on disk: the app says
-  "Exported `<file>`." on its Export tab, which it says only once the file
-  has been written. Confirm the file is there afterwards (press **Reveal**
-  yourself once the clock has stopped, or look in the export folder), and
-  write down its name.
-- Also note three split times: the installer downloaded, the app's window
-  first open, and the first press of **Export**.
+  "Exported `<file>`." in the project's cell **06 Export**, which it says
+  only once the file has been written, and the file appears under
+  **Outputs** beside the cells. Confirm the file is there afterwards (press
+  **Reveal** yourself once the clock has stopped, or look in the export
+  folder), and write down its name.
+- Also note four split times: the installer downloaded, the app's window
+  first open, the map first drawn (a sample city's layout, or their own
+  feed's, ends with "Laid out."), and the first press of **Export**.
 
 The issue's measure is "installer to first reel"; this run starts the clock
 earlier, at the release page, so the time includes choosing and
@@ -118,7 +113,7 @@ the reel alone took about two minutes to export on an Apple silicon laptop
 in development, against engine v0.3.0 and a development ffmpeg rather than
 the bundled one (`specs/010-export/spec.md`, SC-003), and the engine has to download its
 first feed and lay the map out before that (see the acceptance checklist,
-step 7).
+step 4, which times a sample city from the press on its card to the map).
 
 ### What not to say
 
@@ -167,7 +162,10 @@ Everything, with the clock time beside it. In particular:
 - **The unsigned-app warning**: how long it took them to get past it, and
   whether the install guide's instructions matched what they saw.
 - **Words they did not know**, or read differently from what the app means
-  (feed, layout, preset, storyboard, schematic).
+  (feed, layout, cell, preset, storyboard, schematic).
+- **How they started**: a sample city's card, or **New project** with a
+  feed of their own, and whether they found the export in cell 06 without
+  opening every cell first.
 - **Anything they said they liked**, or that went quicker than you expected.
 
 Stop writing at the stop time, then spend five minutes asking what was
@@ -202,6 +200,8 @@ Copy everything in the block below into a new issue titled
 | Start (release page) | 00:00 |
 | Installer downloaded | mm:ss |
 | App window first open | mm:ss |
+| Map first drawn ("Laid out.") | mm:ss |
+| Started from | a sample city's card / New project, with (the source) |
 | First press of Export | mm:ss |
 | Stop (reel on disk) | mm:ss |
 | Reel file name | |

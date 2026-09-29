@@ -526,9 +526,9 @@ state are said at all, and are the right ones.
   walked. Note the app version (Settings, **Copy diagnostics**, the "App"
   line) and the reader's version (the macOS or Windows version).
 - **A project with a map.** Run the [acceptance checklist](acceptance.md)
-  up to step 7 first, or in the same sitting: a project named
+  up to step 17 first, or in the same sitting: a project named
   `Los Angeles` on the LA Metro Rail preset, laid out, and a feed added by
-  address (Caltrain, as the checklist's step 5). A second, throwaway
+  address (Caltrain, as the checklist's step 14). A second, throwaway
   project to delete. Leave **Reset engine data** to the very end.
 - **The interface theme** as it comes (Settings, **Theme**, "Follow the
   system"); a screen reader does not see the theme.
@@ -651,7 +651,7 @@ a table).
   alert "a feed address starts with http:// or https://" and focus back in
   the field, invalid.
 - **The sheet's progress line.** Paste the Caltrain address from the
-  checklist's step 5 again and press **Add the feed**; the engine keeps it
+  checklist's step 14 again and press **Add the feed**; the engine keeps it
   as a second feed of the same name. Listen for focus moving to **Cancel
   the add**, a region "Adding the feed", an image named "Adding the feed:
   `<the engine's sentence>`", and the polite status reading "downloaded

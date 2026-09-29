@@ -4,9 +4,9 @@
 // and how the release's tag is asked whether it contains a commit. The run
 // itself launches an installed app and is never part of `npm test`.
 
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   cell,
@@ -17,7 +17,7 @@ import {
   tagContains,
   writtenSince,
 } from '../acceptance/pure.mjs'
-import { RunRecord } from '../acceptance/record'
+import { RunRecord, STEP_TITLES } from '../acceptance/record'
 
 const made: string[] = []
 afterEach(() => {
@@ -173,5 +173,32 @@ describe('tagContains', () => {
     expect(tagContains({ tag: 'v1', commit: 'abc', cwd: '.', run: unknown.run })).toBeNull()
     const noGit = git({ 'rev-parse': { status: null, stdout: '' } })
     expect(tagContains({ tag: 'v1', commit: 'abc', cwd: '.', run: noGit.run })).toBeNull()
+  })
+})
+
+describe('STEP_TITLES', () => {
+  // The record the run writes is the checklist's own results template, and a
+  // person pastes one beside the other: a step renamed in one place and not
+  // the other is a row nobody can match to its step (A5.6-08).
+  const checklist = readFileSync(resolve(__dirname, '../../docs/acceptance.md'), 'utf8')
+
+  it('is the results template, row for row', () => {
+    const rows = [...checklist.matchAll(/^\| (\d+) \| (.+?) \| pass \/ fail \| \|$/gm)].map(
+      ([, n, title]) => [Number(n), title],
+    )
+    expect(rows).toEqual(Object.entries(STEP_TITLES).map(([n, title]) => [Number(n), title]))
+  })
+
+  it('names every step as its heading does, the time left blank there', () => {
+    const headings = [...checklist.matchAll(/^### (\d+)\. (.+)$/gm)].map(([, n, title]) => [
+      Number(n),
+      title,
+    ])
+    expect(headings).toEqual(
+      Object.entries(STEP_TITLES).map(([n, title]) => [
+        Number(n),
+        title.replace(/ \(.*___.*\)$/, ''),
+      ]),
+    )
   })
 })
