@@ -71,12 +71,13 @@ number. It is a reading aid, not something a tool checks.
 - Run `bin/preflight` before pushing. It refuses personal file paths,
   private addresses, keys and session links, none of which belong in a
   public repository, and a symbolic link whose target is absolute, begins
-  with what only a shell would expand (`~`, `$`, `%`), leaves the
-  repository, climbs after naming a folder or cannot be read: a path from
-  someone's machine by another name, or one nobody can check. CI runs it
-  again over the commits a pull request adds. Whatever it cannot read, an
-  index or a history or a range of commits, it refuses rather than call
-  clean.
+  with what only a shell would expand (`~`, `$`, `%`), carries any of
+  those, leaves the repository, climbs after naming a folder or cannot be
+  read: a path from someone's machine by another name, or one nobody can
+  check. CI runs it again over the commits a pull request adds. Whatever
+  it cannot read it refuses rather than call clean: a folder that is no
+  repository, or whose top it cannot enter, an index or a file in it, a
+  history, a range of commits.
 
 ## Local hooks
 

@@ -30,12 +30,19 @@
 // a working tree that cannot be read is a refusal, in the script's own
 // words and never in git's, which name files.
 //
+// Before that block come the states a healthy repository is ordinarily in -
+// a detached HEAD, a linked worktree, a conflict, the second index git hands
+// a hook - each of which must answer clean. A refusal of one of those would
+// stop every commit, which is the failure a scanner is least forgiven.
+//
 // The script is bash, so this skips on Windows, where the hooks that run it
 // do not run either.
 
 import { spawnSync } from 'node:child_process'
 import {
   chmodSync,
+  copyFileSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -64,10 +71,37 @@ interface Run {
   out: string
 }
 
-function preflight(args: string[], cwd = root, script = PREFLIGHT): Run {
-  const r = spawnSync(script, args, { cwd, encoding: 'utf8' })
+/**
+ * The environment every git and every script here is given. git exports
+ * where its repository, its working tree and its index are to whatever it
+ * runs, a hook or `git rebase --exec 'npm test'`, and a git started with
+ * those would make its throwaway commits in the repository they name: this
+ * one. So nothing of git's is inherited, and a test that means one of those
+ * variables passes it in `extra`.
+ *
+ * The ceiling is for the cases that need there to be no repository: git
+ * looks upwards for one, and stops below the folder the throwaway ones are
+ * made in, whatever a temporary folder happens to be inside.
+ */
+function env(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+  const kept: NodeJS.ProcessEnv = {}
+  for (const [name, value] of Object.entries(process.env)) {
+    if (!name.startsWith('GIT_')) kept[name] = value
+  }
+  return { ...kept, GIT_CEILING_DIRECTORIES: tmpdir(), ...extra }
+}
+
+function preflight(
+  args: string[],
+  cwd = root,
+  script = PREFLIGHT,
+  extra: NodeJS.ProcessEnv = {},
+): Run {
+  const r = spawnSync(script, args, { cwd, encoding: 'utf8', env: env(extra) })
   return { code: r.status ?? -1, out: `${r.stdout ?? ''}${r.stderr ?? ''}` }
 }
+
+const CLEAN: Run = { code: 0, out: 'preflight: clean\n' }
 
 /** A commit message in a file, the way the `commit-msg` hook hands one over. */
 function message(text: string): Run {
@@ -80,7 +114,7 @@ function message(text: string): Run {
 function repoWith(messages: string[]): string {
   const repo = mkdtempSync(join(dir, 'repo-'))
   const git = (...args: string[]): void => {
-    const r = spawnSync('git', args, { cwd: repo, encoding: 'utf8' })
+    const r = spawnSync('git', args, { cwd: repo, encoding: 'utf8', env: env() })
     if (r.status !== 0) throw new Error(`git ${args.join(' ')}: ${r.stderr}`)
   }
   git('init', '--quiet', '--initial-branch=main')
@@ -97,8 +131,13 @@ function repoWith(messages: string[]): string {
 }
 
 /** One git command in a throwaway repository; what it printed. */
-function gitIn(repo: string, args: string[], input?: string): string {
-  const r = spawnSync('git', args, { cwd: repo, encoding: 'utf8', input })
+function gitIn(
+  repo: string,
+  args: string[],
+  input?: string,
+  extra: NodeJS.ProcessEnv = {},
+): string {
+  const r = spawnSync('git', args, { cwd: repo, encoding: 'utf8', input, env: env(extra) })
   if (r.status !== 0) throw new Error(`git ${args.join(' ')}: ${r.stderr}`)
   return r.stdout
 }
@@ -126,8 +165,14 @@ function neverWritten(repo: string, what: string): string {
 }
 
 /** An entry written into the index as it stands, with nothing beside it. */
-function stageEntry(repo: string, mode: string, id: string, path: string): void {
-  gitIn(repo, ['update-index', '--add', '--cacheinfo', `${mode},${id},${path}`])
+function stageEntry(
+  repo: string,
+  mode: string,
+  id: string,
+  path: string,
+  extra: NodeJS.ProcessEnv = {},
+): void {
+  gitIn(repo, ['update-index', '--add', '--cacheinfo', `${mode},${id},${path}`], undefined, extra)
 }
 
 /**
@@ -489,6 +534,320 @@ describe.skipIf(onWindows)('a range of commits that cannot be read', () => {
   })
 })
 
+describe.skipIf(onWindows)('an option given nothing', () => {
+  // A caller's variable that was never set. Each of these fell through to
+  // the form that takes no option, or to a range git made up, scanned that
+  // and called it clean, so the repository they run in is a clean one.
+  it('is a usage error, and nothing is scanned in its place', () => {
+    const repo = repoWith(['Add a thing'])
+    for (const option of ['--message-file', '--commit-range']) {
+      const r = preflight([option, ''], repo)
+      expect(r.code, `${option} ''`).toBe(2)
+      expect(r.out).toBe(
+        `preflight: ${option} was given nothing to read\n` +
+          'usage: preflight [--message-file FILE | --commit-range A..B]\n',
+      )
+    }
+  })
+
+  it('is one too when it is one side of a range', () => {
+    // git takes HEAD for the side that is not there, so `..HEAD` is a range
+    // with no commit in it: it can be read, and it would be clean.
+    const repo = repoWith(['Add a thing', 'Add another\n\nCloses #22.\n'])
+    for (const range of ['..', 'HEAD~1..', '..HEAD', '...', 'HEAD~1...', '...HEAD']) {
+      const r = preflight(['--commit-range', range], repo)
+      expect(r.code, `read: ${range}`).toBe(2)
+      expect(r.out).toContain('this range names only one of its ends')
+      expect(r.out).toContain(`\n${range}\n`)
+      expect(r.out, `called clean: ${range}`).not.toContain('clean')
+    }
+  })
+
+  it('leaves a range with both its ends as it was', () => {
+    const repo = repoWith(['Add a thing', 'Add another'])
+    for (const range of ['HEAD~1..HEAD', 'HEAD~1...HEAD', 'main']) {
+      const r = preflight(['--commit-range', range], repo)
+      expect(r, range).toEqual({
+        code: 0,
+        out: 'preflight: commit messages clean, and the links these commits add\n',
+      })
+    }
+  })
+})
+
+describe.skipIf(onWindows)('a commit message in a file, from wherever it is named', () => {
+  it('is read from where the caller stands, not from the top of the repository', () => {
+    const repo = repoWith(['Add a thing'])
+    const below = join(repo, 'docs')
+    mkdirSync(below)
+    writeFileSync(join(below, 'message.txt'), 'Do a thing\n\nWhy it was done.\n')
+    writeFileSync(join(below, 'closes.txt'), 'Do a thing\n\nCloses #22.\n')
+    const clean = { code: 0, out: 'preflight: commit message clean\n' }
+    expect(preflight(['--message-file', 'message.txt'], below)).toEqual(clean)
+    expect(preflight(['--message-file', '../docs/message.txt'], below)).toEqual(clean)
+    expect(preflight(['--message-file', join(below, 'message.txt')], below)).toEqual(clean)
+    expect(preflight(['--message-file', 'docs/message.txt'], repo)).toEqual(clean)
+    const r = preflight(['--message-file', 'closes.txt'], below)
+    expect(r.code).toBe(1)
+    expect(r.out).toContain('closes an issue by number')
+  })
+})
+
+describe.skipIf(onWindows)('a file about to be committed that cannot be read', () => {
+  it('is refused by its path, where git grep answered as if it had looked', () => {
+    const repo = repoWith(['Add a thing'])
+    const id = neverWritten(repo, 'a file')
+    stageEntry(repo, '100644', id, 'notes/ghost.txt')
+    // What the file pass goes by, and why it is not enough: nothing found.
+    const grep = spawnSync('git', ['grep', '--cached', '-nE', 'x', '--', '.'], {
+      cwd: repo,
+      encoding: 'utf8',
+      env: env(),
+    })
+    expect(grep.status).toBe(1)
+    expect(grep.stderr).toContain('unable to read')
+    expect(preflight([], repo)).toEqual({
+      code: 1,
+      out:
+        'preflight: a file about to be committed could not be read, so it was not scanned:\n' +
+        'notes/ghost.txt\n',
+    })
+  })
+
+  it('is the one named, among those that can be', () => {
+    // git answers for the blobs in the order it was asked, with no path,
+    // so the path is known by counting. Among others, and with a name git
+    // would quote and an executable, the count has to hold.
+    const repo = repoWith(['Add a thing', 'Add another'])
+    const there = gitIn(repo, ['rev-parse', ':f0.txt']).trim()
+    stageEntry(repo, '100644', there, 'a folder/first.txt')
+    stageEntry(repo, '100755', neverWritten(repo, 'one'), 'a folder/søndre fil.txt')
+    stageEntry(repo, '100644', there, 'a folder/third.txt')
+    stageEntry(repo, '100644', neverWritten(repo, 'two'), 'z-last.txt')
+    expect(preflight([], repo)).toEqual({
+      code: 1,
+      out:
+        'preflight: a file about to be committed could not be read, so it was not scanned:\n' +
+        'a folder/søndre fil.txt\n' +
+        'z-last.txt\n',
+    })
+  })
+
+  it('is refused too when git cannot be asked whether the files are there', () => {
+    // A git put first on the path that fails that one question and is the
+    // real one for every other.
+    const real = spawnSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).stdout.trim()
+    const shim = mkdtempSync(join(dir, 'shim-'))
+    const asked = 'case "$*" in *--batch-check*) exit 128 ;; esac'
+    writeFileSync(join(shim, 'git'), `#!/bin/sh\n${asked}\nexec '${real}' "$@"\n`)
+    chmodSync(join(shim, 'git'), 0o755)
+    const repo = repoWith(['Add a thing', 'Add another'])
+    const r = preflight([], repo, PREFLIGHT, { PATH: `${shim}:${process.env.PATH}` })
+    expect(r).toEqual({
+      code: 1,
+      out:
+        'preflight: the files in the index could not be checked for being there ' +
+        '(git cat-file answered 128, for 0 of 2), ' +
+        'so not all of them are known to have been scanned.\n',
+    })
+  })
+})
+
+describe.skipIf(onWindows)('a file named as a commit is', () => {
+  it('does not make the commit one that cannot be read', () => {
+    const repo = repoWith(['Add a thing', 'Add another'])
+    const short = gitIn(repo, ['rev-parse', '--short', 'HEAD']).trim()
+    writeFileSync(join(repo, short), 'a file with the name of a commit\n')
+    writeFileSync(join(repo, gitIn(repo, ['rev-parse', 'HEAD']).trim()), 'and its whole name\n')
+    expect(preflight(['--commit-range', 'HEAD~1..HEAD'], repo)).toEqual({
+      code: 0,
+      out: 'preflight: commit messages clean, and the links these commits add\n',
+    })
+  })
+
+  it('does not hide the link that commit adds, either', () => {
+    const repo = repoWith(['Add a thing'])
+    commitLink(repo, 'node_modules', '/opt/thing/node_modules', 'Add a link')
+    const short = gitIn(repo, ['rev-parse', '--short', 'HEAD']).trim()
+    writeFileSync(join(repo, short), 'a file with the name of a commit\n')
+    const r = preflight(['--commit-range', 'HEAD~1..HEAD'], repo)
+    expect(r.code).toBe(1)
+    expect(r.out).toContain(`${short} node_modules: its target is an absolute path`)
+    expect(r.out).not.toContain('could not be read')
+  })
+})
+
+describe.skipIf(onWindows)('the states a healthy repository is ordinarily in', () => {
+  it('is clean on a detached HEAD, which is what CI checks out', () => {
+    const repo = repoWith(['Add a thing', 'Add another'])
+    gitIn(repo, ['checkout', '--quiet', '--detach'])
+    expect(spawnSync('git', ['symbolic-ref', '-q', 'HEAD'], { cwd: repo, env: env() }).status).toBe(
+      1,
+    )
+    expect(preflight([], repo)).toEqual(CLEAN)
+  })
+
+  it('is clean in a linked worktree, run from inside it', () => {
+    const repo = repoWith(['Add a thing', 'Add another'])
+    const linked = join(mkdtempSync(join(dir, 'linked-')), 'tree')
+    gitIn(repo, ['worktree', 'add', '--quiet', '-b', 'side', linked])
+    // Not a folder called .git there, but a file that says where it is.
+    expect(readFileSync(join(linked, '.git'), 'utf8')).toMatch(/^gitdir: /)
+    expect(preflight([], linked)).toEqual(CLEAN)
+    mkdirSync(join(linked, 'below'))
+    expect(preflight([], join(linked, 'below'))).toEqual(CLEAN)
+  })
+
+  it('refuses a link staged in a linked worktree, and not in the one beside it', () => {
+    const repo = repoWith(['Add a thing'])
+    const linked = join(mkdtempSync(join(dir, 'linked-')), 'tree')
+    gitIn(repo, ['worktree', 'add', '--quiet', '-b', 'side', linked])
+    stageLink(linked, 'node_modules', '../../elsewhere/node_modules')
+    const r = preflight([], linked)
+    expect(r.code).toBe(1)
+    expect(r.out).toContain('node_modules: its target climbs out of the repository')
+    expect(preflight([], repo)).toEqual(CLEAN)
+  })
+
+  it('is clean on an orphan branch with no commit yet', () => {
+    const repo = repoWith(['Add a thing'])
+    gitIn(repo, ['checkout', '--quiet', '--orphan', 'fresh'])
+    expect(preflight([], repo)).toEqual(CLEAN)
+  })
+
+  it('is clean on a branch with no commit and an index with nothing in it', () => {
+    const repo = mkdtempSync(join(dir, 'repo-'))
+    gitIn(repo, ['init', '--quiet', '--initial-branch=main'])
+    expect(gitIn(repo, ['ls-files', '-s'])).toBe('')
+    expect(preflight([], repo)).toEqual(CLEAN)
+  })
+
+  it('is clean over an index with only a submodule in it', () => {
+    // Entries, and not one of them with a blob to ask after.
+    const repo = mkdtempSync(join(dir, 'repo-'))
+    gitIn(repo, ['init', '--quiet', '--initial-branch=main'])
+    stageEntry(repo, '160000', neverWritten(repo, 'a commit elsewhere'), 'vendor/sub')
+    mkdirSync(join(repo, 'vendor/sub'), { recursive: true })
+    expect(preflight([], repo)).toEqual(CLEAN)
+  })
+
+  it('is clean while a conflict is being settled', () => {
+    const repo = repoWith(['Add a thing'])
+    gitIn(repo, ['checkout', '--quiet', '-b', 'side'])
+    writeFileSync(join(repo, 'f0.txt'), 'theirs\n')
+    gitIn(repo, ['commit', '--quiet', '--no-verify', '-am', 'Say one thing'])
+    gitIn(repo, ['checkout', '--quiet', 'main'])
+    writeFileSync(join(repo, 'f0.txt'), 'ours\n')
+    gitIn(repo, ['commit', '--quiet', '--no-verify', '-am', 'Say another'])
+    const merge = spawnSync('git', ['merge', 'side'], { cwd: repo, encoding: 'utf8', env: env() })
+    expect(merge.status).not.toBe(0)
+    // One path, at the three stages of a conflict.
+    expect(
+      gitIn(repo, ['ls-files', '-s']).match(/^100644 [0-9a-f]+ [123]\tf0\.txt$/gm),
+    ).toHaveLength(3)
+    expect(preflight([], repo)).toEqual(CLEAN)
+  })
+
+  it('is clean over a file meant to be added and not added yet', () => {
+    const repo = repoWith(['Add a thing'])
+    writeFileSync(join(repo, 'later.txt'), 'not staged yet\n')
+    gitIn(repo, ['add', '--intent-to-add', 'later.txt'])
+    expect(preflight([], repo)).toEqual(CLEAN)
+  })
+
+  it('is clean in a shallow clone', () => {
+    const repo = repoWith(['Add a thing', 'Add another', 'And another'])
+    const shallow = join(mkdtempSync(join(dir, 'shallow-')), 'clone')
+    gitIn(dir, ['clone', '--quiet', '--depth', '1', `file://${repo}`, shallow])
+    expect(gitIn(shallow, ['rev-parse', '--is-shallow-repository']).trim()).toBe('true')
+    expect(gitIn(shallow, ['rev-list', '--count', 'HEAD']).trim()).toBe('1')
+    expect(preflight([], shallow)).toEqual(CLEAN)
+  })
+
+  it('is clean in a sparse checkout, where a file is tracked and not there', () => {
+    const repo = repoWith(['Add a thing'])
+    for (const folder of ['kept', 'left-out']) {
+      mkdirSync(join(repo, folder))
+      writeFileSync(join(repo, folder, 'file.txt'), `${folder}\n`)
+    }
+    gitIn(repo, ['add', '-A'])
+    gitIn(repo, ['commit', '--quiet', '--no-verify', '-m', 'Add two folders'])
+    gitIn(repo, ['sparse-checkout', 'set', 'kept'])
+    expect(existsSync(join(repo, 'left-out/file.txt'))).toBe(false)
+    expect(gitIn(repo, ['ls-files'])).toContain('left-out/file.txt')
+    expect(preflight([], repo)).toEqual(CLEAN)
+  })
+
+  describe('and the second index git hands a hook', () => {
+    // `git commit -a` and a commit of named paths build the commit in an
+    // index of their own and tell the hook where it is. That index is what
+    // will be committed, so that is the one to read.
+    function withASecondIndex(): { repo: string; second: NodeJS.ProcessEnv } {
+      const repo = repoWith(['Add a thing'])
+      const file = join(repo, '.git/second-index')
+      copyFileSync(join(repo, '.git/index'), file)
+      return { repo, second: { GIT_INDEX_FILE: file } }
+    }
+
+    it('refuses a link that is only in that one', () => {
+      const { repo, second } = withASecondIndex()
+      const id = gitIn(repo, ['hash-object', '-w', '--stdin'], '/opt/thing/node_modules').trim()
+      stageEntry(repo, '120000', id, 'node_modules', second)
+      expect(preflight([], repo)).toEqual(CLEAN)
+      const r = preflight([], repo, PREFLIGHT, second)
+      expect(r.code).toBe(1)
+      expect(r.out).toContain('node_modules: its target is an absolute path')
+    })
+
+    it('refuses a file on the never list that is only in that one', () => {
+      const { repo, second } = withASecondIndex()
+      const text = `see ${HOME_FOLDER}/thing\n`
+      const id = gitIn(repo, ['hash-object', '-w', '--stdin'], text).trim()
+      stageEntry(repo, '100644', id, 'notes.txt', second)
+      expect(preflight([], repo)).toEqual(CLEAN)
+      const r = preflight([], repo, PREFLIGHT, second)
+      expect(r.code).toBe(1)
+      expect(r.out).toContain('notes.txt:1:see ')
+    })
+
+    it('is clean over a clean one, whatever the first one holds', () => {
+      const { repo, second } = withASecondIndex()
+      const id = gitIn(repo, ['hash-object', '-w', '--stdin'], '/opt/thing/node_modules').trim()
+      stageEntry(repo, '120000', id, 'node_modules')
+      expect(preflight([], repo).code).toBe(1)
+      // The link is in the working tree's view of things, as an entry with
+      // no file: the look for private files does not mind it.
+      expect(preflight([], repo, PREFLIGHT, second)).toEqual(CLEAN)
+    })
+  })
+})
+
+describe.skipIf(onWindows)('the helpers of this file', () => {
+  it('do not follow what git exports to what it runs', () => {
+    // As under `git rebase --exec 'npm test'`. Were these followed, the
+    // throwaway repository would be made where they say, and its commits
+    // with it.
+    const told = mkdtempSync(join(dir, 'told-'))
+    const before = { ...process.env }
+    process.env.GIT_DIR = join(told, 'named.git')
+    process.env.GIT_WORK_TREE = told
+    process.env.GIT_INDEX_FILE = join(told, 'named-index')
+    try {
+      const repo = repoWith(['Add a thing'])
+      expect(existsSync(join(repo, '.git/HEAD'))).toBe(true)
+      expect(existsSync(join(told, 'named.git'))).toBe(false)
+      expect(existsSync(join(told, 'named-index'))).toBe(false)
+      expect(gitIn(repo, ['rev-list', '--count', 'HEAD']).trim()).toBe('1')
+      expect(preflight([], repo)).toEqual(CLEAN)
+    } finally {
+      for (const name of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE']) {
+        if (before[name] === undefined) delete process.env[name]
+        else process.env[name] = before[name]
+      }
+    }
+  })
+})
+
 /** A repository whose index is not one: what was there, written over. */
 function withoutAnIndex(): string {
   const repo = repoWith(['Add a thing'])
@@ -579,12 +938,26 @@ describe.skipIf(onWindows)('what could not be read is not called clean', () => {
 
   it('refuses a branch whose own reference cannot be read', () => {
     // HEAD names no commit here either, as on a branch with none yet, and
-    // git will say so in the same words. It is not the same thing.
+    // git will say so in the same words. It is not the same thing. What
+    // tells them apart is whether git can say which branch HEAD is on.
+    for (const written of ['not a reference\n', '', 'abc123\n']) {
+      const repo = repoWith(['Add a thing'])
+      writeFileSync(join(repo, '.git/refs/heads/main'), written)
+      const r = preflight([], repo)
+      expect(r.code, `read: ${JSON.stringify(written)}`).toBe(1)
+      expect(r.out).toContain('preflight: the history could not be read')
+      expect(r.out).not.toContain('clean')
+    }
+  })
+
+  it('refuses a branch whose reference names a commit that is not there', () => {
+    // This one HEAD does name, so it is the reading of the history that
+    // fails, and says so.
     const repo = repoWith(['Add a thing'])
-    writeFileSync(join(repo, '.git/refs/heads/main'), 'not a reference\n')
+    writeFileSync(join(repo, '.git/refs/heads/main'), `${neverWritten(repo, 'a commit')}\n`)
     const r = preflight([], repo)
     expect(r.code).toBe(1)
-    expect(r.out).toContain('preflight: the history could not be read')
+    expect(r.out).toContain('the commit messages in the history could not be read')
     expect(r.out).not.toContain('clean')
   })
 
@@ -699,7 +1072,7 @@ describe.skipIf(onWindows)('what could not be read is not called clean', () => {
       const r = spawnSync(PREFLIGHT, ['--commit-range', 'HEAD~1..HEAD'], {
         cwd: repo,
         encoding: 'utf8',
-        env: { ...process.env, PATH: `${shim}:${process.env.PATH}` },
+        env: env({ PATH: `${shim}:${process.env.PATH}` }),
       })
       expect(`${r.stdout}${r.stderr}`).toBe(
         'preflight: the commits of this range could not be listed (git rev-list answered 128), ' +
@@ -724,7 +1097,7 @@ describe.skipIf(onWindows)('what could not be read is not called clean', () => {
       const r = spawnSync(PREFLIGHT, [], {
         cwd: repo,
         encoding: 'utf8',
-        env: { ...process.env, PATH: `${shim}:${process.env.PATH}` },
+        env: env({ PATH: `${shim}:${process.env.PATH}` }),
       })
       expect(`${r.stdout}${r.stderr}`).toBe(
         "preflight: the working tree's listing could not be searched (grep answered 2), " +
@@ -869,6 +1242,7 @@ const historyLog = spawnSync('git', ['log', '--format=%B', 'HEAD'], {
   cwd: root,
   encoding: 'utf8',
   maxBuffer: 32 * 1024 * 1024,
+  env: env(),
 }).stdout
 const historyCarriesOne = /closes #\d+/i.test(historyLog ?? '')
 const WHY = historyCarriesOne ? '' : ' (skipped: a shallow clone has no history to read)'
@@ -887,8 +1261,12 @@ describe.skipIf(onWindows)('the whole-history pass', () => {
 
   it.skipIf(!historyCarriesOne)(`still passes on this repository${WHY}`, () => {
     // The claim the comment at the top of this file makes, checked against
-    // the real thing where the real thing is available.
-    expect(preflight([]).out).not.toContain('closes an issue by number')
+    // the real thing where the real thing is available. That the closing
+    // text is absent is not enough: a script that printed nothing at all,
+    // or refused for another reason, would not print it either.
+    const r = preflight([])
+    expect(r.out).not.toContain('closes an issue by number')
+    expect(r).toEqual(CLEAN)
   })
 })
 

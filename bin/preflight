@@ -24,36 +24,58 @@
 #
 # It never says clean about something it could not read. Clean is a claim
 # about what was read, so every question put to git or to grep has its
-# answer looked at, and "I could not" is a refusal: an index, a history, a
-# range, a commit, a link's target, a message file or a working tree that
-# could not be read, and a search that could not be run. See `unread`.
+# answer looked at, and "I could not" is a refusal: a repository, an index,
+# a file in it, a history, a range, a commit, a link's target, a message
+# file or a working tree that could not be read, and a search that could
+# not be run. See `unread`.
 set -u
 usage() {
   echo "usage: preflight [--message-file FILE | --commit-range A..B]" >&2
   exit 2
 }
+# An option given nothing is a caller's variable that was never set. The
+# form is chosen by which of the two has a value, so an empty one would fall
+# through to the form that takes no option, scan something else, and call
+# that clean. It is the usage error it looks like.
+nothing() {
+  echo "preflight: $1 was given nothing to read" >&2
+  usage
+}
 msgfile=''
 range=''
 while [ $# -gt 0 ]; do
   case "$1" in
-    --message-file) [ $# -ge 2 ] || usage; msgfile=$2; shift 2 ;;
-    --commit-range) [ $# -ge 2 ] || usage; range=$2; shift 2 ;;
+    --message-file) [ $# -ge 2 ] || usage; [ -n "$2" ] || nothing "$1"; msgfile=$2; shift 2 ;;
+    --commit-range) [ $# -ge 2 ] || usage; [ -n "$2" ] || nothing "$1"; range=$2; shift 2 ;;
     -h|--help) usage ;;
     *) echo "preflight: unknown argument: $1" >&2; usage ;;
   esac
 done
 if [ -n "$msgfile" ] && [ -n "$range" ]; then usage; fi
+# A range with nothing on one side of its dots is the same mistake one step
+# on: `"$base..$head"` with one of the two never set. git reads the empty
+# side as HEAD, so `..b` from a checkout of `b` is a range with no commit
+# in it, which is read and is clean. `a..` is a shorthand a person types,
+# and nobody here needs it: the workflow names both ends, and so can they.
+case "$range" in
+  ..*|*..)
+    echo "preflight: this range names only one of its ends, and git would take HEAD for the other:" >&2
+    printf '%s\n' "$range" >&2
+    usage ;;
+esac
 # From the top of the repository, which the two forms that read one cannot
-# do without. A message in a file needs none, and is scanned where it is.
-top=$(git rev-parse --show-toplevel 2>/dev/null); rc=$?
-if [ "$rc" -eq 0 ]; then
+# do without. A message in a file needs none and is read from where the
+# caller stands, so that a path it gave from there is the path it meant.
+if [ -z "$msgfile" ]; then
+  top=$(git rev-parse --show-toplevel 2>/dev/null); rc=$?
+  if [ "$rc" -ne 0 ]; then
+    echo "preflight: no repository could be read from here (git rev-parse answered $rc), so nothing was scanned." >&2
+    exit 1
+  fi
   cd "$top" 2>/dev/null || {
     echo "preflight: the top of the repository could not be entered, so nothing was scanned." >&2
     exit 1
   }
-elif [ -z "$msgfile" ]; then
-  echo "preflight: no repository could be read from here (git rev-parse answered $rc), so nothing was scanned." >&2
-  exit 1
 fi
 pattern='/Users/[A-Za-z]|/home/[A-Za-z0-9._-]+|[A-Za-z]:[\\/]{1,2}[Uu]sers[\\/]|@gmail\.com|@icloud\.com|@outlook\.com|100\.[0-9]+\.[0-9]+\.[0-9]+|192\.168\.[0-9]+\.[0-9]+|172\.(1[6-9]|2[0-9]|3[01])\.[0-9]+\.[0-9]+|10\.[0-9]+\.[0-9]+\.[0-9]+:[0-9]+|\.ts\.net\b|fd7a:115c:a1e0:|ghp_[A-Za-z0-9]{20,}|github_pat_|-----BEGIN [A-Z ]*PRIVATE KEY|AKIA[0-9A-Z]{16}|claude\.ai/code/|Claude-Session:'
 status=0
@@ -257,7 +279,8 @@ if [ -n "$range" ]; then
   # Every reader below names the range the way this does, with `--` after
   # it. Without that, a range that is also the name of a file is one git
   # will not guess at, and a reader that failed where this passed would be
-  # the same silence again.
+  # the same silence again. The same goes for each commit in it: a file
+  # named as a commit's short id is, would make that commit unreadable.
   if [ "${range#-}" != "$range" ] || ! git rev-list "$range" -- >/dev/null 2>&1; then
     echo "preflight: this range of commits could not be read, so nothing in it was scanned:" >&2
     printf '%s\n' "$range" >&2
@@ -307,7 +330,7 @@ if [ -n "$range" ]; then
       [ "$mode" = 120000 ] || continue
       fault=$(link_at "$link" "$id")
       [ -n "$fault" ] && linked="$linked$commit $link: $fault"$'\n'
-    done < <(git diff-tree -r -z --no-commit-id --root -m "$commit" 2>/dev/null
+    done < <(git diff-tree -r -z --no-commit-id --root -m "$commit" -- 2>/dev/null
              printf 'answered %s\0\0' "$?")
     [ "$changed" = 0 ] || unreadable="$unreadable$commit"$'\n'
   done < <(git rev-list --abbrev-commit "$range" -- 2>/dev/null; echo "answered $?")
@@ -344,21 +367,57 @@ fi
 #    And the links in it, which `git grep` does not open. See `link_fault`.
 #    The listing ends with how git answered, as the listings of the range
 #    form do, since an index git could not read lists no link either.
+#
+#    Every other entry that has a blob is kept, its path beside its blob's
+#    id, for the check below. A submodule's entry has none here.
 linked=''
 listed=''
+held=()
+blobs=()
 while IFS= read -r -d '' entry; do
   case "$entry" in
     answered\ *) listed=${entry#answered }; continue ;;
-    120000\ *) ;;
-    *) continue ;;
+    160000\ *) continue ;;
   esac
   link=${entry#*$'\t'}
   id=${entry#* }; id=${id%% *}
+  case "$entry" in
+    120000\ *) ;;
+    *) held[${#held[@]}]=$link; blobs[${#blobs[@]}]=$id; continue ;;
+  esac
   fault=$(link_at "$link" "$id")
   [ -n "$fault" ] && linked="$linked$link: $fault"$'\n'
 done < <(git ls-files -s -z 2>/dev/null; printf 'answered %s\0' "$?")
 if [ "$listed" != 0 ]; then
   unread "the index could not be read" "git ls-files answered ${listed:-nothing}" "no link in it was scanned"
+fi
+
+#    A file whose blob is not there to read. `git grep` says so on the
+#    stream this script discards, finds nothing in what it could not open,
+#    and answers 1 as if it had looked: measured, not supposed. So git is
+#    asked of every blob whether it has it, all of them in one question
+#    (one each took seconds over this index; this takes none), and answers
+#    a line for each in the order asked, which is how a line is known for
+#    the path it is about. A blob written over is `missing` to it as well.
+absent=''
+if [ "${#blobs[@]}" -gt 0 ]; then
+  n=0
+  checked=''
+  while IFS= read -r line; do
+    case "$line" in
+      answered\ *) checked=${line#answered }; continue ;;
+      *\ missing) absent="$absent${held[$n]}"$'\n' ;;
+    esac
+    n=$((n + 1))
+  done < <(printf '%s\n' "${blobs[@]}" | git cat-file --batch-check 2>/dev/null; echo "answered $?")
+  if [ "$checked" != 0 ] || [ "$n" -ne "${#blobs[@]}" ]; then
+    unread "the files in the index could not be checked for being there" "git cat-file answered ${checked:-nothing}, for $n of ${#blobs[@]}" "not all of them are known to have been scanned"
+  fi
+fi
+if [ -n "$absent" ]; then
+  echo "preflight: a file about to be committed could not be read, so it was not scanned:" >&2
+  printf '%s' "$absent" >&2
+  status=1
 fi
 if [ -n "$linked" ]; then
   echo "preflight: a symbolic link about to be committed is one a public repository cannot carry:" >&2
@@ -384,13 +443,13 @@ if git rev-parse -q --verify HEAD >/dev/null 2>&1; then
 else
   # HEAD names no commit. Either nothing has been committed to this branch
   # yet, and there is no message to read, or the branch's own reference
-  # cannot be read, which is not the same thing. git tells them apart: the
-  # first is a branch it can name and finds no reference for (1).
-  born=''
-  if branch=$(git symbolic-ref -q HEAD 2>/dev/null); then
-    git show-ref --verify --quiet "$branch" 2>/dev/null; born=$?
-  fi
-  if [ "$born" != 1 ]; then
+  # cannot be read, which is not the same thing. git tells them apart when
+  # asked which branch HEAD is on: it names the branch that has no commit
+  # yet, and fails for one whose reference is there and is not one - garbage,
+  # an empty file, an id cut short. A reference that reads and names a
+  # commit that is not there does not come this way: HEAD names it, and
+  # reading the history above is what fails.
+  if ! git symbolic-ref -q HEAD >/dev/null 2>&1; then
     unread "the history could not be read" "HEAD names no commit, and not because there is none yet" "no commit message was scanned"
   fi
 fi
