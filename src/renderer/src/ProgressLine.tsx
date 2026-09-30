@@ -28,10 +28,19 @@ interface Props {
   stages: Stage[]
   /** The sentence assistive technology reads for the whole line. */
   ariaLabel: string
+  /**
+   * The line with its stations closer and no labels, for a place too narrow
+   * for eight stage names (the jobs inspector, issue 278). What the labels
+   * said, the caller says in words beside the line, so no stage is told
+   * apart by the picture alone.
+   */
+  compact?: boolean
 }
 
 const UNIT = 8
 const STEP = 12 * UNIT
+/** The compact form's step: eight stations are 256 units. */
+const COMPACT_STEP = 4 * UNIT
 const LINE_Y = 2 * UNIT
 const LABEL_Y = 5 * UNIT
 /** Where the first station sits. */
@@ -63,14 +72,14 @@ function rail(lastX: number): string {
 
 /** How far along the rail the run has got, in its length units: the furthest
  * station that is no longer pending is where the line stops. */
-function reached(stages: Stage[], lastX: number): number {
+function reached(stages: Stage[], lastX: number, step: number): number {
   let furthest = -1
   stages.forEach((stage, i) => {
     if (stage.state !== 'pending') furthest = i
   })
   if (furthest < 0) return 0
   const whole = LEAD_LENGTH + (lastX - BEND)
-  const gone = LEAD_LENGTH + (FIRST + furthest * STEP - BEND)
+  const gone = LEAD_LENGTH + (FIRST + furthest * step - BEND)
   return Math.round((gone / whole) * RAIL_LENGTH * 10) / 10
 }
 
@@ -95,9 +104,11 @@ function station(x: number, state: StageState): JSX.Element {
   )
 }
 
-export default function ProgressLine({ stages, ariaLabel }: Props): JSX.Element {
-  const last = FIRST + Math.max(0, stages.length - 1) * STEP
+export default function ProgressLine({ stages, ariaLabel, compact = false }: Props): JSX.Element {
+  const step = compact ? COMPACT_STEP : STEP
+  const last = FIRST + Math.max(0, stages.length - 1) * step
   const width = last + 2 * UNIT
+  const height = compact ? LINE_Y + UNIT : LABEL_Y + UNIT
   const path = rail(last)
   const current =
     stages.find((s) => s.state === 'running') ?? stages.find((s) => s.state === 'failed')
@@ -105,8 +116,8 @@ export default function ProgressLine({ stages, ariaLabel }: Props): JSX.Element 
     <div className="progress">
       <svg
         width={width}
-        height={LABEL_Y + UNIT}
-        viewBox={`0 0 ${width} ${LABEL_Y + UNIT}`}
+        height={height}
+        viewBox={`0 0 ${width} ${height}`}
         role="img"
         aria-label={ariaLabel}
       >
@@ -120,22 +131,24 @@ export default function ProgressLine({ stages, ariaLabel }: Props): JSX.Element 
           pathLength={RAIL_LENGTH}
           style={{
             strokeDasharray: RAIL_LENGTH,
-            strokeDashoffset: RAIL_LENGTH - reached(stages, last),
+            strokeDashoffset: RAIL_LENGTH - reached(stages, last, step),
           }}
         />
         {stages.map((stage, i) => {
-          const x = FIRST + i * STEP
+          const x = FIRST + i * step
           return (
             <g key={stage.id}>
               {station(x, stage.state)}
-              <text
-                className={stage === current ? 'label label-current' : 'label'}
-                x={x}
-                y={LABEL_Y}
-                textAnchor="middle"
-              >
-                {stage.label}
-              </text>
+              {!compact && (
+                <text
+                  className={stage === current ? 'label label-current' : 'label'}
+                  x={x}
+                  y={LABEL_Y}
+                  textAnchor="middle"
+                >
+                  {stage.label}
+                </text>
+              )}
             </g>
           )
         })}

@@ -153,8 +153,11 @@ test('an export started in a project is followed from Settings, to its end', asy
     const job = jobNamed(page, 'Los Angeles Export as instagram-reel')
     await expect(job).toBeVisible()
     await expect(job.getByRole('img')).toHaveAccessibleName(/^Running (plan|capture|encode)\.$/)
-    for (const stage of ['plan', 'capture', 'encode'])
-      await expect(job.getByText(stage, { exact: true })).toBeVisible()
+    // The inspector's line has no labels (issue 278): the stage is said in
+    // the words under the title, with its place among the three.
+    await expect(job.locator('.job-meta')).toHaveText(
+      /^running (plan|capture|encode), [123] of 3, started /,
+    )
     await expect(
       job.getByRole('button', { name: /^Cancel: Export as instagram-reel/ }),
     ).toBeVisible()
@@ -207,6 +210,55 @@ test('jobs in two projects are listed together, running ones first', async () =>
   })
 })
 
+test('an eight-stage job fits the inspector: one left edge, no sideways scroll, the stage in words', async () => {
+  const h = home({ octi_child: true, octi_ms: 60_000 })
+  await withApp(h, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await openInspector(page)
+
+    const job = jobNamed(page, 'Los Angeles Layout run')
+    await expect(job.getByRole('img')).toHaveAccessibleName('Running octilinear.', {
+      timeout: 20_000,
+    })
+    // The compact line has no labels, so the words beside it name the stage.
+    await expect(job.locator('.job-meta')).toHaveText(/^running octilinear, 4 of 8, started /)
+    await expect(job.locator('.progress text')).toHaveCount(0)
+
+    // Beside the main region, and over it below 900px.
+    for (const width of [1200, 800]) {
+      await page.setViewportSize({ width, height: 800 })
+      const edges = await page.evaluate(() => {
+        const left = (selector: string): number =>
+          document.querySelector(selector)!.getBoundingClientRect().left
+        const box = document.querySelector('.inspector')!
+        return {
+          lefts: {
+            heading: left('#jobs-heading'),
+            title: left('.job-title'),
+            meta: left('.job-meta'),
+            line: left('.job .progress svg'),
+            toolbar: left('.job .toolbar > *'),
+          },
+          overflow: [box, ...document.querySelectorAll('.job')].map((el) => [
+            el.scrollWidth - el.clientWidth,
+            el.scrollHeight - el.clientHeight,
+          ]),
+        }
+      })
+      const lefts = Object.values(edges.lefts)
+      expect(
+        Math.max(...lefts) - Math.min(...lefts),
+        `${width}px: ${JSON.stringify(edges.lefts)}`,
+      ).toBeLessThanOrEqual(1)
+      // No sideways scroll on the inspector or on any job in it.
+      for (const [across] of edges.overflow) expect(across, `${width}px`).toBeLessThanOrEqual(0)
+    }
+    await job.getByRole('button', { name: 'Cancel: Layout run, Los Angeles' }).click()
+    await expect(job).toHaveAttribute('data-state', 'cancelled', { timeout: 20_000 })
+  })
+})
+
 test('Cancel in the inspector during octi cancels the run and ends the layout tool', async () => {
   const h = home({ octi_child: true, octi_ms: 60_000 })
   await withApp(h, async (page) => {
@@ -215,7 +267,9 @@ test('Cancel in the inspector during octi cancels the run and ends the layout to
     await openInspector(page)
 
     const job = jobNamed(page, 'Los Angeles Layout run')
-    await expect(job.getByRole('img')).toHaveAccessibleName('Running octi.', { timeout: 20_000 })
+    await expect(job.getByRole('img')).toHaveAccessibleName('Running octilinear.', {
+      timeout: 20_000,
+    })
     const pidFile = join(h.engineHome, 'fake-engine.octi.pid')
     await expect.poll(() => existsSync(pidFile), { timeout: 10_000 }).toBe(true)
     const pid = Number(readFileSync(pidFile, 'utf8'))
@@ -378,7 +432,9 @@ test('focus a person moved away from a Cancel is not taken back when the job end
     await page.getByRole('button', { name: /lay out/i }).click()
     await openInspector(page)
     const job = jobNamed(page, 'Los Angeles Layout run')
-    await expect(job.getByRole('img')).toHaveAccessibleName('Running octi.', { timeout: 20_000 })
+    await expect(job.getByRole('img')).toHaveAccessibleName('Running octilinear.', {
+      timeout: 20_000,
+    })
 
     // Focus rests on the inspector's Cancel, unpressed; then the person
     // clicks plain text elsewhere, which leaves focus on the page itself.

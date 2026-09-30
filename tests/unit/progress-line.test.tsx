@@ -208,6 +208,23 @@ describe('ProgressLine', () => {
     expect(offset(failed)).toBeCloseTo(100 - Math.round(covered * 10) / 10, 5)
   })
 
+  it('draws the compact form at 32 units a stage, with no labels (issue 278)', () => {
+    const stages: Stage[] = Array.from({ length: 8 }, (_, i) => ({
+      id: `s${i}`,
+      label: `stage ${i}`,
+      state: i < 3 ? 'done' : i === 3 ? 'running' : 'pending',
+    }))
+    const compact = renderToStaticMarkup(<ProgressLine stages={stages} ariaLabel="eight" compact />)
+    expect(compact).toContain(`H ${16 + 7 * 32}"`)
+    expect(compact).toContain('width="256"')
+    expect(compact).not.toContain('<text')
+    expect(compact.match(/<circle[^>]*class="mark /g)).toHaveLength(8)
+    // The default form is the same stages at 96 units, with their labels.
+    const plain = renderToStaticMarkup(<ProgressLine stages={stages} ariaLabel="eight" />)
+    expect(plain).toContain(`H ${16 + 7 * 96}"`)
+    expect(plain.match(/<text/g)).toHaveLength(8)
+  })
+
   it('draws every stage count a run has, from one to eight', () => {
     // The layout run has eight stages, the export three and a feed add two,
     // and each of them can run to the end, fail at the first stage or fail

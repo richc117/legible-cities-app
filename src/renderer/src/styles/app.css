@@ -214,12 +214,7 @@ body {
 }
 
 .job-line {
-  overflow-x: auto;
   margin: 0 0 var(--space-4-2);
-}
-
-.job-line .progress svg {
-  max-width: none;
 }
 
 .job .progress-message,

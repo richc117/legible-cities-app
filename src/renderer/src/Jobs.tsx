@@ -41,10 +41,30 @@ export async function copyLog(job: Job, copy: (text: string) => Promise<void>): 
   }
 }
 
+/**
+ * Where a job is, in words, for the line under its title: the state, and
+ * for a running or failed one the stage and its place among the stages -
+ * "running collapse, 2 of 8", "failed at octilinear, 4 of 8". The compact
+ * line has no labels, so this is what names the station that is ringed
+ * (issue 278; principle 1 of docs/DESIGN.md section 10).
+ */
+export function describeProgress(job: Job): string {
+  const stages = inWords(job.stages)
+  const running = stages.findIndex((s) => s.state === 'running')
+  const failed = stages.findIndex((s) => s.state === 'failed')
+  if (job.state === 'running' && running !== -1) {
+    return `running ${stages[running].label}, ${running + 1} of ${stages.length}`
+  }
+  if (job.state === 'failed' && failed !== -1) {
+    return `failed at ${stages[failed].label}, ${failed + 1} of ${stages.length}`
+  }
+  return describeJobState(job.state)
+}
+
 /** One sentence for a job's whole line, for a screen reader. */
 export function describeJob(job: Job): string {
   if (job.state === 'running') {
-    const current = job.stages.find((s) => s.state === 'running')
+    const current = inWords(job.stages).find((s) => s.state === 'running')
     return current === undefined ? `${job.label} is running.` : `Running ${current.label}.`
   }
   return `${job.label} ${describeJobState(job.state)}.`
@@ -126,10 +146,10 @@ export function JobItem({ job, onCancel, onCopy }: ItemProps): JSX.Element {
         <span className="job-label">{job.label}</span>
       </h3>
       <p className="job-meta">
-        {describeJobState(job.state)}, started {startedAt(job.started)}
+        {describeProgress(job)}, started {startedAt(job.started)}
       </p>
       <div className="job-line">
-        <ProgressLine stages={inWords(job.stages)} ariaLabel={describeJob(job)} />
+        <ProgressLine stages={inWords(job.stages)} ariaLabel={describeJob(job)} compact />
       </div>
       {job.message !== null && job.state !== 'failed' && (
         <p className="progress-message">{job.message}</p>
