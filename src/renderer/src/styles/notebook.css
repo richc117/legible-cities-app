@@ -131,8 +131,11 @@
 }
 
 /* One rhythm for one level (issues 197, 281): a heading inside a cell is
-   `--space-4-6` above, except a first child, which opens its section and
-   has nothing above to be separated from, and `--space-4-3` below. It was
+   `--space-4-6` above, except the one that opens the cell's body, which has
+   nothing above to be separated from, and `--space-4-3` below. A heading
+   that opens a section further down keeps its space: the section has
+   something above it that is not always a section, so the section's own
+   gap cannot be what separates them. It was
    six rules, one per panel, and one of them four pixels below instead of
    twelve. A paragraph's own 1em of `--font-text` still collapses over
    either value where one follows; the gap shows where nothing larger
@@ -142,7 +145,8 @@
   margin: var(--space-4-6) 0 var(--space-4-3);
 }
 
-.cell-body h3:first-child {
+.cell-body > h3:first-child,
+.cell-body > section:first-child > h3:first-child {
   margin-top: 0;
 }
 

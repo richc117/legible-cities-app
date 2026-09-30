@@ -18,7 +18,7 @@ interface Reading {
   bodyLeft: number
   edges: { what: string; left: number }[]
   values: { what: string; left: number }[]
-  headings: { what: string; above: number; below: number; first: boolean }[]
+  headings: { what: string; gap: number | null; below: number }[]
 }
 
 /** Everything the three assertions need, read in one pass over one cell. */
@@ -35,7 +35,6 @@ async function read(page: Page, number: string): Promise<Reading> {
         el.getClientRects().length > 0 &&
         box.width > 1 &&
         box.height > 1 &&
-        style.position !== 'absolute' &&
         style.display !== 'contents'
       )
     }
@@ -54,11 +53,22 @@ async function read(page: Page, number: string): Promise<Reading> {
       }))
     const headings = [...cell.querySelectorAll('.cell-body h3')].filter(shown).map((el) => {
       const style = getComputedStyle(el)
+      // What is above it, as a person sees it: the nearest thing before the
+      // heading or before the section it opens, walking out of a section
+      // that has nothing before the heading in it. The distance is between
+      // the two boxes, so it is what margins collapse to and not what one
+      // of them declares.
+      let node: Element = el
+      while (node.previousElementSibling === null && node.parentElement !== body)
+        node = node.parentElement!
+      const above = node.previousElementSibling
       return {
         what: `h3 "${el.textContent?.slice(0, 24)}"`,
-        above: parseFloat(style.marginTop),
+        gap:
+          above === null
+            ? null
+            : el.getBoundingClientRect().top - above.getBoundingClientRect().bottom,
         below: parseFloat(style.marginBottom),
-        first: el.previousElementSibling === null,
       }
     })
     return { cell: n, bodyLeft: inner, edges, values, headings }
@@ -95,9 +105,13 @@ test('within a cell every field value starts at one x, and every heading keeps o
         expect(new Set(lefts).size, `cell ${n}: ${JSON.stringify(r.values)}`).toBe(1)
       }
       for (const h of r.headings) {
-        // `--space-4-6` above and `--space-4-3` below, a first child has
-        // nothing above (the tokens are 24px and 12px).
-        expect(h.above, `cell ${n} ${h.what} above`).toBe(h.first ? 0 : 24)
+        // `--space-4-6` from whatever is above, wherever the heading stands;
+        // one that opens its cell has nothing above and is not measured.
+        // `--space-4-3` below. (The tokens are 24px and 12px.)
+        if (h.gap !== null)
+          expect(Math.abs(h.gap - 24), `cell ${n} ${h.what}: ${h.gap}px above`).toBeLessThanOrEqual(
+            1,
+          )
         expect(h.below, `cell ${n} ${h.what} below`).toBe(12)
       }
     }
