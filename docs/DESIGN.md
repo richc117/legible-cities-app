@@ -28,8 +28,8 @@ choices it left open were decided the same day (ADR-026).
    desktop chrome without replacing it.
 3. **Dense, not cramped.** Controls at 13px on a 4px grid, as Obsidian and
    Figma's plugin surfaces do, so a working screen holds a library, a job
-   and a map at once. Prose keeps the websites' 18px rhythm. The two never
-   share a scale.
+   and a map at once. Prose keeps the websites' face at a smaller size
+   (16px, section 4.1). The two never share a scale.
 4. **One palette, two themes, every pair checked.** The interface's own
    ground and ink are the source; a ramp and a semantic layer derive from
    them; every text and control pair clears WCAG AA in both themes, by
@@ -55,7 +55,7 @@ Both sites share one stylesheet's worth of decisions, to the digit:
 |---|---|
 | Themes | warm-dark (default) and sepia, switched by `data-theme` |
 | Prose face | `"Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif` |
-| Prose size | 18px at line height 1.72; 17px under 640px wide |
+| Prose size | 16px at line height 1.5 (24px) |
 | Headings | 700 weight in the same serif; display sizes 1.8 to 2.3rem |
 | Meta text | 0.86rem, muted colour |
 | Corners | 2px on links and inputs; 999px pills for segmented controls and the theme switch |
@@ -220,13 +220,20 @@ never shrinks to control size.
 | `--font-ui-medium` | 15px | 20px | section headings in panels, dialog titles |
 | `--font-ui-large` | 20px | 24px | a screen's title |
 
-**Prose track (relative, the sites' rhythm):**
+**Prose track (relative):**
 
 | Token | Size | Line height | Use |
 |---|---|---|---|
-| `--font-text` | 18px (17px under 640px) | 1.72 | help panels, empty-state sentences, notes |
-| `--font-text-small` | 0.86em | 1.55 | meta lines under prose |
+| `--font-text` | 16px | 1.5 (24px) | help panels, empty-state sentences, notes |
 | headings | 1.25rem to 2.3rem, weight 700 | 1.3 | prose headings only |
+
+The sites set this track at 18px on 1.72 for reading a page. The app's
+prose is a column beside a map under 13px chrome, so it is smaller: 16px
+is one step above the chrome, not five, its lines land on 24px (the
+4px grid and `--line-ui-large`), and a paragraph's gaps are 16px. Meta
+lines under prose use the UI track (`--font-ui-small`); the track had a
+small prose size once and nothing drew it, and the sites' 17px under
+640px never applied, since the window is never narrower than 640.
 
 A window zoom setting scales both tracks together; nothing else couples
 them.

@@ -17,9 +17,8 @@
   --line-ui-tight: 16px;
   --line-ui: 20px;
   --line-ui-large: 24px;
-  --font-text: 18px;
-  --font-text-small: 0.86em;
-  --line-text: 1.72;
+  --font-text: 16px;
+  --line-text: 1.5;
   --weight-strong: 600;
   --weight-heading: 700;
   --numerals: lining-nums tabular-nums slashed-zero;

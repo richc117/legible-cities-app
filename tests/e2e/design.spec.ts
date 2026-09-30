@@ -115,6 +115,33 @@ test('follows the platform theme and measures as the design document says', asyn
   })
 })
 
+test("a cell's prose is 16px on 24px lines, in the serif, in both themes", async () => {
+  // Issue 280: the prose track was the sites' 18px on 1.72, five steps
+  // above the 13px chrome beside it. The face is the brand's and stays.
+  await withApp(async (page) => {
+    await page.evaluate(() =>
+      (globalThis as unknown as Bridge).api.projects.create({
+        name: 'Measured',
+        feed: 'la-metro-rail',
+      }),
+    )
+    await page.reload()
+    await page.getByRole('button', { name: 'Open Measured' }).click()
+    const prose = page.locator('.cell p.prose').first()
+    await expect(prose).toBeVisible()
+    for (const source of ['dark', 'light'] as const) {
+      await setTheme(page, source)
+      const style = await prose.evaluate((el) => {
+        const s = getComputedStyle(el)
+        return { size: s.fontSize, line: s.lineHeight, face: s.fontFamily }
+      })
+      expect(px(style.size), source).toBe(16)
+      expect(px(style.line), source).toBe(24)
+      expect(style.face, source).toMatch(/Iowan Old Style/)
+    }
+  })
+})
+
 test('a Library row holds what it has, however many lines that takes', async () => {
   // Issue 269. The kit gives every native button one control's height, and
   // a row that wrapped hung below its own rule, over the row after it.
