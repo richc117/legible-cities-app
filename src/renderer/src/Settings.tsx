@@ -52,7 +52,6 @@ interface Props {
   /** A view the main process answered with: the screen never edits its own. */
   onChanged: (next: SettingsView) => void
   engine: EngineState | null
-  onBack: () => void
 }
 
 const sentenceOf = (error: unknown): string =>
@@ -163,7 +162,7 @@ function reported(value: string | null, absent: string): string {
   return value === null || value === '' ? absent : value
 }
 
-export default function Settings({ settings, onChanged, engine, onBack }: Props): JSX.Element {
+export default function Settings({ settings, onChanged, engine }: Props): JSX.Element {
   const headingRef = useRef<HTMLHeadingElement>(null)
   const [size, setSize] = useState<FolderSize | null>(null)
   const [info, setInfo] = useState<EngineInfo | null>(null)
@@ -357,12 +356,6 @@ export default function Settings({ settings, onChanged, engine, onBack }: Props)
       <h1 id="settings-heading" tabIndex={-1} ref={headingRef}>
         Settings
       </h1>
-      <div className="toolbar">
-        <Button onClick={onBack}>
-          <Icon name="back" />
-          Back to Library
-        </Button>
-      </div>
       {message && (
         <p role="alert" className="notice error">
           {message}

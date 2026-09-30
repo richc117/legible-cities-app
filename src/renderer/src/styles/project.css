@@ -6,7 +6,7 @@
    the screen still lays out from `app.css` and `panels.css` as it did; the
    rail's own rules are in `rail.css` and the preview's in `preview.css`,
    so the milestone's issues did not meet in one file. The header's
-   breadcrumb, status line and Run all (A5.5-22) are at the end of this
+   heading, status line and Run all (A5.5-22) are at the end of this
    one.
 
    A stylesheet is named for a region of the interface, not for a
@@ -41,36 +41,11 @@
   }
 }
 
-/* The project's header (A5.5-22, DESIGN.md 8.2): the breadcrumb, then one
-   row holding the notebook's state and Run all.
-
-   The breadcrumb is a list in a named `<nav>`, the way back first and the
-   project's name, the screen's heading, as the current page. The separator
-   is drawn and not written, so nothing reads it aloud. */
-.breadcrumb ol {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2-2);
-  margin: 0 0 var(--space-4-4);
-  padding: 0;
-  list-style: none;
-}
-
-.breadcrumb li {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2-2);
-  min-width: 0;
-}
-
-.breadcrumb li + li::before {
-  content: '/' / '';
-  color: var(--text-muted);
-}
-
-.breadcrumb h1 {
-  margin: 0;
+/* The project's header (A5.5-22, DESIGN.md 8.2): the project's name, the
+   screen's heading, then one row holding the notebook's state and Run
+   all. The way back to the Library is in the window's header, where it is
+   on every screen that has one (issue 275). */
+#project-heading {
   overflow-wrap: anywhere;
 }
 
