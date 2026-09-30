@@ -26,7 +26,7 @@
    It sticks at `--header-height`, which is what the inspector already does
    for the same reason, and one step under the header's own layer. Both
    halves of that matter. Above the cells, because a cell's own positioned
-   parts - a colour picker's disclosure among them - come after the map in
+   parts come after the map in
    the document and would otherwise be painted over it as they scroll
    under. Under the header, because how the header's forty pixels and its
    one-pixel rule divide between its box and its border is not something a

@@ -41,7 +41,7 @@ import { useSnapshot } from './useSnapshot'
 // over it, and one default for the lines the feed leaves blank (A4-01,
 // specs/018-colours).
 //
-// The app draws swatches beside names and nothing else. The picture is the
+// The app draws a colour chip beside each name and nothing else. The picture is the
 // engine's page, and the engine resolves the colours: this panel sends
 // map.build the same two fields the CLI does and the page's map, chips and
 // time chart all move together because the engine resolved them once
@@ -115,7 +115,7 @@ export default function LineColours({
 
   const [state, setState] = useState<State>({ status: 'waiting' })
   const [palette, setPalette] = useState<Palette>(() => paletteOf(project))
-  const [open, setOpen] = useState<string | null>(null)
+  const section = useRef<HTMLElement>(null)
 
   // The debounce, made once: a person dragging through a hue must not start
   // a map build per frame. The current project, engine and run are read
@@ -195,13 +195,14 @@ export default function LineColours({
     commitRef.current = commit
   })
 
-  // The panel is an auto popover, and the platform decides when it is open:
-  // this only follows, by the `toggle` event each one sends. Opening one
-  // closes another, so the order of the two events is not the order a
-  // person sees them in: a close from the row that was open must not close
-  // the one that has just opened.
-  const follow = (row: string, now: boolean): void =>
-    setOpen((current) => (now ? row : current === row ? null : current))
+  // Closing every open panel, through the elements: the platform owns
+  // whether a panel is open, and a press of a button elsewhere is a click
+  // that light-dismisses it, but a keyboard press is not (issue 284).
+  const closePanels = (): void => {
+    section.current
+      ?.querySelectorAll<HTMLElement>('.colour-popover:popover-open')
+      .forEach((panel) => panel.hidePopover())
+  }
 
   const change = (next: Palette): void => {
     setPalette(next)
@@ -227,7 +228,12 @@ export default function LineColours({
   const nothingToReset = isReset(palette)
 
   return (
-    <section className="line-colours" aria-labelledby="line-colours-heading" aria-busy={busy}>
+    <section
+      ref={section}
+      className="line-colours"
+      aria-labelledby="line-colours-heading"
+      aria-busy={busy}
+    >
       {/* Cell 05 holds two sections, so the cell's own heading cannot name
           either of them: it says Lines, and a person reading down the cell
           has to be told where the colours end and the order begins. The
@@ -256,8 +262,6 @@ export default function LineColours({
         <>
           <DefaultColour
             colour={palette.defaultColor}
-            open={open === DEFAULT_ROW}
-            onOpenChange={(now) => follow(DEFAULT_ROW, now)}
             onPick={(hex) => change(withDefault(palette, hex))}
           />
           {lines.length === 0 ? (
@@ -273,8 +277,6 @@ export default function LineColours({
                   line={line}
                   shown={shownColour(line, palette)}
                   overridden={hasOverride(palette, line.label)}
-                  open={open === line.label}
-                  onOpenChange={(now) => follow(line.label, now)}
                   onPick={(hex) => change(withOverride(palette, line.label, hex))}
                   onReset={() => change(withoutOverride(palette, line.label))}
                 />
@@ -285,7 +287,7 @@ export default function LineColours({
             <Button
               disabled={nothingToReset}
               onClick={() => {
-                setOpen(null)
+                closePanels()
                 changeAndKeepFocus(resetAll())
               }}
             >
@@ -298,9 +300,6 @@ export default function LineColours({
   )
 }
 
-/** The default row's key in the one-picker-at-a-time state; no line can be called this. */
-const DEFAULT_ROW = ''
-
 /**
  * The colour chip and the panel it opens, in one place for both kinds of row.
  *
@@ -309,7 +308,7 @@ const DEFAULT_ROW = ''
  * the kit's, so the kit's inner-button trap (`.claude/rules/renderer.md`,
  * issue 121) does not arise. The panel is an auto popover anchored to it.
  *
- * What the platform now does is what `useDismiss` did by hand. An auto
+ * What the platform does here is what a hand-written dismissal (issue 87's) used to do. An auto
  * popover is light-dismissed only when the press and the release both land
  * outside it, so a drag that begins in the square and ends on the map is a
  * colour and the panel stays (issue 87); a click outside closes it, Escape
@@ -320,14 +319,12 @@ const DEFAULT_ROW = ''
  * and release moved the button being pressed - is gone with the flow.
  *
  * The panel is always in the document and its contents are mounted while it
- * is open. React follows the element: `onOpenChange` is told by the
- * `toggle` event, never the other way round.
+ * is open. React follows the element, by its `beforetoggle` event, and
+ * never drives it except to close it from a finished gesture.
  */
 function ColourControl({
   label,
   colour,
-  open,
-  onOpenChange,
   panelName,
   onPick,
   reset,
@@ -335,8 +332,6 @@ function ColourControl({
 }: {
   label: string
   colour: string
-  open: boolean
-  onOpenChange: (open: boolean) => void
   panelName: string
   onPick: (hex: string) => void
   /** Only a line that can have an override offers Reset. */
@@ -344,6 +339,13 @@ function ColourControl({
   children: ReactNode
 }): JSX.Element {
   const panelId = useId()
+  // Whether this panel is showing, as the element last said. It lives here
+  // and not in the parent so that it goes with the row: a popover removed
+  // from the document sends no event, and a flag kept above would read
+  // "open" for a row that came back closed (an engine restart, a change of
+  // mode). Nothing above needs to know which is open: opening one closes
+  // the others, which is the platform's.
+  const [open, setOpen] = useState(false)
   const chip = useRef<HTMLButtonElement>(null)
   const panel = useRef<HTMLDivElement>(null)
   // A person saying they have finished: close the panel and go back to the
@@ -374,7 +376,18 @@ function ColourControl({
         popover="auto"
         role="group"
         aria-label={panelName}
-        onToggle={(event) => onOpenChange(event.newState === 'open')}
+        // Mounted before the panel is shown, so its contents are there for
+        // its first frame and the flip is decided on the box it will have,
+        // not an empty one; unmounted only after it has gone. The platform
+        // gives focus back to the chip when a panel closes with focus in it,
+        // and it can only do that if the focused field is still there
+        // when it looks.
+        onBeforeToggle={(event) => {
+          if (event.newState === 'open') setOpen(true)
+        }}
+        onToggle={(event) => {
+          if (event.newState === 'closed') setOpen(false)
+        }}
       >
         {open && (
           <ColourPicker
@@ -401,13 +414,9 @@ function ColourControl({
 
 function DefaultColour({
   colour,
-  open,
-  onOpenChange,
   onPick,
 }: {
   colour: string
-  open: boolean
-  onOpenChange: (open: boolean) => void
   onPick: (hex: string) => void
 }): JSX.Element {
   return (
@@ -415,8 +424,6 @@ function DefaultColour({
       <ColourControl
         label="Choose the colour of lines the feed leaves uncoloured"
         colour={colour}
-        open={open}
-        onOpenChange={onOpenChange}
         panelName="Colour for lines the feed leaves uncoloured"
         onPick={onPick}
       >
@@ -431,16 +438,12 @@ function LineRow({
   line,
   shown,
   overridden,
-  open,
-  onOpenChange,
   onPick,
   onReset,
 }: {
   line: Line
   shown: Shown
   overridden: boolean
-  open: boolean
-  onOpenChange: (open: boolean) => void
   onPick: (hex: string) => void
   onReset: () => void
 }): JSX.Element {
@@ -449,8 +452,6 @@ function LineRow({
       <ColourControl
         label={`Choose the colour of line ${line.label}`}
         colour={shown.color}
-        open={open}
-        onOpenChange={onOpenChange}
         panelName={`Colour for line ${line.label}`}
         onPick={onPick}
         reset={{

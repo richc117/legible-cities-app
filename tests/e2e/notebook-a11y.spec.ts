@@ -206,8 +206,8 @@ test('the notebook, Inspect, the geographic view, the inspector and its dialogs'
     await colours.getByRole('button', { name: 'Choose the colour of line A' }).click()
     const picker = colours.getByRole('group', { name: 'Colour for line A' })
     await expect(picker.getByRole('slider', { name: 'Hue' })).toBeVisible()
-    // Its Choose button controls the picker it opened, as a native button's
-    // aria-controls would say (issue 121, F6).
+    // Its chip controls the picker it opened, as a native button's
+    // aria-controls says (issue 121, F6; a native button since issue 284).
     await expect
       .poll(() => controlsOf(page, 'Choose the colour of line A'))
       .toEqual(['Colour for line A'])
@@ -227,7 +227,7 @@ test('the notebook, Inspect, the geographic view, the inspector and its dialogs'
     // Closed, it names nothing it no longer shows.
     await expect.poll(() => controlsOf(page, 'Choose the colour of line A')).toEqual([])
 
-    // The default colour's Choose button, the other kind of row.
+    // The default colour's chip, the other kind of row.
     const uncoloured = colours.getByRole('button', {
       name: 'Choose the colour of lines the feed leaves uncoloured',
     })

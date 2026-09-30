@@ -9,9 +9,9 @@
    own chrome in notebook.css; this file is imported after the shell so a
    panel reads against it, which is the order the rules were written in. */
 
-/* Line colours (A4-01): one row per line the feed offers, each a swatch, a
-   name, where its colour came from and its two controls; the picker is a
-   disclosure under the row it belongs to. A line's own colour is data and
+/* Line colours (A4-01): one row per line the feed offers, each a chip in the
+   line's colour that opens the picker, a name and where its colour came
+   from; the picker is a floating panel anchored to its chip (issue 284). A line's own colour is data and
    arrives as an inline style from the record, never from here. */
 
 /* Cell 05 holds two sections, so each is named by a heading of its own, a
@@ -55,8 +55,7 @@
   text-align: end;
 }
 
-/* The two moves sit at the end of the row, where the colour control's
-   Choose and Reset are, so the two panels read as one family. */
+/* The two moves sit at the end of the row. */
 .line-actions {
   display: flex;
   gap: var(--space-4-2);
