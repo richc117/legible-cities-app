@@ -163,7 +163,15 @@
   margin-top: var(--space-4-6);
 }
 
-.rail-outputs h2 {
+/* One rule for both of the rail's headings, and one left edge for every
+   text in it: a step's text starts --space-4-2 inside the rail's padding,
+   so the headings and Outputs' rows take the same (issue 274). */
+.rail-heading,
+.rail-outputs {
+  padding-inline: var(--space-4-2);
+}
+
+.rail h2 {
   margin: 0 0 var(--space-4-2);
   font-size: var(--font-ui-medium);
   line-height: var(--line-ui-large);
@@ -262,6 +270,7 @@
     border: 0;
   }
 
+  .rail-heading,
   .rail-outputs {
     display: none;
   }

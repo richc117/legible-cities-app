@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useState, type JSX } from 'rea
 import Icon from '../icons/Icon'
 import { CELL_LIST, type Cell, type CellId, type CellStatus } from '../runGraph'
 import { cellNumber, stateIcon, stateWord } from './Cell'
+import { useProject } from './context'
 import Outputs from './Outputs'
 import { clearance, currentStepOf, scrollTargetFor, type CellBox } from './railScroll'
 
@@ -131,9 +132,16 @@ export default function Rail({ states, open, onOpen }: Props): JSX.Element {
     follow()
   }, [pending, follow])
 
+  const { project } = useProject()
+
   return (
     <div className="rail">
       <nav className="rail-steps" aria-label={RAIL_LABEL}>
+        {/* The project's name over its steps. The nav keeps its own label:
+            a navigation named for the project inside a main named for it
+            is the pair the sweep flags (issue 258), and a heading is
+            exempt where a nav is not. */}
+        {project !== null && <h2 className="rail-heading">{project.name}</h2>}
         <ol>
           {CELL_LIST.map((cell) => {
             const state = states[cell.id].state
