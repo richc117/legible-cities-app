@@ -229,7 +229,7 @@ never shrinks to control size.
 
 The sites set this track at 18px on 1.72 for reading a page. The app's
 prose is a column beside a map under 13px chrome, so it is smaller: 16px
-is one step above the chrome, not five, its lines land on 24px (the
+is 3px above the chrome, not 5, its lines land on 24px (the
 4px grid and `--line-ui-large`), and a paragraph's gaps are 16px. Meta
 lines under prose use the UI track (`--font-ui-small`); the track had a
 small prose size once and nothing drew it, and the sites' 17px under

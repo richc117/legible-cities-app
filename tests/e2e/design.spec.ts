@@ -116,7 +116,7 @@ test('follows the platform theme and measures as the design document says', asyn
 })
 
 test("a cell's prose is 16px on 24px lines, in the serif, in both themes", async () => {
-  // Issue 280: the prose track was the sites' 18px on 1.72, five steps
+  // Issue 280: the prose track was the sites' 18px on 1.72, 5px
   // above the 13px chrome beside it. The face is the brand's and stays.
   await withApp(async (page) => {
     await page.evaluate(() =>
