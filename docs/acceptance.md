@@ -424,7 +424,8 @@ another. Wait for the map. Press **Back to alphabetical**.
 - While a line is dragged it is lifted onto a lighter ground with an edge
   around it and **follows the pointer**, and the lines it passes step aside
   to show where it will land. On release it stays there, the status says
-  "`<line>` is now `<total>` of `<total>`.", and the map is drawn **once**.
+  "`<line>` is now `<n>` of `<total>`." for the place it landed in, and the
+  map is drawn **once**.
 - Escape during the drag puts every line back where it was, and nothing is
   drawn.
 - An arrow names its move in a tooltip, "Move line `<line>` up", when the

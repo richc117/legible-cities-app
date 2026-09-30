@@ -1918,6 +1918,11 @@ test('a release, installed, through docs/acceptance.md', async () => {
         await window.mouse.move(at.x, at.y)
         await window.mouse.down()
         await window.mouse.move(at.x, lastLow, { steps: 12 })
+        // The drag is live before Escape, or the step would pass without
+        // having pressed the grip at all.
+        await expect(
+          window.getByRole('list', { name: 'Lines in the order they are drawn' }),
+        ).toHaveAttribute('data-dragging', 'true')
         await window.keyboard.press('Escape')
         await window.mouse.up()
         expect(await labels()).toEqual(carried)
