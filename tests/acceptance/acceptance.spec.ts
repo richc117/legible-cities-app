@@ -1353,7 +1353,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
       await log.soft("the collapsed row's summary", async () => {
         await closeCell(window, 'data')
         await expect(cellHeading(window, 'data').locator('.cell-summary')).toHaveText(
-          /^.+, .+, every operator, [\d,.\s]+ stops? in the feed$/,
+          /^[\d,.\s]+ stops? in the feed$/,
         )
         log.note(
           `Collapsed: "${await text(cellHeading(window, 'data').locator('.cell-summary'))}".`,
@@ -1559,7 +1559,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
         await log.soft("cell 03's collapsed row", async () => {
           await closeCell(window, 'frame')
           await expect(cellHeading(window, 'frame').locator('.cell-summary')).toHaveText(
-            `${other}, not drawn yet; the engine’s busiest weekday is ${busiest}`,
+            `${other}, not drawn yet`,
           )
           await openCell(window, 'frame')
         })

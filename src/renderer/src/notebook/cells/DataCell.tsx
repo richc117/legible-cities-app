@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type JSX } from 'react'
 import type { Inspection } from '../../../../shared/protocol'
-import type { ProjectRecord } from '../../../../shared/project'
 import Inspect from '../../Inspect'
 import StageView from '../../StageView'
 import DownloadLine from '../../DownloadLine'
@@ -33,58 +32,30 @@ import { useProject } from '../context'
 // would have to know what every cell is made of, and each new one would
 // edit the file all six share (A5.5-09).
 
-/** The words of a list, as prose: "rail", "rail and subway", "rail, subway and tram". */
-function listOf(words: string[]): string {
-  if (words.length < 2) return words[0] ?? ''
-  return `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`
-}
-
 /**
- * What the collapsed cell says it holds: the feed, what LOOM keeps, whose
- * routes, and how many stops the engine counted in the feed.
+ * What the collapsed cell says it holds: how many stops the engine counted
+ * in the feed, and nothing else. The feed, the mode and the operator are
+ * in the open cell and in the footer, and a row cut with an ellipsis
+ * before the fact a person came for said too much (issue 279).
  *
  * Null until the inspection has arrived - before it, the stop count is not
- * known and the feed has only a key, and a cell with nothing true to say
- * says nothing rather than a sentence with a hole in it (DESIGN.md 8.2).
- * A refused inspection is the same case: `Inspect` says why in the open
- * cell, and the row does not repeat a failure as a description.
+ * known, and a cell with nothing true to say says nothing rather than a
+ * sentence with a hole in it (DESIGN.md 8.2). A refused inspection is the
+ * same case: `Inspect` says why in the open cell, and the row does not
+ * repeat a failure as a description.
  *
- * Every figure is the engine's. The stop count is the feed's own total,
- * which is what `feeds.inspect` answers: the engine counts stops per feed
- * and not per mode, and inventing a filtered count here would be the app
- * drawing a conclusion the engine did not (constitution II). It says "in
- * the feed" for that reason: the two slots before it are filters, so a
- * bare count in the fourth would be read as the count of what they keep,
- * and `stops.total` is the feed's whole stop table, entrances and boarding
- * areas included.
+ * The figure is the engine's. It is the feed's own total, which is what
+ * `feeds.inspect` answers: the engine counts stops per feed and not per
+ * mode, and inventing a filtered count here would be the app drawing a
+ * conclusion the engine did not (constitution II). It says "in the feed"
+ * for that reason: `stops.total` is the feed's whole stop table, entrances
+ * and boarding areas included, and a bare count would be read as the count
+ * of what the mode and the operator keep.
  */
-export function dataSummary(
-  project: Pick<ProjectRecord, 'feed' | 'mode' | 'agency'>,
-  inspection: Inspection | null,
-): string | null {
+export function dataSummary(inspection: Inspection | null): string | null {
   if (inspection === null) return null
-  const feed = inspection.name || project.feed
-  // A record's mode is `MODE_PATTERN`: names or route_type numbers, comma
-  // joined, with no spaces and no empty part, on write and on read alike.
-  const modes = project.mode.split(',')
-  // "all" is the engine's word for every route type, and the Mode control
-  // says so in its own option; the row says it the same way.
-  const mode = modes.includes('all') ? 'every type' : listOf(modes)
-  const listed = inspection.agencies.find((a) => a.agency_id === project.agency)
-  // The row names the operator as the Operator control names it: its name
-  // when it has one, its id when the name is blank - a feed may carry an
-  // empty agency_name, and `Inspect` defends against it twice - and the
-  // control's own suffix when the feed no longer lists it at all, which is
-  // the whole of what a person needs to know in that case.
-  const operator =
-    project.agency === null
-      ? 'every operator'
-      : listed === undefined
-        ? `${project.agency} (not in this feed)`
-        : listed.agency_name || listed.agency_id
   const { total } = inspection.stops
-  const stops = `${total.toLocaleString()} ${total === 1 ? 'stop' : 'stops'} in the feed`
-  return `${feed}, ${mode}, ${operator}, ${stops}`
+  return `${total.toLocaleString()} ${total === 1 ? 'stop' : 'stops'} in the feed`
 }
 
 /**
@@ -129,7 +100,7 @@ export default function DataCell({ cell, state, open, onToggle }: CellViewProps)
       number={cell.number}
       name={cell.name}
       state={state}
-      summary={project === null ? null : dataSummary(project, inspection)}
+      summary={project === null ? null : dataSummary(inspection)}
       open={open}
       onToggle={onToggle}
       headingRef={heading}

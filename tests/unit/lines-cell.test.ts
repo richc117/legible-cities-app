@@ -28,15 +28,13 @@ describe('what cell 05 says while it is collapsed', () => {
   })
 
   it('names no override and the engine’s own order', () => {
-    expect(linesSummary(project())).toBe('no line recoloured, alphabetical order')
+    expect(linesSummary(project())).toBe('no line recoloured')
   })
 
   it('counts the lines that carry a colour of their own', () => {
-    expect(linesSummary(project({ colors: { A: '#ff0000' } }))).toBe(
-      '1 line recoloured, alphabetical order',
-    )
+    expect(linesSummary(project({ colors: { A: '#ff0000' } }))).toBe('1 line recoloured')
     expect(linesSummary(project({ colors: { A: '#ff0000', B: '#00ff00' } }))).toBe(
-      '2 lines recoloured, alphabetical order',
+      '2 lines recoloured',
     )
   })
 
@@ -47,7 +45,7 @@ describe('what cell 05 says while it is collapsed', () => {
     expect(linesSummary(project({ lineOrder: ['B', 'A'] }))).toBe(
       'no line recoloured, an order you chose',
     )
-    expect(linesSummary(project({ lineOrder: [] }))).toContain('alphabetical order')
+    expect(linesSummary(project({ lineOrder: [] }))).not.toContain('order')
   })
 
   it('says when the colour for the lines the feed leaves blank has moved', () => {
@@ -55,7 +53,7 @@ describe('what cell 05 says while it is collapsed', () => {
     // overrides would be silent about a change made in the cell it
     // describes.
     expect(linesSummary(project({ defaultColor: '#123456' }))).toBe(
-      'no line recoloured, a default of your own, alphabetical order',
+      'no line recoloured, a default of your own',
     )
     expect(linesSummary(project({ defaultColor: DEFAULT_COLOR }))).not.toContain('default')
   })
@@ -72,8 +70,6 @@ describe('what cell 05 says while it is collapsed', () => {
     // A feed's labels are not ours to choose, and `Object.keys` answers the
     // record's own keys rather than the prototype chain's, which is the
     // rule `hasOverride` keeps in `colours.ts`.
-    expect(linesSummary(project({ colors: { toString: '#ff0000' } }))).toBe(
-      '1 line recoloured, alphabetical order',
-    )
+    expect(linesSummary(project({ colors: { toString: '#ff0000' } }))).toBe('1 line recoloured')
   })
 })

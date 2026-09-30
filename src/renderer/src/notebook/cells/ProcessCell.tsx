@@ -1,5 +1,4 @@
 import type { JSX } from 'react'
-import { shortLayoutId } from '../../../../shared/layout'
 import type { ProjectRecord } from '../../../../shared/project'
 import DiagnosticsView from '../../Diagnostics'
 import LayoutRunView from '../../LayoutRun'
@@ -29,14 +28,14 @@ import EngineLog from '../EngineLog'
 // comments exist to prevent.
 
 /**
- * What the cell says on its collapsed row: the layout the map is drawn
- * from, in the eight characters a screen shows it by, and when the engine
- * made it.
+ * What the cell says on its collapsed row: that the project is laid out,
+ * and when the engine made it. The layout's eight-character id was the
+ * row's first word until issue 279 cut the row to one fact; the strip
+ * under the open cell carries it.
  *
- * The same two facts as the strip under the open cell, and read the same
- * way - the moment in the person's own locale, as `Time` renders it -
- * because a row and the strip below it saying the same thing differently
- * is a difference a person has to stop and resolve. The row is drawn only
+ * The moment is read as the strip reads it - the person's own locale, as
+ * `Time` renders it - because a row and the strip below it saying the same
+ * thing differently is a difference a person has to stop and resolve. The row is drawn only
  * while the cell is collapsed and the strip only while it is open, so the
  * two are never on the screen together (issue 209).
  *
@@ -49,10 +48,10 @@ export function processSummary(
 ): string | null {
   if (project === null) return null
   if (project.layout === null) return 'not laid out yet'
-  const short = shortLayoutId(project.layout)
-  if (project.made === null) return short
+  // The eight-character id is in the footer, where provenance lives.
+  if (project.made === null) return 'laid out'
   const made = new Date(project.made)
-  return `${short}, made ${Number.isNaN(made.getTime()) ? project.made : made.toLocaleString()}`
+  return `laid out ${Number.isNaN(made.getTime()) ? project.made : made.toLocaleString()}`
 }
 
 export default function ProcessCell({ cell, state, open, onToggle }: CellViewProps): JSX.Element {

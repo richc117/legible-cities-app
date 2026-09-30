@@ -34,10 +34,11 @@
    takes the whole width and reads as the cell's heading. */
 .cell-head {
   display: flex;
-  align-items: baseline;
-  gap: var(--space-4-3);
+  align-items: center;
+  line-height: var(--line-ui);
+  gap: var(--space-4-2);
   width: 100%;
-  padding: var(--space-4-3) var(--space-4-4);
+  padding: var(--space-4-2) var(--space-4-4);
   border-radius: var(--radius);
   background: none;
   border: none;
@@ -45,6 +46,28 @@
   color: var(--text);
   text-align: left;
   cursor: pointer;
+}
+
+/* The heading the row sits in carries the kit's own margin, which stopped
+   the row's hover ground short of the cell's border at both ends. */
+.disclosure-heading {
+  margin: 0;
+}
+
+/* The chevron: a right-pointing caret, turned a quarter when the cell is
+   open. The turn moves only where motion is allowed. */
+.cell-chevron {
+  color: var(--text-muted);
+}
+
+.cell-head[aria-expanded='true'] .cell-chevron {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .cell-chevron {
+    transition: transform var(--duration-fast) var(--easing);
+  }
 }
 
 /* --surface-raised, not --surface-hover: the state's word is inside this
@@ -70,6 +93,8 @@
    is the state's, on --surface, which is the only ground the scoping table
    in section 3 allows these on. */
 .cell-state {
+  order: 1;
+  margin-left: auto;
   display: inline-flex;
   align-items: center;
   gap: var(--space-2-2);

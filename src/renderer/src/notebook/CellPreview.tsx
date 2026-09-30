@@ -35,8 +35,8 @@ const FRAME = {
 }
 
 const SUMMARY: Record<CellId, string | null> = {
-  data: 'LA Metro Rail, rail and subway, Los Angeles County MTA, 110 stops in the feed',
-  process: 'd1deeb11, made 13/09/2026, 14:03:00',
+  data: '110 stops in the feed',
+  process: 'laid out 13/09/2026, 14:03:00',
   frame: frameSummary(FRAME),
   style: 'Warm dark',
   lines: '3 lines recoloured, an order you chose',

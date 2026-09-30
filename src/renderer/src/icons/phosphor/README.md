@@ -21,6 +21,7 @@ headers; `<name>-fill.svg` is the **fill** weight for a toggled state.
 | add, trash, edit            | plus, trash, pencil-simple           |
 | back, forward               | arrow-left, arrow-right              |
 | spinner                     | spinner-gap                          |
+| chevron                     | caret-right                          |
 
 Adding a glyph: copy both weights from the package at the version above and
 add the row; a glyph the set lacks is drawn by hand to the same grid in the

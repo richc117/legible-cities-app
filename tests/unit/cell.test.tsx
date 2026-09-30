@@ -42,6 +42,15 @@ describe('a cell', () => {
     expect(draw({ open: true })).toContain('aria-expanded="true"')
   })
 
+  it('opens its row on a chevron that is decorative, so the name does not hold it', () => {
+    // The first thing in the button, before the number: it says the row
+    // toggles and which way it is (issue 279). `Icon` hides an unlabelled
+    // glyph from the tree, so the row's name is still "03 Frame ...".
+    const row = /<button[^>]*class="cell-head"[^>]*>(.*?)<\/button>/.exec(draw())?.[1] ?? ''
+    expect(row).toMatch(/^<span class="icon cell-chevron"[^>]*aria-hidden="true"/)
+    expect(row.indexOf('cell-chevron')).toBeLessThan(row.indexOf('cell-number'))
+  })
+
   it('keeps its controls in the document when it is collapsed', () => {
     // The rule that is not cosmetic: a half-typed value and a running
     // Cancel both live inside a cell, and unmounting loses them silently.

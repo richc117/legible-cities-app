@@ -267,15 +267,16 @@ test('the collapsed cell says the feed, the mode, the operator and the stop coun
     await expect(cell(page, 'data')).toContainText('Los Angeles County MTA')
     await closeCell(page, 'data')
     await expect(cellHeading(page, 'data')).toHaveAccessibleName(
-      /^01 Data ready LA Metro Rail, every type, every operator, 3 stops in the feed$/,
+      /^01 Data ready 3 stops in the feed$/,
     )
 
-    // The sentence follows the choice, because it is the record's.
+    // The row says the feed's stop count and nothing the choice narrows
+    // (issue 279): the mode is the open cell's to say.
     await openCell(page, 'data')
     await cell(page, 'data').getByRole('combobox', { name: 'Mode' }).selectOption('subway')
     await closeCell(page, 'data')
     await expect(cellHeading(page, 'data')).toHaveAccessibleName(
-      /LA Metro Rail, subway, every operator, 3 stops in the feed$/,
+      /^01 Data ready 3 stops in the feed$/,
     )
   })
 })

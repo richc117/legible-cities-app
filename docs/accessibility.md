@@ -176,7 +176,7 @@ The two reader columns are a person's, recorded per run in
 
 | Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
-| Six rows, each a plain `<button>` inside an `h2` over a named group: "`<nn> <name>` `<state>`", and the collapsed row's summary | swept, with every cell open and with every cell closed | swept; the heading outline asserted (six `h2`, one a cell, nothing skipping a level); **`aria-controls` resolves** (below, #121) | swept | swept | pass (the state words, as the rail's) | pass | not yet run: a person's | not yet run: a person's |
+| Six rows, each a plain `<button>` inside an `h2` over a named group: "`<nn> <name>` `<state>`", and the collapsed row's summary; a chevron before the number (issue 279), `aria-hidden` and so not in the name, which turns a quarter when the cell opens, with a transition only where motion is allowed | swept, with every cell open and with every cell closed | swept; the heading outline asserted (six `h2`, one a cell, nothing skipping a level); **`aria-controls` resolves** (below, #121) | swept | swept | pass (the state words, as the rail's) | pass | not yet run: a person's | not yet run: a person's |
 | The provenance footer of cells 02, 03 and 06 (A5.5-11) | n/a (no control) | swept (a `<dl>` of text; nothing announced as interactive) | n/a | n/a | pass (`--text-muted` on `--surface`) | pass | not yet run: a person's | not yet run: a person's |
 
 ### Cell 01, Data
@@ -833,8 +833,8 @@ a table).
   six level-2 headings, "01 Data" to "06 Export", each holding one button
   read with the cell's number, name and state ("01 Data ready") and,
   collapsed, the one-line summary after it; the button is expanded or
-  collapsed. Collapse cell 03 and listen for its summary (its day, and the
-  engine's busiest weekday). Nothing inside a cell is another level-2
+  collapsed, and the chevron at its left edge is not read. Collapse cell 03
+  and listen for its summary (its day). Nothing inside a cell is another level-2
   heading: the panels' names are level 3.
 - **The provenance footer.** Under cells 02, 03 and 06 (06 once
   something is exported), a description list read as term and value

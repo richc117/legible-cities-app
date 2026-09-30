@@ -281,8 +281,9 @@ press `+`, `-`, an arrow and `0`. Press Tab once more, and then **Enter**.
 - The Tab after the drawing reaches **Skip past the map** over the top edge
   of the pinned map, and **Enter** on it puts focus on **Rename**, at the
   foot of the notebook, without passing through the map's own controls.
-- Collapsed, cell 01's row reads "`<feed name>`, `<mode>`, every operator,
-  `<n>` stops in the feed".
+- Collapsed, cell 01's row reads "`<n>` stops in the feed", under a
+  chevron that points right at the row's left edge; open, the chevron
+  points down. The state word ("ready") is at the row's far end.
 
 Result: ____
 
@@ -346,8 +347,7 @@ and then **Pause**, and choose another **Speed**.
   **ready**, and cells **04 Style**, **05 Lines** and **06 Export** say
   **not drawn yet**. The sentence under the heading names them: "04 Style
   to 06 Export are not drawn yet." Collapsed, cell 03's row reads
-  "`<new day>`, not drawn yet; the engine’s busiest weekday is
-  `<busiest>`".
+  "`<new day>`, not drawn yet".
 - **Draw for this day** then runs the progress line and ends with "Drawn
   for `<day>` from the stored layout. The stations have not moved."; the
   **Layout** and **Made** in cell 02's footer do not change, and cells 04

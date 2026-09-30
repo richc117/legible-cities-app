@@ -101,6 +101,10 @@ export default function Cell({
         heading={Heading}
         summary={
           <>
+            {/* Says the row toggles, and which way it is: right while
+                collapsed, turned down while open. Decorative, so it is not
+                in the row's name. */}
+            <Icon name="chevron" size={16} className="cell-chevron" />
             <span className="cell-number">{cellNumber(number)}</span>
             <span className="cell-name">{name}</span>
             <span className="cell-state">

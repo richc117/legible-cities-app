@@ -586,6 +586,42 @@ ${buttons}
 `
 }
 
+test('a cell row shows a chevron that turns, and its ground is balanced about its text', async () => {
+  // Issue 279. The row is the toggle and nothing on it said so; and the
+  // kit's heading margin and baseline alignment had the hover ground sit
+  // high on the text and stop short of the cell's border.
+  test.setTimeout(180_000)
+  await withApp(profile(), async (page) => {
+    await openLaidOut(page, 'Los Angeles')
+    for (const id of ['data', 'lines'] as const) {
+      const row = page.locator(`.cell[data-cell="${id === 'data' ? '01' : '05'}"] .cell-head`)
+      const chevron = row.locator('.cell-chevron')
+      const turn = (): Promise<string> => chevron.evaluate((el) => getComputedStyle(el).transform)
+      await openCell(page, id)
+      // A quarter turn is the matrix (0, 1, -1, 0) up to rounding; the
+      // transition runs where motion is allowed, so it is polled for.
+      await expect.poll(turn).toMatch(/^matrix\(0, 1, -1, 0|^matrix\(6\.\d+e-17, 1, -1, 6\.\d+e-17/)
+      await closeCell(page, id)
+      await expect.poll(turn).toBe('none')
+
+      // The ground is as deep above the text as below it, and reaches the
+      // cell's own border at both ends.
+      const box = await row.evaluate((el) => {
+        const r = el.getBoundingClientRect()
+        const name = el.querySelector('.cell-name')!.getBoundingClientRect()
+        const cell = el.closest('.cell')!.getBoundingClientRect()
+        return { above: name.top - r.top, below: r.bottom - name.bottom, edge: r.top - cell.top }
+      })
+      expect(Math.abs(box.above - box.below), `${id}: ${JSON.stringify(box)}`).toBeLessThanOrEqual(
+        1,
+      )
+      // The cell's border is one pixel; nothing else stands between.
+      expect(box.edge, `${id} row starts at the cell's border`).toBeLessThanOrEqual(1)
+      await openCell(page, id)
+    }
+  })
+})
+
 test('the project screen: one press skips past the map to its toolbar, and the map stays reachable', async () => {
   // Issue 106, finding F3 in docs/accessibility.md.
   test.setTimeout(240_000)
