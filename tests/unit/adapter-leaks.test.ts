@@ -9,6 +9,8 @@ const adapter = readFileSync(
   'utf8',
 )
 
+const app = readFileSync(resolve(__dirname, '../../src/renderer/src/styles/app.css'), 'utf8')
+
 describe("the adapter neutralises the kit's leaks", () => {
   it("resets the kit's section padding and margin", () => {
     expect(adapter).toMatch(/^section\s*\{[^}]*padding:\s*0;[^}]*margin:\s*0;/m)
@@ -18,4 +20,19 @@ describe("the adapter neutralises the kit's leaks", () => {
       new RegExp(`^\\s*--figma-color-${kind}-ondisabled:\\s*var\\(--text-faint\\);`, 'm'),
     )
   })
+  it('gives panels stacked in a cell body a gap of their own', () => {
+    expect(adapter).toMatch(
+      /\.cell-body > section \+ section\s*\{[^}]*margin-top:\s*var\(--space-4-4\)/,
+    )
+  })
+})
+
+describe('the row-like buttons keep their own ground on a press', () => {
+  it.each(['.entry', '.rail-step', '.cell-head'])(
+    '%s is its own height and pressed ground',
+    (row) => {
+      expect(app).toMatch(new RegExp(`${row.replace('.', '\\.')}:hover:active`))
+      expect(app).toMatch(/\.entry,\s*\.rail-step,\s*\.cell-head\s*\{[^}]*height:\s*auto/)
+    },
+  )
 })
