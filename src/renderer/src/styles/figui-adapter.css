@@ -168,6 +168,17 @@ fig-button[data-unavailable] {
   cursor: progress;
 }
 
+/* An icon-only kit button (issue 283, the app's first): the kit squares the
+   host to the control's height and takes its padding away, but leaves the
+   inner button's own padding and the negative margin that pays for the
+   host's, so the part that takes the pointer stood out past the square it
+   draws on every side, reaching into the next control. Both go back to
+   nothing, and the press lands where the button is drawn. */
+fig-button[icon]:not([icon='false']) {
+  --fig-button-control-padding: 0;
+  --fig-button-control-margin: 0;
+}
+
 /* The same resting edge for the two other controls whose extent is only
    an edge: the native select the kit wraps draws --border (1.4 on the
    ground), and its checkbox a translucent white or black at a tenth, both

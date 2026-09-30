@@ -967,13 +967,17 @@ and without one the engine draws the lines alphabetically by label.
 The record has carried `lineOrder` since A1-05 and the Line order panel is
 what writes it. It lists the same lines the Colours panel does, arranged by
 the record's order first and the rest as they came, with Move up and Move
-down on each: two named buttons rather than a drag, so the feature is
-reachable from the keyboard. A move is debounced into one `map.build` from
-the stored layout and the stored day, and the arrangement is written
-through `completeOrder` only once the map has been drawn in it. Every draw
-the run makes carries the record's order, as it carries the palette, so a
-layout, a re-layout, a chosen day and a colour change all keep the
-arrangement (`specs/020-line-order`).
+down on each: two named buttons, so the feature is reachable from the
+keyboard. Since issue 283 a line can also be dragged by a grip at its
+row's start, the app's own pointer code as the geographic view's pan is
+(pointer capture on the grip, the rows moved by transforms while it is
+carried); the buttons stay, which is what made the drag safe to add, and
+a drop is one change on the same timer as a press. A move is debounced
+into one `map.build` from the stored layout and the stored day, and the
+arrangement is written through `completeOrder` only once the map has been
+drawn in it. Every draw the run makes carries the record's order, as it
+carries the palette, so a layout, a re-layout, a chosen day and a colour
+change all keep the arrangement (`specs/020-line-order`).
 
 The order the app sends is the whole arrangement a person was looking at,
 and the engine treats it as a preference rather than a list of what to

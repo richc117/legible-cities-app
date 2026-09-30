@@ -41,11 +41,41 @@
   text-align: end;
 }
 
-/* The two moves sit at the end of the row. */
+/* The two moves sit at the end of the row, each an arrow from the kit
+   (icon-only, a control's height square) with its name as a tooltip. The
+   tooltip hangs from the arrow's end rather than its start, so it opens
+   into the row and never past the cell's edge. */
 .line-actions {
   display: flex;
   gap: var(--space-4-2);
   margin-left: auto;
+}
+
+.line-arrow .tooltip {
+  inset-inline-start: auto;
+  inset-inline-end: 0;
+}
+
+/* The grip at the row's start (issue 283): what a pointer carries the line
+   by. No control - the arrows are the same moves from the keyboard - so it
+   takes no focus and draws no ring, only a target of `--target-min`.
+   `touch-action` is off here and nowhere else, so a touch on the grip
+   drags the line and a touch anywhere else in the cell still scrolls. */
+.line-grip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--target-min);
+  min-height: var(--target-min);
+  color: var(--text-muted);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.line-grip:hover {
+  color: var(--text);
 }
 
 .line-list {
@@ -56,6 +86,36 @@
 
 .line-row-group + .line-row-group {
   border-top: var(--border-width) solid var(--border);
+}
+
+/* While a line is carried, the whole list is the grip's: the pointer is a
+   closed hand wherever it goes, and nothing is selected on the way. */
+.line-list[data-dragging],
+.line-list[data-dragging] .line-grip {
+  cursor: grabbing;
+  user-select: none;
+}
+
+/* The carried row: lifted onto the raised ground with a control's edge
+   around it, over the rows it passes. The ground is what marks it and the
+   rows standing aside are where it will land, so neither rests on a colour
+   alone. */
+.line-row-group[data-dragged] {
+  position: relative;
+  z-index: var(--layer-raised);
+  background: var(--surface-raised);
+  box-shadow: inset 0 0 0 var(--border-width) var(--border-strong);
+  border-radius: var(--radius);
+}
+
+/* The rows it passes step aside with a short ease, and under reduced motion
+   they are simply there. The carried row follows the pointer with no ease at
+   all. The rule goes with the drag, so the release, which moves every row
+   into its new place at once, is never eased from where it was drawn. */
+@media (prefers-reduced-motion: no-preference) {
+  .line-list[data-dragging] .line-row-group:not([data-dragged]) {
+    transition: transform var(--duration-fast) var(--easing);
+  }
 }
 
 .line-row {

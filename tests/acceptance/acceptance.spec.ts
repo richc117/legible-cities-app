@@ -1853,11 +1853,95 @@ test('a release, installed, through docs/acceptance.md', async () => {
         await expect(button(start[0], 'up')).toBeDisabled()
         await expect(button(start[total - 1], 'down')).toBeDisabled()
       })
-      await button(start[0], 'down').click()
-      await log.soft('the first move is said', () =>
-        expect(status).toHaveText(`${start[0]} is now 2 of ${total}.`),
+
+      // The drag first (issue 283): the first line carried by its grip to
+      // the last place. The list is put below the pinned map, as step 9 puts
+      // the picker, because a press on the band lands on the map; twice,
+      // because the map is sticky and moving the page moves what it covers.
+      const rows = list.getByRole('listitem')
+      const reach = async (): Promise<{
+        grip: (i: number) => Promise<{ x: number; y: number }>
+        lastLow: number
+      }> => {
+        await list.evaluate((element) => {
+          const view = element.ownerDocument.defaultView as Window
+          for (let pass = 0; pass < 2; pass += 1) {
+            const box = element.getBoundingClientRect()
+            const covered =
+              element.ownerDocument.querySelector('.preview')?.getBoundingClientRect().bottom ?? 0
+            view.scrollBy(
+              0,
+              box.top + box.height / 2 - (covered + (view.innerHeight - covered) / 2),
+            )
+          }
+        })
+        const last = await rows.last().boundingBox()
+        if (last === null) throw new Error('the list has no box')
+        return {
+          grip: async (i) => {
+            const box = await rows.nth(i).locator('.line-grip').boundingBox()
+            if (box === null) throw new Error(`row ${i + 1} has no grip`)
+            const at = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+            const hit = await list.evaluate((element, { x, y }) => {
+              const under = document.elementFromPoint(x, y)
+              return under !== null && element.contains(under)
+                ? ''
+                : (under?.outerHTML ?? 'nothing').slice(0, 120)
+            }, at)
+            if (hit !== '')
+              throw new Error(`the press at ${at.x},${at.y} would land on ${hit}, not the grip`)
+            return at
+          },
+          lastLow: last.y + last.height * 0.8,
+        }
+      }
+      let dropped = false
+      await log.soft('a line dragged to the last place lands there, and is said', async () => {
+        const { grip, lastLow } = await reach()
+        const at = await grip(0)
+        await window.mouse.move(at.x, at.y)
+        await window.mouse.down()
+        await window.mouse.move(at.x, lastLow, { steps: 12 })
+        await window.mouse.up()
+        await expect(status).toHaveText(`${start[0]} is now ${total} of ${total}.`)
+        expect(await labels()).toEqual([...start.slice(1), start[0]])
+        dropped = true
+      })
+      if (!dropped) throw new Error('the drag did not land, so the order was never changed by one')
+      const carried = await labels()
+      await until(
+        async () => {
+          const order = (await recordOf(window, LA)).lineOrder
+          return JSON.stringify(order) === JSON.stringify(carried) ? true : undefined
+        },
+        REBUILD_MS,
+        async () =>
+          `the dragged order was never written: the project has ${JSON.stringify((await recordOf(window, LA)).lineOrder)}`,
       )
-      const other = start[total - 1]
+      await log.soft('Escape during a drag puts the list back and draws nothing', async () => {
+        const quiet = (await saidSoFar(window)).length
+        const { grip, lastLow } = await reach()
+        const at = await grip(0)
+        await window.mouse.move(at.x, at.y)
+        await window.mouse.down()
+        await window.mouse.move(at.x, lastLow, { steps: 12 })
+        await window.keyboard.press('Escape')
+        await window.mouse.up()
+        expect(await labels()).toEqual(carried)
+        await sleep(2 * SECOND)
+        const said = (await saidSoFar(window)).slice(quiet)
+        expect(said.filter((s) => s.startsWith('Drawn with the lines'))).toEqual([])
+        expect((await recordOf(window, LA)).lineOrder).toEqual(carried)
+      })
+      log.note(`Dragged ${start[0]} to the last place: ${carried.join(', ')}.`)
+
+      // Then the arrows, from the order the drag left.
+      const first = carried[0]
+      await button(first, 'down').click()
+      await log.soft('the first move is said', () =>
+        expect(status).toHaveText(`${first} is now 2 of ${total}.`),
+      )
+      const other = carried[total - 1]
       await button(other, 'up').click()
       await log.soft('the second move is said', () =>
         expect(status).toHaveText(`${other} is now ${total - 1} of ${total}.`),
@@ -1878,7 +1962,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
           'Drawn with the lines in the order you chose, from the stored layout. The stations have not moved.',
         )
       })
-      log.note(`Moved ${start[0]} down and ${other} up: ${shown.join(', ')}.`)
+      log.note(`Moved ${first} down and ${other} up: ${shown.join(', ')}.`)
       const back = panel.getByRole('button', { name: 'Back to alphabetical' })
       await back.click()
       await log.soft('Back to alphabetical', async () => {
@@ -1890,7 +1974,9 @@ test('a release, installed, through docs/acceptance.md', async () => {
         REBUILD_MS,
         () => 'the alphabetical order was never written',
       )
-      log.notAutomated("whether the page's line rows follow the order.")
+      log.notAutomated(
+        "whether the page's line rows follow the order; whether the dragged line followed the pointer and the lines it passed stepped aside; whether an arrow's tooltip shows on hover and on focus.",
+      )
     })
 
     // ---------------------------------------------------------------- 11

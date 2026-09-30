@@ -225,7 +225,7 @@ The two reader columns are a person's, recorded per run in
 |---|---|---|---|---|---|---|---|---|
 | Line colours | pass | pass (every control names its line) | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
 | Colour picker | pass (sliders take the arrows; hex field) | pass; the chip controls its panel, an auto popover, by `aria-controls` and `popovertarget` (F6, issue 284) | fixed (D10) | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
-| Line order | pass | pass | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
+| Line order, and its drag (issue 283) | pass (the arrows are every move the grip makes; the grip takes no focus) | pass (the arrows keep "Move line `<label>` up" and "down" and carry them as tooltips on hover and focus, which Escape dismisses; the grip is `aria-hidden` and has no name; asserted in `order.spec.ts`) | pass | pass (the rows the carried line passes step aside with no transition; the drag still works) | pass | pass | not yet run: a person's | not yet run: a person's |
 
 ### Cell 06, Export
 
@@ -1012,12 +1012,16 @@ a table).
   "Lines in the order they are drawn", each row read with its position
   ("1 of 6"), its label, and the buttons "Move line `<label>` up" (dimmed on
   the first) and "Move line `<label>` down" (dimmed on the last). Press
-  **Down** on the first line: listen for the status "`<label>` is now 2 of
-  `<n>`." and focus staying on that line's button as the list redraws. Move
-  a line to the end and listen for focus handed to its **Up** when **Down**
-  is dimmed. Press **Back to alphabetical**: "The lines are in alphabetical
+  the first line's "Move line `<label>` down": listen for the status
+  "`<label>` is now 2 of `<n>`." and focus staying on that line's button as
+  the list redraws. Move a line to the end and listen for focus handed to
+  its "up" button when its "down" is dimmed. Press **Back to alphabetical**: "The lines are in alphabetical
   order again." and focus on the cell's own heading (D3) - not on the "Line
-  order" heading, which is a label and takes no focus.
+  order" heading, which is a label and takes no focus. Each row also has a
+  grip at its start for dragging with a pointer (issue 283); it should not
+  be heard at all - no name, no stop in the Tab order - because the two
+  buttons are the same moves. The buttons are drawn as arrows now; their
+  names are unchanged.
 
 #### Cell 06, Export
 
