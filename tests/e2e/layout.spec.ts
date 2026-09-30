@@ -1744,10 +1744,9 @@ test('Run all lays out a new project and draws its day, then says the map is cur
     await openNewProject(page, 'Los Angeles')
     const said = header(page).getByRole('status')
     await expect(said).toHaveText('Nothing has been laid out yet.')
-    await expect(header(page)).toContainText('Run all stops at the map. It never exports.')
-    await expect(runAllButton(page)).toHaveAccessibleDescription(
-      'Run all stops at the map. It never exports.',
-    )
+    // Nothing about exporting under the button (issue 276): it never
+    // exports, and `export.plan` below is what holds that, not a sentence.
+    await expect(header(page)).not.toContainText('never exports')
 
     await runAllButton(page).focus()
     await page.keyboard.press('Enter')
@@ -1759,7 +1758,7 @@ test('Run all lays out a new project and draws its day, then says the map is cur
     )
 
     await expect(said).toHaveText('The map is drawn from every cell.', { timeout: 30_000 })
-    await expect(runAllButton(page), 'nothing left to run').toBeDisabled()
+    await expect(runAllButton(page), 'nothing left to run, so no button').toHaveCount(0)
     await expect(said, 'focus lands on the sentence saying why').toBeFocused()
     expect(received(engineHome, 'graph.build')).toHaveLength(1)
     expect(received(engineHome, 'map.build')).toHaveLength(1)

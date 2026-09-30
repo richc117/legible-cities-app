@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  EXPORT_NOTE,
-  notebookSentence,
-  runAllOffered,
-  runAllPlan,
-} from '../../src/renderer/src/runAll'
+import { notebookSentence, runAllOffered, runAllPlan } from '../../src/renderer/src/runAll'
 import { runGraph, type RunFacts } from '../../src/renderer/src/runGraph'
 import { drawnFrom, type ProjectRecord } from '../../src/shared/project'
 
@@ -130,10 +125,6 @@ describe('when Run all is offered', () => {
     // The plan would be made from the record as it was before the run, and
     // a second press would start the same run again.
     expect(runAllOffered({ kind: 'layout' }, { ...free, settling: true })).toBe(false)
-  })
-
-  it('says beside the button that the export is not part of it', () => {
-    expect(EXPORT_NOTE).toMatch(/never exports/)
   })
 })
 

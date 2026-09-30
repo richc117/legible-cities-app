@@ -84,9 +84,6 @@ export function runAllOffered(
   return plan.kind !== 'none'
 }
 
-/** The sentence beside Run all, saying what it leaves out. */
-export const EXPORT_NOTE = 'Run all stops at the map. It never exports.'
-
 /**
  * The header's one sentence about the notebook as a whole: which cell is
  * running, which failed, or how many are not drawn yet. One sentence and

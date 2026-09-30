@@ -1043,11 +1043,6 @@ test('a release, installed, through docs/acceptance.md', async () => {
           'Nothing exported yet.',
         )
       })
-      await log.soft('the note beside Run all', () =>
-        expect(
-          window.getByText('Run all stops at the map. It never exports.', { exact: true }),
-        ).toBeVisible(),
-      )
       const region = window.getByRole('region', { name: 'Layout run' })
       await log.soft('the layout starts by itself', async () => {
         await expect(region).toBeVisible({ timeout: SHORT_MS })
@@ -1091,7 +1086,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
           'The map is drawn from every cell.',
           { timeout: SHORT_MS },
         )
-        await expect(window.getByRole('button', { name: 'Run all' })).toBeDisabled()
+        await expect(window.getByRole('button', { name: 'Run all' })).toHaveCount(0)
         const states = await window
           .locator('section.cell')
           .evaluateAll((cells) => cells.map((c) => c.getAttribute('data-state')))

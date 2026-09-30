@@ -157,7 +157,7 @@ The two reader columns are a person's, recorded per run in
 | Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
 | The project's name as the `h1`, no breadcrumb around it (A5.5-22, issue 275; the way back is in the header, below) | swept | swept | swept | swept | pass (`--text`) | pass | not yet run: a person's | not yet run: a person's |
-| The notebook's sentence, Run all and Stop | Run all's handover to Stop and back, and focus to the sentence when Run all comes back disabled, asserted in `layout.spec.ts` ("Run all…" tests); not swept, since every sweep is of a project already drawn, where Run all is disabled and not a Tab stop, and Stop exists only during a run | swept (the sentence one `role="status"`; Run all's name and its description "Run all stops at the map. It never exports.") | Run all and Stop not swept: audit only (the kit button's ring) | audit only | pass (`--text`, the note `--text-muted`; the primary button C1) | fixed (C1) | not yet run: a person's | not yet run: a person's |
+| The notebook's sentence, Run all and Stop | Run all's handover to Stop and back, and focus to the sentence when Run all does not come back, asserted in `layout.spec.ts` ("Run all…" tests); not swept, since every sweep is of a project already drawn, where Run all is not drawn, and Stop exists only during a run | swept (the sentence one `role="status"`; Run all's name) | Run all and Stop not swept: audit only (the kit button's ring) | audit only | pass (`--text`, the note `--text-muted`; the primary button C1) | fixed (C1) | not yet run: a person's | not yet run: a person's |
 | Read-only notice | n/a | pass (`role="status"`) | n/a | n/a | pass | pass | not yet run: a person's | not yet run: a person's |
 
 ### Project: the rail
@@ -796,12 +796,11 @@ a table).
 - **The notebook's sentence, Run all and Stop.** After the heading, listen
   for one status sentence about the notebook as a whole ("The map is drawn
   from every cell." on a project laid out and drawn; "Nothing has been
-  laid out yet." on one that is not), and **Run all**, read with its
-  description "Run all stops at the map. It never exports." - dimmed, and
-  not a Tab stop, when there is nothing to run. On a project not yet laid
+  laid out yet." on one that is not), and **Run all**, only when there is something to run: on
+  a project laid out and drawn it is not there at all (issue 276). On a project not yet laid
   out, press **Run all**: listen for focus moving to **Stop**, the
   sentence changing to "02 Process is running." as the run goes, and at
-  its end focus on the sentence (Run all having come back dimmed), the
+  its end focus on the sentence (Run all not coming back), the
   sentence "The map is drawn from every cell.", and the job-end
   announcement. Listen for whether the sentence is heard too often during
   the run; if it floods speech, that is a finding.

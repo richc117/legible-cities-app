@@ -1,8 +1,8 @@
-import { useId, useRef, type JSX } from 'react'
+import { useRef, type JSX } from 'react'
 import { useFocusHandback } from '../focusHandback'
 import Icon from '../icons/Icon'
 import Button from '../kit/Button'
-import { EXPORT_NOTE, notebookSentence, runAllOffered, runAllPlan } from '../runAll'
+import { notebookSentence, runAllOffered, runAllPlan } from '../runAll'
 import { cellOfRun, runGraph } from '../runGraph'
 import { useProject } from './context'
 
@@ -40,7 +40,6 @@ export default function ProjectHeader(): JSX.Element {
     settling,
     exporting,
   } = useProject()
-  const noteId = useId()
   const region = useRef<HTMLDivElement>(null)
   const runAllRef = useRef<HTMLElement>(null)
   const stopRef = useRef<HTMLElement>(null)
@@ -73,10 +72,10 @@ export default function ProjectHeader(): JSX.Element {
         ? held.current
         : notebookSentence(project, states)
   if (!holding) held.current = sentence
-  // Stop goes when the run ends, and Run all comes back - disabled, while
-  // the record is read back or when the run left nothing to do, and
-  // Chromium will not let a disabled button hold focus. The notebook's
-  // sentence is where focus goes then: it says what the notebook now is.
+  // Stop goes when the run ends, and Run all comes back - or does not, while
+  // the record is read back or when the run left nothing to do, since it is
+  // drawn only while offered. The notebook's sentence is where focus goes
+  // then: it says what the notebook now is.
   //
   // Watched on whether Run all is offered as well as on the run's state,
   // because the two move a beat apart: the run says it is done before the
@@ -112,21 +111,17 @@ export default function ProjectHeader(): JSX.Element {
                   <Icon name="close" />
                   Stop
                 </Button>
-              ) : (
-                <Button
-                  ref={runAllRef}
-                  variant="primary"
-                  disabled={!offered}
-                  aria-describedby={noteId}
-                  onClick={runAll}
-                >
+              ) : offered ? (
+                // Drawn only while it has something to run. On a drawn
+                // project it would be a greyed control that does nothing,
+                // and a disabled control also cannot hold focus when the
+                // button that had it goes; the sentence is where focus
+                // lands then (issue 276).
+                <Button ref={runAllRef} variant="primary" onClick={runAll}>
                   <Icon name="map" />
                   Run all
                 </Button>
-              )}
-              <p id={noteId} className="project-run-note">
-                {EXPORT_NOTE}
-              </p>
+              ) : null}
             </div>
           </div>
         </div>
