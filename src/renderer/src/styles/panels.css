@@ -109,11 +109,41 @@
   flex-wrap: wrap;
   align-items: flex-start;
   gap: var(--space-4-4);
-  margin: 0 0 var(--space-4-3);
+}
+
+/* The chip: the preview and the control in one, at the row's start, in the
+   line's own colour (an inline style from the record). A native button, so
+   its edge is this rule's; the edge is --border-strong because a control's
+   boundary needs 3.0 against what it sits on (WCAG 1.4.11) and the colour
+   inside may be any at all. */
+.colour-chip {
+  flex: none;
+  box-sizing: border-box;
+  width: var(--target-min);
+  height: var(--target-min);
+  min-width: 0;
+  padding: 0;
+  border: var(--border-width) solid var(--border-strong);
+  border-radius: var(--radius-small);
+  cursor: pointer;
+}
+
+/* The floating panel: an auto popover, in the top layer, anchored to the
+   chip that opens it (the invoker is its implicit anchor) and flipped above
+   it where there is no room below, so it is never clipped by the cell or
+   hidden behind the pinned map. The kit styles every [popover] as it styles
+   a dialog (a minimum width, no edge, its own shadow and ground); the app's
+   own surface, edge and padding go back on. */
+.colour-popover {
+  margin: 0;
+  min-width: 0;
   padding: var(--space-4-3);
   border: var(--border-width) solid var(--border);
   border-radius: var(--radius);
   background: var(--surface-raised);
+  color: var(--text);
+  position-area: block-end span-inline-end;
+  position-try-fallbacks: flip-block;
 }
 
 /* The picker's own sizes are its stylesheet's; only its footprint here is
