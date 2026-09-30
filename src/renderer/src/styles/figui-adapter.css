@@ -212,5 +212,5 @@ section {
 }
 
 .cell-body > section + section {
-  margin-top: var(--space-4-4);
+  margin-top: var(--space-4-6);
 }

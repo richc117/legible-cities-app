@@ -130,6 +130,35 @@
   padding: 0 var(--space-4-4) var(--space-4-4);
 }
 
+/* One rhythm for one level (issues 197, 281): a heading inside a cell is
+   `--space-4-6` above, except a first child, which opens its section and
+   has nothing above to be separated from, and `--space-4-3` below. It was
+   six rules, one per panel, and one of them four pixels below instead of
+   twelve. A paragraph's own 1em of `--font-text` still collapses over
+   either value where one follows; the gap shows where nothing larger
+   does, and the declared value is the one that is true where it is seen. */
+.cell-body h3 {
+  font-size: var(--font-ui-medium);
+  margin: var(--space-4-6) 0 var(--space-4-3);
+}
+
+.cell-body h3:first-child {
+  margin-top: 0;
+}
+
+/* A field list inside a cell keeps its terms in one column of one width,
+   so every value in the cell starts at one x: a column sized to its own
+   longest term put Feed's values a step from Operators' in the same cell.
+   The counts are a row of figures and keep their own columns. A term
+   longer than the column wraps inside it. */
+.cell .fields:not(.counts) {
+  grid-template-columns: var(--fields-term-width) 1fr;
+}
+
+.cell .fields dt {
+  overflow-wrap: anywhere;
+}
+
 /* Provenance, out of the way: the layout's id and when it was made, the
    day against the feed's window, the export's sidecar (A5.5-11). */
 .cell-footer {
