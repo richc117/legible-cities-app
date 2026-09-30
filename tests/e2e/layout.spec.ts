@@ -1877,6 +1877,20 @@ test('the way back is in the window header, and a returning person starts at the
   })
 })
 
+test('below 900px with the inspector open, the way back closes it and lands on the Library', async () => {
+  const engineHome = home({})
+  await withApp(engineHome, async (page) => {
+    await page.setViewportSize({ width: 800, height: 800 })
+    await page.getByRole('button', { name: 'Settings' }).click()
+    await page.getByRole('button', { name: /^Jobs/ }).click()
+    // The inspector covers the main region, which is inert; the header is not.
+    await expect(page.locator('.app-main')).toHaveAttribute('inert', '')
+    await page.locator('.app-header').getByRole('button', { name: 'Back to Library' }).click()
+    await expect(page.locator('.app-main')).not.toHaveAttribute('inert', '')
+    await expect(page.getByRole('heading', { level: 1, name: 'Library' })).toBeFocused()
+  })
+})
+
 test('Settings has the one way back, in the header, and it lands on the Library', async () => {
   const engineHome = home({})
   await withApp(engineHome, async (page) => {
