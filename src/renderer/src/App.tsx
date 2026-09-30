@@ -134,7 +134,16 @@ export default function App(): JSX.Element {
           // leaving the document with the press needs no handback.
           <Button
             aria-label="Back to Library"
-            onClick={() => setScreen({ screen: 'library', notice: null })}
+            onClick={() => {
+              // Below 900px an open inspector covers the main region and
+              // makes it inert, and the header stays reachable. The Library
+              // would mount inert, its heading could not take focus, and
+              // focus would fall to the page: so the press closes the
+              // inspector first, without `closeInspector`'s own focus on
+              // the toggle, which would compete with the Library's heading.
+              if (narrow && inspectorOpen) setInspectorOpen(false)
+              setScreen({ screen: 'library', notice: null })
+            }}
           >
             <Icon name="back" />
             Library
