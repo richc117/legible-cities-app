@@ -243,11 +243,15 @@ test('a line dragged from the top to the bottom is one build, said and stored', 
     // built. Without this the rest could pass for a list that jumped.
     await expect(listOf(page)).toHaveAttribute('data-dragging', 'true')
     await expect(rowsOf(page).nth(0)).toHaveAttribute('data-dragged', 'true')
-    expect(
-      await rowsOf(page)
-        .nth(3)
-        .evaluate((el) => (el as HTMLElement).style.transform),
-    ).toMatch(/^translateY\(-/)
+    // Polled: the move is applied on the next frame, and a read taken once
+    // can land before it.
+    await expect
+      .poll(() =>
+        rowsOf(page)
+          .nth(3)
+          .evaluate((el) => (el as HTMLElement).style.transform),
+      )
+      .toMatch(/^translateY\(-/)
     expect(
       received(engineHome, 'map.build'),
       'nothing is built while the line is carried',
@@ -289,9 +293,15 @@ test('a drag released outside the list still lands, at the end nearest the point
     // is: the grip holds the pointer, so the release still comes to it.
     // Watched failing with the pointer not captured: nothing landed.
     const foot = rows[rows.length - 1]
+    // Kept inside the window, read from the page (Electron reports no
+    // viewport size): a point past its edge is a point no event reaches,
+    // and one derived from a box near the edge has been inside here and
+    // outside in CI before. If the clamp leaves the point over the list,
+    // the assertion below says so rather than passing for the wrong reason.
+    const win = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }))
     const outside = {
-      x: foot.x + foot.width + 40,
-      y: Math.min(foot.y + foot.height + 80, (page.viewportSize()?.height ?? 800) - 4),
+      x: Math.min(foot.x + foot.width + 40, win.w - 4),
+      y: Math.min(foot.y + foot.height + 80, win.h - 4),
     }
     await carry(page, grips[1], outside)
     const box = (await listOf(page).boundingBox())!

@@ -570,7 +570,11 @@ export default function LineOrder({
                       onPointerDown={(event) => pickUp(event, line, index)}
                       onPointerMove={follow}
                       onPointerUp={putDown}
-                      onPointerCancel={abandon}
+                      onPointerCancel={(event) => {
+                        // Only the pointer that is carrying: the cancel of another
+                        // touch on any grip is not this drag's.
+                        if (gesture.current?.pointerId === event.pointerId) abandon()
+                      }}
                       onLostPointerCapture={abandon}
                       onMouseDown={(event) => event.preventDefault()}
                     >

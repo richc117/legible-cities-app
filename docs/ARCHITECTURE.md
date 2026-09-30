@@ -966,8 +966,8 @@ and without one the engine draws the lines alphabetically by label.
 
 The record has carried `lineOrder` since A1-05 and the Line order panel is
 what writes it. It lists the same lines the Colours panel does, arranged by
-the record's order first and the rest as they came, with Move up and Move
-down on each: two named buttons, so the feature is reachable from the
+the record's order first and the rest as they came, with "Move line X up" and
+"Move line X down" on each: two named buttons, so the feature is reachable from the
 keyboard. Since issue 283 a line can also be dragged by a grip at its
 row's start, the app's own pointer code as the geographic view's pan is
 (pointer capture on the grip, the rows moved by transforms while it is
