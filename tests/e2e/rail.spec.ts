@@ -325,6 +325,14 @@ test('below 900px the rail collapses to its numbers and keeps its names', async 
       )
       .toBeLessThanOrEqual(1)
     await expect(step(page, /^01 Data, /)).toBeVisible()
+    // The number is centred in its step: a left padding with no right one
+    // would push it off by half of itself (issue 274).
+    const offCentre = await page.evaluate(() => {
+      const number = document.querySelector('.rail-number')!.getBoundingClientRect()
+      const step = document.querySelector('.rail-step')!.getBoundingClientRect()
+      return Math.abs(number.left + number.width / 2 - (step.left + step.width / 2))
+    })
+    expect(offCentre).toBeLessThanOrEqual(1)
     // The project's name goes as Outputs goes; the nav's label still names it.
     await expect(page.locator('.rail-heading')).toBeHidden()
 

@@ -257,6 +257,12 @@
     padding: var(--space-4-2) 0;
   }
 
+  /* The kit's leak app.css restates has the kit's own specificity and
+     more, so the collapsed step's edge needs the same shape (issue 274). */
+  button:is(.rail-step):not([icon]):has(svg:first-child) {
+    padding-left: 0;
+  }
+
   .rail-name,
   .rail-state {
     position: absolute;
