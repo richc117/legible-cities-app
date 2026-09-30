@@ -603,6 +603,15 @@ test('a cell row shows a chevron that turns, and its ground is balanced about it
       await expect.poll(turn).toMatch(/^matrix\(0, 1, -1, 0|^matrix\(6\.\d+e-17, 1, -1, 6\.\d+e-17/)
       await closeCell(page, id)
       await expect.poll(turn).toBe('none')
+      // Under reduced motion the turn has no transition (issue 279).
+      await page.emulateMedia({ reducedMotion: 'reduce' })
+      await expect
+        .poll(() => chevron.evaluate((el) => getComputedStyle(el).transitionDuration))
+        .toBe('0s')
+      await page.emulateMedia({ reducedMotion: 'no-preference' })
+      await expect
+        .poll(() => chevron.evaluate((el) => getComputedStyle(el).transitionDuration))
+        .not.toBe('0s')
 
       // The ground is as deep above the text as below it, and reaches the
       // cell's own border at both ends.
