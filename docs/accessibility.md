@@ -127,6 +127,10 @@ The two reader columns are a person's, recorded per run in
 
 ### Header, on every screen
 
+- **Back to Library.** On a project and in Settings, Tab from the engine's
+  status line: the next button is "Back to Library" (it reads "Library" on
+  screen), then the Jobs toggle, then Settings. It is not on the Library.
+  Press it: focus lands on the Library's own heading (issue 275).
 | Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
 | Jobs toggle, Settings | pass | pass | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
@@ -152,7 +156,7 @@ The two reader columns are a person's, recorded per run in
 
 | Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
-| Breadcrumb: "Back to Library" (reading "Library") and the `h1`, its list item `aria-current="page"` (A5.5-22) | swept | swept (a `<nav>` "Breadcrumb"; the separator is drawn, not read) | swept | swept | pass (`--text`; the separator `--text-muted`) | pass | not yet run: a person's | not yet run: a person's |
+| The project's name as the `h1`, no breadcrumb around it (A5.5-22, issue 275; the way back is in the header, below) | swept | swept | swept | swept | pass (`--text`) | pass | not yet run: a person's | not yet run: a person's |
 | The notebook's sentence, Run all and Stop | Run all's handover to Stop and back, and focus to the sentence when Run all comes back disabled, asserted in `layout.spec.ts` ("Run all…" tests); not swept, since every sweep is of a project already drawn, where Run all is disabled and not a Tab stop, and Stop exists only during a run | swept (the sentence one `role="status"`; Run all's name and its description "Run all stops at the map. It never exports.") | Run all and Stop not swept: audit only (the kit button's ring) | audit only | pass (`--text`, the note `--text-muted`; the primary button C1) | fixed (C1) | not yet run: a person's | not yet run: a person's |
 | Read-only notice | n/a | pass (`role="status"`) | n/a | n/a | pass | pass | not yet run: a person's | not yet run: a person's |
 
@@ -785,11 +789,10 @@ a table).
 
 ### Project: the header, the rail and the map
 
-- **The breadcrumb.** Open **Los Angeles** from **Your projects**. Listen
-  for its name read first as a level-1 heading (focus is put there),
-  marked as the current page, inside a navigation landmark "Breadcrumb"
-  whose other item is the button "Back to Library" (it reads "Library" on
-  screen). Nothing is read for the separator between them.
+- **The heading.** Open **Los Angeles** from **Your projects**. Listen
+  for its name read as a level-1 heading (focus is put there). There is no
+  navigation landmark "Breadcrumb" (issue 275); the way back is the header's
+  "Back to Library".
 - **The notebook's sentence, Run all and Stop.** After the heading, listen
   for one status sentence about the notebook as a whole ("The map is drawn
   from every cell." on a project laid out and drawn; "Nothing has been
@@ -1064,7 +1067,7 @@ a table).
 ### Settings
 
 - **Folder rows.** Press **Settings**. Listen for the heading "Settings"
-  (focus is put there), then "Back to Library", and under the heading
+  (focus is put there), then, under the heading,
   "Folders" the buttons "Choose the engine data folder" and "Choose the
   export folder", each read with its folder's path as its description.
   Choose another export folder in the platform's dialog: listen for

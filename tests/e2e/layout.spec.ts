@@ -1730,7 +1730,7 @@ test('a scrub while a run holds the page is refused with a sentence', async () =
   })
 })
 
-// The project's header (A5.5-22): the breadcrumb, the notebook's one
+// The project's header (A5.5-22): the project's name, the notebook's one
 // sentence, and Run all, which brings the map up to date with cells 01 to
 // 05 through the runs those cells already have and never runs the export.
 
@@ -1836,13 +1836,32 @@ test('Stop cancels the stage in flight and runs nothing after it', async () => {
 // scrolls, and the screen focuses its heading on opening, which scrolls to
 // the top. It is here so that whatever later keeps a project's scroll
 // position across a visit has to meet the issue's words on the way.
-test('the breadcrumb goes back to the Library, and a returning person starts at the top', async () => {
+test('the way back is in the window header, and a returning person starts at the top', async () => {
   const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
   await withApp(engineHome, async (page) => {
+    // Absent on the Library, which is where it goes.
+    const back = page.locator('.app-header').getByRole('button', { name: 'Back to Library' })
+    await expect(back).toHaveCount(0)
+
     await openNewProject(page, 'Los Angeles')
-    const breadcrumb = page.getByRole('navigation', { name: 'Breadcrumb' })
-    await expect(breadcrumb.getByRole('heading', { level: 1 })).toHaveText('Los Angeles')
-    await expect(breadcrumb.locator('[aria-current="page"]')).toContainText('Los Angeles')
+    // The project's name is the screen's heading, with no breadcrumb around
+    // it, and the way back is in the header between the status and Jobs
+    // (issue 275): "Library" on screen, "Back to Library" by name.
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Los Angeles')
+    await expect(page.locator('.app-header fig-button', { hasText: 'Library' })).toHaveText(
+      'Library',
+    )
+    const order = await page
+      .locator('.app-header')
+      .evaluate((el) =>
+        [...el.children].map(
+          (c) => c.getAttribute('aria-label') ?? c.getAttribute('role') ?? c.className,
+        ),
+      )
+    expect(order.indexOf('Back to Library')).toBeGreaterThan(order.indexOf('status'))
+    expect(order.indexOf('Back to Library')).toBeLessThan(
+      order.findIndex((name) => name.startsWith('Jobs')),
+    )
     await runAllButton(page).click()
     await expect(header(page).getByRole('status')).toHaveText('The map is drawn from every cell.', {
       timeout: 30_000,
@@ -1850,11 +1869,29 @@ test('the breadcrumb goes back to the Library, and a returning person starts at 
     await cellHeading(page, 'export').scrollIntoViewIfNeeded()
     expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0)
 
-    await breadcrumb.getByRole('button', { name: 'Back to Library' }).click()
+    await back.click()
     await expect(page.getByRole('button', { name: 'Open Los Angeles' })).toBeVisible()
     await openProject(page, 'Los Angeles')
     await expect(page.getByRole('heading', { level: 1, name: 'Los Angeles' })).toBeFocused()
     expect(await page.evaluate(() => window.scrollY), 'the top of the notebook').toBe(0)
+  })
+})
+
+test('Settings has the one way back, in the header, and it lands on the Library', async () => {
+  const engineHome = home({})
+  await withApp(engineHome, async (page) => {
+    await page.getByRole('button', { name: 'Settings' }).click()
+    await expect(page.getByRole('heading', { level: 1, name: 'Settings' })).toBeVisible()
+    // Exactly one, in the header: the toolbar that was under the heading
+    // is gone (issue 275), and strict mode fails on a second.
+    const back = page.getByRole('button', { name: 'Back to Library' })
+    await expect(back).toHaveCount(1)
+    await expect(
+      page.locator('.app-header').getByRole('button', { name: 'Back to Library' }),
+    ).toHaveCount(1)
+    await back.click()
+    // The Library's own heading takes focus on arrival.
+    await expect(page.getByRole('heading', { level: 1, name: 'Library' })).toBeFocused()
   })
 })
 

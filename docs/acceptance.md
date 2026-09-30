@@ -151,7 +151,10 @@ steps past the unsigned-app warning for this version of macOS or Windows.
 - On Windows the installer asks no questions, and opens the app when it has
   finished (install.md).
 - The window opens with the header across the top: the Legible Cities mark
-  and name, the engine's status line, **Jobs** and **Settings**.
+  and name, the engine's status line, **Jobs** and **Settings**. On the
+  Library there is no way back to offer; on a project and in Settings the
+  header also holds **Library** (named "Back to Library") after the status
+  line.
 
 Result: ____
 
@@ -202,8 +205,8 @@ run.
 - The card is read aloud as "LA Metro Rail, Los Angeles · Metro Rail,
   keeps `<mode>`, not downloaded yet".
 - One press opens the project, without a dialog: a heading **LA Metro
-  Rail**, with **Library** before it (a screen reader names it "Back to
-  Library"), and the notebook's six cells, 01 to 06, with cells 01 to 05
+  Rail**, with **Library** in the header beside the engine's status (a
+  screen reader names it "Back to Library"), and the notebook's six cells, 01 to 06, with cells 01 to 05
   open and 06 closed. The rail's **Steps** lists the same six, and its
   **Outputs** says "Nothing exported yet."
 - The layout starts by itself. The status sentence under the heading reads

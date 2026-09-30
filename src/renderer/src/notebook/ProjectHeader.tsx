@@ -9,8 +9,9 @@ import { useProject } from './context'
 // The project's own header, above the notebook (ADR-045, A5.5-22,
 // DESIGN.md 8.2, "The project's header").
 //
-// Three things on it. The breadcrumb: the way back to the Library and the
-// project's name, which is the screen's heading. One `role="status"` line
+// Three things on it. The project's name, which is the screen's heading
+// (the way back to the Library is in the window's header, issue 275). One
+// `role="status"` line
 // saying what the notebook is doing as a whole, no more than a sentence,
 // because it is a polite live region and each change to it is read out.
 // And Run all, which brings the map up to date with cells 01 to 05 using
@@ -31,7 +32,6 @@ export default function ProjectHeader(): JSX.Element {
     project,
     error,
     headingRef,
-    onBack,
     engine,
     run,
     runSnapshot,
@@ -94,24 +94,9 @@ export default function ProjectHeader(): JSX.Element {
 
   return (
     <>
-      <nav aria-label="Breadcrumb" className="breadcrumb">
-        <ol>
-          <li>
-            {/* "Library" on screen, "Back to Library" by name: the name
-                holds what the eye reads (WCAG 2.5.3) and says what the
-                press does, which a breadcrumb's bare word does not. */}
-            <Button variant="ghost" aria-label="Back to Library" onClick={() => onBack()}>
-              <Icon name="back" />
-              Library
-            </Button>
-          </li>
-          <li aria-current="page">
-            <h1 id="project-heading" tabIndex={-1} ref={headingRef}>
-              {project?.name ?? 'Project'}
-            </h1>
-          </li>
-        </ol>
-      </nav>
+      <h1 id="project-heading" tabIndex={-1} ref={headingRef}>
+        {project?.name ?? 'Project'}
+      </h1>
       {project !== null && sentence !== null && !project.readOnly && (
         // The focus region wraps the row rather than sharing its element:
         // `.focus-region` is `display: contents`, and on one element the

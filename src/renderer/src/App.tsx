@@ -126,6 +126,20 @@ export default function App(): JSX.Element {
           Legible Cities
         </span>
         <EngineStatus state={engine} />
+        {screen.screen !== 'library' && (
+          // The way back is in one place on every screen that has one. "Library"
+          // on screen, "Back to Library" by name: the name holds what the
+          // eye reads (WCAG 2.5.3) and says what the press does. Each
+          // screen puts focus on its own heading on arrival, so the button
+          // leaving the document with the press needs no handback.
+          <Button
+            aria-label="Back to Library"
+            onClick={() => setScreen({ screen: 'library', notice: null })}
+          >
+            <Icon name="back" />
+            Library
+          </Button>
+        )}
         <Button
           ref={toggleRef}
           aria-label={toggleName(running)}
@@ -186,19 +200,10 @@ export default function App(): JSX.Element {
                 <p role="status">The settings could not be read.</p>
                 <div className="toolbar">
                   <Button onClick={readSettings}>Try again</Button>
-                  <Button onClick={() => setScreen({ screen: 'library', notice: null })}>
-                    <Icon name="back" />
-                    Back to Library
-                  </Button>
                 </div>
               </main>
             ) : (
-              <Settings
-                settings={settings}
-                onChanged={setSettings}
-                engine={engine}
-                onBack={() => setScreen({ screen: 'library', notice: null })}
-              />
+              <Settings settings={settings} onChanged={setSettings} engine={engine} />
             )
           ) : screen.screen === 'project' ? (
             <ProjectView

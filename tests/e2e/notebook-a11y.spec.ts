@@ -154,7 +154,11 @@ test('the notebook, Inspect, the geographic view, the inspector and its dialogs'
 
     await expect(page.getByRole('navigation', { name: 'Steps' })).toBeVisible()
     await expect(page.getByRole('region', { name: 'Outputs', exact: true })).toBeVisible()
-    await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).toBeVisible()
+    // The way back is in the window's header, not a breadcrumb (issue 275).
+    await expect(
+      page.locator('.app-header').getByRole('button', { name: 'Back to Library' }),
+    ).toBeVisible()
+    await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).toHaveCount(0)
     await sweep(page, 'the project, its notebook')
 
     // Issue 121, for the cells: a cell's row is a plain button over a
