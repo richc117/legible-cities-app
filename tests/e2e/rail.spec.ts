@@ -277,6 +277,33 @@ test('a file moved or deleted since reads as gone, and offers nothing to press',
   })
 })
 
+test("the rail's headings, every step's number and Outputs start at one edge", async () => {
+  test.setTimeout(120_000)
+  const h = home()
+  await withApp(h, async (page) => {
+    await laidOutProject(page, 'LA Metro Rail', PROJECT)
+    const heading = page.locator('.rail-heading')
+    await expect(heading).toBeVisible()
+    await expect(heading).toHaveText(/\S/)
+    // The text's own left edge, not its box's: a Range over the contents.
+    const lefts = await page.evaluate(() => {
+      const edge = (el: Element): number => {
+        const range = document.createRange()
+        range.selectNodeContents(el)
+        return range.getBoundingClientRect().left
+      }
+      return {
+        heading: edge(document.querySelector('.rail-heading')!),
+        numbers: [...document.querySelectorAll('.rail-number')].map(edge),
+        outputs: edge(document.querySelector('#outputs-heading')!),
+      }
+    })
+    for (const left of [...lefts.numbers, lefts.outputs]) {
+      expect(Math.abs(left - lefts.heading)).toBeLessThanOrEqual(1)
+    }
+  })
+})
+
 test('below 900px the rail collapses to its numbers and keeps its names', async () => {
   test.setTimeout(120_000)
   const h = home()
@@ -298,6 +325,8 @@ test('below 900px the rail collapses to its numbers and keeps its names', async 
       )
       .toBeLessThanOrEqual(1)
     await expect(step(page, /^01 Data, /)).toBeVisible()
+    // The project's name goes as Outputs goes; the nav's label still names it.
+    await expect(page.locator('.rail-heading')).toBeHidden()
 
     // Inert under the inspector, which is the main region's own attribute:
     // Shift+Tab must not reach a control a person cannot see.

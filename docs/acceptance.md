@@ -204,7 +204,7 @@ run.
 - One press opens the project, without a dialog: a heading **LA Metro
   Rail**, with **Library** before it (a screen reader names it "Back to
   Library"), and the notebook's six cells, 01 to 06, with cells 01 to 05
-  open and 06 closed. The rail's **Steps** lists the same six, and its
+  open and 06 closed. The rail's **Steps**, under the project's name, lists the same six, and its
   **Outputs** says "Nothing exported yet."
 - The layout starts by itself. The status sentence under the heading reads
   "02 Process is running." with **Stop** beside it, and "Run all stops at

@@ -50,7 +50,7 @@ const allOpen = (): Record<CellId, boolean> =>
  */
 function draw(states: Record<CellId, CellStatus> = allReady()): string {
   const state = {
-    project: { id: 'kq7x2mzp4dna' },
+    project: { id: 'kq7x2mzp4dna', name: 'Los Angeles' },
     exportSnapshot: { state: 'idle' },
   } as unknown as ProjectState
   return renderToStaticMarkup(
@@ -97,6 +97,12 @@ describe('the rail’s stepper', () => {
     // nothing about: it is read from the window, so the first markup has
     // none rather than guessing the first cell.
     expect(draw()).not.toContain('aria-current')
+  })
+
+  it("puts the project's name over the steps as a heading inside the nav", () => {
+    expect(draw()).toMatch(
+      /<nav class="rail-steps" aria-label="Steps"><h2 class="rail-heading">Los Angeles<\/h2><ol>/,
+    )
   })
 
   it('gives the Outputs heading somewhere for focus to land', () => {
