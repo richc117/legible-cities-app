@@ -152,6 +152,11 @@ const PAIRS: [string, string, number][] = [
   // --text-faint, the hint in --error, the running station's ring in
   // --accent, the rail in --border-strong and as much of it as the run has
   // covered in --text.
+  //
+  // The line order's drag (issue 283) adds none either: the grip's glyph is
+  // --text-muted, and --text under the pointer, on --surface; the carried
+  // row is --surface-raised with a --border-strong edge, and the place, the
+  // name and the grip on it are --text-muted and --text. All are above.
 ]
 
 /**

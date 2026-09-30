@@ -1,5 +1,21 @@
 # Feature Specification: Line order, and what is drawn over what
 
+> **Amended 2026-09-30 (issue 283): a line can be dragged.** User Story 3
+> below deferred dragging on principle VI: a drag handle alone would have
+> put the feature out of the keyboard's reach. The maintainer reversed the
+> deferral on the condition that the buttons stay, which was the reason
+> for it, and they do. Each row now has a grip at its start that carries
+> the line to any place with a pointer, and Move up and Move down at its
+> end, drawn as arrows with the same names and a tooltip on hover and
+> focus. A drop is one change on the same debounced timer a press uses, so
+> it is one `map.build` (FR-004) and it is announced in the same status
+> line; Escape or a cancelled pointer puts the list back and builds
+> nothing. The grip has no name and takes no focus, because every move it
+> makes the buttons make too, so User Story 3 and FR-003 hold as written.
+> The drag is the app's own pointer code, as the geographic view's pan is,
+> with no new dependency. No decision record was written; this note is the
+> record.
+
 **Feature Branch**: `A4-02-line-order`
 
 **Created**: 2026-09-12
@@ -116,6 +132,8 @@ list says where each line stands. Nothing here needs a pointing device.
 **Why this priority**: principle VI, and the issue names it. A drag handle
 would have made this feature unreachable for half its users; two buttons
 make it reachable for all of them, which is why the issue defers dragging.
+(Reversed 2026-09-30, issue 283, with the buttons kept: see the note at
+the top.)
 
 **Independent Test**: keyboard only, from the heading to the last control
 and back; then VoiceOver over the list.
@@ -193,6 +211,9 @@ and back; then VoiceOver over the list.
   alphabetically.
 - **FR-003**: "Move up" and "Move down" MUST move one line one place, and
   MUST be disabled only at the end of the list they cannot move towards.
+  Since 2026-09-30 (issue 283) a line MAY also be dragged by its grip to
+  any place; the grip MUST NOT be the only way to make any move, and a drop
+  MUST be one change under FR-004.
 - **FR-004**: A change MUST be debounced into exactly one `map.build` from
   the stored layout and the stored day, carrying the whole arrangement as
   `line_order`; the layout stages MUST NOT run.

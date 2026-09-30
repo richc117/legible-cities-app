@@ -26,7 +26,7 @@ an order that names some lines drops the rest.
 | III. Determinism is a feature | A move is `map.build` from the stored layout's id, never `graph.build`; the record changes only when the map has been drawn. |
 | IV. No network without a reason | Nothing new is fetched: the inspection is the one already cached this session. |
 | V. Hygiene by tools | Line labels cross the bridge inward and a record comes out; nothing is a path. |
-| VI. Accessible by default | Two named buttons per line rather than a drag; focus follows the line that moved; the new position is announced politely; nothing animates. |
+| VI. Accessible by default | Two named buttons per line rather than a drag; focus follows the line that moved; the new position is announced politely; nothing animates. (Amended 2026-09-30, issue 283: a grip drags a line too, the buttons kept, and the rows it passes step aside with no motion under reduced motion; see the note atop `spec.md`.) |
 | VII. Records | ADR-023 holds that a render is not a layout. No new record; the engine's contract change is engine issue 28 and its changelog. |
 
 ## Design

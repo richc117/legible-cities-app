@@ -51,6 +51,9 @@ export const ICON_NAMES = [
   'edit',
   'back',
   'forward',
+  'up',
+  'down',
+  'grip',
   'info',
   'spinner',
 ] as const

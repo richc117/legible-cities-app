@@ -103,7 +103,8 @@ What it cannot do stays a person's, and the record says so step by step
   runs silently and so does not open the app.
 - **Judgement**: whether a map, a colour, a theme or a GIF looks right,
   whether a drag feels right (the spec drags the picker with the mouse and
-  checks it stays open), and whether the Finder or File Explorer came to
+  checks it stays open, and a line of the order by its grip and checks
+  where it lands), and whether the Finder or File Explorer came to
   the front with the file selected (the spec records what the app asked
   the system to show or open, and checks those files).
 - **Places**: the profile and export folder are temporary, so the folders
@@ -409,13 +410,26 @@ Result: ____
 
 ### 10. Cell 05, Lines: the order
 
-**Do.** Under **Line order**, press **Down** on the first line, then **Up**
-on another. Wait for the map. Press **Back to alphabetical**.
+**Do.** Under **Line order**, press the grip at the start of the first
+line's row (six dots) and **drag** it down to the last place without
+letting go for a moment, then release. Drag another line a little way and,
+still holding it, press Escape; then release. Rest the pointer on a row's
+up arrow. Then press the down arrow on the first line, and the up arrow on
+another. Wait for the map. Press **Back to alphabetical**.
 
 **See.**
-- A list "Lines in the order they are drawn", each row with **Up** and
-  **Down**; the first row's **Up** and the last row's **Down** unavailable.
-- After a move, a status sentence "`<line>` is now `<n>` of `<total>`.",
+- A list "Lines in the order they are drawn", each row with a grip at its
+  start and two arrows at its end; the first row's up arrow and the last
+  row's down arrow unavailable.
+- While a line is dragged it is lifted onto a lighter ground with an edge
+  around it and **follows the pointer**, and the lines it passes step aside
+  to show where it will land. On release it stays there, the status says
+  "`<line>` is now `<total>` of `<total>`.", and the map is drawn **once**.
+- Escape during the drag puts every line back where it was, and nothing is
+  drawn.
+- An arrow names its move in a tooltip, "Move line `<line>` up", when the
+  pointer rests on it and when it has focus.
+- After a press, a status sentence "`<line>` is now `<n>` of `<total>`.",
   and after a moment "Drawn with the lines in the order you chose, from the
   stored layout. The stations have not moved." The page's line rows follow
   the new order.
