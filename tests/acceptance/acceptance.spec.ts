@@ -1269,6 +1269,11 @@ test('a release, installed, through docs/acceptance.md', async () => {
       const stages = window.getByRole('region', { name: 'Where the routes run' })
       const group = stages.getByRole('group', { name: 'Stage' })
       await expect(stages.locator('dl.counts')).toBeVisible({ timeout: FEED_READ_MS })
+      await log.soft('the sentence saying what the two stages are', async () => {
+        await expect(stages.locator('#stage-explain')).toContainText(
+          'two earlier stages of the same layout',
+        )
+      })
       await log.soft('gtfs2graph first', async () => {
         await expect(group.getByRole('button', { name: 'gtfs2graph' })).toHaveAttribute(
           'aria-pressed',

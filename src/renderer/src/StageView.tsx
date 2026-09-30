@@ -18,6 +18,16 @@ export const STAGES: { stage: StageName; label: string; gloss: string }[] = [
   { stage: 'loom', label: 'loom', gloss: 'lines sorted onto shared track' },
 ]
 
+/**
+ * What the two buttons are, said once under the heading (issue 282). The
+ * names stay the engine's, so a stage here matches a stage in its log; the
+ * sentence is what says what they are and how they relate to the map above. `topo` and `octi` are not offered: topo is
+ * gtfs2graph with platforms merged, a difference of counts and not of
+ * picture, and octi is the schematic the viewer already shows.
+ */
+export const STAGES_EXPLAINED =
+  'The map above is the schematic. These are two earlier stages of the same layout, drawn where the routes really run: gtfs2graph is the network as the feed draws it, and loom is the same network after the engine has sorted the lines onto shared track, before anything is straightened. The names are the engine’s, so a stage here matches a stage in its log.'
+
 /** The pane's frame takes no permission at all: the whole of its sandbox. */
 export const STAGE_SANDBOX = ''
 
@@ -164,7 +174,10 @@ export default function StageView({ project, engine, read }: Props): JSX.Element
           where it starts, so it stays; it is a level below the cell's, as
           cell 05's two sections are (A5.5-18, issue 197). */}
       <h3 id="stage-heading">Where the routes run</h3>
-      <div className="toolbar" role="group" aria-label="Stage">
+      <p id="stage-explain" className="prose">
+        {STAGES_EXPLAINED}
+      </p>
+      <div className="toolbar" role="group" aria-label="Stage" aria-describedby="stage-explain">
         {STAGES.map((s) => (
           <Button
             key={s.stage}

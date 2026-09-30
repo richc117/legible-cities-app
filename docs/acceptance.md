@@ -266,7 +266,10 @@ press `+`, `-`, an arrow and `0`. Press Tab once more, and then **Enter**.
   only when the feed names more than one operator or the project already
   has one (`Inspect.tsx`), and the LA rail feed is expected to name one.
   Step 15 finds one.
-- **Where the routes run**: the two buttons **gtfs2graph** and **loom**,
+- **Where the routes run**: a sentence under the heading saying what the
+  two are ("The map above is the schematic. These are two earlier stages of
+  the same layout, drawn where the routes really run ..."), then the two
+  buttons **gtfs2graph** and **loom**,
   the pressed one marked as pressed, and beside them the pressed stage's
   description only ("as the feed draws its routes" for gtfs2graph, "lines
   sorted onto shared track" for loom); a drawing that changes between the

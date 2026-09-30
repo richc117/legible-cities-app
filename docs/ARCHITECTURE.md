@@ -1080,7 +1080,9 @@ what the feed's own entry draws and offers it in one press.
 
 A project with a layout shows two of its stages drawn where they run: as
 the feed draws its routes (`gtfs2graph`) and after LOOM has sorted the
-lines onto shared track (`loom`), before anything is straightened. The
+lines onto shared track (`loom`), before anything is straightened. A
+sentence under the section's heading says what the two are, and `topo` and
+`octi` are deliberately not offered (issue 282). The
 drawing is the engine's, asked for by the layout's id through
 `render.stage` (engine v0.7.0) and kept per layout, set, stage and width
 for the session; the counts beside it are the engine's, shown as sent,

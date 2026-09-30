@@ -78,7 +78,7 @@ again, the view draws the new layout's stages.
   interface, reachable by wheel, drag and keyboard, with a labelled pane
   and no transition under reduced motion.
 - **FR-003**: The toggle MUST offer the `gtfs2graph` and `loom` stages by
-  their engine names with a gloss, and the counts MUST be the result's.
+  their engine names with a gloss, and the counts MUST be the result's. A sentence under the heading says what the two are and how they relate to the map above, and the group of buttons is described by it (issue 282). `topo` and `octi` are not offered: topo is gtfs2graph with platforms merged, a difference of counts rather than of picture, and octi is the schematic the viewer already shows.
 - **FR-004**: The view MUST read the stage by the project's stored layout
   id and MUST follow the record when the id or `made` changes.
 - **FR-005**: The stand-in MUST answer `render.stage` with an SVG and

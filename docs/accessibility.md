@@ -867,7 +867,8 @@ a table).
   press "Type": ascending on its first press. Every further press on the
   column already sorted reverses it. The arrow beside it is not read.
 - **Geographic view.** Listen for the heading "Where the routes run", the
-  group "Stage" with toggle buttons "gtfs2graph" and "loom" (the current one
+  sentence saying what the two stages are, the group "Stage" (described by
+  that sentence, read on entering it, issue 282) with toggle buttons "gtfs2graph" and "loom" (the current one
   pressed), the description list "Counts" (Nodes, Stations, Junctions,
   Edges, Lines), and a focusable group "The gtfs2graph stage, as the feed
   draws its routes" described by "Zoom with the wheel or plus and minus, pan
