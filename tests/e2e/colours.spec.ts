@@ -429,6 +429,31 @@ test('a chip opens its picker in a floating panel that moves no row, and the las
     expect(box.y, 'inside the window at the top').toBeGreaterThanOrEqual(0)
     expect(box.y + box.height, 'inside the window at the foot').toBeLessThanOrEqual(height)
     expect(box.y + box.height, 'above its chip').toBeLessThanOrEqual(last.y + 1)
+    // And it touches its chip: flipped above is not pinned to the top of the
+    // area the browser tried.
+    expect(last.y - (box.y + box.height), 'beside its chip, not far above it').toBeLessThan(8)
+    await page.keyboard.press('Escape')
+    await expect(flipped).toBeHidden()
+
+    // Reset every line from the keyboard, with a panel open: no pointer
+    // event light-dismisses it, so the panels are closed through the
+    // elements, and no empty box is left in the top layer.
+    await chipOf('A').click()
+    const one = panel.getByRole('group', { name: 'Colour for line A' })
+    await one.getByLabel('Hex value').fill('#ff0000')
+    await one.getByRole('button', { name: 'Use this colour' }).click()
+    await expect(page.getByText(/Drawn in the colours you chose/)).toBeVisible({ timeout: 30_000 })
+    await chipOf('A').click()
+    await expect(one).toBeVisible()
+    const resetAll = panel.getByRole('button', { name: 'Reset every line' })
+    await resetAll.focus()
+    await page.keyboard.press('Enter')
+    await expect(one).toBeHidden()
+    expect(
+      await panel.evaluate((el) => el.querySelectorAll('.colour-popover:popover-open').length),
+      'no panel left open',
+    ).toBe(0)
+    await expect(chipOf('A')).toHaveAttribute('aria-expanded', 'false')
   })
 })
 
