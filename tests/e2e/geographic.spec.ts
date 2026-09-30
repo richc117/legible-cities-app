@@ -118,16 +118,24 @@ test('pans and zooms by keyboard on the frame, not inside it', async () => {
     // covers the top half of the window (issue 213): the pointer has to be
     // over a part of the pane the map does not cover, so the pane is
     // scrolled to the foot of the window and the pointer put in its lower
-    // part. Focus is given without scrolling, which would put the top back
-    // behind the map.
-    await pane.evaluate((el) => el.scrollIntoView({ block: 'end' }))
-    const box = (await pane.boundingBox())!
+    // part. It is scrolled there again whenever the page may have moved: an
+    // unfocused wheel scrolls the page, which drops the pane by the step and
+    // would leave the pointer at, or past, the window's foot. Focus is given
+    // without scrolling, which would put the top back behind the map.
+    const lower = async (): Promise<{ x: number; y: number; left: number }> => {
+      await pane.evaluate((el) => el.scrollIntoView({ block: 'end' }))
+      const b = (await pane.boundingBox())!
+      return { x: b.x + b.width / 2, y: b.y + b.height - 60, left: b.x }
+    }
     // The wheel does nothing until the pane has focus. The pointer sits
     // over the drawing, where the glass takes the event for the pane.
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height - 60)
+    const first = await lower()
+    await page.mouse.move(first.x, first.y)
     await page.mouse.wheel(0, -120)
     await page.waitForTimeout(100)
     expect(await transform()).toBe(before)
+    const second = await lower()
+    await page.mouse.move(second.x, second.y)
     await pane.evaluate((el) => (el as HTMLElement).focus({ preventScroll: true }))
     await page.mouse.wheel(0, -120)
     await expect.poll(transform).not.toBe(before)
@@ -139,14 +147,13 @@ test('pans and zooms by keyboard on the frame, not inside it', async () => {
     await page.keyboard.press('ArrowRight')
     const panned = await transform()
     expect(panned).not.toBe(zoomed)
-    // A drag pans too. Focusing scrolled the pane; the box is read again.
-    const now = (await pane.boundingBox())!
-    // Focusing can leave the pane's top edge behind the pinned map (issue
-    // 213), so the drag starts in its lower part, which the map never covers.
-    const grab = now.y + now.height - 120
-    await page.mouse.move(now.x + 100, grab)
+    // A drag pans too. It starts in the pane's lower part, which the map
+    // never covers (issue 213), read again now that the page may have moved.
+    const at = await lower()
+    const grab = at.y - 60
+    await page.mouse.move(at.left + 100, grab)
     await page.mouse.down()
-    await page.mouse.move(now.x + 160, grab + 30, { steps: 4 })
+    await page.mouse.move(at.left + 160, grab + 30, { steps: 4 })
     await page.mouse.up()
     await expect.poll(transform).not.toBe(panned)
     await page.keyboard.press('0')
