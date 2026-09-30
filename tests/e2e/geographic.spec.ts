@@ -120,9 +120,12 @@ test('pans and zooms by keyboard on the frame, not inside it', async () => {
     expect(panned).not.toBe(zoomed)
     // A drag pans too. Focusing scrolled the pane; the box is read again.
     const now = (await pane.boundingBox())!
-    await page.mouse.move(now.x + 100, now.y + 100)
+    // Focusing can leave the pane's top edge behind the pinned map (issue
+    // 213), so the drag starts in its lower part, which the map never covers.
+    const grab = now.y + now.height - 120
+    await page.mouse.move(now.x + 100, grab)
     await page.mouse.down()
-    await page.mouse.move(now.x + 160, now.y + 130, { steps: 4 })
+    await page.mouse.move(now.x + 160, grab + 30, { steps: 4 })
     await page.mouse.up()
     await expect.poll(transform).not.toBe(panned)
     await page.keyboard.press('0')

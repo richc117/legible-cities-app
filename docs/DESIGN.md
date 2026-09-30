@@ -176,6 +176,9 @@ the narrow one that holds in both themes:
 - `--text-faint` additionally misses on `--surface-selected`: 3.93 in
   Night, 4.18 in Parchment. `--success-strong` misses there in Parchment
   only, at 4.13; it holds in Night, at 5.13.
+- `--text-faint` on `--surface-sunken` holds (4.51 in Night, 4.59 in
+  Parchment), which is what a disabled kit button's label is drawn in
+  (`--figma-color-text-ondisabled`, issue 273).
 - `--text`, `--text-muted`, `--accent`, `--accent-text` and `--focus` clear
   their thresholds on every ground in both themes.
 
@@ -376,7 +379,15 @@ name neither the editor nor the lab:
   (about 188), with `light-dark()` defaults in one `@layer
   figui.defaults` block, `--figma-focus-outline*` for focus. An unlayered
   override of the variables wins by cascade rule; two hardcoded colours
-  (native `<option>` popups, a checkbox stroke) are known leaks.
+  (native `<option>` popups, a checkbox stroke) are known leaks. **The
+  layer holds the colour tokens only.** The kit's element rules are
+  unlayered, so they stand on the app's own elements wherever the app
+  declares nothing: every `section`'s 4px 16px padding and 8px margin,
+  and every native `button`'s 28px height, centred content and brand fill
+  on a press. The adapter neutralises the section rule once, for the whole
+  app; a row drawn as a button (`.entry`, `.rail-step`, `.cell-head`) says
+  its own height, its own alignment and its own pressed ground in
+  `app.css` (issue 273).
 - **Type.** Inter-first system stack, 11px body on a 16px root, weights
   450 to 550, no `@font-face`: denser than this system's 13px, so the
   body-size tokens are overridden and the chrome face is ours.

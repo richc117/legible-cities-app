@@ -89,6 +89,14 @@ test('follows the platform theme and measures as the design document says', asyn
       // (the role resolves to the kit's inner button), the app's focus ring.
       const newProject = page.getByRole('button', { name: 'New project' })
       const host = page.locator('fig-button', { hasText: 'New project' })
+      // Between its icon and its label the kit button holds --space-2-2:
+      // its shadow style declares no gap (issue 273).
+      const gap = await host.evaluate((el) => {
+        const icon = el.querySelector('.icon')
+        if (!icon) return null
+        return parseFloat(getComputedStyle(icon).marginInlineEnd)
+      })
+      expect(gap, 'the icon-to-label gap on New project').toBe(4)
       const box = await host.boundingBox()
       expect(box?.height).toBe(28)
       // The kit draws the focus ring on the host (delegated focus).

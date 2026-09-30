@@ -41,7 +41,9 @@ person's, recorded in [Reader runs](#reader-runs).
    top reaches every enabled control and each shows a ring it did not have
    at rest; with reduced motion emulated, and the emulation asserted to
    take effect, no element or open shadow root has a running animation or
-   a transition that lasts. It also asserts each fix below where a person
+   a transition that lasts, and no native button holds more than its box
+   (`expectButtonsHoldTheirBox`, issue 273: the text of a row hanging
+   below its fill is content taller than the button). It also asserts each fix below where a person
    meets it. **Its first runs** (macOS, 2026-09-13, by the coordinator, not
    by the lane that wrote it) passed every screen's names, walk and motion
    checks; the removed feed's focus (D5) and the one-control dialog's walk

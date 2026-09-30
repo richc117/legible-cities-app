@@ -38,6 +38,7 @@
   gap: var(--space-4-3);
   width: 100%;
   padding: var(--space-4-3) var(--space-4-4);
+  border-radius: var(--radius);
   background: none;
   border: none;
   font: inherit;
