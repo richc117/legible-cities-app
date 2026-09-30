@@ -392,21 +392,24 @@ Result: ____
 
 ### 9. Cell 05, Lines: colours, by dragging
 
-**Do.** In cell **05 Lines**, under **Line colours**, press **Choose** on
-one line and **drag** through the picker's colour square and hue slider
-without letting go for a moment, then release outside the picker. Click
-somewhere outside the row. Press **Reset** on that line. Choose a colour
+**Do.** In cell **05 Lines**, under **Line colours**, press the colour chip
+at the start of one line's row and **drag** through the picker's colour
+square and hue slider without letting go for a moment, then release outside
+the picker. Click somewhere outside the picker. Press the chip again and
+**Reset** in its panel. Choose a colour
 for the default row, "Lines with no colour in the feed", by typing a hex
 value and pressing **Use this colour**; then **Reset every line**.
 
 **See.**
-- The picker **stays open for the whole drag** and while you release; it
-  closes on the click outside the row, not before (issue 87).
+- The picker opens **floating under the chip** and moves no row; near the
+  foot of the window it opens above. It **stays open for the whole drag** and
+  while you release; it closes on the click outside it, not before (issue
+  87), and on Escape, with focus back on the chip.
 - The line's row says "your colour, `#rrggbb`", and after a moment the
   progress line runs again and says "Drawn in the colours you chose, from
   the stored layout. The stations have not moved." The map shows the new
   colour on the line, its chips and the time chart.
-- **Reset** puts the row back to "the colour in the feed, `#rrggbb`" (or
+- **Reset**, inside the panel, closes it and puts the row back to "the colour in the feed, `#rrggbb`" (or
   "the default, ...") and the map follows; **Reset every line** does the
   same for all and then is unavailable.
 - Nothing is laid out again: no "Laid out." here.

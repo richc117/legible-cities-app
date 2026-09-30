@@ -224,7 +224,7 @@ The two reader columns are a person's, recorded per run in
 | Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
 | Line colours | pass | pass (every control names its line) | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
-| Colour picker | pass (sliders take the arrows; hex field) | pass; the Choose button controls its picker (F6) | fixed (D10) | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
+| Colour picker | pass (sliders take the arrows; hex field) | pass; the chip controls its panel, an auto popover, by `aria-controls` and `popovertarget` (F6, issue 284) | fixed (D10) | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
 | Line order | pass | pass | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
 
 ### Cell 06, Export
@@ -986,18 +986,19 @@ a table).
 
 - **Line colours.** Listen for the heading "Line colours", the list
   "Lines", and in each row the line's label, the feed's colour, where the
-  shown colour comes from ("the colour in the feed, `#rrggbb`"), a button
-  "Choose the colour of line `<label>`", collapsed, and a button
-  "Reset line `<label>` to the colour in the feed", dimmed until the line
-  has a colour of its own. Before the list, not inside it, is the row
+  shown colour comes from ("the colour in the feed, `#rrggbb`"), a colour chip
+  at the row's start, a button "Choose the colour of line `<label>`",
+  collapsed. The button "Reset line `<label>` to the colour in the feed" is
+  in the chip's panel, dimmed until the line has a colour of its own (issue
+  284). Before the list, not inside it, is the row
   "Lines with no colour in the feed", with the button "Choose the colour of
   lines the feed leaves uncoloured".
-- **Colour picker.** Press **Choose** on a line: listen for expanded, and a
+- **Colour picker.** Press the chip of a line: listen for expanded, and a
   group "Colour for line `<label>`" holding the sliders "Color" and "Hue",
   each read with its value, and the text field "Hex value" and the button
   **Use this colour**. Move each slider with the arrow keys and listen for
   the value changing. Press Escape: the picker goes and focus is back on
-  **Choose**. Type a hex value that is not one, press **Use this colour**,
+  the chip. Type a hex value that is not one, press **Use this colour**,
   and listen for "A colour is six hexadecimal digits, such as 0072bc." read
   with the field when you return to it.
 - **Line order.** Listen for the heading "Line order" and an ordered list

@@ -1781,7 +1781,11 @@ test('a release, installed, through docs/acceptance.md', async () => {
         )
       })
 
-      await panel.getByRole('button', { name: new RegExp(`^Reset line ${line} to`) }).click()
+      // Reset is in the chip's panel (issue 284), so the chip opens it again.
+      await panel
+        .getByRole('button', { name: `Choose the colour of line ${line}`, exact: true })
+        .click()
+      await picker.getByRole('button', { name: new RegExp(`^Reset line ${line} to`) }).click()
       await log.soft('Reset puts the row back', () => expect(source).toHaveText(feedWords))
       await until(
         async () => ((await recordOf(window, LA)).colors[line] === undefined ? true : undefined),
