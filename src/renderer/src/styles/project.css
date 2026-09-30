@@ -49,8 +49,8 @@
   overflow-wrap: anywhere;
 }
 
-/* The run-state line and Run all, with the sentence saying what Run all
-   leaves out beside the button rather than under a disclosure. */
+/* The run-state line and Run all, which is drawn only while it has
+   something to run (issue 276). */
 .project-run {
   display: flex;
   flex-wrap: wrap;

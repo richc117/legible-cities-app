@@ -16,13 +16,14 @@ import { useProject } from './context'
 // because it is a polite live region and each change to it is read out.
 // And Run all, which brings the map up to date with cells 01 to 05 using
 // the runs those cells already have and never runs the export
-// (`runAll.ts` says how and why); the sentence beside it says so.
+// (`runAll.ts` says how and why; the `export.plan` assertions in
+// `layout.spec.ts` hold it). It is drawn only while it has something to run.
 //
 // While the project's run goes, Run all gives way to Stop, which is the
 // run's own cancel whichever cell started it, and focus on the one that
 // went is handed to the one that came (A6-07), as cell 02's Cancel does.
-// An export has its own Cancel in cell 06; here it only makes Run all
-// unavailable.
+// An export has its own Cancel in cell 06; here it only takes Run all
+// away.
 //
 // It is not the app's own header, which is the window's and knows no
 // project (A1-03, ADR-036).

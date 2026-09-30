@@ -157,7 +157,7 @@ The two reader columns are a person's, recorded per run in
 | Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
 | The project's name as the `h1`, no breadcrumb around it (A5.5-22, issue 275; the way back is in the header, below) | swept | swept | swept | swept | pass (`--text`) | pass | not yet run: a person's | not yet run: a person's |
-| The notebook's sentence, Run all and Stop | Run all's handover to Stop and back, and focus to the sentence when Run all does not come back, asserted in `layout.spec.ts` ("Run all…" tests); not swept, since every sweep is of a project already drawn, where Run all is not drawn, and Stop exists only during a run | swept (the sentence one `role="status"`; Run all's name) | Run all and Stop not swept: audit only (the kit button's ring) | audit only | pass (`--text`, the note `--text-muted`; the primary button C1) | fixed (C1) | not yet run: a person's | not yet run: a person's |
+| The notebook's sentence, Run all and Stop | Run all's handover to Stop and back, and focus to the sentence when Run all does not come back, asserted in `layout.spec.ts` ("Run all…" tests); not swept, since every sweep is of a project already drawn, where Run all is not drawn, and Stop exists only during a run | swept (the sentence one `role="status"`; Run all's name) | Run all and Stop not swept: audit only (the kit button's ring) | audit only | pass (`--text`; the primary button C1) | fixed (C1) | not yet run: a person's | not yet run: a person's |
 | Read-only notice | n/a | pass (`role="status"`) | n/a | n/a | pass | pass | not yet run: a person's | not yet run: a person's |
 
 ### Project: the rail
