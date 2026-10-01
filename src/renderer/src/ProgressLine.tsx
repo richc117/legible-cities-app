@@ -1,4 +1,4 @@
-import type { JSX } from 'react'
+import { useEffect, useRef, useState, type JSX } from 'react'
 
 // The app's one signature component (docs/DESIGN.md, section 10 and section
 // 8.2's progress row): a run's stages as round stations on a line, the line
@@ -35,6 +35,14 @@ interface Props {
    * apart by the picture alone.
    */
   compact?: boolean
+  /**
+   * Spread the stations across the width of the place it is drawn in, for a
+   * run that has the room to say so: the export's three stages in a cell
+   * that is hundreds of pixels wide. The stations never come closer than
+   * the default step, the labels keep their size (the width changes, not
+   * the scale), and until the width is known the default is drawn.
+   */
+  fill?: boolean
 }
 
 const UNIT = 8
@@ -104,8 +112,29 @@ function station(x: number, state: StageState): JSX.Element {
   )
 }
 
-export default function ProgressLine({ stages, ariaLabel, compact = false }: Props): JSX.Element {
-  const step = compact ? COMPACT_STEP : STEP
+export default function ProgressLine({
+  stages,
+  ariaLabel,
+  compact = false,
+  fill = false,
+}: Props): JSX.Element {
+  const box = useRef<HTMLDivElement>(null)
+  const [room, setRoom] = useState(0)
+  useEffect(() => {
+    const element = box.current
+    if (!fill || element === null) return undefined
+    const read = (): void => setRoom(element.clientWidth)
+    read()
+    const watch = new ResizeObserver(read)
+    watch.observe(element)
+    return () => watch.disconnect()
+  }, [fill])
+  const base = compact ? COMPACT_STEP : STEP
+  const gaps = Math.max(1, stages.length - 1)
+  // The step that puts the last station one margin short of the edge, never
+  // less than the default: a narrow place gets the default, and scrolls or
+  // clips as it always did.
+  const step = fill && room > 0 ? Math.max(base, (room - FIRST - 2 * UNIT) / gaps) : base
   const last = FIRST + Math.max(0, stages.length - 1) * step
   const width = last + 2 * UNIT
   const height = compact ? LINE_Y + UNIT : LABEL_Y + UNIT
@@ -113,7 +142,7 @@ export default function ProgressLine({ stages, ariaLabel, compact = false }: Pro
   const current =
     stages.find((s) => s.state === 'running') ?? stages.find((s) => s.state === 'failed')
   return (
-    <div className="progress">
+    <div className="progress" ref={box}>
       <svg
         width={width}
         height={height}
