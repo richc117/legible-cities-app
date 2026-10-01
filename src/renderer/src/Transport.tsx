@@ -299,63 +299,69 @@ export default function Transport({
         nothing again: the page is already running the day, and this is the way to ask it where to
         be.
       </p>
-      <div className="field">
-        <label htmlFor={scrubId}>Time of day</label>
-        <div className="transport-scrub">
-          <input
-            id={scrubId}
-            type="range"
-            min={bounds.t0}
-            max={bounds.t1}
-            step={SCRUB_STEP}
-            // Clamped here as well as where it is set: `now` is zero for
-            // the frame between the bounds arriving and the first clock
-            // answering, and a value under `min` is a thumb the browser
-            // draws at the start of a day that does not start there.
-            value={clampTo(bounds, now)}
-            // The clock the page wrote, so a screen reader hears 07:20
-            // rather than 26400. Absent until the page has answered once,
-            // where the seconds are all anyone has.
-            aria-valuetext={clock === '' ? undefined : clock}
-            onChange={(event) => scrub(event.target.value)}
-            // The thumb is the person's from the moment they take hold of
-            // it, not from the first value it reports: a drag that begins
-            // on a playing map would otherwise have the poll move the
-            // thumb out from under the pointer before the first `change`.
-            // Focus does the same for the keyboard. Each `change` renews
-            // it, so the only gap left is a pointer held perfectly still
-            // for longer than HOLD - where the thumb is not moving anyway
-            // and the page's own clock is the better answer.
-            onPointerDown={hold}
-            onFocus={hold}
-          />
-          {/* Not a live region: it changes twice a second while the day
+      {/* The same container "Draw for another day" sits in, so the two
+          controls of this cell read as one family (issue note of 30 Sep
+          2026): a raised ground and an edge round the scrub and the row of
+          Play and Speed. */}
+      <div className="inline-form transport-form">
+        <div className="field">
+          <label htmlFor={scrubId}>Time of day</label>
+          <div className="transport-scrub">
+            <input
+              id={scrubId}
+              type="range"
+              min={bounds.t0}
+              max={bounds.t1}
+              step={SCRUB_STEP}
+              // Clamped here as well as where it is set: `now` is zero for
+              // the frame between the bounds arriving and the first clock
+              // answering, and a value under `min` is a thumb the browser
+              // draws at the start of a day that does not start there.
+              value={clampTo(bounds, now)}
+              // The clock the page wrote, so a screen reader hears 07:20
+              // rather than 26400. Absent until the page has answered once,
+              // where the seconds are all anyone has.
+              aria-valuetext={clock === '' ? undefined : clock}
+              onChange={(event) => scrub(event.target.value)}
+              // The thumb is the person's from the moment they take hold of
+              // it, not from the first value it reports: a drag that begins
+              // on a playing map would otherwise have the poll move the
+              // thumb out from under the pointer before the first `change`.
+              // Focus does the same for the keyboard. Each `change` renews
+              // it, so the only gap left is a pointer held perfectly still
+              // for longer than HOLD - where the thumb is not moving anyway
+              // and the page's own clock is the better answer.
+              onPointerDown={hold}
+              onFocus={hold}
+            />
+            {/* Not a live region: it changes twice a second while the day
               runs, and a polite one would read the whole day out. A screen
               reader hears the clock from the control itself, where it is
               asked for. */}
-          <span className="transport-clock">{clock}</span>
+            <span className="transport-clock">{clock}</span>
+          </div>
         </div>
-      </div>
-      <div className="actions">
-        <Button onClick={play}>
-          <Icon name={playing ? 'pause' : 'play'} />
-          {playing ? 'Pause' : 'Play day'}
-        </Button>
-        <div className="field transport-speed">
-          {/* The kit's own select, which wraps the platform's (ADR-026),
+        <div className="actions">
+          <Button onClick={play}>
+            <Icon name={playing ? 'pause' : 'play'} />
+            {playing ? 'Pause' : 'Play day'}
+          </Button>
+          <div className="field transport-speed">
+            {/* The kit's own select, which wraps the platform's (ADR-026),
               and the label pattern the export's choices use: the kit names
               the native control itself, so the visible label is hidden from
               the tree rather than said twice. */}
-          <span className="field-label" aria-hidden="true">
-            Speed
-          </span>
-          <Select label="Speed" value={String(speed)} onChange={(rate) => choose(Number(rate))}>
-            {SPEEDS.map(({ rate, label }) => (
-              <option key={rate} value={rate}>
-                {label}
-              </option>
-            ))}
-          </Select>
+            <span className="field-label" aria-hidden="true">
+              Speed
+            </span>
+            <Select label="Speed" value={String(speed)} onChange={(rate) => choose(Number(rate))}>
+              {SPEEDS.map(({ rate, label }) => (
+                <option key={rate} value={rate}>
+                  {label}
+                </option>
+              ))}
+            </Select>
+          </div>
         </div>
       </div>
       {refused !== null && (

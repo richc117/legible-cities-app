@@ -369,6 +369,27 @@ test("cell 03's transport, on a page that answers what day it has", async () => 
       'aria-valuetext',
       /^\d{2}:\d{2}/,
     )
+    // The controls sit in the container "Draw for another day" sits in, and
+    // Play and Speed stand on one line (the maintainer's note of 30 Sep
+    // 2026): the button and the select have the same foot and the same
+    // height, though the select has its label above it.
+    const play = transport.locator('fig-button').first()
+    const speed = transport.locator('fig-dropdown select')
+    const [b, c] = [(await play.boundingBox())!, (await speed.boundingBox())!]
+    expect(
+      Math.abs(b.y + b.height - (c.y + c.height)),
+      `Play ${JSON.stringify(b)} against Speed ${JSON.stringify(c)}`,
+    ).toBeLessThanOrEqual(1)
+    expect(Math.abs(b.height - c.height), 'one height').toBeLessThanOrEqual(1)
+    const ground = (selector: string): Promise<string> =>
+      page
+        .locator(selector)
+        .first()
+        .evaluate((el) => {
+          const s = getComputedStyle(el)
+          return `${s.backgroundColor} ${s.borderTopWidth} ${s.borderRadius} ${s.padding}`
+        })
+    expect(await ground('.transport .inline-form')).toBe(await ground('.service-day .inline-form'))
     await sweep(page, 'the project, the transport drawn')
   })
 })
