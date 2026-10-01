@@ -1,6 +1,6 @@
 // The notebook's two decisions that are not visible in what it draws
 // (A5.5-08): which cells a project's screen opens with, and what a press on
-// cell 06's heading row does to the map's frame.
+// cell 06's heading row does to the address its preview shows.
 //
 // Both were comments in a component until they were this. The first is a
 // design decision (ADR-045, DESIGN.md 8.2) that nothing else records; the
@@ -8,7 +8,10 @@
 // is how the map came to carry an export's frame over a closed cell.
 
 import { describe, expect, it } from 'vitest'
-import { START_OPEN } from '../../src/renderer/src/notebook/Notebook'
+import { freshStages } from '../../src/renderer/src/engine/layoutRun'
+import { startOpen } from '../../src/renderer/src/notebook/Notebook'
+import { runRowStatus } from '../../src/renderer/src/notebook/runRow'
+import type { StageState } from '../../src/renderer/src/ProgressLine'
 import { toggleExportCell } from '../../src/renderer/src/notebook/cells/ExportCell'
 import { frameSummary } from '../../src/renderer/src/notebook/cells/FrameCell'
 import { revertDay } from '../../src/renderer/src/ServiceDay'
@@ -22,9 +25,23 @@ import {
 } from '../../src/shared/project'
 import { DEFAULT_CHOICE } from '../../src/shared/export'
 
+// A function of the record since ADR-046 (specs/029 FR-010): the map sits
+// after cell 02 now, so a project with a layout opens on it with 01 and 02
+// collapsed, and one with none opens on the two cells it needs.
 describe('which cells a project opens with', () => {
-  it('opens the five the Map tab showed, and leaves 06 closed as the Export tab was', () => {
-    expect(START_OPEN).toEqual({
+  it('collapses 01 and 02 on a project with a layout, so the map comes first', () => {
+    expect(startOpen({ layout: 'a'.repeat(64) })).toEqual({
+      data: false,
+      process: false,
+      frame: true,
+      style: true,
+      lines: true,
+      export: false,
+    })
+  })
+
+  it('opens 01 and 02 on a project with no layout, which is the work left to do', () => {
+    expect(startOpen({ layout: null })).toEqual({
       data: true,
       process: true,
       frame: true,
@@ -34,26 +51,32 @@ describe('which cells a project opens with', () => {
     })
   })
 
+  it('leaves 06 closed either way, so its preview frame is mounted only on a press', () => {
+    expect(startOpen({ layout: null }).export).toBe(false)
+    expect(startOpen({ layout: 'b'.repeat(64) }).export).toBe(false)
+  })
+
   it('answers for every cell, so none is drawn without one', () => {
-    expect(Object.keys(START_OPEN).sort()).toEqual([...CELLS].sort())
+    for (const layout of [null, 'a'.repeat(64)])
+      expect(Object.keys(startOpen({ layout })).sort()).toEqual([...CELLS].sort())
   })
 })
 
 describe('a press on cell 06', () => {
-  it('puts the plain map back in the same call the cell closes in', () => {
+  it('forgets the planned address in the same call the cell closes in', () => {
     const order: string[] = []
     const toggle = toggleExportCell(
-      () => order.push('the plain map'),
+      () => order.push('the address forgotten'),
       (open) => order.push(`the cell is ${open ? 'open' : 'closed'}`),
     )
     toggle(false)
-    expect(order).toEqual(['the plain map', 'the cell is closed'])
+    expect(order).toEqual(['the address forgotten', 'the cell is closed'])
   })
 
-  it('takes nothing off the frame when the cell opens', () => {
+  it('forgets nothing when the cell opens', () => {
     const order: string[] = []
     const toggle = toggleExportCell(
-      () => order.push('the plain map'),
+      () => order.push('the address forgotten'),
       (open) => order.push(`the cell is ${open ? 'open' : 'closed'}`),
     )
     toggle(true)
@@ -191,5 +214,49 @@ describe("cell 03's summary", () => {
     it('never offers to go back to no day at all', () => {
       expect(revertDay(project({ date: '2026-09-12', drawn: drawn(null) }))).toBeNull()
     })
+  })
+})
+
+// A running cell's collapsed row (ADR-046, specs/029 FR-017). The cell does
+// not open itself while its run goes, so the row is where a person reads
+// what it is doing, in the stage words the progress line uses.
+describe('what a running or failed cell says on its row', () => {
+  const run = (
+    over: Partial<Parameters<typeof runRowStatus>[0]> = {},
+    states: StageState[] = [],
+  ): Parameters<typeof runRowStatus>[0] => ({
+    state: 'running',
+    stages: freshStages().map((s, i) => ({ ...s, state: states[i] ?? 'pending' })),
+    rebuilt: false,
+    recoloured: false,
+    reordered: false,
+    replaced: false,
+    download: null,
+    feedMissing: null,
+    ...over,
+  })
+
+  it('names the stage and its place while a layout runs, on cell 02 alone', () => {
+    const going = run({}, ['done', 'running'])
+    expect(runRowStatus(going, 'process')).toBe('running collapse, 2 of 8')
+    for (const other of ['data', 'frame', 'style', 'lines', 'export'] as const)
+      expect(runRowStatus(going, other), other).toBeNull()
+  })
+
+  it('says where a failed run stopped, without anything opening', () => {
+    expect(
+      runRowStatus(run({ state: 'failed' }, ['done', 'done', 'done', 'failed']), 'process'),
+    ).toBe('failed at octilinear, 4 of 8')
+  })
+
+  it('belongs to the cell the run is for: a rebuild to 03, a recolour to 05', () => {
+    expect(runRowStatus(run({ rebuilt: true }), 'frame')).toBe('running')
+    expect(runRowStatus(run({ recoloured: true }), 'lines')).toBe('running')
+    expect(runRowStatus(run({ rebuilt: true }), 'process')).toBeNull()
+  })
+
+  it('says nothing once a run has finished, been cancelled, or before one starts', () => {
+    for (const state of ['idle', 'done', 'cancelled'] as const)
+      expect(runRowStatus(run({ state }, ['done', 'running']), 'process'), state).toBeNull()
   })
 })

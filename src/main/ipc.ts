@@ -29,6 +29,7 @@ import {
 } from '../shared/project'
 import { copyChoice, validateExportChoice, type ExportChoice } from '../shared/export'
 import { isLayoutId, type LayoutDone } from '../shared/layout'
+import { isViewerRole, type ViewerRole } from '../shared/viewer'
 import type { ProjectStore } from './projects'
 import type { Viewer } from './viewer'
 
@@ -153,6 +154,12 @@ function readCreateInput(raw: unknown): CreateProjectInput {
   return { name, feed, mode, agency }
 }
 
+/** Which of the window's two frames a viewer request names (ADR-046). */
+function readRole(raw: unknown): ViewerRole {
+  if (!isViewerRole(raw)) throw new Error('the viewer needs to be told which frame')
+  return raw
+}
+
 /**
  * The viewer's three. Separate from the projects' because they need the
  * window's own web contents: the frame the app drives is a child of it, and
@@ -173,15 +180,16 @@ export function registerViewerHandlers(
       return handler(contents, ...args)
     })
   }
-  handle(CHANNELS.viewerAttach, async (contents, id) =>
-    viewer.attach(contents as WebContents, readId(id)),
+  handle(CHANNELS.viewerAttach, async (contents, id, role) =>
+    viewer.attach(contents as WebContents, readId(id), readRole(role)),
   )
-  handle(CHANNELS.viewerRelease, async () => {
-    viewer.release()
+  handle(CHANNELS.viewerRelease, async (_contents, role) => {
+    viewer.release(readRole(role))
   })
-  handle(CHANNELS.viewerCall, async (contents, method, args) => {
+  handle(CHANNELS.viewerCall, async (contents, role, method, args) => {
+    const which = readRole(role)
     if (typeof method !== 'string') throw new Error('the map needs to be told what to do')
-    return viewer.call(contents as WebContents, method, Array.isArray(args) ? args : [])
+    return viewer.call(contents as WebContents, which, method, Array.isArray(args) ? args : [])
   })
 }
 

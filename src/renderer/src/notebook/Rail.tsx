@@ -30,9 +30,8 @@ import { clearance, currentStepOf, scrollTargetFor, type CellBox } from './railS
 // toggle, because a reflexive Space or Enter after the press would
 // otherwise collapse the cell it has just opened (`kit/Disclosure.tsx`).
 //
-// Where a press lands is `railScroll.ts`, and its comment is the one to
-// read before touching this: the pinned band covers half the window, and
-// the obvious `scroll-margin-top` remedy was measured and withdrawn.
+// Where a press lands is `railScroll.ts`: clear of the header, which since
+// ADR-046 is the only thing pinned. The map is a block in the column.
 
 interface Props {
   /** Each cell's state, derived once by the notebook and never twice. */
@@ -55,18 +54,32 @@ function cellElement(cell: Cell): HTMLElement | null {
 }
 
 /**
- * What a scroll has to clear, measured now: the pinned band's foot, or the
- * header's where the project has no map to pin.
+ * What a scroll has to clear, measured now: the header's foot.
  *
  * Measured and not declared. How the header's height and its rule divide
- * between its box and its border is not something a stylesheet can read
- * (`preview.css` says what that cost), and the band's own depth is half a
- * window whose size changes.
+ * between its box and its border is not something a stylesheet can read.
  */
 function clearTo(): number {
-  const band = document.querySelector('.preview')
-  const header = document.querySelector('.app-header')
-  return clearance(band?.getBoundingClientRect() ?? null, header?.getBoundingClientRect() ?? null)
+  return clearance(document.querySelector('.app-header')?.getBoundingClientRect() ?? null)
+}
+
+/**
+ * Put focus on a cell's heading and scroll the cell clear of the header,
+ * once it has been opened and laid out. The rail's press does this, and so
+ * does the map's empty state, which sends a person to cell 02.
+ *
+ * Focus first, and with no scroll of its own, so the browser's idea of
+ * where a focused element belongs does not fight the scroll below.
+ */
+export function landOnCell(id: CellId): void {
+  const cell = CELL_LIST.find((c) => c.id === id)
+  const element = cell === undefined ? null : cellElement(cell)
+  if (element === null) return
+  element.querySelector<HTMLElement>('.disclosure-heading')?.focus({ preventScroll: true })
+  window.scrollTo({
+    top: scrollTargetFor(element.getBoundingClientRect(), clearTo(), window.scrollY),
+    behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+  })
 }
 
 /** Where the six cells are now, in the order they are read. */
@@ -119,16 +132,7 @@ export default function Rail({ states, open, onOpen }: Props): JSX.Element {
   useLayoutEffect(() => {
     if (pending === null) return
     setPending(null)
-    const cell = CELL_LIST.find((c) => c.id === pending)
-    const element = cell === undefined ? null : cellElement(cell)
-    if (element === null) return
-    // Focus first, and with no scroll of its own, so the browser's idea of
-    // where a focused element belongs does not fight the one below.
-    element.querySelector<HTMLElement>('.disclosure-heading')?.focus({ preventScroll: true })
-    window.scrollTo({
-      top: scrollTargetFor(element.getBoundingClientRect(), clearTo(), window.scrollY),
-      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
-    })
+    landOnCell(pending)
     follow()
   }, [pending, follow])
 

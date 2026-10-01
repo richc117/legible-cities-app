@@ -5,7 +5,7 @@
 // page.
 
 import { describe, expect, it, vi } from 'vitest'
-import { Viewer } from '../../src/main/viewer'
+import { Viewer, roleOfAddress } from '../../src/main/viewer'
 import { VIEWER_METHODS, VIEWER_SANDBOX, isViewerMethod } from '../../src/shared/viewer'
 
 interface StubFrame {
@@ -13,12 +13,27 @@ interface StubFrame {
   executeJavaScript: ReturnType<typeof vi.fn>
 }
 
-function stub(childUrl = 'app://local/projects/abcdefghijk1/la.html') {
-  const child: StubFrame = {
-    url: childUrl,
-    executeJavaScript: vi.fn(async () => ({ ok: true, value: { viewName: 'schematic' } })),
+/** The map's own address, as `pageUrl` in `Viewer.tsx` writes it. */
+const MAP = 'app://local/projects/abcdefghijk1/la.html?present=1&controls=1&theme=dark&redraw=0'
+/** A planned address as the engine's `url_for` writes it, with the safe zones. */
+const PLANNED_SAFE =
+  'app://local/projects/abcdefghijk1/la.html?present=1&view=map&labels=1&title=1&clock=1&theme=dark&frame=1080:1920&frametop=0.46&safe=1'
+/** A planned address for a preset with no safe zones: no `safe`, and no `controls`. */
+const PLANNED_PLAIN =
+  'app://local/projects/abcdefghijk1/la.html?present=1&view=map&labels=1&title=1&clock=0&theme=dark&frame=1200:627&frametop=0.46'
+
+const frameAt = (url: string): StubFrame => ({
+  url,
+  executeJavaScript: vi.fn(async () => ({ ok: true, value: { viewName: 'schematic' } })),
+})
+
+function stub(childUrl = MAP) {
+  const child = frameAt(childUrl)
+  const main = {
+    url: 'app://local/ui/',
+    frames: [child] as StubFrame[],
+    executeJavaScript: vi.fn(),
   }
-  const main = { url: 'app://local/ui/', frames: [child], executeJavaScript: vi.fn() }
   const contents = { mainFrame: main }
   return { contents: contents as never, main, child }
 }
@@ -27,34 +42,134 @@ describe('holding a frame', () => {
   it('holds the frame showing the project asked for', () => {
     const { contents } = stub()
     const viewer = new Viewer()
-    expect(viewer.attach(contents, 'abcdefghijk1')).toBe(true)
-    expect(viewer.projectId).toBe('abcdefghijk1')
+    expect(viewer.attach(contents, 'abcdefghijk1', 'map')).toBe(true)
+    expect(viewer.projectIdOf('map')).toBe('abcdefghijk1')
   })
 
   it('refuses when no frame is showing that project', () => {
     const { contents } = stub('app://local/projects/zzzzzzzzzzz1/la.html')
     const viewer = new Viewer()
-    expect(viewer.attach(contents, 'abcdefghijk1')).toBe(false)
-    expect(viewer.projectId).toBeNull()
+    expect(viewer.attach(contents, 'abcdefghijk1', 'map')).toBe(false)
+    expect(viewer.projectIdOf('map')).toBeNull()
   })
 
   it('never holds the interface own frame, even if its address matched', () => {
     const main = {
-      url: 'app://local/projects/abcdefghijk1/la.html',
+      url: MAP,
       frames: [] as unknown[],
       executeJavaScript: vi.fn(),
     }
     main.frames = [main]
     const viewer = new Viewer()
-    expect(viewer.attach({ mainFrame: main } as never, 'abcdefghijk1')).toBe(false)
+    expect(viewer.attach({ mainFrame: main } as never, 'abcdefghijk1', 'map')).toBe(false)
+    expect(viewer.attach({ mainFrame: main } as never, 'abcdefghijk1', 'export')).toBe(false)
   })
 
   it('lets go, and a second attach replaces the first', () => {
     const { contents } = stub()
     const viewer = new Viewer()
-    viewer.attach(contents, 'abcdefghijk1')
-    viewer.release()
-    expect(viewer.projectId).toBeNull()
+    viewer.attach(contents, 'abcdefghijk1', 'map')
+    viewer.release('map')
+    expect(viewer.projectIdOf('map')).toBeNull()
+  })
+})
+
+// Two frames per window since ADR-046: the map in the notebook's flow, and
+// cell 06's preview of the export. Which is which is decided at attach and
+// never at use (specs/029, FR-006).
+describe('two frames, by role', () => {
+  it('reads an address as the map, the export, or neither', () => {
+    expect(roleOfAddress(MAP, 'abcdefghijk1')).toBe('map')
+    expect(roleOfAddress(PLANNED_SAFE, 'abcdefghijk1')).toBe('export')
+    expect(roleOfAddress(PLANNED_PLAIN, 'abcdefghijk1')).toBe('export')
+    // Another project's page is neither, whatever its query says.
+    expect(roleOfAddress(MAP.replace('abcdefghijk1', 'zzzzzzzzzzz1'), 'abcdefghijk1')).toBeNull()
+    expect(roleOfAddress('app://local/ui/index.html?controls=1', 'abcdefghijk1')).toBeNull()
+  })
+
+  it('never reads an address carrying safe=1 as the map, whatever else it carries', () => {
+    for (const url of [
+      `${MAP}&safe=1`,
+      MAP.replace('controls=1', 'safe=1&controls=1'),
+      `${PLANNED_SAFE}&controls=1`,
+    ])
+      expect(roleOfAddress(url, 'abcdefghijk1'), url).toBe('export')
+  })
+
+  it('holds each frame in its own role, and drives the one a call names', async () => {
+    const { contents, main } = stub()
+    const map = main.frames[0]
+    const preview = frameAt(PLANNED_SAFE)
+    main.frames.push(preview)
+    const viewer = new Viewer()
+    expect(viewer.attach(contents, 'abcdefghijk1', 'map')).toBe(true)
+    expect(viewer.attach(contents, 'abcdefghijk1', 'export')).toBe(true)
+    await viewer.call(contents, 'map', 'seek', [30_600])
+    expect(map.executeJavaScript).toHaveBeenCalledTimes(1)
+    expect(preview.executeJavaScript).not.toHaveBeenCalled()
+    await viewer.call(contents, 'export', 'state', [])
+    expect(preview.executeJavaScript).toHaveBeenCalledTimes(1)
+    expect(map.executeJavaScript).toHaveBeenCalledTimes(1)
+  })
+
+  it('never holds a safe=1 frame as the map, even when it is the only frame there', () => {
+    const { contents } = stub(PLANNED_SAFE)
+    const viewer = new Viewer()
+    expect(viewer.attach(contents, 'abcdefghijk1', 'map')).toBe(false)
+    expect(viewer.projectIdOf('map')).toBeNull()
+    expect(viewer.attach(contents, 'abcdefghijk1', 'export')).toBe(true)
+  })
+
+  it('finds the map wherever it is among the frames, and the export likewise', () => {
+    // The export's frame comes first in the document's order of frames when
+    // cell 06 is above the map in some future arrangement; the role, not the
+    // order, decides.
+    const { contents, main } = stub(PLANNED_PLAIN)
+    const map = frameAt(MAP)
+    main.frames.push(map)
+    const viewer = new Viewer()
+    expect(viewer.attach(contents, 'abcdefghijk1', 'map')).toBe(true)
+    void viewer.call(contents, 'map', 'state', [])
+    expect(map.executeJavaScript).toHaveBeenCalledTimes(1)
+    expect(main.frames[0].executeJavaScript).not.toHaveBeenCalled()
+  })
+
+  it('lets go of one role and keeps the other', async () => {
+    const { contents, main } = stub()
+    main.frames.push(frameAt(PLANNED_SAFE))
+    const viewer = new Viewer()
+    viewer.attach(contents, 'abcdefghijk1', 'map')
+    viewer.attach(contents, 'abcdefghijk1', 'export')
+    viewer.release('export')
+    expect(viewer.projectIdOf('export')).toBeNull()
+    expect(viewer.projectIdOf('map')).toBe('abcdefghijk1')
+    await expect(viewer.call(contents, 'export', 'state', [])).rejects.toThrow(/not on the screen/)
+    await expect(viewer.call(contents, 'map', 'state', [])).resolves.toEqual({
+      viewName: 'schematic',
+    })
+  })
+
+  it('asks the export frame whether it has loaded, and nothing else', async () => {
+    const { contents, main } = stub()
+    const preview = frameAt(PLANNED_SAFE)
+    main.frames.push(preview)
+    const viewer = new Viewer()
+    viewer.attach(contents, 'abcdefghijk1', 'export')
+    for (const method of ['seek', 'setPlaying', 'setSpeed', 'showView', 'setLabels', 'bounds'])
+      await expect(viewer.call(contents, 'export', method, [1]), method).rejects.toThrow(
+        /not driven/,
+      )
+    expect(preview.executeJavaScript).not.toHaveBeenCalled()
+  })
+
+  it('never takes the frame the other role holds, whatever its address has become', () => {
+    // The map's page navigates itself to a planned address: it is still the
+    // map's frame by identity, and the export's attach looks elsewhere.
+    const { contents, main } = stub()
+    const viewer = new Viewer()
+    viewer.attach(contents, 'abcdefghijk1', 'map')
+    main.frames[0].url = PLANNED_PLAIN
+    expect(viewer.attach(contents, 'abcdefghijk1', 'export')).toBe(false)
   })
 })
 
@@ -62,8 +177,8 @@ describe('driving the page', () => {
   it('passes one of the page own methods, with its arguments as data', async () => {
     const { contents, child } = stub()
     const viewer = new Viewer()
-    viewer.attach(contents, 'abcdefghijk1')
-    await viewer.call(contents, 'showView', ['linear', 300])
+    viewer.attach(contents, 'abcdefghijk1', 'map')
+    await viewer.call(contents, 'map', 'showView', ['linear', 300])
     const injected = child.executeJavaScript.mock.calls[0][0] as string
     expect(injected).toContain('"showView"')
     // Nothing a caller sends becomes code: the arguments are a JSON string
@@ -81,7 +196,7 @@ describe('driving the page', () => {
   it('sends a hostile-looking argument as data, not as syntax', async () => {
     const { contents, child } = stub()
     const viewer = new Viewer()
-    viewer.attach(contents, 'abcdefghijk1')
+    viewer.attach(contents, 'abcdefghijk1', 'map')
     const hostile = [
       'a"); window.__owned = 1; ("',
       "b'); window.__owned = 2; ('",
@@ -89,7 +204,7 @@ describe('driving the page', () => {
       '</script><img src=x onerror=1>',
       '\\" + (window.__owned = 3) + \\"',
     ]
-    await viewer.call(contents, 'setRoutes', [hostile])
+    await viewer.call(contents, 'map', 'setRoutes', [hostile])
     const injected = child.executeJavaScript.mock.calls[0][0] as string
 
     let received: unknown[] = []
@@ -115,11 +230,11 @@ describe('driving the page', () => {
   it('sends __proto__ as a key rather than as the prototype setter', async () => {
     const { contents, child } = stub()
     const viewer = new Viewer()
-    viewer.attach(contents, 'abcdefghijk1')
+    viewer.attach(contents, 'abcdefghijk1', 'map')
     // Built from JSON so it has an own `__proto__` key: written as a literal
     // it would set the prototype and never be an own property at all.
     const withKey = JSON.parse('{"__proto__":{"polluted":true}}') as object
-    await viewer.call(contents, 'seek', [withKey])
+    await viewer.call(contents, 'map', 'seek', [withKey])
     const injected = child.executeJavaScript.mock.calls[0][0] as string
     let received: unknown[] = []
     const page = {
@@ -139,16 +254,18 @@ describe('driving the page', () => {
   it('answers with what the page returned', async () => {
     const { contents } = stub()
     const viewer = new Viewer()
-    viewer.attach(contents, 'abcdefghijk1')
-    await expect(viewer.call(contents, 'state', [])).resolves.toEqual({ viewName: 'schematic' })
+    viewer.attach(contents, 'abcdefghijk1', 'map')
+    await expect(viewer.call(contents, 'map', 'state', [])).resolves.toEqual({
+      viewName: 'schematic',
+    })
   })
 
   it('refuses a method the page does not expose, before anything is injected', async () => {
     const { contents, child } = stub()
     const viewer = new Viewer()
-    viewer.attach(contents, 'abcdefghijk1')
+    viewer.attach(contents, 'abcdefghijk1', 'map')
     for (const method of ['eval', 'setCapture', 'constructor', '__proto__', 'onDraw', '']) {
-      await expect(viewer.call(contents, method, []), method).rejects.toThrow(/can be asked/)
+      await expect(viewer.call(contents, 'map', method, []), method).rejects.toThrow(/can be asked/)
     }
     expect(child.executeJavaScript).not.toHaveBeenCalled()
   })
@@ -156,7 +273,7 @@ describe('driving the page', () => {
   it('refuses when it is holding nothing', async () => {
     const { contents } = stub()
     const viewer = new Viewer()
-    await expect(viewer.call(contents, 'state', [])).rejects.toThrow(/not on the screen/)
+    await expect(viewer.call(contents, 'map', 'state', [])).rejects.toThrow(/not on the screen/)
   })
 
   // A disposed frame throws on property access rather than answering, which
@@ -164,22 +281,24 @@ describe('driving the page', () => {
   it('refuses when reaching for the frame throws', async () => {
     const { contents, child } = stub()
     const viewer = new Viewer()
-    viewer.attach(contents, 'abcdefghijk1')
+    viewer.attach(contents, 'abcdefghijk1', 'map')
     const angry = {
       get mainFrame(): never {
         throw new Error('Render frame was disposed before WebFrameMain could be accessed')
       },
     }
-    await expect(viewer.call(angry as never, 'state', [])).rejects.toThrow(/not on the screen/)
+    await expect(viewer.call(angry as never, 'map', 'state', [])).rejects.toThrow(
+      /not on the screen/,
+    )
     expect(child.executeJavaScript).not.toHaveBeenCalled()
   })
 
   it('refuses once the frame it held has gone', async () => {
     const { contents, child, main } = stub()
     const viewer = new Viewer()
-    viewer.attach(contents, 'abcdefghijk1')
+    viewer.attach(contents, 'abcdefghijk1', 'map')
     main.frames = []
-    await expect(viewer.call(contents, 'state', [])).rejects.toThrow(/not on the screen/)
+    await expect(viewer.call(contents, 'map', 'state', [])).rejects.toThrow(/not on the screen/)
     expect(child.executeJavaScript).not.toHaveBeenCalled()
   })
 
@@ -187,27 +306,31 @@ describe('driving the page', () => {
     const { contents, child } = stub()
     child.executeJavaScript.mockResolvedValue({ ok: false, error: 'the map has no geography' })
     const viewer = new Viewer()
-    viewer.attach(contents, 'abcdefghijk1')
-    await expect(viewer.call(contents, 'hasGeo', [])).rejects.toThrow('the map has no geography')
+    viewer.attach(contents, 'abcdefghijk1', 'map')
+    await expect(viewer.call(contents, 'map', 'hasGeo', [])).rejects.toThrow(
+      'the map has no geography',
+    )
   })
 
   it('refuses an answer that is not the shape the dispatcher returns', async () => {
     const { contents, child } = stub()
     const viewer = new Viewer()
-    viewer.attach(contents, 'abcdefghijk1')
+    viewer.attach(contents, 'abcdefghijk1', 'map')
     for (const answer of [undefined, null, 'a string', 7]) {
       child.executeJavaScript.mockResolvedValue(answer)
-      await expect(viewer.call(contents, 'state', [])).rejects.toThrow(/did not answer|could not/)
+      await expect(viewer.call(contents, 'map', 'state', [])).rejects.toThrow(
+        /did not answer|could not/,
+      )
     }
   })
 
   it('refuses arguments that cannot be sent as data', async () => {
     const { contents } = stub()
     const viewer = new Viewer()
-    viewer.attach(contents, 'abcdefghijk1')
+    viewer.attach(contents, 'abcdefghijk1', 'map')
     const cycle: Record<string, unknown> = {}
     cycle.self = cycle
-    await expect(viewer.call(contents, 'seek', [cycle])).rejects.toThrow(/cannot be asked/)
+    await expect(viewer.call(contents, 'map', 'seek', [cycle])).rejects.toThrow(/cannot be asked/)
   })
 })
 

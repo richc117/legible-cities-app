@@ -15,7 +15,7 @@ import type { FirstRunResult } from './first-run'
 import type { LayoutDone, LayoutResult } from './layout'
 import type { LicencesView } from './licences'
 import type { AppTheme, FolderSize, ResetOutcome, SettingsView } from './settings'
-import type { ViewerMethod } from './viewer'
+import type { ViewerMethod, ViewerRole } from './viewer'
 import type {
   CreateProjectInput,
   DeleteResult,
@@ -159,16 +159,18 @@ export interface Api {
     setExport(id: string, choice: ExportChoice): Promise<ProjectRecord>
   }
   /**
-   * The map on the screen. The page runs in a sandboxed frame at an opaque
-   * origin and cannot reach any of this; the app reaches into it from the
-   * privileged process instead (ADR-028).
+   * The engine's pages on the screen. Each runs in a sandboxed frame at an
+   * opaque origin and cannot reach any of this; the app reaches into it from
+   * the privileged process instead (ADR-028). Two frames, by role (ADR-046):
+   * the `map` in the notebook's flow, and the `export` preview cell 06
+   * mounts while it is open, which is asked only whether it has loaded.
    */
   viewer: {
-    /** Hold the frame showing this project. False if it is not there. */
-    attach(projectId: string): Promise<boolean>
-    release(): Promise<void>
-    /** One of the page's own methods, with its arguments. */
-    call(method: ViewerMethod, ...args: unknown[]): Promise<unknown>
+    /** Hold the frame showing this project in this role. False if it is not there. */
+    attach(projectId: string, role: ViewerRole): Promise<boolean>
+    release(role: ViewerRole): Promise<void>
+    /** One of the page's own methods, with its arguments, in the frame held for the role. */
+    call(role: ViewerRole, method: ViewerMethod, ...args: unknown[]): Promise<unknown>
   }
   // Untyped beyond "a method name and an object" on purpose: the bridge is
   // transport and should not know the engine's methods. The typed client

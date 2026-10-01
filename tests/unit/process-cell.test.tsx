@@ -108,6 +108,7 @@ function draw(
     project: { ...project, readOnly },
     engine: READY,
     run: idle,
+    runSnapshot: idle.snapshot,
     exporting: false,
     layingOut: false,
   } as unknown as ProjectState

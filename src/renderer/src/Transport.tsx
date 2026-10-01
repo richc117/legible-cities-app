@@ -44,9 +44,12 @@ import { useSnapshot } from './useSnapshot'
 // page. A collapsed cell keeps its controls mounted - `Cell.tsx` hides them
 // rather than unmounting, so a half-typed value is never lost - which means
 // an effect that polled on mount would go on asking the page for the whole
-// life of the screen with nobody reading the answer; and while a run, an
-// export or cell 06's preview holds the page every act here is refused, so
-// a poll then reads a clock nobody may move. `pollsNow` has both halves.
+// life of the screen with nobody reading the answer; and while a run or an
+// export holds the page every act here is refused, so a poll then reads a
+// clock nobody may move. `pollsNow` has both halves. Cell 06's preview no
+// longer holds it: since ADR-046 the export has a frame of its own, and
+// every call here names the map's (`'map'`), so the transport drives the
+// map whatever cell 06 is doing.
 
 /** What the section is called, as its heading and as its region's name. */
 const NAME = 'Transport'
@@ -97,7 +100,6 @@ export default function Transport({
   open,
   laying,
   exporting,
-  previewing,
 }: {
   projectId: string
   /**
@@ -112,8 +114,6 @@ export default function Transport({
   laying: boolean
   /** An export is reading the page frame by frame. */
   exporting: boolean
-  /** Cell 06 has the map showing what the export will frame. */
-  previewing: boolean
 }): JSX.Element | null {
   const memory = transportFor(projectId)
   const remembered = useSnapshot(memory)
@@ -128,7 +128,7 @@ export default function Transport({
   const held = useRef(0)
   const scrubId = useId()
 
-  const why = transportRefusal({ laying, exporting, previewing })
+  const why = transportRefusal({ laying, exporting })
   // The reason goes, so does the sentence. A refusal left standing after
   // the run that caused it has ended reads as a control that is broken.
   useEffect(() => {
@@ -149,7 +149,7 @@ export default function Transport({
     if (!pollsNow(open, why)) return undefined
     let off = false
     const poll = makePoll(
-      (method) => window.api.viewer.call(method),
+      (method) => window.api.viewer.call('map', method),
       ({ bounds: found, clock: at }) => {
         if (off) return
         if (found !== null) setBounds(found)
@@ -185,12 +185,12 @@ export default function Transport({
     seekRef.current = (at: number): void => {
       const mine = (seeks.current += 1)
       void window.api.viewer
-        .call('seek', at)
+        .call('map', 'seek', at)
         // Read straight back, so what is on screen is the page's own answer
         // and the page's own formatting rather than the app's guess at
         // either: the page clamps a seek to its own day, and the clock is a
         // string only it knows how to write.
-        .then(() => window.api.viewer.call('state'))
+        .then(() => window.api.viewer.call('map', 'state'))
         .then((answer) => {
           const said = readClock(answer)
           if (said === null || mine !== seeks.current) return
@@ -251,13 +251,13 @@ export default function Transport({
     if (!allowed()) return
     const next = !playing
     memory.remember({ playing: next })
-    void window.api.viewer.call('setPlaying', next).catch(() => undefined)
+    void window.api.viewer.call('map', 'setPlaying', next).catch(() => undefined)
   }
 
   const choose = (rate: number): void => {
     if (!allowed()) return
     memory.remember({ speed: rate })
-    void window.api.viewer.call('setSpeed', rate).catch(() => undefined)
+    void window.api.viewer.call('map', 'setSpeed', rate).catch(() => undefined)
   }
 
   // Nothing until the page has said what day it has. A page that is not
