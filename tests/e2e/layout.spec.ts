@@ -1953,7 +1953,14 @@ test('a row’s facts end at the far edge of the name’s line, or start under t
     await app.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0].setContentSize(640, 720)
     })
-    await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(640)
+    // Asked for 640 and read back: a platform that will not make it quite
+    // that narrow (this display's window manager gave 584) still gives a
+    // column as narrow as the test needs, which is narrower than a row that
+    // could hold the longest name on one line, so what is required is
+    // narrow, not exactly 640.
+    await expect
+      .poll(() => page.evaluate(() => window.innerWidth), { timeout: 10_000 })
+      .toBeLessThanOrEqual(700)
 
     const rows = await list.getByRole('button').evaluateAll((all) =>
       all.map((row) => {

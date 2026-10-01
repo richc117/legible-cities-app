@@ -137,7 +137,14 @@ test('a Library row holds what it has, however many lines that takes', async () 
     await app.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0].setContentSize(640, 720)
     })
-    await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(640)
+    // Asked for 640 and read back: a platform that will not make it quite
+    // that narrow (this display's window manager gave 584) still gives a
+    // column as narrow as the test needs, which is narrower than a row that
+    // could hold the longest name on one line, so what is required is
+    // narrow, not exactly 640.
+    await expect
+      .poll(() => page.evaluate(() => window.innerWidth), { timeout: 10_000 })
+      .toBeLessThanOrEqual(700)
     const long = 'Los Angeles County Metropolitan Transportation Authority, Metro Rail'
     // As long as a name may be, with nowhere in it to break.
     const unbroken = 'Metropolitan'.repeat(10)
