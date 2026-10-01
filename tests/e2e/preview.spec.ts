@@ -420,7 +420,12 @@ test('the map is a block in the column after cell 02, and scrolls with it', asyn
       before: block.previousElementSibling?.getAttribute('data-cell') ?? null,
       after: block.nextElementSibling?.getAttribute('data-cell') ?? null,
       position: getComputedStyle(block).position,
+      // A popover is `position: fixed` by the browser's own style even while
+      // it is closed, and it lives in the top layer, out of the flow: it is
+      // not something the column pins (the colour picker's panels are the
+      // ones in a cell).
       pinned: [block, ...document.querySelectorAll('.notebook *')]
+        .filter((el) => !el.matches('[popover]'))
         .filter((el) => ['sticky', 'fixed'].includes(getComputedStyle(el).position))
         .map((el) => `${el.tagName.toLowerCase()}.${el.className}`),
     }))
