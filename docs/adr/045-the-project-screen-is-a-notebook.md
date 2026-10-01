@@ -3,7 +3,8 @@
 - **Status:** Accepted
 - **Date:** 2026-09-22
 - **Supersedes:** ADR-036, in part (the left rail's deferral)
-- **Superseded by:** none
+- **Superseded by:** ADR-046, in part (the map pinned under the header, and
+  the one frame per project)
 
 ## Context
 
