@@ -153,7 +153,18 @@ test("a cell's prose is 16px on 24px lines, in the serif, in both themes", async
 test('a Library row holds what it has, however many lines that takes', async () => {
   // Issue 269. The kit gives every native button one control's height, and
   // a row that wrapped hung below its own rule, over the row after it.
-  await withApp(async (page) => {
+  await withApp(async (page, app) => {
+    // The window at its narrowest, where the column is 640 wide (A7-05). In
+    // a wider window the column widens to `--measure-wide`, and a row of
+    // nearly a thousand pixels holds the longest name a project may have on
+    // one line, so the row this test is about - one that has to break its
+    // name - could not be made. Measured at the window's own width rather
+    // than an emulated one: the app sets the window, and it is the window a
+    // person drags.
+    await app.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0].setContentSize(640, 720)
+    })
+    await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(640)
     const long = 'Los Angeles County Metropolitan Transportation Authority, Metro Rail'
     // As long as a name may be, with nowhere in it to break.
     const unbroken = 'Metropolitan'.repeat(10)
@@ -194,6 +205,18 @@ test('a Library row holds what it has, however many lines that takes', async () 
         }
       }),
     )
+    // The window is the window, however long a name: the shell's one
+    // column used to take the unbroken name's width as its own, 932 in this
+    // 640 window, and the page scrolled sideways (A7-05).
+    const sideways = await page.evaluate(() => ({
+      scroll: document.documentElement.scrollWidth,
+      client: document.documentElement.clientWidth,
+      main: document.querySelector('.app-main')?.getBoundingClientRect().width ?? -1,
+    }))
+    expect(sideways.scroll, 'the page does not scroll sideways').toBeLessThanOrEqual(
+      sideways.client,
+    )
+    expect(sideways.main, 'the main region is the window').toBeCloseTo(sideways.client, 0)
     const lines = (name: string): number | undefined =>
       measured.find((row) => row.name === `Open ${name}`)?.nameLines
     // The test is about a row that has to break its name, so it says so if

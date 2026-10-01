@@ -5,14 +5,20 @@
 
    Fixed under the header and scrolled on its own, which is what the
    inspector already does on the other side of the window at the narrow
-   width. Fixed rather than in the flow, for one reason: the map breaks out
-   of the reading column to the window's own width (`panels.css`,
-   `.viewer`), and that width is arithmetic over `100vw`. A region in the
-   flow would be invisible to that arithmetic and the map would be drawn
-   over it. So the rail takes its space the way the inspector takes its
-   space - through a variable the same arithmetic subtracts. That variable
-   is `--rail-space`, declared in `project.css` beside the padding that
-   matches it, and this file only spends it.
+   width. It takes its space through a variable, `--rail-space`, declared
+   in `project.css` beside the main region's padding that matches it, and
+   this file only spends it.
+
+   Why it is fixed rather than in the flow is history now. When it was
+   made, the map broke out of a reading-measure column to the window's own
+   width (`panels.css`, `.viewer`) with arithmetic over `100vw`, which a
+   region in the flow would have been invisible to, so the map would have
+   been drawn over it; the rail took its space the way the inspector did,
+   through a variable that arithmetic subtracted. Since A7-05 the column is
+   the main region's own width up to `--measure-wide` and the map fills it,
+   so nothing subtracts the rail any more. It stays fixed because it
+   scrolls on its own and is pinned under the header, and the padding is
+   what keeps the column clear of it.
 
    A stylesheet is named for a region of the interface, not for a
    component, and the four token files stay the only place a literal may
@@ -20,8 +26,7 @@
 
 /* The width is `--rail-space` and not a width of its own, and that is
    load-bearing rather than tidy. The same variable is the main region's
-   `padding-left` and the term the map subtracts from `100vw`
-   (`project.css`, `panels.css`), so the rail's box and the space reserved
+   `padding-left` (`project.css`), so the rail's box and the space reserved
    for it are one value and cannot drift apart. If they ever did, the band
    is opaque and would take the presses meant for a step, with nothing to
    fail. A rule that gave this a width of its own would be that bug.

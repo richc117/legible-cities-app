@@ -67,9 +67,12 @@
   --picker-size: 200px;
   --dialog-width: 28rem;
   --dialog-width-wide: 40rem;
+  /* The reading measure: prose and form fields, inside the column. */
   --measure: 40rem;
   --fields-term-width: 7rem;
-  /* What the viewer takes: wider than prose, because a map is not read. */
+  /* The column every screen takes, the map included (A7-05): the main
+     region's width up to this, wider than prose because most of a screen
+     is rows, lists and a map, which are not read line by line. */
   --measure-wide: 64rem;
   /* A tooltip's measure: a sentence or two, never a column of prose. */
   --tooltip-width: 20rem;
