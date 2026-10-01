@@ -677,6 +677,16 @@ test('the three screens are one column up to the wide measure, and the map fills
             }))
           return { h1, items }
         })
+        // Sentences keep the measure here too, though they are not `.prose`:
+        // a line of messages the full width of the column would run past
+        // what a person can read in one sweep of the eye.
+        const messages = await page.evaluate(() =>
+          [...document.querySelectorAll('.settings .message')]
+            .filter((el) => el.getClientRects().length > 0 && (el.textContent ?? '').trim() !== '')
+            .map((el) => el.getBoundingClientRect().width),
+        )
+        expect(messages.length, 'Settings has messages to measure').toBeGreaterThan(0)
+        for (const width of messages) expect(width).toBeLessThanOrEqual(MEASURE + 0.5)
         expect(edges.h1, 'Settings has its heading').not.toBeNull()
         expect(edges.items.length, 'and groups under it').toBeGreaterThan(10)
         for (const item of edges.items)
@@ -701,14 +711,22 @@ test('the three screens are one column up to the wide measure, and the map fills
       // window asked for 1600 on a 1512 display was 1600 for the first read
       // and 1512 two hundred milliseconds later. So that size is skipped,
       // and said to be, rather than measured at whatever the window became.
+      // Only macOS does that. On a Linux display server with no window
+      // manager (the CI job's, whose default screen is small) a window can
+      // be as wide as it is asked, and skipping by the screen's size would
+      // skip every size and measure nothing; there the window is asked and
+      // its width read back. Windows may clamp a window to its display:
+      // that is found by the width read back too, and said.
       const work = await app.evaluate(({ BrowserWindow, screen }) => {
         const win = BrowserWindow.getAllWindows()[0]
         return screen.getDisplayMatching(win.getBounds()).workArea.width
       })
-      if (w > work) {
-        const why = `${size} not measured: the display's work area is ${work} wide`
+      const skip = (why: string): void => {
         test.info().annotations.push({ type: 'size not made', description: why })
         console.warn(`  ${why}`)
+      }
+      if (process.platform === 'darwin' && w > work) {
+        skip(`${size} not measured: the display's work area is ${work} wide`)
         continue
       }
       await app.evaluate(
@@ -717,7 +735,12 @@ test('the three screens are one column up to the wide measure, and the map fills
         },
         { w, h: ht },
       )
-      await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(w)
+      try {
+        await expect.poll(() => page.evaluate(() => window.innerWidth), { timeout: 5_000 }).toBe(w)
+      } catch {
+        skip(`${size} not measured: the window would not be ${w} wide here (work area ${work})`)
+        continue
+      }
       made.push(size)
 
       for (const screen of ['Library', 'Settings', 'Los Angeles'] as const) {
@@ -736,5 +759,14 @@ test('the three screens are one column up to the wide measure, and the map fills
       }
     }
     expect(made.length, 'at least one size was measured').toBeGreaterThan(0)
+    // The cap and the inspector beside the region are only seen above the
+    // narrow width. Where nothing can clamp the window (Linux under a
+    // display server) one such size must have been measured, or the test
+    // would be green having measured neither.
+    if (process.platform === 'linux')
+      expect(
+        made.filter((size) => Number.parseInt(size, 10) > 900).length,
+        'a size above the narrow width was measured',
+      ).toBeGreaterThan(0)
   })
 })

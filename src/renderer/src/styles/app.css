@@ -629,6 +629,12 @@ button:is(.cell-head):not([icon]):has(svg:first-child) {
   margin: 0 0 var(--space-4-6);
 }
 
+.settings .message {
+  /* A sentence keeps the reading measure in the wide column, as `.prose`
+     does (issue 277). */
+  max-width: var(--measure);
+}
+
 .settings h2 {
   font-size: var(--font-ui-medium);
   line-height: var(--line-ui);
