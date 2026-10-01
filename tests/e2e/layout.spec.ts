@@ -38,6 +38,19 @@ import {
 } from '../support/project'
 
 const repoRoot = resolve(__dirname, '../..')
+
+/**
+ * Open a cell by its row, without waiting for any one panel in it: a
+ * laid-out project opens with cells 01 and 02 collapsed (ADR-046), and a
+ * record from an older version may draw a cell without the panel
+ * `openCell` waits for.
+ */
+async function expandCell(page: Page, id: 'data' | 'process'): Promise<void> {
+  const row = cellHeading(page, id)
+  await expect(row).toBeVisible()
+  if ((await row.getAttribute('aria-expanded')) !== 'true') await row.click()
+  await expect(row).toHaveAttribute('aria-expanded', 'true')
+}
 const PYTHON = findPython()
 
 test.skip(PYTHON === null, 'no python3 or python on the PATH to run the stand-in engine')
@@ -821,6 +834,8 @@ test('a project from before the window was stored keeps its day and gains the wi
   )
   await withApp(engineHome, async (page) => {
     await page.getByRole('button', { name: 'Open Older' }).click()
+    // A laid-out project opens with cell 02 collapsed (ADR-046).
+    await expandCell(page, 'process')
     const section = cell(page, 'frame')
     await expect(section).toContainText('Drawn for 2026-05-04')
     await expect(section).toContainText(/Lay the project out again to learn which days/)
@@ -940,6 +955,8 @@ test('a project is told when another re-laid out the layout it draws from', asyn
     // One lays out again and is told.
     await page.getByRole('button', { name: /back to library/i }).click()
     await page.getByRole('button', { name: 'Open One' }).click()
+    // A laid-out project opens with cell 02 collapsed (ADR-046).
+    await expandCell(page, 'process')
     await page.getByRole('button', { name: 'Lay out again' }).click()
     await expect(page.getByText(/laid out again from another project/)).toBeVisible({
       timeout: 30_000,
@@ -949,6 +966,8 @@ test('a project is told when another re-laid out the layout it draws from', asyn
     // And once more: nothing has changed since.
     await page.getByRole('button', { name: /back to library/i }).click()
     await page.getByRole('button', { name: 'Open One' }).click()
+    // A laid-out project opens with cell 02 collapsed (ADR-046).
+    await expandCell(page, 'process')
     await page.getByRole('button', { name: 'Lay out again' }).click()
     await expect(page.getByText(/^Laid out\.$/)).toBeVisible({ timeout: 30_000 })
     expect(records().One.made, 'unchanged since').toBe(after.Two.made)
@@ -984,6 +1003,8 @@ test('a record from before made was stored gains it and is told nothing changed'
   )
   await withApp(engineHome, async (page) => {
     await page.getByRole('button', { name: 'Open Older' }).click()
+    // A laid-out project opens with cell 02 collapsed (ADR-046).
+    await expandCell(page, 'process')
     await page.getByRole('button', { name: 'Lay out again' }).click()
     // The same id, and no time to compare: nothing changed, as the id's
     // own first comparison behaves.
@@ -993,6 +1014,8 @@ test('a record from before made was stored gains it and is told nothing changed'
     expect(typeof once.made).toBe('string')
     await page.getByRole('button', { name: /back to library/i }).click()
     await page.getByRole('button', { name: 'Open Older' }).click()
+    // A laid-out project opens with cell 02 collapsed (ADR-046).
+    await expandCell(page, 'process')
     await page.getByRole('button', { name: 'Lay out again' }).click()
     await expect(page.getByText(/^Laid out\.$/)).toBeVisible({ timeout: 30_000 })
     expect(readRecord(engineHome).made).toBe(once.made)
@@ -1119,26 +1142,19 @@ test('opening the engine log leaves the notebook where it was', async () => {
     // this test did exactly that and reported a 1,868px jump the panel
     // cannot cause.
     //
-    // "In the window" stopped being enough when the map was pinned
-    // (A5.5-20, issue 213). The preview covers the top of the scrollport -
-    // half the window below the header - so the middle of the window, which
-    // is where this used to put the toggle, is behind the map: the toggle
-    // was in the viewport and not visible, the check below passed, and
-    // Playwright scrolled the band's own height to reach something it could
-    // actually click. This test then read those 332 pixels as the notebook
-    // moving. Issue 213 is that gap, and this is the second place it has
-    // bitten.
-    //
-    // So the toggle is centred in what the map does *not* cover. With
-    // nothing pinned - a project with no layout has no preview at all - the
-    // arithmetic is the middle of the window, which is what it was.
+    // "In the window" stopped being enough while the map was pinned
+    // (A5.5-20 to ADR-046, issue 213): the band covered the top half of the
+    // scrollport, and Playwright once scrolled the band's own height to
+    // reach a toggle that was in the viewport and behind the map, which
+    // this test read as the notebook moving. Nothing is pinned now but the
+    // header, so the toggle is centred in what the header does not cover.
     await logToggle(page).evaluate((el) => {
       el.scrollIntoView({ block: 'center' })
-      // Twice, because the map is sticky: moving the page can move what it
-      // covers, and the second pass settles against where it ended up.
+      // Twice: moving the page can move what is above, and the second pass
+      // settles against where it ended up.
       for (let pass = 0; pass < 2; pass += 1) {
         const box = el.getBoundingClientRect()
-        const covered = document.querySelector('.preview')?.getBoundingClientRect().bottom ?? 0
+        const covered = document.querySelector('.app-header')?.getBoundingClientRect().bottom ?? 0
         const middle = covered + (window.innerHeight - covered) / 2 - box.height / 2
         window.scrollBy(0, box.top - middle)
       }
@@ -1180,13 +1196,13 @@ test('opening the engine log leaves the notebook where it was', async () => {
     expect(
       await logToggle(page).evaluate((el) => {
         const box = el.getBoundingClientRect()
-        const covered = document.querySelector('.preview')?.getBoundingClientRect().bottom ?? 0
+        const covered = document.querySelector('.app-header')?.getBoundingClientRect().bottom ?? 0
         return {
           inTheWindow: box.top >= 0 && box.bottom <= window.innerHeight,
           clearOfTheMap: box.top >= covered,
         }
       }),
-      'the toggle is in view and clear of the pinned map, so clicking it cannot scroll the page',
+      'the toggle is in view and clear of the header, so clicking it cannot scroll the page',
     ).toEqual({ inTheWindow: true, clearOfTheMap: true })
 
     await logToggle(page).click()
@@ -1722,7 +1738,9 @@ test('a scrub while a run holds the page is refused with a sentence', async () =
     await expect(transport(page).getByRole('button', { name: 'Pause' })).toBeVisible()
 
     // The sentence goes when the reason does, rather than sitting there
-    // reading as a control that is broken.
+    // reading as a control that is broken. The run's own sentence is in
+    // cell 02, which a laid-out project opens collapsed (ADR-046).
+    await expandCell(page, 'process')
     await expect(page.getByText(/^Drawn for 2026-06-20 from the stored layout/)).toBeVisible({
       timeout: 30_000,
     })

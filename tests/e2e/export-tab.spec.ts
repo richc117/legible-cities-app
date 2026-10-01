@@ -181,15 +181,19 @@ const presetSelect = (page: Page): Locator =>
   exportPanel(page).getByRole('combobox', { name: 'Preset' })
 const exportButton = (page: Page): Locator =>
   exportPanel(page).getByRole('button', { name: 'Export', exact: true })
-const frame = (page: Page): Locator => page.locator('iframe.viewer-frame')
+/** Cell 06's own preview frame (ADR-046), there only while the cell is open. */
+const frame = (page: Page): Locator => page.locator('iframe.export-frame')
+/** The map's frame, which since ADR-046 is never sent to a planned address. */
+const mapFrame = (page: Page): Locator => page.locator('iframe.viewer-frame')
 
 async function openExportTab(page: Page): Promise<void> {
   await openCell(page, 'export')
   await expect(presetSelect(page)).toBeVisible({ timeout: 20_000 })
 }
 
-/** The address the map's frame shows, as search parameters. */
+/** The address cell 06's preview shows, as search parameters; none while it has no frame. */
 async function frameQuery(page: Page): Promise<URLSearchParams> {
+  if ((await frame(page).count()) === 0) return new URLSearchParams()
   const src = (await frame(page).getAttribute('src')) ?? ''
   return new URL(src).searchParams
 }
@@ -224,8 +228,13 @@ test('offers the thirteen social presets by platform, and previews the safe zone
   const h = home()
   await withApp(h, async (page) => {
     await laidOut(page, h)
-    // Under the map tab the frame is the plain map, with its own controls.
-    expect((await frameQuery(page)).get('controls')).toBe('1')
+    // Before cell 06 opens there is the map's frame, with its own controls,
+    // and no preview frame at all.
+    expect(
+      new URL((await mapFrame(page).getAttribute('src')) ?? '').searchParams.get('controls'),
+    ).toBe('1')
+    await expect(frame(page)).toHaveCount(0)
+    const map = await mapFrame(page).getAttribute('src')
     await openExportTab(page)
 
     const select = presetSelect(page)
@@ -258,10 +267,10 @@ test('offers the thirteen social presets by platform, and previews the safe zone
       .toBe('1')
     await expect(exportPanel(page).getByRole('combobox', { name: 'Storyboard' })).toHaveCount(0)
 
-    // The cell closed: the plain map again.
+    // The cell closed: its frame goes, and the map's was never moved.
     await closeCell(page, 'export')
-    await expect.poll(async () => (await frameQuery(page)).get('controls')).toBe('1')
-    expect((await frameQuery(page)).get('safe')).toBeNull()
+    await expect(frame(page)).toHaveCount(0)
+    expect(await mapFrame(page).getAttribute('src')).toBe(map)
   })
 })
 
