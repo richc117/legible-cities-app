@@ -78,6 +78,15 @@ interface Held {
 /** The frames this window's viewer is showing, by role. */
 export class Viewer {
   #held: Record<ViewerRole, Held | null> = { map: null, export: null }
+  /**
+   * The role each frame was first held in, by its place in the frame tree,
+   * for the life of this viewer. A frame that has been the map is never the
+   * export's, even when it is not held at the moment: a map page that sends
+   * itself to an address without `controls=1` reads as the export's by its
+   * address, fails to be re-attached as the map, and would otherwise be
+   * adopted by the next export attach with the roles swapped.
+   */
+  #roles = new Map<number, ViewerRole>()
   readonly #log: (message: string) => void
 
   constructor(log: (message: string) => void = () => {}) {
@@ -107,13 +116,17 @@ export class Viewer {
     this.release(role)
     const main = contents.mainFrame
     const other = this.#held[role === 'map' ? 'export' : 'map']?.frame ?? null
-    const frame = main.frames.find(
-      (child) => child !== main && child !== other && roleOfAddress(child.url, projectId) === role,
-    )
+    const frame = main.frames.find((child) => {
+      if (child === main || child === other) return false
+      if (roleOfAddress(child.url, projectId) !== role) return false
+      const was = this.#roles.get(child.frameTreeNodeId)
+      return was === undefined || was === role
+    })
     if (frame === undefined) {
       this.#log(`no ${role} frame for the project asked for`)
       return false
     }
+    this.#roles.set(frame.frameTreeNodeId, role)
     this.#held[role] = { frame, projectId }
     return true
   }

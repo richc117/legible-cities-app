@@ -10,8 +10,12 @@ import { VIEWER_METHODS, VIEWER_SANDBOX, isViewerMethod } from '../../src/shared
 
 interface StubFrame {
   url: string
+  /** Its place in the frame tree, which survives a navigation. */
+  frameTreeNodeId: number
   executeJavaScript: ReturnType<typeof vi.fn>
 }
+
+let nodes = 0
 
 /** The map's own address, as `pageUrl` in `Viewer.tsx` writes it. */
 const MAP = 'app://local/projects/abcdefghijk1/la.html?present=1&controls=1&theme=dark&redraw=0'
@@ -24,6 +28,7 @@ const PLANNED_PLAIN =
 
 const frameAt = (url: string): StubFrame => ({
   url,
+  frameTreeNodeId: (nodes += 1),
   executeJavaScript: vi.fn(async () => ({ ok: true, value: { viewName: 'schematic' } })),
 })
 
@@ -169,6 +174,35 @@ describe('two frames, by role', () => {
     const viewer = new Viewer()
     viewer.attach(contents, 'abcdefghijk1', 'map')
     main.frames[0].url = PLANNED_PLAIN
+    expect(viewer.attach(contents, 'abcdefghijk1', 'export')).toBe(false)
+  })
+
+  it('never gives the export the frame that was the map, even when the map is not held', async () => {
+    // The map's page sends itself to an address with no `controls=1`, so the
+    // renderer's re-attach as the map fails and the map is unheld. By its
+    // address that frame now reads as the export's, and the next export
+    // attach would adopt it with the roles swapped. It belongs to the role it
+    // was first held in, by its place in the frame tree.
+    const mapFrame = frameAt(MAP)
+    const exportFrame = frameAt(PLANNED_SAFE)
+    const main = {
+      url: 'app://local/ui/',
+      frames: [mapFrame, exportFrame] as StubFrame[],
+      executeJavaScript: vi.fn(),
+    }
+    const contents = { mainFrame: main } as never
+    const viewer = new Viewer()
+    expect(viewer.attach(contents, 'abcdefghijk1', 'map')).toBe(true)
+    mapFrame.url = PLANNED_PLAIN
+    expect(viewer.attach(contents, 'abcdefghijk1', 'map')).toBe(false)
+    expect(viewer.projectIdOf('map')).toBeNull()
+    expect(viewer.attach(contents, 'abcdefghijk1', 'export')).toBe(true)
+    await viewer.call(contents, 'export', 'state', [])
+    expect(exportFrame.executeJavaScript).toHaveBeenCalled()
+    expect(mapFrame.executeJavaScript).not.toHaveBeenCalled()
+    // And with no export frame of its own, the export finds nothing.
+    main.frames = [mapFrame]
+    viewer.release('export')
     expect(viewer.attach(contents, 'abcdefghijk1', 'export')).toBe(false)
   })
 })

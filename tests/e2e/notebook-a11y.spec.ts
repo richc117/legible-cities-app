@@ -830,6 +830,10 @@ test('the project screen: one press skips past the map to cell 03, the map stays
       type: 'Tab stops in the export frame',
       description: String(stops),
     })
+    // The stand-in's planned page has no controls without `controls=1`, so
+    // this count cannot fail on its own; the real planned page measured 0 by
+    // hand (and the map's own page 4), recorded in ADR-046. It holds the walk,
+    // not the number.
     expect(stops, 'the preview takes fewer than five Tab stops (FR-012)').toBeLessThan(5)
     expect(leftTo, 'focus came out of the preview: it is no trap').not.toBe('')
     await expect(

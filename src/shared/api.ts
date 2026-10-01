@@ -205,7 +205,7 @@ export interface Api {
   export: {
     run(projectId: string, choice: ExportChoice): ExportRequest
     /**
-     * The address the map's frame shows while the export tab is open: the
+     * The address cell 06's preview frame shows while the cell is open: the
      * engine's plan for this choice with the platform's safe zones drawn
      * where the preset has them. Planned, never captured; nothing is
      * written (specs/022-export-tab).

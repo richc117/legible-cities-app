@@ -27,9 +27,9 @@
 /* The width is `--rail-space` and not a width of its own, and that is
    load-bearing rather than tidy. The same variable is the main region's
    `padding-left` (`project.css`), so the rail's box and the space reserved
-   for it are one value and cannot drift apart. If they ever did, the band
-   is opaque and would take the presses meant for a step, with nothing to
-   fail. A rule that gave this a width of its own would be that bug.
+   for it are one value and cannot drift apart. If they ever did, the rail,
+   which is opaque, would take the presses meant for the main region's
+   controls beside it, with nothing to fail. A rule that gave this a width of its own would be that bug.
 
    Drawn one step under the header's layer, for the reason `preview.css`
    gives at length: how the header's forty pixels and its one-pixel rule

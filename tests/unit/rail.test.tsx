@@ -202,11 +202,9 @@ describe('a status is an icon and a word, never a hue alone', () => {
 describe('the rail’s width and the space kept for it are one value', () => {
   // The invariant that is actually load-bearing here, and it was a comment
   // alone. The rail is fixed, so it takes no width from the flow; the only
-  // thing keeping an opaque band off a region's presses is that `.rail`'s
-  // width and the main region's padding are the same variable. A `z-index`
-  // does not do it - the rail and the band compute to the same layer, and
-  // on a tie the band wins on document order, because the rail is rendered
-  // before the notebook's column.
+  // thing keeping the opaque rail off the presses meant for the main
+  // region's controls is that `.rail`'s width and the main region's padding
+  // are the same variable. A `z-index` would not do it.
   const read = (file: string): string =>
     readFileSync(resolve(__dirname, '../../src/renderer/src/styles', file), 'utf8').replace(
       /\/\*[\s\S]*?\*\//g,

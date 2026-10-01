@@ -138,7 +138,22 @@ test('a hostile page in the viewer cannot reach the app', async () => {
     await page.getByRole('button', { name: 'Open Los Angeles' }).click()
     await expect(page.getByRole('region', { name: 'Map' })).toBeVisible()
     const topUrl = page.url()
-    await page.waitForTimeout(2000)
+    // Until the hostile page has made every attempt, not for a fixed time.
+    await expect
+      .poll(
+        () =>
+          app.evaluate(async ({ BrowserWindow }) => {
+            const main = BrowserWindow.getAllWindows()[0].webContents.mainFrame
+            const frame = main.frames.find((f) => f !== main && f.url !== 'about:srcdoc')
+            return frame
+              ? ((await frame.executeJavaScript(
+                  'Object.keys(window.__tried || {}).length',
+                )) as number)
+              : 0
+          }),
+        { timeout: 15_000 },
+      )
+      .toBe(10)
 
     // The exact sandbox, and no second flag. This assertion is the boundary.
     await expect(page.locator('iframe.viewer-frame')).toHaveAttribute('sandbox', VIEWER_SANDBOX)
@@ -185,7 +200,21 @@ test('a hostile page in the viewer cannot reach the app', async () => {
     await expect(preview).toHaveCount(1, { timeout: 30_000 })
     await expect(preview).toHaveAttribute('sandbox', VIEWER_SANDBOX)
     await expect(page.locator('iframe.viewer-frame')).toHaveAttribute('sandbox', VIEWER_SANDBOX)
-    await page.waitForTimeout(2000)
+    await expect
+      .poll(
+        () =>
+          app.evaluate(async ({ BrowserWindow }) => {
+            const main = BrowserWindow.getAllWindows()[0].webContents.mainFrame
+            const frame = main.frames.find((f) => f !== main && /[?&]frame=/.test(f.url))
+            return frame
+              ? ((await frame.executeJavaScript(
+                  'Object.keys(window.__tried || {}).length',
+                )) as number)
+              : 0
+          }),
+        { timeout: 15_000 },
+      )
+      .toBe(10)
     const triedThere = (await app.evaluate(async ({ BrowserWindow }) => {
       const main = BrowserWindow.getAllWindows()[0].webContents.mainFrame
       const frame = main.frames.find((f) => f !== main && /[?&]frame=/.test(f.url))

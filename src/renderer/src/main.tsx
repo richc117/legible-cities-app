@@ -13,7 +13,7 @@ import ProgressPreview from './ProgressPreview'
 // order they are read against each other: the shell, the panels a project
 // is made of, the project's own screen, then the three regions of that
 // screen - the notebook's column and the cell's chrome, the rail, the
-// pinned preview, and the export's own (A5.5-07, A5.5-08, A5.5-19). No
+// map's block, and the export's own (A5.5-07, A5.5-08, A5.5-19). No
 // component imports a stylesheet; they are all imported here, and this
 // block is edited once per region rather than once per issue.
 import './styles/theme.css'

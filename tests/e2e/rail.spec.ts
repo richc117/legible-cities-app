@@ -156,16 +156,37 @@ test('a step opens its cell, lands it clear of the header, and focuses its headi
         .toBeGreaterThanOrEqual(-1)
     }
 
-    // Cell 03 has a document below it, so it lands at the header itself and
-    // not merely somewhere below it: a clearance deeper than the header (the
-    // band it used to clear) would leave it lower than this.
+    // Where the document is long enough to scroll that far, cell 03 lands at
+    // the header itself and not merely somewhere below it: a clearance deeper
+    // than the header (the band it used to clear) would leave it lower than
+    // this. Whether it is long enough depends on the window - a tall one
+    // cannot scroll as far - so the geometry is read first, and the other
+    // case is asserted too: the page scrolled as far as it can, and the cell
+    // is below the header.
     await page.evaluate(() => window.scrollTo(0, 0))
+    const geometry = await page.evaluate((cell) => {
+      const header = document.querySelector('.app-header')!.getBoundingClientRect().bottom
+      const top = document.querySelector(`.cell[data-cell="${cell}"]`)!.getBoundingClientRect().top
+      const root = document.scrollingElement!
+      return { wanted: top - header, room: root.scrollHeight - root.clientHeight }
+    }, '03')
     await step(page, /^03 Frame and service day, /).click()
-    await expect
-      .poll(async () => Math.abs((await cellTop(page, '03')) - (await headerFoot(page))), {
-        timeout: 10_000,
+    if (geometry.wanted <= geometry.room) {
+      await expect
+        .poll(async () => Math.abs((await cellTop(page, '03')) - (await headerFoot(page))), {
+          timeout: 10_000,
+        })
+        .toBeLessThanOrEqual(2)
+    } else {
+      test.info().annotations.push({
+        type: 'document too short to land at the header',
+        description: `wanted ${geometry.wanted}px of scroll, the page has ${geometry.room}px`,
       })
-      .toBeLessThanOrEqual(2)
+      await expect
+        .poll(() => page.evaluate(() => document.scrollingElement!.scrollTop), { timeout: 10_000 })
+        .toBeGreaterThanOrEqual(geometry.room - 2)
+      expect((await cellTop(page, '03')) - (await headerFoot(page))).toBeGreaterThanOrEqual(-1)
+    }
   })
 })
 
