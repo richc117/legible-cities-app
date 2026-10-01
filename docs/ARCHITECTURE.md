@@ -27,15 +27,17 @@ what.
 - **Main** (`src/main/`): the app lifecycle, the one window, the
   single-instance lock, the `app://` protocol handler, the project store
   and the handlers behind the bridge, configuration and the log, the
-  viewer's driver (the project page's frame, held by identity and injected
-  into from here), and the engine's supervisor: the one child process the
-  app starts.
+  viewer's driver (two frames per window, by role - the `map` and cell
+  06's `export` preview - each matched once at attach and then held by
+  identity and injected into from here; ADR-028, ADR-046), and the
+  engine's supervisor: the one child process the app starts.
 - **Preload** (`src/preload/`): a `contextBridge` exposing `window.api` and
   nothing else. `contextIsolation` on, `nodeIntegration` off, `sandbox` on.
 - **Renderer** (`src/renderer/`): React. It draws the Library (the front
   door) and its New project sheet, and a project as a notebook of six
-  cells under the viewer's sandboxed frame, with a header, a rail and a
-  foot (ADR-045; `docs/DESIGN.md` sections 8.2 and 9, and
+  cells with the viewer's sandboxed frame in the column between cells 02
+  and 03 and a second one inside cell 06 while it is open, with a header,
+  a rail and a foot (ADR-045, ADR-046; `docs/DESIGN.md` sections 8.2 and 9, and
   `specs/028-the-notebook/contracts/run-graph.md`, say how); it knows
   projects by identifier and never sees a path. It never draws a map: the engine's animation page
   is the viewer (constitution, principle I).
@@ -96,9 +98,9 @@ app's own settings under `api.settings`:
 | | both write a project's record, so both are refused while the engine's data is being reset, as every other record write is |
 | `feeds.pickZip()` | opens the platform's file chooser for a GTFS zip and remembers the answer; the one native dialog, since a page cannot choose a file (A2-01) |
 
-| `viewer.attach(projectId)` | holds the project page's frame by identity once it has loaded, and answers whether it did (ADR-028) |
-| `viewer.release()` | lets the frame go |
-| `viewer.call(method, ...args)` | one of the page's `__present` methods by name, run in the frame from the main process; a name outside the shared list is refused |
+| `viewer.attach(projectId, role)` | holds the project page's frame in a role, `map` or `export`, by identity once it has loaded, and answers whether it did (ADR-028). The role is read from the address once, here: `safe=1` is always the export's, the app's own `controls=1` the map's, and anything else under the project's folder a planned page without safe zones, the export's; the frame the other role holds is never taken (ADR-046) |
+| `viewer.release(role)` | lets that role's frame go, and keeps the other |
+| `viewer.call(role, method, ...args)` | one of the page's `__present` methods by name, run in the frame held for the role from the main process; a name outside the shared list is refused, and the export's frame is asked `state` (whether it loaded) and refused everything else |
 
 | `engine.state()` | the engine's state: starting, ready, restarting, unavailable, mismatched or stopped, with a reason where there is one |
 | `engine.request(method, params?)` | a request to the engine, as `{ id, result }`: the id is a token the preload mints, the result settles with the engine's answer or its error (`code`, `message`, `data: { kind, detail, hint }`) unchanged |
@@ -106,7 +108,7 @@ app's own settings under `api.settings`:
 | `engine.onState`, `onProgress`, `onLog` | subscriptions; each returns its unsubscribe |
 
 | `export.run(projectId, choice)` | an export of one preset with its storyboard and options, as `{ id, result }`: the main process asks the engine for the plan, takes the page's frames itself and asks the engine to encode them; the result is the file's name and size, never its path (A5-02b, A5-01) |
-| `export.preview(projectId, choice)` | the address the map's frame shows while cell 06 is open: the engine's plan for the choice with the safe zones asked for exactly where the preset has them; `{ ok, url, width, height, notes }` or the engine's refusal as data; nothing is captured or written (A5-01) |
+| `export.preview(projectId, choice)` | the address cell 06's own preview frame shows while the cell is open (ADR-046): the engine's plan for the choice with the safe zones asked for exactly where the preset has them; `{ ok, url, width, height, notes }` or the engine's refusal as data; nothing is captured or written (A5-01) |
 | `export.cancel(id)` | stops it wherever it is: the plan or encode request is cancelled, the capture aborted |
 | `export.reveal(id)` | shows a finished export's file in the platform's file browser; the page names the export, the main process knows the file |
 | `export.onProgress` | a subscription; each report names the stage (plan, capture, encode), how far it is, and a sentence |
@@ -1409,15 +1411,18 @@ a re-layout cannot write back the old layout. A saved
 preset or storyboard the engine no longer lists falls back to the reel,
 and cell 06 says which name was dropped.
 
-While cell 06 is open the map's own frame is the preview: not a second
-frame, because the viewer's bridge holds one per project. The cell asks
+While cell 06 is open the preview is a frame of the cell's own (ADR-046):
+mounted when the cell opens and gone when it closes, and the map's frame
+is never sent there. (Until ADR-046 it was the map's own frame, because
+the viewer's bridge held one per project.) The cell asks
 `export.preview` 250 ms after the last change, drops an answer to anything
-but the newest question, and hands the answer's address to the viewer,
-which sends the same sandboxed frame there at the plan's aspect ratio. The
-address is the project's page with the engine's query, so the frame is
-attached from the main process by the project's prefix as the plain map is
-(ADR-028), and the main side refuses a planned address that names any other
-page. The frame, the title, the clock and the safe zones are the page's own
+but the newest question, and hands the answer's address to its preview,
+which shows it in its own sandboxed frame at the preset's aspect ratio,
+fit into a bounded box with a caption. The address is the project's page
+with the engine's query, so the frame is attached from the main process by
+the project's prefix as the map is (ADR-028), in the `export` role, and
+asked only whether it loaded; the main side refuses a planned address that
+names any other page. The frame, the title, the clock and the safe zones are the page's own
 drawing from that address (principle I). The preview asks for `safe`
 exactly when the engine's table says the preset's platform draws over the
 picture; an export's plan never carries it, because `planOptions` adds it
