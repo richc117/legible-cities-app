@@ -249,10 +249,12 @@ export function clampTo(bounds: ViewerBounds, seconds: number): number {
  *
  * A run, a rebuild, a recolour and a reorder all end by rewriting the page
  * file and navigating the frame to it, and an export reads the page frame
- * by frame; the export's preview replaces the map with the address
- * `export.plan` answered, which is cell 06's picture and not this cell's.
- * Moving the clock in any of those either lands on a document about to be
- * replaced or moves a picture the person is looking at for another reason.
+ * by frame. Moving the clock in either lands on a document about to be
+ * replaced or moves a picture the export is being made from.
+ *
+ * Cell 06's preview is not one of them any more. Until ADR-046 it replaced
+ * the map with the address `export.plan` answered, and this said so; the
+ * export has a frame of its own now, and the map is the map throughout.
  *
  * It is a sentence and not a disabled control, deliberately. A control that
  * disables itself under a person's hands drops the focus with it (A6-07,
@@ -262,15 +264,9 @@ export function clampTo(bounds: ViewerBounds, seconds: number): number {
  * position a person asked for four seconds ago, applied to a map that has
  * since been redrawn, is not what they asked for.
  */
-export function transportRefusal(page: {
-  laying: boolean
-  exporting: boolean
-  previewing: boolean
-}): string | null {
+export function transportRefusal(page: { laying: boolean; exporting: boolean }): string | null {
   if (page.laying) return 'The map is being drawn. It can be moved again when the run ends.'
   if (page.exporting) return 'The export is reading the map. It can be moved again afterwards.'
-  if (page.previewing)
-    return 'The map is showing what the export will frame. Close cell 06 and it moves again.'
   return null
 }
 
@@ -278,18 +274,11 @@ export function transportRefusal(page: {
  * Whether the page should be polled at all: only while the cell is
  * disclosed **and** nothing else holds the page.
  *
- * The second half is not an optimisation of the first. While a run, an
- * export or cell 06's preview holds the page, every one of this control's
- * acts is refused (`transportRefusal`, and the same value is what gates
- * this), so a poll then is a round trip through the privileged process into
- * a frame, twice a second, to move a scrub nobody may move. During an
- * export that is worse than idle traffic: the frame is showing the address
- * `export.plan` answered, so the clock being read back is the *export
- * preview's* and not the map's - and `Viewer.tsx` deliberately neither
- * keeps nor restores that address's state, so that closing cell 06 brings
- * the map back to the clock it was opened at. A poll running through the
- * preview overwrites the displayed clock with the preview's and leaves the
- * scrub reading a time the map does not have the moment cell 06 closes.
+ * The second half is not an optimisation of the first. While a run or an
+ * export holds the page, every one of this control's acts is refused
+ * (`transportRefusal`, and the same value is what gates this), so a poll
+ * then is a round trip through the privileged process into a frame, twice
+ * a second, to move a scrub nobody may move.
  *
  * What it costs is that the clock stands still while a run redraws, which
  * is honest: the map it describes is being replaced. The poll starts again

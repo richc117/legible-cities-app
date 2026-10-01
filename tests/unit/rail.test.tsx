@@ -8,9 +8,9 @@
 // `tests/e2e/rail.spec.ts`.
 //
 // The arithmetic is here rather than there because it is where the feature
-// can go wrong quietly. A step that scrolls a cell behind the pinned band
-// looks like a step that did nothing, and the remedy that suggests itself
-// is the one issue 213 measured and withdrew.
+// can go wrong quietly. A step that scrolls a cell behind the header
+// looks like a step that did nothing; until ADR-046 a pinned band was what
+// it landed behind (issues 213 and 240).
 
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -196,11 +196,9 @@ describe('a status is an icon and a word, never a hue alone', () => {
 describe('the rail’s width and the space kept for it are one value', () => {
   // The invariant that is actually load-bearing here, and it was a comment
   // alone. The rail is fixed, so it takes no width from the flow; the only
-  // thing keeping an opaque band off a region's presses is that `.rail`'s
-  // width and the main region's padding are the same variable. A `z-index`
-  // does not do it - the rail and the band compute to the same layer, and
-  // on a tie the band wins on document order, because the rail is rendered
-  // before the notebook's column.
+  // thing keeping the opaque rail off the presses meant for the main
+  // region's controls is that `.rail`'s width and the main region's padding
+  // are the same variable. A `z-index` would not do it.
   const read = (file: string): string =>
     readFileSync(resolve(__dirname, '../../src/renderer/src/styles', file), 'utf8').replace(
       /\/\*[\s\S]*?\*\//g,
@@ -235,39 +233,39 @@ describe('the rail’s width and the space kept for it are one value', () => {
   })
 })
 
-// The band as A5.5-20 pins it, in an 800-tall window: the header's 40, half
-// what is left, and the wrapper's own bottom padding. The exact figures do
-// not matter - what matters is that the band's foot is far below the
-// header's, which is the whole reason this arithmetic exists.
+// The header, which since ADR-046 is the only thing pinned: the map is a
+// block in the column and scrolls away with the cells. Until then a band
+// half the window tall sat under the header and this table measured its
+// foot; there is no band to pass now, and the function takes none.
 const HEADER = { bottom: 40 }
-const BAND = { bottom: 436 }
 
 describe('what a step’s scroll has to clear', () => {
-  it('is the band’s foot, not the header’s', () => {
-    expect(clearance(BAND, HEADER)).toBe(BAND.bottom)
+  it('is the header’s foot, and nothing else', () => {
+    expect(clearance(HEADER)).toBe(HEADER.bottom)
+    // One argument: there is no band to hand it. A second box passed here
+    // would be a pinned thing come back, and the type refuses it.
+    expect(clearance.length).toBe(1)
   })
 
-  it('is the header’s where a project has no map to pin', () => {
-    // A project that has never been laid out draws no preview at all.
-    expect(clearance(null, HEADER)).toBe(HEADER.bottom)
+  it('is the top of the window where there is no header to measure', () => {
+    expect(clearance(null)).toBe(0)
   })
 
-  it('lands a cell’s top at the band’s foot and never behind it', () => {
+  it('lands a cell’s top at the header’s foot and never behind it', () => {
     // A cell 300 below the viewport's top, with the page already scrolled
     // 1200 down: the window has to move so that the cell's top sits exactly
-    // where the band ends.
-    const target = scrollTargetFor({ top: 300 }, clearance(BAND, HEADER), 1200)
+    // where the header ends.
+    const target = scrollTargetFor({ top: 300 }, clearance(HEADER), 1200)
     // Where the cell's top ends up, in viewport coordinates, after the
     // window has moved to `target`.
     const landed = 1200 + 300 - target
-    expect(landed).toBe(BAND.bottom)
-    expect(landed).toBeGreaterThanOrEqual(clearance(BAND, HEADER))
+    expect(landed).toBe(HEADER.bottom)
   })
 
   it('never scrolls above the top of the document', () => {
     // Cell 01 with the page at the top: there is nowhere above 0 to go, and
     // asking for it would be a negative scroll the browser clamps anyway.
-    expect(scrollTargetFor({ top: 120 }, clearance(BAND, HEADER), 0)).toBe(0)
+    expect(scrollTargetFor({ top: 20 }, clearance(HEADER), 0)).toBe(0)
   })
 })
 
@@ -276,22 +274,22 @@ describe('which step the scroll is on', () => {
   const stack = (first: number, height: number): CellBox[] =>
     CELLS.map((id, i) => ({ id, top: first + i * height, bottom: first + (i + 1) * height }))
 
-  it('is the first cell with any of itself below the band', () => {
-    // The band ends at 436; cells 01 and 02 are entirely behind it.
-    expect(currentStepOf(stack(0, 200), BAND.bottom)).toBe('frame')
+  it('is the first cell with any of itself below the header', () => {
+    // Cells 01 and 02 are scrolled entirely under the header's foot.
+    expect(currentStepOf(stack(-360, 200), HEADER.bottom)).toBe('frame')
   })
 
   it('is the first cell at the top of the document', () => {
-    expect(currentStepOf(stack(500, 200), BAND.bottom)).toBe('data')
+    expect(currentStepOf(stack(100, 200), HEADER.bottom)).toBe('data')
   })
 
   it('stays on the last cell past the end of the notebook', () => {
-    // Scrolled to the foot of a short document, every cell is above the
-    // band's foot. Going blank there would say the rail had lost its place.
-    expect(currentStepOf(stack(-2000, 200), BAND.bottom)).toBe('export')
+    // Scrolled past every cell. Going blank there would say the rail had
+    // lost its place.
+    expect(currentStepOf(stack(-2000, 200), HEADER.bottom)).toBe('export')
   })
 
   it('is nothing at all when there are no cells to be on', () => {
-    expect(currentStepOf([], BAND.bottom)).toBeNull()
+    expect(currentStepOf([], HEADER.bottom)).toBeNull()
   })
 })

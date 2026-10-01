@@ -12,8 +12,10 @@ import {
   offeredOf,
   plays,
   presetWords,
+  previewCaption,
   PREVIEW_DELAY,
   PreviewPlanner,
+  ratioWords,
   refusalWords,
   sameChoice,
   storyboardWords,
@@ -331,5 +333,31 @@ describe('the engine’s tables', () => {
     await expect(exportTablesFor(failing.stub)).rejects.toThrow('not now')
     const working = client()
     await expect(exportTablesFor(working.stub)).resolves.toBeTruthy()
+  })
+})
+
+// Cell 06's preview caption (ADR-046, specs/029 FR-004): the ratio and the
+// size, and that the shading is guidance where the preset has safe zones.
+describe('the preview caption', () => {
+  it('names a ratio as a person says it', () => {
+    expect(ratioWords(1080, 1920)).toBe('9:16')
+    expect(ratioWords(1080, 1350)).toBe('4:5')
+    expect(ratioWords(1080, 1080)).toBe('1:1')
+    expect(ratioWords(1600, 900)).toBe('16:9')
+    expect(ratioWords(630, 1120)).toBe('9:16')
+    // LinkedIn's link card: 400:209 in lowest terms, which nobody says.
+    expect(ratioWords(1200, 627)).toBe('1.91:1')
+  })
+
+  it('says nothing of a size that is not one', () => {
+    expect(ratioWords(0, 1920)).toBe('')
+    expect(ratioWords(1080.5, 1920)).toBe('')
+  })
+
+  it('says the size, and the shading is guidance only where there is shading', () => {
+    expect(previewCaption({ width: 1080, height: 1920, safe: false })).toBe('9:16, 1080 x 1920.')
+    const safe = previewCaption({ width: 1080, height: 1920, safe: true })
+    expect(safe).toMatch(/^9:16, 1080 x 1920\. /)
+    expect(safe).toMatch(/guidance, and not in the export\.$/)
   })
 })

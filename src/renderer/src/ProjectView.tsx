@@ -16,9 +16,10 @@ import { useProjectState } from './notebook/useProjectState'
 // this used to be.
 //
 // The four regions of DESIGN.md section 9 are the rail, the notebook, the
-// pinned preview and the inspector. One is here: the preview is a child of
-// the notebook's column rather than a region beside it, which is what lets
-// A5.5-20 pin it with CSS and never reparent the frame; the rail is placed
+// map and the inspector. One is here: the map is a child of the notebook's
+// column rather than a region beside it, in the flow after cell 02 since
+// ADR-046, which is what lets it be held by identity and never reparented;
+// the rail is placed
 // by `Notebook.tsx`, because a step's press opens a cell and which cells
 // are open is that component's state (A5.5-21); and the inspector is the
 // window's and is drawn by `App.tsx` beside all three screens (ADR-036).

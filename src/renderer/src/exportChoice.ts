@@ -213,11 +213,47 @@ export function toggledLines(
   return [...listed, ...unlisted]
 }
 
-/** The address the map's frame shows and the shape it is shown at. */
+/**
+ * What cell 06's preview frame shows (ADR-046): the address `export.plan`
+ * answered, and the preset's own size, whose ratio the frame keeps and
+ * which its caption names. The plan's size is not used for either: the
+ * engine may plan at another scale than the preset's (a stand-in plans at
+ * half), and the caption says what the file will be.
+ */
 export interface PreviewAddress {
   url: string
   width: number
   height: number
+  /** Whether the preset has safe zones, which the page shades on this address. */
+  safe: boolean
+}
+
+/** The greatest common divisor, for a ratio in its lowest terms. */
+const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b))
+
+/**
+ * A preset's shape as a person names one: "9:16", "4:5", "16:9", or, where
+ * the lowest terms are not a ratio anyone says ("400:209"), the width to
+ * one as a decimal ("1.91:1"), which is how the platforms write that one.
+ */
+export function ratioWords(width: number, height: number): string {
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1) return ''
+  const d = gcd(width, height)
+  const [w, h] = [width / d, height / d]
+  if (w <= 32 && h <= 32) return `${w}:${h}`
+  return width >= height ? `${(width / height).toFixed(2)}:1` : `1:${(height / width).toFixed(2)}`
+}
+
+/**
+ * The caption under cell 06's preview (FR-004): the ratio and the size,
+ * and, where the page shades the platform's own buttons, that the shading
+ * is guidance and not in the file.
+ */
+export function previewCaption(address: Pick<PreviewAddress, 'width' | 'height' | 'safe'>): string {
+  const size = `${ratioWords(address.width, address.height)}, ${address.width} x ${address.height}`
+  return address.safe
+    ? `${size}. The shaded parts are where the platform puts its own buttons: guidance, and not in the export.`
+    : `${size}.`
 }
 
 /** A sentence for a refusal: the engine's hint, then its message. */

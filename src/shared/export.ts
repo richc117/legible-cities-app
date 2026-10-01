@@ -262,8 +262,8 @@ export function planOptions(
 }
 
 /**
- * What the preview's plan answered: the address the map's frame is sent
- * to, with the size it was planned for and the engine's notes; or the
+ * What the preview's plan answered: the address cell 06's preview frame is
+ * sent to, with the size it was planned for and the engine's notes; or the
  * engine's refusal, in its own shape, so its sentence reaches the screen.
  */
 export type ExportPreview =

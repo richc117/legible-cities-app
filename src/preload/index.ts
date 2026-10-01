@@ -83,9 +83,9 @@ const api: Api = {
     setExport: (id, choice) => invoke(CHANNELS.projectsSetExport, id, choice),
   },
   viewer: {
-    attach: (projectId) => invoke(CHANNELS.viewerAttach, projectId),
-    release: () => invoke(CHANNELS.viewerRelease),
-    call: (method, ...args) => invoke(CHANNELS.viewerCall, method, args),
+    attach: (projectId, role) => invoke(CHANNELS.viewerAttach, projectId, role),
+    release: (role) => invoke(CHANNELS.viewerRelease, role),
+    call: (role, method, ...args) => invoke(CHANNELS.viewerCall, role, method, args),
   },
   engine: {
     state: () => invoke(CHANNELS.engineState),
