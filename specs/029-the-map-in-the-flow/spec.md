@@ -186,7 +186,8 @@ recommendations (see "Decisions taken" and "Evidence and its limits").
   pinned.
 - **FR-002**: The block MUST be as wide as the column, with an explicit
   height bound and not a shape left to resolve: `width: 100%`, a 16:9 ratio,
-  a cap of about 70svh and a floor of about 240px, and never taller than
+  a cap of 48svh (it was proposed as about 70svh and the measurement
+  below replaced it) and a floor of about 240px, and never taller than
   the viewport. (An earlier measurement in this repository shrank the map
   to 546px wide where it had been 1024 when a `max-height` was set against
   an `aspect-ratio` on an element whose width was automatic; the bound is
@@ -217,8 +218,12 @@ recommendations (see "Decisions taken" and "Evidence and its limits").
   else, and MUST be attached through the main process (ADR-028).
 - **FR-006**: The main process MUST hold two frames per window keyed by
   role, `map` and `export`. `attach(projectId, role)` MUST match the
-  project's address prefix and whether `safe=1` is in the query, once, at
-  attach, and never at use. `call(role, method, ...args)` MUST drive the
+  project's address prefix and the query, once, at attach, and never at
+  use: an address with `safe=1` is the export's, the app's own `controls=1`
+  is the map's, and a planned address with neither (a preset without safe
+  zones) reads as the export's. A frame belongs to the role it was first
+  held in, by its place in the frame tree, so a map page that sends itself
+  to an address without `controls=1` is never adopted as the export's. `call(role, method, ...args)` MUST drive the
   named frame. The renderer's callers that drive the page MUST name `map`;
   the export frame MUST be asked only the load probe. The capture MUST be
   untouched.
@@ -237,7 +242,8 @@ recommendations (see "Decisions taken" and "Evidence and its limits").
   do. It lands on the heading and not the cell's first control because the
   heading exists whether or not the cell is open.
 - **FR-012**: Whether the export frame takes keyboard focus MUST be measured
-  with a Tab walk in the end-to-end suite and recorded. If the frame takes
+  with a Tab walk and recorded (measured on 1 Oct 2026 with the real planned
+  page: 0 stops; the map's own page takes 4). If the frame takes
   five or more focus stops, cell 06 MUST get "Skip past the preview" before
   its frame; if fewer, nothing is added, provided the frame has a title and
   is never a keyboard trap. (The threshold is a judgement, recorded so it is
@@ -260,6 +266,11 @@ recommendations (see "Decisions taken" and "Evidence and its limits").
   status of what it is doing (the stage and its place among the stages, as
   the jobs inspector says it). A failure MUST be said in the row and in the
   header's status line, assertively, and MUST NOT open the cell.
+  **Built so far: the row and the header's polite status line; the
+  assertive announcement is not done**, because the header's line is a
+  `role="status"` and an assertive one needs an alert region of its own.
+  [NEEDS CLARIFICATION: implement the alert region, or relax this
+  requirement to a polite failure sentence?]
 - **FR-018**: The map block's container MUST be present in the document
   whether or not there is a map, and MUST hold the empty state of Edge
   Cases, so the block's arrival does not insert content above what is
@@ -351,8 +362,11 @@ recommendations; each can be reversed by amending this spec.
    options no (FR-019). Trade-off: a read-only person cannot see which
    export settings the project holds; showing them as plain text would keep
    that and is not done here.
-3. **The block's height**: 70svh cap, 240px floor, explicit height bound,
-   confirmed by the measurement in FR-002; the same below 900px.
+3. **The block's height**: 48svh cap, 240px floor, explicit height bound,
+   measured (see ADR-046); the same below 900px. The first proposal was
+   70svh; the measurement found about 307px of header and collapsed rows
+   above the map, which at 1280x720 leaves none of cell 03's heading in view
+   at 70svh and a 55px strip at 48svh.
 4. **Cell 06's preview**: fit-scaled into a box of about the smaller of
    60svh and 640px, centred, outlined, captioned (FR-004). Trade-off: a 9:16
    preview is about a third of the column wide, so small text on the map is

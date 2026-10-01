@@ -95,7 +95,11 @@ back. Both frames carry `sandbox="allow-scripts"` and nothing else
 
 **The main process holds two frames per window, keyed by role** - `map` and
 `export` - matched once, at attach, by the project's address prefix and by
-whether `safe=1` is in the query, never at the moment of use. The
+the query, never at the moment of use: an address with `safe=1` is the
+export's, the app's own `controls=1` is the map's, and a planned address
+with neither (a preset without safe zones) reads as the export's. A frame
+belongs to the role it was first held in, so a map page that sends itself
+to an address without `controls=1` is never adopted as the export's. The
 renderer's four callers that drive the page name `map`; the export frame is
 asked only the load probe. The capture is untouched: it has its own
 offscreen window.
@@ -126,9 +130,8 @@ One plain sentence says why the project is read-only; a control that stays
 visible but unavailable is `aria-disabled` with its reason in its accessible
 description.
 
-**The block's height is an explicit bound** (about 70svh, floored at about
-240px) with a definite width, confirmed by measurement before the work is
-accepted, and **cell 06's preview is fit-scaled** into a box of about the
+**The block's height is an explicit bound** (48svh, floored at about 240px)
+with a definite width, set by the measurement under Consequences, and **cell 06's preview is fit-scaled** into a box of about the
 smaller of 60svh and 640px, centred, outlined and captioned with its ratio
 and size. **A running cell does not open itself**, move focus or scroll: its
 row shows the state and what it is doing, and a failure is said in the row
@@ -152,13 +155,42 @@ app and not trusted. The numbers (70svh, 240px, 60svh, 640px) are judgements
 and are replaced by what is measured. Viewport units `vh`, `svh` and `dvh` are
 identical in desktop Chromium.
 
-**Two live pages while cell 06 is open.** The one out of view is throttled
-by Chromium, but the claim is measured, not assumed: the end-to-end suite
-reads the application's process metrics with cell 06 closed and open, and
-the numbers are written into this record before it is Accepted. If the
-map's frame still costs while out of view, it is paused as it leaves the
-viewport and resumed on return, from an intersection observer on the
-frame's own box.
+**Two live pages while cell 06 is open: measured, 1 Oct 2026**, at 1280x720
+with the engine's real page, CPU over four seconds, two runs. With cell 06
+closed and the map in view the renderer used 3.7% CPU and 402 to 415 MB;
+with the map scrolled out of view, 0.1 to 0.3% and 382 to 406 MB; with cell
+06 open and the map in view, 4.7 to 4.8% and 403 to 409 MB; with its preview
+in view and the map away, 4.0 to 4.1% and 404 to 410 MB. Total memory was
+about 742 to 754 MB in every state. The two frames share one renderer
+process, and Chromium already stops the map while it is out of view, so the
+intersection observer described earlier was not added.
+
+**The height was measured, and 70svh was wrong.** The 307px of header and
+collapsed rows above the map (331px at 640 wide) is what limits it. With
+cells 01 and 02 collapsed, the strip of cell 03 that shows with no scrolling
+at 640x480 is 0 (the map is at its 240px floor); 800x600, 0 (288px high);
+1024x640, 14px (307px); 1280x720, 55px (346px, 0.48 of the window); 1440x900,
+149px (432px); and 700x900, 241px (340px, where the 16:9 ratio binds, not the
+cap). At 70svh the 1280x720 strip is 0 (504px high); at 60svh, 0 (432px). With
+cell 01 open the map is 1542 to 1798px down at every size, so no strip.
+48svh leaves the text line of cell 03's heading in view at 720 tall, though
+not its whole 64px row, which 46svh would. 1920x1080 and 2560x1080 could not
+be made on the display used, and a very wide and a very tall feed could not be
+made with the stand-in, though the block's box does not depend on the feed.
+
+**The export's frame takes no Tab stop**: 0 with the real planned page,
+where the map's own page takes 4, so cell 06 gets no "Skip past the preview".
+
+**A failure is not yet said assertively.** The header's status line is a
+polite status region, so the row and the line say a failure and the line does
+not interrupt; specification 029's FR-017 asks for more and is marked for a
+decision.
+
+**What the band hid, recorded as history from the deleted write-up.** With
+`scroll-margin-top` the colour picker's square moved 139px up, to 381, where
+the band ended at 398. At 1024 wide the map was 546 wide under `max-height`
+against `aspect-ratio`, where its box had been 1024. The band's clearance was
+204px at 480 tall, 324 at 720 and 364 at 800, against 140px below cell 06.
 
 **Issues 213 and 240 stop being reachable** and close, and their write-up
 of what the band hides moves here as history. The band's rules, the
