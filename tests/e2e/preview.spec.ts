@@ -22,6 +22,11 @@
 // The boundary itself is `viewer.spec.ts`'s, and is not restated here: the
 // frame carries `sandbox="allow-scripts"` and nothing else, and every route
 // out of it is asserted there.
+//
+// And the column the map sits in (A7-05, issue 277): the three screens are
+// one column as wide as the region up to `--measure-wide`, measured at
+// three sizes of the real window, and the map fills that column's content
+// box, centred in it, where it used to break out of a narrower one.
 
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -371,9 +376,10 @@ test('the preview is pinned under the header, and above the cells at every width
     expect(Math.abs((band?.height ?? 0) - half), 'half the window below the header').toBeLessThan(4)
     // Wider than the ratio: a bound that kept 16:10 while capping the height
     // would make the map exactly `height * 16 / 10` wide - 546 against the
-    // 1024 it has, measured - so this is the assertion that tells the two
-    // bounds apart, and `viewerWidth` is what it is measured against
-    // because that is the width the breakout gives the map.
+    // 1024 it had when it broke out of the column, measured - so this is the
+    // assertion that tells the two bounds apart, and `viewerWidth` is what
+    // it is measured against because that is the width the column gives the
+    // map (A7-05).
     const boxes =
       `the map ${band?.width}, its box ${band?.viewerWidth} (content ${band?.content}), ` +
       `the grid's track ${band?.track}, ${band?.shapes} shape(s) on the screen`
@@ -459,5 +465,254 @@ test('the notebook holds one frame and the preview holds it, wherever the cells 
     }
     await expect(frame(page)).toHaveCount(1)
     await expect(cellHeading(page, 'export')).toHaveAttribute('aria-expanded', 'true')
+  })
+})
+
+// The column (A7-05, issue 277, docs/DESIGN.md 9). The figures are the
+// design document's and not read back from the stylesheets, so a token that
+// moved would fail here rather than carry the expectation with it.
+const COLUMN = 1024 // --measure-wide, 64rem: the column's cap
+const MEASURE = 640 // --measure, 40rem: prose inside the column
+const RAIL = { open: 240, collapsed: 64 } // the project's rail, above 900px and at it
+const INSPECTOR = 320 // beside the main region above 900px; at 900 and below it covers it
+const NARROW = 900 // 56.25rem, where both of those change
+
+type Screen = 'Library' | 'Settings' | 'Los Angeles'
+
+interface Column {
+  /** The window as a media query reads it. */
+  window: number
+  /** The window as layout has it: less a scroll bar, where the platform draws one. */
+  viewport: number
+  panel: { left: number; width: number; content: number }
+  /** `.app-main`'s content box: the window less the rail's padding and the inspector beside it. */
+  region: { left: number; right: number }
+  viewer: { left: number; width: number } | null
+  /** The cells and the Library's lists: rows that fill the column. */
+  rows: { what: string; width: number }[]
+  prose: number[]
+  fields: number[]
+}
+
+const measureColumn = (page: Page): Promise<Column | null> =>
+  page.evaluate(() => {
+    const panelEl = document.querySelector('main.panel')
+    const mainEl = document.querySelector('.app-main')
+    if (panelEl === null || mainEl === null) return null
+    const shown = (el: Element): boolean => el.getClientRects().length > 0
+    const width = (el: Element): number => el.getBoundingClientRect().width
+    const p = panelEl.getBoundingClientRect()
+    const ps = getComputedStyle(panelEl)
+    const m = mainEl.getBoundingClientRect()
+    const ms = getComputedStyle(mainEl)
+    const v = panelEl.querySelector('.viewer')?.getBoundingClientRect()
+    return {
+      window: window.innerWidth,
+      viewport: document.documentElement.clientWidth,
+      panel: {
+        left: p.left,
+        width: p.width,
+        content: p.width - parseFloat(ps.paddingLeft) - parseFloat(ps.paddingRight),
+      },
+      region: {
+        left: m.left + parseFloat(ms.paddingLeft),
+        right: m.right - parseFloat(ms.paddingRight),
+      },
+      viewer: v === undefined ? null : { left: v.left, width: v.width },
+      rows: [...panelEl.querySelectorAll('.cell, ul.entries, ul.sample-cards')]
+        .filter(shown)
+        .map((el) => ({ what: el.className, width: width(el) })),
+      prose: [...panelEl.querySelectorAll('.prose')].filter(shown).map(width),
+      fields: [...panelEl.querySelectorAll('.field')].filter(shown).map(width),
+    }
+  })
+
+/** What the column should be, from the design document's figures alone. */
+function columnWidth(screen: Screen, c: Column, inspectorOpen: boolean): number {
+  const narrow = c.window <= NARROW
+  const rail = screen === 'Los Angeles' ? (narrow ? RAIL.collapsed : RAIL.open) : 0
+  const inspector = inspectorOpen && !narrow ? INSPECTOR : 0
+  return Math.min(COLUMN, c.viewport - rail - inspector)
+}
+
+test('the three screens are one column up to the wide measure, and the map fills it, centred', async () => {
+  test.setTimeout(240_000)
+  const h = home()
+  await withApp(h, async (page, app) => {
+    const toggle = page.getByRole('button', { name: /^Jobs, / })
+    const inspector = page.getByRole('complementary', { name: 'Inspector' })
+    const heading = page.getByRole('heading', { level: 1 })
+
+    // The Library's introduction, while there is no project to list: a
+    // sentence, so it wraps at the prose measure inside the wider column.
+    const intro = page.locator('.empty .prose')
+    await expect(intro).toBeVisible()
+    const introAt = await measureColumn(page)
+    expect(introAt, 'the Library has a column').not.toBeNull()
+    expect(
+      (await intro.boundingBox())?.width ?? 0,
+      `the introduction, in a column whose content is ${introAt?.panel.content}`,
+    ).toBeCloseTo(Math.min(MEASURE, introAt?.panel.content ?? 0), 0)
+
+    await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
+
+    const go = async (screen: Screen): Promise<void> => {
+      const now = await heading.textContent()
+      if (now === screen) return
+      if (screen === 'Settings') {
+        await page.getByRole('button', { name: 'Settings' }).click()
+      } else {
+        if (now !== 'Library') {
+          await page.getByRole('button', { name: 'Back to Library' }).click()
+          await expect(heading).toHaveText('Library')
+        }
+        if (screen === 'Los Angeles')
+          await page.getByRole('button', { name: 'Open Los Angeles' }).click()
+      }
+      await expect(heading).toHaveText(screen)
+      // The heading is drawn before what is under it is read, so the screen
+      // is measured once what it holds is on it.
+      if (screen === 'Library') {
+        await expect(page.getByRole('button', { name: 'Open Los Angeles' })).toBeVisible()
+        await expect(page.getByRole('list', { name: 'Presets' })).toBeVisible()
+      } else if (screen === 'Settings') {
+        await expect(page.getByRole('heading', { name: 'Engine data' })).toBeVisible()
+      } else {
+        await expect(frame(page)).toBeVisible()
+        await expect(page.locator('.cell')).toHaveCount(6)
+      }
+    }
+
+    const check = async (
+      screen: Screen,
+      inspectorOpen: boolean,
+      w: number,
+      size: string,
+    ): Promise<void> => {
+      const where = `${screen} at ${size}, the inspector ${inspectorOpen ? 'open' : 'closed'}`
+      // Polled, since the window has just been resized or the inspector
+      // just opened, and a frame can move what a single read sees.
+      await expect
+        .poll(
+          async () => {
+            const c = await measureColumn(page)
+            return c === null
+              ? Number.POSITIVE_INFINITY
+              : Math.abs(c.panel.width - columnWidth(screen, c, inspectorOpen))
+          },
+          { message: `${where}: the column is the region's width up to ${COLUMN}` },
+        )
+        .toBeLessThanOrEqual(0.5)
+      const c = (await measureColumn(page)) as Column
+      const facts = `${where}: ${JSON.stringify(c)}`
+      // Still the window asked for: a platform that resized it under the
+      // test would otherwise have every figure below measured at a size
+      // nobody chose, and each of them would agree with the others.
+      expect(c.window, `the window is still ${w} wide - ${facts}`).toBe(w)
+      const centre = c.panel.left + c.panel.width / 2
+      expect(
+        Math.abs(centre - (c.region.left + c.region.right) / 2),
+        `the column is centred in its region - ${facts}`,
+      ).toBeLessThanOrEqual(1)
+
+      // Lists, tables and the cells fill the column (section 9).
+      for (const row of c.rows)
+        expect(row.width, `${row.what} fills the column - ${facts}`).toBeCloseTo(c.panel.content, 0)
+      // Sentences keep the reading measure inside it, and so do fields.
+      for (const w of [...c.prose, ...c.fields])
+        expect(w, `prose and fields keep the measure - ${facts}`).toBeLessThanOrEqual(MEASURE + 0.5)
+
+      if (screen === 'Los Angeles') {
+        // The map is the column's content box, so its centre is the
+        // column's: no breakout, and nothing for the two centres to
+        // disagree about.
+        expect(c.viewer, `the map has a box - ${facts}`).not.toBeNull()
+        const viewer = c.viewer as { left: number; width: number }
+        expect(viewer.width, `the map is the column's content - ${facts}`).toBeCloseTo(
+          c.panel.content,
+          0,
+        )
+        expect(
+          Math.abs(viewer.left + viewer.width / 2 - centre),
+          `the map's centre is the column's - ${facts}`,
+        ).toBeLessThanOrEqual(1)
+        expect(c.rows.length, `six cells - ${facts}`).toBe(6)
+        // The measure is reached and not merely undershot: in a column this
+        // wide, a cell's sentence is as wide as the measure.
+        expect(Math.max(...c.prose), `a cell's sentence - ${facts}`).toBeCloseTo(MEASURE, 0)
+      }
+      if (screen === 'Library') expect(c.rows.length, `the Library's lists - ${facts}`).toBe(2)
+      if (screen === 'Settings') {
+        // Every group's heading and rows start where the screen's own
+        // heading does, with nothing of the kit's indenting them.
+        const edges = await page.evaluate(() => {
+          const h1 = document.querySelector('.settings h1')?.getBoundingClientRect().left ?? null
+          const items = [...document.querySelectorAll('.settings section > *')]
+            .filter((el) => el.getClientRects().length > 0)
+            .map((el) => ({
+              what: `${el.tagName.toLowerCase()}.${el.className}`,
+              left: el.getBoundingClientRect().left,
+            }))
+          return { h1, items }
+        })
+        expect(edges.h1, 'Settings has its heading').not.toBeNull()
+        expect(edges.items.length, 'and groups under it').toBeGreaterThan(10)
+        for (const item of edges.items)
+          expect(item.left, `${item.what} starts where the h1 does`).toBeCloseTo(
+            edges.h1 as number,
+            0,
+          )
+      }
+    }
+
+    const made: string[] = []
+    for (const [w, ht] of [
+      [1280, 680],
+      [1600, 680],
+      [900, 600],
+    ] as const) {
+      const size = `${w} by ${ht}`
+      // The window itself, as a person would drag it, rather than the page
+      // emulated at a size. A window wider than its display's work area is
+      // a size this run cannot measure: macOS takes it, reports it, and a
+      // moment later puts the window back on its screen - measured, a
+      // window asked for 1600 on a 1512 display was 1600 for the first read
+      // and 1512 two hundred milliseconds later. So that size is skipped,
+      // and said to be, rather than measured at whatever the window became.
+      const work = await app.evaluate(({ BrowserWindow, screen }) => {
+        const win = BrowserWindow.getAllWindows()[0]
+        return screen.getDisplayMatching(win.getBounds()).workArea.width
+      })
+      if (w > work) {
+        const why = `${size} not measured: the display's work area is ${work} wide`
+        test.info().annotations.push({ type: 'size not made', description: why })
+        console.warn(`  ${why}`)
+        continue
+      }
+      await app.evaluate(
+        ({ BrowserWindow }, s) => {
+          BrowserWindow.getAllWindows()[0].setContentSize(s.w, s.h)
+        },
+        { w, h: ht },
+      )
+      await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(w)
+      made.push(size)
+
+      for (const screen of ['Library', 'Settings', 'Los Angeles'] as const) {
+        await go(screen)
+        for (const open of [false, true]) {
+          if (open) {
+            await toggle.click()
+            await expect(inspector).toBeVisible()
+          }
+          await check(screen, open, w, size)
+          if (open) {
+            await toggle.click()
+            await expect(inspector).toHaveCount(0)
+          }
+        }
+      }
+    }
+    expect(made.length, 'at least one size was measured').toBeGreaterThan(0)
   })
 })

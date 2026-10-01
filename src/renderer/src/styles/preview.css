@@ -53,9 +53,15 @@
   background: var(--surface);
 }
 
-/* The map is wider than the reading column, which panels.css breaks it out
-   of, so the pinned ground has to be the map's own box as well as this
-   wrapper's. Between them they cover everything a cell can occupy. */
+/* The map was wider than the reading column, which panels.css broke it out
+   of, so the pinned ground had to be the map's own box as well as this
+   wrapper's. Between them they covered everything a cell can occupy.
+
+   Since A7-05 the map fills the column rather than breaking out of it, so
+   this wrapper's ground already covers the map's box and the second ground
+   is belt and braces. It stays while the map is pinned; issue 286, which
+   puts the map in the flow, is where it goes. The zero margin is still
+   needed: the viewer's bottom margin is this wrapper's padding here. */
 .preview .viewer {
   margin-bottom: 0;
   background: var(--surface);

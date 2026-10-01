@@ -35,9 +35,18 @@ body {
   background: var(--selection);
 }
 
+/* One column, the window's width and never more (A7-05). Left to the
+   implicit `auto` track, the column took the widest thing on the screen as
+   its size: measured, a project name with nowhere to break made it 932 in a
+   640 window, the header and the main region with it, and the page
+   scrolled sideways. The reading-measure column had hidden that inside its
+   own 640; a column that is the region's width up to `--measure-wide`
+   followed it, and the name it should have broken stayed on one line.
+   `minmax(0, 1fr)` is the window, so `100%` in the main region is too. */
 #root {
   min-height: 100vh;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto 1fr;
   align-content: start;
 }
@@ -99,18 +108,16 @@ body {
 }
 
 /* The window below the header (A1-03, ADR-036): the main region, and the
-   inspector beside it when it is open. The space the inspector takes is a
-   variable the viewer reads, so the map still fits the region it is in. */
+   inspector beside it when it is open. The inspector is a flex sibling, so
+   the space it takes is already gone from the main region's width and the
+   column inside it reads none of it (A7-05). It was a variable the map
+   subtracted from `100vw` while the map broke out of a narrower column;
+   the variable went with the breakout. */
 
 .app-body {
-  --inspector-space: 0px;
   display: flex;
   align-items: flex-start;
   min-width: 0;
-}
-
-.app-body[data-inspector='open'] {
-  --inspector-space: var(--inspector-width);
 }
 
 .app-main {
@@ -133,13 +140,10 @@ body {
 }
 
 /* Below 900px the inspector covers the main region rather than squeezing
-   it, and the map keeps the whole width underneath (DESIGN.md section 9).
-   It appears without a slide, at every motion setting. */
+   it, and the column keeps the whole width underneath (DESIGN.md section
+   9): fixed, it is out of the flex row and takes nothing from the main
+   region. It appears without a slide, at every motion setting. */
 @media (max-width: 56.25rem) {
-  .app-body[data-inspector='open'] {
-    --inspector-space: 0px;
-  }
-
   .inspector {
     position: fixed;
     top: var(--header-height);
@@ -309,13 +313,31 @@ body {
   border: 0;
 }
 
-/* A screen: one column at the prose measure. */
+/* A screen: one column, as wide as the main region up to `--measure-wide`
+   and centred in it (A7-05, DESIGN.md 9). The Library, Settings and the
+   project's notebook all take it. `100%` is the main region's content box,
+   which already leaves out the rail (the region's padding, `project.css`)
+   and the inspector beside it (a flex sibling, above), so the column needs
+   no arithmetic over the window's width to keep clear of either.
+
+   It was `--measure` once, the reading measure carried over from the
+   sites, which held the whole of an application to the width of a
+   paragraph however wide the window was. */
 
 .panel {
-  width: min(100%, var(--measure));
+  width: min(100%, var(--measure-wide));
   margin: 0 auto;
   padding: var(--space-4-6) var(--space-4-4);
   box-sizing: border-box;
+}
+
+/* What is read keeps the reading measure inside the wider column: a cell's
+   sentences, the Library's introduction, and a form's fields, whose
+   controls fill their field. Lists, tables, the run lines and the colour
+   and order rows are not read line by line, and fill the column. */
+.prose,
+.field {
+  max-width: var(--measure);
 }
 
 .panel h1 {

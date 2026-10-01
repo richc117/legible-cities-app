@@ -13,21 +13,21 @@
    component, and the four token files stay the only place a literal may
    appear (A5.5-07). */
 
-/* The rail's space in the window, the way the inspector's is (`app.css`):
-   one variable, declared where the region exists and nowhere else.
+/* The rail's space in the window: one variable, declared where the region
+   exists and nowhere else.
 
-   Two things read it. The main region is padded by it, so the reading
-   column is centred in what is left rather than under the rail. And the
-   map, which breaks out of that column to the window's own width,
-   subtracts it from `100vw` exactly as it already subtracts the
-   inspector's - without that the map is drawn over the rail, because the
-   rail is fixed and a fixed region is invisible to a width computed from
-   the viewport.
+   Two things read it, and they are the same value so they cannot drift
+   apart: the rail's own width (`rail.css`), and the main region's padding,
+   so the column is centred in what is left rather than under the rail.
+   The column is the region's width up to `--measure-wide` (A7-05,
+   `app.css`), and the map fills the column, so both keep clear of the
+   rail through this padding alone. The map used to break out of a
+   narrower column with arithmetic over `100vw` that subtracted this
+   variable too, and the inspector's beside it; that went with the
+   breakout.
 
    `:has()` and not a class on the shell: which screen is open is `App.tsx`'s
-   state, and the rail belongs to one of the three. A variable that only
-   the project screen sets, read through a default of 0 everywhere else, is
-   the same shape the inspector's `--inspector-space` already has. */
+   state, and the rail belongs to one of the three. */
 .app-main:has(.project) {
   --rail-space: var(--rail-width);
   padding-left: var(--rail-space);
