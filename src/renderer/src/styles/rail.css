@@ -52,15 +52,19 @@
 }
 
 /* A step: a button drawn as a row rather than as a control, as the cell's
-   own heading row is, so the two read as one family. */
+   own heading row is, so the two read as one family. It is one control's
+   height and no more (the maintainer's call, 30 Sep 2026): the hover and
+   the selected ground are a button's height, so they never stand taller
+   than the button beside them would, and a row of text and icon is
+   centred in it. */
 .rail-step {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: var(--space-4-2);
   width: 100%;
   box-sizing: border-box;
-  min-height: var(--target-min);
-  padding: var(--space-4-2);
+  height: var(--control-height);
+  padding: 0 var(--space-4-2);
   border: none;
   border-radius: var(--radius);
   background: none;
@@ -254,7 +258,7 @@
 
   .rail-step {
     justify-content: center;
-    padding: var(--space-4-2) 0;
+    padding: 0;
   }
 
   /* The kit's leak app.css restates has the kit's own specificity and
