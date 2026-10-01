@@ -5,6 +5,7 @@ import LineOrderPanel from '../../LineOrder'
 import Cell from '../Cell'
 import type { CellViewProps } from '../cells'
 import { useProject } from '../context'
+import { runRowStatus } from '../runRow'
 
 // Cell 05, Lines: each line's colour and where it sits in the stack
 // (ADR-045).
@@ -68,7 +69,7 @@ export function linesSummary(
 }
 
 export default function LinesCell({ cell, state, open, onToggle }: CellViewProps): JSX.Element {
-  const { project, engine, run, exporter, inspect, exporting } = useProject()
+  const { project, engine, run, runSnapshot, exporter, inspect, exporting } = useProject()
   const heading = useRef<HTMLHeadingElement>(null)
   const busyNow = (): boolean => exporter.snapshot.state === 'running'
   return (
@@ -81,6 +82,7 @@ export default function LinesCell({ cell, state, open, onToggle }: CellViewProps
       // still names what its lines carry, which is drawn on the map whether
       // or not it can be changed here.
       summary={project === null ? null : linesSummary(project)}
+      progress={runRowStatus(runSnapshot, cell.id)}
       open={open}
       onToggle={onToggle}
       headingRef={heading}
