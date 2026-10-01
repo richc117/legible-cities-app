@@ -298,6 +298,19 @@ test("the rail's headings, every step's number and Outputs start at one edge", a
         outputs: edge(document.querySelector('#outputs-heading')!),
       }
     })
+    // A step is one control's height, so the ground under the pointer and
+    // the selected one are a button's and no taller, and its text is inside.
+    const steps = await page.evaluate(() =>
+      [...document.querySelectorAll<HTMLElement>('.rail-step')].map((el) => ({
+        height: el.getBoundingClientRect().height,
+        over: el.scrollHeight - el.clientHeight,
+      })),
+    )
+    expect(steps).toHaveLength(6)
+    for (const step of steps) {
+      expect(step.height).toBeCloseTo(28, 0)
+      expect(step.over).toBeLessThanOrEqual(0)
+    }
     for (const left of [...lefts.numbers, lefts.outputs]) {
       expect(Math.abs(left - lefts.heading)).toBeLessThanOrEqual(1)
     }
