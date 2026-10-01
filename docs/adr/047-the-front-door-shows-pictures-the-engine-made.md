@@ -85,6 +85,28 @@ toolbar button and the empty state's button go; with no projects the
 introduction stays above a grid holding that one card. The cards keep
 their accessible names, so what a screen reader hears does not change.
 
+**A card says less than a row did.** One primary line (the name, which may
+wrap to two) and at most two secondary: where it runs first, then for a
+sample whether it is downloaded as a small status chip and not a line, and
+for a project how far it has got. What the mode keeps leaves the card: it is
+configuration, a project shows it in cell 01 as soon as the card is pressed,
+and a card has no detail view of its own. The full text stays in the
+document and in the card's accessible name when a line is clamped.
+
+**An empty picture area shows a muted generic transit glyph on the sunken
+surface**, from the existing icon set, never a shimmer (a shimmer says
+loading, and this state is permanent or waiting on the person) and not a
+flat blank (which reads as broken). It carries no label of its own: a
+project's progress line already says it is not drawn yet. A sample city with
+no shipped picture is a packaging fault, caught by a test that every preset
+in the registry has one.
+
+**"Your projects" is drawn with no projects**, holding the New project card
+alone under its heading, with the introduction kept above and one quiet line
+under the heading saying where projects appear. The card keeps its first
+slot, so the layout and the keyboard focus order do not change between the
+empty and the non-empty Library; the sample cities are directly below.
+
 **Every picture is a file the engine wrote, shown in an image. The app
 composes nothing** (principle I), and drawing the cards still sends the
 engine `feeds.list` and nothing else.
@@ -125,6 +147,23 @@ project from its row open it from its card, and the accessibility sweep
 runs over the Library in both themes with pictures present and absent. The
 test that the cards send the engine nothing but `feeds.list` stays, and is
 the guard on the rule above.
+
+**The cards' accessible names change.** A sample's name is its facts joined
+by commas, and shortening the facts changes it; the tests and acceptance
+steps that quote the old names move with it. Clamping keeps the full text
+in the document, which is what lets a screen reader and a 320px reflow lose
+nothing.
+
+**These choices rest on thin evidence.** The sources support giving an empty
+state one primary action (https://www.nngroup.com/articles/empty-state-interface-design/,
+https://carbondesignsystem.com/patterns/empty-states-pattern/), keeping cards
+short (https://www.nngroup.com/articles/cards-component/) and not showing a
+skeleton for a state that will not load
+(https://www.nngroup.com/articles/skeleton-screens/). None gives a number of
+lines or a rule for a create tile, so "two secondary lines" and the quiet line
+are judgements, and the empty glyph's contrast aims for about 3:1 though a
+decorative graphic is exempt from it. The pages were read through a tool that
+returns summaries; check a quotation against its page before reusing it.
 
 **It depends on two other changes.** The fluid column (#277) gives the
 grid its width and the section reset (#273) removes the indentation the

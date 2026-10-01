@@ -25,7 +25,9 @@ scrollport can land behind the band: a control reached with Shift+Tab
 the colour picker's square behind the band), and a cell a rail step lands
 on, which fails intermittently in CI by a fixed figure (#240). Both are
 recorded gaps, not defects with a fix, because the band is what makes
-them.
+them. WCAG 2.2 names this class of defect: a sticky or floating element that
+covers a control that has focus is the typical way "focus not obscured"
+fails.
 
 The one-frame rule has a cost too. The main process finds the viewer's
 frame by the project's address prefix and holds one (`src/main/viewer.ts`),
@@ -105,9 +107,32 @@ record and not a constant.
 
 **"Skip past the map" stays**, because the engine's page still puts about
 forty controls in the Tab order, and its target moves from the project's
-footer to cell 03's heading, the first control after the frame. Whether the
-export frame takes focus at all is measured, and if it does, cell 06 gets a
-"Skip past the preview" of its own.
+footer to cell 03's heading, which takes focus by `tabindex="-1"` as the
+other cell headings do. It is the heading and not the cell's first control
+because the heading exists whether the cell is open or not. Whether the
+export frame takes focus is measured with a Tab walk, and cell 06 gets a
+"Skip past the preview" of its own only if the frame takes five or more
+stops; the threshold is a judgement, recorded so it is not rediscovered.
+
+**Where there is no map yet, the block is still there**, at a reduced
+height, holding a sentence and a link to cell 02 inside an always-present
+status container, so that the map's arrival inserts nothing above what is on
+screen without room reserved for it and is announced politely. There is no
+second Run button.
+
+**A read-only project gets the map block and not cell 06's preview.** Viewing
+is not editing, and the export preview promises an export that cannot happen.
+One plain sentence says why the project is read-only; a control that stays
+visible but unavailable is `aria-disabled` with its reason in its accessible
+description.
+
+**The block's height is an explicit bound** (about 70svh, floored at about
+240px) with a definite width, confirmed by measurement before the work is
+accepted, and **cell 06's preview is fit-scaled** into a box of about the
+smaller of 60svh and 640px, centred, outlined and captioned with its ratio
+and size. **A running cell does not open itself**, move focus or scroll: its
+row shows the state and what it is doing, and a failure is said in the row
+and the header without opening the cell.
 
 ## Consequences
 
@@ -117,6 +142,15 @@ accepted: the pause and resume described above make it a scroll and not a
 loss. It is to be revisited on a person's complaint rather than on a
 forecast. In an 800px window with cells 01 and 02 collapsed the map is
 about 400px tall and cell 05's first rows sit near the fold.
+
+**The bound is on the height, with the width definite.** This repository
+once shrank the map to 546px wide where it had been 1024 by setting a
+`max-height` against an `aspect-ratio` on an element whose width was
+automatic. The CSS specification's note says a definite width is unaffected,
+which is why the width is definite here, but the claim is tested in the built
+app and not trusted. The numbers (70svh, 240px, 60svh, 640px) are judgements
+and are replaced by what is measured. Viewport units `vh`, `svh` and `dvh` are
+identical in desktop Chromium.
 
 **Two live pages while cell 06 is open.** The one out of view is throttled
 by Chromium, but the claim is measured, not assumed: the end-to-end suite
