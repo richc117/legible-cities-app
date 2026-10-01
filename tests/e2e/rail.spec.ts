@@ -346,6 +346,18 @@ test('below 900px the rail collapses to its numbers and keeps its names', async 
       return Math.abs(number.left + number.width / 2 - (step.left + step.width / 2))
     })
     expect(offCentre).toBeLessThanOrEqual(1)
+    // The collapsed step is one control's height too.
+    const collapsed = await page.evaluate(() =>
+      [...document.querySelectorAll<HTMLElement>('.rail-step')].map((el) => ({
+        height: el.getBoundingClientRect().height,
+        over: el.scrollHeight - el.clientHeight,
+      })),
+    )
+    expect(collapsed).toHaveLength(6)
+    for (const step of collapsed) {
+      expect(step.height).toBeCloseTo(28, 0)
+      expect(step.over).toBeLessThanOrEqual(0)
+    }
     // The project's name goes as Outputs goes; the nav's label still names it.
     await expect(page.locator('.rail-heading')).toBeHidden()
 

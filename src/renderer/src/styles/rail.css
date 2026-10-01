@@ -116,8 +116,9 @@
    twenty pixels and add no truncation anywhere. Five of the six names measure 28 to 48
    pixels and have 71 left for them, where they had 91; the sixth, "Frame
    and service day" at 137, is cut with the icon and cut without it, since
-   it is longer than the rail either way. Nothing overflows, and the row
-   goes from 37 pixels tall to 40.
+   it is longer than the rail either way. Nothing overflows. The row was
+   37 pixels tall and then 40; it is one control's height now, the
+   maintainer's call of 30 Sep 2026, with the icon centred in it.
 
    And the colour is worth those twenty pixels: the rail is the only place
    a person sees all six states at once, so "which one failed?" is a glance
