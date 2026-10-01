@@ -9,9 +9,9 @@
    own chrome in notebook.css; this file is imported after the shell so a
    panel reads against it, which is the order the rules were written in. */
 
-/* Line colours (A4-01): one row per line the feed offers, each a swatch, a
-   name, where its colour came from and its two controls; the picker is a
-   disclosure under the row it belongs to. A line's own colour is data and
+/* Line colours (A4-01): one row per line the feed offers, each a chip in the
+   line's colour that opens the picker, a name and where its colour came
+   from; the picker is a floating panel anchored to its chip (issue 284). A line's own colour is data and
    arrives as an inline style from the record, never from here. */
 
 /* Cell 05 holds two sections, so each is named by a heading of its own, a
@@ -55,8 +55,7 @@
   text-align: end;
 }
 
-/* The two moves sit at the end of the row, where the colour control's
-   Choose and Reset are, so the two panels read as one family. */
+/* The two moves sit at the end of the row. */
 .line-actions {
   display: flex;
   gap: var(--space-4-2);
@@ -109,11 +108,41 @@
   flex-wrap: wrap;
   align-items: flex-start;
   gap: var(--space-4-4);
-  margin: 0 0 var(--space-4-3);
+}
+
+/* The chip: the preview and the control in one, at the row's start, in the
+   line's own colour (an inline style from the record). A native button, so
+   its edge is this rule's; the edge is --border-strong because a control's
+   boundary needs 3.0 against what it sits on (WCAG 1.4.11) and the colour
+   inside may be any at all. */
+.colour-chip {
+  flex: none;
+  box-sizing: border-box;
+  width: var(--target-min);
+  height: var(--target-min);
+  min-width: 0;
+  padding: 0;
+  border: var(--border-width) solid var(--border-strong);
+  border-radius: var(--radius-small);
+  cursor: pointer;
+}
+
+/* The floating panel: an auto popover, in the top layer, anchored to the
+   chip that opens it (the invoker is its implicit anchor) and flipped above
+   it where there is no room below, so it is never clipped by the cell or
+   hidden behind the pinned map. The kit styles every [popover] as it styles
+   a dialog (a minimum width, no edge, its own shadow and ground); the app's
+   own surface, edge and padding go back on. */
+.colour-popover {
+  margin: 0;
+  min-width: 0;
   padding: var(--space-4-3);
   border: var(--border-width) solid var(--border);
   border-radius: var(--radius);
   background: var(--surface-raised);
+  color: var(--text);
+  position-area: block-end span-inline-end;
+  position-try-fallbacks: flip-block;
 }
 
 /* The picker's own sizes are its stylesheet's; only its footprint here is

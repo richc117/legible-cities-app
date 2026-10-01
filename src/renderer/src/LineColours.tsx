@@ -1,5 +1,4 @@
 import {
-  useCallback,
   useEffect,
   useId,
   useMemo,
@@ -7,6 +6,7 @@ import {
   useState,
   type FormEvent,
   type JSX,
+  type ReactNode,
   type RefObject,
 } from 'react'
 import { HexColorPicker } from 'react-colorful'
@@ -33,7 +33,6 @@ import {
 } from './colours'
 import { debounce } from './debounce'
 import type { LayoutRun as Run } from './engine/layoutRun'
-import Icon from './icons/Icon'
 import Button from './kit/Button'
 import TextInput from './kit/TextInput'
 import { useSnapshot } from './useSnapshot'
@@ -42,7 +41,7 @@ import { useSnapshot } from './useSnapshot'
 // over it, and one default for the lines the feed leaves blank (A4-01,
 // specs/018-colours).
 //
-// The app draws swatches beside names and nothing else. The picture is the
+// The app draws a colour chip beside each name and nothing else. The picture is the
 // engine's page, and the engine resolves the colours: this panel sends
 // map.build the same two fields the CLI does and the page's map, chips and
 // time chart all move together because the engine resolved them once
@@ -116,7 +115,7 @@ export default function LineColours({
 
   const [state, setState] = useState<State>({ status: 'waiting' })
   const [palette, setPalette] = useState<Palette>(() => paletteOf(project))
-  const [open, setOpen] = useState<string | null>(null)
+  const section = useRef<HTMLElement>(null)
 
   // The debounce, made once: a person dragging through a hue must not start
   // a map build per frame. The current project, engine and run are read
@@ -196,10 +195,14 @@ export default function LineColours({
     commitRef.current = commit
   })
 
-  // Made once: it is a dependency of every open picker's dismissal effect,
-  // and a fresh closure per render would re-subscribe the document's
-  // listeners on every frame of a drag.
-  const closePicker = useCallback(() => setOpen(null), [])
+  // Closing every open panel, through the elements: the platform owns
+  // whether a panel is open, and a press of a button elsewhere is a click
+  // that light-dismisses it, but a keyboard press is not (issue 284).
+  const closePanels = (): void => {
+    section.current
+      ?.querySelectorAll<HTMLElement>('.colour-popover:popover-open')
+      .forEach((panel) => panel.hidePopover())
+  }
 
   const change = (next: Palette): void => {
     setPalette(next)
@@ -225,7 +228,12 @@ export default function LineColours({
   const nothingToReset = isReset(palette)
 
   return (
-    <section className="line-colours" aria-labelledby="line-colours-heading" aria-busy={busy}>
+    <section
+      ref={section}
+      className="line-colours"
+      aria-labelledby="line-colours-heading"
+      aria-busy={busy}
+    >
       {/* Cell 05 holds two sections, so the cell's own heading cannot name
           either of them: it says Lines, and a person reading down the cell
           has to be told where the colours end and the order begins. The
@@ -254,10 +262,7 @@ export default function LineColours({
         <>
           <DefaultColour
             colour={palette.defaultColor}
-            open={open === DEFAULT_ROW}
-            onToggle={() => setOpen(open === DEFAULT_ROW ? null : DEFAULT_ROW)}
             onPick={(hex) => change(withDefault(palette, hex))}
-            onDone={closePicker}
           />
           {lines.length === 0 ? (
             <p className="hint" role="status">
@@ -272,11 +277,8 @@ export default function LineColours({
                   line={line}
                   shown={shownColour(line, palette)}
                   overridden={hasOverride(palette, line.label)}
-                  open={open === line.label}
-                  onToggle={() => setOpen(open === line.label ? null : line.label)}
                   onPick={(hex) => change(withOverride(palette, line.label, hex))}
-                  onDone={closePicker}
-                  onReset={() => changeAndKeepFocus(withoutOverride(palette, line.label))}
+                  onReset={() => change(withoutOverride(palette, line.label))}
                 />
               ))}
             </ul>
@@ -285,7 +287,7 @@ export default function LineColours({
             <Button
               disabled={nothingToReset}
               onClick={() => {
-                setOpen(null)
+                closePanels()
                 changeAndKeepFocus(resetAll())
               }}
             >
@@ -298,141 +300,136 @@ export default function LineColours({
   )
 }
 
-/** The default row's key in the one-picker-at-a-time state; no line can be called this. */
-const DEFAULT_ROW = ''
-
 /**
- * A picker stays open until it is dismissed: a click outside its row, or
- * Escape. It used to close on the first colour it was given, which is the
- * first pointer event the square or the slider sees - so dragging through a
- * hue, which is what the picker is for, ended the moment it began (issue
- * 87). Applying a colour and dismissing the picker are two different
- * things now.
+ * The colour chip and the panel it opens, in one place for both kinds of row.
  *
- * The row, not the picker, is what counts as inside: the toggle that
- * revealed it sits beside it, and a click on that is its own business. The
- * dismissal is on the click and not the press, and a gesture that began
- * inside the row is a colour however far outside it ends; both are
- * explained where they are done, below.
+ * The chip is a native button at the row's start, in the line's own colour:
+ * the preview and the control in one (issue 284). A native button and not
+ * the kit's, so the kit's inner-button trap (`.claude/rules/renderer.md`,
+ * issue 121) does not arise. The panel is an auto popover anchored to it.
+ *
+ * What the platform does here is what a hand-written dismissal (issue 87's) used to do. An auto
+ * popover is light-dismissed only when the press and the release both land
+ * outside it, so a drag that begins in the square and ends on the map is a
+ * colour and the panel stays (issue 87); a click outside closes it, Escape
+ * closes it, and opening another row's chip closes this one. It is in the
+ * top layer, so it is never clipped by the cell or hidden behind the pinned
+ * band, and it takes nothing out of the flow, so the old reason to dismiss
+ * on the click and not the press - a picker leaving the flow between press
+ * and release moved the button being pressed - is gone with the flow.
+ *
+ * The panel is always in the document and its contents are mounted while it
+ * is open. React follows the element, by its `beforetoggle` event, and
+ * never drives it except to close it from a finished gesture.
  */
-function useDismiss(
-  open: boolean,
-  row: RefObject<HTMLElement | null>,
-  toggle: RefObject<HTMLElement | null>,
-  dismiss: () => void,
-): void {
-  useEffect(() => {
-    if (!open) return undefined
-    // What the press that is under way began as. Read and cleared by the
-    // click it belongs to, so a gesture cannot speak for the next one: a
-    // press with no click (a right-click, a cancelled touch) and a click
-    // with no press (Enter on a control elsewhere, a screen reader's own
-    // activation) would otherwise be judged by whoever pressed last.
-    let began = false
-    let hadFocus = false
-    const inside = (target: EventTarget | null): boolean =>
-      target instanceof Node && row.current?.contains(target) === true
-    const leave = (handBack: boolean): void => {
-      if (handBack) toggle.current?.focus()
-      dismiss()
-    }
-    const onPointerDown = (event: PointerEvent): void => {
-      began = inside(event.target)
-      // Asked now rather than at the click: the press has already moved
-      // focus by then, so this is the only moment that can say whether the
-      // picker held it.
-      hadFocus = row.current?.contains(document.activeElement) === true
-    }
-    const onClick = (event: MouseEvent): void => {
-      const startedInside = began
-      const held = hadFocus
-      began = false
-      hadFocus = false
-      // A drag that starts in the picker and ends outside it is a colour,
-      // not a dismissal.
-      if (startedInside || inside(event.target)) return
-      // Hand focus back only if the press put it nowhere. A press on
-      // another control has already taken focus and it is theirs; a press
-      // on prose or a margin leaves it on the body, which is where a
-      // screen reader would be stranded when the picker goes.
-      const active = document.activeElement
-      leave(held && (active === null || active === document.body))
-    }
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape') return
-      leave(row.current?.contains(document.activeElement) === true)
-    }
-    // The click, not the press. Dismissing on the press takes this row's
-    // picker out of the flow before the button is released, and everything
-    // below it moves up by the picker's height - so the click is delivered
-    // to the nearest common ancestor of where the press began and where it
-    // ended, and the button a person pressed never hears it. One press on
-    // another row's Choose then did nothing at all.
-    //
-    // Capture, so the picker is dismissed before anything in the row that
-    // is being pressed acts on it; the click still reaches its own target,
-    // which is what makes the press count.
-    document.addEventListener('pointerdown', onPointerDown, true)
-    document.addEventListener('click', onClick, true)
-    document.addEventListener('keydown', onKeyDown)
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown, true)
-      document.removeEventListener('click', onClick, true)
-      document.removeEventListener('keydown', onKeyDown)
-    }
-  }, [open, row, toggle, dismiss])
+function ColourControl({
+  label,
+  colour,
+  panelName,
+  onPick,
+  reset,
+  children,
+}: {
+  label: string
+  colour: string
+  panelName: string
+  onPick: (hex: string) => void
+  /** Only a line that can have an override offers Reset. */
+  reset?: { label: string; enabled: boolean; onReset: () => void }
+  children: ReactNode
+}): JSX.Element {
+  const panelId = useId()
+  // Whether this panel is showing, as the element last said. It lives here
+  // and not in the parent so that it goes with the row: a popover removed
+  // from the document sends no event, and a flag kept above would read
+  // "open" for a row that came back closed (an engine restart, a change of
+  // mode). Nothing above needs to know which is open: opening one closes
+  // the others, which is the platform's.
+  const [open, setOpen] = useState(false)
+  const chip = useRef<HTMLButtonElement>(null)
+  const panel = useRef<HTMLDivElement>(null)
+  // A person saying they have finished: close the panel and go back to the
+  // chip that opened it, as the rename form's does.
+  const done = (): void => {
+    if (panel.current?.matches(':popover-open') === true) panel.current.hidePopover()
+    chip.current?.focus()
+  }
+  return (
+    <>
+      <div className="line-row">
+        <button
+          ref={chip}
+          type="button"
+          className="colour-chip"
+          style={swatch(colour)}
+          popoverTarget={panelId}
+          aria-expanded={open}
+          aria-controls={panelId}
+          aria-label={label}
+        />
+        {children}
+      </div>
+      <div
+        ref={panel}
+        id={panelId}
+        className="colour-popover"
+        popover="auto"
+        role="group"
+        aria-label={panelName}
+        // Mounted before the panel is shown, so its contents are there for
+        // its first frame and the flip is decided on the box it will have,
+        // not an empty one; unmounted only after it has gone. The platform
+        // gives focus back to the chip when a panel closes with focus in it,
+        // and it can only do that if the focused field is still there
+        // when it looks.
+        onBeforeToggle={(event) => {
+          if (event.newState === 'open') setOpen(true)
+        }}
+        onToggle={(event) => {
+          if (event.newState === 'closed') setOpen(false)
+        }}
+      >
+        {open && (
+          <ColourPicker
+            colour={colour}
+            onPick={onPick}
+            onDone={done}
+            reset={
+              reset === undefined
+                ? undefined
+                : {
+                    ...reset,
+                    onReset: () => {
+                      reset.onReset()
+                      done()
+                    },
+                  }
+            }
+          />
+        )}
+      </div>
+    </>
+  )
 }
 
 function DefaultColour({
   colour,
-  open,
-  onToggle,
   onPick,
-  onDone,
 }: {
   colour: string
-  open: boolean
-  onToggle: () => void
   onPick: (hex: string) => void
-  onDone: () => void
 }): JSX.Element {
-  const panelId = useId()
-  const chooseRef = useRef<HTMLElement>(null)
-  const rowRef = useRef<HTMLDivElement>(null)
-  useDismiss(open, rowRef, chooseRef, onDone)
   return (
-    <div className="line-row-group" ref={rowRef}>
-      <div className="line-row">
-        <span className="swatch" style={swatch(colour)} aria-hidden="true" />
+    <div className="line-row-group">
+      <ColourControl
+        label="Choose the colour of lines the feed leaves uncoloured"
+        colour={colour}
+        panelName="Colour for lines the feed leaves uncoloured"
+        onPick={onPick}
+      >
         <span className="line-name">Lines with no colour in the feed</span>
         <span className="line-source">drawn in {colour}</span>
-        <Button
-          ref={chooseRef}
-          aria-expanded={open}
-          /* Only while it is there: a control named by aria-controls must exist. */
-          aria-controls={open ? panelId : undefined}
-          aria-label="Choose the colour of lines the feed leaves uncoloured"
-          onClick={onToggle}
-        >
-          <Icon name="edit" />
-          Choose
-        </Button>
-      </div>
-      {open && (
-        <ColourPicker
-          id={panelId}
-          name="Colour for lines the feed leaves uncoloured"
-          colour={colour}
-          onPick={onPick}
-          onDone={() => {
-            // The picker goes with the press, so focus goes back to the
-            // control that revealed it, as the rename form's does. Moved
-            // before the parent unmounts it, or focus would fall to the body.
-            chooseRef.current?.focus()
-            onDone()
-          }}
-        />
-      )}
+      </ColourControl>
     </div>
   )
 }
@@ -441,69 +438,35 @@ function LineRow({
   line,
   shown,
   overridden,
-  open,
-  onToggle,
   onPick,
-  onDone,
   onReset,
 }: {
   line: Line
   shown: Shown
   overridden: boolean
-  open: boolean
-  onToggle: () => void
   onPick: (hex: string) => void
-  onDone: () => void
   onReset: () => void
 }): JSX.Element {
-  const panelId = useId()
-  const chooseRef = useRef<HTMLElement>(null)
-  const rowRef = useRef<HTMLLIElement>(null)
-  useDismiss(open, rowRef, chooseRef, onDone)
   return (
-    <li className="line-row-group" ref={rowRef}>
-      <div className="line-row">
-        <span className="swatch" style={swatch(shown.color)} aria-hidden="true" />
+    <li className="line-row-group">
+      <ColourControl
+        label={`Choose the colour of line ${line.label}`}
+        colour={shown.color}
+        panelName={`Colour for line ${line.label}`}
+        onPick={onPick}
+        reset={{
+          label:
+            line.feed === null
+              ? `Reset line ${line.label} to the default colour`
+              : `Reset line ${line.label} to the colour in the feed`,
+          enabled: overridden,
+          onReset,
+        }}
+      >
         <span className="line-name">{line.label}</span>
         <span className="line-feed">{feedWords(line)}</span>
         <span className="line-source">{sourceWords(shown)}</span>
-        <Button
-          ref={chooseRef}
-          aria-expanded={open}
-          aria-controls={open ? panelId : undefined}
-          aria-label={`Choose the colour of line ${line.label}`}
-          onClick={onToggle}
-        >
-          <Icon name="edit" />
-          Choose
-        </Button>
-        <Button
-          disabled={!overridden}
-          aria-label={
-            line.feed === null
-              ? `Reset line ${line.label} to the default colour`
-              : `Reset line ${line.label} to the colour in the feed`
-          }
-          onClick={onReset}
-        >
-          Reset
-        </Button>
-      </div>
-      {open && (
-        <ColourPicker
-          id={panelId}
-          name={`Colour for line ${line.label}`}
-          colour={shown.color}
-          onPick={onPick}
-          onDone={() => {
-            // The picker goes with the press, so focus goes back to the
-            // control that revealed it, as the rename form's does. Moved
-            // before the parent unmounts it, or focus would fall to the body.
-            chooseRef.current?.focus()
-            onDone()
-          }}
-        />
-      )}
+      </ColourControl>
     </li>
   )
 }
@@ -526,17 +489,15 @@ function LineRow({
  * instead and builds once the way is clear.
  */
 function ColourPicker({
-  id,
-  name,
   colour,
   onPick,
   onDone,
+  reset,
 }: {
-  id: string
-  name: string
   colour: string
   onPick: (hex: string) => void
   onDone: () => void
+  reset?: { label: string; enabled: boolean; onReset: () => void }
 }): JSX.Element {
   const [text, setText] = useState(colour)
   const [message, setMessage] = useState<string | null>(null)
@@ -563,7 +524,7 @@ function ColourPicker({
   }
 
   return (
-    <div id={id} className="colour-picker" role="group" aria-label={name}>
+    <div className="colour-picker">
       <HexColorPicker color={colour} onChange={onPick} />
       <form className="inline-form" noValidate onSubmit={submit}>
         <div className="field">
@@ -587,6 +548,11 @@ function ColourPicker({
           <Button variant="primary" type="submit">
             Use this colour
           </Button>
+          {reset !== undefined && (
+            <Button aria-label={reset.label} disabled={!reset.enabled} onClick={reset.onReset}>
+              Reset
+            </Button>
+          )}
         </div>
       </form>
     </div>

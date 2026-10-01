@@ -216,7 +216,7 @@ The two reader columns are a person's, recorded per run in
 | Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
 | Line colours | pass | pass (every control names its line) | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
-| Colour picker | pass (sliders take the arrows; hex field) | pass; the Choose button controls its picker (F6) | fixed (D10) | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
+| Colour picker | pass (sliders take the arrows; hex field) | pass; the chip controls its panel, an auto popover, by `aria-controls` and `popovertarget` (F6, issue 284) | fixed (D10) | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
 | Line order | pass | pass | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
 
 ### Cell 06, Export
@@ -576,7 +576,8 @@ or a design decision.
 - **F6. A kit button's `aria-controls` related it to nothing. Fixed
   (issue 121).** *Screen:* the header's Jobs toggle (`App.tsx`) and the
   line colours' Choose buttons (`LineColours.tsx`, the default colour's and
-  each line's), and any `Button` given `aria-controls`. *Steps:* with a
+  each line's; native chip buttons since issue 284), and any `Button` given
+  `aria-controls`. *Steps:* with a
   screen reader that reports controlled elements, focus one. *What a
   person met:* no relation to the inspector or the colour picker it opens.
   `kit/Button.tsx` mirrored `aria-controls` onto the `<button>` in the
@@ -608,8 +609,9 @@ or a design decision.
   syncing against a stand-in that behaves as Chromium does, and
   `notebook-a11y.spec.ts` ("the notebook, Inspect, the geographic view…")
   reads the
-  relation from the built app's accessibility tree: each Choose button
-  controls its open picker and nothing once it closes, and the Jobs toggle
+  relation from the built app's accessibility tree: each line's colour chip
+  (a native button since issue 284, so its `aria-controls` is the plain
+  attribute's) controls its open picker and nothing once it closes, and the Jobs toggle
   controls the Inspector while it is open and nothing while it is not.
   Still a person's: whether VoiceOver or Narrator says anything of it,
   which neither is known to; `aria-expanded` still says what the press
@@ -967,18 +969,20 @@ a table).
 
 - **Line colours.** Listen for the heading "Line colours", the list
   "Lines", and in each row the line's label, the feed's colour, where the
-  shown colour comes from ("the colour in the feed, `#rrggbb`"), a button
-  "Choose the colour of line `<label>`", collapsed, and a button
-  "Reset line `<label>` to the colour in the feed", dimmed until the line
-  has a colour of its own. Before the list, not inside it, is the row
+  shown colour comes from ("the colour in the feed, `#rrggbb`"), a colour chip
+  at the row's start, a button "Choose the colour of line `<label>`",
+  collapsed. The button "Reset line `<label>` to the colour in the feed" is
+  in the chip's panel, dimmed until the line has a colour of its own (issue
+  284). Before the list, not inside it, is the row
   "Lines with no colour in the feed", with the button "Choose the colour of
   lines the feed leaves uncoloured".
-- **Colour picker.** Press **Choose** on a line: listen for expanded, and a
+- **Colour picker.** Press the chip of a line: listen for expanded (focus stays
+  on the chip, and one Tab enters the panel), and a
   group "Colour for line `<label>`" holding the sliders "Color" and "Hue",
   each read with its value, and the text field "Hex value" and the button
   **Use this colour**. Move each slider with the arrow keys and listen for
   the value changing. Press Escape: the picker goes and focus is back on
-  **Choose**. Type a hex value that is not one, press **Use this colour**,
+  the chip. Type a hex value that is not one, press **Use this colour**,
   and listen for "A colour is six hexadecimal digits, such as 0072bc." read
   with the field when you return to it.
 - **Line order.** Listen for the heading "Line order" and an ordered list

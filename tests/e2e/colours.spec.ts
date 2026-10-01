@@ -13,7 +13,7 @@
 import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { _electron as electron, expect, test, type Page } from '@playwright/test'
+import { _electron as electron, expect, test, type Locator, type Page } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 import {
   cell,
@@ -87,8 +87,15 @@ test('lists the feed lines with the colours the feed publishes', async () => {
     // colour came from said in words.
     await expect(rows.nth(0)).toContainText('#0072bc')
     await expect(rows.nth(0)).toContainText('the colour in the feed')
-    // Nothing to reset yet.
-    await expect(panel.getByRole('button', { name: /^Reset line A/ })).toBeDisabled()
+    // Nothing to reset yet: Reset is in the chip's panel (issue 284), and
+    // disabled there until the line has a colour of its own.
+    await panel.getByRole('button', { name: /^Choose the colour of line A/ }).click()
+    await expect(
+      panel.getByRole('group', { name: 'Colour for line A' }).getByRole('button', {
+        name: /^Reset line A/,
+      }),
+    ).toBeDisabled()
+    await page.keyboard.press('Escape')
     await expect(panel.getByRole('button', { name: 'Reset every line' })).toBeDisabled()
     // Cell 05 is one cell of two sections, each named by a heading of its
     // own a level below the cell's: the cell is called Lines, and one
@@ -181,7 +188,10 @@ test('reset puts a line back to the feed, and reset for all clears everything', 
     await expect(page.getByText(/Drawn in the colours you chose/)).toBeVisible({ timeout: 30_000 })
     await expect.poll(() => readRecord(engineHome).colors).toEqual({ A: '#ff0000' })
 
-    await panel.getByRole('button', { name: /^Reset line A/ }).click()
+    // Reset is inside the panel, which is where the colour was chosen.
+    await panel.getByRole('button', { name: /^Choose the colour of line A/ }).click()
+    await picker.getByRole('button', { name: /^Reset line A/ }).click()
+    await expect(picker, 'Reset closes the panel').toBeHidden()
     await expect.poll(() => readRecord(engineHome).colors, { timeout: 30_000 }).toEqual({})
     await expect(
       panel.getByRole('list', { name: 'Lines' }).getByRole('listitem').nth(0),
@@ -362,6 +372,99 @@ test('a colour that is not one is refused beside the field, and nothing is built
   })
 })
 
+test('a chip opens its picker in a floating panel that moves no row, and the last row flips it above', async () => {
+  // Issue 284. The picker used to unfold under its row and push every row
+  // below it down, and could be pushed behind the pinned map.
+  const engineHome = home()
+  await withApp(engineHome, async (page) => {
+    await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
+    const panel = cell(page, 'lines')
+    const rows = panel.getByRole('list', { name: 'Lines', exact: true }).getByRole('listitem')
+    const chipOf = (line: string): Locator =>
+      panel.getByRole('button', { name: `Choose the colour of line ${line}`, exact: true })
+    const tops = (): Promise<number[]> =>
+      rows.evaluateAll((items) =>
+        items.map((item) => item.getBoundingClientRect().top + window.scrollY),
+      )
+
+    // A chip: 24px square, the row's first control, in the line's colour.
+    const chip = await chipOf('A').boundingBox()
+    expect(chip?.width).toBeCloseTo(24, 0)
+    expect(chip?.height).toBeCloseTo(24, 0)
+    expect(
+      await rows
+        .nth(0)
+        .evaluate((row) => row.querySelector('.line-row')?.firstElementChild?.className),
+    ).toBe('colour-chip')
+    expect(await chipOf('A').evaluate((el) => (el as HTMLElement).style.background)).toMatch(
+      /rgb\(0, 114, 188\)/,
+    )
+
+    // Opening it moves no row.
+    const before = await tops()
+    await chipOf('A').click()
+    const picker = panel.getByRole('group', { name: 'Colour for line A' })
+    await expect(picker).toBeVisible()
+    // Within a pixel, not equal and not rounded: a position is a fraction
+    // that wobbles by a ten-thousandth between reads, and a number that
+    // sits near a half rounds to either side. A row that moved moved by the
+    // panel's height.
+    const after = await tops()
+    expect(after).toHaveLength(before.length)
+    after.forEach((top, i) =>
+      expect(Math.abs(top - before[i]), `row ${i} moved`).toBeLessThanOrEqual(1),
+    )
+    // It is a popover, in the top layer, and it never covers its chip:
+    // below it where there is room, above it where there is not.
+    expect(await picker.evaluate((el) => el.matches(':popover-open'))).toBe(true)
+    const floating = (await picker.boundingBox())!
+    const chipBox = (await chipOf('A').boundingBox())!
+    const clear =
+      floating.y >= chipBox.y + chipBox.height - 1 || floating.y + floating.height <= chipBox.y + 1
+    expect(clear, `covers its chip: ${JSON.stringify({ floating, chipBox })}`).toBe(true)
+    await page.keyboard.press('Escape')
+    await expect(picker).toBeHidden()
+
+    // The last row, at the foot of the window, has no room below it: the
+    // panel flips above the chip and stays inside the window.
+    await chipOf('K').evaluate((el) => el.scrollIntoView({ block: 'end' }))
+    const last = (await chipOf('K').boundingBox())!
+    await chipOf('K').click()
+    const flipped = panel.getByRole('group', { name: 'Colour for line K' })
+    await expect(flipped).toBeVisible()
+    const box = (await flipped.boundingBox())!
+    const height = await page.evaluate(() => window.innerHeight)
+    expect(box.y, 'inside the window at the top').toBeGreaterThanOrEqual(0)
+    expect(box.y + box.height, 'inside the window at the foot').toBeLessThanOrEqual(height)
+    expect(box.y + box.height, 'above its chip').toBeLessThanOrEqual(last.y + 1)
+    // And it touches its chip: flipped above is not pinned to the top of the
+    // area the browser tried.
+    expect(last.y - (box.y + box.height), 'beside its chip, not far above it').toBeLessThan(8)
+    await page.keyboard.press('Escape')
+    await expect(flipped).toBeHidden()
+
+    // Reset every line from the keyboard, with a panel open: no pointer
+    // event light-dismisses it, so the panels are closed through the
+    // elements, and no empty box is left in the top layer.
+    await chipOf('A').click()
+    const one = panel.getByRole('group', { name: 'Colour for line A' })
+    await one.getByLabel('Hex value').fill('#ff0000')
+    await one.getByRole('button', { name: 'Use this colour' }).click()
+    await expect(page.getByText(/Drawn in the colours you chose/)).toBeVisible({ timeout: 30_000 })
+    await chipOf('A').click()
+    await expect(one).toBeVisible()
+    const resetAll = panel.getByRole('button', { name: 'Reset every line' })
+    await resetAll.focus()
+    await page.keyboard.press('Enter')
+    await expect(one).toBeHidden()
+    expect(
+      await panel.evaluate((el) => el.querySelectorAll('.colour-popover:popover-open').length),
+      'no panel left open',
+    ).toBe(0)
+    await expect(chipOf('A')).toHaveAttribute('aria-expanded', 'false')
+  })
+})
+
 test('every control is reachable by keyboard and named for its line', async () => {
   const engineHome = home()
   await withApp(engineHome, async (page) => {
@@ -371,10 +474,9 @@ test('every control is reachable by keyboard and named for its line', async () =
       await expect(
         panel.getByRole('button', { name: `Choose the colour of line ${line}` }),
       ).toBeVisible()
-      await expect(
-        panel.getByRole('button', { name: new RegExp(`^Reset line ${line} to`) }),
-      ).toBeVisible()
     }
+    // Reset is not in the row: it is in the panel the chip opens (issue 284).
+    await expect(panel.getByRole('button', { name: /^Reset line / })).toHaveCount(0)
     // The disclosure takes focus and opens from the keyboard alone.
     const choose = panel.getByRole('button', { name: 'Choose the colour of line A' })
     await choose.focus()
@@ -382,6 +484,11 @@ test('every control is reachable by keyboard and named for its line', async () =
     await page.keyboard.press('Enter')
     await expect(panel.getByRole('group', { name: 'Colour for line A' })).toBeVisible()
     await expect(choose).toHaveAttribute('aria-expanded', 'true')
+    await expect(
+      panel.getByRole('group', { name: 'Colour for line A' }).getByRole('button', {
+        name: /^Reset line A to/,
+      }),
+    ).toBeVisible()
     // The picker's own areas are sliders, so a colour can be moved by arrow
     // keys as well as typed.
     await expect(
