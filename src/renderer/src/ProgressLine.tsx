@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type JSX } from 'react'
+import { useLayoutEffect, useRef, useState, type JSX } from 'react'
 
 // The app's one signature component (docs/DESIGN.md, section 10 and section
 // 8.2's progress row): a run's stages as round stations on a line, the line
@@ -40,7 +40,8 @@ interface Props {
    * run that has the room to say so: the export's three stages in a cell
    * that is hundreds of pixels wide. The stations never come closer than
    * the default step, the labels keep their size (the width changes, not
-   * the scale), and until the width is known the default is drawn.
+   * the scale), and until the width is known the default is drawn. A run of
+   * one stage has no gap to spread, so it is drawn as it always was.
    */
   fill?: boolean
 }
@@ -120,7 +121,9 @@ export default function ProgressLine({
 }: Props): JSX.Element {
   const box = useRef<HTMLDivElement>(null)
   const [room, setRoom] = useState(0)
-  useEffect(() => {
+  // Before the first paint, so a line that fills is never drawn once at the
+  // default width and then widened a frame later.
+  useLayoutEffect(() => {
     const element = box.current
     if (!fill || element === null) return undefined
     const read = (): void => setRoom(element.clientWidth)
