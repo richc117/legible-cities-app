@@ -259,6 +259,16 @@ describe('what a running or failed cell says on its row', () => {
     expect(runRowStatus(run({ rebuilt: true }), 'process')).toBeNull()
   })
 
+  it('never names a layout stage on the row of a rebuild or a redraw', () => {
+    // The run's stage list is still the last layout's. A layout that failed
+    // at octilinear, then a rebuild that fails, must not put that on cell 03.
+    const stale: StageState[] = ['done', 'done', 'done', 'failed']
+    expect(runRowStatus(run({ state: 'failed', rebuilt: true }, stale), 'frame')).toBe('failed')
+    expect(runRowStatus(run({ state: 'failed', recoloured: true }, stale), 'lines')).toBe('failed')
+    const running: StageState[] = ['done', 'running']
+    expect(runRowStatus(run({ rebuilt: true }, running), 'frame')).toBe('running')
+  })
+
   it('says nothing once a run has finished, been cancelled, or before one starts', () => {
     for (const state of ['idle', 'done', 'cancelled'] as const)
       expect(runRowStatus(run({ state }, ['done', 'running']), 'process'), state).toBeNull()

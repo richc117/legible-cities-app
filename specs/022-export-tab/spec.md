@@ -5,6 +5,10 @@
 > the Export tab held is cell 06, Export, which starts closed and makes the
 > map's frame the export's preview only while it is open. `kit/Tabs.tsx` was
 > deleted with it. The export's choices, plan and run are unchanged.
+> **Since ADR-046 (`specs/029-the-map-in-the-flow`) the preview is a frame of
+> cell 06's own, not the map's**: wherever this spec says the map's frame
+> shows the planned address, read cell 06's preview frame, and the map's
+> frame is never sent to a planned address.
 
 **Feature Branch**: `A5-01-export-tab`
 

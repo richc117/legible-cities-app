@@ -595,7 +595,7 @@ th .sort:focus-visible {
    leading tall, and the newest line is followed by moving that box's own
    scrollTop - never by scrollIntoView, which scrolls every scrollable
    ancestor to do its work and would take the notebook's column with it,
-   out from under the pinned preview, on every line the engine printed. */
+   out from under the person reading it, on every line the engine printed. */
 
 .engine-log {
   margin: 0 0 var(--space-4-4);

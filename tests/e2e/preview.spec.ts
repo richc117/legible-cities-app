@@ -82,6 +82,39 @@ function home(control: Record<string, unknown> = {}): Home {
   return { engineHome, userData: join(dir, 'profile'), exportFolder: join(dir, 'exports') }
 }
 
+/**
+ * Ask the real window for a size, and say so if it will not take it: the
+ * page emulated at a size is not the window at that size, and a display
+ * smaller than the size (a CI runner's, or macOS putting a too-wide window
+ * back a moment later) leaves the window as wide as it can be. The tests
+ * that use this want room to scroll and a wide column, not an exact width,
+ * so they carry on at what they got, and the annotation says what that was.
+ */
+async function roomy(
+  app: ElectronApplication,
+  page: Page,
+  width: number,
+  height: number,
+): Promise<void> {
+  await app.evaluate(
+    ({ BrowserWindow }, size) => {
+      BrowserWindow.getAllWindows()[0].setContentSize(size.width, size.height)
+    },
+    { width, height },
+  )
+  try {
+    await expect
+      .poll(() => page.evaluate(() => window.innerWidth), { timeout: 5_000 })
+      .toBeGreaterThan(width - 100)
+  } catch {
+    const got = await page.evaluate(() => window.innerWidth)
+    test.info().annotations.push({
+      type: 'window smaller than asked',
+      description: `asked ${width} wide, got ${got}`,
+    })
+  }
+}
+
 async function withApp(
   h: Home,
   run: (page: Page, app: ElectronApplication) => Promise<void>,
@@ -355,10 +388,7 @@ test('the map is a block in the column after cell 02, and scrolls with it', asyn
   const h = home()
   await withApp(h, async (page, app) => {
     await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
-    await app.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows()[0].setContentSize(1200, 700)
-    })
-    await expect.poll(() => page.evaluate(() => window.innerWidth)).toBeGreaterThan(1100)
+    await roomy(app, page, 1200, 700)
     await expect(preview(page)).toBeVisible()
 
     // Where it is: a child of the column, between cells 02 and 03, and in
@@ -520,9 +550,7 @@ test('a run never opens its cell or moves the page, and its row says what it is 
   // end, so the same run shows a failure.
   const h = home({ progress_delay_ms: 300, map_draws: false })
   await withApp(h, async (page, app) => {
-    await app.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows()[0].setContentSize(1200, 700)
-    })
+    await roomy(app, page, 1200, 700)
     await createProject(page, 'LA Metro Rail', 'Los Angeles')
     await openProject(page, 'Los Angeles')
     await closeCell(page, 'data')
@@ -572,9 +600,15 @@ test('a read-only project shows its map and no export preview, and offers no lay
     )
     await expect(cell(page, 'export').getByRole('combobox')).toHaveCount(0)
     // Given time to plan, nothing is: no preview is drawn for an export that
-    // cannot be made.
+    // cannot be made, and no plan was asked of the engine for one. Paired with
+    // the same cell on a project that can export, which does plan.
     await page.waitForTimeout(1500)
     await expect(exportFrame(page)).toHaveCount(0)
+    const asked = readFileSync(join(h.engineHome, 'fake-engine.received'), 'utf8')
+    // The log is the stand-in's, and it has recorded the layout, so an empty
+    // answer below is an answer and not a missing file.
+    expect(asked, 'the stand-in logged the project being laid out').toContain('graph.build')
+    expect(asked, 'a read-only project plans no export').not.toContain('"export.plan"')
 
     await page.getByRole('button', { name: 'Back to Library' }).click()
     await openProject(page, 'Unmade')

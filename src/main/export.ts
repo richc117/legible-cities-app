@@ -200,7 +200,7 @@ export const STILL_FRAME = '000000.png'
 
 /**
  * Is this address the project's own page, with a query and nothing else
- * in front of it? The preview's address goes into the map's frame, which
+ * in front of it? The preview's address goes into cell 06's own frame, which
  * the viewer bridge attaches by the project's prefix (ADR-028), so an
  * answer that named any other page is refused rather than shown.
  */
@@ -313,7 +313,7 @@ export class Exporter {
   }
 
   /**
-   * The address the map's frame shows while the export tab is open
+   * The address cell 06's preview frame shows while the cell is open
    * (specs/022-export-tab): the engine's plan for this choice, on the
    * project's page, with the platform's safe zones asked for exactly when
    * the preset has them. Not a job: nothing is captured, written or

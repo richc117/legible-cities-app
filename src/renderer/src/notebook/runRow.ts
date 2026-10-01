@@ -24,7 +24,11 @@ export function runRowStatus(
 ): string | null {
   if (run.state !== 'running' && run.state !== 'failed') return null
   if (cellOfRun(run) !== cell) return null
-  const stages = inWords(run.stages)
+  // Only a layout run has stages of its own to name. A rebuild or a redraw
+  // is a single step, and the run's stage list is still the last layout's:
+  // a rebuild that fails after a layout that failed would otherwise say
+  // "failed at octilinear" on the day's row.
+  const stages = cell === 'process' ? inWords(run.stages) : []
   if (run.state === 'running') {
     const at = stages.findIndex((s) => s.state === 'running')
     return at === -1 ? 'running' : `running ${stages[at].label}, ${at + 1} of ${stages.length}`
