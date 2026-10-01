@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { _electron as electron, expect, test, type Page } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
-import { cell, createProject, layOut, openProject, panel } from '../support/project'
+import { cell, createProject, layOut, openCell, openProject, panel } from '../support/project'
 import { STAGE_SANDBOX } from '../../src/renderer/src/StageView'
 
 const repoRoot = resolve(__dirname, '../..')
@@ -120,8 +120,8 @@ test('pans and zooms by keyboard on the frame, not inside it', async () => {
     expect(panned).not.toBe(zoomed)
     // A drag pans too. Focusing scrolled the pane; the box is read again.
     const now = (await pane.boundingBox())!
-    // Focusing can leave the pane's top edge behind the pinned map (issue
-    // 213), so the drag starts in its lower part, which the map never covers.
+    // The drag starts in the pane's lower part, well inside the window: a
+    // point near an edge passes here and fails in CI.
     const grab = now.y + now.height - 120
     await page.mouse.move(now.x + 100, grab)
     await page.mouse.down()
@@ -177,6 +177,8 @@ test('without the engine the view says so, and the rest of the screen works', as
       timeout: 20_000,
     })
     await page.getByRole('button', { name: 'Open Alone' }).click()
+    // A laid-out project opens with cell 01 collapsed (ADR-046).
+    await openCell(page, 'data')
     const view = panel(page, 'Where the routes run')
     await expect(view.getByRole('status')).toContainText('not ready')
     await expect(page.getByRole('button', { name: 'Rename', exact: true })).toBeEnabled()

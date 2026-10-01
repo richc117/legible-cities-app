@@ -173,6 +173,42 @@ test('a hostile page in the viewer cannot reach the app', async () => {
 
     expect(page.url(), 'the window did not move').toBe(topUrl)
     expect(app.windows(), 'no second window opened').toHaveLength(1)
+
+    // And again in cell 06's own frame (ADR-046), which loads the same page
+    // at the address the export planned: the second frame is held to the
+    // same boundary as the first.
+    await page
+      .getByRole('button', { name: /^06 Export\b/ })
+      .and(page.locator('button.cell-head'))
+      .click()
+    const preview = page.locator('iframe.export-frame')
+    await expect(preview).toHaveCount(1, { timeout: 30_000 })
+    await expect(preview).toHaveAttribute('sandbox', VIEWER_SANDBOX)
+    await expect(page.locator('iframe.viewer-frame')).toHaveAttribute('sandbox', VIEWER_SANDBOX)
+    await page.waitForTimeout(2000)
+    const triedThere = (await app.evaluate(async ({ BrowserWindow }) => {
+      const main = BrowserWindow.getAllWindows()[0].webContents.mainFrame
+      const frame = main.frames.find((f) => f !== main && /[?&]frame=/.test(f.url))
+      return frame ? ((await frame.executeJavaScript('window.__tried')) as unknown) : null
+    })) as Record<string, string> | null
+    expect(Object.keys(triedThere ?? {}), 'the hostile page ran in the preview too').toHaveLength(
+      10,
+    )
+    for (const route of [
+      'readParentApi',
+      'callParentApi',
+      'parentDocument',
+      'parentEval',
+      'injectIntoParent',
+      'topAssign',
+      'topReplace',
+    ]) {
+      expect(triedThere?.[route], `the preview: ${route}`).toBe('REFUSED')
+    }
+    expect(triedThere?.open).toBe('null')
+    expect(triedThere?.nodeRequire).toBe('undefined')
+    expect(page.url(), 'the window did not move').toBe(topUrl)
+    expect(app.windows(), 'no second window opened').toHaveLength(1)
   })
 })
 
@@ -206,16 +242,18 @@ test('the app can still drive the page it cannot be reached from', async () => {
     await expect(page.getByRole('region', { name: 'Map' })).toBeVisible()
     await page.waitForTimeout(1500)
 
-    const drive = (method: string, ...args: unknown[]): Promise<unknown> =>
+    const driveAs = (role: string, method: string, ...args: unknown[]): Promise<unknown> =>
       page.evaluate(
-        ([m, a]) =>
+        ([r, m, a]) =>
           (
             globalThis as unknown as {
-              api: { viewer: { call(m: string, ...a: unknown[]): Promise<unknown> } }
+              api: { viewer: { call(r: string, m: string, ...a: unknown[]): Promise<unknown> } }
             }
-          ).api.viewer.call(m as string, ...(a as unknown[])),
-        [method, args] as [string, unknown[]],
+          ).api.viewer.call(r as string, m as string, ...(a as unknown[])),
+        [role, method, args] as [string, string, unknown[]],
       )
+    const drive = (method: string, ...args: unknown[]): Promise<unknown> =>
+      driveAs('map', method, ...args)
 
     await expect(drive('state')).resolves.toMatchObject({ viewName: 'schematic', labels: true })
     await drive('showView', 'linear')
@@ -239,5 +277,23 @@ test('the app can still drive the page it cannot be reached from', async () => {
 
     // A method the page does not expose is refused before anything is sent.
     await expect(drive('setCapture', true)).rejects.toThrow()
+
+    // With cell 06 open there are two frames (ADR-046). The map is still
+    // the one driven, and the preview answers whether it has loaded and is
+    // refused everything else, by the main process, before anything is
+    // sent into it.
+    await page
+      .getByRole('button', { name: /^06 Export\b/ })
+      .and(page.locator('button.cell-head'))
+      .click()
+    await expect(page.locator('iframe.export-frame')).toHaveCount(1, { timeout: 30_000 })
+    await expect.poll(() => driveAs('export', 'state').catch(() => null)).not.toBeNull()
+    await expect(driveAs('export', 'seek', 900)).rejects.toThrow(/not driven/)
+    await expect(driveAs('export', 'setPlaying', true)).rejects.toThrow(/not driven/)
+    await drive('seek', 2700)
+    await expect(drive('state')).resolves.toMatchObject({ at: 2700, playing: false })
+    await expect(driveAs('export', 'state')).resolves.toMatchObject({ at: 0 })
+    // A role the bridge does not know is refused outright.
+    await expect(driveAs('both', 'state')).rejects.toThrow(/which frame/)
   })
 })
