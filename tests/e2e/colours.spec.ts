@@ -384,7 +384,7 @@ test('a chip opens its picker in a floating panel that moves no row, and the las
       panel.getByRole('button', { name: `Choose the colour of line ${line}`, exact: true })
     const tops = (): Promise<number[]> =>
       rows.evaluateAll((items) =>
-        items.map((item) => Math.round(item.getBoundingClientRect().top + window.scrollY)),
+        items.map((item) => item.getBoundingClientRect().top + window.scrollY),
       )
 
     // A chip: 24px square, the row's first control, in the line's colour.
@@ -405,7 +405,15 @@ test('a chip opens its picker in a floating panel that moves no row, and the las
     await chipOf('A').click()
     const picker = panel.getByRole('group', { name: 'Colour for line A' })
     await expect(picker).toBeVisible()
-    expect(await tops(), 'no row moved').toEqual(before)
+    // Within a pixel, not equal and not rounded: a position is a fraction
+    // that wobbles by a ten-thousandth between reads, and a number that
+    // sits near a half rounds to either side. A row that moved moved by the
+    // panel's height.
+    const after = await tops()
+    expect(after).toHaveLength(before.length)
+    after.forEach((top, i) =>
+      expect(Math.abs(top - before[i]), `row ${i} moved`).toBeLessThanOrEqual(1),
+    )
     // It is a popover, in the top layer, and it never covers its chip:
     // below it where there is room, above it where there is not.
     expect(await picker.evaluate((el) => el.matches(':popover-open'))).toBe(true)
