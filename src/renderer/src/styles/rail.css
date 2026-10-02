@@ -52,15 +52,19 @@
 }
 
 /* A step: a button drawn as a row rather than as a control, as the cell's
-   own heading row is, so the two read as one family. */
+   own heading row is, so the two read as one family. It is one control's
+   height and no more (the maintainer's call, 30 Sep 2026): the hover and
+   the selected ground are a button's height, so they never stand taller
+   than the button beside them would, and a row of text and icon is
+   centred in it. */
 .rail-step {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: var(--space-4-2);
   width: 100%;
   box-sizing: border-box;
-  min-height: var(--target-min);
-  padding: var(--space-4-2);
+  height: var(--control-height);
+  padding: 0 var(--space-4-2);
   border: none;
   border-radius: var(--radius);
   background: none;
@@ -112,8 +116,9 @@
    twenty pixels and add no truncation anywhere. Five of the six names measure 28 to 48
    pixels and have 71 left for them, where they had 91; the sixth, "Frame
    and service day" at 137, is cut with the icon and cut without it, since
-   it is longer than the rail either way. Nothing overflows, and the row
-   goes from 37 pixels tall to 40.
+   it is longer than the rail either way. Nothing overflows. The row was
+   37 pixels tall and then 40; it is one control's height now, the
+   maintainer's call of 30 Sep 2026, with the icon centred in it.
 
    And the colour is worth those twenty pixels: the rail is the only place
    a person sees all six states at once, so "which one failed?" is a glance
@@ -163,7 +168,15 @@
   margin-top: var(--space-4-6);
 }
 
-.rail-outputs h2 {
+/* One rule for both of the rail's headings, and one left edge for every
+   text in it: a step's text starts --space-4-2 inside the rail's padding,
+   so the headings and Outputs' rows take the same (issue 274). */
+.rail-heading,
+.rail-outputs {
+  padding-inline: var(--space-4-2);
+}
+
+.rail h2 {
   margin: 0 0 var(--space-4-2);
   font-size: var(--font-ui-medium);
   line-height: var(--line-ui-large);
@@ -246,7 +259,13 @@
 
   .rail-step {
     justify-content: center;
-    padding: var(--space-4-2) 0;
+    padding: 0;
+  }
+
+  /* The kit's leak app.css restates has the kit's own specificity and
+     more, so the collapsed step's edge needs the same shape (issue 274). */
+  button:is(.rail-step):not([icon]):has(svg:first-child) {
+    padding-left: 0;
   }
 
   .rail-name,
@@ -262,6 +281,7 @@
     border: 0;
   }
 
+  .rail-heading,
   .rail-outputs {
     display: none;
   }

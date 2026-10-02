@@ -277,6 +277,46 @@ test('a file moved or deleted since reads as gone, and offers nothing to press',
   })
 })
 
+test("the rail's headings, every step's number and Outputs start at one edge", async () => {
+  test.setTimeout(120_000)
+  const h = home()
+  await withApp(h, async (page) => {
+    await laidOutProject(page, 'LA Metro Rail', PROJECT)
+    const heading = page.locator('.rail-heading')
+    await expect(heading).toBeVisible()
+    await expect(heading).toHaveText(/\S/)
+    // The text's own left edge, not its box's: a Range over the contents.
+    const lefts = await page.evaluate(() => {
+      const edge = (el: Element): number => {
+        const range = document.createRange()
+        range.selectNodeContents(el)
+        return range.getBoundingClientRect().left
+      }
+      return {
+        heading: edge(document.querySelector('.rail-heading')!),
+        numbers: [...document.querySelectorAll('.rail-number')].map(edge),
+        outputs: edge(document.querySelector('#outputs-heading')!),
+      }
+    })
+    // A step is one control's height, so the ground under the pointer and
+    // the selected one are a button's and no taller, and its text is inside.
+    const steps = await page.evaluate(() =>
+      [...document.querySelectorAll<HTMLElement>('.rail-step')].map((el) => ({
+        height: el.getBoundingClientRect().height,
+        over: el.scrollHeight - el.clientHeight,
+      })),
+    )
+    expect(steps).toHaveLength(6)
+    for (const step of steps) {
+      expect(step.height).toBeCloseTo(28, 0)
+      expect(step.over).toBeLessThanOrEqual(0)
+    }
+    for (const left of [...lefts.numbers, lefts.outputs]) {
+      expect(Math.abs(left - lefts.heading)).toBeLessThanOrEqual(1)
+    }
+  })
+})
+
 test('below 900px the rail collapses to its numbers and keeps its names', async () => {
   test.setTimeout(120_000)
   const h = home()
@@ -298,6 +338,28 @@ test('below 900px the rail collapses to its numbers and keeps its names', async 
       )
       .toBeLessThanOrEqual(1)
     await expect(step(page, /^01 Data, /)).toBeVisible()
+    // The number is centred in its step: a left padding with no right one
+    // would push it off by half of itself (issue 274).
+    const offCentre = await page.evaluate(() => {
+      const number = document.querySelector('.rail-number')!.getBoundingClientRect()
+      const step = document.querySelector('.rail-step')!.getBoundingClientRect()
+      return Math.abs(number.left + number.width / 2 - (step.left + step.width / 2))
+    })
+    expect(offCentre).toBeLessThanOrEqual(1)
+    // The collapsed step is one control's height too.
+    const collapsed = await page.evaluate(() =>
+      [...document.querySelectorAll<HTMLElement>('.rail-step')].map((el) => ({
+        height: el.getBoundingClientRect().height,
+        over: el.scrollHeight - el.clientHeight,
+      })),
+    )
+    expect(collapsed).toHaveLength(6)
+    for (const step of collapsed) {
+      expect(step.height).toBeCloseTo(28, 0)
+      expect(step.over).toBeLessThanOrEqual(0)
+    }
+    // The project's name goes as Outputs goes; the nav's label still names it.
+    await expect(page.locator('.rail-heading')).toBeHidden()
 
     // Inert under the inspector, which is the main region's own attribute:
     // Shift+Tab must not reach a control a person cannot see.

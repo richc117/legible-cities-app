@@ -445,6 +445,24 @@ body {
   justify-content: flex-start;
 }
 
+/* A fourth leak, found by measuring (issue 274): the kit gives a button
+   whose descendant's first child is an svg the small left padding of an icon-first button,
+   `button:has(svg:first-child):not([icon])`, which is meant for a button
+   with its icon first and reaches a row whose state icon is in a span.
+   It outranks a class, so each row restates its own edge with the kit's
+   own selector shape on its side. */
+button:is(.entry):not([icon]):has(svg:first-child) {
+  padding-left: var(--space-4-2);
+}
+
+button:is(.rail-step):not([icon]):has(svg:first-child) {
+  padding-left: var(--space-4-2);
+}
+
+button:is(.cell-head):not([icon]):has(svg:first-child) {
+  padding-left: var(--space-4-4);
+}
+
 .entry:active,
 .entry:hover:active {
   background: var(--surface-hover);
