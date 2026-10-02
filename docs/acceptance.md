@@ -210,8 +210,7 @@ run.
   open and 06 closed. The rail's **Steps**, under the project's name, lists the same six, and its
   **Outputs** says "Nothing exported yet."
 - The layout starts by itself. The status sentence under the heading reads
-  "02 Process is running." with **Stop** beside it, and "Run all stops at
-  the map. It never exports." beneath.
+  "02 Process is running." with **Stop** beside it.
 - In cell **01 Data**, **In the feed** says "Reading the feed, and
   downloading it first if it is not on this machine yet…" and then fills
   in (step 5).
@@ -225,7 +224,7 @@ run.
 - It ends with "Laid out.", **Lay out again** and **Re-layout**. The map
   appears at the top of the notebook, its trains moving, and stays there
   while the cells scroll beneath it. The sentence under the heading becomes
-  "The map is drawn from every cell." and **Run all** is unavailable, since
+  "The map is drawn from every cell." and **Run all** is gone, since
   there is nothing to run.
 - Every cell's heading, and every step in the rail, says **ready**.
 - **What it costs.** Nothing here is a promise. The only figures are from

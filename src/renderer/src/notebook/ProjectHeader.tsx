@@ -1,8 +1,8 @@
-import { useId, useRef, type JSX } from 'react'
+import { useRef, type JSX } from 'react'
 import { useFocusHandback } from '../focusHandback'
 import Icon from '../icons/Icon'
 import Button from '../kit/Button'
-import { EXPORT_NOTE, notebookSentence, runAllOffered, runAllPlan } from '../runAll'
+import { notebookSentence, runAllOffered, runAllPlan } from '../runAll'
 import { cellOfRun, runGraph } from '../runGraph'
 import { useProject } from './context'
 
@@ -16,13 +16,14 @@ import { useProject } from './context'
 // because it is a polite live region and each change to it is read out.
 // And Run all, which brings the map up to date with cells 01 to 05 using
 // the runs those cells already have and never runs the export
-// (`runAll.ts` says how and why); the sentence beside it says so.
+// (`runAll.ts` says how and why; the `export.plan` assertions in
+// `layout.spec.ts` hold it). It is drawn only while it has something to run.
 //
 // While the project's run goes, Run all gives way to Stop, which is the
 // run's own cancel whichever cell started it, and focus on the one that
 // went is handed to the one that came (A6-07), as cell 02's Cancel does.
-// An export has its own Cancel in cell 06; here it only makes Run all
-// unavailable.
+// An export has its own Cancel in cell 06; here it only takes Run all
+// away.
 //
 // It is not the app's own header, which is the window's and knows no
 // project (A1-03, ADR-036).
@@ -40,7 +41,6 @@ export default function ProjectHeader(): JSX.Element {
     settling,
     exporting,
   } = useProject()
-  const noteId = useId()
   const region = useRef<HTMLDivElement>(null)
   const runAllRef = useRef<HTMLElement>(null)
   const stopRef = useRef<HTMLElement>(null)
@@ -73,10 +73,10 @@ export default function ProjectHeader(): JSX.Element {
         ? held.current
         : notebookSentence(project, states)
   if (!holding) held.current = sentence
-  // Stop goes when the run ends, and Run all comes back - disabled, while
-  // the record is read back or when the run left nothing to do, and
-  // Chromium will not let a disabled button hold focus. The notebook's
-  // sentence is where focus goes then: it says what the notebook now is.
+  // Stop goes when the run ends, and Run all comes back - or does not, while
+  // the record is read back or when the run left nothing to do, since it is
+  // drawn only while offered. The notebook's sentence is where focus goes
+  // then: it says what the notebook now is.
   //
   // Watched on whether Run all is offered as well as on the run's state,
   // because the two move a beat apart: the run says it is done before the
@@ -112,21 +112,17 @@ export default function ProjectHeader(): JSX.Element {
                   <Icon name="close" />
                   Stop
                 </Button>
-              ) : (
-                <Button
-                  ref={runAllRef}
-                  variant="primary"
-                  disabled={!offered}
-                  aria-describedby={noteId}
-                  onClick={runAll}
-                >
+              ) : offered ? (
+                // Drawn only while it has something to run. On a drawn
+                // project it would be a greyed control that does nothing,
+                // and a disabled control also cannot hold focus when the
+                // button that had it goes; the sentence is where focus
+                // lands then (issue 276).
+                <Button ref={runAllRef} variant="primary" onClick={runAll}>
                   <Icon name="map" />
                   Run all
                 </Button>
-              )}
-              <p id={noteId} className="project-run-note">
-                {EXPORT_NOTE}
-              </p>
+              ) : null}
             </div>
           </div>
         </div>
