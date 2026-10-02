@@ -30,29 +30,108 @@ esac
 # they live in the shared git directory) and CI still cover both. /lanes
 # commits only as `cd <worktree> && git ...` and runs the scanners there as
 # a step.
+# Two more, about a commit that holds something the index does not when this
+# hook runs, both measured in issue 260: `git commit <path>` (and -i, --only)
+# commits that path as it is in the working tree, and `git add ... && git
+# commit` in one command stages after the scans. The pre-commit hooks and CI
+# read what was actually committed, and cover both. `-a` is the case this
+# hook does close: see asks_for_all.
 root="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null)}"
-cd "$root" || exit 0
+# Fail closed here as well. A folder this hook cannot enter is one it cannot
+# scan, and `|| exit 0` here said the commit was fine. An empty root is the
+# same case: bash 5 refuses `cd ""` ("null directory") and `|| exit 0` let it
+# through; bash 3.2 accepts it, and the scans below would then run wherever
+# the hook happened to be.
+if [ -z "$root" ] || ! cd -- "$root" 2>/dev/null; then
+  block "the repository folder could not be entered, so nothing was scanned and nothing was committed or pushed." \
+        "Check that CLAUDE_PROJECT_DIR names a folder this hook can enter; until then it refuses every commit and push."
+fi
+
+# `git commit -a` stages the tracked files' working-tree contents after this
+# hook has run, so every scan below, which reads the index, would be reading
+# something other than what is committed. `bin/preflight` reads the index
+# and has no way to be pointed at the working tree, so the sound answer is
+# the one that needs no second scan: refuse -a, and the commit is exactly
+# the index. The cost is one `git add`, which is what the hook asks for.
+#
+# Does the command ask `git commit` for -a or --all? It is read so that any
+# doubt is a yes. Quotes and backslashes are deleted before the words are
+# split, so `"-a"` is the flag it is to a shell, and the price is that a
+# message that says -a is read as the flag too (reword it). The search starts
+# at the first `git commit` and runs to the end of the command, whatever is
+# chained after it. Short options are read a letter at a time, stopping at
+# one that takes a value, since the rest of that word is the value (`-sam` is
+# -s -a -m, and `-ma` is a message). Answers 0 for yes, 1 for no, and 2 for a
+# command that could not be read at all.
+asks_for_all() {
+  local rest word chars c
+  rest=$(printf '%s' "$cmd" | tr -d '\042\047\134') || return 2
+  case "$rest" in
+    *"git commit"*) rest=${rest#*git commit} ;;
+    *) return 1 ;;                       # a push alone
+  esac
+  set -f                                 # a `*` in a word is a `*`
+  # shellcheck disable=SC2086  # split on whitespace, on purpose
+  set -- $rest
+  set +f
+  for word; do
+    case "$word" in
+      --all|--all[!A-Za-z-]*) return 0 ;;   # and not --allow-empty
+      --*) ;;
+      -?*)
+        chars=${word#-}
+        while [ -n "$chars" ]; do
+          c=${chars%"${chars#?}"}; chars=${chars#?}
+          case "$c" in
+            a) return 0 ;;
+            [mFCctSu]) break ;;          # the rest of the word is its value
+            [A-Za-z]) ;;
+            *) break ;;
+          esac
+        done ;;
+    esac
+  done
+  return 1
+}
+case "$cmd" in
+  *"git commit"*)
+    asks_for_all; all=$?
+    if [ "$all" -eq 0 ]; then
+      block "this commit asks for -a, which stages tracked changes after the scans have run; nothing was committed." \
+            "Stage the changes first (git add <files>), then commit without -a. If -a is only a word in the message, reword it."
+    elif [ "$all" -ne 1 ]; then
+      block "the options of this commit could not be read, so nothing was scanned; nothing was committed." \
+            "Stage the changes first (git add <files>), then commit with a plain git commit."
+    fi
+    ;;
+esac
 
 # 1. Keys and tokens, in the staged changes and - before a push - in every
 #    commit that is about to leave this machine.
+#
+#    gitleaks 8.30.1 says "no leaks found" and exits 0 over a repository git
+#    could not read: an index it cannot open, a corrupt one, a history with
+#    an object missing, no repository at all. Git's complaint reaches its log
+#    as an ERR line, nothing is scanned, and the summary is the clean one
+#    (measured, issue 260). The exit status is therefore not the whole
+#    answer, and a scan that logged an error or a warning did not read what
+#    it was asked to and is refused. The colour is turned off so that the
+#    level is a word on its own and not wrapped in an escape sequence.
 if ! command -v gitleaks >/dev/null 2>&1; then
   block "gitleaks is not installed; refusing to commit or push." \
         "Install it (brew install gitleaks) or run: pre-commit run --all-files"
 fi
-if ! out=$(gitleaks git --staged --no-banner --redact 2>&1); then
-  block "gitleaks found something in the staged changes; nothing was committed:" "$out"
-fi
-
-# `git commit -a` stages tracked changes as part of the commit, after this
-# hook has run, so the index scan above has not seen them. Scan the unstaged
-# diff too when the command asks for that.
-case "$cmd" in
-  *" -a"*|*" --all"*)
-    if ! out=$(gitleaks git --pre-commit --no-banner --redact 2>&1); then
-      block "gitleaks found something in the changes -a would stage; nothing was committed:" "$out"
-    fi
-    ;;
-esac
+scan() {   # $1 = what is scanned, then the arguments that follow `gitleaks git`
+  local what=$1 out
+  shift
+  if ! out=$(gitleaks git "$@" --no-banner --no-color --redact 2>&1); then
+    block "gitleaks found something in $what, or could not scan it; nothing went through:" "$out"
+  fi
+  if printf '%s\n' "$out" | grep -Eq '(^|[[:space:]])(ERR|WRN|FTL|PNC)([[:space:]]|$)'; then
+    block "gitleaks logged an error while it scanned $what, so its \"no leaks found\" is not to be trusted; nothing went through:" "$out"
+  fi
+}
+scan "the staged changes" --staged
 
 case "$cmd" in
   *"git push"*)
@@ -61,9 +140,7 @@ case "$cmd" in
     # the range can describe far less than a push actually sends. Scanning
     # all of it costs milliseconds and needs no reasoning about which remote
     # was named.
-    if ! out=$(gitleaks git --no-banner --redact 2>&1); then
-      block "gitleaks found something in the history about to be pushed:" "$out"
-    fi
+    scan "the history about to be pushed"
     ;;
 esac
 
