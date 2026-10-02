@@ -200,6 +200,9 @@ describe("the kit's filled buttons hold their text in both themes (A6-07)", () =
       '--figma-color-bg-danger-hover',
     ],
     ['destructive pressed', '--figma-color-text-ondanger', '--figma-color-bg-danger-pressed'],
+    // A disabled primary: the kit keeps its own light-dark(#fff, #2c2c2c)
+    // unless the adapter maps the token (issue 273).
+    ['primary disabled', '--figma-color-text-ondisabled', '--figma-color-bg-disabled'],
   ]
   for (const which of ['dark', 'sepia'] as Theme[]) {
     const map = tokensFor(which)

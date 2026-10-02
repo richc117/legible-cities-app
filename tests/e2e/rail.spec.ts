@@ -3,27 +3,20 @@
 //
 // Four things, and the first is the one this issue exists for.
 //
-// **A step lands its cell clear of the pinned band, not just the header.**
-// The design row was written before A5.5-20 pinned the map; the band now
-// covers half the window below the header, so a cell scrolled clear of the
-// header alone lands behind it - which looks exactly like a step that did
-// nothing. The assertion is against the band's *measured* foot, and it is
-// made at two cells' geometry rather than one, because the remedy issue 213
-// withdrew reversed direction between two cells: the same `scroll-margin-top`
-// moved one control down by 53 pixels and the colour picker's square up by
-// 139, behind the band, which is issue 87's drag reintroduced. Nothing here
-// touches a scroll the browser performs, so `colours.spec.ts` is untouched
-// and issue 213 stays open.
+// **A step lands its cell clear of the header.** The header is the only
+// thing pinned since ADR-046 put the map in the column's flow. From
+// A5.5-20 until then a band half the window tall sat under the header and
+// a step had to clear its foot, and a cell that landed behind it in CI by a
+// fixed figure was issue 240. The assertion is against the header's
+// *measured* foot, at two cells' geometry, and once at the header itself
+// for a cell with room below it, so a clearance deeper than the header
+// fails here.
 //
 // **The current step follows the scroll and takes no focus.** A person
 // reading down the notebook has not asked to be moved anywhere, so the
 // assertion is on both halves: the mark moves, and the focused element does
 // not. It asserts the rule against the layout as it really is rather than
-// naming a cell: an earlier version expected the last step to be current at
-// the foot of the document, which is a branch of `currentStepOf` the
-// screen's own geometry cannot reach - there are 140 pixels below cell 06
-// and the strip under the band is 204 at the smallest window the app
-// allows. That measurement is in `railScroll.ts`.
+// naming a cell.
 //
 // **Outputs come from the files and not from the session.** Every row here
 // is written into the export folder before the project is ever opened, so
@@ -102,9 +95,9 @@ async function withApp(h: Home, run: (page: Page) => Promise<void>): Promise<voi
 const step = (page: Page, name: string | RegExp): ReturnType<Page['getByRole']> =>
   page.getByRole('navigation', { name: 'Steps' }).getByRole('button', { name })
 
-/** Where the pinned band ends, in the window's own coordinates. */
-const bandFoot = (page: Page): Promise<number> =>
-  page.locator('.preview').evaluate((el) => el.getBoundingClientRect().bottom)
+/** Where the header ends, in the window's own coordinates: the only thing pinned. */
+const headerFoot = (page: Page): Promise<number> =>
+  page.locator('.app-header').evaluate((el) => el.getBoundingClientRect().bottom)
 
 /** Where a cell's box begins, in the same coordinates. */
 const cellTop = (page: Page, number: string): Promise<number> =>
@@ -133,37 +126,67 @@ test('the six cells are a named stepper, and never a tablist', async () => {
   })
 })
 
-test('a step opens its cell, lands it clear of the pinned band, and focuses its heading', async () => {
+test('a step opens its cell, lands it clear of the header, and focuses its heading', async () => {
   test.setTimeout(120_000)
   const h = home()
   await withApp(h, async (page) => {
     await laidOutProject(page, 'LA Metro Rail', PROJECT)
 
-    // Two cells, not one. The withdrawn remedy in issue 213 reversed
-    // direction between two of them, so a rule measured at one cell's
-    // geometry says nothing about the next.
+    // Two cells, one either side of where the map is now. Each lands with
+    // its top at the header's foot, or below it where the document is too
+    // short to scroll that far - and never behind it (issue 240's
+    // criterion). The header is the only thing pinned since ADR-046.
     for (const { id, number, name } of [
       { id: 'frame', number: '03', name: /^03 Frame and service day, / },
       { id: 'lines', number: '05', name: /^05 Lines, / },
     ] as const) {
+      await page.evaluate(() => window.scrollTo(0, 0))
       await step(page, name).click()
       // The cell is open and its heading has focus...
       await expect(cellHandback(page, id)).toBeFocused()
-      // ...and its top is at or below where the band ends, never behind it.
-      // A pixel of slack, because a rounded layout is not integral.
+      // ...the page moved to it...
+      await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0)
+      // ...and its top is at or below the header's foot, never behind it.
+      // Re-read after the scroll has settled, with a pixel of slack because
+      // a rounded layout is not integral.
       await expect
-        .poll(async () => (await cellTop(page, number)) - (await bandFoot(page)), {
+        .poll(async () => (await cellTop(page, number)) - (await headerFoot(page)), {
           timeout: 10_000,
         })
         .toBeGreaterThanOrEqual(-1)
     }
 
-    // And the header alone would not have been enough: the band is much
-    // deeper than the header, which is the whole reason for the arithmetic.
-    const header = await page
-      .locator('.app-header')
-      .evaluate((el) => el.getBoundingClientRect().bottom)
-    expect(await bandFoot(page)).toBeGreaterThan(header)
+    // Where the document is long enough to scroll that far, cell 03 lands at
+    // the header itself and not merely somewhere below it: a clearance deeper
+    // than the header (the band it used to clear) would leave it lower than
+    // this. Whether it is long enough depends on the window - a tall one
+    // cannot scroll as far - so the geometry is read first, and the other
+    // case is asserted too: the page scrolled as far as it can, and the cell
+    // is below the header.
+    await page.evaluate(() => window.scrollTo(0, 0))
+    const geometry = await page.evaluate((cell) => {
+      const header = document.querySelector('.app-header')!.getBoundingClientRect().bottom
+      const top = document.querySelector(`.cell[data-cell="${cell}"]`)!.getBoundingClientRect().top
+      const root = document.scrollingElement!
+      return { wanted: top - header, room: root.scrollHeight - root.clientHeight }
+    }, '03')
+    await step(page, /^03 Frame and service day, /).click()
+    if (geometry.wanted <= geometry.room) {
+      await expect
+        .poll(async () => Math.abs((await cellTop(page, '03')) - (await headerFoot(page))), {
+          timeout: 10_000,
+        })
+        .toBeLessThanOrEqual(2)
+    } else {
+      test.info().annotations.push({
+        type: 'document too short to land at the header',
+        description: `wanted ${geometry.wanted}px of scroll, the page has ${geometry.room}px`,
+      })
+      await expect
+        .poll(() => page.evaluate(() => document.scrollingElement!.scrollTop), { timeout: 10_000 })
+        .toBeGreaterThanOrEqual(geometry.room - 2)
+      expect((await cellTop(page, '03')) - (await headerFoot(page))).toBeGreaterThanOrEqual(-1)
+    }
   })
 })
 
@@ -185,22 +208,15 @@ test('the current step follows the scroll, and takes no focus doing it', async (
 
     // The mark moved off the first cell...
     await expect(step(page, /^01 Data, /)).not.toHaveAttribute('aria-current', 'step')
-    // ...and it is not asserted to be the *last* cell, which this test used
-    // to claim and which the screen cannot reach: for every cell's foot to
-    // rise above the band there would have to be a band's worth of content
-    // below cell 06, and there is the project's footer - 140px measured,
-    // against a strip of 204 at the smallest window the app allows and 364
-    // at 800. At the foot of the document the cell before it is still
-    // showing under the band, and that is the one being read.
-    //
-    // So what is asserted is the rule itself, against the layout as it
-    // really is: the step that carries the mark names the first cell with
-    // any of itself below the band.
+    // ...and what is asserted is the rule itself, against the layout as it
+    // really is rather than a named cell: the step that carries the mark
+    // names the first cell with any of itself below the header, which since
+    // ADR-046 is the only thing a cell can be behind.
     const marked = await page.locator('.rail-step[aria-current="step"]').getAttribute('aria-label')
     expect(marked, 'some step carries the mark').not.toBeNull()
     const number = /^(\d\d) /.exec(marked as string)?.[1]
     expect(number, `"${marked}" begins with a cell number`).toBeDefined()
-    const foot = await bandFoot(page)
+    const foot = await headerFoot(page)
     const feet = await page.evaluate(() =>
       [...document.querySelectorAll('.cell')].map((el) => ({
         cell: el.getAttribute('data-cell') ?? '',
@@ -211,10 +227,10 @@ test('the current step follows the scroll, and takes no focus doing it', async (
       if (cell < (number as string))
         expect(
           bottom,
-          `cell ${cell} is behind the band, before the marked one`,
+          `cell ${cell} is behind the header, before the marked one`,
         ).toBeLessThanOrEqual(foot + 1)
       if (cell === number)
-        expect(bottom, `the marked cell ${cell} shows below the band`).toBeGreaterThan(foot)
+        expect(bottom, `the marked cell ${cell} shows below the header`).toBeGreaterThan(foot)
     }
 
     // And none of it moved focus.

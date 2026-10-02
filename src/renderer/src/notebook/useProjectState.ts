@@ -16,7 +16,6 @@ import {
   nameProject,
 } from '../engine/runs'
 import { stageFor } from '../engine/stages'
-import type { PreviewAddress } from '../exportChoice'
 import { skipTarget } from '../SkipPastMap'
 import type { TextInputHandle } from '../kit/TextInput'
 import { useEngineState } from '../useEngineState'
@@ -79,9 +78,6 @@ export interface ProjectState {
   settling: boolean
   /** How many runs have drawn the page while this screen is open; the viewer's address carries it. */
   drawn: number
-  /** The address the export planned for the map's frame, while cell 06 is open. */
-  preview: PreviewAddress | null
-  setPreview: (address: PreviewAddress | null) => void
   /** The feed's registry entry's mode and agency, when the Library listed it. */
   registry: { mode: string; agency: string | null } | null
   /** The feed as the engine reads it, cached by the inspection module. */
@@ -101,7 +97,7 @@ export interface ProjectState {
   setExport: (choice: ExportChoice) => Promise<void>
   /** The screen's own heading, focused once there is something to read. */
   headingRef: RefObject<HTMLHeadingElement | null>
-  /** Past the map to the project's own toolbar (issue 106). */
+  /** Past the map to cell 03's heading (issue 106, ADR-046). */
   skipPastMap: () => void
   onBack: (notice?: string) => void
   /** The rename form and the delete, which the footer draws. */
@@ -163,9 +159,6 @@ export function useProjectState(
   // remounting the frame - and a remount loses the page's clock, its view
   // and its scrub position as surely as a reparent does (ADR-045).
   const [drawn, setDrawn] = useState(0)
-  // The address the export last planned for the map's frame. Not stored: it
-  // is planned again whenever cell 06 opens.
-  const [preview, setPreview] = useState<PreviewAddress | null>(null)
   const engine = useEngineState()
   const headingRef = useRef<HTMLHeadingElement>(null)
 
@@ -222,11 +215,17 @@ export function useProjectState(
   const deleteButtonRef = useRef<HTMLElement>(null)
   const newNameRef = useRef<TextInputHandle>(null)
 
-  // Past the map to the project's own toolbar (issue 106): its first button
-  // that can take focus, or the screen's heading when neither can.
+  // Past the map to what comes after it (issue 106): cell 03's heading,
+  // since ADR-046 put the map between cells 02 and 03. The heading and not
+  // the cell's first control, because the heading is there whether the
+  // cell is open or not; it takes focus by `tabIndex={-1}`, as every cell
+  // heading does for the rail (`kit/Disclosure.tsx`). Until then the map
+  // was pinned above every cell and the skip went to the footer's Rename.
+  // The screen's own heading is the fallback, so a press never leaves focus
+  // on a control that did nothing.
   const skipPastMap = (): void => {
     skipTarget<HTMLElement>(
-      [renameButtonRef.current, deleteButtonRef.current],
+      [document.querySelector<HTMLElement>(`.cell[data-cell="03"] .disclosure-heading`)],
       headingRef.current,
     )?.focus()
   }
@@ -488,8 +487,6 @@ export function useProjectState(
     settling,
     exporting,
     drawn,
-    preview,
-    setPreview,
     registry,
     inspect,
     readStage,

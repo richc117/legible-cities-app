@@ -1,119 +1,151 @@
-/* The pinned preview (ADR-045, docs/DESIGN.md 8.2, "The pinned preview"):
-   the viewer's frame kept on screen while the cells beneath it are read
-   and edited - sticky under the header, its wrapper a child of the
-   notebook's column so it is pinned from the top rather than at a scroll
-   threshold, and above the notebook rather than beside it at the narrow
-   width.
+/* The map in the notebook's flow (ADR-046, docs/DESIGN.md 8.2, "The map"),
+   and cell 06's preview of the export, which is a frame of its own.
 
-   All of it is CSS, and that is the point (A5.5-20). The frame is never
-   moved between parents and never remounted, because both reload the
-   engine's page and a reload loses its clock, its view and its scrub
-   position. A layout that pinned the map by putting it somewhere else
-   would be a reparent under another name, so the wrapper stays exactly
-   where `Notebook.tsx` puts it - the column's first child - and only
-   these rules move.
+   The map is a block in the column, after cell 02 and before cell 03, as
+   wide as the column and scrolling with everything else. Nothing in the
+   notebook is pinned. Until ADR-046 this file pinned the map under the
+   header as a band half the window tall, with the cells scrolling behind
+   it, and what that band hid - a control reached with Shift+Tab, a cell a
+   rail step landed on (issues 213 and 240) - is why it does not any more;
+   the band's measurements are kept in ADR-046 as history.
+
+   The frame is never moved between parents and never remounted, because
+   both reload the engine's page and a reload loses its clock, its view
+   and its scrub position. `Notebook.tsx` puts the wrapper in the same place
+   in every render; only these rules shape it, and none of them changes
+   what kind of box holds the frame (issue 222).
 
    A stylesheet is named for a region of the interface, not for a
    component, and the four token files stay the only place a literal may
    appear (A5.5-07). */
 
-/* Pinned from the top, so cells 01 and 02 are read with the map in view as
-   the rest are. Not at a scroll threshold: a threshold needs a hysteresis
-   band, a reduced-motion story, a story for a region that changes its
-   relationship to the document mid-scroll, and a test that is flaky by
-   construction.
-
-   It sticks at `--header-height`, which is what the inspector already does
-   for the same reason, and one step under the header's own layer. Both
-   halves of that matter. Above the cells, because a cell's own positioned
-   parts come after the map in
-   the document and would otherwise be painted over it as they scroll
-   under. Under the header, because how the header's forty pixels and its
-   one-pixel rule divide between its box and its border is not something a
-   stylesheet can read: measured in a page holding these sheets alone the
-   header's box comes to forty-one and a map pinned at forty covers the
-   rule, and measured in the app it comes to forty and a map pinned at
-   forty-one leaves a gap for the cells to show through. Pinned at the
-   token and painted below the header, neither can happen: the rule is
-   always the header's to draw, and any pixel of overlap is behind it.
-
-   At the narrow width nothing here changes, and that is the rule rather
-   than an omission: the preview is a child of the notebook's column at
-   every width, so it is above the cells and never beside them. The region
-   that moves at that width is the rail (A5.5-21). */
+/* The block. A plain block in the column's flow: its position is the
+   column's static one, and it is a size container on its inline axis only,
+   so the map inside can take its height from the column's width. The
+   bottom margin is the gap a cell leaves under itself, so the block sits in
+   the column as one more cell does. */
 .preview {
-  position: sticky;
-  top: var(--header-height);
-  z-index: calc(var(--layer-raised) - 1);
-  /* The ground the cells pass behind. The padding is the viewer's own
-     bottom margin, moved inside the pinned box: a transparent margin there
-     would let the top of the cell below show through the gap between the
-     map and that cell. */
-  padding-bottom: var(--space-4-4);
-  background: var(--surface);
+  container-type: inline-size;
+  margin-bottom: var(--space-4-3);
 }
 
-/* The map is wider than the reading column, which panels.css breaks it out
-   of, so the pinned ground has to be the map's own box as well as this
-   wrapper's. Between them they cover everything a cell can occupy. */
 .preview .viewer {
   margin-bottom: 0;
-  background: var(--surface);
 }
 
-/* Pinned, the map is a band: the whole width it already had, and half the
-   window below the header tall.
+/* The map's height: an explicit bound, with the width definite (FR-002).
 
-   It has to be bounded. A 16:10 map at the map's own width is very nearly
-   the height of the window - 640 of the 680 a 720-tall window leaves under
-   the header - so pinned without a bound it would be the only thing on
-   screen, and the cells it is pinned above could not be read, which is the
-   whole reason it is pinned rather than merely present. A sticky box taller
-   than its scrollport also sticks by its top edge, so the foot of it could
-   never be scrolled to at all.
+   The width is the column's whole content box, said rather than left to
+   the grid: as a stretched grid item with an automatic width the shape
+   once measured a whole space token short at each edge. The height is the
+   map's ratio of that width, capped at a fraction of the window and
+   floored for a narrow column, and never taller than the window under the
+   header. The ratio gives way to the cap and the floor rather than the
+   width giving way to the ratio: a `max-height` against `aspect-ratio` on a
+   box whose width is automatic once shrank this map to about half the
+   column, centred and small on a large screen. The page fits itself to
+   whatever box it is given - present.js refits the frame on every resize -
+   so this is a map drawn to its box, not a map with its edges cut off.
 
-   And the bound is on the height rather than on the shape. A `max-height`
-   against `aspect-ratio` shrinks the width to keep the ratio: the map would
-   step back from both edges of the window and sit small and off-centre on a
-   large screen, which measured 546 wide where it had been 1024. So the
-   ratio gives way instead. The page fits itself to whatever box it is given
-   - present.js refits the frame on every resize - so this is a map drawn to
-   a band, not a map with its edges cut off.
-
-   The width is said rather than left to the grid. Until the bound was put
-   here the shape filled its column because it was a stretched grid item
-   with an automatic width, and that was the only thing holding it out to
-   the edges; with a definite height and no ratio it is a different item to
-   lay out, and in the app it measured 992 where its box was 1024 - the
-   map a whole `--space-4-4` short at each edge. `width: 100%` against the
-   grid area, with the border counted into the box so the band is half the
-   window and not half plus its own edges, says what the rule means instead
-   of depending on which of those two the stretch answers. */
+   `100cqw` is the block's own content width, because the block is the size
+   container; the shape cannot be its own. */
 .preview .viewer-shape {
   aspect-ratio: auto;
   box-sizing: border-box;
   width: 100%;
-  height: calc((100vh - var(--header-height)) / 2);
+  height: min(
+    max(
+      var(--map-height-floor),
+      min(100cqw * var(--map-ratio-height) / var(--map-ratio-width), var(--map-height-cap))
+    ),
+    100svh - var(--header-height)
+  );
 }
 
-/* What the band hides, and why there is no rule here for it.
+/* Before there is a map (FR-018): the status region is the box, much
+   shorter than a map, with the sentence and the way to cell 02 centred in
+   it. Once there is a map the region keeps its place in the document -
+   it is the same element, so the map's arrival is announced - and is seen
+   by a screen reader only. */
+.preview-status {
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  min-height: var(--map-empty-height);
+  padding: var(--space-4-4);
+  border: var(--border-width) dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  font-size: var(--font-ui);
+  text-align: center;
+}
 
-   A pinned band obscures the top of the scrollport, so anything scrolled
-   to the top of it - a control reached with Shift+Tab, a row a test
-   scrolls to before pressing it - can end up behind the map. The obvious
-   remedy, a `scroll-margin-top` on everything in the column as deep as the
-   band, was written and withdrawn: measured against the colour panel's own
-   geometry it moved the picker's square 139 pixels *up*, to 381 where the
-   band ends at 398, so the press that begins a colour drag landed on the
-   map instead of on the square and the picker was dismissed - the drag
-   issue 87 exists for. `scroll-padding-top` on the scrollport measured the
-   same. Both change where every scroll lands, not only the ones that would
-   have been hidden, and the direction is not predictable from the rule.
+.preview-status p {
+  margin: 0;
+}
 
-   So this is a known gap rather than a solved problem - issue 213, whose
-   acceptance keeps the picker's drag passing - and it wants a remedy that
-   does not move what is already in view: a shallower band, or a scroll
-   container of the notebook's own. It is written down here, and
-   said again in docs/DESIGN.md 8.2 under "The pinned preview", because the
-   one-line answer sits right here looking obvious and the next person to
-   reach for it should know it was tried and what it cost. */
+.preview[data-map='drawn'] .preview-status {
+  position: absolute;
+  width: var(--border-width);
+  height: var(--border-width);
+  min-height: 0;
+  margin: calc(-1 * var(--border-width));
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* The way to cell 02, in the sentence: a button that reads as a link,
+   because it moves focus by script and a fragment link would rewrite the
+   window's address (`SkipPastMap.tsx` says the same of the skip). */
+.inline-link {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-text);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* Cell 06's preview (ADR-046, FR-004): the export's frame at the preset's
+   ratio, fit whole into a box bounded at the smaller of a fraction of the
+   window and a fixed height, centred in the cell, with an outline at the
+   frame's edge and its caption under it.
+
+   The height is the cap unless the column is too narrow for a frame that
+   tall at this ratio, and the width follows from the ratio, so a tall
+   story and a wide link card are both seen whole. The width and height
+   arrive as plain numbers from the engine's preset table; the ratio is
+   theirs. A grid in every state, and only the frame's size changes with
+   the preset: a change of `display` on the box that holds a frame being
+   sent somewhere leaves the new document with nothing laid out (issue
+   222). */
+.export-preview {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-4-2);
+  margin: 0 0 var(--space-4-4);
+  container-type: inline-size;
+}
+
+.export-frame {
+  display: block;
+  box-sizing: border-box;
+  height: min(var(--export-preview-cap), 100cqw * var(--frame-height) / var(--frame-width));
+  width: auto;
+  aspect-ratio: var(--frame-width) / var(--frame-height);
+  border: 0;
+  outline: var(--border-width) solid var(--border);
+  background: var(--surface-sunken);
+}
+
+.export-preview figcaption {
+  max-width: var(--measure);
+  text-align: center;
+}

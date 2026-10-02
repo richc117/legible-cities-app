@@ -635,6 +635,28 @@ async function inTheme(page: Page, theme: (typeof THEMES)[number]): Promise<void
 }
 
 /**
+ * No native button holds more than its box (issue 273, by issue 269's
+ * method): a row's text hanging below its fill is content taller than the
+ * button. The kit's own buttons draw in shadow roots, which
+ * `querySelectorAll` does not enter, and the clipped skip link is not a
+ * control anyone sees.
+ */
+export async function expectButtonsHoldTheirBox(page: Page, where: string): Promise<void> {
+  const over = await page.evaluate(() =>
+    [...document.querySelectorAll('button')]
+      .filter((b) => !b.classList.contains('skip-link'))
+      .filter((b) => b.getClientRects().length > 0)
+      .filter((b) => b.scrollHeight > b.clientHeight || b.scrollWidth > b.clientWidth)
+      .map(
+        (b) =>
+          `${b.className || b.textContent?.trim().slice(0, 30)}: ` +
+          `${b.scrollWidth}x${b.scrollHeight} in ${b.clientWidth}x${b.clientHeight}`,
+      ),
+  )
+  expect(over, `${where}: a button holds more than its box`).toEqual([])
+}
+
+/**
  * Names, each said once, the Tab walk and motion, in both of the interface's
  * themes (A5.6-09):
  * a focus ring or a control that only one theme draws is a defect the other
@@ -652,6 +674,7 @@ export async function sweep(page: Page, where: string, scope?: Locator): Promise
       const snapshot = await (scope ?? page.locator('body')).ariaSnapshot()
       await expectNamed(snapshot, here)
       await expectNoDuplicatedNames(snapshot, here)
+      await expectButtonsHoldTheirBox(page, here)
       await expectTabWalk(page, here)
       await expectStill(page, here)
     }

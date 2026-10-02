@@ -247,7 +247,7 @@ export function atBottom(box: Box): boolean {
  * Put the newest line in view by moving the box's own scroll and nothing
  * else. Never `scrollIntoView`, which scrolls every scrollable ancestor to
  * do it and would take the notebook's column with it, out from under the
- * pinned preview, every time a line arrived.
+ * person reading it, every time a line arrived.
  */
 export function toNewest(box: Box | null): void {
   if (box === null) return

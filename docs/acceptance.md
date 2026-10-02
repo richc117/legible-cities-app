@@ -13,8 +13,8 @@ sample city and watch it download and lay out, go down the project's six
 cells - the feed, the layout and what it had to fudge, the day and the
 clock, the style, the lines, the export - then add a feed of their own,
 reopen, rename, delete, reset and uninstall. The project screen is the
-notebook of ADR-045: a map pinned at the top, six numbered cells below it,
-and a rail of steps and outputs beside them.
+notebook of ADR-045 and ADR-046: six numbered cells with the map between
+cells 02 and 03, and a rail of steps and outputs beside them.
 
 **Results are recorded in an issue, one per run, never committed.** Copy
 the [results template](#results-template) into a new issue, fill it in as
@@ -275,9 +275,10 @@ press `+`, `-`, an arrow and `0`. Press Tab once more, and then **Enter**.
   and fitting again from the keyboard, as the line under it says: "Zoom
   with the wheel or plus and minus, pan by dragging or with the arrows, 0
   to fit."
-- The Tab after the drawing reaches **Skip past the map** over the top edge
-  of the pinned map, and **Enter** on it puts focus on **Rename**, at the
-  foot of the notebook, without passing through the map's own controls.
+- Tab on past cell 02 reaches **Skip past the map** over the top edge of
+  the map, which sits after cell 02, and **Enter** on it puts focus on cell
+  03's heading, "03 Frame and service day", without passing through the
+  map's own controls.
 - Collapsed, cell 01's row reads "`<feed name>`, `<mode>`, every operator,
   `<n>` stops in the feed".
 
@@ -434,8 +435,10 @@ Result: ____
 - The **Preset** select lists thirteen presets under Instagram, LinkedIn,
   Bluesky and X, each "`<name>`: `<width>` by `<height>`, `<what it
   makes>`".
-- While the cell is open, the map shows the export's tall frame, with the
-  parts Instagram covers shaded.
+- While the cell is open, a preview inside it shows the export's tall
+  frame, with the parts Instagram covers shaded, and a caption under it,
+  "9:16, 1080 x 1920." and that the shading is guidance and not in the
+  export. The map above it keeps running where it was.
 - A progress line with `plan`, `capture` and `encode`, the current stage
   marked as it moves through them and each filled when done, and
   **Cancel**. Beside it the sentence changes as the export goes, among
@@ -468,7 +471,8 @@ press **Export**.
 
 **See.**
 - For the post: a **View** select and a **Start time** field appear, and
-  **Storyboard** goes; the map's frame changes shape with no shaded parts.
+  **Storyboard** goes; the preview in cell 06 changes shape with no shaded
+  parts.
   It ends with "Exported la-metro-rail-instagram-post.png."
 - For the GIF: **Storyboard** returns; it ends with
   "Exported la-metro-rail-instagram-reel-gif.gif."
@@ -484,8 +488,8 @@ A named gate item **on Windows as much as on a Mac**.
 and press **Reveal** on the newest.
 
 **See.**
-- Closing cell 06 gives the map its own frame back, without the export's
-  shape.
+- Closing cell 06 takes its preview away; the map, which it never touched,
+  is where it was.
 - **Outputs** lists three rows, one per export of steps 11 and 12, the
   newest first, each with its preset, when it was made and **Reveal** (a screen reader names
   it "Reveal `<preset>`, `<file>`").
@@ -612,9 +616,10 @@ Press **Rename** at the foot of the notebook, type `Los Angeles` and press
 - On reopening: no first-run dialog; **Your projects** lists Caltrain first
   and LA Metro Rail second (newest opened first), each with its service day
   and "finished up to 05 Lines"; **Your feeds** still lists Caltrain.
-- LA Metro Rail opens on "Drawn from layout `<8 characters>` for
-  `<day>`." in cell 02, the **same day** you wrote down in step 7, the same
-  **Layout** and **Made** in the cell's footer, and the map at the top.
+- LA Metro Rail opens with cells 01 and 02 collapsed and the map after
+  them; opening cell 02 shows "Drawn from layout `<8 characters>` for
+  `<day>`.", the **same day** you wrote down in step 7, and the same
+  **Layout** and **Made** in the cell's footer.
 - **Nothing runs:** no progress line appears, the Jobs toggle stays at
   "Jobs, none running", the sentence under the heading is "The map is drawn
   from every cell.", and the diagnostics are absent (they are shown only

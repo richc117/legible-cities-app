@@ -67,7 +67,14 @@ import {
   type Page,
 } from '@playwright/test'
 import type { ProjectRecord } from '../../src/shared/project'
-import { cell, cellHeading, closeCell, openCell, type CellId } from '../support/project'
+import {
+  cell,
+  cellHandback,
+  cellHeading,
+  closeCell,
+  openCell,
+  type CellId,
+} from '../support/project'
 import { tagContains as gitTagContains, writtenSince } from './pure.mjs'
 import { RunRecord, STEP_TITLES, redact, type Result } from './record'
 
@@ -1187,7 +1194,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
           .catch(() => undefined)
       })
       log.notAutomated(
-        "whether the map, its trains and the page's controls look right (a screenshot of the map is kept beside the record), and that it stays pinned while the cells scroll beneath it.",
+        "whether the map, its trains and the page's controls look right (a screenshot of the map is kept beside the record), and that it sits after cell 02 and scrolls with the cells.",
       )
     })
 
@@ -1332,7 +1339,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
           'Zoom with the wheel or plus and minus, pan by dragging or with the arrows, 0 to fit.',
         )
       })
-      await log.soft('Skip past the map, then Rename', async () => {
+      await log.soft("Skip past the map, then cell 03's heading", async () => {
         const skip = window.getByRole('button', { name: 'Skip past the map', exact: true })
         await skip.focus()
         await expect(skip).toBeFocused()
@@ -1340,10 +1347,10 @@ test('a release, installed, through docs/acceptance.md', async () => {
           .poll(() => skip.evaluate((el) => el.getBoundingClientRect().width))
           .toBeGreaterThan(1)
         await window.keyboard.press('Enter')
-        await expect(window.getByRole('button', { name: 'Rename', exact: true })).toBeFocused()
+        await expect(cellHandback(window, 'frame')).toBeFocused()
       })
       log.notAutomated(
-        'that the Tab after the drawing reaches Skip past the map: the skip is focused directly, since what lies between the drawing and the map in the Tab order is the page, not the checklist.',
+        'that Tab on past cell 02 reaches Skip past the map: the skip is focused directly, since what lies between the drawing and the map in the Tab order is cell 02, not the checklist.',
       )
       await log.soft("the collapsed row's summary", async () => {
         await closeCell(window, 'data')
@@ -1723,9 +1730,9 @@ test('a release, installed, through docs/acceptance.md', async () => {
       let dragged = false
       await log.soft('the picker stays open through a drag and its release', async () => {
         for (const slider of [sliders.first(), sliders.last()]) {
-          // Below the pinned map, as a person would have it before reaching
-          // for it: the band covers the top of the window, and a press there
-          // lands on the map rather than on the picker beneath it.
+          // Low in the window, as a person would have it before reaching
+          // for it. (Until ADR-046 a pinned map covered the top of the window
+          // and a press there landed on the map.)
           await slider.evaluate((element) => {
             const box = element.getBoundingClientRect()
             const view = element.ownerDocument.defaultView as Window
@@ -1939,9 +1946,13 @@ test('a release, installed, through docs/acceptance.md', async () => {
       return { seconds: end.seconds, path }
     }
 
-    const frameParams = async (window: Page): Promise<URLSearchParams> =>
-      new URL((await window.locator('iframe.viewer-frame').getAttribute('src')) ?? 'app://local/')
-        .searchParams
+    // Cell 06's own preview frame (ADR-046), there only while the cell is
+    // open; none is an empty query.
+    const frameParams = async (window: Page): Promise<URLSearchParams> => {
+      const preview = window.locator('iframe.export-frame')
+      if ((await preview.count()) === 0) return new URLSearchParams()
+      return new URL((await preview.getAttribute('src')) ?? 'app://local/').searchParams
+    }
 
     await runStep(11, [4], async (log) => {
       const window = page()
@@ -1966,12 +1977,15 @@ test('a release, installed, through docs/acceptance.md', async () => {
         ).toEqual(['Instagram', 'LinkedIn', 'Bluesky', 'X'])
         await expect(panel.getByRole('combobox', { name: 'Storyboard' })).toBeVisible()
       })
-      await log.soft("the map shows the export's tall frame with the safe zones", async () => {
-        await expect
-          .poll(async () => (await frameParams(window)).get('frame'), { timeout: 2 * MINUTE })
-          .toBe('1080:1920')
-        expect((await frameParams(window)).get('safe')).toBe('1')
-      })
+      await log.soft(
+        "cell 06's preview shows the export's tall frame with the safe zones",
+        async () => {
+          await expect
+            .poll(async () => (await frameParams(window)).get('frame'), { timeout: 2 * MINUTE })
+            .toBe('1080:1920')
+          expect((await frameParams(window)).get('safe')).toBe('1')
+        },
+      )
       const mark = (await saidSoFar(window)).length
       const pressed = Date.now()
       // Watched beside the export rather than after it: these hold only while
@@ -2132,8 +2146,15 @@ test('a release, installed, through docs/acceptance.md', async () => {
       const app = session.app as ElectronApplication
       await openProject(window, LA)
       await closeCell(window, 'export')
-      await log.soft('closing cell 06 gives the map its own frame back', () =>
-        expect.poll(async () => (await frameParams(window)).get('frame')).toBeNull(),
+      await log.soft(
+        "closing cell 06 takes its preview away and leaves the map's frame",
+        async () => {
+          await expect(window.locator('iframe.export-frame')).toHaveCount(0)
+          await expect(window.locator('iframe.viewer-frame')).toHaveAttribute(
+            'src',
+            /[?&]controls=1/,
+          )
+        },
       )
       const outputs = window.getByRole('region', { name: 'Outputs' })
       const reveals = outputs.getByRole('button', { name: /^Reveal / })
@@ -2569,6 +2590,9 @@ test('a release, installed, through docs/acceptance.md', async () => {
       })
       await openProject(reopened, LA)
       await log.soft('the same day and layout, drawn from the store', async () => {
+        // A laid-out project opens with cells 01 and 02 collapsed (ADR-046),
+        // so the sentence is read with cell 02 opened.
+        await openCell(reopened, 'process')
         await expect(
           reopened.getByText(`Drawn from layout ${la.layout?.slice(0, 8)} for ${session.laDay}.`, {
             exact: true,

@@ -7,7 +7,15 @@
    cells (ADR-045); the tab strip's rules went with the strip (A5.5-23).
    The shell's rules are in app.css and the cells'
    own chrome in notebook.css; this file is imported after the shell so a
-   panel reads against it, which is the order the rules were written in. */
+   panel reads against it, which is the order the rules were written in.
+
+   Every panel here fills the column it is in, which is the main region's
+   width up to `--measure-wide` (A7-05, `app.css`); only sentences and
+   fields keep the reading measure. The viewer used to be the exception,
+   breaking out of a reading-measure column with arithmetic over `100vw`
+   that subtracted the inspector's space and the rail's (`--rail-space`).
+   That is history: the map fills the column like the rest, and nothing in
+   this file reads either variable now. */
 
 /* Line colours (A4-01): one row per line the feed offers, each a chip in the
    line's colour that opens the picker, a name and where its colour came
@@ -450,50 +458,37 @@ th .sort:focus-visible {
    keeps the small default height the browser gives it, and the page then
    fits itself to a slot the size of a postcard. */
 
-/* The map is not prose, so it leaves the panel's measure and takes the
-   region (DESIGN.md 8.2, "the viewer"). The panel stays a reading column for
-   everything else.
+/* The map fills the column's content box, and so is centred where the
+   column is (A7-05, DESIGN.md 8.2, "the viewer"). The column is the region's
+   own width up to `--measure-wide` now, and prose keeps the reading measure
+   inside it (`app.css`), so the map has nothing to leave.
 
-   Two regions beside it are subtracted from the window rather than from the
-   column, because both are outside the flow of it: the inspector, and the
-   project's own rail (A5.5-21, `project.css`). Each defaults to 0, so a
-   screen without one is exactly as it was. Without the rail's term the map
-   would be drawn over it: the rail is fixed, and a fixed region takes no
-   width from a `100vw`. */
+   It used to. While the column was `--measure`, the map broke out of it to
+   `min(100vw - inspector - rail - gutters, --measure-wide)`, centred with a
+   negative margin worked out against the column's border box rather than
+   its content box, which put the map's centre a gutter to the right of the
+   column's. The inspector's and the rail's terms were there because a
+   width computed from `100vw` sees neither a flex sibling nor a fixed
+   region. Neither term is needed by a box that fills its container. */
 .viewer {
   display: grid;
   gap: var(--space-4-2);
-  width: min(
-    100vw - var(--inspector-space, 0px) - var(--rail-space, 0px) - 2 * var(--space-4-4),
-    var(--measure-wide)
-  );
-  margin: 0 0 var(--space-4-4)
-    calc(
-      (
-          var(--measure) -
-            min(
-              100vw - var(--inspector-space, 0px) - var(--rail-space, 0px) - 2 * var(--space-4-4),
-              var(--measure-wide)
-            )
-        ) /
-        2
-    );
-  max-width: none;
+  width: auto;
+  margin: 0 0 var(--space-4-4);
 }
 
-/* A grid and a size container in both of its shapes, the plain map's and
-   the export's preview's (issue 222). It was a block for the first and a
-   grid for the second, and the viewer sends the frame to the planned
-   address in the same commit that changes the shape: a change of `display`
-   makes the frame's box again, and a frame whose box is made again a few
-   milliseconds after it has been sent somewhere, before it arrives, is left
-   with a document in which nothing is laid out: it takes no focus, and a
-   press of Tab passes over it. Between the two shapes only the frame's size
-   changes now, which does not do that.
+/* A grid and a size container, and only ever that (issue 222). A change of
+   `display` on the box that holds a frame makes the frame's box again, and
+   a frame whose box is made again a few milliseconds after it has been
+   sent somewhere, before it arrives, is left with a document in which
+   nothing is laid out: it takes no focus, and a press of Tab passes over
+   it. Until ADR-046 the export's preview was this frame, sent to the
+   planned address with a second shape; it has a frame of its own in cell
+   06 now (`preview.css`), and this shape has one form.
 
-   The plain map's frame fills the shape as it did: one item, centred in
-   one cell that is the whole of the box, at the whole of its width and
-   height. */
+   The frame fills the shape: one item, centred in one cell that is the
+   whole of the box, at the whole of its width and height. The map's own
+   height, in the notebook's flow, is `preview.css`'s. */
 .viewer-shape {
   display: grid;
   place-items: center;
@@ -512,18 +507,10 @@ th .sort:focus-visible {
   border: 0;
 }
 
-/* The export's preview (A5-01): the same shape, and inside it the frame at
-   the aspect ratio the engine planned, as large as the shape allows and
-   centred, so a tall story and a wide link card are both seen whole. The
-   width and height arrive as plain numbers from the plan; the ratio is
-   theirs. Resized without motion under reduced motion, as everything is. */
-.viewer-shape-planned .viewer-frame {
-  width: min(100cqw, 100cqh * var(--frame-width) / var(--frame-height));
-  height: min(100cqh, 100cqw * var(--frame-height) / var(--frame-width));
-}
-
+/* Cell 06's frame takes a new preset's shape with motion, and without it
+   under reduced motion, as everything is. */
 @media (prefers-reduced-motion: no-preference) {
-  .viewer-frame {
+  .export-frame {
     transition:
       width var(--duration) var(--easing),
       height var(--duration) var(--easing);
@@ -637,7 +624,7 @@ th .sort:focus-visible {
    leading tall, and the newest line is followed by moving that box's own
    scrollTop - never by scrollIntoView, which scrolls every scrollable
    ancestor to do its work and would take the notebook's column with it,
-   out from under the pinned preview, on every line the engine printed. */
+   out from under the person reading it, on every line the engine printed. */
 
 .engine-log {
   margin: 0 0 var(--space-4-4);

@@ -59,14 +59,15 @@ until it was looped with logging (issue 222). With the timing forced, a
 change of `display` alone did it and a change of `container-type` alone
 was not seen to, in 360 tries each.
 
-So the map's shape is a grid and a size container in both of its states,
-the plain map's and the export's preview's, and only the frame's size
-differs between them. `tests/unit/viewer-shape.test.ts` refuses a rule for
-the planned state that sets `display`, `container-type`, `contain` or
-`all`, and the skip's journey in `tests/e2e/notebook-a11y.spec.ts` reads
-what kind of box the frame and every box around it is in both states and
-expects the same, which covers a style written on an element and a box
-further out.
+Since ADR-046 the map's frame never goes to another address, so its box
+never has a second form; cell 06's preview frame is a frame of its own and
+is sent to a new address on every plan, which is the same trap. So its
+box is one kind in every state. `tests/unit/export-preview-shape.test.ts`
+refuses any rule that depends on something else (another class, an
+attribute, `:has`, `:not`, a query) and sets `display`, `container-type`,
+`contain` or `all` on the preview or its frame, and the skip's journey in
+`tests/e2e/notebook-a11y.spec.ts` covers a style written on an element and
+a box further out.
 
 ## Components
 
