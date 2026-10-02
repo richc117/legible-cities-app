@@ -16,7 +16,7 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { CaptureError, type CaptureOptions, type CaptureResult } from '../../src/main/capture'
 import {
   destinationLate,
@@ -1236,26 +1236,57 @@ describe('the choice itself', () => {
 // Its names are held to the generated unions here, through the schema they
 // were made from.
 const PYTHON = findPython()
-// A Python start on a busy Windows runner can take longer than vitest's five
-// seconds; the probe allows itself twenty, and so does the test.
-describe.skipIf(PYTHON === null)('the stand-in engine’s export tables', { timeout: 30_000 }, () => {
-  const python = (code: string): string => {
-    const probe = spawnSync(PYTHON as string, ['-c', code], {
+// Python is started once for the whole file, in a hook, and the tests read
+// what it printed. A start on a busy Windows runner can take longer than any
+// one test's five seconds, and a probe per test competed with the other test
+// files' engines for the same cores (issue 257). The probe gets sixty
+// seconds of its own, and the hook is given ten more than that, so the
+// probe's sentence is always the one that is read: a hook that ends on
+// vitest's own clock says only that it timed out.
+const PROBE_LIMIT_MS = 60_000
+const PROBE_HOOK_MS = PROBE_LIMIT_MS + 10_000
+const PROBE_SCRIPT = [
+  'import json',
+  'from pathlib import Path',
+  'from schematic import serve',
+  'cases = [(True, "jpg", "000000.png"), (False, "jpg", "000000.png"), (True, "png", "000000.png")]',
+  'print(json.dumps({',
+  '  "presets": serve.EXPORT_PRESETS,',
+  '  "storyboards": serve.EXPORT_STORYBOARDS,',
+  '  "stills": [serve.Engine.still_problem({"keep": k, "format": f}, Path(s)) for k, f, s in cases],',
+  '}))',
+].join('\n')
+
+describe.skipIf(PYTHON === null)('the stand-in engine’s export tables', () => {
+  // What the one probe printed, as text; every test below parses its share.
+  let printed = ''
+
+  beforeAll(() => {
+    const probe = spawnSync(PYTHON as string, ['-c', PROBE_SCRIPT], {
       encoding: 'utf8',
       windowsHide: true,
-      timeout: 20_000,
+      timeout: PROBE_LIMIT_MS,
       env: { ...process.env, PYTHONPATH: FAKE_ENGINE, PYTHONDONTWRITEBYTECODE: '1' },
     })
+    // A limit that ends the process leaves a status of null and nothing on
+    // stderr, which read as "expected null to be 0" and named no cause.
+    if ((probe.error as NodeJS.ErrnoException | undefined)?.code === 'ETIMEDOUT') {
+      throw new Error(
+        `python did not answer within ${PROBE_LIMIT_MS / 1000} s (${PYTHON} importing the stand-in engine)`,
+      )
+    }
     expect(probe.status, probe.stderr).toBe(0)
-    return probe.stdout
-  }
+    printed = probe.stdout
+  }, PROBE_HOOK_MS)
+
+  const answers = (): {
+    presets: Preset[]
+    storyboards: { name: string }[]
+    stills: (string | null)[]
+  } => JSON.parse(printed)
 
   it('answers the engine’s own tables at the pinned tag, size, kind, format and all', () => {
-    const tables = JSON.parse(
-      python(
-        'import json; from schematic import serve; print(json.dumps({"presets": serve.EXPORT_PRESETS, "storyboards": serve.EXPORT_STORYBOARDS}))',
-      ),
-    ) as { presets: Preset[]; storyboards: { name: string }[] }
+    const tables = answers()
     // tests/fixtures/export-tables-v0.8.2.json is the engine's
     // `preset_table()` and `storyboard_table()` at v0.8.2. A pin that
     // changes a preset's size, kind, format, rate, safe zones or storyboard
@@ -1273,19 +1304,9 @@ describe.skipIf(PYTHON === null)('the stand-in engine’s export tables', { time
   })
 
   it('refuses to keep a capture in a format the preset does not write, as the engine silently would', () => {
-    const answers = JSON.parse(
-      python(
-        [
-          'import json',
-          'from pathlib import Path',
-          'from schematic import serve',
-          'cases = [(True, "jpg", "000000.png"), (False, "jpg", "000000.png"), (True, "png", "000000.png")]',
-          'print(json.dumps([serve.Engine.still_problem({"keep": k, "format": f}, Path(s)) for k, f, s in cases]))',
-        ].join('\n'),
-      ),
-    ) as (string | null)[]
-    expect(answers[0]).toMatch(/will not keep a png capture as a jpg file/)
-    expect(answers.slice(1)).toEqual([null, null])
+    const { stills } = answers()
+    expect(stills[0]).toMatch(/will not keep a png capture as a jpg file/)
+    expect(stills.slice(1)).toEqual([null, null])
   })
 })
 
