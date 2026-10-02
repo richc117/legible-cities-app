@@ -117,14 +117,15 @@ describe('what cell 02 says while it is collapsed', () => {
     expect(processSummary(project())).toBe('not laid out yet')
   })
 
-  it('names the layout by the eight characters a screen shows', () => {
-    expect(processSummary(project({ layout: 'a'.repeat(64) }))).toBe('aaaaaaaa')
+  it('says it was laid out when the record has no moment for it', () => {
+    // Not the layout's eight characters: the footer carries the id (issue 279).
+    expect(processSummary(project({ layout: 'a'.repeat(64) }))).toBe('laid out')
   })
 
   it("names when the engine made it, in the reader's own locale", () => {
     const made = '2026-09-12T10:03:00.000Z'
     expect(processSummary(project({ layout: 'b'.repeat(64), made }))).toBe(
-      `bbbbbbbb, made ${new Date(made).toLocaleString()}`,
+      `laid out ${new Date(made).toLocaleString()}`,
     )
   })
 
@@ -132,7 +133,7 @@ describe('what cell 02 says while it is collapsed', () => {
     // `Time` does the same: a record whose value is not a date is shown
     // rather than shown as "Invalid Date".
     expect(processSummary(project({ layout: 'c'.repeat(64), made: 'the day before' }))).toBe(
-      'cccccccc, made the day before',
+      'laid out the day before',
     )
   })
 })

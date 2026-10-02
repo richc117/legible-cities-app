@@ -1,9 +1,9 @@
-// The sentence cell 01 carries while it is collapsed (A5.5-09): the feed,
-// what LOOM keeps, whose routes, and the stop count.
+// The sentence cell 01 carries while it is collapsed (A5.5-09, cut to one
+// fact in issue 279): how many stops the engine counted in the feed.
 //
-// It is a pure function beside its cell, so what it says about a feed with
-// no name, a mode of several words, an operator the feed does not list and
-// a single stop is a table here rather than four states of a running app.
+// It is a pure function beside its cell, so what it says about a single
+// stop and a count in the thousands is a table here rather than two states
+// of a running app.
 
 import { describe, expect, it } from 'vitest'
 import { dataSummary } from '../../src/renderer/src/notebook/cells/DataCell'
@@ -28,80 +28,22 @@ const feed = (over: Partial<Inspection> = {}): Inspection => ({ ...LA, ...over }
 
 describe('what cell 01 says while it is collapsed', () => {
   it('says nothing at all before the inspection has arrived', () => {
-    // Not an empty sentence and not the feed's key on its own: the stop
-    // count is not known yet, and a row with a hole in it is worse than a
-    // row with nothing in it.
-    expect(dataSummary({ feed: 'la-metro-rail', mode: 'all', agency: null }, null)).toBeNull()
+    // Not an empty sentence: the stop count is not known yet, and a row
+    // with a hole in it is worse than a row with nothing in it.
+    expect(dataSummary(null)).toBeNull()
   })
 
-  it('names the feed, the mode, the operator and the stop count', () => {
-    expect(dataSummary({ feed: 'la-metro-rail', mode: 'subway', agency: 'LACMTA' }, LA)).toBe(
-      'LA Metro Rail, subway, Los Angeles County MTA, 110 stops in the feed',
-    )
-  })
-
-  it('says the count is the feed\u2019s, since the two slots before it are filters', () => {
-    // The mode and the operator narrow what is drawn; `stops.total` does
-    // not narrow with them, and it counts entrances and boarding areas
-    // besides. Without its subject the true sentence is not the one read.
-    expect(dataSummary({ feed: 'la-metro-rail', mode: 'subway', agency: 'LACMTA' }, LA)).toContain(
-      'stops in the feed',
-    )
-  })
-
-  it("says the engine's own word for every type as the Mode control says it", () => {
-    expect(dataSummary({ feed: 'la-metro-rail', mode: 'all', agency: null }, LA)).toBe(
-      'LA Metro Rail, every type, every operator, 110 stops in the feed',
-    )
-  })
-
-  it('reads a comma-joined mode as prose, in the order it was typed', () => {
-    // As MODE_PATTERN allows one: names or route_type numbers, comma
-    // joined, no spaces and no empty part.
-    expect(dataSummary({ feed: 'la-metro-rail', mode: 'rail,subway', agency: null }, LA)).toContain(
-      'rail and subway',
-    )
-    expect(
-      dataSummary({ feed: 'la-metro-rail', mode: 'rail,subway,tram', agency: null }, LA),
-    ).toContain('rail, subway and tram')
-  })
-
-  it('keeps a route_type number as the number the person typed', () => {
-    expect(dataSummary({ feed: 'la-metro-rail', mode: '1', agency: null }, LA)).toContain(
-      'LA Metro Rail, 1, every operator',
-    )
-  })
-
-  it('names an operator the feed no longer lists as the control does, suffix and all', () => {
-    // The suffix is the whole of what a person needs there: the stored
-    // choice is gone from the data, which is why `Inspect` adds it.
-    expect(dataSummary({ feed: 'la-metro-rail', mode: 'subway', agency: 'GONE' }, LA)).toBe(
-      'LA Metro Rail, subway, GONE (not in this feed), 110 stops in the feed',
-    )
-  })
-
-  it('names an operator whose name is blank by its id, as the control does', () => {
-    // A feed may carry an empty agency_name, and the protocol promises
-    // nothing about it: a nullish fallback would leave a hole in the row.
-    const blank = feed({ agencies: [{ agency_id: 'LACMTA', agency_name: '' }] })
-    expect(dataSummary({ feed: 'la-metro-rail', mode: 'subway', agency: 'LACMTA' }, blank)).toBe(
-      'LA Metro Rail, subway, LACMTA, 110 stops in the feed',
-    )
-  })
-
-  it('falls back to the feed key when the feed has no name of its own', () => {
-    expect(dataSummary({ feed: 'my-feed', mode: 'subway', agency: null }, feed({ name: '' }))).toBe(
-      'my-feed, subway, every operator, 110 stops in the feed',
-    )
+  it('says how many stops the feed has, and nothing else', () => {
+    // Not the feed, the mode or the operator (issue 279): the open cell and
+    // the footer carry those, and the row was cut before the count.
+    expect(dataSummary(LA)).toBe('110 stops in the feed')
   })
 
   it('counts one stop as one stop', () => {
     const one = feed({
       stops: { stops: 1, stations: 0, entrances: 0, generic_nodes: 0, boarding_areas: 0, total: 1 },
     })
-    expect(dataSummary({ feed: 'tiny', mode: 'subway', agency: null }, one)).toBe(
-      'LA Metro Rail, subway, every operator, 1 stop in the feed',
-    )
+    expect(dataSummary(one)).toBe('1 stop in the feed')
   })
 
   it('writes the stop count as a person reads numbers, as every other count is written', () => {
@@ -117,8 +59,6 @@ describe('what cell 01 says while it is collapsed', () => {
     })
     // The literal, not `toLocaleString()` on both sides: that asserts only
     // that the test and the code call the same function.
-    expect(dataSummary({ feed: 'big', mode: 'all', agency: null }, many)).toContain(
-      '2,400 stops in the feed',
-    )
+    expect(dataSummary(many)).toBe('2,400 stops in the feed')
   })
 })

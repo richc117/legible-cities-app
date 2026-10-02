@@ -31,8 +31,8 @@ import { useProject } from '../context'
 
 /**
  * What the collapsed cell says it holds: how many lines carry a colour of
- * their own, whether the default has moved, and whether the lines are drawn
- * in an order a person chose (DESIGN.md 8.2, "The cell").
+ * their own, whether the default has moved, and - only when it has - that the
+ * lines are drawn in an order a person chose (DESIGN.md 8.2, "The cell").
  *
  * The record alone answers it. The feed is not read for this: a summary
  * that waited on an inspection would be blank on the row while the cell
@@ -62,8 +62,8 @@ export function linesSummary(
   if (project.defaultColor !== DEFAULT_COLOR) parts.push('a default of your own')
   // An empty `lineOrder` is the engine's own order, which is what "Back to
   // alphabetical" stores: the panel keeps it empty rather than naming every
-  // line to say nothing (A4-02).
-  parts.push(project.lineOrder.length === 0 ? 'alphabetical order' : 'an order you chose')
+  // line to say nothing (A4-02), and the row says nothing of it either.
+  if (project.lineOrder.length !== 0) parts.push('an order you chose')
   return parts.join(', ')
 }
 

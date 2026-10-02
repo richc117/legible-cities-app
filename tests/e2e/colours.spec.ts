@@ -109,7 +109,7 @@ test('the collapsed cell says what its lines carry', async () => {
     // Nothing chosen yet: the record's own colours and the engine's own
     // order, said as what they are rather than left blank.
     await closeCell(page, 'lines')
-    await expect(row).toContainText('no line recoloured, alphabetical order')
+    await expect(row).toContainText('no line recoloured')
 
     await openCell(page, 'lines')
     await panel.getByRole('button', { name: /^Choose the colour of line A/ }).click()
@@ -125,7 +125,7 @@ test('the collapsed cell says what its lines carry', async () => {
       })
 
     await closeCell(page, 'lines')
-    await expect(row).toContainText('1 line recoloured, alphabetical order')
+    await expect(row).toContainText('1 line recoloured')
   })
 })
 

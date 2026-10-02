@@ -43,8 +43,9 @@ import { useProject } from '../context'
 
 /**
  * What the cell says on its collapsed row: the day the project is set to,
- * whether the map has been drawn for it, and the engine's own answer beside
- * it.
+ * and whether the map has been drawn for it. The engine's busiest weekday
+ * was beside it until issue 279 cut the row to one fact; it is the open
+ * cell's own button and a fact in its strip now.
  *
  * **It does not say whose choice the day was, and must not** (issue 210).
  * That looks like `service.busiest === date`, and it is not: every layout
@@ -57,18 +58,17 @@ import { useProject } from '../context'
  * never saw. The claim was wrong in the other direction too: a person who
  * picks the busiest weekday themselves was credited to the engine.
  *
- * So the engine's own answer is drawn as itself and the day above it, and a
- * person who wants to know whose day it is reads the two. That is the fix
- * #163 made to the provenance strip, which `frameFacts` in `CellFooter.tsx`
- * now carries under the open cell - this is the same rule for the row a
- * collapsed cell shows instead.
+ * So the row says the day and never whose it is, and the engine's own
+ * answer is drawn as itself under the open cell, where a person who wants
+ * to know whose day it is reads the two. That is the fix #163 made to the
+ * provenance strip, which `frameFacts` in `CellFooter.tsx` carries.
  *
  * "Not drawn yet" is the cell's own business and not its state: the day is
  * cell 03's, so a day that has moved marks the cells *below* stale and
  * leaves this one ready (contracts/run-graph.md). Without the summary the
  * cell that holds the change would be the one cell saying nothing about it.
- * It sits against the day and not at the end, because it is the day that
- * has not been drawn and never the engine's answer.
+ * It sits against the day, because it is the day that has not been drawn
+ * and never the engine's answer.
  *
  * A `Pick` and not the whole record, so the sample page can build its row
  * from this function over the same fixture its footer is built from
@@ -79,8 +79,8 @@ export function frameSummary(
 ): string | null {
   if (project === null || project.date === null) return null
   const undrawn = dayUndrawn(project) ? ', not drawn yet' : ''
-  if (project.service === null) return `${project.date}${undrawn}`
-  return `${project.date}${undrawn}; the engine’s busiest weekday is ${project.service.busiest}`
+  // The busiest weekday is the open cell's button, not the row's sentence.
+  return `${project.date}${undrawn}`
 }
 
 export default function FrameCell({ cell, state, open, onToggle }: CellViewProps): JSX.Element {

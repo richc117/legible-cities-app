@@ -53,6 +53,7 @@ export const ICON_NAMES = [
   'forward',
   'info',
   'spinner',
+  'chevron',
 ] as const
 
 export type IconName = (typeof ICON_NAMES)[number] | 'mark'
