@@ -228,6 +228,18 @@ if command -v gitleaks >/dev/null 2>&1; then
   heredoc=$'git commit -m "$(cat <<\'EOF\'\nAdd a thing\n\n- a bullet\n- another\nEOF\n)"'
   expect 0 "$(guard_says "$heredoc")" "a heredoc message with a \"- a\" bullet goes through"
   expect 0 "$(guard_says 'git commit -m tidy && git push origin main')" "a commit and then a push go through"
+  # What a body quotes is text and not an option: this repository's messages
+  # carry code in backticks and words like `$HOME`, and nearly every commit
+  # here is made from a heredoc, either with -F - or inside -m "$(cat ...)".
+  # What is on the command's own line, and what comes after a body, is read.
+  nl=$'\n'
+  # shellcheck disable=SC2016  # the backticks and `$` are the point of this case.
+  body='the `kit/Tabs.tsx` row and `$HOME`'
+  expect 0 "$(guard_says "git commit -F - <<'EOF'${nl}${body}${nl}- a bullet${nl}EOF")" "a body that quotes code goes through with -F -"
+  expect 0 "$(guard_says "git commit -m \"\$(cat <<'EOF'${nl}${body}${nl}- a bullet${nl}EOF${nl})\"")" "a body that quotes code goes through inside -m"
+  expect 2 "$(guard_says "git commit -a -F - <<'EOF'${nl}${body}${nl}EOF")" "-a before the operator is still -a"
+  expect_said "asks for -a" "-a before the operator is refused for being -a"
+  expect 2 "$(guard_says "git commit -m \"\$(cat <<'EOF'${nl}${body}${nl}EOF${nl})\" -a")" "-a after a body is still -a"
   expect 2 "$(guard_says 'git add -A && git commit -a -m tidy')" "-a after a chained add is still -a"
   expect_said "asks for -a" "-a after a chained add is refused for being -a"
   # A word that is an expansion could be -a, so nothing can be said of it.

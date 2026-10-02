@@ -76,12 +76,43 @@ fi
 # in the string as words of its own, and is read. Answers 0 for yes, 1 for no,
 # and 2 for a command that could not be read.
 asks_for_all() {
-  local rest word chars c
+  local rest word chars c head tail lead line body post b nl
   rest=$(printf '%s' "$cmd" | tr -d '\042\047\134') || return 2
   case "$rest" in
     *"git commit"*) rest=${rest#*git commit} ;;
     *) return 1 ;;                       # a push alone
   esac
+  # A heredoc body is text, and text cannot be a flag, so each body is taken
+  # out before the words are read. This repository's messages quote code in
+  # backticks and `$HOME`, and nearly every commit here is made with one. What
+  # stays is what is before the operator, the rest of the operator's own line,
+  # and what follows the terminator line: options come after a body in
+  # `-m "$(cat <<EOF ... EOF` then `)` and `-a`, so cutting everything from the
+  # operator on would let that -a through. A heredoc with no terminator, or no
+  # word to end it, is not one this can read.
+  nl=$'\n'
+  while :; do
+    case "$rest" in *"<<"*) ;; *) break ;; esac
+    head=${rest%%<<*}
+    tail=${rest#*<<}
+    case "$tail" in
+      "<"*) rest="$head ${tail#<}"; continue ;;   # `<<<`, a string and not a body
+    esac
+    tail=${tail#-}                       # `<<-`
+    lead=${tail%%[![:blank:]]*}
+    tail=${tail#"$lead"}
+    word=${tail%%[[:space:];&|<>)]*}
+    [ -n "$word" ] || return 2
+    tail=${tail#"$word"}
+    case "$tail" in
+      *"$nl"*) line=${tail%%"$nl"*}; body=${tail#*"$nl"} ;;
+      *) return 2 ;;                     # an operator with no body after it
+    esac
+    b="$nl$body$nl"
+    post=${b#*"$nl$word$nl"}
+    [ "$post" != "$b" ] || return 2      # never terminated
+    rest="$head $line $post"
+  done
   set -f                                 # a `*` in a word is a `*`
   # shellcheck disable=SC2086  # split on whitespace, on purpose
   set -- $rest
