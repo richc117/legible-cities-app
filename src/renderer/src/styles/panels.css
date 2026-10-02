@@ -669,10 +669,14 @@ th .sort:focus-visible {
   color: var(--text);
 }
 
-/* The speed sits beside Play in the row of actions, so the field's own
-   bottom margin would push the two out of line. */
+/* Play and Speed share a row, and Speed has its label above it, so the
+   button is aligned to the select's foot and not to the middle of the
+   whole field: the two controls stand on one line, left to right. The
+   field's own bottom margin would push them out of line again, so the
+   speed's is gone. */
 .transport .actions {
-  align-items: center;
+  align-items: flex-end;
+  justify-content: flex-start;
 }
 
 .transport-speed {
