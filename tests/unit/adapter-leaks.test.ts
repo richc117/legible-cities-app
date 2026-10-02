@@ -22,7 +22,7 @@ describe("the adapter neutralises the kit's leaks", () => {
   })
   it('gives panels stacked in a cell body a gap of their own', () => {
     expect(adapter).toMatch(
-      /\.cell-body > section \+ section\s*\{[^}]*margin-top:\s*var\(--space-4-4\)/,
+      /\.cell-body > section \+ section\s*\{[^}]*margin-top:\s*var\(--space-4-6\)/,
     )
   })
 })

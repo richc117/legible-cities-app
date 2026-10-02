@@ -68,6 +68,7 @@
   --dialog-width: 28rem;
   --dialog-width-wide: 40rem;
   --measure: 40rem;
+  --fields-term-width: 7rem;
   /* What the viewer takes: wider than prose, because a map is not read. */
   --measure-wide: 64rem;
   /* A tooltip's measure: a sentence or two, never a column of prose. */
