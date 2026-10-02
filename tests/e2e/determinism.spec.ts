@@ -159,12 +159,12 @@ test('the same project, exported twice, captures the same frames within the tole
       { timeout: 60_000 },
     )
     await expect(panel.getByRole('combobox', { name: 'Quality' })).toHaveValue('draft')
-    // The preview has answered: the map's frame is at the preset's frame.
+    // The preview has answered: cell 06's frame is at the preset's frame.
     await expect
       .poll(
         async () =>
           new URL(
-            (await page.locator('iframe.viewer-frame').getAttribute('src')) ?? 'x:/',
+            (await page.locator('iframe.export-frame').getAttribute('src')) ?? 'x:/',
           ).searchParams.get('frame'),
         { timeout: 60_000 },
       )

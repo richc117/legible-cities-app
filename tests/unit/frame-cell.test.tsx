@@ -92,10 +92,10 @@ function draw(
     project: { ...project, readOnly },
     engine: null,
     run: idle,
+    runSnapshot: idle.snapshot,
     setDate: async () => {},
     exporting: false,
     layingOut: false,
-    preview: null,
     drawn: 0,
   } as unknown as ProjectState
   const html = renderToStaticMarkup(

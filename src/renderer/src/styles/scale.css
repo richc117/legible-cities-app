@@ -68,9 +68,31 @@
   --picker-size: 200px;
   --dialog-width: 28rem;
   --dialog-width-wide: 40rem;
+  /* The reading measure: prose and form fields, inside the column. */
   --measure: 40rem;
-  /* What the viewer takes: wider than prose, because a map is not read. */
+  /* The column every screen takes, the map included (A7-05): the main
+     region's width up to this, wider than prose because most of a screen
+     is rows, lists and a map, which are not read line by line. */
   --measure-wide: 64rem;
+  /* The map in the notebook's flow (ADR-046, DESIGN.md 8.2, "The map"): as
+     wide as the column at 16:9, its height capped at a fraction of the
+     window so a heading of the cell after it shows, and floored so a
+     narrow column still has a map to look at. The fraction is measured,
+     not declared (specs/029 FR-002): with cells 01 and 02 collapsed, in
+     a window 720 tall, this is the largest round fraction that keeps the
+     line of cell 03's heading on screen (the row's own bottom padding is
+     cut; a little less keeps the whole row). The measurements are in
+     ADR-046. */
+  --map-ratio-width: 16;
+  --map-ratio-height: 9;
+  --map-height-cap: 48svh;
+  --map-height-floor: 240px;
+  /* The map's block before there is a map: a sentence and a way to cell
+     02, in a box much shorter than the map it keeps room for. */
+  --map-empty-height: 8rem;
+  /* Cell 06's preview of the export (FR-004): the whole frame fits in a
+     box this tall at most, at the preset's ratio, centred in the cell. */
+  --export-preview-cap: min(60svh, 640px);
   /* A tooltip's measure: a sentence or two, never a column of prose. */
   --tooltip-width: 20rem;
   /* A sample city's card (A5.6-02): the narrowest a card may be before the

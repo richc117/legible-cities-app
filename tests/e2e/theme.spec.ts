@@ -104,6 +104,8 @@ async function project(page: Page, name: string): Promise<void> {
 
 const switchOf = (page: Page) => cell(page, 'style')
 const frame = (page: Page) => page.locator('iframe.viewer-frame')
+// Cell 06's own preview frame (ADR-046), there only while the cell is open.
+const exportFrame = (page: Page) => page.locator('iframe.export-frame')
 
 test('offers the two themes and says which one the map is drawn in', async () => {
   const h = home()
@@ -304,14 +306,14 @@ test('an export is planned in the theme the project is drawn in', async () => {
     copyFileSync(fixture, join(h.engineHome, 'out', id, 'la-metro-rail.html'))
 
     // The export is on its own tab (A5-01). Its preview plans too, so the
-    // press waits for the preview to have answered - the frame at the
+    // press waits for the preview to have answered - cell 06's frame at the
     // reel's shape - or a late preview's plan could land beside the
     // export's own.
     await openCell(page, 'export')
     await expect
       .poll(
         async () =>
-          new URL((await frame(page).getAttribute('src')) ?? '').searchParams.get('frame'),
+          new URL((await exportFrame(page).getAttribute('src')) ?? 'x:/').searchParams.get('frame'),
         {
           timeout: 20_000,
         },

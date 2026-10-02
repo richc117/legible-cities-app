@@ -10,7 +10,7 @@
 // Two rules hold the boundary up, and both are here rather than in a comment
 // somewhere:
 //
-//   1. The frame is held by identity, from the moment it is attached. It is
+//   1. A frame is held by identity, from the moment it is attached. It is
 //      never looked up by address at the moment of use, because the page can
 //      navigate itself and a lookup by address would then find nothing, or
 //      worse, fall back to the interface's own frame.
@@ -18,62 +18,126 @@
 //      against the page's own list and the arguments are serialised as data
 //      into a fixed dispatcher.
 //
-// Contract: specs/008-viewer/contracts/viewer.md.
+// Since ADR-046 a window holds two frames, by role: the `map` in the
+// notebook's flow, and the `export` preview cell 06 mounts while it is open.
+// Which frame is which is decided once, at attach, from its address, and
+// never again; a call names its role and reaches the frame held for it.
+//
+// Contract: specs/008-viewer/contracts/viewer.md; the roles are
+// specs/029-the-map-in-the-flow (FR-006).
 
 import type { WebContents, WebFrameMain } from 'electron'
-import { isViewerMethod, type ViewerMethod } from '../shared/viewer'
+import {
+  EXPORT_FRAME_METHODS,
+  isViewerMethod,
+  type ViewerMethod,
+  type ViewerRole,
+} from '../shared/viewer'
 
-/** The one frame this window's viewer is showing, or none. */
+/**
+ * Which of the two frames an address can be held as, for this project, or
+ * neither.
+ *
+ * The address has to be under the project's own folder, which both frames'
+ * pages are. Then:
+ *
+ * - **`safe=1` is the export's, always.** The app asks for the safe zones
+ *   only for cell 06's preview, the engine writes them onto that address
+ *   alone, and an export's own plan never carries them (specs/022 FR-006).
+ *   So an address with them is never matched as the map, which is the rule
+ *   that keeps the map's frame from being driven while it shows a preview.
+ * - **`controls=1` is the map's.** It is the app's own word, written by
+ *   `pageUrl` in `Viewer.tsx`, and the engine's planned addresses never
+ *   carry it: `url_for` in its export.py writes the frame, the title, the
+ *   clock and the rest, and no controls.
+ * - **Anything else under the folder is a planned page without safe
+ *   zones**, which is the export's: a preset such as a LinkedIn post has
+ *   none, and its preview is still the export's frame. `safe=1` alone could
+ *   not tell that address from the map's, which is why the map's own word
+ *   is read as well.
+ */
+export function roleOfAddress(url: string, projectId: string): ViewerRole | null {
+  const prefix = `app://local/projects/${projectId}/`
+  if (!url.startsWith(prefix)) return null
+  let query: URLSearchParams
+  try {
+    query = new URL(url).searchParams
+  } catch {
+    return null
+  }
+  if (query.getAll('safe').includes('1')) return 'export'
+  if (query.getAll('controls').includes('1')) return 'map'
+  return 'export'
+}
+
+interface Held {
+  frame: WebFrameMain
+  projectId: string
+}
+
+/** The frames this window's viewer is showing, by role. */
 export class Viewer {
-  #frame: WebFrameMain | null = null
-  #projectId: string | null = null
+  #held: Record<ViewerRole, Held | null> = { map: null, export: null }
+  /**
+   * The role each frame was first held in, by its place in the frame tree,
+   * for the life of this viewer. A frame that has been the map is never the
+   * export's, even when it is not held at the moment: a map page that sends
+   * itself to an address without `controls=1` reads as the export's by its
+   * address, fails to be re-attached as the map, and would otherwise be
+   * adopted by the next export attach with the roles swapped.
+   */
+  #roles = new Map<number, ViewerRole>()
   readonly #log: (message: string) => void
 
   constructor(log: (message: string) => void = () => {}) {
     this.#log = log
   }
 
-  get projectId(): string | null {
-    return this.#projectId
+  /** The project whose frame is held in this role, or null. */
+  projectIdOf(role: ViewerRole): string | null {
+    return this.#held[role]?.projectId ?? null
   }
 
   /**
-   * Hold the frame showing this project's page. The frame is found once,
-   * among the interface's children, by the address it was given; from here
+   * Hold the frame showing this project's page in this role. The frame is
+   * found once, among the interface's children, by its address; from here
    * on it is held, and its address is never consulted again.
    *
-   * Once per document, which is not once per element. Since A5.5-20 the
-   * interface never remounts the frame - a remount reloads the page, and a
-   * reload loses its clock, its view and its scrub position - but it does
-   * navigate it, to the page a run has just rewritten and to the address
-   * the export planned and back. Each of those is a new document that has
-   * to be found again, so the renderer attaches on every load and the hold
-   * that is already there is released first, on the line below. The prefix
-   * is the project's folder, which both addresses share, so a plain map and
-   * an export's preview are the same project's frame.
+   * Once per document, which is not once per element. The interface never
+   * remounts the map's frame - a remount reloads the page, and a reload
+   * loses its clock, its view and its scrub position - but it does send it
+   * to the page a run has just rewritten, and the export's frame is sent to
+   * each plan in turn. Each of those is a new document that has to be found
+   * again, so the renderer attaches on every load and the hold already there
+   * for that role is released first, on the line below. The frame held in
+   * the other role is never taken, whatever its address says now.
    */
-  attach(contents: WebContents, projectId: string): boolean {
-    this.release()
-    const wanted = `app://local/projects/${projectId}/`
+  attach(contents: WebContents, projectId: string, role: ViewerRole): boolean {
+    this.release(role)
     const main = contents.mainFrame
-    const frame = main.frames.find((child) => child !== main && child.url.startsWith(wanted))
+    const other = this.#held[role === 'map' ? 'export' : 'map']?.frame ?? null
+    const frame = main.frames.find((child) => {
+      if (child === main || child === other) return false
+      if (roleOfAddress(child.url, projectId) !== role) return false
+      const was = this.#roles.get(child.frameTreeNodeId)
+      return was === undefined || was === role
+    })
     if (frame === undefined) {
-      this.#log(`no viewer frame for the project asked for`)
+      this.#log(`no ${role} frame for the project asked for`)
       return false
     }
-    this.#frame = frame
-    this.#projectId = projectId
+    this.#roles.set(frame.frameTreeNodeId, role)
+    this.#held[role] = { frame, projectId }
     return true
   }
 
-  release(): void {
-    this.#frame = null
-    this.#projectId = null
+  release(role: ViewerRole): void {
+    this.#held[role] = null
   }
 
   /** The held frame, if it is still there and still is not the interface's. */
-  #usable(contents: WebContents): WebFrameMain | null {
-    const frame = this.#frame
+  #usable(contents: WebContents, role: ViewerRole): WebFrameMain | null {
+    const frame = this.#held[role]?.frame ?? null
     if (frame === null) return null
     // A frame that has gone answers nothing useful, and a frame that has
     // somehow become the interface's own must never be injected into.
@@ -87,17 +151,28 @@ export class Viewer {
   }
 
   /**
-   * One of the page's own methods. The name is checked against the page's
-   * list first, so a caller cannot name anything else, and the arguments go
-   * in as data.
+   * One of the page's own methods, in the frame held for this role. The
+   * name is checked against the page's list first, so a caller cannot name
+   * anything else, and the arguments go in as data. The export's frame is
+   * asked whether it has loaded and nothing more.
    */
-  async call(contents: WebContents, method: string, args: unknown[]): Promise<unknown> {
+  async call(
+    contents: WebContents,
+    role: ViewerRole,
+    method: string,
+    args: unknown[],
+  ): Promise<unknown> {
     if (!isViewerMethod(method)) {
       throw new Error('that is not something the map can be asked to do')
     }
-    const frame = this.#usable(contents)
+    if (role === 'export' && !EXPORT_FRAME_METHODS.includes(method)) {
+      throw new Error("the export's preview is not driven from here")
+    }
+    const frame = this.#usable(contents, role)
     if (frame === null) {
-      throw new Error('the map is not on the screen')
+      throw new Error(
+        role === 'map' ? 'the map is not on the screen' : 'the preview is not on the screen',
+      )
     }
     let serialised: string
     try {

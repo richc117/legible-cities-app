@@ -2,7 +2,7 @@
    chrome - its heading row, its state, its collapsed summary and its
    provenance footer.
 
-   Narrowed by A5.5-08: the rail and the pinned preview, which this file
+   Narrowed by A5.5-08: the rail and the map, which this file
    first claimed, have stylesheets of their own (`rail.css`,
    `preview.css`), so the nine issues of this milestone that have rules to
    add do not all meet here. The project screen's own layout is
@@ -12,7 +12,8 @@
 
 /* The column (`.notebook`): the six cells read top to bottom, always in the
    document, never hidden by the rail or by a step control (ADR-045). It has
-   no rules of its own yet - it takes the panel's measure, and the cell below
+   no rules of its own yet - it takes the panel's width, the main region's
+   up to `--measure-wide` (A7-05, `app.css`), and the cell below
    carries the spacing between one cell and the next - and it is named here
    because it is the region this file is for and where the column's own
    rules go when the rail sits beside it (A5.5-21). */
@@ -38,6 +39,7 @@
   gap: var(--space-4-3);
   width: 100%;
   padding: var(--space-4-3) var(--space-4-4);
+  border-radius: var(--radius);
   background: none;
   border: none;
   font: inherit;

@@ -414,10 +414,12 @@ describe('cell 02', () => {
   // the only way to say the log is wired into the cell is to draw the cell
   // and look for it.
   it('draws the engine log under the stages', () => {
+    const run = runWith(job({ log: ['[info] parsed 3 stops'] }))
     const state = {
       project: { ...record, readOnly: false },
       engine: null,
-      run: runWith(job({ log: ['[info] parsed 3 stops'] })),
+      run,
+      runSnapshot: run.snapshot,
       exporting: false,
       layingOut: false,
     } as unknown as ProjectState

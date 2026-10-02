@@ -43,7 +43,7 @@ const STATE = {
   labels: true,
 }
 
-const NOTHING = { laying: false, exporting: false, previewing: false }
+const NOTHING = { laying: false, exporting: false }
 
 describe('the day the page says it has', () => {
   it('reads a real answer', () => {
@@ -224,22 +224,19 @@ describe('what holds the page', () => {
     expect(transportRefusal(NOTHING)).toBeNull()
   })
 
-  it('refuses with a sentence for each of the three, and names the one it means', () => {
+  it('refuses with a sentence for each of the two, and names the one it means', () => {
     expect(transportRefusal({ ...NOTHING, laying: true })).toMatch(/being drawn/)
     expect(transportRefusal({ ...NOTHING, exporting: true })).toMatch(/export is reading/)
-    expect(transportRefusal({ ...NOTHING, previewing: true })).toMatch(/what the export will frame/)
   })
 
   it('names the run first where more than one is true', () => {
-    // A run and the export's preview can both be true - cell 06 can be open
-    // while a recolour redraws - and the sentence has to be one of them.
-    expect(transportRefusal({ laying: true, exporting: true, previewing: true })).toMatch(
-      /being drawn/,
-    )
+    // A recolour can redraw while an export is being made from the last
+    // page, and the sentence has to be one of them.
+    expect(transportRefusal({ laying: true, exporting: true })).toMatch(/being drawn/)
   })
 
   it('says a whole sentence, because it is read aloud as an alert', () => {
-    for (const held of ['laying', 'exporting', 'previewing'] as const) {
+    for (const held of ['laying', 'exporting'] as const) {
       const said = transportRefusal({ ...NOTHING, [held]: true }) as string
       expect(said, held).toMatch(/^[A-Z].*\.$/)
       // No path, no identifier: this is a sentence for a person.
@@ -518,15 +515,12 @@ describe('when the page is polled', () => {
     expect(pollsNow(false, held({}))).toBe(false)
   })
 
-  it('is not asked while a run, an export or the preview holds the page', () => {
+  it('is not asked while a run or an export holds the page', () => {
     // Every act of this control is refused then, so a poll is a round trip
     // through the privileged process, twice a second, to move a scrub
-    // nobody may move. During an export it is worse than idle: the frame is
-    // showing the address `export.plan` answered, so what would be read
-    // back is the export preview's clock and not the map's - and the viewer
-    // deliberately neither keeps nor restores that, so that closing cell 06
-    // brings the map back to the clock it was opened at.
-    for (const hold of ['laying', 'exporting', 'previewing'] as const) {
+    // nobody may move. Cell 06's preview is no longer a hold: since ADR-046
+    // it is a frame of its own and the transport names the map's.
+    for (const hold of ['laying', 'exporting'] as const) {
       expect(pollsNow(true, held({ [hold]: true })), hold).toBe(false)
     }
   })
