@@ -1963,7 +1963,7 @@ test('the projects list is newest opened first, and says how far each project ha
 // here, and whichever a row turns out to be, its rule is held.
 test('a row’s facts end at the far edge of the name’s line, or start under the name', async () => {
   const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
-  await withApp(engineHome, async (page) => {
+  await withApp(engineHome, async (page, app) => {
     const list = page.getByRole('list', { name: 'Projects' })
     // The shorter feed key is what lets the second row's facts fit.
     for (const [name, feed] of [
@@ -1996,6 +1996,21 @@ test('a row’s facts end at the far edge of the name’s line, or start under t
     )
     await page.reload()
     await expect(list.getByRole('button')).toHaveCount(3)
+    // Measured with the window at its narrowest, where the column is 640
+    // wide, which is the row the facts above were chosen against. In a wider
+    // window the column widens to `--measure-wide` (A7-05) and even the
+    // facts that are not laid out yet fit beside a name on one line.
+    await app.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0].setContentSize(640, 720)
+    })
+    // Asked for 640 and read back: a platform that will not make it quite
+    // that narrow (this display's window manager gave 584) still gives a
+    // column as narrow as the test needs, which is narrower than a row that
+    // could hold the longest name on one line, so what is required is
+    // narrow, not exactly 640.
+    await expect
+      .poll(() => page.evaluate(() => window.innerWidth), { timeout: 10_000 })
+      .toBeLessThanOrEqual(700)
 
     const rows = await list.getByRole('button').evaluateAll((all) =>
       all.map((row) => {
