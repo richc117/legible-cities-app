@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type JSX } from 'react'
 import type { ProjectRecord } from '../../shared/project'
 import { caveatsSentence, copyText, metrics } from './engine/diagnostics'
-import type { LayoutRun as Run, RunReport } from './engine/layoutRun'
+import type { LayoutRun as Run, RunReport, RunSnapshot } from './engine/layoutRun'
 import Button from './kit/Button'
 import Icon from './icons/Icon'
 import { useSnapshot } from './useSnapshot'
@@ -16,6 +16,23 @@ import { useSnapshot } from './useSnapshot'
 // drawn a map, and goes again when the next run starts, except that a redraw
 // for colours or order leaves the last figures standing until its own come.
 
+/**
+ * Which figures the panel draws, given the ones it drew last. A redraw for
+ * colours or order moves no station, so the figures it is about to replace
+ * stay until its own arrive, and a panel that was not there is not added
+ * by it: either way the cell would change height under a colour panel
+ * being picked from (issue 304). Anything else is the run's own report.
+ */
+export function figuresToShow(
+  drawn: RunReport | null,
+  run: Pick<RunSnapshot, 'state' | 'report' | 'recoloured' | 'reordered'>,
+): RunReport | null {
+  if (!run.recoloured && !run.reordered) return run.report
+  if (drawn === null) return null
+  if (run.state === 'running') return drawn
+  return run.report
+}
+
 /** The panel, wired to a project's run. Nothing to show until a map has been drawn. */
 export default function Diagnostics({
   run,
@@ -25,16 +42,9 @@ export default function Diagnostics({
   project: ProjectRecord
 }): JSX.Element | null {
   const snapshot = useSnapshot(run)
-  // A redraw for colours or order moves no station, so the figures it is
-  // about to replace stay on the screen until its own arrive. Clearing them
-  // made the cell lose its whole height for the length of the redraw and
-  // threw everything below it, a colour panel being picked from included,
-  // up the page and back (issue 304).
   const held = useRef<RunReport | null>(null)
-  if (snapshot.report !== null) held.current = snapshot.report
-  else if (snapshot.state !== 'running') held.current = null
-  const cheap = snapshot.state === 'running' && (snapshot.recoloured || snapshot.reordered)
-  const report = snapshot.report ?? (cheap ? held.current : null)
+  const report = figuresToShow(held.current, snapshot)
+  held.current = report
   if (report === null) return null
   return <DiagnosticsReport name={project.name} report={report} />
 }

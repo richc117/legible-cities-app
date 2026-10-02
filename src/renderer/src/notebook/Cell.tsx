@@ -1,4 +1,4 @@
-import type { JSX, ReactNode } from 'react'
+import { useLayoutEffect, useRef, type CSSProperties, type JSX, type ReactNode } from 'react'
 import Icon, { type IconName } from '../icons/Icon'
 import Disclosure from '../kit/Disclosure'
 import type { CellState } from '../runGraph'
@@ -80,6 +80,14 @@ export interface CellProps {
    * that follows does not collapse the cell (A5.5-08).
    */
   headingRef?: React.Ref<HTMLHeadingElement>
+  /**
+   * Keep the body the height it had when this went true, for as long as it
+   * is. A redraw for colours swaps what a cell shows for a moment, and
+   * whatever is anchored below it, a colour panel being picked from, moves
+   * with the cell's height (issue 304). Holding is a floor, so a body that
+   * grows is not cut.
+   */
+  hold?: boolean
   children: ReactNode
 }
 
@@ -94,8 +102,18 @@ export default function Cell({
   footer,
   headingLevel = 2,
   headingRef,
+  hold = false,
   children,
 }: CellProps): JSX.Element {
+  const body = useRef<HTMLDivElement>(null)
+  const standing = useRef<number | null>(null)
+  useLayoutEffect(() => {
+    if (!hold) standing.current = body.current?.getBoundingClientRect().height ?? null
+  })
+  const holding: CSSProperties | undefined =
+    hold && standing.current !== null
+      ? { boxSizing: 'border-box', minBlockSize: standing.current }
+      : undefined
   const { word, icon } = STATES[state]
   const Heading = `h${headingLevel}` as 'h2' | 'h3'
   const said = progress ?? summary
@@ -124,7 +142,9 @@ export default function Cell({
           </>
         }
       >
-        <div className="cell-body">{children}</div>
+        <div className="cell-body" ref={body} style={holding}>
+          {children}
+        </div>
         {footer !== undefined && <div className="cell-footer">{footer}</div>}
       </Disclosure>
     </section>
