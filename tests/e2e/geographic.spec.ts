@@ -71,6 +71,23 @@ test("draws the two stages in a frame with no permissions, with the engine's cou
       'aria-pressed',
       'true',
     )
+    // One sentence says what the two are (issue 282), and the group of
+    // buttons is described by it, so a screen reader hears it on entering.
+    const explain = view.locator('#stage-explain')
+    await expect(explain).toBeVisible()
+    await expect(explain).toContainText('the same network after the engine has sorted the lines')
+    const group = view.getByRole('group', { name: 'Stage', exact: true })
+    await expect(group).toHaveAttribute('aria-describedby', 'stage-explain')
+    // A native div, so the description resolves in the ordinary tree.
+    await expect(group).toHaveAccessibleDescription(/the same network after the engine/)
+    // The section reads: heading, the sentence, the buttons.
+    const order = await view.evaluate((section) =>
+      ['h3', '#stage-explain', '.toolbar'].map((selector) =>
+        [...section.children].indexOf(section.querySelector(selector) as Element),
+      ),
+    )
+    expect(order).toEqual([...order].sort((a, b) => a - b))
+    expect(order.every((i) => i >= 0)).toBe(true)
 
     await view.getByRole('button', { name: 'loom' }).click()
     await expect(view.getByRole('button', { name: 'loom' })).toHaveAttribute('aria-pressed', 'true')
@@ -97,17 +114,29 @@ test('pans and zooms by keyboard on the frame, not inside it', async () => {
     await expect(frame).toBeVisible()
     const transform = () => frame.evaluate((el) => (el as HTMLElement).style.transform)
     const before = await transform()
-    // The pane sits below the fold of a long screen; the pointer has to be
-    // over it, not over where it was before the scroll.
-    await pane.scrollIntoViewIfNeeded()
+    // The pane sits below the fold of a long screen, and the pinned map
+    // covers the top half of the window (issue 213): the pointer has to be
+    // over a part of the pane the map does not cover, so the pane is
+    // scrolled to the foot of the window and the pointer put in its lower
+    // part. It is scrolled there again whenever the page may have moved: an
+    // unfocused wheel scrolls the page, which drops the pane by the step and
+    // would leave the pointer at, or past, the window's foot. Focus is given
+    // without scrolling, which would put the top back behind the map.
+    const lower = async (): Promise<{ x: number; y: number; left: number }> => {
+      await pane.evaluate((el) => el.scrollIntoView({ block: 'end' }))
+      const b = (await pane.boundingBox())!
+      return { x: b.x + b.width / 2, y: b.y + b.height - 60, left: b.x }
+    }
     // The wheel does nothing until the pane has focus. The pointer sits
     // over the drawing, where the glass takes the event for the pane.
-    const box = (await pane.boundingBox())!
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    const first = await lower()
+    await page.mouse.move(first.x, first.y)
     await page.mouse.wheel(0, -120)
     await page.waitForTimeout(100)
     expect(await transform()).toBe(before)
-    await pane.focus()
+    const second = await lower()
+    await page.mouse.move(second.x, second.y)
+    await pane.evaluate((el) => (el as HTMLElement).focus({ preventScroll: true }))
     await page.mouse.wheel(0, -120)
     await expect.poll(transform).not.toBe(before)
     const wheeled = await transform()
@@ -118,11 +147,13 @@ test('pans and zooms by keyboard on the frame, not inside it', async () => {
     await page.keyboard.press('ArrowRight')
     const panned = await transform()
     expect(panned).not.toBe(zoomed)
-    // A drag pans too. Focusing scrolled the pane; the box is read again.
-    const now = (await pane.boundingBox())!
-    await page.mouse.move(now.x + 100, now.y + 100)
+    // A drag pans too. It starts in the pane's lower part, which the map
+    // never covers (issue 213), read again now that the page may have moved.
+    const at = await lower()
+    const grab = at.y - 60
+    await page.mouse.move(at.left + 100, grab)
     await page.mouse.down()
-    await page.mouse.move(now.x + 160, now.y + 130, { steps: 4 })
+    await page.mouse.move(at.left + 160, grab + 30, { steps: 4 })
     await page.mouse.up()
     await expect.poll(transform).not.toBe(panned)
     await page.keyboard.press('0')
