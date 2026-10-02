@@ -28,6 +28,7 @@ ship in this GPL app; import only fig.css and fig.js (ADR-026).`
 | `--figma-color-bg-disabled`, `-bg-disabled-secondary` | `--surface-sunken`, `--surface-raised` |
 | `--figma-color-text`, `-text-secondary`, `-text-tertiary`, `-text-disabled` | `--text`, `--text-muted`, `--text-faint`, `--text-faint` |
 | `--figma-color-text-brand`, `-text-danger`, `-text-warning`, `-text-success` | `--accent-text`, `--error`, `--warning`, `--success-strong` |
+| `--figma-color-text-ondisabled`, `-icon-ondisabled` | `--text-faint`, `--text-faint` (a disabled filled button's label on `--surface-sunken`: 4.51 in warm-dark, 4.59 in sepia, asserted by the contrast test; the kit's own `light-dark(#fff, #2c2c2c)` was 1.08 and 1.43) |
 | `--figma-color-text-onbrand`, `-text-ondanger`, `-text-onselected` | `--on-accent`, `--surface` (the ground on the error fill: 5.0 in warm-dark, 5.7 in sepia, asserted by the contrast test), `--text` |
 | `--figma-color-icon`, `-icon-secondary`, `-icon-tertiary`, `-icon-disabled` | `--text`, `--text-muted`, `--text-faint`, `--text-faint` |
 | `--figma-color-icon-brand`, `-icon-danger`, `-icon-onbrand` | `--accent`, `--error`, `--on-accent` |
@@ -43,6 +44,8 @@ ship in this GPL app; import only fig.css and fig.js (ADR-026).`
 | `--spacer-4` (control height) | `--control-height` |
 | `color-scheme` | `dark` at `:root`, `light` at `:root[data-theme="sepia"]` |
 | leak: native `<option>` | `option { background: var(--surface-raised); color: var(--text) }` |
+| leak: `section` | `section { padding: 0; margin: 0 }`: the kit's `base.css` pads every section 4px 16px and puts 8px under it, outside its layer (issue 273) |
+| leak: `button` | `.entry, .rail-step, .cell-head { height: auto }`, flex-start alignment on the last two, and a pressed ground and `color: inherit` of each one's own, against the kit's 28px height, centred content and brand fill on `:active` (issue 273) |
 | leak: checkbox stroke | the check glyph's colour overridden through `--figma-color-icon-onbrand` where the kit reads it; otherwise the wrapper's own check |
 
 Any kit variable not listed keeps its `light-dark()` default, which the

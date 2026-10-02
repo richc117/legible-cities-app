@@ -427,6 +427,47 @@ body {
   background: var(--surface-hover);
 }
 
+/* The three row-like native buttons inherit the kit's button rules
+   (components.css, "Button"): a control height, content centred, and the
+   brand fill on a press. A row is none of those, so each is its own
+   height, reads from the near edge, and a press keeps the row's own
+   hover ground and text colour (issue 273; issue 269 fixed .entry's
+   height alone). */
+.entry,
+.rail-step,
+.cell-head {
+  height: auto;
+  color: inherit;
+}
+
+.rail-step,
+.cell-head {
+  justify-content: flex-start;
+}
+
+.entry:active,
+.entry:hover:active {
+  background: var(--surface-hover);
+  color: inherit;
+}
+
+.rail-step:active,
+.rail-step:hover:active {
+  background: var(--surface-hover);
+  color: inherit;
+}
+
+.rail-step[aria-current='step']:active,
+.rail-step[aria-current='step']:hover:active {
+  background: var(--surface-selected);
+}
+
+.cell-head:active,
+.cell-head:hover:active {
+  background: var(--surface-raised);
+  color: inherit;
+}
+
 /* A name can be as long as a name may be with no space in it. It is never
    wider than its row and breaks where it must, rather than run out of the
    row's far edge; a name that fits is never broken to make room. */
@@ -672,6 +713,14 @@ dialog::backdrop {
 .icon-24 {
   width: var(--icon-size-large);
   height: var(--icon-size-large);
+}
+
+/* The kit button's shadow style declares no gap, and the document's own
+   cannot reach a shadow root; an icon is a slotted light-DOM span that
+   always precedes the label, so a document rule can. DESIGN.md reserves
+   --space-2-* for this (issue 273). */
+fig-button:not([icon]) > .icon {
+  margin-inline-end: var(--space-2-2);
 }
 
 /* The progress line: a round station per stage on a line that reaches as far
