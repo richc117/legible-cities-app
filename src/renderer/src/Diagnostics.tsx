@@ -13,7 +13,8 @@ import { useSnapshot } from './useSnapshot'
 //
 // It is the run's, not the record's: a build the app did not watch has no
 // report, so the panel is absent until a layout run or a rebuild has
-// drawn a map, and goes again when the next run starts.
+// drawn a map, and goes again when the next run starts, except that a redraw
+// for colours or order leaves the last figures standing until its own come.
 
 /** The panel, wired to a project's run. Nothing to show until a map has been drawn. */
 export default function Diagnostics({
@@ -23,7 +24,17 @@ export default function Diagnostics({
   run: Run
   project: ProjectRecord
 }): JSX.Element | null {
-  const { report } = useSnapshot(run)
+  const snapshot = useSnapshot(run)
+  // A redraw for colours or order moves no station, so the figures it is
+  // about to replace stay on the screen until its own arrive. Clearing them
+  // made the cell lose its whole height for the length of the redraw and
+  // threw everything below it, a colour panel being picked from included,
+  // up the page and back (issue 304).
+  const held = useRef<RunReport | null>(null)
+  if (snapshot.report !== null) held.current = snapshot.report
+  else if (snapshot.state !== 'running') held.current = null
+  const cheap = snapshot.state === 'running' && (snapshot.recoloured || snapshot.reordered)
+  const report = snapshot.report ?? (cheap ? held.current : null)
   if (report === null) return null
   return <DiagnosticsReport name={project.name} report={report} />
 }
