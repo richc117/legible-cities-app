@@ -4,11 +4,14 @@ import {
   alphabetical,
   arrange,
   drawnFirst,
+  dropPlace,
   isAlphabetical,
   move,
+  moveTo,
   nextStep,
   positionWords,
   sameOrder,
+  standAside,
 } from '../../src/renderer/src/order'
 
 // The line order's pure half (A4-02, specs/020-line-order). `arrange` is
@@ -99,6 +102,87 @@ describe('move', () => {
 
   it('gives the order back for a line the feed does not offer', () => {
     expect(move(three, [], 'K', 1)).toEqual([])
+  })
+})
+
+// A drag puts a line down anywhere in one go (issue 283). Watched failing
+// with an off-by-one in the splice, the line put in one place past where it
+// was dropped: to the top, the middle, the collapse and the ends all fail,
+// and only the carry to the end passes, since a splice past the end still
+// appends. Without the collapse, only the collapse fails.
+describe('moveTo', () => {
+  const six = lines('A', 'B', 'C', 'D', 'E', 'K')
+
+  it('carries the first line to the end, every line between moving up one place', () => {
+    expect(moveTo(six, [], 'A', 5)).toEqual(['B', 'C', 'D', 'E', 'K', 'A'])
+  })
+
+  it('carries the last line to the top, every line between moving down one place', () => {
+    expect(moveTo(six, [], 'K', 0)).toEqual(['K', 'A', 'B', 'C', 'D', 'E'])
+  })
+
+  it('puts a line down in the middle, from above it and from below it', () => {
+    expect(moveTo(six, [], 'A', 3)).toEqual(['B', 'C', 'D', 'A', 'E', 'K'])
+    expect(moveTo(six, [], 'K', 2)).toEqual(['A', 'B', 'K', 'C', 'D', 'E'])
+  })
+
+  it('answers the whole arrangement, from wherever the lines stand now', () => {
+    expect(moveTo(six, ['K', 'C'], 'C', 5)).toEqual(['K', 'A', 'B', 'D', 'E', 'C'])
+  })
+
+  it('is no order at all when the lines come out where the engine draws them', () => {
+    expect(moveTo(six, ['B', 'A'], 'B', 1)).toEqual([])
+    expect(moveTo(six, ['K', 'A', 'B', 'C', 'D', 'E'], 'K', 5)).toEqual([])
+  })
+
+  it('gives the order back for a line put down where it stood, or one the feed does not offer', () => {
+    expect(moveTo(six, ['K', 'C'], 'C', 1)).toEqual(['K', 'C'])
+    expect(moveTo(six, [], 'Z', 2)).toEqual([])
+  })
+
+  it('takes a place past either end as that end', () => {
+    expect(moveTo(six, [], 'A', 99)).toEqual(['B', 'C', 'D', 'E', 'K', 'A'])
+    expect(moveTo(six, [], 'K', -3)).toEqual(['K', 'A', 'B', 'C', 'D', 'E'])
+  })
+})
+
+// Where a carried row lands, from the rows' middles as the drag began: six
+// rows of forty, so the middles are 20, 60, 100 and on.
+describe('dropPlace', () => {
+  const middles = [20, 60, 100, 140, 180, 220]
+
+  it('stays put until the row has been carried past half of its neighbour', () => {
+    expect(dropPlace(middles, 0, 0)).toBe(0)
+    expect(dropPlace(middles, 0, 39)).toBe(0)
+    expect(dropPlace(middles, 0, 41)).toBe(1)
+    expect(dropPlace(middles, 3, -39)).toBe(3)
+    expect(dropPlace(middles, 3, -41)).toBe(2)
+  })
+
+  it('counts reaching a middle exactly as passing it, whichever way the row goes', () => {
+    expect(dropPlace(middles, 0, 40)).toBe(1)
+    expect(dropPlace(middles, 3, -40)).toBe(2)
+  })
+
+  it('reaches either end, and a pointer past it is that end', () => {
+    expect(dropPlace(middles, 0, 200)).toBe(5)
+    expect(dropPlace(middles, 5, -200)).toBe(0)
+    expect(dropPlace(middles, 0, 900)).toBe(5)
+    expect(dropPlace(middles, 5, -900)).toBe(0)
+  })
+})
+
+describe('standAside', () => {
+  it('moves the rows a line passes going down up one place, and no others', () => {
+    expect([0, 1, 2, 3, 4, 5].map((i) => standAside(i, 1, 3))).toEqual([0, 0, -1, -1, 0, 0])
+  })
+
+  it('moves the rows a line passes going up down one place, and no others', () => {
+    expect([0, 1, 2, 3, 4, 5].map((i) => standAside(i, 4, 1))).toEqual([0, 1, 1, 1, 0, 0])
+  })
+
+  it('moves nothing while the line is over its own place', () => {
+    expect([0, 1, 2].map((i) => standAside(i, 1, 1))).toEqual([0, 0, 0])
   })
 })
 

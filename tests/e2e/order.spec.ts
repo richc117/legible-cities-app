@@ -69,10 +69,65 @@ const received = (engineHome: string, method: string): string[] =>
     .filter((l) => l.includes(`"${method}"`))
 
 const panelOf = (page: Page) => panel(page, 'Line order')
-const rowsOf = (page: Page) =>
-  panelOf(page)
-    .getByRole('list', { name: 'Lines in the order they are drawn' })
-    .getByRole('listitem')
+const listOf = (page: Page) =>
+  panelOf(page).getByRole('list', { name: 'Lines in the order they are drawn' })
+const rowsOf = (page: Page) => listOf(page).getByRole('listitem')
+
+/** The labels down the list, as a person reads them. */
+const labelsOf = async (page: Page): Promise<string[]> =>
+  (await listOf(page).locator('.line-name').allTextContents()).map((label) => label.trim())
+
+/**
+ * The list where a pointer can reach it. The pinned map covers the top half
+ * of the window below the header, and a mouse event over it lands on the
+ * map, not on the row beneath (issue 213), so the list is centred in what
+ * the map does not cover, twice because the map is sticky and moving the
+ * page can move what it covers - as `layout.spec.ts` does for the engine
+ * log's toggle. Then it says so, so a list taller than that space fails
+ * here rather than as a drag that went nowhere.
+ */
+async function belowTheMap(page: Page): Promise<void> {
+  const clear = await listOf(page).evaluate((el) => {
+    el.scrollIntoView({ block: 'center' })
+    for (let pass = 0; pass < 2; pass += 1) {
+      const box = el.getBoundingClientRect()
+      const covered = document.querySelector('.preview')?.getBoundingClientRect().bottom ?? 0
+      const middle = covered + (window.innerHeight - covered) / 2 - box.height / 2
+      window.scrollBy(0, box.top - middle)
+    }
+    const box = el.getBoundingClientRect()
+    const covered = document.querySelector('.preview')?.getBoundingClientRect().bottom ?? 0
+    return box.top >= covered && box.bottom <= window.innerHeight
+  })
+  expect(clear, 'the whole list is below the map and inside the window').toBe(true)
+}
+
+/** Where each row's grip is, and each row's box, read once: the places stay put while the lines move through them. */
+async function places(page: Page): Promise<{ grips: Point[]; rows: Box[] }> {
+  const rows = rowsOf(page)
+  const count = await rows.count()
+  const grips: Point[] = []
+  const boxes: Box[] = []
+  for (let i = 0; i < count; i += 1) {
+    const grip = (await rows.nth(i).locator('.line-grip').boundingBox())!
+    grips.push({ x: grip.x + grip.width / 2, y: grip.y + grip.height / 2 })
+    boxes.push((await rows.nth(i).boundingBox())!)
+  }
+  return { grips, rows: boxes }
+}
+
+type Point = { x: number; y: number }
+type Box = { x: number; y: number; width: number; height: number }
+
+/** Pick a line up by its grip with the mouse and carry it to a point, in steps, as a hand would; the button stays down. */
+async function carry(page: Page, grip: Point, to: Point): Promise<void> {
+  await page.mouse.move(grip.x, grip.y)
+  await page.mouse.down()
+  await page.mouse.move(to.x, to.y, { steps: 8 })
+}
+
+/** A point inside a row's lower half, past its middle, where a line carried down to it lands. */
+const lowIn = (row: Box, x: number): Point => ({ x, y: row.y + row.height * 0.8 })
 
 test('lists every line in the order it is drawn, alphabetical until someone says otherwise', async () => {
   const engineHome = home()
@@ -91,6 +146,14 @@ test('lists every line in the order it is drawn, alphabetical until someone says
     await expect(panelOf(page).getByRole('button', { name: 'Back to alphabetical' })).toBeDisabled()
     await expect(rows.nth(0).getByRole('button', { name: 'Move line A up' })).toBeDisabled()
     await expect(rows.nth(5).getByRole('button', { name: /^Move line .* down/ })).toBeDisabled()
+    // Each row has its two arrows and nothing else a person can press or
+    // name: the grip is a pointer's handle, hidden from a screen reader and
+    // out of the Tab order, because the arrows are the same moves.
+    await expect(rows.nth(0).getByRole('button')).toHaveCount(2)
+    const grip = rows.nth(0).locator('.line-grip')
+    await expect(grip).toBeVisible()
+    await expect(grip).toHaveAttribute('aria-hidden', 'true')
+    expect(await grip.evaluate((el) => (el as HTMLElement).tabIndex)).toBe(-1)
   })
 })
 
@@ -159,6 +222,221 @@ test('four presses in a row are one build', async () => {
     await expect
       .poll(() => readRecord(engineHome).lineOrder)
       .toEqual(['B', 'C', 'D', 'E', 'A', 'K'])
+  })
+})
+
+// The drag (issue 283). A line is carried by the grip at its row's start and
+// the release is one change on the same timer as a press, so one build.
+
+test('a line dragged from the top to the bottom is one build, said and stored', async () => {
+  const engineHome = home()
+  await withApp(engineHome, async (page) => {
+    await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
+    const panel = panelOf(page)
+    await belowTheMap(page)
+    const { grips, rows } = await places(page)
+    const before = received(engineHome, 'map.build').length
+
+    await carry(page, grips[0], lowIn(rows[5], grips[0].x))
+    // Mid-drag the list follows the pointer: the carried row is lifted and
+    // the rows it passed have stood aside, before anything is released or
+    // built. Without this the rest could pass for a list that jumped.
+    await expect(listOf(page)).toHaveAttribute('data-dragging', 'true')
+    await expect(rowsOf(page).nth(0)).toHaveAttribute('data-dragged', 'true')
+    // Polled: the move is applied on the next frame, and a read taken once
+    // can land before it.
+    await expect
+      .poll(() =>
+        rowsOf(page)
+          .nth(3)
+          .evaluate((el) => (el as HTMLElement).style.transform),
+      )
+      .toMatch(/^translateY\(-/)
+    expect(
+      received(engineHome, 'map.build'),
+      'nothing is built while the line is carried',
+    ).toHaveLength(before)
+    await page.mouse.up()
+
+    await expect(panel.getByRole('status')).toHaveText('A is now 6 of 6.')
+    expect(await labelsOf(page)).toEqual(['B', 'C', 'D', 'E', 'K', 'A'])
+    await expect(listOf(page)).not.toHaveAttribute('data-dragging', 'true')
+    await expect(page.getByText(/Drawn with the lines in the order you chose/)).toBeVisible({
+      timeout: 30_000,
+    })
+    // Watched failing, with the check above, with `commit` called on every
+    // pointer move: the move that carried the line past B built at once,
+    // before the release. The other three drags below fail the same way.
+    expect(received(engineHome, 'map.build'), 'one build for the whole drag').toHaveLength(
+      before + 1,
+    )
+    await expect
+      .poll(() => readRecord(engineHome).lineOrder)
+      .toEqual(['B', 'C', 'D', 'E', 'K', 'A'])
+    expect(
+      received(engineHome, 'graph.build'),
+      'an order is a render: nothing was laid out again',
+    ).toHaveLength(1)
+  })
+})
+
+test('a drag released outside the list still lands, at the end nearest the pointer', async () => {
+  const engineHome = home()
+  await withApp(engineHome, async (page) => {
+    await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
+    const panel = panelOf(page)
+    await belowTheMap(page)
+    const { grips, rows } = await places(page)
+    const before = received(engineHome, 'map.build').length
+
+    // Down past the list's foot and well to the side of it, where no row
+    // is: the grip holds the pointer, so the release still comes to it.
+    // Watched failing with the pointer not captured: nothing landed.
+    const foot = rows[rows.length - 1]
+    // Kept inside the window, read from the page (Electron reports no
+    // viewport size): a point past its edge is a point no event reaches,
+    // and one derived from a box near the edge has been inside here and
+    // outside in CI before. If the clamp leaves the point over the list,
+    // the assertion below says so rather than passing for the wrong reason.
+    const win = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }))
+    const outside = {
+      x: Math.min(foot.x + foot.width + 40, win.w - 4),
+      y: Math.min(foot.y + foot.height + 80, win.h - 4),
+    }
+    await carry(page, grips[1], outside)
+    const box = (await listOf(page).boundingBox())!
+    expect(
+      outside.y > box.y + box.height || outside.x > box.x + box.width,
+      'the release is outside the list',
+    ).toBe(true)
+    await page.mouse.up()
+
+    await expect(panel.getByRole('status')).toHaveText('B is now 6 of 6.')
+    expect(await labelsOf(page)).toEqual(['A', 'C', 'D', 'E', 'K', 'B'])
+    await expect(page.getByText(/Drawn with the lines in the order you chose/)).toBeVisible({
+      timeout: 30_000,
+    })
+    expect(received(engineHome, 'map.build')).toHaveLength(before + 1)
+    await expect
+      .poll(() => readRecord(engineHome).lineOrder)
+      .toEqual(['A', 'C', 'D', 'E', 'K', 'B'])
+  })
+})
+
+test('Escape in the middle of a drag puts the list back and builds nothing', async () => {
+  const engineHome = home()
+  await withApp(engineHome, async (page) => {
+    await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
+    const panel = panelOf(page)
+    await belowTheMap(page)
+    const { grips, rows } = await places(page)
+    const before = received(engineHome, 'map.build').length
+
+    await carry(page, grips[0], lowIn(rows[3], grips[0].x))
+    // The drag is live: the list has moved under the pointer. Only then is
+    // the "nothing" below worth anything.
+    await expect(rowsOf(page).nth(0)).toHaveAttribute('data-dragged', 'true')
+    // Watched failing with Escape not heard during a drag: the line was
+    // still carried after it.
+    await page.keyboard.press('Escape')
+    await expect(listOf(page)).not.toHaveAttribute('data-dragging', 'true')
+    expect(await labelsOf(page)).toEqual(['A', 'B', 'C', 'D', 'E', 'K'])
+    for (let i = 0; i < 6; i += 1)
+      expect(
+        await rowsOf(page)
+          .nth(i)
+          .evaluate((el) => (el as HTMLElement).style.transform),
+      ).toBe('')
+    // The release that follows is not a drop: the drag is over.
+    await page.mouse.up()
+    await page.waitForTimeout(1500)
+    expect(received(engineHome, 'map.build'), 'Escape builds nothing').toHaveLength(before)
+    expect(readRecord(engineHome).lineOrder).toEqual([])
+    await expect(panel.getByRole('status')).toHaveText('')
+    await expect(panel.getByRole('button', { name: 'Back to alphabetical' })).toBeDisabled()
+
+    // And the same drag, let go this time, does build: the one above was
+    // stopped by Escape, not by a drag that could not land.
+    await carry(page, grips[0], lowIn(rows[3], grips[0].x))
+    await page.mouse.up()
+    await expect(panel.getByRole('status')).toHaveText('A is now 4 of 6.')
+    await expect(page.getByText(/Drawn with the lines in the order you chose/)).toBeVisible({
+      timeout: 30_000,
+    })
+    expect(received(engineHome, 'map.build')).toHaveLength(before + 1)
+  })
+})
+
+test('four drags in a row are one build', async () => {
+  const engineHome = home()
+  await withApp(engineHome, async (page) => {
+    await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
+    await belowTheMap(page)
+    // Every place read before the first drag, so the four follow one
+    // another with nothing between them but the mouse: the debounce is what
+    // makes them one map, as it is for four presses.
+    const { grips, rows } = await places(page)
+    const before = received(engineHome, 'map.build').length
+
+    for (let i = 0; i < 4; i += 1) {
+      await carry(page, grips[0], lowIn(rows[5], grips[0].x))
+      await page.mouse.up()
+    }
+    await expect(page.getByText(/Drawn with the lines in the order you chose/)).toBeVisible({
+      timeout: 30_000,
+    })
+    expect(received(engineHome, 'map.build')).toHaveLength(before + 1)
+    await expect
+      .poll(() => readRecord(engineHome).lineOrder)
+      .toEqual(['E', 'K', 'A', 'B', 'C', 'D'])
+    expect(await labelsOf(page)).toEqual(['E', 'K', 'A', 'B', 'C', 'D'])
+  })
+})
+
+test('an arrow carries its name as a tooltip on hover and on focus, and Escape sends it away', async () => {
+  const engineHome = home()
+  await withApp(engineHome, async (page) => {
+    await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
+    const panel = panelOf(page)
+    await belowTheMap(page)
+    const up = panel.getByRole('button', { name: 'Move line B up' })
+    const arrow = rowsOf(page).nth(1).locator('.line-arrow').first()
+    const tip = arrow.locator('.tooltip')
+    await expect(tip).toHaveText('Move line B up')
+    await expect(tip).toBeHidden()
+
+    // The press lands where the arrow is drawn: the kit's inner button no
+    // longer stands out past the square its host draws. Watched failing
+    // without the adapter's rule: 44 wide on a square of 28.
+    const box = (await up.boundingBox())!
+    const drawn = (await arrow.locator('fig-button').boundingBox())!
+    expect(box.width).toBeCloseTo(drawn.width, 0)
+    expect(box.height).toBeCloseTo(drawn.height, 0)
+
+    // Under the pointer.
+    const over = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+    const away = { x: box.x - 200, y: over.y }
+    await page.mouse.move(over.x, over.y)
+    await expect(tip).toBeVisible()
+    // Escape sends it away without the pointer moving (WCAG 1.4.13)...
+    await page.keyboard.press('Escape')
+    await expect(tip).toBeHidden()
+    await expect(arrow).toHaveAttribute('data-dismissed', 'true')
+    // ...until the pointer has left it. Waited for, because the pointer's
+    // moves are delivered a frame at a time and two in one frame are one.
+    await page.mouse.move(away.x, away.y)
+    await expect(arrow).not.toHaveAttribute('data-dismissed', 'true')
+    await page.mouse.move(over.x, over.y)
+    await expect(tip).toBeVisible()
+    await page.mouse.move(away.x, away.y)
+    await expect(tip).toBeHidden()
+
+    // And from the keyboard, with no pointer on it.
+    await up.focus()
+    await expect(tip).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(tip).toBeHidden()
+    await expect(up).toBeFocused()
   })
 })
 
