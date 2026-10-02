@@ -305,7 +305,7 @@ test('the picker stays open through a drag, and closes when it is dismissed', as
 })
 
 /** Opens line A's panel, changes its colour with the panel left open, and checks nothing above it moved. */
-async function holdsStillThroughARedraw(page: Page, engineHome: string): Promise<void> {
+async function holdsStillThroughARedraw(page: Page): Promise<void> {
   const panel = cell(page, 'lines')
   const chip = panel.getByRole('button', { name: 'Choose the colour of line A' })
   await chip.click()
@@ -320,7 +320,6 @@ async function holdsStillThroughARedraw(page: Page, engineHome: string): Promise
       return { chip: open.getBoundingClientRect().top, above: heights }
     })
   const before = await where()
-  const drawnBefore = received(engineHome, 'map.build').length
 
   await picker
     .getByRole('slider')
@@ -364,7 +363,7 @@ test('the page stays where it is while a colour is being drawn, and the picker w
   const engineHome = home({ progress_delay_ms: 200 })
   await withApp(engineHome, async (page) => {
     await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
-    await holdsStillThroughARedraw(page, engineHome)
+    await holdsStillThroughARedraw(page)
   })
 })
 
@@ -378,7 +377,7 @@ test('and so does the first redraw after the app was closed and opened again', a
   })
   await withApp(engineHome, async (page) => {
     await openProject(page, 'Los Angeles')
-    await holdsStillThroughARedraw(page, engineHome)
+    await holdsStillThroughARedraw(page)
   })
 })
 
