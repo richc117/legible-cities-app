@@ -9,6 +9,8 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   reporter: process.env.CI ? 'github' : 'list',
   outputDir: 'test-results',
+  // On CI the json report would carry the commit's author and e-mail, and it is uploaded.
+  captureGitInfo: { commit: false, diff: false },
   // A log folder of the suite's own for every launch, so no run writes a
   // person's own log (specs/023-logs-and-diagnostics).
   globalSetup: './tests/e2e/global-setup.ts',

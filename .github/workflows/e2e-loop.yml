@@ -58,8 +58,10 @@ on:
 permissions:
   contents: read
 
-# Keyed by the run, so a second dispatch never cancels the first, and one
-# run's repeats never cancel one another.
+# A group of one, keyed by the run: nothing queues behind it and nothing
+# cancels it, so a dispatch never cancels its own repeats. Kept so that
+# intent is written down, and so a trigger added later cannot make two runs
+# share a group by accident.
 concurrency:
   group: e2e-loop-${{ github.run_id }}
   cancel-in-progress: false
@@ -155,10 +157,9 @@ jobs:
             [ "$load_started" -gt 0 ] || return 0
             [ "$load_stopped" -eq 0 ] || return 0
             load_stopped=1
-            {
-              kill -9 "${load_pids[@]}"
-              for pid in "${load_pids[@]}"; do wait "$pid"; done
-            } 2>/dev/null || true
+            # No `wait` here: on a pid that would not die it never returns.
+            # The poll below is what says whether they are gone.
+            kill -9 "${load_pids[@]}" 2>/dev/null || true
             running=0
             for attempt in 1 2 3 4 5 6 7 8 9 10; do
               running=0
@@ -186,6 +187,8 @@ jobs:
               # the step could never hold its output open.
               node -e "for(;;){}" </dev/null >/dev/null 2>&1 &
               load_pids+=("$!")
+              # Not a job of this shell, so it reports nothing when killed.
+              disown "$!"
             done
             load_started=${#load_pids[@]}
             echo "load: started $load_started busy processes (pids ${load_pids[*]})"
@@ -199,7 +202,15 @@ jobs:
           fi
 
           mkdir -p e2e-loop-results
-          cmd=(npx playwright test "$SPEC" --repeat-each="$REPEATS" --retries=0 --reporter=list,github,json)
+          # list for a readable log, github for annotations, json for the
+          # tally below. The json reporter writes only when Playwright ends,
+          # and the job's timeout stops the shell and not Playwright, so
+          # Playwright is given a limit of its own inside the job's: it then
+          # stops, writes every repeat that ran, and exits non-zero. The
+          # job's 360 minutes also hold the checkout, install and build
+          # before it and the tally and upload after it.
+          global_timeout_ms=$((345 * 60 * 1000))
+          cmd=(npx playwright test "$SPEC" --repeat-each="$REPEATS" --retries=0 --global-timeout="$global_timeout_ms" --reporter=list,github,json)
           if [ "$RUNNER_OS" = "Linux" ]; then
             cmd=(xvfb-run -a "${cmd[@]}")
           fi
