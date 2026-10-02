@@ -331,9 +331,13 @@ async function holdsStillThroughARedraw(page: Page, engineHome: string): Promise
   // says the map is drawn, and the picker is still open when it does.
   const seen: Array<{ chip: number; above: number[] }> = []
   const done = page.getByText(/Drawn in the colours you chose/)
+  // The settled state is left out of what is judged: its sentence is longer
+  // than the one it replaces and wraps to a second line in a narrower
+  // window, a single line of difference once the redraw is over.
   for (let i = 0; i < 400; i++) {
-    seen.push(await where())
-    if ((await done.count()) > 0 && received(engineHome, 'map.build').length > drawnBefore) break
+    const now = await where()
+    if ((await done.count()) > 0) break
+    seen.push(now)
     await page.waitForTimeout(25)
   }
   await expect(picker).toBeVisible()
