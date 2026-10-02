@@ -250,6 +250,16 @@ if command -v gitleaks >/dev/null 2>&1; then
   expect_said "could not be read" "<<- is refused for being unreadable"
   expect 0 "$(guard_says "git commit -q -F - <<'EOF'${nl}body${nl}EOF")" "a plain -F - heredoc goes through"
   expect 0 "$(guard_says "git commit -q -m \"\$(cat <<'EOF'${nl}body${nl}EOF${nl})\"")" "a quoted substitution over a heredoc goes through"
+  # The count of quotes before the first operator is exact only with one kind
+  # of quote in it and no backslash: `\"` is a quote that does not close, and
+  # a quote of one kind inside the other is counted by neither.
+  expect 2 "$(guard_says "git commit -m \"it\\\"s <<EOF${nl}\" -a${nl}EOF")" "an escaped quote leaves the string open at the operator"
+  expect 2 "$(guard_says "git commit -m 'a\"b' -m \"see <<EOF${nl}\" -a${nl}EOF")" "both kinds of quote before the operator are not counted"
+  # A `)"` closes a `"$(`, so one is taken out for each that was; with no
+  # `"$(` before it, it is a quote like any other and the count stays odd.
+  expect 2 "$(guard_says "git commit -m \"a)\" -m \"see <<EOF${nl}\" -a${nl}EOF")" "a )\" that closes no \"\$( is counted"
+  expect 0 "$(guard_says "cd \"\$(pwd)\" && git commit -q -F - <<'EOF'${nl}body${nl}EOF")" "a quoted substitution before the commit goes through"
+  expect 0 "$(guard_says "git commit -q -m \"\$(cat <<'EOF'${nl}body${nl}EOF${nl})\" && git commit -q -m \"\$(cat <<'EOF'${nl}body${nl}EOF${nl})\"")" "a second heredoc commit chained after the first goes through"
   expect 2 "$(guard_says 'git add -A && git commit -a -m tidy')" "-a after a chained add is still -a"
   expect_said "asks for -a" "-a after a chained add is refused for being -a"
   # A word that is an expansion could be -a, so nothing can be said of it.

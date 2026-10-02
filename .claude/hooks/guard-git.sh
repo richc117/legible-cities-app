@@ -77,7 +77,7 @@ fi
 # in the string as words of its own, and is read. Answers 0 for yes, 1 for no,
 # and 2 for a command that could not be read.
 asks_for_all() {
-  local rest word chars c head tail lead line body post b nl seen first before dq sq
+  local rest word chars c head tail lead line body post b nl seen first before opened taken dq sq
   nl=$'\n'
   rest=$(printf '%s' "$cmd" | tr -d '\042\047\134') || return 2
   case "$rest" in
@@ -92,20 +92,43 @@ asks_for_all() {
   # the text before it. With every `"$(` taken out, which is the form a
   # message built by a substitution has, a `$(` left over means the heredoc is
   # inside a substitution that nothing quotes, and an odd count of `"` or of
-  # `'` means the operator is inside a quote. For the first operator that
-  # text is everything before it, since a quote opened on an earlier line is
-  # still open on this one; for a later one it is its own line, since what
-  # lies before it holds a body, whose apostrophes are not quotes.
+  # `'` means the operator is inside a quote. The same number of `)"` is then
+  # taken out, from the left, since each closes one of the `"$(` just taken
+  # out and is not a quote that opens or shuts anything; with none taken out
+  # first, a `)"` is a quote like any other (`-m "a)" -m "see <<EOF`). For the
+  # first operator that text is everything before it, since a quote opened on
+  # an earlier line is still open on this one; for a later one it is its own
+  # line, since what lies before it holds a body, whose apostrophes are not
+  # quotes. A count of quotes is exact only with one kind of quote in the
+  # text and no backslash, which makes `\"` a quote that does not close: a
+  # `"` inside `'...'` is counted by neither, so the first operator's text is
+  # refused if it holds a backslash or both kinds of quote. Neither form this
+  # repository commits in, `-F - <<'EOF'` and `-m "$(cat <<'EOF'`, has a
+  # backslash or a `'` before its operator. The limit: a later operator is
+  # judged on its own line, so a `)"` that closes a `"$(` opened before a
+  # body is invisible there, and a constructed command can use that; the
+  # hook exists for slips, not adversaries.
   seen=''; first=1
   while IFS= read -r line; do
     line=${line//<<</ }
     case "$line" in
       *"<<"*)
         before=${line%%<<*}
-        [ -z "$first" ] || before=$seen$before
-        first=''
+        if [ -n "$first" ]; then
+          before=$seen$before
+          first=''
+          case "$before" in *\\*) return 2 ;; esac
+          dq=${before//[!\"]/}; sq=${before//[!\']/}
+          [ -z "$dq" ] || [ -z "$sq" ] || return 2
+        fi
+        opened=$before
         before=${before//\"\$(/}
         case "$before" in *\$\(*) return 2 ;; esac
+        taken=$(( (${#opened} - ${#before}) / 3 ))
+        while [ "$taken" -gt 0 ]; do
+          before=${before/\)\"/}
+          taken=$((taken - 1))
+        done
         dq=${before//[!\"]/}; sq=${before//[!\']/}
         [ $(( ${#dq} % 2 )) -eq 0 ] && [ $(( ${#sq} % 2 )) -eq 0 ] || return 2
         ;;
@@ -175,7 +198,7 @@ case "$cmd" in
       block "this commit asks for -a, which stages tracked changes after the scans have run; nothing was committed." \
             "Stage the changes first (git add <files>), then commit without -a. If -a is only a word in the message, reword it."
     elif [ "$all" -ne 1 ]; then
-      block "the options of this commit could not be read (a word that is an expansion, say), so nothing was scanned; nothing was committed." \
+      block "the options of this commit could not be read (a word that is an expansion or a quote open where a heredoc starts, say), so nothing was scanned; nothing was committed." \
             "Stage the changes first (git add <files>), then commit with a plain git commit."
     fi
     ;;
