@@ -61,7 +61,9 @@ number. It is a reading aid, not something a tool checks.
    that goes away on a re-run is still worth its record.) A
    failure that comes back is the change's until `main` has been run the
    same number of times; one that does not is recorded on the issue that
-   tracks it, with the run's id, rather than forgotten.
+   tracks it, with the run's id, rather than forgotten. A failure's rate
+   is measured with the `e2e-loop` workflow, which repeats one spec up to
+   sixty times on one platform, with or without load, from a hand dispatch.
 5. **Squash merge.** `main` reads as one commit per issue.
 
 ## Commits
