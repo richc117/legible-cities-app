@@ -78,7 +78,29 @@ async function withApp(
     timeout: 30_000,
   })
   try {
-    await run(await app.firstWindow(), app)
+    const page = await app.firstWindow()
+    // What the frames did, kept for the failure that cannot be reproduced:
+    // "the map is not on the screen" has failed on CI three times and not
+    // once on a desk, and the one thing that would say why is whether the
+    // frame navigated, and when, around the call that was refused.
+    const began = Date.now()
+    const navigations: string[] = []
+    page.on('framenavigated', (frame) =>
+      navigations.push(`+${Date.now() - began}ms ${frame.url().slice(0, 160)}`),
+    )
+    try {
+      await run(page, app)
+    } catch (error) {
+      if (error instanceof Error) {
+        error.message += `\n\nThe window's frames at the failure:\n${page
+          .frames()
+          .map((frame) => `  ${frame.url().slice(0, 160)}`)
+          .join('\n')}\nTheir navigations, with the time since the window opened:\n${
+          navigations.map((line) => `  ${line}`).join('\n') || '  none'
+        }`
+      }
+      throw error
+    }
   } finally {
     await app.close()
     rmSync(h.engineHome, { recursive: true, force: true })
