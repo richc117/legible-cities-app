@@ -266,6 +266,9 @@ These were decided while the build was reviewed, and change what the sections ab
   choices with `safe: true`, sized to the preset's aspect ratio. The frame
   MUST keep `sandbox="allow-scripts"` and nothing else, and MUST still be
   attached through the main process (ADR-028).
+  *Amended by `specs/029-the-map-in-the-flow` (Draft, ADR-046): the export's
+  preview is a frame of its own inside the cell, and the map's frame is
+  not taken over while the cell is open.*
 - **FR-006**: An export MUST be planned with `safe` absent or false.
 - **FR-007**: A refusal from `export.plan`, for the preview or the export,
   MUST be shown in the engine's own sentence, and MUST NOT blank the
