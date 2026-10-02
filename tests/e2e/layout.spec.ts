@@ -1825,6 +1825,10 @@ test('Run all stops at the first failure and leaves that cell in error', async (
       timeout: 30_000,
     })
     await expect(cellHeading(page, 'process')).toHaveAccessibleName(/ failed/)
+    // Said assertively as well, by an alert of the header's own, and the
+    // polite line stops speaking so the failure is not heard twice (FR-017).
+    await expect(header(page).getByRole('alert')).toHaveText('02 Process failed.')
+    await expect(header(page).getByRole('status')).toHaveAttribute('aria-live', 'off')
     expect(received(engineHome, 'map.build'), 'nothing after the failure ran').toHaveLength(0)
     await expect(runAllButton(page), 'and it can be run again').toBeEnabled()
   })

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { notebookSentence, runAllOffered, runAllPlan } from '../../src/renderer/src/runAll'
+import {
+  EXPORT_NOTE,
+  failureSentence,
+  notebookSentence,
+  runAllOffered,
+  runAllPlan,
+} from '../../src/renderer/src/runAll'
 import { runGraph, type RunFacts } from '../../src/renderer/src/runGraph'
 import { drawnFrom, type ProjectRecord } from '../../src/shared/project'
 
@@ -125,6 +131,22 @@ describe('when Run all is offered', () => {
     // The plan would be made from the record as it was before the run, and
     // a second press would start the same run again.
     expect(runAllOffered({ kind: 'layout' }, { ...free, settling: true })).toBe(false)
+  })
+})
+
+describe("the header's alert", () => {
+  const graph = (facts: RunFacts | null) =>
+    runGraph({ record: current, run: facts, exportRun: null })
+
+  it('is the notebook sentence word for word while a cell has failed', () => {
+    const states = graph(run('failed'))
+    expect(failureSentence(states)).toBe('02 Process failed.')
+    expect(failureSentence(states)).toBe(notebookSentence(current, states))
+  })
+
+  it('has nothing to say while nothing has failed or while a run is going', () => {
+    expect(failureSentence(graph(null))).toBeNull()
+    expect(failureSentence(graph(run('running')))).toBeNull()
   })
 })
 
