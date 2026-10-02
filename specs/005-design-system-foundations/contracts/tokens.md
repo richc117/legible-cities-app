@@ -95,7 +95,7 @@ short, so the rule is the narrow one that holds in both themes:
 |---|---|
 | `--font-ui-smaller` / `--font-ui-small` / `--font-ui` / `--font-ui-medium` / `--font-ui-large` | 11px / 12px / 13px / 15px / 20px |
 | `--line-ui-tight` / `--line-ui` / `--line-ui-large` | 16px / 20px / 24px |
-| `--font-text` / `--font-text-small` / `--line-text` | 18px / 0.86em / 1.72 |
+| `--font-text` / `--line-text` | 16px / 1.5 (issue 280; it was 18px / 1.72, with an unused `--font-text-small`) |
 | `--font-chrome` | system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif |
 | `--font-prose` | "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif |
 | `--font-mono` | ui-monospace, "SF Mono", Menlo, Consolas, monospace |
