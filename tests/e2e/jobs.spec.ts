@@ -259,6 +259,36 @@ test('an eight-stage job fits the inspector: one left edge, no sideways scroll, 
   })
 })
 
+test("the export's progress line spans its cell, and follows the window", async () => {
+  // A long encode, so the export is still going when the line is measured.
+  const h = home({ encode_delay_ms: 4_000 })
+  await withApp(h, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    await layOutForExport(page, h)
+    await startExport(page)
+    const run = page.getByRole('region', { name: 'Export', exact: true })
+    const line = run.locator('.progress svg')
+    await expect(line).toBeVisible()
+    // The line is as wide as the place it is drawn in, to a pixel; three
+    // stages were 224 units wide at the left of a cell hundreds wide.
+    const measure = async (): Promise<{ line: number; room: number }> => ({
+      line: (await line.boundingBox())!.width,
+      room: await run.locator('.progress').evaluate((el) => el.clientWidth),
+    })
+    await expect
+      .poll(async () => Math.abs((await measure()).line - (await measure()).room))
+      .toBeLessThanOrEqual(1)
+    const wide = await measure()
+    expect(wide.room).toBeGreaterThan(300)
+    // And it follows its place: with the inspector open the main region is
+    // narrower, and the line is narrower with it.
+    await openInspector(page)
+    await expect.poll(async () => (await measure()).line).toBeLessThan(wide.line)
+    const narrow = await measure()
+    expect(Math.abs(narrow.line - narrow.room)).toBeLessThanOrEqual(1)
+  })
+})
+
 test('Cancel in the inspector during octi cancels the run and ends the layout tool', async () => {
   const h = home({ octi_child: true, octi_ms: 60_000 })
   await withApp(h, async (page) => {
