@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import {
-  EXPORT_NOTE,
   failureSentence,
   notebookSentence,
   runAllOffered,
@@ -142,6 +141,15 @@ describe("the header's alert", () => {
     const states = graph(run('failed'))
     expect(failureSentence(states)).toBe('02 Process failed.')
     expect(failureSentence(states)).toBe(notebookSentence(current, states))
+  })
+
+  it('names every failed cell, so a second failure is a change to the text', () => {
+    const states = runGraph({
+      record: current,
+      run: run('failed'),
+      exportRun: { state: 'failed' } as never,
+    })
+    expect(failureSentence(states)).toBe('02 Process failed. 06 Export failed.')
   })
 
   it('has nothing to say while nothing has failed or while a run is going', () => {

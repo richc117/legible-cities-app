@@ -157,7 +157,7 @@ The two reader columns are a person's, recorded per run in
 | Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
 | The project's name as the `h1`, no breadcrumb around it (A5.5-22, issue 275; the way back is in the header, below) | swept | swept | swept | swept | pass (`--text`) | pass | not yet run: a person's | not yet run: a person's |
-| The notebook's sentence, Run all and Stop | Run all's handover to Stop and back, and focus to the sentence when Run all does not come back, asserted in `layout.spec.ts` ("Run all…" tests); not swept, since every sweep is of a project already drawn, where Run all is not drawn, and Stop exists only during a run | swept (the sentence one `role="status"`; Run all's name) | Run all and Stop not swept: audit only (the kit button's ring) | audit only | pass (`--text`; the primary button C1) | fixed (C1) | not yet run: a person's | not yet run: a person's |
+| The notebook's sentence, Run all and Stop | Run all's handover to Stop and back, and focus to the sentence when Run all does not come back, asserted in `layout.spec.ts` ("Run all…" tests); not swept, since every sweep is of a project already drawn, where Run all is not drawn, and Stop exists only during a run | swept (the sentence one `role="status"`, and beside it a hidden `role="alert"` that holds the failure, if there is one, and is empty otherwise; Run all's name) | Run all and Stop not swept: audit only (the kit button's ring) | audit only | pass (`--text`; the primary button C1) | fixed (C1) | not yet run: a person's | not yet run: a person's |
 | Read-only notice | n/a | pass (`role="status"`) | n/a | n/a | pass | pass | not yet run: a person's | not yet run: a person's |
 
 ### Project: the rail
@@ -807,6 +807,12 @@ a table).
   sentence "The map is drawn from every cell.", and the job-end
   announcement. Listen for whether the sentence is heard too often during
   the run; if it floods speech, that is a finding.
+  Then make a run fail (a feed with no calendar will do) and listen for
+  the failure said once, assertively, as "02 Process failed.", and that the
+  sentence under it is not read out as well; press **Run all** again and
+  listen for the failure said again if it fails again. A failure that is
+  still showing when the project is left and opened again may be silent:
+  that is the design, not a finding.
 - **The rail: Steps.** With the reader's own navigation, find the
   landmark "Steps", a navigation holding six buttons, each read as its
   number, name and state as one, "01 Data, ready" to "06 Export, ready".
