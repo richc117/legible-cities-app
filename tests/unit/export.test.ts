@@ -1237,12 +1237,12 @@ describe('the choice itself', () => {
 // were made from.
 const PYTHON = findPython()
 // Python is started once for the whole file, in a hook, and the tests read
-// what it printed. A start on a busy Windows runner can take longer than any
-// one test's five seconds, and a probe per test competed with the other test
+// what it printed. A start on a busy Windows runner can take longer than the
+// suite's thirty seconds, and a probe per test competed with the other test
 // files' engines for the same cores (issue 257). The probe gets sixty
-// seconds of its own, and the hook is given ten more than that, so the
-// probe's sentence is always the one that is read: a hook that ends on
-// vitest's own clock says only that it timed out.
+// seconds of its own, and the hook is given ten more than that: vitest
+// relabels a hook that returns after its deadline as a timeout, which would
+// turn a slow but correct answer into the wrong failure.
 const PROBE_LIMIT_MS = 60_000
 const PROBE_HOOK_MS = PROBE_LIMIT_MS + 10_000
 const PROBE_SCRIPT = [
@@ -1268,11 +1268,15 @@ describe.skipIf(PYTHON === null)('the stand-in engine’s export tables', () => 
       timeout: PROBE_LIMIT_MS,
       env: { ...process.env, PYTHONPATH: FAKE_ENGINE, PYTHONDONTWRITEBYTECODE: '1' },
     })
-    // A limit that ends the process leaves a status of null and nothing on
-    // stderr, which read as "expected null to be 0" and named no cause.
-    if ((probe.error as NodeJS.ErrnoException | undefined)?.code === 'ETIMEDOUT') {
+    // A process the limit ended, or one that never started, leaves a status
+    // of null, which read as "expected null to be 0" and named no cause.
+    if (probe.error) {
+      const code = (probe.error as NodeJS.ErrnoException).code
+      const tail = probe.stderr ? `\n${probe.stderr}` : ''
       throw new Error(
-        `python did not answer within ${PROBE_LIMIT_MS / 1000} s (${PYTHON} importing the stand-in engine)`,
+        code === 'ETIMEDOUT'
+          ? `python did not answer within ${PROBE_LIMIT_MS / 1000} s (${PYTHON} importing the stand-in engine)${tail}`
+          : `python could not be started: ${probe.error.message}${tail}`,
       )
     }
     expect(probe.status, probe.stderr).toBe(0)
