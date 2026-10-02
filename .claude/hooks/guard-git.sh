@@ -64,7 +64,8 @@ fi
 # Does the command ask `git commit` for -a or --all? It is read so that any
 # doubt is a yes. Quotes and backslashes are deleted before the words are
 # split, so `"-a"` is the flag it is to a shell, and the price is that a
-# message that says -a is read as the flag too (reword it). The search starts
+# message given with -m on the command line that says -a is read as the flag
+# too (reword it; a heredoc body is not read at all, see below). The search starts
 # at the first `git commit` and runs to the end of the command, whatever is
 # chained after it. Short options are read a letter at a time, stopping at
 # one that takes a value, since the rest of that word is the value (`-sam` is
@@ -76,12 +77,41 @@ fi
 # in the string as words of its own, and is read. Answers 0 for yes, 1 for no,
 # and 2 for a command that could not be read.
 asks_for_all() {
-  local rest word chars c head tail lead line body post b nl
+  local rest word chars c head tail lead line body post b nl seen first before dq sq
+  nl=$'\n'
   rest=$(printf '%s' "$cmd" | tr -d '\042\047\134') || return 2
   case "$rest" in
     *"git commit"*) rest=${rest#*git commit} ;;
     *) return 1 ;;                       # a push alone
   esac
+  # A check over the command as written, before anything is taken out of it.
+  # The loop below reads text with its quotes already deleted, so it cannot
+  # tell a `<<` that opens a heredoc from one inside a string, nor the body of
+  # a heredoc from the words of an unquoted substitution that holds one, and
+  # in both a flag would be cut as body. So each `<<` (not `<<<`) is judged by
+  # the text before it. With every `"$(` taken out, which is the form a
+  # message built by a substitution has, a `$(` left over means the heredoc is
+  # inside a substitution that nothing quotes, and an odd count of `"` or of
+  # `'` means the operator is inside a quote. For the first operator that
+  # text is everything before it, since a quote opened on an earlier line is
+  # still open on this one; for a later one it is its own line, since what
+  # lies before it holds a body, whose apostrophes are not quotes.
+  seen=''; first=1
+  while IFS= read -r line; do
+    line=${line//<<</ }
+    case "$line" in
+      *"<<"*)
+        before=${line%%<<*}
+        [ -z "$first" ] || before=$seen$before
+        first=''
+        before=${before//\"\$(/}
+        case "$before" in *\$\(*) return 2 ;; esac
+        dq=${before//[!\"]/}; sq=${before//[!\']/}
+        [ $(( ${#dq} % 2 )) -eq 0 ] && [ $(( ${#sq} % 2 )) -eq 0 ] || return 2
+        ;;
+    esac
+    seen=$seen$line$nl
+  done <<<"$cmd"
   # A heredoc body is text, and text cannot be a flag, so each body is taken
   # out before the words are read. This repository's messages quote code in
   # backticks and `$HOME`, and nearly every commit here is made with one. What
@@ -89,8 +119,8 @@ asks_for_all() {
   # and what follows the terminator line: options come after a body in
   # `-m "$(cat <<EOF ... EOF` then `)` and `-a`, so cutting everything from the
   # operator on would let that -a through. A heredoc with no terminator, or no
-  # word to end it, is not one this can read.
-  nl=$'\n'
+  # word to end it, or one that is `<<-` (a terminator indented by tabs, which
+  # nothing here writes), is not one this can read.
   while :; do
     case "$rest" in *"<<"*) ;; *) break ;; esac
     head=${rest%%<<*}
@@ -98,7 +128,7 @@ asks_for_all() {
     case "$tail" in
       "<"*) rest="$head ${tail#<}"; continue ;;   # `<<<`, a string and not a body
     esac
-    tail=${tail#-}                       # `<<-`
+    case "$tail" in -*) return 2 ;; esac   # `<<-`, see above
     lead=${tail%%[![:blank:]]*}
     tail=${tail#"$lead"}
     word=${tail%%[[:space:];&|<>)]*}

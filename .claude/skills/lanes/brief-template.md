@@ -77,7 +77,7 @@ Never run anything that launches Electron: `npm run test:e2e`, `dev`,
 ## Commits
 
 Commit as `cd <absolute path> && git commit`, never `git -C`. The
-repository's command guard protects neither form in a worktree; the
+repository's command guard scans neither form in a worktree; the
 commit-time hooks do, so never skip them. Stage with `git add <files>`
 first; the guard refuses `-a`. Imperative subject under 72
 characters; the body says why. End with

@@ -240,6 +240,16 @@ if command -v gitleaks >/dev/null 2>&1; then
   expect 2 "$(guard_says "git commit -a -F - <<'EOF'${nl}${body}${nl}EOF")" "-a before the operator is still -a"
   expect_said "asks for -a" "-a before the operator is refused for being -a"
   expect 2 "$(guard_says "git commit -m \"\$(cat <<'EOF'${nl}${body}${nl}EOF${nl})\" -a")" "-a after a body is still -a"
+  # A `<<` that opens no heredoc, and a heredoc that is not the command's own
+  # text, must not be allowed to take a flag in as a body: the parser reads
+  # with quotes deleted, so these are judged by the text before the operator.
+  expect 2 "$(guard_says "git commit -m \"see <<EOF${nl}\" -a${nl}EOF")" "a << inside a quoted string is no heredoc"
+  expect 2 "$(guard_says "git commit -m \"x${nl}see <<EOF${nl}\" -a${nl}EOF")" "a quote opened on an earlier line is still open"
+  expect 2 "$(guard_says "git commit \$(cat <<'EOF'${nl}-a${nl}EOF${nl})")" "a heredoc in a substitution nothing quotes"
+  expect 2 "$(guard_says "git commit -F - <<-'EOF'${nl}body${nl}EOF")" "<<- is a heredoc this cannot read"
+  expect_said "could not be read" "<<- is refused for being unreadable"
+  expect 0 "$(guard_says "git commit -q -F - <<'EOF'${nl}body${nl}EOF")" "a plain -F - heredoc goes through"
+  expect 0 "$(guard_says "git commit -q -m \"\$(cat <<'EOF'${nl}body${nl}EOF${nl})\"")" "a quoted substitution over a heredoc goes through"
   expect 2 "$(guard_says 'git add -A && git commit -a -m tidy')" "-a after a chained add is still -a"
   expect_said "asks for -a" "-a after a chained add is refused for being -a"
   # A word that is an expansion could be -a, so nothing can be said of it.
