@@ -1276,7 +1276,7 @@ describe.skipIf(PYTHON === null)('the stand-in engine’s export tables', () => 
       throw new Error(
         code === 'ETIMEDOUT'
           ? `python did not answer within ${PROBE_LIMIT_MS / 1000} s (${PYTHON} importing the stand-in engine)${tail}`
-          : `python could not be started: ${probe.error.message}${tail}`,
+          : `python's probe failed: ${probe.error.message}${tail}`,
       )
     }
     expect(probe.status, probe.stderr).toBe(0)
