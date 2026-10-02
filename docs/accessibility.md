@@ -973,7 +973,11 @@ a table).
   the status "The theme waits until the run that is going has finished: …",
   and focus on the cell's own heading (D3) if it was on a button. Cell 04
   draws its one control headless (A5.5-17), so "Theme" is the region's name
-  and there is no heading of that name to land on.
+  and there is no heading of that name to land on. A redraw for a colour or
+  a line order, which a person starts and which takes moments, dims the
+  buttons without the sentence: it would add a line under the cell a colour
+  panel is being picked from and move the panel (issue 304). The sentence
+  is still said when an export is the reason.
 
 #### Cell 05, Lines
 

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type CSSProperties, type JSX } from 'react'
+import { useRef, useState, type JSX } from 'react'
 import Button from './kit/Button'
 import Icon from './icons/Icon'
 import ConfirmDialog from './ConfirmDialog'
@@ -71,21 +71,6 @@ export default function LayoutRun({
     () => (state === 'running' ? cancelRef.current : layOutRef.current),
     state,
   )
-  // A redraw for colours or order swaps the sentence and the buttons of a
-  // finished run for the line's own foot, and the cell, and everything
-  // under it, shrinks and grows back; a colour panel opened below it
-  // jumped with it (issue 304). The cell keeps the height it had when the
-  // run last stood finished, for as long as a redraw like that goes.
-  const finished = useRef<HTMLElement>(null)
-  const finishedHeight = useRef<number | null>(null)
-  const redrawing = state === 'running' && (recoloured || reordered)
-  useLayoutEffect(() => {
-    if (state === 'done') finishedHeight.current = finished.current?.offsetHeight ?? null
-  })
-  const holding: CSSProperties | undefined =
-    redrawing && finishedHeight.current !== null
-      ? { minBlockSize: finishedHeight.current }
-      : undefined
   const begin = (): void => run.start(project, engine)
   // The re-layout, behind its warning: every stage runs again, and the
   // engine keeps the stored layout until the new one is whole (ADR-033).
@@ -163,7 +148,7 @@ export default function LayoutRun({
 
   return (
     <div className="focus-region" ref={region}>
-      <section className="layout-run" aria-label="Layout run" ref={finished} style={holding}>
+      <section className="layout-run" aria-label="Layout run">
         <ProgressLine
           stages={inWords(stages)}
           ariaLabel={describe(state, stages.length, message)}
