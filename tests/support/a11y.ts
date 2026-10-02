@@ -577,13 +577,25 @@ export async function expectTabWalk(page: Page, where: string): Promise<void> {
       // can still be the frame. If it never arrives the walk carries on
       // pressing and the control is reported missed, which is the honest
       // answer and not a silent pass.
+      //
+      // Asked again if it did not arrive: a `focus()` that crosses out of a
+      // frame's process can be dropped, and a walk that then goes on
+      // pressing Tab from the frame reaches the control after the one it
+      // aimed at, which reported the first control of the page as
+      // unreachable on three CI runs. Each ask is read the same way, from
+      // the document, so a control never counts as reached for having been
+      // asked for.
       let arrived: string | null = null
-      const settle = Date.now() + 2_000
-      while (arrived === null && Date.now() < settle) {
-        const answer = await page.evaluate(() =>
-          (window as unknown as { __a11y: Probe }).__a11y.step(),
-        )
-        if (answer.state !== 'frame' && answer.state !== 'none') arrived = answer.at
+      for (let attempt = 0; attempt < 3 && arrived === null; attempt++) {
+        if (attempt > 0)
+          await page.evaluate(() => (window as unknown as { __a11y: Probe }).__a11y.past())
+        const settle = Date.now() + 2_000
+        while (arrived === null && Date.now() < settle) {
+          const answer = await page.evaluate(() =>
+            (window as unknown as { __a11y: Probe }).__a11y.step(),
+          )
+          if (answer.state !== 'frame' && answer.state !== 'none') arrived = answer.at
+        }
       }
       trace[trace.length - 1] = `frame ${at} -> asked for ${aimed}, reached ${arrived ?? 'nothing'}`
       continue
