@@ -88,6 +88,18 @@ export function runAllOffered(
 export const EXPORT_NOTE = 'Run all stops at the map. It never exports.'
 
 /**
+ * What the header says, assertively, when a cell has failed: the same words
+ * as the sentence above, or null while nothing has. It is the text of an
+ * alert region of its own, because the sentence's line is a polite status
+ * and a failure is the one thing a person must not miss (FR-017).
+ */
+export function failureSentence(states: Record<CellId, CellStatus>): string | null {
+  const failed = CELL_LIST.find((cell) => states[cell.id].state === 'error')
+  if (failed === undefined) return null
+  return `${String(failed.number).padStart(2, '0')} ${failed.name} failed.`
+}
+
+/**
  * The header's one sentence about the notebook as a whole: which cell is
  * running, which failed, or how many are not drawn yet. One sentence and
  * never more, because it is a polite live region and every change to it is
@@ -109,8 +121,8 @@ export function notebookSentence(
 
   const running = inState('running')
   if (running.length > 0) return `${named(running[0])} is running.`
-  const failed = inState('error')
-  if (failed.length > 0) return `${named(failed[0])} failed.`
+  const failed = failureSentence(states)
+  if (failed !== null) return failed
   if (record.layout === null) return 'Nothing has been laid out yet.'
   const stale = inState('stale')
   // A record from before `drawn` existed reads ready, which is "we cannot

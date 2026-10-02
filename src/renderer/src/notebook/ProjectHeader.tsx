@@ -2,7 +2,13 @@ import { useId, useRef, type JSX } from 'react'
 import { useFocusHandback } from '../focusHandback'
 import Icon from '../icons/Icon'
 import Button from '../kit/Button'
-import { EXPORT_NOTE, notebookSentence, runAllOffered, runAllPlan } from '../runAll'
+import {
+  EXPORT_NOTE,
+  failureSentence,
+  notebookSentence,
+  runAllOffered,
+  runAllPlan,
+} from '../runAll'
 import { cellOfRun, runGraph } from '../runGraph'
 import { useProject } from './context'
 
@@ -51,6 +57,7 @@ export default function ProjectHeader(): JSX.Element {
       ? null
       : runGraph({ record: project, run: runSnapshot, exportRun: exportSnapshot })
   const plan = project === null ? null : runAllPlan(project, runSnapshot)
+  const failure = states === null ? null : failureSentence(states)
   const offered =
     project !== null &&
     plan !== null &&
@@ -118,8 +125,23 @@ export default function ProjectHeader(): JSX.Element {
         // row's flex would hold only by the order the stylesheets load in.
         <div className="focus-region" ref={region}>
           <div className="project-run">
-            <p className="project-run-state" role="status" tabIndex={-1} ref={stateRef}>
+            {/* While a cell has failed the line stays on the screen and
+                stops speaking: the alert below says it, once and
+                assertively, and a polite repeat would say it twice
+                (FR-017). The alert is in the document before it has
+                anything to say, because a live region added with its text
+                already in it is not reliably announced. */}
+            <p
+              className="project-run-state"
+              role="status"
+              aria-live={failure === null ? undefined : 'off'}
+              tabIndex={-1}
+              ref={stateRef}
+            >
               {sentence}
+            </p>
+            <p className="visually-hidden" role="alert">
+              {failure}
             </p>
             <div className="toolbar">
               {layingOut ? (
