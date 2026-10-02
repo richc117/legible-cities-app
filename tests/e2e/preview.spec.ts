@@ -84,6 +84,7 @@ async function withApp(
     // once on a desk, and the one thing that would say why is whether the
     // frame navigated, and when, around the call that was refused.
     const began = Date.now()
+    const opened = new Date(began).toISOString()
     const navigations: string[] = []
     page.on('framenavigated', (frame) =>
       navigations.push(`+${Date.now() - began}ms ${frame.url().slice(0, 160)}`),
@@ -95,7 +96,7 @@ async function withApp(
         error.message += `\n\nThe window's frames at the failure:\n${page
           .frames()
           .map((frame) => `  ${frame.url().slice(0, 160)}`)
-          .join('\n')}\nTheir navigations, with the time since the window opened:\n${
+          .join('\n')}\nTheir navigations, with the time since the window opened (${opened}):\n${
           navigations.map((line) => `  ${line}`).join('\n') || '  none'
         }`
       }
@@ -193,27 +194,16 @@ const drive = (page: Page, method: string, ...args: unknown[]): Promise<unknown>
  * Wait, within a deadline, until the page in the frame answers a call with
  * what is expected of it.
  *
- * **Not `expect.poll(() => drive(...))`.** That retries a value that does
- * not match and fails on the first throw, and the bridge's first answer to a
- * frame that has not been handed over is a throw: "the map is not on the
- * screen" until the frame's own `load` has made the main process hold it
- * (`Viewer.tsx`'s `onLoad`, `src/main/viewer.ts`), and "the map is still
- * loading" until the page has written its seam. That is one asking too soon,
- * and it failed this file on CI three times and never on a desk (issue 312,
- * cause 7 of issue 147). Here a throw is one more answer that is not yet the
- * right one, and the deadline is the only thing that ends the wait.
+ * Not `expect.poll(() => drive(...))`, which fails on the first throw, and
+ * the bridge throws "the map is not on the screen" until the frame's `load`
+ * has made the main process hold it: that failed this file on CI and never
+ * on a desk (issue 312).
  *
  * The frame's document is waited for first, by the one thing only the
  * stand-in page has - the engine's own page and a frame still on its way
  * have no `#told` - so the first asking is made of the stand-in's own
  * document, and the retry is left for what follows it: the load event's
  * hand-over to the main process, which the test cannot see.
- *
- * What the page answered is kept, each change of answer with the time since
- * the first asking, and is appended to the error on a failure - beside the
- * frames and navigations `withApp` adds - and written down as an annotation
- * when a refusal was got past, so a run that the retry saved says so rather
- * than passing as if nothing had happened.
  */
 async function pageAnswers(
   page: Page,
@@ -243,15 +233,16 @@ async function pageAnswers(
   } catch (error) {
     if (error instanceof Error) {
       const history = answers.map((line) => `  ${line}`).join('\n')
-      error.message += `\n\nWhat the map answered to ${method}, each change with the time since the first asking:\n${history}`
+      error.message += `\n\nWhat the map answered to ${method}, each change with the time since the first asking (first asked at ${new Date(began).toISOString()}):\n${history}`
     }
     throw error
   }
   if (answers.length > 0) {
-    test.info().annotations.push({
-      type: 'map-refused-before-it-answered',
-      description: `${method} was refused before it was answered:\n${answers.join('\n')}`,
-    })
+    // Both: the annotation is for a reporter that reads it, and none that
+    // this project runs does (`list`, `github`), which do echo the output.
+    const description = `${method} was refused before it was answered:\n${answers.join('\n')}`
+    test.info().annotations.push({ type: 'map-refused-before-it-answered', description })
+    console.warn(description)
   }
 }
 
@@ -317,9 +308,7 @@ test('the map comes back to its clock, view and labels when the export takes the
     await expect(frame(page)).toBeVisible()
     // The stand-in page is the one loaded, and driveable: the engine's own
     // `{}` page refuses `state` outright, so this is not a value the plain
-    // page could also have answered. Asked until it answers and not once
-    // when the frame appears, because the frame is on the screen before the
-    // main process holds it.
+    // page could also have answered. Asked until it answers: `pageAnswers`.
     await pageAnswers(page, 'state', { clock: '07:00' })
     await markFrame(page)
 
