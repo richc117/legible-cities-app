@@ -266,11 +266,13 @@ recommendations (see "Decisions taken" and "Evidence and its limits").
   status of what it is doing (the stage and its place among the stages, as
   the jobs inspector says it). A failure MUST be said in the row and in the
   header's status line, assertively, and MUST NOT open the cell.
-  **Built so far: the row and the header's polite status line; the
-  assertive announcement is not done**, because the header's line is a
-  `role="status"` and an assertive one needs an alert region of its own.
-  [NEEDS CLARIFICATION: implement the alert region, or relax this
-  requirement to a polite failure sentence?]
+  **Built** (issue 306): the row, the header's status line, and a hidden
+  alert region of the header's own that names every failed cell; while a
+  failure stands the status line stays on the screen and stops speaking, so
+  it is not heard twice. A failure still showing when the project is left
+  and opened again in the same session mounts with its text and may be
+  silent, which is intended: it was heard when it happened.
+
 - **FR-018**: The map block's container MUST be present in the document
   whether or not there is a map, and MUST hold the empty state of Edge
   Cases, so the block's arrival does not insert content above what is
