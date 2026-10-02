@@ -119,9 +119,13 @@ jobs:
               exit 1
               ;;
           esac
-          repeats=$((10#$repeats))
-          if [ "$repeats" -lt 1 ] || [ "$repeats" -gt 60 ]; then
-            echo "::error::repeats must be from 1 to 60, not $repeats"
+          # Leading zeros are no part of the number, and a long one would wrap
+          # the arithmetic: past two digits it is refused before it is compared.
+          given=$repeats
+          repeats=${repeats#"${repeats%%[!0]*}"}
+          repeats=${repeats:-0}
+          if [ "${#repeats}" -gt 2 ] || [ "$repeats" -lt 1 ] || [ "$repeats" -gt 60 ]; then
+            echo "::error::repeats must be from 1 to 60, not $given"
             exit 1
           fi
           matrix=$(jq -cn --argjson repeats "$repeats" --arg only "$only" '
@@ -359,7 +363,9 @@ jobs:
       # not wait on them, and node's own pids, which mean the same in every
       # step's shell on every platform, are written where the stop step reads
       # them. Started after the build and the unit proof, so the setup is not
-      # what is slowed.
+      # what is slowed. A leg that asked for load and did not get it is not the
+      # experiment that was asked for, so a loop that will not start or is gone
+      # within a second fails this step, and the suite is skipped.
       - name: Start the load
         if: inputs.load == true
         run: |
@@ -379,7 +385,10 @@ jobs:
                 stdio: "ignore",
                 windowsHide: true,
               });
-              child.on("error", (error) => console.log(`::error::a busy loop did not start: ${error.message}`));
+              child.on("error", (error) => {
+                console.log(`::error::a busy loop did not start: ${error.message}`);
+                process.exitCode = 1;
+              });
               child.unref();
               if (child.pid !== undefined) {
                 pids.push(child.pid);
@@ -391,7 +400,10 @@ jobs:
                 try { process.kill(pid, 0); return true; } catch { return false; }
               });
               console.log(`load: ${cores} cores, ${count} busy loops wanted, ${pids.length} started, ${alive.length} running`);
-              if (alive.length < count) console.log("::warning::fewer busy loops are running than were wanted");
+              if (alive.length < count) {
+                console.log("::error::fewer busy loops are running than were wanted");
+                process.exitCode = 1;
+              }
             }, 1000);
           '
 

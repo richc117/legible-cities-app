@@ -36,7 +36,8 @@
 // Opt-in, and never in the ci workflow: it needs the engine and ffmpeg, and
 // takes minutes. `.github/workflows/determinism.yml` runs it on three
 // platforms, once per pull request that touches what an export is made of,
-// and five times a week whatever changed.
+// five times a week whatever changed, and as many times as a dispatch asks,
+// under load if asked.
 //
 //   LEGIBLE_DETERMINISM_TEST=1 \
 //   LEGIBLE_ENGINE_PYTHON=<interpreter with the pinned engine> \
