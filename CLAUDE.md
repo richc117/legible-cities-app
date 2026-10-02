@@ -409,7 +409,8 @@ private notes in `CLAUDE.local.md`.
 - `settings.json` - a permission allowlist for the read-only commands, and a
   `PreToolUse` hook on `Bash`.
 - `hooks/guard-git.sh` - runs gitleaks and `bin/preflight` before any
-  `git commit` or `git push` made from here, and blocks on a finding. Not
+  `git commit` or `git push` made from here, and blocks on a finding; it
+  also refuses `-a`/`--all` and anything it cannot scan. Not
   in a sibling worktree, which it cannot see; `/lanes` says what covers it.
 - `hooks/reviewer-readonly.sh` - keeps the `reviewer` subagent's `Bash` to
   read-only commands.
