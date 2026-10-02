@@ -1242,8 +1242,9 @@ pixels over the tolerance, the box they lie in and whether the frame is
 the other run's frame before or after it, and the GIF comparison beside
 it. `.github/workflows/determinism.yml` proves the fixture's id against the
 engine it installed and then runs the test on Ubuntu, macOS and Windows,
-once per pull request that touches what the export is made of and five
-times on a weekly schedule; it keeps that report from every run, and the
+once per pull request that touches what the export is made of, five
+times on a weekly schedule, and as many times as a dispatch asks, under
+load if asked; it keeps that report from every run, and the
 two GIFs and the differing captured frames for a week when a run fails. It
 is not a required check.
 
