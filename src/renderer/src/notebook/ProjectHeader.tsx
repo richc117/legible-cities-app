@@ -126,12 +126,19 @@ export default function ProjectHeader(): JSX.Element {
         <div className="focus-region" ref={region}>
           <div className="project-run">
             {/* While a cell has failed the line stays on the screen and
-                stops speaking: the alert below says it, once and
-                assertively, and a polite repeat would say it twice
-                (FR-017). The alert is in the document before it has
-                anything to say, because a live region added with its text
-                already in it is not reliably announced. */}
+                stops speaking: the alert below says it, assertively, and a
+                polite repeat would say it twice (FR-017). The element is
+                replaced, not changed, as the failure arrives and goes
+                (the key), so its new text is not a live change, and it is
+                also told `aria-live="off"`: neither alone is known to hold
+                in every reader. The alert is in the document before it
+                has anything to say, because a live region added with its
+                text already in it is not reliably announced. One for a
+                failure that stands when the screen is opened again in the
+                same session therefore mounts with its text and may be
+                silent: it was heard when it happened. */}
             <p
+              key={failure === null ? 'live' : 'failed'}
               className="project-run-state"
               role="status"
               aria-live={failure === null ? undefined : 'off'}

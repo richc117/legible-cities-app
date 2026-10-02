@@ -148,6 +148,15 @@ describe("the header's alert", () => {
     expect(failureSentence(states)).toBe(notebookSentence(current, states))
   })
 
+  it('names every failed cell, so a second failure is a change to the text', () => {
+    const states = runGraph({
+      record: current,
+      run: run('failed'),
+      exportRun: { state: 'failed' } as never,
+    })
+    expect(failureSentence(states)).toBe('02 Process failed. 06 Export failed.')
+  })
+
   it('has nothing to say while nothing has failed or while a run is going', () => {
     expect(failureSentence(graph(null))).toBeNull()
     expect(failureSentence(graph(run('running')))).toBeNull()
