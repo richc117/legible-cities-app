@@ -56,7 +56,7 @@ const record: ProjectRecord = {
 }
 
 /**
- * The cell reads four things from the screen's state and nothing else, so
+ * The cell reads five things from the screen's state and nothing else, so
  * the rest of it is not built: a fuller stand-in would only say that the
  * context has many fields, which `useProjectState` already says.
  */
@@ -72,6 +72,7 @@ function draw({
     setTheme: async () => {},
     exporting: false,
     layingOut: false,
+    runSnapshot: { state: 'idle', recoloured: false, reordered: false },
   } as unknown as ProjectState
   return renderToStaticMarkup(
     <ProjectProvider value={state}>

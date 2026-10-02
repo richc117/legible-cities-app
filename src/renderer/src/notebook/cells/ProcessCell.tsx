@@ -7,6 +7,7 @@ import Cell from '../Cell'
 import { processFooter } from '../CellFooter'
 import type { CellViewProps } from '../cells'
 import { useProject } from '../context'
+import { runRowStatus } from '../runRow'
 import EngineLog from '../EngineLog'
 
 // Cell 02, Process: the layout the map is drawn from, and the run that
@@ -56,13 +57,15 @@ export function processSummary(
 }
 
 export default function ProcessCell({ cell, state, open, onToggle }: CellViewProps): JSX.Element {
-  const { project, engine, run, exporting } = useProject()
+  const { project, engine, run, runSnapshot, exporting } = useProject()
   return (
     <Cell
       number={cell.number}
       name={cell.name}
       state={state}
       summary={processSummary(project)}
+      progress={runRowStatus(runSnapshot, cell.id)}
+      hold={runSnapshot.state === 'running' && (runSnapshot.recoloured || runSnapshot.reordered)}
       open={open}
       onToggle={onToggle}
       footer={processFooter(project, engine)}

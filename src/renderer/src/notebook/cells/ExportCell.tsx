@@ -1,4 +1,6 @@
-import { useRef, type JSX } from 'react'
+import { useRef, useState, type JSX } from 'react'
+import type { PreviewAddress } from '../../exportChoice'
+import ExportPreview from '../../ExportPreview'
 import ExportTab from '../../ExportTab'
 import Cell from '../Cell'
 import { exportFooter } from '../CellFooter'
@@ -6,13 +8,18 @@ import type { CellViewProps } from '../cells'
 import { useProject } from '../context'
 
 // Cell 06, Export: the preset, the storyboard and everything the reel is
-// made of (ADR-045).
+// made of (ADR-045), and a preview of the frame it will make (ADR-046).
 //
 // `ExportTab` as A5-01 wrote it, with the tab's own "is this the panel
-// showing?" now "is this cell open?". The rule it carries is the same: the
-// map's own frame is the export's preview while the cell is open, and the
-// plain map again once it is closed, so the frame never shows an address
-// planned for a choice a person has left.
+// showing?" now "is this cell open?".
+//
+// The preview is a frame of this cell's own, mounted while the cell is open
+// and gone when it closes (`ExportPreview.tsx`). Until ADR-046 it was the
+// map's frame, sent to the planned address and back; the map stays where it
+// is now, with its clock, and opening this cell sends it nothing. The
+// address the engine last planned is this cell's state and nobody else's,
+// and it is forgotten as the cell closes, so a cell opened again shows
+// nothing until a plan for the choice as it is now has answered.
 //
 // It is drawn headless, as cells 04 and 05 draw their panels: this cell's
 // heading row is the section's heading now, and it is where focus goes
@@ -28,15 +35,13 @@ import { useProject } from '../context'
 // its own answer, exactly as Settings does (A1-04).
 
 /**
- * A press on cell 06's heading row. Closing puts the plain map back in the
- * same call, before the cell closes, exactly as leaving the Export tab did:
- * an address planned for this choice must not survive a frame beyond it.
+ * A press on cell 06's heading row. Closing forgets the planned address in
+ * the same call, before the cell closes: an address planned for this
+ * choice must not be the first thing the cell shows when it opens again.
  *
  * Its own function so the order is held to a test rather than to a reading
- * of the file. Done in an effect instead, the map would carry the export's
- * frame and safe zones for one render after a person had left the export,
- * which is the rule A5-01 exists to keep. The planner's own late answers
- * are refused in `ExportTab.tsx`, which is the other half of it.
+ * of the file. The planner's own late answers are refused in
+ * `ExportTab.tsx`, which is the other half of it.
  */
 export const toggleExportCell =
   (clearPreview: () => void, onToggle: (open: boolean) => void) =>
@@ -46,8 +51,9 @@ export const toggleExportCell =
   }
 
 export default function ExportCell({ cell, state, open, onToggle }: CellViewProps): JSX.Element {
-  const { project, engine, exporter, layingOut, inspect, setExport, setPreview } = useProject()
-  const toggle = toggleExportCell(() => setPreview(null), onToggle)
+  const { project, engine, exporter, layingOut, inspect, setExport } = useProject()
+  const [address, setAddress] = useState<PreviewAddress | null>(null)
+  const toggle = toggleExportCell(() => setAddress(null), onToggle)
   const heading = useRef<HTMLHeadingElement>(null)
   return (
     <Cell
@@ -68,7 +74,18 @@ export default function ExportCell({ cell, state, open, onToggle }: CellViewProp
           active={open}
           inspect={inspect}
           onChoice={setExport}
-          onPreview={setPreview}
+          onPreview={setAddress}
+          preview={
+            // Only while the cell is open: a collapsed cell keeps its
+            // controls in the document (`Cell.tsx`), and a frame kept there
+            // would be a second live page nobody can see. Never on a
+            // read-only project, whose export cannot be made (FR-019).
+            open &&
+            address !== null &&
+            !project.readOnly && (
+              <ExportPreview projectId={project.id} projectName={project.name} address={address} />
+            )
+          }
           handback={heading}
         />
       )}

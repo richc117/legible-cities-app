@@ -57,6 +57,7 @@ fig-separator {
   --figma-color-text-secondary: var(--text-muted);
   --figma-color-text-tertiary: var(--text-faint);
   --figma-color-text-disabled: var(--text-faint);
+  --figma-color-text-ondisabled: var(--text-faint);
   --figma-color-text-hover: var(--text);
   --figma-color-text-menu: var(--text);
   --figma-color-text-menu-secondary: var(--text-muted);
@@ -74,6 +75,7 @@ fig-separator {
   --figma-color-icon-secondary: var(--text-muted);
   --figma-color-icon-tertiary: var(--text-faint);
   --figma-color-icon-disabled: var(--text-faint);
+  --figma-color-icon-ondisabled: var(--text-faint);
   --figma-color-icon-hover: var(--text);
   --figma-color-icon-brand: var(--accent);
   --figma-color-icon-danger: var(--error);
@@ -194,4 +196,21 @@ option,
 optgroup {
   color: var(--text);
   background-color: var(--surface-raised);
+}
+
+/* The kit's base.css pads every section 4px 16px and puts 8px under it
+   (base.css:38-44), outside its layer, so it stands on every section the
+   app draws that declares nothing of its own: a cell's panels, the Outputs
+   list, Settings' groups, the map's frame, the inspector. None of them
+   relies on it, so it is neutralised once, here, as the option leak above
+   is, rather than once per component. Panels stacked in a cell body get a
+   gap of the app's own, which the kit's 8px had been standing in for
+   (issue 273). */
+section {
+  padding: 0;
+  margin: 0;
+}
+
+.cell-body > section + section {
+  margin-top: var(--space-4-4);
 }

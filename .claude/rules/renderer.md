@@ -59,14 +59,15 @@ until it was looped with logging (issue 222). With the timing forced, a
 change of `display` alone did it and a change of `container-type` alone
 was not seen to, in 360 tries each.
 
-So the map's shape is a grid and a size container in both of its states,
-the plain map's and the export's preview's, and only the frame's size
-differs between them. `tests/unit/viewer-shape.test.ts` refuses a rule for
-the planned state that sets `display`, `container-type`, `contain` or
-`all`, and the skip's journey in `tests/e2e/notebook-a11y.spec.ts` reads
-what kind of box the frame and every box around it is in both states and
-expects the same, which covers a style written on an element and a box
-further out.
+Since ADR-046 the map's frame never goes to another address, so its box
+never has a second form; cell 06's preview frame is a frame of its own and
+is sent to a new address on every plan, which is the same trap. So its
+box is one kind in every state. `tests/unit/export-preview-shape.test.ts`
+refuses any rule that depends on something else (another class, an
+attribute, `:has`, `:not`, a query) and sets `display`, `container-type`,
+`contain` or `all` on the preview or its frame, and the skip's journey in
+`tests/e2e/notebook-a11y.spec.ts` covers a style written on an element and
+a box further out.
 
 ## Components
 
@@ -113,7 +114,11 @@ it clears the element reference. Playwright's locators do not show the
 relation; read it from `Accessibility.getFullAXTree` over a DevTools
 protocol session. The kit gives every `<dialog>`
 `inset: auto`, which parks a modal in the corner unless the app's rules
-restore `inset: 0; margin: auto`. Its shadow styles need `style-src
+restore `inset: 0; margin: auto`. It styles every `[popover]` as it styles
+a dialog too (a minimum width, no edge, its own ground and shadow), so an
+auto popover restores the app's surface, edge and padding and `min-width:
+0`, and positions itself with `position-area` against its invoker, which is
+its implicit anchor (issue 284). Its shadow styles need `style-src
 'unsafe-inline'`; `script-src` stays `'self'`. Playwright emulates the
 colour scheme per page, so an end-to-end test chooses the theme with
 `page.emulateMedia`, never `nativeTheme`. A button that disables itself

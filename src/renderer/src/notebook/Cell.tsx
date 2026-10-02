@@ -1,4 +1,4 @@
-import type { JSX, ReactNode } from 'react'
+import { useLayoutEffect, useRef, type CSSProperties, type JSX, type ReactNode } from 'react'
 import Icon, { type IconName } from '../icons/Icon'
 import Disclosure from '../kit/Disclosure'
 import type { CellState } from '../runGraph'
@@ -58,6 +58,13 @@ export interface CellProps {
    * to say says nothing rather than something empty.
    */
   summary?: string | null
+  /**
+   * What the run this cell owns is doing, or where it failed, said on the
+   * collapsed row in place of the summary (ADR-046, FR-017): a running cell
+   * does not open itself, so its row is where a person reads it. Null when
+   * no run of this cell's is going or has failed.
+   */
+  progress?: string | null
   open: boolean
   onToggle: (open: boolean) => void
   /** Provenance, for the three cells that have any (A5.5-11). */
@@ -73,6 +80,14 @@ export interface CellProps {
    * that follows does not collapse the cell (A5.5-08).
    */
   headingRef?: React.Ref<HTMLHeadingElement>
+  /**
+   * Keep the body the height it had when this went true, for as long as it
+   * is. A redraw for colours swaps what a cell shows for a moment, and
+   * whatever is anchored below it, a colour panel being picked from, moves
+   * with the cell's height (issue 304). Holding is a floor, so a body that
+   * grows is not cut.
+   */
+  hold?: boolean
   children: ReactNode
 }
 
@@ -81,15 +96,27 @@ export default function Cell({
   name,
   state,
   summary = null,
+  progress = null,
   open,
   onToggle,
   footer,
   headingLevel = 2,
   headingRef,
+  hold = false,
   children,
 }: CellProps): JSX.Element {
+  const body = useRef<HTMLDivElement>(null)
+  const standing = useRef<number | null>(null)
+  useLayoutEffect(() => {
+    if (!hold) standing.current = body.current?.getBoundingClientRect().height ?? null
+  })
+  const holding: CSSProperties | undefined =
+    hold && standing.current !== null
+      ? { boxSizing: 'border-box', minBlockSize: standing.current }
+      : undefined
   const { word, icon } = STATES[state]
   const Heading = `h${headingLevel}` as 'h2' | 'h3'
+  const said = progress ?? summary
   return (
     <section className="cell" data-state={state} data-cell={cellNumber(number)}>
       <Disclosure
@@ -107,13 +134,13 @@ export default function Cell({
               <Icon name={icon} size={16} />
               {word}
             </span>
-            {!open && summary !== null && summary !== '' && (
-              <span className="cell-summary">{summary}</span>
-            )}
+            {!open && said !== null && said !== '' && <span className="cell-summary">{said}</span>}
           </>
         }
       >
-        <div className="cell-body">{children}</div>
+        <div className="cell-body" ref={body} style={holding}>
+          {children}
+        </div>
         {footer !== undefined && <div className="cell-footer">{footer}</div>}
       </Disclosure>
     </section>

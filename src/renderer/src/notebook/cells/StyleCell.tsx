@@ -23,7 +23,9 @@ import { useProject } from '../context'
 // naming this one after the other would be wrong about which it is.
 
 export default function StyleCell({ cell, state, open, onToggle }: CellViewProps): JSX.Element {
-  const { project, setTheme, exporting, layingOut } = useProject()
+  const { project, setTheme, exporting, layingOut, runSnapshot } = useProject()
+  const redrawing =
+    runSnapshot.state === 'running' && (runSnapshot.recoloured || runSnapshot.reordered)
   const heading = useRef<HTMLHeadingElement>(null)
   return (
     <Cell
@@ -53,6 +55,7 @@ export default function StyleCell({ cell, state, open, onToggle }: CellViewProps
               project={project}
               onChange={setTheme}
               disabled={exporting || layingOut}
+              quiet={redrawing && !exporting}
               handback={heading}
             />
           )}

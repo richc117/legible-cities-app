@@ -31,7 +31,7 @@ import {
   withApp,
 } from '../support/a11y'
 import { describePair, duplicatedNames } from '../support/a11y-names'
-import { cellHandback, cellHeading, closeCell, openCell } from '../support/project'
+import { cell, cellHandback, cellHeading, closeCell, openCell } from '../support/project'
 import { standInPage } from '../support/standInPage'
 
 test.skip(PYTHON === null, 'no python3 or python on the PATH to run the stand-in engine')
@@ -206,8 +206,8 @@ test('the notebook, Inspect, the geographic view, the inspector and its dialogs'
     await colours.getByRole('button', { name: 'Choose the colour of line A' }).click()
     const picker = colours.getByRole('group', { name: 'Colour for line A' })
     await expect(picker.getByRole('slider', { name: 'Hue' })).toBeVisible()
-    // Its Choose button controls the picker it opened, as a native button's
-    // aria-controls would say (issue 121, F6).
+    // Its chip controls the picker it opened, as a native button's
+    // aria-controls says (issue 121, F6; a native button since issue 284).
     await expect
       .poll(() => controlsOf(page, 'Choose the colour of line A'))
       .toEqual(['Colour for line A'])
@@ -227,7 +227,7 @@ test('the notebook, Inspect, the geographic view, the inspector and its dialogs'
     // Closed, it names nothing it no longer shows.
     await expect.poll(() => controlsOf(page, 'Choose the colour of line A')).toEqual([])
 
-    // The default colour's Choose button, the other kind of row.
+    // The default colour's chip, the other kind of row.
     const uncoloured = colours.getByRole('button', {
       name: 'Choose the colour of lines the feed leaves uncoloured',
     })
@@ -561,11 +561,20 @@ async function outline(
 }
 
 /**
- * A page for the viewer's frame with many controls of its own, as the
+ * A page for the viewer's frames with many controls of its own, as the
  * engine's page has: the stand-in's page holds none, so a Tab walk through it
  * would be no longer than the skip. It says which address it was loaded at,
- * so a test can wait for the frame to hold the one it expects, and answers
- * the viewer's `state` so the screen does not report the map missing.
+ * so a test can wait for a frame to hold the one it expects, and answers the
+ * viewer's `state` so the screen does not report the map missing.
+ *
+ * Its controls are drawn only at an address carrying `controls=1`, which is
+ * the map's (`Viewer.tsx`), as the engine's page draws its header only
+ * there: the address cell 06's preview is given never carries it. Measured
+ * against a page the pinned engine (v0.10.1) generated, the preview's frame
+ * took no Tab stop at all and had nothing in it that could take focus; that
+ * is what this page reproduces, so the walk below asserts the app's half -
+ * a titled frame that is never a trap - against a page that behaves as the
+ * engine's does.
  */
 function busyMapPage(controls: number): string {
   const buttons = Array.from(
@@ -576,18 +585,22 @@ function busyMapPage(controls: number): string {
 <meta charset="utf-8" />
 <title>a map with many controls</title>
 <body>
+<div id="controls">
 ${buttons}
+</div>
 <p id="where"></p>
 <script>
   document.getElementById('where').textContent = location.search
+  if (!/[?&]controls=1(&|$)/.test(location.search)) document.getElementById('controls').remove()
   window.__present = { state: function () { return {} } }
 </script>
 </body>
 `
 }
 
-test('the project screen: one press skips past the map to its toolbar, and the map stays reachable', async () => {
-  // Issue 106, finding F3 in docs/accessibility.md.
+test('the project screen: one press skips past the map to cell 03, the map stays reachable, and the preview is no trap', async () => {
+  // Issue 106, finding F3 in docs/accessibility.md; the skip's target and
+  // the walk over two frames are ADR-046's (specs/029 FR-011, FR-012).
   test.setTimeout(240_000)
   const p = profile()
   await withApp(p, async (page) => {
@@ -597,214 +610,165 @@ test('the project screen: one press skips past the map to its toolbar, and the m
     const out = join(p.engineHome, 'out', id)
     for (const name of readdirSync(out).filter((n) => n.endsWith('.html')))
       writeFileSync(join(out, name), busyMapPage(controls))
-    // Leave and come back, so the viewer loads the page again.
+    // Leave and come back, so the viewer loads the page again. A laid-out
+    // project opens with cells 01 and 02 collapsed (FR-010), so the map is
+    // the first tall thing on screen.
     await page.getByRole('button', { name: 'Back to Library' }).click()
     await page.getByRole('button', { name: 'Open Los Angeles' }).click()
     await expect(heading(page)).toHaveText('Los Angeles')
 
     const skip = page.getByRole('button', { name: 'Skip past the map', exact: true })
-    const rename = page.getByRole('button', { name: 'Rename', exact: true })
     const frame = page.frameLocator('iframe.viewer-frame')
     const width = (): Promise<number> => skip.evaluate((el) => el.getBoundingClientRect().width)
     const activeTag = (): Promise<string> =>
       page.evaluate(() => document.activeElement?.tagName.toLowerCase() ?? 'nothing')
 
-    // What kind of box the frame is, and every box around it, in each of
-    // the two states (issue 222). The viewer sends the frame on in the
-    // commit that changes its shape, and a box made again in that commit
-    // can leave the new document with nothing laid out - about one time in
-    // fifty, so the press below would seldom notice. What the two states
-    // may differ in is the frame's size, and this is read every time.
-    const boxes = new Map<string, string[]>()
-
-    // The two things the one frame shows: the plain map while cell 06 is
-    // closed, and the export's planned preview while it is open (A5-01).
-    for (const [tab, address] of [
-      ['the map', 'controls=1'],
-      ["the export's preview", 'safe=1'],
-    ] as const) {
-      const previewing = address === 'safe=1'
-      if (previewing) await openCell(page, 'export')
-      else await closeCell(page, 'export')
-      // The frame holds the busy page at this tab's address - the plain map
-      // under Map, the export's planned preview under Export - and has
-      // stopped moving. Everything below walks the Tab order through that
-      // frame, and a frame that reloads mid-walk loses the focus the walk
-      // just gave it, so both halves are waited for here.
-      //
-      // The two facts come out of one snapshot taken inside the frame.
-      // Asked as two Playwright calls they are two round trips, and a load
-      // landing between them answers the address from the document that is
-      // going and the controls from the one arriving, which has parsed
-      // nothing yet: `address: true, controls: 0`, however long the poll
-      // runs (issue 147, item 3).
-      //
-      // Stillness is the other half, and the one the failures were really
-      // about. Cell 06 does not plan its preview when the engine lists its
-      // presets: the plan is asked for after them, debounced, and the write
-      // that settles the choice in the record can ask for another. Measured
-      // with the frame's address watched over time, the frame was still on
-      // the map's own address when the presets were listed and moved to the
-      // planned one afterwards - so waiting for the presets, which is what
-      // this test used to do, waits for the wrong thing. The snapshot
-      // carries the document's own birth time, which is new for every
-      // document, and two readings a second apart agreeing on it is what
-      // tells a settled frame from one between two loads.
-      type Frame = { address: boolean; controls: number; born: number }
-      const gone: Frame = { address: false, controls: 0, born: 0 }
-      const look = async (): Promise<Frame> => {
-        try {
-          return await frame.locator('body').evaluate((body, last: string) => {
-            const where = body.querySelector('#where')?.textContent ?? ''
-            return {
-              address: where.includes(last),
-              controls: body.querySelectorAll('button').length,
-              born: performance.timeOrigin,
-            }
-          }, address)
-        } catch {
-          // Mid-load the frame answers nothing at all; a retry, not a failure.
-          return gone
-        }
-      }
-      let before = gone
-      const settled = async (): Promise<Frame & { still: boolean }> => {
-        const now = await look()
-        const still = now.born !== 0 && now.born === before.born
-        before = now
-        return { ...now, still }
-      }
-      await expect
-        .poll(settled, {
-          // One second between readings, so `still` means a second of quiet
-          // rather than whatever gap the default escalation had reached.
-          intervals: [1000],
-          timeout: 60_000,
-          message: `${tab}: the busy page at ${address}, and not about to reload`,
-        })
-        .toEqual({ address: true, controls, born: expect.any(Number), still: true })
-
-      boxes.set(
-        tab,
-        await page.locator('iframe.viewer-frame').evaluate((el) => {
-          const kinds: string[] = []
-          for (let at: Element | null = el; at !== null; at = at.parentElement) {
-            const style = getComputedStyle(at)
-            kinds.push(`${at.tagName.toLowerCase()}: ${style.display}, ${style.containerType}`)
-          }
-          return kinds
-        }),
-      )
-
-      // Out of sight while it does not hold focus, and in the document.
-      await expect.poll(width, { message: `${tab}: hidden at rest` }).toBeLessThanOrEqual(1)
-      // Where the map sits, in the viewport.
-      //
-      // It was read from the top of the screen's own region until A5.5-20,
-      // with a comment saying that made it independent of the scroll. The
-      // map is pinned now: its top is held against the viewport while the
-      // region scrolls under it, so that difference *is* the scroll offset,
-      // and the measure reported the map moving four thousand pixels when
-      // nothing had moved at all. There is no frame in which a pinned map
-      // is stationary at every offset - it is still in the viewport while
-      // pinned and still in the document while not - so the reading before
-      // the skip appears and the reading after it are taken with nothing
-      // between them that scrolls, and the viewport is then the plainer of
-      // the two. Nothing about what is asserted changes: the skip is
-      // absolutely placed and takes no space in the flow, so if it moves
-      // the map it moves it wherever the page is.
-      const mapAt = (): Promise<{ top: number; height: number }> =>
-        page.locator('section.viewer').evaluate((el) => {
-          const map = el.getBoundingClientRect()
-          return { top: map.top, height: map.height }
-        })
-      const atRest = await mapAt()
-
-      // It moves nothing: the map is where it was before the skip appeared.
-      // Within half a pixel: a scroll can land on a fraction of one. The
-      // walk to the project's header and back comes after this, because it
-      // scrolls and the map is pinned; it used to sit in between.
-      await skip.focus()
-      await expect(skip).toBeFocused()
-      const shown = await mapAt()
-      expect(shown.top, `${tab}: the map does not move when the skip appears`).toBeCloseTo(
-        atRest.top,
-        0,
-      )
-      expect(shown.height, `${tab}: the map keeps its size`).toBeCloseTo(atRest.height, 0)
-
-      // The map is the notebook column's first child (ADR-045), so the skip
-      // is still the first stop in the column - but the stop before it is
-      // no longer the project's header. A5.5-21 puts the rail between them,
-      // and its focus order follows its visual position on the left rather
-      // than the DOM order that would have kept this assertion: a
-      // navigation rail last in the Tab order is worse than a moved
-      // assertion (WCAG 2.4.3). So the stop before the skip is the rail's
-      // last control.
-      //
-      // Named as that element and not as "somewhere in the rail", which the
-      // rail preceding the column makes true of itself - the same reason
-      // the original named a button rather than a region. `.last()` is DOM
-      // order, and nothing in the rail reorders itself with `tabindex`, so
-      // it is the last stop too: step 06 while the project has exported
-      // nothing, the final Reveal once it has.
-      const railControls = page.locator('.rail').getByRole('button')
-      await page.keyboard.press('Shift+Tab')
-      await expect(
-        railControls.last(),
-        `${tab}: the stop before the skip is the rail's last control`,
-      ).toBeFocused()
-      await page.keyboard.press('Tab')
-      await expect(skip).toBeFocused()
-
-      // Seen once it holds focus: a target of at least 24px, unclipped, in
-      // the viewport, with the focus ring.
-      await expect(skip).toBeInViewport()
-      const box = await skip.boundingBox()
-      expect(box?.width ?? 0, `${tab}: shown when focused`).toBeGreaterThan(24)
-      expect(box?.height ?? 0, `${tab}: a target when focused`).toBeGreaterThanOrEqual(24)
-      expect(await skip.evaluate((el) => getComputedStyle(el).clipPath)).toBe('none')
-      expect(await skip.evaluate((el) => getComputedStyle(el).outlineStyle)).toBe('solid')
-
-      // Not used, the next Tab goes into the map: its first control, whatever
-      // else the page holds. Read from inside the frame, in one snapshot
-      // again, so that a failure says what the frame was holding when the
-      // press landed - the document's own controls - instead of only that a
-      // button could not be found.
-      await page.keyboard.press('Tab')
-      const inside = async (): Promise<{ focused: string; controls: number }> => {
-        try {
-          return await frame.locator('body').evaluate((body) => ({
-            focused: (body.ownerDocument.activeElement as HTMLElement | null)?.textContent ?? '',
+    // The frame holds the busy page and has stopped moving: everything
+    // below walks the Tab order through it, and a frame that reloads
+    // mid-walk loses the focus the walk just gave it. The two facts come
+    // out of one snapshot taken inside the frame (issue 147, item 3), and
+    // two readings a second apart agreeing on the document's birth time is
+    // what tells a settled frame from one between two loads.
+    type Frame = { address: boolean; controls: number; born: number }
+    const gone: Frame = { address: false, controls: 0, born: 0 }
+    const look = async (): Promise<Frame> => {
+      try {
+        return await frame.locator('body').evaluate((body) => {
+          const where = body.querySelector('#where')?.textContent ?? ''
+          return {
+            address: where.includes('controls=1'),
             controls: body.querySelectorAll('button').length,
-          }))
-        } catch {
-          return { focused: 'the frame answered nothing', controls: 0 }
-        }
+            born: performance.timeOrigin,
+          }
+        })
+      } catch {
+        // Mid-load the frame answers nothing at all; a retry, not a failure.
+        return gone
       }
-      await expect
-        .poll(inside, { message: `${tab}: one press past the skip is the map's first control` })
-        .toEqual({ focused: 'Map control 1', controls })
-      expect(await activeTag(), `${tab}: focus is in the frame`).toBe('iframe')
-      await expect(rename).not.toBeFocused()
-      await expect.poll(width, { message: `${tab}: hidden again` }).toBeLessThanOrEqual(1)
-
-      // Back out of the map to the skip, and pressed: the project's own
-      // toolbar, which is after the frame and after the six cells, however
-      // many controls the map has (issue 106, DESIGN.md 8.2).
-      await page.keyboard.press('Shift+Tab')
-      await expect(skip).toBeFocused()
-      await page.keyboard.press('Enter')
-      await expect(rename).toBeFocused()
-      await expect.poll(width, { message: `${tab}: hidden after the skip` }).toBeLessThanOrEqual(1)
-      await page.keyboard.press('Tab')
-      await expect(page.getByRole('button', { name: 'Delete project', exact: true })).toBeFocused()
     }
+    let before = gone
+    const settled = async (): Promise<Frame & { still: boolean }> => {
+      const now = await look()
+      const still = now.born !== 0 && now.born === before.born
+      before = now
+      return { ...now, still }
+    }
+    await expect
+      .poll(settled, {
+        intervals: [1000],
+        timeout: 60_000,
+        message: 'the busy page in the map, and not about to reload',
+      })
+      .toEqual({ address: true, controls, born: expect.any(Number), still: true })
 
-    expect(boxes.get('the map')?.[0], 'the frame itself was read').toMatch(/^iframe: /)
-    expect(
-      boxes.get("the export's preview"),
-      'the frame and every box around it are the same kind of box in both states',
-    ).toEqual(boxes.get('the map'))
+    // Out of sight while it does not hold focus, and in the document.
+    await expect.poll(width, { message: 'hidden at rest' }).toBeLessThanOrEqual(1)
+    // It moves nothing: the map is where it was before the skip appeared.
+    // Read with nothing between the two readings that scrolls, within half
+    // a pixel, because a scroll can land on a fraction of one.
+    const mapAt = (): Promise<{ top: number; height: number }> =>
+      page.locator('section.viewer').evaluate((el) => {
+        const map = el.getBoundingClientRect()
+        return { top: map.top, height: map.height }
+      })
+    const atRest = await mapAt()
+    await skip.focus()
+    await expect(skip).toBeFocused()
+    const shown = await mapAt()
+    expect(shown.top, 'the map does not move when the skip appears').toBeCloseTo(atRest.top, 0)
+    expect(shown.height, 'the map keeps its size').toBeCloseTo(atRest.height, 0)
+
+    // The map is in the column after cell 02 (ADR-046), so the stop before
+    // the skip is cell 02's row, which is collapsed on a laid-out project.
+    await page.keyboard.press('Shift+Tab')
+    await expect(cellHeading(page, 'process'), 'the stop before the skip is cell 02').toBeFocused()
+    await page.keyboard.press('Tab')
+    await expect(skip).toBeFocused()
+
+    // Seen once it holds focus: a target of at least 24px, unclipped, in
+    // the viewport, with the focus ring.
+    await expect(skip).toBeInViewport()
+    const box = await skip.boundingBox()
+    expect(box?.width ?? 0, 'shown when focused').toBeGreaterThan(24)
+    expect(box?.height ?? 0, 'a target when focused').toBeGreaterThanOrEqual(24)
+    expect(await skip.evaluate((el) => getComputedStyle(el).clipPath)).toBe('none')
+    expect(await skip.evaluate((el) => getComputedStyle(el).outlineStyle)).toBe('solid')
+
+    // Not used, the next Tab goes into the map: its first control.
+    await page.keyboard.press('Tab')
+    const inside = async (): Promise<{ focused: string; controls: number }> => {
+      try {
+        return await frame.locator('body').evaluate((body) => ({
+          focused: (body.ownerDocument.activeElement as HTMLElement | null)?.textContent ?? '',
+          controls: body.querySelectorAll('button').length,
+        }))
+      } catch {
+        return { focused: 'the frame answered nothing', controls: 0 }
+      }
+    }
+    await expect
+      .poll(inside, { message: "one press past the skip is the map's first control" })
+      .toEqual({ focused: 'Map control 1', controls })
+    expect(await activeTag(), 'focus is in the frame').toBe('iframe')
+    await expect.poll(width, { message: 'hidden again' }).toBeLessThanOrEqual(1)
+
+    // Back out of the map to the skip, and pressed: cell 03's heading, the
+    // first thing after the map, however many controls the map has. The
+    // heading and not the toggle inside it, so a reflexive Space after the
+    // press does not collapse the cell (FR-011).
+    await page.keyboard.press('Shift+Tab')
+    await expect(skip).toBeFocused()
+    await page.keyboard.press('Enter')
+    await expect(cellHandback(page, 'frame'), "the skip lands on cell 03's heading").toBeFocused()
+    await expect.poll(width, { message: 'hidden after the skip' }).toBeLessThanOrEqual(1)
+    await page.keyboard.press('Tab')
+    await expect(cellHeading(page, 'frame')).toBeFocused()
+
+    // The walk over the second frame (FR-012). Cell 06 opens with a frame
+    // of its own, and the walk from its heading counts the stops inside
+    // that frame on the way to the cell's first choice. The number is
+    // recorded; fewer than five needs no skip of its own, provided the
+    // frame has a title and focus comes out of it.
+    await openCell(page, 'export')
+    const preview = page.locator('iframe.export-frame')
+    await expect(preview).toHaveCount(1, { timeout: 60_000 })
+    await expect(preview).toHaveAttribute('title', 'Los Angeles, as the export will frame it')
+    await expect
+      .poll(
+        () =>
+          page
+            .frameLocator('iframe.export-frame')
+            .locator('#where')
+            .textContent()
+            .catch(() => ''),
+        { timeout: 30_000 },
+      )
+      .toMatch(/[?&]frame=/)
+    await cellHeading(page, 'export').focus()
+    let stops = 0
+    let leftTo = ''
+    for (let i = 0; i < 60 && leftTo === ''; i += 1) {
+      await page.keyboard.press('Tab')
+      const where = await page.evaluate(() => {
+        const a = document.activeElement
+        return a === null ? 'nothing' : `${a.tagName.toLowerCase()}.${a.className}`
+      })
+      if (where.startsWith('iframe.export-frame')) stops += 1
+      else leftTo = where
+    }
+    test.info().annotations.push({
+      type: 'Tab stops in the export frame',
+      description: String(stops),
+    })
+    // The stand-in's planned page has no controls without `controls=1`, so
+    // this count cannot fail on its own; the real planned page measured 0 by
+    // hand (and the map's own page 4), recorded in ADR-046. It holds the walk,
+    // not the number.
+    expect(stops, 'the preview takes fewer than five Tab stops (FR-012)').toBeLessThan(5)
+    expect(leftTo, 'focus came out of the preview: it is no trap').not.toBe('')
+    await expect(
+      cell(page, 'export').getByRole('combobox', { name: 'Preset' }),
+      'the walk reaches the cell’s first choice',
+    ).toBeFocused()
   })
 })

@@ -14,8 +14,8 @@ first written, so read this before the history under it.
 
 **The project screen is a notebook of six numbered cells** (ADR-045, Phase
 5.5; `specs/028-the-notebook/contracts/run-graph.md` is its one
-specification), in one scrolling column under a map that is
-pinned while the cells are edited. The panels the history below describes
+specification), in one scrolling column with the map between cells 02
+and 03, nothing pinned (ADR-046). The panels the history below describes
 still exist as files; each now sits inside a cell, and **there are no tabs**:
 the kit's `Tabs` control was deleted with the tab strip (A5.5-23).
 
@@ -34,9 +34,12 @@ all**, which brings the map up to date with cells 01 to 05 and never runs
 the export (`ProjectHeader.tsx`, and `src/renderer/src/runAll.ts`); the
 rail, a numbered stepper that is a `<nav>` and
 deliberately not a tablist, with the project's **Outputs** under it
-(`Rail.tsx`, `Outputs.tsx`); the pinned preview, the one place the engine's
-page is on screen (`Preview.tsx`, and
-`src/renderer/src/styles/preview.css`); and the foot,
+(`Rail.tsx`, `Outputs.tsx`); the map, a block in the column after cell 02
+whose frame is one element for the life of the screen, with an empty
+state where there is no map yet (`Preview.tsx`, and
+`src/renderer/src/styles/preview.css`), and cell 06's own preview frame
+of the export, mounted while the cell is open (`ExportPreview.tsx`; the
+main process holds the two by role, `src/main/viewer.ts`); and the foot,
 where a project is renamed and deleted (`ProjectFooter.tsx`). A cell's
 state is derived, never stored: `src/renderer/src/runGraph.ts` computes it
 from the record and the runs in flight, and the record's `drawn` says what
@@ -230,9 +233,10 @@ from `export.presets` grouped by platform, a storyboard from
 `export.storyboards` for a video or GIF, and view, labels, title, clock,
 start time, lines, quality and a filename tag; the choice is the project's,
 written to the record's `export` the moment it is made. While cell 06 is
-open the map's own frame is the preview, sent to the address
-`export.plan` answers with `safe` on exactly where the preset has safe
-zones, and **an export's plan never carries `safe`**. A still is captured as
+open a frame of the cell's own is the preview (ADR-046; until then it was
+the map's frame), at the address `export.plan` answers with `safe` on
+exactly where the preset has safe zones, and **an export's plan never
+carries `safe`**. A still is captured as
 one beat of one frame pinned at the plan's `at`, since the app's capture
 takes frames from beats and a still plan has none
 (`src/renderer/src/ExportTab.tsx`, `src/renderer/src/exportChoice.ts`,

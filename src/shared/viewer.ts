@@ -44,3 +44,25 @@ export interface ViewerBounds {
 /** The exact sandbox the viewer's frame carries, and the whole of it.
  *  `allow-same-origin` beside this would undo ADR-028 in one word. */
 export const VIEWER_SANDBOX = 'allow-scripts'
+
+/**
+ * Which of a window's two engine frames a request is for (ADR-046): the
+ * map in the notebook's flow, which keeps its clock for the life of the
+ * screen, and cell 06's preview of the export, which is mounted while the
+ * cell is open and asked nothing but whether it has loaded.
+ */
+export const VIEWER_ROLES = ['map', 'export'] as const
+
+export type ViewerRole = (typeof VIEWER_ROLES)[number]
+
+export function isViewerRole(value: unknown): value is ViewerRole {
+  return typeof value === 'string' && (VIEWER_ROLES as readonly string[]).includes(value)
+}
+
+/**
+ * The one thing the export's frame is asked: whether its page has loaded,
+ * which is what tells a page from the origin's 404 (`Viewer.tsx`). Nothing
+ * in the interface drives the export's page, so the main process refuses
+ * anything else for that role.
+ */
+export const EXPORT_FRAME_METHODS: readonly ViewerMethod[] = ['state']
