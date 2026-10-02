@@ -589,7 +589,11 @@ disclosure, open it, and press **Copy log** on one job. Press **Escape**.
   "Export as instagram-reel", the rebuilds ("Redraw in a new line order",
   "Redraw in new colours", "Rebuild for `<day>`") and "Layout run" for LA
   Metro Rail, each "finished, started `<time>`", headed by its project's
-  name, or by "Feeds" for the feed add.
+  name, or by "Feeds" for the feed add. A job that is running says which
+  stage, "running `<stage>`, `<n>` of `<total>`, started `<time>`", under a
+  line of stations with no labels; the line fits the inspector with no
+  sideways scroll, and its title, line and buttons start where the heading
+  does.
 - **Details** appears only on a failed job whose engine detail says more
   than its hint; a run where every job finished has none.
 - **Copy log** says "The log is on the clipboard, with the keys in web

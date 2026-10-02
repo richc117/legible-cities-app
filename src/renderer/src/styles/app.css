@@ -172,8 +172,8 @@ body {
 }
 
 /* One job: its subject and what it is, its state and start in faint meta,
-   the run's own progress line (scrolled rather than shrunk, so its stage
-   names stay readable), its sentence, the engine's hint and detail, and
+   the run's compact progress line (no labels; the state line names the
+   stage), its sentence, the engine's hint and detail, and
    its two actions. A rule between jobs, as between list groups. */
 
 .jobs {
@@ -214,12 +214,7 @@ body {
 }
 
 .job-line {
-  overflow-x: auto;
   margin: 0 0 var(--space-4-2);
-}
-
-.job-line .progress svg {
-  max-width: none;
 }
 
 .job .progress-message,

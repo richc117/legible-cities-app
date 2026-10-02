@@ -75,6 +75,8 @@ can go stale, so each has one source that updates it - the moment of the
 end for a job, the list read or a rename for a name - and a project's jobs
 leave only when its own screen has deleted it.
 
+**The inspector's progress line is its own compact form** (issue 278): at the inspector's width eight stage names cannot be read beside their stations, so the stations come closer, carry no labels, and the state line under each job's title names the stage and its place among them.
+
 **Section 9's three regions are now two.** The inspector's width is taken
 from the main region on a wide window, so the viewer subtracts it; on a
 narrow one the inspector is an overlay and takes nothing.

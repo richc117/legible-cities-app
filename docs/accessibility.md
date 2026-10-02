@@ -256,7 +256,7 @@ The two reader columns are a person's, recorded per run in
 | Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
 | Toggle, heading, Close, Escape | pass; the toggle controls the Inspector while it is open (F6) | pass | pass | pass (no slide at any setting) | pass | pass | not yet run: a person's | not yet run: a person's |
-| Jobs: progress line, Cancel, Copy log, Details | pass | pass (each names its job) | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
+| Jobs: progress line, Cancel, Copy log, Details | pass | pass (each names its job; the compact line has no labels, so the state line under the title names the stage and its place, "running collapse, 2 of 8", issue 278) | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
 | Below 900px, over the main region | audit only (the main region `inert`; not in the sweep) | audit only | audit only | audit only | pass | pass | not yet run: a person's | not yet run: a person's |
 
 ### First-run dialog (A6-02)
