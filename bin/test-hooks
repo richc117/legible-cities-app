@@ -131,6 +131,19 @@ for hook in "$reviewer" "$guard"; do
 done
 rm -rf "$minimal"
 
+# A payload with no command in it reads as an empty command, which is not
+# "not a commit": the guard has to say it could not read it.
+for payload in '{"tool_input":{}}' '{}' '{"tool_input":{"command":""}}'; do
+  out=$(printf '%s' "$payload" | "$guard" 2>&1); got=$?
+  if [ "$got" -eq 2 ] && printf '%s' "$out" | grep -q 'could not be read'; then
+    pass=$((pass + 1))
+  else
+    fail=$((fail + 1))
+    printf 'FAIL guard-git.sh          %-46s want exit 2 saying so, got %s\n' \
+      "no command: $payload" "$got" >&2
+  fi
+done
+
 # --- the commit guard, end to end, in a repository of its own ---------------
 # A staged key must stop a commit, and so must an unstaged one when the
 # command is `git commit -a`, which stages after this hook has run. The guard
@@ -210,6 +223,21 @@ if command -v gitleaks >/dev/null 2>&1; then
   expect 0 "$(guard_says 'git commit -m tidy')" "a commit of the index alone goes through"
   expect 0 "$(guard_says 'git commit --allow-empty -m tidy')" "--allow-empty is not --all"
   expect 0 "$(guard_says 'git commit -ma')" "-ma is a message, not -a"
+  # The form the assistant commits in: a message from a heredoc, in a command
+  # substitution, with a bullet that is a `- a` of its own.
+  heredoc=$'git commit -m "$(cat <<\'EOF\'\nAdd a thing\n\n- a bullet\n- another\nEOF\n)"'
+  expect 0 "$(guard_says "$heredoc")" "a heredoc message with a \"- a\" bullet goes through"
+  expect 0 "$(guard_says 'git commit -m tidy && git push origin main')" "a commit and then a push go through"
+  expect 2 "$(guard_says 'git add -A && git commit -a -m tidy')" "-a after a chained add is still -a"
+  expect_said "asks for -a" "-a after a chained add is refused for being -a"
+  # A word that is an expansion could be -a, so nothing can be said of it.
+  # shellcheck disable=SC2016  # the literal `$` is the point of these cases.
+  {
+    expect 2 "$(guard_says 'git commit $FLAGS -m tidy')" "a variable where a flag could be"
+    expect 2 "$(guard_says 'git commit -{a,q} -m tidy')" "a brace expansion that holds -a"
+    expect 2 "$(guard_says $'git commit $\'-a\' -m tidy')" "an ANSI-C quoted -a"
+    expect_said "could not be read" "an expansion is refused for being unreadable"
+  }
   git -C "$sandbox" checkout -q -- f.txt
 
   # gitleaks answers "no leaks found" and exits 0 over a repository git could
@@ -219,14 +247,14 @@ if command -v gitleaks >/dev/null 2>&1; then
   cp "$sandbox/.git/index" "$spare"
   printf 'not an index' > "$sandbox/.git/index"
   expect 2 "$(guard_says 'git commit -m x')" "a corrupt index stops a commit"
-  expect_said "gitleaks logged an error" "a corrupt index is gitleaks's to report"
+  expect_said "nothing went through" "a corrupt index is refused by the scan, not by what follows it"
   cp "$spare" "$sandbox/.git/index"
   chmod 000 "$sandbox/.git/index"
   if [ -r "$sandbox/.git/index" ]; then
     echo "test-hooks: a mode does not bind this user; skipped the unreadable index" >&2
   else
     expect 2 "$(guard_says 'git commit -m x')" "an unreadable index stops a commit"
-    expect_said "gitleaks logged an error" "an unreadable index is gitleaks's to report"
+    expect_said "nothing went through" "an unreadable index is refused by the scan, not by what follows it"
   fi
   chmod 644 "$sandbox/.git/index"
   git -C "$sandbox" reset -q
@@ -245,7 +273,7 @@ if command -v gitleaks >/dev/null 2>&1; then
   object="$sandbox/.git/objects/${blob%"${blob#??}"}/${blob#??}"
   mv "$object" "$object.away"
   expect 2 "$(guard_says 'git push origin main')" "a history with an object missing stops a push"
-  expect_said "gitleaks logged an error" "a history with an object missing is gitleaks's to report"
+  expect_said "nothing went through" "a history with an object missing is refused by the scan"
   mv "$object.away" "$object"
   expect 0 "$(guard_says 'git push origin main')" "and the history pushes once the object is back"
 

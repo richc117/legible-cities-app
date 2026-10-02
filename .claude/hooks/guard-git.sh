@@ -18,6 +18,9 @@ command -v jq >/dev/null 2>&1 ||
         "Install jq; until then this hook refuses every commit and push."
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null) ||
   block "the command could not be read." "Nothing was committed."
+# A payload with no command at all reads as an empty one, and the case below
+# would call that "not a commit" and let it through unscanned.
+[ -n "$cmd" ] || block "the command could not be read." "Nothing was committed."
 case "$cmd" in
   *"git commit"*|*"git push"*) ;;
   *) exit 0 ;;
@@ -36,6 +39,10 @@ esac
 # commit` in one command stages after the scans. The pre-commit hooks and CI
 # read what was actually committed, and cover both. `-a` is the case this
 # hook does close: see asks_for_all.
+# And a family that matches neither the pattern above nor asks_for_all, since
+# both look for the text `git commit`: `git -c x=y commit`, `git --no-pager
+# commit`, `git --git-dir=... commit`, `git "commit"`, and `git  commit` with
+# two spaces. None is scanned at all. Widening the match is a follow-up.
 root="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null)}"
 # Fail closed here as well. A folder this hook cannot enter is one it cannot
 # scan, and `|| exit 0` here said the commit was fine. An empty root is the
@@ -61,8 +68,13 @@ fi
 # at the first `git commit` and runs to the end of the command, whatever is
 # chained after it. Short options are read a letter at a time, stopping at
 # one that takes a value, since the rest of that word is the value (`-sam` is
-# -s -a -m, and `-ma` is a message). Answers 0 for yes, 1 for no, and 2 for a
-# command that could not be read at all.
+# -s -a -m, and `-ma` is a message). A word that is an expansion could be
+# anything, -a included (`$'-a'`, `-$x`, `--${all}`, `{-a,-q}`, a backtick),
+# so it is a doubt of the other kind: nothing can be said about it. That is a
+# word that begins with `$`, a backtick or `{`, or begins with `-` and holds
+# one of them anywhere; `$(` is left alone, since what a substitution runs is
+# in the string as words of its own, and is read. Answers 0 for yes, 1 for no,
+# and 2 for a command that could not be read.
 asks_for_all() {
   local rest word chars c
   rest=$(printf '%s' "$cmd" | tr -d '\042\047\134') || return 2
@@ -76,6 +88,8 @@ asks_for_all() {
   set +f
   for word; do
     case "$word" in
+      \$\(*) ;;                             # read, in its own words
+      \$*|\{*|'`'*|-*\$*|-*\{*|-*'`'*) return 2 ;;
       --all|--all[!A-Za-z-]*) return 0 ;;   # and not --allow-empty
       --*) ;;
       -?*)
@@ -100,7 +114,7 @@ case "$cmd" in
       block "this commit asks for -a, which stages tracked changes after the scans have run; nothing was committed." \
             "Stage the changes first (git add <files>), then commit without -a. If -a is only a word in the message, reword it."
     elif [ "$all" -ne 1 ]; then
-      block "the options of this commit could not be read, so nothing was scanned; nothing was committed." \
+      block "the options of this commit could not be read (a word that is an expansion, say), so nothing was scanned; nothing was committed." \
             "Stage the changes first (git add <files>), then commit with a plain git commit."
     fi
     ;;
@@ -122,14 +136,20 @@ if ! command -v gitleaks >/dev/null 2>&1; then
         "Install it (brew install gitleaks) or run: pre-commit run --all-files"
 fi
 scan() {   # $1 = what is scanned, then the arguments that follow `gitleaks git`
-  local what=$1 out
+  local what=$1 out level
   shift
   if ! out=$(gitleaks git "$@" --no-banner --no-color --redact 2>&1); then
     block "gitleaks found something in $what, or could not scan it; nothing went through:" "$out"
   fi
-  if printf '%s\n' "$out" | grep -Eq '(^|[[:space:]])(ERR|WRN|FTL|PNC)([[:space:]]|$)'; then
-    block "gitleaks logged an error while it scanned $what, so its \"no leaks found\" is not to be trusted; nothing went through:" "$out"
-  fi
+  # A case and not a grep: it cannot fail, and a grep that could not run
+  # would have said nothing and let the scan through. Each level is a word of
+  # its own, bounded by white space or by either end of the output.
+  for level in ERR WRN FTL PNC; do
+    case "$out" in
+      "$level"|"$level"[[:space:]]*|*[[:space:]]"$level"|*[[:space:]]"$level"[[:space:]]*)
+        block "gitleaks logged an error while it scanned $what, so its \"no leaks found\" is not to be trusted; nothing went through:" "$out" ;;
+    esac
+  done
 }
 scan "the staged changes" --staged
 

@@ -78,7 +78,8 @@ Never run anything that launches Electron: `npm run test:e2e`, `dev`,
 
 Commit as `cd <absolute path> && git commit`, never `git -C`. The
 repository's command guard protects neither form in a worktree; the
-commit-time hooks do, so never skip them. Imperative subject under 72
+commit-time hooks do, so never skip them. Stage with `git add <files>`
+first; the guard refuses `-a`. Imperative subject under 72
 characters; the body says why. End with
 `Co-Authored-By: <the model> <noreply@anthropic.com>` and nothing else: no
 session trailer, no link to a tool session, no closing keyword. Never
