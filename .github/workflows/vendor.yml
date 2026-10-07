@@ -28,7 +28,7 @@ on:
     branches: ['**']
     # check-vendored.mjs is here because the python job runs its licence
     # agreement (ADR-042).
-    paths: ['vendor/pins.json', '.github/workflows/vendor.yml', 'scripts/vendor-python.sh', 'scripts/vendor-ffmpeg.sh', 'scripts/vendor-signature.sh', 'scripts/check-vendored.mjs', 'scripts/electron-ffmpeg-source.sh']
+    paths: ['vendor/pins.json', '.github/workflows/vendor.yml', 'scripts/vendor-python.sh', 'scripts/vendor-python-licences.sh', 'scripts/vendor-ffmpeg.sh', 'scripts/vendor-signature.sh', 'scripts/check-vendored.mjs', 'scripts/electron-ffmpeg-source.sh']
   workflow_dispatch:
   # .github/workflows/build.yml runs these jobs in its own run, so the
   # installers are packaged from artefacts built from the pins it checked
@@ -1107,7 +1107,7 @@ jobs:
             echo "::error::$name.tar.gz does not hold the engine's package"
             exit 1
           fi
-          cp scripts/vendor-python.sh .github/workflows/vendor.yml "$out/build/"
+          cp scripts/vendor-python.sh scripts/vendor-python-licences.sh .github/workflows/vendor.yml "$out/build/"
           cp vendor/pins.json "$out/build/pins.json"
           {
             echo "The source of the legible-cities engine Legible Cities ships, installed"
@@ -1115,8 +1115,9 @@ jobs:
             echo
             echo "Written by the engine-source job of .github/workflows/vendor.yml, of"
             echo "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY at commit ${GITHUB_SHA:-unknown}."
-            echo "Copies of that workflow, of vendor/pins.json and of"
-            echo "scripts/vendor-python.sh as they were then are in build/."
+            echo "Copies of that workflow, of vendor/pins.json, of"
+            echo "scripts/vendor-python.sh and of scripts/vendor-python-licences.sh,"
+            echo "which it runs for the licence texts, as they were then are in build/."
             echo
             echo "$name.tar.gz"
             echo "  The engine $version at tag $tag of $repo, commit $commit."

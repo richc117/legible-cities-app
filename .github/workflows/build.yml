@@ -72,6 +72,7 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - 'scripts/vendor-python.sh'
+      - 'scripts/vendor-python-licences.sh'
       - 'scripts/vendor-ffmpeg.sh'
       - 'scripts/vendor-signature.sh'
       - 'scripts/electron-ffmpeg-source.sh'
