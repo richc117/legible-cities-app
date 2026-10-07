@@ -7,7 +7,7 @@
 
 ## Context
 
-`ExportOptions` has `title` (a boolean: the city and the network), `clock` (a boolean) and `tag` (a filename suffix), and no free text. The page draws the overlay, name and time, top-right by its own CSS. The bundled ffmpeg cannot draw text; every word in an export is drawn by the page and captured (engine issue #40).
+`ExportOptions` has `title` (a boolean: the city and the network), `clock` (a boolean) and `tag` (a filename suffix), and no free text. The page draws the overlay by its own CSS: the name block top-left, the time bottom-right (`page.html:274–277`). The bundled ffmpeg cannot draw text; every word in an export is drawn by the page and captured (engine issue #40).
 
 **A caption is a person's text.** E17 escaped the feed's text the page embeds; a caption is set as text or it is the same fault.
 
@@ -25,13 +25,15 @@ Zones: **(a)** numbers in `present.js`; **(b)** a table in `export.py` that the 
 
 ## Decision
 
-(a), (a), (b). `ExportOptions.caption` is a string of at most 80 characters with no line break, drawn by the page as text (`textContent`, never markup) under the title in the overlay's name block, in both themes; at 1,080 wide that is two lines at the overlay's size, and the bound is this project's, not a platform's. `ExportOptions.clock_corner` is `top-left | top-right | bottom-left | bottom-right`, default `top-right`; on a `safe_zones` preset `bottom-right` is refused with a sentence naming the rail, and `bottom-left` adds a note. Both travel on the page's address and are echoed in `CaptureJob`, so the app's preview and the file agree. The safe zones become a table in `export.py`, per platform, as fractions of the frame with the date they were measured: Reels top 0.14, bottom 0.35, sides 0.06, a rail 0.21 of the width in the lower right; Stories bottom 0.20. The rail's vertical extent is taken from Meta's file when the table is written (a summariser reported it starting about 1,150 px down; unverified). The plan writes the zones onto the address and the page draws what it is given, so the overlay has one source, and a test pins the numbers.
+(a), (a), (b). `ExportOptions.caption` is a string of at most 80 characters with no line break, drawn by the page as text (`textContent`, never markup) under the title in the overlay's name block, in both themes; at 1,080 wide that is two lines at the overlay's size, and the bound is this project's, not a platform's. `ExportOptions.clock_corner` is `top-left | top-right | bottom-left | bottom-right`, default `bottom-right`, where the clock sits today, so an export that asks for nothing keeps its pixels; on a `safe_zones` preset the default is `top-right`, and there `bottom-right` is refused with a sentence naming the rail, and `bottom-left` adds a note. Both travel on the page's address and are echoed in `CaptureJob`, so the app's preview and the file agree. The safe zones become a table in `export.py`, per platform, as fractions of the frame with the date they were measured: Reels top 0.14, bottom 0.35, sides 0.06, a rail 0.21 of the width in the lower right; Stories bottom 0.20. The rail's vertical extent is taken from Meta's file when the table is written (a summariser reported it starting about 1,150 px down; unverified). The plan writes the zones onto the address and the page draws what it is given, so the overlay has one source, and a test pins the numbers.
 
 ## Consequences
 
 **Schema moves with v0.12.0.** Page work in `present.js` and `page.html`.
 
 **The overlay stops understating the bottom zone**, and the `-safe` preview file changes.
+
+**As of 6 Oct 2026, a correction of premise.** The record as first written said the clock sat top-right; it sits bottom-right (`page.html:274–277`). The default corner therefore follows the clock, and the reel's and story's clock moves to the top-right out from under the platform's rail on purpose; nothing else moves.
 
 **Nothing moves for an export that asks for neither.** An omitted caption and the default corner give today's pixels; the determinism fixture is unchanged.
 
