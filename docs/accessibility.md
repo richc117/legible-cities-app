@@ -305,9 +305,13 @@ which it is.
   cannot see into a cross-origin frame, so the walk finds the first wanted
   control that follows the frame in document order, focuses it directly,
   and waits until the document reads focus on that very control before the
-  next press; **no press of Tab is made while focus is inside a frame**
-  unless that wait lapses, and a lapse ends as a miss that prints every
-  press the walk made. The cost: the walk no longer proves that Tab crosses
+  next press; a press read as focus on nothing is read again for up to a
+  second first, because the reading can be taken while focus is still
+  crossing into a frame or back from the end of the document, which is
+  what the runners' traces showed; **no press of Tab is made while focus
+  is inside a frame** unless that wait lapses, and a lapse ends as a miss
+  that prints every press the walk made. The cost: the walk no longer
+  proves that Tab crosses
   a frame's far edge. On the project screen that is one control, cell 03's
   row since ADR-046 put the map in the column above it, still swept for its
   name and ring. A person's path is the documented one: "Skip past the map"
