@@ -304,6 +304,83 @@ test('the picker stays open through a drag, and closes when it is dismissed', as
   })
 })
 
+/** Opens line A's panel, changes its colour with the panel left open, and checks nothing above it moved. */
+async function holdsStillThroughARedraw(page: Page): Promise<void> {
+  const panel = cell(page, 'lines')
+  const chip = panel.getByRole('button', { name: 'Choose the colour of line A' })
+  await chip.click()
+  const picker = panel.getByRole('group', { name: 'Colour for line A' })
+  await expect(picker).toBeVisible()
+  const where = (): Promise<{ chip: number; above: number[] }> =>
+    page.evaluate(() => {
+      const open = document.querySelector('.colour-chip[aria-expanded="true"]')!
+      const heights = [...document.querySelectorAll('section.cell')].map(
+        (c) => c.getBoundingClientRect().height,
+      )
+      return { chip: open.getBoundingClientRect().top, above: heights }
+    })
+  const before = await where()
+
+  await picker
+    .getByRole('slider')
+    .first()
+    .click({ position: { x: 20, y: 20 } })
+  await expect(picker).toBeVisible()
+  // Watch until the build has been asked for and answered; the sentence
+  // says the map is drawn, and the picker is still open when it does.
+  const seen: Array<{ chip: number; above: number[] }> = []
+  const done = page.getByText(/Drawn in the colours you chose/)
+  // The settled state is left out of what is judged: its sentence is longer
+  // than the one it replaces and wraps to a second line in a narrower
+  // window, a single line of difference once the redraw is over.
+  for (let i = 0; i < 400; i++) {
+    const now = await where()
+    if ((await done.count()) > 0) break
+    seen.push(now)
+    await page.waitForTimeout(25)
+  }
+  await expect(picker).toBeVisible()
+  expect(seen.length, 'the redraw was watched, not skipped').toBeGreaterThan(5)
+  for (const now of seen) {
+    expect(Math.abs(now.chip - before.chip), 'the chip never moved').toBeLessThan(1.5)
+    now.above.forEach((height, i) =>
+      expect(
+        Math.abs(height - before.above[i]),
+        `cell ${i + 1} kept its height: ${before.above[i]} then ${height}`,
+      ).toBeLessThan(1),
+    )
+  }
+}
+
+test('the page stays where it is while a colour is being drawn, and the picker with it', async () => {
+  // The redraw is slowed so there is a stretch to watch, and the picker is
+  // left open throughout: the colour shows on the map before the panel is
+  // closed, which is why this matters (issue 304). Everything above the
+  // chip used to change height for the length of the redraw - the
+  // diagnostics went, the run's sentence and buttons went, a sentence
+  // arrived under the theme - and the panel, anchored to its chip, went up
+  // the page and back with them.
+  const engineHome = home({ progress_delay_ms: 200 })
+  await withApp(engineHome, async (page) => {
+    await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
+    await holdsStillThroughARedraw(page)
+  })
+})
+
+test('and so does the first redraw after the app was closed and opened again', async () => {
+  // Nothing has run in this session, so the run cell is idle and the
+  // diagnostics are absent: the redraw must neither shrink the one nor add
+  // the other.
+  const engineHome = home({ progress_delay_ms: 200 })
+  await withApp(engineHome, async (page) => {
+    await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
+  })
+  await withApp(engineHome, async (page) => {
+    await openProject(page, 'Los Angeles')
+    await holdsStillThroughARedraw(page)
+  })
+})
+
 test('one press opens another row’s picker while one is already open', async () => {
   const engineHome = home()
   await withApp(engineHome, async (page) => {

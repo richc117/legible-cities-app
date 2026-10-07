@@ -58,6 +58,13 @@ interface Props {
    * strip went (A5.5-23) it was optional, and its absence drew an `h2`.
    */
   handback: RefObject<HTMLElement | null>
+  /**
+   * Say nothing about why the buttons are disabled. A redraw for colours
+   * or order is over in moments and started by the person's own hand, and
+   * the sentence added fifty-odd pixels under the cell the colour panel is
+   * opened from, moving it (issue 304).
+   */
+  quiet?: boolean
 }
 
 /** What the section is called, as its name inside cell 04. */
@@ -68,6 +75,7 @@ export default function ThemeSwitch({
   onChange,
   disabled = false,
   handback,
+  quiet = false,
 }: Props): JSX.Element {
   const [problem, setProblem] = useState<string | null>(null)
   // Whether a write is in flight, and the theme pressed while it was: refs
@@ -140,7 +148,7 @@ export default function ThemeSwitch({
           </Button>
         ))}
       </div>
-      {disabled && (
+      {disabled && !quiet && (
         <p className="hint" role="status">
           The theme waits until the run that is going has finished: it changes what the map on
           screen is loaded from, and an export is made in the theme it was planned with.
