@@ -312,10 +312,13 @@ which it is.
   still reads nothing by then the walk puts focus down the same way, on the
   first wanted control after the frame that lies between the last control
   read and the next one wanted, or at the top when it left the end of the
-  document, rather than pressing on from a place it could not read; **no
-  press of Tab is made while focus is inside a frame** unless that
-  hand-over lapses too, and a lapse ends as a miss that prints every press
-  the walk made. The cost: the walk no longer proves that Tab crosses a
+  document and the document's first control is still unread, rather than
+  pressing on from a place it could not read; where no frame lies between
+  and a wanted control simply follows, it presses on and the trace says
+  so, because putting focus down there would repair a miss instead of
+  reporting it; **no press of Tab is made while focus is inside a frame**
+  unless that hand-over lapses too, and a lapse ends as a miss that prints
+  every press the walk made. The cost: the walk no longer proves that Tab crosses a
   frame's far edge, nor, where the wrap is not read in time, that Tab
   comes back round from the end of the document. On the project screen the
   frames are the map's and, while cell 06 is open, the export preview's,
