@@ -167,8 +167,8 @@ Everything, with the clock time beside it. In particular:
   place and the hour; the reel does not need one, so it is not part of the
   task and nobody tells the person it is there. Write down whether they
   stopped at it, and what they took it for.
-- **How they started**: a sample city's card, or **New project** with a
-  feed of their own, and whether they found the export in cell 06 without
+- **How they started**: a sample city's card, or the **New project** card
+  with a feed of their own, and whether they found the export in cell 06 without
   opening every cell first.
 - **Anything they said they liked**, or that went quicker than you expected.
 
@@ -205,7 +205,7 @@ Copy everything in the block below into a new issue titled
 | Installer downloaded | mm:ss |
 | App window first open | mm:ss |
 | Map first drawn ("Laid out.") | mm:ss |
-| Started from | a sample city's card / New project, with (the source) |
+| Started from | a sample city's card / the New project card, with (the source) |
 | First press of Export | mm:ss |
 | Stop (reel on disk) | mm:ss |
 | Reel file name | |

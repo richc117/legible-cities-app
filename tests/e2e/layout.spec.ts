@@ -2022,8 +2022,9 @@ test('Settings has the one way back, in the header, and it lands on the Library'
 })
 
 // The projects list (A5.6-04): newest opened first, written when a project
-// opens and not when it is edited, and each row saying how far its project
-// has got in words, from the notebook's own run graph.
+// opens and not when it is edited, and each card saying how far its project
+// has got in words, from the notebook's own run graph. The New project card
+// is first whatever the order of the projects after it (ADR-047).
 test('the projects list is newest opened first, and says how far each project has got', async () => {
   const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
   await withApp(engineHome, async (page) => {
@@ -2031,8 +2032,8 @@ test('the projects list is newest opened first, and says how far each project ha
     const names = (): Promise<string[]> =>
       list
         .getByRole('button')
-        .evaluateAll((rows) =>
-          rows.map((row) => row.querySelector('.entry-name')?.textContent ?? ''),
+        .evaluateAll((cards) =>
+          cards.map((card) => card.querySelector('.card-name')?.textContent ?? ''),
         )
 
     await openNewProject(page, 'First')
@@ -2051,7 +2052,7 @@ test('the projects list is newest opened first, and says how far each project ha
     await expect(page.getByRole('button', { name: 'Open Second' })).toContainText(
       'finished up to 01 Data; not laid out yet',
     )
-    await expect.poll(names).toEqual(['Second', 'First'])
+    await expect.poll(names).toEqual(['New project', 'Second', 'First'])
 
     // Opening First puts it back on top; nothing about it was edited.
     const modified = readRecordNamed(engineHome, 'First').modified
@@ -2063,111 +2064,101 @@ test('the projects list is newest opened first, and says how far each project ha
       modified,
     )
     await page.getByRole('button', { name: 'Back to Library' }).click()
-    await expect.poll(names).toEqual(['First', 'Second'])
-    await expect(page.getByRole('button', { name: 'Open First' })).toContainText(/Opened /)
+    await expect.poll(names).toEqual(['New project', 'First', 'Second'])
+    // A card says less than a row did (ADR-047): where it runs and how far
+    // it has got, and not its service day or when it was opened, which the
+    // notebook says and the order shows.
+    const first = page.getByRole('button', { name: 'Open First' })
+    await expect(first).toContainText('Los Angeles · Metro Rail')
+    await expect(first).not.toContainText(/Opened |Service day/)
   })
 })
 
-// Where a row's facts sit (issue 269). On the name's line they are at the
-// row's far edge; on a line of their own they start where the name does.
-// Which of the two a row is depends on the face its words are set in: a
-// laid-out project's facts are a little narrower than the row, so they fit
-// beside a short name on one platform and not on another. Both are made
-// here, and whichever a row turns out to be, its rule is held.
-test('a row’s facts end at the far edge of the name’s line, or start under the name', async () => {
+// The front door's two galleries (ADR-047, issue 287): "Your projects" and
+// "Sample cities" are one grid of one card at `--card-min-width`, the New
+// project card first among the cards and the only New project there is -
+// the toolbar's and the empty state's went with the rows - and first in the
+// Tab order after the screen's own heading, with projects or without.
+test('the projects and the sample cities are one grid of one card, New project first', async () => {
   const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
-  await withApp(engineHome, async (page, app) => {
-    const list = page.getByRole('list', { name: 'Projects' })
-    // The shorter feed key is what lets the second row's facts fit.
-    for (const [name, feed] of [
-      ['First', 'la-metro-rail'],
-      ['Bay', 'bart'],
-    ] as const) {
-      await page.evaluate(
-        (project) =>
-          (globalThis as unknown as { api: Api }).api.projects.create({
-            name: project.name,
-            feed: project.feed,
-          }),
-        { name, feed },
-      )
-      await page.reload()
-      await openProject(page, name)
-      await page.getByRole('button', { name: /lay out/i }).click()
-      await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
-      await page.getByRole('button', { name: 'Back to Library' }).click()
-      await expect(page.getByRole('button', { name: `Open ${name}` })).toContainText(
-        'finished up to 05 Lines',
-      )
+  await withApp(engineHome, async (page) => {
+    const main = page.getByRole('main')
+    const projects = page.getByRole('list', { name: 'Projects' })
+    const presets = page.getByRole('list', { name: 'Presets' })
+    const library = page.getByRole('heading', { level: 1, name: 'Library' })
+    const newProject = main.getByRole('button', { name: 'New project' })
+
+    const firstAfterHeading = async (): Promise<void> => {
+      // The heading takes focus when the screen appears; Tab from there.
+      await expect(library).toBeFocused()
+      await page.keyboard.press('Tab')
+      await expect(newProject, 'New project is the first card in the Tab order').toBeFocused()
     }
-    // And one that is not laid out, whose facts take two lines anywhere.
+
+    // With no projects: New project alone under "Your projects".
+    await expect(presets.getByRole('button')).toHaveCount(2)
+    await expect(projects.getByRole('button')).toHaveCount(1)
+    await expect(newProject).toHaveCount(1)
+    await firstAfterHeading()
+
+    // With one: still the one New project, still first, then the project.
     await page.evaluate(() =>
       (globalThis as unknown as { api: Api }).api.projects.create({
-        name: 'Not laid out',
+        name: 'Measured',
         feed: 'la-metro-rail',
       }),
     )
     await page.reload()
-    await expect(list.getByRole('button')).toHaveCount(3)
-    // Measured with the window at its narrowest, where the column is 640
-    // wide, which is the row the facts above were chosen against. In a wider
-    // window the column widens to `--measure-wide` (A7-05) and even the
-    // facts that are not laid out yet fit beside a name on one line.
-    await app.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows()[0].setContentSize(640, 720)
-    })
-    // Asked for 640 and read back: a platform that will not make it quite
-    // that narrow (this display's window manager gave 584) still gives a
-    // column as narrow as the test needs, which is narrower than a row that
-    // could hold the longest name on one line, so what is required is
-    // narrow, not exactly 640.
-    await expect
-      .poll(() => page.evaluate(() => window.innerWidth), { timeout: 10_000 })
-      .toBeLessThanOrEqual(700)
+    await expect(projects.getByRole('button')).toHaveCount(2)
+    await expect(presets.getByRole('button')).toHaveCount(2)
+    await expect(newProject).toHaveCount(1)
+    await expect(projects.getByRole('button').first()).toHaveAccessibleName('New project')
+    await firstAfterHeading()
+    await page.keyboard.press('Tab')
+    await expect(projects.getByRole('button', { name: 'Open Measured' })).toBeFocused()
+    // It opens the sheet.
+    await newProject.click()
+    const dialog = page.getByRole('dialog', { name: 'New project' })
+    await expect(dialog).toBeVisible()
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+    await expect(dialog).toBeHidden()
 
-    const rows = await list.getByRole('button').evaluateAll((all) =>
-      all.map((row) => {
-        const box = row.getBoundingClientRect()
-        const style = getComputedStyle(row)
-        const name = (row.querySelector('.entry-name') as Element).getBoundingClientRect()
-        const facts = (row.querySelector('.entry-meta') as Element).getBoundingClientRect()
-        return {
-          name: row.getAttribute('aria-label'),
-          under: facts.top >= name.bottom - 1,
-          nameFrom: name.left - (box.left + Number.parseFloat(style.paddingLeft)),
-          factsFrom: facts.left - name.left,
-          factsAfterName: facts.left - name.right,
-          factsTo: box.right - Number.parseFloat(style.paddingRight) - facts.right,
-        }
-      }),
+    // One card in both grids: the same class, the same grid, the same width.
+    const shape = async (
+      list: Locator,
+    ): Promise<{ grid: string; cards: string[]; widths: number[] }> =>
+      list.evaluate((ul) => ({
+        grid: getComputedStyle(ul).gridTemplateColumns,
+        cards: [...ul.querySelectorAll(':scope > li > button')].map((b) => b.className),
+        widths: [...ul.querySelectorAll(':scope > li > button')].map(
+          (b) => b.getBoundingClientRect().width,
+        ),
+      }))
+    const mine = await shape(projects)
+    const samples = await shape(presets)
+    expect(mine.cards).toEqual(['card card-new', 'card'])
+    expect(samples.cards).toEqual(['card', 'card'])
+    expect(mine.grid, 'the same tracks in both grids').toBe(samples.grid)
+    const minimum = await page.evaluate(
+      () =>
+        parseFloat(
+          getComputedStyle(document.documentElement).getPropertyValue('--card-min-width'),
+        ) * parseFloat(getComputedStyle(document.documentElement).fontSize),
     )
-    for (const row of rows) {
-      expect(
-        Math.abs(row.nameFrom),
-        `${row.name}: the name is at the near edge`,
-      ).toBeLessThanOrEqual(1)
-      if (row.under)
-        expect(
-          Math.abs(row.factsFrom),
-          `${row.name}: facts under the name start where it does`,
-        ).toBeLessThanOrEqual(1)
-      else {
-        expect(
-          Math.abs(row.factsTo),
-          `${row.name}: facts on the name's line end at the far edge`,
-        ).toBeLessThanOrEqual(1)
-        expect(row.factsAfterName, `${row.name}: and come after the name`).toBeGreaterThan(0)
-      }
+    for (const width of [...mine.widths, ...samples.widths]) {
+      expect(width, 'as wide as every other card').toBeCloseTo(samples.widths[0], 0)
+      expect(width, 'at --card-min-width at least').toBeGreaterThanOrEqual(minimum - 0.5)
     }
-    expect(
-      rows.find((row) => row.name === 'Open Not laid out')?.under,
-      'facts that take two lines are under the name on any face',
-    ).toBe(true)
-    // Said, so a reader of the run knows which rule each row was held to.
-    test.info().annotations.push({
-      type: 'rows',
-      description: rows.map((row) => `${row.name}: ${row.under ? 'under' : 'beside'}`).join('; '),
-    })
+    // A project's card reads where it runs and how far it has got; a
+    // sample's, where it runs and, in a chip, whether it is downloaded.
+    await expect(
+      projects.getByRole('button', { name: 'Open Measured' }),
+    ).toHaveAccessibleDescription(
+      'Los Angeles · Metro Rail finished up to 01 Data; not laid out yet',
+    )
+    const la = sampleCard(page, 'LA Metro Rail')
+    await expect(la.locator('.card-fact')).toHaveText(['Los Angeles · Metro Rail'])
+    await expect(la.locator('.card-chip')).toHaveText(/^(not )?downloaded( yet)?$/)
   })
 })
 

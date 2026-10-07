@@ -1,7 +1,7 @@
 // The design system on the built app, in both themes: the theme follows
 // the platform's colour-scheme preference, which Playwright emulates per
 // page (it forces a light scheme unless told otherwise, so nativeTheme is
-// not the lever here), and the status line, a Library row, a kit button
+// not the lever here), and the status line, a Library card, a kit button
 // and a dialog's input measure what docs/DESIGN.md says. No engine is
 // needed; the status line reads "unavailable" and that is a state like
 // any other.
@@ -52,7 +52,7 @@ const px = (value: string): number => Number.parseFloat(value)
 
 test('follows the platform theme and measures as the design document says', async () => {
   await withApp(async (page) => {
-    // A project, so the Library has a row to measure.
+    // A project, so the Library has a card to measure.
     await page.evaluate(() =>
       (globalThis as unknown as Bridge).api.projects.create({
         name: 'Measured',
@@ -80,15 +80,17 @@ test('follows the platform theme and measures as the design document says', asyn
       expect(px(statusStyle.fontSize)).toBe(12)
       expect(px(statusStyle.lineHeight)).toBe(16)
 
-      const row = page.getByRole('button', { name: 'Open Measured' })
-      const rowBox = await row.boundingBox()
-      expect(rowBox?.height).toBeGreaterThanOrEqual(28)
-      expect(px(await row.evaluate((el) => getComputedStyle(el).fontSize))).toBe(13)
+      const card = page.getByRole('button', { name: 'Open Measured' })
+      const cardBox = await card.boundingBox()
+      expect(cardBox?.height).toBeGreaterThanOrEqual(28)
+      expect(px(await card.evaluate((el) => getComputedStyle(el).fontSize))).toBe(13)
 
       // A kit button: the document's control height on the host element
       // (the role resolves to the kit's inner button), the app's focus ring.
-      const newProject = page.getByRole('button', { name: 'New project' })
-      const host = page.locator('fig-button', { hasText: 'New project' })
+      // The header's Settings, an icon and a label: the Library's own New
+      // project is a card since issue 287, not a kit button.
+      const settings = page.getByRole('button', { name: 'Settings' })
+      const host = page.locator('.app-header fig-button', { hasText: 'Settings' })
       // Between its icon and its label the kit button holds --space-2-2:
       // its shadow style declares no gap (issue 273).
       const gap = await host.evaluate((el) => {
@@ -96,14 +98,14 @@ test('follows the platform theme and measures as the design document says', asyn
         if (!icon) return null
         return parseFloat(getComputedStyle(icon).marginInlineEnd)
       })
-      expect(gap, 'the icon-to-label gap on New project').toBe(4)
+      expect(gap, 'the icon-to-label gap on Settings').toBe(4)
       const box = await host.boundingBox()
       // The document's rule is a size, 28px, not a minimum: equal within a
       // pixel, since the layout engine returns 27.9995 for a 16px line
       // height plus padding on some displays.
       expect(box?.height, "a control is the document's height, within a pixel").toBeCloseTo(28, 0)
       // The kit draws the focus ring on the host (delegated focus).
-      await newProject.focus()
+      await settings.focus()
       const ring = await host.evaluate((el) => getComputedStyle(el).outlineColor)
       expect(ring).toBe(focus)
 
@@ -153,28 +155,19 @@ test("a cell's prose is 16px on 24px lines, in the serif, in both themes", async
   })
 })
 
-test('a Library row holds what it has, however many lines that takes', async () => {
-  // Issue 269. The kit gives every native button one control's height, and
-  // a row that wrapped hung below its own rule, over the row after it.
+test('a Library card holds what it has, at the narrowest column and at the fluid widths', async () => {
+  // Issue 287 (ADR-047), by issue 269's method. "Your projects" is a grid
+  // of cards at `--card-min-width`, the New project card first; a card's
+  // name and each of its facts start a line of their own, may wrap to a
+  // second and are clamped there. Nothing a card holds may run out of it,
+  // and what a line loses to its clamp stays in the document and in the
+  // card's name. Measured at the window's narrowest,
+  // where the column is 608 wide and two cards fit to a row (A7-05), and at
+  // two fluid widths, 868 with three to a row and the widest column, 1024,
+  // with four, where a card is narrowest after the minimum; the window's own
+  // width rather than an emulated one, since the app sets the window and it
+  // is the window a person drags.
   await withApp(async (page, app) => {
-    // The window at its narrowest, where the column is 640 wide (A7-05). In
-    // a wider window the column widens to `--measure-wide`, and a row of
-    // nearly a thousand pixels holds the longest name a project may have on
-    // one line, so the row this test is about - one that has to break its
-    // name - could not be made. Measured at the window's own width rather
-    // than an emulated one: the app sets the window, and it is the window a
-    // person drags.
-    await app.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows()[0].setContentSize(640, 720)
-    })
-    // Asked for 640 and read back: a platform that will not make it quite
-    // that narrow (this display's window manager gave 584) still gives a
-    // column as narrow as the test needs, which is narrower than a row that
-    // could hold the longest name on one line, so what is required is
-    // narrow, not exactly 640.
-    await expect
-      .poll(() => page.evaluate(() => window.innerWidth), { timeout: 10_000 })
-      .toBeLessThanOrEqual(700)
     const long = 'Los Angeles County Metropolitan Transportation Authority, Metro Rail'
     // As long as a name may be, with nowhere in it to break.
     const unbroken = 'Metropolitan'.repeat(10)
@@ -185,87 +178,219 @@ test('a Library row holds what it has, however many lines that takes', async () 
         name,
       )
     await page.reload()
-    const rows = page.getByRole('list', { name: 'Projects' }).getByRole('button')
-    await expect(rows).toHaveCount(3)
+    const list = page.getByRole('list', { name: 'Projects' })
+    const cards = list.getByRole('button')
+    // New project and the three projects, New project first.
+    await expect(cards).toHaveCount(4)
+    await expect(cards.first()).toHaveAccessibleName('New project')
+    // The clamp is the stylesheet's alone: the whole name is the card's
+    // accessible name, and is in the document.
+    await expect(list.getByRole('button', { name: `Open ${unbroken}` })).toHaveCount(1)
 
-    const measured = await rows.evaluateAll((all) =>
-      all.map((row) => {
-        const box = row.getBoundingClientRect()
-        const words = document.createRange()
-        words.selectNodeContents(row)
-        const drawn = [...words.getClientRects()]
-        // The name's own lines: one rectangle for each line its text takes.
-        const name = document.createRange()
-        name.selectNodeContents(row.querySelector('.entry-name') as Element)
-        return {
-          name: row.getAttribute('aria-label'),
-          top: box.top,
-          bottom: box.bottom,
-          height: box.height,
-          above: Math.max(...drawn.map((one) => box.top - one.top)),
-          below: Math.max(...drawn.map((one) => one.bottom - box.bottom)),
-          beside: Math.max(
-            ...drawn.map((one) => Math.max(one.right - box.right, box.left - one.left)),
-          ),
-          // Whatever the row holds, words or not.
-          held: row.scrollHeight <= row.clientHeight && row.scrollWidth <= row.clientWidth,
-          nameLines: [...name.getClientRects()].filter((one) => one.width > 0).length,
-          nameFrom: name.getBoundingClientRect().left - box.left,
-          wide: box.width,
+    // Asked for 640 and read back: a platform that will not make it quite
+    // that narrow (this display's window manager gave 584 once) still gives
+    // a column as narrow as the test needs. The wider two are asked as
+    // `preview.spec.ts`'s roomy() asks: a display narrower than the size (a
+    // Windows runner's is 1024) leaves the window as wide as it can be, and
+    // every assertion below holds at any width, so the test carries on at
+    // what it got and says so. 1100 is enough for the widest column, which
+    // `--measure-wide` caps at 1024.
+    for (const asked of [640, 900, 1100]) {
+      await app.evaluate(({ BrowserWindow }, width) => {
+        BrowserWindow.getAllWindows()[0].setContentSize(width, 720)
+      }, asked)
+      if (asked === 640)
+        await expect
+          .poll(() => page.evaluate(() => window.innerWidth), { timeout: 10_000 })
+          .toBeLessThanOrEqual(700)
+      else
+        try {
+          await expect
+            .poll(() => page.evaluate(() => window.innerWidth), { timeout: 5_000 })
+            .toBeGreaterThan(asked - 100)
+        } catch {
+          test.info().annotations.push({
+            type: 'window smaller than asked',
+            description: `asked ${asked} wide, got ${await page.evaluate(() => window.innerWidth)}`,
+          })
         }
-      }),
-    )
-    // The window is the window, however long a name: the shell's one
-    // column used to take the unbroken name's width as its own, 932 in this
-    // 640 window, and the page scrolled sideways (A7-05).
-    const sideways = await page.evaluate(() => ({
-      scroll: document.documentElement.scrollWidth,
-      client: document.documentElement.clientWidth,
-      main: document.querySelector('.app-main')?.getBoundingClientRect().width ?? -1,
-    }))
-    expect(sideways.scroll, 'the page does not scroll sideways').toBeLessThanOrEqual(
-      sideways.client,
-    )
-    expect(sideways.main, 'the main region is the window').toBeCloseTo(sideways.client, 0)
-    const lines = (name: string): number | undefined =>
-      measured.find((row) => row.name === `Open ${name}`)?.nameLines
-    // The test is about a row that has to break its name, so it says so if
-    // this one did not; and a name that fits is never broken to make room,
-    // which a rule that lets a name break anywhere does to "Short".
-    expect(lines(unbroken), 'the name with no space in it is broken').toBeGreaterThan(1)
-    expect(lines('Short'), 'a short name is on one line').toBe(1)
-    expect(lines(long), 'a name that fits its row is on one line').toBe(1)
-    // Every row is as wide as the list: a column left to size itself grows
-    // to the longest word in it, and takes every row with it.
-    const list = await page
-      .getByRole('list', { name: 'Projects' })
-      .evaluate((el) => el.getBoundingClientRect().width)
-    for (const row of measured) {
-      expect(row.wide, `${row.name}: as wide as the list`).toBeCloseTo(list, 0)
-      // From the near edge, which the kit's buttons do not do by themselves.
-      expect(row.nameFrom, `${row.name}: the name reads from the near edge`).toBeLessThan(28)
-      expect(row.above, `${row.name}: nothing above its box`).toBeLessThanOrEqual(1)
-      expect(row.below, `${row.name}: nothing below its box`).toBeLessThanOrEqual(1)
-      expect(row.beside, `${row.name}: nothing beside its box`).toBeLessThanOrEqual(1)
-      expect(row.held, `${row.name}: the row holds all it has`).toBe(true)
-      // One control tall at the least, and as tall as its lines beyond that.
-      expect(row.height, `${row.name}`).toBeGreaterThanOrEqual(28)
+      const at = `a ${await page.evaluate(() => window.innerWidth)}px window`
+
+      const measured = await cards.evaluateAll((all) =>
+        all.map((card) => {
+          const box = card.getBoundingClientRect()
+          const style = getComputedStyle(card)
+          const inner = {
+            left: box.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft),
+            right: box.right - parseFloat(style.borderRightWidth) - parseFloat(style.paddingRight),
+            top: box.top + parseFloat(style.borderTopWidth) + parseFloat(style.paddingTop),
+            bottom:
+              box.bottom - parseFloat(style.borderBottomWidth) - parseFloat(style.paddingBottom),
+          }
+          // Every part a card draws: the picture area, the name, each fact
+          // and the chip. Each must sit inside the card's padding.
+          const parts = [
+            ...card.querySelectorAll('.card-picture, .card-name, .card-fact, .card-chip'),
+          ]
+          const outside = parts
+            .map((part) => ({ part, r: part.getBoundingClientRect() }))
+            .filter(
+              ({ r }) =>
+                r.left < inner.left - 1 ||
+                r.right > inner.right + 1 ||
+                r.top < inner.top - 1 ||
+                r.bottom > inner.bottom + 1,
+            )
+            .map(({ part }) => part.className)
+          // A line that lost text to its clamp or its ellipsis, and whether
+          // its whole text is still in the document.
+          const cut = parts
+            .filter(
+              (part) =>
+                part.scrollWidth > part.clientWidth || part.scrollHeight > part.clientHeight,
+            )
+            .map((part) => part.className)
+          const name = card.querySelector('.card-name') as HTMLElement
+          return {
+            label: card.getAttribute('aria-label') ?? card.textContent ?? '',
+            width: box.width,
+            // The kit gives a button whose descendant's first child is an
+            // svg - the picture area's glyph - a small left padding that
+            // outranks a class; the card restates its own (issue 274).
+            edges: [style.paddingLeft, style.paddingRight],
+            outside,
+            cut,
+            // Whatever the card holds, words or not.
+            held: card.scrollHeight <= card.clientHeight && card.scrollWidth <= card.clientWidth,
+            nameText: name.textContent ?? '',
+            nameLines: Math.round(
+              name.clientHeight / parseFloat(getComputedStyle(name).lineHeight),
+            ),
+            nameClamped: name.scrollHeight > name.clientHeight + 1,
+          }
+        }),
+      )
+      // The window is the window, however long a name: the shell's one
+      // column once took the unbroken name's width as its own, and the page
+      // scrolled sideways (A7-05).
+      const sideways = await page.evaluate(() => ({
+        scroll: document.documentElement.scrollWidth,
+        client: document.documentElement.clientWidth,
+      }))
+      expect(sideways.scroll, `${at}: the page does not scroll sideways`).toBeLessThanOrEqual(
+        sideways.client,
+      )
+      const minimum = await page.evaluate(
+        () =>
+          parseFloat(
+            getComputedStyle(document.documentElement).getPropertyValue('--card-min-width'),
+          ) * parseFloat(getComputedStyle(document.documentElement).fontSize),
+      )
+      for (const card of measured) {
+        expect(card.edges, `${at}, ${card.label}: its own padding on both sides`).toEqual([
+          '12px',
+          '12px',
+        ])
+        expect(card.outside, `${at}, ${card.label}: nothing outside the card`).toEqual([])
+        expect(card.held, `${at}, ${card.label}: the card holds all it has`).toBe(true)
+        expect(
+          card.nameLines,
+          `${at}, ${card.label}: the name on two lines at most`,
+        ).toBeLessThanOrEqual(2)
+        // One grid of one card: every card as wide as the first, and never
+        // narrower than the token.
+        expect(card.width, `${at}, ${card.label}: as wide as the others`).toBeCloseTo(
+          measured[0].width,
+          0,
+        )
+        expect(
+          card.width,
+          `${at}, ${card.label}: at --card-min-width at least`,
+        ).toBeGreaterThanOrEqual(minimum - 0.5)
+      }
+      const named = (name: string): (typeof measured)[number] | undefined =>
+        measured.find((card) => card.label === `Open ${name}`)
+      // The card this test is about is one whose name has to be clamped, so
+      // it says so if this one was not; and the clamp keeps every letter in
+      // the document. A name that fits is never broken to make room.
+      expect(named(unbroken)?.nameClamped, `${at}: the unbroken name is clamped`).toBe(true)
+      expect(named(unbroken)?.nameText, `${at}: the whole name is in the document`).toBe(unbroken)
+      expect(named('Short')?.nameLines, `${at}: a short name is on one line`).toBe(1)
+      expect(named('Short')?.cut, `${at}: nothing of a short card is cut`).toEqual([])
     }
-    // One under the other, none over another.
-    const down = [...measured].sort((a, b) => a.top - b.top)
-    for (let at = 1; at < down.length; at += 1)
-      expect(
-        down[at].top,
-        `${down[at].name} starts where the row above it ends`,
-      ).toBeGreaterThanOrEqual(down[at - 1].bottom - 1)
-    // And the sample cities, which are there with or without an engine,
-    // are under the last row.
+
+    // And the sample cities' heading, which is there with or without an
+    // engine, is under the last card.
+    const last = await cards.last().evaluate((el) => el.getBoundingClientRect().bottom)
     const after = await page
       .getByRole('heading', { level: 2, name: 'Sample cities' })
       .evaluate((el) => el.getBoundingClientRect().top)
-    expect(after, 'the heading after the list is under it').toBeGreaterThanOrEqual(
-      down[down.length - 1].bottom,
-    )
+    expect(after, 'the heading after the grid is under it').toBeGreaterThanOrEqual(last)
+  })
+})
+
+test('with no projects the New project card keeps its slot, and the quiet line its place', async () => {
+  // ADR-047: "Your projects" with none holds the New project card in its
+  // first slot and the quiet line beside it, where the projects will go.
+  // Where only one card fits to a row - a zoomed window, a reflow at 320 -
+  // there is nothing beside it, and the line goes under the card, which
+  // stays as wide as the row as every card is. Emulated widths, since the
+  // window will not go below 640: the column is 608 at 640 (two cards to a
+  // row) and 368 at 400 (one).
+  await withApp(async (page) => {
+    const list = page.getByRole('list', { name: 'Projects' })
+    await expect(list.getByRole('button')).toHaveCount(1)
+    await expect(
+      page.getByText('Projects you make appear here, most recently opened first.', {
+        exact: true,
+      }),
+    ).toBeVisible()
+    for (const [width, beside] of [
+      [640, true],
+      [400, false],
+    ] as const) {
+      await page.setViewportSize({ width, height: 720 })
+      await expect
+        .poll(() => page.evaluate(() => window.innerWidth), { timeout: 10_000 })
+        .toBe(width)
+      const m = await page.evaluate(() => {
+        const wrap = document.querySelector('.projects') as HTMLElement
+        const box = (el: Element): { left: number; right: number; top: number; bottom: number } => {
+          const r = el.getBoundingClientRect()
+          return { left: r.left, right: r.right, top: r.top, bottom: r.bottom }
+        }
+        const line = wrap.querySelector(':scope > .hint') as HTMLElement
+        return {
+          wrap: box(wrap),
+          card: box(wrap.querySelector('.card') as Element),
+          line: box(line),
+          // The line wraps where it must and runs out of nothing.
+          lineHeld: line.scrollWidth <= line.clientWidth,
+          tracks: getComputedStyle(wrap).gridTemplateColumns.split(' ').length,
+          gap: parseFloat(getComputedStyle(wrap).columnGap),
+        }
+      })
+      const at = `at ${width}`
+      // As wide as one track of the cards' grid: the row less its gaps,
+      // shared out - the whole row where one card fills it.
+      const track = (m.wrap.right - m.wrap.left - m.gap * (m.tracks - 1)) / m.tracks
+      expect(m.card.right - m.card.left, `${at}: the card is one track wide`).toBeCloseTo(track, 0)
+      expect(m.card.left, `${at}: the card is first`).toBeCloseTo(m.wrap.left, 0)
+      expect(m.line.right, `${at}: the line inside the region`).toBeLessThanOrEqual(
+        m.wrap.right + 1,
+      )
+      expect(m.lineHeld, `${at}: the line holds its words`).toBe(true)
+      if (beside) {
+        expect(m.tracks, `${at}: two cards fit to a row`).toBeGreaterThan(1)
+        expect(m.line.left, `${at}: the line beside the card`).toBeGreaterThanOrEqual(m.card.right)
+        expect(m.line.top, `${at}: on the card's row`).toBeLessThan(m.card.bottom)
+      } else {
+        expect(m.tracks, `${at}: one card fills the row`).toBe(1)
+        expect(m.card.right, `${at}: the card fills the row`).toBeCloseTo(m.wrap.right, 0)
+        expect(m.line.top, `${at}: the line under the card`).toBeGreaterThanOrEqual(m.card.bottom)
+        expect(m.line.left, `${at}: from the row's near edge`).toBeCloseTo(m.wrap.left, 0)
+      }
+    }
   })
 })
 

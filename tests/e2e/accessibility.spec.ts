@@ -24,7 +24,7 @@
 //
 // And the defects this pass fixed, each where a person meets it: focus
 // handed on when the control that held it goes with the press (a layout
-// run's buttons, an export's, the service day's, the Library's rows and
+// run's buttons, an export's, the service day's, the Library's feed rows and
 // Settings' "Use the default"), a confirmation's Cancel holding focus while
 // the action runs, an explanation that Escape dismisses, the colour
 // picker's sliders showing the app's focus ring, and a kit button's
@@ -53,6 +53,7 @@ import {
   addedFeed,
   chooserAnswers,
   heading,
+  newProjectFromLibrary,
   pressWithKeyboard,
   profile,
   requests,
@@ -61,6 +62,75 @@ import {
 } from '../support/a11y'
 
 test.skip(PYTHON === null, 'no python3 or python on the PATH to run the stand-in engine')
+
+/** The quiet line beside the New project card while there are no projects (ADR-047, issue 287). */
+const QUIET_LINE = 'Projects you make appear here, most recently opened first.'
+
+/**
+ * Every picture area on the front door is empty in this half of issue 287
+ * (ADR-047, as of 6 Oct 2026): one glyph at 24px - the `train`, or the New
+ * project card's plus - hidden from assistive technology, with nothing a
+ * screen reader is given a name for, on the sunken surface in both themes,
+ * the train in --text-faint and the plus in the accent. A glyph given a
+ * label would be an image in the tree, and would change the New project
+ * card's name, which is its words alone.
+ */
+async function expectEmptyPictures(page: Page, where: string, cards: number): Promise<void> {
+  const main = page.getByRole('main')
+  const areas = main.locator('.card-picture')
+  await expect(areas, `${where}: a picture area on every card`).toHaveCount(cards)
+  await expect(
+    main.locator('.cards').getByRole('img'),
+    `${where}: no image in the tree`,
+  ).toHaveCount(0)
+  await expect(
+    page.getByRole('list', { name: 'Projects' }).getByRole('button').first(),
+  ).toHaveAccessibleName('New project')
+  for (const scheme of ['dark', 'light'] as const) {
+    await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' })
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.getAttribute('data-theme')))
+      .toBe(scheme === 'dark' ? null : 'sepia')
+    const want = {
+      sunken: await tokenRgb(page, '--surface-sunken'),
+      faint: await tokenRgb(page, '--text-faint'),
+      accent: await tokenRgb(page, '--accent'),
+    }
+    const seen = await areas.evaluateAll((all) =>
+      all.map((area) => {
+        const glyphs = [...area.children]
+        const glyph = glyphs[0]
+        return {
+          create: area.closest('.card-new') !== null,
+          children: glyphs.length,
+          glyph: glyph?.matches('.icon.icon-24') ?? false,
+          hidden: glyph?.getAttribute('aria-hidden') === 'true',
+          named: area.querySelectorAll('[aria-label], [role], img, [alt]').length,
+          ground: getComputedStyle(area).backgroundColor,
+          ink: glyph === undefined ? 'missing' : getComputedStyle(glyph).color,
+        }
+      }),
+    )
+    for (const [at, one] of seen.entries()) {
+      const here = `${where} (${scheme}), picture area ${at + 1}`
+      expect(
+        { children: one.children, glyph: one.glyph, hidden: one.hidden, named: one.named },
+        here,
+      ).toEqual({ children: 1, glyph: true, hidden: true, named: 0 })
+      expect(one.ground, `${here}: the sunken surface`).toBe(want.sunken)
+      expect(one.ink, `${here}: the glyph's colour`).toBe(one.create ? want.accent : want.faint)
+      expect(
+        contrast(one.ink, one.ground),
+        `${here}: ${one.ink} on ${one.ground}`,
+      ).toBeGreaterThanOrEqual(one.create ? 3 : 4.5)
+    }
+  }
+  // Back to Night, as the session began.
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' })
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.getAttribute('data-theme')))
+    .toBe(null)
+}
 
 // ---------------------------------------------------------------------------
 
@@ -78,7 +148,15 @@ test('the Library, its empty state and its three dialogs', async () => {
       page.getByText('Legible Cities draws a transit network', { exact: false }),
     ).toBeVisible()
     await expect(page.getByRole('listitem', { name: 'Metro de Prueba' })).toBeVisible()
+    // "Your projects" with none (ADR-047): the New project card alone, the
+    // quiet line beside it once, and the stand-in's two sample cities, every
+    // picture area empty.
+    const projects = page.getByRole('list', { name: 'Projects' })
+    await expect(projects.getByRole('button')).toHaveCount(1)
+    await expect(page.getByRole('list', { name: 'Presets' }).getByRole('button')).toHaveCount(2)
+    await expect(page.getByText(QUIET_LINE, { exact: true })).toHaveCount(1)
     await sweep(page, 'Library, empty')
+    await expectEmptyPictures(page, 'Library, empty', 3)
 
     // The new project sheet, on a listed feed.
     await page.getByRole('button', { name: 'New project' }).click()
@@ -115,15 +193,22 @@ test('the Library, its empty state and its three dialogs', async () => {
     await confirm.getByRole('button', { name: 'Cancel' }).click()
     await expect(confirm).toBeHidden()
 
-    // A project made from the empty state: the button that opened the
-    // dialog goes with the empty state, and focus lands on the new row.
-    const fromEmpty = page.locator('.empty').getByRole('button', { name: 'New project' })
-    await pressWithKeyboard(fromEmpty)
+    // A project made from the New project card: the card keeps its first
+    // slot (ADR-047), so the sheet hands focus back to it as a dialog does
+    // to its opener, and the new project's card is the one after it.
+    const fromCard = projects.getByRole('button', { name: 'New project' })
+    await pressWithKeyboard(fromCard)
     const dialog = page.getByRole('dialog', { name: 'New project' })
     await dialog.getByLabel('Name', { exact: true }).fill('Los Angeles')
     await pressWithKeyboard(dialog.getByRole('button', { name: 'Create', exact: true }))
-    await expect(page.getByRole('button', { name: 'Open Los Angeles' })).toBeFocused()
+    await expect(projects.getByRole('button', { name: 'Open Los Angeles' })).toBeVisible()
+    await expect(fromCard).toBeFocused()
+    await page.keyboard.press('Tab')
+    await expect(projects.getByRole('button', { name: 'Open Los Angeles' })).toBeFocused()
+    // Once there is a project the list says both things itself.
+    await expect(page.getByText(QUIET_LINE)).toHaveCount(0)
     await sweep(page, 'Library, with a project')
+    await expectEmptyPictures(page, 'Library, with a project', 4)
 
     // A removed feed takes its row. With another added feed left, focus
     // goes to the added feeds' heading; the last one takes its region with
@@ -203,7 +288,7 @@ test('the new project sheet while its add runs: the progress line and Cancel the
   test.setTimeout(180_000)
   const p = profile({ add_delay_ms: 6000 })
   await withApp(p, async (page) => {
-    await page.locator('.empty').getByRole('button', { name: 'New project' }).click()
+    await page.getByRole('button', { name: 'New project' }).click()
     const sheet = page.getByRole('dialog', { name: 'New project' })
     await sheet.getByRole('radio', { name: 'A feed at an address' }).check()
     await sheet.getByLabel('Feed address').fill('https://agency.example/gtfs.zip')
@@ -437,21 +522,18 @@ test('the mismatch dialog', async () => {
 // (issue 143). Measured on the element, in both themes, because that is
 // where the cascade is decided.
 //
-// The button is found through `.empty`, not by its name: the Library draws
-// a second "New project" in the toolbar and hides the empty state's one
-// while there are projects, so a bare name could resolve to the button
-// that never had this defect. And `seen.label` is the host's colour, not
-// the label text's: the kit styles `button, fig-button` together, so the
-// host and the inner button carry the same ink and the slotted icon
-// inherits it. If the kit ever moved the ink inside its shadow root, this
-// test would fail for a reason that has nothing to do with `.empty`.
+// Issue 143 was the Library's empty state, whose `.empty .icon` caught the
+// icon in its New project button. Since ADR-047 the empty state holds no
+// button - New project is a card - so the filled button measured is the
+// first one with an icon a person meets after it, cell 02's "Lay out", and
+// the rule's other half is still measured where it lives: it reaches the
+// empty state's own glyph. `seen.label` is the host's colour, not the label
+// text's: the kit styles `button, fig-button` together, so the host and the
+// inner button carry the same ink and the slotted icon inherits it.
 test('an icon in a filled button is the button’s ink, in both themes', async () => {
   const p = profile()
   await withApp(p, async (page) => {
-    const empty = page.locator('.empty')
-    const button = empty.locator('fig-button')
-    await expect(button).toBeVisible({ timeout: 20_000 })
-    for (const scheme of ['dark', 'light'] as const) {
+    const themed = async (scheme: 'dark' | 'light'): Promise<void> => {
       await page.emulateMedia({ colorScheme: scheme })
       // The theme is not a media query: theme.ts listens for the change and
       // writes data-theme, so the attribute lands a turn after emulateMedia
@@ -460,35 +542,50 @@ test('an icon in a filled button is the button’s ink, in both themes', async (
       await expect
         .poll(() => page.evaluate(() => document.documentElement.getAttribute('data-theme')))
         .toBe(scheme === 'dark' ? null : 'sepia')
+    }
 
-      const seen = await empty.evaluate((block) => {
-        const host = block.querySelector('fig-button')
-        const icon = host?.querySelector('.icon') ?? null
-        const glyph = block.querySelector(':scope > .icon')
-        const style = (el: Element | null): string =>
-          el === null ? 'missing' : getComputedStyle(el).color
+    const empty = page.locator('.empty')
+    await expect(empty).toBeVisible({ timeout: 20_000 })
+    // The empty state holds no button of its own now (ADR-047).
+    await expect(empty.locator('fig-button, button')).toHaveCount(0)
+    for (const scheme of ['dark', 'light'] as const) {
+      await themed(scheme)
+      const seen = await empty.evaluate((block) => ({
+        glyph: (() => {
+          const glyph = block.querySelector(':scope > .icon')
+          return glyph === null ? 'missing' : getComputedStyle(glyph).color
+        })(),
+        muted: getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim(),
+      }))
+      // The selector, not the appearance - the glyph is the mark now, and
+      // the mark draws from --line-* and takes no colour from here
+      // (ADR-044). The rule stays for the day an empty state holds a
+      // monochrome one.
+      expect(seen.glyph, `${scheme}: the empty state's own glyph`).toBe(rgb(seen.muted))
+    }
+
+    await newProjectFromLibrary(page, 'Los Angeles')
+    await page.getByRole('button', { name: 'Open Los Angeles' }).click()
+    await expect(heading(page)).toHaveText('Los Angeles')
+    const host = page.locator('fig-button[variant="primary"]', { hasText: /^\s*Lay out\s*$/ })
+    await expect(host).toBeVisible()
+    for (const scheme of ['dark', 'light'] as const) {
+      await themed(scheme)
+      const seen = await host.evaluate((el) => {
+        const icon = el.querySelector('.icon')
         return {
-          label: host === null ? 'missing' : getComputedStyle(host).color,
-          icon: style(icon),
-          glyph: style(glyph),
-          muted: getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim(),
-          fill: host === null ? 'missing' : getComputedStyle(host).backgroundColor,
+          label: getComputedStyle(el).color,
+          icon: icon === null ? 'missing' : getComputedStyle(icon).color,
+          fill: getComputedStyle(el).backgroundColor,
         }
       })
-
       expect(seen.icon, `${scheme}: the icon in the button`).toBe(seen.label)
-      // And the pair it now shares clears the 3.0 a glyph needs, so a later
+      // And the pair it shares clears the 3.0 a glyph needs, so a later
       // change to --on-accent or --accent cannot quietly sink it.
       expect(
         contrast(seen.icon, seen.fill),
         `${scheme}: ${seen.icon} on ${seen.fill}`,
       ).toBeGreaterThanOrEqual(3)
-      // The other half of the rule: it still reaches the block's own glyph,
-      // so narrowing the selector cannot have narrowed it away. This is the
-      // selector, not the appearance - the glyph is the mark now, and the
-      // mark draws from --line-* and takes no colour from here (ADR-044).
-      // The rule stays for the day an empty state holds a monochrome one.
-      expect(seen.glyph, `${scheme}: the empty state's own glyph`).toBe(rgb(seen.muted))
     }
   })
 })

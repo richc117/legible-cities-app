@@ -210,9 +210,10 @@
 }
 
 /* The front door's regions (A5.6-01): the projects, the sample cities and
-   the feeds a person added, each a section with its own heading over a
-   dense list. A feed's row carries its actions at the end rather than
-   being a button itself. */
+   the feeds a person added, each a section with its own heading. The first
+   two are one grid of one kind of card (ADR-047); the feeds are a dense
+   list, whose row carries its actions at the end rather than being a
+   button itself. */
 
 /* The kit's base stylesheet pads every `section` for its own panels; the
    front door's regions sit on the page's column like the rest of it. */
@@ -228,14 +229,17 @@
   margin: var(--space-4-6) 0 var(--space-4-3);
 }
 
-/* The sample cities (A5.6-02): a gallery of cards, as many to a row as fit
-   at `--card-min-width`, each one button. The name at the strong weight in
-   --text and the facts beneath it at the small UI size in --text-muted,
-   one to a line, so a card reads top to bottom as its accessible name
-   does. A card's ground is the raised surface, its edge a --border line, and
-   the pointer and focus treat it as they treat a list row. */
+/* The front door's cards (A5.6-02, ADR-047): "Your projects" and "Sample
+   cities" are one gallery of one card, as many to a row as fit at
+   `--card-min-width`, each one native button (`Card.tsx`). The picture area
+   first, then the name at the strong weight in --text, then the facts at the
+   small UI size in --text-muted, one to a line, so a card reads top to
+   bottom as its accessible name does. A card's ground is the raised
+   surface, its edge a --border line, and the pointer and focus treat it as
+   they treat a list row. Nothing on a card moves: no transition, and no
+   shimmer in an empty picture area, which is a state that will not load. */
 
-.sample-cards {
+.cards {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -244,10 +248,19 @@
   gap: var(--space-4-3);
 }
 
-.sample-card {
+/* A grid item is at least as wide as its content by default, and a name
+   with nowhere to break would make its card wider than the track. */
+.cards > li {
+  min-width: 0;
+}
+
+/* The kit centres what a button holds, both ways; a card reads from its
+   top and its near edge, its picture area and lines as wide as it is. */
+.card {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: stretch;
+  justify-content: flex-start;
   gap: var(--space-2-2);
   width: 100%;
   height: 100%;
@@ -263,18 +276,143 @@
   box-sizing: border-box;
 }
 
-.sample-card:hover {
+/* A card in a taller row keeps what it holds at its own size and leaves the
+   room at its foot, rather than squeezing a clamped name or the picture. */
+.card > * {
+  flex: none;
+}
+
+.card:hover {
   background: var(--surface-hover);
 }
 
-.sample-card-name {
+/* The kit's button rules (components.css, "Button") give a press the brand
+   fill, which a card is not, and give a button whose descendant's first
+   child is an svg - the picture area's glyph - the small left padding of an
+   icon-first button, with a selector that outranks a class. A card keeps
+   its own ground on a press and its own edge, as a row does (issue 273,
+   issue 274). */
+.card:active,
+.card:hover:active {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+button:is(.card):not([icon]):has(svg:first-child) {
+  padding-left: var(--space-4-3);
+}
+
+/* Where a picture would be: the engine's, at the ratio its drawings take in
+   the app, inside the card's own padding so no picture's ground meets the
+   card's edge. Empty, it is the sunken surface with one muted glyph,
+   centred; the New project card's plus is in the accent, since pressing it
+   makes something rather than opening it. */
+.card-picture {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 16 / 10;
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface-sunken);
+  color: var(--text-faint);
+  overflow: hidden;
+}
+
+.card-new .card-picture {
+  color: var(--accent);
+}
+
+.card-picture img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* The name, and each fact under it, starts a line of its own and may wrap
+   to a second, where it is clamped. A project's progress ("finished up to
+   01 Data; not laid out yet") is wider than a card four to a row, so a fact
+   cut at one line would lose the words that matter most at the window
+   most people use. The clamp is the stylesheet's alone, so the whole text
+   stays in the document and in the card's name or description; a word with
+   nowhere to break breaks where it must, and one that fits is never broken
+   to make room. */
+.card-name,
+.card-fact {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  max-width: 100%;
+  overflow: hidden;
+  overflow-wrap: break-word;
+}
+
+.card-name {
   font-weight: var(--weight-strong);
 }
 
-.sample-card-fact {
+.card-facts {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2-2);
+  min-width: 0;
   font-size: var(--font-ui-small);
   line-height: var(--line-ui-tight);
   color: var(--text-muted);
+}
+
+/* A status, such as whether a sample is downloaded: a small chip rather
+   than a line of its own (ADR-047), --text-muted on the sunken surface, on
+   one line and cut with an ellipsis if a card were ever narrower than it. */
+.card-chip {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding: 0 var(--space-4-2);
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-sunken);
+  font-size: var(--font-ui-smaller);
+  line-height: var(--line-ui-tight);
+}
+
+/* "Your projects" with none yet (ADR-047): the New project card keeps its
+   first slot, and the quiet line sits beside it, where the projects will
+   appear. The wrapper is then the cards' own grid, so that card is as wide
+   as every other, and the list takes its first track; with projects the
+   wrapper is a plain block and the list is the grid. The wrapper is a
+   container so the line can tell how many cards fit to a row. */
+.projects {
+  container-type: inline-size;
+}
+
+.projects-none {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--card-min-width), 1fr));
+  gap: var(--space-4-3);
+  align-items: center;
+}
+
+.projects-none > .hint {
+  grid-column: 2 / -1;
+  margin: 0;
+}
+
+/* Where one card fills the row - a zoomed window, or a reflow at 320 - the
+   line goes under the card. Beside it, `2 / -1` would name a track that is
+   not there, and the grid would make one, squeezing the card to its least
+   width and the line to a word a line. The figure is two cards and the gap
+   between them, 2 × --card-min-width + --space-4-3, since a container query
+   cannot read a token. */
+@container (width < 28.75rem) {
+  .projects-none > .hint {
+    grid-column: 1 / -1;
+  }
 }
 
 /* A feed's facts stay beside its name, and its actions go to the row's

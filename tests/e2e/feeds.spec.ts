@@ -139,8 +139,8 @@ async function chooserAnswers(app: ElectronApplication, path: string | null): Pr
 
 /**
  * The New project sheet (A5.6-05), opened on a source: a listed feed, a zip
- * or an address. The toolbar's button when there are projects, the empty
- * state's when there are none; either opens the same sheet.
+ * or an address, from the New project card, which is first under "Your
+ * projects" with projects or without (ADR-047).
  */
 async function openSheet(page: Page, source: 'feed' | 'zip' | 'address'): Promise<Locator> {
   await page.getByRole('button', { name: 'New project' }).first().click()
@@ -169,10 +169,13 @@ test('lists the presets and lets a project start from one, in two steps from emp
     ).toHaveCount(0)
     await expect(page.getByRole('list', { name: 'Added' })).toHaveCount(0)
 
-    // Step one: the empty state's action. Step two: Create.
+    // Step one: the New project card under the introduction. Step two: Create.
     const empty = page.locator('.empty')
     await expect(empty.getByRole('status')).toContainText(/start from a sample city below/i)
-    await empty.getByRole('button', { name: 'New project' }).click()
+    await page
+      .getByRole('region', { name: 'Your projects' })
+      .getByRole('button', { name: 'New project' })
+      .click()
     const dialog = page.getByRole('dialog', { name: 'New project' })
     await dialog.getByLabel('Name', { exact: true }).fill('Los Angeles')
     await expect(dialog.getByRole('combobox', { name: 'Feed' })).toHaveValue('la-metro-rail')
@@ -198,29 +201,37 @@ test('lists the presets and lets a project start from one, in two steps from emp
   })
 })
 
-// The front door (A5.6-01): a first start is the sample cities under one
-// sentence saying what the app is; a start with a project is the projects
-// list, with the samples still below it. One first-level heading, and each
-// region named by its own.
-test('the front door shows the samples first, then the projects above them', async () => {
+// The front door (A5.6-01, ADR-047): a first start is one sentence saying
+// what the app is, then "Your projects" holding the New project card alone
+// with a quiet line beside it, then the sample cities; a start with a
+// project is the same without the sentence and the line, the project's card
+// after New project. One first-level heading, and each region named by its
+// own.
+test('the front door shows Your projects with New project alone, then the samples', async () => {
   const engineHome = home()
   await withApp(engineHome, async (page) => {
     const projects = page.getByRole('region', { name: 'Your projects' })
     const samples = page.getByRole('region', { name: 'Sample cities' })
+    const quiet = 'Projects you make appear here, most recently opened first.'
     await expect(samples.getByRole('list', { name: 'Presets' })).toBeVisible()
-    await expect(projects).toHaveCount(0)
+    await expect(projects.getByRole('list', { name: 'Projects' }).getByRole('button')).toHaveCount(
+      1,
+    )
+    await expect(projects.getByText(quiet, { exact: true })).toHaveCount(1)
     await expect(page.locator('.empty').getByRole('status')).toContainText(
       'Legible Cities draws a transit network as a schematic map',
     )
     await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1)
 
-    await page.locator('.empty').getByRole('button', { name: 'New project' }).click()
+    await projects.getByRole('button', { name: 'New project' }).click()
     const dialog = page.getByRole('dialog', { name: 'New project' })
     await dialog.getByLabel('Name', { exact: true }).fill('Los Angeles')
     await dialog.getByRole('button', { name: 'Create', exact: true }).click()
     await expect(projects.getByRole('button', { name: 'Open Los Angeles' })).toBeVisible()
     await expect(samples).toBeVisible()
     await expect(page.locator('.empty')).toHaveCount(0)
+    // Once there is a project the list says both things itself.
+    await expect(page.getByText(quiet)).toHaveCount(0)
     await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1)
     // The projects first, in the document and so in reading order.
     const projectsFirst = await page.evaluate(() => {
@@ -245,10 +256,10 @@ test('every preset is a card named by its facts, and nothing is fetched to draw 
     // A preset cannot be removed, and nothing on its card says it can (A5.6-06).
     await expect(cards.getByRole('button', { name: /Remove/ })).toHaveCount(0)
     await expect(feedRow(page, 'LA Metro Rail').getByRole('button')).toHaveAccessibleName(
-      'LA Metro Rail, Los Angeles · Metro Rail, keeps every mode, downloaded',
+      'LA Metro Rail, Los Angeles · Metro Rail, downloaded',
     )
     await expect(feedRow(page, 'Mexico City Metro').getByRole('button')).toHaveAccessibleName(
-      /^Mexico City Metro, .*keeps subway, not downloaded yet$/,
+      'Mexico City Metro, Mexico City · Metro, not downloaded yet',
     )
     // Drawn from the list alone: no feed was inspected, downloaded or laid
     // out. Read after the screen has been left and opened again, so its
@@ -782,7 +793,7 @@ test('without an engine the New project sheet takes a typed key, as before', asy
     await expect(page.getByRole('region', { name: 'Sample cities' })).toContainText(
       'listed once the engine is ready',
     )
-    await page.locator('.empty').getByRole('button', { name: 'New project' }).click()
+    await page.getByRole('button', { name: 'New project' }).click()
     const dialog = page.getByRole('dialog', { name: 'New project' })
     await expect(dialog.getByLabel('Feed key')).toHaveValue('la-metro-rail')
     await expect(dialog).toContainText('not ready to list the feeds')

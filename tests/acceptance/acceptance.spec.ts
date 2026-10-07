@@ -883,16 +883,28 @@ test('a release, installed, through docs/acceptance.md', async () => {
 
       const heading = window.getByRole('heading', { level: 1 })
       await log.soft('the Library heading', () => expect(heading).toHaveText('Library'))
-      await log.soft('no Your projects and no Your feeds yet', async () => {
-        await expect(window.getByRole('heading', { name: 'Your projects' })).toHaveCount(0)
+      await log.soft('Your projects holding New project alone, and no Your feeds yet', async () => {
+        await expect(window.getByRole('heading', { name: 'Your projects' })).toBeVisible()
+        // The New project card alone, the quiet line beside it (ADR-047).
+        const projects = window.getByRole('list', { name: 'Projects' }).getByRole('button')
+        await expect(projects).toHaveCount(1)
+        await expect(projects.first()).toHaveAccessibleName('New project')
+        await expect(
+          window.getByText('Projects you make appear here, most recently opened first.', {
+            exact: true,
+          }),
+        ).toBeVisible()
         await expect(window.getByRole('heading', { name: 'Your feeds' })).toHaveCount(0)
       })
       const empty = window.locator('.empty')
-      await log.soft('the empty state', async () => {
+      await log.soft('the introduction', async () => {
         await expect(empty.getByRole('status')).toHaveText(
           'Legible Cities draws a transit network as a schematic map and plays a day of its service on it: start from a sample city below, or add a feed of your own.',
         )
-        await expect(empty.getByRole('button', { name: 'New project' })).toBeVisible()
+        // Its action is the New project card: the one New project there is.
+        await expect(
+          window.getByRole('main').getByRole('button', { name: 'New project' }),
+        ).toHaveCount(1)
       })
 
       // About thirty seconds without pressing anything, and the first-run
@@ -919,12 +931,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
           const row = rows.nth(i)
           const words = oneLine(await row.innerText())
           const name = (await row.getAttribute('aria-label')) ?? ''
-          if (
-            !words.includes('·') ||
-            !/\bkeeps /.test(words) ||
-            !words.includes('not downloaded yet')
-          )
-            wrong.push(words)
+          if (!words.includes('·') || !words.includes('not downloaded yet')) wrong.push(words)
           // One card, one button, named by its name and its facts (A5.6-02).
           const buttons = row.getByRole('button')
           if (
@@ -1031,7 +1038,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
         .getByRole('button')
       await log.soft('the card', () =>
         expect(card).toHaveAccessibleName(
-          /^LA Metro Rail, Los Angeles · Metro Rail, keeps .+, not downloaded yet$/,
+          'LA Metro Rail, Los Angeles · Metro Rail, not downloaded yet',
         ),
       )
       const mark = (await saidSoFar(window)).length
@@ -2540,10 +2547,13 @@ test('a release, installed, through docs/acceptance.md', async () => {
       if ((await projectsNow(window)).some((p) => p.name === LA)) {
         await log.soft('Your projects, and the card downloaded', async () => {
           await expect(window.getByRole('heading', { name: 'Your projects' })).toBeVisible()
+          // New project first, then the project's card: where it runs and
+          // how far it has got (ADR-047).
+          await expect(
+            window.getByRole('list', { name: 'Projects' }).getByRole('button').first(),
+          ).toHaveAccessibleName('New project')
           const entry = window.getByRole('button', { name: `Open ${LA}` })
-          await expect(entry).toContainText('Feed la-metro-rail')
-          await expect(entry).toContainText(`Service day ${session.laDay ?? ''}`)
-          await expect(entry).toContainText('Opened ')
+          await expect(entry).toContainText('Los Angeles · Metro Rail')
           await expect(entry).toContainText('finished up to 05 Lines')
           await expect(
             window
@@ -2890,7 +2900,9 @@ test('a release, installed, through docs/acceptance.md', async () => {
       await log.soft('Your projects, newest opened first, and Your feeds', async () => {
         const list = reopened.getByRole('list', { name: 'Projects' })
         await expect(list).toBeVisible({ timeout: SHORT_MS })
-        const rows = list.getByRole('button')
+        // New project first, then the projects' cards (ADR-047).
+        await expect(list.getByRole('button').first()).toHaveAccessibleName('New project')
+        const rows = list.getByRole('button', { name: /^Open / })
         const names = await rows.evaluateAll((all) =>
           all.map((row) => row.getAttribute('aria-label') ?? ''),
         )
@@ -2898,7 +2910,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
         for (const row of await rows.all()) {
           await expect(row).toContainText('finished up to 05 Lines')
         }
-        await expect(rows.nth(1)).toContainText(`Service day ${session.laDay ?? ''}`)
+        await expect(rows.nth(1)).toContainText('Los Angeles · Metro Rail')
         if (session.caltrainFeed !== null) {
           await expect(
             reopened
@@ -2992,7 +3004,10 @@ test('a release, installed, through docs/acceptance.md', async () => {
       await toLibrary(reopened)
       await log.soft('the front door lists it first', () =>
         expect(
-          reopened.getByRole('list', { name: 'Projects' }).getByRole('button').first(),
+          reopened
+            .getByRole('list', { name: 'Projects' })
+            .getByRole('button', { name: /^Open / })
+            .first(),
         ).toHaveAccessibleName(`Open ${RENAMED}`),
       )
       log.notAutomated(
