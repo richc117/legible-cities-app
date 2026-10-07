@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   HAND_OVER,
+  TRACE_LIMIT,
   WalkTrace,
   endMessage,
   handOver,
@@ -135,6 +136,31 @@ describe('the hand-over at a frame', () => {
     expect(result.waited).toBeLessThan(HAND_OVER.deadlineMs)
   })
 
+  it('names the control a later ask put focus on when that is a different one', async () => {
+    // The control first asked for went away (a cell closed, a panel
+    // replaced) and the second ask found the next one wanted after the
+    // frame: the document then reads focus on that one, and the line has to
+    // say it was that one that was asked for.
+    const OTHER = 'fig-button "04 Style"'
+    // Focus lands on the new target only once the second ask has been made.
+    const w: World = world(() => (w.asks.includes(true) ? read('stop', OTHER, true) : nowhere()), {
+      reasked: OTHER,
+    })
+    const result = await handOver(w.io, FRAME)
+    expect(result.kind).toBe('landed')
+    expect(w.asks).toEqual([false, true])
+    expect(result.line).toContain(`asked for ${OTHER}, reached ${OTHER}`)
+    expect(result.line).not.toContain(ASKED)
+  })
+
+  it('names the control last asked for when it gives up', async () => {
+    const OTHER = 'fig-button "04 Style"'
+    const w = world(elsewhere, { reasked: OTHER })
+    const result = await handOver(w.io, FRAME)
+    expect(result.kind).toBe('lapsed')
+    expect(result.line).toContain(`asked for ${OTHER}, reached nothing`)
+  })
+
   it('gives up at its deadline and says it never reached the control', async () => {
     const w = world(elsewhere)
     const result = await handOver(w.io, FRAME)
@@ -208,10 +234,54 @@ describe('the trace of the walk', () => {
     const trace = new WalkTrace(ticking(), 5)
     for (let i = 1; i <= 8; i++) trace.press(`stop ${i}`)
     const lines = trace.text().split('\n')
-    expect(lines[0]).toBe('(the first 3 presses are not shown)')
+    expect(lines[0]).toBe('(3 earlier presses are not shown; the hand-over lines are always kept)')
     expect(lines).toHaveLength(6)
     expect(lines[1]).toMatch(/^#4 /)
     expect(lines[5]).toMatch(/^#8 /)
+  })
+
+  it('keeps the hand-over line however long the walk goes on after it', () => {
+    // A walk whose focus is stuck makes hundreds of presses in its 20
+    // seconds, and the oldest are let go; the hand-over's line is the one
+    // thing the trace exists to print, and it is among the oldest.
+    const trace = new WalkTrace(ticking())
+    trace.press('stop a')
+    trace.press(`frame ${FRAME}`)
+    trace.amend(`frame ${FRAME} -> asked for ${ASKED}, reached nothing, gave up after 6012 ms`)
+    for (let i = 0; i < TRACE_LIMIT + 50; i++) trace.press('same button "Rename"')
+    const lines = trace.text().split('\n')
+    expect(lines.filter((line) => line.includes('-> asked for'))).toEqual([
+      expect.stringMatching(/^#2 \+\d+ms frame /),
+    ])
+    // Bounded all the same, and the newest press is the last line.
+    expect(lines.length).toBeLessThanOrEqual(TRACE_LIMIT + 1)
+    expect(lines[lines.length - 1]).toMatch(new RegExp(`^#${TRACE_LIMIT + 52} `))
+    expect(lines[0]).toMatch(/earlier presses are not shown; the hand-over lines are always kept/)
+  })
+
+  it('stays within its bound when nothing but hand-over lines is left to let go', () => {
+    const trace = new WalkTrace(ticking(), 3)
+    for (let i = 1; i <= 6; i++) {
+      trace.press(`frame ${FRAME}`)
+      trace.amend(`hand-over ${i}`)
+    }
+    const lines = trace.text().split('\n')
+    // The oldest hand-over goes, never the newest press.
+    expect(lines).toHaveLength(4)
+    expect(lines[1]).toMatch(/hand-over 4$/)
+    expect(lines[3]).toMatch(/^#6 .*hand-over 6$/)
+  })
+
+  it('keeps every hand-over line of a walk with several frames', () => {
+    const trace = new WalkTrace(ticking(), 6)
+    for (let frames = 0; frames < 3; frames++) {
+      trace.press(`frame ${FRAME}`)
+      trace.amend(`frame ${FRAME} -> asked for ${ASKED}, reached ${ASKED} (frame ${frames})`)
+      for (let i = 0; i < 5; i++) trace.press('stop button')
+    }
+    const text = trace.text()
+    for (const frames of [0, 1, 2]) expect(text).toContain(`(frame ${frames})`)
+    expect(text.split('\n').filter((line) => !line.startsWith('('))).toHaveLength(6)
   })
 })
 

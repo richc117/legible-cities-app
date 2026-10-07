@@ -45,9 +45,17 @@ export const TRACE_LIMIT = 400
  * the press that matters in a miss is the one before the control that was
  * skipped, which can be anywhere in the walk - at the frame, or at the
  * wrap from the end of the document to its start.
+ *
+ * **A hand-over's line is never let go.** Past the bound the oldest press is
+ * dropped, and in a walk whose focus is stuck (hundreds of presses in its 20
+ * seconds) a hand-over's line is among the oldest - and it is the one line
+ * this trace exists to print. So the oldest press that is not a hand-over
+ * goes first; the numbers skip where presses were let go. There are few
+ * hand-overs, since each is a frame and takes up to six seconds, but if the
+ * bound is reached with nothing else to drop the oldest of them goes.
  */
 export class WalkTrace {
-  private readonly entries: string[] = []
+  private readonly entries: { text: string; handOver: boolean }[] = []
   private pressed = 0
   private readonly began: number
   private readonly now: () => number
@@ -62,8 +70,16 @@ export class WalkTrace {
   /** One press and what the document said of it. */
   press(reading: string): void {
     this.pressed += 1
-    this.entries.push(`#${this.pressed} +${this.now() - this.began}ms ${reading}`)
-    if (this.entries.length > this.limit) this.entries.shift()
+    this.entries.push({
+      text: `#${this.pressed} +${this.now() - this.began}ms ${reading}`,
+      handOver: false,
+    })
+    if (this.entries.length > this.limit) {
+      const oldest = this.entries.findIndex(
+        (entry, i) => !entry.handOver && i < this.entries.length - 1,
+      )
+      this.entries.splice(oldest === -1 ? 0 : oldest, 1)
+    }
   }
 
   /**
@@ -72,21 +88,25 @@ export class WalkTrace {
    * hand-over's own outcome. The press keeps its number and its time.
    */
   amend(reading: string): void {
-    const last = this.entries.length - 1
-    if (last < 0) return
-    const head = /^#\d+ \+\d+ms /.exec(this.entries[last])?.[0] ?? ''
-    this.entries[last] = `${head}${reading}`
+    const last = this.entries[this.entries.length - 1]
+    if (last === undefined) return
+    const head = /^#\d+ \+\d+ms /.exec(last.text)?.[0] ?? ''
+    last.text = `${head}${reading}`
+    last.handOver = true
   }
 
   get presses(): number {
     return this.pressed
   }
 
-  /** The walk, one press to a line, with a note when the first of it was let go. */
+  /** The walk, one press to a line, with a note when some of it was let go. */
   text(): string {
     const letGo = this.pressed - this.entries.length
-    const note = letGo > 0 ? [`(the first ${letGo} presses are not shown)`] : []
-    return [...note, ...this.entries].join('\n')
+    const note =
+      letGo > 0
+        ? [`(${letGo} earlier presses are not shown; the hand-over lines are always kept)`]
+        : []
+    return [...note, ...this.entries.map((entry) => entry.text)].join('\n')
   }
 }
 
@@ -198,7 +218,7 @@ export async function handOver(
   limits: HandOverLimits = HAND_OVER,
 ): Promise<HandOver> {
   const began = io.now()
-  const aimed = await io.ask(false)
+  let aimed = await io.ask(false)
   if (aimed === null)
     return { kind: 'nothing', line: `frame ${at} -> nothing after it`, waited: 0, asks: 0 }
   let asks = 1
@@ -239,6 +259,11 @@ export async function handOver(
           waited: io.now() - began,
           asks,
         }
+      // Asked again, the question can have a different answer: the control
+      // first asked for went away and the next one wanted after the frame is
+      // the one focus was put on, and the one `onAimed` now follows. The
+      // line names the one asked for last.
+      aimed = again
       asks += 1
       askedAt = io.now()
     } else await io.pause(limits.pollMs)
