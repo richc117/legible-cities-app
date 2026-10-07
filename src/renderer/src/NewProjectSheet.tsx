@@ -23,7 +23,8 @@ import { useSnapshot } from './useSnapshot'
 // - The name: a listed feed's own name as soon as it is chosen; for a zip
 //   or an address, the feed's own name once the engine has added it (its
 //   first agency's, the engine's default). A name a person has typed is
-//   theirs and is never overwritten by either.
+//   theirs and is never overwritten by either, and neither is written into a
+//   field a person already has in hand, typed in or not (issue 263).
 // - The mode and the operator: a listed feed's registry entry, so a sample
 //   draws as the engine's site draws it (A2-02) - including an entry that
 //   names its operator, such as Mexico City's, which eight operators share.
@@ -78,6 +79,26 @@ export function filledName(current: string, edited: boolean, feedName: string | 
   return feedName
 }
 
+/**
+ * The name the feed list's arrival may write into the name field, or null to
+ * leave the field exactly as it is (issue 263).
+ *
+ * The arrival is the one write the sheet makes that nobody asked for: the
+ * engine became ready while the sheet was open. So it is made only into a
+ * field no one has touched - nothing typed in it, and not in a person's
+ * hand. In hand means focused, because focus comes before any text does: a
+ * click into the field, and a test's fill, which focuses and selects the
+ * empty field and inserts its text a moment later. A value written between
+ * the two puts the caret at its end, and what is typed next lands beside the
+ * written name ("LA Metro RailLos Angeles") instead of in place of it.
+ * `typed` alone was not enough, since it is set by the first input event and
+ * the hand is on the field before that.
+ */
+export function arrivalName(typed: boolean, held: boolean, feedName: string | null): string | null {
+  if (typed || held) return null
+  return feedName
+}
+
 type Field = 'name' | 'feed' | 'file' | 'url'
 type Messages = Partial<Record<Field, string>>
 
@@ -124,6 +145,7 @@ export default function NewProjectSheet({
   const urlRef = useRef<TextInputHandle>(null)
   const chooseRef = useRef<HTMLElement>(null)
   const ids = useId()
+  const field = (id: Field): string => `${ids}-${id}`
   const [source, setSource] = useState<Source>(start.source)
   const [feed, setFeed] = useState(() =>
     startingFeed(feeds, start.source === 'feed' ? start.feed : undefined),
@@ -220,20 +242,38 @@ export default function NewProjectSheet({
   }, [showing])
 
   // The list can arrive while the sheet is open (the engine became ready):
-  // the typed key gives way to the select, and a key the list does not hold
-  // is not sent to a feed that does not exist.
-  // The list can arrive while the sheet is open (the engine became ready):
   // the typed key gives way to the select, a key the list does not hold is
-  // not sent to a feed that does not exist, and the name follows when it
-  // has not been typed - a sheet opened while the engine was still
-  // starting had no feed name to fill. Keyed on the list alone and not on
-  // opening: at the opening render `feed` still holds the last opening's
-  // key, and acting on it then undid the feed a card or a row asked for.
+  // not sent to a feed that does not exist, and the name follows when no one
+  // has touched it - a sheet opened while the engine was still starting had
+  // no feed name to fill. Keyed on the list alone and not on opening: at the
+  // opening render `feed` still holds the last opening's key, and acting on
+  // it then undid the feed a card or a row asked for.
+  //
+  // Touched is typed in, or in hand (`arrivalName`): a test that fills the
+  // name focuses and selects the empty field and inserts its text a moment
+  // later, and a name written in between landed beside it, as would a
+  // person's own first words after a click (issue 263; the two-step showing
+  // above closed the sheet's opening and never this). The write is made
+  // here, in the turn that decides it, and not left to the kit's wrapper,
+  // which pushes state into the page in an effect of its own two tasks
+  // later (measured): a hand that arrives in between finds the name written
+  // after the check that found the field free. The wrapper then finds the
+  // page already holding the value and writes nothing.
   useEffect(() => {
     if (!dialogRef.current?.open) return
     const next = startingFeed(feeds, listed ? feed : undefined)
     setFeed(next)
-    if (source === 'feed') setName((current) => filledName(current, edited.current, nameOf(next)))
+    if (source !== 'feed') return
+    const input = document.getElementById(field('name'))
+    const filled = arrivalName(
+      edited.current,
+      input !== null && input === document.activeElement,
+      nameOf(next),
+    )
+    if (filled === null) return
+    setName(filled)
+    const host = input?.closest('fig-input-text')
+    if (host && host.getAttribute('value') !== filled) host.setAttribute('value', filled)
     // The list arriving is the change; the rest is read as it stands.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [feeds, listed])
@@ -416,7 +456,6 @@ export default function NewProjectSheet({
     if (next !== 'feed' && !edited.current) setName('')
   }
 
-  const field = (id: Field): string => `${ids}-${id}`
   // The zip's and the address's lines are alerts: the engine's refusal
   // arrives after the press, whenever the download ends. The name's and the
   // typed key's are not - a refusal there is said by moving focus into the
