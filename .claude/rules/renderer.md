@@ -114,7 +114,11 @@ it clears the element reference. Playwright's locators do not show the
 relation; read it from `Accessibility.getFullAXTree` over a DevTools
 protocol session. The kit gives every `<dialog>`
 `inset: auto`, which parks a modal in the corner unless the app's rules
-restore `inset: 0; margin: auto`. Its shadow styles need `style-src
+restore `inset: 0; margin: auto`. It styles every `[popover]` as it styles
+a dialog too (a minimum width, no edge, its own ground and shadow), so an
+auto popover restores the app's surface, edge and padding and `min-width:
+0`, and positions itself with `position-area` against its invoker, which is
+its implicit anchor (issue 284). Its shadow styles need `style-src
 'unsafe-inline'`; `script-src` stays `'self'`. Playwright emulates the
 colour scheme per page, so an end-to-end test chooses the theme with
 `page.emulateMedia`, never `nativeTheme`. A button that disables itself
