@@ -20,7 +20,7 @@ As someone reading a city's map who has somewhere to go, I want to name a start 
 
 **Acceptance Scenarios**:
 
-1. **Given** a laid-out project, **When** cell 03 is opened, **Then** after the transport there is a section headed "Trip" (an `h3`) holding the mode switch, a combobox named "Start", a combobox named "End", and the steps.
+1. **Given** a laid-out project, **When** cell 03 is opened, **Then** after the transport there is a section headed "Trip" (an `h3`) holding a combobox named "Start", a combobox named "End", and the steps, and no pressed or disabled control.
 2. **Given** Start has focus, **When** three letters are typed, **Then** a popup lists the stations whose names contain them, a polite line says "N stations match", DOM focus stays in the field, Down Arrow highlights the next option, Enter accepts it and Escape closes the popup.
 3. **Given** both are chosen, **Then** the main process sends the page `setTrip(from, to)` and nothing else: no `map.build`, no `graph.build`, no export call.
 4. **Given** the page answers a trip, **Then** the map shows it faded around and the steps list it.
@@ -52,7 +52,7 @@ As someone who has looked at a trip, I want one press to bring the whole map bac
 
 **Acceptance Scenarios**:
 
-1. **Given** a trip, **When** the switch goes back to the whole network, **Then** the main process sends `setTrip(null)`, the map is pixel-equal to before the trip (RGB, tolerance 8), and the pickers are cleared.
+1. **Given** a trip, **When** "Show the whole network" is pressed, **Then** the main process sends `setTrip(null)`, the map is pixel-equal to before the trip (RGB, tolerance 8), both pickers are empty, focus is on Start, and the button is gone.
 2. **Given** the whole network, **When** Start is chosen and End is empty, **Then** nothing is sent and the map is whole.
 
 ---
@@ -81,11 +81,21 @@ As someone recolouring a line while looking at a trip, I want the trip still the
 ### Functional Requirements
 
 - **FR-001**: The Trip section MUST be the third section of cell 03, headed by an `h3` "Trip", and MUST write nothing to the project record.
-- **FR-002**: The mode switch MUST be a segmented pair "Whole network" / "One trip" in the theme switch's shape, `aria-pressed`, in a group named "What the map shows". [NEEDS CLARIFICATION: or no switch, with the trip implied by two filled pickers and a "Show the whole network" button]
+- **FR-002** (as of 6 Oct 2026): There MUST be no mode switch. A trip exists while Start and End both hold a station; until then nothing is sent and the map is whole, and emptying either picker while a trip is shown sends `setTrip(null)`. While a trip is shown, and only then, a text button "Show the whole network" follows the steps; a press sends `setTrip(null)`, clears both pickers (FR-008), and hands focus to Start, where the next trip begins. The section is named by its `h3`, "Trip", alone. A pressed "One trip" with empty pickers would show the whole network too: a mode that does nothing, which section 8.2 calls decoration.
 - **FR-003**: Start and End MUST be editable comboboxes with list autocomplete and manual selection (APG), as a new kit wrapper, with `aria-expanded`, `aria-controls`, `aria-activedescendant`, a listbox popup, and a polite match count.
 - **FR-004**: The options MUST come from `map.build`'s `stations` (id, name) and nothing the app derives.
 - **FR-005**: `setTrip` MUST be on `VIEWER_METHODS` and in `specs/008-viewer/contracts/viewer.md`, called only from the main process, and `state().trip` MUST be read as untrusted data.
-- **FR-006**: The steps MUST be an `<ol>`, one item per leg, in the form "Board the `<line>` towards `<terminus>` at `<station>`; ride `<n>` stops; change at `<station>`." and, last, "...; alight at `<station>`." [NEEDS CLARIFICATION: final wording]
+- **FR-006** (as of 6 Oct 2026): The steps MUST be an `<ol>`, one item per leg, each two sentences: "At `<board>`, board the `<line>` towards `<towards>`." ("change to" from the second leg on), then "Ride `<n>` stops to `<alight>`.", the last ending "and get off.". The station comes first, so no name is heard as "at" another. `<n>` counts stops after boarding, the alighting one included ("1 stop"); `<line>` is the label verbatim; `<towards>` is the drawn end (FR-006 of spec 031) reached by riding on past `<alight>`, never a headsign; on a loop, the station after `<board>`. The fixture's three trips read:
+  - "At Alder, board the Blue Line towards Elm. Ride 3 stops to Damson and get off."
+  - "At Alder, board the Blue Line towards Elm. Ride 2 stops to Cedar." / "At Cedar, change to the Red Line towards Oak. Ride 1 stop to Gorse and get off."
+  - "At Alder, board the Blue Line towards Elm. Ride 2 stops to Cedar." / "At Cedar, change to the Red Line towards Oak. Ride 2 stops to Hazel." / "At Hazel, change to the Green Line towards Maple. Ride 2 stops to Larch and get off."
+
+  The examples need a fixture for engine 49's test, which does not exist yet:
+  - Blue Line: Alder, Birch, Cedar, Damson, Elm.
+  - Red Line: Fir, Cedar, Gorse, Hazel, Oak.
+  - Green Line: Ivy, Hazel, Juniper, Larch, Maple.
+
+  Each of the three trips has only one path under the cost rule.
 - **FR-007**: A trip change MUST be announced once, politely, as "N stops, M changes."
 - **FR-008**: Leaving route mode MUST send `setTrip(null)` and clear both pickers.
 - **FR-009**: The viewer's restore after a reload MUST include the trip, between labels and playing.
