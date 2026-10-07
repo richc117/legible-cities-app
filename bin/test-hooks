@@ -9,6 +9,15 @@
 # Run it directly, or let the pre-commit hook run it. No arguments.
 set -u
 cd "$(git rev-parse --show-toplevel)" || exit 1
+# Run from a git hook, this inherits the repository's own variables: where
+# its index is (a path of the worktree's, absolute in a linked worktree), its
+# git directory, its work tree. Every git command below that names the
+# sandbox with -C would then act on the repository being committed: adding
+# to its index, running its hooks, and `git init` rewriting its shared
+# configuration to say the repository is bare. The sandbox is a repository
+# of its own, and sees only its own.
+# shellcheck disable=SC2046  # one name to a word, which is what unset takes
+unset $(git rev-parse --local-env-vars)
 
 reviewer=.claude/hooks/reviewer-readonly.sh
 guard=.claude/hooks/guard-git.sh
@@ -122,11 +131,30 @@ for hook in "$reviewer" "$guard"; do
 done
 rm -rf "$minimal"
 
+# A payload with no command in it reads as an empty command, which is not
+# "not a commit": the guard has to say it could not read it.
+for payload in '{"tool_input":{}}' '{}' '{"tool_input":{"command":""}}'; do
+  out=$(printf '%s' "$payload" | "$guard" 2>&1); got=$?
+  if [ "$got" -eq 2 ] && printf '%s' "$out" | grep -q 'could not be read'; then
+    pass=$((pass + 1))
+  else
+    fail=$((fail + 1))
+    printf 'FAIL guard-git.sh          %-46s want exit 2 saying so, got %s\n' \
+      "no command: $payload" "$got" >&2
+  fi
+done
+
 # --- the commit guard, end to end, in a repository of its own ---------------
 # A staged key must stop a commit, and so must an unstaged one when the
-# command is `git commit -a`, which stages after this hook has run.
+# command is `git commit -a`, which stages after this hook has run. The guard
+# also fails closed: over a folder it cannot enter, over a commit that
+# stages after its scans, and over a scanner that could not read what it was
+# given (issue 260).
 if command -v gitleaks >/dev/null 2>&1; then
   sandbox=$(mktemp -d)
+  said=$(mktemp)
+  spare=$(mktemp)
+  bare=$(mktemp -d)
   mkdir -p "$sandbox/bin" "$sandbox/.claude/hooks"
   cp bin/preflight "$sandbox/bin/"
   cp "$guard" "$sandbox/.claude/hooks/"
@@ -140,10 +168,24 @@ if command -v gitleaks >/dev/null 2>&1; then
   # test - which is itself a small demonstration that they work.
   body='4KZQR7YBTX2WPLQN'
   key="aws_access_key_id = AKIA$body"
-  guard_says() {   # $1 = command, echoes the exit code
+  # The same for a machine path, which is what bin/preflight knows and
+  # gitleaks does not: only a refusal of -a can stop one that is not staged.
+  machine="/Us""ers/someone/project"
+  guard_says() {   # $1 = command, $2 = the project folder if not the sandbox;
+                   # echoes the exit code and keeps what the guard said
     (cd "$sandbox" && jq -n --arg c "$1" '{tool_input: {command: $c}}' |
-      env CLAUDE_PROJECT_DIR="$sandbox" .claude/hooks/guard-git.sh >/dev/null 2>&1)
+      env CLAUDE_PROJECT_DIR="${2-$sandbox}" .claude/hooks/guard-git.sh >"$said" 2>&1)
     echo $?
+  }
+  # More than one thing can refuse a command, and a bare exit code cannot say
+  # which did. This is for the cases where only one of them is under test.
+  expect_said() {   # $1 = what the refusal must have said, $2 = the case
+    if grep -qF -- "$1" "$said"; then
+      pass=$((pass + 1))
+    else
+      fail=$((fail + 1))
+      printf 'FAIL guard-git.sh          %-46s wanted it to say: %s\n' "$2" "$1" >&2
+    fi
   }
 
   echo "$key" > "$sandbox/staged.txt"; git -C "$sandbox" add staged.txt
@@ -155,7 +197,119 @@ if command -v gitleaks >/dev/null 2>&1; then
 
   expect 0 "$(guard_says 'git push origin main')" "a clean history pushes"
 
-  rm -rf "$sandbox"
+  # A folder the hook cannot enter is one it cannot scan. It used to say the
+  # commit was fine.
+  expect 2 "$(guard_says 'git commit -m x' "$sandbox/not-there")" "a root it cannot enter stops a commit"
+  expect_said "could not be entered" "a root it cannot enter says so"
+  # An empty root is the same case: `cd ""` succeeds and the scans would run
+  # wherever the hook stood, which here is not a repository.
+  got=$( (cd "$bare" && jq -n --arg c 'git commit -m x' '{tool_input: {command: $c}}' |
+          env CLAUDE_PROJECT_DIR= GIT_CEILING_DIRECTORIES="$(dirname "$bare")" \
+            "$sandbox/.claude/hooks/guard-git.sh" >"$said" 2>&1); echo $? )
+  expect 2 "$got" "an empty root stops a commit"
+  expect_said "could not be entered" "an empty root says so"
+
+  # `-a` with a machine path that is only in the working tree. The index is
+  # clean and gitleaks has no word for a path, so nothing but the refusal of
+  # -a can stop it. It is refused in every spelling git reads as -a, and what
+  # is not -a still goes through, unstaged path and all.
+  git -C "$sandbox" checkout -q -- f.txt
+  printf 'see %s\n' "$machine" > "$sandbox/f.txt"
+  expect 2 "$(guard_says 'git commit -am \"tidy\"')" "-a stages a machine path after the index scan"
+  expect_said "asks for -a" "-a is refused for being -a"
+  expect 2 "$(guard_says 'git commit --all -m tidy')" "--all is -a"
+  expect 2 "$(guard_says 'git commit -qam tidy')" "-a among short options is -a"
+  expect 2 "$(guard_says 'git commit \"-a\" -m tidy')" "-a in quotes is -a"
+  expect 0 "$(guard_says 'git commit -m tidy')" "a commit of the index alone goes through"
+  expect 0 "$(guard_says 'git commit --allow-empty -m tidy')" "--allow-empty is not --all"
+  expect 0 "$(guard_says 'git commit -ma')" "-ma is a message, not -a"
+  # The form the assistant commits in: a message from a heredoc, in a command
+  # substitution, with a bullet that is a `- a` of its own.
+  heredoc=$'git commit -m "$(cat <<\'EOF\'\nAdd a thing\n\n- a bullet\n- another\nEOF\n)"'
+  expect 0 "$(guard_says "$heredoc")" "a heredoc message with a \"- a\" bullet goes through"
+  expect 0 "$(guard_says 'git commit -m tidy && git push origin main')" "a commit and then a push go through"
+  # What a body quotes is text and not an option: this repository's messages
+  # carry code in backticks and words like `$HOME`, and nearly every commit
+  # here is made from a heredoc, either with -F - or inside -m "$(cat ...)".
+  # What is on the command's own line, and what comes after a body, is read.
+  nl=$'\n'
+  # shellcheck disable=SC2016  # the backticks and `$` are the point of this case.
+  body='the `kit/Tabs.tsx` row and `$HOME`'
+  expect 0 "$(guard_says "git commit -F - <<'EOF'${nl}${body}${nl}- a bullet${nl}EOF")" "a body that quotes code goes through with -F -"
+  expect 0 "$(guard_says "git commit -m \"\$(cat <<'EOF'${nl}${body}${nl}- a bullet${nl}EOF${nl})\"")" "a body that quotes code goes through inside -m"
+  expect 2 "$(guard_says "git commit -a -F - <<'EOF'${nl}${body}${nl}EOF")" "-a before the operator is still -a"
+  expect_said "asks for -a" "-a before the operator is refused for being -a"
+  expect 2 "$(guard_says "git commit -m \"\$(cat <<'EOF'${nl}${body}${nl}EOF${nl})\" -a")" "-a after a body is still -a"
+  # A `<<` that opens no heredoc, and a heredoc that is not the command's own
+  # text, must not be allowed to take a flag in as a body: the parser reads
+  # with quotes deleted, so these are judged by the text before the operator.
+  expect 2 "$(guard_says "git commit -m \"see <<EOF${nl}\" -a${nl}EOF")" "a << inside a quoted string is no heredoc"
+  expect 2 "$(guard_says "git commit -m \"x${nl}see <<EOF${nl}\" -a${nl}EOF")" "a quote opened on an earlier line is still open"
+  expect 2 "$(guard_says "git commit \$(cat <<'EOF'${nl}-a${nl}EOF${nl})")" "a heredoc in a substitution nothing quotes"
+  expect 2 "$(guard_says "git commit -F - <<-'EOF'${nl}body${nl}EOF")" "<<- is a heredoc this cannot read"
+  expect_said "could not be read" "<<- is refused for being unreadable"
+  expect 0 "$(guard_says "git commit -q -F - <<'EOF'${nl}body${nl}EOF")" "a plain -F - heredoc goes through"
+  expect 0 "$(guard_says "git commit -q -m \"\$(cat <<'EOF'${nl}body${nl}EOF${nl})\"")" "a quoted substitution over a heredoc goes through"
+  # The count of quotes before the first operator is exact only with one kind
+  # of quote in it and no backslash: `\"` is a quote that does not close, and
+  # a quote of one kind inside the other is counted by neither.
+  expect 2 "$(guard_says "git commit -m \"it\\\"s <<EOF${nl}\" -a${nl}EOF")" "an escaped quote leaves the string open at the operator"
+  expect 2 "$(guard_says "git commit -m 'a\"b' -m \"see <<EOF${nl}\" -a${nl}EOF")" "both kinds of quote before the operator are not counted"
+  # A `)"` closes a `"$(`, so one is taken out for each that was; with no
+  # `"$(` before it, it is a quote like any other and the count stays odd.
+  expect 2 "$(guard_says "git commit -m \"a)\" -m \"see <<EOF${nl}\" -a${nl}EOF")" "a )\" that closes no \"\$( is counted"
+  expect 0 "$(guard_says "cd \"\$(pwd)\" && git commit -q -F - <<'EOF'${nl}body${nl}EOF")" "a quoted substitution before the commit goes through"
+  expect 0 "$(guard_says "git commit -q -m \"\$(cat <<'EOF'${nl}body${nl}EOF${nl})\" && git commit -q -m \"\$(cat <<'EOF'${nl}body${nl}EOF${nl})\"")" "a second heredoc commit chained after the first goes through"
+  expect 2 "$(guard_says 'git add -A && git commit -a -m tidy')" "-a after a chained add is still -a"
+  expect_said "asks for -a" "-a after a chained add is refused for being -a"
+  # A word that is an expansion could be -a, so nothing can be said of it.
+  # shellcheck disable=SC2016  # the literal `$` is the point of these cases.
+  {
+    expect 2 "$(guard_says 'git commit $FLAGS -m tidy')" "a variable where a flag could be"
+    expect 2 "$(guard_says 'git commit -{a,q} -m tidy')" "a brace expansion that holds -a"
+    expect 2 "$(guard_says $'git commit $\'-a\' -m tidy')" "an ANSI-C quoted -a"
+    expect_said "could not be read" "an expansion is refused for being unreadable"
+  }
+  git -C "$sandbox" checkout -q -- f.txt
+
+  # gitleaks answers "no leaks found" and exits 0 over a repository git could
+  # not read. Staged work and an index git cannot open: the exit status is
+  # clean, the log says ERR, and the guard has to take the log's word.
+  echo more > "$sandbox/g.txt"; git -C "$sandbox" add g.txt
+  cp "$sandbox/.git/index" "$spare"
+  printf 'not an index' > "$sandbox/.git/index"
+  expect 2 "$(guard_says 'git commit -m x')" "a corrupt index stops a commit"
+  expect_said "nothing went through" "a corrupt index is refused by the scan, not by what follows it"
+  cp "$spare" "$sandbox/.git/index"
+  chmod 000 "$sandbox/.git/index"
+  if [ -r "$sandbox/.git/index" ]; then
+    echo "test-hooks: a mode does not bind this user; skipped the unreadable index" >&2
+  else
+    expect 2 "$(guard_says 'git commit -m x')" "an unreadable index stops a commit"
+    expect_said "nothing went through" "an unreadable index is refused by the scan, not by what follows it"
+  fi
+  chmod 644 "$sandbox/.git/index"
+  git -C "$sandbox" reset -q
+  rm -f "$sandbox/g.txt"
+  expect 0 "$(guard_says 'git commit -m x')" "the index is readable again and a commit goes through"
+
+  # The same before a push, over the history: an object git cannot find. It is
+  # a file that only the first commit holds, so the index holds nothing
+  # missing and bin/preflight, which reads the index and the messages, has
+  # nothing to refuse: here gitleaks is the only scanner that can, and its
+  # exit status is the clean one.
+  echo second > "$sandbox/f.txt"; git -C "$sandbox" add f.txt
+  git -C "$sandbox" -c user.email=t@example.invalid -c user.name=t commit -qm two
+  expect 0 "$(guard_says 'git push origin main')" "two commits push"
+  blob=$(git -C "$sandbox" rev-parse HEAD~1:f.txt)
+  object="$sandbox/.git/objects/${blob%"${blob#??}"}/${blob#??}"
+  mv "$object" "$object.away"
+  expect 2 "$(guard_says 'git push origin main')" "a history with an object missing stops a push"
+  expect_said "nothing went through" "a history with an object missing is refused by the scan"
+  mv "$object.away" "$object"
+  expect 0 "$(guard_says 'git push origin main')" "and the history pushes once the object is back"
+
+  rm -rf "$sandbox" "$bare" "$said" "$spare"
 else
   echo "test-hooks: gitleaks is not installed; skipped the end-to-end cases" >&2
 fi
