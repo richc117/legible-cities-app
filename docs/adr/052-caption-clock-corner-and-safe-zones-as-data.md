@@ -41,6 +41,8 @@ Zones: **(a)** numbers in `present.js`; **(b)** a table in `export.py` that the 
 
 **Nothing moves for an export that asks for neither.** With an omitted caption and the default corner, every preset without safe zones keeps its pixels; the app's determinism fixture (`instagram-reel-gif`) is a safe-zone preset whose frames move with the clock's corner and with the name block, and its test compares two runs with each other, not stored frames, so it still passes.
 
+**As of 7 Oct 2026, a correction of scope.** The engine gives safe zones to `instagram-story` and `instagram-reel` only; `instagram-reel-gif` has none, so the app's determinism fixture's address and pixels do not move, and every preset without zones keeps its pixels. The reel's and story's frames do move: the clock to the top right, the name block and the network below the zone. The engine also refuses `top-left` while the title or a caption is drawn, a rule the lane added beyond this record, and `bottom-left` on a safe-zone preset comes with a note naming the bottom zone.
+
 **A caption is not alt text.** The sidecar's alt is ADR-independent and #41's.
 
 **What to watch.** Meta moving its zones: the table carries a date. TikTok has no preset; if one comes, it is a row in the table, not a number in the page.
