@@ -131,6 +131,7 @@ The two reader columns are a person's, recorded per run in
   status line: the next button is "Back to Library" (it reads "Library" on
   screen), then the Jobs toggle, then Settings. It is not on the Library.
   Press it: focus lands on the Library's own heading (issue 275).
+
 | Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
 | Jobs toggle, Settings | pass | pass | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
@@ -156,7 +157,7 @@ The two reader columns are a person's, recorded per run in
 
 | Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
-| The project's name as the `h1`, no breadcrumb around it (A5.5-22, issue 275; the way back is in the header, below) | swept | swept | swept | swept | pass (`--text`) | pass | not yet run: a person's | not yet run: a person's |
+| The project's name as the `h1`, no breadcrumb around it (A5.5-22, issue 275; the way back is in the header, above) | swept | swept | swept | swept | pass (`--text`) | pass | not yet run: a person's | not yet run: a person's |
 | The notebook's sentence, Run all and Stop | Run all's handover to Stop and back, and focus to the sentence when Run all does not come back, asserted in `layout.spec.ts` ("Run all…" tests); not swept, since every sweep is of a project already drawn, where Run all is not drawn, and Stop exists only during a run | swept (the sentence one `role="status"`, and beside it a hidden `role="alert"` that holds the failure, if there is one, and is empty otherwise; Run all's name) | Run all and Stop not swept: audit only (the kit button's ring) | audit only | pass (`--text`; the primary button C1) | fixed (C1) | not yet run: a person's | not yet run: a person's |
 | Read-only notice | n/a | pass (`role="status"`) | n/a | n/a | pass | pass | not yet run: a person's | not yet run: a person's |
 
@@ -441,16 +442,16 @@ on the element, in `tests/e2e/accessibility.spec.ts`:
 
 - **C1. A primary button's label in sepia was 4.40**: `--on-accent` on
   `--accent` at the kit's 13px and 500 weight, which is not large text. The
-  kit's brand fill is `--accent-text` now, 5.74 at rest and higher under
-  the pointer and pressed; in warm-dark the two tokens are one colour and
-  nothing changed (`figui-adapter.css`, DESIGN.md 3.1 and 8.1). A checked
-  checkbox's inset edge (the kit's `--figma-color-border-selected-strong`)
-  takes the same token, so it is not a lighter ring inside the darker fill;
-  a primary button draws no edge. The tab strip's underline and the progress
-  line's running mark stay `--accent`: they are graphics on the ground, at
-  3.0 or more in both themes. **This
-  changes how the sepia primary button looks** - a darker blue - and is the
-  one fix here the maintainer may want to see before it merges.
+  kit's brand fill is `--accent-text` now, 5.74 at rest and higher under the
+  pointer and pressed; in warm-dark the two tokens are one colour and nothing
+  changed (`figui-adapter.css`, DESIGN.md 3.1 and 8.1). A checked checkbox's
+  inset edge (the kit's `--figma-color-border-selected-strong`) takes the same
+  token, so it is not a lighter ring inside the darker fill; a primary button
+  draws no edge. The progress line's running mark stays `--accent` (as the tab
+  strip's underline did until A5.5-23 removed it): it is a graphic on the
+  ground, at 3.0 or more in both themes. **This changes how the sepia primary
+  button looks** - a darker blue - and is the one fix here the maintainer may
+  want to see before it merges.
 - **C2. A select's edge was `--border`**, 1.3 to 1.7 against the ground, short
   of the 3.0 a control's boundary needs (WCAG 1.4.11); `--border-strong`,
   as a text field's already was.
@@ -516,7 +517,8 @@ or a design decision.
   from the tab panel Rename is one Tab and Enter away whatever the page
   holds, and Tab without the skip still reaches the map.
   `notebook-a11y.spec.ts` ("the project screen: one press skips past the
-  map…") asserts both on both tabs, with forty controls in the frame, and
+  map…") asserted both, on both tabs at the time, with forty controls in the
+  frame, and
   that the map does not move when the skip appears; it passed in a full
   end-to-end run on macOS (2026-09-13), and CI runs it on three platforms. Going backwards is unchanged: Shift+Tab from the toolbar walks
   back through the map. The VoiceOver and Narrator columns are still a
@@ -557,8 +559,8 @@ or a design decision.
 
 - **F5. A kit button's `aria-describedby` described nothing. Fixed
   (issue 113).** *Screen:* Settings (the Licences buttons when unavailable,
-  "Choose folder" and "Reset engine data"), the add-a-feed dialog's "Choose
-  a zip", and any `Button` given `aria-describedby`. *Steps:* Tab to one
+  "Choose folder" and "Reset engine data"), the New project sheet's "Choose a
+  zip", and any `Button` given `aria-describedby`. *Steps:* Tab to one
   and listen for its description. *What a person met:* the name and no
   description. FigUI3's `fig-button` copies the attribute onto the
   `<button>` inside its shadow root, and an id reference there resolves
@@ -703,7 +705,8 @@ a table).
 
 ### Header, on every screen
 
-- **Jobs toggle, Settings.** Tab to the first button after the status line.
+- **Jobs toggle, Settings.** On the Library, Tab to the first button after the
+  status line (on a project or in Settings, "Back to Library" comes first).
   Listen for "Jobs, none running", a button, collapsed; press it and hear
   it expanded; press again. While a run is going it is read as
   "Jobs, 1 running" (`Inspector.tsx`). **Settings** is a button, and is
@@ -816,13 +819,13 @@ a table).
   still showing when the project is left and opened again may be silent:
   that is the design, not a finding.
 - **The rail: Steps.** With the reader's own navigation, find the
-  landmark "Steps", a navigation holding six buttons, each read as its
-  number, name and state as one, "01 Data, ready" to "06 Export, ready".
-  Listen for which is marked as the current step, and that it follows as
-  you scroll the notebook without taking focus. Press "04 Style, ready":
-  **focus moves** to cell 04's heading, and the cell is brought into view
-  below the map. This move on activation is the part of the rail most
-  worth hearing: note what is read when focus lands.
+  landmark "Steps", a navigation holding six buttons, each read as its number,
+  name and state as one, "01 Data, ready" to "06 Export, ready". Listen for
+  which is marked as the current step, and that it follows as you scroll the
+  notebook without taking focus. Press "04 Style, ready": **focus moves** to
+  cell 04's heading, and the cell is brought into view just under the window's
+  header. This move on activation is the part of the rail most worth hearing:
+  note what is read when focus lands.
 - **The rail: Outputs.** Find the region "Outputs": "Nothing exported
   yet." before any export, and afterwards a row per export read as its
   preset and when it was made, with a button "Reveal `<preset>`,
@@ -991,10 +994,10 @@ a table).
 #### Cell 05, Lines
 
 - **Line colours.** Listen for the heading "Line colours", the list
-  "Lines", and in each row the line's label, the feed's colour, where the
-  shown colour comes from ("the colour in the feed, `#rrggbb`"), a colour chip
-  at the row's start, a button "Choose the colour of line `<label>`",
-  collapsed. The button "Reset line `<label>` to the colour in the feed" is
+  "Lines", and in each row first the colour chip, which is the button "Choose
+  the colour of line `<label>`", collapsed, then the line's label, the feed's
+  colour and where the shown colour comes from ("the colour in the feed,
+  `#rrggbb`"). The button "Reset line `<label>` to the colour in the feed" is
   in the chip's panel, dimmed until the line has a colour of its own (issue
   284). Before the list, not inside it, is the row
   "Lines with no colour in the feed", with the button "Choose the colour of
@@ -1096,8 +1099,8 @@ a table).
 ### Settings
 
 - **Folder rows.** Press **Settings**. Listen for the heading "Settings"
-  (focus is put there), then, under the heading,
-  "Folders" the buttons "Choose the engine data folder" and "Choose the
+  (focus is put there), then, under the heading "Folders", the buttons "Choose
+  the engine data folder" and "Choose the
   export folder", each read with its folder's path as its description.
   Choose another export folder in the platform's dialog: listen for
   "chosen here" and a button "Use the default export folder"; press it and

@@ -210,8 +210,9 @@ run.
   screen reader names it "Back to Library"), and the notebook's six cells, 01 to 06, with cells 01 to 05
   open and 06 closed. The rail's **Steps**, under the project's name, lists the same six, and its
   **Outputs** says "Nothing exported yet."
-- The layout starts by itself. The status sentence under the heading reads
-  "02 Process is running." with **Stop** beside it.
+- The layout starts by itself. The status sentence under the heading reads "01
+  Data is running." while the feed downloads, then "02 Process is running.",
+  with **Stop** beside it.
   If a run fails, the same sentence reads "02 Process failed." and a
   screen reader says it once, assertively, from an alert of the header's
   own, without the sentence being read out a second time.
@@ -226,8 +227,8 @@ run.
   line is the engine's for the last stage that finished. **Cancel** is
   beside it while it runs.
 - It ends with "Laid out.", **Lay out again** and **Re-layout**. The map
-  appears at the top of the notebook, its trains moving, and stays there
-  while the cells scroll beneath it. The sentence under the heading becomes
+  appears after cell 02, its trains moving, and scrolls with the cells. The
+  sentence under the heading becomes
   "The map is drawn from every cell." and **Run all** is gone, since
   there is nothing to run.
 - Every cell's heading, and every step in the rail, says **ready**.
@@ -251,7 +252,8 @@ Result: ____
 headers of the routes table. Open the **Mode** select and look at its
 options without changing it. In **Where the routes run**, press
 **gtfs2graph**, then **loom**; press Tab until the drawing has focus, and
-press `+`, `-`, an arrow and `0`. Press Tab once more, and then **Enter**.
+press `+`, `-`, an arrow and `0`. Press Tab on through cell 02 until **Skip
+past the map** appears over the map's top edge, and then **Enter**.
 
 **See.**
 - The fields say Feed `la-metro-rail`, Mode `<the card's mode>` and Agency
@@ -273,7 +275,7 @@ press `+`, `-`, an arrow and `0`. Press Tab once more, and then **Enter**.
   has one (`Inspect.tsx`), and the LA rail feed is expected to name one.
   Step 15 finds one.
 - **Where the routes run**: a sentence under the heading saying what the
-  two are ("The map above is the schematic. These are two earlier stages of
+  two are ("The map below is the schematic. These are two earlier stages of
   the same layout, drawn where the routes really run ..."), then the two
   buttons **gtfs2graph** and **loom**,
   the pressed one marked as pressed, and beside them the pressed stage's
@@ -406,7 +408,7 @@ value and pressing **Use this colour**; then **Reset every line**.
   foot of the window it opens above. It **stays open for the whole drag** and
   while you release; it closes on the click outside it, not before (issue
   87), and on Escape, with focus back on the chip.
-- The line's row says "your colour, `#rrggbb`", and after a moment the
+- The line's row says "your colour, `#rrggbb`", and after a moment cell 02's
   progress line runs again and says "Drawn in the colours you chose, from
   the stored layout. The stations have not moved." The map shows the new
   colour on the line, its chips and the time chart.
@@ -617,8 +619,8 @@ disclosure, open it, and press **Copy log** on one job. Press **Escape**.
   "Redraw in new colours", "Rebuild for `<day>`") and "Layout run" for LA
   Metro Rail, each "finished, started `<time>`", headed by its project's
   name, or by "Feeds" for the feed add. A job that is running says which
-  stage, "running `<stage>`, `<n>` of `<total>`, started `<time>`", under a
-  line of stations with no labels; the line fits the inspector with no
+  stage, "running `<stage>`, `<n>` of `<total>`, started `<time>`", above a line
+  of stations with no labels; the line fits the inspector with no
   sideways scroll, and its title, line and buttons start where the heading
   does.
 - **Details** appears only on a failed job whose engine detail says more

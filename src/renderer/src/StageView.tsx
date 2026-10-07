@@ -21,12 +21,12 @@ export const STAGES: { stage: StageName; label: string; gloss: string }[] = [
 /**
  * What the two buttons are, said once under the heading (issue 282). The
  * names stay the engine's, so a stage here matches a stage in its log; the
- * sentence is what says what they are and how they relate to the map above. `topo` and `octi` are not offered: topo is
+ * sentence is what says what they are and how they relate to the map below. `topo` and `octi` are not offered: topo is
  * gtfs2graph with platforms merged, a difference of counts and not of
  * picture, and octi is the schematic the viewer already shows.
  */
 export const STAGES_EXPLAINED =
-  'The map above is the schematic. These are two earlier stages of the same layout, drawn where the routes really run: gtfs2graph is the network as the feed draws it, and loom is the same network after the engine has sorted the lines onto shared track, before anything is straightened. The names are the engine’s, so a stage here matches a stage in its log.'
+  'The map below is the schematic. These are two earlier stages of the same layout, drawn where the routes really run: gtfs2graph is the network as the feed draws it, and loom is the same network after the engine has sorted the lines onto shared track, before anything is straightened. The names are the engine’s, so a stage here matches a stage in its log.'
 
 /** The pane's frame takes no permission at all: the whole of its sandbox. */
 export const STAGE_SANDBOX = ''
