@@ -5,6 +5,7 @@ import {
   useState,
   type FormEvent,
   type JSX,
+  type ReactNode,
   type RefObject,
 } from 'react'
 import { VIEWS, type View } from '../../shared/capture'
@@ -60,11 +61,13 @@ import { useSnapshot } from './useSnapshot'
 // The panel has no heading of its own: cell 06's row is its heading, and
 // focus a disabling control drops is handed there (`handback`).
 //
-// The preview is not drawn here. While this cell is open the map's own frame
-// is sent to the address `export.plan` answers for the choice, with the
-// platform's safe zones asked for where the preset has them, and the page
-// draws the frame, the title, the clock and the zones itself (principle I).
-// This panel only says which address, through `onPreview`.
+// The preview is not drawn here. While this cell is open a frame of the
+// cell's own (`ExportPreview.tsx`, ADR-046) shows the address `export.plan`
+// answers for the choice, with the platform's safe zones asked for where
+// the preset has them, and the page draws the frame, the title, the clock
+// and the zones itself (principle I). This panel says which address,
+// through `onPreview`, and where the cell's frame goes (`preview`). The
+// map's own frame is never sent there.
 //
 // Every list and every refusal is the engine's. A choice is written to the
 // project record the moment it is made (a text field when it is committed),
@@ -103,8 +106,13 @@ interface Props {
   inspect: (key: string) => Promise<Inspection>
   /** Write the choice to the record; the view takes the record that comes back. */
   onChoice: (choice: ExportChoice) => Promise<void>
-  /** The address the map's frame should show, when a plan answers. */
+  /** The address cell 06's preview should show, when a plan answers. */
   onPreview: (address: PreviewAddress) => void
+  /**
+   * Cell 06's preview frame, which the cell mounts only while it is open
+   * (ADR-046), drawn after the sentence that says what it is.
+   */
+  preview?: ReactNode
   /**
    * The heading of the cell this is drawn in (A5.5-19). The panel has no
    * heading of its own: the cell's row says "06 Export" already, and a
@@ -137,6 +145,7 @@ export default function ExportTab({
   inspect,
   onChoice,
   onPreview,
+  preview,
   handback,
 }: Props): JSX.Element {
   const ready = engine?.state === 'ready'
@@ -248,15 +257,25 @@ export default function ExportTab({
       if (preview.ok) {
         // Not while the cell is closed. The planner is cancelled in an
         // effect, which flushes after the commit that closed it, so an
-        // answer already on its way would otherwise put the export's
-        // frame - its aspect ratio, its safe zones - on the map after a
-        // person has left the export, which is the one thing A5-01's rule
-        // exists to stop. `active` is current here because this callback
-        // is written on every render.
+        // answer already on its way would otherwise leave an address for a
+        // choice a person has left, to be shown the next time the cell
+        // opens. `active` is current here because this callback is written
+        // on every render.
         if (!active) return
         setRefusal(null)
         setNotes(preview.notes)
-        onPreview({ url: preview.url, width: preview.width, height: preview.height })
+        // The preset's own size, from the engine's table, for the frame's
+        // ratio and the caption; the plan's may be at another scale.
+        const entry =
+          tables.status === 'ready'
+            ? tables.tables.presets.find((p) => p.name === asked.preset)
+            : undefined
+        onPreview({
+          url: preview.url,
+          width: entry?.width ?? preview.width,
+          height: entry?.height ?? preview.height,
+          safe: entry?.safe_zones ?? false,
+        })
       } else {
         // The last good address stays in the frame; the sentence says why
         // this one is not there (FR-007).
@@ -280,6 +299,7 @@ export default function ExportTab({
 
   const canPlan =
     active &&
+    !project.readOnly &&
     ready &&
     tables.status === 'ready' &&
     project.layout !== null &&
@@ -418,6 +438,23 @@ export default function ExportTab({
     commitTag()
   }
 
+  // A read-only project is shown nothing to choose and nothing previewed
+  // (ADR-046, FR-019): the preview promises an export that cannot be made
+  // here, and options that cannot be changed are a page of disabled
+  // controls. One sentence says why, as cells 02 to 05 say theirs. What a
+  // project holds as its export choice is not shown either, which is the
+  // trade-off spec 029 records.
+  if (project.readOnly) {
+    return (
+      <div className="export-tab">
+        <p className="prose">
+          This project was made by a newer version of the app, so its export cannot be changed or
+          made here.
+        </p>
+      </div>
+    )
+  }
+
   if (project.layout === null) {
     return (
       <div className="export-tab">
@@ -456,17 +493,11 @@ export default function ExportTab({
               This is the Instagram reel with the engine&rsquo;s defaults until another is chosen.
             </p>
           )}
-          {project.readOnly && (
-            <p className="hint">
-              This project was made by a newer version of the app, so its export cannot be changed
-              or made here.
-            </p>
-          )}
           <p className="prose">
-            While this cell is open the map shows the frame the export will have, with the parts a
-            platform covers with its own buttons shaded where it has them. The theme is the
-            map&rsquo;s own.
+            The preview shows the frame the export will have, with the parts a platform covers with
+            its own buttons shaded where it has them. The theme is the map&rsquo;s own.
           </p>
+          {preview}
           <form className="export-choices" ref={choicesRef} noValidate onSubmit={submit}>
             <div className="field">
               <span className="field-label" aria-hidden="true">

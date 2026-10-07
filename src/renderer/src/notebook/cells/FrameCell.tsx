@@ -6,6 +6,7 @@ import Cell from '../Cell'
 import { frameFooter } from '../CellFooter'
 import type { CellViewProps } from '../cells'
 import { useProject } from '../context'
+import { runRowStatus } from '../runRow'
 
 // Cell 03, Frame and service day: the day the map is drawn for (ADR-045).
 //
@@ -84,7 +85,7 @@ export function frameSummary(
 }
 
 export default function FrameCell({ cell, state, open, onToggle }: CellViewProps): JSX.Element {
-  const { project, engine, run, setDate, exporting, layingOut, preview, drawn } = useProject()
+  const { project, engine, run, runSnapshot, setDate, exporting, layingOut, drawn } = useProject()
   const heading = useRef<HTMLHeadingElement>(null)
   // Whether there is a strip under this cell, asked of the builder that
   // draws it and not restated here: the two would otherwise have to be kept
@@ -96,6 +97,7 @@ export default function FrameCell({ cell, state, open, onToggle }: CellViewProps
       name={cell.name}
       state={state}
       summary={frameSummary(project)}
+      progress={runRowStatus(runSnapshot, cell.id)}
       open={open}
       onToggle={onToggle}
       headingRef={heading}
@@ -174,7 +176,6 @@ export default function FrameCell({ cell, state, open, onToggle }: CellViewProps
               open={open}
               laying={layingOut}
               exporting={exporting}
-              previewing={preview !== null}
             />
           )}
         </>

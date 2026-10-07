@@ -58,6 +58,13 @@ export interface CellProps {
    * to say says nothing rather than something empty.
    */
   summary?: string | null
+  /**
+   * What the run this cell owns is doing, or where it failed, said on the
+   * collapsed row in place of the summary (ADR-046, FR-017): a running cell
+   * does not open itself, so its row is where a person reads it. Null when
+   * no run of this cell's is going or has failed.
+   */
+  progress?: string | null
   open: boolean
   onToggle: (open: boolean) => void
   /** Provenance, for the three cells that have any (A5.5-11). */
@@ -81,6 +88,7 @@ export default function Cell({
   name,
   state,
   summary = null,
+  progress = null,
   open,
   onToggle,
   footer,
@@ -90,6 +98,7 @@ export default function Cell({
 }: CellProps): JSX.Element {
   const { word, icon } = STATES[state]
   const Heading = `h${headingLevel}` as 'h2' | 'h3'
+  const said = progress ?? summary
   return (
     <section className="cell" data-state={state} data-cell={cellNumber(number)}>
       <Disclosure
@@ -111,9 +120,7 @@ export default function Cell({
               <Icon name={icon} size={16} />
               {word}
             </span>
-            {!open && summary !== null && summary !== '' && (
-              <span className="cell-summary">{summary}</span>
-            )}
+            {!open && said !== null && said !== '' && <span className="cell-summary">{said}</span>}
           </>
         }
       >

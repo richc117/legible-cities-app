@@ -2,7 +2,7 @@
    chrome - its heading row, its state, its collapsed summary and its
    provenance footer.
 
-   Narrowed by A5.5-08: the rail and the pinned preview, which this file
+   Narrowed by A5.5-08: the rail and the map, which this file
    first claimed, have stylesheets of their own (`rail.css`,
    `preview.css`), so the nine issues of this milestone that have rules to
    add do not all meet here. The project screen's own layout is

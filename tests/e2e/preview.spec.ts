@@ -1,8 +1,5 @@
-// The pinned preview, and the frame held by identity (A5.5-20, ADR-045,
-// docs/DESIGN.md 8.2, "The pinned preview").
-//
-// Two things only a running app shows, and they are the two this issue is
-// about.
+// The map in the notebook's flow, and the frame held by identity (ADR-046,
+// specs/029, docs/DESIGN.md 8.2, "The map"; A5.5-20 before it).
 //
 // **The frame is one element.** Moving an iframe between parents reloads
 // it, and so does remounting it, which is what a `key` on `<Viewer>` used
@@ -11,13 +8,16 @@
 // its cells opened and collapsed and its map re-laid out, and the stamp is
 // read back. A stamp that survives all of it is the same element.
 //
-// **A navigation that has to happen gives the page back.** The export's
-// preview takes the frame while cell 06 is open (A5-01), which is a real
-// navigation of the plain map away and back again. The page is asked what
-// it was showing before it goes and told again when it returns, so the
-// clock, the view and the labels are where they were - which is engine
-// issue 29's class of problem, and the thing the scrub in cell 03 would
-// otherwise make visible.
+// **Cell 06 has a frame of its own.** Until ADR-046 the export's preview
+// took the map's frame while cell 06 was open, a navigation away and back
+// that the map had to survive. Now opening cell 06 adds a second frame in
+// the cell, and the map's page is told nothing: its clock runs on, no
+// restore is sent, and cell 03's transport goes on driving it.
+//
+// **The map is a block in the column**, after cell 02 and before cell 03,
+// scrolling with the cells; nothing is pinned. Where there is no map yet
+// the block is still there, saying so; a run never opens its cell; and a
+// read-only project gets the map and no export preview.
 //
 // The boundary itself is `viewer.spec.ts`'s, and is not restated here: the
 // frame carries `sandbox="allow-scripts"` and nothing else, and every route
@@ -28,7 +28,7 @@
 // three sizes of the real window, and the map fills that column's content
 // box, centred in it, where it used to break out of a narrower one.
 
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import {
@@ -39,7 +39,24 @@ import {
   type Page,
 } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
-import { cellHeading, closeCell, laidOutProject, openCell } from '../support/project'
+import {
+  cell,
+  cellHandback,
+  cellHeading,
+  closeCell,
+  createProject,
+  laidOutProject,
+  layOut,
+  openCell,
+  openProject,
+} from '../support/project'
+import { VIEWER_SANDBOX } from '../../src/shared/viewer'
+
+// The empty state's two sentences, as the release documents quote them
+// (`notebook/Preview.tsx`). Restated rather than imported: the component
+// file brings React with it.
+const NO_MAP = 'This project has no map yet.'
+const MAP_DRAWN = 'The map is drawn.'
 
 const repoRoot = resolve(__dirname, '../..')
 const PYTHON = findPython()
@@ -63,6 +80,39 @@ function home(control: Record<string, unknown> = {}): Home {
   // A user-data folder of this test's own, so nothing here writes the
   // profile every other end-to-end file shares.
   return { engineHome, userData: join(dir, 'profile'), exportFolder: join(dir, 'exports') }
+}
+
+/**
+ * Ask the real window for a size, and say so if it will not take it: the
+ * page emulated at a size is not the window at that size, and a display
+ * smaller than the size (a CI runner's, or macOS putting a too-wide window
+ * back a moment later) leaves the window as wide as it can be. The tests
+ * that use this want room to scroll and a wide column, not an exact width,
+ * so they carry on at what they got, and the annotation says what that was.
+ */
+async function roomy(
+  app: ElectronApplication,
+  page: Page,
+  width: number,
+  height: number,
+): Promise<void> {
+  await app.evaluate(
+    ({ BrowserWindow }, size) => {
+      BrowserWindow.getAllWindows()[0].setContentSize(size.width, size.height)
+    },
+    { width, height },
+  )
+  try {
+    await expect
+      .poll(() => page.evaluate(() => window.innerWidth), { timeout: 5_000 })
+      .toBeGreaterThan(width - 100)
+  } catch {
+    const got = await page.evaluate(() => window.innerWidth)
+    test.info().annotations.push({
+      type: 'window smaller than asked',
+      description: `asked ${width} wide, got ${got}`,
+    })
+  }
 }
 
 async function withApp(
@@ -182,15 +232,15 @@ const preview = (page: Page): ReturnType<Page['locator']> => page.locator('.prev
 const told = (page: Page): ReturnType<Page['locator']> =>
   page.frameLocator('iframe.viewer-frame').locator('#told')
 
-/** One of the page's own methods, through the bridge, as the interface asks. */
+/** One of the map page's own methods, through the bridge, as the interface asks. */
 const drive = (page: Page, method: string, ...args: unknown[]): Promise<unknown> =>
   page.evaluate(
     ([m, a]) =>
       (
         globalThis as unknown as {
-          api: { viewer: { call(m: string, ...a: unknown[]): Promise<unknown> } }
+          api: { viewer: { call(r: string, m: string, ...a: unknown[]): Promise<unknown> } }
         }
-      ).api.viewer.call(m as string, ...(a as unknown[])),
+      ).api.viewer.call('map', m as string, ...(a as unknown[])),
     [method, args] as [string, unknown[]],
   )
 
@@ -243,7 +293,28 @@ test('the frame is one element across a scroll, a cell toggling and a redraw', a
   })
 })
 
-test('the map comes back to its clock, view and labels when the export takes the frame and gives it back', async () => {
+/** Every engine frame in the document: the map's and, while cell 06 is open, the export's. */
+const engineFrames = (page: Page): ReturnType<Page['locator']> =>
+  page.locator(`iframe[sandbox="${VIEWER_SANDBOX}"]`)
+const exportFrame = (page: Page): ReturnType<Page['locator']> => page.locator('iframe.export-frame')
+
+/**
+ * Write down every address the map's frame is given from now on, where a
+ * test can read it back: the first, and each one a change of `src` sets.
+ */
+const watchMapAddress = (page: Page): Promise<void> =>
+  frame(page).evaluate((el) => {
+    const seen = [el.getAttribute('src') ?? '']
+    ;(window as unknown as { __mapSrcs: string[] }).__mapSrcs = seen
+    new MutationObserver(() => seen.push(el.getAttribute('src') ?? '')).observe(el, {
+      attributes: true,
+      attributeFilter: ['src'],
+    })
+  })
+const mapAddresses = (page: Page): Promise<string[]> =>
+  page.evaluate(() => (window as unknown as { __mapSrcs: string[] }).__mapSrcs)
+
+test('cell 06 adds a frame of its own, and the map keeps its clock and is sent nothing', async () => {
   test.setTimeout(180_000)
   const h = home()
   await withApp(h, async (page) => {
@@ -259,234 +330,318 @@ test('the map comes back to its clock, view and labels when the export takes the
     // page could also have answered.
     await expect.poll(() => drive(page, 'state')).toMatchObject({ clock: '07:00' })
     await markFrame(page)
+    await watchMapAddress(page)
 
     // Where a person left the map: a view chosen, the labels turned off and
-    // a moment scrubbed to. The clock is read back rather than assumed,
-    // because the page runs on from wherever it is put, as the engine's
-    // does.
+    // a moment scrubbed to.
     await drive(page, 'showView', 'time')
     await drive(page, 'setLabels', false)
     await drive(page, 'seek', 30_600)
-    const left = ((await drive(page, 'state')) as { now: number }).now
-    expect(left, 'the page took the scrub').toBeGreaterThanOrEqual(30_600)
+    await expect(told(page)).toHaveText(/^showView=time\/undefined setLabels=false seek=30600$/)
+    await expect(engineFrames(page)).toHaveCount(1)
 
-    // Cell 06 opens and the engine's plan takes the frame (A5-01). That is
-    // a navigation, and what arrives is a new document - which is what the
-    // empty record of what it has been told says, and it says as well that
-    // the plain map's own state was not handed to the export's preview,
-    // whose address is the engine's word on where the map should be.
+    // Cell 06 opens: a second frame, in the cell, at the planned address.
+    // The map's own page is told nothing and keeps running from where it
+    // was. The clock is read either side of the open and allowed to have run
+    // on by the wall time between the two reads and one second more: the
+    // stand-in runs at sixty service-seconds a second, as the engine's page
+    // does, and a page that had been sent away and back would be at the
+    // start of the day, or restored by a seek the page would have written
+    // down.
+    const t0 = Date.now()
+    const before = ((await drive(page, 'state')) as { now: number }).now
     await openCell(page, 'export')
-    await expect(frame(page)).toHaveAttribute('src', /frame=/, { timeout: 60_000 })
-    await expect(told(page)).toBeEmpty({ timeout: 30_000 })
-
-    // And closing it hands the frame back to the plain map, which is given
-    // back where it was left rather than where a fresh document starts.
-    //
-    // Asserted as the sequence the page was told, in order, with the clock
-    // exact: that is the three-call restore the engine's own `state()` can
-    // produce and the whole of it. The clock afterwards is not asserted as
-    // a figure - the page runs at sixty service-seconds a second and the
-    // app cannot stop it, having no way to learn it was running (engine
-    // issue 29) - only that it went on from where it was put and not from
-    // the start of the day.
-    await closeCell(page, 'export')
-    await expect(frame(page)).toHaveAttribute('src', /controls=1/, { timeout: 60_000 })
-    await expect(told(page)).toHaveText(/^showView=time\/0 setLabels=false seek=\d/, {
-      timeout: 30_000,
-    })
-
-    // The view and the labels exactly, and the clock within a deadline of
-    // where the map was. Not the figure: the page runs at sixty
-    // service-seconds a second and the app cannot stop it, having no way to
-    // learn it was running (engine issue 29), so the clock the app read at
-    // the moment it navigated is later than the one read here and the two
-    // are not the same number. What it promises is that the map is put back
-    // where it was rather than at the start of the day, and the tolerance
-    // is a deadline - ten seconds of running - not a turn count.
-    const said = (await told(page).textContent()) ?? ''
-    const seeked = Number(said.slice(said.indexOf('seek=') + 'seek='.length))
+    await expect(exportFrame(page)).toHaveAttribute('src', /[?&]frame=/, { timeout: 60_000 })
+    await expect(engineFrames(page)).toHaveCount(2)
+    const after = ((await drive(page, 'state')) as { now: number }).now
+    const wall = (Date.now() - t0) / 1000
+    expect(after, 'the map ran on and did not start again').toBeGreaterThanOrEqual(before)
     expect(
-      seeked,
-      'given the clock the map was at, not the start of the day',
-    ).toBeGreaterThanOrEqual(left)
-    expect(seeked - left, 'and not some other moment').toBeLessThan(600)
-    const back = ((await drive(page, 'state')) as { now: number }).now
-    expect(back, 'the clock went on from where it was put').toBeGreaterThanOrEqual(seeked)
+      after - before,
+      'and moved by no more than the time that passed and a second',
+    ).toBeLessThanOrEqual((wall + 1) * 60)
+    await expect(told(page), 'no restore was sent to the map').toHaveText(
+      /^showView=time\/undefined setLabels=false seek=30600$/,
+    )
     expect(await drive(page, 'state')).toMatchObject({ viewName: 'time', labels: false })
 
-    // All of it on the one element.
+    // Both frames carry exactly the sandbox, and nothing else (ADR-028).
+    for (const each of await engineFrames(page).all())
+      await expect(each).toHaveAttribute('sandbox', VIEWER_SANDBOX)
+    // The export's is inside cell 06, at the address the engine planned
+    // with the safe zones (the reel has them); the map's is in no cell.
+    expect(
+      await exportFrame(page).evaluate((el) => el.closest('.cell')?.getAttribute('data-cell')),
+    ).toBe('06')
+    await expect(exportFrame(page)).toHaveAttribute('src', /[?&]safe=1(&|$)/)
+    expect(await frame(page).evaluate((el) => el.closest('.cell'))).toBeNull()
+
+    // Cell 03's transport drives the map's frame and not the export's. The
+    // export's page is the same stand-in, writing down what it is told, so
+    // a call that reached it would show.
+    const transport = page.getByRole('region', { name: 'Transport' })
+    await transport.getByRole('button', { name: /^(Pause|Play day)$/ }).click()
+    await expect(told(page), 'the press reached the map').toContainText('setPlaying=')
+    await expect(
+      page.frameLocator('iframe.export-frame').locator('#told'),
+      'and not the preview',
+    ).toBeEmpty()
+
+    // Closing the cell takes its frame away and sends the map nothing.
+    const open = (await told(page).textContent()) ?? ''
+    await closeCell(page, 'export')
+    await expect(exportFrame(page)).toHaveCount(0)
+    await expect(engineFrames(page)).toHaveCount(1)
+    await expect(told(page)).toHaveText(open)
+
+    // The map's frame was never given another address at all - the export's
+    // with `safe=1` least of all - and it is the element it was.
+    const addresses = await mapAddresses(page)
+    expect(addresses.filter((a) => /[?&]safe=1(&|$)/.test(a))).toEqual([])
+    expect(new Set(addresses).size, `the map stayed on one address: ${addresses.join(', ')}`).toBe(
+      1,
+    )
     await expect(markOnFrame(page)).resolves.toBe('the same frame')
   })
 })
 
-test('the preview is pinned under the header, and above the cells at every width', async () => {
+test('the map is a block in the column after cell 02, and scrolls with it', async () => {
   test.setTimeout(180_000)
   const h = home()
   await withApp(h, async (page, app) => {
     await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
+    await roomy(app, page, 1200, 700)
     await expect(preview(page)).toBeVisible()
 
-    // A window this test chooses, rather than whatever one the machine
-    // gave it. Wide and short on purpose: the two bounds this rule is
-    // choosing between - half the window, and half the window at 16:10 -
-    // give the same width when the window is tall enough, and telling them
-    // apart is what the width is measured for.
-    await app.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows()[0].setContentSize(1200, 700)
-    })
-    await expect.poll(() => page.evaluate(() => window.innerWidth)).toBeGreaterThan(1100)
+    // Where it is: a child of the column, between cells 02 and 03, and in
+    // the column's flow - and nothing in the column is pinned.
+    const where = await preview(page).evaluate((block) => ({
+      parent: block.parentElement?.className ?? null,
+      before: block.previousElementSibling?.getAttribute('data-cell') ?? null,
+      after: block.nextElementSibling?.getAttribute('data-cell') ?? null,
+      position: getComputedStyle(block).position,
+      // A popover is `position: fixed` by the browser's own style even while
+      // it is closed, and it lives in the top layer, out of the flow: it is
+      // not something the column pins (the colour picker's panels are the
+      // ones in a cell).
+      pinned: [block, ...document.querySelectorAll('.notebook *')]
+        .filter((el) => !el.matches('[popover]'))
+        .filter((el) => ['sticky', 'fixed'].includes(getComputedStyle(el).position))
+        .map((el) => `${el.tagName.toLowerCase()}.${el.className}`),
+    }))
+    expect(where.parent).toBe('notebook')
+    expect(where.before, 'after cell 02, whose layout it is drawn from').toBe('02')
+    expect(where.after, 'before cell 03, the first cell that acts on it').toBe('03')
+    expect(where.position).toBe('static')
+    expect(where.pinned, 'nothing in the column is pinned').toEqual([])
 
-    // Pinned by the stylesheet alone, from the top of the column: sticky,
-    // offset by the header's own token, and one step under the header's
-    // layer so the header always draws its own rule.
-    //
-    // Against the token and not against the header's measured box. How the
-    // header's forty pixels and its one-pixel rule divide between its box
-    // and its border is not a thing this rule can know - a page holding
-    // these stylesheets alone measures forty-one - and an assertion that
-    // reads it back is asserting the box model rather than the rule.
-    const pinned = await preview(page).evaluate((el) => {
-      const style = getComputedStyle(el)
-      const root = getComputedStyle(document.documentElement)
-      return {
-        position: style.position,
-        top: style.top,
-        headerToken: root.getPropertyValue('--header-height').trim(),
-        layer: Number(style.zIndex),
-        headerLayer: Number(root.getPropertyValue('--layer-raised').trim()),
-      }
-    })
-    expect(pinned.position).toBe('sticky')
-    expect(pinned.top).toBe(pinned.headerToken)
-    // Above the cells, whose own positioned parts come after the map in the
-    // document, and below the header, whose rule it must never cover.
-    expect(pinned.layer, 'above the cells').toBeGreaterThan(0)
-    expect(pinned.layer, "under the header's own layer").toBeLessThan(pinned.headerLayer)
-
-    // A band, not the window: half of what is below the header, so the cell
-    // being edited underneath stays in view. Bounded on the height and not
-    // on the shape, so the map keeps the width it had.
-    //
-    // Measured against the box's **content**, which is what a child fills,
-    // and reported with the grid's own used track beside it. The first
-    // reading of this said the map was 992 in a box of 1024 - a whole
-    // `--space-4-4` short at each edge - and no window driven outside the
-    // app reproduced it, so the failure carries what it would take to tell
-    // the three cases apart next time: a box with padding in it, a track
-    // narrower than the box, or a map that does not fill its track.
-    const band = await page.evaluate(() => {
-      const shapeEl = document.querySelector('.viewer-shape')
-      const viewerEl = document.querySelector('.viewer')
-      const header = document.querySelector('.app-header')?.getBoundingClientRect()
-      if (shapeEl === null || viewerEl === null || header === undefined) return null
-      const shape = shapeEl.getBoundingClientRect()
-      const viewer = viewerEl.getBoundingClientRect()
-      const style = getComputedStyle(viewerEl)
-      const pad = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight)
-      return {
-        height: shape.height,
-        width: shape.width,
-        viewerWidth: viewer.width,
-        content: viewerEl.clientWidth - pad,
-        track: style.gridTemplateColumns,
-        shapes: document.querySelectorAll('.viewer-shape').length,
-        top: header.height,
-      }
-    })
-    expect(band, 'the map has a box on screen').not.toBeNull()
-    const half = ((await page.evaluate(() => window.innerHeight)) - (band?.top ?? 0)) / 2
-    expect(Math.abs((band?.height ?? 0) - half), 'half the window below the header').toBeLessThan(4)
-    // Wider than the ratio: a bound that kept 16:10 while capping the height
-    // would make the map exactly `height * 16 / 10` wide - 546 against the
-    // 1024 it had when it broke out of the column, measured - so this is the
-    // assertion that tells the two bounds apart, and `viewerWidth` is what
-    // it is measured against because that is the width the column gives the
-    // map (A7-05).
-    const boxes =
-      `the map ${band?.width}, its box ${band?.viewerWidth} (content ${band?.content}), ` +
-      `the grid's track ${band?.track}, ${band?.shapes} shape(s) on the screen`
-    expect(band?.shapes, `one map on the screen: ${boxes}`).toBe(1)
-    expect(band?.width ?? 0, `the width it already had - ${boxes}`).toBeGreaterThanOrEqual(
-      (band?.content ?? 0) - 1,
-    )
-    expect(
-      band?.width ?? 0,
-      `not shrunk to the band\u2019s own ratio (the map ${band?.width} by ${band?.height})`,
-    ).toBeGreaterThan(((band?.height ?? 0) * 16) / 10 + 1)
-
-    // Scrolled to the foot of the notebook, the map is still on screen and
-    // still below the header rather than off the top of it. Not asserted as
-    // an exact offset: sticky also stops the preview leaving the column, so
-    // at the very bottom of a short notebook it is carried up a little, and
-    // an exact figure would make this a test of the footer's height. What
-    // matters is that it did not scroll away, which without the pinning it
-    // would have done by several windows.
-    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
-    await expect(frame(page)).toBeInViewport()
-    const box = await preview(page).boundingBox()
-    const headerBottom = await page.evaluate(
-      () => document.querySelector('.app-header')?.getBoundingClientRect().bottom ?? -1,
-    )
-    expect(box, 'the preview has a box on screen').not.toBeNull()
-    expect(box?.y ?? -1, 'clear of the header').toBeGreaterThanOrEqual(headerBottom - 1)
-
-    // Below 900px it still sits above the notebook rather than beside it.
-    // That much is structural - the preview is a child of the column and
-    // the test below asserts it as structure, where it can actually fail -
-    // so what is measured here is the thing that can go wrong at a width
-    // and a height the app was not laid out at: the band follows the
-    // window rather than keeping a size taken at some other one. The window
-    // itself is made narrower, as a person would drag it.
+    // Its top moves with the scroll, by the scroll. The document is taller
+    // than the window here (every cell but 06 is open), and the scroll is
+    // read back before the box is, so the comparison is of two settled
+    // positions.
     await page.evaluate(() => window.scrollTo(0, 0))
-    await app.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows()[0].setContentSize(800, 600)
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0)
+    const top0 = await preview(page).evaluate((el) => el.getBoundingClientRect().top)
+    await page.evaluate(() => window.scrollTo(0, 150))
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(150)
+    const top1 = await preview(page).evaluate((el) => el.getBoundingClientRect().top)
+    expect(top0 - top1, 'the block moved up by the scroll').toBeCloseTo(150, 0)
+
+    // As wide as the column, at the height the rule gives, and not the
+    // ratio's width at that height (the trap a `max-height` against an
+    // automatic width fell into once: 546 wide in a box of 1024).
+    const box = await page.evaluate(() => {
+      const shape = document.querySelector('.preview .viewer-shape') as HTMLElement
+      const block = document.querySelector('.preview') as HTMLElement
+      const root = getComputedStyle(document.documentElement)
+      const floor = parseFloat(root.getPropertyValue('--map-height-floor'))
+      return {
+        width: shape.getBoundingClientRect().width,
+        height: shape.getBoundingClientRect().height,
+        column: block.clientWidth,
+        floor,
+        windowHeight: window.innerHeight,
+      }
     })
-    await expect.poll(() => page.evaluate(() => window.innerWidth)).toBeLessThan(900)
-    const narrow = await page.evaluate(() => {
-      const shape = document.querySelector('.viewer-shape')?.getBoundingClientRect()
-      const header = document.querySelector('.app-header')?.getBoundingClientRect()
-      return shape === undefined || header === undefined
-        ? null
-        : { height: shape.height, want: (window.innerHeight - header.height) / 2 }
-    })
-    expect(narrow, 'the map has a box at the narrow width').not.toBeNull()
+    expect(box.width, 'the map fills the column').toBeCloseTo(box.column, 0)
+    expect(box.height, 'at least the floor').toBeGreaterThanOrEqual(box.floor - 0.5)
+    expect(box.height, 'never taller than the window').toBeLessThan(box.windowHeight)
     expect(
-      Math.abs((narrow?.height ?? 0) - (narrow?.want ?? 0)),
-      'the band is half of the shorter window, not half of the taller one',
-    ).toBeLessThan(4)
-    expect((narrow?.height ?? 0) < (band?.height ?? 0), 'and it did shrink').toBe(true)
+      box.width,
+      `not shrunk to its ratio at that height (the map ${box.width} by ${box.height})`,
+    ).toBeGreaterThan((box.height * 16) / 9 - 1)
   })
 })
 
-test('the notebook holds one frame and the preview holds it, wherever the cells are', async () => {
+test('the notebook holds one engine frame, and two while cell 06 is open, the map in no cell', async () => {
   test.setTimeout(180_000)
   const h = home()
   await withApp(h, async (page) => {
     await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
-    // The wrapper is a direct child of the notebook's column and not of any
-    // cell: a frame inside a cell would be reparented the moment the cell
-    // that holds it moved, and unmounted the moment it was replaced.
     const where = await page.evaluate(() => {
-      const wrapper = document.querySelector('.preview')
       const frameEl = document.querySelector('iframe.viewer-frame')
       return {
-        parent: wrapper?.parentElement?.className ?? null,
-        first: wrapper?.parentElement?.firstElementChild === wrapper,
         insideCell: frameEl?.closest('.cell') !== null,
         insidePreview: frameEl?.closest('.preview') !== null,
       }
     })
-    expect(where.parent).toBe('notebook')
-    expect(where.first, 'the column begins with the map').toBe(true)
-    expect(where.insideCell, 'no cell owns the frame').toBe(false)
+    expect(where.insideCell, 'no cell owns the map').toBe(false)
     expect(where.insidePreview).toBe(true)
+    await expect(engineFrames(page)).toHaveCount(1)
 
-    // Every cell open, which is several windows of scrolling, and still one.
+    // Every cell open, which is several windows of scrolling: the map's
+    // frame and the export's, and no more.
     for (const id of ['data', 'process', 'frame', 'style', 'lines', 'export'] as const) {
       await openCell(page, id)
     }
+    await expect(exportFrame(page)).toHaveCount(1, { timeout: 60_000 })
+    await expect(engineFrames(page)).toHaveCount(2)
     await expect(frame(page)).toHaveCount(1)
-    await expect(cellHeading(page, 'export')).toHaveAttribute('aria-expanded', 'true')
+    expect(await frame(page).evaluate((el) => el.closest('.cell'))).toBeNull()
+    // Opened and closed again, more than once: one frame each time it is
+    // open, none when it is closed, and never a second map.
+    for (let i = 0; i < 2; i += 1) {
+      await closeCell(page, 'export')
+      await expect(engineFrames(page)).toHaveCount(1)
+      await openCell(page, 'export')
+      await expect(engineFrames(page)).toHaveCount(2, { timeout: 60_000 })
+      await expect(frame(page)).toHaveCount(1)
+    }
+  })
+})
+
+test('a project with no map keeps the map’s place, says so, and points at cell 02', async () => {
+  test.setTimeout(180_000)
+  const h = home()
+  await withApp(h, async (page) => {
+    await createProject(page, 'LA Metro Rail', 'Los Angeles')
+    await openProject(page, 'Los Angeles')
+    // With no layout, cells 01 and 02 open: they are the work left to do.
+    await expect(cellHeading(page, 'data')).toHaveAttribute('aria-expanded', 'true')
+    await expect(cellHeading(page, 'process')).toHaveAttribute('aria-expanded', 'true')
+
+    // The block is there, between cells 02 and 03, a status region saying
+    // there is no map yet, and no frame.
+    const status = preview(page).locator('.preview-status')
+    await expect(status).toHaveAttribute('role', 'status')
+    await expect(status).toContainText(`${NO_MAP} Lay it out in cell 02.`)
+    await expect(engineFrames(page)).toHaveCount(0)
+    expect(
+      await preview(page).evaluate((el) => el.previousElementSibling?.getAttribute('data-cell')),
+    ).toBe('02')
+
+    // Its link takes a person to cell 02, opening it if they had closed it,
+    // with focus on the cell's heading.
+    await closeCell(page, 'process')
+    await status.getByRole('button', { name: 'Lay it out in cell 02.' }).click()
+    await expect(cellHeading(page, 'process')).toHaveAttribute('aria-expanded', 'true')
+    await expect(cellHandback(page, 'process')).toBeFocused()
+
+    // The map arrives into the same status region, which says so, and the
+    // frame follows it: the region was never taken out of the document.
+    await status.evaluate((el) => {
+      ;(el as unknown as Record<string, unknown>).__same = 'the same region'
+    })
+    await layOut(page)
+    await expect(status).toHaveText(MAP_DRAWN)
+    expect(
+      await status.evaluate((el) => (el as unknown as Record<string, unknown>).__same ?? null),
+    ).toBe('the same region')
+    await expect(frame(page)).toHaveCount(1)
+    // A finished run closes nothing: what the person had open stays open.
+    await expect(cellHeading(page, 'process')).toHaveAttribute('aria-expanded', 'true')
+
+    // Opened again, a laid-out project starts on its map: 01 and 02
+    // collapsed, 03 to 05 open, 06 closed.
+    await page.getByRole('button', { name: 'Back to Library' }).click()
+    await openProject(page, 'Los Angeles')
+    const expanded = {
+      data: 'false',
+      process: 'false',
+      frame: 'true',
+      style: 'true',
+      lines: 'true',
+      export: 'false',
+    } as const
+    for (const [id, want] of Object.entries(expanded))
+      await expect(cellHeading(page, id as keyof typeof expanded), id).toHaveAttribute(
+        'aria-expanded',
+        want,
+      )
+  })
+})
+
+test('a run never opens its cell or moves the page, and its row says what it is doing', async () => {
+  test.setTimeout(180_000)
+  // Slow enough to read the row while it runs; and the map refused at the
+  // end, so the same run shows a failure.
+  const h = home({ progress_delay_ms: 300, map_draws: false })
+  await withApp(h, async (page, app) => {
+    await roomy(app, page, 1200, 700)
+    await createProject(page, 'LA Metro Rail', 'Los Angeles')
+    await openProject(page, 'Los Angeles')
+    await closeCell(page, 'data')
+    await closeCell(page, 'process')
+    await page.evaluate(() => window.scrollTo(0, 0))
+    const row = cellHeading(page, 'process')
+
+    await page.getByRole('button', { name: 'Run all' }).click()
+    // The row says the stage and its place, in the progress line's words.
+    await expect(row).toContainText(/running [a-z]+, \d of 8/, { timeout: 30_000 })
+    await expect(row).toHaveAttribute('aria-expanded', 'false')
+    expect(await page.evaluate(() => window.scrollY), 'the page did not move').toBe(0)
+    expect(
+      await page.evaluate(() => document.activeElement?.closest('.cell') ?? null),
+      'nothing in a cell took focus',
+    ).toBeNull()
+
+    // And where it failed, in the row and in the header, still collapsed.
+    await expect(row).toContainText(/failed at [a-z]+, \d of 8/, { timeout: 60_000 })
+    await expect(page.locator('.project-run-state')).toHaveText('02 Process failed.')
+    await expect(row).toHaveAttribute('aria-expanded', 'false')
+    expect(await page.evaluate(() => window.scrollY)).toBe(0)
+  })
+})
+
+test('a read-only project shows its map and no export preview, and offers no layout', async () => {
+  test.setTimeout(180_000)
+  const h = home()
+  await withApp(h, async (page) => {
+    await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
+    await page.getByRole('button', { name: 'Back to Library' }).click()
+    await createProject(page, 'LA Metro Rail', 'Unmade')
+    // Both written by "a newer version of the app": a record version this
+    // one does not know, which it opens read-only.
+    for (const id of readdirSync(join(h.engineHome, 'projects'))) {
+      const file = join(h.engineHome, 'projects', id, 'project.json')
+      const record = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>
+      writeFileSync(file, JSON.stringify({ ...record, version: 99 }))
+    }
+
+    await openProject(page, 'Los Angeles')
+    await expect(page.getByText(/is read-only here/)).toBeVisible()
+    await expect(frame(page), 'viewing is not editing: the map is there').toHaveCount(1)
+    await openCell(page, 'export')
+    await expect(cell(page, 'export')).toContainText(
+      'This project was made by a newer version of the app, so its export cannot be changed or made here.',
+    )
+    await expect(cell(page, 'export').getByRole('combobox')).toHaveCount(0)
+    // Given time to plan, nothing is: no preview is drawn for an export that
+    // cannot be made, and no plan was asked of the engine for one. Paired with
+    // the same cell on a project that can export, which does plan.
+    await page.waitForTimeout(1500)
+    await expect(exportFrame(page)).toHaveCount(0)
+    const asked = readFileSync(join(h.engineHome, 'fake-engine.received'), 'utf8')
+    // The log is the stand-in's, and it has recorded the layout, so an empty
+    // answer below is an answer and not a missing file.
+    expect(asked, 'the stand-in logged the project being laid out').toContain('graph.build')
+    expect(asked, 'a read-only project plans no export').not.toContain('"export.plan"')
+
+    await page.getByRole('button', { name: 'Back to Library' }).click()
+    await openProject(page, 'Unmade')
+    const status = preview(page).locator('.preview-status')
+    await expect(status).toHaveText(NO_MAP)
+    await expect(status.getByRole('button')).toHaveCount(0)
   })
 })
 

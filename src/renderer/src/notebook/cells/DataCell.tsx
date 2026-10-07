@@ -6,6 +6,7 @@ import DownloadLine from '../../DownloadLine'
 import Cell from '../Cell'
 import type { CellViewProps } from '../cells'
 import { useProject } from '../context'
+import { runRowStatus } from '../runRow'
 
 // Cell 01, Data: what the project is made of (ADR-045).
 //
@@ -91,8 +92,18 @@ function useInspection(
 }
 
 export default function DataCell({ cell, state, open, onToggle }: CellViewProps): JSX.Element {
-  const { project, engine, inspect, setInputs, registry, readStage, layingOut, exporting, run } =
-    useProject()
+  const {
+    project,
+    engine,
+    inspect,
+    setInputs,
+    registry,
+    readStage,
+    layingOut,
+    exporting,
+    run,
+    runSnapshot,
+  } = useProject()
   const inspection = useInspection(project?.feed ?? null, engine?.state === 'ready', inspect)
   const heading = useRef<HTMLHeadingElement>(null)
   return (
@@ -101,6 +112,7 @@ export default function DataCell({ cell, state, open, onToggle }: CellViewProps)
       name={cell.name}
       state={state}
       summary={project === null ? null : dataSummary(inspection)}
+      progress={runRowStatus(runSnapshot, cell.id)}
       open={open}
       onToggle={onToggle}
       headingRef={heading}
