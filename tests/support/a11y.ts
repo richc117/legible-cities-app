@@ -170,7 +170,7 @@ interface Finding {
   stops: number
 }
 
-type Probe = {
+export type Probe = {
   begin(): number
   step(): StepAnswer
   /**
@@ -183,7 +183,7 @@ type Probe = {
   moving(): string[]
 }
 
-function installProbe(): void {
+export function installProbe(): void {
   const w = window as unknown as { __a11y?: Probe }
   if (w.__a11y) return
 

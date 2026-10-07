@@ -23,16 +23,19 @@ import {
   controlsOf,
   fixture,
   heading,
+  installProbe,
   newProjectFromLibrary,
   openLaidOut,
   pressWithKeyboard,
   profile,
   sweep,
   withApp,
+  type Probe,
 } from '../support/a11y'
 import { describePair, duplicatedNames } from '../support/a11y-names'
 import { cell, cellHandback, cellHeading, closeCell, openCell } from '../support/project'
 import { standInPage } from '../support/standInPage'
+import { type StepAnswer } from '../support/tab-walk'
 
 test.skip(PYTHON === null, 'no python3 or python on the PATH to run the stand-in engine')
 
@@ -840,5 +843,81 @@ test('the project screen: one press skips past the map to cell 03, the map stays
       cell(page, 'export').getByRole('combobox', { name: 'Preset' }),
       'the walk reaches the cell’s first choice',
     ).toBeFocused()
+  })
+})
+
+test('the Tab walk hands over at the map frame by identity, and asks again from the frame it began at', async () => {
+  // Issue 271: the sweep's in-page half, driven by hand. The sweep reaches
+  // the hand-over only when a press of Tab leaves the document reading the
+  // map's frame as focused, which a fast machine never shows (the frame's
+  // page has nothing focusable in present mode, so the press passes through
+  // it) and a slow runner now and then does. So the frame is focused here
+  // from the document, which is deterministic, and the probe's three
+  // answers are read: that the frame is told apart, that the control asked
+  // for is read by identity and not by description, and that a second ask
+  // is made from the remembered frame once focus has left it.
+  test.setTimeout(120_000)
+  const p = profile()
+  await withApp(p, async (page) => {
+    await openLaidOut(page, 'Los Angeles')
+    await expect(heading(page)).toHaveText('Los Angeles')
+    const frame = page.locator('iframe.viewer-frame')
+    await expect(frame, 'the map is drawn').toBeVisible({ timeout: 60_000 })
+
+    const probe = {
+      begin: () => page.evaluate(() => (window as unknown as { __a11y: Probe }).__a11y.begin()),
+      step: () => page.evaluate(() => (window as unknown as { __a11y: Probe }).__a11y.step()),
+      past: (again: boolean) =>
+        page.evaluate(
+          (again) => (window as unknown as { __a11y: Probe }).__a11y.past(again),
+          again,
+        ),
+    }
+    /** Read until the document says focus is on the control `past()` put it on: a deadline, not a count of readings. */
+    const arrival = async (): Promise<StepAnswer> => {
+      const deadline = Date.now() + 10_000
+      let reading = await probe.step()
+      while (!reading.onAimed && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 25))
+        reading = await probe.step()
+      }
+      return reading
+    }
+
+    await page.evaluate(installProbe)
+    expect(await probe.begin(), 'there are controls to reach').toBeGreaterThan(0)
+
+    // The frame holds focus, and the document says so.
+    await frame.evaluate((el) => (el as HTMLElement).focus())
+    await expect
+      .poll(async () => (await probe.step()).state, { message: 'the map frame holds focus' })
+      .toBe('frame')
+
+    // Asked from the frame: the first control wanted after it, which is
+    // cell 03's heading row (ADR-046), named as the probe names it.
+    const first = await probe.past(false)
+    expect(first, "the first control after the map is cell 03's heading row").toMatch(/^button "03/)
+    // Read by identity: the very element asked for. A reading of the
+    // frame, of nothing or of some other control is not it.
+    const landed = await arrival()
+    expect(landed, 'the document reads focus on the control that was asked for').toMatchObject({
+      state: 'stop',
+      onAimed: true,
+    })
+    expect(landed.at).toMatch(/^button "03/)
+    await expect(cellHeading(page, 'frame'), 'and it is the one a person sees').toBeFocused()
+
+    // Asked again, now that focus has left the frame: the same question of
+    // the frame the first ask began at. Cell 03's row has been read, so the
+    // answer is the next control wanted, and the document reads that one.
+    const second = await probe.past(true)
+    expect(second, 'a re-ask from the remembered frame answers').not.toBeNull()
+    expect(second, 'and names the next control, not the one already read').not.toBe(first)
+    expect((await arrival()).onAimed, 'the document reads focus on the second control').toBe(true)
+
+    // Asked from the frame again with focus in no frame: nothing to ask,
+    // and the remembered frame is not lost for it.
+    expect(await probe.past(false), 'a first ask with focus in no frame answers null').toBeNull()
+    expect(await probe.past(true), 'the remembered frame still answers').not.toBeNull()
   })
 })
