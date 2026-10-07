@@ -305,17 +305,24 @@ which it is.
   cannot see into a cross-origin frame, so the walk finds the first wanted
   control that follows the frame in document order, focuses it directly,
   and waits until the document reads focus on that very control before the
-  next press; a press read as focus on nothing is read again for up to a
-  second first, because the reading can be taken while focus is still
-  crossing into a frame or back from the end of the document, which is
-  what the runners' traces showed; **no press of Tab is made while focus
-  is inside a frame** unless that wait lapses, and a lapse ends as a miss
-  that prints every press the walk made. The cost: the walk no longer
-  proves that Tab crosses
-  a frame's far edge. On the project screen that is one control, cell 03's
-  row since ADR-046 put the map in the column above it, still swept for its
-  name and ring. A person's path is the documented one: "Skip past the map"
-  is one Tab before the frame.
+  next press; a press read as focus on nothing is read again for up to
+  two and a half seconds first, because the reading can be taken while
+  focus is still crossing into a frame or back from the end of the
+  document, which is what the runners' traces showed, and if the document
+  still reads nothing by then the walk puts focus down the same way, on the
+  first wanted control after the frame that lies between the last control
+  read and the next one wanted, or at the top when it left the end of the
+  document, rather than pressing on from a place it could not read; **no
+  press of Tab is made while focus is inside a frame** unless that
+  hand-over lapses too, and a lapse ends as a miss that prints every press
+  the walk made. The cost: the walk no longer proves that Tab crosses a
+  frame's far edge, nor, where the wrap is not read in time, that Tab
+  comes back round from the end of the document. On the project screen the
+  frames are the map's and, while cell 06 is open, the export preview's,
+  so the controls that follow them, cell 03's row since ADR-046 put the
+  map in the column above it and cell 06's first control, are still swept
+  for their names and rings. A person's path is the documented one: "Skip
+  past the map" is one Tab before the frame.
 - **Occlusion by the pinned map** (#213): no longer reachable, since ADR-046 put the map in the column's flow and nothing is pinned but the header.
 - **A name said twice, where the rule does not look** (#208). The engine
   log's nested name reached a pull request because `expectNamed` asks only
