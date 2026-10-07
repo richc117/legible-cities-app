@@ -3232,11 +3232,15 @@ test('a release, installed, through docs/acceptance.md', async () => {
         expect((bytesOf(after) ?? Infinity) < (bytesOf(sizeBefore) ?? -Infinity)).toBe(true)
       })
       await window.getByRole('button', { name: 'Back to Library' }).click()
-      await log.soft('the empty state again', () =>
-        expect(window.locator('.empty').getByRole('status')).toContainText(
+      await log.soft('the introduction again', async () => {
+        await expect(window.locator('.empty').getByRole('status')).toContainText(
           'Legible Cities draws a transit network',
-        ),
-      )
+        )
+        // Your projects holds only the New project card (ADR-047).
+        await expect(
+          window.getByRole('list', { name: 'Projects' }).getByRole('button'),
+        ).toHaveCount(1)
+      })
 
       await quit()
       window = await launch()

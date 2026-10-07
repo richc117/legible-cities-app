@@ -27,6 +27,9 @@ describe("the adapter neutralises the kit's leaks", () => {
   })
 })
 
+// No `.entry` is a button since ADR-047 made the projects cards; its rules
+// are kept for the next list whose whole row is one, as `app.css` says, and
+// the front door's cards hold their own (`front-door.test.tsx`).
 describe('the row-like buttons keep their own ground on a press', () => {
   it.each(['.entry', '.rail-step', '.cell-head'])(
     '%s is its own height and pressed ground',

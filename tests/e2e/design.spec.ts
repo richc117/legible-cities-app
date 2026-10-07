@@ -332,12 +332,12 @@ test('a Library card holds what it has, at the narrowest column and at the fluid
 test('with no projects the New project card keeps its slot, and the quiet line its place', async () => {
   // ADR-047: "Your projects" with none holds the New project card in its
   // first slot and the quiet line beside it, where the projects will go.
-  // Where only one card fits to a row - a zoomed window, a reflow at 320 -
-  // there is nothing beside it, and the line goes under the card, which
-  // stays as wide as the row as every card is. Emulated widths, since the
-  // window will not go below 640: the column is 608 at 640 (two cards to a
-  // row) and 368 at 400 (one).
-  await withApp(async (page) => {
+  // Where only one card fits to a row - a zoomed window, a reflow - there is
+  // nothing beside it, and the line goes under the card, which stays as
+  // wide as the row as every card is. The window itself is sized, as the
+  // cards test sizes it, and every judgement is made at the width it gave:
+  // a window manager may give less than is asked (584 for 640, once).
+  await withApp(async (page, app) => {
     const list = page.getByRole('list', { name: 'Projects' })
     await expect(list.getByRole('button')).toHaveCount(1)
     await expect(
@@ -345,14 +345,19 @@ test('with no projects the New project card keeps its slot, and the quiet line i
         exact: true,
       }),
     ).toBeVisible()
-    for (const [width, beside] of [
-      [640, true],
-      [400, false],
-    ] as const) {
-      await page.setViewportSize({ width, height: 720 })
+
+    const sized = async (asked: number, most: number): Promise<number> => {
+      await app.evaluate(({ BrowserWindow }, width) => {
+        BrowserWindow.getAllWindows()[0].setContentSize(width, 720)
+      }, asked)
       await expect
         .poll(() => page.evaluate(() => window.innerWidth), { timeout: 10_000 })
-        .toBe(width)
+        .toBeLessThanOrEqual(most)
+      return page.evaluate(() => window.innerWidth)
+    }
+
+    const seen: string[] = []
+    const judge = async (width: number): Promise<void> => {
       const m = await page.evaluate(() => {
         const wrap = document.querySelector('.projects') as HTMLElement
         const box = (el: Element): { left: number; right: number; top: number; bottom: number } => {
@@ -360,6 +365,7 @@ test('with no projects the New project card keeps its slot, and the quiet line i
           return { left: r.left, right: r.right, top: r.top, bottom: r.bottom }
         }
         const line = wrap.querySelector(':scope > .hint') as HTMLElement
+        const root = getComputedStyle(document.documentElement)
         return {
           wrap: box(wrap),
           card: box(wrap.querySelector('.card') as Element),
@@ -368,29 +374,57 @@ test('with no projects the New project card keeps its slot, and the quiet line i
           lineHeld: line.scrollWidth <= line.clientWidth,
           tracks: getComputedStyle(wrap).gridTemplateColumns.split(' ').length,
           gap: parseFloat(getComputedStyle(wrap).columnGap),
+          least: parseFloat(root.getPropertyValue('--card-min-width')) * parseFloat(root.fontSize),
         }
       })
-      const at = `at ${width}`
+      const at = `a ${width}px window`
+      const row = m.wrap.right - m.wrap.left
+      // What the container query decides: two cards and the gap between
+      // them fit, or one card fills the row.
+      const two = row >= 2 * m.least + m.gap
+      seen.push(two ? 'beside' : 'under')
       // As wide as one track of the cards' grid: the row less its gaps,
       // shared out - the whole row where one card fills it.
-      const track = (m.wrap.right - m.wrap.left - m.gap * (m.tracks - 1)) / m.tracks
+      const track = (row - m.gap * (m.tracks - 1)) / m.tracks
       expect(m.card.right - m.card.left, `${at}: the card is one track wide`).toBeCloseTo(track, 0)
       expect(m.card.left, `${at}: the card is first`).toBeCloseTo(m.wrap.left, 0)
       expect(m.line.right, `${at}: the line inside the region`).toBeLessThanOrEqual(
         m.wrap.right + 1,
       )
       expect(m.lineHeld, `${at}: the line holds its words`).toBe(true)
-      if (beside) {
-        expect(m.tracks, `${at}: two cards fit to a row`).toBeGreaterThan(1)
+      if (two) {
+        expect(m.tracks, `${at}: more than one card fits to a row`).toBeGreaterThan(1)
+        expect(m.line.top, `${at}: the line on the card's row`).toBeLessThan(m.card.bottom)
         expect(m.line.left, `${at}: the line beside the card`).toBeGreaterThanOrEqual(m.card.right)
-        expect(m.line.top, `${at}: on the card's row`).toBeLessThan(m.card.bottom)
       } else {
+        // A track the grid made for the line would show here as a second
+        // column, and the card would be narrower than the row.
         expect(m.tracks, `${at}: one card fills the row`).toBe(1)
         expect(m.card.right, `${at}: the card fills the row`).toBeCloseTo(m.wrap.right, 0)
         expect(m.line.top, `${at}: the line under the card`).toBeGreaterThanOrEqual(m.card.bottom)
         expect(m.line.left, `${at}: from the row's near edge`).toBeCloseTo(m.wrap.left, 0)
       }
     }
+
+    // The window at its narrowest, where two cards fit to a row.
+    await judge(await sized(640, 700))
+    // And narrower than the app lets a person make it, where one card
+    // fills the row: the minimum (640 by 480, `src/main/index.ts`) is
+    // lowered for this measure only and put back whatever happens, so the
+    // app leaves as it came. A person reaches the same column by zooming
+    // the window in, which this stands in for.
+    try {
+      await app.evaluate(({ BrowserWindow }) => {
+        BrowserWindow.getAllWindows()[0].setMinimumSize(320, 480)
+      })
+      await judge(await sized(400, 420))
+    } finally {
+      await app.evaluate(({ BrowserWindow }) => {
+        BrowserWindow.getAllWindows()[0].setMinimumSize(640, 480)
+      })
+    }
+    // Both of the line's places were seen, or the test proved only one.
+    expect(seen, 'beside the card, then under it').toEqual(['beside', 'under'])
   })
 })
 

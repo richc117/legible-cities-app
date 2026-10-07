@@ -343,13 +343,30 @@ describe('the cards', () => {
   // ADR-047's quiet line sits beside the New project card, in the tracks
   // after the first; where only one card fits to a row there are none, and
   // the line goes under the card rather than into a track the grid would
-  // make, squeezing the card (2 × 14rem and a 0.75rem gap is two cards).
+  // make, squeezing the card. A container query cannot read a token, so its
+  // figure is written out; it is two cards and the gap between them, worked
+  // out here from the tokens themselves, so a token that moves fails here
+  // rather than leaving the query quietly wrong.
   it('put the quiet line under the New project card when one card fills the row', () => {
+    const scale = readFileSync(
+      resolve(__dirname, '../../src/renderer/src/styles/scale.css'),
+      'utf8',
+    )
+    const token = (name: string, unit: 'rem' | 'px'): number => {
+      const value = new RegExp(`${name}:\\s*([\\d.]+)${unit};`).exec(scale)?.[1]
+      expect(value, `${name} in ${unit}`).toBeDefined()
+      return Number(value)
+    }
+    const two =
+      2 * token('--card-min-width', 'rem') + token('--space-4-3', 'px') / token('--root-size', 'px')
+    expect(declared('.projects-none')).toMatch(
+      /minmax\(var\(--card-min-width\), 1fr\)[\s\S]*gap:\s*var\(--space-4-3\)/,
+    )
     expect(declared('.projects')).toMatch(/container-type:\s*inline-size/)
     expect(declared('.projects-none > .hint')).toMatch(/grid-column:\s*2 \/ -1/)
-    const query = /@container \(width < 28\.75rem\) \{\s*\.projects-none > \.hint \{([^}]*)\}/.exec(
-      panels,
-    )
-    expect(query?.[1]).toMatch(/grid-column:\s*1 \/ -1/)
+    const query =
+      /@container \(width < ([\d.]+)rem\) \{\s*\.projects-none > \.hint \{([^}]*)\}/.exec(panels)
+    expect(Number(query?.[1]), 'two cards and their gap, in rem').toBe(two)
+    expect(query?.[2]).toMatch(/grid-column:\s*1 \/ -1/)
   })
 })
