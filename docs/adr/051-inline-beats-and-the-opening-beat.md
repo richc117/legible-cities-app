@@ -40,3 +40,13 @@ For the alt text: name the storyboard, or describe the views visited.
 **#44's title card and draw-in have a place to hang**: a beat in a list.
 
 **What to watch.** A 90-second list at `high` quality is 2,700 frames at 2x; the app says the frame count before a capture starts, and the 90-second ceiling is this record's number, not a platform's.
+
+**As of 6 Oct 2026: the ceiling stays at 90 seconds.** No platform binds: Instagram Reels run to three minutes, Bluesky to 10 minutes and 300 MB, LinkedIn to 15 minutes and 5 GB. A 90-second list is 2,700 frames; the app's log gives 750 frames at 2x in 119.5–123.1 s (LA Metro Rail, BART), so about 7.3 minutes of capture at standard or high alike, then the encode. The only bound near is the engine's own: `bluesky-video` still carries `max_bytes` 50,000,000, checked after the capture, against an estimated 42 MB or more for 90 seconds of Mexico City at high; the change carrying this record moves it to 300,000,000, dated. Estimated, not run: `bin/export` takes only a storyboard's name. Criterion: a 90.5-second list is refused with the `params` kind and "90 seconds" in the sentence; a 90-second list plans 2,700 frames; `bluesky-video`'s `max_bytes` is 300,000,000.
+
+| quantity | measured | source |
+|---|---|---|
+| capture, 750 frames, 1080×1920 at 2x | 123.0, 121.4, 119.6, 119.5 s (LA); 123.1 s (BART) | the app's main.log `[capture]` lines, 30 Sep–1 Oct |
+| per frame; 2,700 frames | 0.159–0.164 s; 430–443 s | arithmetic |
+| encode, 750 frames, standard | 3.5–4.8 s | main.log |
+| 90 s at standard (scaled from earlier exports) | LA reel 7.1 MB; NYC reel 15.5 MB; CDMX bluesky-video 12.3 MB | existing mp4s |
+| 90 s at high (lower bound) | NYC reel 50.4 MB; CDMX bluesky-video 42.0 MB; LA bluesky-video 13.9 MB | standard exports upscaled ×2 and re-encoded at crf 16 with the engine's x264 settings |

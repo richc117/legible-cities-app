@@ -29,6 +29,19 @@ Open: where the trip is computed; how fewer changes weigh against more stops; wh
 
 **The page finds the trip** (c): the engine emits the network's graph with the page, the page's script computes the trip, and the engine's tests assert it through the page on a fixture. **The cost is stops plus a fixed penalty per change**, the penalty a constant the engine publishes, proposed as four stops; ties go to fewer changes, then to the line's label, then to the station's id, so two calls give one answer. **A hidden line is routed around**; with no trip left, the page says so, names the hidden lines, and leaves the map whole. **The seam is `setTrip(from, to)` and `setTrip(null)`**, with `state().trip` either `null` or the legs; the page's internal `setRoute` is renamed to keep the word clear. **The app offers the trip in cell 03** as a third section beside the transport, start and end as editable comboboxes and the legs as an ordered list. **A trip is view state, not record state**: never written to the project, restored with the view, labels and clock when a rebuild reloads the page. **The one additive schema change** is a `stations` list, id and name, on `map.build`'s result, so the pickers name what `setTrip` accepts. **A storyboard beat is deferred**; `state().trip` is what a beat would replay, and nothing here forecloses one.
 
+**As of 6 Oct 2026: how far the rest fades.** Everything keyed to a line the trip does not ride takes opacity 0.16, the lowest rung of the page's own ladder (its time chart's busiest lines): the line's group, its station dots, its trains and its name in the linear view's gutter. Station names off the trip are hidden, not faded; a station the trip passes keeps its name, chosen by station, not line, since the map keeps one opaque label per station and it may sit on a line off the trip. A faded line is never more distinct from the trip than the trip is from the ground; 0.16 keeps most of it: a mid-grey line against its faded twin is 3.62 to 3.93:1 on the warm-dark grounds, 2.93:1 on sepia (3.46 unfaded); 0.28 gives 3.03 and 2.57. No feed colour changes; the steps are the text alternative.
+
+**As of 6 Oct 2026: the penalty stays at four stops.** A throwaway router over the 22 stored octi graphs (389,476 ordered station pairs; a stop is a station the line calls at; LOOM's `excluded_conn` and `not_serving` honoured) finds no cliff between three and six: most answers move below two, and each later step moves 3.7–6.4% of pairs, most in New York, and next to none in the median network. Fewest changes first rides up to 37 extra stops to avoid one change. Four stops at a 1.5–2 minute interstation is 6–8 minutes, beside the 8 in-vehicle minutes reported for a rail-to-rail change. Criterion: on BART, 12th Street / Oakland City Center to Warm Springs / South Fremont rides 10 stops with no change, not 9 with one; on SF Muni Metro, Balboa Park to Right Of Way/Ocean Ave changes once (10 stops) rather than riding the M 15.
+
+| P | pairs whose answer moves (all 22) | median network | longest detour accepted at the higher P (stops over the fewest) |
+|---|---|---|---|
+| 0 → 2 | 29.6% | 3.0% | 9 |
+| 2 → 3 | 6.4% | 0.02% | 12 |
+| 3 → 4 | 3.7% | 0 | 14 |
+| 4 → 6 | 5.4% | 0 | 18 |
+| 6 → 8 | 3.8% | 0 | 21 |
+| 8 → ∞ | 5.9% | 0 | 37 (World Trade Center to Broad St, New York) |
+
 ## Consequences
 
 **The page grows a router and a graph.** The graph is the line graph the layout already carries, not the timetable. The page's size before and after is measured and written here before the record is Accepted.
@@ -40,5 +53,7 @@ Open: where the trip is computed; how fewer changes weigh against more stops; wh
 **Python tests drive the page.** The fixture assertions on `state().trip` run the page, as the capture tests already do.
 
 **Three documents gain sentences**: acceptance, stranger and accessibility quote the section's heading, the pickers' names and the leg sentence.
+
+**As of 6 Oct 2026:** honouring LOOM's `not_serving` disconnects 12.5% of the registry's station pairs (Seattle from 2,582 to 1,670, Metra from 57,360 to 22,178), so the router must not trust `not_serving` without a check.
 
 **Evidence.** APG combobox: "List autocomplete with manual selection: When the popup is triggered, it presents suggested values."; Escape "Closes the popup and returns focus to the combobox."; "DOM focus remains on the combobox and the combobox has aria-activedescendant set to a value that refers to the focused element within the popup." (https://www.w3.org/WAI/ARIA/apg/patterns/combobox/). OpenTripPlanner, quoted above (https://docs.opentripplanner.org/en/latest/RouteRequest/). Mapway's schematic-map planners offer "guides that take you step-by-step through your route on the metro map, highlighting changes." (https://www.mapway.com/apps/tokyo-metro-subway/). Transit: "Route names, stops, and trip durations are presented in concise, easy-to-understand sentences." (https://resources.transitapp.com/article/522-transit-and-universal-accessibility). WCAG 4.1.3: status messages are "presented to the user by assistive technologies without receiving focus" (https://www.w3.org/WAI/WCAG22/Understanding/status-messages.html). None gives a penalty value or a fade amount; those are judgements. The pages were read as served and the words are quoted from them.

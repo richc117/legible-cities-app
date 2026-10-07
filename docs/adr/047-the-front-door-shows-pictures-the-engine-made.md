@@ -168,3 +168,15 @@ returns summaries; check a quotation against its page before reusing it.
 **It depends on two other changes.** The fluid column (#277) gives the
 grid its width and the section reset (#273) removes the indentation the
 maintainer saw; the pictures wait on the engine.
+
+**As of 6 Oct 2026, the empty picture area's glyph is the set's `train`**,
+the regular weight at 24px, centred, in `--text-faint` on `--surface-sunken`
+(4.51:1 in Night, 4.59 in Parchment, a pair section 3 already holds),
+`aria-hidden`, once in each empty area; the New project card keeps its plus.
+It is not the mark: `docs/DESIGN.md` section 6 says the mark is never given
+a meaning, never stands for a state and is never used where a glyph is
+wanted, and it cannot be muted, since it takes the four `--line-*` colours
+and not `currentColor`. Six undrawn cards at `--card-min-width`, mocked in
+both themes, showed the mark repeated as a brand pattern louder than the
+names, a bare field reading as missing, and the faint glyph reading as a
+placeholder.
