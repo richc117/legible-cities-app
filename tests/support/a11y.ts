@@ -56,7 +56,9 @@ import {
   missMessage,
   readingLine,
   settleNone,
+  crossingOf,
   type Crossing,
+  type LapseFacts,
   type StepAnswer,
 } from './tab-walk'
 
@@ -186,11 +188,13 @@ export type Probe = {
    */
   past(again?: boolean, from?: Element | 'top'): string | null
   /**
-   * Where a reading of nothing that did not settle is: in a frame the press
-   * went into, or at the wrap past the end of the document. Records the
-   * origin, so `past(true)` asks from it. Records no control.
+   * What the document says where a reading of nothing did not settle: the
+   * last control read, the next one wanted, the frame between them that
+   * takes focus, and whether the document's first control is read. Decides
+   * nothing (`crossingOf` does), records no control, and notes the origin a
+   * hand-over would be asked from, so `past(true)` asks from it.
    */
-  lapsed(): Crossing
+  lapsed(): LapseFacts
   finish(): Finding
   moving(): string[]
 }
@@ -381,6 +385,15 @@ export function installProbe(): void {
     lapsed() {
       const follows = (el: Element, of: Element | null): boolean =>
         of === null || (of.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+      // The first control the walk wants in the document: where a press off
+      // its end comes back to.
+      const top = want.find((el) => el.isConnected)
+      const topUnread = top !== undefined && !visited.has(top)
+      // A control that has left the document has no place in it to be
+      // compared from, and the order `compareDocumentPosition` gives it is
+      // arbitrary.
+      if (last !== null && !last.isConnected)
+        return { detached: true, next: false, frame: null, topUnread }
       // The last control read, or the screen's heading where none has been.
       const from = last ?? document.querySelector('h1')
       const next = want.find((el) => el.isConnected && !visited.has(el) && follows(el, from))
@@ -388,19 +401,26 @@ export function installProbe(): void {
       // leaves the end of the document and comes back round to the top.
       if (next === undefined) {
         handFrom = 'top'
-        return { kind: 'wrap', frame: null }
+        return { detached: false, next: false, frame: null, topUnread }
       }
-      // The first frame between them is the one a press from the last
-      // control goes into.
+      // The first frame between them that a press can enter is the one a
+      // press from the last control goes into. One with `tabindex="-1"` is
+      // not a stop, as `expected()` has it: Tab cannot go in.
       const scope: ParentNode = document.querySelector('dialog[open]') ?? document
       const between = [...scope.querySelectorAll('iframe')].find(
-        (frame) => shown(frame) && follows(frame, from) && follows(next, frame),
+        (frame) =>
+          shown(frame) &&
+          (frame as HTMLElement).tabIndex >= 0 &&
+          follows(frame, from) &&
+          follows(next, frame),
       )
-      if (between === undefined) return { kind: 'open', frame: null }
+      if (between === undefined) return { detached: false, next: true, frame: null, topUnread }
       handFrom = between
       return {
-        kind: 'frame',
+        detached: false,
+        next: true,
         frame: `iframe "${between.getAttribute('title') ?? between.className}"`,
+        topUnread,
       }
     },
     finish() {
@@ -626,8 +646,10 @@ export async function expectTabWalk(page: Page, where: string): Promise<void> {
     const lapse = await handOverAtLapse(
       {
         ...io,
-        crossing: (): Promise<Crossing> =>
-          page.evaluate(() => (window as unknown as { __a11y: Probe }).__a11y.lapsed()),
+        crossing: async (): Promise<Crossing> =>
+          crossingOf(
+            await page.evaluate(() => (window as unknown as { __a11y: Probe }).__a11y.lapsed()),
+          ),
       },
       settled,
     )

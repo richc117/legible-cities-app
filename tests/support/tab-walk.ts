@@ -77,7 +77,7 @@ export class WalkTrace {
   /**
    * One press and what the document said of it. `at` is the clock's time
    * when the key went down, for a press that is written down later than it
-   * was made: one read as nothing is waited on for up to a second, and the
+   * was made: one read as nothing is waited on for up to 2.5 seconds, and the
    * time it is dated by is the press's and not the reading's.
    */
   press(reading: string, at?: number): void {
@@ -375,6 +375,48 @@ export interface Crossing {
   kind: 'frame' | 'wrap' | 'open'
   /** The frame, as the trace names it, when `kind` is `frame`. */
   frame: string | null
+}
+
+/**
+ * What the probe reads from the document where a reading of nothing lapsed,
+ * and nothing it decides: which of the three places it is, is `crossingOf`'s,
+ * where a unit test can reach it.
+ */
+export interface LapseFacts {
+  /** The last control read has left the document, and where a press from it goes is not known. */
+  detached: boolean
+  /** A control the walk wants and has not read follows the last control read. */
+  next: boolean
+  /**
+   * Of the iframes between the last control read and that next one, the
+   * first a press of Tab can enter, as the trace names it; null where there
+   * is none. A frame that takes no focus (`tabindex="-1"`, as the stage
+   * view's is) is not one.
+   */
+  frame: string | null
+  /**
+   * The first control the walk wants in the document, which is where a press
+   * off the end of it comes back to, has not been read.
+   */
+  topUnread: boolean
+}
+
+/**
+ * Which place a lapsed reading is. **Where the walk's whole answer to a
+ * lapse is to give focus to a control, the control must be one the walk
+ * would have reached by pressing on**: at the wrap, Tab lands on the first
+ * control of the document, and if that one is read already, handing over
+ * from the top would focus the first control not yet read - one the walk
+ * passed over - and the sweep would pass where it used to report the miss.
+ * So that is `open`, and the walk presses on, and the miss prints.
+ */
+export function crossingOf(facts: LapseFacts): Crossing {
+  if (facts.detached) return { kind: 'open', frame: null }
+  if (facts.next)
+    return facts.frame === null
+      ? { kind: 'open', frame: null }
+      : { kind: 'frame', frame: facts.frame }
+  return facts.topUnread ? { kind: 'wrap', frame: null } : { kind: 'open', frame: null }
 }
 
 export interface LapseIO extends HandOverIO {

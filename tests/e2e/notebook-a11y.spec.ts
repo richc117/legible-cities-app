@@ -35,7 +35,7 @@ import {
 import { describePair, duplicatedNames } from '../support/a11y-names'
 import { cell, cellHandback, cellHeading, closeCell, openCell } from '../support/project'
 import { standInPage } from '../support/standInPage'
-import { type StepAnswer } from '../support/tab-walk'
+import { crossingOf, type StepAnswer } from '../support/tab-walk'
 
 test.skip(PYTHON === null, 'no python3 or python on the PATH to run the stand-in engine')
 
@@ -953,7 +953,10 @@ test('the Tab walk hands over at the map frame by identity, and asks again from 
     expect(await probe.begin()).toBeGreaterThan(0)
     await cellHeading(page, 'export').focus()
     expect((await probe.step()).state, "cell 06's row is read as a stop").toBe('stop')
-    expect(await probe.lapsed(), 'a lapse after cell 06 is in the preview frame').toEqual({
+    expect(
+      crossingOf(await probe.lapsed()),
+      'a lapse after cell 06 is in the preview frame',
+    ).toEqual({
       kind: 'frame',
       frame: expect.stringContaining('as the export will frame it'),
     })
@@ -967,7 +970,7 @@ test('the Tab walk hands over at the map frame by identity, and asks again from 
     expect(await probe.begin()).toBeGreaterThan(0)
     await page.getByRole('button', { name: 'Delete project', exact: true }).focus()
     expect((await probe.step()).state, 'the last control is read as a stop').toBe('stop')
-    expect(await probe.lapsed(), 'a lapse after the last control is the wrap').toEqual({
+    expect(crossingOf(await probe.lapsed()), 'a lapse after the last control is the wrap').toEqual({
       kind: 'wrap',
       frame: null,
     })
@@ -977,5 +980,35 @@ test('the Tab walk hands over at the map frame by identity, and asks again from 
       page.getByRole('button', { name: 'Back to Library', exact: true }),
       "the header's first control",
     ).toBeFocused()
+
+    // But not when the control a press off the end comes back to has been
+    // read: handing over from the top would focus the first control not yet
+    // read, which the walk passed over, and the sweep would pass where it
+    // reports the miss. The walk presses on instead.
+    expect(await probe.begin()).toBeGreaterThan(0)
+    await page.getByRole('button', { name: 'Back to Library', exact: true }).focus()
+    expect((await probe.step()).state, "the header's first control is read").toBe('stop')
+    await page.getByRole('button', { name: 'Delete project', exact: true }).focus()
+    expect((await probe.step()).state, 'and then the last').toBe('stop')
+    expect(
+      crossingOf(await probe.lapsed()),
+      'a lapse at the wrap, with the first control already read, is not handed over',
+    ).toEqual({ kind: 'open', frame: null })
+
+    // Nor is a lapse beside a frame Tab cannot enter. Cell 01's stage view
+    // draws the layout in a frame with `tabindex="-1"` and `aria-hidden`
+    // inside its pane, which is a stop of its own: a reading that lapses
+    // after the pane is not in that frame.
+    await openCell(page, 'data')
+    await expect(page.locator('iframe.stage-frame'), 'the stage view is drawn').toHaveCount(1, {
+      timeout: 30_000,
+    })
+    expect(await probe.begin()).toBeGreaterThan(0)
+    await page.getByRole('group', { name: /^The gtfs2graph stage/ }).focus()
+    expect((await probe.step()).state, "the stage view's pane is read as a stop").toBe('stop')
+    const beside = await probe.lapsed()
+    expect(beside, 'a control follows the pane').toMatchObject({ next: true })
+    expect(beside.frame, 'the frame that takes no focus is not one a press enters').toBeNull()
+    expect(crossingOf(beside)).toEqual({ kind: 'open', frame: null })
   })
 })

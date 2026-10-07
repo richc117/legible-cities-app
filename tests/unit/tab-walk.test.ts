@@ -5,12 +5,15 @@
 // sweep's, in `tests/e2e/notebook-a11y.spec.ts`, and is owed a run on a
 // runner (the loop workflow's `load` input repeats it under strain).
 
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   HAND_OVER,
   SETTLE,
   TRACE_LIMIT,
   WalkTrace,
+  crossingOf,
   endMessage,
   handOver,
   handOverAtLapse,
@@ -20,6 +23,7 @@ import {
   tallyReadings,
   type Crossing,
   type HandOverIO,
+  type LapseFacts,
   type LapseIO,
   type Settled,
   type SettleIO,
@@ -437,6 +441,78 @@ describe('a press that is read as nothing', () => {
   })
 })
 
+describe('where a lapsed reading is', () => {
+  const facts = (over: Partial<LapseFacts> = {}): LapseFacts => ({
+    detached: false,
+    next: true,
+    frame: 'iframe "Los Angeles, as the export will frame it"',
+    topUnread: true,
+    ...over,
+  })
+
+  it('is in the frame between the last control read and the next one wanted', () => {
+    expect(crossingOf(facts())).toEqual({
+      kind: 'frame',
+      frame: 'iframe "Los Angeles, as the export will frame it"',
+    })
+  })
+
+  it('is the wrap when nothing wanted follows, and the document starts with a control not yet read', () => {
+    expect(crossingOf(facts({ next: false, frame: null }))).toEqual({ kind: 'wrap', frame: null })
+  })
+
+  it('is not the wrap when the control a press off the end comes back to has been read', () => {
+    // Handing over from the top would focus the first control not yet read,
+    // which the walk passed over: the sweep would pass where it used to
+    // report the miss. The walk presses on, and the miss prints.
+    expect(crossingOf(facts({ next: false, frame: null, topUnread: false }))).toEqual({
+      kind: 'open',
+      frame: null,
+    })
+  })
+
+  it('is open where a control follows and no frame that takes focus lies before it', () => {
+    expect(crossingOf(facts({ frame: null }))).toEqual({ kind: 'open', frame: null })
+  })
+
+  it('is open where the last control read has left the document', () => {
+    expect(crossingOf(facts({ detached: true }))).toEqual({ kind: 'open', frame: null })
+    expect(crossingOf(facts({ detached: true, next: false, frame: null }))).toEqual({
+      kind: 'open',
+      frame: null,
+    })
+  })
+})
+
+describe('the walk', () => {
+  // Read from the source, as far as can be asked of it without the app: the
+  // sweeps are green whether or not the walk hands a lapse over (they do not
+  // lapse on a machine that is not slow), so **this is the one thing that
+  // notices the call being deleted.** It notices the text of it and no more.
+  const source = readFileSync(resolve(__dirname, '../support/a11y.ts'), 'utf8')
+  const body = new RegExp('^export async function expectTabWalk\\([\\s\\S]*?^}$', 'm').exec(
+    source,
+  )?.[0]
+
+  it('reads the function it is looking at', () => {
+    expect(body, 'expectTabWalk in tests/support/a11y.ts').toBeDefined()
+    expect(body).toContain('while (Date.now() < deadline)')
+  })
+
+  it('settles a press read as nothing before it judges the press', () => {
+    expect(body).toMatch(/^ +const settled = await settleNone\(io, await read\(\)\)$/m)
+  })
+
+  it('hands a lapse over, and puts what it did on the press that lapsed', () => {
+    expect(body).toMatch(/^ +const lapse = await handOverAtLapse\($/m)
+    expect(body).toContain('trace.amend(lapse.line)')
+  })
+
+  it('hands over at a frame by the same hand-over', () => {
+    expect(body).toMatch(/^ +const result = await handOver\(io, at\)$/m)
+  })
+})
+
 describe('the trace of the walk', () => {
   /** A clock that moves 10 ms every time it is read. */
   const ticking = (): (() => number) => {
@@ -454,7 +530,7 @@ describe('the trace of the walk', () => {
   })
 
   it('gives a press the time it was made when it is given one, and not the time it is written', () => {
-    // A press read as nothing is settled for up to a second before it is
+    // A press read as nothing is settled for up to 2.5 seconds before it is
     // written down: it is dated by when the key went down.
     const trace = new WalkTrace(ticking())
     trace.press('none -> stop a after 850 ms', 1_040)
