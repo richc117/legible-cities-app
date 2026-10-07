@@ -152,15 +152,12 @@ if [ "$got" != "$full_want" ]; then
   echo "The pinned full archive changed. Read why before moving python.targets.$target.full." >&2
   exit 1
 fi
-mkdir -p "$work/full"
-# Only the two members: the rest of the archive is the build's own tree
-# and objects, and is never written to disk.
-"$zstd_bin" -dc "$work/$full_asset" | tar -xf - -C "$work/full" python/PYTHON.json python/licenses
+# Only the two members are kept: the rest of the archive is the build's own
+# tree and objects. It is decompressed to a file for a moment all the same,
+# and why is in the script that does it (issue 319). That script also refuses
+# an archive without the two.
+ZSTD_BIN="$zstd_bin" bash scripts/vendor-python-licences.sh "$work/$full_asset" "$work/full"
 rm -f "$work/$full_asset"
-if [ ! -f "$work/full/python/PYTHON.json" ] || [ ! -d "$work/full/python/licenses" ]; then
-  echo "$full_asset has no python/PYTHON.json or python/licenses/" >&2
-  exit 1
-fi
 rm -rf "$stage/python/licenses"
 cp -R "$work/full/python/licenses" "$stage/python/licenses"
 cp "$work/full/python/PYTHON.json" "$stage/python/PYTHON.json"
