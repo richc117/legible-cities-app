@@ -145,17 +145,15 @@ export interface KnownPair {
  * a defect until someone has listened to it. An entry is matched wherever
  * its two roles and its name meet, on any screen, so each one is also a
  * place the rule has stopped looking.
+ *
+ * **The list is empty.** The one pair the sweep's first run found, a
+ * region named "Export" around a button named "Export" in cell 06, was
+ * carried here under issue 258 and went when that issue was mended by
+ * naming the region "Export run". The mechanism stays for the next pair
+ * someone has listened to; until then the sweep is the rule with nothing
+ * excused.
  */
-export const KNOWN_PAIRS: readonly KnownPair[] = [
-  // Cell 06, once an export has run: a region named "Export" holds a button
-  // named "Export". **A real duplicate, not a false positive.** The sweep
-  // found it on its first run (macOS, 2026-09-29), the one pair on any
-  // screen or dialog in either theme. It is carried and not mended here because
-  // renaming the region changes an accessible name that the release gate's
-  // documents follow. Issue 258 decides it, and this entry goes when that
-  // issue closes.
-  { ancestorRole: 'region', role: 'button', name: 'Export', issue: 258 },
-]
+export const KNOWN_PAIRS: readonly KnownPair[] = []
 
 /** A named node of the snapshot, and the line it was read from, from 1. */
 export interface NamedNode {

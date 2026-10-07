@@ -173,7 +173,9 @@ test('the Los Angeles reel, exported twice, decodes to the same frames within th
     expect(sidecar.preset).toBe('instagram-reel')
 
     // Nothing on the screen is a path.
-    expect(await page.getByRole('region', { name: 'Export' }).innerText()).not.toMatch(/[/\\]/)
+    expect(
+      await page.getByRole('region', { name: 'Export run', exact: true }).innerText(),
+    ).not.toMatch(/[/\\]/)
 
     const second = await exportOnce()
     const identical = readFileSync(keep).equals(readFileSync(file))

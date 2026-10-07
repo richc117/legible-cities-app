@@ -70,7 +70,7 @@ export default function ExportRun({
 
   return (
     <div className="focus-region" ref={region}>
-      <section className="export-run" aria-label="Export">
+      <section className="export-run" aria-label="Export run">
         <ProgressLine fill stages={stages} ariaLabel={describe(state, message)} />
         <div className="export-run-foot">
           <p className="progress-message" role="status" aria-live="polite">

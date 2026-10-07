@@ -266,7 +266,7 @@ test("the export's progress line spans its cell, and follows the window", async 
     await openNewProject(page, 'Los Angeles')
     await layOutForExport(page, h)
     await startExport(page)
-    const run = page.getByRole('region', { name: 'Export', exact: true })
+    const run = page.getByRole('region', { name: 'Export run', exact: true })
     const line = run.locator('.progress svg')
     await expect(line).toBeVisible()
     // The line is as wide as the place it is drawn in, to a pixel; three

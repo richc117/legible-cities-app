@@ -148,7 +148,7 @@ test('exports the reel from one click: three stages, a file, its sidecar, and no
     })
 
     await exportButton(page).click()
-    const run = page.getByRole('region', { name: 'Export' })
+    const run = page.getByRole('region', { name: 'Export run', exact: true })
     await expect(run).toBeVisible()
     for (const stage of ['plan', 'capture', 'encode']) {
       await expect(run.getByText(stage, { exact: true })).toBeVisible()
@@ -215,7 +215,7 @@ test('exports the day the page was drawn for, not a day chosen and not yet drawn
     // a page-wide match resolves to both.
     await expect(
       page
-        .getByRole('region', { name: 'Export' })
+        .getByRole('region', { name: 'Export run', exact: true })
         .getByRole('status')
         .filter({ hasText: /^Exported / }),
     ).toBeVisible({ timeout: 60_000 })

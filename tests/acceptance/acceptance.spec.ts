@@ -183,6 +183,16 @@ const TAG = process.env.LEGIBLE_ACCEPTANCE_TAG ?? ''
 const tagContains = (feature: Feature): boolean | null =>
   gitTagContains({ tag: TAG, commit: feature.commit, cwd: repoRoot })
 
+/**
+ * The export run's region in cell 06. It is named "Export run" since issue
+ * 258 and was "Export" before it. This spec comes from the ref the run is
+ * dispatched on and the app from the release's tag, so a release cut before
+ * the rename can still be accepted with this spec, and the region is found
+ * by either name. The day the rename's commit is on `main`, a row of
+ * `FEATURES` can say which tags have it and this can be the one name.
+ */
+const EXPORT_RUN = /^Export( run)?$/
+
 interface Pins {
   engine: { version: string }
   python: { version: string }
@@ -2108,7 +2118,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
     ): Promise<{ seconds: number; path: string }> => {
       const window = page()
       const panel = cell(window, 'export')
-      const region = panel.getByRole('region', { name: 'Export' })
+      const region = panel.getByRole('region', { name: EXPORT_RUN })
       const before =
         (await region.count()) === 0
           ? ''
@@ -2231,7 +2241,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
       const visibilities = new Set<string>()
       await bringToFront(session.app as ElectronApplication, window)
       const watch = (async () => {
-        const region = panel.getByRole('region', { name: 'Export' })
+        const region = panel.getByRole('region', { name: EXPORT_RUN })
         const cancel = region.getByRole('button', { name: 'Cancel', exact: true })
         await expect(cancel).toBeVisible({ timeout: SHORT_MS })
         const labels = (await region.locator('svg text').allTextContents()).map((l) => l.trim())
@@ -2266,7 +2276,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
       await log.soft('the stages moved through to the end', async () => {
         expect(current.has('capture'), `current stages seen: ${[...current].join(', ')}`).toBe(true)
         const marks = await panel
-          .getByRole('region', { name: 'Export' })
+          .getByRole('region', { name: EXPORT_RUN })
           .locator('svg circle.mark')
           .evaluateAll((stations) => stations.map((s) => s.getAttribute('class') ?? ''))
         expect(marks.map((m) => m.includes('mark-done'))).toEqual([true, true, true])
