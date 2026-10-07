@@ -13,11 +13,15 @@ import {
   WalkTrace,
   endMessage,
   handOver,
+  handOverAtLapse,
   missMessage,
   readingLine,
   settleNone,
   tallyReadings,
+  type Crossing,
   type HandOverIO,
+  type LapseIO,
+  type Settled,
   type SettleIO,
   type StepAnswer,
 } from '../support/tab-walk'
@@ -200,7 +204,7 @@ describe('a press that is read as nothing', () => {
   const NEXT = 'button "03Frameandservicedayready"'
   const landedOn = (): StepAnswer => read('stop', NEXT)
 
-  interface Crossing {
+  interface Boundary {
     io: SettleIO
     reads: () => number
     clock: () => number
@@ -217,7 +221,7 @@ describe('a press that is read as nothing', () => {
     crossesFor: number,
     after: () => StepAnswer,
     cost: number = READ_COST,
-  ): Crossing {
+  ): Boundary {
     let time = 0
     let reads = 0
     return {
@@ -271,10 +275,10 @@ describe('a press that is read as nothing', () => {
     expect(settled.answer.state).toBe('none')
     expect(settled.waited).toBeGreaterThanOrEqual(SETTLE.deadlineMs)
     expect(settled.waited).toBeLessThan(SETTLE.deadlineMs + 100)
-    expect(settled.note).toMatch(/^none nothing, still nothing after 10\d\d ms$/)
+    expect(settled.note).toMatch(/^none nothing, still nothing after 25\d\d ms$/)
     // Paused between readings, and not read as fast as the page answers: a
-    // reading every 15 ms plus its own cost, so about fifty in a second and
-    // not two hundred.
+    // reading every 15 ms plus its own cost, so about 125 in 2.5 seconds and
+    // not 500.
     expect(c.reads()).toBeLessThanOrEqual(Math.ceil(SETTLE.deadlineMs / SETTLE.pollMs) + 1)
   })
 
@@ -307,6 +311,129 @@ describe('a press that is read as nothing', () => {
     const settled = await settleNone(c.io, done)
     expect(settled).toEqual({ answer: done, waited: 0, note: null })
     expect(c.reads()).toBe(0)
+  })
+
+  // -------------------------------------------------------------------------
+  // A reading of nothing that did not settle.
+
+  const PREVIEW = 'iframe "Los Angeles, as the export will frame it"'
+  const LAPSED: Settled = {
+    answer: nowhere(),
+    waited: 2_512,
+    note: 'none nothing, still nothing after 2512 ms',
+  }
+
+  /** The page of a lapsed reading: where the probe finds it to be, and what a hand-over from there reads. */
+  function lapse(
+    crossingIs: Crossing,
+    script: (at: number) => StepAnswer,
+    options: { answer?: string | null } = {},
+  ): World & { crossings: () => number; lapse: LapseIO } {
+    // Every ask of a lapse is a re-ask from the origin the crossing recorded.
+    const answer = 'answer' in options ? (options.answer ?? null) : ASKED
+    const w = world(script, { asked: answer, reasked: answer })
+    let crossings = 0
+    return {
+      ...w,
+      crossings: () => crossings,
+      lapse: {
+        ...w.io,
+        crossing: async () => {
+          crossings += 1
+          return crossingIs
+        },
+      },
+    }
+  }
+
+  it('hands over from the frame the press went into, and says which', async () => {
+    const w = lapse({ kind: 'frame', frame: PREVIEW }, there)
+    const result = await handOverAtLapse(w.lapse, LAPSED)
+    expect(result?.kind).toBe('landed')
+    // Every ask is from the origin the crossing recorded: no frame holds
+    // focus to ask from.
+    expect(w.asks).toEqual([true])
+    expect(result?.line).toBe(
+      `none nothing, still nothing after 2512 ms -> handed over from ${PREVIEW} -> ` +
+        `asked for ${ASKED}, reached ${ASKED}, waited ${READ_COST} ms in 1 ask`,
+    )
+  })
+
+  it('hands over at the wrap when nothing the walk wants follows the last control', async () => {
+    const w = lapse({ kind: 'wrap', frame: null }, there)
+    const result = await handOverAtLapse(w.lapse, LAPSED)
+    expect(result?.kind).toBe('landed')
+    expect(result?.line).toContain(
+      '-> handed over at the wrap past the end of the document -> asked for',
+    )
+    expect(result?.line).not.toContain('iframe')
+  })
+
+  it('ends a complete walk as it did, and does not look for a place', async () => {
+    const done: Settled = { answer: { ...nowhere(), complete: true }, waited: 0, note: null }
+    const w = lapse({ kind: 'frame', frame: PREVIEW }, there)
+    expect(await handOverAtLapse(w.lapse, done)).toBeNull()
+    // Nor does a nothing that is the end of the walk after it was waited on.
+    const waitedOn: Settled = { ...LAPSED, answer: { ...nowhere(), complete: true } }
+    expect(await handOverAtLapse(w.lapse, waitedOn)).toBeNull()
+    expect(w.crossings()).toBe(0)
+    expect(w.asks).toEqual([])
+  })
+
+  it('leaves a reading that settled alone', async () => {
+    const settled: Settled = { answer: landedOn(), waited: 85, note: 'none -> stop x after 85 ms' }
+    const w = lapse({ kind: 'frame', frame: PREVIEW }, there)
+    expect(await handOverAtLapse(w.lapse, settled)).toBeNull()
+    expect(w.crossings()).toBe(0)
+  })
+
+  it('does not hand over before the settle has spent its deadline', async () => {
+    // The two as the walk runs them: a crossing that takes 85 ms is settled
+    // to the control it landed on, and is not a lapse.
+    const c = crossing(85, landedOn)
+    const settled = await settleNone(c.io, nowhere())
+    const w = lapse({ kind: 'frame', frame: PREVIEW }, there)
+    expect(await handOverAtLapse(w.lapse, settled)).toBeNull()
+    expect(w.crossings()).toBe(0)
+    // And a press the settle never looked at is not a lapse either.
+    const unwaited: Settled = { answer: nowhere(), waited: 0, note: null }
+    expect(await handOverAtLapse(w.lapse, unwaited)).toBeNull()
+    expect(w.asks).toEqual([])
+  })
+
+  it('does not hand over where neither a frame nor the wrap explains the lapse', async () => {
+    const w = lapse({ kind: 'open', frame: null }, there)
+    const result = await handOverAtLapse(w.lapse, LAPSED)
+    expect(result?.kind).toBe('open')
+    expect(result?.line).toContain(
+      'still nothing after 2512 ms; a control follows and no frame lies',
+    )
+    expect(w.asks).toEqual([])
+    expect(w.reads()).toBe(0)
+  })
+
+  it('says nothing was left when there is nothing to ask for from there', async () => {
+    const w = lapse({ kind: 'frame', frame: PREVIEW }, there, { answer: null })
+    const result = await handOverAtLapse(w.lapse, LAPSED)
+    expect(result?.kind).toBe('nothing')
+    expect(result?.line).toBe(
+      `none nothing, still nothing after 2512 ms -> handed over from ${PREVIEW} -> nothing after it`,
+    )
+  })
+
+  it('is a miss, and says why, when the hand-over lapses after a lapsed settle', async () => {
+    // The control asked for is never read: the walk presses on, and the
+    // trace carries both lapses.
+    const w = lapse({ kind: 'frame', frame: PREVIEW }, elsewhere)
+    const result = await handOverAtLapse(w.lapse, LAPSED)
+    expect(result?.kind).toBe('lapsed')
+    expect(result?.waited).toBeGreaterThanOrEqual(HAND_OVER.deadlineMs)
+    expect(result?.line).toMatch(
+      new RegExp(
+        `^none nothing, still nothing after 2512 ms -> handed over from ${PREVIEW} -> ` +
+          `asked for ${ASKED}, reached nothing, gave up after \\d+ ms in 3 asks`,
+      ),
+    )
   })
 })
 

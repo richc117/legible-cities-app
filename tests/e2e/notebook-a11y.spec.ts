@@ -872,6 +872,7 @@ test('the Tab walk hands over at the map frame by identity, and asks again from 
           (again) => (window as unknown as { __a11y: Probe }).__a11y.past(again),
           again,
         ),
+      lapsed: () => page.evaluate(() => (window as unknown as { __a11y: Probe }).__a11y.lapsed()),
     }
     /** Read until the document says focus is on the control `past()` put it on: a deadline, not a count of readings. */
     const arrival = async (): Promise<StepAnswer> => {
@@ -919,5 +920,62 @@ test('the Tab walk hands over at the map frame by identity, and asks again from 
     // and the remembered frame is not lost for it.
     expect(await probe.past(false), 'a first ask with focus in no frame answers null').toBeNull()
     expect(await probe.past(true), 'the remembered frame still answers').not.toBeNull()
+
+    // A reading of nothing that does not settle is handed over from the
+    // frame the press went into, and cell 06 has a frame of its own, mounted
+    // while it is open (ADR-046): the map's frame is earlier in the document
+    // and is not the one to ask from. It is cell 06's preview frame, a full
+    // page that may still be loading when focus arrives, where a runner read
+    // nothing for more than a second.
+    await openCell(page, 'export')
+    const preview = page.locator('iframe.export-frame')
+    await expect(preview, "cell 06's preview frame is mounted").toBeVisible({ timeout: 60_000 })
+    const preset = cell(page, 'export').getByRole('combobox', { name: 'Preset' })
+    await expect(preset).toBeVisible()
+
+    // Asked from that frame by name, with focus nowhere near it: the first
+    // control after it, by identity. Not the first control after the map,
+    // which is cell 03's row and which this walk has not read.
+    expect(await probe.begin(), 'there are controls to reach').toBeGreaterThan(0)
+    expect(
+      await preview.evaluate((el) =>
+        (window as unknown as { __a11y: Probe }).__a11y.past(false, el),
+      ),
+      'asked from the preview frame, there is a control after it',
+    ).not.toBeNull()
+    expect((await arrival()).onAimed, 'the document reads focus on it').toBe(true)
+    await expect(preset, 'the first control after the preview frame').toBeFocused()
+
+    // Found by the probe, as a lapse finds it: the last control read is
+    // cell 06's row, the next wanted is past the preview frame, and the
+    // frame between them is the preview and not the map. The asking is then
+    // from the origin the probe recorded.
+    expect(await probe.begin()).toBeGreaterThan(0)
+    await cellHeading(page, 'export').focus()
+    expect((await probe.step()).state, "cell 06's row is read as a stop").toBe('stop')
+    expect(await probe.lapsed(), 'a lapse after cell 06 is in the preview frame').toEqual({
+      kind: 'frame',
+      frame: expect.stringContaining('as the export will frame it'),
+    })
+    expect(await probe.past(true), 'asked from the recorded origin').not.toBeNull()
+    expect((await arrival()).onAimed, 'the document reads focus on it').toBe(true)
+    await expect(preset, 'the first control after the preview frame, by the lapse').toBeFocused()
+
+    // And past the end of the document: the footer's last control is read,
+    // nothing wanted follows it, and the asking is from the top, which is
+    // the header's first control.
+    expect(await probe.begin()).toBeGreaterThan(0)
+    await page.getByRole('button', { name: 'Delete project', exact: true }).focus()
+    expect((await probe.step()).state, 'the last control is read as a stop').toBe('stop')
+    expect(await probe.lapsed(), 'a lapse after the last control is the wrap').toEqual({
+      kind: 'wrap',
+      frame: null,
+    })
+    expect(await probe.past(true), 'asked from the top').not.toBeNull()
+    expect((await arrival()).onAimed, 'the document reads focus on it').toBe(true)
+    await expect(
+      page.getByRole('button', { name: 'Back to Library', exact: true }),
+      "the header's first control",
+    ).toBeFocused()
   })
 })

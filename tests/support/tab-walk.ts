@@ -183,8 +183,10 @@ export interface HandOver {
    * focus on the control that was asked for. `moot`: the walk read, by
    * other means, every control that was left, so there was nothing more to
    * ask for. `lapsed`: the deadline came and the control was never read.
+   * `open`: only from `handOverAtLapse`, a reading that lapsed at a place
+   * that is neither a frame nor the wrap, which is not handed over.
    */
-  kind: 'nothing' | 'landed' | 'moot' | 'lapsed'
+  kind: 'nothing' | 'landed' | 'moot' | 'lapsed' | 'open'
   /** The trace's line for the press that found the frame. */
   line: string
   waited: number
@@ -228,11 +230,13 @@ export async function handOver(
   io: HandOverIO,
   at: string,
   limits: HandOverLimits = HAND_OVER,
+  /** What the trace's line begins with: the press read as the frame, unless it is said otherwise. */
+  lead: string = `frame ${at}`,
 ): Promise<HandOver> {
   const began = io.now()
   let aimed = await io.ask(false)
   if (aimed === null)
-    return { kind: 'nothing', line: `frame ${at} -> nothing after it`, waited: 0, asks: 0 }
+    return { kind: 'nothing', line: `${lead} -> nothing after it`, waited: 0, asks: 0 }
   let asks = 1
   let askedAt = began
   const heard: string[] = []
@@ -244,7 +248,7 @@ export async function handOver(
       return {
         kind: 'landed',
         line:
-          `frame ${at} -> asked for ${aimed}, reached ${answer.at}, ` +
+          `${lead} -> asked for ${aimed}, reached ${answer.at}, ` +
           `waited ${waited} ms in ${asks} ${asks === 1 ? 'ask' : 'asks'}${said()}`,
         waited,
         asks,
@@ -254,7 +258,7 @@ export async function handOver(
       return {
         kind: 'lapsed',
         line:
-          `frame ${at} -> asked for ${aimed}, reached nothing, ` +
+          `${lead} -> asked for ${aimed}, reached nothing, ` +
           `gave up after ${waited} ms in ${asks} ${asks === 1 ? 'ask' : 'asks'}${said()}`,
         waited,
         asks,
@@ -265,7 +269,7 @@ export async function handOver(
         return {
           kind: 'moot',
           line:
-            `frame ${at} -> asked for ${aimed}, reached nothing, and there was nothing left ` +
+            `${lead} -> asked for ${aimed}, reached nothing, and there was nothing left ` +
             `to ask for after the frame; waited ${io.now() - began} ms ` +
             `in ${asks} ${asks === 1 ? 'ask' : 'asks'}${said()}`,
           waited: io.now() - began,
@@ -300,12 +304,13 @@ export interface SettleLimits {
 }
 
 /**
- * The gaps seen on a runner were 5 to 20 ms, a few hundred under load, so
- * a second is generous; it is paid once by a walk that leaves the document
- * and has to be pressed back in, and not at all by a press that is read as
- * a control.
+ * The gaps seen on a runner were 5 to 20 ms, but a second was not enough at
+ * cell 06's own preview frame, a full engine page that can still be loading
+ * when focus arrives (a loop on Ubuntu, issue 271). It is paid once by a
+ * walk that leaves the document and has to be pressed back in, and not at
+ * all by a press that is read as a control.
  */
-export const SETTLE: SettleLimits = { deadlineMs: 1_000, pollMs: 15 }
+export const SETTLE: SettleLimits = { deadlineMs: 2_500, pollMs: 15 }
 
 export interface Settled {
   /** The reading the press is judged by: the first one, or the one it settled to. */
@@ -353,4 +358,71 @@ export async function settleNone(
       ? `${readingLine(answer)}, still nothing after ${waited} ms`
       : `none -> ${readingLine(answer)} after ${waited} ms`
   return { answer, waited, note }
+}
+
+// ---------------------------------------------------------------------------
+// A reading of nothing that did not settle.
+
+/**
+ * Where the probe finds a reading of nothing to have lapsed, from the last
+ * control the walk read and the next one it wants. `frame`: an iframe lies
+ * between them in the document, so the press went into it and the reading
+ * is the process boundary's. `wrap`: nothing the walk wants follows the last
+ * control, so the press left the end of the document. `open`: a control
+ * follows and no frame lies between, which is nothing this walk can explain.
+ */
+export interface Crossing {
+  kind: 'frame' | 'wrap' | 'open'
+  /** The frame, as the trace names it, when `kind` is `frame`. */
+  frame: string | null
+}
+
+export interface LapseIO extends HandOverIO {
+  /** Where the lapsed reading is, found from the document; it also records the origin the asks are made from. */
+  crossing(): Promise<Crossing>
+}
+
+/**
+ * **A reading of nothing that did not settle never has the walk press on
+ * from a place the document could not read.** The press went into a frame
+ * or off the end of the document and the reading is still the boundary's
+ * after the settle's deadline, which on a runner happened at cell 06's own
+ * preview frame: the walk pressed Tab from where it could not see, the press
+ * landed on a control it had already read, and that read as the walk coming
+ * back round with the rest of the screen unreached (issue 271).
+ *
+ * So the walk is handed over from the frame the press went into, or from the
+ * top of the document for the wrap, by the same hand-over as at a frame: the
+ * first control it still wants is given focus and the walk goes no further
+ * until the document reads focus on it, by identity. Nothing is recorded by
+ * the asking; a control counts as reached only when `step()` reads focus on
+ * it. If the hand-over lapses too, the walk presses on and the miss prints
+ * as it always did, with this line in its trace.
+ *
+ * `null` is not a lapse this decides: the reading settled, or the walk is
+ * complete and nothing is its end. `open` is a lapse at a place that is
+ * neither: it is left to the walk to press on, and said.
+ */
+export async function handOverAtLapse(
+  io: LapseIO,
+  settled: Settled,
+  limits: HandOverLimits = HAND_OVER,
+): Promise<HandOver | null> {
+  const { answer, note } = settled
+  if (note === null || answer.state !== 'none' || answer.complete) return null
+  const crossing = await io.crossing()
+  if (crossing.kind === 'open')
+    return {
+      kind: 'open',
+      line: `${note}; a control follows and no frame lies before it, pressing on`,
+      waited: 0,
+      asks: 0,
+    }
+  const from =
+    crossing.kind === 'frame'
+      ? `handed over from ${crossing.frame ?? 'a frame'}`
+      : 'handed over at the wrap past the end of the document'
+  // Every ask is from the origin `crossing()` recorded: there is no frame
+  // holding focus to ask from.
+  return handOver({ ...io, ask: () => io.ask(true) }, answer.at, limits, `${note} -> ${from}`)
 }

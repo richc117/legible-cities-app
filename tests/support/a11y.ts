@@ -52,9 +52,11 @@ import {
   WalkTrace,
   endMessage,
   handOver,
+  handOverAtLapse,
   missMessage,
   readingLine,
   settleNone,
+  type Crossing,
   type StepAnswer,
 } from './tab-walk'
 
@@ -178,8 +180,17 @@ export type Probe = {
    * Move focus to the first wanted control after the frame holding focus,
    * and record nothing. `again` asks the same of the frame the first ask
    * began at, whatever holds focus now; the first ask is from the frame.
+   * `from` names the frame to ask from, or `'top'` to ask from the top of
+   * the document, when no frame holds focus to be asked from: the body
+   * holds it while a press is still crossing into a frame.
    */
-  past(again?: boolean): string | null
+  past(again?: boolean, from?: Element | 'top'): string | null
+  /**
+   * Where a reading of nothing that did not settle is: in a frame the press
+   * went into, or at the wrap past the end of the document. Records the
+   * origin, so `past(true)` asks from it. Records no control.
+   */
+  lapsed(): Crossing
   finish(): Finding
   moving(): string[]
 }
@@ -203,7 +214,9 @@ export function installProbe(): void {
       el.getAttribute('aria-label') ||
       el.getAttribute('label') ||
       el.id ||
-      (el.textContent ?? '').trim().slice(0, 40)
+      (el.textContent ?? '').trim().slice(0, 40) ||
+      el.getAttribute('title') ||
+      ''
     return `${el.tagName.toLowerCase()} "${label}"`
   }
   const shown = (el: Element): boolean => {
@@ -276,7 +289,7 @@ export function installProbe(): void {
   // The frame `past()` began at, and the control it last put focus on, so
   // that a second ask can be made after focus has left the frame and the
   // document can say, by identity, that focus is where it was put.
-  let handFrom: Element | null = null
+  let handFrom: Element | 'top' | null = null
   let aimedAt: Element | null = null
   let stops: {
     control: Element
@@ -331,14 +344,15 @@ export function installProbe(): void {
       stops.push({ control, chain, focused: chain.map(ring) })
       return { state: 'stop', complete: complete(), at: where(), onAimed }
     },
-    past(again = false) {
-      let frame: Element | null = handFrom
-      if (!again) {
+    past(again = false, explicit) {
+      let origin: Element | 'top' | null = handFrom
+      if (explicit !== undefined) origin = explicit
+      else if (!again) {
         const deep = deepActive()
-        frame = deep !== null && deep.tagName === 'IFRAME' ? deep : null
+        origin = deep !== null && deep.tagName === 'IFRAME' ? deep : null
       }
-      if (frame === null || !frame.isConnected) return null
-      const from: Element = frame
+      if (origin === null || (origin !== 'top' && !origin.isConnected)) return null
+      const from: Element | 'top' = origin
       handFrom = from
       // The first control this walk still wants that comes after the frame
       // in the document. `want` is in document order, so the first match is
@@ -347,7 +361,8 @@ export function installProbe(): void {
         (el) =>
           el.isConnected &&
           !visited.has(el) &&
-          (from.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
+          (from === 'top' ||
+            (from.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0),
       )
       aimedAt = after ?? null
       if (after === undefined) return null
@@ -362,6 +377,31 @@ export function installProbe(): void {
       // lie in the one direction the sweep exists to catch.
       ;(after as HTMLElement).focus?.()
       return describe(after)
+    },
+    lapsed() {
+      const follows = (el: Element, of: Element | null): boolean =>
+        of === null || (of.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+      // The last control read, or the screen's heading where none has been.
+      const from = last ?? document.querySelector('h1')
+      const next = want.find((el) => el.isConnected && !visited.has(el) && follows(el, from))
+      // Nothing wanted follows the last control read: a press from there
+      // leaves the end of the document and comes back round to the top.
+      if (next === undefined) {
+        handFrom = 'top'
+        return { kind: 'wrap', frame: null }
+      }
+      // The first frame between them is the one a press from the last
+      // control goes into.
+      const scope: ParentNode = document.querySelector('dialog[open]') ?? document
+      const between = [...scope.querySelectorAll('iframe')].find(
+        (frame) => shown(frame) && follows(frame, from) && follows(next, frame),
+      )
+      if (between === undefined) return { kind: 'open', frame: null }
+      handFrom = between
+      return {
+        kind: 'frame',
+        frame: `iframe "${between.getAttribute('title') ?? between.className}"`,
+      }
     },
     finish() {
       ;(document.activeElement as HTMLElement | null)?.blur?.()
@@ -554,24 +594,47 @@ export async function expectTabWalk(page: Page, where: string): Promise<void> {
   // The whole walk, press by press (issue 271): a miss says what was asked
   // for and what was reached, wherever in the walk that happened.
   const trace = new WalkTrace(Date.now)
+  const read = (): Promise<StepAnswer> =>
+    page.evaluate(() => (window as unknown as { __a11y: Probe }).__a11y.step())
+  const io = {
+    read,
+    now: Date.now,
+    pause: (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms)),
+    ask: (again: boolean): Promise<string | null> =>
+      page.evaluate((again) => (window as unknown as { __a11y: Probe }).__a11y.past(again), again),
+  }
   while (Date.now() < deadline) {
     const pressedAt = Date.now()
     await page.keyboard.press('Tab')
-    const read = (): Promise<StepAnswer> =>
-      page.evaluate(() => (window as unknown as { __a11y: Probe }).__a11y.step())
     // A press read as nothing is read again until it is something else
     // (`settleNone`, which has the reasoning): leaving a frame and coming
     // back round from the end of the document cross a process boundary, and
     // pressing again while focus is still on its way reads the control after
     // the one it lands on. What counts as reached is unchanged - the
     // probe records a control only when the document reads focus on it.
-    const settled = await settleNone(
-      { read, now: Date.now, pause: (ms) => new Promise((resolve) => setTimeout(resolve, ms)) },
-      await read(),
-    )
+    const settled = await settleNone(io, await read())
     const answer = settled.answer
     const { state, complete, at } = answer
     trace.press(settled.note ?? readingLine(answer), pressedAt)
+    // And if it does not settle, the walk does not press on from a place the
+    // document could not read: it is handed over from the frame the press
+    // went into, or from the top for the wrap past the end of the document
+    // (`handOverAtLapse`, which has the reasoning). Cell 06's own preview
+    // frame, still loading when focus arrived, was read as nothing for more
+    // than a second, and the press made from there landed on a control the
+    // walk had already read, which ended it.
+    const lapse = await handOverAtLapse(
+      {
+        ...io,
+        crossing: (): Promise<Crossing> =>
+          page.evaluate(() => (window as unknown as { __a11y: Probe }).__a11y.lapsed()),
+      },
+      settled,
+    )
+    if (lapse !== null) {
+      trace.amend(lapse.line)
+      continue
+    }
     // A frame is stepped over rather than walked through. What it holds is
     // its page's, the engine's, and the walk could not see it in any case:
     // the viewer's page runs at an opaque origin, so from out here every
@@ -615,19 +678,7 @@ export async function expectTabWalk(page: Page, where: string): Promise<void> {
       // reported missed, which is the honest answer and not a silent pass;
       // the press after a hand-over that never landed is the platform's to
       // answer, and the trace says what it answered.
-      const result = await handOver(
-        {
-          ask: (again) =>
-            page.evaluate(
-              (again) => (window as unknown as { __a11y: Probe }).__a11y.past(again),
-              again,
-            ),
-          read: () => page.evaluate(() => (window as unknown as { __a11y: Probe }).__a11y.step()),
-          now: Date.now,
-          pause: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-        },
-        at,
-      )
+      const result = await handOver(io, at)
       trace.amend(settled.note === null ? result.line : `${settled.note}; ${result.line}`)
       // Nothing after it that this walk still wants: stop asking, and let
       // the presses carry on to wherever the platform takes them.
