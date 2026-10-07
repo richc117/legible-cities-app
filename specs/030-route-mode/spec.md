@@ -48,7 +48,7 @@ As someone using a screen reader, I want the trip as a numbered list of what to 
 
 As someone who has looked at a trip, I want one press to bring the whole map back, exactly as it was.
 
-**Independent Test**: choose a trip, leave route mode, compare the page to before.
+**Independent Test**: choose a trip, clear it by pressing "Show the whole network" or emptying a picker, compare the page to before.
 
 **Acceptance Scenarios**:
 
@@ -97,7 +97,7 @@ As someone recolouring a line while looking at a trip, I want the trip still the
 
   Each of the three trips has only one path under the cost rule.
 - **FR-007**: A trip change MUST be announced once, politely, as "N stops, M changes."
-- **FR-008**: Leaving route mode MUST send `setTrip(null)` and clear both pickers.
+- **FR-008**: Clearing the trip, by pressing "Show the whole network" or emptying a picker, MUST send `setTrip(null)`; the press also clears both pickers.
 - **FR-009**: The viewer's restore after a reload MUST include the trip, between labels and playing.
 - **FR-010**: Choosing a trip MUST never start a layout, a rebuild, `graph.build` or an export.
 - **FR-011**: Every refusal MUST be a sentence beside the control that caused it; nothing is disabled.
@@ -112,7 +112,7 @@ As someone recolouring a line while looking at a trip, I want the trip still the
 
 - **SC-001**: A trip is chosen by keyboard alone, from Tab into the section to the first leg read, in under twelve key presses on the fixture.
 - **SC-002**: The end-to-end test records exactly one `setTrip` per completed choice and no engine call.
-- **SC-003**: Leaving route mode restores the page within tolerance 8 in RGB.
+- **SC-003**: Clearing the trip ("Show the whole network" pressed, or a picker emptied) restores the page within tolerance 8 in RGB.
 - **SC-004**: The accessibility sweep passes over cell 03 with the popup open and closed, in both themes.
 
 ## Assumptions

@@ -39,10 +39,8 @@ Zones: **(a)** numbers in `present.js`; **(b)** a table in `export.py` that the 
 
 **As of 6 Oct 2026, a correction of premise.** The record as first written said the clock sat top-right; it sits bottom-right (`page.html:274–277`). The default corner therefore follows the clock, and the reel's and story's clock moves to the top-right out from under the platform's rail on purpose; nothing else moves.
 
-**Nothing moves for an export that asks for neither.** An omitted caption and the default corner give today's pixels; the determinism fixture is unchanged.
+**Nothing moves for an export that asks for neither.** With an omitted caption and the default corner, every preset without safe zones keeps its pixels; the app's determinism fixture (`instagram-reel-gif`) is a safe-zone preset whose frames move with the clock's corner and with the name block, and its test compares two runs with each other, not stored frames, so it still passes.
 
 **A caption is not alt text.** The sidecar's alt is ADR-independent and #41's.
 
 **What to watch.** Meta moving its zones: the table carries a date. TikTok has no preset; if one comes, it is a row in the table, not a number in the page.
-
-**As of 6 Oct 2026:** the app's determinism fixture exports `instagram-reel-gif`, a safe-zone preset, so its frames move with the clock's corner and with the name block; the test compares two runs with each other, not stored frames, so it still passes, and the promise is that every preset without safe zones keeps its pixels.

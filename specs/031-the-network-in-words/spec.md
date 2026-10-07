@@ -62,11 +62,13 @@ As someone with low vision or new to the city, I want the same words visible bes
 
   ```
   StageDescription: {
-    extent: { ew_km: number, ns_km: number },
+    extent: { minutes: number, line: string, from: string, to: string } | null,
     lines: [ { label: string,
                termini: [string],            // two names; one for a loop
                stations: [string],           // names in order, termini first and last
-               meets: [ { station: string, lines: [string] } ] } ]
+               meets: [ { station: string, lines: [string] } ],
+               branches: [ { at: string | null, stations: [string] } ],
+               trip: { minutes: number, from: string, to: string } | null } ]
   }
   ```
   Lines are in the engine's `labels` order; `meets` lists every station where the line shares a node with at least one other label, in station order along the line.

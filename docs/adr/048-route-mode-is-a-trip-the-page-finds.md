@@ -42,6 +42,8 @@ Open: where the trip is computed; how fewer changes weigh against more stops; wh
 | 6 → 8 | 3.8% | 0 | 21 |
 | 8 → ∞ | 5.9% | 0 | 37 (World Trade Center to Broad St, New York) |
 
+What to watch, if E38 ignores both LOOM properties (445,076 pairs): the steps move 5.7% (3 → 4), 3.2% (4 → 6) and 1.9% (6 → 8). In that case SEPTA alone moves 35% of its pairs at 3 → 4: they tie at exactly four stops through Center City, and the tie rule settles them toward fewer changes.
+
 ## Consequences
 
 **The page grows a router and a graph.** The graph is the line graph the layout already carries, not the timetable. The page's size before and after is measured and written here before the record is Accepted.
