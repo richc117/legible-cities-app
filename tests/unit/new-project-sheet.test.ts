@@ -14,8 +14,8 @@
 // and the real kit in headless Chromium (a value set from outside puts the
 // caret at the end of it and drops the selection; inserted text replaces the
 // selection or lands at the caret), and the sheet's own wiring, which reads
-// focus off the page and writes the page in the turn it decides, is what
-// tests/e2e/feeds.spec.ts drives in the built app.
+// focus through the field's handle and writes the page through it in the turn
+// it decides, is what tests/e2e/feeds.spec.ts drives in the built app.
 
 import { describe, expect, it } from 'vitest'
 import { arrivalName } from '../../src/renderer/src/NewProjectSheet'
@@ -29,11 +29,17 @@ class Field {
   /** What the sheet calls `edited`: an input event has been seen. */
   typed = false
 
-  /** What a click does, and what a fill does first: focus, then select what is there. */
-  hold(): void {
+  /** What a fill does first: focus the field, then select what is there. */
+  startFill(): void {
     this.focused = true
     this.start = 0
     this.end = this.value.length
+  }
+
+  /** What a click does: focus the field and place the caret, here at the end of what is there. */
+  click(): void {
+    this.focused = true
+    this.start = this.end = this.value.length
   }
 
   release(): void {
@@ -63,7 +69,15 @@ class Field {
 describe('the name written when the feed list arrives after the sheet opened', () => {
   it('leaves a name typed before it arrived alone: the typed name, and nothing beside it', () => {
     const field = new Field()
-    field.hold()
+    field.startFill()
+    field.arrives('LA Metro Rail')
+    field.insert('Los Angeles')
+    expect(field.value).toBe('Los Angeles')
+  })
+
+  it('leaves a field a person clicked into alone, so their first words are the whole name', () => {
+    const field = new Field()
+    field.click()
     field.arrives('LA Metro Rail')
     field.insert('Los Angeles')
     expect(field.value).toBe('Los Angeles')
@@ -71,7 +85,7 @@ describe('the name written when the feed list arrives after the sheet opened', (
 
   it('leaves a name typed key by key alone, whichever key the list arrives after', () => {
     const field = new Field()
-    field.hold()
+    field.click()
     field.insert('Los')
     field.arrives('LA Metro Rail')
     field.insert(' Angeles')
@@ -80,7 +94,7 @@ describe('the name written when the feed list arrives after the sheet opened', (
 
   it('leaves a name typed and then left alone, even when the hand has gone from the field', () => {
     const field = new Field()
-    field.hold()
+    field.click()
     field.insert('Los Angeles')
     field.release()
     field.arrives('LA Metro Rail')
@@ -94,17 +108,17 @@ describe('the name written when the feed list arrives after the sheet opened', (
     expect(field.typed).toBe(false)
   })
 
-  it('is replaced by a name typed after it arrived, as it always was', () => {
+  it('is replaced by a fill after it arrived, as it always was', () => {
     const field = new Field()
     field.arrives('LA Metro Rail')
-    field.hold()
+    field.startFill()
     field.insert('Los Angeles')
     expect(field.value).toBe('Los Angeles')
   })
 
   it('fills a field a hand came to and left without typing, since nothing of theirs is in it', () => {
     const field = new Field()
-    field.hold()
+    field.click()
     field.release()
     field.arrives('LA Metro Rail')
     expect(field.value).toBe('LA Metro Rail')

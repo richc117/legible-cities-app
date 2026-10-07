@@ -145,7 +145,6 @@ export default function NewProjectSheet({
   const urlRef = useRef<TextInputHandle>(null)
   const chooseRef = useRef<HTMLElement>(null)
   const ids = useId()
-  const field = (id: Field): string => `${ids}-${id}`
   const [source, setSource] = useState<Source>(start.source)
   const [feed, setFeed] = useState(() =>
     startingFeed(feeds, start.source === 'feed' ? start.feed : undefined),
@@ -254,26 +253,21 @@ export default function NewProjectSheet({
   // later, and a name written in between landed beside it, as would a
   // person's own first words after a click (issue 263; the two-step showing
   // above closed the sheet's opening and never this). The write is made
-  // here, in the turn that decides it, and not left to the kit's wrapper,
-  // which pushes state into the page in an effect of its own two tasks
-  // later (measured): a hand that arrives in between finds the name written
-  // after the check that found the field free. The wrapper then finds the
-  // page already holding the value and writes nothing.
+  // here, in the turn that decides it, through the field's handle, and not
+  // left to the value prop, which the wrapper pushes into the page in an
+  // effect of its own two tasks later (measured): a hand that arrives in
+  // between finds the name written after the check that found the field
+  // free. The wrapper then finds the page already holding the value and
+  // writes nothing.
   useEffect(() => {
     if (!dialogRef.current?.open) return
     const next = startingFeed(feeds, listed ? feed : undefined)
     setFeed(next)
     if (source !== 'feed') return
-    const input = document.getElementById(field('name'))
-    const filled = arrivalName(
-      edited.current,
-      input !== null && input === document.activeElement,
-      nameOf(next),
-    )
+    const filled = arrivalName(edited.current, nameRef.current?.isFocused() ?? false, nameOf(next))
     if (filled === null) return
     setName(filled)
-    const host = input?.closest('fig-input-text')
-    if (host && host.getAttribute('value') !== filled) host.setAttribute('value', filled)
+    nameRef.current?.write(filled)
     // The list arriving is the change; the rest is read as it stands.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [feeds, listed])
@@ -456,6 +450,7 @@ export default function NewProjectSheet({
     if (next !== 'feed' && !edited.current) setName('')
   }
 
+  const field = (id: Field): string => `${ids}-${id}`
   // The zip's and the address's lines are alerts: the engine's refusal
   // arrives after the press, whenever the download ends. The name's and the
   // typed key's are not - a refusal there is said by moving focus into the

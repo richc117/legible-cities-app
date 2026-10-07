@@ -820,13 +820,14 @@ test('without an engine the New project sheet takes a typed key, as before', asy
  * An app whose engine is still starting when `run` begins. A folder holding
  * a `sitecustomize.py` goes in front of the stand-in on PYTHONPATH, which
  * the app passes to the engine in development; Python imports that file as
- * it starts, before the engine, and it only waits. The wait stays inside the
- * supervisor's ten seconds for the handshake.
+ * it starts, before the engine, and it only waits: six seconds, which leaves a
+ * slow runner room to open the sheet first and stays inside the supervisor's
+ * ten for the handshake, interpreter start included.
  */
 async function withEngineStillStarting(run: (page: Page) => Promise<void>): Promise<void> {
   const engineHome = home()
   const slow = mkdtempSync(join(tmpdir(), 'legible-cities-slow-start-'))
-  writeFileSync(join(slow, 'sitecustomize.py'), 'import time\n\ntime.sleep(4)\n')
+  writeFileSync(join(slow, 'sitecustomize.py'), 'import time\n\ntime.sleep(6)\n')
   const app = await electron.launch({
     args: ['.'],
     cwd: repoRoot,
