@@ -997,17 +997,30 @@ test('the Tab walk hands over at the map frame by identity, and asks again from 
 
     // Nor is a lapse beside a frame Tab cannot enter. Cell 01's stage view
     // draws the layout in a frame with `tabindex="-1"` and `aria-hidden`
-    // inside its pane, which is a stop of its own: a reading that lapses
-    // after the pane is not in that frame.
+    // inside its pane, and the pane is a stop of its own, the last before
+    // the frame: a reading that lapses after the pane is not in that frame.
+    // Every step of it is asserted, because a pane that did not take focus
+    // would leave the probe reading the heading `begin()` focused, which is
+    // a stop too, and the frame would be missed for the wrong reason.
     await openCell(page, 'data')
     await expect(page.locator('iframe.stage-frame'), 'the stage view is drawn').toHaveCount(1, {
       timeout: 30_000,
     })
+    const pane = page.getByRole('group', { name: /^The gtfs2graph stage/ })
+    await expect(pane, "the stage view's pane is on screen").toBeVisible()
     expect(await probe.begin()).toBeGreaterThan(0)
-    await page.getByRole('group', { name: /^The gtfs2graph stage/ }).focus()
-    expect((await probe.step()).state, "the stage view's pane is read as a stop").toBe('stop')
+    await pane.focus()
+    await expect(pane, 'and takes focus').toBeFocused()
+    const paneRead = await probe.step()
+    expect(paneRead.state, "the stage view's pane is read as a stop").toBe('stop')
+    expect(paneRead.at, 'and what was read is the pane, not the heading').toContain(
+      'The gtfs2graph stage',
+    )
     const beside = await probe.lapsed()
-    expect(beside, 'a control follows the pane').toMatchObject({ next: true })
+    expect(beside, 'a control follows the pane').toMatchObject({ next: true, detached: false })
+    expect(beside.skipped, 'the frame was seen between them and let go').toBe(
+      'iframe "gtfs2graph stage of the layout"',
+    )
     expect(beside.frame, 'the frame that takes no focus is not one a press enters').toBeNull()
     expect(crossingOf(beside)).toEqual({ kind: 'open', frame: null })
   })

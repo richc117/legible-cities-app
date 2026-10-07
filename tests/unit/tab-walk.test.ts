@@ -446,6 +446,7 @@ describe('where a lapsed reading is', () => {
     detached: false,
     next: true,
     frame: 'iframe "Los Angeles, as the export will frame it"',
+    skipped: null,
     topUnread: true,
     ...over,
   })
@@ -473,6 +474,12 @@ describe('where a lapsed reading is', () => {
 
   it('is open where a control follows and no frame that takes focus lies before it', () => {
     expect(crossingOf(facts({ frame: null }))).toEqual({ kind: 'open', frame: null })
+  })
+
+  it('is open where the only frame between takes no focus, however it is named', () => {
+    expect(
+      crossingOf(facts({ frame: null, skipped: 'iframe "gtfs2graph stage of the layout"' })),
+    ).toEqual({ kind: 'open', frame: null })
   })
 
   it('is open where the last control read has left the document', () => {

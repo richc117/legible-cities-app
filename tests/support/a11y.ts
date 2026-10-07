@@ -393,7 +393,7 @@ export function installProbe(): void {
       // compared from, and the order `compareDocumentPosition` gives it is
       // arbitrary.
       if (last !== null && !last.isConnected)
-        return { detached: true, next: false, frame: null, topUnread }
+        return { detached: true, next: false, frame: null, skipped: null, topUnread }
       // The last control read, or the screen's heading where none has been.
       const from = last ?? document.querySelector('h1')
       const next = want.find((el) => el.isConnected && !visited.has(el) && follows(el, from))
@@ -401,25 +401,27 @@ export function installProbe(): void {
       // leaves the end of the document and comes back round to the top.
       if (next === undefined) {
         handFrom = 'top'
-        return { detached: false, next: false, frame: null, topUnread }
+        return { detached: false, next: false, frame: null, skipped: null, topUnread }
       }
-      // The first frame between them that a press can enter is the one a
-      // press from the last control goes into. One with `tabindex="-1"` is
-      // not a stop, as `expected()` has it: Tab cannot go in.
+      // The frames between them. The first a press can enter is the one a
+      // press from the last control goes into; one with `tabindex="-1"` is
+      // not a stop, as `expected()` has it, since Tab cannot go in, and is
+      // named apart so that a reading can show that it was seen and let go
+      // rather than never seen.
       const scope: ParentNode = document.querySelector('dialog[open]') ?? document
-      const between = [...scope.querySelectorAll('iframe')].find(
-        (frame) =>
-          shown(frame) &&
-          (frame as HTMLElement).tabIndex >= 0 &&
-          follows(frame, from) &&
-          follows(next, frame),
+      const named = (frame: Element): string =>
+        `iframe "${frame.getAttribute('title') ?? frame.className}"`
+      const frames = [...scope.querySelectorAll('iframe')].filter(
+        (frame) => shown(frame) && follows(frame, from) && follows(next, frame),
       )
-      if (between === undefined) return { detached: false, next: true, frame: null, topUnread }
-      handFrom = between
+      const between = frames.find((frame) => (frame as HTMLElement).tabIndex >= 0)
+      const skipped = frames.find((frame) => (frame as HTMLElement).tabIndex < 0)
+      if (between !== undefined) handFrom = between
       return {
         detached: false,
         next: true,
-        frame: `iframe "${between.getAttribute('title') ?? between.className}"`,
+        frame: between === undefined ? null : named(between),
+        skipped: skipped === undefined ? null : named(skipped),
         topUnread,
       }
     },

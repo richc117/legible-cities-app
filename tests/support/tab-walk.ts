@@ -395,6 +395,12 @@ export interface LapseFacts {
    */
   frame: string | null
   /**
+   * The first of those frames that takes no focus, as the trace names it,
+   * which the walk does not act on: it is how a reading shows the frame was
+   * seen and let go, and not merely never seen.
+   */
+  skipped: string | null
+  /**
    * The first control the walk wants in the document, which is where a press
    * off the end of it comes back to, has not been read.
    */
