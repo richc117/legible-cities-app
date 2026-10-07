@@ -184,12 +184,11 @@ const tagContains = (feature: Feature): boolean | null =>
   gitTagContains({ tag: TAG, commit: feature.commit, cwd: repoRoot })
 
 /**
- * The export run's region in cell 06. It is named "Export run" since issue
- * 258 and was "Export" before it. This spec comes from the ref the run is
- * dispatched on and the app from the release's tag, so a release cut before
- * the rename can still be accepted with this spec, and the region is found
- * by either name. The day the rename's commit is on `main`, a row of
- * `FEATURES` can say which tags have it and this can be the one name.
+ * The export run's region in cell 06: "Export run" since issue 258, "Export"
+ * before it. The anchored pattern stays, scoped to cell 06, because a
+ * release cut before the rename (rc.7 is one) must still be accepted with
+ * this spec, which comes from the dispatch ref while the app comes from the
+ * tag.
  */
 const EXPORT_RUN = /^Export( run)?$/
 

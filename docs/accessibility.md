@@ -454,22 +454,6 @@ was thrown to the top of the document with nothing said.
   whose passive effects run with its commit, made with focus on that button
   and outside the choices; the day an export can start from anything but
   that press, that effect has to become a layout effect too.
-- **D13. The export run's region shared its name with the button inside
-  it** (issue 258). Cell 06, once an export had been started, drew a section named
-  "Export" around the progress line, its sentences and the button that
-  starts the next export, which is named "Export" too, so a screen reader
-  entering the section heard "Export, region" and then, a few items on,
-  "Export, button": one name for where a person is and for what they can do
-  there. The sweep's rule for a name said twice (#208) found it on its first
-  run, the one pair on any screen in either theme. The region is named
-  "Export run", as cell 02's is "Layout run" (`ExportRun.tsx`): a run's
-  region is a noun naming the run, its controls are verbs ("Lay out",
-  "Export", "Cancel", "Reveal"), and no region shares its name with a
-  control inside it. Cell 01's "Download" passes that rule, nothing inside
-  it being named Download, and is not renamed for symmetry. Asserted in
-  `tests/unit/export-run-region.test.tsx` for each state the run is drawn
-  in, and in `tests/e2e/notebook-a11y.spec.ts` on the page; the sweep's list
-  of known pairs is empty.
 
 The rest:
 
@@ -485,6 +469,21 @@ The rest:
   (`app.css`). Asserted in the sweep.
 - **D11. Sortable table headers were 16px targets**, under the design's 24.
   They are at least `--target-min` high (`app.css`). Asserted in the sweep.
+- **D13. The export run's region shared its name with the button inside it**
+  (issue 258). Cell 06, once an export had been started, drew a section named
+  "Export" around the progress line, its sentences and the button that starts
+  the next export, which is named "Export" too, so a screen reader entering
+  the section heard "Export, region" and then, a few items on, "Export,
+  button": one name for where a person is and for what they can do there. The
+  sweep's rule for a name said twice (#208) found it on its first run, the one
+  pair on any screen in either theme. The region is named "Export run", as
+  cell 02's is "Layout run" (`ExportRun.tsx`): a run's region is a noun naming
+  the run, its controls are verbs ("Lay out", "Export", "Cancel", "Reveal"),
+  and no region shares its name with a control inside it. Cell 01's "Download"
+  passes that rule, nothing inside it being named Download, and is not renamed
+  for symmetry. Asserted in `tests/unit/export-run-region.test.tsx` for each
+  state the run is drawn in, and in `tests/e2e/notebook-a11y.spec.ts` on the
+  page; the sweep's list of known pairs is empty.
 
 Contrast. C1 to C5 are in the token stylesheets and asserted in
 `tests/unit/contrast.test.ts`, which recomputes token pairs. C6 was not,

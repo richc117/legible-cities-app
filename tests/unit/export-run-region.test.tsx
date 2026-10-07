@@ -83,9 +83,14 @@ describe('the export run, named for the run', () => {
     expect(buttonsOf(html)).toEqual(['Export'])
   })
 
-  it.each(STATES)('%s: no control inside it is named as the region is', (state, buttons) => {
-    const region = regionOf(draw(state))
+  it.each(STATES)('%s: no control inside it is named as the region is', (state) => {
+    // Both names are read out of the one drawing, so what the rule judges
+    // is the markup itself and not a table written beside it.
+    const html = draw(state)
+    const region = regionOf(html)
+    const buttons = buttonsOf(html)
     expect(region, 'the run draws a region').not.toBeNull()
+    expect(buttons.length, 'the run draws a button').toBeGreaterThan(0)
     // The shape Playwright writes the tree in, one node a line, so that the
     // sweep's own rule is what judges the names.
     const snapshot = [
