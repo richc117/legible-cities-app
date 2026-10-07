@@ -1,0 +1,285 @@
+# One end-to-end spec, repeated on one platform, with or without load: how a
+# flake's rate is measured (issue 314). Every investigation so far (issues
+# 222, 240, 271 and 100) has needed a loop and each was made by hand for the
+# occasion; this is the one that stays.
+#
+# Dispatched by hand and nothing else, so it never runs on a pull request or
+# a push. Dispatch it on the branch under test:
+#
+#   gh workflow run e2e-loop.yml --ref <branch> \
+#     -f spec=tests/e2e/rail.spec.ts -f repeats=10 -f os=macos-15 -f load=false
+#
+# The steps are ci.yml's: the same Node, `npm ci`, the Electron binary, the
+# build, and `xvfb-run -a` on Linux. Like ci.yml it names no engine, so a test
+# that needs a real generated page skips here and says so in the log. The log
+# folder is the suite's own (tests/e2e/global-setup.ts sets `LEGIBLE_LOGS`
+# before any worker starts), so nothing is set for it here.
+#
+# `load` starts one `node -e "for(;;){}"` per core minus one, from the same
+# step that runs the suite and stopped by the same step when the suite ends,
+# however it ends. They share a step on purpose: a process started in one
+# step is not promised to outlive it on every platform, and a load that has
+# quietly gone would make a run "under load" that was not. The log says how
+# many were started and how many were stopped.
+#
+# No retries: a retry turns the failure being counted into a pass.
+name: e2e-loop
+
+run-name: >-
+  e2e-loop: ${{ inputs.spec }} x${{ inputs.repeats }} on ${{ inputs.os }}${{ inputs.load && ' under load' || '' }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      spec:
+        description: 'The spec to repeat, a path under tests/e2e/ (for example tests/e2e/rail.spec.ts)'
+        type: string
+        required: true
+      repeats:
+        description: 'How many times each test in it runs, 1 to 60 (--repeat-each)'
+        type: number
+        required: true
+        default: 10
+      os:
+        description: 'The one platform to run on'
+        type: choice
+        required: true
+        default: macos-15
+        options:
+          - ubuntu-22.04
+          - macos-15
+          - windows-latest
+      load:
+        description: 'Run one busy process per core minus one beside the suite'
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+
+# A group of one, keyed by the run: nothing queues behind it and nothing
+# cancels it, so a dispatch never cancels its own repeats. Kept so that
+# intent is written down, and so a trigger added later cannot make two runs
+# share a group by accident.
+concurrency:
+  group: e2e-loop-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  loop:
+    name: loop (${{ inputs.os }})
+    runs-on: ${{ inputs.os }}
+    # Sixty repeats of a long spec is hours; the hosted runners' own limit.
+    timeout-minutes: 360
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # The inputs reach the shell as environment variables, never spliced
+      # into the script, and are checked before anything is installed.
+      - name: Check the inputs
+        id: inputs
+        env:
+          SPEC: ${{ inputs.spec }}
+          REPEATS: ${{ inputs.repeats }}
+          OS_CHOICE: ${{ inputs.os }}
+          LOAD: ${{ inputs.load }}
+        run: |
+          fail() { echo "::error::$1"; exit 1; }
+          case "$SPEC" in
+            tests/e2e/*.spec.ts) ;;
+            *) fail "spec must be a path under tests/e2e/ ending in .spec.ts" ;;
+          esac
+          case "$SPEC" in
+            *..* | *[!A-Za-z0-9._/-]*) fail "spec holds a character or a '..' that a path under tests/e2e/ does not need" ;;
+          esac
+          case "$REPEATS" in
+            '' | *[!0-9]*) fail "repeats must be a whole number from 1 to 60" ;;
+          esac
+          if [ "$REPEATS" -lt 1 ] || [ "$REPEATS" -gt 60 ]; then
+            fail "repeats must be from 1 to 60, not $REPEATS"
+          fi
+          stem="${SPEC#tests/e2e/}"
+          stem="${stem%.spec.ts}"
+          stem="${stem//\//-}"
+          name="e2e-loop-${OS_CHOICE}-${stem}-x${REPEATS}"
+          if [ "$LOAD" = "true" ]; then name="${name}-load"; fi
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "spec $SPEC, $REPEATS repeats, $OS_CHOICE, load $LOAD, results in $name"
+
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Only now that the checkout can answer: a spec that is not there is a
+      # typo, and better said before the install than after it.
+      - name: Check that the spec exists
+        env:
+          SPEC: ${{ inputs.spec }}
+        run: |
+          if [ ! -f "$SPEC" ]; then
+            echo "::error::no such spec: $SPEC"
+            ls tests/e2e
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # Since Electron 42 the npm package fetches no binary (see ci.yml).
+      - name: Fetch the Electron binary
+        run: npx install-electron --no
+
+      - name: Build
+        run: npm run build
+
+      - name: Run the spec, repeated
+        env:
+          CI: 'true'
+          SPEC: ${{ inputs.spec }}
+          REPEATS: ${{ inputs.repeats }}
+          LOAD: ${{ inputs.load }}
+          # The json reporter's own file, outside test-results/, which
+          # Playwright empties at the start of a run.
+          PLAYWRIGHT_JSON_OUTPUT_FILE: e2e-loop-results/results.json
+        run: |
+          load_pids=()
+          load_started=0
+          load_stopped=0
+
+          stop_load() {
+            [ "$load_started" -gt 0 ] || return 0
+            [ "$load_stopped" -eq 0 ] || return 0
+            load_stopped=1
+            # No `wait` here: on a pid that would not die it never returns.
+            # The poll below is what says whether they are gone.
+            kill -9 "${load_pids[@]}" 2>/dev/null || true
+            running=0
+            for attempt in 1 2 3 4 5 6 7 8 9 10; do
+              running=0
+              for pid in "${load_pids[@]}"; do
+                if kill -0 "$pid" 2>/dev/null; then running=$((running + 1)); fi
+              done
+              [ "$running" -eq 0 ] && break
+              sleep 1
+            done
+            echo "load: stopped $((load_started - running)) of $load_started busy processes, $running still running"
+            if [ "$running" -ne 0 ]; then
+              echo "::warning::$running busy processes outlived the suite"
+            fi
+          }
+          # Whatever ends the step, the busy processes end with it.
+          trap stop_load EXIT
+
+          if [ "$LOAD" = "true" ]; then
+            cores=$(node -p "const os = require('os'); os.availableParallelism ? os.availableParallelism() : os.cpus().length")
+            want=$((cores - 1))
+            if [ "$want" -lt 0 ]; then want=0; fi
+            echo "load: $cores cores, starting $want busy processes"
+            for ((i = 0; i < want; i++)); do
+              # Detached from the step's streams, so a process that outlived
+              # the step could never hold its output open.
+              node -e "for(;;){}" </dev/null >/dev/null 2>&1 &
+              load_pids+=("$!")
+              # Not a job of this shell, so it reports nothing when killed.
+              disown "$!"
+            done
+            load_started=${#load_pids[@]}
+            echo "load: started $load_started busy processes (pids ${load_pids[*]})"
+            if [ "$load_started" -gt 0 ] && [ "$RUNNER_OS" != "Windows" ]; then
+              sleep 1
+              ids=$(IFS=,; echo "${load_pids[*]}")
+              ps -o pid,pcpu,etime,command -p "$ids" || true
+            fi
+          else
+            echo "load: off"
+          fi
+
+          mkdir -p e2e-loop-results
+          # list for a readable log, github for annotations, json for the
+          # tally below. The json reporter writes only when Playwright ends,
+          # and the job's timeout stops the shell and not Playwright, so
+          # Playwright is given a limit of its own inside the job's: it then
+          # stops, writes every repeat that ran, and exits non-zero. The
+          # job's 360 minutes also hold the checkout, install and build
+          # before it and the tally and upload after it.
+          global_timeout_ms=$((345 * 60 * 1000))
+          cmd=(npx playwright test "$SPEC" --repeat-each="$REPEATS" --retries=0 --global-timeout="$global_timeout_ms" --reporter=list,github,json)
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            cmd=(xvfb-run -a "${cmd[@]}")
+          fi
+          echo "run: ${cmd[*]}"
+          status=0
+          "${cmd[@]}" || status=$?
+          echo "run: the suite exited with status $status"
+
+          stop_load
+          exit "$status"
+
+      # What the rate is, without downloading anything: each test's failures
+      # out of its runs. Playwright reports every repeat as an entry of its
+      # own, so the entries are added up by the test they repeat.
+      - name: Tally the runs
+        if: always()
+        run: |
+          if [ ! -f e2e-loop-results/results.json ]; then
+            echo "::warning::the suite wrote no results.json, so there is nothing to tally"
+            exit 0
+          fi
+          node - <<'JS'
+          const fs = require('node:fs')
+          const report = JSON.parse(fs.readFileSync('e2e-loop-results/results.json', 'utf8'))
+          const byTest = new Map()
+          const walk = (suite) => {
+            for (const spec of suite.specs ?? []) {
+              const key = `${spec.file}:${spec.line} ${spec.title}`
+              const row = byTest.get(key) ?? { title: key, runs: 0, bad: 0, skipped: 0 }
+              for (const t of spec.tests ?? []) {
+                row.runs += 1
+                if (t.status === 'unexpected' || t.status === 'flaky') row.bad += 1
+                if (t.status === 'skipped') row.skipped += 1
+              }
+              byTest.set(key, row)
+            }
+            for (const child of suite.suites ?? []) walk(child)
+          }
+          for (const suite of report.suites ?? []) walk(suite)
+          const rows = [...byTest.values()]
+          const s = report.stats
+          const lines = [
+            `## ${process.env.SPEC} x${process.env.REPEATS} on ${process.env.OS_CHOICE}${process.env.LOAD === 'true' ? ' under load' : ''}`,
+            '',
+            `${s.expected} passed, ${s.unexpected} failed, ${s.flaky} flaky, ${s.skipped} skipped, in ${Math.round(s.duration / 1000)} s.`,
+            '',
+            '| Test | Failed | Of | Skipped |',
+            '| --- | ---: | ---: | ---: |',
+            ...rows.map((r) => `| ${r.title.replaceAll('|', '\\|')} | ${r.bad} | ${r.runs} | ${r.skipped} |`),
+          ]
+          const text = lines.join('\n') + '\n'
+          process.stdout.write(text)
+          if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, text)
+          JS
+        env:
+          SPEC: ${{ inputs.spec }}
+          REPEATS: ${{ inputs.repeats }}
+          OS_CHOICE: ${{ inputs.os }}
+          LOAD: ${{ inputs.load }}
+
+      # Named for the inputs, from every run: a passing run is the
+      # denominator of the rate.
+      - name: Keep the results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.inputs.outputs.name }}
+          path: |
+            test-results/
+            e2e-loop-results/
+          if-no-files-found: warn
+          retention-days: 14
