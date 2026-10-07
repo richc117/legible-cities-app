@@ -210,9 +210,14 @@ describe('a press that is read as nothing', () => {
    * A page whose focus is still crossing a process boundary until
    * `crossesFor` milliseconds have passed, and then reads `after`. The
    * readings are drawn from a clock only the readings and the pauses move,
-   * and a settle that never stops fails rather than hangs.
+   * and a settle that never stops fails rather than hangs. A reading costs
+   * `cost` milliseconds: a page that answers slowly, as one under load does.
    */
-  function crossing(crossesFor: number, after: () => StepAnswer): Crossing {
+  function crossing(
+    crossesFor: number,
+    after: () => StepAnswer,
+    cost: number = READ_COST,
+  ): Crossing {
     let time = 0
     let reads = 0
     return {
@@ -221,7 +226,7 @@ describe('a press that is read as nothing', () => {
       io: {
         read: async () => {
           reads += 1
-          time += READ_COST
+          time += cost
           if (reads > 10_000) throw new Error('the settle never stopped waiting')
           return time < crossesFor ? nowhere() : after()
         },
@@ -267,6 +272,23 @@ describe('a press that is read as nothing', () => {
     expect(settled.waited).toBeGreaterThanOrEqual(SETTLE.deadlineMs)
     expect(settled.waited).toBeLessThan(SETTLE.deadlineMs + 100)
     expect(settled.note).toMatch(/^none nothing, still nothing after 10\d\d ms$/)
+    // Paused between readings, and not read as fast as the page answers: a
+    // reading every 15 ms plus its own cost, so about fifty in a second and
+    // not two hundred.
+    expect(c.reads()).toBeLessThanOrEqual(Math.ceil(SETTLE.deadlineMs / SETTLE.pollMs) + 1)
+  })
+
+  it('is bounded by the clock and not by a count of readings', async () => {
+    // A page that takes 400 ms to answer: the deadline is passed after a few
+    // readings, and the wait ends within one reading of it - a loop that
+    // counted its turns would wait for all of them.
+    const slow = 400
+    const c = crossing(Number.POSITIVE_INFINITY, landedOn, slow)
+    const settled = await settleNone(c.io, nowhere())
+    expect(settled.answer.state).toBe('none')
+    expect(settled.waited).toBeGreaterThanOrEqual(SETTLE.deadlineMs)
+    expect(settled.waited).toBeLessThanOrEqual(SETTLE.deadlineMs + slow + SETTLE.pollMs)
+    expect(c.reads()).toBeLessThanOrEqual(Math.ceil(SETTLE.deadlineMs / (slow + SETTLE.pollMs)) + 1)
   })
 
   it('costs nothing when the press was read as a control or as the frame', async () => {
@@ -302,6 +324,17 @@ describe('the trace of the walk', () => {
     expect(lines).toHaveLength(60)
     expect(lines[0]).toMatch(/^#1 \+\d+ms stop button "0"$/)
     expect(lines[59]).toMatch(/^#60 \+\d+ms stop button "59"$/)
+  })
+
+  it('gives a press the time it was made when it is given one, and not the time it is written', () => {
+    // A press read as nothing is settled for up to a second before it is
+    // written down: it is dated by when the key went down.
+    const trace = new WalkTrace(ticking())
+    trace.press('none -> stop a after 850 ms', 1_040)
+    trace.press('stop b')
+    // The clock reads 1010 when the walk begins and 1020 for the second
+    // press: the first never asked it, and was made at 1040.
+    expect(trace.text()).toBe('#1 +30ms none -> stop a after 850 ms\n#2 +10ms stop b')
   })
 
   it('gives each press its number and the time since the walk began', () => {

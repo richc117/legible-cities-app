@@ -555,6 +555,7 @@ export async function expectTabWalk(page: Page, where: string): Promise<void> {
   // for and what was reached, wherever in the walk that happened.
   const trace = new WalkTrace(Date.now)
   while (Date.now() < deadline) {
+    const pressedAt = Date.now()
     await page.keyboard.press('Tab')
     const read = (): Promise<StepAnswer> =>
       page.evaluate(() => (window as unknown as { __a11y: Probe }).__a11y.step())
@@ -570,7 +571,7 @@ export async function expectTabWalk(page: Page, where: string): Promise<void> {
     )
     const answer = settled.answer
     const { state, complete, at } = answer
-    trace.press(settled.note ?? readingLine(answer))
+    trace.press(settled.note ?? readingLine(answer), pressedAt)
     // A frame is stepped over rather than walked through. What it holds is
     // its page's, the engine's, and the walk could not see it in any case:
     // the viewer's page runs at an opaque origin, so from out here every

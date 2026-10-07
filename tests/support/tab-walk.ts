@@ -74,11 +74,16 @@ export class WalkTrace {
     this.began = now()
   }
 
-  /** One press and what the document said of it. */
-  press(reading: string): void {
+  /**
+   * One press and what the document said of it. `at` is the clock's time
+   * when the key went down, for a press that is written down later than it
+   * was made: one read as nothing is waited on for up to a second, and the
+   * time it is dated by is the press's and not the reading's.
+   */
+  press(reading: string, at?: number): void {
     this.pressed += 1
     this.entries.push({
-      text: `#${this.pressed} +${this.now() - this.began}ms ${reading}`,
+      text: `#${this.pressed} +${(at ?? this.now()) - this.began}ms ${reading}`,
       handOver: false,
     })
     if (this.entries.length > this.limit) {
