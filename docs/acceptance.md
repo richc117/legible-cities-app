@@ -211,6 +211,9 @@ run.
   **Outputs** says "Nothing exported yet."
 - The layout starts by itself. The status sentence under the heading reads
   "02 Process is running." with **Stop** beside it.
+  If a run fails, the same sentence reads "02 Process failed." and a
+  screen reader says it once, assertively, from an alert of the header's
+  own, without the sentence being read out a second time.
 - In cell **01 Data**, **In the feed** says "Reading the feed, and
   downloading it first if it is not on this machine yet…" and then fills
   in (step 5).

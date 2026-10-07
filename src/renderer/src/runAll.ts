@@ -85,6 +85,22 @@ export function runAllOffered(
 }
 
 /**
+ * What the header says, assertively, when a cell has failed, or null while
+ * none has: every failed cell by name, so that an export failing after a
+ * layout run has is a change to the text and is heard. For one failure it
+ * is the notebook sentence word for word. It is the text of an alert
+ * region of its own, because the sentence's line is a polite status and a
+ * failure is the one thing a person must not miss (FR-017).
+ */
+export function failureSentence(states: Record<CellId, CellStatus>): string | null {
+  const failed = CELL_LIST.filter((cell) => states[cell.id].state === 'error')
+  if (failed.length === 0) return null
+  return failed
+    .map((cell) => `${String(cell.number).padStart(2, '0')} ${cell.name} failed.`)
+    .join(' ')
+}
+
+/**
  * The header's one sentence about the notebook as a whole: which cell is
  * running, which failed, or how many are not drawn yet. One sentence and
  * never more, because it is a polite live region and every change to it is
