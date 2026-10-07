@@ -9,6 +9,13 @@
 // what was missed cannot say what was asked for and what was reached. So a
 // miss prints every press, with the time it was made and what the document
 // said it had reached, and the hand-over at a frame prints its own line.
+//
+// What that trace showed (seven failures on a runner, issue 271): the
+// hand-over never ran. A press into a frame, or off the end of the document,
+// is read as `none` while focus is still crossing a process boundary, and
+// the walk took that for "between two controls" and pressed again, so the
+// control focus had landed on was never read. `settleNone` takes the reading
+// later instead.
 
 /** What the probe's `step()` reads from the document, in the page. */
 export interface StepAnswer {
@@ -268,4 +275,77 @@ export async function handOver(
       askedAt = io.now()
     } else await io.pause(limits.pollMs)
   }
+}
+
+// ---------------------------------------------------------------------------
+// A press that is read as nothing.
+
+export interface SettleIO {
+  /** The document's own reading of where focus is, recorded by the probe as a press would be. */
+  read(): Promise<StepAnswer>
+  now(): number
+  pause(ms: number): Promise<void>
+}
+
+export interface SettleLimits {
+  /** A reading of nothing is waited through this long at most. */
+  deadlineMs: number
+  /** Between two readings. */
+  pollMs: number
+}
+
+/**
+ * The gaps seen on a runner were 5 to 20 ms, a few hundred under load, so
+ * a second is generous; it is paid once by a walk that leaves the document
+ * and has to be pressed back in, and not at all by a press that is read as
+ * a control.
+ */
+export const SETTLE: SettleLimits = { deadlineMs: 1_000, pollMs: 15 }
+
+export interface Settled {
+  /** The reading the press is judged by: the first one, or the one it settled to. */
+  answer: StepAnswer
+  /** How long it waited; none when the first reading was not nothing. */
+  waited: number
+  /** The press's trace line when it waited, else null: the reading speaks for itself. */
+  note: string | null
+}
+
+/**
+ * A press is read as `none` - focus on the body, or on nothing - and the
+ * walk is not done: either focus is between two controls, or it is still
+ * on its way to one. Leaving a frame and coming back round from the end of
+ * the document both cross a process boundary, and for that moment the
+ * parent's `activeElement` is the body. Pressing again at that point reads
+ * the control after the one focus lands on, and the one it landed on is
+ * never read.
+ *
+ * So a reading of nothing is read again until it is something else or the
+ * deadline passes. **Nothing is decided here**: the settled reading is the
+ * press's reading, recorded by the probe as it would have been, so a control
+ * counts as reached only when the document reads focus on it, exactly as
+ * before - this only takes the reading later. Still nothing at the deadline
+ * is what it always meant: the walk presses on, and ends if it is complete.
+ *
+ * A complete walk's `none` is its end, and a reading that is anything but
+ * `none` is not waited on, so neither costs a read.
+ */
+export async function settleNone(
+  io: SettleIO,
+  first: StepAnswer,
+  limits: SettleLimits = SETTLE,
+): Promise<Settled> {
+  if (first.state !== 'none' || first.complete) return { answer: first, waited: 0, note: null }
+  const began = io.now()
+  let answer = first
+  while (answer.state === 'none' && io.now() - began < limits.deadlineMs) {
+    await io.pause(limits.pollMs)
+    answer = await io.read()
+  }
+  const waited = io.now() - began
+  const note =
+    answer.state === 'none'
+      ? `${readingLine(answer)}, still nothing after ${waited} ms`
+      : `none -> ${readingLine(answer)} after ${waited} ms`
+  return { answer, waited, note }
 }

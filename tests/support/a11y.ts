@@ -54,6 +54,7 @@ import {
   handOver,
   missMessage,
   readingLine,
+  settleNone,
   type StepAnswer,
 } from './tab-walk'
 
@@ -555,9 +556,21 @@ export async function expectTabWalk(page: Page, where: string): Promise<void> {
   const trace = new WalkTrace(Date.now)
   while (Date.now() < deadline) {
     await page.keyboard.press('Tab')
-    const answer = await page.evaluate(() => (window as unknown as { __a11y: Probe }).__a11y.step())
+    const read = (): Promise<StepAnswer> =>
+      page.evaluate(() => (window as unknown as { __a11y: Probe }).__a11y.step())
+    // A press read as nothing is read again until it is something else
+    // (`settleNone`, which has the reasoning): leaving a frame and coming
+    // back round from the end of the document cross a process boundary, and
+    // pressing again while focus is still on its way reads the control after
+    // the one it lands on. What counts as reached is unchanged - the
+    // probe records a control only when the document reads focus on it.
+    const settled = await settleNone(
+      { read, now: Date.now, pause: (ms) => new Promise((resolve) => setTimeout(resolve, ms)) },
+      await read(),
+    )
+    const answer = settled.answer
     const { state, complete, at } = answer
-    trace.press(readingLine(answer))
+    trace.press(settled.note ?? readingLine(answer))
     // A frame is stepped over rather than walked through. What it holds is
     // its page's, the engine's, and the walk could not see it in any case:
     // the viewer's page runs at an opaque origin, so from out here every
@@ -614,7 +627,7 @@ export async function expectTabWalk(page: Page, where: string): Promise<void> {
         },
         at,
       )
-      trace.amend(result.line)
+      trace.amend(settled.note === null ? result.line : `${settled.note}; ${result.line}`)
       // Nothing after it that this walk still wants: stop asking, and let
       // the presses carry on to wherever the platform takes them.
       if (result.kind === 'nothing') frameIsEnd = true

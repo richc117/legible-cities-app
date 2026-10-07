@@ -8,14 +8,17 @@
 import { describe, expect, it } from 'vitest'
 import {
   HAND_OVER,
+  SETTLE,
   TRACE_LIMIT,
   WalkTrace,
   endMessage,
   handOver,
   missMessage,
   readingLine,
+  settleNone,
   tallyReadings,
   type HandOverIO,
+  type SettleIO,
   type StepAnswer,
 } from '../support/tab-walk'
 
@@ -190,6 +193,98 @@ describe('the hand-over at a frame', () => {
     expect(result.waited).toBeLessThan(HAND_OVER.deadlineMs)
     expect(result.line).toContain('nothing left to ask for')
     expect(w.asks).toEqual([false, true])
+  })
+})
+
+describe('a press that is read as nothing', () => {
+  const NEXT = 'button "03Frameandservicedayready"'
+  const landedOn = (): StepAnswer => read('stop', NEXT)
+
+  interface Crossing {
+    io: SettleIO
+    reads: () => number
+    clock: () => number
+  }
+
+  /**
+   * A page whose focus is still crossing a process boundary until
+   * `crossesFor` milliseconds have passed, and then reads `after`. The
+   * readings are drawn from a clock only the readings and the pauses move,
+   * and a settle that never stops fails rather than hangs.
+   */
+  function crossing(crossesFor: number, after: () => StepAnswer): Crossing {
+    let time = 0
+    let reads = 0
+    return {
+      reads: () => reads,
+      clock: () => time,
+      io: {
+        read: async () => {
+          reads += 1
+          time += READ_COST
+          if (reads > 10_000) throw new Error('the settle never stopped waiting')
+          return time < crossesFor ? nowhere() : after()
+        },
+        now: () => time,
+        pause: async (ms) => {
+          time += ms
+        },
+      },
+    }
+  }
+
+  it('is recorded as the control focus lands on when that comes within the deadline', async () => {
+    // The walk used to press again here and read the control after this one.
+    const c = crossing(85, landedOn)
+    const settled = await settleNone(c.io, nowhere())
+    expect(settled.answer).toMatchObject({ state: 'stop', at: NEXT })
+    expect(settled.waited).toBeGreaterThanOrEqual(85)
+    expect(settled.waited).toBeLessThan(SETTLE.deadlineMs)
+    expect(settled.note).toMatch(
+      new RegExp(`^none -> stop ${NEXT.replace(/[()]/g, '\\$&')} after \\d+ ms$`),
+    )
+  })
+
+  it('goes to the hand-over when it settles to the frame', async () => {
+    const c = crossing(40, frame)
+    const settled = await settleNone(c.io, nowhere())
+    expect(settled.answer.state).toBe('frame')
+    expect(settled.note).toMatch(/^none -> frame iframe "map" after \d+ ms$/)
+  })
+
+  it('hands on whatever it settles to as it found it', async () => {
+    for (const state of ['same', 'repeat'] as const) {
+      const c = crossing(30, () => read(state, 'button "Rename"'))
+      const settled = await settleNone(c.io, nowhere())
+      expect(settled.answer).toMatchObject({ state, at: 'button "Rename"' })
+    }
+  })
+
+  it('presses on after the deadline when nothing settles, and says so', async () => {
+    const c = crossing(Number.POSITIVE_INFINITY, landedOn)
+    const settled = await settleNone(c.io, nowhere())
+    expect(settled.answer.state).toBe('none')
+    expect(settled.waited).toBeGreaterThanOrEqual(SETTLE.deadlineMs)
+    expect(settled.waited).toBeLessThan(SETTLE.deadlineMs + 100)
+    expect(settled.note).toMatch(/^none nothing, still nothing after 10\d\d ms$/)
+  })
+
+  it('costs nothing when the press was read as a control or as the frame', async () => {
+    for (const first of [elsewhere(), frame(), read('same', 'button "x"'), read('repeat', 'b')]) {
+      const c = crossing(0, landedOn)
+      const settled = await settleNone(c.io, first)
+      expect(settled).toEqual({ answer: first, waited: 0, note: null })
+      expect(c.reads()).toBe(0)
+      expect(c.clock()).toBe(0)
+    }
+  })
+
+  it('costs nothing at the end of a walk that has reached everything', async () => {
+    const c = crossing(0, landedOn)
+    const done = { ...nowhere(), complete: true }
+    const settled = await settleNone(c.io, done)
+    expect(settled).toEqual({ answer: done, waited: 0, note: null })
+    expect(c.reads()).toBe(0)
   })
 })
 
