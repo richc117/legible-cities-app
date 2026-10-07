@@ -43,6 +43,10 @@ For the app's old defaults: **(i)** send them and change every map; **(ii)** reb
 
 **A labelled map re-fits.** `label_size` and `label_offset` re-run the placer, so the viewBox and `data-viewbox-nolabels` move with them. Determinism is untouched: the layout is stored and the render is a function of it.
 
+**As of 7 Oct 2026, a correction of scope.** The engine computes the network's box (`data-viewbox-nolabels`) from the tracks and nodes only, so `label_size` and `label_offset` re-place the labels and move the drawing's `viewBox` and nothing else; `padding`, `line_width` and `interchange_radius` move both boxes. Measured in the engine's v0.12.0 lane on the Pittsburgh fixture at width 448: `label_size: 20` takes `viewBox` from `-31.00 -32.58 552.75 319.58` to `-31.00 -56.56 586.23 343.56` and leaves `data-viewbox-nolabels` at `-31.00 -31.00 510.00 318.00`.
+
+**As of 7 Oct 2026, the two radii are judged together.** The engine judges `interchange_radius < station_radius` on the values the map would be drawn with, a field left out counting as its default, so a `station_radius` above 6 sent alone is refused and the app sends both.
+
 **What to watch.** `line_gap` moves the parallel-track pitch the page's dots ride. A test draws one feed with and without a style and asserts the SVG differs where the style says and in no node coordinate.
 
 **As of 6 Oct 2026: the app never sends `background`, nor the other three colours.** In the SVG `background` is only the fallback in `var(--map-bg, …)` on the backdrop and the label halo (`render.py:315, 355`); the page defines `--map-bg` in both themes and makes it transparent in present mode (`page.html:37, 44, 249`), the export's SVG path resolves the variables from `PALETTES`, and E39's thumbnails resolve them the same way. Only a standalone SVG outside any page reaches the literal, and the app shows none; the engine keeps the field for the command line and the site. Criterion: the app's type for `map.build`'s `style` has no `background`, `station_fill`, `station_stroke_color` or `label_color`, and a unit test on the params the layout run sends asserts none of the four is present.
