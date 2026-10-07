@@ -122,8 +122,9 @@ for all, and one default for the lines the feed leaves blank, debounced into
 a `map.build` from the stored layout and written only once the map carries
 them; `src/renderer/src/LineColours.tsx`) and the line order (A4-02: the
 project's lines in the order the map stacks them, moved one place at a time
-from two named buttons rather than a drag, the whole arrangement debounced
-into the same rebuild and written only once the map carries it;
+from two named buttons or, since issue 283, dragged by a grip with the
+buttons kept, the whole arrangement debounced into the same rebuild and
+written only once the map carries it;
 `src/renderer/src/LineOrder.tsx`) and the theme (A4-03: the project's map
 drawn in one of the engine page's two themes, chosen per project and
 written at once, since a theme is neither a layout nor a render - the page
