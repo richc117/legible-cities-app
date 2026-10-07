@@ -301,14 +301,17 @@ which it is.
 
 ### What the sweep cannot see
 
-- **The Tab walk steps over a frame** (A5.5-20). A document cannot see into
-  a cross-origin frame, so the walk finds the first wanted control that
-  follows the frame in document order and focuses it directly; **no press
-  of Tab is made while focus is inside a frame**. The cost: the walk no
-  longer proves that Tab crosses a frame's far edge. On the project screen
-  that is one control, cell 01's row, still swept for its name and ring. A
-  person's path is the documented one: "Skip past the map" is one Tab
-  before the frame.
+- **The Tab walk steps over a frame** (A5.5-20, issue 271). A document
+  cannot see into a cross-origin frame, so the walk finds the first wanted
+  control that follows the frame in document order, focuses it directly,
+  and waits until the document reads focus on that very control before the
+  next press; **no press of Tab is made while focus is inside a frame**
+  unless that wait lapses, and a lapse ends as a miss that prints every
+  press the walk made. The cost: the walk no longer proves that Tab crosses
+  a frame's far edge. On the project screen that is one control, cell 03's
+  row since ADR-046 put the map in the column above it, still swept for its
+  name and ring. A person's path is the documented one: "Skip past the map"
+  is one Tab before the frame.
 - **Occlusion by the pinned map** (#213): no longer reachable, since ADR-046 put the map in the column's flow and nothing is pinned but the header.
 - **A name said twice, where the rule does not look** (#208). The engine
   log's nested name reached a pull request because `expectNamed` asks only
