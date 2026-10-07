@@ -84,7 +84,6 @@ already cites the number you mean to use.
 | 051 | [A storyboard is a name or a list of beats, and the opening beat is named](051-inline-beats-and-the-opening-beat.md) | Proposed |
 | 052 | [A caption, the clock's corner, and the safe zones as data](052-caption-clock-corner-and-safe-zones-as-data.md) | Proposed |
 | 053 | [A line can be renamed and hidden; width, casing and dash wait on the pitch](053-per-line-name-and-hidden.md) | Proposed |
-| 054 | [Signing and updates after v0.1.0](054-signing-and-updates-after-v0-1-0.md) | Proposed; supersedes ADR-037's revisit clause only |
 
 ## Amending rather than superseding
 
