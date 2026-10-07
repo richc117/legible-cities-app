@@ -139,6 +139,7 @@ async function withApp(
     // once on a desk, and the one thing that would say why is whether the
     // frame navigated, and when, around the call that was refused.
     const began = Date.now()
+    const opened = new Date(began).toISOString()
     const navigations: string[] = []
     page.on('framenavigated', (frame) =>
       navigations.push(`+${Date.now() - began}ms ${frame.url().slice(0, 160)}`),
@@ -150,7 +151,7 @@ async function withApp(
         error.message += `\n\nThe window's frames at the failure:\n${page
           .frames()
           .map((frame) => `  ${frame.url().slice(0, 160)}`)
-          .join('\n')}\nTheir navigations, with the time since the window opened:\n${
+          .join('\n')}\nTheir navigations, with the time since the window opened (${opened}):\n${
           navigations.map((line) => `  ${line}`).join('\n') || '  none'
         }`
       }
@@ -245,6 +246,62 @@ const drive = (page: Page, method: string, ...args: unknown[]): Promise<unknown>
   )
 
 /**
+ * Wait, within a deadline, until the page in the frame answers a call with
+ * what is expected of it.
+ *
+ * Not `expect.poll(() => drive(...))`, which fails on the first throw, and
+ * the bridge throws "the map is not on the screen" until the frame's `load`
+ * has made the main process hold it: that failed this file on CI and never
+ * on a desk (issue 312).
+ *
+ * The frame's document is waited for first, by the one thing only the
+ * stand-in page has - the engine's own page and a frame still on its way
+ * have no `#told` - so the first asking is made of the stand-in's own
+ * document, and the retry is left for what follows it: the load event's
+ * hand-over to the main process, which the test cannot see.
+ */
+async function pageAnswers(
+  page: Page,
+  method: string,
+  expected: Record<string, unknown>,
+  timeout = 30_000,
+): Promise<void> {
+  await expect(told(page), 'the stand-in page is the document in the frame').toBeAttached({
+    timeout,
+  })
+  const began = Date.now()
+  const answers: string[] = []
+  let last = ''
+  try {
+    await expect(async () => {
+      try {
+        expect(await drive(page, method)).toMatchObject(expected)
+      } catch (error) {
+        const said = (error instanceof Error ? error.message : String(error))
+          .replace(/\s+/g, ' ')
+          .slice(0, 160)
+        if (said !== last) answers.push(`+${Date.now() - began}ms ${said}`)
+        last = said
+        throw error
+      }
+    }).toPass({ timeout })
+  } catch (error) {
+    if (error instanceof Error) {
+      const history = answers.map((line) => `  ${line}`).join('\n')
+      error.message += `\n\nWhat the map answered to ${method}, each change with the time since the first asking (first asked at ${new Date(began).toISOString()}):\n${history}`
+    }
+    throw error
+  }
+  if (answers.length > 0) {
+    // Both: the annotation is for a reporter that reads it, and none that
+    // this project runs does (`list`, `github`), which do echo the output.
+    const description = `${method} was refused before it was answered:\n${answers.join('\n')}`
+    test.info().annotations.push({ type: 'map-refused-before-it-answered', description })
+    console.warn(description)
+  }
+}
+
+/**
  * Mark the frame element itself. A property, not an attribute: React never
  * sees it, and it goes the moment the element does - which is exactly what
  * is being asked about.
@@ -327,8 +384,8 @@ test('cell 06 adds a frame of its own, and the map keeps its clock and is sent n
     await expect(frame(page)).toBeVisible()
     // The stand-in page is the one loaded, and driveable: the engine's own
     // `{}` page refuses `state` outright, so this is not a value the plain
-    // page could also have answered.
-    await expect.poll(() => drive(page, 'state')).toMatchObject({ clock: '07:00' })
+    // page could also have answered. Asked until it answers: `pageAnswers`.
+    await pageAnswers(page, 'state', { clock: '07:00' })
     await markFrame(page)
     await watchMapAddress(page)
 
