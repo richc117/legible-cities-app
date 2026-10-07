@@ -135,6 +135,10 @@ function everything(): string {
   return archive(members, ORDER)
 }
 
+// The order tree() lists in, by code point; a list compared with its result
+// is sorted the same way, so that a fixture's name decides nothing.
+const byName = (a: string, b: string): number => (a < b ? -1 : 1)
+
 /** Every file under a folder, relative and sorted, with its bytes. */
 function tree(root: string, prefix = ''): Record<string, Buffer> {
   const found: Record<string, Buffer> = {}
@@ -143,7 +147,7 @@ function tree(root: string, prefix = ''): Record<string, Buffer> {
     if (entry.isDirectory()) Object.assign(found, tree(root, path))
     else found[path] = readFileSync(join(root, path))
   }
-  return Object.fromEntries(Object.entries(found).sort(([a], [b]) => (a < b ? -1 : 1)))
+  return Object.fromEntries(Object.entries(found).sort(([a], [b]) => byName(a, b)))
 }
 
 describe.skipIf(missing !== '')(`the licence texts' extraction${WHY}`, () => {
@@ -165,7 +169,7 @@ describe.skipIf(missing !== '')(`the licence texts' extraction${WHY}`, () => {
       expected[`python/licenses/${name}`] = content
     }
     const got = tree(out)
-    expect(Object.keys(got), run.said).toEqual(Object.keys(expected))
+    expect(Object.keys(got), run.said).toEqual(Object.keys(expected).sort(byName))
     for (const [path, content] of Object.entries(expected)) {
       expect(got[path].equals(content), `${path} differs`).toBe(true)
     }
@@ -195,18 +199,26 @@ describe.skipIf(missing !== '')(`the licence texts' extraction${WHY}`, () => {
     expect(run.stderr).toContain(bare)
   })
 
-  it('refuses a file that is not a zstd archive, naming it, and writes nothing', () => {
-    const notArchive = join(dir, `not-an-archive${++n}.tar.zst`)
+  it('refuses a file that is not a zstd archive, naming it, and leaves nothing behind', () => {
+    // A folder of its own, so that anything left beside the input is this
+    // run's and not another test's.
+    const home = join(dir, `bad${++n}`)
+    mkdirSync(home)
+    const notArchive = join(home, 'not-an-archive.tar.zst')
     writeFileSync(notArchive, 'this is text\n')
     const out = join(dir, `out${n}`)
     const run = sh('bash', [SCRIPT, notArchive, out])
     expect(run.status, run.said).toBe(1)
     expect(run.stderr).toContain(notArchive)
-    expect(existsSync(out) ? tree(out) : {}).toEqual({})
+    expect(existsSync(out) ? tree(out) : {}, run.said).toEqual({})
+    expect(readdirSync(home), `the scratch folder was left beside the input\n${run.said}`).toEqual([
+      basename(notArchive),
+    ])
   })
 
   it('is a usage error with no archive, and with an archive that is not there', () => {
-    expect(sh('bash', [SCRIPT]).status).toBe(2)
+    const noArgs = sh('bash', [SCRIPT])
+    expect(noArgs.status, noArgs.said).toBe(2)
     const run = sh('bash', [SCRIPT, join(dir, 'nowhere.tar.zst'), join(dir, 'out-nowhere')])
     expect(run.status, run.said).toBe(2)
   })
