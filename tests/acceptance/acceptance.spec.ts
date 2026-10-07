@@ -2682,8 +2682,16 @@ test('a release, installed, through docs/acceptance.md', async () => {
       await openProject(reopened, LA)
       await log.soft('the same day and layout, drawn from the store', async () => {
         // A laid-out project opens with cells 01 and 02 collapsed (ADR-046),
-        // so the sentence is read with cell 02 opened.
-        await openCell(reopened, 'process')
+        // so the sentence is read with cell 02 opened. Opened by its heading,
+        // not through `openCell`: that helper waits for the "Layout run"
+        // region, which cell 02 draws only while a run is going or has
+        // gone this session; the idle panel of a project drawn from the
+        // store is the sentence below and the buttons, and no landmark,
+        // which "nothing runs" further down asserts.
+        const processHeading = cellHeading(reopened, 'process')
+        if ((await processHeading.getAttribute('aria-expanded')) !== 'true') {
+          await processHeading.click()
+        }
         await expect(
           reopened.getByText(`Drawn from layout ${la.layout?.slice(0, 8)} for ${session.laDay}.`, {
             exact: true,

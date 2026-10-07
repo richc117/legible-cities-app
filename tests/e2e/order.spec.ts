@@ -415,8 +415,13 @@ test('an arrow carries its name as a tooltip on hover and on focus, and Escape s
 
     // Under the pointer.
     const over = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
-    const away = { x: box.x - 200, y: over.y }
-    await page.mouse.move(over.x, over.y)
+    // A point to the left of the arrow that is still inside the window: a
+    // pointer sent out of the window in one jump reached the arrow's
+    // mouseleave late or not at all on a loaded runner, and the dismissal
+    // read as never cleared. Moved in steps, so the leave is a move of its
+    // own and not the tail of the one that arrived.
+    const away = { x: Math.max(8, box.x - 200), y: over.y }
+    await page.mouse.move(over.x, over.y, { steps: 4 })
     await expect(tip).toBeVisible()
     // Escape sends it away without the pointer moving (WCAG 1.4.13)...
     await page.keyboard.press('Escape')
@@ -424,11 +429,11 @@ test('an arrow carries its name as a tooltip on hover and on focus, and Escape s
     await expect(arrow).toHaveAttribute('data-dismissed', 'true')
     // ...until the pointer has left it. Waited for, because the pointer's
     // moves are delivered a frame at a time and two in one frame are one.
-    await page.mouse.move(away.x, away.y)
+    await page.mouse.move(away.x, away.y, { steps: 4 })
     await expect(arrow).not.toHaveAttribute('data-dismissed', 'true')
-    await page.mouse.move(over.x, over.y)
+    await page.mouse.move(over.x, over.y, { steps: 4 })
     await expect(tip).toBeVisible()
-    await page.mouse.move(away.x, away.y)
+    await page.mouse.move(away.x, away.y, { steps: 4 })
     await expect(tip).toBeHidden()
 
     // And from the keyboard, with no pointer on it.
