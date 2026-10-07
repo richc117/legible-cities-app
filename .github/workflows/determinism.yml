@@ -11,6 +11,22 @@
 # agreeing pair is not evidence: spike A0-05 was fooled twice by samples that
 # small. Not a required check until it has earned it; the maintainer decides.
 #
+# A dispatch can repeat it (issue 100: under load, one baseline run of
+# thirteen captured one frame from the wrong paint). `repeats`, 1 to 60, runs
+# the gate that many times; `load` keeps every core but one busy with `node`
+# loops while the suite runs; `os` keeps to one platform. With no inputs, and
+# on a pull request or the schedule, nothing is different. A repeat is a
+# matrix leg: a runner of its own and a fresh launch of the app, so a repeat's
+# leftovers cannot reach the next, a failing repeat stops none of the others,
+# and its report is an artifact of its own, determinism-report-<os>-run<N>.
+# It is not `--repeat-each` on the spec, though the test is self-contained
+# enough to take it: sixty runs of minutes each, one after another, are most
+# of a job's six hours, they would share one runner's leftovers, and the
+# evidence of one failing run would be an artifact holding every run's GIFs.
+# The cost of a leg per repeat is its setup: after the pins or the vendoring
+# scripts change, dispatch once with repeats 1, so the caches are warm and
+# sixty legs do not each build ffmpeg.
+#
 # A pull request runs it only when it touches what the export or this test is
 # made of: the app, the test and its fixture, the pins and the vendoring
 # scripts, the packages, and the build and test configuration. A change to
@@ -41,18 +57,97 @@ on:
     # Mondays, 05:17 UTC.
     - cron: '17 5 * * 1'
   workflow_dispatch:
+    inputs:
+      repeats:
+        description: 'How many times to run the gate on each platform (1 to 60)'
+        type: number
+        default: 1
+      load:
+        description: 'Keep every core but one busy while the suite runs'
+        type: boolean
+        default: false
+      os:
+        description: 'The platform to run on, or all three'
+        type: choice
+        options:
+          - all
+          - ubuntu-22.04
+          - macos-15
+          - windows-latest
+        default: all
 
 permissions:
   contents: read
 
-# A newer push to the same branch makes the older run's answer moot.
+# A newer push to the same branch makes the older run's answer moot. A
+# dispatch is the exception: its group is its own run, so two dispatches
+# on one branch (three platforms, say) never cancel one another.
 concurrency:
-  group: determinism-${{ github.ref }}
+  group: determinism-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  # GitHub's matrix has no range, so the legs come from a job: one per
+  # platform and repeat, the three platforms once on a pull request, five
+  # times on the schedule, and what the dispatch asked for. The inputs are
+  # read from the environment, never interpolated into the script.
+  plan:
+    name: plan
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Plan the legs
+        id: matrix
+        env:
+          EVENT: ${{ github.event_name }}
+          REPEATS: ${{ inputs.repeats }}
+          ONLY_OS: ${{ inputs.os }}
+        run: |
+          repeats=1
+          only=all
+          if [ "$EVENT" = schedule ]; then
+            repeats=5
+          elif [ "$EVENT" = workflow_dispatch ]; then
+            repeats=${REPEATS:-1}
+            only=${ONLY_OS:-all}
+          fi
+          case "$repeats" in
+            '' | *[!0-9]*)
+              echo "::error::repeats must be a whole number from 1 to 60, not '$repeats'"
+              exit 1
+              ;;
+          esac
+          # Leading zeros are no part of the number, and a long one would wrap
+          # the arithmetic: past two digits it is refused before it is compared.
+          given=$repeats
+          repeats=${repeats#"${repeats%%[!0]*}"}
+          repeats=${repeats:-0}
+          if [ "${#repeats}" -gt 2 ] || [ "$repeats" -lt 1 ] || [ "$repeats" -gt 60 ]; then
+            echo "::error::repeats must be from 1 to 60, not $given"
+            exit 1
+          fi
+          matrix=$(jq -cn --argjson repeats "$repeats" --arg only "$only" '
+            [
+              { os: "ubuntu-22.04", target: "linux-x64" },
+              { os: "macos-15", target: "darwin-arm64" },
+              { os: "windows-latest", target: "win-x64" }
+            ]
+            | map(select($only == "all" or .os == $only))
+            | { include: [ .[] as $leg | range(1; $repeats + 1) | $leg + { run: . } ] }
+          ')
+          legs=$(jq '.include | length' <<<"$matrix")
+          if [ "$legs" -eq 0 ]; then
+            echo "::error::no platform is called '$only'"
+            exit 1
+          fi
+          echo "$legs legs: $repeats repeat(s) on $only"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
   determinism:
     name: determinism (${{ matrix.os }}, run ${{ matrix.run }})
+    needs: plan
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     defaults:
@@ -60,13 +155,7 @@ jobs:
         shell: bash
     strategy:
       fail-fast: false
-      matrix:
-        os: [ubuntu-22.04, macos-15, windows-latest]
-        run: ${{ github.event_name == 'schedule' && fromJSON('[1, 2, 3, 4, 5]') || fromJSON('[1]') }}
-        include:
-          - { os: ubuntu-22.04, target: linux-x64 }
-          - { os: macos-15, target: darwin-arm64 }
-          - { os: windows-latest, target: win-x64 }
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -269,6 +358,55 @@ jobs:
         env:
           LEGIBLE_DETERMINISM_TEST: '1'
 
+      # One busy `node` per core but one, with the counts printed. They start
+      # detached with no stdio, so they outlive this step and the runner does
+      # not wait on them, and node's own pids, which mean the same in every
+      # step's shell on every platform, are written where the stop step reads
+      # them. Started after the build and the unit proof, so the setup is not
+      # what is slowed. A leg that asked for load and did not get it is not the
+      # experiment that was asked for, so a loop that will not start or is gone
+      # within a second fails this step, and the suite is skipped.
+      - name: Start the load
+        if: inputs.load == true
+        run: |
+          node -e '
+            const { spawn } = require("node:child_process");
+            const { appendFileSync, writeFileSync } = require("node:fs");
+            const { availableParallelism } = require("node:os");
+            const { join } = require("node:path");
+            const file = join(process.env.RUNNER_TEMP, "determinism-load.pids");
+            const cores = availableParallelism();
+            const count = Math.max(0, cores - 1);
+            writeFileSync(file, "");
+            const pids = [];
+            for (let i = 0; i < count; i++) {
+              const child = spawn(process.execPath, ["-e", "for(;;){}"], {
+                detached: true,
+                stdio: "ignore",
+                windowsHide: true,
+              });
+              child.on("error", (error) => {
+                console.log(`::error::a busy loop did not start: ${error.message}`);
+                process.exitCode = 1;
+              });
+              child.unref();
+              if (child.pid !== undefined) {
+                pids.push(child.pid);
+                appendFileSync(file, `${child.pid}\n`);
+              }
+            }
+            setTimeout(() => {
+              const alive = pids.filter((pid) => {
+                try { process.kill(pid, 0); return true; } catch { return false; }
+              });
+              console.log(`load: ${cores} cores, ${count} busy loops wanted, ${pids.length} started, ${alive.length} running`);
+              if (alive.length < count) {
+                console.log("::error::fewer busy loops are running than were wanted");
+                process.exitCode = 1;
+              }
+            }, 1000);
+          '
+
       - name: Export twice and compare (Linux, under a display server)
         if: runner.os == 'Linux'
         run: xvfb-run -a npx playwright test tests/e2e/determinism.spec.ts
@@ -282,6 +420,33 @@ jobs:
         env:
           CI: 'true'
           LEGIBLE_DETERMINISM_TEST: '1'
+
+      # Stopped when the suite is over, however it ended, and counted: a loop
+      # that had already gone would mean the pass or the failure above was
+      # not measured under the load that was asked for.
+      - name: Stop the load
+        if: always() && inputs.load == true
+        run: |
+          node -e '
+            const { existsSync, readFileSync } = require("node:fs");
+            const { join } = require("node:path");
+            const file = join(process.env.RUNNER_TEMP, "determinism-load.pids");
+            if (!existsSync(file)) {
+              console.log("load: none was started");
+              process.exit(0);
+            }
+            const pids = readFileSync(file, "utf8").split("\n").filter(Boolean).map(Number);
+            let running = 0;
+            let stopped = 0;
+            for (const pid of pids) {
+              try { process.kill(pid, 0); running += 1; } catch { continue; }
+              try { process.kill(pid); stopped += 1; } catch (error) {
+                console.log(`load: could not stop ${pid}: ${error.message}`);
+              }
+            }
+            console.log(`load: ${pids.length} busy loops started, ${running} still running at the end of the suite, ${stopped} stopped`);
+            if (running < pids.length) console.log("::warning::a busy loop was gone before the suite ended");
+          '
 
       # The per-frame report, from every run: what the two captures and the
       # two GIFs measured, passing or not, so a trend is visible before a
