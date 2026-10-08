@@ -31,7 +31,8 @@ case "$cmd" in
 esac
 
 # Take every heredoc body out of the command, and leave what remains in
-# `code`. A body is text, a note or a message, and not a command: a body
+# `code`. A body is text, a note or a message, and not a command (when its
+# delimiter is quoted; see the end of this comment): a body
 # that mentions `git commit` in backticks runs no git at all, and one that
 # holds a line `git commit -a` is no commit asking for -a (issue 341; the
 # verb was matched in the whole command first, and a body that mentioned the
@@ -75,10 +76,13 @@ esac
 # operator on would let that -a through, and a commit can follow a body that
 # mentions the verbs. The terminator is the operator's word with its quotes
 # and backslashes taken off, as a shell reads it (`<<'EOF'`). A heredoc with
-# no terminator, or no word to end it, or one that is `<<-` (a terminator
-# indented by tabs, which nothing here writes), is not one this can bound.
+# no terminator, or no word to end it, or a word whose quotes do not pair, or
+# one that is `<<-` (a terminator indented by tabs, which nothing here
+# writes), is not one this can bound. Nor is one whose word is unquoted
+# (`<<EOF`) and whose body holds a `$(` or a backtick: the shell expands
+# such a body, so what is in it runs, and it is not text to be cut out.
 strip_bodies() {
-  local word delim lead tail head line body post b nl seen first before opened taken dq sq
+  local word delim lead tail head line body post b inner q nl seen first before opened taken dq sq
   nl=$'\n'
   seen=''; first=1
   while IFS= read -r line; do
@@ -121,6 +125,10 @@ strip_bodies() {
     word=${tail%%[[:space:];&|<>)]*}
     delim=${word//[\"\'\\]/}
     [ -n "$delim" ] || return 2
+    # A word whose quotes do not pair (`<<"EO F"`, cut at its space) is not
+    # the word the shell reads, and the body would end where it does not.
+    q=${word//[!\"\']/}
+    [ $(( ${#q} % 2 )) -eq 0 ] || return 2
     tail=${tail#"$word"}
     case "$tail" in
       *"$nl"*) line=${tail%%"$nl"*}; body=${tail#*"$nl"} ;;
@@ -129,6 +137,13 @@ strip_bodies() {
     b="$nl$body$nl"
     post=${b#*"$nl$delim$nl"}
     [ "$post" != "$b" ] || return 2      # never terminated
+    # A word with no quote or backslash in it is an unquoted delimiter, and
+    # the shell expands such a body: a `$(` or a backtick in it runs, so it is
+    # a command and not text, and cutting it out would hide it.
+    if [ "$word" = "$delim" ]; then
+      inner=${b%%"$nl$delim$nl"*}
+      case "$inner" in *\$\(*|*\`*) return 2 ;; esac
+    fi
     code="$head $line $post"
   done
   return 0
@@ -239,8 +254,14 @@ case "$code" in
     if [ "$all" -eq 0 ]; then
       block "this commit asks for -a, which stages tracked changes after the scans have run; nothing was committed." \
             "Stage the changes first (git add <files>), then commit without -a. If -a is only a word in the message, reword it."
+    elif [ "$bodies" -ne 0 ]; then
+      # The words were never reached: a heredoc could not be bounded, so what
+      # in the command is text and what is a command could not be told, and
+      # git commit may be the command or a line of the body.
+      block "this command could not be read: it holds git commit and a heredoc this hook could not bound (no terminator line of its own, a <<- form, a quote or backslash open before its operator, a delimiter whose quotes do not pair, or an unquoted delimiter over a body with a substitution in it, say), so what is text and what is a command could not be told; nothing was scanned; nothing was run." \
+            "End the heredoc with its delimiter alone on a line, quote the delimiter ('EOF') when the body is only text, and keep a commit or push in a command of its own."
     elif [ "$all" -ne 1 ]; then
-      block "the options of this commit could not be read (a word that is an expansion, a quote open where a heredoc starts, or a heredoc whose end cannot be found, say), so nothing was scanned; nothing was committed." \
+      block "the options of this commit could not be read (a word that is an expansion, say), so nothing was scanned; nothing was committed." \
             "Stage the changes first (git add <files>), then commit with a plain git commit."
     fi
     ;;

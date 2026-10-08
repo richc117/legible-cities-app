@@ -249,8 +249,9 @@ if command -v gitleaks >/dev/null 2>&1; then
   expect_said "asks for -a" "-a before the operator is refused for being -a"
   expect 2 "$(guard_says "git commit -m \"\$(cat <<'EOF'${nl}${body}${nl}EOF${nl})\" -a")" "-a after a body is still -a"
   # A `<<` that opens no heredoc, and a heredoc that is not the command's own
-  # text, must not be allowed to take a flag in as a body: the parser reads
-  # with quotes deleted, so these are judged by the text before the operator.
+  # text, must not be allowed to cut a real commit, or its flag, out as a body:
+  # the cut takes the first `<<` it meets for an operator and reads no
+  # quoting, so each is judged by the text before it.
   expect 2 "$(guard_says "git commit -m \"see <<EOF${nl}\" -a${nl}EOF")" "a << inside a quoted string is no heredoc"
   expect 2 "$(guard_says "git commit -m \"x${nl}see <<EOF${nl}\" -a${nl}EOF")" "a quote opened on an earlier line is still open"
   expect 2 "$(guard_says "git commit \$(cat <<'EOF'${nl}-a${nl}EOF${nl})")" "a heredoc in a substitution nothing quotes"
@@ -283,7 +284,17 @@ if command -v gitleaks >/dev/null 2>&1; then
   expect 0 "$(guard_says "cat <<'EOF'${nl}git commit -a${nl}EOF")" "a line git commit -a in a body is no commit"
   expect 0 "$(guard_says "cat <<\"EOF\"${nl}\`git commit\`${nl}EOF")" "a terminator word in double quotes ends a body"
   expect 0 "$(guard_says "cat <<\\EOF${nl}\`git commit\`${nl}EOF")" "a terminator word behind a backslash ends a body"
-  expect 0 "$(guard_says "cat <<A > a.md${nl}\`git commit\`${nl}A${nl}cat <<B > b.md${nl}\`git push\`${nl}B")" "two notes, each with a verb"
+  expect 0 "$(guard_says "cat <<'A' > a.md${nl}\`git commit\`${nl}A${nl}cat <<'B' > b.md${nl}\`git push\`${nl}B")" "two notes, each with a verb"
+  expect 0 "$(guard_says "cat <<EOF${nl}a note that says git commit and git push, with nothing to expand${nl}EOF")" "an unquoted body with nothing to expand is text"
+  # An unquoted delimiter is not text: the shell expands the body, so a
+  # substitution or a backtick in it runs. Such a body is not cut out; it is a
+  # heredoc this cannot bound, and the verbs in it count.
+  expect 2 "$(guard_says "cat <<EOF${nl}\`git commit -m x\`${nl}EOF")" "a backticked commit in an unquoted body runs"
+  expect_said "could not be read" "a backticked commit in an unquoted body is refused for being unreadable"
+  expect 2 "$(guard_says "cat <<EOF${nl}\$(git commit -a -m x)${nl}EOF")" "a substituted commit in an unquoted body runs"
+  expect_said "could not be read" "a substituted commit in an unquoted body is refused for being unreadable"
+  expect 2 "$(guard_says "cat <<EOF${nl}\`git push origin main\`${nl}EOF")" "a backticked push in an unquoted body runs"
+  expect_said "gitleaks found something" "a backticked push in an unquoted body is scanned"
   expect 2 "$(guard_says "${note}${nl}git commit -q -m x")" "a real commit after a note is scanned"
   expect_said "gitleaks found something" "a real commit after a note is stopped by the scan"
   expect 2 "$(guard_says "${note}${nl}git push origin main")" "a real push after a note is scanned"
@@ -303,6 +314,17 @@ if command -v gitleaks >/dev/null 2>&1; then
   expect 2 "$(guard_says "cat <<'EOF'${nl}see \`git commit\` and \`git push\`")" "a note with no terminator"
   expect_said "could not be read" "a note with no terminator is refused for being unreadable"
   expect 2 "$(guard_says "cat <<'EOF'${nl}a note${nl}git commit -q -m tidy")" "a note with no terminator swallows the commit after it"
+  # A delimiter in quotes that do not pair is cut short at its space, and the
+  # body would end at a line the shell does not end it at: the `EO` line
+  # below would end it early, and the second operator would then take the
+  # commit after the real terminator for its body.
+  expect 2 "$(guard_says "cat <<\"EO F\"${nl}EO${nl}<<X${nl}EO F${nl}git commit -a -m x${nl}X")" "a delimiter with a space in its quotes"
+  expect_said "could not be read" "a delimiter with a space in its quotes is refused for being unreadable"
+  # When the heredoc is what could not be read, the refusal says so, and does
+  # not call a note a commit: a quote open before the operator, here an
+  # apostrophe inside double quotes, cannot be told from the operator's own.
+  expect 2 "$(guard_says "echo \"it's\" && cat <<'EOF'${nl}see \`git commit\`${nl}EOF")" "an apostrophe in double quotes before a note's heredoc"
+  expect_said "could not bound" "the refusal names the heredoc, not a commit"
   # A word that is an expansion could be -a, so nothing can be said of it.
   # shellcheck disable=SC2016  # the literal `$` is the point of these cases.
   {
