@@ -234,7 +234,8 @@ The export's options (A5-01) widened the reel's one button. They were a tab
 once and are cell 06 now. Export offers the thirteen social presets
 from `export.presets` grouped by platform, a storyboard from
 `export.storyboards` for a video or GIF, and view, labels, title, clock,
-start time, lines, quality and a filename tag; the choice is the project's,
+start time, lines, quality and a filename tag, and since issue 352 a caption,
+the clock's corner and the sidecar's alt text; the choice is the project's,
 written to the record's `export` the moment it is made. While cell 06 is
 open a frame of the cell's own is the preview (ADR-046; until then it was
 the map's frame), at the address `export.plan` answers with `safe` on
