@@ -91,10 +91,11 @@ function extentSentence(extent: NonNullable<StageDescription['extent']>): string
   const minutes = count(extent.minutes, 'minute')
   const from = named(extent.from)
   // A trip that ends where it began is a round trip (the engine writes the
-  // two names equal then); the line is then not named, as the spec words it.
+  // two names equal then); it keeps the line's name, and only the "from X to
+  // Y" part becomes "a round trip from X" (FR-004).
   const trip =
     extent.from === extent.to
-      ? `a round trip from ${from}`
+      ? `the ${extent.line}, a round trip from ${from}`
       : `the ${extent.line} from ${from} to ${named(extent.to)}`
   return `On the day drawn, the longest trip on one line takes ${minutes}: ${trip}.`
 }

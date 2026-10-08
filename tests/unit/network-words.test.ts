@@ -121,7 +121,7 @@ describe('the extent sentence', () => {
       extent: { minutes: 31, line: 'BridgeA', from: 'Kestrel', to: 'Kestrel' },
     })
     expect(words.extent).toBe(
-      'On the day drawn, the longest trip on one line takes 31 minutes: a round trip from Kestrel.',
+      'On the day drawn, the longest trip on one line takes 31 minutes: the BridgeA, a round trip from Kestrel.',
     )
   })
 
