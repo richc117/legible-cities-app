@@ -72,6 +72,7 @@ outside and see what reached it. Standard library only; any Python 3 runs it.
 
 from __future__ import annotations
 
+import datetime
 import hashlib
 import json
 import os
@@ -209,10 +210,13 @@ CLOCK_CORNERS = ("top-left", "top-right", "bottom-left", "bottom-right")
 DEFAULT_CORNER = "bottom-right"
 CAPTION_MAX = 80
 LINE_BREAKS = ("\r", "\n", "\u2028", "\u2029")
-# The two stand-in presets with safe zones (the engine's SAFE_ZONES rows
-# `instagram-reels` and `instagram-stories`): the bottom zone's share of the
-# frame, and whether a button rail covers the bottom right.
-ZONES = {"instagram-reel": (0.35, True), "instagram-story": (0.20, False)}
+# The two stand-in presets with safe zones, as the engine's SAFE_ZONES rows
+# (`instagram-reels`, `instagram-stories`) give them, in the order its `url_for`
+# writes them on every address of the preset: top, bottom, side, rail width and
+# rail top, as fractions of the frame, None where a row has no such zone.
+ZONE_PARAMS = ("ztop", "zbottom", "zside", "zrail", "zrailtop")
+ZONES = {"instagram-reel": (0.14, 0.35, 0.06, 0.21, 0.60),
+         "instagram-story": (0.14, 0.20, None, None, None)}
 ALT_MAX = 1000
 
 
@@ -318,33 +322,39 @@ def beat_payloads(beats: list) -> list:
 
 
 def caption_problem(caption) -> str | None:
-    """The engine's `check_caption`: one line of 1 to 80 characters."""
-    bound = f"A caption is 1 to {CAPTION_MAX} characters on one line"
-    if not isinstance(caption, str):
-        return f"{bound}; this one is not text."
-    if any(mark in caption for mark in LINE_BREAKS):
-        return f"{bound}; this one has a line break."
-    if not 1 <= len(caption) <= CAPTION_MAX:
-        return f"{bound}; this one is {len(caption)}."
-    return None
+    """The sentence the engine's handler refuses a caption with over the
+    protocol (its `_caption`, in `serve.py`): one for not text, empty, over 80
+    and a line break alike. `check_caption`'s three sentences are the command
+    line's and are never reached here."""
+    if (isinstance(caption, str) and 1 <= len(caption) <= CAPTION_MAX
+            and not any(mark in caption for mark in LINE_BREAKS)):
+        return None
+    return f"caption must be text of 1 to {CAPTION_MAX} characters on one line"
+
+
+def corner_problem(options: dict) -> str | None:
+    """The handler's sentence for a corner the engine does not have."""
+    asked = options.get("clock_corner")
+    if asked is None or asked in CLOCK_CORNERS:
+        return None
+    return "clock_corner must be one of " + ", ".join(CLOCK_CORNERS)
 
 
 def resolve_corner(preset: dict, options: dict, clock: bool) -> tuple[str, str, str | None]:
     """The corner the clock takes, a note for a person, and the refusal if there
-    is one: the engine's `_clock_corner`. Left out, the corner is bottom right,
-    except on a preset with safe zones, where it is top right: the platform's
-    own interface covers the bottom right there."""
+    is one: the engine's `_clock_corner`, whose refusals are the plan's own, so
+    they are export errors and not params ones. The corner is one the handler
+    let through (`corner_problem`). Left out, it is bottom right, except on a
+    preset with safe zones, where it is top right: the platform's own
+    interface covers the bottom right there."""
     zone = ZONES.get(preset["name"])
     asked = options.get("clock_corner")
     corner = asked if asked is not None else ("top-right" if zone else DEFAULT_CORNER)
-    if corner not in CLOCK_CORNERS:
-        return corner, "", (f"Choose the clock's corner from {', '.join(CLOCK_CORNERS)}; "
-                            f"{corner!r} is not one of them.")
     if not clock:
         return corner, "", None
     platform = preset["platform"]
     if zone and corner == "bottom-right":
-        what = "button rail" if zone[1] else "bottom zone"
+        what = "button rail" if zone[3] is not None else "bottom zone"
         return corner, "", (f"Choose another corner for the clock: on {preset['name']}, "
                             f"{platform}'s {what} covers the bottom right.")
     title, caption = options.get("title", True), bool(options.get("caption"))
@@ -352,11 +362,26 @@ def resolve_corner(preset: dict, options: dict, clock: bool) -> tuple[str, str, 
         named = ("title and the caption sit" if title and caption
                  else "title sits" if title else "caption sits")
         return corner, "", f"Choose another corner for the clock: the {named} top left."
-    if zone and corner == "bottom-left":
+    if zone and corner == "bottom-left" and zone[1] is not None:
         return corner, (f"the clock sits bottom left, inside {platform}'s bottom zone (the "
-                        f"lowest {zone[0]:.0%} of the frame), where {platform}'s own interface "
+                        f"lowest {zone[1]:.0%} of the frame), where {platform}'s own interface "
                         "can cover it; top right keeps it clear."), None
     return corner, "", None
+
+
+def stage_date_problem(value) -> str | None:
+    """The handler's refusals of render.stage's `date`: null is not the same as
+    left out, and a day that fits the pattern may still not be on the calendar."""
+    if value is None:
+        return ("date must be the service day as YYYY-MM-DD, or left out for a "
+                "description without minutes")
+    if not isinstance(value, str) or re.match(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$", value) is None:
+        return "date must be a calendar day as YYYY-MM-DD"
+    try:
+        datetime.date.fromisoformat(value)
+    except ValueError:
+        return f"date: {value} is not a calendar day"
+    return None
 
 
 def load_control() -> dict:
@@ -523,10 +548,8 @@ class Engine:
             stage = params.get("stage")
             if stage not in ("gtfs2graph", "topo", "loom", "octi"):
                 error(msg_id, -32602, "stage must be one of gtfs2graph, topo, loom, octi", "params")
-            elif "date" in params and not (isinstance(params["date"], str) and re.fullmatch(
-                    r"[0-9]{4}-[0-9]{2}-[0-9]{2}", params["date"])):
-                error(msg_id, -32602, "date is the project's service day, as YYYY-MM-DD; "
-                      "leave it out rather than send null", "params")
+            elif "date" in params and stage_date_problem(params["date"]) is not None:
+                error(msg_id, -32602, stage_date_problem(params["date"]), "params")
             elif not isinstance(layout, str) or layout not in self.layouts:
                 error(msg_id, -32000, f"{params.get('key', 'x')!r} has no stored {stage} graph; "
                       "lay the feed out first (graph.build)", "layout")
@@ -569,7 +592,10 @@ class Engine:
             params = message.get("params") or {}
             problem = self.plan_problem(params)
             if problem is not None:
-                error(msg_id, -32602, problem, "params")
+                # The shape of the options is the caller's mistake (params,
+                # -32602); what the plan itself refuses is an export error.
+                kind, sentence = problem
+                error(msg_id, -32602 if kind == "params" else -32000, sentence, kind)
             elif self.control.get("export_refuses"):
                 error(msg_id, -32000, self.control["export_refuses"], "export")
             elif PRESETS[params["preset"]]["kind"] == "vector":
@@ -1133,43 +1159,54 @@ class Engine:
             "anchor": anchor}})
 
     @staticmethod
-    def plan_problem(params: dict) -> str | None:
-        """The real server's refusals, in shape: a feed key, a preset it has, a
-        page with a scheme, and options it knows."""
+    def plan_problem(params: dict) -> tuple[str, str] | None:
+        """The real server's refusals, in shape, as (kind, sentence). In the
+        engine's order: its handler first judges the options' shape (params),
+        a list of beats on any preset, then refuses view and at beside a list
+        on a video; then the plan refuses what it cannot take (export), here
+        the clock's corner."""
         if not isinstance(params.get("key"), str) or not params["key"]:
-            return "key must be a feed key"
+            return "params", "key must be a feed key"
         if params.get("preset") not in PRESETS:
-            return "preset must be the name of an export preset; export.presets lists them"
+            return "params", "preset must be the name of an export preset; export.presets lists them"
         page = params.get("page")
         if page is not None and (not isinstance(page, str) or "://" not in page):
-            return "page must be the page's address, with its scheme"
+            return "params", "page must be the page's address, with its scheme"
         options = params.get("options") or {}
         if not isinstance(options, dict):
-            return "options must be an object"
+            return "params", "options must be an object"
         known = {"view", "labels", "title", "clock", "theme", "at", "lines", "storyboard",
                  "quality", "fade", "tag", "safe", "caption", "clock_corner"}
         extra = sorted(set(options) - known)
         if extra:
-            return f"export.plan options does not take {', '.join(extra)}"
+            return "params", f"export.plan options does not take {', '.join(extra)}"
         preset = PRESETS[params["preset"]]
         video = preset["kind"] == "video"
+        board = options.get("storyboard")
+        if isinstance(board, list):
+            # The handler runs `authored_beats` on any list, before it looks at
+            # the preset; a still then ignores a good one.
+            problem = beats_problem(board)
+            if problem is not None:
+                return "params", problem
+        elif board is not None and (not isinstance(board, str) or board not in STORYBOARDS):
+            return "params", "storyboard must be the name of a storyboard; export.storyboards lists them"
         if options.get("caption") is not None:
             problem = caption_problem(options["caption"])
             if problem is not None:
-                return problem
-        problem = resolve_corner(preset, options, options.get("clock", video))[2]
+                return "params", problem
+        problem = corner_problem(options)
         if problem is not None:
-            return problem
-        board = options.get("storyboard")
-        if isinstance(board, list):
-            # A still ignores a storyboard of either kind; a video's list is
-            # judged beat by beat, and carries its own opening view and clock.
-            if video:
-                if options.get("view") or options.get("at"):
-                    return BESIDE_A_LIST
-                return beats_problem(board)
-        elif board is not None and (not isinstance(board, str) or board not in STORYBOARDS):
-            return "storyboard must be the name of a storyboard; export.storyboards lists them"
+            return "params", problem
+        # Only a video's first beat is where it opens, so only there are a
+        # view and a clock beside a list the caller's mistake.
+        if video and isinstance(board, list) and (options.get("view") or options.get("at")):
+            return "params", BESIDE_A_LIST
+        # A vector preset is refused by the plan before its corner is judged.
+        if preset["kind"] != "vector":
+            problem = resolve_corner(preset, options, options.get("clock", video))[2]
+            if problem is not None:
+                return "export", problem
         return None
 
     @staticmethod
@@ -1234,6 +1271,11 @@ class Engine:
             query["caption"] = caption
         if clock and corner != DEFAULT_CORNER:
             query["corner"] = corner
+        # The preset's zones are on every address, preview and export alike; the
+        # page lays its frame out from them and draws them only under `safe`.
+        for param, value in zip(ZONE_PARAMS, ZONES.get(name, ())):
+            if value is not None:
+                query[param] = str(value)
         url = page + "?" + urlencode(query)
         quality = options.get("quality", "standard")
         tag = options.get("tag") or ""

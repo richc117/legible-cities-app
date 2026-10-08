@@ -16,7 +16,10 @@
 // (a person's `alt` replaces the engine's sentence) and the two tables
 // `export.presets` and `export.storyboards`. The requests the tests send are
 // held to the description's params as well, so a test cannot ask the stand-in
-// for something the engine would refuse for its shape.
+// for something the engine would refuse for its shape. The refusals it
+// answers are held to the engine's handler as well, over the protocol: the
+// code, the kind (params for the shape of the options, export for what the
+// plan itself cannot take) and the sentence.
 //
 // Needs a Python 3 on the PATH to run the stand-in; skips, saying so,
 // without one.
@@ -27,7 +30,7 @@ import { basename, dirname, join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { engineEnvironment } from '../../src/main/interpreter'
 import { Sidecar } from '../../src/main/sidecar'
-import type { EnginePin, EngineState } from '../../src/shared/engine'
+import { EngineError, type EnginePin, type EngineState } from '../../src/shared/engine'
 import { FAKE_ENGINE, findPython } from '../support/python'
 
 // -------------------------------------------------------------- validating
@@ -556,7 +559,7 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s answers${WHY}`, () => 
     expect(dated.counts).toEqual(bare.counts)
   })
 
-  it('describes only the lines a narrower mode kept, and refuses a null day', async () => {
+  it('describes only the lines a narrower mode kept', async () => {
     const layout = await layoutOf({ mode: 'tram' })
     const stage = (await ask('render.stage', {
       key: 'la-metro-rail',
@@ -566,9 +569,28 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s answers${WHY}`, () => 
     expect(answerProblems('render.stage', stage)).toEqual([])
     expect(stage.description.lines.map((l) => l.label)).toEqual(['A'])
     expect(stage.description.lines[0].meets).toEqual([])
-    await expect(
-      ask('render.stage', { key: 'la-metro-rail', layout, stage: 'topo', date: null }),
-    ).rejects.toThrow(/leave it out rather than send null/)
+  })
+
+  it('refuses a day as the engine’s handler does: null, malformed, and not on the calendar', async () => {
+    const layout = await layoutOf()
+    const stage = (date: unknown): Promise<unknown> =>
+      ask('render.stage', { key: 'la-metro-rail', layout, stage: 'topo', date })
+    const params = { code: PARAMS, kind: 'params' }
+    expect(await refusal(stage(null))).toEqual({
+      ...params,
+      message:
+        'date must be the service day as YYYY-MM-DD, or left out for a description without minutes',
+    })
+    for (const date of ['tomorrow', 20260616, '2026-6-16', '']) {
+      expect(await refusal(stage(date)), JSON.stringify(date)).toEqual({
+        ...params,
+        message: 'date must be a calendar day as YYYY-MM-DD',
+      })
+    }
+    expect(await refusal(stage('2026-02-30'))).toEqual({
+      ...params,
+      message: 'date: 2026-02-30 is not a calendar day',
+    })
   })
 
   interface PlanAnswer {
@@ -595,6 +617,31 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s answers${WHY}`, () => 
   }
   const queryOf = (url: string): URLSearchParams => new URL(url).searchParams
 
+  // How the engine refuses over the protocol: the code, the kind in its data
+  // and the sentence. Its handler judges the shape of the options before the
+  // plan runs (params, -32602); what the plan itself refuses is an export
+  // error (export, -32000).
+  const PARAMS = -32602
+  const EXPORT = -32000
+  interface Refusal {
+    code: number
+    kind: string | undefined
+    message: string
+  }
+  const refusal = async (request: Promise<unknown>): Promise<Refusal> => {
+    try {
+      await request
+    } catch (error) {
+      if (error instanceof EngineError) {
+        return { code: error.code, kind: error.data?.kind, message: error.message }
+      }
+      throw error
+    }
+    throw new Error('the stand-in answered a request the engine refuses')
+  }
+  const planRefused = (preset: string, options: Record<string, unknown>): Promise<Refusal> =>
+    refusal(ask('export.plan', { key: 'la-metro-rail', preset, options }))
+
   it('plans a caption (null unless asked) and the clock’s corner, top right where the platform covers the bottom right', async () => {
     const reel = await planFor('instagram-reel')
     expect(reel).toMatchObject({ caption: null, clock_corner: 'top-right', notes: [] })
@@ -619,33 +666,69 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s answers${WHY}`, () => 
     expect(queryOf(corner.url).get('corner')).toBe('bottom-left')
   })
 
-  it('refuses the corners and captions the engine refuses, in its words', async () => {
-    const refused = (preset: string, options: Record<string, unknown>): Promise<unknown> =>
-      ask('export.plan', { key: 'la-metro-rail', preset, options })
-    await expect(refused('instagram-reel', { clock_corner: 'bottom-right' })).rejects.toThrow(
-      /on instagram-reel, Instagram's button rail covers the bottom right/,
-    )
-    await expect(
-      refused('instagram-story', { clock: true, clock_corner: 'bottom-right' }),
-    ).rejects.toThrow(/Instagram's bottom zone covers the bottom right/)
-    await expect(refused('portfolio-mp4', { clock_corner: 'top-left' })).rejects.toThrow(
-      /the title sits top left/,
-    )
-    await expect(
-      refused('portfolio-mp4', { clock_corner: 'top-left', caption: 'Rush hour' }),
-    ).rejects.toThrow(/the title and the caption sit top left/)
-    await expect(refused('portfolio-mp4', { clock_corner: 'middle' })).rejects.toThrow(
-      /Choose the clock's corner from top-left, top-right, bottom-left, bottom-right/,
-    )
-    await expect(refused('instagram-post', { caption: 'x'.repeat(81) })).rejects.toThrow(
-      /A caption is 1 to 80 characters on one line; this one is 81\./,
-    )
-    await expect(refused('instagram-post', { caption: 'two\nlines' })).rejects.toThrow(
-      /this one has a line break/,
-    )
+  it('refuses a caption or a corner that is not one in the handler’s words, as a params error', async () => {
+    const caption = 'caption must be text of 1 to 80 characters on one line'
+    // One sentence for not text, empty, over 80 and a line break alike.
+    for (const bad of ['x'.repeat(81), 'two\nlines', 'two\u2028lines', '', 7]) {
+      expect(await planRefused('instagram-post', { caption: bad }), JSON.stringify(bad)).toEqual({
+        code: PARAMS,
+        kind: 'params',
+        message: caption,
+      })
+    }
+    expect(await planRefused('portfolio-mp4', { clock_corner: 'middle' })).toEqual({
+      code: PARAMS,
+      kind: 'params',
+      message: 'clock_corner must be one of top-left, top-right, bottom-left, bottom-right',
+    })
+    // Eighty characters is allowed, and so is one.
+    expect((await planFor('instagram-post', { caption: 'x'.repeat(80) })).caption).toHaveLength(80)
+    expect((await planFor('instagram-post', { caption: 'x' })).caption).toBe('x')
+  })
+
+  it('refuses a corner the preset cannot take, in the plan’s words, as an export error', async () => {
+    const exportError = { code: EXPORT, kind: 'export' }
+    expect(await planRefused('instagram-reel', { clock_corner: 'bottom-right' })).toEqual({
+      ...exportError,
+      message:
+        "Choose another corner for the clock: on instagram-reel, Instagram's button rail covers the bottom right.",
+    })
+    expect(
+      await planRefused('instagram-story', { clock: true, clock_corner: 'bottom-right' }),
+    ).toEqual({
+      ...exportError,
+      message:
+        "Choose another corner for the clock: on instagram-story, Instagram's bottom zone covers the bottom right.",
+    })
+    expect(await planRefused('portfolio-mp4', { clock_corner: 'top-left' })).toEqual({
+      ...exportError,
+      message: 'Choose another corner for the clock: the title sits top left.',
+    })
+    expect(
+      await planRefused('portfolio-mp4', { clock_corner: 'top-left', caption: 'Rush hour' }),
+    ).toEqual({
+      ...exportError,
+      message: 'Choose another corner for the clock: the title and the caption sit top left.',
+    })
+    expect(
+      await planRefused('portfolio-mp4', {
+        clock_corner: 'top-left',
+        title: false,
+        caption: 'Rush hour',
+      }),
+    ).toEqual({
+      ...exportError,
+      message: 'Choose another corner for the clock: the caption sits top left.',
+    })
+  })
+
+  it('lets a corner through where nothing sits or covers it, with a note where the platform may', async () => {
     // The title off and no caption: nothing sits top left, so the clock may.
     const free = await planFor('portfolio-mp4', { clock_corner: 'top-left', title: false })
     expect(free.clock_corner).toBe('top-left')
+    // A still without a clock is not judged: the corner is carried all the same.
+    const still = await planFor('instagram-post', { clock_corner: 'top-left' })
+    expect(still.clock_corner).toBe('top-left')
     // The reel's bottom left is allowed, with a note saying what covers it.
     const note = await planFor('instagram-reel', { clock_corner: 'bottom-left' })
     expect(note.notes).toEqual([
@@ -653,6 +736,40 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s answers${WHY}`, () => 
         /bottom left, inside Instagram's bottom zone \(the lowest 35% of the frame\)/,
       ),
     ])
+  })
+
+  it('writes the zones of a preset that has them on the address, as the engine does, and none for one that has not', async () => {
+    const zones = (url: string): Record<string, string> =>
+      Object.fromEntries([...queryOf(url)].filter(([name]) => /^z[a-z]+$/.test(name)))
+    const reel = await planFor('instagram-reel')
+    expect(zones(reel.url)).toEqual({
+      ztop: '0.14',
+      zbottom: '0.35',
+      zside: '0.06',
+      zrail: '0.21',
+      zrailtop: '0.6',
+    })
+    // The story has no side and no rail, and a member without a number is not written.
+    const story = await planFor('instagram-story')
+    expect(zones(story.url)).toEqual({ ztop: '0.14', zbottom: '0.2' })
+    // After the caption and the corner, which come after everything else.
+    const names = [
+      ...queryOf((await planFor('instagram-reel', { caption: 'Rush hour' })).url).keys(),
+    ]
+    expect(names.slice(-7)).toEqual([
+      'caption',
+      'corner',
+      'ztop',
+      'zbottom',
+      'zside',
+      'zrail',
+      'zrailtop',
+    ])
+    for (const preset of ['instagram-post', 'portfolio-mp4', 'bluesky']) {
+      expect(zones((await planFor(preset)).url), preset).toEqual({})
+    }
+    // The zones are the preset's: a plan that draws them too (safe) writes the same.
+    expect(zones((await planFor('instagram-reel', { safe: true })).url)).toEqual(zones(reel.url))
   })
 
   it('plans a storyboard written as a list of beats, opening where its first beat does', async () => {
@@ -670,10 +787,38 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s answers${WHY}`, () => 
     expect(plan.beats[0]).toMatchObject({ at: 8 * 3600, tween: 0 })
     // A transition left out is the shorter of the beat and 1.2 seconds.
     expect(plan.beats.map((b) => b.tween)).toEqual([0, 1.2, 1.2])
-    // A named storyboard is still its own name, and a still ignores a list.
+    // A named storyboard is still its own name.
     expect((await planFor('portfolio-mp4', { storyboard: 'morph' })).storyboard).toBe('morph')
-    const still = await planFor('instagram-post', { storyboard: [{ secs: 2 }] })
-    expect(still).toMatchObject({ mode: 'still', storyboard: '' })
+  })
+
+  it('judges a list beat by beat whatever the preset, and ignores a good one on a still', async () => {
+    const first = { secs: 2, view: 'map', at: '08:00' }
+    // The handler runs the engine's authored_beats on any list before it looks at the preset.
+    expect(await planRefused('instagram-post', { storyboard: [{ secs: 2 }] })).toEqual({
+      code: PARAMS,
+      kind: 'params',
+      message: 'storyboard[0].view is missing: the first beat names the view frame 0 is in',
+    })
+    expect(await planRefused('instagram-post', { storyboard: [] })).toMatchObject({
+      code: PARAMS,
+      message: 'storyboard holds no beats: a list holds 1 to 16',
+    })
+    // A list that is good is ignored by a still, and so are a view and a clock beside it:
+    // only a video's list says where it opens.
+    const still = await planFor('instagram-post', { storyboard: [first] })
+    expect(still).toMatchObject({ mode: 'still', storyboard: '', view: 'map', at: 7 * 3600 })
+    const beside = await planFor('instagram-post', {
+      storyboard: [first],
+      view: 'time',
+      at: '09:30',
+    })
+    expect(beside).toMatchObject({ mode: 'still', storyboard: '', view: 'time', at: 9.5 * 3600 })
+    // On a video preset the same request is the caller's mistake.
+    expect(await planRefused('portfolio-mp4', { storyboard: [first], view: 'time' })).toEqual({
+      code: PARAMS,
+      kind: 'params',
+      message: "view and at go on a list's first beat (storyboard[0]), not beside the list",
+    })
   })
 
   it('refuses a list the engine refuses, naming the beat and the field', async () => {
