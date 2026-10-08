@@ -21,12 +21,156 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null) |
 # A payload with no command at all reads as an empty one, and the case below
 # would call that "not a commit" and let it through unscanned.
 [ -n "$cmd" ] || block "the command could not be read." "Nothing was committed."
+# A cheap filter over the command as written: with neither verb anywhere in
+# it there is nothing to judge, and nothing below can refuse it. A verb that
+# is only in a heredoc body is not a command; that is judged next, once the
+# bodies are out.
 case "$cmd" in
   *"git commit"*|*"git push"*) ;;
   *) exit 0 ;;
 esac
+
+# Take every heredoc body out of the command, and leave what remains in
+# `code`. A body is text, a note or a message, and not a command (when its
+# delimiter is quoted; see the end of this comment): a body
+# that mentions `git commit` in backticks runs no git at all, and one that
+# holds a line `git commit -a` is no commit asking for -a (issue 341; the
+# verb was matched in the whole command first, and a body that mentioned the
+# verbs was read as a commit whose options could not be read). So the verbs
+# are looked for in `code`, and so are a commit's options. Answers 0 with
+# `code` set, or 2 for a heredoc this cannot bound, with `code` not to be
+# used: a body that cannot be found cannot be taken out.
+#
+# A check over the command as written, before anything is taken out of it.
+# The removal below takes the first `<<` it meets for the operator of a
+# heredoc, so it cannot tell one that opens a heredoc from one inside a
+# string, nor the body of a heredoc from the words of an unquoted
+# substitution that holds one, and in both a real commit, or its flag, would
+# be cut as body. So each `<<` (not `<<<`) is judged by the text before it.
+# With every `"$(` taken out, which is the form a message built by a
+# substitution has, a `$(` left over means the heredoc is inside a
+# substitution that nothing quotes, and an odd count of `"` or of `'` means
+# the operator is inside a quote. The same number of `)"` is then taken out,
+# from the left, since each closes one of the `"$(` just taken out and is not
+# a quote that opens or shuts anything; with none taken out first, a `)"` is
+# a quote like any other (`-m "a)" -m "see <<EOF`). For the first operator
+# that text is everything before it, since a quote opened on an earlier line
+# is still open on this one; for a later one it is its own line, since what
+# lies before it holds a body, whose apostrophes are not quotes. A count of
+# quotes is exact only with one kind of quote in the text and no backslash,
+# which makes `\"` a quote that does not close: a `"` inside `'...'` is
+# counted by neither, so the first operator's text is refused if it holds a
+# backslash or both kinds of quote. Neither form this repository commits in,
+# `-F - <<'EOF'` and `-m "$(cat <<'EOF'`, has a backslash or a `'` before its
+# operator. The limit: a later operator is judged on its own line, so a `)"`
+# that closes a `"$(` opened before a body is invisible there, and a
+# constructed command can use that; the hook exists for slips, not
+# adversaries. Nor is a `<<` inside a body spared: it is judged like any
+# other, on its own line.
+#
+# Then each body is cut. This repository's messages quote code in backticks
+# and `$HOME`, and nearly every commit here is made with one. What stays is
+# what is before the operator, the rest of the operator's own line, and what
+# follows the terminator line: options come after a body in
+# `-m "$(cat <<EOF ... EOF` then `)` and `-a`, so cutting everything from the
+# operator on would let that -a through, and a commit can follow a body that
+# mentions the verbs. The terminator is the operator's word with its quotes
+# and backslashes taken off, as a shell reads it, for the four spellings
+# where that is all there is to it: bare, `<<'EOF'`, `<<"EOF"`, `<<\EOF`. A
+# heredoc with no terminator, or no word to end it, or a word in any other
+# spelling, or one that is `<<-` (a terminator indented by tabs, which
+# nothing here writes), is not one this can bound. Nor is one whose word is unquoted
+# (`<<EOF`) and whose body holds a `$(` or a backtick: the shell expands
+# such a body, so what is in it runs, and it is not text to be cut out.
+strip_bodies() {
+  local word delim lead tail head line body post b inner nl seen first before opened taken dq sq
+  nl=$'\n'
+  seen=''; first=1
+  while IFS= read -r line; do
+    line=${line//<<</ }
+    case "$line" in
+      *"<<"*)
+        before=${line%%<<*}
+        if [ -n "$first" ]; then
+          before=$seen$before
+          first=''
+          case "$before" in *\\*) return 2 ;; esac
+          dq=${before//[!\"]/}; sq=${before//[!\']/}
+          [ -z "$dq" ] || [ -z "$sq" ] || return 2
+        fi
+        opened=$before
+        before=${before//\"\$(/}
+        case "$before" in *\$\(*) return 2 ;; esac
+        taken=$(( (${#opened} - ${#before}) / 3 ))
+        while [ "$taken" -gt 0 ]; do
+          before=${before/\)\"/}
+          taken=$((taken - 1))
+        done
+        dq=${before//[!\"]/}; sq=${before//[!\']/}
+        [ $(( ${#dq} % 2 )) -eq 0 ] && [ $(( ${#sq} % 2 )) -eq 0 ] || return 2
+        ;;
+    esac
+    seen=$seen$line$nl
+  done <<<"$cmd"
+  code=$cmd
+  while :; do
+    case "$code" in *"<<"*) ;; *) break ;; esac
+    head=${code%%<<*}
+    tail=${code#*<<}
+    case "$tail" in
+      "<"*) code="$head ${tail#<}"; continue ;;   # `<<<`, a string and not a body
+    esac
+    case "$tail" in -*) return 2 ;; esac   # `<<-`, see above
+    lead=${tail%%[![:blank:]]*}
+    tail=${tail#"$lead"}
+    word=${tail%%[[:space:];&|<>)]*}
+    delim=${word//[\"\'\\]/}
+    [ -n "$delim" ] || return 2
+    # Only the four spellings whose shell reading is exactly `delim`, which
+    # has no quote or backslash in it: bare, in single quotes, in double
+    # quotes, or behind one backslash. Any other word is read by the shell
+    # as something else (`<<"EO F"`, cut at its space; `<<"EOF' x"`, whose
+    # quotes pair and whose delimiter is `EOF' x`; `<<'\EOF'`), and the body
+    # would end at a line it does not end at.
+    case "$word" in
+      "$delim"|"'$delim'"|"\"$delim\""|"\\$delim") ;;
+      *) return 2 ;;
+    esac
+    tail=${tail#"$word"}
+    case "$tail" in
+      *"$nl"*) line=${tail%%"$nl"*}; body=${tail#*"$nl"} ;;
+      *) return 2 ;;                     # an operator with no body after it
+    esac
+    b="$nl$body$nl"
+    post=${b#*"$nl$delim$nl"}
+    [ "$post" != "$b" ] || return 2      # never terminated
+    # A word with no quote or backslash in it is an unquoted delimiter, and
+    # the shell expands such a body: a `$(` or a backtick in it runs, so it is
+    # a command and not text, and cutting it out would hide it.
+    if [ "$word" = "$delim" ]; then
+      inner=${b%%"$nl$delim$nl"*}
+      case "$inner" in *\$\(*|*\`*) return 2 ;; esac
+    fi
+    code="$head $line $post"
+  done
+  return 0
+}
+strip_bodies; bodies=$?
+if [ "$bodies" -eq 0 ]; then
+  case "$code" in
+    *"git commit"*|*"git push"*) ;;
+    *) exit 0 ;;                         # the verbs were only in a body
+  esac
+else
+  # A body that cannot be found cannot be taken out, so a verb in it has to
+  # count: the command as written is what is looked at, and a commit in it is
+  # refused by asks_for_all as one it cannot read. A push alone has no
+  # options to read, and is scanned as it always was.
+  code=$cmd
+fi
+
 # Known blind spots, both about sibling worktrees. `git -C ../lc-X commit`
-# does not contain "git commit", so the pattern above lets it through with
+# does not contain "git commit", so the patterns above let it through with
 # no scan at all. `cd ../lc-X && git commit` is matched, but the scan below
 # runs in the project directory, against this checkout's index and not the
 # worktree's. The pre-commit hooks (when `pre-commit install` has been run;
@@ -65,107 +209,27 @@ fi
 # doubt is a yes. Quotes and backslashes are deleted before the words are
 # split, so `"-a"` is the flag it is to a shell, and the price is that a
 # message given with -m on the command line that says -a is read as the flag
-# too (reword it; a heredoc body is not read at all, see below). The search starts
-# at the first `git commit` and runs to the end of the command, whatever is
-# chained after it. Short options are read a letter at a time, stopping at
-# one that takes a value, since the rest of that word is the value (`-sam` is
-# -s -a -m, and `-ma` is a message). A word that is an expansion could be
-# anything, -a included (`$'-a'`, `-$x`, `--${all}`, `{-a,-q}`, a backtick),
-# so it is a doubt of the other kind: nothing can be said about it. That is a
-# word that begins with `$`, a backtick or `{`, or begins with `-` and holds
-# one of them anywhere; `$(` is left alone, since what a substitution runs is
-# in the string as words of its own, and is read. Answers 0 for yes, 1 for no,
-# and 2 for a command that could not be read.
+# too (reword it; a heredoc body is not read at all, it was cut out by
+# strip_bodies before anything was looked for). The search is over `code`,
+# the command with its bodies out, and starts at the first `git commit` in it
+# and runs to the end, whatever is chained after it. Short options are read a
+# letter at a time, stopping at one that takes a value, since the rest of that
+# word is the value (`-sam` is -s -a -m, and `-ma` is a message). A word that
+# is an expansion could be anything, -a included (`$'-a'`, `-$x`, `--${all}`,
+# `{-a,-q}`, a backtick), so it is a doubt of the other kind: nothing can be
+# said about it. That is a word that begins with `$`, a backtick or `{`, or
+# begins with `-` and holds one of them anywhere; `$(` is left alone, since
+# what a substitution runs is in the string as words of its own, and is read.
+# Answers 0 for yes, 1 for no, and 2 for a command that could not be read,
+# which includes one with a heredoc that strip_bodies could not bound.
 asks_for_all() {
-  local rest word chars c head tail lead line body post b nl seen first before opened taken dq sq
-  nl=$'\n'
-  rest=$(printf '%s' "$cmd" | tr -d '\042\047\134') || return 2
+  local rest word chars c
+  [ "$bodies" -eq 0 ] || return 2        # a body that could not be found is still in `code`
+  rest=$(printf '%s' "$code" | tr -d '\042\047\134') || return 2
   case "$rest" in
     *"git commit"*) rest=${rest#*git commit} ;;
     *) return 1 ;;                       # a push alone
   esac
-  # A check over the command as written, before anything is taken out of it.
-  # The loop below reads text with its quotes already deleted, so it cannot
-  # tell a `<<` that opens a heredoc from one inside a string, nor the body of
-  # a heredoc from the words of an unquoted substitution that holds one, and
-  # in both a flag would be cut as body. So each `<<` (not `<<<`) is judged by
-  # the text before it. With every `"$(` taken out, which is the form a
-  # message built by a substitution has, a `$(` left over means the heredoc is
-  # inside a substitution that nothing quotes, and an odd count of `"` or of
-  # `'` means the operator is inside a quote. The same number of `)"` is then
-  # taken out, from the left, since each closes one of the `"$(` just taken
-  # out and is not a quote that opens or shuts anything; with none taken out
-  # first, a `)"` is a quote like any other (`-m "a)" -m "see <<EOF`). For the
-  # first operator that text is everything before it, since a quote opened on
-  # an earlier line is still open on this one; for a later one it is its own
-  # line, since what lies before it holds a body, whose apostrophes are not
-  # quotes. A count of quotes is exact only with one kind of quote in the
-  # text and no backslash, which makes `\"` a quote that does not close: a
-  # `"` inside `'...'` is counted by neither, so the first operator's text is
-  # refused if it holds a backslash or both kinds of quote. Neither form this
-  # repository commits in, `-F - <<'EOF'` and `-m "$(cat <<'EOF'`, has a
-  # backslash or a `'` before its operator. The limit: a later operator is
-  # judged on its own line, so a `)"` that closes a `"$(` opened before a
-  # body is invisible there, and a constructed command can use that; the
-  # hook exists for slips, not adversaries.
-  seen=''; first=1
-  while IFS= read -r line; do
-    line=${line//<<</ }
-    case "$line" in
-      *"<<"*)
-        before=${line%%<<*}
-        if [ -n "$first" ]; then
-          before=$seen$before
-          first=''
-          case "$before" in *\\*) return 2 ;; esac
-          dq=${before//[!\"]/}; sq=${before//[!\']/}
-          [ -z "$dq" ] || [ -z "$sq" ] || return 2
-        fi
-        opened=$before
-        before=${before//\"\$(/}
-        case "$before" in *\$\(*) return 2 ;; esac
-        taken=$(( (${#opened} - ${#before}) / 3 ))
-        while [ "$taken" -gt 0 ]; do
-          before=${before/\)\"/}
-          taken=$((taken - 1))
-        done
-        dq=${before//[!\"]/}; sq=${before//[!\']/}
-        [ $(( ${#dq} % 2 )) -eq 0 ] && [ $(( ${#sq} % 2 )) -eq 0 ] || return 2
-        ;;
-    esac
-    seen=$seen$line$nl
-  done <<<"$cmd"
-  # A heredoc body is text, and text cannot be a flag, so each body is taken
-  # out before the words are read. This repository's messages quote code in
-  # backticks and `$HOME`, and nearly every commit here is made with one. What
-  # stays is what is before the operator, the rest of the operator's own line,
-  # and what follows the terminator line: options come after a body in
-  # `-m "$(cat <<EOF ... EOF` then `)` and `-a`, so cutting everything from the
-  # operator on would let that -a through. A heredoc with no terminator, or no
-  # word to end it, or one that is `<<-` (a terminator indented by tabs, which
-  # nothing here writes), is not one this can read.
-  while :; do
-    case "$rest" in *"<<"*) ;; *) break ;; esac
-    head=${rest%%<<*}
-    tail=${rest#*<<}
-    case "$tail" in
-      "<"*) rest="$head ${tail#<}"; continue ;;   # `<<<`, a string and not a body
-    esac
-    case "$tail" in -*) return 2 ;; esac   # `<<-`, see above
-    lead=${tail%%[![:blank:]]*}
-    tail=${tail#"$lead"}
-    word=${tail%%[[:space:];&|<>)]*}
-    [ -n "$word" ] || return 2
-    tail=${tail#"$word"}
-    case "$tail" in
-      *"$nl"*) line=${tail%%"$nl"*}; body=${tail#*"$nl"} ;;
-      *) return 2 ;;                     # an operator with no body after it
-    esac
-    b="$nl$body$nl"
-    post=${b#*"$nl$word$nl"}
-    [ "$post" != "$b" ] || return 2      # never terminated
-    rest="$head $line $post"
-  done
   set -f                                 # a `*` in a word is a `*`
   # shellcheck disable=SC2086  # split on whitespace, on purpose
   set -- $rest
@@ -191,14 +255,20 @@ asks_for_all() {
   done
   return 1
 }
-case "$cmd" in
+case "$code" in
   *"git commit"*)
     asks_for_all; all=$?
     if [ "$all" -eq 0 ]; then
       block "this commit asks for -a, which stages tracked changes after the scans have run; nothing was committed." \
             "Stage the changes first (git add <files>), then commit without -a. If -a is only a word in the message, reword it."
+    elif [ "$bodies" -ne 0 ]; then
+      # The words were never reached: a heredoc could not be bounded, so what
+      # in the command is text and what is a command could not be told, and
+      # git commit may be the command or a line of the body.
+      block "this command could not be read: it holds git commit and a heredoc this hook could not bound (no terminator line of its own, a <<- form, a quote or backslash open before its operator, a delimiter the shell would read differently from this hook, or an unquoted delimiter over a body with a substitution in it, say), so what is text and what is a command could not be told; nothing was scanned; nothing was run." \
+            "End the heredoc with its delimiter alone on a line, quote the delimiter ('EOF') when the body is only text, and keep a commit or push in a command of its own."
     elif [ "$all" -ne 1 ]; then
-      block "the options of this commit could not be read (a word that is an expansion or a quote open where a heredoc starts, say), so nothing was scanned; nothing was committed." \
+      block "the options of this commit could not be read (a word that is an expansion, say), so nothing was scanned; nothing was committed." \
             "Stage the changes first (git add <files>), then commit with a plain git commit."
     fi
     ;;
@@ -237,7 +307,7 @@ scan() {   # $1 = what is scanned, then the arguments that follow `gitleaks git`
 }
 scan "the staged changes" --staged
 
-case "$cmd" in
+case "$code" in
   *"git push"*)
     # Every commit, not the range against the tracked upstream: `@{upstream}`
     # is a property of the branch and not of the remote being pushed to, so
