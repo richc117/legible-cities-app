@@ -98,7 +98,10 @@ test('follows the platform theme and measures as the design document says', asyn
       })
       expect(gap, 'the icon-to-label gap on New project').toBe(4)
       const box = await host.boundingBox()
-      expect(box?.height).toBe(28)
+      // The document's rule is a size, 28px, not a minimum: equal within a
+      // pixel, since the layout engine returns 27.9995 for a 16px line
+      // height plus padding on some displays.
+      expect(box?.height, "a control is the document's height, within a pixel").toBeCloseTo(28, 0)
       // The kit draws the focus ring on the host (delegated focus).
       await newProject.focus()
       const ring = await host.evaluate((el) => getComputedStyle(el).outlineColor)
@@ -285,7 +288,10 @@ test('the New project sheet is the kit at the document density, keyboard first',
     await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused()
     // Dialog controls sit at the document's dialog height, the kit's large size.
     const inputBox = await dialog.locator('fig-input-text').first().boundingBox()
-    expect(inputBox?.height).toBe(32)
+    expect(inputBox?.height, "a control is the document's height, within a pixel").toBeCloseTo(
+      32,
+      0,
+    )
 
     // Forward from Cancel to Create, then back up the sheet: Name, the
     // feed, and the source group as one stop.
