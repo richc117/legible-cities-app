@@ -48,9 +48,11 @@ writes before the app starts (every key optional):
     remove_delay_ms   wait before feeds.remove answers, on a thread of its own (default 0), so
                       other requests are read and answered meanwhile
     remove_blocks_ms  wait before feeds.remove does its work, on the reader itself, as the
-                      engine (v0.8.3) runs feeds.remove on its one reader thread: nothing else
-                      is read, answered or recorded until it has answered, and a cancel read
-                      afterwards changes nothing (default 0)
+                      engine did from v0.8.3 to v0.10.1, when feeds.remove ran on its one
+                      reader thread: nothing else is read, answered or recorded until it has
+                      answered, and a cancel read afterwards changes nothing (default 0).
+                      Since v0.11.0 the engine runs it as a job and does not block; the
+                      control stays so the app can still be held to an engine that does
     inspect_refuses   a sentence: feeds.inspect refuses with it, kind feed
     stage_refuses     a sentence: render.stage refuses with it, kind engine
     empty_modes       modes graph.build keeps no routes for: after gtfs2graph it refuses with
@@ -91,16 +93,22 @@ LOCK = threading.Lock()
 FEEDS_LOCK = threading.RLock()
 # The stand-in's registry: two presets, and whatever a test added, kept in
 # the home so a new process sees it, as the engine's user-feeds.json is.
+# Since engine v0.11.0 every entry says whether its feed runs from
+# frequencies.txt (`headways`, required): Mexico City's does, among the
+# presets, and Los Angeles' does not. A record a test wrote without the field
+# reads as false, as one the engine wrote before it existed does.
 FEEDS = {
     "la-metro-rail": {"key": "la-metro-rail", "name": "LA Metro Rail", "city": "Los Angeles",
                       "network": "Metro Rail", "url": "https://example.test/la.zip",
                       "mode": "all", "label_pattern": "^Metro (.+) Line$", "label_strip": None,
-                      "agency": None, "geographic": True, "notes": [], "source": "preset"},
+                      "agency": None, "geographic": True, "notes": [], "headways": False,
+                      "source": "preset"},
     "cdmx-metro": {"key": "cdmx-metro", "name": "Mexico City Metro", "city": "Mexico City",
                    "network": "Metro", "url": "https://example.test/cdmx.zip",
                    "mode": "subway", "label_pattern": None, "label_strip": None,
                    "agency": "METRO", "geographic": True,
-                   "notes": ["This is a 2025 snapshot."], "source": "preset"},
+                   "notes": ["This is a 2025 snapshot."], "headways": True,
+                   "source": "preset"},
 }
 REQUIRED = ("stops", "routes", "trips", "stop_times")
 
@@ -567,6 +575,16 @@ class Engine:
             path = out / f"{key}{suffix}"
             path.write_text("<svg/>" if suffix == ".svg" else "{}")
             files[name] = str(path)
+        # Since engine v0.11.0 (issue 51) a pair of small pictures of the map
+        # is written into the same folder as the page, `<key>-thumb-dark.svg`
+        # and `<key>-thumb-light.svg`, and both paths are required in `files`.
+        # The stand-in draws one rectangle on each palette's ground; the
+        # engine draws the network alone, with every colour a literal.
+        for name, ground in (("thumb_dark", "#15120f"), ("thumb_light", "#f7efe1")):
+            path = out / f"{key}-{name.replace('_', '-')}.svg"
+            path.write_text('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 250">'
+                            f'<rect width="400" height="250" fill="{ground}"/></svg>')
+            files[name] = str(path)
         # The shape is the protocol's Diagnostics, not a flat guess: a
         # stand-in that answers a different shape lets a consumer pass
         # here and fail against the engine. The default is a clean little
@@ -706,7 +724,10 @@ class Engine:
     def remove_feed(self, msg_id, key) -> None:
         """feeds.remove, in shape: a built-in feed is refused, an unknown one
         too, and a user feed is forgotten with its zip; after remove_delay_ms,
-        so a test can act while the request is out."""
+        so a test can act while the request is out. Since engine v0.11.0 the
+        answer is FeedsRemoveResult, exactly {"ok": true} unless a cancel came
+        too late for the registry's write to be undone; this stand-in does not
+        act on a cancel here, so it never adds that field."""
         time.sleep(self.control.get("remove_delay_ms", 0) / 1000)
         with FEEDS_LOCK:
             users = self.user_feeds()
@@ -780,7 +801,8 @@ class Engine:
     def feed_records(self) -> list:
         cached = {k for k in FEEDS if self.preset_on_disk(k)}
         out = [dict(f, cached=k in cached) for k, f in FEEDS.items()]
-        out += [dict(f, cached=(HOME / "data" / "feeds" / f"{f['key']}.zip").exists())
+        out += [dict(f, headways=f.get("headways", False),
+                     cached=(HOME / "data" / "feeds" / f"{f['key']}.zip").exists())
                 for f in self.user_feeds().values()]
         return out
 
@@ -872,9 +894,11 @@ class Engine:
             record = {"key": key, "name": name, "city": "", "network": "", "url": url,
                       "mode": params.get("mode") or "all", "label_pattern": None,
                       "label_strip": None, "agency": params.get("agency"), "geographic": True,
-                      "notes": [], "source": "user"}
+                      "notes": [], "headways": False, "source": "user"}
             users[key] = record
             self.write_user_feeds(users)
+        # The engine decides `headways` from the zip's frequencies.txt; a
+        # stand-in feed has none, so it is false here.
         write({"jsonrpc": "2.0", "id": msg_id, "result": dict(record, cached=True)})
 
     def service(self, msg_id, params: dict) -> None:
