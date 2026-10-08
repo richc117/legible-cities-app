@@ -17,6 +17,8 @@ import {
 } from '../engine/runs'
 import { stageFor } from '../engine/stages'
 import { skipTarget } from '../SkipPastMap'
+import { forgetTheme, rememberTheme } from '../themeMemory'
+import { writeThenRestyle } from '../themeWrites'
 import type { TextInputHandle } from '../kit/TextInput'
 import { useEngineState } from '../useEngineState'
 import { useSnapshot } from '../useSnapshot'
@@ -78,6 +80,12 @@ export interface ProjectState {
   settling: boolean
   /** How many runs have drawn the page while this screen is open; the viewer's address carries it. */
   drawn: number
+  /**
+   * How many times a theme was pressed on a page that has no `setTheme` (one
+   * the engine wrote before v0.11.0) and so has to be loaded again to show
+   * it; the viewer's address carries it, as it carries `drawn`.
+   */
+  themeReloads: number
   /** The feed's registry entry's mode and agency, when the Library listed it. */
   registry: { mode: string; agency: string | null } | null
   /** The feed as the engine reads it, cached by the inspection module. */
@@ -159,6 +167,10 @@ export function useProjectState(
   // remounting the frame - and a remount loses the page's clock, its view
   // and its scrub position as surely as a reparent does (ADR-045).
   const [drawn, setDrawn] = useState(0)
+  // How many times the map's page refused to be told a theme because it has
+  // no `setTheme`, and has to be loaded again at an address carrying it.
+  // Zero for every page the engine has written since v0.11.0.
+  const [themeReloads, setThemeReloads] = useState(0)
   const engine = useEngineState()
   const headingRef = useRef<HTMLHeadingElement>(null)
 
@@ -310,6 +322,7 @@ export function useProjectState(
       void window.api.projects.delete(id).then(
         () => {
           forgetProjectJobs(id)
+          forgetTheme(id)
           if (mounted.current) onBack(sampleNotKept(record.name))
         },
         () => {
@@ -385,17 +398,34 @@ export function useProjectState(
         : current,
     )
   }
-  // The theme is written at once and nothing is rebuilt for it: the page
-  // takes it on its address and restyles itself, so the record coming back
-  // is all the viewer needs to reload in it (A4-03).
-  const setTheme = async (theme: Theme): Promise<void> => {
-    const record = await window.api.projects.setTheme(id, theme)
-    setState((current) =>
-      current.status === 'ready'
-        ? { status: 'ready', project: { ...current.project, ...record } }
-        : current,
+  // The theme is written at once and nothing is rebuilt for it (A4-03). The
+  // map's page is then told through its seam, which restyles it in place
+  // and leaves the frame where it is; the record also reaches the next
+  // document, on its address and as the first call of the restore (issue
+  // 349). The theme is remembered here, **in the write's own callback, the
+  // moment the record's answer arrives and before the page is told**,
+  // because the restore of a document that is loading reads it from that
+  // memory at the moment it sends and not from this screen's state, which
+  // does not carry the theme until a render and its effects have run
+  // (`themeMemory.ts`). A write that fails remembers nothing and sends
+  // nothing. A page with no `setTheme` says so, and that one case loads the
+  // page again with the theme on its address, as a press always did before
+  // the seam had one.
+  const setTheme = (theme: Theme): Promise<void> =>
+    writeThenRestyle(
+      theme,
+      async (chosen) => {
+        const record = await window.api.projects.setTheme(id, chosen)
+        rememberTheme(id, record.theme)
+        setState((current) =>
+          current.status === 'ready'
+            ? { status: 'ready', project: { ...current.project, ...record } }
+            : current,
+        )
+      },
+      (chosen) => window.api.viewer.call('map', 'setTheme', chosen),
+      () => setThemeReloads((count) => count + 1),
     )
-  }
   // What to export is written the moment it is chosen, as the theme is;
   // nothing is built for it (A5-01).
   const setExport = async (choice: ExportChoice): Promise<void> => {
@@ -470,6 +500,7 @@ export function useProjectState(
     // Deleted: its finished jobs leave the inspector. Only on this signal,
     // never because a list read happened to miss the record (A1-03).
     forgetProjectJobs(id)
+    forgetTheme(id)
     // Back to the Library only from this screen: if a person has left it
     // while the delete ran, they are somewhere else now (A6-07).
     if (mounted.current) onBack(describeFailures(result.failed))
@@ -487,6 +518,7 @@ export function useProjectState(
     settling,
     exporting,
     drawn,
+    themeReloads,
     registry,
     inspect,
     readStage,

@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState, type JSX, type SyntheticEvent } from 'react'
-import type { ProjectRecord } from '../../shared/project'
+import type { ProjectRecord, Theme } from '../../shared/project'
 import { VIEWER_SANDBOX, type ViewerRole } from '../../shared/viewer'
-import { asDispatched, transportFor, withRemembered } from './transportState'
+import { themeAsItStands } from './themeMemory'
+import { transportFor, withRemembered } from './transportState'
+import { wantedAddress } from './viewerAddress'
+import { giveBack } from './viewerGiveBack'
 import { restoreCalls } from './viewerRestore'
 
 // The engine's page, on the screen: the map, in the notebook's flow after
@@ -19,9 +22,19 @@ import { restoreCalls } from './viewerRestore'
 // reloads, and a reload throws away the page's clock, its view, its labels
 // and its scrub position. There was a `key` here until A5.5-20, remounting
 // the frame after every run for exactly the reload the remount was hiding.
-// There is one kind of navigation now - to the page a run or a theme has
-// just rewritten - and the page is asked what it is showing before it
-// happens and told again after (`viewerRestore.ts`).
+// There is one kind of navigation now - to the page a run has just
+// rewritten - and the page is asked what it is showing before it happens
+// and told again after (`viewerRestore.ts`). **A theme is not a navigation**
+// (issue 349): the page restyles in place through `setTheme`, sent when the
+// record has been written (`themeWrites.ts`), so a press leaves the
+// frame's address, its document and everything the document was showing as
+// they were. Every document that loads is given the project's theme as the
+// first call of its restore, read at the moment it is sent from the memory a
+// press writes as its record write returns (`themeMemory.ts`), so a press
+// that lands while a document is loading is never overwritten by a restore
+// that was composed before it. The exception is a page the engine wrote before v0.11.0, which
+// has no `setTheme`: a press on one is a navigation after all, by the path a
+// redraw takes (the `reloads` count), because nothing else would show it.
 //
 // **This frame is never sent to the export's planned address.** Until
 // ADR-046 it was: cell 06 took it for its preview and gave it back, which
@@ -37,31 +50,6 @@ import { restoreCalls } from './viewerRestore'
 
 /** The role this frame is held in by the main process (ADR-046). */
 const ROLE: ViewerRole = 'map'
-
-/**
- * Where the engine wrote the page: named after the feed, not the project.
- *
- * The theme is the project's own (A4-03), not the interface's. It followed
- * the interface until then, which was always a placeholder: a theme belongs
- * to the map being made, which is exported and published, rather than to
- * the room the maker is sitting in. The page reads `theme=` before its
- * first paint, so the frame never shows one theme and then the other.
- *
- * `controls=1` is the app's own word, and the main process reads it as the
- * mark of the map's frame: the engine's planned addresses never carry it
- * (`roleOfAddress` in `src/main/viewer.ts`).
- *
- * `redraw` is how many runs have rewritten this page while the screen has
- * been open. It is on the address because a run writes the same file again:
- * without it the address after a run is the address before it, React
- * changes nothing, and the frame goes on showing a document that no longer
- * matches the file behind it. present.js reads the keys it knows and
- * ignores the rest, and the protocol handler resolves the path alone, so it
- * costs the page nothing.
- */
-const pageUrl = (project: ProjectRecord, redraw: number): string =>
-  `app://local/projects/${project.id}/${project.feed}.html` +
-  `?present=1&controls=1&theme=${encodeURIComponent(project.theme)}&redraw=${redraw}`
 
 /**
  * How long the page being left is given to say what it is showing, in
@@ -124,6 +112,7 @@ export function probeFrame(projectId: string, role: ViewerRole): Promise<unknown
 export default function Viewer({
   project,
   redraw = 0,
+  reloads = 0,
 }: {
   project: ProjectRecord
   /**
@@ -132,10 +121,29 @@ export default function Viewer({
    * the frame stays the element it always was.
    */
   redraw?: number
+  /**
+   * How many times a theme was pressed on a page that could not be told it:
+   * one the engine wrote before v0.11.0 has no `setTheme`. A change sends
+   * the frame to its address again with the theme the project has now, by
+   * the path a redraw takes, so the page is asked what it shows first and
+   * given it back after. Nothing else counts here - a page that can be told
+   * is never reloaded for a theme.
+   */
+  reloads?: number
 }): JSX.Element {
   const [problem, setProblem] = useState<string | null>(null)
 
-  const wanted = pageUrl(project, redraw)
+  // The address the frame is wanted on. It is made again only when the
+  // project, its feed, the number of redraws or the number of reloads
+  // changes, and it carries the project's theme at that moment: a theme
+  // change alone leaves it as it was (`viewerAddress.ts`). Held in state and
+  // adjusted during the render, the way React asks for a value derived from
+  // props that has to remember its last answer, so no ref is written while
+  // rendering.
+  const [wantedFor, setWantedFor] = useState(() => wantedAddress(null, project, redraw, reloads))
+  const wantedNow = wantedAddress(wantedFor, project, redraw, reloads)
+  if (wantedNow !== wantedFor) setWantedFor(wantedNow)
+  const wanted = wantedNow.address
 
   // The address the frame is on, which is not always the address it is
   // wanted on: the page it is about to leave is asked what it is showing
@@ -147,7 +155,7 @@ export default function Viewer({
   const kept = useRef<unknown>(null)
   // Which navigation a restore belongs to. Bumped where the navigation is
   // decided and not where the new document lands, because the gap between
-  // the two is exactly where a restore loop - up to five awaited round
+  // the two is exactly where a restore loop - up to seven awaited round
   // trips - would otherwise go on dispatching into a page the screen has
   // already sent somewhere else.
   const navigations = useRef(0)
@@ -221,22 +229,32 @@ export default function Viewer({
         // and never can be - `state()` reports neither (engine issue 29) -
         // so `restoreCalls` takes them "from a caller that knows them", and
         // the caller that knows them is whoever set them. Without this a
-        // run or a theme change would hand a person's paused, quarter-speed
-        // map back to them playing at the page's own default.
+        // run would hand a person's paused, quarter-speed map back to them
+        // playing at the page's own default.
+        //
+        // The theme is the project's as it stands at the moment each call is
+        // sent, whatever this document's address said: its first call, on
+        // every load. It is not read from this render's `project`, which is
+        // the one that started the load, nor from a ref set by an effect,
+        // which runs after a press has already sent its own call; it is
+        // read from the memory the press writes the moment its record write
+        // returns (`themeMemory.ts`), so whichever of the press and this
+        // restore reaches the page last carries the same theme.
         const memory = transportFor(project.id)
-        const calls = restoreCalls(withRemembered(kept.current, memory.snapshot))
-        for (const { method, args } of calls) {
-          if (navigation !== navigations.current || !mounted.current) return
-          // The memory is read again here, one call before it is sent,
-          // rather than once for the whole list. This loop is up to six
-          // awaited round trips long and cell 03's controls are live
-          // throughout: a Pause pressed during it writes the memory and
-          // sends its own call, and a list composed before that press would
-          // then overwrite it. `asDispatched` is which of these calls
-          // assert a state and which do not.
-          const sending = asDispatched(method, args, memory.snapshot)
-          await window.api.viewer.call(ROLE, method, ...sending).catch(() => undefined)
-        }
+        const themeNow = (): Theme => themeAsItStands(project.id, project.theme)
+        await giveBack(restoreCalls(withRemembered(kept.current, memory.snapshot), themeNow()), {
+          alive: () => navigation === navigations.current && mounted.current,
+          // Read again one call before each is sent, rather than once for the
+          // whole list: this loop is up to seven awaited round trips long and
+          // cell 03's controls and the theme switch are live throughout. A
+          // Pause pressed during it writes the memory and sends its own call,
+          // and a list composed before that press would then overwrite it.
+          // `asDispatched` and `asDispatchedTheme` are which of these calls
+          // assert a state and which do not (`viewerGiveBack.ts`).
+          remembered: () => memory.snapshot,
+          theme: themeNow,
+          send: (method, args) => window.api.viewer.call(ROLE, method, ...args),
+        })
       },
       () => {
         if (mounted.current) setProblem("This project's map is not there. Lay it out again.")

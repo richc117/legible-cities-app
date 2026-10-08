@@ -6,7 +6,12 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import { Viewer, roleOfAddress } from '../../src/main/viewer'
-import { VIEWER_METHODS, VIEWER_SANDBOX, isViewerMethod } from '../../src/shared/viewer'
+import {
+  MISSING_METHOD,
+  VIEWER_METHODS,
+  VIEWER_SANDBOX,
+  isViewerMethod,
+} from '../../src/shared/viewer'
 
 interface StubFrame {
   url: string
@@ -17,7 +22,7 @@ interface StubFrame {
 
 let nodes = 0
 
-/** The map's own address, as `pageUrl` in `Viewer.tsx` writes it. */
+/** The map's own address, as `addressFor` in `viewerAddress.ts` writes it. */
 const MAP = 'app://local/projects/abcdefghijk1/la.html?present=1&controls=1&theme=dark&redraw=0'
 /** A planned address as the engine's `url_for` writes it, with the safe zones. */
 const PLANNED_SAFE =
@@ -160,7 +165,15 @@ describe('two frames, by role', () => {
     main.frames.push(preview)
     const viewer = new Viewer()
     viewer.attach(contents, 'abcdefghijk1', 'export')
-    for (const method of ['seek', 'setPlaying', 'setSpeed', 'showView', 'setLabels', 'bounds'])
+    for (const method of [
+      'seek',
+      'setPlaying',
+      'setSpeed',
+      'showView',
+      'setLabels',
+      'bounds',
+      'setTheme',
+    ])
       await expect(viewer.call(contents, 'export', method, [1]), method).rejects.toThrow(
         /not driven/,
       )
@@ -220,6 +233,61 @@ describe('driving the page', () => {
     // __proto__ arrives as a key rather than as the prototype setter.
     expect(injected).toContain('JSON.parse("[\\"linear\\",300]")')
     expect(injected).toContain('window.__present')
+  })
+
+  // The theme is restyled in place through the seam since engine v0.11.0
+  // (issue 349), and the name goes in as data like every other argument. The
+  // main process needed no change for it: the list is the one place a method
+  // is named, and this is what shows that is so.
+  it('passes setTheme to the map frame, the theme as data', async () => {
+    const { contents, child } = stub()
+    const viewer = new Viewer()
+    viewer.attach(contents, 'abcdefghijk1', 'map')
+    await viewer.call(contents, 'map', 'setTheme', ['sepia'])
+    const injected = child.executeJavaScript.mock.calls[0][0] as string
+    expect(injected).toContain('"setTheme"')
+    expect(injected).toContain('JSON.parse("[\\"sepia\\"]")')
+
+    let received: unknown[] = []
+    const page = {
+      __present: {
+        setTheme: (...args: unknown[]) => {
+          received = args
+          return true
+        },
+      },
+    }
+    const answer = new Function('window', `return ${injected}`)(page) as {
+      ok: boolean
+      value: unknown
+    }
+    expect(answer, 'the page answered true').toEqual({ ok: true, value: true })
+    expect(received).toEqual(['sepia'])
+  })
+
+  // The interface falls back to loading a page again when it is told the page
+  // has no `setTheme` (`themeWrites.ts`), and it knows that by this sentence.
+  // The dispatcher is the main process's and the sentence is compared in the
+  // renderer, so the real dispatcher is run against a page from before engine
+  // v0.11.0 and the two are held to one another.
+  it('says MISSING_METHOD, to the word, for a page with no such method', async () => {
+    const { contents, child } = stub()
+    const viewer = new Viewer()
+    viewer.attach(contents, 'abcdefghijk1', 'map')
+    await viewer.call(contents, 'map', 'setTheme', ['sepia'])
+    const injected = child.executeJavaScript.mock.calls[0][0] as string
+    const older = { __present: { state: () => ({}) } }
+    const answer = new Function('window', `return ${injected}`)(older)
+    expect(answer).toEqual({ ok: false, error: MISSING_METHOD })
+
+    child.executeJavaScript.mockResolvedValue(answer)
+    await expect(viewer.call(contents, 'map', 'setTheme', ['sepia'])).rejects.toThrow(
+      new Error(MISSING_METHOD),
+    )
+    // And a page still loading says something else, which is not a reason to load it again.
+    const loading = new Function('window', `return ${injected}`)({})
+    expect(loading).toEqual({ ok: false, error: 'the map is still loading' })
+    expect(loading.error).not.toBe(MISSING_METHOD)
   })
 
   // The claim is that nothing a caller sends becomes code. The way to show
@@ -385,6 +453,7 @@ describe('the list of methods', () => {
       'showView',
       'setLabels',
       'setRoutes',
+      'setTheme',
       'seek',
       'setSpeed',
       'setPlaying',

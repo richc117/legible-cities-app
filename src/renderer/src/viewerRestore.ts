@@ -1,23 +1,36 @@
+import type { Theme } from '../../shared/project'
 import type { ViewerMethod } from '../../shared/viewer'
 
 // Giving the engine's page back what the page before it was showing.
 //
 // The frame is never moved between parents and never remounted (ADR-045,
 // A5.5-20): both reload the engine's page. What is left is one deliberate
-// navigation, made when a run has rewritten the page file or when the
-// export's preview hands the frame back - and a navigation is still a new
-// document. The page that arrives starts where present.js puts it: at the
-// beginning of the service day, in the view its address names, playing. So
-// the page on screen is asked what it is showing before the frame is sent
-// anywhere, and this is what gives it back.
+// navigation, made when a run has rewritten the page file - and a
+// navigation is still a new document. (A theme is not one: since engine
+// v0.11.0 the page restyles in place through `setTheme`, issue 349, unless
+// the page is an older one with none, which is loaded again.) The
+// page that arrives starts where present.js puts it: at the beginning of
+// the service day, in the view its address names, playing. So the page on
+// screen is asked what it is showing before the frame is sent anywhere, and
+// this is what gives it back.
 //
 // This file is the sequence and nothing else: a state in, an ordered list
 // of calls out. No React, no window, no bridge, so it is tested without
 // any of them - and the order is the part worth testing.
 //
-//   1. The page is stopped first, whatever it was doing, because every
-//      call below is a round trip through the privileged process and a
-//      running clock moves between them.
+//   0. The project's theme, before anything else and whatever else is
+//      known. The address the page loaded from carries the theme of the
+//      moment it was made, which may not be the project's now (a press
+//      lands between an address being made and its document arriving), and
+//      a page a run has rewritten says whatever its address said. It
+//      neither moves the clock nor depends on anything below. It is read at
+//      the moment it is sent, from the memory a press writes the instant its
+//      record write returns (`themeMemory.ts`, `viewerGiveBack.ts`), and a
+//      press sends its own `setTheme` after that write, so whichever of the
+//      two reaches the page last carries the same theme.
+//   1. The page is stopped, whatever it was doing, because every call below
+//      is a round trip through the privileged process and a running clock
+//      moves between them.
 //   2. The view, the labels and the speed, which redraw.
 //   3. The clock last of the things that move it.
 //   4. Playing again, only if it was.
@@ -77,15 +90,18 @@ const rate = (value: unknown): number | null =>
 
 /**
  * The calls that put a freshly loaded page back where the last one was, in
- * the order they are to be made. Nothing known, nothing to do: an empty
- * list, and the page keeps the state its address gave it.
+ * the order they are to be made. The first is always the project's theme,
+ * which is the project's and not something the page being left said; after
+ * it nothing known means nothing to do, and the page keeps the state its
+ * address gave it.
  *
  * `showView` is passed a duration of zero so the view snaps rather than
  * tweening: this is a page coming back to where it already was, and an
  * animation would say something happened.
  */
-export function restoreCalls(state: unknown): ViewerCall[] {
-  if (state === null || typeof state !== 'object') return []
+export function restoreCalls(state: unknown, theme: Theme): ViewerCall[] {
+  const calls: ViewerCall[] = [{ method: 'setTheme', args: [theme] }]
+  if (state === null || typeof state !== 'object') return calls
   const was = state as PageState
   const playing = flag(was.playing)
   const name = view(was.viewName)
@@ -93,10 +109,9 @@ export function restoreCalls(state: unknown): ViewerCall[] {
   const speed = rate(was.speed)
   const at = seconds(was.now)
 
-  const calls: ViewerCall[] = []
-  // Stopped first, and only when the caller knows it was stopped or
-  // running: a page paused by this that nothing then restarts is worse
-  // than a clock a fraction of a second behind.
+  // Stopped first of what moves the page, and only when the caller knows it
+  // was stopped or running: a page paused by this that nothing then restarts
+  // is worse than a clock a fraction of a second behind.
   if (playing !== null) calls.push({ method: 'setPlaying', args: [false] })
   if (name !== null) calls.push({ method: 'showView', args: [name, 0] })
   if (labels !== null) calls.push({ method: 'setLabels', args: [labels] })

@@ -5,9 +5,15 @@
 // The order is what is asserted, not merely the membership. A list holding
 // the right calls in the wrong order is a map that seeks and then plays
 // away from where it was asked to be.
+//
+// The first call is always the project's theme (issue 349): a page restyles
+// in place now, so the address's theme is only the theme of the moment it
+// was made, and the load has to put the page right. Most assertions below
+// are about everything after it, and read the list through `after`.
 
 import { describe, expect, it } from 'vitest'
-import { restoreCalls } from '../../src/renderer/src/viewerRestore'
+import { restoreCalls, type ViewerCall } from '../../src/renderer/src/viewerRestore'
+import { THEMES } from '../../src/shared/project'
 import { isViewerMethod } from '../../src/shared/viewer'
 
 /** What the engine's page actually answers from `state()`. */
@@ -24,17 +30,49 @@ const PAGE_STATE = {
   labels: true,
 }
 
-const names = (state: unknown): string[] => restoreCalls(state).map((call) => call.method)
+/** The project's theme in these tests, unless a test is about the theme. */
+const THEME = 'warm-dark' as const
+
+/** Every call but the theme's, which is the first and is asserted on its own. */
+const after = (state: unknown): ViewerCall[] => {
+  const [theme, ...rest] = restoreCalls(state, THEME)
+  expect(theme, 'the theme is the first call').toEqual({ method: 'setTheme', args: [THEME] })
+  return rest
+}
+
+const names = (state: unknown): string[] => after(state).map((call) => call.method)
 
 describe('restoreCalls', () => {
-  it('asks for nothing when there is nothing to give back', () => {
-    expect(restoreCalls(null)).toEqual([])
-    expect(restoreCalls(undefined)).toEqual([])
-    expect(restoreCalls({})).toEqual([])
+  it('asks for nothing but the theme when there is nothing else to give back', () => {
+    const only = [{ method: 'setTheme', args: [THEME] }]
+    expect(restoreCalls(null, THEME)).toEqual(only)
+    expect(restoreCalls(undefined, THEME)).toEqual(only)
+    expect(restoreCalls({}, THEME)).toEqual(only)
+  })
+
+  it('begins with the project theme, whatever else is known, and whichever theme it is', () => {
+    for (const theme of THEMES) {
+      for (const state of [null, {}, PAGE_STATE, { ...PAGE_STATE, speed: 30, playing: true }]) {
+        expect(restoreCalls(state, theme)[0], JSON.stringify([theme, state])).toEqual({
+          method: 'setTheme',
+          args: [theme],
+        })
+      }
+    }
+  })
+
+  it('gives the project theme and not the one the page being left said', () => {
+    // `state()` reports `theme` from engine v0.11.0 on, and it is the page
+    // being left: the address it loaded from, or a press it has had. The
+    // project's is the one on the record, which is the one to give back.
+    const calls = restoreCalls({ ...PAGE_STATE, theme: 'sepia' }, 'warm-dark')
+    expect(calls.filter((call) => call.method === 'setTheme')).toEqual([
+      { method: 'setTheme', args: ['warm-dark'] },
+    ])
   })
 
   it('restores the view, the labels and the clock of a real page state', () => {
-    expect(restoreCalls(PAGE_STATE)).toEqual([
+    expect(after(PAGE_STATE)).toEqual([
       { method: 'showView', args: ['schematic', 0] },
       { method: 'setLabels', args: [true] },
       { method: 'seek', args: [26_400] },
@@ -51,11 +89,11 @@ describe('restoreCalls', () => {
   })
 
   it('stops the page before the rest and starts it again only if it was running', () => {
-    const running = restoreCalls({ ...PAGE_STATE, playing: true })
+    const running = after({ ...PAGE_STATE, playing: true })
     expect(running[0]).toEqual({ method: 'setPlaying', args: [false] })
     expect(running[running.length - 1]).toEqual({ method: 'setPlaying', args: [true] })
 
-    const paused = restoreCalls({ ...PAGE_STATE, playing: false })
+    const paused = after({ ...PAGE_STATE, playing: false })
     expect(paused[0]).toEqual({ method: 'setPlaying', args: [false] })
     expect(paused.filter((call) => call.method === 'setPlaying')).toHaveLength(1)
   })
@@ -73,14 +111,14 @@ describe('restoreCalls', () => {
   it('snaps the view rather than tweening to it', () => {
     // A duration of zero: this is a page returning to where it already was,
     // and an animation would say that something happened.
-    expect(restoreCalls(PAGE_STATE)).toContainEqual({
+    expect(after(PAGE_STATE)).toContainEqual({
       method: 'showView',
       args: ['schematic', 0],
     })
   })
 
   it('names only methods the bridge will carry', () => {
-    const every = restoreCalls({ ...PAGE_STATE, speed: 60, playing: true })
+    const every = restoreCalls({ ...PAGE_STATE, speed: 60, playing: true }, THEME)
     expect(every.length).toBeGreaterThan(0)
     for (const call of every) expect(isViewerMethod(call.method)).toBe(true)
   })
@@ -99,13 +137,13 @@ describe('restoreCalls', () => {
   it('restores a clock of zero, which is the start of the service day', () => {
     // Zero is a place, not an absence: a falsy check here would leave a map
     // scrubbed back to the first minute where it was.
-    expect(restoreCalls({ now: 0 })).toEqual([{ method: 'seek', args: [0] }])
-    expect(restoreCalls({ labels: false })).toEqual([{ method: 'setLabels', args: [false] }])
+    expect(after({ now: 0 })).toEqual([{ method: 'seek', args: [0] }])
+    expect(after({ labels: false })).toEqual([{ method: 'setLabels', args: [false] }])
   })
 
   it('takes what is not an object as nothing to restore', () => {
     for (const nonsense of ['state', 7, true, [], () => undefined]) {
-      expect(restoreCalls(nonsense)).toEqual([])
+      expect(after(nonsense)).toEqual([])
     }
   })
 })

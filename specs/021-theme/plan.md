@@ -11,8 +11,9 @@ viewer that reads the project rather than the interface.
 
 It is the smallest of Phase 4 by a distance, because a theme is neither a
 layout nor a render: the engine's SVG carries its furniture's colours as
-CSS variables with literal fallbacks, so the page restyles itself from its
-own address and the line colours never move.
+CSS variables with literal fallbacks, so the page restyles itself - from its
+own address when it loads, and in place through its seam when told (issue
+349) - and the line colours never move.
 
 ## Constitution Check
 
@@ -42,8 +43,8 @@ rather than for when it is called, because unlike `completeColors` and
 heading, a sentence, and the pair of buttons in the toolbar shape the
 geographic view's stage toggle already uses - the chosen one `primary` and
 `aria-pressed`, the pair in a group named for what it sets. Disabled while
-an export runs, because a theme change reloads the very frame the capture
-is reading.
+an export runs, because the export took the theme when it planned (at A4-03
+a theme change also reloaded the frame; since issue 349 it restyles in place).
 
 **The viewer.** `pageUrl` takes the project's theme. The media-query
 listener and `themeNow` go: the map no longer follows the interface, which

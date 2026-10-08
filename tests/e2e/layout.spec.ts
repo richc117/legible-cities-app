@@ -25,7 +25,7 @@ import {
 } from '@playwright/test'
 import type { Api } from '../../src/shared/api'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
-import { standInPage } from '../support/standInPage'
+import { keepStandInPage, standInPage, type StandInPageOptions } from '../support/standInPage'
 import {
   cell,
   cellHeading,
@@ -1548,19 +1548,21 @@ async function pageDiagnosis(app: ElectronApplication, page: Page): Promise<stri
 }
 
 /**
- * How long one of the three tests below is allowed, in milliseconds.
+ * How long one of the four tests below is allowed, in milliseconds.
  *
  * The suite's default is 60s (`playwright.config.ts`), and these do not fit
  * in it on a Windows runner: "a theme change gives the map back the speed
- * and the pause it had" timed out there while every assertion in it passed
- * on this machine. The time is not one slow step. It is the sum, and the
+ * and the pause it had" (a press then reloaded the frame; since issue 349 it
+ * is "a redraw gives the map back the speed and the pause it had, in the
+ * theme chosen") timed out there while every assertion in it passed on this
+ * machine. The time is not one slow step. It is the sum, and the
  * sum is declared in the test's own deadlines:
  *
  *   30s  `electron.launch`
  *   20s  the engine's status line reaching "ready"
  *   30s  the layout run
  *   20s  the transport appearing once the page has answered `bounds()`
- *   20s  the restore reaching the page after the theme's navigation
+ *   20s  the restore reaching the page after the redraw's navigation
  *        and a dozen 10s `expect` defaults for the clicks, the create
  *        dialog, the reopen and the cell toggles
  *
@@ -1587,11 +1589,15 @@ const speed = (page: Page): Locator =>
   transport(page).getByRole('combobox', { name: 'Speed', exact: true })
 
 /** A laid-out project whose page carries the seam, open, with cell 03 disclosed. */
-async function projectWithASeam(page: Page, engineHome: string): Promise<void> {
+async function projectWithASeam(
+  page: Page,
+  engineHome: string,
+  options: StandInPageOptions = {},
+): Promise<void> {
   await openNewProject(page, 'Los Angeles')
   await page.getByRole('button', { name: /lay out/i }).click()
   await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
-  standInPage(engineHome)
+  standInPage(engineHome, options)
   // Reopened so the frame loads what was just written: the viewer navigates
   // on a redraw and on nothing else, and nothing has redrawn.
   await page.getByRole('button', { name: /back to library/i }).click()
@@ -1651,11 +1657,61 @@ test('cell 03 drives the page and changes nothing the project keeps', async () =
   })
 })
 
-test('a theme change gives the map back the speed and the pause it had', async () => {
+// A theme is taken in place by a page that has `setTheme` (engine v0.11.0,
+// issue 349), so a press is not a navigation and there is no restore for it
+// to lose anything in. A navigation is what a redraw is, and that is where
+// the app gives a page back the speed and the pause only it remembers.
+test('a theme change leaves the map’s speed and its pause as they were', async () => {
   test.setTimeout(TRANSPORT_TIMEOUT)
   const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
   await withApp(engineHome, async (page, app) => {
-    await projectWithASeam(page, engineHome)
+    await projectWithASeam(page, engineHome, { setTheme: true })
+    await expect(transport(page)).toBeVisible({ timeout: 20_000 })
+
+    await transport(page).getByRole('button', { name: 'Pause' }).click()
+    await speed(page).selectOption('30')
+    await expect(speed(page)).toHaveValue('30')
+    // The page took both, and has been given the theme its load began with:
+    // the restore's first call, whatever else it has to give back.
+    await expect
+      .poll(() => seenByPage(app), { timeout: 20_000, message: 'the page took the speed' })
+      .toContainEqual(['setSpeed', 30])
+    const before = await seenSettled(app)
+    expect(before, 'and the pause').toContainEqual(['setPlaying', false])
+    expect(before, 'and the theme its load began with').toContainEqual(['setTheme', 'warm-dark'])
+    const frame = page.locator('iframe.viewer-frame')
+    const address = await frame.getAttribute('src')
+    expect(address, 'the project was opened in warm dark').toContain('theme=warm-dark')
+
+    await openCell(page, 'style')
+    await page.getByRole('button', { name: 'Sepia' }).click()
+    await expect
+      .poll(() => seenByPage(app), { timeout: 20_000, message: 'the page was told, in place' })
+      .toContainEqual(['setTheme', 'sepia'])
+
+    // A reload, were one coming, is a state read, a navigation and a load
+    // away from the press; the pause is longer than that, so what is absent
+    // below is the page's doing and not the clock's.
+    await page.waitForTimeout(1500)
+    await expect(frame, 'the frame’s address did not change').toHaveAttribute('src', address ?? '')
+    expect(
+      await seenSettled(app),
+      'the page was asked the theme and nothing else: no restore ran, so nothing could lose them',
+    ).toEqual([...before, ['setTheme', 'sepia']])
+    // The control says the same, so the screen and the page agree.
+    await expect(
+      transport(page).getByRole('button', { name: 'Play day' }),
+      'still paused',
+    ).toBeVisible()
+    await expect(speed(page), 'still at 30 seconds a second').toHaveValue('30')
+  })
+})
+
+test('a redraw gives the map back the speed and the pause it had, in the theme chosen', async () => {
+  test.setTimeout(TRANSPORT_TIMEOUT)
+  const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
+  await withApp(engineHome, async (page, app) => {
+    await projectWithASeam(page, engineHome, { setTheme: true })
     await expect(transport(page)).toBeVisible({ timeout: 20_000 })
 
     await transport(page).getByRole('button', { name: 'Pause' }).click()
@@ -1667,49 +1723,81 @@ test('a theme change gives the map back the speed and the pause it had', async (
     // about to be replaced anyway.
     await expect(speed(page)).toHaveValue('30')
 
-    // A theme is taken on the page's address, so the frame navigates and
-    // the page that arrives is a new document at the address's own
-    // defaults: playing, at a minute a second. `state()` answers neither of
-    // those (engine issue 29), so the app is the only thing that knows what
-    // they were - and this is the whole reason cell 03 remembers them.
+    // The theme goes in place, and costs the page nothing it had.
     await openCell(page, 'style')
     await page.getByRole('button', { name: 'Sepia' }).click()
-    await expect(page.locator('iframe.viewer-frame')).toHaveAttribute('src', /theme=sepia/)
+    await expect
+      .poll(() => seenByPage(app), { timeout: 20_000, message: 'the page was told, in place' })
+      .toContainEqual(['setTheme', 'sepia'])
 
-    // `__seen` went with the old document, so everything read now was asked
-    // of the page that arrived.
-    // Issue 232: this wait fails on CI runners and never here. Said with
-    // everything that tells its causes apart, so the next failure explains
-    // itself rather than only timing out.
-    //
-    // What the poll read is kept and checked below, rather than read again:
-    // a second read can meet the one-second deadline and answer [], which
-    // failed this on Windows (PR 233) with the page already restored.
-    let asked: [string, unknown][] = []
+    // A redraw is a navigation: the page that arrives is a new document at
+    // the address's own defaults, playing, at a minute a second. `state()`
+    // answers neither of those (engine issue 29), so the app is the only
+    // thing that knows what they were - and this is the whole reason cell 03
+    // remembers them. The stand-in engine writes `{}` as the page, so the
+    // page with the seam is kept written over it while the run draws.
+    const stop = keepStandInPage(engineHome, { setTheme: true })
     try {
-      await expect
-        .poll(
-          async () => {
-            asked = await seenByPage(app)
-            return asked
-          },
-          { timeout: 20_000 },
-        )
-        .toContainEqual(['setSpeed', 30])
-    } catch (error) {
-      throw new Error(
-        `the page that arrived was never given its speed back:\n${await pageDiagnosis(app, page)}`,
-        { cause: error },
+      await openCell(page, 'frame')
+      await cell(page, 'frame').getByLabel('Draw for another day').fill('2026-06-20')
+      await cell(page, 'frame').getByRole('button', { name: 'Draw for this day' }).click()
+      const frame = page.locator('iframe.viewer-frame')
+      await expect(frame, 'the run sent the frame to the page it wrote').toHaveAttribute(
+        'src',
+        /redraw=1/,
+        { timeout: 30_000 },
       )
+      await expect(frame, 'in the theme chosen before it').toHaveAttribute('src', /theme=sepia/)
+
+      // The old document's record is not the new one's: the new document
+      // is the one whose record begins with the theme the project has now,
+      // where the old one's began with the theme it was opened in. What is
+      // read after that was asked of the page that arrived.
+      await expect
+        .poll(async () => (await seenByPage(app))[0] ?? null, {
+          timeout: 20_000,
+          message: 'the page that arrived was given the project’s theme first',
+        })
+        .toEqual(['setTheme', 'sepia'])
+
+      // Issue 232: this wait fails on CI runners and never here. Said with
+      // everything that tells its causes apart, so the next failure explains
+      // itself rather than only timing out.
+      //
+      // What the poll read is kept and checked below, rather than read again:
+      // a second read can meet the one-second deadline and answer [], which
+      // failed this on Windows (PR 233) with the page already restored.
+      let asked: [string, unknown][] = []
+      try {
+        await expect
+          .poll(
+            async () => {
+              asked = await seenByPage(app)
+              return asked
+            },
+            { timeout: 20_000 },
+          )
+          .toContainEqual(['setSpeed', 30])
+      } catch (error) {
+        throw new Error(
+          `the page that arrived was never given its speed back:\n${await pageDiagnosis(app, page)}`,
+          { cause: error },
+        )
+      }
+      expect(asked, 'and it was not left running').toContainEqual(['setPlaying', false])
+      expect(
+        asked.filter(([method]) => method === 'setPlaying').pop(),
+        'the last word on playing is the pause, not a restart',
+      ).toEqual(['setPlaying', false])
+    } finally {
+      stop()
     }
-    expect(asked, 'and it was not left running').toContainEqual(['setPlaying', false])
-    expect(
-      asked.filter(([method]) => method === 'setPlaying').pop(),
-      'the last word on playing is the pause, not a restart',
-    ).toEqual(['setPlaying', false])
     // The control says the same, so the screen and the page agree.
-    await expect(transport(page).getByRole('button', { name: 'Play day' })).toBeVisible()
-    await expect(speed(page)).toHaveValue('30')
+    await expect(
+      transport(page).getByRole('button', { name: 'Play day' }),
+      'the control still says paused',
+    ).toBeVisible()
+    await expect(speed(page), 'and 30 seconds a second').toHaveValue('30')
   })
 })
 

@@ -128,8 +128,9 @@ written only once the map carries it;
 `src/renderer/src/LineOrder.tsx`) and the theme (A4-03: the project's map
 drawn in one of the engine page's two themes, chosen per project and
 written at once, since a theme is neither a layout nor a render - the page
-takes it on its address and restyles itself - and the interface's own theme
-in Settings is a separate thing that neither follows;
+is then told through its seam (`setTheme`) and restyles in place, the
+address carrying the theme for the next load only (issue 349) - and the
+interface's own theme in Settings is a separate thing that neither follows;
 `src/renderer/src/ThemeSwitch.tsx`). That is the first reel.
 
 Installers (A0-10) came with Phase 5: `build.yml` runs the vendor jobs in

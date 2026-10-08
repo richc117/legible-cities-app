@@ -273,8 +273,9 @@ function nearestAbove(sources: readonly StaleSource[], cell: CellId): StaleSourc
  * file was changed by something else.
  *
  * The theme is deliberately not in it, although `drawn` carries one. A
- * theme reaches the page on its address and the page restyles itself within
- * a frame of the press (A4-03), so the map on screen always carries
+ * theme reaches the page through its seam, which restyles it in place at the
+ * press (issue 349; a page from before engine v0.11.0 is loaded again at an
+ * address carrying it), so the map on screen always carries
  * `record.theme` while `drawn.theme` is the theme of the last *draw*.
  * Asking this function about the theme would answer "the map does not show
  * it" about the one field of which that is never true.

@@ -251,8 +251,8 @@ describe('the cheap edits ADR-045 exempts', () => {
   })
 
   it('leaves the theme out of that answer, since the page restyles at once', () => {
-    // A theme reaches the page on its address and the page restyles itself
-    // within a frame of the press (A4-03), so the map on screen carries the
+    // A theme reaches the page through its seam, which restyles it in place
+    // at the press (A4-03, issue 349), so the map on screen carries the
     // record's theme however long ago it was last drawn. `drawn.theme` is
     // still kept, because a draw copies the record whole.
     expect(drawnMatchesEdits(theme)).toBe(true)

@@ -9,10 +9,15 @@
 // Contract: specs/008-viewer/contracts/viewer.md. Why the frame is sandboxed
 // and driven from the privileged process: ADR-028.
 
+// `setTheme` is the page's own since engine v0.11.0 (its issue 29): it takes
+// `warm-dark` or `sepia`, restyles the page in place and answers false for any
+// other name. A page the engine wrote before that has no such method, and the
+// dispatcher answers "this map cannot do that" for it.
 export const VIEWER_METHODS = [
   'showView',
   'setLabels',
   'setRoutes',
+  'setTheme',
   'seek',
   'setSpeed',
   'setPlaying',
@@ -23,16 +28,34 @@ export const VIEWER_METHODS = [
 
 export type ViewerMethod = (typeof VIEWER_METHODS)[number]
 
+/**
+ * What the dispatcher in `src/main/viewer.ts` answers when the page has no
+ * such method: its own fixed sentence, which reaches the interface as the
+ * message of a rejected `viewer.call`. A page the engine wrote before v0.11.0
+ * answers it to `setTheme`, and that is how the interface knows to fall back
+ * to loading the theme through the address (`themeWrites.ts`). A test runs
+ * the real dispatcher against a page without the method, so the two cannot
+ * drift apart.
+ */
+export const MISSING_METHOD = 'this map cannot do that'
+
 export function isViewerMethod(value: unknown): value is ViewerMethod {
   return typeof value === 'string' && (VIEWER_METHODS as readonly string[]).includes(value)
 }
 
-/** What the page says it is showing. Data from a page we do not trust. */
+/**
+ * What the page says it is showing. Data from a page we do not trust.
+ *
+ * `theme` is `warm-dark` or `sepia` from engine v0.11.0 on, and is a claim
+ * like the rest of it: read as unknown and checked with `isTheme` before
+ * anything is done with it.
+ */
 export interface ViewerState {
   now: number
   clock: string
   viewName: string
   labels: boolean
+  theme?: string
   [key: string]: unknown
 }
 

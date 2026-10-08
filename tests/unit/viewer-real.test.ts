@@ -110,6 +110,23 @@ describe.skipIf(PAGE === null)(`the real generated page${WHY}`, () => {
     }
   })
 
+  // A press in cell 04 restyles the page in place through `setTheme`
+  // instead of reloading the frame (issue 349), and the project's theme is
+  // given to every page on load as the restore's first call. Both rest on
+  // engine v0.11.0 (its issue 29): `setTheme(name)`, and `theme` in
+  // `state()`. Named here rather than left to the loop above, for the same
+  // reason as the five before it: that loop asserts the app's own list
+  // against the page, so a branch that took `setTheme` out of the list
+  // would take the assertion away with it. A page the engine wrote before
+  // v0.11.0 fails this by design - rebuild the checkout's map to see it pass.
+  it('still has setTheme, and still says which theme it is in', () => {
+    expect(html, 'the page no longer has setTheme').toMatch(/^\s*setTheme\s*\(/m)
+    // `state()` returns one object literal; `theme` is a key of it.
+    expect(html, 'state() no longer reports the theme').toMatch(
+      /^\s*state\s*\(\s*\)\s*\{[^}]*\btheme\s*:/m,
+    )
+  })
+
   // The app's address names neither `speed` nor `play`, so what an
   // untouched page is doing is what present.js falls back to - and the
   // transport shows those two values before a person has pressed anything

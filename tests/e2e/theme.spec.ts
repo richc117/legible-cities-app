@@ -1,12 +1,16 @@
 // The theme a project's map is drawn in (specs/021-theme): the switch on
-// the project screen, the theme on the page's address, the record on disk,
-// the theme still there when the project is opened again, and the export
-// made in it.
+// the project screen, the page restyled in place through its seam, the
+// theme on the address of the next load, the record on disk, the theme still
+// there when the project is opened again, and the export made in it.
 //
 // Nothing here asks the engine anything: a theme is neither a layout nor a
-// render, and the page restyles itself from its own address. The one engine
-// request a theme ever reaches is `export.plan`, which is given the
-// engine's own word for it.
+// render, and the page restyles itself when it is told (`setTheme`, engine
+// v0.11.0; issue 349) - the frame is not reloaded, so its address, its
+// document and its clock stay as they were. The one engine request a theme
+// ever reaches is `export.plan`, which is given the engine's own word for it.
+//
+// The stand-in engine's own page is `{}` and has no seam, so the tests that
+// ask the page something write over it a page that has one (`themedPage`).
 
 import {
   copyFileSync,
@@ -14,12 +18,20 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { _electron as electron, expect, test, type Page } from '@playwright/test'
+import {
+  _electron as electron,
+  expect,
+  test,
+  type ElectronApplication,
+  type Page,
+} from '@playwright/test'
+import { isTheme, type Theme } from '../../src/shared/project'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 import {
   cell,
@@ -62,7 +74,10 @@ function home(control: Record<string, unknown> = {}): Home {
   return { engineHome, exportFolder: join(dir, 'exports'), userData: join(dir, 'profile') }
 }
 
-async function withApp(h: Home, run: (page: Page) => Promise<void>): Promise<void> {
+async function withApp(
+  h: Home,
+  run: (page: Page, app: ElectronApplication) => Promise<void>,
+): Promise<void> {
   const app = await electron.launch({
     args: ['.'],
     cwd: repoRoot,
@@ -78,7 +93,7 @@ async function withApp(h: Home, run: (page: Page) => Promise<void>): Promise<voi
     timeout: 30_000,
   })
   try {
-    await run(await app.firstWindow())
+    await run(await app.firstWindow(), app)
   } finally {
     await app.close()
   }
@@ -107,6 +122,213 @@ const frame = (page: Page) => page.locator('iframe.viewer-frame')
 // Cell 06's own preview frame (ADR-046), there only while the cell is open.
 const exportFrame = (page: Page) => page.locator('iframe.export-frame')
 
+/**
+ * A page with the seam the app drives and a theme of its own, in place of
+ * the `{}` the stand-in engine writes.
+ *
+ * It does what the engine's page does that this spec reads: it boots in the
+ * theme its address names (`?theme=`), wears it as `data-theme` on the root
+ * as the engine's boot script does, takes `setTheme(name)` (true for the two
+ * names, false and no change for any other) and says `theme` from
+ * `state()`. It also keeps, for the test and for no one else, which
+ * document it is (`__document`, new on every load), the theme it booted in
+ * (`__bootTheme`: what the address alone gave the first paint) and every
+ * call it was asked (`__seen`). Its clock moves only when it is sought, so
+ * a clock that has been moved and is still there is a document that was not
+ * replaced.
+ *
+ * `current: false` is a page the engine wrote before v0.11.0: the same page
+ * with no `setTheme` and no `theme` in `state()`, which still boots in the
+ * theme its address names, as every generated page has.
+ */
+const pageSource = (current: boolean): string =>
+  [
+    '<!doctype html><meta charset="utf-8"><title>stand-in map</title><body>',
+    '<script>',
+    'var T0 = 21600, T1 = 93600, at = T0;',
+    'var boot = new URLSearchParams(location.search).get("theme") === "sepia" ? "sepia" : "warm-dark";',
+    'var root = document.documentElement;',
+    'if (boot === "sepia") root.setAttribute("data-theme", "sepia");',
+    'var themeName = function () { return root.getAttribute("data-theme") === "sepia" ? "sepia" : "warm-dark" };',
+    'window.__document = String(Math.random()).slice(2);',
+    'window.__bootTheme = boot;',
+    'window.__seen = [];',
+    'function fmt(s) {',
+    '  var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);',
+    '  return String(h % 24).padStart(2, "0") + ":" + String(m).padStart(2, "0")',
+    '       + (h >= 24 ? " +1d" : "");',
+    '}',
+    'window.__present = {',
+    '  showView: function (name) { window.__seen.push(["showView", name]) },',
+    '  setLabels: function (on) { window.__seen.push(["setLabels", !!on]) },',
+    '  setRoutes: function (keep) { window.__seen.push(["setRoutes", keep]) },',
+    '  seek: function (sec) { at = Math.max(T0, Math.min(T1, sec)); window.__seen.push(["seek", at]) },',
+    '  setSpeed: function (x) { window.__seen.push(["setSpeed", x]) },',
+    '  setPlaying: function (on) { window.__seen.push(["setPlaying", !!on]) },',
+    '  hasGeo: function () { return true },',
+    '  bounds: function () { return { t0: T0, t1: T1 } },',
+    ...(current
+      ? [
+          '  setTheme: function (name) {',
+          '    if (name !== "warm-dark" && name !== "sepia") return false;',
+          '    if (name === "sepia") root.setAttribute("data-theme", "sepia");',
+          '    else root.removeAttribute("data-theme");',
+          '    window.__seen.push(["setTheme", name]);',
+          '    return true;',
+          '  },',
+        ]
+      : []),
+    '  state: function () {',
+    `    return { now: at, clock: fmt(at), viewName: "schematic", labels: true${current ? ', theme: themeName()' : ''} };`,
+    '  },',
+    '};',
+    '</script></body>',
+  ].join('\n')
+
+const THEMED_PAGE = pageSource(true)
+const OLDER_PAGE = pageSource(false)
+
+/** The project's page file, where the engine writes it. */
+function pageFile(h: Home): string {
+  const [id] = readdirSync(join(h.engineHome, 'projects'))
+  return join(h.engineHome, 'out', id, 'la-metro-rail.html')
+}
+
+const themedPage = (h: Home, source = THEMED_PAGE): void => writeFileSync(pageFile(h), source)
+
+/**
+ * Keep the themed page written over whatever the stand-in engine writes,
+ * until the returned function is called.
+ *
+ * A run's `map.build` writes `{}` into the page file and then answers, and
+ * the frame loads that file a state read and a navigation later, so the
+ * page a redraw arrives at is `{}` unless something puts the themed one back
+ * in between. This does, every few milliseconds, by renaming a whole file
+ * over it so a load never reads half of one. The stand-in engine cannot be
+ * told to write a page with a seam; this spec may not edit it.
+ */
+function keepPageWritten(h: Home): () => void {
+  const file = pageFile(h)
+  const timer = setInterval(() => {
+    try {
+      writeFileSync(`${file}.next`, THEMED_PAGE)
+      renameSync(`${file}.next`, file)
+    } catch {
+      // Windows refuses a rename over a file a reader has open; the next
+      // tick tries again.
+    }
+  }, 5)
+  return () => clearInterval(timer)
+}
+
+interface Bridge {
+  api: { viewer: { call(role: string, method: string, ...args: unknown[]): Promise<unknown> } }
+}
+
+/**
+ * What the map's page says it is showing, asked through the bridge the app
+ * itself uses, or null where it says nothing (no page, a page between
+ * documents, an answer that is not an object).
+ */
+const stateOf = (page: Page): Promise<Record<string, unknown> | null> =>
+  page.evaluate(async () => {
+    try {
+      const answer = await (window as unknown as Bridge).api.viewer.call('map', 'state')
+      return answer !== null && typeof answer === 'object'
+        ? (answer as Record<string, unknown>)
+        : null
+    } catch {
+      return null
+    }
+  })
+
+/** One of the page's own methods, asked through the bridge; its answer, or null. */
+const askPage = (page: Page, method: string, ...args: unknown[]): Promise<unknown> =>
+  page.evaluate(
+    async ([name, rest]) => {
+      try {
+        return await (window as unknown as Bridge).api.viewer.call(
+          'map',
+          name as string,
+          ...(rest as unknown[]),
+        )
+      } catch {
+        return null
+      }
+    },
+    [method, args] as const,
+  )
+
+/** The theme `state()` answers, checked to be one of the two names before it is used. */
+const themeOf = async (page: Page): Promise<Theme | null> => {
+  const theme = (await stateOf(page))?.theme
+  return isTheme(theme) ? theme : null
+}
+
+/** What the frame's document says about itself, from the only side that can reach it. */
+interface Facts {
+  /** Which document this is: new on every load. */
+  document: string | null
+  /** The theme its address gave the first paint. */
+  boot: string | null
+  /** The `data-theme` on its root, which is what is painted. */
+  attribute: string | null
+  /** Every call it was asked, in order. */
+  seen: [string, unknown][]
+}
+
+async function factsOf(app: ElectronApplication): Promise<Facts | null> {
+  return (await app.evaluate(async ({ BrowserWindow }) => {
+    const main = BrowserWindow.getAllWindows()[0].webContents.mainFrame
+    // The viewer's frame by the app's own word for it, never cell 01's
+    // `srcdoc` or cell 06's preview.
+    const frame = main.frames.find((f) => f !== main && f.url.includes('controls=1'))
+    if (frame === undefined) return null
+    try {
+      const read = frame.executeJavaScript(
+        `({ document: window.__document || null, boot: window.__bootTheme || null,
+            attribute: document.documentElement.getAttribute('data-theme'),
+            seen: window.__seen || [] })`,
+      ) as Promise<unknown>
+      // A frame being replaced can take the read and never answer it: not yet.
+      const late = new Promise<null>((resolve) => setTimeout(() => resolve(null), 1000))
+      return await Promise.race([read, late])
+    } catch {
+      return null
+    }
+  })) as Facts | null
+}
+
+/**
+ * A laid-out project whose page carries the seam and a theme, open on cell
+ * 04 with the page having answered. The page is written after the run and
+ * the screen is left and entered again so the frame loads it: the viewer
+ * navigates on a redraw and on nothing else.
+ */
+async function openWithAPage(
+  page: Page,
+  app: ElectronApplication,
+  h: Home,
+  source = THEMED_PAGE,
+): Promise<void> {
+  await project(page, 'Los Angeles')
+  await page.getByRole('button', { name: /lay out/i }).click()
+  await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+  themedPage(h, source)
+  await page.getByRole('button', { name: 'Back to Library' }).click()
+  await page.getByRole('button', { name: 'Open Los Angeles' }).click()
+  await openCell(page, 'style')
+  await expect
+    .poll(async () => (await factsOf(app))?.document ?? null, {
+      message: 'the themed page loaded in the map’s frame',
+      timeout: 20_000,
+    })
+    .not.toBeNull()
+  await expect
+    .poll(() => stateOf(page), { message: 'the page answers state() through the bridge' })
+    .not.toBeNull()
+}
+
 test('offers the two themes and says which one the map is drawn in', async () => {
   const h = home()
   await withApp(h, async (page) => {
@@ -124,29 +346,222 @@ test('offers the two themes and says which one the map is drawn in', async () =>
   })
 })
 
-test('a chosen theme reaches the page’s address, is stored, and asks the engine nothing', async () => {
+test('a chosen theme restyles the page in place, is stored, and asks the engine nothing', async () => {
   const h = home()
-  await withApp(h, async (page) => {
-    await project(page, 'Los Angeles')
-    await page.getByRole('button', { name: /lay out/i }).click()
-    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
-    await expect(frame(page)).toHaveAttribute('src', /theme=warm-dark/)
+  await withApp(h, async (page, app) => {
+    await openWithAPage(page, app, h)
+    const address = await frame(page).getAttribute('src')
+    expect(address, 'the project opens in the theme its record holds').toContain('theme=warm-dark')
+    expect(await themeOf(page), 'the page boots in it').toBe('warm-dark')
     const asked = received(h, 'map.build').length
 
-    await switchOf(page).getByRole('button', { name: 'Sepia' }).click()
-    await expect(frame(page)).toHaveAttribute('src', /theme=sepia/)
-    await expect.poll(() => readRecord(h).theme).toBe('sepia')
-    expect(received(h, 'map.build'), 'a theme is neither a layout nor a render').toHaveLength(asked)
-    expect(received(h, 'graph.build')).toHaveLength(1)
+    // The page is moved to a later hour first. A reload would put its clock
+    // back at the start of the day, and the hour it is left at is the
+    // one thing a reload cannot hand back by itself.
+    const LATER = 50_000
+    await askPage(page, 'seek', LATER)
+    expect((await stateOf(page))?.now, 'the page took the seek').toBe(LATER)
+    const before = await factsOf(app)
+    expect(before?.document, 'the page is a document with an identity to compare').toBeTruthy()
 
-    // Back to the Library and in again: the same theme, still on the address.
+    // Everything a navigation of the frame would show, counted from here:
+    // the interface's `load` on the frame element, and the frame's own
+    // navigations.
+    await frame(page).evaluate((element) => {
+      const counted = window as unknown as { __loads?: number }
+      counted.__loads = 0
+      element.addEventListener('load', () => {
+        counted.__loads = (counted.__loads ?? 0) + 1
+      })
+    })
+    const navigated: string[] = []
+    page.on('framenavigated', (moved) => {
+      if (moved !== page.mainFrame() && moved.url().includes('controls=1'))
+        navigated.push(moved.url())
+    })
+
+    await switchOf(page).getByRole('button', { name: 'Sepia' }).click()
+    await expect
+      .poll(() => readRecord(h).theme, { message: 'the record holds the theme' })
+      .toBe('sepia')
+    await expect
+      .poll(() => themeOf(page), { message: 'state().theme answers the new theme' })
+      .toBe('sepia')
+
+    // A reload, were one coming, is a state read, a navigation and a load
+    // away from the press; the pause is longer than that, so the absences
+    // below are the page's and not the clock's.
+    await page.waitForTimeout(1500)
+
+    expect(await frame(page).getAttribute('src'), 'the frame’s address did not change').toBe(
+      address,
+    )
+    expect(
+      await page.evaluate(() => (window as unknown as { __loads?: number }).__loads),
+      'no load fired on the frame',
+    ).toBe(0)
+    expect(navigated, 'the frame was not navigated').toEqual([])
+    const after = await factsOf(app)
+    expect(after?.document, 'the page is the same document').toBe(before?.document)
+    expect(after?.attribute, 'and it is wearing sepia').toBe('sepia')
+    expect(after?.seen, 'it was told, in place').toContainEqual(['setTheme', 'sepia'])
+    expect(after?.seen, 'and it still remembers the seek it was given').toContainEqual([
+      'seek',
+      LATER,
+    ])
+    expect((await stateOf(page))?.now, 'state().now was not reset').toBe(LATER)
+    expect(received(h, 'map.build'), 'a theme is neither a layout nor a render').toHaveLength(asked)
+    expect(received(h, 'graph.build'), 'and nothing was laid out').toHaveLength(1)
+
+    // Back to the Library and in again: the fresh address carries the theme
+    // of the moment it was made, which is the record's, and the page boots
+    // in it before anything is sent.
     await page.getByRole('button', { name: 'Back to Library' }).click()
     await page.getByRole('button', { name: 'Open Los Angeles' }).click()
-    await expect(frame(page)).toHaveAttribute('src', /theme=sepia/)
-    await expect(switchOf(page).getByRole('button', { name: 'Sepia' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
+    await expect(frame(page), 'the fresh address carries the chosen theme').toHaveAttribute(
+      'src',
+      /theme=sepia/,
     )
+    await expect(
+      switchOf(page).getByRole('button', { name: 'Sepia' }),
+      'and the switch says Sepia',
+    ).toHaveAttribute('aria-pressed', 'true')
+    await expect
+      .poll(async () => (await factsOf(app))?.boot ?? null, {
+        message: 'the first paint was sepia: the address gave it, before any call',
+        timeout: 20_000,
+      })
+      .toBe('sepia')
+    await expect.poll(() => themeOf(page), { message: 'and the page says so' }).toBe('sepia')
+  })
+})
+
+// A page the engine wrote before v0.11.0 has no `setTheme`, and nothing would
+// show a press on one. The page says so ("this map cannot do that") and the
+// viewer does what it did before the seam had a theme: the frame goes to the
+// address with the project's theme, by the path a redraw takes, so the hour
+// the page was at is given back.
+test('a page with no setTheme is loaded again at the new theme, once', async () => {
+  const h = home()
+  await withApp(h, async (page, app) => {
+    await openWithAPage(page, app, h, OLDER_PAGE)
+    const address = await frame(page).getAttribute('src')
+    expect(address, 'the project opens in the theme its record holds').toContain('theme=warm-dark')
+    const asked = received(h, 'map.build').length
+
+    const LATER = 50_000
+    await askPage(page, 'seek', LATER)
+    expect((await stateOf(page))?.now, 'the page took the seek').toBe(LATER)
+    const before = await factsOf(app)
+    expect(before?.document, 'the page is a document with an identity to compare').toBeTruthy()
+    expect(before?.boot, 'and it booted in warm dark').toBe('warm-dark')
+
+    await frame(page).evaluate((element) => {
+      const counted = window as unknown as { __loads?: number }
+      counted.__loads = 0
+      element.addEventListener('load', () => {
+        counted.__loads = (counted.__loads ?? 0) + 1
+      })
+    })
+    const navigated: string[] = []
+    page.on('framenavigated', (moved) => {
+      if (moved !== page.mainFrame() && moved.url().includes('controls=1'))
+        navigated.push(moved.url())
+    })
+
+    await switchOf(page).getByRole('button', { name: 'Sepia' }).click()
+    await expect
+      .poll(() => readRecord(h).theme, { message: 'the record holds the theme' })
+      .toBe('sepia')
+    await expect(
+      frame(page),
+      'the page could not be told, so the frame was sent to the address with the new theme',
+    ).toHaveAttribute('src', /theme=sepia/)
+    await expect
+      .poll(async () => (await factsOf(app))?.boot ?? null, {
+        message: 'the page that arrived booted in sepia: its address said so',
+        timeout: 20_000,
+      })
+      .toBe('sepia')
+
+    // Once is once: a second navigation would be a state read and a load
+    // away; the pause is longer than that.
+    await page.waitForTimeout(1500)
+    expect(
+      await page.evaluate(() => (window as unknown as { __loads?: number }).__loads),
+      'the frame loaded once',
+    ).toBe(1)
+    expect(navigated, 'and was navigated once').toHaveLength(1)
+    const after = await factsOf(app)
+    expect(after?.document, 'to a new document').not.toBe(before?.document)
+    expect(after?.attribute, 'which is wearing sepia').toBe('sepia')
+    expect(after?.seen, 'and, as after a redraw, was given back the hour it was at').toContainEqual(
+      ['seek', LATER],
+    )
+    expect(received(h, 'map.build'), 'nothing was drawn again').toHaveLength(asked)
+    expect(received(h, 'graph.build'), 'and nothing was laid out').toHaveLength(1)
+  })
+})
+
+test('a page a run has rewritten arrives in the theme chosen before the run', async () => {
+  const h = home()
+  await withApp(h, async (page, app) => {
+    await openWithAPage(page, app, h)
+    await switchOf(page).getByRole('button', { name: 'Sepia' }).click()
+    await expect
+      .poll(() => themeOf(page), { message: 'the page took sepia in place' })
+      .toBe('sepia')
+    const first = await factsOf(app)
+    // How many runs the address says have rewritten the page this screen has
+    // been open for: a run is a new document, and the address says so.
+    const redrawsOf = async (): Promise<number> =>
+      Number(new URL((await frame(page).getAttribute('src')) ?? 'x:/').searchParams.get('redraw'))
+    const redraws = await redrawsOf()
+
+    const stop = keepPageWritten(h)
+    try {
+      // A rebuild from the stored layout: the one press that rewrites the
+      // page file without laying anything out.
+      await openCell(page, 'frame')
+      await cell(page, 'frame').getByLabel('Draw for another day').fill('2026-06-20')
+      await cell(page, 'frame').getByRole('button', { name: 'Draw for this day' }).click()
+      await expect
+        .poll(() => received(h, 'map.build').length, {
+          message: 'the run drew the map again',
+          timeout: 30_000,
+        })
+        .toBe(2)
+      await expect
+        .poll(async () => (await factsOf(app))?.document ?? first?.document, {
+          message: 'the frame went to a new document: the run rewrote the page',
+          timeout: 30_000,
+        })
+        .not.toBe(first?.document)
+      expect(await redrawsOf(), 'the address counts the run').toBe(redraws + 1)
+      expect(
+        await frame(page).getAttribute('src'),
+        'the address for the rewritten page carries the theme chosen before it',
+      ).toContain('theme=sepia')
+
+      await expect
+        .poll(async () => (await factsOf(app))?.boot ?? null, {
+          message: 'the new document’s first paint was sepia: its address said so',
+          timeout: 20_000,
+        })
+        .toBe('sepia')
+      await expect
+        .poll(() => themeOf(page), { message: 'and state().theme answers sepia after the rewrite' })
+        .toBe('sepia')
+      await expect
+        .poll(async () => (await factsOf(app))?.seen?.[0] ?? null, {
+          message: 'the viewer’s first call to the new document is the project’s theme',
+          timeout: 20_000,
+        })
+        .toEqual(['setTheme', 'sepia'])
+    } finally {
+      stop()
+    }
+    expect(readRecord(h).theme, 'the record still holds it').toBe('sepia')
   })
 })
 
@@ -176,9 +591,9 @@ test('the switch is out of reach while a run is going, because the page is being
     await expect(sepia).toBeEnabled()
 
     await page.getByRole('button', { name: /lay out/i }).click()
-    // `map.build` writes the project's page in place, and a theme change
-    // reloads the frame that reads it: a press now would show half a
-    // document and an alert saying the map is gone.
+    // `map.build` writes the project's page in place and then sends the
+    // frame to the result: a press now would restyle a document that is
+    // about to go, and nothing on screen would show it taking.
     await expect(sepia).toBeDisabled()
     // And it says why, where the switch is: the run's own panel is
     // elsewhere on the screen and tied to this section by nothing a screen

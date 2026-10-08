@@ -91,7 +91,7 @@ app's own settings under `api.settings`:
 | `setDate(id, date)` | stores the service day a person chose, at once and before anything is drawn for it; it refuses exactly what `completeRebuild` refuses and never touches `drawn`, so a day chosen and not yet drawn is what the notebook's cell 03 reports (A5.5-15) |
 | `completeColors(id, palette)` | records the line colours a person chose, once the map has been drawn with them; every label and every colour is checked on the main side first (A4-01) |
 | `completeOrder(id, order)` | records the order a person arranged the lines in, once the map has been drawn in it; every label is checked on the main side first, and the same line twice is refused (A4-02) |
-| `setTheme(id, theme)` | records the theme the project's map is drawn in, at once rather than after a build: a theme is neither a layout nor a render, and the page restyles itself from its own address (A4-03) |
+| `setTheme(id, theme)` | records the theme the project's map is drawn in, at once rather than after a build: a theme is neither a layout nor a render, and the page restyles in place when told (the app calls its `setTheme` after the write; the next load carries the theme on its address; A4-03, issue 349) |
 | `setExport(id, choice)` | records what the project is set to export - a preset, a storyboard, the options - at once; every field is held to the engine's own rules on the main side first (A5-01) |
 | `export.chooseDestination(id)` | opens the platform's folder chooser for one project's exports and applies its own answer, then hands back the record; no path crosses inward, as Settings' two folders do not (A1-04, A5.5-19) |
 | `export.useAppFolder(id)` | forgets that folder, so the project's exports go to the app's again; it takes no path at all (A5.5-19) |
@@ -1001,23 +1001,40 @@ placeholder: a theme belongs to the map, which is exported and published,
 rather than to the room the person making it is sitting in. The interface
 keeps its own theme in Settings and the two move independently.
 
-A theme press is not free, though it is cheap: the theme rides on the
-address, so the frame navigates rather than restyles. The page starts again
-- its clock back at the hour it opens on, its chosen view, its scrub
-position and its line toggles gone - and a large network's data is parsed
-again. The app cannot do better today: it drives the page through
-`window.__present` from the main process (ADR-028) and that seam has no
-theme method, which is an engine issue rather than an app one.
+A theme press does not reload the frame (issue 349). The page's seam has
+had `setTheme(name)` since engine v0.11.0 (its issue 29), which restyles the
+page in place, so the app writes the record and then calls `setTheme` on the
+map's frame through the viewer bridge (`window.__present` is driven from the
+main process, ADR-028). The page's address, its document, its clock, its
+view, its labels and its scrub position are untouched. The address still
+carries `theme=` for the next load: it is made again only when the project,
+its feed or the number of redraws changes, with the project's theme at that
+moment (`viewerAddress.ts`), and the viewer gives the project's theme to
+every page that loads as the first call of its restore (`viewerRestore.ts`).
+That call is given the theme as it stands at the moment it is sent, from a
+memory the press writes the instant its record write returns, before it
+sends its own `setTheme` (`themeMemory.ts`, `viewerGiveBack.ts`); the memory
+is not the screen's state, which carries the theme only after a render and
+its effects have run. Whichever of the press and the restore reaches the page
+last therefore carries the same theme, and a theme written between an
+address being made and its document arriving, or while the restore is being
+sent, is never lost.
+
+The one case that still navigates is a page the engine wrote before
+v0.11.0, which has no `setTheme` and says "this map cannot do that". The
+press then counts a reload, and the frame is sent to the address with the
+project's theme by the path a redraw takes, so the hour, the view, the
+labels, the speed and the pause are given back. "The map is not on the
+screen" and every other failure are swallowed, because the next load carries
+the theme.
 
 Nothing is rebuilt for a theme, and no engine request is made at all: the
 SVG carries its furniture's colours as CSS variables with literal
 fallbacks, so the page restyles itself and the line colours do not move.
-The record is written the moment the switch is pressed, through
-`setTheme`, and the viewer reloads the page at the new address. An export
-passes the same choice in the engine's own vocabulary - `themeFor` maps the
-record's two onto `dark` and `light` in `export.plan`'s options, and the
-engine turns anything that is not `dark` into `theme=sepia` on the page it
-drives (`specs/021-theme`).
+An export passes the same choice in the engine's own vocabulary - `themeFor`
+maps the record's two onto `dark` and `light` in `export.plan`'s options,
+and the engine turns anything that is not `dark` into `theme=sepia` on the
+page it drives (`specs/021-theme`).
 
 ## The feeds
 

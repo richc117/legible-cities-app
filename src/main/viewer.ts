@@ -47,7 +47,7 @@ import {
  *   So an address with them is never matched as the map, which is the rule
  *   that keeps the map's frame from being driven while it shows a preview.
  * - **`controls=1` is the map's.** It is the app's own word, written by
- *   `pageUrl` in `Viewer.tsx`, and the engine's planned addresses never
+ *   `addressFor` in `viewerAddress.ts`, and the engine's planned addresses never
  *   carry it: `url_for` in its export.py writes the frame, the title, the
  *   clock and the rest, and no controls.
  * - **Anything else under the folder is a planned page without safe
