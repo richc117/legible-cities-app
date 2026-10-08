@@ -360,23 +360,21 @@ test('a change of operator marks 02 to 06 stale and starts nothing', async () =>
 // the body with it.
 //
 // A run that starts under a person who is in cell 01 starts from a timer: a
-// colour change is debounced, so its rebuild begins with nobody pressing
-// anything, which is how `theme.spec.ts` closes the way on cell 04. The
-// stand-in is slow from its first call, because it reads its control file
-// once and the rebuild has to be going still when focus is read.
+// change of the line order is debounced, so its rebuild begins with nobody
+// pressing anything, which is how `theme.spec.ts` closes the way on cell 04.
+// A colour is not the way to this: since issue 262 it builds in the press
+// that releases it, so there is no gap to put focus in. The stand-in is slow
+// from its first call, because it reads its control file once and the
+// rebuild has to be going still when focus is read.
 
 /**
- * Give a line a colour of its own: a rebuild starts when the debounce runs
- * out. The label is followed by a word's end, so that line 1 is not line 10.
+ * Move a line one place down: a rebuild starts when the order's debounce
+ * runs out. The name is matched exactly, so that line 1 is not line 10.
  */
-async function recolour(page: Page, line = 'A'): Promise<void> {
-  const colours = cell(page, 'lines')
-  await colours
-    .getByRole('button', { name: new RegExp(`^Choose the colour of line ${line}\\b`) })
+async function reorder(page: Page, line = 'A'): Promise<void> {
+  await cell(page, 'lines')
+    .getByRole('button', { name: `Move line ${line} down`, exact: true })
     .click()
-  const picker = colours.getByRole('group', { name: `Colour for line ${line}`, exact: true })
-  await picker.getByLabel('Hex value').fill('#ff0000')
-  await picker.getByRole('button', { name: 'Use this colour' }).click()
 }
 
 test("focus on the mode is handed to cell 01's heading when a run disables it", async () => {
@@ -387,8 +385,8 @@ test("focus on the mode is handed to cell 01's heading when a run disables it", 
     const mode = cell(page, 'data').getByRole('combobox', { name: 'Mode' })
     await expect(mode).toBeEnabled()
 
-    await recolour(page)
-    // Inside the debounce, with focus moved onto the mode.
+    await reorder(page)
+    // Inside the order's debounce, with focus moved onto the mode.
     await mode.focus()
     await expect(mode).toBeFocused()
 
@@ -434,8 +432,8 @@ test("focus on the feed's entry is handed to cell 01's heading when a run disabl
     await expect(entry).toBeEnabled()
 
     // Every route of every operator is kept, so the lines are 1, 2 and 10.
-    await recolour(page, '2')
-    // Inside the debounce, with focus moved onto the button.
+    await reorder(page, '2')
+    // Inside the order's debounce, with focus moved onto the button.
     await entry.focus()
     await expect(entry).toBeFocused()
 
@@ -459,7 +457,7 @@ test('focus on a control the run leaves alone in cell 01 stays where it is', asy
       .getByRole('table', { name: /^Routes/ })
       .getByRole('button', { name: 'Label' })
 
-    await recolour(page)
+    await reorder(page)
     await header.focus()
     await expect(header).toBeFocused()
     // Read at once, not waited for: the header takes focus whether or not
@@ -494,7 +492,7 @@ test('a collapsed cell 01 hands nothing over, and focus on its row stays on its 
       includeHidden: true,
     })
 
-    await recolour(page)
+    await reorder(page)
     await row.focus()
     await expect(row).toBeFocused()
     expect(await hidden.isEnabled(), 'the rebuild began before focus was placed').toBe(true)

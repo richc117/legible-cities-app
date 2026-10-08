@@ -611,16 +611,15 @@ test('focus is handed over before the buttons go, when a timer closes the way', 
     await page.getByRole('button', { name: /lay out/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
 
-    // A colour change is debounced, so its build starts from a timer with
-    // nobody pressing anything - and Chromium blurs a disabled element, so
-    // the buttons going would take the focus to the body.
-    const colours = cell(page, 'lines')
-    await colours.getByRole('button', { name: /^Choose the colour of line A/ }).click()
-    const picker = colours.getByRole('group', { name: 'Colour for line A' })
-    await picker.getByLabel('Hex value').fill('#ff0000')
-    await picker.getByRole('button', { name: 'Use this colour' }).click()
+    // A change of the line order is debounced, so its build starts from a
+    // timer with nobody pressing anything - and Chromium blurs a disabled
+    // element, so the buttons going would take the focus to the body. (A
+    // colour is not the way to this: since issue 262 it builds in the press
+    // that releases it, so the way closes under a person who has just
+    // pressed, and there is no gap to put focus in.)
+    await cell(page, 'lines').getByRole('button', { name: 'Move line A down', exact: true }).click()
 
-    // Inside the debounce, with focus moved into the theme switch.
+    // Inside the order's debounce, with focus moved into the theme switch.
     const sepia = switchOf(page).getByRole('button', { name: 'Sepia' })
     await sepia.focus()
     await expect(sepia).toBeFocused()
