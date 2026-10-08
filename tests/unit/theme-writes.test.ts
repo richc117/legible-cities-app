@@ -341,6 +341,12 @@ describe('the project screen’s setTheme', () => {
     expect(source, 'the call that restyles the page in place').toMatch(
       /viewer\.call\(\s*'map',\s*'setTheme'/,
     )
+    expect(
+      source,
+      'the theme is remembered the moment the record’s answer arrives, before the page is told',
+    ).toMatch(
+      /projects\.setTheme\(id, chosen\)\s*\n\s*rememberTheme\(id, record\.theme\)\s*\n\s*setState/,
+    )
     expect(source, 'and the fallback for a page that cannot be told').toMatch(
       /setThemeReloads\(\s*\(count\)\s*=>\s*count \+ 1\s*\)/,
     )

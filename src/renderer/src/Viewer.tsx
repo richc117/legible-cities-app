@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, type JSX, type SyntheticEvent } from 'react'
-import type { ProjectRecord } from '../../shared/project'
+import type { ProjectRecord, Theme } from '../../shared/project'
 import { VIEWER_SANDBOX, type ViewerRole } from '../../shared/viewer'
-import { asDispatched, transportFor, withRemembered } from './transportState'
+import { themeAsItStands } from './themeMemory'
+import { transportFor, withRemembered } from './transportState'
 import { wantedAddress } from './viewerAddress'
+import { giveBack } from './viewerGiveBack'
 import { restoreCalls } from './viewerRestore'
 
 // The engine's page, on the screen: the map, in the notebook's flow after
@@ -26,7 +28,11 @@ import { restoreCalls } from './viewerRestore'
 // (issue 349): the page restyles in place through `setTheme`, sent when the
 // record has been written (`themeWrites.ts`), so a press leaves the
 // frame's address, its document and everything the document was showing as
-// they were. The exception is a page the engine wrote before v0.11.0, which
+// they were. Every document that loads is given the project's theme as the
+// first call of its restore, read at the moment it is sent from the memory a
+// press writes as its record write returns (`themeMemory.ts`), so a press
+// that lands while a document is loading is never overwritten by a restore
+// that was composed before it. The exception is a page the engine wrote before v0.11.0, which
 // has no `setTheme`: a press on one is a navigation after all, by the path a
 // redraw takes (the `reloads` count), because nothing else would show it.
 //
@@ -147,15 +153,6 @@ export default function Viewer({
   // The map's own state, read as the frame leaves a page and given back to
   // the page that comes next.
   const kept = useRef<unknown>(null)
-  // The project's theme as it stands, for the load handler to read when a
-  // document arrives. The handler's own `project` is the render's that
-  // started the load, and a press made since then is on the record and not
-  // in that closure: the address carries the theme of the moment it was
-  // made, and this is what puts a page right when its document is behind.
-  const theme = useRef(project.theme)
-  useEffect(() => {
-    theme.current = project.theme
-  }, [project.theme])
   // Which navigation a restore belongs to. Bumped where the navigation is
   // decided and not where the new document lands, because the gap between
   // the two is exactly where a restore loop - up to seven awaited round
@@ -235,22 +232,29 @@ export default function Viewer({
         // run would hand a person's paused, quarter-speed map back to them
         // playing at the page's own default.
         //
-        // The theme is the project's as it stands now, whatever this
-        // document's address said: its first call, on every load.
+        // The theme is the project's as it stands at the moment each call is
+        // sent, whatever this document's address said: its first call, on
+        // every load. It is not read from this render's `project`, which is
+        // the one that started the load, nor from a ref set by an effect,
+        // which runs after a press has already sent its own call; it is
+        // read from the memory the press writes the moment its record write
+        // returns (`themeMemory.ts`), so whichever of the press and this
+        // restore reaches the page last carries the same theme.
         const memory = transportFor(project.id)
-        const calls = restoreCalls(withRemembered(kept.current, memory.snapshot), theme.current)
-        for (const { method, args } of calls) {
-          if (navigation !== navigations.current || !mounted.current) return
-          // The memory is read again here, one call before it is sent,
-          // rather than once for the whole list. This loop is up to six
-          // awaited round trips long and cell 03's controls are live
-          // throughout: a Pause pressed during it writes the memory and
-          // sends its own call, and a list composed before that press would
-          // then overwrite it. `asDispatched` is which of these calls
-          // assert a state and which do not.
-          const sending = asDispatched(method, args, memory.snapshot)
-          await window.api.viewer.call(ROLE, method, ...sending).catch(() => undefined)
-        }
+        const themeNow = (): Theme => themeAsItStands(project.id, project.theme)
+        await giveBack(restoreCalls(withRemembered(kept.current, memory.snapshot), themeNow()), {
+          alive: () => navigation === navigations.current && mounted.current,
+          // Read again one call before each is sent, rather than once for the
+          // whole list: this loop is up to seven awaited round trips long and
+          // cell 03's controls and the theme switch are live throughout. A
+          // Pause pressed during it writes the memory and sends its own call,
+          // and a list composed before that press would then overwrite it.
+          // `asDispatched` and `asDispatchedTheme` are which of these calls
+          // assert a state and which do not (`viewerGiveBack.ts`).
+          remembered: () => memory.snapshot,
+          theme: themeNow,
+          send: (method, args) => window.api.viewer.call(ROLE, method, ...args),
+        })
       },
       () => {
         if (mounted.current) setProblem("This project's map is not there. Lay it out again.")

@@ -17,6 +17,7 @@ import {
 } from '../engine/runs'
 import { stageFor } from '../engine/stages'
 import { skipTarget } from '../SkipPastMap'
+import { rememberTheme } from '../themeMemory'
 import { writeThenRestyle } from '../themeWrites'
 import type { TextInputHandle } from '../kit/TextInput'
 import { useEngineState } from '../useEngineState'
@@ -400,14 +401,21 @@ export function useProjectState(
   // map's page is then told through its seam, which restyles it in place
   // and leaves the frame where it is; the record also reaches the next
   // document, on its address and as the first call of the restore (issue
-  // 349). A write that fails sends nothing. A page with no `setTheme` says
-  // so, and that one case loads the page again with the theme on its
-  // address, as a press always did before the seam had one.
+  // 349). The theme is remembered here, **in the write's own callback, the
+  // moment the record's answer arrives and before the page is told**,
+  // because the restore of a document that is loading reads it from that
+  // memory at the moment it sends and not from this screen's state, which
+  // does not carry the theme until a render and its effects have run
+  // (`themeMemory.ts`). A write that fails remembers nothing and sends
+  // nothing. A page with no `setTheme` says so, and that one case loads the
+  // page again with the theme on its address, as a press always did before
+  // the seam had one.
   const setTheme = (theme: Theme): Promise<void> =>
     writeThenRestyle(
       theme,
       async (chosen) => {
         const record = await window.api.projects.setTheme(id, chosen)
+        rememberTheme(id, record.theme)
         setState((current) =>
           current.status === 'ready'
             ? { status: 'ready', project: { ...current.project, ...record } }

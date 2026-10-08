@@ -23,10 +23,11 @@ import type { ViewerMethod } from '../../shared/viewer'
 //      moment it was made, which may not be the project's now (a press
 //      lands between an address being made and its document arriving), and
 //      a page a run has rewritten says whatever its address said. It
-//      neither moves the clock nor depends on anything below, and it is
-//      first so that a press made while this sequence runs - which sends its
-//      own `setTheme` after the record is written - is always the later
-//      word.
+//      neither moves the clock nor depends on anything below. It is read at
+//      the moment it is sent, from the memory a press writes the instant its
+//      record write returns (`themeMemory.ts`, `viewerGiveBack.ts`), and a
+//      press sends its own `setTheme` after that write, so whichever of the
+//      two reaches the page last carries the same theme.
 //   1. The page is stopped, whatever it was doing, because every call below
 //      is a round trip through the privileged process and a running clock
 //      moves between them.

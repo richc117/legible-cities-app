@@ -125,8 +125,17 @@ describe('the viewer', () => {
     expect(source, 'nor from a template of its own').not.toMatch(/app:\/\/local\/projects/)
   })
 
-  it('gives every load the project theme as it stands, as the restore’s theme', () => {
-    expect(source).toMatch(/\brestoreCalls\([^;]*\btheme\.current\b/)
+  it('sends the restore through giveBack, the theme read from the memory at each send', () => {
+    expect(source, 'the restore is sent by the loop that reads at the moment of each call').toMatch(
+      /\bgiveBack\(/,
+    )
+    expect(source, 'and the theme is the memory’s').toMatch(
+      /\bthemeAsItStands\(project\.id, project\.theme\)/,
+    )
+    expect(source, 'not a ref an effect sets after a press has sent its own call').not.toMatch(
+      /\btheme\.current\b/,
+    )
+    expect(source, 'and not a loop of its own').not.toMatch(/for \(const \{ method, args \} of/)
   })
 
   it('makes its address again for a reload, and the notebook counts one for it', () => {
