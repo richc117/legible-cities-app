@@ -50,6 +50,7 @@ const run = (state: RunFacts['state'], patch: Partial<RunFacts> = {}): RunFacts 
   rebuilt: false,
   recoloured: false,
   reordered: false,
+  restyled: false,
   replaced: false,
   ...patch,
 })
@@ -93,8 +94,8 @@ describe('what Run all starts', () => {
     })
   })
 
-  it('draws again after a rebuild, a recolour or a reorder failed', () => {
-    for (const flag of ['rebuilt', 'recoloured', 'reordered'] as const)
+  it('draws again after a rebuild, a redraw for sizes, a recolour or a reorder failed', () => {
+    for (const flag of ['rebuilt', 'restyled', 'recoloured', 'reordered'] as const)
       expect(runAllPlan(current, run('failed', { [flag]: true }))).toEqual({
         kind: 'rebuild',
         date: '2026-09-12',

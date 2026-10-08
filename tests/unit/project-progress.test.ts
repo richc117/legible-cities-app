@@ -40,6 +40,7 @@ const run = (state: RunFacts['state'], patch: Partial<RunFacts> = {}): RunFacts 
   rebuilt: false,
   recoloured: false,
   reordered: false,
+  restyled: false,
   replaced: false,
   ...patch,
 })

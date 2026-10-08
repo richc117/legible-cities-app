@@ -49,6 +49,7 @@ export default function LayoutRun({
     rebuilt,
     recoloured,
     reordered,
+    restyled,
     day,
     download,
     feedMissing,
@@ -175,7 +176,7 @@ export default function LayoutRun({
         {(state === 'cancelled' || state === 'failed') && (
           <>
             <p className="prose" role="status">
-              {stoppedSentence(state, replaced, rebuilt, recoloured, reordered)}
+              {stoppedSentence(state, replaced, rebuilt, recoloured, reordered, restyled)}
             </p>
             <div className="toolbar">
               <Button variant="primary" ref={layOutRef} onClick={begin} disabled={disabled}>
@@ -189,13 +190,15 @@ export default function LayoutRun({
         {state === 'done' && (
           <>
             <p className="prose" role="status">
-              {reordered
-                ? reorderedSentence()
-                : recoloured
-                  ? recolouredSentence()
-                  : rebuilt
-                    ? drawnSentence(day)
-                    : doneSentence(forced, changed, relaid)}
+              {restyled
+                ? restyledSentence()
+                : reordered
+                  ? reorderedSentence()
+                  : recoloured
+                    ? recolouredSentence()
+                    : rebuilt
+                      ? drawnSentence(day)
+                      : doneSentence(forced, changed, relaid)}
             </p>
             {movedNotice}
             {/* The run outlives the screen, so this state is what a person
@@ -261,6 +264,11 @@ export function reorderedSentence(): string {
   return 'Drawn with the lines in the order you chose, from the stored layout. The stations have not moved.'
 }
 
+/** What a redraw for chosen sizes says when the map has been drawn. */
+export function restyledSentence(): string {
+  return 'Drawn in the sizes you chose, from the stored layout. The stations have not moved.'
+}
+
 /**
  * What a run that did not finish says. Nothing was written to the record
  * either way; but a re-layout whose layout call had already answered has
@@ -274,7 +282,13 @@ export function stoppedSentence(
   rebuilt = false,
   recoloured = false,
   reordered = false,
+  restyled = false,
 ): string {
+  if (restyled) {
+    return state === 'cancelled'
+      ? 'The redraw was cancelled. The project keeps the sizes it had; the map on screen may be the old one until the next build.'
+      : 'The map was not drawn in those sizes. The project keeps the sizes it had; the map on screen may be the old one until the next build.'
+  }
   if (reordered) {
     return state === 'cancelled'
       ? 'The redraw was cancelled. The project keeps the order it had; the map on screen may be the old one until the next build.'

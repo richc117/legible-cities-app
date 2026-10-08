@@ -61,11 +61,16 @@ export function runAllPlan(record: ProjectRecord, run: RunFacts | null): RunAllP
     sources.some((s) => s.cell === 'data' || s.cell === 'process')
   )
     return { kind: 'layout' }
-  // A failed rebuild, recolour or reorder may have left the page half
-  // written ("the map on screen may be the old one until the next build"),
-  // and a day chosen and not drawn is behind by definition. The rebuild
-  // draws the record's day, colours and order, which is all of 03 to 05.
-  const behind = failed === 'frame' || failed === 'lines' || sources.some((s) => s.cell === 'frame')
+  // A failed rebuild, redraw for sizes, recolour or reorder may have left
+  // the page half written ("the map on screen may be the old one until the
+  // next build"), and a day chosen and not drawn is behind by definition.
+  // The rebuild draws the record's day, sizes, colours and order, which is
+  // all of 03 to 05.
+  const behind =
+    failed === 'frame' ||
+    failed === 'style' ||
+    failed === 'lines' ||
+    sources.some((s) => s.cell === 'frame')
   if (behind && record.date !== null) return { kind: 'rebuild', date: record.date }
   return { kind: 'none' }
 }

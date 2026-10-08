@@ -25,9 +25,9 @@ import { useSnapshot } from './useSnapshot'
  */
 export function figuresToShow(
   drawn: RunReport | null,
-  run: Pick<RunSnapshot, 'state' | 'report' | 'recoloured' | 'reordered'>,
+  run: Pick<RunSnapshot, 'state' | 'report' | 'recoloured' | 'reordered' | 'restyled'>,
 ): RunReport | null {
-  if (!run.recoloured && !run.reordered) return run.report
+  if (!run.recoloured && !run.reordered && !run.restyled) return run.report
   if (drawn === null) return null
   if (run.state === 'running') return drawn
   return run.report

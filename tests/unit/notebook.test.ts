@@ -231,6 +231,7 @@ describe('what a running or failed cell says on its row', () => {
     rebuilt: false,
     recoloured: false,
     reordered: false,
+    restyled: false,
     replaced: false,
     download: null,
     feedMissing: null,
