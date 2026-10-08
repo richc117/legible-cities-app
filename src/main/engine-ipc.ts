@@ -87,6 +87,12 @@ export function registerEngineHandlers(
 ): () => void {
   const idOf = new Map<string, number>()
   const tokenOf = new Map<number, string>()
+  // Tokens a person cancelled while the guard was still thinking, when there
+  // was no engine id to cancel yet. The cancel is held, not dropped: once the
+  // guard has let the request through and the supervisor has numbered it, the
+  // engine is sent the request and then the cancel, and answers as it would
+  // to a cancel that came a moment later (issue 351).
+  const cancelledEarly = new Set<string>()
 
   const handle = (channel: string, handler: (...args: unknown[]) => Promise<unknown>): void => {
     ipcMain.handle(channel, async (event, ...args: unknown[]) => {
@@ -112,6 +118,7 @@ export function registerEngineHandlers(
     const refused = await guard(method, params as Record<string, unknown> | undefined)
     if (refused !== null) {
       idOf.delete(token)
+      cancelledEarly.delete(token)
       return badCall(refused)
     }
     // No request has a deadline of its own: the supervisor's inactivity
@@ -125,6 +132,7 @@ export function registerEngineHandlers(
       // the token is freed and the page is answered in the bridge's own
       // shape, not with a thrown message.
       idOf.delete(token)
+      cancelledEarly.delete(token)
       const what = error instanceof Error ? error.message : String(error)
       log(`refused ${method} before sending it: ${what}`)
       return badCall(`the request could not be sent: ${what}`)
@@ -133,8 +141,11 @@ export function registerEngineHandlers(
     if (id !== 0) {
       idOf.set(token, id)
       tokenOf.set(id, token)
+      // A cancel pressed while the guard was thinking reaches the request now.
+      if (cancelledEarly.delete(token)) engine.cancel(id)
     } else {
       idOf.delete(token)
+      cancelledEarly.delete(token)
     }
     // Settle on the event channel, after every notification for the id.
     result.then(
@@ -159,7 +170,10 @@ export function registerEngineHandlers(
   handle(CHANNELS.engineCancel, async (token) => {
     if (typeof token !== 'string') return
     const id = idOf.get(token)
-    if (id !== undefined) engine.cancel(id)
+    if (id === undefined) return
+    // 0 is the token held through the guard's await: no engine id yet.
+    if (id === 0) cancelledEarly.add(token)
+    else engine.cancel(id)
   })
 
   const offState = engine.onState((state) => send(CHANNELS.engineStateChanged, state))

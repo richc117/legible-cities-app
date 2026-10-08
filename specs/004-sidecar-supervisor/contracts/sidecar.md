@@ -48,8 +48,10 @@ Every transition is logged with the reason.
   a `-32600` bad call and frees its token. On expiry the supervisor sends
   `$/cancelRequest` unless `cancel(id)` already sent one, and the request
   settles with `-32003` (kind `inactive`, "No answer within N seconds; the
-  engine was asked to cancel the request."). Only `feeds.remove` is given
-  one (30 s, `FEEDS_REMOVE_DEADLINE_MS` in `src/main/feeds-ipc.ts`).
+  engine was asked to cancel the request."). No request is sent with one
+  now: `feeds.remove` was (30 s, issue 107), until engine v0.11.0 made it a
+  job that can be cancelled (issue 351). The option stays for a request
+  whose work is short and known.
 - A request a bound ended stays counted by `inFlight`, and by `abandoned`,
   until its late answer arrives (the client reports the dropped response's
   id) or its process has exited - not when the process begins to be ended,

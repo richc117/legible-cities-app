@@ -394,6 +394,52 @@ describe('the guard in front of the engine', () => {
     expect(again.accepted).toBe(true)
   })
 
+  // A cancel pressed while the guard's await is pending finds the token held
+  // but no engine id to cancel. It used to be dropped, and the request went
+  // on to the engine uncancelled under a dialog that said "Cancelling". It is
+  // held now, and sent once the request has been numbered (issue 351).
+  it('holds a cancel made while the guard thinks, and the engine receives it for the request it is sent', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((r) => {
+      release = r
+    })
+    const h = harness(true, async () => {
+      await gate
+      return null
+    })
+    const accepted = h.call(CHANNELS.engineRequest, 'tok1', 'feeds.remove', { key: 'x' })
+    await h.call(CHANNELS.engineCancel, 'tok1')
+    expect(h.requests, 'nothing is sent while the guard thinks').toEqual([])
+    expect(h.cancelled, 'and there is no id to cancel yet').toEqual([])
+    release()
+    expect(await accepted).toEqual({ accepted: true })
+    expect(h.requests.map((r) => r.method)).toEqual(['feeds.remove'])
+    expect(h.cancelled, 'the engine is told to cancel the request it was sent').toEqual([
+      h.requests[0].id,
+    ])
+  })
+
+  it('does not carry a cancel made during the guard over to a later request that uses the token', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((r) => {
+      release = r
+    })
+    const h = harness(true, async (method) => {
+      await gate
+      return method === 'feeds.remove' ? 'no' : null
+    })
+    const refused = h.call(CHANNELS.engineRequest, 'tok1', 'feeds.remove', { key: 'x' })
+    await h.call(CHANNELS.engineCancel, 'tok1')
+    release()
+    expect(((await refused) as { accepted: boolean }).accepted).toBe(false)
+    const again = (await h.call(CHANNELS.engineRequest, 'tok1', 'feeds.list')) as {
+      accepted: boolean
+    }
+    expect(again.accepted).toBe(true)
+    expect(h.requests.map((r) => r.method)).toEqual(['feeds.list'])
+    expect(h.cancelled, 'the new request was not cancelled by the old press').toEqual([])
+  })
+
   it('refuses a request the guard names, as a bad call, before the engine sees it', async () => {
     const h = harness(true, async (method) =>
       method === 'feeds.remove' ? 'One project uses this feed; delete the project first.' : null,
