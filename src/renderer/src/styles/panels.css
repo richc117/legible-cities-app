@@ -640,6 +640,55 @@ th .sort:focus-visible {
   display: contents;
 }
 
+/* The network in words (issue 105, spec 031): the geographic pane's long
+   text alternative, a closed disclosure after the keys hint. It holds the
+   extent sentence and a list with one item per line, and each item holds a
+   disclosure of its own for the line's stations in order. The toggles take
+   the engine log's rules below (the prose's own type, not a form control's
+   height inside a section's text) and the cell row's chevron, turned a
+   quarter when open: the row's own rule is scoped to the row. The text is
+   --text and --text-muted on the cell's ground, pairs the contrast test
+   already holds. */
+
+.network-words {
+  margin: 0 0 var(--space-4-4);
+}
+
+.network-words-toggle[aria-expanded='true'] .cell-chevron {
+  transform: rotate(90deg);
+}
+
+.network-extent {
+  margin: var(--space-4-2) 0;
+}
+
+.network-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.network-line {
+  padding: var(--space-4-2) 0;
+  border-top: var(--border-width) solid var(--border);
+}
+
+.network-line .prose {
+  margin: 0;
+}
+
+.network-words .hint {
+  margin: var(--space-2-2) 0 0;
+  font-size: var(--font-ui-small);
+}
+
+.network-stations {
+  margin: var(--space-2-2) 0 var(--space-4-2);
+  padding: 0 0 0 var(--space-4-6);
+  font-size: var(--font-ui-small);
+  line-height: var(--line-ui);
+}
+
 /* The engine's log for the run that is going (A5.5-13): a closed disclosure
    under cell 02's stages, in the job detail's monospaced track.
 
@@ -656,7 +705,8 @@ th .sort:focus-visible {
 /* The toggle takes the prose's own type, as the diagnostics' explain
    trigger does, rather than standing a form control's height inside a
    panel's text. */
-.engine-log-toggle {
+.engine-log-toggle,
+.network-words-toggle {
   all: unset;
   box-sizing: border-box;
   display: inline-flex;
@@ -669,7 +719,8 @@ th .sort:focus-visible {
   cursor: pointer;
 }
 
-.engine-log-toggle:focus-visible {
+.engine-log-toggle:focus-visible,
+.network-words-toggle:focus-visible {
   outline: var(--focus-ring-width) solid var(--focus);
   outline-offset: var(--focus-ring-offset);
 }

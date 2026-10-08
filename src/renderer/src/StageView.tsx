@@ -1,10 +1,40 @@
-import { useCallback, useEffect, useRef, useState, type JSX, type KeyboardEvent } from 'react'
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type JSX,
+  type KeyboardEvent,
+} from 'react'
 import type { EngineState } from '../../shared/engine'
 import { withoutPaths } from '../../shared/engine'
 import type { RenderStageResult, StageName } from '../../shared/protocol'
-import type { ProjectRecord } from '../../shared/project'
-import { fit, keyed, pan, zoomAt, type View } from './engine/stages'
+import { drawnDate, type ProjectRecord } from '../../shared/project'
+import {
+  DRAW_WIDTH,
+  STAGES,
+  STAGES_EXPLAINED,
+  STAGE_SANDBOX,
+  fit,
+  frameDocument,
+  keyed,
+  pan,
+  zoomAt,
+  type View,
+} from './engine/stages'
+import Icon from './icons/Icon'
 import Button from './kit/Button'
+import Disclosure from './kit/Disclosure'
+import {
+  WORDS_GROUP,
+  WORDS_SUMMARY,
+  networkWords,
+  paneName,
+  readDescription,
+  type NetworkWords,
+} from './networkWords'
 
 // Two stages of the layout, drawn where they run: as the feed draws its
 // routes (gtfs2graph), and after LOOM has sorted the lines onto shared
@@ -12,42 +42,13 @@ import Button from './kit/Button'
 // engine's SVG in a frame with an empty sandbox: no script runs in it and
 // it has no origin; pan and zoom are transforms on the frame from here
 // (spec 016, ADR-028). The counts are the engine's, shown as sent.
-
-export const STAGES: { stage: StageName; label: string; gloss: string }[] = [
-  { stage: 'gtfs2graph', label: 'gtfs2graph', gloss: 'as the feed draws its routes' },
-  { stage: 'loom', label: 'loom', gloss: 'lines sorted onto shared track' },
-]
-
-/**
- * What the two buttons are, said once under the heading (issue 282). The
- * names stay the engine's, so a stage here matches a stage in its log; the
- * sentence is what says what they are and how they relate to the map below. `topo` and `octi` are not offered: topo is
- * gtfs2graph with platforms merged, a difference of counts and not of
- * picture, and octi is the schematic the viewer already shows.
- */
-export const STAGES_EXPLAINED =
-  'The map below is the schematic. These are two earlier stages of the same layout, drawn where the routes really run: gtfs2graph is the network as the feed draws it, and loom is the same network after the engine has sorted the lines onto shared track, before anything is straightened. The names are the engine’s, so a stage here matches a stage in its log.'
-
-/** The pane's frame takes no permission at all: the whole of its sandbox. */
-export const STAGE_SANDBOX = ''
-
-/** The width the engine draws at, whatever the pane's: wide enough that a large network stays sharp when zoomed. */
-export const DRAW_WIDTH = 1600
-
-/**
- * The frame's document. srcdoc is parsed as HTML whatever it holds, so the
- * engine's SVG would land inline in a body with the browser's margin and
- * grow scrollbars; this is the chrome around it, not the drawing. The
- * frame's policy is the interface's own (a srcdoc document inherits it),
- * so loosening csp() in the main process loosens this frame too.
- */
-export function frameDocument(svg: string): string {
-  return (
-    '<!doctype html><style>html,body{margin:0;overflow:hidden;background:transparent}' +
-    'svg{display:block}</style>' +
-    svg
-  )
-}
+//
+// The drawing is hidden from assistive technology, so the pane's text
+// alternative is the engine's `description` of the same stage graph, in two
+// parts (issue 105, spec 031): the pane's name carries the stage and its
+// counts, and a disclosure after the keys hint, "The network in words",
+// holds the extent and one item per line. The words are `networkWords.ts`'s
+// and are drawn here as text nodes; this file orders and computes nothing.
 
 interface Props {
   project: ProjectRecord
@@ -58,6 +59,7 @@ interface Props {
     made: string | null,
     stage: StageName,
     width: number,
+    date: string | null,
   ) => Promise<RenderStageResult>
 }
 
@@ -66,18 +68,114 @@ type State =
   | { status: 'ready'; drawing: RenderStageResult }
   | { status: 'failed'; message: string }
 
+/** A toggle's contents: the cell row's chevron, decorative, then the words that name it. */
+const toggleSummary = (text: string): JSX.Element => (
+  <>
+    <Icon name="chevron" size={16} className="cell-chevron" />
+    {text}
+  </>
+)
+
+interface WordsProps {
+  words: NetworkWords
+  open: boolean
+  onToggle: (open: boolean) => void
+  /** The lines whose station lists are open, by label. */
+  openLines: ReadonlySet<string>
+  onToggleLine: (label: string, open: boolean) => void
+}
+
+/**
+ * The long alternative (FR-003): one disclosure, closed, holding the extent
+ * sentence and a list with one item per line, each with a disclosure of its
+ * own for the stations in order (FR-005). Memoised: the pane re-renders on
+ * every pointer move of a pan, and the words do not change with it. A
+ * station list is mounted only while it is open, so a network of forty lines
+ * puts forty buttons in the document and no stations.
+ */
+export const NetworkInWords = memo(function NetworkInWords({
+  words,
+  open,
+  onToggle,
+  openLines,
+  onToggleLine,
+}: WordsProps): JSX.Element {
+  return (
+    <div className="network-words">
+      <Disclosure
+        className="network-words-toggle"
+        open={open}
+        onToggle={onToggle}
+        label={WORDS_GROUP}
+        summary={toggleSummary(WORDS_SUMMARY)}
+      >
+        {words.extent !== null && <p className="prose network-extent">{words.extent}</p>}
+        <ul className="network-lines">
+          {words.lines.map((line) => {
+            const lineOpen = openLines.has(line.label)
+            return (
+              <li key={line.label} className="network-line">
+                <p className="prose">{line.sentence}</p>
+                <Disclosure
+                  className="network-words-toggle"
+                  open={lineOpen}
+                  onToggle={(next) => onToggleLine(line.label, next)}
+                  label={line.group}
+                  summary={toggleSummary(line.disclosure)}
+                >
+                  {lineOpen && (
+                    <>
+                      <ol className="network-stations">
+                        {line.stations.map((name, i) => (
+                          <li key={i}>{name}</li>
+                        ))}
+                      </ol>
+                      {line.further.map((piece, i) => (
+                        <div key={i}>
+                          <p className="hint">{piece.heading}</p>
+                          <ol className="network-stations">
+                            {piece.stations.map((name, j) => (
+                              <li key={j}>{name}</li>
+                            ))}
+                          </ol>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </Disclosure>
+              </li>
+            )
+          })}
+        </ul>
+      </Disclosure>
+    </div>
+  )
+})
+
 export default function StageView({ project, engine, read }: Props): JSX.Element {
   const ready = engine?.state === 'ready'
   const [stage, setStage] = useState<StageName>('gtfs2graph')
   const [state, setState] = useState<State>({ status: 'waiting' })
   const [loading, setLoading] = useState(false)
   const [view, setView] = useState<View>({ x: 0, y: 0, scale: 1 })
+  // Whether "The network in words" is open, and which lines' station lists
+  // are: the component's own, so a toggle between stages keeps them (the
+  // words follow the stage shown, a person's place in them stays).
+  const [wordsOpen, setWordsOpen] = useState(false)
+  const [openLines, setOpenLines] = useState<ReadonlySet<string>>(() => new Set())
   const pane = useRef<HTMLDivElement>(null)
   const dragging = useRef<{ x: number; y: number } | null>(null)
   // The set the view was fitted to: a toggle between stages keeps the pan
   // and zoom, so the two can be compared; a new set is fitted afresh.
   const fittedTo = useRef<string | null>(null)
   const layout = project.layout
+  // The day the description's minutes are of: the day the map on screen was
+  // drawn for, which is the day its sentence says ("On the day drawn"). A
+  // day chosen and not yet drawn is not it (A5.5-15), and asking for each
+  // day as it is chosen would have the engine read a timetable for a day
+  // nothing shows. Null before a first layout: no day is sent, and the
+  // engine answers an untimed description.
+  const day = drawnDate(project)
 
   useEffect(() => {
     if (!ready || layout === null) {
@@ -89,7 +187,7 @@ export default function StageView({ project, engine, read }: Props): JSX.Element
     // The last drawing stays on screen while the next arrives, so a toggle
     // is a change of picture rather than a blank between two.
     setLoading(true)
-    read(project.feed, layout, project.made, stage, DRAW_WIDTH).then(
+    read(project.feed, layout, project.made, stage, DRAW_WIDTH, day).then(
       (drawing) => {
         if (left) return
         setLoading(false)
@@ -118,7 +216,7 @@ export default function StageView({ project, engine, read }: Props): JSX.Element
     return () => {
       left = true
     }
-  }, [ready, project.feed, layout, project.made, stage, read])
+  }, [ready, project.feed, layout, project.made, stage, day, read])
 
   const paneSize = (): { width: number; height: number } => {
     const box = pane.current?.getBoundingClientRect()
@@ -164,6 +262,26 @@ export default function StageView({ project, engine, read }: Props): JSX.Element
   const drawing = state.status === 'ready' ? state.drawing : null
   const counts = drawing?.counts ?? null
   const current = STAGES.find((s) => s.stage === stage) ?? STAGES[0]
+  // What the engine sent as the description, if it sent one: an older pin
+  // sends none, and then there is no disclosure and the pane keeps the name
+  // it had before the description existed (spec 031, edge cases).
+  const described = useMemo(() => readDescription(drawing?.description), [drawing])
+  const words = useMemo(() => (described === null ? null : networkWords(described)), [described])
+  // The name follows the drawing on screen, which stays while the next
+  // stage arrives, so the counts in it are those of the stage it names.
+  const shown = STAGES.find((s) => s.stage === drawing?.stage) ?? current
+  const name =
+    counts !== null && words !== null
+      ? paneName(shown, counts)
+      : `The ${current.label} stage, ${current.gloss}`
+  const toggleLine = useCallback((label: string, open: boolean): void => {
+    setOpenLines((was) => {
+      const next = new Set(was)
+      if (open) next.add(label)
+      else next.delete(label)
+      return next
+    })
+  }, [])
 
   const idle = state.status === 'waiting' && !loading
   return (
@@ -225,7 +343,7 @@ export default function StageView({ project, engine, read }: Props): JSX.Element
         className="stage-pane"
         tabIndex={0}
         role="group"
-        aria-label={`The ${current.label} stage, ${current.gloss}`}
+        aria-label={name}
         aria-describedby="stage-keys"
         onKeyDown={onKeyDown}
         onPointerDown={(event) => {
@@ -270,6 +388,15 @@ export default function StageView({ project, engine, read }: Props): JSX.Element
       <p id="stage-keys" className="hint">
         Zoom with the wheel or plus and minus, pan by dragging or with the arrows, 0 to fit.
       </p>
+      {words !== null && (
+        <NetworkInWords
+          words={words}
+          open={wordsOpen}
+          onToggle={setWordsOpen}
+          openLines={openLines}
+          onToggleLine={toggleLine}
+        />
+      )}
     </section>
   )
 }

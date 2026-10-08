@@ -252,8 +252,11 @@ Result: ____
 headers of the routes table. Open the **Mode** select and look at its
 options without changing it. In **Where the routes run**, press
 **gtfs2graph**, then **loom**; press Tab until the drawing has focus, and
-press `+`, `-`, an arrow and `0`. Press Tab on through cell 02 until **Skip
-past the map** appears over the map's top edge, and then **Enter**.
+press `+`, `-`, an arrow and `0`. Press Tab once more to reach **The network
+in words**, press **Enter** on it, then **Enter** on one **Stations on
+`<line>`, in order**, and **Enter** on **The network in words** again to close
+it. Press Tab on through cell 02 until **Skip past the map** appears over the
+map's top edge, and then **Enter**.
 
 **See.**
 - The fields say Feed `la-metro-rail`, Mode `<the card's mode>` and Agency
@@ -286,6 +289,19 @@ past the map** appears over the map's top edge, and then **Enter**.
   and fitting again from the keyboard, as the line under it says: "Zoom
   with the wheel or plus and minus, pan by dragging or with the arrows, 0
   to fit."
+- **The network in words**, a button one Tab after the drawing's pane,
+  closed to begin with. The pane's own name (read in a screen reader or the
+  browser's accessibility tree) is the stage, its description and the
+  counts: "The `<stage>` stage, `<its description>`: `<L>` lines, `<S>`
+  stations". Opened, it shows one sentence, "On the day drawn,
+  the longest trip on one line takes `<m>` minutes: the `<line>` from `<A>`
+  to `<B>`.", and a list with one item per line in the engine's order:
+  "`<line>`: from `<A>` to `<B>`, `<n>` stations; meets `<X>` at `<P>`, and
+  `<Y>` and `<Z>` at `<Q>`." (or "meets no other line."; a loop reads "a loop
+  of `<n>` stations through `<A>`"). Each item has a button **Stations on
+  `<line>`, in order**, closed to begin with; pressing it lists the line's
+  stations in order. **check:** the day in the first sentence is the day
+  cell 03 says is drawn, and no station list is open until you open one.
 - Tab on past cell 02 reaches **Skip past the map** over the top edge of
   the map, which sits after cell 02, and **Enter** on it puts focus on cell
   03's heading, "03 Frame and service day", without passing through the

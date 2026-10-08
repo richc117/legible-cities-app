@@ -1,11 +1,14 @@
 import type { Methods, RenderStageResult, StageName } from '../../../shared/protocol'
 
-// One stage drawing per layout, stage and width per session. The engine
+// One stage drawing per layout, stage, width and day per session. The engine
 // draws a stored stage on request (render.stage, E15) and the answer does
 // not change while the id and the set behind it stand; the set's `made`
 // is part of the key, so a forced re-layout under the same id is drawn
 // anew. The SVG is the engine's and is handed to a sandboxed frame; the
-// counts are the engine's and are shown as sent.
+// counts are the engine's and are shown as sent. The day is part of the key
+// because the description's minutes are of a day (issue 105): the same
+// drawing asked for another day answers other minutes, and the engine reads
+// a timetable to say them.
 
 export interface StageClient {
   request(
@@ -23,11 +26,16 @@ export function stageFor(
   made: string | null,
   stage: StageName,
   width: number,
+  date: string | null = null,
 ): Promise<RenderStageResult> {
-  const slot = `${key}/${layout}/${made ?? ''}/${stage}/${width}`
+  const slot = `${key}/${layout}/${made ?? ''}/${stage}/${width}/${date ?? ''}`
   const held = cache.get(slot)
   if (held !== undefined) return held
-  const pending = client.request('render.stage', { key, layout, stage, width }).result
+  // Without a day the field is left out: the engine refuses a null, and
+  // answers an untimed description, which the words leave out.
+  const params: Methods['render.stage']['params'] = { key, layout, stage, width }
+  if (date !== null) params.date = date
+  const pending = client.request('render.stage', params).result
   cache.set(slot, pending)
   pending.catch(() => cache.delete(slot))
   return pending
@@ -36,6 +44,48 @@ export function stageFor(
 /** For a test: nothing remembered. */
 export function forgetAllStages(): void {
   cache.clear()
+}
+
+// What the pane is made of, kept here beside its arithmetic and not in
+// `StageView.tsx`: the end-to-end specs import these, and a spec loads its
+// imports with Playwright's own loader, which cannot read a component that
+// imports an icon through `import.meta.glob`. A file under `tests/e2e` or
+// `tests/support` imports this module and never a component.
+
+export const STAGES: { stage: StageName; label: string; gloss: string }[] = [
+  { stage: 'gtfs2graph', label: 'gtfs2graph', gloss: 'as the feed draws its routes' },
+  { stage: 'loom', label: 'loom', gloss: 'lines sorted onto shared track' },
+]
+
+/**
+ * What the two buttons are, said once under the heading (issue 282). The
+ * names stay the engine's, so a stage here matches a stage in its log; the
+ * sentence is what says what they are and how they relate to the map below. `topo` and `octi` are not offered: topo is
+ * gtfs2graph with platforms merged, a difference of counts and not of
+ * picture, and octi is the schematic the viewer already shows.
+ */
+export const STAGES_EXPLAINED =
+  'The map below is the schematic. These are two earlier stages of the same layout, drawn where the routes really run: gtfs2graph is the network as the feed draws it, and loom is the same network after the engine has sorted the lines onto shared track, before anything is straightened. The names are the engine’s, so a stage here matches a stage in its log.'
+
+/** The pane's frame takes no permission at all: the whole of its sandbox. */
+export const STAGE_SANDBOX = ''
+
+/** The width the engine draws at, whatever the pane's: wide enough that a large network stays sharp when zoomed. */
+export const DRAW_WIDTH = 1600
+
+/**
+ * The frame's document. srcdoc is parsed as HTML whatever it holds, so the
+ * engine's SVG would land inline in a body with the browser's margin and
+ * grow scrollbars; this is the chrome around it, not the drawing. The
+ * frame's policy is the interface's own (a srcdoc document inherits it),
+ * so loosening csp() in the main process loosens this frame too.
+ */
+export function frameDocument(svg: string): string {
+  return (
+    '<!doctype html><style>html,body{margin:0;overflow:hidden;background:transparent}' +
+    'svg{display:block}</style>' +
+    svg
+  )
 }
 
 // The pane's arithmetic, pure so a test can hold it: a transform of the
