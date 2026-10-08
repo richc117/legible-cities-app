@@ -59,17 +59,28 @@ describe('reading a record from before the sizes were the engine’s (version 1)
     expect(read({ version: 1, style: { ...OLD, labelSize: 'big' } }).style).toEqual({})
   })
 
-  it('keeps any other number as one that was set', () => {
-    // If anyone ever wrote one by hand, it is theirs and it is kept.
+  it('keeps any other number as one that was set, and only that one', () => {
+    // If anyone ever wrote one by hand, it is theirs and it is kept. It is
+    // read field by field: the three old defaults beside it are still unset,
+    // and are not sent as choices (8, 11 and 26 are not the engine's).
+    // Mutation: the all-or-nothing reading, which keeps all four.
     expect(read({ version: 1, style: { ...OLD, lineWidth: 12 } }).style).toEqual({
-      ...OLD,
       lineWidth: 12,
     })
     expect(read({ version: 1, style: { ...OLD, labelSize: 27 } }).style).toEqual({
-      ...OLD,
       labelSize: 27,
     })
+    expect(read({ version: 1, style: { ...OLD, stationRadius: 5 } }).style).toEqual({
+      stationRadius: 5,
+    })
     expect(read({ version: 1, style: { lineWidth: 12 } }).style).toEqual({ lineWidth: 12 })
+    // Every one changed: every one kept.
+    expect(
+      read({
+        version: 1,
+        style: { lineWidth: 11, stationRadius: 9, interchangeRadius: 12, labelSize: 27 },
+      }).style,
+    ).toEqual({ lineWidth: 11, stationRadius: 9, interchangeRadius: 12, labelSize: 27 })
   })
 
   it('keeps a field the old build could not have written, even beside the four', () => {

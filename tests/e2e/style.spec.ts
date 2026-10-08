@@ -20,7 +20,8 @@
 // - `styleSent` sends one radius alone (drop the pair): 'sends both radii'.
 // - `readStyle` loses its equal-to-old-defaults rule: 'a project made before'.
 // - `commitDrafts` stops judging the range and the pair (and `blocked` is
-//   false): 'refuses a figure outside the range' and 'sends both radii'.
+//   false): 'refuses a figure outside the range' and 'a station radius above
+//   the interchange radius waits for it'.
 // - `LayoutRun.restyle` calls `completeStyle` before the map call: 'one map
 //   build ... written once the map carries it'.
 // - a style source added to `stalenessOf`: 'one map build ... never stale'.
@@ -275,7 +276,6 @@ test('refuses a figure outside the range beside the field, in the engine’s sen
   await withApp(engineHome, async (page) => {
     await laidOut(page)
     const before = mapBuilds(engineHome).length
-    const recordBefore = readRecord(engineHome)
 
     await set(page, 'Line width', '30')
     const alert = sizes(page).getByRole('alert')
@@ -294,16 +294,23 @@ test('refuses a figure outside the range beside the field, in the engine’s sen
       "style.label_size must be from 6 to 32, in SVG user units at the map's width",
     )
 
-    // Mending it clears the sentence and sends the figure.
+    // Longer than the delay a commit waits before it draws: neither refusal
+    // reached the engine or the record.
+    await page.waitForTimeout(1_000)
+    expect(mapBuilds(engineHome), 'nothing was sent').toHaveLength(before)
+    expect(readRecord(engineHome).style, 'and nothing was stored').toEqual({})
+
+    // Mending the line width sends it; the other figure, still not one,
+    // waits as typed.
     await set(page, 'Line width', '12')
     await expect(drawnInSizes(page)).toBeVisible({ timeout: 30_000 })
-
-    // Nothing in between reached the engine, or the record.
-    await page.waitForTimeout(1_000)
     const draws = mapBuilds(engineHome)
     expect(draws, 'one build, for the figure that was fine').toHaveLength(before + 1)
     expect(draws[draws.length - 1].params.style).toEqual({ line_width: 12 })
-    expect(recordBefore.style).toEqual({})
+    await expect
+      .poll(() => readRecord(engineHome).style, { message: 'and only that figure was stored' })
+      .toEqual({ lineWidth: 12 })
+    await expect(field(page, 'Label size')).toHaveValue('big')
   })
 })
 
@@ -351,7 +358,8 @@ test('the sizes are still there when the project is opened again, and opening dr
     await expect(field(page, 'Margin')).toHaveValue('40')
     await expect(field(page, 'Label size'), 'the rest are the engine’s own').toHaveValue('11')
     await expect(reset(page)).toBeEnabled()
-    await expect(cellHeading(page, 'style')).toContainText('Warm dark, sizes of your own')
+    // The row carries its sentence only while the cell is collapsed (DESIGN
+    // 8.2), so it is read after the cell is closed, never while it is open.
     await closeCell(page, 'style')
     await expect(cellHeading(page, 'style')).toContainText('Warm dark, sizes of your own')
     expect(mapBuilds(engineHome), 'opening a project builds nothing').toHaveLength(built)

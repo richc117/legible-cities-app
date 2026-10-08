@@ -21,6 +21,7 @@ import {
   FRAME_SENTENCE,
   isPending,
   nextStyleStep,
+  stoppedRestyle,
   STYLE_FIELDS,
   UNIT_SENTENCE,
   type Drafts,
@@ -158,8 +159,18 @@ export default function StyleFields({
   // a change made while the build ran is waiting on the same timer, and
   // letting it through would build sizes a person had just been told the
   // project did not keep.
+  //
+  // **Only at the moment the run stops** (`stoppedRestyle`), not for as long
+  // as it stays stopped. The run keeps its failed or cancelled state until
+  // the next one starts, and a record written for another reason - a rename,
+  // an export option - is a new `project.style` reference: acting on that
+  // would snap back, and cancel, a size committed afterwards and waiting for
+  // an export to let go of the page.
+  const was = useRef(runState)
   useEffect(() => {
-    if (restyled && (runState === 'cancelled' || runState === 'failed')) {
+    const before = was.current
+    was.current = runState
+    if (stoppedRestyle(before, runState, restyled)) {
       schedule.cancel()
       setView(viewOf(project.style))
     }

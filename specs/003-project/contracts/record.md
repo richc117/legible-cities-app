@@ -46,10 +46,10 @@ The on-disk form of `ProjectRecord` (`data-model.md`), version 2:
   version-1 record held four numbers, `10, 8, 11, 26`, which the app wrote
   at creation, never sent and called the engine's when they were not, and
   sending them would have redrawn every existing project. So a version-1
-  record whose four numbers are all those - one missing counting as its
-  old value - reads as setting nothing, and any other number in one of the
-  four is kept as set; a version-2 record is read as written, those
-  numbers included. A build that does not know version 2 reads the record
+  record is read field by field: a number equal to its old default is
+  unset, and any other number in one of the four is kept as set, so one
+  number written by hand never sends the other three old defaults as
+  choices; a version-2 record is read as written, those numbers included. A build that does not know version 2 reads the record
   as read-only. The colours the engine also accepts are not here and are
   never sent (ADR-049).
 - Readers accept a missing optional field and refuse a `version` above 2.

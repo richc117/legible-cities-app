@@ -1751,14 +1751,51 @@ test('a release, installed, through docs/acceptance.md', async () => {
         REBUILD_MS,
         () => 'the line width of 12 was never written to the project',
       )
+      await log.soft('the redraw sentence, and the field keeps the figure', async () => {
+        expect((await saidSoFar(window)).slice(mark2)).toContain(
+          'Drawn in the sizes you chose, from the stored layout. The stations have not moved.',
+        )
+        await expect(width).toHaveValue('12')
+      })
+      // The row carries its sentence only while the cell is collapsed.
+      await closeCell(window, 'style')
+      await log.soft('collapsed, the row says the sizes are the person’s', () =>
+        expect(cellHeading(window, 'style').locator('.cell-summary')).toHaveText(
+          'Warm dark, sizes of your own',
+        ),
+      )
+      await openCell(window, 'style')
+      // The pair of radii, as the checklist asks: 8 against the interchange
+      // radius's own 6 is refused beside the field and nothing is stored,
+      // and 9 for the interchange radius takes both in one redraw.
+      const station = sizes.getByLabel('Station radius', { exact: true })
+      await station.fill('8')
+      await station.press('Enter')
       await log.soft(
-        'the redraw sentence, and the cell’s row says the sizes are the person’s',
+        'a station radius of 8 against the interchange radius’s 6 is refused beside the field, and nothing is stored',
         async () => {
-          expect((await saidSoFar(window)).slice(mark2)).toContain(
-            'Drawn in the sizes you chose, from the stored layout. The stations have not moved.',
+          await expect(sizes.getByRole('alert')).toHaveText(
+            'style.interchange_radius (6) must not be below style.station_radius (8); a field left out counts as its default, so send both',
           )
-          await expect(width).toHaveValue('12')
+          await expect(station).toHaveAttribute('aria-invalid', 'true')
+          const kept = (await recordOf(window, LA)).style
+          expect(kept.stationRadius, 'the station radius was not stored').toBeUndefined()
+          expect(kept.interchangeRadius, 'nor the interchange radius').toBeUndefined()
         },
+      )
+      const interchange = sizes.getByLabel('Interchange radius', { exact: true })
+      await interchange.fill('9')
+      await interchange.press('Enter')
+      await until(
+        async () => {
+          const { stationRadius, interchangeRadius } = (await recordOf(window, LA)).style
+          return stationRadius === 8 && interchangeRadius === 9 ? true : undefined
+        },
+        REBUILD_MS,
+        () => 'the pair of radii, 8 and 9, was never written to the project',
+      )
+      await log.soft('the refusal is gone once the pair agrees', () =>
+        expect(sizes.getByRole('alert')).toHaveCount(0),
       )
       await sizes.getByRole('button', { name: 'Reset to the engine’s sizes', exact: true }).click()
       await until(

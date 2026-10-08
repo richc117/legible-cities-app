@@ -8,6 +8,8 @@
 // its map is the map it always was. Then the fields: what a commit reads,
 // refuses and applies, before anything is sent.
 
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   commitDrafts,
@@ -17,6 +19,7 @@ import {
   nextStyleStep,
   parseFigure,
   sizesWords,
+  stoppedRestyle,
   mapStyle,
   styleParams,
   type Drafts,
@@ -347,5 +350,38 @@ describe('what the collapsed row adds to the theme', () => {
     expect(sizesWords({})).toBeNull()
     expect(sizesWords({ ...DEFAULT_STYLE })).toBeNull()
     expect(sizesWords({ padding: 0 })).toBe('sizes of your own')
+  })
+})
+
+describe('when a redraw for sizes has stopped', () => {
+  it('is the change into failed or cancelled, and only a restyle’s', () => {
+    for (const now of ['failed', 'cancelled'] as const) {
+      expect(stoppedRestyle('running', now, true), now).toBe(true)
+      expect(stoppedRestyle('idle', now, true), now).toBe(true)
+      expect(stoppedRestyle('running', now, false), `${now}, not a restyle`).toBe(false)
+    }
+    expect(stoppedRestyle('running', 'done', true)).toBe(false)
+    expect(stoppedRestyle('idle', 'running', true)).toBe(false)
+  })
+
+  it('is not true again for as long as the run stays stopped', () => {
+    // Mutation: the state read without remembering the last one. The run
+    // keeps `failed` or `cancelled` until the next run starts, and a record
+    // written for another reason (a rename, an export option) is a new style
+    // reference: the panel would be snapped back and its waiting commit
+    // cancelled each time, the size a person committed during an export lost.
+    for (const state of ['failed', 'cancelled'] as const)
+      expect(stoppedRestyle(state, state, true), state).toBe(false)
+  })
+
+  it('is what the panel asks, with the last state kept in a ref', () => {
+    // The pure part is held above; this holds that the panel uses it and
+    // keeps the state it compares with, since nothing here renders it.
+    const source = readFileSync(
+      resolve(__dirname, '../../src/renderer/src/StyleFields.tsx'),
+      'utf8',
+    )
+    expect(source).toContain('stoppedRestyle(before, runState, restyled)')
+    expect(source).toContain('was.current = runState')
   })
 })

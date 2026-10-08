@@ -339,8 +339,8 @@ export const DEFAULT_STYLE: Readonly<Required<ProjectStyle>> = {
 
 /**
  * What a version-1 record stored for the four numbers it had, which were
- * never sent. A record whose four are all these is a project nobody chose
- * anything for, and is read as setting nothing (`readStyle`).
+ * never sent. A number equal to its old one is a number nobody chose, and is
+ * read as unset, field by field (`readStyle`).
  */
 const OLD_STYLE = {
   lineWidth: 10,
@@ -880,9 +880,10 @@ export function parseRecord(json: unknown): Parsed {
  * A version-1 record stored four numbers, `10, 8, 11, 26`, which were
  * written by this app at creation, were never sent, and were not the
  * engine's. Sending them would change every existing map (ADR-049), so a
- * record whose four are all those - a missing one counting as its old value,
- * as the old reader filled it - set nothing and is read as unset. Any other
- * value in one of the four is a number somebody wrote, and is kept as set.
+ * version-1 record is read **field by field**: a number equal to its old
+ * default is unset, and any other is a number somebody wrote, and is kept as
+ * set. Per field and not all-or-nothing, so that one number written by hand
+ * never sends the other three old defaults as if they were choices.
  */
 function readStyle(value: unknown, version: number): ProjectStyle {
   const stored = isObject(value) ? value : {}
@@ -892,9 +893,8 @@ function readStyle(value: unknown, version: number): ProjectStyle {
     if (typeof field === 'number' && Number.isFinite(field)) style[key] = field
   }
   if (version < 2) {
-    const old = Object.keys(OLD_STYLE) as (keyof typeof OLD_STYLE)[]
-    if (old.every((key) => (style[key] ?? OLD_STYLE[key]) === OLD_STYLE[key]))
-      for (const key of old) delete style[key]
+    for (const key of Object.keys(OLD_STYLE) as (keyof typeof OLD_STYLE)[])
+      if (style[key] === OLD_STYLE[key]) delete style[key]
   }
   return style
 }
