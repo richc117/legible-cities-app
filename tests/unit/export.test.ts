@@ -37,11 +37,18 @@ import type { Notification } from '../../src/main/sidecar'
 import type { CaptureJob } from '../../src/shared/capture'
 import { EngineError, ERROR_CODES } from '../../src/shared/engine'
 import {
+  ALT_MAX,
+  CAPTION_MAX,
+  CLOCK_CORNERS,
+  copyChoice,
   DEFAULT_CHOICE,
   OFFERED_PRESETS,
   STORYBOARD_NAMES,
   planOptions,
   sentChoice,
+  trimAsEngine,
+  validateAlt,
+  validateCaption,
   validateChoiceOptions,
   validateExportChoice,
   type ExportChoice,
@@ -970,6 +977,96 @@ describe('what the export tab chooses', () => {
     s.exporter.cancel('tok-2')
   })
 
+  // Issue 352: the caption and the corner are plan options; the alt text is
+  // not, and goes to the encode, in the provenance, whatever kind of file
+  // the preset makes.
+  it('plans with the caption and the corner, and sends the alt text trimmed in the encode, for a video, a GIF and a still', async () => {
+    const cases: [ExportChoice['preset'], Partial<PlannedJob>][] = [
+      ['instagram-reel', {}],
+      [
+        'linkedin-gif',
+        { preset: 'linkedin-gif', format: 'gif', filename: 'la-metro-rail-linkedin-gif.gif' },
+      ],
+      [
+        'instagram-post',
+        {
+          preset: 'instagram-post',
+          mode: 'still',
+          beats: [],
+          at: 7 * 3600,
+          storyboard: '',
+          format: 'png',
+          filename: 'la-metro-rail-instagram-post.png',
+        },
+      ],
+    ]
+    for (const [name, planned] of cases) {
+      const h = harness()
+      const choice: ExportChoice = {
+        preset: name,
+        options: { caption: 'Rush hour in Los Angeles', clock_corner: 'bottom-left' },
+        alt: '  A schematic of the rail lines.\n  ',
+      }
+      const { result } = h.exporter.start('tok-1', 'abcdefghijk1', choice)
+      await until(`the plan of ${name}`, () => h.eng.requests.length === 1)
+      const options = (h.eng.requests[0].params as { options: Record<string, unknown> }).options
+      expect(options, name).toMatchObject({
+        caption: 'Rush hour in Los Angeles',
+        clock_corner: 'bottom-left',
+      })
+      expect(options, 'the alt is not a plan option').not.toHaveProperty('alt')
+      h.eng.requests[0].resolve(plan(planned))
+      await until(`the capture of ${name}`, () => h.cap.calls.length === 1)
+      h.cap.calls[0].finish(name === 'instagram-post' ? 1 : 60)
+      await until(`the encode of ${name}`, () => h.eng.requests.length === 2)
+      expect(
+        (h.eng.requests[1].params as { provenance: unknown }).provenance,
+        `${name}: the sidecar carries the person’s words, trimmed`,
+      ).toEqual({ service_date: '2026-09-08', alt: 'A schematic of the rail lines.' })
+      h.eng.requests[1].resolve({ files: [], sidecar: {} })
+      await result
+    }
+
+    // And none when none was written: the engine writes its own sentence.
+    for (const alt of [undefined, '   ']) {
+      const h = harness()
+      const { result } = h.exporter.start('tok-1', 'abcdefghijk1', {
+        ...REEL,
+        ...(alt === undefined ? {} : { alt }),
+      })
+      await until('the plan', () => h.eng.requests.length === 1)
+      h.eng.requests[0].resolve(plan())
+      await until('the capture', () => h.cap.calls.length === 1)
+      h.cap.calls[0].finish(60)
+      await until('the encode', () => h.eng.requests.length === 2)
+      expect((h.eng.requests[1].params as { provenance: unknown }).provenance).toEqual({
+        service_date: '2026-09-08',
+      })
+      h.eng.requests[1].resolve({ files: [], sidecar: {} })
+      await result
+    }
+  })
+
+  it('previews with the caption and the corner on the plan, and never the alt', async () => {
+    const h = harness()
+    const choice: ExportChoice = {
+      preset: 'linkedin-video',
+      options: { caption: 'Rush hour', clock_corner: 'top-right' },
+      alt: 'A map.',
+    }
+    const answer = h.exporter.preview('abcdefghijk1', choice)
+    await until('the plan', () => h.eng.requests.length === 1)
+    expect((h.eng.requests[0].params as { options: object }).options).toEqual({
+      caption: 'Rush hour',
+      clock_corner: 'top-right',
+      theme: 'dark',
+    })
+    h.eng.requests[0].resolve(
+      plan({ url: 'app://local/projects/abcdefghijk1/la-metro-rail.html?present=1' }),
+    )
+    await expect(answer).resolves.toMatchObject({ ok: true })
+  })
+
   it('makes a JPEG still at standard quality only, read from the engine’s table', async () => {
     // Bluesky's still is the engine's one JPEG preset at v0.8.2; which it is
     // comes from the table, so a table that says otherwise is obeyed.
@@ -1226,6 +1323,181 @@ describe('the choice itself', () => {
       [{ preset: 'x', options: { tag: 'x'.repeat(65) } }, /tag/],
     ] as [unknown, RegExp][])
       expect(validateExportChoice(choice), JSON.stringify(choice)).toMatch(sentence)
+  })
+
+  // Issue 352, ADR-052: a caption, the clock's corner and the sidecar's alt
+  // text. The bounds are the engine's (`CAPTION_MAX` in `export.py`, the
+  // schema's 1,000 on `provenance.alt`), counted in code points.
+  describe('a caption, the clock’s corner and the alt text', () => {
+    it('takes a caption of 1 to 80 characters, every corner, and an alt of 1 to 1,000', () => {
+      expect(CAPTION_MAX).toBe(80)
+      expect(ALT_MAX).toBe(1000)
+      for (const caption of ['a', 'Rush hour', 'x'.repeat(80), '<b>not markup</b>'])
+        expect(validateChoiceOptions({ caption }), caption).toBeNull()
+      expect(validateCaption('x'.repeat(80)), 'the 80th character is the last').toBeNull()
+      for (const clock_corner of CLOCK_CORNERS)
+        expect(validateChoiceOptions({ clock_corner }), clock_corner).toBeNull()
+      for (const alt of ['a', '  spaced  ', 'x'.repeat(1000), '\n a map \n'])
+        expect(
+          validateExportChoice({ preset: 'x', options: {}, alt }),
+          JSON.stringify(alt),
+        ).toBeNull()
+      expect(
+        validateExportChoice({ preset: 'x', options: {}, alt: ' '.repeat(40) + 'x'.repeat(1000) }),
+        'a thousand characters once trimmed is within the bound',
+      ).toBeNull()
+    })
+
+    it('counts in code points, as the engine does, so an emoji is one character', () => {
+      expect(
+        validateCaption('🚆'.repeat(80)),
+        '80 emoji are 160 UTF-16 units and 80 characters',
+      ).toBeNull()
+      expect(validateCaption('🚆'.repeat(81))).toMatch(/this one is 81\.$/)
+      expect(validateAlt('🚆'.repeat(1000))).toBeNull()
+      expect(validateAlt('🚆'.repeat(1001))).toMatch(/1,001 characters/)
+    })
+
+    it('refuses an 81st character and a line break in the engine’s own sentence', () => {
+      expect(validateCaption('x'.repeat(81))).toBe(
+        'A caption is 1 to 80 characters on one line; this one is 81.',
+      )
+      expect(validateCaption('')).toBe(
+        'A caption is 1 to 80 characters on one line; this one is 0.',
+      )
+      // The two a keyboard makes, and the two Unicode adds, which a
+      // single-line field does not strip.
+      for (const mark of ['\n', '\r', '\u2028', '\u2029'])
+        expect(validateCaption(`two${mark}lines`), JSON.stringify(mark)).toBe(
+          'A caption is 1 to 80 characters on one line; this one has a line break.',
+        )
+      expect(validateCaption(80)).toBe(
+        'A caption is 1 to 80 characters on one line; this one is not text.',
+      )
+      for (const [options, sentence] of [
+        [{ caption: 'x'.repeat(81) }, /this one is 81/],
+        [{ caption: 'a\nb' }, /has a line break/],
+        [{ caption: '' }, /this one is 0/],
+        [{ caption: 7 }, /not text/],
+        [
+          { clock_corner: 'middle' },
+          /corner must be one of top-left, top-right, bottom-left, bottom-right/,
+        ],
+        [{ clock_corner: 'top' }, /corner/],
+      ] as [unknown, RegExp][])
+        expect(validateChoiceOptions(options), JSON.stringify(options)).toMatch(sentence)
+    })
+
+    it('refuses an alt that is blank, too long once trimmed, or not text, when it is typed', () => {
+      expect(validateAlt('')).toMatch(
+        /empty; leave it out, and the sidecar keeps the description the engine writes/,
+      )
+      expect(validateAlt(' \n\t ')).toMatch(/empty/)
+      expect(validateAlt('x'.repeat(1001))).toBe(
+        'The alt text is 1,001 characters; it may be at most 1,000.',
+      )
+      expect(validateAlt(3)).toMatch(/must be text/)
+    })
+
+    it('refuses a stored alt that is too long or not text, and reads a blank one as none', () => {
+      for (const alt of ['x'.repeat(1001), 7, null])
+        expect(
+          validateExportChoice({ preset: 'x', options: {}, alt }),
+          JSON.stringify(alt),
+        ).not.toBeNull()
+      // A blank one is no alt text, and does not cost the record its preset
+      // and options (`parseRecord` keeps a choice whole or not at all).
+      for (const alt of ['', '   ', ' \n '])
+        expect(
+          validateExportChoice({ preset: 'x', options: {}, alt }),
+          JSON.stringify(alt),
+        ).toBeNull()
+    })
+
+    it('trims as the engine does: Python’s strip also takes U+001C to U+001F and U+0085', () => {
+      const FILE_SEPARATORS = '\u001c\u001d\u001e\u001f\u0085'
+      expect(trimAsEngine(` \n${FILE_SEPARATORS} A map. ${FILE_SEPARATORS}\t`)).toBe('A map.')
+      expect(trimAsEngine(FILE_SEPARATORS)).toBe('')
+      expect(trimAsEngine('a \u001c b'), 'only the ends').toBe('a \u001c b')
+      // An alt of only those is blank to the engine, so it is refused at the
+      // field and dropped when sent, not sent to be refused after the capture.
+      expect(validateAlt(FILE_SEPARATORS)).toMatch(/empty/)
+      expect(validateAlt(`${FILE_SEPARATORS}A map.${FILE_SEPARATORS}`)).toBeNull()
+      expect(
+        sentChoice({ preset: 'x', options: {}, alt: FILE_SEPARATORS }, shapeOf('x')),
+      ).not.toHaveProperty('alt')
+      expect(
+        sentChoice({ preset: 'x', options: {}, alt: `\u0085 A map.\u001f` }, shapeOf('x')).alt,
+      ).toBe('A map.')
+    })
+
+    it('keeps the alt beside the options through a copy, and never among them', () => {
+      const choice: ExportChoice = { preset: 'x', options: { caption: 'Hi' }, alt: 'A map.' }
+      expect(copyChoice(choice)).toEqual(choice)
+      expect(copyChoice(choice), 'a copy, not the caller’s object').not.toBe(choice)
+      expect(validateChoiceOptions({ alt: 'A map.' }), 'alt is not a plan option').toMatch(
+        /alt is not an option/,
+      )
+      expect(copyChoice({ preset: 'x', options: {} })).not.toHaveProperty('alt')
+    })
+
+    const shapeOf = (name: string): Preset => {
+      const found = ENGINE_TABLES.presets.find((p) => p.name === name)
+      if (found === undefined) throw new Error(`no ${name} in the pinned table`)
+      return found
+    }
+
+    it('sends the caption and the corner as they are, and invents no corner', () => {
+      // Nothing set, nothing sent: the engine's default for the preset is
+      // the engine's to apply, so an export that asks for none of the three
+      // plans exactly what it planned before.
+      for (const name of [
+        'instagram-reel',
+        'linkedin-video',
+        'instagram-post',
+        'bluesky',
+      ] as const) {
+        const options = planOptions({ preset: name, options: {} }, shapeOf(name), 'dark')
+        expect(options, name).toEqual({ theme: 'dark' })
+        expect(options).not.toHaveProperty('clock_corner')
+        expect(options).not.toHaveProperty('caption')
+        expect(options).not.toHaveProperty('alt')
+      }
+      // Set, sent as they are, on every kind of preset, the preview's included.
+      for (const name of ['instagram-reel', 'linkedin-video', 'instagram-post'] as const) {
+        const preset = shapeOf(name)
+        const choice: ExportChoice = {
+          preset: name,
+          options: { caption: 'Rush hour', clock_corner: 'bottom-left' },
+          alt: 'A map of rail lines.',
+        }
+        expect(planOptions(choice, preset, 'light'), name).toEqual({
+          caption: 'Rush hour',
+          clock_corner: 'bottom-left',
+          theme: 'light',
+        })
+        expect(planOptions(choice, preset, 'light', true)).toMatchObject({
+          caption: 'Rush hour',
+          clock_corner: 'bottom-left',
+          safe: true,
+        })
+      }
+    })
+
+    it('sends the alt trimmed, for a video, a GIF and a still alike, and none when blank', () => {
+      for (const name of ['instagram-reel', 'linkedin-gif', 'instagram-post', 'bluesky'] as const) {
+        const sent = sentChoice(
+          { preset: name, options: {}, alt: '  A map of rail.\n ' },
+          shapeOf(name),
+        )
+        expect(sent.alt, name).toBe('A map of rail.')
+      }
+      expect(
+        sentChoice({ preset: 'x', options: {}, alt: ' \n ' }, shapeOf('x')),
+        'a record that holds a blank one sends none',
+      ).not.toHaveProperty('alt')
+      expect(sentChoice({ preset: 'x', options: {} }, shapeOf('x'))).not.toHaveProperty('alt')
+    })
   })
 
   it('adds safe to a plan only when the preview asks', () => {

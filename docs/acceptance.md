@@ -521,6 +521,14 @@ Result: ____
   frame, with the parts Instagram covers shaded, and a caption under it,
   "9:16, 1080 x 1920." and that the shading is guidance and not in the
   export. The map above it keeps running where it was.
+- Among the choices, a **Caption** field, a **Clock corner** select and,
+  near the foot, **Alt text for the file’s sidecar**. On the reel
+  **Clock corner** lists "top right (the preset’s own)" and "bottom left"
+  only, with "The platform’s own buttons cover the bottom right, so it is
+  not offered. Bottom left is inside its bottom zone, where they can cover
+  the clock; top right keeps it clear. The title and a caption sit top
+  left, so the clock is not offered there while either is drawn." under it.
+  Leave all three as they are for this step: the reel is timed as it comes.
 - A progress line with `plan`, `capture` and `encode`, the current stage
   marked as it moves through them and each filled when done, and
   **Cancel**. Beside it the sentence changes as the export goes, among
@@ -547,18 +555,34 @@ Result: ____
 
 ### 12. Cell 06, Export: a post and a GIF
 
-**Do.** Choose **Preset** "instagram-post: 1080 by 1350, still, PNG" and
-press **Export**. Then choose "instagram-reel-gif: 630 by 1120, GIF" and
-press **Export**.
+**Do.** Choose **Preset** "instagram-post: 1080 by 1350, still, PNG". In
+**Caption** type any 60 characters and then an 81st, and read what appears
+under the field. Replace them with `Rush hour on the Red Line` and press
+Tab. In **Alt text for the file’s sidecar** type
+`A schematic of the Los Angeles rail lines.` with a space before it and one
+after, and click elsewhere. Press **Export**. Then choose
+"instagram-reel-gif: 630 by 1120, GIF" and press **Export**.
 
 **See.**
 - For the post: a **View** select and a **Start time** field appear, and
   **Storyboard** goes; the preview in cell 06 changes shape with no shaded
-  parts.
+  parts and, a moment after you left **Caption**, shows
+  `Rush hour on the Red Line` under its title. **Clock corner** is
+  unavailable, with "The clock is off, so it has no corner to choose.",
+  until **The clock** is checked; checked, it lists "top right", "bottom
+  left" and "bottom right (the preset’s own)".
   It ends with "Exported la-metro-rail-instagram-post.png."
-- For the GIF: **Storyboard** returns; it ends with
+- **Caption** counts as it nears its bound and refuses beside the field:
+  at the 60th character "60 of 80" is added under it, and at an 81st that
+  line is replaced by "A caption is 1 to 80 characters on one line; this
+  one is 81." and the preview does not take it.
+- For the GIF: **Storyboard** returns; **Clock corner** lists "top right",
+  "bottom left" and "bottom right (the preset’s own)", this preset having
+  no shaded parts to keep the clock out of the bottom right; the caption
+  and the alt text are the project’s own and stay as they were. It ends with
   "Exported la-metro-rail-instagram-reel-gif.gif."
-- **check:** open both files. The post is a still of the map, the GIF plays.
+- **check:** open both files. The post is a still of the map with
+  `Rush hour on the Red Line` under its title, the GIF plays with it.
 
 Result: ____
 
@@ -582,6 +606,10 @@ and press **Reveal** on the newest.
   steps 11 and 12, each with a `.json` file of the same name beside it.
 - On Windows, **check:** the window comes to the front, and the file is
   selected rather than only its folder opened.
+- **check:** open the post’s sidecar, `la-metro-rail-instagram-post.png.json`.
+  Its `alt` is `A schematic of the Los Angeles rail lines.`, without the
+  space at either end. The reel’s, made before one was typed, holds the
+  engine’s own sentence in its place.
 
 Result: ____
 

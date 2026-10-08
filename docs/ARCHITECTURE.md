@@ -1354,8 +1354,9 @@ a scale the capture does not do, a first beat that pins no clock - and is
 refused before a window exists. The frames go to
 `<SCHEMATIC_HOME>/frames/<token>/`, a folder that exists only while the
 export runs; `export.encode` gets the plan back unchanged, that folder, the
-file to write and that same drawn day as provenance, and writes the file
-with its sidecar beside it. The drawn day and not the record's: since
+file to write and that same drawn day as provenance - with the choice's alt
+text beside it, trimmed, where a person wrote one (issue 352) - and writes
+the file with its sidecar beside it. The drawn day and not the record's: since
 A5.5-15 a person can choose a day and not draw it, the capture navigates to
 the page the last draw wrote, and stale never blocks an export (ADR-045),
 so reading `date` here would compute the beats and the clock for one day,
@@ -1419,10 +1420,12 @@ Every list is the engine's. `export.presets` and `export.storyboards` are
 asked once while the engine stays up, and the presets are narrowed to
 `OFFERED_PRESETS` - the thirteen social ones, each checked against the
 generated `PresetName`; the three `portfolio-*` presets are the published
-site's. The choice - `{ preset, storyboard?, options }`, where the options
+site's. The choice - `{ preset, storyboard?, options, alt? }`, where the options
 are the engine's `ExportOptions` without the theme (the project's), the
 safe zones (the app's, for a preview only), the storyboard (beside them) and
-the fade (not offered) - is written to the record the moment it is made,
+the fade (not offered), and `alt` is the sidecar's alt text, which is not a
+plan option and travels in the encode's provenance (issue 352) - is written
+to the record the moment it is made,
 a typed field when it is committed, through `setExport`. An option set back
 to what the engine does without it is removed rather than sent. What is
 sent is also narrowed by the preset, from `export.presets`, in the main

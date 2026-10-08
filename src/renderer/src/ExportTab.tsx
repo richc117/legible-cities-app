@@ -11,9 +11,11 @@ import {
 import { VIEWS, type View } from '../../shared/capture'
 import { withoutPaths, type EngineState } from '../../shared/engine'
 import {
+  isClockCorner,
   isOfferedPreset,
   QUALITIES,
   standardQualityOnly,
+  validateAlt,
   validateClock,
   validateTag,
   type ExportChoice,
@@ -28,17 +30,23 @@ import type { ExportRun as Run } from './engine/exportRun'
 import ExportRunView from './ExportRun'
 import {
   byPlatform,
+  cornerNote,
+  cornerWords,
+  defaultCorner,
   defaultsFor,
   exportTablesFor,
   forgetExportTables,
+  offeredCorners,
   plays,
   presetWords,
   PreviewPlanner,
+  readCaption,
   refusalWords,
   sameChoice,
   storyboardWords,
   toggledLines,
   usable,
+  withAlt,
   withOption,
   withPreset,
   withStoryboard,
@@ -55,8 +63,9 @@ import { useSnapshot } from './useSnapshot'
 // The export (A5-01, specs/022-export-tab), cell 06 of the notebook since
 // A5.5-08 and its own tab before that: a preset from the engine's
 // table, grouped by platform; a storyboard for a video or a GIF; the
-// options; and the export itself, with the progress line, cancel and
-// "Reveal" it always had.
+// options, a caption and the clock's corner among them, and the sidecar's
+// alt text beside them (issue 352, ADR-052); and the export itself, with the
+// progress line, cancel and "Reveal" it always had.
 //
 // The panel has no heading of its own: cell 06's row is its heading, and
 // focus a disabling control drops is handed there (`handback`).
@@ -134,7 +143,9 @@ interface Props {
  * picture that does not exist (A5.5-15).
  */
 const keyOf = (choice: ExportChoice, project: ProjectRecord): string =>
-  JSON.stringify([choice, project.theme, drawnDate(project), project.layout])
+  // Without the alt text, which is not on the plan and so changes nothing
+  // the preview is of (issue 352).
+  JSON.stringify([{ ...choice, alt: undefined }, project.theme, drawnDate(project), project.layout])
 
 export default function ExportTab({
   project,
@@ -233,6 +244,18 @@ export default function ExportTab({
   const defaults = preset ? defaultsFor(preset) : null
   // A JPEG still, read from the engine's table: made at standard quality only.
   const jpegStill = preset ? standardQualityOnly(preset) : false
+  // The clock's corner: the ones on offer follow the preset and whether the
+  // title or a caption is drawn, and the one shown is the choice's or, where
+  // the choice names none, the engine's own for the preset (issue 352).
+  const clockOn = defaults !== null && (choice.options.clock ?? defaults.clock)
+  const nameBlock = {
+    title: defaults !== null && (choice.options.title ?? defaults.title),
+    caption: choice.options.caption !== undefined,
+  }
+  const corners = preset ? offeredCorners(preset, nameBlock) : []
+  // `usable` has already taken out a corner this preset would refuse, so the
+  // choice's own is on offer whenever it names one.
+  const corner = choice.options.clock_corner ?? (preset ? defaultCorner(preset) : 'bottom-right')
   const key = keyOf(choice, project)
   const refused = refusal !== null && refusal.key === key
 
@@ -242,11 +265,21 @@ export default function ExportTab({
   const [tagDraft, setTagDraft] = useState(choice.options.tag ?? '')
   const [atProblem, setAtProblem] = useState<string | null>(null)
   const [tagProblem, setTagProblem] = useState<string | null>(null)
+  // The caption and the alt text are typed the same way, and are judged as
+  // they are typed: the engine's sentence is beside the field at the 81st
+  // character and not after it has been left, and nothing refused is ever
+  // written or planned. What is written is what is committed.
+  const [captionDraft, setCaptionDraft] = useState(choice.options.caption ?? '')
+  const [altDraft, setAltDraft] = useState(choice.alt ?? '')
+  const caption = readCaption(captionDraft)
+  const altProblem = altDraft.trim() === '' ? null : validateAlt(altDraft)
   useEffect(() => {
     // A saved choice that fell back takes its fields with it.
     if (dropped === null) return
     setAtDraft('')
     setTagDraft('')
+    setCaptionDraft('')
+    setAltDraft('')
   }, [dropped])
 
   // The preview's planning: debounced, and a late answer dropped. The
@@ -432,10 +465,20 @@ export default function ExportTab({
     if (problem === null && value !== (choice.options.tag ?? ''))
       change(withOption(choice, preset, { key: 'tag', value }))
   }
+  const commitCaption = (): void => {
+    if (preset === null || preset === undefined) return
+    if (caption.problem === null && caption.text !== (choice.options.caption ?? ''))
+      change(withOption(choice, preset, { key: 'caption', value: caption.text }))
+  }
+  const commitAlt = (): void => {
+    if (altProblem === null && altDraft.trim() !== (choice.alt ?? ''))
+      change(withAlt(choice, altDraft))
+  }
   const submit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault()
     commitAt()
     commitTag()
+    commitCaption()
   }
 
   // A read-only project is shown nothing to choose and nothing previewed
@@ -508,7 +551,14 @@ export default function ExportTab({
                 value={choice.preset}
                 disabled={locked}
                 onChange={(name) => {
-                  if (isOfferedPreset(name)) change(withPreset(choice, name))
+                  if (isOfferedPreset(name))
+                    change(
+                      withPreset(
+                        choice,
+                        name,
+                        tables.tables.presets.find((row) => row.name === name),
+                      ),
+                    )
                 }}
               >
                 {byPlatform(tables.tables.presets).map((group) => (
@@ -605,6 +655,67 @@ export default function ExportTab({
                 </label>
               ))}
             </fieldset>
+
+            {/* The words the page draws under the title, and where the clock
+                sits. The corners on offer are the ones the engine will plan
+                for this preset and these options; the rest are absent and
+                not disabled. */}
+            <div className="field">
+              <label htmlFor="export-caption">Caption</label>
+              <div onBlur={commitCaption}>
+                <TextInput
+                  id="export-caption"
+                  value={captionDraft}
+                  onChange={setCaptionDraft}
+                  disabled={locked}
+                  aria-describedby="export-caption-message"
+                  aria-invalid={caption.problem !== null ? true : undefined}
+                />
+              </div>
+              <p
+                id="export-caption-message"
+                className={caption.problem === null ? 'message' : 'message error'}
+              >
+                {caption.problem ??
+                  [
+                    caption.count,
+                    'Drawn under the title, in your words: up to 80 characters, on one line.',
+                  ]
+                    .filter((part) => part !== null)
+                    .join('. ')}
+              </p>
+            </div>
+
+            <div className="field">
+              <span className="field-label" aria-hidden="true">
+                Clock corner
+              </span>
+              {/* Keyed by the preset's own corner, which is what the marked
+                  option's words depend on: the kit copies a select's options
+                  into its own when they are added or taken away and not when
+                  one's words change, and the mark moves only when a preset
+                  with safe zones is chosen or left. A caption or the title
+                  changing the list must not make the select afresh: that
+                  happens as focus is moving to it. */}
+              <Select
+                key={defaultCorner(preset)}
+                label="Clock corner"
+                value={corner}
+                disabled={locked || !clockOn}
+                onChange={(value) => {
+                  if (isClockCorner(value))
+                    change(withOption(choice, preset, { key: 'clock_corner', value }))
+                }}
+              >
+                {corners.map((option) => (
+                  <option key={option} value={option}>
+                    {cornerWords(option)}
+                    {option === defaultCorner(preset) ? ' (the preset’s own)' : ''}
+                  </option>
+                ))}
+              </Select>
+              <p className="message">{cornerNote(preset, clockOn, nameBlock)}</p>
+            </div>
 
             {!plays(preset) && (
               <div className="field">
@@ -720,6 +831,31 @@ export default function ExportTab({
               >
                 {tagProblem ??
                   'Added to the file’s name, so a draft does not replace the last good export.'}
+              </p>
+            </div>
+
+            {/* The sidecar's alt text, in the person's own words. Not a plan
+                option: it goes to the encode, in the provenance. A native
+                field, because the kit has no multi-line one; the kit's own
+                stylesheet draws it. */}
+            <div className="field">
+              <label htmlFor="export-alt">Alt text for the file’s sidecar</label>
+              <textarea
+                id="export-alt"
+                rows={5}
+                value={altDraft}
+                onChange={(event) => setAltDraft(event.target.value)}
+                onBlur={commitAlt}
+                disabled={locked}
+                aria-describedby="export-alt-message"
+                aria-invalid={altProblem !== null ? true : undefined}
+              />
+              <p
+                id="export-alt-message"
+                className={altProblem === null ? 'message' : 'message error'}
+              >
+                {altProblem ??
+                  'Describes the map for someone who cannot see it, in your words. Left blank, the engine writes its own sentence.'}
               </p>
             </div>
 

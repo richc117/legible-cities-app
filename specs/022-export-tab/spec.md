@@ -10,6 +10,20 @@
 > shows the planned address, read cell 06's preview frame, and the map's
 > frame is never sent to a planned address.
 
+> **As of 8 Oct 2026 (issue 352, ADR-052, engine v0.12.0).** Cell 06 also
+> offers a **caption** (`caption`: one line of 1 to 80 characters, refused
+> beside the field in the engine's own sentence), the **clock's corner**
+> (`clock_corner`: only the corners the engine would plan for the preset
+> and for the title and the caption) and the **alt text** for the sidecar.
+> The first two are options, sent in the plan and so on the preview's
+> address; FR-004's list gains them. The alt text is not an `ExportOptions`
+> field: it is `ExportChoice.alt`, stored beside the options, and it travels
+> in `export.encode`'s `provenance.alt`, trimmed, for a video, a GIF and a
+> still alike. Each is written to the record the moment it is made (a typed
+> one when it is committed), and none is sent unless it is set - the
+> engine's default corner is never sent - so a project that sets none of the
+> three plans exactly what it planned before.
+
 **Feature Branch**: `A5-01-export-tab`
 
 **Created**: 2026-09-12

@@ -103,6 +103,11 @@ const CALTRAIN_URL = 'https://data.trilliumtransit.com/gtfs/caltrain-ca-us/caltr
 
 /** The sample city step 4 opens, and the project it makes, by the name the card gives it. */
 const LA = 'LA Metro Rail'
+/** What the checklist has typed into cell 06 in step 12 (issue 352), and the two files it names in step 13. */
+const CAPTION = 'Rush hour on the Red Line'
+const ALT = 'A schematic of the Los Angeles rail lines.'
+const REEL = 'la-metro-rail-instagram-reel.mp4'
+const POST = 'la-metro-rail-instagram-post.png'
 /** What step 17 renames it to. */
 const RENAMED = 'Los Angeles'
 /** The notebook's six cells, in the order they are read (ADR-045). */
@@ -2181,6 +2186,30 @@ test('a release, installed, through docs/acceptance.md', async () => {
           expect((await frameParams(window)).get('safe')).toBe('1')
         },
       )
+      // The three controls issue 352 added are on the screen and, on the
+      // reel, the corner select offers two corners with the sentence about
+      // the platform's buttons. They are left as they are: the reel is timed
+      // as it comes.
+      await log.soft(
+        'a Caption field, a Clock corner select and Alt text, and the reel’s two corners',
+        async () => {
+          await expect(panel.getByLabel('Caption', { exact: true })).toBeVisible()
+          await expect(panel.getByLabel(/^Alt text for the file’s sidecar$/)).toBeVisible()
+          const corner = panel.getByRole('combobox', { name: 'Clock corner' })
+          await expect(corner).toBeVisible()
+          await expect
+            .poll(async () =>
+              (await corner.locator('option').allTextContents()).map((o) => o.trim()),
+            )
+            .toEqual(['top right (the preset’s own)', 'bottom left'])
+          await expect(corner).toHaveValue('top-right')
+          await expect(
+            panel.getByText(
+              'The platform’s own buttons cover the bottom right, so it is not offered. Bottom left is inside its bottom zone, where they can cover the clock; top right keeps it clear. The title and a caption sit top left, so the clock is not offered there while either is drawn.',
+            ),
+          ).toBeVisible()
+        },
+      )
       const mark = (await saidSoFar(window)).length
       const pressed = Date.now()
       // Watched beside the export rather than after it: these hold only while
@@ -2305,6 +2334,65 @@ test('a release, installed, through docs/acceptance.md', async () => {
       await expect
         .poll(async () => (await recordOf(window, LA)).export.preset)
         .toBe('instagram-post')
+
+      // The caption and the alt text the checklist asks for (issue 352). The
+      // field is judged as it is typed and written when it is left.
+      const caption = panel.getByLabel('Caption', { exact: true })
+      const captionWords = panel.locator('#export-caption-message')
+      await log.soft(
+        'Caption counts from 60 and refuses an 81st in the engine’s sentence',
+        async () => {
+          await caption.fill('x'.repeat(60))
+          await expect(captionWords).toContainText('60 of 80')
+          await caption.fill('x'.repeat(81))
+          await expect(captionWords).toHaveText(
+            'A caption is 1 to 80 characters on one line; this one is 81.',
+          )
+        },
+      )
+      await caption.fill(CAPTION)
+      await caption.press('Tab')
+      await log.soft('the caption is in the record and on the preview’s address', async () => {
+        await expect
+          .poll(async () => (await recordOf(window, LA)).export.options.caption, {
+            timeout: 2 * MINUTE,
+          })
+          .toBe(CAPTION)
+        await expect
+          .poll(async () => (await frameParams(window)).get('caption'), { timeout: 2 * MINUTE })
+          .toBe(CAPTION)
+      })
+      const alt = panel.getByLabel(/^Alt text for the file’s sidecar$/)
+      await alt.fill(`  ${ALT}  `)
+      await alt.blur()
+      await log.soft('the alt text is written to the record without its spaces', () =>
+        expect
+          .poll(async () => (await recordOf(window, LA)).export.alt, { timeout: 2 * MINUTE })
+          .toBe(ALT),
+      )
+      // A still has no clock until it is asked for, so its corner has none to
+      // choose; asked for, the post offers three. The clock goes back off
+      // before the export, which is the checklist's own post.
+      await log.soft('Clock corner waits for the clock, and then lists three', async () => {
+        const corner = panel.getByRole('combobox', { name: 'Clock corner' })
+        await expect(corner).toBeDisabled()
+        await expect(
+          panel.getByText('The clock is off, so it has no corner to choose.'),
+        ).toBeVisible()
+        const clock = panel.getByRole('checkbox', { name: 'The clock' })
+        await clock.check()
+        try {
+          await expect(corner).toBeEnabled()
+          await expect
+            .poll(async () =>
+              (await corner.locator('option').allTextContents()).map((o) => o.trim()),
+            )
+            .toEqual(['top right', 'bottom left', 'bottom right (the preset’s own)'])
+        } finally {
+          await clock.uncheck()
+          await expect(corner).toBeDisabled()
+        }
+      })
       const post = await exportTo(log, 'la-metro-rail-instagram-post.png', STILL_MS)
       await log.soft('the post is a PNG', () => {
         expect(readFileSync(post.path).subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')
@@ -2320,6 +2408,23 @@ test('a release, installed, through docs/acceptance.md', async () => {
       await expect
         .poll(async () => (await recordOf(window, LA)).export.preset)
         .toBe('instagram-reel-gif')
+      await log.soft(
+        'the GIF has no shaded parts, so Clock corner lists three, and the words stay',
+        async () => {
+          await expect
+            .poll(async () =>
+              (
+                await panel
+                  .getByRole('combobox', { name: 'Clock corner' })
+                  .locator('option')
+                  .allTextContents()
+              ).map((o) => o.trim()),
+            )
+            .toEqual(['top right', 'bottom left', 'bottom right (the preset’s own)'])
+          await expect(caption).toHaveValue(CAPTION)
+          expect((await recordOf(window, LA)).export.alt).toBe(ALT)
+        },
+      )
       const gif = await exportTo(log, 'la-metro-rail-instagram-reel-gif.gif', EXPORT_MS)
       await log.soft('the GIF has frames', () => {
         expect(readFileSync(gif.path).subarray(0, 6).toString('latin1')).toMatch(/^GIF8[79]a$/)
@@ -2332,6 +2437,9 @@ test('a release, installed, through docs/acceptance.md', async () => {
       })
       log.notAutomated(
         'whether the post is a still of the map and the GIF plays as one (structure checked with the bundled ffprobe).',
+      )
+      log.notAutomated(
+        'whether the caption is drawn under the title, in the preview and in the post and the GIF (the preview’s address and the record carry it, and the alt text is read from the sidecar in step 13).',
       )
     })
 
@@ -2401,6 +2509,22 @@ test('a release, installed, through docs/acceptance.md', async () => {
         )
         expect(basename(dirname(gif))).toBe(LA)
       })
+      await log.soft('the post’s sidecar holds the alt text as typed, trimmed', () => {
+        const post = session.exports.find((path) => basename(path) === POST)
+        if (post === undefined) throw new Error(`${POST} was not exported in step 12`)
+        const sidecar = JSON.parse(readFileSync(`${post}.json`, 'utf8')) as { alt?: unknown }
+        expect(sidecar.alt).toBe(ALT)
+      })
+      await log.soft(
+        'the reel’s sidecar, made before one was typed, holds the engine’s own',
+        () => {
+          const reel = session.exports.find((path) => basename(path) === REEL)
+          if (reel === undefined) throw new Error(`${REEL} was not exported in step 11`)
+          const sidecar = JSON.parse(readFileSync(`${reel}.json`, 'utf8')) as { alt?: unknown }
+          expect(typeof sidecar.alt === 'string' && sidecar.alt.length > 0).toBe(true)
+          expect(sidecar.alt).not.toBe(ALT)
+        },
+      )
       log.note(
         'shell.showItemInFolder was replaced in the main process to record what it was asked to show.',
       )

@@ -236,6 +236,7 @@ The two reader columns are a person's, recorded per run in
 | Preset, storyboard, view, quality | pass | pass | pass | pass | fixed (C2) | fixed (C2) | not yet run: a person's | not yet run: a person's |
 | Frame switches, lines to keep | pass | pass (`fieldset` and `legend`) | pass | pass | fixed (C3) | fixed (C3) | not yet run: a person's | not yet run: a person's |
 | Start time, filename tag | pass | pass | pass | pass | fixed (C5) | fixed (C5) | not yet run: a person's | not yet run: a person's |
+| Caption, Clock corner, Alt text for the file's sidecar (issue 352) | not yet swept: drawn on the default reel, so `notebook-a11y.spec.ts` ("cell 06, and focus through an export") walks them; the corner select is unavailable while the clock is off, and its list changes with the preset and the title | not yet swept (Caption and Alt text are named by a `<label for>`; Clock corner is the kit's select named by its `label`; a refused caption or alt text is `aria-invalid` and its sentence is the field's `aria-describedby` message) | not yet swept | not yet swept (nothing moves) | no new pair: `--text`, `--text-muted`, `--text-faint` and `--error` on `--surface-raised` and `--surface-sunken`, and the `--border-strong` edge, all held by `contrast.test.ts` | no new pair | not yet run: a person's | not yet run: a person's |
 | Where it goes: Choose folder, and Use the app's folder once a folder is chosen (A5.5-19) | Choose folder swept; Use the app's folder not swept (it is drawn only once a folder is chosen, which no sweep does) | Choose folder swept (the sentence its description); "Where it goes" is a label's text, not a field | Choose folder swept | Choose folder swept | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
 | Export, its progress line, Cancel, Reveal | fixed (D2) | pass | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
 
@@ -1141,6 +1142,24 @@ a table).
   as 07:30" read with the field when you return; clear it. The text field
   "Filename tag", read with "Added to the file’s name, so a draft does not
   replace the last good export."
+- **Caption, clock corner, alt text (issue 352).** Listen for the text field
+  "Caption", read with "Drawn under the title, in your words: up to 80
+  characters, on one line." Type 60 characters and Tab away, then return:
+  the field is read with "60 of 80. Drawn under the title, …". Type an 81st
+  and listen for the field read as invalid, with "A caption is 1 to 80
+  characters on one line; this one is 81." Then the pop-up button "Clock
+  corner" and, after it in the reading order (the kit's select takes no
+  description), the sentence under it: on the reel, "The platform’s own
+  buttons cover the bottom right, so it is not offered. Bottom left is
+  inside its bottom zone, where they can cover the clock; top right keeps it
+  clear. …", and its two options, "top right (the preset’s own)" and
+  "bottom left". With **The clock** unchecked, it is dimmed and the
+  sentence is "The clock is off, so it has no corner to choose." Last, near
+  the foot, the multi-line text field "Alt text for the file’s sidecar",
+  read with "Describes the map for someone who cannot see it, in your
+  words. Left blank, the engine writes its own sentence."; paste 1,001
+  characters and listen for it read as invalid, with "The alt text is 1,001
+  characters; it may be at most 1,000."
 - **Where it goes.** Listen for the label "Where it goes" (text, not a
   field: nothing refers to it, which is itself worth noting) and, with no
   folder of the project's own chosen, the sentence "This project's exports

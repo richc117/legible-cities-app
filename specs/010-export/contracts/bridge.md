@@ -21,7 +21,7 @@ export: {
 | Shape | Fields |
 |---|---|
 | `OfferedPreset` | one of `OFFERED_PRESETS`, each checked against the engine's `PresetName` at build time: the thirteen social presets since A5-01 (`instagram-reel` alone before) |
-| `ExportChoice` | `{ preset: OfferedPreset, storyboard?: StoryboardName, options: ExportChoiceOptions }`; the options are the engine's `ExportOptions` without `theme`, `safe`, `storyboard` and `fade`, and a field absent is the engine's default (specs/022-export-tab) |
+| `ExportChoice` | `{ preset: OfferedPreset, storyboard?: StoryboardName, options: ExportChoiceOptions, alt?: string }`; the options are the engine's `ExportOptions` without `theme`, `safe`, `storyboard` and `fade` (so they include `caption` and `clock_corner` since issue 352), and a field absent is the engine's default (specs/022-export-tab). `alt` is the sidecar's alt text in the person's own words, 1 to 1,000 characters once trimmed: it is not a plan option and goes to `export.encode`'s provenance (issue 352) |
 | `ExportPreview` | `{ ok: true, url, width, height, notes }` or `{ ok: false, error: { code, message, data? } }` |
 | `ExportProgress` | `id` (the token), `stage` (`plan`, `capture` or `encode`), `fraction` (0 to 1 within the stage), `message` (a sentence, never a path) |
 | `ExportResult` | `file` (the name, never the path), `bytes`, `frames` |
@@ -87,8 +87,10 @@ copy with nothing else on it.
 4. Capture into `<SCHEMATIC_HOME>/frames/<token>/`, progress per frame. A
    still plan has no beats; it is captured as one beat of one frame that
    seeks to the plan's `at` at speed 0.
-5. `export.encode { plan, source: <frames, or the still's one frame>, dest: <export folder>/<project>/<file>, provenance: { service_date } }`;
-   progress from the engine's `job/progress` fraction.
+5. `export.encode { plan, source: <frames, or the still's one frame>, dest: <export folder>/<project>/<file>, provenance: { service_date, alt? } }`,
+   where `alt` is the choice's alt text, trimmed, for a video, a GIF and a
+   still alike, and absent when the choice has none (the engine then writes
+   its own sentence); progress from the engine's `job/progress` fraction.
 6. Remove the frames, whichever way it ended. Remember `dest` for the
    reveal.
 
