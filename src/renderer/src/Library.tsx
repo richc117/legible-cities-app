@@ -53,9 +53,10 @@ async function listFeeds(ready: boolean): Promise<FeedRecord[] | null> {
 
 /**
  * What a removal says when the app stopped waiting for the engine (issue
- * 107): the request's deadline passed, or its inactivity bound. The engine
- * was asked to stop, but its file work may have been done, or half done, so
- * nothing here may claim either; the list is read again instead.
+ * 107): the inactivity bound passed, which is the only limit a removal has
+ * (issue 351). The engine was asked to stop, but its file work may have been
+ * done, or half done, so nothing here may claim either; the list is read
+ * again instead.
  */
 export const UNANSWERED_REMOVAL =
   'The engine did not answer in time, so the feed may or may not have been removed. The list of feeds is read again to show what the engine has now.'
@@ -63,6 +64,63 @@ export const UNANSWERED_REMOVAL =
 /** Whether a failed request ended because the app stopped waiting, leaving its outcome unknown. */
 export function unanswered(error: unknown): boolean {
   return isEngineErrorShape(error) && error.code === ERROR_CODES.inactive
+}
+
+/**
+ * What the removal's confirmation says while the removal runs, after "Removing
+ * `<name>`…": what Cancel does, and then that it has been pressed. The engine
+ * stops a removal that has not yet forgotten the feed and finishes one that
+ * has (issue 351), so Cancel is an ask, and the answer says which it was.
+ */
+export const REMOVAL_STOPPABLE = 'Cancel stops it unless the engine has already forgotten the feed.'
+export const REMOVAL_ASKED = 'Cancelling; waiting for the engine to say whether it was in time.'
+
+/** How a removal ended, as far as the screen is concerned, with the sentence to say. */
+export type RemovalOutcome =
+  /** The engine forgot the feed and removed its files. */
+  | { kind: 'removed'; sentence: string }
+  /** A cancel came after the engine had forgotten the feed, so the removal went on to its end. */
+  | { kind: 'removed-anyway'; sentence: string }
+  /** The cancel came in time: the feed is registered, with every file in place. */
+  | { kind: 'kept'; sentence: string }
+  /** The app stopped waiting, so nothing is known. */
+  | { kind: 'unanswered'; sentence: string }
+  /** The engine refused, or could not be asked. */
+  | { kind: 'failed'; sentence: string }
+
+/**
+ * What the engine's answer to a removal means (issue 351). A plain `ok` is
+ * the feed gone; `ok` with `cancel_too_late` is the feed gone too, whatever
+ * the person asked for; the cancelled error is the feed still there. Nothing
+ * else says the feed is kept, and nothing but the first two says it is gone.
+ */
+export function removalOutcome(
+  name: string,
+  settled: { result: unknown } | { error: unknown },
+): RemovalOutcome {
+  if ('result' in settled) {
+    const result = settled.result
+    const late =
+      typeof result === 'object' &&
+      result !== null &&
+      (result as { cancel_too_late?: unknown }).cancel_too_late === true
+    return late
+      ? {
+          kind: 'removed-anyway',
+          sentence: `${name} was already forgotten when you cancelled, so it was removed.`,
+        }
+      : { kind: 'removed', sentence: `${name} was removed.` }
+  }
+  const error = settled.error
+  if (isEngineErrorShape(error) && error.code === ERROR_CODES.cancelled)
+    return { kind: 'kept', sentence: `The removal was cancelled; ${name} is still here.` }
+  if (unanswered(error)) return { kind: 'unanswered', sentence: UNANSWERED_REMOVAL }
+  return { kind: 'failed', sentence: sentenceFor(error) }
+}
+
+/** Whether a row leaves the screen: only when the engine has said the feed is gone. */
+export function removalTakesTheRow(outcome: RemovalOutcome): boolean {
+  return outcome.kind === 'removed' || outcome.kind === 'removed-anyway'
 }
 
 /**
@@ -161,7 +219,7 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
   // The feed whose removal went unanswered, while its dialog is open:
   // closing that dialog reads the list once more, because the engine may
   // finish the work after the app stopped waiting (issue 107). Cleared by a
-  // removal that succeeds and by the dialog closing; a retry that is
+  // removal that ends, done or cancelled, and by the dialog closing; a retry that is
   // refused - the engine saying the feed is not registered, once it has
   // finished - keeps it, so the close still reads the truth.
   const unansweredKey = useRef<string | null>(null)
@@ -304,34 +362,54 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
   }, [adder, refreshFeeds])
 
   // The engine forgets the feed, its zip and its layouts; the main process
-  // refuses first when a project names it, and that sentence is shown.
+  // refuses first when a project names it, and that sentence is shown. The
+  // removal is a job the engine can be asked to stop (issue 351): the
+  // dialog's Cancel sends the request's own cancel, and what the engine
+  // answers says what happened, in a sentence under the page once the dialog
+  // has closed. A row leaves only when the engine has said the feed is gone,
+  // and the list is read again after every outcome.
+  const removal = useRef<{ cancel(): void } | null>(null)
   const remove = async (): Promise<void> => {
     if (removing === null) return
+    const target = removing
+    let handle: { cancel(): void } | null = null
+    let settled: { result: unknown } | { error: unknown }
     try {
-      await engineClient().request('feeds.remove', { key: removing.key }).result
+      const sent = engineClient().request('feeds.remove', { key: target.key })
+      handle = sent
+      removal.current = sent
+      settled = { result: await sent.result }
     } catch (error) {
-      if (unanswered(error)) {
-        // The dialog shows the sentence at once and takes presses again. The
-        // read is not awaited: the pinned engine runs a removal on the one
-        // thread that reads requests, so the list is answered only once the
-        // removal is done, and then shows it done.
-        forgetInspection(removing.key)
-        // Remembered only while this feed's dialog is open; one closed under
-        // the removal (the platform's second Escape) has nothing to close.
-        unansweredKey.current = removingRef.current?.key === removing.key ? removing.key : null
-        void refreshFeeds()
-        throw new Error(UNANSWERED_REMOVAL, { cause: error })
-      }
-      throw new Error(sentenceFor(error), { cause: error })
+      settled = { error }
+    } finally {
+      if (handle !== null && removal.current === handle) removal.current = null
     }
+    const outcome = removalOutcome(target.name, settled)
+    if (outcome.kind === 'unanswered') {
+      // The dialog shows the sentence at once and takes presses again. The
+      // read is not awaited: it is the engine's answer to what has happened
+      // so far, and a removal the app stopped waiting for may still finish.
+      forgetInspection(target.key)
+      // Remembered only while this feed's dialog is open; one closed under
+      // the removal (the platform's second Escape) has nothing to close.
+      unansweredKey.current = removingRef.current?.key === target.key ? target.key : null
+      void refreshFeeds()
+    }
+    if (outcome.kind === 'unanswered' || outcome.kind === 'failed')
+      throw new Error(outcome.sentence, { cause: 'error' in settled ? settled.error : undefined })
     unansweredKey.current = null
-    forgetInspection(removing.key)
-    handBack.current = { feed: removing.key }
     // Only this removal's dialog: it may have been closed while the request
     // ran and opened again for another feed, which stays.
-    const target = removing
     setRemoving((current) => (current === target ? null : current))
-    setFeedNotice(`${removing.name} was removed.`)
+    setFeedNotice(outcome.sentence)
+    if (!removalTakesTheRow(outcome)) {
+      // Cancelled in time: the feed is here, and so is its row. The read
+      // is the engine's word on it all the same.
+      void refreshFeeds()
+      return
+    }
+    forgetInspection(target.key)
+    handBack.current = { feed: target.key }
     // The engine said the feed is gone. A read that failed, or was overtaken
     // by one still on its way, must not leave its row on screen with a
     // Remove that works, under the sentence that says it went.
@@ -522,6 +600,11 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
         }}
         busyLabel={`Removing ${removing?.name ?? 'the feed'}…`}
         onLateError={(message) => setFeedNotice(message)}
+        stoppable={{
+          onStop: () => removal.current?.cancel(),
+          sentence: REMOVAL_STOPPABLE,
+          asked: REMOVAL_ASKED,
+        }}
       />
     </main>
   )

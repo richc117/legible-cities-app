@@ -221,9 +221,11 @@ test('the new project sheet while its add runs: the progress line and Cancel the
   })
 })
 
-test('a confirmation takes nothing while its action runs, and says so', async () => {
+test('a confirmation takes nothing from its action while it runs, offers Cancel for one the engine can stop, and says so', async () => {
   test.setTimeout(120_000)
-  // Slow enough that the presses land while the removal is out.
+  // Slow enough that the presses land while the removal is out. The stand-in
+  // answers after its delay and does not stop for a cancel, as an engine
+  // past its point of no return does not (issue 351).
   const p = profile({ remove_delay_ms: 3_000 })
   addedFeed(p)
   await withApp(p, async (page) => {
@@ -234,14 +236,15 @@ test('a confirmation takes nothing while its action runs, and says so', async ()
     await remove.focus()
     await page.keyboard.press('Enter')
 
-    // Running: both buttons keep their names, say they are unavailable and
-    // look it, the pressed one keeps focus, and a sentence says what is
-    // happening.
+    // Running: Remove keeps its name, says it is unavailable and looks it,
+    // and keeps focus; Cancel stays available, because the engine can be
+    // asked to stop a removal; and a sentence says what is happening and
+    // what Cancel does.
     await expect(remove).toHaveAttribute('aria-disabled', 'true')
-    await expect(cancel).toHaveAttribute('aria-disabled', 'true')
+    await expect(cancel).not.toHaveAttribute('aria-disabled', 'true')
     await expect(remove).toBeFocused()
     await expect(confirm.getByRole('status')).toHaveText(
-      'Removing Metro de Prueba… It cannot be stopped.',
+      'Removing Metro de Prueba… Cancel stops it unless the engine has already forgotten the feed.',
     )
     // The kit paints a button's fill on its host and its label on the inner
     // button, which inherits it: read both, the label through the shadow root.
@@ -256,19 +259,30 @@ test('a confirmation takes nothing while its action runs, and says so', async ()
       }),
     ).toBe(await tokenRgb(page, '--text-faint'))
 
-    // A held Enter's repeat, a press on Cancel and the first Escape: all
-    // refused, the dialog stays with its sentence.
+    // A held Enter's repeat and the first Escape: both refused, the dialog
+    // stays with its sentence.
     await page.keyboard.press('Enter')
-    // Forced: Playwright waits for an aria-disabled button to be enabled.
-    await cancel.click({ force: true })
     await page.keyboard.press('Escape')
     await expect(confirm).toBeVisible()
-    await expect(confirm.getByRole('status')).toHaveText(/It cannot be stopped\.$/)
+    await expect(confirm.getByRole('status')).toHaveText(/forgotten the feed\.$/)
     await expect(remove).toHaveAttribute('aria-disabled', 'true')
+
+    // Cancel asks once and is then unavailable like the other button; the
+    // stand-in does not stop, so the removal goes on and the dialog says it
+    // is waiting for the answer.
+    await cancel.click()
+    await expect(cancel).toHaveAttribute('aria-disabled', 'true')
+    await expect(confirm.getByRole('status')).toHaveText(
+      'Removing Metro de Prueba… Cancelling; waiting for the engine to say whether it was in time.',
+    )
+    // Forced: Playwright waits for an aria-disabled button to be enabled.
+    await cancel.click({ force: true })
+    await expect(confirm).toBeVisible()
 
     await expect(confirm).toBeHidden({ timeout: 20_000 })
     await expect(page.getByRole('listitem', { name: 'Metro de Prueba' })).toHaveCount(0)
     expect(requests(p, 'feeds.remove'), 'one removal, whatever the presses').toBe(1)
+    expect(requests(p, '$/cancelRequest'), 'one cancel, whatever the presses').toBe(1)
   })
 })
 
