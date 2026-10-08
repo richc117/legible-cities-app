@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   asDispatchedTheme,
+  forgetTheme,
   rememberTheme,
   themeAsItStands,
 } from '../../src/renderer/src/themeMemory'
@@ -33,6 +34,25 @@ describe('the theme as it stands', () => {
     expect(themeAsItStands('memory-own-2', 'warm-dark'), 'another project is not touched').toBe(
       'warm-dark',
     )
+  })
+})
+
+describe('forgetting a project that is gone', () => {
+  it('leaves the memory holding nothing for it, so its record answers again', () => {
+    rememberTheme('memory-gone-1', 'sepia')
+    expect(themeAsItStands('memory-gone-1', 'warm-dark')).toBe('sepia')
+    forgetTheme('memory-gone-1')
+    expect(themeAsItStands('memory-gone-1', 'warm-dark'), 'nothing is kept for it').toBe(
+      'warm-dark',
+    )
+    expect(themeAsItStands('memory-gone-1', 'sepia')).toBe('sepia')
+  })
+
+  it('touches no other project, and is not an error for one it never held', () => {
+    rememberTheme('memory-gone-2', 'sepia')
+    expect(() => forgetTheme('memory-gone-never')).not.toThrow()
+    forgetTheme('memory-gone-3')
+    expect(themeAsItStands('memory-gone-2', 'warm-dark'), 'another project’s is kept').toBe('sepia')
   })
 })
 

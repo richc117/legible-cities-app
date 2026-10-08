@@ -108,12 +108,22 @@ describe('giveBack', () => {
       send: async (method, args) => {
         sent.push([method, args])
         // A Pause and a new speed pressed during the loop.
-        if (method === 'setTheme') remembered = { speed: 300, playing: true }
+        if (method === 'setTheme') remembered = { speed: 300, playing: false }
       },
     })
-    await giveBack(restoreCalls({ ...STATE, playing: true }, 'warm-dark'), now)
+    // Composed from a page that was playing, so its last call is
+    // `setPlaying(true)`: the Pause pressed since is what has to be sent.
+    const calls = restoreCalls({ ...STATE, playing: true }, 'warm-dark')
+    expect(calls[calls.length - 1], 'the list as composed would start it again').toEqual({
+      method: 'setPlaying',
+      args: [true],
+    })
+    await giveBack(calls, now)
     expect(sent.find(([method]) => method === 'setSpeed')).toEqual(['setSpeed', [300]])
-    expect(sent[sent.length - 1], 'started again as it now is').toEqual(['setPlaying', [true]])
+    expect(sent[sent.length - 1], 'not started again: the pause is what it now is').toEqual([
+      'setPlaying',
+      [false],
+    ])
   })
 
   it('stops the moment the navigation it was for has been replaced', async () => {

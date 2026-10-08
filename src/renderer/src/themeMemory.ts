@@ -34,6 +34,15 @@ export function rememberTheme(projectId: string, theme: Theme): void {
 }
 
 /**
+ * Forget a project that has been deleted, so the memory holds nothing for a
+ * project that is gone. Called where its jobs are forgotten, on the delete's
+ * own signal (`useProjectState.ts`), and never because a list missed it.
+ */
+export function forgetTheme(projectId: string): void {
+  written.delete(projectId)
+}
+
+/**
  * The project's theme as it stands now: what the last write returned, or,
  * where nothing has been written this session, the record's own.
  */

@@ -17,7 +17,7 @@ import {
 } from '../engine/runs'
 import { stageFor } from '../engine/stages'
 import { skipTarget } from '../SkipPastMap'
-import { rememberTheme } from '../themeMemory'
+import { forgetTheme, rememberTheme } from '../themeMemory'
 import { writeThenRestyle } from '../themeWrites'
 import type { TextInputHandle } from '../kit/TextInput'
 import { useEngineState } from '../useEngineState'
@@ -322,6 +322,7 @@ export function useProjectState(
       void window.api.projects.delete(id).then(
         () => {
           forgetProjectJobs(id)
+          forgetTheme(id)
           if (mounted.current) onBack(sampleNotKept(record.name))
         },
         () => {
@@ -499,6 +500,7 @@ export function useProjectState(
     // Deleted: its finished jobs leave the inspector. Only on this signal,
     // never because a list read happened to miss the record (A1-03).
     forgetProjectJobs(id)
+    forgetTheme(id)
     // Back to the Library only from this screen: if a person has left it
     // while the delete ran, they are somewhere else now (A6-07).
     if (mounted.current) onBack(describeFailures(result.failed))
