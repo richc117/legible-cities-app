@@ -370,6 +370,11 @@ test('a change of operator marks 02 to 06 stale and starts nothing', async () =>
 /**
  * Move a line one place down: a rebuild starts when the order's debounce
  * runs out. The name is matched exactly, so that line 1 is not line 10.
+ *
+ * The line must not be the last one listed, because the last line's Down is
+ * disabled and a press on it never lands. The page lists the lines in the
+ * engine's string order, not a numeric one - "1", "10", "2" - so on a feed
+ * with numbered lines the first listed line is the safe one to name.
  */
 async function reorder(page: Page, line = 'A'): Promise<void> {
   await cell(page, 'lines')
@@ -431,8 +436,10 @@ test("focus on the feed's entry is handed to cell 01's heading when a run disabl
     const entry = cell(page, 'data').getByRole('button', { name: "Use the feed's entry" })
     await expect(entry).toBeEnabled()
 
-    // Every route of every operator is kept, so the lines are 1, 2 and 10.
-    await reorder(page, '2')
+    // Every route of every operator is kept, so the lines are 1, 10 and 2 in
+    // the page's string order. Line 1 is first, so its Down is enabled; line
+    // 2 is last, and its Down is not.
+    await reorder(page, '1')
     // Inside the order's debounce, with focus moved onto the button.
     await entry.focus()
     await expect(entry).toBeFocused()
