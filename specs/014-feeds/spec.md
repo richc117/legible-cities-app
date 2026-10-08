@@ -108,6 +108,23 @@ Remove. A feed a project still names is refused, naming how many.
 3. **Given** a preset, **Then** no Remove is offered; asked directly, the
    engine refuses with its own sentence.
 
+> **As of 8 Oct 2026 (issue 351):** the confirmation is no longer a wait
+> that takes nothing. Engine v0.11.0 runs `feeds.remove` as a job (its issue
+> 35): the write of `user-feeds.json` is its point of no return, and the
+> dialog's Cancel sends the request's own cancel while it runs. A cancel
+> before the write keeps the feed and every file and is answered with the
+> cancelled error ("The removal was cancelled; `<name>` is still here.", the
+> row stays); a cancel after it is too late, the files are removed to the
+> end and the answer carries `cancel_too_late` ("`<name>` was already
+> forgotten when you cancelled, so it was removed.", the row goes). A row
+> leaves only when the engine has said the feed is gone, and the list is read
+> again after every outcome. The removal has no deadline of its own (issue
+> 107's 30 seconds is gone); an engine that has stopped answering ends it
+> through the inactivity bound. The main-process guard for a feed a project
+> names is unchanged, and scenario 2's refusal is the guard's. The stand-in
+> runs the removal as a job too (FR-009): `remove_blocks_ms` is how long it
+> takes, `remove_commits_after_ms` where the point of no return is.
+
 ### Edge Cases
 
 - The list is read when the Library opens and again after an add or a

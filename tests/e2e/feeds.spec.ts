@@ -1,10 +1,18 @@
 // The Library's feeds, against the stand-in engine: the list, a project
 // from a feed, an add from a file and from a URL, a refused zip, a
-// cancelled add, a remove, a refused remove, a remove the engine does not
-// answer in time, and the empty state's two steps. The stand-in keeps what was added in the home, as the engine
-// does, so a relaunch sees it.
+// cancelled add, a remove, a refused remove, a remove cancelled in time, a
+// remove cancelled too late, a remove the engine never answers, and the
+// empty state's two steps. The stand-in keeps what was added in the home, as
+// the engine does, so a relaunch sees it.
 
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import {
@@ -570,68 +578,183 @@ function received(engineHome: string, method: string): number {
     .filter((line) => line.includes(`"${method}"`)).length
 }
 
-test('a removal the engine does not answer in time ends with a sentence, and the list shows the truth once it does', async () => {
+/** The removal's confirmation for the feed `addedFeed` wrote, opened, with its two buttons. */
+async function openRemoval(page: Page) {
+  await feedRow(page, 'Metro de Prueba')
+    .getByRole('button', { name: 'Remove Metro de Prueba' })
+    .click()
+  const confirm = page.getByRole('dialog', { name: 'Remove Metro de Prueba?' })
+  return {
+    confirm,
+    remove: confirm.getByRole('button', { name: 'Remove' }),
+    cancel: confirm.getByRole('button', { name: 'Cancel' }),
+  }
+}
+
+/** The line a running removal says: what Cancel does, or that it was pressed. */
+const RUNNING =
+  'Removing Metro de Prueba… Cancel stops it unless the engine has already forgotten the feed.'
+const CANCELLING =
+  'Removing Metro de Prueba… Cancelling; waiting for the engine to say whether it was in time.'
+
+// Since engine v0.11.0 a removal is a job: the reader keeps answering, a
+// cancel before the write of user-feeds.json keeps the feed and every file,
+// and one after it is too late and says so (issue 351). The stand-in takes
+// remove_blocks_ms over the removal and writes its registry
+// remove_commits_after_ms in, or at the end when that is not given. Cancel is
+// pressed only once the stand-in has read the removal: a cancel sent before
+// the engine has the request would be a different test. Mutations the suite
+// is held to: the dialog's Cancel not sending the request's cancel (this test
+// and the next fail, waiting out the removal), the row removed on the
+// cancelled error (this one fails on its row), and cancel_too_late read as
+// kept (the next fails on its row and its sentence).
+test('a removal cancelled before the engine forgets the feed keeps it, says so, and the row stays', async () => {
   test.setTimeout(120_000)
-  // The stand-in blocks on the removal for eight seconds before doing it,
-  // reading nothing else meanwhile, as the pinned engine runs feeds.remove
-  // on its one reader thread; the app stops waiting after one (issue 107).
   const engineHome = home({ remove_blocks_ms: 8_000 })
   addedFeed(engineHome, 'metro-de-prueba', 'Metro de Prueba')
-  const userData = mkdtempSync(join(tmpdir(), 'legible-cities-feeds-profile-'))
-  await withApp(
-    engineHome,
-    async (page) => {
-      await feedRow(page, 'Metro de Prueba')
-        .getByRole('button', { name: 'Remove Metro de Prueba' })
-        .click()
-      const confirm = page.getByRole('dialog', { name: 'Remove Metro de Prueba?' })
-      const remove = confirm.getByRole('button', { name: 'Remove' })
-      const cancel = confirm.getByRole('button', { name: 'Cancel' })
-      const listsBefore = received(engineHome, 'feeds.list')
-      await remove.click()
-      await expect(remove).toHaveAttribute('aria-disabled', 'true')
+  const zip = gtfsZip(join(engineHome, 'data', 'feeds', 'metro-de-prueba.zip'))
+  await withApp(engineHome, async (page) => {
+    const { confirm, remove, cancel } = await openRemoval(page)
+    const listsBefore = received(engineHome, 'feeds.list')
+    await remove.click()
+    await expect(remove, 'Remove takes nothing while the removal runs').toHaveAttribute(
+      'aria-disabled',
+      'true',
+    )
+    await expect(cancel, 'Cancel takes a press while the removal runs').not.toHaveAttribute(
+      'aria-disabled',
+      'true',
+    )
+    await expect(confirm.getByRole('status'), 'the line says what Cancel does').toHaveText(RUNNING)
+    await expect
+      .poll(() => received(engineHome, 'feeds.remove'), {
+        message: 'the stand-in has read the removal',
+      })
+      .toBe(1)
 
-      // The deadline releases the dialog: the sentence, and the buttons
-      // taking presses again, while the engine is still in the removal.
-      await expect(confirm.getByRole('alert')).toHaveText(
-        'The engine did not answer in time, so the feed may or may not have been removed. The list of feeds is read again to show what the engine has now.',
-        { timeout: 6_000 },
-      )
-      expect(addedKeys(engineHome), 'the engine has not done the removal yet').toEqual([
-        'metro-de-prueba',
-      ])
-      await expect(confirm, 'the dialog stays open with its sentence').toBeVisible()
-      await expect(remove).not.toHaveAttribute('aria-disabled', 'true')
-      await expect(cancel).not.toHaveAttribute('aria-disabled', 'true')
-      // The busy line is gone. Located by attribute: an empty status line has
-      // no size, and `getByRole` passes over an element with none.
-      await expect(confirm.locator('[role="status"]')).toHaveText('')
+    await cancel.click()
+    // Shorter than the removal's eight seconds, so a Cancel that sends no
+    // cancel, and lets the removal finish on its own, fails here.
+    await expect(confirm, 'the dialog closes once the engine has answered the cancel').toBeHidden({
+      timeout: 5_000,
+    })
+    await expect(
+      page.getByRole('status').filter({ hasText: 'The removal was cancelled;' }),
+      'the sentence says the removal was cancelled and the feed is still here',
+    ).toHaveText('The removal was cancelled; Metro de Prueba is still here.')
+    await expect(feedRow(page, 'Metro de Prueba'), 'the row stays').toHaveCount(1)
+    expect(addedKeys(engineHome), 'the engine still has the feed').toEqual(['metro-de-prueba'])
+    expect(existsSync(zip), 'and its zip, in place').toBe(true)
+    await expect
+      .poll(() => received(engineHome, 'feeds.list'), {
+        message: 'the list is read again after the outcome',
+      })
+      .toBeGreaterThan(listsBefore)
+    expect(received(engineHome, 'feeds.remove'), 'one removal was sent').toBe(1)
+    await expect
+      .poll(() => received(engineHome, '$/cancelRequest'), { message: 'one cancel reached it' })
+      .toBe(1)
+    await expect(
+      feedRow(page, 'Metro de Prueba'),
+      'still there once everything has settled',
+    ).toHaveCount(1)
+  })
+})
 
-      // The list is unchanged while the engine is in the removal: the read
-      // the app sent waits behind it.
-      await expect(feedRow(page, 'Metro de Prueba')).toHaveCount(1)
+test('a removal cancelled after the engine forgets the feed says it was removed anyway, and the row goes', async () => {
+  test.setTimeout(120_000)
+  // The registry is written 300 ms in; the zip goes six seconds in.
+  const engineHome = home({ remove_blocks_ms: 6_000, remove_commits_after_ms: 300 })
+  addedFeed(engineHome, 'metro-de-prueba', 'Metro de Prueba')
+  const zip = gtfsZip(join(engineHome, 'data', 'feeds', 'metro-de-prueba.zip'))
+  await withApp(engineHome, async (page) => {
+    const { confirm, remove, cancel } = await openRemoval(page)
+    const listsBefore = received(engineHome, 'feeds.list')
+    await remove.click()
+    await expect
+      .poll(() => addedKeys(engineHome), { message: 'the engine has forgotten the feed' })
+      .toEqual([])
+    expect(existsSync(zip), 'its zip is still there: the removal is not over').toBe(true)
+    await expect(
+      feedRow(page, 'Metro de Prueba'),
+      'the row stays until the engine has answered',
+    ).toHaveCount(1)
 
-      // The engine finishes the removal regardless. The read queued behind
-      // it lands, and closing the dialog reads the list once more; either
-      // way the feed has gone from it.
-      await expect.poll(() => addedKeys(engineHome), { timeout: 20_000 }).toEqual([])
-      await expect
-        .poll(() => received(engineHome, 'feeds.list'), { timeout: 10_000 })
-        .toBeGreaterThan(listsBefore)
-      await cancel.click()
-      await expect(confirm).toBeHidden()
-      await expect(feedRow(page, 'Metro de Prueba')).toHaveCount(0, { timeout: 10_000 })
-      await expect(page.getByRole('list', { name: 'Added' })).toHaveCount(0)
-      // The row whose Remove opened the dialog went with the feed, and the
-      // last added feed took its region with it: the samples' heading.
-      await expect(page.getByRole('heading', { name: 'Sample cities' })).toBeFocused()
-      // The engine read the app's cancel only after the removal, and it
-      // changed nothing; read on a poll, since a slow runner records late.
-      await expect.poll(() => received(engineHome, '$/cancelRequest')).toBe(1)
-      expect(received(engineHome, 'feeds.remove'), 'one removal was sent').toBe(1)
-    },
-    { LEGIBLE_USER_DATA: userData, LEGIBLE_FEEDS_REMOVE_DEADLINE_MS: '1000' },
-  )
+    await cancel.click()
+    await expect(cancel, 'a second press is refused').toHaveAttribute('aria-disabled', 'true')
+    await expect(
+      confirm.getByRole('status'),
+      'the line says the cancel was pressed and the answer is awaited',
+    ).toHaveText(CANCELLING)
+    await expect(confirm, 'the dialog closes once the engine has answered').toBeHidden({
+      timeout: 20_000,
+    })
+    await expect(
+      page.getByRole('status').filter({ hasText: 'was already forgotten' }),
+      'the sentence says it was removed anyway',
+    ).toHaveText('Metro de Prueba was already forgotten when you cancelled, so it was removed.')
+    await expect(feedRow(page, 'Metro de Prueba'), 'the row goes').toHaveCount(0, {
+      timeout: 10_000,
+    })
+    await expect(page.getByRole('list', { name: 'Added' })).toHaveCount(0)
+    expect(existsSync(zip), 'the engine removed the files to the end').toBe(false)
+    await expect
+      .poll(() => received(engineHome, 'feeds.list'), {
+        message: 'the list is read again after the outcome',
+      })
+      .toBeGreaterThan(listsBefore)
+    // The row that opened the dialog went with the feed, and the last added
+    // feed took its region with it: the samples' heading.
+    await expect(
+      page.getByRole('heading', { name: 'Sample cities' }),
+      'focus lands on the samples’ heading',
+    ).toBeFocused()
+    expect(received(engineHome, 'feeds.remove'), 'one removal was sent').toBe(1)
+    await expect
+      .poll(() => received(engineHome, '$/cancelRequest'), { message: 'one cancel reached it' })
+      .toBe(1)
+  })
+})
+
+// A removal the engine never answers has no deadline of its own: it waited
+// thirty seconds once (issue 107), and ends now through the inactivity bound
+// alone, ten minutes, which no end-to-end run can wait for (the sentence it
+// ends with is held in tests/unit/library-removal.test.ts and the supervisor
+// ending it in tests/unit/stand-in-shapes.test.ts). So this holds the
+// dialog past the old deadline: still waiting, no sentence, Cancel still
+// asking. The mutation it is held to is a deadline put back for feeds.remove.
+test('a removal the engine never answers is not ended by a deadline of its own', async () => {
+  test.setTimeout(120_000)
+  const engineHome = home({ remove_stalls: true })
+  addedFeed(engineHome, 'metro-de-prueba', 'Metro de Prueba')
+  await withApp(engineHome, async (page) => {
+    const { confirm, remove, cancel } = await openRemoval(page)
+    await remove.click()
+    await expect
+      .poll(() => received(engineHome, 'feeds.remove'), {
+        message: 'the stand-in has read the removal',
+      })
+      .toBe(1)
+    // Past the thirty seconds the app used to give a removal.
+    await page.waitForTimeout(35_000)
+    await expect(confirm, 'the dialog is still open, waiting').toBeVisible()
+    await expect(confirm.getByRole('alert'), 'no sentence has ended it').toHaveCount(0)
+    await expect(confirm.getByRole('status'), 'it still says it is running').toHaveText(RUNNING)
+    await expect(remove).toHaveAttribute('aria-disabled', 'true')
+    await expect(cancel, 'Cancel still takes a press').not.toHaveAttribute('aria-disabled', 'true')
+    await expect(feedRow(page, 'Metro de Prueba'), 'the row is still listed').toHaveCount(1)
+
+    // Cancel is a request, not an ending: an engine that has stopped
+    // answering does not answer it, and the dialog says it is waiting.
+    await cancel.click()
+    await expect(confirm.getByRole('status')).toHaveText(CANCELLING)
+    await expect(confirm.getByRole('alert')).toHaveCount(0)
+    expect(received(engineHome, 'feeds.remove'), 'one removal was sent').toBe(1)
+    await expect
+      .poll(() => received(engineHome, '$/cancelRequest'), { message: 'one cancel was sent' })
+      .toBe(1)
+    expect(addedKeys(engineHome), 'nothing was done').toEqual(['metro-de-prueba'])
+  })
 })
 
 test('without an engine the New project sheet takes a typed key, as before', async () => {

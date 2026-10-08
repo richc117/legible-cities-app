@@ -53,7 +53,7 @@ import { CHANNELS, type EngineAccepted, type EngineSettled } from '../shared/api
 import type { EngineState, JobLog, JobProgress } from '../shared/engine'
 import { badCall, isObject, TOKEN, toShape } from './ipc-shape'
 import { redactUrls } from './redact'
-import type { Notification, RequestOptions } from './sidecar'
+import type { Notification } from './sidecar'
 
 /** What the handlers need from the supervisor; a test hands in a fake. */
 export interface EngineSource {
@@ -61,7 +61,6 @@ export interface EngineSource {
   request(
     method: string,
     params?: Record<string, unknown>,
-    options?: RequestOptions,
   ): { id: number; result: Promise<unknown> }
   cancel(id: number): void
   onState(listener: (state: EngineState) => void): () => void
@@ -76,9 +75,6 @@ export type Guard = (
   params: Record<string, unknown> | undefined,
 ) => Promise<string | null>
 
-/** The deadline a request is sent with, in milliseconds, or undefined for the inactivity bound alone. */
-export type Deadline = (method: string) => number | undefined
-
 const LEVELS = new Set(['debug', 'info', 'warning', 'error'])
 
 export function registerEngineHandlers(
@@ -88,10 +84,15 @@ export function registerEngineHandlers(
   send: Send,
   log: (message: string) => void,
   guard: Guard = async () => null,
-  deadline: Deadline = () => undefined,
 ): () => void {
   const idOf = new Map<string, number>()
   const tokenOf = new Map<number, string>()
+  // Tokens a person cancelled while the guard was still thinking, when there
+  // was no engine id to cancel yet. The cancel is held, not dropped: once the
+  // guard has let the request through and the supervisor has numbered it, the
+  // engine is sent the request and then the cancel, and answers as it would
+  // to a cancel that came a moment later (issue 351).
+  const cancelledEarly = new Set<string>()
 
   const handle = (channel: string, handler: (...args: unknown[]) => Promise<unknown>): void => {
     ipcMain.handle(channel, async (event, ...args: unknown[]) => {
@@ -114,24 +115,34 @@ export function registerEngineHandlers(
     // The gate: what may be asked of the registry on a person's behalf is
     // decided here, with what the main process knows (the paths its own
     // chooser answered, the feeds its projects name), never on the page.
-    const refused = await guard(method, params as Record<string, unknown> | undefined)
+    let refused: string | null
+    try {
+      refused = await guard(method, params as Record<string, unknown> | undefined)
+    } catch (error) {
+      // A guard that fails answers nothing, so neither the held token nor a
+      // cancel made meanwhile may outlive the request; the page's invoke
+      // rejects as it always did.
+      idOf.delete(token)
+      cancelledEarly.delete(token)
+      throw error
+    }
     if (refused !== null) {
       idOf.delete(token)
+      cancelledEarly.delete(token)
       return badCall(refused)
     }
-    const deadlineMs = deadline(method)
+    // No request has a deadline of its own: the supervisor's inactivity
+    // bound is the only limit, a removal's included (issue 351). A person
+    // stops a removal by cancelling it, which `engineCancel` below sends on.
     let sent: { id: number; result: Promise<unknown> }
     try {
-      sent = engine.request(
-        method,
-        params as Record<string, unknown> | undefined,
-        deadlineMs === undefined ? undefined : { deadlineMs },
-      )
+      sent = engine.request(method, params as Record<string, unknown> | undefined)
     } catch (error) {
-      // The supervisor refuses what it was handed before sending anything
-      // (a deadline no timer can hold): the token is freed and the page is
-      // answered in the bridge's own shape, not with a thrown message.
+      // The supervisor may refuse what it was handed before sending anything:
+      // the token is freed and the page is answered in the bridge's own
+      // shape, not with a thrown message.
       idOf.delete(token)
+      cancelledEarly.delete(token)
       const what = error instanceof Error ? error.message : String(error)
       log(`refused ${method} before sending it: ${what}`)
       return badCall(`the request could not be sent: ${what}`)
@@ -140,8 +151,11 @@ export function registerEngineHandlers(
     if (id !== 0) {
       idOf.set(token, id)
       tokenOf.set(id, token)
+      // A cancel pressed while the guard was thinking reaches the request now.
+      if (cancelledEarly.delete(token)) engine.cancel(id)
     } else {
       idOf.delete(token)
+      cancelledEarly.delete(token)
     }
     // Settle on the event channel, after every notification for the id.
     result.then(
@@ -166,7 +180,10 @@ export function registerEngineHandlers(
   handle(CHANNELS.engineCancel, async (token) => {
     if (typeof token !== 'string') return
     const id = idOf.get(token)
-    if (id !== undefined) engine.cancel(id)
+    if (id === undefined) return
+    // 0 is the token held through the guard's await: no engine id yet.
+    if (id === 0) cancelledEarly.add(token)
+    else engine.cancel(id)
   })
 
   const offState = engine.onState((state) => send(CHANNELS.engineStateChanged, state))

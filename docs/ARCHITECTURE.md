@@ -189,13 +189,18 @@ failure, so nothing restarts an engine that never answers it; the reset's
 refusal then says so and that quitting and reopening the app is the way
 out. The deadline is
 cleared by the answer, and with every request when the engine exits or the
-app quits. Only `feeds.remove` has one, 30 s, because a person waits on it
-inside a confirmation that takes nothing while it runs and its work is
-seconds of files (issue 107); a layout, a rebuild, an add from an address
-and an export report progress and last as long as their feed makes them.
-The pinned engine runs `feeds.remove` on its one reader thread rather than
-as a job, which is why a stalled removal blocks every other request until
-it returns, cancels included. An exit nobody asked for
+app quits. No request is sent with one now: `feeds.remove` was, 30 s (issue
+107), while the engine ran it on its one reader thread, and since engine
+v0.11.0 it is a job that can be cancelled, so a person stops a removal with
+Cancel and an engine that has stopped answering ends it through the
+inactivity bound like any other request (issue 351, "The feeds" below). The
+option stays, with its tests, for a request whose work is short and known.
+The pinned engine runs `feeds.remove` as a job, like `feeds.add`: the reader
+keeps answering while it works, a cancel before the write of
+`user-feeds.json` keeps the feed with every file in place and is answered
+with the cancelled error, and a cancel after it is not honoured, the files
+are removed to the end, and the answer carries `cancel_too_late`. An exit
+nobody asked for
 rejects the requests in flight, restarts the engine after 1, 2 and 4 s, and
 gives up after three consecutive failures; the count starts afresh once
 the engine has answered a request or been ready for 30 s. On quit the app
@@ -617,13 +622,6 @@ following it. The end-to-end suite sets it for every launch from
 `tests/e2e/global-setup.ts`, to a temporary folder `global-teardown.ts`
 removes, because most launches keep the default profile and would
 otherwise write and rotate a person's own log.
-
-`LEGIBLE_FEEDS_REMOVE_DEADLINE_MS` replaces a feed removal's 30 s deadline
-with a whole number of milliseconds, so the end-to-end suite can watch a
-stalled removal end without waiting half a minute. Development only and
-read from the environment alone; a packaged app ignores it
-(`feedsRemoveDeadlineOverride` in `src/main/config.ts`), and the startup
-log says when it is set.
 
 ## The log files
 
@@ -1063,12 +1061,22 @@ the engine sees it. And a `feeds.remove` of a feed any project still
 names is refused, naming how many, because the engine would take the
 zip and the layouts those projects draw from. Both refusals are answered
 as bad calls with a sentence, from a guard every engine request passes
-(`src/main/feeds-ipc.ts`, `specs/014-feeds/contracts/bridge.md`). A removal
-the engine does not answer within its deadline releases the confirmation
-with a sentence that says the feed may or may not have gone (issue 107).
-The engine finishes the removal regardless, and the list reflects it once
-the engine answers: the read the app sends at the deadline waits behind
-the removal, and closing the confirmation reads the list once more.
+(`src/main/feeds-ipc.ts`, `specs/014-feeds/contracts/bridge.md`).
+
+The removal is a job the engine can be asked to stop (issue 351). While it
+runs the confirmation keeps its Cancel, and a press sends the request's own
+cancel through the sidecar, as a layout run's does; what the engine answers
+says what happened. The cancelled error means the feed is still registered
+with every file in place, and the page says the removal was cancelled and
+the feed is still here; a plain `ok` means it is gone; `ok` with
+`cancel_too_late` means the cancel came after the engine had written the
+registry, so the files were removed to the end, and the page says the feed
+was removed anyway. A row leaves only when the engine has said the feed is
+gone, and the list is read again after every outcome. A removal has no
+deadline of its own: an engine that has stopped answering ends it through
+the inactivity bound, with a sentence that says the feed may or may not
+have gone (issue 107), and closing that confirmation reads the list once
+more.
 
 The New project sheet (A5.6-05), which replaced the create dialog and the
 add-a-feed dialog, offers the listed feeds as a native select - the sample

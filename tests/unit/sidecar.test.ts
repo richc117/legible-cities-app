@@ -349,10 +349,11 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
     expect(h.sidecar.state.state).toBe('ready')
   })
 
-  // A request's own deadline (issue 107), on feeds.remove. With
-  // remove_delay_ms the stand-in answers on a thread after the delay and
-  // never stops for a cancel; with remove_blocks_ms it blocks its reader,
-  // as the pinned engine does. The inactivity bound is set well beyond each
+  // A request's own deadline (issue 107), on feeds.remove. The app sends no
+  // request with one since issue 351, but the supervisor keeps the option.
+  // With remove_delay_ms the stand-in answers on a thread after the delay
+  // and never stops for a cancel; with remove_blocks_ms it runs the removal
+  // as a job that does. The inactivity bound is set well beyond each
   // deadline so only the deadline can be what ends a request here.
   const LONG_INACTIVITY: Partial<Bounds> = { inactivityMs: 10_000 }
   const cancelsFor = (h: Harness, id: number): number =>
@@ -463,7 +464,10 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
     expect(cancelsFor(h, id)).toBe(1)
   })
 
-  it('against an engine that blocks on the removal, the deadline still ends it and the rest waits', async () => {
+  it('against an engine that runs the removal as a job, the deadline still ends it, the rest is answered meanwhile and the cancel it sent is honoured', async () => {
+    // remove_blocks_ms is how long the job takes (the name is from when the
+    // engine ran it on its reader). The deadline's cancel lands before the
+    // point of no return, which here is the end of the removal.
     const h = harness({ remove_blocks_ms: 1_200 }, LONG_INACTIVITY)
     userFeed(h.home, 'mine')
     h.sidecar.start()
@@ -473,14 +477,18 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
     const list = h.sidecar.request('feeds.list')
     await expect(removal.result).rejects.toMatchObject({ code: ERROR_CODES.inactive })
     expect(Date.now() - started, 'the deadline, not the engine').toBeLessThan(1_200)
-    // Nothing else is read while the engine is in the removal: the list
-    // waits for it, and shows the removal done when it comes.
+    // The reader is free: the list is answered while the removal is out, and
+    // names the feed, which the removal has not yet forgotten.
     const listed = (await list.result) as { feeds: { key: string }[] }
-    expect(Date.now() - started).toBeGreaterThanOrEqual(1_200)
-    expect(listed.feeds.map((f) => f.key)).not.toContain('mine')
-    await eventually(() => h.sidecar.inFlight === 0, 5_000, 'the late answer')
-    // The cancel was sent after the list, so it is read after the list too.
+    expect(Date.now() - started, 'answered meanwhile, not behind the removal').toBeLessThan(1_200)
+    expect(listed.feeds.map((f) => f.key)).toContain('mine')
     await eventually(() => cancelsFor(h, removal.id) === 1, 5_000, 'the cancel to be read')
+    // The engine honours it with the cancelled error, which is for an id
+    // the client no longer holds, and the feed is kept.
+    await eventually(() => h.sidecar.inFlight === 0, 5_000, 'the late answer')
+    expect(
+      JSON.parse(readFileSync(join(h.home, 'data', 'feeds', 'user-feeds.json'), 'utf8')),
+    ).toEqual([{ key: 'mine', name: 'mine', source: 'user' }])
   })
 
   it('clears every deadline and forgets expired requests when the engine exits and restarts', async () => {

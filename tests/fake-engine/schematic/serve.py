@@ -46,13 +46,23 @@ writes before the app starts (every key optional):
     add_delay_ms      wait between the download's ten progress reports for a URL (default 20)
     add_refuses       a sentence: feeds.add from a URL refuses with it, kind feed
     remove_delay_ms   wait before feeds.remove answers, on a thread of its own (default 0), so
-                      other requests are read and answered meanwhile
-    remove_blocks_ms  wait before feeds.remove does its work, on the reader itself, as the
-                      engine did from v0.8.3 to v0.10.1, when feeds.remove ran on its one
-                      reader thread: nothing else is read, answered or recorded until it has
-                      answered, and a cancel read afterwards changes nothing (default 0).
-                      Since v0.11.0 the engine runs it as a job and does not block; the
-                      control stays so the app can still be held to an engine that does
+                      other requests are read and answered meanwhile; it does not stop for
+                      a cancel, as an engine that cannot be stopped would not
+    remove_blocks_ms  how long feeds.remove takes (default 0: it answers at once), as a job,
+                      as the engine runs it since v0.11.0 (its issue 35): on a thread of its
+                      own, so the reader goes on answering and reads a cancel meanwhile. The
+                      name is from when the engine ran it on its one reader thread, from
+                      v0.8.3 to v0.10.1, and nothing else was read until it had answered.
+                      A cancel read before the point of no return answers -32800 and keeps the
+                      feed and its files; one read after it lets the removal finish and
+                      answers {"ok": true, "cancel_too_late": true}
+    remove_commits_after_ms  when, counted from the start of that removal, the registry is
+                      written without the feed: the point of no return (default: the end of
+                      the removal, so any cancel during it is in time). The zip goes at the
+                      end of the removal, as the engine removes files after forgetting the
+                      feed
+    remove_stalls     true: feeds.remove is read, recorded and never answered, a cancel
+                      included, as an engine that has stopped answering would
     inspect_refuses   a sentence: feeds.inspect refuses with it, kind feed
     stage_refuses     a sentence: render.stage refuses with it, kind engine
     empty_modes       modes graph.build keeps no routes for: after gtfs2graph it refuses with
@@ -571,9 +581,12 @@ class Engine:
             return True
         if method == "feeds.remove":
             key = (message.get("params") or {}).get("key")
+            if self.control.get("remove_stalls"):
+                return True
             if self.control.get("remove_blocks_ms"):
-                time.sleep(self.control["remove_blocks_ms"] / 1000)
-                self.replying(msg_id, self.remove_feed, msg_id, key)
+                threading.Thread(target=self.replying,
+                                 args=(msg_id, self.remove_job, msg_id, key),
+                                 daemon=True).start()
             elif self.control.get("remove_delay_ms"):
                 threading.Thread(target=self.replying,
                                  args=(msg_id, self.remove_feed, msg_id, key),
@@ -951,13 +964,53 @@ class Engine:
         except Exception as exc:  # noqa: BLE001 - any failure is the reply
             error(msg_id, -32603, f"the stand-in failed: {exc}", "engine")
 
+    def remove_job(self, msg_id, key) -> None:
+        """feeds.remove as the engine runs it since v0.11.0: a job. A built-in
+        feed is refused, an unknown one too, at once. Then the removal takes
+        remove_blocks_ms. Its point of no return, remove_commits_after_ms in,
+        is the write of the registry without the feed: a cancel read before it
+        is answered with the cancelled error and nothing has changed; one read
+        after it is not honoured, the zip goes at the end, and the answer
+        carries cancel_too_late. Without a cancel the answer is exactly
+        {"ok": true}."""
+        takes = self.control["remove_blocks_ms"] / 1000
+        commits = min(self.control.get("remove_commits_after_ms",
+                                       self.control["remove_blocks_ms"]) / 1000, takes)
+        if key in FEEDS:
+            error(msg_id, -32000, f"{key!r} is a built-in feed and cannot be removed", "feed")
+            return
+        if key not in self.user_feeds():
+            error(msg_id, -32000, f"{key!r} is not a registered feed", "feed")
+            return
+        started = time.monotonic()
+        while True:
+            # Looked at last thing before the write, as the engine's commit is.
+            if msg_id in self.cancelled:
+                write({"jsonrpc": "2.0", "id": msg_id,
+                       "error": {"code": -32800, "message": "Request Cancelled"}})
+                return
+            if time.monotonic() - started >= commits:
+                break
+            time.sleep(0.01)
+        with FEEDS_LOCK:
+            users = self.user_feeds()
+            users.pop(key, None)
+            self.write_user_feeds(users)
+        time.sleep(max(0.0, takes - (time.monotonic() - started)))
+        for path in (HOME / "data" / "feeds").glob(f"{key}.*zip"):
+            path.unlink()
+        answer = {"ok": True}
+        if msg_id in self.cancelled:
+            answer["cancel_too_late"] = True
+        write({"jsonrpc": "2.0", "id": msg_id, "result": answer})
+
     def remove_feed(self, msg_id, key) -> None:
         """feeds.remove, in shape: a built-in feed is refused, an unknown one
         too, and a user feed is forgotten with its zip; after remove_delay_ms,
         so a test can act while the request is out. Since engine v0.11.0 the
         answer is FeedsRemoveResult, exactly {"ok": true} unless a cancel came
-        too late for the registry's write to be undone; this stand-in does not
-        act on a cancel here, so it never adds that field."""
+        too late for the registry's write to be undone; this path does not act
+        on a cancel, so it never adds that field (remove_job does)."""
         time.sleep(self.control.get("remove_delay_ms", 0) / 1000)
         with FEEDS_LOCK:
             users = self.user_feeds()
