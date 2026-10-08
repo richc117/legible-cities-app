@@ -26,9 +26,9 @@ import {
 } from '../../src/main/replace-file'
 import {
   DEFAULT_COLOR,
-  DEFAULT_STYLE,
   DEFAULT_THEME,
   ID_PATTERN,
+  RECORD_VERSION,
   type ProjectRecord,
 } from '../../src/shared/project'
 
@@ -53,7 +53,7 @@ const B = 'bbbbbbbbbbbb'
 
 function record(id: string, overrides: Partial<ProjectRecord> = {}): ProjectRecord {
   return {
-    version: 1,
+    version: RECORD_VERSION,
     id,
     name: 'Seed',
     feed: 'la-metro-rail',
@@ -61,7 +61,7 @@ function record(id: string, overrides: Partial<ProjectRecord> = {}): ProjectReco
     agency: null,
     date: null,
     service: null,
-    style: { ...DEFAULT_STYLE },
+    style: {},
     colors: {},
     defaultColor: DEFAULT_COLOR,
     lineOrder: [],
@@ -132,7 +132,7 @@ describe('create', () => {
     // Field order and layout are the contract's: built here in that order
     // so the comparison covers both.
     const expected = {
-      version: 1,
+      version: RECORD_VERSION,
       id: created.id,
       name: 'Los Angeles',
       feed: 'la-metro-rail',
@@ -140,7 +140,9 @@ describe('create', () => {
       agency: null,
       date: null,
       service: null,
-      style: { lineWidth: 10, stationRadius: 8, interchangeRadius: 11, labelSize: 26 },
+      // A new project has chosen nothing: every size is the engine's own
+      // until a person sets one (issue 350).
+      style: {},
       colors: {},
       defaultColor: '#888888',
       lineOrder: [],
@@ -236,7 +238,7 @@ describe('list', () => {
     ])
   })
   it('marks a record from a later version read-only', async () => {
-    await seed(A, record(A, { version: 2 }))
+    await seed(A, record(A, { version: RECORD_VERSION + 1 }))
     expect((await store.list())[0]).toMatchObject({ id: A, readOnly: true })
   })
   it('orders by when a project was last opened, not when it was last changed', async () => {
@@ -351,7 +353,10 @@ describe('destinations', () => {
   })
 
   it('counts a project a newer version of the app made, which is read-only here', async () => {
-    await seed(A, record(A, { version: 2, name: 'Newer', destination: videos('newer') }))
+    await seed(
+      A,
+      record(A, { version: RECORD_VERSION + 1, name: 'Newer', destination: videos('newer') }),
+    )
     expect((await store.get(A)).readOnly).toBe(true)
     expect(await store.destinations()).toEqual([
       { id: A, name: 'Newer', destination: videos('newer') },
@@ -419,7 +424,7 @@ describe('markOpened', () => {
   })
 
   it('leaves a project a newer build made exactly as it was', async () => {
-    await seed(A, record(A, { version: 2 }))
+    await seed(A, record(A, { version: RECORD_VERSION + 1 }))
     const before = await readFile(join(root, A, 'project.json'), 'utf8')
     await store.markOpened(A)
     expect(await readFile(join(root, A, 'project.json'), 'utf8')).toBe(before)
@@ -442,11 +447,11 @@ describe('markOpened', () => {
 describe('get', () => {
   it('returns the record with readOnly false, or true for a later version', async () => {
     await seed(A, record(A, { name: 'Current' }))
-    await seed(B, record(B, { name: 'Future', version: 2 }))
+    await seed(B, record(B, { name: 'Future', version: RECORD_VERSION + 1 }))
     expect(await store.get(A)).toEqual({ ...record(A, { name: 'Current' }), readOnly: false })
     const future = await store.get(B)
     expect(future.readOnly).toBe(true)
-    expect(future.version).toBe(2)
+    expect(future.version).toBe(RECORD_VERSION + 1)
     expect(future.name).toBe('Future')
   })
   it('rejects an unknown or malformed identifier without a path', async () => {
@@ -498,7 +503,7 @@ describe('rename', () => {
     expect(await readdir(join(root, A))).toEqual(['project.json'])
   })
   it('refuses a record from a later version and leaves it as it was', async () => {
-    await seed(A, record(A, { version: 2, name: 'Future' }))
+    await seed(A, record(A, { version: RECORD_VERSION + 1, name: 'Future' }))
     const before = await readFile(join(root, A, 'project.json'), 'utf8')
     await expect(store.rename(A, 'Renamed')).rejects.toThrow(/^read-only$/)
     expect(await readFile(join(root, A, 'project.json'), 'utf8')).toBe(before)
@@ -1416,6 +1421,7 @@ describe('drawn', () => {
       defaultColor: DEFAULT_COLOR,
       lineOrder: [],
       theme: DEFAULT_THEME,
+      style: {},
     })
   })
 

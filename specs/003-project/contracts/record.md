@@ -1,10 +1,10 @@
 # Contract: `project.json`
 
-The on-disk form of `ProjectRecord` (`data-model.md`), version 1:
+The on-disk form of `ProjectRecord` (`data-model.md`), version 2:
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "id": "kq7x2mzp4dna",
   "name": "Los Angeles",
   "feed": "la-metro-rail",
@@ -12,7 +12,7 @@ The on-disk form of `ProjectRecord` (`data-model.md`), version 1:
   "agency": null,
   "date": null,
   "service": null,
-  "style": { "lineWidth": 10, "stationRadius": 8, "interchangeRadius": 11, "labelSize": 26 },
+  "style": {},
   "colors": {},
   "defaultColor": "#888888",
   "lineOrder": [],
@@ -32,17 +32,36 @@ The on-disk form of `ProjectRecord` (`data-model.md`), version 1:
 - Pretty-printed, two-space indent, trailing newline, UTF-8: the file is
   meant to be read by a person too.
 - Written atomically (`research.md` section 1).
-- The `style` defaults are the engine's `Style` values at the pinned engine
-  and are copied here as data; the numbers are re-checked against the engine
-  when A4-02 exposes them.
-- Readers accept a missing optional field and refuse a `version` above 1.
+- `style` (the sizes of the map; version 2, issue 350, ADR-049) holds up
+  to eight numbers in the engine's own names in camel case - `lineWidth`,
+  `lineGap`, `stationRadius`, `interchangeRadius`, `stationStroke`,
+  `labelSize`, `labelOffset`, `padding` - each present only when a person
+  set it, so a new record holds `{}`. A missing field is the engine's own
+  number (`DEFAULT_STYLE`, copied here as data and held to the committed
+  protocol schema by a test), and a field written at that number is no
+  choice and is not sent. A value that is not a finite number reads as
+  missing; a number outside the engine's range is **kept**, shown refused
+  beside its field in cell 04, and nothing is sent until it is fixed.
+  **The version moved from 1 to 2 for this field** and for no other: a
+  version-1 record held four numbers, `10, 8, 11, 26`, which the app wrote
+  at creation, never sent and called the engine's when they were not, and
+  sending them would have redrawn every existing project. So a version-1
+  record whose four numbers are all those - one missing counting as its
+  old value - reads as setting nothing, and any other number in one of the
+  four is kept as set; a version-2 record is read as written, those
+  numbers included. A build that does not know version 2 reads the record
+  as read-only. The colours the engine also accepts are not here and are
+  never sent (ADR-049).
+- Readers accept a missing optional field and refuse a `version` above 2.
 - `made` (added by A3-06, still version 1) is when the engine made the
   stored layout, its `meta.made` as answered by `graph.build`, or `null`;
   a value that does not parse as a time reads as `null`.
 - `drawn` (added by A5.5-04, still version 1) is what the map now in the
   project's output folder was drawn from:
-  `{ layout, made, date, colors, defaultColor, lineOrder, theme }`, the
-  record's own values as they were at the end of the draw that produced it,
+  `{ layout, made, date, colors, defaultColor, lineOrder, theme, style }`,
+  the record's own values as they were at the end of the draw that produced
+  it (`style` is what `map.build` was sent, in the app's names, empty for a
+  map drawn without one, and a block from before the field reads as empty),
   or `null`. It is written by the four handlers that write the record at
   the end of a draw - `completeLayout`, `completeRebuild`, `completeColors`
   and `completeOrder` - and by nothing else, so an edit that draws nothing

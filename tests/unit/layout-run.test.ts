@@ -978,6 +978,7 @@ describe('recolour', () => {
         defaultColor: '#888888',
         lineOrder: [],
         theme: 'warm-dark',
+        style: {},
       },
     })
     run.recolour(record, READY, chosen)

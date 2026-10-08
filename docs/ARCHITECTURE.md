@@ -914,7 +914,7 @@ day's. The block is read rather than assumed, to the depth the panel
 reaches into it: the renderer has no error boundary, so a block that is
 not whole would take the window blank after the map had been drawn, and is
 simply not shown instead. They are deliberately not written to the record: `parseRecord`
-drops what it does not know and `RECORD_VERSION` is 1, so a new field
+drops what it does not know and `RECORD_VERSION` is 2, so a new field
 would make a record read-only to an older app, for numbers that go stale
 the moment another project re-lays out the set this one draws from.
 

@@ -13,7 +13,6 @@ import { join } from 'node:path'
 import {
   DEFAULT_COLOR,
   DEFAULT_MODE,
-  DEFAULT_STYLE,
   DEFAULT_THEME,
   drawnFrom,
   openedOrder,
@@ -450,7 +449,7 @@ export class ProjectStore {
       agency,
       date: null,
       service: null,
-      style: { ...DEFAULT_STYLE },
+      style: {},
       colors: {},
       defaultColor: DEFAULT_COLOR,
       lineOrder: [],
