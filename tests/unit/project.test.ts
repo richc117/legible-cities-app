@@ -270,6 +270,34 @@ describe('parseRecord', () => {
     }
   })
 
+  // Issue 352: the caption and the corner are options, the alt text sits
+  // beside them, and all three are read with the choice or not at all.
+  it('reads a caption, a clock corner and an alt text with the choice', () => {
+    const choice = {
+      preset: 'linkedin-video',
+      options: { caption: 'Rush hour', clock_corner: 'top-right' },
+      alt: 'A schematic of the rail lines.',
+    }
+    const kept = parseRecord({ ...structuredClone(full), export: choice })
+    expect('record' in kept && kept.record.export).toEqual(choice)
+    // A blank alt text is no alt text and costs the choice nothing.
+    const blank = parseRecord({ ...structuredClone(full), export: { ...choice, alt: '  ' } })
+    expect('record' in blank && blank.record.export.preset).toBe('linkedin-video')
+    for (const broken of [
+      { ...choice, alt: 'x'.repeat(1001) },
+      { ...choice, alt: 4 },
+      { preset: 'linkedin-video', options: { caption: 'x'.repeat(81) } },
+      { preset: 'linkedin-video', options: { caption: 'two\nlines' } },
+      { preset: 'linkedin-video', options: { clock_corner: 'middle' } },
+    ]) {
+      const read = parseRecord({ ...structuredClone(full), export: broken })
+      expect('record' in read && read.record.export, JSON.stringify(broken)).toEqual({
+        preset: 'instagram-reel',
+        options: {},
+      })
+    }
+  })
+
   it('reads a full record as written', () => {
     expect(parseRecord(structuredClone(full))).toEqual({ record: full, readOnly: false })
   })

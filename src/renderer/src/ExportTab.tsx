@@ -143,7 +143,9 @@ interface Props {
  * picture that does not exist (A5.5-15).
  */
 const keyOf = (choice: ExportChoice, project: ProjectRecord): string =>
-  JSON.stringify([choice, project.theme, drawnDate(project), project.layout])
+  // Without the alt text, which is not on the plan and so changes nothing
+  // the preview is of (issue 352).
+  JSON.stringify([{ ...choice, alt: undefined }, project.theme, drawnDate(project), project.layout])
 
 export default function ExportTab({
   project,
@@ -691,12 +693,15 @@ export default function ExportTab({
               <span className="field-label" aria-hidden="true">
                 Clock corner
               </span>
-              {/* Keyed by what is on offer: the kit copies a select's options
-                  when they are added or taken away and not when one's words
-                  change, so a different list is a select made afresh, as the
-                  quality's is when a preset can take only one. */}
+              {/* Keyed by the preset's own corner, which is what the marked
+                  option's words depend on: the kit copies a select's options
+                  into its own when they are added or taken away and not when
+                  one's words change, and the mark moves only when a preset
+                  with safe zones is chosen or left. A caption or the title
+                  changing the list must not make the select afresh: that
+                  happens as focus is moving to it. */}
               <Select
-                key={corners.join(' ')}
+                key={defaultCorner(preset)}
                 label="Clock corner"
                 value={corner}
                 disabled={locked || !clockOn}

@@ -1387,7 +1387,7 @@ describe('the choice itself', () => {
         expect(validateChoiceOptions(options), JSON.stringify(options)).toMatch(sentence)
     })
 
-    it('refuses an alt that is blank, too long once trimmed, or not text', () => {
+    it('refuses an alt that is blank, too long once trimmed, or not text, when it is typed', () => {
       expect(validateAlt('')).toMatch(
         /empty; leave it out, and the sidecar keeps the description the engine writes/,
       )
@@ -1396,11 +1396,21 @@ describe('the choice itself', () => {
         'The alt text is 1,001 characters; it may be at most 1,000.',
       )
       expect(validateAlt(3)).toMatch(/must be text/)
-      for (const alt of ['', '   ', 'x'.repeat(1001), 7])
+    })
+
+    it('refuses a stored alt that is too long or not text, and reads a blank one as none', () => {
+      for (const alt of ['x'.repeat(1001), 7, null])
         expect(
           validateExportChoice({ preset: 'x', options: {}, alt }),
           JSON.stringify(alt),
         ).not.toBeNull()
+      // A blank one is no alt text, and does not cost the record its preset
+      // and options (`parseRecord` keeps a choice whole or not at all).
+      for (const alt of ['', '   ', ' \n '])
+        expect(
+          validateExportChoice({ preset: 'x', options: {}, alt }),
+          JSON.stringify(alt),
+        ).toBeNull()
     })
 
     it('keeps the alt beside the options through a copy, and never among them', () => {

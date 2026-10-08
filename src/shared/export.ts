@@ -252,8 +252,12 @@ export function validateExportChoice(choice: unknown): string | null {
   if (!isOfferedPreset(choice.preset)) return 'the app does not offer that preset'
   if (choice.storyboard !== undefined && !isStoryboardName(choice.storyboard))
     return 'that is not a storyboard the engine has'
+  // A blank one is no alt text, as an empty caption is no caption: the tab
+  // never writes it, `sentChoice` drops it, and a record that holds one is
+  // read as it is and not thrown away whole.
   if (choice.alt !== undefined) {
-    const problem = validateAlt(choice.alt)
+    const problem =
+      typeof choice.alt === 'string' && choice.alt.trim() === '' ? null : validateAlt(choice.alt)
     if (problem !== null) return problem
   }
   return validateChoiceOptions(choice.options)

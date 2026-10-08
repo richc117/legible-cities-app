@@ -555,11 +555,13 @@ Result: ____
 
 ### 12. Cell 06, Export: a post and a GIF
 
-**Do.** Choose **Preset** "instagram-post: 1080 by 1350, still, PNG". Type
-`Rush hour on the Red Line` in **Caption** and press Tab. In **Alt text for
-the file’s sidecar** type `A schematic of the Los Angeles rail lines.` with
-a space before it and one after, and click elsewhere. Press **Export**.
-Then choose "instagram-reel-gif: 630 by 1120, GIF" and press **Export**.
+**Do.** Choose **Preset** "instagram-post: 1080 by 1350, still, PNG". In
+**Caption** type any 60 characters and then an 81st, and read what appears
+under the field. Replace them with `Rush hour on the Red Line` and press
+Tab. In **Alt text for the file’s sidecar** type
+`A schematic of the Los Angeles rail lines.` with a space before it and one
+after, and click elsewhere. Press **Export**. Then choose
+"instagram-reel-gif: 630 by 1120, GIF" and press **Export**.
 
 **See.**
 - For the post: a **View** select and a **Start time** field appear, and
@@ -571,10 +573,9 @@ Then choose "instagram-reel-gif: 630 by 1120, GIF" and press **Export**.
   left" and "bottom right (the preset’s own)".
   It ends with "Exported la-metro-rail-instagram-post.png."
 - **Caption** counts as it nears its bound and refuses beside the field:
-  at the 60th character "60 of 80" is added under it, and at an 81st (type
-  or paste any 81 characters) that line is replaced by "A caption is 1 to 80
-  characters on one line; this one is 81." and the preview keeps the last
-  caption. Delete back to `Rush hour on the Red Line` before you export.
+  at the 60th character "60 of 80" is added under it, and at an 81st that
+  line is replaced by "A caption is 1 to 80 characters on one line; this
+  one is 81." and the preview does not take it.
 - For the GIF: **Storyboard** returns; **Clock corner** lists "top right",
   "bottom left" and "bottom right (the preset’s own)", this preset having
   no shaded parts to keep the clock out of the bottom right; the caption

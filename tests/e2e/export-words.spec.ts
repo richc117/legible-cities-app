@@ -185,6 +185,12 @@ async function choosePreset(page: Page, preset: string, frameRatio: string): Pro
     .toBe(frameRatio)
 }
 
+/**
+ * The corners the select offers, read until they are the ones expected. The
+ * kit copies a select's options into its inner select when they change, and
+ * the corner select is made afresh when its list does, so a read straight
+ * after the change that caused it can be of the list before.
+ */
 const optionValues = (select: Locator): Promise<string[]> =>
   select.locator('option').evaluateAll((all) => all.map((o) => (o as HTMLOptionElement).value))
 
@@ -306,10 +312,9 @@ test('the clock’s corner offers what the preset and the options allow, and the
     await expect
       .poll(async () => (await frameQuery(page)).get('frame'), { timeout: 20_000 })
       .toBe('1080:1920')
-    expect(await optionValues(cornerSelect(page)), 'the reel offers two').toEqual([
-      'top-right',
-      'bottom-left',
-    ])
+    await expect
+      .poll(() => optionValues(cornerSelect(page)), { message: 'the reel offers two' })
+      .toEqual(['top-right', 'bottom-left'])
     await expect(cornerSelect(page), 'and the top right is chosen').toHaveValue('top-right')
     await expect(
       panel.getByText(/Bottom left is inside its bottom zone/),
@@ -350,23 +355,18 @@ test('the clock’s corner offers what the preset and the options allow, and the
     await expect
       .poll(async () => (await frameQuery(page)).get('frame'), { timeout: 20_000 })
       .toBe('1200:1200')
-    expect(await optionValues(cornerSelect(page)), 'the title sits top left').toEqual([
-      'top-right',
-      'bottom-left',
-      'bottom-right',
-    ])
+    await expect
+      .poll(() => optionValues(cornerSelect(page)), { message: 'the title sits top left' })
+      .toEqual(['top-right', 'bottom-left', 'bottom-right'])
     await expect(cornerSelect(page)).toHaveValue('bottom-right')
     await expect(panel.getByText(/bottom zone/), 'no zone, no note').toHaveCount(0)
     expect((await frameQuery(page)).get('corner'), 'the default is not on the address').toBeNull()
 
     // With the title off, and no caption, all four.
     await panel.getByRole('checkbox', { name: /^The title/ }).uncheck()
-    expect(await optionValues(cornerSelect(page)), 'with the title off, all four').toEqual([
-      'top-left',
-      'top-right',
-      'bottom-left',
-      'bottom-right',
-    ])
+    await expect
+      .poll(() => optionValues(cornerSelect(page)), { message: 'with the title off, all four' })
+      .toEqual(['top-left', 'top-right', 'bottom-left', 'bottom-right'])
     await expect(cornerSelect(page)).toHaveValue('bottom-right')
 
     // The top left chosen, planned, and carried into the export.
@@ -383,7 +383,9 @@ test('the clock’s corner offers what the preset and the options allow, and the
     // The title back on puts the name block where the clock was: the top
     // left is no longer offered, and the corner chosen goes with it.
     await panel.getByRole('checkbox', { name: /^The title/ }).check()
-    expect(await optionValues(cornerSelect(page))).not.toContain('top-left')
+    await expect
+      .poll(() => optionValues(cornerSelect(page)), { message: 'the title sits top left again' })
+      .not.toContain('top-left')
     await expect(cornerSelect(page), 'back to the preset’s own').toHaveValue('bottom-right')
     await expect
       .poll(() => readRecord(h).export.options, { message: 'a refused corner is dropped' })
@@ -392,15 +394,17 @@ test('the clock’s corner offers what the preset and the options allow, and the
     // And a caption does the same without the title: set one, and the top
     // left is not offered.
     await panel.getByRole('checkbox', { name: /^The title/ }).uncheck()
-    expect(await optionValues(cornerSelect(page))).toContain('top-left')
+    await expect
+      .poll(() => optionValues(cornerSelect(page)), { message: 'with the title off again' })
+      .toContain('top-left')
     await captionField(page).fill('Rush hour')
     await captionField(page).press('Tab')
     await expect
       .poll(() => readRecord(h).export.options.caption, { timeout: 20_000 })
       .toBe('Rush hour')
-    expect(await optionValues(cornerSelect(page)), 'a caption sits top left too').not.toContain(
-      'top-left',
-    )
+    await expect
+      .poll(() => optionValues(cornerSelect(page)), { message: 'a caption sits top left too' })
+      .not.toContain('top-left')
 
     // No clock, no corner to choose.
     await panel.getByRole('checkbox', { name: 'The clock' }).uncheck()
@@ -508,6 +512,11 @@ test('the three are the project’s own, and are there when it is opened again',
     await cornerSelect(page).selectOption('top-right')
     await captionField(page).fill('Rush hour')
     await captionField(page).press('Tab')
+    // Setting the caption took the top left out of the corner's list as
+    // focus moved on to the select: the select must be the same one, with
+    // focus, and not one made afresh under it.
+    await expect(cornerSelect(page), 'focus went on to the clock corner').toBeFocused()
+    await expect(cornerSelect(page)).toHaveValue('top-right')
     await altField(page).fill('A map in words.')
     await altField(page).blur()
     await expect
