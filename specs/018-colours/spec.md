@@ -33,6 +33,9 @@ time chart move together and the stations never do. The choice lives in
 `project.json`, so reopening the project shows the same colours, and every
 later build, capture and export draws them.
 
+**As of 8 Oct 2026:** a colour is redrawn on the gesture's release, not
+after a debounce (issue 262; see FR-004).
+
 ## User Scenarios & Testing _(mandatory)_
 
 ### User Story 1 - Overriding one line's colour (Priority: P1)
