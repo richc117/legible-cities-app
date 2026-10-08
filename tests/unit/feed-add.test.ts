@@ -72,6 +72,7 @@ const FEED: FeedRecord = {
   agency: null,
   geographic: true,
   notes: [],
+  headways: false,
   source: 'user',
   cached: true,
 }

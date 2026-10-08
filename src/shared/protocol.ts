@@ -1,7 +1,7 @@
 // Generated from the engine's own description of its protocol.
 // Run `npm run typegen` to regenerate; edits here are lost.
 //
-// Engine: v0.10.1, protocol 1.
+// Engine: v0.12.0, protocol 1.
 // Source: vendor/protocol.schema.json, printed by the engine's
 // `python -m schematic.serve --schema` and committed verbatim.
 
@@ -235,9 +235,9 @@ export interface GraphBuildResult {
 }
 
 /**
- * Draw the map and the animation page for a registered feed on one service
- * day, from a stored layout. Never lays the feed out: a layout that is not
- * stored is refused, with a hint to lay it out first.
+ * Draw the map, the animation page and a thumbnail pair for a registered
+ * feed on one service day, from a stored layout. Never lays the feed out: a
+ * layout that is not stored is refused, with a hint to lay it out first.
  */
 export interface MapBuildParams {
   key: FeedKey
@@ -265,11 +265,119 @@ export interface MapBuildParams {
   default_color?: HexColor
   /**
    * Line labels in the order they stack on shared track, the later over the
-   * earlier. A line the list leaves out follows the ones it names, and a
-   * label the layout does not carry is ignored, so a partial or stale order
-   * never drops a line.
+   * earlier, and the order of the page's rows in the Linear and Time views.
+   * A line the list leaves out follows the ones it names, and a label the
+   * layout does not carry is ignored, so a partial or stale order never
+   * drops a line.
    */
   line_order?: string[]
+  /**
+   * A display name and a hidden flag per line, keyed by line label. A label
+   * the layout does not carry is ignored, so a client can keep its choices
+   * for lines a narrower mode dropped. Hiding is a drawing choice: a hidden
+   * line comes off the map, its trips, the page and the thumbnails, a
+   * station only it served is not drawn, and no stored layout changes;
+   * render.stage still shows every line.
+   */
+  lines?: Record<string, LineOptions>
+  style?: MapStyle
+}
+
+/**
+ * How the map is drawn, in the engine's own numbers. Every field is
+ * optional; omitting the object, or any field, draws exactly what is drawn
+ * without it. The numbers are in SVG user units at the map's width (the map
+ * is fitted to MapBuildParams.width, 1800 by default, so a line width of 7
+ * is seven of 1800), except line_gap, a multiple of line_width.
+ * interchange_radius may not be below station_radius, judged on the values
+ * the map would be drawn with (a field left out counts as its default): a
+ * rule the schema cannot hold and the server does. label_size and
+ * label_offset re-place the labels and move the drawing's viewBox, never the
+ * stored layout. The four colours are the literals a standalone SVG falls
+ * back to; the animation page's theme overrides them, which is why the
+ * desktop app does not send them.
+ */
+export interface MapStyle {
+  /**
+   * Line stroke width, in SVG user units at the map's width; 7 when omitted.
+   */
+  line_width?: number
+  /**
+   * Pitch of parallel tracks as a multiple of line_width, so it has no unit;
+   * 1.6 when omitted.
+   */
+  line_gap?: number
+  /**
+   * Radius of a station on one route, in SVG user units at the map's width;
+   * 4.2 when omitted.
+   */
+  station_radius?: number
+  /**
+   * Radius of a station where routes meet, in SVG user units at the map's
+   * width; 6 when omitted. Not below station_radius.
+   */
+  interchange_radius?: number
+  /**
+   * Width of a station's outline, in SVG user units at the map's width; 2.2
+   * when omitted.
+   */
+  station_stroke?: number
+  /**
+   * Font size of a station's name, in SVG user units at the map's width; 11
+   * when omitted. The labels are placed again, so the viewBox moves.
+   */
+  label_size?: number
+  /**
+   * Distance of a name from its station, in SVG user units at the map's
+   * width; 9 when omitted. The labels are placed again, so the viewBox
+   * moves.
+   */
+  label_offset?: number
+  /**
+   * Margin round the drawing on every side, in SVG user units at the map's
+   * width; 24 when omitted.
+   */
+  padding?: number
+  /**
+   * The ground, as the literal a standalone SVG falls back to; the page's
+   * theme overrides it. #ffffff when omitted.
+   */
+  background?: HexColor
+  /**
+   * A station's fill, as the literal a standalone SVG falls back to; the
+   * page's theme overrides it. #ffffff when omitted.
+   */
+  station_fill?: HexColor
+  /**
+   * A station's outline, as the literal a standalone SVG falls back to; the
+   * page's theme overrides it. #111111 when omitted.
+   */
+  station_stroke_color?: HexColor
+  /**
+   * The station names, as the literal a standalone SVG falls back to; the
+   * page's theme overrides it. #111111 when omitted.
+   */
+  label_color?: HexColor
+}
+
+/**
+ * What a client chose for one line of the map. Every field is optional; an
+ * empty object changes nothing.
+ */
+export interface LineOptions {
+  /**
+   * The line's display name, written where the page writes the line's label:
+   * its chip, its row and the time chart's band, and the trains' titles. The
+   * label stays the line's key everywhere else (the SVG's data-line,
+   * ExportOptions.lines). From 1 to 40 characters, with no line break.
+   */
+  name?: string
+  /**
+   * True leaves the line off the map: no track, no trips, no chip, row or
+   * band, and no colour in the thumbnails; the lines it shared track with
+   * close up over its place.
+   */
+  hidden?: boolean
 }
 
 /**
@@ -317,6 +425,17 @@ export interface MapBuildResult {
      */
     html: string
     positions: string
+    /**
+     * A small picture of the map for the dark palette: the network alone,
+     * about 400 units wide, no ground, every colour a literal, in the
+     * request's colors, default_color and line_order. Safe to show in an
+     * img.
+     */
+    thumb_dark: string
+    /**
+     * The same picture for the light palette.
+     */
+    thumb_light: string
   }
   /**
    * Result.summary(), the lines the CLI prints.
@@ -406,6 +525,22 @@ export type View = 'geographic' | 'map' | 'linear' | 'time'
 export type Clock = string
 
 /**
+ * A person's words for the frame, 1 to 80 characters with no line break. The
+ * page draws it as text, never markup, under the title at the size of the
+ * date line: at most two lines at 1,080 wide.
+ */
+export type Caption = string
+
+/**
+ * Where the page draws the clock. Left out, it is bottom-right, where the
+ * clock has always sat, except on a preset with safe zones (instagram-reel,
+ * instagram-story), where it is top-right: there bottom-right is refused,
+ * because the platform's own interface covers it, and bottom-left comes with
+ * a note.
+ */
+export type ClockCorner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
+
+/**
  * The page's own address, with its scheme. The desktop app serves a
  * project's page on its own origin and passes that; the engine's default is
  * the site's file.
@@ -452,19 +587,25 @@ export interface ExportPresets {
 }
 
 /**
- * A stretch of video with one set of state, as the storyboard is written. A
- * field left null carries over from the beat before.
+ * A stretch of video with one set of state, as the storyboard is written;
+ * export.storyboards answers every field, and a client writing a list gives
+ * only secs and what changes. A field left out or null carries over from the
+ * beat before. The server also checks what this cannot say: the beats last
+ * 90 seconds in all at most, a span's first clock is before its second, the
+ * first beat names a view and has tween 0 or none, since frame 0 must
+ * already be in a view, and the first beat names at unless it sweeps without
+ * hours, since frame 0 is not reproducible without a clock.
  */
 export interface StoryboardBeat {
   secs: number
-  view: View | null
-  labels: boolean | null
-  at: Clock | null
-  speed: number | null
-  sweep: boolean
-  hours: number | null
-  span: Clock[] | null
-  tween: number | null
+  view?: View | null
+  labels?: boolean | null
+  at?: Clock | null
+  speed?: number | null
+  sweep?: boolean
+  hours?: number | null
+  span?: Clock[] | null
+  tween?: number | null
 }
 
 export interface Storyboard {
@@ -491,6 +632,11 @@ export interface ExportStoryboards {
  * bin/export defaults it.
  */
 export interface ExportOptions {
+  /**
+   * The view a still is taken in. For a video it opens a named storyboard:
+   * the first beat takes it, with no transition. Refused beside a list on a
+   * video preset, whose first beat names its view.
+   */
   view?: View
   labels?: boolean
   /**
@@ -500,14 +646,22 @@ export interface ExportOptions {
   clock?: boolean
   theme?: 'dark' | 'light'
   /**
-   * The clock to start at; a still is taken here.
+   * The clock to start at; a still is taken here. For a video it opens a
+   * named storyboard, as its first beat's clock. Refused beside a list on a
+   * video preset, whose first beat carries its own.
    */
   at?: Clock
   /**
    * Line labels to keep; the rest are hidden.
    */
   lines?: string[]
-  storyboard?: StoryboardName
+  /**
+   * What a video plays: a storyboard's name, or a list of beats written as
+   * export.storyboards writes them, played in order. A list's first beat
+   * names the view frame 0 is in, and its clock unless it sweeps without
+   * hours. A still ignores either.
+   */
+  storyboard?: StoryboardName | StoryboardBeat[]
   /**
    * draft: 1x and fast; standard: 2x, resampled to the preset's size; high:
    * 2x, kept.
@@ -522,6 +676,8 @@ export interface ExportOptions {
    * Draw the platform's safe zones; never for a deliverable.
    */
   safe?: boolean
+  caption?: Caption
+  clock_corner?: ClockCorner
 }
 
 /**
@@ -591,9 +747,9 @@ export interface CaptureJob {
   theme: 'dark' | 'light'
   view: View
   /**
-   * Empty for a still.
+   * The storyboard's name; custom for a list of beats; empty for a still.
    */
-  storyboard: StoryboardName | ''
+  storyboard: StoryboardName | 'custom' | ''
   /**
    * The clock, in seconds, a still is taken at; a video's beats seek for
    * themselves.
@@ -604,6 +760,15 @@ export interface CaptureJob {
    * to read.
    */
   notes: string[]
+  /**
+   * The caption as given; null for none.
+   */
+  caption: Caption | null
+  /**
+   * The corner resolved, given even where the clock is off and the address
+   * names none.
+   */
+  clock_corner: ClockCorner
   /**
    * stem plus the format's extension; the plan's convenience.
    */
@@ -620,6 +785,14 @@ export interface Provenance {
   stations?: number
   lines?: number
   caveats?: string[]
+  /**
+   * The sidecar's alt text in the caller's own words, written trimmed, in
+   * place of the description the engine generates; omitted, the generated
+   * one stands. At most 1,000 characters, counted as Unicode code points (a
+   * JavaScript string's length counts UTF-16 units, so one emoji is one here
+   * and two there). Text of only whitespace is refused by the server.
+   */
+  alt?: string
 }
 
 /**
@@ -674,6 +847,14 @@ export interface FeedRecord {
   geographic: boolean
   notes: string[]
   /**
+   * Whether the feed's service is run from frequencies.txt (trains at a
+   * scheduled interval) rather than a timetable of trip times. A preset says
+   * so in the registry; for a feed added through feeds.add it is decided
+   * when the zip is checked: frequencies.txt has rows and the trips they
+   * name in trips.txt are at least half of the feed's trips.
+   */
+  headways: boolean
+  /**
    * Which half of the registry: a preset is curated in the engine and cannot
    * be removed; a user feed was added through feeds.add.
    */
@@ -717,10 +898,22 @@ export interface FeedsAddParams {
 
 /**
  * Forget a feed a person added, with its zips and its stored layouts. A
- * preset is refused with kind feed.
+ * preset is refused with kind feed. A long request: the registry's write is
+ * the point of no return, and a cancel before it leaves the feed registered
+ * with every file in place.
  */
 export interface FeedsRemoveParams {
   key: FeedKey
+}
+
+/**
+ * The feed is forgotten and its files are gone. `cancel_too_late` is
+ * present, and true, only when a cancel arrived after the point of no return
+ * and so was not honoured; otherwise the answer is exactly `{"ok": true}`.
+ */
+export interface FeedsRemoveResult {
+  ok: true
+  cancel_too_late?: true
 }
 
 /**
@@ -856,9 +1049,10 @@ export interface Inspection {
 export type StageName = 'gtfs2graph' | 'topo' | 'loom' | 'octi'
 
 /**
- * One stored stage graph of a layout, drawn as SVG, with its counts (E15):
- * what a geographic view shows beside the schematic map. Never lays out; a
- * stage that is not stored is refused with kind layout.
+ * One stored stage graph of a layout, drawn as SVG, with its counts (E15)
+ * and its description (StageDescription): what a geographic view shows
+ * beside the schematic map, and what its text alternative is written from.
+ * Never lays out; a stage that is not stored is refused with kind layout.
  */
 export interface RenderStageParams {
   key: FeedKey
@@ -872,6 +1066,13 @@ export interface RenderStageParams {
    * Draw station names.
    */
   labels?: boolean
+  /**
+   * The project's service day, which times each line of the description by
+   * its commonest trip that day. Left out, every trip and the extent are
+   * null and no timetable is read: the engine never picks a day for it. Null
+   * is refused; leave it out instead.
+   */
+  date?: ServiceDate
 }
 
 export interface RenderStageResult {
@@ -885,6 +1086,104 @@ export interface RenderStageResult {
   width: number
   height: number
   counts: StageSummary
+  description: StageDescription
+}
+
+/**
+ * The stage graph drawn, in fields a text alternative is written from; the
+ * engine writes no sentence. A station is named as the map draws it, the
+ * empty string where the feed gives no name, never its id; a junction LOOM
+ * inserted (no station) is never named, listed or met at. The minutes are of
+ * the layout and the request's date, not of the stage, so every stage
+ * answers the same ones; only the order of their two names follows the
+ * stage.
+ */
+export interface StageDescription {
+  /**
+   * The line whose trip takes the most minutes, with that trip; the first in
+   * label order on a tie. Null without a date, or when no line has a trip
+   * that day.
+   */
+  extent: {
+    minutes: number
+    /**
+     * The line's label.
+     */
+    line: string
+    from: string
+    to: string
+  } | null
+  /**
+   * One entry per line label, in label order (sorted). For every line, its
+   * stations and every branch's together are the line's stations, each once.
+   */
+  lines: {
+    label: string
+    /**
+     * The first and last station of the line's spine, its longest run
+     * (linear.spine), never a headsign; one for a loop, or for a spine of
+     * one station.
+     */
+    termini: string[]
+    /**
+     * The spine's stations in order, termini first and last. A loop, a line
+     * whose graph is one cycle, lists its cycle once, from the station with
+     * the smallest node id toward that station's neighbour with the smaller
+     * id.
+     */
+    stations: string[]
+    /**
+     * Every station of the line whose node carries another line on any edge,
+     * in the order of stations and then of each branch's stations.
+     */
+    meets: {
+      station: string
+      /**
+       * The other lines there, in label order.
+       */
+      lines: string[]
+    }[]
+    /**
+     * The stations off the spine, as simple paths in travel order: from each
+     * spine station in order, each way off it in node id order, a branch and
+     * then the branches that fork from it. A branch ends where it forks
+     * again, and each way on from the fork is a branch of its own. Empty for
+     * a loop.
+     */
+    branches: {
+      /**
+       * The station the branch leaves. Where it leaves the run at a junction
+       * that is not a station, the station next to the junction along that
+       * run on the side with more stations to the run's end, toward its
+       * start on a tie; where it leaves a junction ending a branch, the
+       * nearest station back along that branch, else that branch's own at.
+       * Null for a further piece of the line that touches the rest nowhere,
+       * whose stations are that piece's own spine and whose branches follow
+       * it.
+       */
+      at: string | null
+      /**
+       * In travel order away from at. A branch that would pass no station is
+       * left out; the branches beyond it are kept.
+       */
+      stations: string[]
+    }[]
+    /**
+     * The line's commonest trip on the date: its trips that day grouped by
+     * their first and last calls at a mapped station, the largest group
+     * winning (on a tie the shorter median, then the names that sort first),
+     * its median duration in whole minutes rounded half up. from and to are
+     * in the order the line's stations and then its branches list them, a
+     * name the stage does not list keeping the trip's own order; equal for a
+     * trip that ends where it began. Null without a date, or when the line
+     * has no trip that day.
+     */
+    trip: {
+      minutes: number
+      from: string
+      to: string
+    } | null
+  }[]
 }
 
 /**
@@ -945,7 +1244,7 @@ export interface Methods {
   }
   'feeds.remove': {
     params: FeedsRemoveParams
-    result: Ok
+    result: FeedsRemoveResult
   }
   'feeds.inspect': {
     params: FeedsInspectParams

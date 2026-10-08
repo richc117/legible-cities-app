@@ -130,6 +130,7 @@ agency's terms.
 
 Built by Richard Caballero. Schematisation by
 [LOOM](https://github.com/ad-freiburg/loom) (University of Freiburg,
-GPL-3.0). The view-switcher icons inside the engine's animation page are Esri's
-Calcite UI icons, redistributed unmodified under Esri's licence. Transit data comes from the
+GPL-3.0). The view-switcher icons inside the engine's animation page are
+[Phosphor Icons](https://github.com/phosphor-icons/core), the same set as the
+app's own, copied unmodified under the MIT licence. Transit data comes from the
 agencies that publish it.

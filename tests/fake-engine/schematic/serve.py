@@ -48,9 +48,11 @@ writes before the app starts (every key optional):
     remove_delay_ms   wait before feeds.remove answers, on a thread of its own (default 0), so
                       other requests are read and answered meanwhile
     remove_blocks_ms  wait before feeds.remove does its work, on the reader itself, as the
-                      engine (v0.8.3) runs feeds.remove on its one reader thread: nothing else
-                      is read, answered or recorded until it has answered, and a cancel read
-                      afterwards changes nothing (default 0)
+                      engine did from v0.8.3 to v0.10.1, when feeds.remove ran on its one
+                      reader thread: nothing else is read, answered or recorded until it has
+                      answered, and a cancel read afterwards changes nothing (default 0).
+                      Since v0.11.0 the engine runs it as a job and does not block; the
+                      control stays so the app can still be held to an engine that does
     inspect_refuses   a sentence: feeds.inspect refuses with it, kind feed
     stage_refuses     a sentence: render.stage refuses with it, kind engine
     empty_modes       modes graph.build keeps no routes for: after gtfs2graph it refuses with
@@ -70,6 +72,7 @@ outside and see what reached it. Standard library only; any Python 3 runs it.
 
 from __future__ import annotations
 
+import datetime
 import hashlib
 import json
 import os
@@ -91,16 +94,22 @@ LOCK = threading.Lock()
 FEEDS_LOCK = threading.RLock()
 # The stand-in's registry: two presets, and whatever a test added, kept in
 # the home so a new process sees it, as the engine's user-feeds.json is.
+# Since engine v0.11.0 every entry says whether its feed runs from
+# frequencies.txt (`headways`, required): Mexico City's does, among the
+# presets, and Los Angeles' does not. A record a test wrote without the field
+# reads as false, as one the engine wrote before it existed does.
 FEEDS = {
     "la-metro-rail": {"key": "la-metro-rail", "name": "LA Metro Rail", "city": "Los Angeles",
                       "network": "Metro Rail", "url": "https://example.test/la.zip",
                       "mode": "all", "label_pattern": "^Metro (.+) Line$", "label_strip": None,
-                      "agency": None, "geographic": True, "notes": [], "source": "preset"},
+                      "agency": None, "geographic": True, "notes": [], "headways": False,
+                      "source": "preset"},
     "cdmx-metro": {"key": "cdmx-metro", "name": "Mexico City Metro", "city": "Mexico City",
                    "network": "Metro", "url": "https://example.test/cdmx.zip",
                    "mode": "subway", "label_pattern": None, "label_strip": None,
                    "agency": "METRO", "geographic": True,
-                   "notes": ["This is a 2025 snapshot."], "source": "preset"},
+                   "notes": ["This is a 2025 snapshot."], "headways": True,
+                   "source": "preset"},
 }
 REQUIRED = ("stops", "routes", "trips", "stop_times")
 
@@ -188,6 +197,191 @@ EXPORT_STORYBOARDS = [
     _storyboard("run", _beat(20, "map", at="07:30", speed=240)),
 ]
 STORYBOARDS = {b["name"]: b for b in EXPORT_STORYBOARDS}
+
+# What engine v0.12.0 added to a plan, restated from its export.py (issues 31,
+# 39 and 40; app ADR-051 and ADR-052): a storyboard written as a list of beats
+# (`authored_beats`), a caption, and the corner the clock sits in.
+VIEWS = ("geographic", "map", "linear", "time")
+MAX_BEATS, BEAT_SECS, MAX_SECONDS, MAX_HOURS = 16, (0.5, 30.0), 90.0, 24.0
+BEAT_FIELDS = ("secs", "view", "labels", "at", "speed", "sweep", "hours", "span", "tween")
+BESIDE_A_LIST = "view and at go on a list's first beat (storyboard[0]), not beside the list"
+CLOCK = re.compile(r"^[0-9]{1,2}:[0-9]{2}(:[0-9]{2})?$")
+CLOCK_CORNERS = ("top-left", "top-right", "bottom-left", "bottom-right")
+DEFAULT_CORNER = "bottom-right"
+CAPTION_MAX = 80
+LINE_BREAKS = ("\r", "\n", "\u2028", "\u2029")
+# The two stand-in presets with safe zones, as the engine's SAFE_ZONES rows
+# (`instagram-reels`, `instagram-stories`) give them, in the order its `url_for`
+# writes them on every address of the preset: top, bottom, side, rail width and
+# rail top, as fractions of the frame, None where a row has no such zone.
+ZONE_PARAMS = ("ztop", "zbottom", "zside", "zrail", "zrailtop")
+ZONES = {"instagram-reel": (0.14, 0.35, 0.06, 0.21, 0.60),
+         "instagram-story": (0.14, 0.20, None, None, None)}
+ALT_MAX = 1000
+
+
+def _number(value) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _clock(value) -> bool:
+    return isinstance(value, str) and CLOCK.match(value) is not None
+
+
+def _hms(text: str) -> float:
+    parts = [float(v) for v in text.split(":")]
+    while len(parts) < 3:
+        parts.append(0.0)
+    return parts[0] * 3600 + parts[1] * 60 + parts[2]
+
+
+def beats_problem(beats) -> str | None:
+    """The engine's `authored_beats`, as the refusal it would raise: one
+    sentence naming the beat, counted from 0, and the field."""
+    if not isinstance(beats, list):
+        return "storyboard must be a storyboard's name or a list of beats"
+    if not beats:
+        return f"storyboard holds no beats: a list holds 1 to {MAX_BEATS}"
+    if len(beats) > MAX_BEATS:
+        return (f"storyboard[{MAX_BEATS}] is one beat too many: a list holds "
+                f"1 to {MAX_BEATS} beats")
+    low, high = BEAT_SECS
+    total = 0.0
+    for i, fields in enumerate(beats):
+        where = f"storyboard[{i}]"
+        if not isinstance(fields, dict):
+            return f"{where} must be an object with a beat's fields"
+        extra = [str(name) for name in fields if name not in BEAT_FIELDS]
+        if extra:
+            return (f"{where} does not take {', '.join(extra)}; a beat's fields are "
+                    + ", ".join(BEAT_FIELDS))
+        secs = fields.get("secs")
+        if not (_number(secs) and low <= secs <= high):
+            return f"{where}.secs must be seconds, from {low:g} to {high:g}"
+        total = round(total + secs, 6)
+        if total > MAX_SECONDS:
+            return (f"{where}.secs brings the storyboard to {total:g} seconds, past "
+                    f"the {MAX_SECONDS:g} seconds a list may last")
+        view = fields.get("view")
+        if view is not None and view not in VIEWS:
+            return f"{where}.view must be one of {', '.join(VIEWS)}, or null"
+        if i == 0 and view is None:
+            return f"{where}.view is missing: the first beat names the view frame 0 is in"
+        labels = fields.get("labels")
+        if labels is not None and not isinstance(labels, bool):
+            return f"{where}.labels must be true, false or null"
+        at = fields.get("at")
+        if at is not None and not _clock(at):
+            return f"{where}.at must be a clock, HH:MM, or null"
+        speed = fields.get("speed")
+        if speed is not None and not (_number(speed) and speed >= 0):
+            return f"{where}.speed must be simulated seconds a second, 0 or more, or null"
+        sweep = fields.get("sweep", False)
+        if not isinstance(sweep, bool):
+            return f"{where}.sweep must be true or false"
+        hours = fields.get("hours")
+        if hours is not None and not (_number(hours) and 0 < hours <= MAX_HOURS):
+            return (f"{where}.hours must be more than 0 and at most {MAX_HOURS:g}, "
+                    "or null")
+        span = fields.get("span")
+        if span is not None:
+            if not (isinstance(span, list) and len(span) == 2 and all(_clock(c) for c in span)):
+                return f"{where}.span must be two clocks, HH:MM, or null"
+            if not _hms(span[0]) < _hms(span[1]):
+                return f"{where}.span must run forward: {span[0]} is not before {span[1]}"
+        tween = fields.get("tween")
+        if tween is not None and not (_number(tween) and tween >= 0):
+            return f"{where}.tween must be seconds, 0 or more, or null"
+        if i == 0:
+            if tween is not None and tween != 0:
+                return (f"{where}.tween must be 0 or left out: frame 0 must already be in "
+                        "a view, so the first beat cannot transition into one")
+            if at is None and not (sweep and hours is None):
+                return (f"{where}.at is missing: frame 0 is not reproducible without a "
+                        "clock, so the first beat names one, unless it sweeps a span "
+                        "rather than a number of hours")
+    return None
+
+
+def beat_payloads(beats: list) -> list:
+    """The beats of a list as a plan carries them (the engine's `beat_payload`):
+    the clock in seconds, a sweep's span as `lo` and `hi` unless it names hours,
+    and a transition of min(secs, 1.2) where none was given."""
+    out = []
+    for i, b in enumerate(beats):
+        hours, span, tween = b.get("hours"), b.get("span"), b.get("tween")
+        if i == 0 and tween is None:
+            tween = 0
+        out.append({"secs": b["secs"], "view": b.get("view"), "labels": b.get("labels"),
+                    "at": _hms(b["at"]) if b.get("at") else None, "speed": b.get("speed"),
+                    "sweep": b.get("sweep", False), "hours": hours,
+                    "lo": None if hours else (_hms(span[0]) if span else 0.0),
+                    "hi": None if hours else (_hms(span[1]) if span else 86_400.0),
+                    "tween": tween if tween is not None else min(b["secs"], 1.2)})
+    return out
+
+
+def caption_problem(caption) -> str | None:
+    """The sentence the engine's handler refuses a caption with over the
+    protocol (its `_caption`, in `serve.py`): one for not text, empty, over 80
+    and a line break alike. `check_caption`'s three sentences are the command
+    line's and are never reached here."""
+    if (isinstance(caption, str) and 1 <= len(caption) <= CAPTION_MAX
+            and not any(mark in caption for mark in LINE_BREAKS)):
+        return None
+    return f"caption must be text of 1 to {CAPTION_MAX} characters on one line"
+
+
+def corner_problem(options: dict) -> str | None:
+    """The handler's sentence for a corner the engine does not have."""
+    asked = options.get("clock_corner")
+    if asked is None or asked in CLOCK_CORNERS:
+        return None
+    return "clock_corner must be one of " + ", ".join(CLOCK_CORNERS)
+
+
+def resolve_corner(preset: dict, options: dict, clock: bool) -> tuple[str, str, str | None]:
+    """The corner the clock takes, a note for a person, and the refusal if there
+    is one: the engine's `_clock_corner`, whose refusals are the plan's own, so
+    they are export errors and not params ones. The corner is one the handler
+    let through (`corner_problem`). Left out, it is bottom right, except on a
+    preset with safe zones, where it is top right: the platform's own
+    interface covers the bottom right there."""
+    zone = ZONES.get(preset["name"])
+    asked = options.get("clock_corner")
+    corner = asked if asked is not None else ("top-right" if zone else DEFAULT_CORNER)
+    if not clock:
+        return corner, "", None
+    platform = preset["platform"]
+    if zone and corner == "bottom-right":
+        what = "button rail" if zone[3] is not None else "bottom zone"
+        return corner, "", (f"Choose another corner for the clock: on {preset['name']}, "
+                            f"{platform}'s {what} covers the bottom right.")
+    title, caption = options.get("title", True), bool(options.get("caption"))
+    if corner == "top-left" and (title or caption):
+        named = ("title and the caption sit" if title and caption
+                 else "title sits" if title else "caption sits")
+        return corner, "", f"Choose another corner for the clock: the {named} top left."
+    if zone and corner == "bottom-left" and zone[1] is not None:
+        return corner, (f"the clock sits bottom left, inside {platform}'s bottom zone (the "
+                        f"lowest {zone[1]:.0%} of the frame), where {platform}'s own interface "
+                        "can cover it; top right keeps it clear."), None
+    return corner, "", None
+
+
+def stage_date_problem(value) -> str | None:
+    """The handler's refusals of render.stage's `date`: null is not the same as
+    left out, and a day that fits the pattern may still not be on the calendar."""
+    if value is None:
+        return ("date must be the service day as YYYY-MM-DD, or left out for a "
+                "description without minutes")
+    if not isinstance(value, str) or re.match(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$", value) is None:
+        return "date must be a calendar day as YYYY-MM-DD"
+    try:
+        datetime.date.fromisoformat(value)
+    except ValueError:
+        return f"date: {value} is not a calendar day"
+    return None
 
 
 def load_control() -> dict:
@@ -316,6 +510,10 @@ class Engine:
                 error(msg_id, -32000, f"{params.get('key', 'x')} has no stored layout "
                       f"{layout[:8]}; lay the feed out first (graph.build)", "layout")
             elif self.control.get("map_draws"):
+                # `style` and `lines` (engine v0.12.0) are taken and left alone:
+                # the stand-in draws no map to restyle or hide a line from.
+                # fake-engine.received keeps them, so a test reads what the
+                # app sent.
                 threading.Thread(target=self.draw, args=(msg_id, params),
                                  daemon=True).start()
             else:
@@ -350,6 +548,8 @@ class Engine:
             stage = params.get("stage")
             if stage not in ("gtfs2graph", "topo", "loom", "octi"):
                 error(msg_id, -32602, "stage must be one of gtfs2graph, topo, loom, octi", "params")
+            elif "date" in params and stage_date_problem(params["date"]) is not None:
+                error(msg_id, -32602, stage_date_problem(params["date"]), "params")
             elif not isinstance(layout, str) or layout not in self.layouts:
                 error(msg_id, -32000, f"{params.get('key', 'x')!r} has no stored {stage} graph; "
                       "lay the feed out first (graph.build)", "layout")
@@ -358,7 +558,8 @@ class Engine:
             else:
                 write({"jsonrpc": "2.0", "id": msg_id,
                        "result": self.stage_drawing(params.get("key", "x"), layout, stage,
-                                                    params.get("width", 1200))})
+                                                    params.get("width", 1200),
+                                                    params.get("date"))})
             return True
         if method == "feeds.list":
             write({"jsonrpc": "2.0", "id": msg_id, "result": {"feeds": self.feed_records()}})
@@ -391,7 +592,10 @@ class Engine:
             params = message.get("params") or {}
             problem = self.plan_problem(params)
             if problem is not None:
-                error(msg_id, -32602, problem, "params")
+                # The shape of the options is the caller's mistake (params,
+                # -32602); what the plan itself refuses is an export error.
+                kind, sentence = problem
+                error(msg_id, -32602 if kind == "params" else -32000, sentence, kind)
             elif self.control.get("export_refuses"):
                 error(msg_id, -32000, self.control["export_refuses"], "export")
             elif PRESETS[params["preset"]]["kind"] == "vector":
@@ -567,6 +771,16 @@ class Engine:
             path = out / f"{key}{suffix}"
             path.write_text("<svg/>" if suffix == ".svg" else "{}")
             files[name] = str(path)
+        # Since engine v0.11.0 (issue 51) a pair of small pictures of the map
+        # is written into the same folder as the page, `<key>-thumb-dark.svg`
+        # and `<key>-thumb-light.svg`, and both paths are required in `files`.
+        # The stand-in draws one rectangle on each palette's ground; the
+        # engine draws the network alone, with every colour a literal.
+        for name, ground in (("thumb_dark", "#15120f"), ("thumb_light", "#f7efe1")):
+            path = out / f"{key}-{name.replace('_', '-')}.svg"
+            path.write_text('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 250">'
+                            f'<rect width="400" height="250" fill="{ground}"/></svg>')
+            files[name] = str(path)
         # The shape is the protocol's Diagnostics, not a flat guess: a
         # stand-in that answers a different shape lets a consumer pass
         # here and fail against the engine. The default is a clean little
@@ -607,9 +821,42 @@ class Engine:
 
     # -- render.stage (E15), in shape: an SVG naming the stage, and the
     # counts graph.build reported for the stage, which is what the engine
-    # answers and what the app's real-engine test holds it to.
+    # answers and what the app's real-engine test holds it to. Since engine
+    # v0.12.0 (issue 54) it also answers a `description`, the fields the
+    # geographic pane's text alternative is written from.
 
-    def stage_drawing(self, key: str, layout: str, stage: str, width) -> dict:
+    STAGE_STATIONS = ("Alpha", "Bravo", "Charlie")
+
+    @classmethod
+    def stage_description(cls, lines: list, date) -> dict:
+        """The stand-in graph in words' raw material: its three stations on one
+        run, every line along the whole run, so each line has the same termini,
+        each station is a meeting where there are two lines, and nothing
+        branches. Timed only for a day: without `date` every trip and the
+        extent are null, as the engine's are, and a line's trip is the minutes
+        14, 11, 8 ... by label order from the first to the last station, so
+        the extent is the first line's."""
+        stations = list(cls.STAGE_STATIONS)
+        labels = sorted(lines)
+        described = []
+        for i, label in enumerate(labels):
+            others = [other for other in labels if other != label]
+            described.append({
+                "label": label, "termini": [stations[0], stations[-1]],
+                "stations": stations,
+                "meets": [{"station": s, "lines": others} for s in stations] if others else [],
+                "branches": [],
+                "trip": None if date is None else
+                {"minutes": max(14 - 3 * i, 1), "from": stations[0], "to": stations[-1]}})
+        timed = [(d["trip"]["minutes"], d) for d in described if d["trip"] is not None]
+        extent = None
+        if timed:
+            minutes, line = max(timed, key=lambda t: t[0])
+            extent = {"minutes": minutes, "line": line["label"], "from": line["trip"]["from"],
+                      "to": line["trip"]["to"]}
+        return {"extent": extent, "lines": described}
+
+    def stage_drawing(self, key: str, layout: str, stage: str, width, date=None) -> dict:
         counts = self.layout_stages.get(layout, {}).get(stage) or {
             "nodes": 3, "stations": 3, "junctions": 0, "edges": 2, "lines": ["A"]}
         lines = counts["lines"]
@@ -620,7 +867,8 @@ class Engine:
                f'{", ".join(lines)}</text></svg>')
         return {"layout": layout, "stage": stage, "svg": svg, "width": float(width),
                 "height": float(height),
-                "counts": {k: v for k, v in counts.items() if k != "octilinear"}}
+                "counts": {k: v for k, v in counts.items() if k != "octilinear"},
+                "description": self.stage_description(lines, date)}
 
     # -- the registry (E09c), in shape
 
@@ -706,7 +954,10 @@ class Engine:
     def remove_feed(self, msg_id, key) -> None:
         """feeds.remove, in shape: a built-in feed is refused, an unknown one
         too, and a user feed is forgotten with its zip; after remove_delay_ms,
-        so a test can act while the request is out."""
+        so a test can act while the request is out. Since engine v0.11.0 the
+        answer is FeedsRemoveResult, exactly {"ok": true} unless a cancel came
+        too late for the registry's write to be undone; this stand-in does not
+        act on a cancel here, so it never adds that field."""
         time.sleep(self.control.get("remove_delay_ms", 0) / 1000)
         with FEEDS_LOCK:
             users = self.user_feeds()
@@ -780,7 +1031,8 @@ class Engine:
     def feed_records(self) -> list:
         cached = {k for k in FEEDS if self.preset_on_disk(k)}
         out = [dict(f, cached=k in cached) for k, f in FEEDS.items()]
-        out += [dict(f, cached=(HOME / "data" / "feeds" / f"{f['key']}.zip").exists())
+        out += [dict(f, headways=f.get("headways", False),
+                     cached=(HOME / "data" / "feeds" / f"{f['key']}.zip").exists())
                 for f in self.user_feeds().values()]
         return out
 
@@ -872,9 +1124,11 @@ class Engine:
             record = {"key": key, "name": name, "city": "", "network": "", "url": url,
                       "mode": params.get("mode") or "all", "label_pattern": None,
                       "label_strip": None, "agency": params.get("agency"), "geographic": True,
-                      "notes": [], "source": "user"}
+                      "notes": [], "headways": False, "source": "user"}
             users[key] = record
             self.write_user_feeds(users)
+        # The engine decides `headways` from the zip's frequencies.txt; a
+        # stand-in feed has none, so it is false here.
         write({"jsonrpc": "2.0", "id": msg_id, "result": dict(record, cached=True)})
 
     def service(self, msg_id, params: dict) -> None:
@@ -905,27 +1159,54 @@ class Engine:
             "anchor": anchor}})
 
     @staticmethod
-    def plan_problem(params: dict) -> str | None:
-        """The real server's refusals, in shape: a feed key, a preset it has, a
-        page with a scheme, and options it knows."""
+    def plan_problem(params: dict) -> tuple[str, str] | None:
+        """The real server's refusals, in shape, as (kind, sentence). In the
+        engine's order: its handler first judges the options' shape (params),
+        a list of beats on any preset, then refuses view and at beside a list
+        on a video; then the plan refuses what it cannot take (export), here
+        the clock's corner."""
         if not isinstance(params.get("key"), str) or not params["key"]:
-            return "key must be a feed key"
+            return "params", "key must be a feed key"
         if params.get("preset") not in PRESETS:
-            return "preset must be the name of an export preset; export.presets lists them"
+            return "params", "preset must be the name of an export preset; export.presets lists them"
         page = params.get("page")
         if page is not None and (not isinstance(page, str) or "://" not in page):
-            return "page must be the page's address, with its scheme"
+            return "params", "page must be the page's address, with its scheme"
         options = params.get("options") or {}
         if not isinstance(options, dict):
-            return "options must be an object"
+            return "params", "options must be an object"
         known = {"view", "labels", "title", "clock", "theme", "at", "lines", "storyboard",
-                 "quality", "fade", "tag", "safe"}
+                 "quality", "fade", "tag", "safe", "caption", "clock_corner"}
         extra = sorted(set(options) - known)
         if extra:
-            return f"export.plan options does not take {', '.join(extra)}"
+            return "params", f"export.plan options does not take {', '.join(extra)}"
+        preset = PRESETS[params["preset"]]
+        video = preset["kind"] == "video"
         board = options.get("storyboard")
-        if board is not None and board not in STORYBOARDS:
-            return "storyboard must be the name of a storyboard; export.storyboards lists them"
+        if isinstance(board, list):
+            # The handler runs `authored_beats` on any list, before it looks at
+            # the preset; a still then ignores a good one.
+            problem = beats_problem(board)
+            if problem is not None:
+                return "params", problem
+        elif board is not None and (not isinstance(board, str) or board not in STORYBOARDS):
+            return "params", "storyboard must be the name of a storyboard; export.storyboards lists them"
+        if options.get("caption") is not None:
+            problem = caption_problem(options["caption"])
+            if problem is not None:
+                return "params", problem
+        problem = corner_problem(options)
+        if problem is not None:
+            return "params", problem
+        # Only a video's first beat is where it opens, so only there are a
+        # view and a clock beside a list the caller's mistake.
+        if video and isinstance(board, list) and (options.get("view") or options.get("at")):
+            return "params", BESIDE_A_LIST
+        # A vector preset is refused by the plan before its corner is judged.
+        if preset["kind"] != "vector":
+            problem = resolve_corner(preset, options, options.get("clock", video))[2]
+            if problem is not None:
+                return "export", problem
         return None
 
     @staticmethod
@@ -936,7 +1217,10 @@ class Engine:
             return True
         if preset["kind"] != "video":
             return False
-        board = STORYBOARDS.get(options.get("storyboard") or preset["storyboard"] or "")
+        listed = options.get("storyboard")
+        if isinstance(listed, list):
+            return any(b.get("view") == "geographic" for b in listed)
+        board = STORYBOARDS.get(listed or preset["storyboard"] or "")
         return bool(board and board["geographic"])
 
     def plan(self, params: dict) -> dict:
@@ -949,7 +1233,12 @@ class Engine:
         The address echoes the options it was asked, in the engine's own
         spelling (`url_for`), so a test reads what reached the engine from the
         address the app shows: the theme (A4-03), the view, the flags, the
-        start time, the lines and the safe zones (A5-01)."""
+        start time, the lines and the safe zones (A5-01), and since engine
+        v0.12.0 the caption and the clock's corner, written after the rest and
+        only where they say something (the corner only while the clock is on
+        and off bottom right). A storyboard written as a list is the plan's
+        `custom` one: its beats are the plan's, and its first beat is where
+        the address opens, as in the engine."""
         from urllib.parse import urlencode
 
         key, name = params["key"], params["preset"]
@@ -958,42 +1247,63 @@ class Engine:
         options = params.get("options") or {}
         theme = "dark" if options.get("theme", "dark") == "dark" else "light"
         video = preset["kind"] == "video"
-        view = options.get("view") or preset["view"]
+        listed = video and isinstance(options.get("storyboard"), list)
+        first = options["storyboard"][0] if listed else {}
+        view = first.get("view") if listed else (options.get("view") or preset["view"])
+        at = first.get("at") if listed else options.get("at")
         labels = options.get("labels", preset["labels"])
         title = options.get("title", True)
         clock = options.get("clock", video)
+        caption = options.get("caption")
+        corner, corner_note, _ = resolve_corner(preset, options, clock)
         query = {"present": "1", "view": view, "labels": "1" if labels else "0",
                  "title": "1" if title else "0", "clock": "1" if clock else "0",
                  "theme": "dark" if theme == "dark" else "sepia",
                  "frame": f"{preset['width']}:{preset['height']}",
                  "frametop": str(preset["frame_top"])}
-        if options.get("at"):
-            query["at"] = options["at"]
+        if at:
+            query["at"] = at
         if options.get("lines"):
             query["lines"] = ",".join(options["lines"])
         if options.get("safe"):
             query["safe"] = "1"
+        if caption:
+            query["caption"] = caption
+        if clock and corner != DEFAULT_CORNER:
+            query["corner"] = corner
+        # The preset's zones are on every address, preview and export alike; the
+        # page lays its frame out from them and draws them only under `safe`.
+        for param, value in zip(ZONE_PARAMS, ZONES.get(name, ())):
+            if value is not None:
+                query[param] = str(value)
         url = page + "?" + urlencode(query)
         quality = options.get("quality", "standard")
         tag = options.get("tag") or ""
         stem = (f"{key}-{name}" + (f"-{theme}" if theme != "dark" else "")
                 + (f"-{tag}" if tag else ""))
-        board = (options.get("storyboard") or preset["storyboard"]) if video else ""
-        at = options.get("at")
+        board = ("custom" if listed else (options.get("storyboard") or preset["storyboard"])
+                 ) if video else ""
         pinned = None
         if not video:
             hms = [int(part) for part in (at or "07:00").split(":")]
             pinned = hms[0] * 3600 + hms[1] * 60 + (hms[2] if len(hms) > 2 else 0)
+        elif listed and at:
+            pinned = _hms(at)
         seconds = float(self.control.get("export_seconds", 1))
-        beats = [] if not video else [
-            {"secs": seconds, "view": view, "labels": None, "at": 8 * 3600, "speed": 120,
-             "sweep": False, "hours": None, "lo": None, "hi": None, "tween": 0}]
+        if listed:
+            beats = beat_payloads(options["storyboard"])
+        else:
+            beats = [] if not video else [
+                {"secs": seconds, "view": view, "labels": None, "at": 8 * 3600, "speed": 120,
+                 "sweep": False, "hours": None, "lo": None, "hi": None, "tween": 0}]
         return {"key": key, "preset": name, "mode": "video" if video else "still", "url": url,
                 "width": max(1, preset["width"] // 2), "height": max(1, preset["height"] // 2),
                 "scale": 1, "fps": preset["fps"], "format": preset["format"], "settle": 300,
                 "beats": beats, "keep": quality != "standard", "crf": 26,
                 "fade": float(options.get("fade", 0.0)), "stem": stem, "theme": theme,
-                "view": view, "storyboard": board, "at": pinned, "notes": [],
+                "view": view, "storyboard": board, "at": pinned,
+                "notes": [corner_note] if corner_note else [],
+                "caption": caption if caption else None, "clock_corner": corner,
                 "filename": f"{stem}.{preset['format']}"}
 
 
@@ -1019,6 +1329,24 @@ class Engine:
         plan = params.get("plan") or {}
         source = Path(params.get("source") or "")
         dest = Path(params.get("dest") or "")
+        # Since engine v0.12.0 a person's own alt text goes into the sidecar
+        # in place of the sentence the engine writes, trimmed and otherwise
+        # as given; the engine refuses one that is not text, one over 1,000
+        # code points and one that is blank, before any work.
+        alt = (params.get("provenance") or {}).get("alt")
+        if alt is not None:
+            if not isinstance(alt, str):
+                error(msg_id, -32602, "provenance.alt must be text", "params")
+                return
+            if len(alt) > ALT_MAX:
+                error(msg_id, -32602, f"provenance.alt is {len(alt):,} characters; "
+                      f"it may be at most {ALT_MAX:,}", "params")
+                return
+            alt = alt.strip()
+            if not alt:
+                error(msg_id, -32602, "provenance.alt is empty; omit it instead, and the "
+                      "sidecar keeps the description the engine writes", "params")
+                return
         # A video is encoded from a folder of frames, a still from its one
         # captured image, as the engine's encode takes them.
         if plan.get("mode") == "still":
@@ -1080,7 +1408,7 @@ class Engine:
                          else "native"),
                 "view": (STORYBOARDS.get(board, {}).get("views") or plan.get("view")),
                 "storyboard": board or None, "theme": plan.get("theme"),
-                "alt": f"The stand-in's {plan.get('key')} map.",
+                "alt": alt if alt is not None else f"The stand-in's {plan.get('key')} map.",
                 "service_date": provenance.get("service_date"),
                 "trips": provenance.get("trips"), "caveats": provenance.get("caveats", []),
                 "notes": list(feed.get("notes", [])), "source": feed.get("url")}

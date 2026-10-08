@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Legible Cities engine protocol, version 1",
-  "description": "JSON-RPC 2.0 over stdin/stdout with Content-Length framing. `methods` maps each request to the schema of its params and result; `notifications` maps each notification to the schema of its params. Long requests (graph.build, map.build, export.encode, feeds.service, feeds.inspect, feeds.add, render.stage) stay open until done and send job/progress and job/log carrying the request's id meanwhile; $/cancelRequest ends the process they are waiting on (a LOOM tool, or ffmpeg) and they answer with the cancelled error (-32800). feeds.service starts no process: a cancel is answered with the same error once its read finishes. A feed a long request downloads stops at the cancel, between chunks or once it has arrived, and nothing of it is cached; on a server that has stopped sending, the cancel waits for the next chunk or the read timeout. The export methods are the two halves of an export a client cannot do itself: export.plan describes one and is pure, export.encode turns the frames the client captured into the file; there is no export.capture, because the desktop app captures for itself. Errors a person can act on are code -32000 with `data` of the ErrorData shape; bad parameters are -32602 with the same shape and kind `params`.",
+  "description": "JSON-RPC 2.0 over stdin/stdout with Content-Length framing. `methods` maps each request to the schema of its params and result; `notifications` maps each notification to the schema of its params. Long requests (graph.build, map.build, export.encode, feeds.service, feeds.inspect, feeds.add, feeds.remove, render.stage) stay open until done and send job/progress and job/log carrying the request's id meanwhile; $/cancelRequest ends the process they are waiting on (a LOOM tool, or ffmpeg) and they answer with the cancelled error (-32800). feeds.service starts no process: a cancel is answered with the same error once its read finishes. feeds.remove has a point of no return, the write of the registry: a cancel before it leaves the feed registered with every file in place and is answered with the same error, and one after it is not honoured (the feed is already forgotten and its files are removed to the end) and is said so in the answer. A feed a long request downloads stops at the cancel, between chunks or once it has arrived, and nothing of it is cached; on a server that has stopped sending, the cancel waits for the next chunk or the read timeout. The export methods are the two halves of an export a client cannot do itself: export.plan describes one and is pure, export.encode turns the frames the client captured into the file; there is no export.capture, because the desktop app captures for itself. Errors a person can act on are code -32000 with `data` of the ErrorData shape; bad parameters are -32602 with the same shape and kind `params`.",
   "protocol": 1,
   "methods": {
     "engine.info": {
@@ -97,7 +97,7 @@
         "$ref": "#/$defs/FeedsRemoveParams"
       },
       "result": {
-        "$ref": "#/$defs/Ok"
+        "$ref": "#/$defs/FeedsRemoveResult"
       }
     },
     "feeds.inspect": {
@@ -532,7 +532,7 @@
       "additionalProperties": false
     },
     "MapBuildParams": {
-      "description": "Draw the map and the animation page for a registered feed on one service day, from a stored layout. Never lays the feed out: a layout that is not stored is refused, with a hint to lay it out first.",
+      "description": "Draw the map, the animation page and a thumbnail pair for a registered feed on one service day, from a stored layout. Never lays the feed out: a layout that is not stored is refused, with a hint to lay it out first.",
       "type": "object",
       "properties": {
         "key": {
@@ -570,7 +570,17 @@
           "items": {
             "type": "string"
           },
-          "description": "Line labels in the order they stack on shared track, the later over the earlier. A line the list leaves out follows the ones it names, and a label the layout does not carry is ignored, so a partial or stale order never drops a line."
+          "description": "Line labels in the order they stack on shared track, the later over the earlier, and the order of the page's rows in the Linear and Time views. A line the list leaves out follows the ones it names, and a label the layout does not carry is ignored, so a partial or stale order never drops a line."
+        },
+        "lines": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/LineOptions"
+          },
+          "description": "A display name and a hidden flag per line, keyed by line label. A label the layout does not carry is ignored, so a client can keep its choices for lines a narrower mode dropped. Hiding is a drawing choice: a hidden line comes off the map, its trips, the page and the thumbnails, a station only it served is not drawn, and no stored layout changes; render.stage still shows every line."
+        },
+        "style": {
+          "$ref": "#/$defs/MapStyle"
         }
       },
       "required": [
@@ -578,6 +588,95 @@
         "layout",
         "date"
       ],
+      "additionalProperties": false
+    },
+    "MapStyle": {
+      "description": "How the map is drawn, in the engine's own numbers. Every field is optional; omitting the object, or any field, draws exactly what is drawn without it. The numbers are in SVG user units at the map's width (the map is fitted to MapBuildParams.width, 1800 by default, so a line width of 7 is seven of 1800), except line_gap, a multiple of line_width. interchange_radius may not be below station_radius, judged on the values the map would be drawn with (a field left out counts as its default): a rule the schema cannot hold and the server does. label_size and label_offset re-place the labels and move the drawing's viewBox, never the stored layout. The four colours are the literals a standalone SVG falls back to; the animation page's theme overrides them, which is why the desktop app does not send them.",
+      "type": "object",
+      "properties": {
+        "line_width": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 24,
+          "description": "Line stroke width, in SVG user units at the map's width; 7 when omitted."
+        },
+        "line_gap": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 3,
+          "description": "Pitch of parallel tracks as a multiple of line_width, so it has no unit; 1.6 when omitted."
+        },
+        "station_radius": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 20,
+          "description": "Radius of a station on one route, in SVG user units at the map's width; 4.2 when omitted."
+        },
+        "interchange_radius": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 30,
+          "description": "Radius of a station where routes meet, in SVG user units at the map's width; 6 when omitted. Not below station_radius."
+        },
+        "station_stroke": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 8,
+          "description": "Width of a station's outline, in SVG user units at the map's width; 2.2 when omitted."
+        },
+        "label_size": {
+          "type": "number",
+          "minimum": 6,
+          "maximum": 32,
+          "description": "Font size of a station's name, in SVG user units at the map's width; 11 when omitted. The labels are placed again, so the viewBox moves."
+        },
+        "label_offset": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 40,
+          "description": "Distance of a name from its station, in SVG user units at the map's width; 9 when omitted. The labels are placed again, so the viewBox moves."
+        },
+        "padding": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 200,
+          "description": "Margin round the drawing on every side, in SVG user units at the map's width; 24 when omitted."
+        },
+        "background": {
+          "$ref": "#/$defs/HexColor",
+          "description": "The ground, as the literal a standalone SVG falls back to; the page's theme overrides it. #ffffff when omitted."
+        },
+        "station_fill": {
+          "$ref": "#/$defs/HexColor",
+          "description": "A station's fill, as the literal a standalone SVG falls back to; the page's theme overrides it. #ffffff when omitted."
+        },
+        "station_stroke_color": {
+          "$ref": "#/$defs/HexColor",
+          "description": "A station's outline, as the literal a standalone SVG falls back to; the page's theme overrides it. #111111 when omitted."
+        },
+        "label_color": {
+          "$ref": "#/$defs/HexColor",
+          "description": "The station names, as the literal a standalone SVG falls back to; the page's theme overrides it. #111111 when omitted."
+        }
+      },
+      "additionalProperties": false
+    },
+    "LineOptions": {
+      "description": "What a client chose for one line of the map. Every field is optional; an empty object changes nothing.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40,
+          "pattern": "^[^\\r\\n\\u2028\\u2029]*$",
+          "description": "The line's display name, written where the page writes the line's label: its chip, its row and the time chart's band, and the trains' titles. The label stays the line's key everywhere else (the SVG's data-line, ExportOptions.lines). From 1 to 40 characters, with no line break."
+        },
+        "hidden": {
+          "type": "boolean",
+          "description": "True leaves the line off the map: no track, no trips, no chip, row or band, and no colour in the thumbnails; the lines it shared track with close up over its place."
+        }
+      },
       "additionalProperties": false
     },
     "Diagnostics": {
@@ -742,12 +841,22 @@
             },
             "positions": {
               "type": "string"
+            },
+            "thumb_dark": {
+              "type": "string",
+              "description": "A small picture of the map for the dark palette: the network alone, about 400 units wide, no ground, every colour a literal, in the request's colors, default_color and line_order. Safe to show in an img."
+            },
+            "thumb_light": {
+              "type": "string",
+              "description": "The same picture for the light palette."
             }
           },
           "required": [
             "svg",
             "html",
-            "positions"
+            "positions",
+            "thumb_dark",
+            "thumb_light"
           ],
           "additionalProperties": false
         },
@@ -895,6 +1004,22 @@
       "type": "string",
       "pattern": "^[0-9]{1,2}:[0-9]{2}(:[0-9]{2})?$"
     },
+    "Caption": {
+      "description": "A person's words for the frame, 1 to 80 characters with no line break. The page draws it as text, never markup, under the title at the size of the date line: at most two lines at 1,080 wide.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "pattern": "^[^\\r\\n\\u2028\\u2029]*$"
+    },
+    "ClockCorner": {
+      "description": "Where the page draws the clock. Left out, it is bottom-right, where the clock has always sat, except on a preset with safe zones (instagram-reel, instagram-story), where it is top-right: there bottom-right is refused, because the platform's own interface covers it, and bottom-left comes with a note.",
+      "enum": [
+        "top-left",
+        "top-right",
+        "bottom-left",
+        "bottom-right"
+      ]
+    },
     "PageUrl": {
       "description": "The page's own address, with its scheme. The desktop app serves a project's page on its own origin and passes that; the engine's default is the site's file.",
       "type": "string",
@@ -1008,12 +1133,13 @@
       "additionalProperties": false
     },
     "StoryboardBeat": {
-      "description": "A stretch of video with one set of state, as the storyboard is written. A field left null carries over from the beat before.",
+      "description": "A stretch of video with one set of state, as the storyboard is written; export.storyboards answers every field, and a client writing a list gives only secs and what changes. A field left out or null carries over from the beat before. The server also checks what this cannot say: the beats last 90 seconds in all at most, a span's first clock is before its second, the first beat names a view and has tween 0 or none, since frame 0 must already be in a view, and the first beat names at unless it sweeps without hours, since frame 0 is not reproducible without a clock.",
       "type": "object",
       "properties": {
         "secs": {
           "type": "number",
-          "exclusiveMinimum": 0
+          "minimum": 0.5,
+          "maximum": 30
         },
         "view": {
           "oneOf": [
@@ -1045,7 +1171,8 @@
           "type": [
             "number",
             "null"
-          ]
+          ],
+          "minimum": 0
         },
         "sweep": {
           "type": "boolean"
@@ -1054,7 +1181,9 @@
           "type": [
             "number",
             "null"
-          ]
+          ],
+          "exclusiveMinimum": 0,
+          "maximum": 24
         },
         "span": {
           "oneOf": [
@@ -1075,19 +1204,12 @@
           "type": [
             "number",
             "null"
-          ]
+          ],
+          "minimum": 0
         }
       },
       "required": [
-        "secs",
-        "view",
-        "labels",
-        "at",
-        "speed",
-        "sweep",
-        "hours",
-        "span",
-        "tween"
+        "secs"
       ],
       "additionalProperties": false
     },
@@ -1146,7 +1268,8 @@
       "type": "object",
       "properties": {
         "view": {
-          "$ref": "#/$defs/View"
+          "$ref": "#/$defs/View",
+          "description": "The view a still is taken in. For a video it opens a named storyboard: the first beat takes it, with no transition. Refused beside a list on a video preset, whose first beat names its view."
         },
         "labels": {
           "type": "boolean"
@@ -1166,7 +1289,7 @@
         },
         "at": {
           "$ref": "#/$defs/Clock",
-          "description": "The clock to start at; a still is taken here."
+          "description": "The clock to start at; a still is taken here. For a video it opens a named storyboard, as its first beat's clock. Refused beside a list on a video preset, whose first beat carries its own."
         },
         "lines": {
           "type": "array",
@@ -1176,7 +1299,20 @@
           "description": "Line labels to keep; the rest are hidden."
         },
         "storyboard": {
-          "$ref": "#/$defs/StoryboardName"
+          "description": "What a video plays: a storyboard's name, or a list of beats written as export.storyboards writes them, played in order. A list's first beat names the view frame 0 is in, and its clock unless it sweeps without hours. A still ignores either.",
+          "oneOf": [
+            {
+              "$ref": "#/$defs/StoryboardName"
+            },
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/StoryboardBeat"
+              },
+              "minItems": 1,
+              "maxItems": 16
+            }
+          ]
         },
         "quality": {
           "enum": [
@@ -1197,6 +1333,12 @@
         "safe": {
           "type": "boolean",
           "description": "Draw the platform's safe zones; never for a deliverable."
+        },
+        "caption": {
+          "$ref": "#/$defs/Caption"
+        },
+        "clock_corner": {
+          "$ref": "#/$defs/ClockCorner"
         }
       },
       "additionalProperties": false
@@ -1386,10 +1528,13 @@
           "$ref": "#/$defs/View"
         },
         "storyboard": {
-          "description": "Empty for a still.",
+          "description": "The storyboard's name; custom for a list of beats; empty for a still.",
           "oneOf": [
             {
               "$ref": "#/$defs/StoryboardName"
+            },
+            {
+              "const": "custom"
             },
             {
               "const": ""
@@ -1409,6 +1554,21 @@
             "type": "string"
           },
           "description": "What a person should hear before the capture, such as a sweep too fast to read."
+        },
+        "caption": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Caption"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The caption as given; null for none."
+        },
+        "clock_corner": {
+          "$ref": "#/$defs/ClockCorner",
+          "description": "The corner resolved, given even where the clock is off and the address names none."
         },
         "filename": {
           "type": "string",
@@ -1436,6 +1596,8 @@
         "storyboard",
         "at",
         "notes",
+        "caption",
+        "clock_corner",
         "filename"
       ],
       "additionalProperties": false
@@ -1464,6 +1626,12 @@
           "items": {
             "type": "string"
           }
+        },
+        "alt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000,
+          "description": "The sidecar's alt text in the caller's own words, written trimmed, in place of the description the engine generates; omitted, the generated one stands. At most 1,000 characters, counted as Unicode code points (a JavaScript string's length counts UTF-16 units, so one emoji is one here and two there). Text of only whitespace is refused by the server."
         }
       },
       "additionalProperties": false
@@ -1579,6 +1747,10 @@
             "type": "string"
           }
         },
+        "headways": {
+          "type": "boolean",
+          "description": "Whether the feed's service is run from frequencies.txt (trains at a scheduled interval) rather than a timetable of trip times. A preset says so in the registry; for a feed added through feeds.add it is decided when the zip is checked: frequencies.txt has rows and the trips they name in trips.txt are at least half of the feed's trips."
+        },
         "source": {
           "enum": [
             "preset",
@@ -1602,6 +1774,7 @@
         "agency",
         "geographic",
         "notes",
+        "headways",
         "source",
         "cached"
       ],
@@ -1657,7 +1830,7 @@
       "additionalProperties": false
     },
     "FeedsRemoveParams": {
-      "description": "Forget a feed a person added, with its zips and its stored layouts. A preset is refused with kind feed.",
+      "description": "Forget a feed a person added, with its zips and its stored layouts. A preset is refused with kind feed. A long request: the registry's write is the point of no return, and a cancel before it leaves the feed registered with every file in place.",
       "type": "object",
       "properties": {
         "key": {
@@ -1666,6 +1839,22 @@
       },
       "required": [
         "key"
+      ],
+      "additionalProperties": false
+    },
+    "FeedsRemoveResult": {
+      "description": "The feed is forgotten and its files are gone. `cancel_too_late` is present, and true, only when a cancel arrived after the point of no return and so was not honoured; otherwise the answer is exactly `{\"ok\": true}`.",
+      "type": "object",
+      "properties": {
+        "ok": {
+          "const": true
+        },
+        "cancel_too_late": {
+          "const": true
+        }
+      },
+      "required": [
+        "ok"
       ],
       "additionalProperties": false
     },
@@ -1941,7 +2130,7 @@
       ]
     },
     "RenderStageParams": {
-      "description": "One stored stage graph of a layout, drawn as SVG, with its counts (E15): what a geographic view shows beside the schematic map. Never lays out; a stage that is not stored is refused with kind layout.",
+      "description": "One stored stage graph of a layout, drawn as SVG, with its counts (E15) and its description (StageDescription): what a geographic view shows beside the schematic map, and what its text alternative is written from. Never lays out; a stage that is not stored is refused with kind layout.",
       "type": "object",
       "properties": {
         "key": {
@@ -1963,6 +2152,10 @@
           "type": "boolean",
           "default": false,
           "description": "Draw station names."
+        },
+        "date": {
+          "$ref": "#/$defs/ServiceDate",
+          "description": "The project's service day, which times each line of the description by its commonest trip that day. Left out, every trip and the extent are null and no timetable is read: the engine never picks a day for it. Null is refused; leave it out instead."
         }
       },
       "required": [
@@ -1993,6 +2186,9 @@
         },
         "counts": {
           "$ref": "#/$defs/StageSummary"
+        },
+        "description": {
+          "$ref": "#/$defs/StageDescription"
         }
       },
       "required": [
@@ -2001,7 +2197,172 @@
         "svg",
         "width",
         "height",
-        "counts"
+        "counts",
+        "description"
+      ],
+      "additionalProperties": false
+    },
+    "StageDescription": {
+      "description": "The stage graph drawn, in fields a text alternative is written from; the engine writes no sentence. A station is named as the map draws it, the empty string where the feed gives no name, never its id; a junction LOOM inserted (no station) is never named, listed or met at. The minutes are of the layout and the request's date, not of the stage, so every stage answers the same ones; only the order of their two names follows the stage.",
+      "type": "object",
+      "properties": {
+        "extent": {
+          "description": "The line whose trip takes the most minutes, with that trip; the first in label order on a tie. Null without a date, or when no line has a trip that day.",
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "minutes": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "line": {
+                  "type": "string",
+                  "description": "The line's label."
+                },
+                "from": {
+                  "type": "string"
+                },
+                "to": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "minutes",
+                "line",
+                "from",
+                "to"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "lines": {
+          "description": "One entry per line label, in label order (sorted). For every line, its stations and every branch's together are the line's stations, each once.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "termini": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 2,
+                "description": "The first and last station of the line's spine, its longest run (linear.spine), never a headsign; one for a loop, or for a spine of one station."
+              },
+              "stations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "The spine's stations in order, termini first and last. A loop, a line whose graph is one cycle, lists its cycle once, from the station with the smallest node id toward that station's neighbour with the smaller id."
+              },
+              "meets": {
+                "description": "Every station of the line whose node carries another line on any edge, in the order of stations and then of each branch's stations.",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "station": {
+                      "type": "string"
+                    },
+                    "lines": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "minItems": 1,
+                      "description": "The other lines there, in label order."
+                    }
+                  },
+                  "required": [
+                    "station",
+                    "lines"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "branches": {
+                "description": "The stations off the spine, as simple paths in travel order: from each spine station in order, each way off it in node id order, a branch and then the branches that fork from it. A branch ends where it forks again, and each way on from the fork is a branch of its own. Empty for a loop.",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "at": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "The station the branch leaves. Where it leaves the run at a junction that is not a station, the station next to the junction along that run on the side with more stations to the run's end, toward its start on a tie; where it leaves a junction ending a branch, the nearest station back along that branch, else that branch's own at. Null for a further piece of the line that touches the rest nowhere, whose stations are that piece's own spine and whose branches follow it."
+                    },
+                    "stations": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "minItems": 1,
+                      "description": "In travel order away from at. A branch that would pass no station is left out; the branches beyond it are kept."
+                    }
+                  },
+                  "required": [
+                    "at",
+                    "stations"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "trip": {
+                "description": "The line's commonest trip on the date: its trips that day grouped by their first and last calls at a mapped station, the largest group winning (on a tie the shorter median, then the names that sort first), its median duration in whole minutes rounded half up. from and to are in the order the line's stations and then its branches list them, a name the stage does not list keeping the trip's own order; equal for a trip that ends where it began. Null without a date, or when the line has no trip that day.",
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "minutes": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "from": {
+                        "type": "string"
+                      },
+                      "to": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "minutes",
+                      "from",
+                      "to"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "label",
+              "termini",
+              "stations",
+              "meets",
+              "branches",
+              "trip"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "extent",
+        "lines"
       ],
       "additionalProperties": false
     },

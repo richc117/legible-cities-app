@@ -168,10 +168,10 @@ export const BUNDLED_COMPONENTS: readonly BundledComponent[] = [
   { name: 'Phosphor Icons', licence: 'MIT', identifiers: ['MIT'], notice: 'Phosphor Icons' },
   { name: 'react-colorful', licence: 'MIT', identifiers: ['MIT'], notice: 'react-colorful' },
   {
-    name: 'Esri Calcite UI icons, inside the engine’s page',
-    licence: 'Esri Master License Agreement',
-    identifiers: ['Esri Master License Agreement'],
-    notice: 'Esri Calcite UI icons',
+    name: 'Phosphor Icons, inside the engine’s page',
+    licence: 'MIT',
+    identifiers: ['MIT'],
+    notice: "Phosphor Icons in the engine's page",
   },
 ]
 

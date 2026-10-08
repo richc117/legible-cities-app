@@ -331,8 +331,9 @@ Master License Agreement, whose current text (E204, revised 1 August
 would subject any Esri Offering to open-source or open-database license
 terms (e.g. GPL)". This app is GPL-3.0-or-later; whether unmodified files
 with their own notice escape that clause is a legal judgement nobody here
-can make. The engine's page ships four of these icons on the same
-reasoning and gets its own issue. Tabler (MIT) and Lucide (ISC) were the
+can make. The engine's page shipped four of these icons, and swapped them
+for Phosphor's on the same reasoning at engine v0.11.0 (engine issue 19).
+Tabler (MIT) and Lucide (ISC) were the
 runners-up, both 24-grid sets with 2px strokes and heavier at 16px; Remix
 Icon is ruled out by its January 2026 licence, which names permissive
 hosts only.
