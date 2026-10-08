@@ -18,9 +18,13 @@
 > number of redraws changes, with the project's theme at that moment, and a
 > theme change alone never changes it (`viewerAddress.ts`). **The viewer also
 > gives the project's theme to every page that loads, as the first call of
-> its restore** (`viewerRestore.ts`), so a theme written between an address
-> being made and its document arriving is never lost, and a page a run has
-> rewritten is in the project's theme whatever its address said. The export
+> its restore** (`viewerRestore.ts`), read at the moment that call is sent
+> from a memory the press writes the instant its record write returns,
+> before it sends its own `setTheme` (`themeMemory.ts`, `viewerGiveBack.ts`).
+> So whichever of the press and the restore reaches the page last carries the
+> same theme: a theme written between an address being made and its document
+> arriving, or while the restore is being sent, is never lost, and a page a
+> run has rewritten is in the project's theme whatever its address said. The export
 > is unchanged: `themeFor(project.theme)` on the plan's address, and the
 > export's frame is not driven. **One case still navigates: a page the engine
 > wrote before v0.11.0**, which has no `setTheme` and answers "this map

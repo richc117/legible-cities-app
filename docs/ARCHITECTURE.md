@@ -91,7 +91,7 @@ app's own settings under `api.settings`:
 | `setDate(id, date)` | stores the service day a person chose, at once and before anything is drawn for it; it refuses exactly what `completeRebuild` refuses and never touches `drawn`, so a day chosen and not yet drawn is what the notebook's cell 03 reports (A5.5-15) |
 | `completeColors(id, palette)` | records the line colours a person chose, once the map has been drawn with them; every label and every colour is checked on the main side first (A4-01) |
 | `completeOrder(id, order)` | records the order a person arranged the lines in, once the map has been drawn in it; every label is checked on the main side first, and the same line twice is refused (A4-02) |
-| `setTheme(id, theme)` | records the theme the project's map is drawn in, at once rather than after a build: a theme is neither a layout nor a render, and the page restyles itself from its own address (A4-03) |
+| `setTheme(id, theme)` | records the theme the project's map is drawn in, at once rather than after a build: a theme is neither a layout nor a render, and the page restyles in place when told (the app calls its `setTheme` after the write; the next load carries the theme on its address; A4-03, issue 349) |
 | `setExport(id, choice)` | records what the project is set to export - a preset, a storyboard, the options - at once; every field is held to the engine's own rules on the main side first (A5-01) |
 | `export.chooseDestination(id)` | opens the platform's folder chooser for one project's exports and applies its own answer, then hands back the record; no path crosses inward, as Settings' two folders do not (A1-04, A5.5-19) |
 | `export.useAppFolder(id)` | forgets that folder, so the project's exports go to the app's again; it takes no path at all (A5.5-19) |
@@ -1010,9 +1010,15 @@ view, its labels and its scrub position are untouched. The address still
 carries `theme=` for the next load: it is made again only when the project,
 its feed or the number of redraws changes, with the project's theme at that
 moment (`viewerAddress.ts`), and the viewer gives the project's theme to
-every page that loads as the first call of its restore (`viewerRestore.ts`),
-so a theme written between an address being made and its document arriving
-is never lost.
+every page that loads as the first call of its restore (`viewerRestore.ts`).
+That call is given the theme as it stands at the moment it is sent, from a
+memory the press writes the instant its record write returns, before it
+sends its own `setTheme` (`themeMemory.ts`, `viewerGiveBack.ts`); the memory
+is not the screen's state, which carries the theme only after a render and
+its effects have run. Whichever of the press and the restore reaches the page
+last therefore carries the same theme, and a theme written between an
+address being made and its document arriving, or while the restore is being
+sent, is never lost.
 
 The one case that still navigates is a page the engine wrote before
 v0.11.0, which has no `setTheme` and says "this map cannot do that". The

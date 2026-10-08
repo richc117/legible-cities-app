@@ -733,7 +733,9 @@ export class ProjectStore {
    * The theme a person chose for this project's map (A4-03). Written the
    * moment it is pressed rather than after a build, because a theme is
    * neither a layout nor a render: the engine's page carries its furniture's
-   * colours as CSS variables and restyles itself from its own address.
+   * colours as CSS variables, so it restyles in place when the interface tells
+   * it (`setTheme` on its seam, issue 349) and the next load carries the theme
+   * on its address.
    */
   async setTheme(id: string, theme: Theme): Promise<ProjectRecord> {
     return this.#track(() => this.#serial(id, () => this.#setThemeTracked(id, theme)))

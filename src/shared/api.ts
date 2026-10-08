@@ -141,7 +141,7 @@ export interface Api {
      * moment it is pressed: a theme is neither a layout nor a render, so
      * there is nothing to finish first. The map's page is then told through
      * its seam and restyles in place; the next load carries the theme on its
-     * address (specs/021-theme/spec.md, issue 349).
+     * address (specs/021-theme/contracts/bridge.md, issue 349).
      */
     setTheme(id: string, theme: Theme): Promise<ProjectRecord>
     /**

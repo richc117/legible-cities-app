@@ -315,8 +315,9 @@ picture drawn for the old one, which is the one direction of error that
 matters, since `drawn` is what everything else trusts.
 
 **`drawn.theme` describes the last draw, not what is on screen.** A theme
-is taken on the page's address and the page restyles itself within a frame
-of the press (A4-03), with no draw at all, so the map on screen always
+is taken through the page's seam, which restyles it in place at the press
+(A4-03, issue 349; a page from before engine v0.11.0 is loaded again at an
+address carrying it), with no draw at all, so the map on screen always
 carries `record.theme` while `drawn.theme` holds the theme of the last
 draw. It is exempt from staleness either way, and it is deliberately not in
 `drawnMatchesEdits`, which would otherwise answer "the map does not show
