@@ -8,8 +8,15 @@
 // running stand-in and checked against `vendor/protocol.schema.json`, the
 // file the generated types come from: `feeds.list` and `feeds.add` (a
 // registry entry carries `headways`, since v0.11.0), `map.build` (its files
-// carry the thumbnail pair, which are files on disk, beside the page) and
-// `feeds.remove` (its answer is `FeedsRemoveResult`).
+// carry the thumbnail pair, which are files on disk, beside the page, and it
+// takes `style` and `lines`, since v0.12.0), `feeds.remove` (its answer is
+// `FeedsRemoveResult`), `render.stage` (its answer carries a `description`,
+// timed only for a day), `export.plan` (a `CaptureJob` carries `caption` and
+// `clock_corner`, and a storyboard may be a list of beats), `export.encode`
+// (a person's `alt` replaces the engine's sentence) and the two tables
+// `export.presets` and `export.storyboards`. The requests the tests send are
+// held to the description's params as well, so a test cannot ask the stand-in
+// for something the engine would refuse for its shape.
 //
 // Needs a Python 3 on the PATH to run the stand-in; skips, saying so,
 // without one.
@@ -213,6 +220,182 @@ describe('the check of an answer against the description', () => {
   })
 })
 
+/** What is wrong with the params a client sends to `method`, against the description's. */
+const paramsProblems = (method: string, params: unknown): string[] =>
+  problems(description.methods[method].params, params, `${method} params`)
+
+// The shapes v0.12.0 changed or added, checked on answers made by hand, so a
+// field the description now requires is shown to be required whatever the
+// stand-in does. The running stand-in is held to the same below.
+describe('the check of the v0.12.0 shapes against the description', () => {
+  const stage = {
+    layout: 'a'.repeat(64),
+    stage: 'octi',
+    svg: '<svg/>',
+    width: 1200,
+    height: 720,
+    counts: { nodes: 3, stations: 3, junctions: 0, edges: 2, lines: ['A'] },
+    description: {
+      extent: null,
+      lines: [
+        {
+          label: 'A',
+          termini: ['Alpha', 'Charlie'],
+          stations: ['Alpha', 'Bravo', 'Charlie'],
+          meets: [],
+          branches: [],
+          trip: null,
+        },
+      ],
+    },
+  }
+  const job = {
+    key: 'la-metro-rail',
+    preset: 'instagram-reel',
+    mode: 'video',
+    url: 'app://local/projects/abcdefghijk1/la.html?present=1',
+    width: 1080,
+    height: 1920,
+    scale: 1,
+    fps: 30,
+    format: 'mp4',
+    settle: 300,
+    beats: [],
+    keep: false,
+    crf: 26,
+    fade: 0,
+    stem: 'la-metro-rail-instagram-reel',
+    theme: 'dark',
+    view: 'map',
+    storyboard: 'tour',
+    at: null,
+    notes: [],
+    caption: null,
+    clock_corner: 'top-right',
+    filename: 'la-metro-rail-instagram-reel.mp4',
+  }
+  const without = (shape: object, name: string): Record<string, unknown> => {
+    const copy: Record<string, unknown> = { ...shape }
+    delete copy[name]
+    return copy
+  }
+
+  it('requires a stage’s description, and what it is made of', () => {
+    expect(answerProblems('render.stage', stage)).toEqual([])
+    expect(answerProblems('render.stage', without(stage, 'description'))).toEqual([
+      'render.stage: lacks "description"',
+    ])
+    expect(
+      answerProblems('render.stage', {
+        ...stage,
+        description: without(stage.description, 'extent'),
+      }),
+    ).toEqual(['render.stage.description: lacks "extent"'])
+    const line = stage.description.lines[0]
+    for (const name of ['label', 'termini', 'stations', 'meets', 'branches', 'trip']) {
+      expect(
+        answerProblems('render.stage', {
+          ...stage,
+          description: { ...stage.description, lines: [without(line, name)] },
+        }),
+        name,
+      ).toEqual([`render.stage.description.lines[0]: lacks "${name}"`])
+    }
+    const timed = {
+      ...stage,
+      description: {
+        extent: { minutes: 14, line: 'A', from: 'Alpha', to: 'Charlie' },
+        lines: [{ ...line, trip: { minutes: 14, from: 'Alpha', to: 'Charlie' } }],
+      },
+    }
+    expect(answerProblems('render.stage', timed)).toEqual([])
+    expect(
+      answerProblems('render.stage', {
+        ...timed,
+        description: { ...timed.description, extent: { minutes: 14, line: 'A' } },
+      }),
+    ).toEqual(['render.stage.description.extent: matches no branch'])
+  })
+
+  it('requires a plan’s caption and clock corner, and only the corners the engine has', () => {
+    expect(answerProblems('export.plan', job)).toEqual([])
+    expect(answerProblems('export.plan', { ...job, caption: 'Rush hour' })).toEqual([])
+    expect(answerProblems('export.plan', without(job, 'caption'))).toEqual([
+      'export.plan: lacks "caption"',
+    ])
+    expect(answerProblems('export.plan', without(job, 'clock_corner'))).toEqual([
+      'export.plan: lacks "clock_corner"',
+    ])
+    expect(answerProblems('export.plan', { ...job, clock_corner: 'middle' })).not.toEqual([])
+    expect(answerProblems('export.plan', { ...job, caption: '' })).not.toEqual([])
+    expect(answerProblems('export.plan', { ...job, caption: 'a\nb' })).not.toEqual([])
+    expect(answerProblems('export.plan', { ...job, storyboard: 'custom' })).toEqual([])
+  })
+
+  it('asks a beat for its seconds alone, and a storyboard as a name or a list', () => {
+    const board = { name: 'one', views: '', seconds: 2, geographic: false }
+    expect(
+      answerProblems('export.storyboards', { storyboards: [{ ...board, beats: [{ secs: 2 }] }] }),
+    ).toEqual([])
+    expect(
+      answerProblems('export.storyboards', {
+        storyboards: [{ ...board, beats: [{ view: 'map' }] }],
+      }),
+    ).toEqual(['export.storyboards.storyboards[0].beats[0]: lacks "secs"'])
+    const plan = (storyboard: unknown) =>
+      paramsProblems('export.plan', {
+        key: 'la-metro-rail',
+        preset: 'instagram-reel',
+        options: { storyboard },
+      })
+    expect(plan('tour')).toEqual([])
+    expect(plan([{ secs: 2, view: 'map', at: '08:00' }, { secs: 3 }])).toEqual([])
+    expect(plan([])).not.toEqual([])
+    expect(plan(Array.from({ length: 17 }, () => ({ secs: 2 })))).not.toEqual([])
+    expect(plan([{ secs: 0.4 }])).not.toEqual([])
+    expect(plan([{ secs: 2, colour: 'red' }])).not.toEqual([])
+  })
+
+  it('takes the caption and the corner as options, a style and lines for the map, an alt for the sidecar and a day for a stage', () => {
+    const options = (o: unknown) =>
+      paramsProblems('export.plan', { key: 'la-metro-rail', preset: 'instagram-reel', options: o })
+    expect(options({ caption: 'Rush hour', clock_corner: 'top-left' })).toEqual([])
+    expect(options({ clock_corner: 'centre' })).not.toEqual([])
+    expect(options({ caption: 'x'.repeat(81) })).not.toEqual([])
+    const map = (extra: object) =>
+      paramsProblems('map.build', {
+        key: 'la-metro-rail',
+        layout: 'a'.repeat(64),
+        date: '2026-06-16',
+        ...extra,
+      })
+    expect(
+      map({
+        style: { line_width: 9, label_size: 12 },
+        lines: { A: { name: 'Alpha', hidden: true } },
+      }),
+    ).toEqual([])
+    expect(map({ style: { line_width: 99 } })).not.toEqual([])
+    expect(map({ style: { colour: '#ffffff' } })).not.toEqual([])
+    expect(map({ lines: { A: { name: '' } } })).not.toEqual([])
+    expect(map({ lines: { A: { colour: 'red' } } })).not.toEqual([])
+    const provenance = (p: unknown) =>
+      paramsProblems('export.encode', { plan: job, source: '/a', dest: '/b', provenance: p })
+    expect(provenance({ alt: 'A map.' })).toEqual([])
+    expect(provenance({ alt: '' })).not.toEqual([])
+    const stageParams = (extra: object) =>
+      paramsProblems('render.stage', {
+        key: 'la-metro-rail',
+        layout: 'a'.repeat(64),
+        stage: 'octi',
+        ...extra,
+      })
+    expect(stageParams({ date: '2026-06-16' })).toEqual([])
+    expect(stageParams({ date: null })).not.toEqual([])
+    expect(stageParams({ date: 'tomorrow' })).not.toEqual([])
+  })
+})
+
 // ------------------------------------------------------ the running stand-in
 
 const PYTHON = findPython()
@@ -319,5 +502,280 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s answers${WHY}`, () => 
     )
     const listed = (await ask('feeds.list')) as { feeds: { key: string; headways: boolean }[] }
     expect(listed.feeds.find((f) => f.key === 'older')?.headways).toBe(false)
+  })
+
+  // ---- engine v0.12.0
+
+  interface StageAnswer {
+    svg: string
+    counts: { lines: string[] }
+    description: {
+      extent: { minutes: number; line: string; from: string; to: string } | null
+      lines: {
+        label: string
+        termini: string[]
+        stations: string[]
+        meets: { station: string; lines: string[] }[]
+        branches: unknown[]
+        trip: { minutes: number; from: string; to: string } | null
+      }[]
+    }
+  }
+
+  const layoutOf = async (extra: Record<string, unknown> = {}): Promise<string> =>
+    ((await ask('graph.build', { key: 'la-metro-rail', ...extra })) as { layout: string }).layout
+
+  it('describes a stage beside its drawing, timed only for a service day', async () => {
+    const params = { key: 'la-metro-rail', layout: await layoutOf(), stage: 'octi' }
+    expect(paramsProblems('render.stage', params)).toEqual([])
+    const bare = (await ask('render.stage', params)) as StageAnswer
+    expect(answerProblems('render.stage', bare)).toEqual([])
+    expect(bare.counts.lines).toEqual(['A', 'B'])
+    expect(bare.description.extent).toBeNull()
+    expect(bare.description.lines.map((l) => l.label)).toEqual(['A', 'B'])
+    for (const line of bare.description.lines) {
+      expect(line.trip, line.label).toBeNull()
+      expect(line.termini).toEqual(['Alpha', 'Charlie'])
+      expect(line.meets.map((m) => m.station)).toEqual(['Alpha', 'Bravo', 'Charlie'])
+    }
+    expect(bare.description.lines[0].meets[0].lines).toEqual(['B'])
+
+    const withDay = { ...params, date: '2026-06-16' }
+    expect(paramsProblems('render.stage', withDay)).toEqual([])
+    const dated = (await ask('render.stage', withDay)) as StageAnswer
+    expect(answerProblems('render.stage', dated)).toEqual([])
+    expect(dated.description.lines.map((l) => l.trip?.minutes)).toEqual([14, 11])
+    expect(dated.description.extent).toEqual({
+      minutes: 14,
+      line: 'A',
+      from: 'Alpha',
+      to: 'Charlie',
+    })
+    // The day times the description and changes nothing the drawing says.
+    expect(dated.svg).toBe(bare.svg)
+    expect(dated.counts).toEqual(bare.counts)
+  })
+
+  it('describes only the lines a narrower mode kept, and refuses a null day', async () => {
+    const layout = await layoutOf({ mode: 'tram' })
+    const stage = (await ask('render.stage', {
+      key: 'la-metro-rail',
+      layout,
+      stage: 'topo',
+    })) as StageAnswer
+    expect(answerProblems('render.stage', stage)).toEqual([])
+    expect(stage.description.lines.map((l) => l.label)).toEqual(['A'])
+    expect(stage.description.lines[0].meets).toEqual([])
+    await expect(
+      ask('render.stage', { key: 'la-metro-rail', layout, stage: 'topo', date: null }),
+    ).rejects.toThrow(/leave it out rather than send null/)
+  })
+
+  interface PlanAnswer {
+    mode: string
+    url: string
+    view: string
+    at: number | null
+    storyboard: string
+    beats: { secs: number; view: string | null; at: number | null; tween: number }[]
+    caption: string | null
+    clock_corner: string
+    notes: string[]
+  }
+
+  const planFor = async (
+    preset: string,
+    options: Record<string, unknown> = {},
+  ): Promise<PlanAnswer> => {
+    const params = { key: 'la-metro-rail', preset, options }
+    expect(paramsProblems('export.plan', params), 'the request').toEqual([])
+    const answer = (await ask('export.plan', params)) as PlanAnswer
+    expect(answerProblems('export.plan', answer)).toEqual([])
+    return answer
+  }
+  const queryOf = (url: string): URLSearchParams => new URL(url).searchParams
+
+  it('plans a caption (null unless asked) and the clock’s corner, top right where the platform covers the bottom right', async () => {
+    const reel = await planFor('instagram-reel')
+    expect(reel).toMatchObject({ caption: null, clock_corner: 'top-right', notes: [] })
+    expect(queryOf(reel.url).get('corner')).toBe('top-right')
+    expect(queryOf(reel.url).has('caption')).toBe(false)
+
+    // A still without a clock still resolves a corner, and the address names none.
+    const story = await planFor('instagram-story')
+    expect(story.clock_corner).toBe('top-right')
+    expect(queryOf(story.url).has('corner')).toBe(false)
+
+    const post = await planFor('instagram-post')
+    expect(post).toMatchObject({ caption: null, clock_corner: 'bottom-right' })
+    expect(queryOf((await planFor('portfolio-mp4')).url).has('corner')).toBe(false)
+
+    const captioned = await planFor('instagram-post', { caption: 'Rush hour, Los Angeles' })
+    expect(captioned.caption).toBe('Rush hour, Los Angeles')
+    expect(queryOf(captioned.url).get('caption')).toBe('Rush hour, Los Angeles')
+
+    const corner = await planFor('portfolio-mp4', { clock_corner: 'bottom-left' })
+    expect(corner.clock_corner).toBe('bottom-left')
+    expect(queryOf(corner.url).get('corner')).toBe('bottom-left')
+  })
+
+  it('refuses the corners and captions the engine refuses, in its words', async () => {
+    const refused = (preset: string, options: Record<string, unknown>): Promise<unknown> =>
+      ask('export.plan', { key: 'la-metro-rail', preset, options })
+    await expect(refused('instagram-reel', { clock_corner: 'bottom-right' })).rejects.toThrow(
+      /on instagram-reel, Instagram's button rail covers the bottom right/,
+    )
+    await expect(
+      refused('instagram-story', { clock: true, clock_corner: 'bottom-right' }),
+    ).rejects.toThrow(/Instagram's bottom zone covers the bottom right/)
+    await expect(refused('portfolio-mp4', { clock_corner: 'top-left' })).rejects.toThrow(
+      /the title sits top left/,
+    )
+    await expect(
+      refused('portfolio-mp4', { clock_corner: 'top-left', caption: 'Rush hour' }),
+    ).rejects.toThrow(/the title and the caption sit top left/)
+    await expect(refused('portfolio-mp4', { clock_corner: 'middle' })).rejects.toThrow(
+      /Choose the clock's corner from top-left, top-right, bottom-left, bottom-right/,
+    )
+    await expect(refused('instagram-post', { caption: 'x'.repeat(81) })).rejects.toThrow(
+      /A caption is 1 to 80 characters on one line; this one is 81\./,
+    )
+    await expect(refused('instagram-post', { caption: 'two\nlines' })).rejects.toThrow(
+      /this one has a line break/,
+    )
+    // The title off and no caption: nothing sits top left, so the clock may.
+    const free = await planFor('portfolio-mp4', { clock_corner: 'top-left', title: false })
+    expect(free.clock_corner).toBe('top-left')
+    // The reel's bottom left is allowed, with a note saying what covers it.
+    const note = await planFor('instagram-reel', { clock_corner: 'bottom-left' })
+    expect(note.notes).toEqual([
+      expect.stringMatching(
+        /bottom left, inside Instagram's bottom zone \(the lowest 35% of the frame\)/,
+      ),
+    ])
+  })
+
+  it('plans a storyboard written as a list of beats, opening where its first beat does', async () => {
+    const list = [
+      { secs: 2, view: 'map', at: '08:00', speed: 60 },
+      { secs: 3, view: 'linear' },
+      { secs: 4, sweep: true, hours: 2 },
+    ]
+    const plan = await planFor('portfolio-mp4', { storyboard: list })
+    expect(plan).toMatchObject({ mode: 'video', storyboard: 'custom', view: 'map', at: 8 * 3600 })
+    expect(queryOf(plan.url).get('view')).toBe('map')
+    expect(queryOf(plan.url).get('at')).toBe('08:00')
+    expect(plan.beats.map((b) => b.secs)).toEqual([2, 3, 4])
+    expect(plan.beats.map((b) => b.view)).toEqual(['map', 'linear', null])
+    expect(plan.beats[0]).toMatchObject({ at: 8 * 3600, tween: 0 })
+    // A transition left out is the shorter of the beat and 1.2 seconds.
+    expect(plan.beats.map((b) => b.tween)).toEqual([0, 1.2, 1.2])
+    // A named storyboard is still its own name, and a still ignores a list.
+    expect((await planFor('portfolio-mp4', { storyboard: 'morph' })).storyboard).toBe('morph')
+    const still = await planFor('instagram-post', { storyboard: [{ secs: 2 }] })
+    expect(still).toMatchObject({ mode: 'still', storyboard: '' })
+  })
+
+  it('refuses a list the engine refuses, naming the beat and the field', async () => {
+    const refused = (
+      storyboard: unknown[],
+      extra: Record<string, unknown> = {},
+    ): Promise<unknown> =>
+      ask('export.plan', {
+        key: 'la-metro-rail',
+        preset: 'portfolio-mp4',
+        options: { storyboard, ...extra },
+      })
+    const first = { secs: 2, view: 'map', at: '08:00' }
+    await expect(refused([first], { view: 'time' })).rejects.toThrow(
+      /view and at go on a list's first beat \(storyboard\[0\]\), not beside the list/,
+    )
+    await expect(refused([])).rejects.toThrow(/storyboard holds no beats: a list holds 1 to 16/)
+    await expect(refused(Array.from({ length: 17 }, () => first))).rejects.toThrow(
+      /storyboard\[16\] is one beat too many/,
+    )
+    await expect(refused([{ secs: 2, at: '08:00' }])).rejects.toThrow(
+      /storyboard\[0\]\.view is missing/,
+    )
+    await expect(refused([{ secs: 2, view: 'map' }])).rejects.toThrow(
+      /storyboard\[0\]\.at is missing/,
+    )
+    await expect(refused([first, { secs: 31 }])).rejects.toThrow(
+      /storyboard\[1\]\.secs must be seconds, from 0\.5 to 30/,
+    )
+    await expect(refused([first, { secs: 1, view: 'sideways' }])).rejects.toThrow(
+      /storyboard\[1\]\.view must be one of geographic, map, linear, time, or null/,
+    )
+    await expect(refused([{ ...first, tween: 1 }])).rejects.toThrow(
+      /storyboard\[0\]\.tween must be 0/,
+    )
+    await expect(refused([first, { secs: 1, colour: 'red' }])).rejects.toThrow(
+      /storyboard\[1\] does not take colour/,
+    )
+    await expect(
+      refused([first, ...Array.from({ length: 3 }, () => ({ secs: 30 }))]),
+    ).rejects.toThrow(/past the 90 seconds a list may last/)
+  })
+
+  it('answers the preset table and the storyboard table, a beat with every field as before', async () => {
+    const presets = await ask('export.presets')
+    expect(answerProblems('export.presets', presets)).toEqual([])
+    const boards = (await ask('export.storyboards')) as {
+      storyboards: { beats: Record<string, unknown>[] }[]
+    }
+    expect(answerProblems('export.storyboards', boards)).toEqual([])
+    // The description no longer requires them; the engine still writes all nine.
+    const fields = ['at', 'hours', 'labels', 'secs', 'span', 'speed', 'sweep', 'tween', 'view']
+    for (const board of boards.storyboards) {
+      for (const beat of board.beats) expect(Object.keys(beat).sort()).toEqual(fields)
+    }
+  })
+
+  it('takes a style and per-line options for the map, and keeps what was sent where a test can read it', async () => {
+    const params = {
+      key: 'la-metro-rail',
+      layout: await layoutOf(),
+      date: '2026-06-16',
+      style: { line_width: 9, label_size: 12 },
+      lines: { A: { name: 'Alpha line' }, B: { hidden: true } },
+    }
+    expect(paramsProblems('map.build', params)).toEqual([])
+    const answer = await ask('map.build', params)
+    expect(answerProblems('map.build', answer)).toEqual([])
+    const received = readFileSync(join(home, 'fake-engine.received'), 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as { method?: string; params?: Record<string, unknown> })
+    const sent = received.filter((m) => m.method === 'map.build').pop()
+    expect(sent?.params).toMatchObject({ style: params.style, lines: params.lines })
+  })
+
+  it('writes a person’s own alt text into the sidecar, trimmed, and refuses a blank or overlong one', async () => {
+    const planned = await planFor('instagram-post')
+    mkdirSync(join(home, 'shots'), { recursive: true })
+    const source = join(home, 'shots', '000000.png')
+    writeFileSync(source, 'a still')
+    const dest = join(home, 'exported', 'one.png')
+    const encode = async (
+      provenance: Record<string, unknown>,
+    ): Promise<{ sidecar: { alt: string } }> => {
+      const params = { plan: planned, source, dest, provenance }
+      expect(paramsProblems('export.encode', params), 'the request').toEqual([])
+      const answer = (await ask('export.encode', params)) as { sidecar: { alt: string } }
+      expect(answerProblems('export.encode', answer)).toEqual([])
+      return answer
+    }
+    expect((await encode({ service_date: '2026-06-16' })).sidecar.alt).toBe(
+      "The stand-in's la-metro-rail map.",
+    )
+    expect((await encode({ alt: '  Two lines meet at Bravo.\n' })).sidecar.alt).toBe(
+      'Two lines meet at Bravo.',
+    )
+    const refused = (alt: string): Promise<unknown> =>
+      ask('export.encode', { plan: planned, source, dest, provenance: { alt } })
+    await expect(refused('  \n ')).rejects.toThrow(/provenance\.alt is empty; omit it instead/)
+    await expect(refused('x'.repeat(1001))).rejects.toThrow(
+      /provenance\.alt is 1,001 characters; it may be at most 1,000/,
+    )
   })
 })
