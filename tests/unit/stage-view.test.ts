@@ -14,7 +14,7 @@ import {
   zoomAt,
 } from '../../src/renderer/src/engine/stages'
 import { STAGES, STAGE_SANDBOX } from '../../src/renderer/src/StageView'
-import type { RenderStageResult } from '../../src/shared/protocol'
+import type { RenderStageParams, RenderStageResult } from '../../src/shared/protocol'
 
 describe('the pane keeps the point under the pointer still when it zooms', () => {
   it('zooms about a point and clamps the scale', () => {
@@ -91,5 +91,44 @@ describe('the stage cache', () => {
     await new Promise((r) => setTimeout(r, 0))
     await expect(stageFor(client, 'la', 'bad', null, 'loom', 1600)).rejects.toThrow('no')
     expect(asked).toBe(6)
+  })
+})
+
+describe('the stage cache and the service day (issue 105)', () => {
+  const answer = { layout: 'l1', stage: 'gtfs2graph' } as RenderStageResult
+
+  it('sends the day when there is one and leaves the field out when there is none', async () => {
+    forgetAllStages()
+    const sent: RenderStageParams[] = []
+    const client = {
+      request: (_m: 'render.stage', params: RenderStageParams) => {
+        sent.push(params)
+        return { result: Promise.resolve(answer) }
+      },
+    }
+    await stageFor(client, 'la', 'l1', 'made-1', 'gtfs2graph', 1600)
+    await stageFor(client, 'la', 'l1', 'made-1', 'gtfs2graph', 1600, null)
+    await stageFor(client, 'la', 'l1', 'made-1', 'gtfs2graph', 1600, '2026-06-16')
+    expect(sent).toHaveLength(2)
+    // The engine refuses a null: the field is absent, never null.
+    expect('date' in sent[0], 'no day, no field').toBe(false)
+    expect(sent[1].date).toBe('2026-06-16')
+  })
+
+  it('asks again for another day, since the minutes are of a day', async () => {
+    forgetAllStages()
+    let asked = 0
+    const client = {
+      request: () => {
+        asked += 1
+        return { result: Promise.resolve(answer) }
+      },
+    }
+    await stageFor(client, 'la', 'l1', 'made-1', 'gtfs2graph', 1600, '2026-06-16')
+    await stageFor(client, 'la', 'l1', 'made-1', 'gtfs2graph', 1600, '2026-06-16')
+    expect(asked, 'the same day is asked once').toBe(1)
+    await stageFor(client, 'la', 'l1', 'made-1', 'gtfs2graph', 1600, '2026-06-17')
+    await stageFor(client, 'la', 'l1', 'made-1', 'gtfs2graph', 1600)
+    expect(asked, 'another day, and no day, are asked for in their own right').toBe(3)
   })
 })

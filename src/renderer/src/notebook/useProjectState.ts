@@ -90,13 +90,18 @@ export interface ProjectState {
   registry: { mode: string; agency: string | null } | null
   /** The feed as the engine reads it, cached by the inspection module. */
   inspect: (key: string) => Promise<Inspection>
-  /** One stage of the layout, drawn by the engine. */
+  /**
+   * One stage of the layout, drawn by the engine, with its description timed
+   * for the day given (issue 105); null asks for none, and the engine times
+   * nothing.
+   */
   readStage: (
     key: string,
     layout: string,
     made: string | null,
     stage: StageName,
     width: number,
+    date: string | null,
   ) => Promise<RenderStageResult>
   setInputs: (inputs: { mode: string; agency: string | null }) => Promise<void>
   /** The service day a person chose, written at once and drawing nothing (A5.5-15). */
@@ -471,8 +476,14 @@ export function useProjectState(
     [layOut, run, retry],
   )
   const readStage = useCallback(
-    (key: string, layout: string, made: string | null, stage: StageName, width: number) =>
-      stageFor(engineClient(), key, layout, made, stage, width),
+    (
+      key: string,
+      layout: string,
+      made: string | null,
+      stage: StageName,
+      width: number,
+      date: string | null,
+    ) => stageFor(engineClient(), key, layout, made, stage, width, date),
     [],
   )
   const [registry, setRegistry] = useState<{ mode: string; agency: string | null } | null>(null)

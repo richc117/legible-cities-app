@@ -1,11 +1,14 @@
 import type { Methods, RenderStageResult, StageName } from '../../../shared/protocol'
 
-// One stage drawing per layout, stage and width per session. The engine
+// One stage drawing per layout, stage, width and day per session. The engine
 // draws a stored stage on request (render.stage, E15) and the answer does
 // not change while the id and the set behind it stand; the set's `made`
 // is part of the key, so a forced re-layout under the same id is drawn
 // anew. The SVG is the engine's and is handed to a sandboxed frame; the
-// counts are the engine's and are shown as sent.
+// counts are the engine's and are shown as sent. The day is part of the key
+// because the description's minutes are of a day (issue 105): the same
+// drawing asked for another day answers other minutes, and the engine reads
+// a timetable to say them.
 
 export interface StageClient {
   request(
@@ -23,11 +26,16 @@ export function stageFor(
   made: string | null,
   stage: StageName,
   width: number,
+  date: string | null = null,
 ): Promise<RenderStageResult> {
-  const slot = `${key}/${layout}/${made ?? ''}/${stage}/${width}`
+  const slot = `${key}/${layout}/${made ?? ''}/${stage}/${width}/${date ?? ''}`
   const held = cache.get(slot)
   if (held !== undefined) return held
-  const pending = client.request('render.stage', { key, layout, stage, width }).result
+  // Without a day the field is left out: the engine refuses a null, and
+  // answers an untimed description, which the words leave out.
+  const params: Methods['render.stage']['params'] = { key, layout, stage, width }
+  if (date !== null) params.date = date
+  const pending = client.request('render.stage', params).result
   cache.set(slot, pending)
   pending.catch(() => cache.delete(slot))
   return pending
