@@ -11,15 +11,16 @@ window, for people who do not use a terminal.
 and follow [the install guide](docs/install.md): the installers are not
 signed, and it shows how to open the app past macOS's and Windows'
 warnings, what the app writes and where, and how to remove it completely.
-Until the first release, the newest build there is a release candidate,
-marked "Pre-release".
+The first release, 0.1.0, was published on 8 October 2026; the release
+candidates before it stay on the page, marked "Pre-release".
 
-**Status: release candidates.** Everything below works. Each candidate's
+**Status: 0.1.0 released.** Everything below works. Each version's
 installers for both Macs and for Windows are built in CI, attached to a
 GitHub Release drafted from its tag, and then installed and driven through
 most of [the acceptance checklist](docs/acceptance.md) on a macOS and a
-Windows runner. The first release waits on the same checklist walked by people.
-Work proceeds through the issues and milestones on this repository.
+Windows runner; 0.1.0 passed that run on both. The same checklist walked
+by people is still owed for it. Work proceeds through the issues and
+milestones on this repository.
 
 ## What it does
 
