@@ -79,8 +79,8 @@ already cites the number you mean to use.
 | 046 | [The map moves into the notebook's flow, and the export gets a preview of its own](046-the-map-moves-into-the-notebooks-flow.md) | Proposed |
 | 047 | [The front door shows pictures the engine made, and ships none of its layouts](047-the-front-door-shows-pictures-the-engine-made.md) | Proposed |
 | 048 | [Route mode is a trip the page finds](048-route-mode-is-a-trip-the-page-finds.md) | Proposed |
-| 049 | [Style goes on the wire as the engine's own fields](049-style-on-the-wire.md) | Proposed |
-| 050 | [The frame is padded, never cropped](050-the-frame-is-padded-never-cropped.md) | Proposed |
+| 049 | [Style goes on the wire as the engine's own fields](049-style-on-the-wire.md) | Accepted |
+| 050 | [The frame is padded, never cropped](050-the-frame-is-padded-never-cropped.md) | Accepted |
 | 051 | [A storyboard is a name or a list of beats, and the opening beat is named](051-inline-beats-and-the-opening-beat.md) | Proposed |
 | 052 | [A caption, the clock's corner, and the safe zones as data](052-caption-clock-corner-and-safe-zones-as-data.md) | Proposed |
 | 053 | [A line can be renamed and hidden; width, casing and dash wait on the pitch](053-per-line-name-and-hidden.md) | Proposed |

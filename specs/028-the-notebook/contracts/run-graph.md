@@ -16,7 +16,7 @@ in `tests/unit/run-graph.test.ts`.
 | 01 | `data` | Data | the feed, the mode and the operator (A5.5-09) |
 | 02 | `process` | Process | the layout run and its stages (A5.5-10) |
 | 03 | `frame` | Frame and service day | the service day (A5.5-15) |
-| 04 | `style` | Style | the project's map theme (A5.5-17) |
+| 04 | `style` | Style | the project's map theme (A5.5-17) and the map's sizes (issue 350) |
 | 05 | `lines` | Lines | the line colours and the line order (A5.5-18) |
 | 06 | `export` | Export | the presets, the options, where the file goes, and the export (A5.5-19) |
 
@@ -43,6 +43,7 @@ has to be told, and nothing is registered:
 | --- | --- |
 | running, with `download` short of its last byte; or ended with `feedMissing` (issue 178) | 01 `data` |
 | `rebuilt` | 03 `frame` |
+| `restyled` (issue 350) | 04 `style` |
 | `recoloured` or `reordered` | 05 `lines` |
 | anything else, including a re-layout | 02 `process` |
 | the export run (`ExportSnapshot`) | 06 `export` |
@@ -81,13 +82,16 @@ interface DrawnFrom {
   defaultColor: string
   lineOrder: string[]
   theme: Theme
+  style: ProjectStyle // issue 350: what `map.build` was sent; {} for none
 }
 ```
 
-It is written by the four handlers that already write the record at the end
+It is written by the handlers that already write the record at the end
 of a draw - `completeLayout`, `completeRebuild`, `completeColors`,
-`completeOrder` - from the values of the record they are about to write, so
-there is **no new bridge method and no new engine call**. Staleness is then
+`completeOrder` and, since issue 350, `completeStyle` - from the values of
+the record they are about to write, so `drawn` itself needed **no new
+bridge method and no new engine call** (`completeStyle` is the writer of the
+style that the others had no counterpart for). Staleness is then
 a comparison of the record against itself, with no events and no dirty
 flags.
 
@@ -182,9 +186,12 @@ drawing half of every re-layout and back again, which is the opposite of
 
 ### The cheap edits are exempt
 
-The colours, the default colour, the order and the theme raise **no
-source**. They redraw themselves as A4-01, A4-02 and A4-03 built them, so
-their cell reads `running` while they do and `ready` after - never `stale`.
+The colours, the default colour, the order, the theme and the map's sizes
+raise **no source**. They redraw themselves as A4-01, A4-02, A4-03 and issue
+350 built them, so their cell reads `running` while they do and `ready`
+after - never `stale`. A size is a render of the stored layout like a colour:
+`restyle` is the map call alone, for the day the map already showed, and the
+style is written only once the map carries it.
 ADR-045 says why: a control that disables itself under a person's hands
 takes the focus with it, and a refused change is a lost one. Stale is for
 the edits that cost a re-layout.

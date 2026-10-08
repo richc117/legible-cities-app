@@ -219,6 +219,7 @@ The two reader columns are a person's, recorded per run in
 | Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
 | Theme switch | pass | fixed (issue 124: `aria-pressed`, a named group; asserted in `theme.spec.ts`) | pass | pass (the page restyles in place and the frame is not reloaded, issue 349) | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
+| Sizes: eight numeric fields and Reset to the engine's sizes (issue 350) | by construction: each field a labelled text field in the Tab order, committed on Enter or on leaving it, Reset handing focus to the cell's heading as it disables itself; not yet run in the sweep | by construction: each field named by its label and described by its range, the margin's by the sentence about the frame too, a refusal an alert and `aria-invalid` on the field; asserted in `style.spec.ts`, not yet run | by construction (the kit's ring); not yet run | by construction (nothing moves); not yet run | by construction (`.message`, `.message.error` and the kit's field, pairs the contrast test already holds); not yet run | by construction, as Night; not yet run | not yet run: a person's | not yet run: a person's |
 
 ### Cell 05, Lines
 
@@ -1065,12 +1066,24 @@ a table).
   Start a run (Lay out again) and listen for both buttons dimmed, the
   status "The theme waits until the run that is going has finished: …",
   and focus on the cell's own heading (D3) if it was on a button. Cell 04
-  draws its one control headless (A5.5-17), so "Theme" is the region's name
+  draws its controls headless (A5.5-17), so "Theme" is the region's name
   and there is no heading of that name to land on. A redraw for a colour or
   a line order, which a person starts and which takes moments, dims the
   buttons without the sentence: it would add a line under the cell a colour
   panel is being picked from and move the panel (issue 304). The sentence
   is still said when an export is the reason.
+- **Sizes.** Listen for the region "Sizes", then the sentence "In the
+  map's own units: the map is drawn 1,800 wide, so a line width of 7 is
+  seven of 1,800." and eight text fields, each read with its name and its
+  range ("Line width, 7, edit text, 1 to 24. The engine's own is 7."),
+  **Margin** with the sentence about the frame after it. Type a figure and
+  press Enter: nothing is said while you type, and the map is drawn again
+  without focus moving. Type **30** into **Line width** and press Enter:
+  listen for the alert "style.line_width must be from 1 to 24, in SVG user
+  units at the map's width" and for the field read as invalid with that
+  sentence in its description when you return to it. Press **Reset to the
+  engine's sizes** and listen for focus on the cell's own heading, since
+  the button cannot be pressed once nothing is left to reset.
 
 #### Cell 05, Lines
 

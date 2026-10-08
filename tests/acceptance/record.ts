@@ -28,7 +28,7 @@ export const STEP_TITLES: Record<number, string> = {
   5: 'Cell 01, Data: the feed and where its routes run',
   6: 'Cell 02, Process: the layout and what the build had to fudge',
   7: 'Cell 03, Frame and service day: pick a day, scrub the clock',
-  8: 'Cell 04, Style: the theme',
+  8: 'Cell 04, Style: the theme and the sizes',
   9: 'Cell 05, Lines: colours, by dragging',
   10: 'Cell 05, Lines: the order',
   11: 'Cell 06, Export: a reel (___ s)',

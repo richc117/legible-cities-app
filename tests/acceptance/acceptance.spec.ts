@@ -1674,11 +1674,29 @@ test('a release, installed, through docs/acceptance.md', async () => {
           throw new Error(`Warm dark is not announced as pressed: ${await pressedState()}`)
         }
       })
-      await log.soft('the sentence about what the engine keeps', () =>
-        expect(window.locator('section.cell[data-cell="04"]')).toContainText(
-          'Line width, station size and label size are the engine’s own for now',
-        ),
-      )
+      const sizes = window.getByRole('region', { name: 'Sizes', exact: true })
+      await log.soft('eight size fields, each showing the engine’s own number', async () => {
+        for (const [name, value] of [
+          ['Line width', '7'],
+          ['Line gap', '1.6'],
+          ['Station radius', '4.2'],
+          ['Interchange radius', '6'],
+          ['Station outline', '2.2'],
+          ['Label size', '11'],
+          ['Label offset', '9'],
+          ['Margin', '24'],
+        ] as const)
+          await expect(sizes.getByLabel(name, { exact: true }), name).toHaveValue(value)
+        await expect(
+          sizes.getByRole('button', { name: 'Reset to the engine’s sizes', exact: true }),
+        ).toBeDisabled()
+        await expect(sizes).toContainText(
+          'In the map’s own units: the map is drawn 1,800 wide, so a line width of 7 is seven of 1,800.',
+        )
+        await expect(sizes).toContainText(
+          'The frame is padded, never cropped or rotated: a station is never cut off, and a tighter frame is a smaller margin.',
+        )
+      })
       const interfaceTheme = await window.locator('html').getAttribute('data-theme')
       const mark = (await saidSoFar(window)).length
       // The map takes its theme in place since engine v0.11.0 (issue 349), so
@@ -1713,8 +1731,47 @@ test('a release, installed, through docs/acceptance.md', async () => {
         ).not.toHaveAttribute('data-theme', 'sepia', { timeout: SHORT_MS })
         await expect.poll(async () => (await recordOf(window, LA)).theme).toBe('warm-dark')
       })
+      const mark2 = (await saidSoFar(window)).length
+      const width = sizes.getByLabel('Line width', { exact: true })
+      await width.fill('30')
+      await width.press('Enter')
+      await log.soft(
+        'a line width of 30 is refused beside the field, and nothing is stored',
+        async () => {
+          await expect(sizes.getByRole('alert')).toHaveText(
+            "style.line_width must be from 1 to 24, in SVG user units at the map's width",
+          )
+          expect((await recordOf(window, LA)).style).toEqual({})
+        },
+      )
+      await width.fill('12')
+      await width.press('Enter')
+      await until(
+        async () => ((await recordOf(window, LA)).style.lineWidth === 12 ? true : undefined),
+        REBUILD_MS,
+        () => 'the line width of 12 was never written to the project',
+      )
+      await log.soft(
+        'the redraw sentence, and the cell’s row says the sizes are the person’s',
+        async () => {
+          expect((await saidSoFar(window)).slice(mark2)).toContain(
+            'Drawn in the sizes you chose, from the stored layout. The stations have not moved.',
+          )
+          await expect(width).toHaveValue('12')
+        },
+      )
+      await sizes.getByRole('button', { name: 'Reset to the engine’s sizes', exact: true }).click()
+      await until(
+        async () =>
+          Object.keys((await recordOf(window, LA)).style).length === 0 ? true : undefined,
+        REBUILD_MS,
+        () => 'Reset never put the sizes back to the engine’s own',
+      )
+      await log.soft('Reset shows the engine’s own number again', () =>
+        expect(width).toHaveValue('7'),
+      )
       log.notAutomated(
-        'whether the page looks sepia and then warm dark, and that nothing else in cell 04 offers to set line width, station size or label size.',
+        'whether the page looks sepia and then warm dark, and whether a line width of 12 draws the lines visibly thicker with no station moved.',
       )
     })
 

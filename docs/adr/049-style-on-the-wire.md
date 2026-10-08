@@ -1,6 +1,6 @@
 # ADR-049: Style goes on the wire as the engine's own fields
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-02
 - **Supersedes:** none
 - **Superseded by:** none
@@ -48,5 +48,7 @@ For the app's old defaults: **(i)** send them and change every map; **(ii)** reb
 **As of 7 Oct 2026, the two radii are judged together.** The engine judges `interchange_radius < station_radius` on the values the map would be drawn with, a field left out counting as its default, so a `station_radius` above 6 sent alone is refused and the app sends both.
 
 **What to watch.** `line_gap` moves the parallel-track pitch the page's dots ride. A test draws one feed with and without a style and asserts the SVG differs where the style says and in no node coordinate.
+
+**As of 8 Oct 2026, accepted.** The engine took the parameter at v0.12.0 (its issue 36), and the app's half landed in issue 350 on the pin that carries it. `ProjectStyle` is the eight optional numbers in camel case, `DEFAULT_STYLE` the engine's own, and `RECORD_VERSION` 2; a version-1 record whose four numbers are all `10, 8, 11, 26` reads as setting nothing, any other number in one of the four is kept, and a version-2 record is read as written. `map.build` is sent a `style` only when a person has set a field, with the chosen fields only and both radii whenever either is, a field at the engine's number not at all, and none of the four colours; a style the engine would refuse is refused beside its field in the engine's own sentence before anything is sent, and a number out of range in a record is kept and shown refused rather than clamped. A size is a cheap edit: `LayoutRun.restyle` is the map call alone from the stored layout for the day the map showed, cell 04 reads running while it goes and never stale, and the style is written, with the `drawn.style` it carries, only once the map does. Writing it took one bridge method the issue did not foresee, `completeStyle`. **What to watch, measured:** the stand-in engine draws no map, so the test the line above asks for (one feed drawn with and without a style, the SVG differing where the style says and in no node coordinate) is not run by the app's suite; measured by the coordinator against the real engine, and its figures are not written here.
 
 **As of 6 Oct 2026: the app never sends `background`, nor the other three colours.** In the SVG `background` is only the fallback in `var(--map-bg, …)` on the backdrop and the label halo (`render.py:315, 355`); the page defines `--map-bg` in both themes and makes it transparent in present mode (`page.html:37, 44, 249`), the export's SVG path resolves the variables from `PALETTES`, and E39's thumbnails resolve them the same way. Only a standalone SVG outside any page reaches the literal, and the app shows none; the engine keeps the field for the command line and the site. Criterion: the app's type for `map.build`'s `style` has no `background`, `station_fill`, `station_stroke_color` or `label_color`, and a unit test on the params the layout run sends asserts none of the four is present.

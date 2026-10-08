@@ -1,6 +1,6 @@
 # ADR-050: The frame is padded, never cropped
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-02
 - **Supersedes:** none
 - **Superseded by:** none
@@ -40,5 +40,7 @@ A person who wants less network already has two tools: `ExportOptions.lines` kee
 **No code.** #38 closes with this record; nothing changes what is drawn.
 
 **Cell 03 offers no crop or rotate control and says why**, in one sentence beside the margin.
+
+**As of 8 Oct 2026, accepted.** The margin is the **Margin** field in cell 04 (`padding`, 0 to 200 in the map's own units, issue 350), with the sentence beside it: "The frame is padded, never cropped or rotated: a station is never cut off, and a tighter frame is a smaller margin." The record asked for it in cell 03; it sits beside the margin, which is in cell 04. Fit is `width`, which the app does not offer. Nothing offers crop or rotation, and nothing was added to the engine. Cell 03's own older sentence (`FrameCell.tsx`), which says how the map is cropped, turned, margined and masked belongs in that cell and is not drawn yet, predates this record and now says what this one refuses; it is not reworded here.
 
 **What would reopen it.** Reels of wide networks where the map is a band across an empty frame. `frame_top`'s gutter is the mitigation today; a count of such exports is the evidence.
