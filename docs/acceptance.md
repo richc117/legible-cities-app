@@ -443,8 +443,12 @@ another. Wait for the map. Press **Back to alphabetical**.
   pointer rests on it and when it has focus.
 - After a press, a status sentence "`<line>` is now `<n>` of `<total>`.",
   and after a moment "Drawn with the lines in the order you chose, from the
-  stored layout. The stations have not moved." The page's line rows follow
-  the new order.
+  stored layout. The stations have not moved."
+- The page's line rows follow the new order only from engine v0.12.0
+  (richc117/legible-cities#63); with the pinned v0.10.1 the page sorts
+  its Linear and Time rows A to Z whatever the order, and on the
+  schematic the change shows only where two lines share track, so a map
+  that looks the same here is not a failure of the app (issue 343).
 - **Back to alphabetical** says "The lines are in alphabetical order
   again." and becomes unavailable.
 
