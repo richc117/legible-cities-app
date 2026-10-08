@@ -285,7 +285,9 @@ test('a day drawn re-times the words; a day only chosen does not', async () => {
 
     // Drawn, the day is the day drawn and the words are timed for it.
     await section.getByRole('button', { name: 'Draw for this day' }).click()
-    await expect(page.getByText(new RegExp(`^Drawn for ${other}`))).toBeVisible({ timeout: 30_000 })
+    await expect(
+      page.getByText(new RegExp(`^Drawn for ${other} from the stored layout`)),
+    ).toBeVisible({ timeout: 30_000 })
     await expect
       .poll(
         () =>

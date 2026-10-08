@@ -1113,8 +1113,8 @@ lines onto shared track (`loom`), before anything is straightened. A
 sentence under the section's heading says what the two are, and `topo` and
 `octi` are deliberately not offered (issue 282). The
 drawing is the engine's, asked for by the layout's id through
-`render.stage` (engine v0.7.0) and kept per layout, set, stage and width
-for the session; the counts beside it are the engine's, shown as sent,
+`render.stage` (engine v0.7.0) and kept per layout, set, stage, width and
+service day for the session; the counts beside it are the engine's, shown as sent,
 and never a number the app worked out (ADR-023: `topo` is not
 reproducible, so a literal count is the wrong instrument). The SVG goes
 into an iframe with an empty `sandbox`, no permission at all, through

@@ -348,6 +348,19 @@ describe('a description that did not come as one (the older pin)', () => {
     expect(readDescription({ extent: { minutes: '9' }, lines: [] })).toBeNull()
     expect(readDescription({ extent: undefined, lines: [] })).toBeNull()
     expect(readDescription({ extent: null, lines: [{ ...BLUE, termini: 'Daly City' }] })).toBeNull()
+    // The nested checks, each reached with the rest of the line well formed.
+    expect(
+      readDescription({ extent: null, lines: [{ ...BLUE, stations: ['A', 1] }] }),
+      'a station that is not a name',
+    ).toBeNull()
+    expect(
+      readDescription({ extent: null, lines: [{ ...BLUE, meets: [{ station: 'X' }] }] }),
+      'a meeting with no lines',
+    ).toBeNull()
+    expect(
+      readDescription({ extent: null, lines: [{ ...BLUE, label: null }] }),
+      'a line with no label',
+    ).toBeNull()
     expect(
       readDescription({ extent: null, lines: [{ ...BLUE, meets: [{ station: 1 }] }] }),
     ).toBeNull()
