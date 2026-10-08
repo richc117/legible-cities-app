@@ -77,6 +77,7 @@ const api: Api = {
     setInputs: (id, inputs) => invoke(CHANNELS.projectsSetInputs, id, inputs),
     completeColors: (id, palette) => invoke(CHANNELS.projectsCompleteColors, id, palette),
     completeOrder: (id, order) => invoke(CHANNELS.projectsCompleteOrder, id, order),
+    completeStyle: (id, style) => invoke(CHANNELS.projectsCompleteStyle, id, style),
     setDate: (id, date) => invoke(CHANNELS.projectsSetDate, id, date),
     setTheme: (id, theme) => invoke(CHANNELS.projectsSetTheme, id, theme),
     markOpened: (id) => invoke(CHANNELS.projectsMarkOpened, id),

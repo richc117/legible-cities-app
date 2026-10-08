@@ -23,6 +23,7 @@ import type {
   Palette,
   ProjectRecord,
   ProjectInputs,
+  ProjectStyle,
   ProjectSummary,
   RebuildDone,
   Theme,
@@ -126,6 +127,15 @@ export interface Api {
      * (specs/020-line-order/contracts/bridge.md).
      */
     completeOrder(id: string, order: LineOrder): Promise<ProjectRecord>
+    /**
+     * The sizes a person chose for the map (issue 350, ADR-049), written
+     * once the map has been drawn with them, as the colours and the order
+     * are: the record and the page on screen always agree. The whole style
+     * the cell showed is what is written, not a change to the one stored.
+     * The main process checks every number against the engine's own ranges
+     * before the store sees it, and the store checks it again.
+     */
+    completeStyle(id: string, style: ProjectStyle): Promise<ProjectRecord>
     /**
      * The service day a person chose (A5.5-15), written the moment it is
      * chosen rather than after the rebuild that draws it, as the inputs and
@@ -347,6 +357,7 @@ export const CHANNELS = {
   projectsSetInputs: 'projects:set-inputs',
   projectsCompleteColors: 'projects:complete-colors',
   projectsCompleteOrder: 'projects:complete-order',
+  projectsCompleteStyle: 'projects:complete-style',
   projectsSetDate: 'projects:set-date',
   projectsSetTheme: 'projects:set-theme',
   projectsMarkOpened: 'projects:mark-opened',

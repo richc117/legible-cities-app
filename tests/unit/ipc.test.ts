@@ -75,6 +75,7 @@ describe('registerProjectHandlers', () => {
       [CHANNELS.projectsCompleteRebuild, 'aaaaaaaaaaaa', { date: '2026-09-15' }],
       [CHANNELS.projectsCompleteColors, 'aaaaaaaaaaaa', { colors: {}, defaultColor: '#888888' }],
       [CHANNELS.projectsCompleteOrder, 'aaaaaaaaaaaa', ['A']],
+      [CHANNELS.projectsCompleteStyle, 'aaaaaaaaaaaa', { lineWidth: 12 }],
       [CHANNELS.projectsSetDate, 'aaaaaaaaaaaa', '2026-09-15'],
       [CHANNELS.projectsSetTheme, 'aaaaaaaaaaaa', 'sepia'],
       [CHANNELS.projectsSetExport, 'aaaaaaaaaaaa', { preset: 'instagram-reel', options: {} }],
@@ -285,6 +286,49 @@ describe('registerProjectHandlers', () => {
     order[0] = 'B'
     expect(calls).toEqual([
       { method: 'completeOrder', args: ['abcdefghijk1', ['K', 'A', 'Rapid 720']] },
+    ])
+  })
+
+  it('refuses a style the engine would, and passes one the cell would send', async () => {
+    const { call, calls } = harness()
+    for (const style of [
+      undefined,
+      null,
+      42,
+      'big',
+      [{ lineWidth: 12 }],
+      { lineWidth: 25 },
+      { lineGap: 0 },
+      { padding: '24' },
+      { labelSize: NaN },
+      // The pair of radii: a station radius above the interchange radius's
+      // default of 6, sent alone, is the engine's refusal too.
+      { stationRadius: 8 },
+      // The four colours the page's theme owns are never the app's to send.
+      { background: '#000000' },
+      { lineWidth: 12, label_color: '#111111' },
+      { line_width: 12 },
+    ]) {
+      await expect(
+        call(CHANNELS.projectsCompleteStyle, 'abcdefghijk1', style),
+        JSON.stringify(style) ?? 'undefined',
+      ).rejects.toThrow()
+    }
+    expect(calls, 'nothing reached the store').toEqual([])
+
+    await expect(call(CHANNELS.projectsCompleteStyle, '../x', { lineWidth: 12 })).rejects.toThrow(
+      'invalid id',
+    )
+    const style = { lineWidth: 12, stationRadius: 5, interchangeRadius: 6 }
+    await call(CHANNELS.projectsCompleteStyle, 'abcdefghijk1', style)
+    await call(CHANNELS.projectsCompleteStyle, 'abcdefghijk1', {})
+    style.lineWidth = 13
+    expect(calls).toEqual([
+      {
+        method: 'completeStyle',
+        args: ['abcdefghijk1', { lineWidth: 12, stationRadius: 5, interchangeRadius: 6 }],
+      },
+      { method: 'completeStyle', args: ['abcdefghijk1', {}] },
     ])
   })
 

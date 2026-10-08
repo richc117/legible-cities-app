@@ -16,12 +16,15 @@ import {
   validateName,
   validateLineOrder,
   validatePalette,
+  validateStyle,
   validateTheme,
+  STYLE_KEYS,
   type CreateProjectInput,
   type LineOrder,
   type Palette,
   type Theme,
   type ProjectInputs,
+  type ProjectStyle,
   type RebuildDone,
   validateMade,
   validateServiceDate,
@@ -125,6 +128,21 @@ function readPalette(raw: unknown): Palette {
 function readLineOrder(raw: unknown): LineOrder {
   check(validateLineOrder(raw))
   return [...(raw as LineOrder)]
+}
+
+/**
+ * The sizes a person chose, as the page relayed them once the map was drawn
+ * with them (issue 350). Every number is held to the engine's own range and
+ * the pair of radii to the engine's rule, with the engine's own sentences,
+ * and only the eight fields are taken: a style with anything else on it,
+ * one of the four colours the page's theme owns among it, is refused.
+ */
+function readStyle(raw: unknown): ProjectStyle {
+  check(validateStyle(raw))
+  const given = raw as Record<string, number | undefined>
+  const style: ProjectStyle = {}
+  for (const key of STYLE_KEYS) if (given[key] !== undefined) style[key] = given[key]
+  return style
 }
 
 function readTheme(raw: unknown): Theme {
@@ -274,6 +292,9 @@ export function registerProjectHandlers(
   )
   handle(CHANNELS.projectsCompleteOrder, (id, order) =>
     store.completeOrder(readId(id), readLineOrder(order)),
+  )
+  handle(CHANNELS.projectsCompleteStyle, (id, style) =>
+    store.completeStyle(readId(id), readStyle(style)),
   )
   handle(CHANNELS.projectsSetDate, (id, date) => store.setDate(readId(id), readServiceDay(date)))
   handle(CHANNELS.projectsSetTheme, (id, theme) => store.setTheme(readId(id), readTheme(theme)))

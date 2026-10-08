@@ -26,6 +26,7 @@ import {
   validateName,
   validateLineOrder,
   validatePalette,
+  validateStyle,
   validateTheme,
   validateDestination,
   type CreateProjectInput,
@@ -34,11 +35,13 @@ import {
   type Palette,
   type ProjectInputs,
   type ProjectRecord,
+  type ProjectStyle,
   type ProjectSummary,
   type RebuildDone,
   type Theme,
   validateMade,
   serviceDayRefusal,
+  settledStyle,
   validateServiceDate,
   validateServiceWindow,
 } from '../shared/project'
@@ -685,6 +688,37 @@ export class ProjectStore {
       ...record,
       version: RECORD_VERSION,
       lineOrder: [...order],
+      modified: new Date().toISOString(),
+    })
+    await this.writeAtomic(id, updated)
+    return updated
+  }
+
+  /**
+   * The sizes a person chose for the map (issue 350, ADR-049), written once
+   * the map has been drawn with them, as the colours and the order are: the
+   * record never claims a size the page on screen does not show. The whole
+   * style is what is written, not a change to the one stored, so what is
+   * kept is what the cell showed - minus any field at the engine's own
+   * number, which is no choice and is not kept (`settledStyle`).
+   *
+   * A redraw of the *same day*, so it goes through `redrew` as a recolour
+   * does: the day the map already showed stays the one it showed.
+   */
+  async completeStyle(id: string, style: ProjectStyle): Promise<ProjectRecord> {
+    return this.#track(() => this.#serial(id, () => this.#completeStyleTracked(id, style)))
+  }
+
+  async #completeStyleTracked(id: string, style: ProjectStyle): Promise<ProjectRecord> {
+    this.checkId(id)
+    check(validateStyle(style))
+    const { record, readOnly } = await this.load(id)
+    if (readOnly) throw new Error('read-only')
+    if (record.layout === null) throw new Error('lay the project out first')
+    const updated: ProjectRecord = redrew({
+      ...record,
+      version: RECORD_VERSION,
+      style: settledStyle(style),
       modified: new Date().toISOString(),
     })
     await this.writeAtomic(id, updated)
