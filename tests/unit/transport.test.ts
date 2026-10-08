@@ -191,8 +191,9 @@ describe('what a fresh page is given back', () => {
   // the address's own defaults. This is what `Viewer.tsx` composes and
   // dispatches on the load that follows.
   it('gives a paused, slowed map back paused and slowed', () => {
-    const calls = restoreCalls(withRemembered(STATE, { speed: 30, playing: false }))
+    const calls = restoreCalls(withRemembered(STATE, { speed: 30, playing: false }), 'warm-dark')
     expect(calls).toEqual([
+      { method: 'setTheme', args: ['warm-dark'] },
       { method: 'setPlaying', args: [false] },
       { method: 'showView', args: ['schematic', 0] },
       { method: 'setLabels', args: [true] },
@@ -202,8 +203,10 @@ describe('what a fresh page is given back', () => {
   })
 
   it('gives a running map back running, and last of all', () => {
-    const calls = restoreCalls(withRemembered(STATE, { speed: 300, playing: true }))
-    expect(calls[0]).toEqual({ method: 'setPlaying', args: [false] })
+    const calls = restoreCalls(withRemembered(STATE, { speed: 300, playing: true }), 'warm-dark')
+    // The theme is first (issue 349); the stop is the first of what moves the page.
+    expect(calls[0]).toEqual({ method: 'setTheme', args: ['warm-dark'] })
+    expect(calls[1]).toEqual({ method: 'setPlaying', args: [false] })
     expect(calls[calls.length - 1], 'started again after the clock was set').toEqual({
       method: 'setPlaying',
       args: [true],
@@ -214,8 +217,10 @@ describe('what a fresh page is given back', () => {
     // Asserted as the whole list: a `not.toContain` over a list that had
     // gone empty would pass just as happily.
     expect(
-      restoreCalls(withRemembered(STATE, { speed: null, playing: null })).map((c) => c.method),
-    ).toEqual(['showView', 'setLabels', 'seek'])
+      restoreCalls(withRemembered(STATE, { speed: null, playing: null }), 'warm-dark').map(
+        (c) => c.method,
+      ),
+    ).toEqual(['setTheme', 'showView', 'setLabels', 'seek'])
   })
 })
 

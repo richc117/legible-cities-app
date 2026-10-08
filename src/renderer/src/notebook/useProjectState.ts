@@ -17,6 +17,7 @@ import {
 } from '../engine/runs'
 import { stageFor } from '../engine/stages'
 import { skipTarget } from '../SkipPastMap'
+import { writeThenRestyle } from '../themeWrites'
 import type { TextInputHandle } from '../kit/TextInput'
 import { useEngineState } from '../useEngineState'
 import { useSnapshot } from '../useSnapshot'
@@ -385,17 +386,24 @@ export function useProjectState(
         : current,
     )
   }
-  // The theme is written at once and nothing is rebuilt for it: the page
-  // takes it on its address and restyles itself, so the record coming back
-  // is all the viewer needs to reload in it (A4-03).
-  const setTheme = async (theme: Theme): Promise<void> => {
-    const record = await window.api.projects.setTheme(id, theme)
-    setState((current) =>
-      current.status === 'ready'
-        ? { status: 'ready', project: { ...current.project, ...record } }
-        : current,
+  // The theme is written at once and nothing is rebuilt for it (A4-03). The
+  // map's page is then told through its seam, which restyles it in place
+  // and leaves the frame where it is; the record also reaches the next
+  // document, on its address and as the first call of the restore (issue
+  // 349). A write that fails sends nothing.
+  const setTheme = (theme: Theme): Promise<void> =>
+    writeThenRestyle(
+      theme,
+      async (chosen) => {
+        const record = await window.api.projects.setTheme(id, chosen)
+        setState((current) =>
+          current.status === 'ready'
+            ? { status: 'ready', project: { ...current.project, ...record } }
+            : current,
+        )
+      },
+      (chosen) => window.api.viewer.call('map', 'setTheme', chosen),
     )
-  }
   // What to export is written the moment it is chosen, as the theme is;
   // nothing is built for it (A5-01).
   const setExport = async (choice: ExportChoice): Promise<void> => {

@@ -1,11 +1,11 @@
 import type { Theme } from '../../shared/project'
 
-// The theme switch's own two pieces of logic, with no React in them: what a
-// press should do at this moment, and how a press that arrived during a
-// write is applied after it. The rule that logic lives in something
-// callable without rendering is what makes these testable
-// (.claude/rules/renderer.md), and the switch above them (ThemeSwitch.tsx)
-// is then only a screen.
+// The theme switch's own three pieces of logic, with no React in them: what a
+// press should do at this moment, how a press that arrived during a write is
+// applied after it, and what a written theme does to the map on screen. The
+// rule that logic lives in something callable without rendering is what
+// makes these testable (.claude/rules/renderer.md), and the switch above
+// them (ThemeSwitch.tsx) is then only a screen.
 //
 // A theme is written the moment it is pressed rather than after a build, so
 // there is no debounce here and nothing to cancel - only the gap of one
@@ -49,5 +49,36 @@ export async function writeThrough(
     await write(next)
     written = next
     next = take()
+  }
+}
+
+/**
+ * Write one theme to the record and then restyle the map's page in place
+ * (issue 349): the record first, as it always was, and the page second.
+ *
+ * **A write that fails sends nothing**: the rejection is the caller's to
+ * show, and a map restyled for a theme the record does not hold would be the
+ * screen and the file disagreeing about what the project is.
+ *
+ * **The restyle is not waited for, and nothing it says is an error.** The
+ * page can be missing for good reasons - no layout yet, so no map; the frame
+ * between two documents; a page the engine wrote before it had `setTheme` -
+ * and in each the record already holds the theme, which the next document
+ * carries on its address and is given again as its first call
+ * (`restoreCalls`). Waiting would also hand a page whose main thread is
+ * blocked the switch's write loop, which would then keep every later press
+ * for ever. The calls are sent in the order the presses were written, so
+ * the last word at the page is the last word on the record.
+ */
+export async function writeThenRestyle(
+  theme: Theme,
+  write: (theme: Theme) => Promise<void>,
+  restyle: (theme: Theme) => Promise<unknown>,
+): Promise<void> {
+  await write(theme)
+  try {
+    restyle(theme).then(undefined, () => undefined)
+  } catch {
+    // A bridge that throws before it can ask is the same silence.
   }
 }

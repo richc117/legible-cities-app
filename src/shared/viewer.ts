@@ -9,10 +9,15 @@
 // Contract: specs/008-viewer/contracts/viewer.md. Why the frame is sandboxed
 // and driven from the privileged process: ADR-028.
 
+// `setTheme` is the page's own since engine v0.11.0 (its issue 29): it takes
+// `warm-dark` or `sepia`, restyles the page in place and answers false for any
+// other name. A page the engine wrote before that has no such method, and the
+// dispatcher answers "this map cannot do that" for it.
 export const VIEWER_METHODS = [
   'showView',
   'setLabels',
   'setRoutes',
+  'setTheme',
   'seek',
   'setSpeed',
   'setPlaying',
@@ -27,12 +32,19 @@ export function isViewerMethod(value: unknown): value is ViewerMethod {
   return typeof value === 'string' && (VIEWER_METHODS as readonly string[]).includes(value)
 }
 
-/** What the page says it is showing. Data from a page we do not trust. */
+/**
+ * What the page says it is showing. Data from a page we do not trust.
+ *
+ * `theme` is `warm-dark` or `sepia` from engine v0.11.0 on, and is a claim
+ * like the rest of it: read as unknown and checked with `isTheme` before
+ * anything is done with it.
+ */
 export interface ViewerState {
   now: number
   clock: string
   viewName: string
   labels: boolean
+  theme?: string
   [key: string]: unknown
 }
 

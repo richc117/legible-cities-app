@@ -6,9 +6,12 @@ import { nextWrite, writeThrough } from './themeWrites'
 // The theme a project's map is drawn in (A4-03, specs/021-theme).
 //
 // Neither a layout nor a render: the engine's page carries its furniture's
-// colours as CSS variables with literal fallbacks and restyles itself from
-// its own address, so a theme is written the moment it is pressed and the
-// frame simply reloads. The line colours are not themed and do not move.
+// colours as CSS variables with literal fallbacks, so a theme is written the
+// moment it is pressed and then the page is told through its seam, which
+// restyles it in place (`setTheme`, engine v0.11.0; issue 349). The frame is
+// not reloaded: its clock, view, labels and speed stay as they were. The
+// address carries the theme for the next load only. The line colours are not
+// themed and do not move.
 //
 // It is the project's theme, not the interface's. The interface has its own
 // in Settings (A1-04) and the two are independent: a theme belongs to the
@@ -39,14 +42,19 @@ export const themeWord = (theme: Theme): string => WORDS[theme]
 
 interface Props {
   project: ProjectRecord
-  /** The record as the store wrote it, so the viewer redraws in the new theme. */
+  /**
+   * Write the theme to the record and then tell the map's page, which
+   * restyles in place (`writeThenRestyle`). Rejects, and sends nothing, when
+   * the record cannot be written.
+   */
   onChange: (theme: Theme) => Promise<void>
   /**
    * True while a run or an export is going. A run rewrites the page file in
-   * place, and a theme change reloads the frame that reads it, which would
-   * show a person half a document and an alert saying their map is gone; an
-   * export took the theme when it planned, so a change during one would not
-   * reach the reel it is making.
+   * place and then sends the frame to the result, so a theme set on the page
+   * now on screen would be set on a document that is about to go (the record
+   * would hold it and the next page would carry it, but nothing would show
+   * the press taking); an export took the theme when it planned, so a change
+   * during one would not reach the reel it is making.
    */
   disabled?: boolean
   /**
@@ -150,8 +158,8 @@ export default function ThemeSwitch({
       </div>
       {disabled && !quiet && (
         <p className="hint" role="status">
-          The theme waits until the run that is going has finished: it changes what the map on
-          screen is loaded from, and an export is made in the theme it was planned with.
+          The theme waits until the run that is going has finished: the map on screen is being
+          written, and an export is made in the theme it was planned with.
         </p>
       )}
       {problem !== null && (

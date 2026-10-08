@@ -160,7 +160,15 @@ describe('two frames, by role', () => {
     main.frames.push(preview)
     const viewer = new Viewer()
     viewer.attach(contents, 'abcdefghijk1', 'export')
-    for (const method of ['seek', 'setPlaying', 'setSpeed', 'showView', 'setLabels', 'bounds'])
+    for (const method of [
+      'seek',
+      'setPlaying',
+      'setSpeed',
+      'showView',
+      'setLabels',
+      'bounds',
+      'setTheme',
+    ])
       await expect(viewer.call(contents, 'export', method, [1]), method).rejects.toThrow(
         /not driven/,
       )
@@ -220,6 +228,36 @@ describe('driving the page', () => {
     // __proto__ arrives as a key rather than as the prototype setter.
     expect(injected).toContain('JSON.parse("[\\"linear\\",300]")')
     expect(injected).toContain('window.__present')
+  })
+
+  // The theme is restyled in place through the seam since engine v0.11.0
+  // (issue 349), and the name goes in as data like every other argument. The
+  // main process needed no change for it: the list is the one place a method
+  // is named, and this is what shows that is so.
+  it('passes setTheme to the map frame, the theme as data', async () => {
+    const { contents, child } = stub()
+    const viewer = new Viewer()
+    viewer.attach(contents, 'abcdefghijk1', 'map')
+    await viewer.call(contents, 'map', 'setTheme', ['sepia'])
+    const injected = child.executeJavaScript.mock.calls[0][0] as string
+    expect(injected).toContain('"setTheme"')
+    expect(injected).toContain('JSON.parse("[\\"sepia\\"]")')
+
+    let received: unknown[] = []
+    const page = {
+      __present: {
+        setTheme: (...args: unknown[]) => {
+          received = args
+          return true
+        },
+      },
+    }
+    const answer = new Function('window', `return ${injected}`)(page) as {
+      ok: boolean
+      value: unknown
+    }
+    expect(answer, 'the page answered true').toEqual({ ok: true, value: true })
+    expect(received).toEqual(['sepia'])
   })
 
   // The claim is that nothing a caller sends becomes code. The way to show
@@ -385,6 +423,7 @@ describe('the list of methods', () => {
       'showView',
       'setLabels',
       'setRoutes',
+      'setTheme',
       'seek',
       'setSpeed',
       'setPlaying',
