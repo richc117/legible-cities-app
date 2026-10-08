@@ -53,7 +53,7 @@ import { CHANNELS, type EngineAccepted, type EngineSettled } from '../shared/api
 import type { EngineState, JobLog, JobProgress } from '../shared/engine'
 import { badCall, isObject, TOKEN, toShape } from './ipc-shape'
 import { redactUrls } from './redact'
-import type { Notification, RequestOptions } from './sidecar'
+import type { Notification } from './sidecar'
 
 /** What the handlers need from the supervisor; a test hands in a fake. */
 export interface EngineSource {
@@ -61,7 +61,6 @@ export interface EngineSource {
   request(
     method: string,
     params?: Record<string, unknown>,
-    options?: RequestOptions,
   ): { id: number; result: Promise<unknown> }
   cancel(id: number): void
   onState(listener: (state: EngineState) => void): () => void
@@ -76,9 +75,6 @@ export type Guard = (
   params: Record<string, unknown> | undefined,
 ) => Promise<string | null>
 
-/** The deadline a request is sent with, in milliseconds, or undefined for the inactivity bound alone. */
-export type Deadline = (method: string) => number | undefined
-
 const LEVELS = new Set(['debug', 'info', 'warning', 'error'])
 
 export function registerEngineHandlers(
@@ -88,7 +84,6 @@ export function registerEngineHandlers(
   send: Send,
   log: (message: string) => void,
   guard: Guard = async () => null,
-  deadline: Deadline = () => undefined,
 ): () => void {
   const idOf = new Map<string, number>()
   const tokenOf = new Map<number, string>()
@@ -119,18 +114,16 @@ export function registerEngineHandlers(
       idOf.delete(token)
       return badCall(refused)
     }
-    const deadlineMs = deadline(method)
+    // No request has a deadline of its own: the supervisor's inactivity
+    // bound is the only limit, a removal's included (issue 351). A person
+    // stops a removal by cancelling it, which `engineCancel` below sends on.
     let sent: { id: number; result: Promise<unknown> }
     try {
-      sent = engine.request(
-        method,
-        params as Record<string, unknown> | undefined,
-        deadlineMs === undefined ? undefined : { deadlineMs },
-      )
+      sent = engine.request(method, params as Record<string, unknown> | undefined)
     } catch (error) {
-      // The supervisor refuses what it was handed before sending anything
-      // (a deadline no timer can hold): the token is freed and the page is
-      // answered in the bridge's own shape, not with a thrown message.
+      // The supervisor may refuse what it was handed before sending anything:
+      // the token is freed and the page is answered in the bridge's own
+      // shape, not with a thrown message.
       idOf.delete(token)
       const what = error instanceof Error ? error.message : String(error)
       log(`refused ${method} before sending it: ${what}`)

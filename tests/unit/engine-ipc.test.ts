@@ -5,8 +5,7 @@
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { describe, expect, it } from 'vitest'
 import { registerEngineHandlers, type EngineSource } from '../../src/main/engine-ipc'
-import { registryDeadline } from '../../src/main/feeds-ipc'
-import type { Notification, RequestOptions } from '../../src/main/sidecar'
+import type { Notification } from '../../src/main/sidecar'
 import { CHANNELS } from '../../src/shared/api'
 import { EngineError, ERROR_CODES, type EngineState, type ErrorData } from '../../src/shared/engine'
 
@@ -19,11 +18,7 @@ interface Deferred {
   reject(error: unknown): void
 }
 
-function harness(
-  topFrame = true,
-  guard?: (method: string) => Promise<string | null>,
-  deadline?: (method: string) => number | undefined,
-) {
+function harness(topFrame = true, guard?: (method: string) => Promise<string | null>) {
   const handlers = new Map<string, Handler>()
   const ipc = {
     handle: (channel: string, h: Handler) => handlers.set(channel, h),
@@ -34,7 +29,8 @@ function harness(
     id: number
     method: string
     params: unknown
-    options: RequestOptions | undefined
+    /** Whatever the bridge passed after the parameters: nothing, as nothing is meant to follow. */
+    extra: unknown[]
     deferred: Deferred
   }[] = []
   const cancelled: number[] = []
@@ -46,7 +42,8 @@ function harness(
     get state() {
       return state
     },
-    request: (method, params, options) => engineRequest(method, params, options),
+    request: (method: string, params?: Record<string, unknown>, ...extra: unknown[]) =>
+      engineRequest(method, params, ...extra),
     cancel: (id) => cancelled.push(id),
     onState: (l) => {
       stateListener = l
@@ -57,7 +54,11 @@ function harness(
       return () => {}
     },
   }
-  const defaultRequest: EngineSource['request'] = (method, params, options) => {
+  const defaultRequest = (
+    method: string,
+    params?: Record<string, unknown>,
+    ...extra: unknown[]
+  ): { id: number; result: Promise<unknown> } => {
     if (state.state !== 'ready') {
       return { id: 0, result: Promise.reject(new EngineError(ERROR_CODES.notReady, 'not ready')) }
     }
@@ -66,10 +67,10 @@ function harness(
     const result = new Promise<unknown>((resolve, reject) => {
       deferred = { resolve, reject }
     })
-    requests.push({ id, method, params, options, deferred })
+    requests.push({ id, method, params, extra, deferred })
     return { id, result }
   }
-  let engineRequest: EngineSource['request'] = defaultRequest
+  let engineRequest: typeof defaultRequest = defaultRequest
   registerEngineHandlers(
     ipc,
     engine,
@@ -77,7 +78,6 @@ function harness(
     (channel, payload) => sent.push({ channel, payload }),
     (m) => log.push(m),
     guard,
-    deadline,
   )
   const event = {} as IpcMainInvokeEvent
   const call = (channel: string, ...args: unknown[]) => handlers.get(channel)!(event, ...args)
@@ -94,7 +94,7 @@ function harness(
     },
     notify: (n: Notification) => notificationListener?.(n),
     engineRequest: defaultRequest,
-    setEngineRequest: (request: EngineSource['request']) => {
+    setEngineRequest: (request: typeof defaultRequest) => {
       engineRequest = request
     },
   }
@@ -477,25 +477,23 @@ describe('the guard in front of the engine', () => {
   })
 })
 
-describe('a request deadline (issue 107)', () => {
-  it('sends a request with the deadline its method is given, and the rest without one', async () => {
-    const h = harness(true, undefined, (method) => registryDeadline(method, 1_500))
+describe('a request has no deadline of its own (issue 351)', () => {
+  it('sends a removal, as every other request, with its method and parameters and nothing after them', async () => {
+    const h = harness()
     await h.call(CHANNELS.engineRequest, 'tok1', 'feeds.remove', { key: 'x' })
     await h.call(CHANNELS.engineRequest, 'tok2', 'feeds.list')
-    expect(h.requests.map((r) => [r.method, r.options])).toEqual([
-      ['feeds.remove', { deadlineMs: 1_500 }],
-      ['feeds.list', undefined],
+    expect(h.requests.map((r) => [r.method, r.extra])).toEqual([
+      ['feeds.remove', []],
+      ['feeds.list', []],
     ])
   })
 
   it('answers a request the supervisor refuses to send as a bad call, and frees the token', async () => {
-    const h = harness(true, undefined, (method) => (method === 'feeds.remove' ? -1 : undefined))
-    // The fake supervisor throws as the real one does for a deadline it cannot hold.
+    const h = harness()
     const original = h.engineRequest
-    h.setEngineRequest((method, params, options) => {
-      if (options?.deadlineMs !== undefined && options.deadlineMs <= 0)
-        throw new RangeError('a request deadline is a positive number of milliseconds')
-      return original(method, params, options)
+    h.setEngineRequest((method, params, ...extra) => {
+      if (method === 'feeds.remove') throw new RangeError('the supervisor would not send it')
+      return original(method, params, ...extra)
     })
     const answer = (await h.call(CHANNELS.engineRequest, 'tok1', 'feeds.remove', { key: 'x' })) as {
       accepted: boolean
@@ -504,7 +502,7 @@ describe('a request deadline (issue 107)', () => {
     expect(answer.accepted).toBe(false)
     expect(answer.error?.code).toBe(ERROR_CODES.badCall)
     expect(answer.error?.data?.kind).toBe('params')
-    expect(answer.error?.data?.hint).toMatch(/could not be sent: a request deadline is a positive/)
+    expect(answer.error?.data?.hint).toMatch(/could not be sent: the supervisor would not send it/)
     expect(h.log.some((l) => l.startsWith('refused feeds.remove before sending it'))).toBe(true)
     // The token is free: the same token sends the next request.
     const again = (await h.call(CHANNELS.engineRequest, 'tok1', 'feeds.list')) as {
@@ -514,11 +512,10 @@ describe('a request deadline (issue 107)', () => {
     expect(h.requests.map((r) => r.method)).toEqual(['feeds.list'])
   })
 
-  it('settles an expired request to the page as an error with the inactive kind, then frees the token', async () => {
-    const h = harness(true, undefined, (method) => registryDeadline(method))
+  it('settles a request the inactivity bound ended to the page as an error with the inactive kind, then frees the token', async () => {
+    const h = harness()
     await h.call(CHANNELS.engineRequest, 'tok1', 'feeds.remove', { key: 'x' })
-    expect(h.requests[0].options).toEqual({ deadlineMs: 30_000 })
-    const message = 'No answer within 30 seconds; the engine was asked to cancel the request.'
+    const message = 'No progress for 10 minutes; the request was cancelled.'
     h.requests[0].deferred.reject(
       new EngineError(ERROR_CODES.inactive, message, {
         kind: 'inactive',
