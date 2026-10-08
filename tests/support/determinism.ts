@@ -17,7 +17,6 @@ import { isLayoutId } from '../../src/shared/layout'
 import {
   DEFAULT_COLOR,
   DEFAULT_MODE,
-  DEFAULT_STYLE,
   DEFAULT_THEME,
   RECORD_VERSION,
   type ProjectRecord,
@@ -175,7 +174,7 @@ export async function prepareProject(
         busiest: service.busiest_weekday,
         anchor: service.anchor,
       },
-      style: { ...DEFAULT_STYLE },
+      style: {},
       colors: {},
       defaultColor: DEFAULT_COLOR,
       lineOrder: [],

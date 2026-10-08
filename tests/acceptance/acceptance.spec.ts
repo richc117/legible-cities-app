@@ -1638,7 +1638,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
         "the calendar's own days: min and max were checked, not the platform's date picker.",
       )
       log.notAutomated(
-        'that cell 03 offers no crop, rotation, margin or clip mask, not even greyed out, and that the map moves to the hour the slider is left at.',
+        'that cell 03 offers no crop, rotation, margin or clip mask, not even greyed out, and says the margin is one of the sizes in cell 04, and that the map moves to the hour the slider is left at.',
       )
     })
 

@@ -381,7 +381,9 @@ and then **Pause**, and choose another **Speed**.
   typed: "The feed covers `<start>` to `<end>`.", nothing is stored, and
   pressing **Draw for this day** refuses it again and runs nothing.
 - The cell offers no crop, rotation, margin or clip mask, not even greyed
-  out, and says in one sentence that it will gain them.
+  out, and says in one sentence: "The frame's margin is one of the sizes in
+  cell 04; the frame is padded and never cropped or rotated, and a clip mask
+  waits on a designer's intent, so this cell holds the day alone."
 - **Transport**: "Where the map is in its service day." and **Time of
   day**, a slider whose clock beside it reads `HH:MM`; the map moves to
   the hour the slider is left at. **Play day** and **Pause** start and stop
