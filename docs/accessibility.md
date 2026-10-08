@@ -195,7 +195,7 @@ The two reader columns are a person's, recorded per run in
 | In the feed: the two tables | pass | pass (captions, `th scope`, `aria-sort`) | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
 | In the feed: sortable headers | fixed (D11) | pass | pass | pass | pass | pass | not yet run: a person's | not yet run: a person's |
 | The feed's download (issue 178) | swept while it downloads (`notebook-a11y.spec.ts`, "a sample's download…"); no control of its own: the header's Stop and cell 02's Cancel stop it | swept (a region "Download"; the byte count a polite `role="status"`); a refusal's `role="alert"` asserted in `layout.spec.ts` | n/a | swept | pass (the progress line's pairs; `--text-muted` on `--surface`) | pass | not yet run: a person's | not yet run: a person's |
-| Where the routes run | pass (`+`, `-`, arrows, `0`) | pass (pane named, the counts); finding (F2, #105) | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
+| Where the routes run | pass (`+`, `-`, arrows, `0`); the disclosure's buttons swept, open and closed (`network-words.spec.ts`) | pass (pane named for the stage and its counts); fixed (F2, #105): "The network in words", a disclosure of the extent and one sentence a line, each line's stations behind a disclosure of its own | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
 
 ### Cell 02, Process
 
@@ -352,7 +352,7 @@ which it is.
   (macOS, 2026-09-29), a known pair under issue 258 until it is mended. A known
   pair is matched by its two roles and its name on any screen, so while
   the entry stands a second region and button of that name would pass.
-- **The engine's page** (F1) and **the geographic view's drawing** (F2).
+- **The engine's page** (F1) and **the geographic view's drawing**: the drawing is hidden from assistive technology, and what stands for it (F2, closed by issue 105) is swept as text and controls, not judged for whether it tells a person where the routes run, which is a person's.
 
 ## Defects fixed in this pass
 
@@ -515,13 +515,33 @@ or a design decision.
   and does not draw. An engine issue: an accessibility pass over
   `page.html`.
 - **F2. The geographic view has no text alternative beyond its counts.**
-  *Screen:* cell 01, "Where the routes run" (#105). *Steps:* lay a project
-  out; reach the pane with Tab; listen. *What a person meets:* a named,
-  focusable pane that pans and zooms, the node, station, junction, edge and
-  line counts, and nothing about where the routes run: the drawing is the
-  engine's SVG and is hidden from assistive technology. What a useful
-  alternative would say is a design question, and its content would come
-  from the engine.
+  *Closed by issue 105.* *Screen:* cell 01, "Where the routes run" (#105).
+  *Steps:* lay a project out; reach the pane with Tab; listen. *What a
+  person met:* a named, focusable pane that pans and zooms, the node,
+  station, junction, edge and line counts, and nothing about where the
+  routes run: the drawing is the engine's SVG and is hidden from assistive
+  technology. What a useful alternative would say was a design question,
+  and its content had to come from the engine. *Now:* the engine's
+  `render.stage` answers a `description` of the stage graph (engine
+  v0.12.0, its issue 54) and the app words it (spec 031,
+  `src/renderer/src/networkWords.ts`, which orders and computes nothing).
+  The pane's name is the stage, its gloss and the engine's counts, "The
+  gtfs2graph stage, as the feed draws its routes: 2 lines, 3 stations", and
+  it is still described by the keys hint. One Tab after it is a disclosure,
+  "The network in words", closed until it is pressed. Open, it reads one
+  sentence of the longest trip on the day drawn ("On the day drawn, the
+  longest trip on one line takes 104 minutes: the Yellow from `<A>` to
+  `<B>`.", left out where the engine times nothing) and a list with one item
+  per line, in the engine's order ("Blue: from `<A>` to `<B>`, `<n>`
+  stations; meets `<X>` at `<P>`, and `<Y>` and `<Z>` at `<Q>`."). Each item
+  holds a disclosure of its own, "Stations on Blue, in order", closed, whose
+  list is the line's stations as the engine sent them. A station the feed
+  does not name reads "an unnamed station", and every name is text, never
+  markup. The drawing stays hidden from assistive technology, its frame's
+  sandbox empty. The sweep covers the pane with the disclosure closed, open
+  and with a list open, in both themes (`tests/e2e/network-words.spec.ts`);
+  whether the words tell a person where the routes run is the VoiceOver and
+  Narrator runs', which are still a person's.
 - **F3. The viewer's frame stands between the panels and the project's own
   toolbar in the Tab order.** *Screen:* project, both tabs. *Steps:* from
   the tab panel, press Tab towards Rename and Delete project. *What a person
@@ -911,10 +931,21 @@ a table).
   that sentence, read on entering it, issue 282) with toggle buttons "gtfs2graph" and "loom" (the current one
   pressed), the description list "Counts" (Nodes, Stations, Junctions,
   Edges, Lines), and a focusable group "The gtfs2graph stage, as the feed
-  draws its routes" described by "Zoom with the wheel or plus and minus, pan
-  by dragging or with the arrows, 0 to fit." Press `+`, `-`, an arrow and
-  `0` on it; nothing is announced for them, and the drawing itself is not
-  read (F2).
+  draws its routes: `<L>` lines, `<S>` stations" described by "Zoom with the
+  wheel or plus and minus, pan by dragging or with the arrows, 0 to fit."
+  Press `+`, `-`, an arrow and `0` on it; nothing is announced for them, and
+  the drawing itself is not read. Tab once more: the button "The network in
+  words", collapsed (F2, issue 105). Press it, and listen for one sentence,
+  "On the day drawn, the longest trip on one line takes `<m>` minutes: the
+  `<line>` from `<A>` to `<B>`." (a loop reads "a round trip from `<A>`"), and
+  then a list with one item per line: "`<line>`: from `<A>` to `<B>`, `<n>`
+  stations; meets `<X>` at `<P>`, and `<Y>` and `<Z>` at `<Q>`." or "...
+  meets no other line.", a loop as "a loop of `<n>` stations through `<A>`",
+  and each item followed by a button "Stations on `<line>`, in order",
+  collapsed. Press one: its stations are read in order, from one end of the
+  line to the other. **check:** from the sentences alone, say a line's two
+  ends and where it meets another line. Press "The network in words" again
+  to close it.
 
 #### Cell 02, Process
 
