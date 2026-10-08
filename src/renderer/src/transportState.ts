@@ -22,8 +22,10 @@ import type { PageState } from './viewerRestore'
 //      `state()` answers `now`, `clock`, `viewName`, `labels` and no more
 //      (engine issue 29). So those two the app must remember - and it has
 //      to remember them somewhere that outlives the component, because a
-//      run, a theme change or the export's preview navigates the frame and
-//      the page that arrives starts at the address's own defaults.
+//      run navigates the frame (and so does a theme pressed on a page from
+//      before engine v0.11.0, which cannot be told it; a page that can is
+//      restyled in place and not navigated, issue 349) and the page that
+//      arrives starts at the address's own defaults.
 //      `restoreCalls` in `viewerRestore.ts` was built to take `speed` and
 //      `playing` "from a caller that knows them"; this is where that caller
 //      keeps them, and `Viewer.tsx` reads it as it hands the page over.

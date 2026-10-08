@@ -22,7 +22,12 @@
 > being made and its document arriving is never lost, and a page a run has
 > rewritten is in the project's theme whatever its address said. The export
 > is unchanged: `themeFor(project.theme)` on the plan's address, and the
-> export's frame is not driven. Where this text says below that the map
+> export's frame is not driven. **One case still navigates: a page the engine
+> wrote before v0.11.0**, which has no `setTheme` and answers "this map
+> cannot do that". The press then counts a reload and the frame is sent to
+> the address with the project's theme by the path a redraw takes, so the
+> clock, the view, the labels, the speed and the pause are given back; "the
+> map is not on the screen" and every other failure stay swallowed. Where this text says below that the map
 > reloads, that the frame is sent to a new address, or what a press costs
 > (the User Story 1 scenarios, the Overview, "A run in flight" and "What a
 > theme press costs"), it describes the app before this change. The switch

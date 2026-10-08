@@ -1001,23 +1001,34 @@ placeholder: a theme belongs to the map, which is exported and published,
 rather than to the room the person making it is sitting in. The interface
 keeps its own theme in Settings and the two move independently.
 
-A theme press is not free, though it is cheap: the theme rides on the
-address, so the frame navigates rather than restyles. The page starts again
-- its clock back at the hour it opens on, its chosen view, its scrub
-position and its line toggles gone - and a large network's data is parsed
-again. The app cannot do better today: it drives the page through
-`window.__present` from the main process (ADR-028) and that seam has no
-theme method, which is an engine issue rather than an app one.
+A theme press does not reload the frame (issue 349). The page's seam has
+had `setTheme(name)` since engine v0.11.0 (its issue 29), which restyles the
+page in place, so the app writes the record and then calls `setTheme` on the
+map's frame through the viewer bridge (`window.__present` is driven from the
+main process, ADR-028). The page's address, its document, its clock, its
+view, its labels and its scrub position are untouched. The address still
+carries `theme=` for the next load: it is made again only when the project,
+its feed or the number of redraws changes, with the project's theme at that
+moment (`viewerAddress.ts`), and the viewer gives the project's theme to
+every page that loads as the first call of its restore (`viewerRestore.ts`),
+so a theme written between an address being made and its document arriving
+is never lost.
+
+The one case that still navigates is a page the engine wrote before
+v0.11.0, which has no `setTheme` and says "this map cannot do that". The
+press then counts a reload, and the frame is sent to the address with the
+project's theme by the path a redraw takes, so the hour, the view, the
+labels, the speed and the pause are given back. "The map is not on the
+screen" and every other failure are swallowed, because the next load carries
+the theme.
 
 Nothing is rebuilt for a theme, and no engine request is made at all: the
 SVG carries its furniture's colours as CSS variables with literal
 fallbacks, so the page restyles itself and the line colours do not move.
-The record is written the moment the switch is pressed, through
-`setTheme`, and the viewer reloads the page at the new address. An export
-passes the same choice in the engine's own vocabulary - `themeFor` maps the
-record's two onto `dark` and `light` in `export.plan`'s options, and the
-engine turns anything that is not `dark` into `theme=sepia` on the page it
-drives (`specs/021-theme`).
+An export passes the same choice in the engine's own vocabulary - `themeFor`
+maps the record's two onto `dark` and `light` in `export.plan`'s options,
+and the engine turns anything that is not `dark` into `theme=sepia` on the
+page it drives (`specs/021-theme`).
 
 ## The feeds
 

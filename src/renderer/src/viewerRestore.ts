@@ -7,7 +7,8 @@ import type { ViewerMethod } from '../../shared/viewer'
 // A5.5-20): both reload the engine's page. What is left is one deliberate
 // navigation, made when a run has rewritten the page file - and a
 // navigation is still a new document. (A theme is not one: since engine
-// v0.11.0 the page restyles in place through `setTheme`, issue 349.) The
+// v0.11.0 the page restyles in place through `setTheme`, issue 349, unless
+// the page is an older one with none, which is loaded again.) The
 // page that arrives starts where present.js puts it: at the beginning of
 // the service day, in the view its address names, playing. So the page on
 // screen is asked what it is showing before the frame is sent anywhere, and
