@@ -118,9 +118,10 @@ from a button on the project screen, over the engine's `export.plan` and
 desktop or `LEGIBLE_EXPORT_FOLDER`, the sidecar beside the file;
 `src/main/export.ts`) and the line colours (A4-01: the project's lines with
 the colour their feed publishes, an override per line, a reset per line and
-for all, and one default for the lines the feed leaves blank, debounced into
-a `map.build` from the stored layout and written only once the map carries
-them; `src/renderer/src/LineColours.tsx`) and the line order (A4-02: the
+for all, and one default for the lines the feed leaves blank, built on the
+gesture's release (issue 262) into a `map.build` from the stored layout and
+written only once the map carries them;
+`src/renderer/src/LineColours.tsx`) and the line order (A4-02: the
 project's lines in the order the map stacks them, moved one place at a time
 from two named buttons or, since issue 283, dragged by a grip with the
 buttons kept, the whole arrangement debounced into the same rebuild and

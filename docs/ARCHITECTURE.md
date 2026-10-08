@@ -944,14 +944,20 @@ The project record has carried `colors` and `defaultColor` since A1-05 and
 the Colours panel is what writes them. It lists one row per line label the
 feed offers under the layout's own mode and agency, read from
 `feeds.inspect` - the labels and the feed's colours are the engine's, and
-the panel draws a swatch beside a name and nothing else. A change is
-debounced into one `map.build` from the stored layout's id and the stored
-day: a colour is a render, never a layout, so the stations do not move
-(ADR-023). The palette is written only when the map has been drawn,
-through `completeColors`, as a chosen day is; a cancelled or failed build
-leaves the record alone and the panel goes back to it. Every draw the run
-makes carries the record's palette, so a layout, a re-layout and a chosen
-day all draw the colours the project chose (`specs/018-colours`).
+the panel draws a swatch beside a name and nothing else. A colour is
+built when the gesture that chose it ends - the picker's release, which
+is a pointer's or an arrow key's, or the hex field's own button - and
+never on a quiet interval (issue 262), so a drag of any speed is one
+`map.build` from the stored layout's id and the stored day; the swatch
+and the hex field follow every colour on the way and send nothing. A
+release while a run or an export holds the page waits and builds once
+when the way is clear. Only the line order is still debounced. A colour
+is a render, never a layout, so the stations do not move (ADR-023). The
+palette is written only when the map has been drawn, through
+`completeColors`, as a chosen day is; a cancelled or failed build leaves
+the record alone and the panel goes back to it. Every draw the run makes
+carries the record's palette, so a layout, a re-layout and a chosen day
+all draw the colours the project chose (`specs/018-colours`).
 
 The engine ignores a colour for a label its stored layout does not carry,
 which is why the panel can list the feed's labels rather than the layout's
@@ -1397,8 +1403,8 @@ The export's choices were an Export tab beside a Map tab (A5-01,
 `specs/022-export-tab`) until the notebook replaced both with six cells
 (ADR-045); the tab strip was deleted in A5.5-23. They are cell 06 now,
 which starts closed. A collapsed cell stays mounted, as a tab not chosen
-did, so a debounced colour waiting to be drawn is not thrown away by
-closing a cell.
+did, so a colour released while a run held the page, or a line order
+waiting on its debounce, is not thrown away by closing a cell.
 
 Every list is the engine's. `export.presets` and `export.storyboards` are
 asked once while the engine stays up, and the presets are narrowed to

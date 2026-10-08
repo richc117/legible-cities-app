@@ -412,9 +412,11 @@ value and pressing **Use this colour**; then **Reset every line**.
   foot of the window it opens above. It **stays open for the whole drag** and
   while you release; it closes on the click outside it, not before (issue
   87), and on Escape, with focus back on the chip.
-- The line's row says "your colour, `#rrggbb`", and after a moment cell 02's
-  progress line runs again and says "Drawn in the colours you chose, from
-  the stored layout. The stations have not moved." The map shows the new
+- The line's row says "your colour, `#rrggbb`", and the chip follows the
+  colour while you drag. **Cell 02 does not run, and the map does not change,
+  while the button is down, however long you hold it**; when you let go,
+  cell 02's progress line runs once and says "Drawn in the colours you chose,
+  from the stored layout. The stations have not moved." The map shows the new
   colour on the line, its chips and the time chart.
 - **Reset**, inside the panel, closes it and puts the row back to "the colour in the feed, `#rrggbb`" (or
   "the default, ...") and the map follows; **Reset every line** does the

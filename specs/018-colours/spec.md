@@ -33,6 +33,9 @@ time chart move together and the stations never do. The choice lives in
 `project.json`, so reopening the project shows the same colours, and every
 later build, capture and export draws them.
 
+**As of 8 Oct 2026:** a colour is redrawn on the gesture's release, not
+after a debounce (issue 262; see FR-004).
+
 ## User Scenarios & Testing _(mandatory)_
 
 ### User Story 1 - Overriding one line's colour (Priority: P1)
@@ -60,6 +63,9 @@ same and look at the page.
    after the debounce exactly one `map.build` runs, from the stored
    layout's id and the stored day, carrying `colors` with that one entry
    and `default_color`; `graph.build` is not called.
+
+   **As of 8 Oct 2026:** the one build runs on the gesture's release, not
+   after a debounce (issue 262; see FR-004).
 3. **Given** that build, **When** it finishes, **Then** the record's
    `colors` holds the override, `modified` moves, and the viewer reloads
    the page the build just wrote.
@@ -184,6 +190,10 @@ most likely to fail it.
   that was waiting. The run outlives the view on purpose, because it is work
   already begun; a colour not yet sent is not, and a build started as
   someone walks away would rewrite a page they are no longer looking at.
+
+  **As of 8 Oct 2026:** the window is now a release waiting for a run or
+  an export to let go of the page; leaving the screen abandons that, and a
+  gesture not yet released, as before (issue 262).
 - A feed may publish a line label the record cannot hold - longer than the
   cap, carrying a control character, or `__proto__`. The panel does not
   offer such a line at all, rather than drawing the map and then being
@@ -208,6 +218,17 @@ most likely to fail it.
   default. A line the feed leaves uncoloured MUST say so in words.
 - **FR-004**: A change MUST be debounced into one `map.build` from the
   stored layout's id and the stored day. `graph.build` MUST NOT run.
+
+  **As of 8 Oct 2026:** the debounce was replaced by the release (issue
+  262). The build is made once, when the gesture that chose the colour
+  ends - the picker's `onChangeEnd`, on a pointer's release or an arrow
+  key's, or the hex field's own button - and never on a quiet interval,
+  because an interval makes "one build for the whole gesture" hold only
+  while the hand is fast: a slow drag, or a slow runner, built twice. The
+  swatch and the hex field follow every colour on the way and send
+  nothing, and a release while a run or an export holds the page waits
+  and builds once when the way is clear; only the line order is still
+  debounced.
 - **FR-005**: The record MUST be written only when the map has been drawn,
   through a bridge method of its own, as a chosen day is (A3-04). A
   cancelled or failed build MUST leave the record unchanged and the panel

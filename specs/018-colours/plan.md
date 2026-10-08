@@ -10,9 +10,9 @@ palette; the run gains a third kind, a recolour, which draws from the
 stored layout for the stored day and then writes the palette through a new
 bridge method; the project screen gains a Colours panel over the feed's
 inspection, with a picker per line, a reset per line, a reset for all and a
-default colour, its changes debounced by one pure function; the main side
-validates the palette before the store sees it, and the store validates it
-again.
+default colour, its changes debounced by one pure function (since issue
+262, on release); the main side validates the palette before the store sees
+it, and the store validates it again.
 
 ## Constitution Check
 
@@ -69,7 +69,9 @@ the call, because a run can start between a render and the timer firing.
 
 **The debounce.** `debounce(fn, delay)` in
 `src/renderer/src/debounce.ts`: a plain function with `cancel`, tested
-with fake timers. The panel holds one, made once, cancelled on unmount.
+with fake timers. The panel holds one, made once, cancelled on unmount
+(since issue 262, on release: the colours build when the gesture ends and
+the panel holds none, and the line order's panel still does).
 
 **The screen.** `LineColours.tsx` under `ServiceDay`: a prose sentence, the
 default-colour row, a list with one row per line - swatch, label, where the

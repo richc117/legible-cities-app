@@ -251,31 +251,122 @@ test('the default colour is offered and reaches the engine as default_color', as
   })
 })
 
+// Issue 262. A colour is a commit, not a preview: the swatch and the hex
+// field follow every colour of a gesture, and the map follows its end - the
+// pointer's release, an arrow key's release, or the hex field's own button.
+// There is no interval in it, so none of the counts below depends on how
+// fast the runner moves the mouse. Every count is of `map.build` requests
+// the stand-in read, which is what a build is.
+
+/** Longer than any quiet interval this panel ever had (400 ms). */
+const LONGER_THAN_ANY_INTERVAL = 600
+
+const buildsOf = (engineHome: string): number => received(engineHome, 'map.build').length
+
+/**
+ * The value of the hex field once it has stopped changing. The picker and
+ * the field settle a frame or two after the last pointer or key event, and
+ * the colour a gesture ended on is the one they settle on.
+ */
+async function settledValue(field: Locator): Promise<string> {
+  let last = await field.inputValue()
+  for (let i = 0; i < 40; i++) {
+    await field.page().waitForTimeout(50)
+    const now = await field.inputValue()
+    if (now === last) return now
+    last = now
+  }
+  throw new Error(`the hex field never settled; it last read ${last}`)
+}
+
+/**
+ * The map has been drawn in `hex` for `line`, from exactly `builds` builds
+ * in all since the page was laid out: the count is reached, the last build
+ * carries the colour, the record holds it (it is written only once the map
+ * does) and the section is no longer busy.
+ */
+async function drawnIn(
+  page: Page,
+  engineHome: string,
+  line: string,
+  hex: string,
+  builds: number,
+  what: string,
+): Promise<void> {
+  await expect
+    .poll(() => buildsOf(engineHome), {
+      message: `${what}: ${builds} build(s) in all`,
+      timeout: 30_000,
+    })
+    .toBe(builds)
+  await expect
+    .poll(() => (readRecord(engineHome).colors as Record<string, string>)[line], {
+      message: `${what}: the record holds the colour it ended on`,
+      timeout: 30_000,
+    })
+    .toBe(hex)
+  await expect(
+    cell(page, 'lines').getByRole('region', { name: 'Line colours' }),
+    `${what}: no build is left in flight`,
+  ).toHaveAttribute('aria-busy', 'false', { timeout: 30_000 })
+  const maps = received(engineHome, 'map.build')
+  expect(maps[maps.length - 1], `${what}: the build carries the colour it ended on`).toContain(
+    `"${line}": "${hex}"`,
+  )
+}
+
+/** Nothing is building and nothing more will: the count holds through a pause longer than any interval. */
+async function quietAt(
+  page: Page,
+  engineHome: string,
+  builds: number,
+  what: string,
+): Promise<void> {
+  await page.waitForTimeout(LONGER_THAN_ANY_INTERVAL)
+  expect(buildsOf(engineHome), `${what}: still ${builds} build(s) after a pause`).toBe(builds)
+  await expect(
+    cell(page, 'lines').getByRole('region', { name: 'Line colours' }),
+    `${what}: no build in flight at the end`,
+  ).toHaveAttribute('aria-busy', 'false')
+}
+
 test('the picker stays open through a drag, and closes when it is dismissed', async () => {
   const engineHome = home()
   await withApp(engineHome, async (page) => {
     await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
     const panel = cell(page, 'lines')
     const choose = panel.getByRole('button', { name: 'Choose the colour of line A' })
-    const drawnBefore = received(engineHome, 'map.build').length
+    const drawnBefore = buildsOf(engineHome)
     await choose.click()
     const picker = panel.getByRole('group', { name: 'Colour for line A' })
     await expect(picker).toBeVisible()
+    const field = picker.getByLabel('Hex value')
 
     // A press inside the picker is a colour, not a dismissal. It used to be
     // both, so a drag through a hue ended on the pointer event that began
-    // it (issue 87).
+    // it (issue 87). Each press, like the drag after it, is a gesture of
+    // its own and so a build of its own: the test waits for each to be
+    // drawn before the next begins, so none is folded into another by
+    // arriving while a build holds the page (that is the wait, and
+    // `nextStep`'s unit test holds it).
     const [saturation, hue] = [
       picker.getByRole('slider').first(),
       picker.getByRole('slider').last(),
     ]
     await saturation.click({ position: { x: 20, y: 20 } })
     await expect(picker).toBeVisible()
+    // That was a colour: the field beside it follows the picker, so it no
+    // longer reads what the feed published.
+    await expect(field).not.toHaveValue('#0072bc')
+    const firstPress = await settledValue(field)
+    await drawnIn(page, engineHome, 'A', firstPress, drawnBefore + 1, 'a single press is one build')
+
     await hue.click({ position: { x: 10, y: 5 } })
     await expect(picker).toBeVisible()
-    // And each of those was a colour: the field beside it follows the
-    // picker, so it no longer reads what the feed published.
-    await expect(picker.getByLabel('Hex value')).not.toHaveValue('#0072bc')
+    const secondPress = await settledValue(field)
+    expect(secondPress, 'the second press moved the colour').not.toBe(firstPress)
+    await drawnIn(page, engineHome, 'A', secondPress, drawnBefore + 2, 'the second press')
+
     // A real drag, which is the gesture the panel is built around: down in
     // the square, across it, and up well outside the row. The release
     // outside is part of the colour, not a dismissal - without that the
@@ -285,22 +376,168 @@ test('the picker stays open through a drag, and closes when it is dismissed', as
     await page.mouse.down()
     await page.mouse.move(square.x + 120, square.y + 60, { steps: 10 })
     await page.mouse.move(square.x + square.width + 120, square.y + square.height + 160)
+    expect(buildsOf(engineHome), 'the drag builds nothing while the pointer is down').toBe(
+      drawnBefore + 2,
+    )
     await page.mouse.up()
     await expect(picker).toBeVisible()
+    const dragged = await settledValue(field)
+    expect(dragged, 'the drag moved the colour').not.toBe(secondPress)
 
-    // Every colour of it is one build, and the test leaves none in flight
-    // to be cut off by the app closing.
-    await expect(page.getByText(/Drawn in the colours you chose/)).toBeVisible({ timeout: 30_000 })
-    expect(
-      received(engineHome, 'map.build'),
-      'one build for the whole gesture, not one per colour',
-    ).toHaveLength(drawnBefore + 1)
+    // Two presses and a drag are three gestures and three builds.
+    await drawnIn(
+      page,
+      engineHome,
+      'A',
+      dragged,
+      drawnBefore + 3,
+      'two presses and then a drag are three builds',
+    )
+    await quietAt(page, engineHome, drawnBefore + 3, 'the drag')
 
     // A press outside the row dismisses it. The panel's own prose, not the
     // cell's heading row, which would collapse the cell and hide the picker
     // for the wrong reason (A5.5-08).
     await panel.getByText(/^A line is drawn in the colour its feed publishes/).click()
     await expect(picker).toBeHidden()
+  })
+})
+
+test('a drag is one build, made on its release, however slowly the hand moves', async () => {
+  // Slowed, so that a build is a stretch with something to be in flight.
+  const engineHome = home({ progress_delay_ms: 50 })
+  await withApp(engineHome, async (page) => {
+    await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
+    const panel = cell(page, 'lines')
+    const drawnBefore = buildsOf(engineHome)
+    await panel.getByRole('button', { name: 'Choose the colour of line A' }).click()
+    const picker = panel.getByRole('group', { name: 'Colour for line A' })
+    const saturation = picker.getByRole('slider').first()
+    const field = picker.getByLabel('Hex value')
+    const square = (await saturation.boundingBox())!
+
+    await page.mouse.move(square.x + 20, square.y + 20)
+    await page.mouse.down()
+    await page.mouse.move(square.x + 120, square.y + 60, { steps: 50 })
+    await expect(field, 'the field follows the drag').not.toHaveValue('#0072bc')
+    const midDrag = await settledValue(field)
+    expect(buildsOf(engineHome), 'nothing is built while the pointer moves').toBe(drawnBefore)
+
+    // The pause, pointer down, longer than any interval the app ever had.
+    await page.waitForTimeout(LONGER_THAN_ANY_INTERVAL)
+    expect(
+      buildsOf(engineHome),
+      `a pause of ${LONGER_THAN_ANY_INTERVAL} ms with the pointer down builds nothing`,
+    ).toBe(drawnBefore)
+
+    // And the drag goes on to somewhere else, so the colour at release is
+    // not the one at the pause.
+    await page.mouse.move(square.x + 60, square.y + 100, { steps: 50 })
+    const atRelease = await settledValue(field)
+    expect(atRelease, 'the drag went on after the pause').not.toBe(midDrag)
+    expect(buildsOf(engineHome), 'still nothing built with the pointer down').toBe(drawnBefore)
+
+    await page.mouse.up()
+    await drawnIn(page, engineHome, 'A', atRelease, drawnBefore + 1, 'the drag is one build')
+    await quietAt(page, engineHome, drawnBefore + 1, 'the drag')
+    await expect(field, 'the field still shows the colour it ended on').toHaveValue(atRelease)
+  })
+})
+
+test('the hex field builds on its button and never on a keystroke', async () => {
+  const engineHome = home({ progress_delay_ms: 50 })
+  await withApp(engineHome, async (page) => {
+    await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
+    const panel = cell(page, 'lines')
+    const drawnBefore = buildsOf(engineHome)
+    await panel.getByRole('button', { name: 'Choose the colour of line A' }).click()
+    const picker = panel.getByRole('group', { name: 'Colour for line A' })
+    const field = picker.getByLabel('Hex value')
+
+    // Typed a key at a time, slowly enough that the whole of it takes longer
+    // than any interval the app ever had.
+    await field.fill('')
+    await field.pressSequentially('#ff0000', { delay: 120 })
+    await expect(field).toHaveValue('#ff0000')
+    await page.waitForTimeout(LONGER_THAN_ANY_INTERVAL)
+    expect(buildsOf(engineHome), 'no build for any keystroke, typed or paused').toBe(drawnBefore)
+    expect(readRecord(engineHome).colors, 'and nothing stored').toEqual({})
+
+    await picker.getByRole('button', { name: 'Use this colour' }).click()
+    await drawnIn(page, engineHome, 'A', '#ff0000', drawnBefore + 1, 'the button is one build')
+    await quietAt(page, engineHome, drawnBefore + 1, 'the hex field')
+  })
+})
+
+test('a held arrow key is one gesture and one build, and each tap is a build of its own', async () => {
+  // react-colorful sends one change per keydown, repeats included, and its
+  // end - the one that builds - on the key's keyup. A held key is therefore
+  // many colours and one build on its release; three taps are three.
+  const engineHome = home({ progress_delay_ms: 50 })
+  await withApp(engineHome, async (page) => {
+    await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
+    const panel = cell(page, 'lines')
+    const drawnBefore = buildsOf(engineHome)
+    await panel.getByRole('button', { name: 'Choose the colour of line A' }).click()
+    const picker = panel.getByRole('group', { name: 'Colour for line A' })
+    const hue = picker.getByRole('slider').last()
+    const field = picker.getByLabel('Hex value')
+
+    // Held: the key goes down and repeats, and nothing has come up.
+    await hue.focus()
+    for (let i = 0; i < 4; i++) await page.keyboard.down('ArrowRight')
+    await expect(field, 'the field follows the held key').not.toHaveValue('#0072bc')
+    const held = await settledValue(field)
+    await page.waitForTimeout(LONGER_THAN_ANY_INTERVAL)
+    expect(buildsOf(engineHome), 'a key held down builds nothing, however long it is held').toBe(
+      drawnBefore,
+    )
+    await page.keyboard.up('ArrowRight')
+    await drawnIn(
+      page,
+      engineHome,
+      'A',
+      held,
+      drawnBefore + 1,
+      'a held arrow key is one build, on its release',
+    )
+
+    // Three taps, each drawn before the next: three gestures, three builds.
+    let colour = held
+    for (const tap of [1, 2, 3]) {
+      await hue.focus()
+      await page.keyboard.press('ArrowLeft')
+      await expect(field, `tap ${tap} moved the colour`).not.toHaveValue(colour)
+      colour = await settledValue(field)
+      await drawnIn(
+        page,
+        engineHome,
+        'A',
+        colour,
+        drawnBefore + 1 + tap,
+        `tap ${tap} of 3 is a build of its own`,
+      )
+    }
+    await quietAt(page, engineHome, drawnBefore + 4, 'the taps')
+
+    // A panel that closes under a held key has not lost the colour the
+    // person saw: the swatch is what they chose, and the map follows it.
+    await hue.focus()
+    for (let i = 0; i < 2; i++) await page.keyboard.down('ArrowRight')
+    const seen = await settledValue(field)
+    expect(seen, 'the held key moved the colour').not.toBe(colour)
+    await panel.getByText(/^A line is drawn in the colour its feed publishes/).click()
+    await expect(picker).toBeHidden()
+    await page.keyboard.up('ArrowRight')
+    await drawnIn(
+      page,
+      engineHome,
+      'A',
+      seen,
+      drawnBefore + 5,
+      'a panel closed under a held key still builds what was seen',
+    )
+    await quietAt(page, engineHome, drawnBefore + 5, 'the closed panel')
   })
 })
 

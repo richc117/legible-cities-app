@@ -1,7 +1,9 @@
 // A debounce, as a plain function so a test can hold it with fake timers.
-// A person dragging a colour picker moves through dozens of colours a
-// second, and each one would be a map build; the panel above this waits
-// until they stop and then builds once (specs/018-colours).
+// A person pressing the line order's arrows moves a line a press at a time,
+// and each one would be a map build; the panel above this waits until they
+// stop and then builds once (specs/020-line-order). The line colours used to
+// wait this way and no longer do: a colour builds when its gesture ends
+// (issue 262, specs/018-colours).
 
 export interface Debounced<A extends unknown[]> {
   (...args: A): void
