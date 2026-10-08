@@ -25,6 +25,7 @@ import {
   type Locator,
   type Page,
 } from '@playwright/test'
+import { RECORD_VERSION } from '../../src/shared/project'
 import { cellLabel } from '../support/project'
 
 const repoRoot = resolve(__dirname, '../..')
@@ -223,7 +224,7 @@ test('creates, opens, renames and deletes a project, and serves its output', asy
       readFileSync(join(home, 'projects', id, 'project.json'), 'utf8'),
     )
     expect(record).toMatchObject({
-      version: 1,
+      version: RECORD_VERSION,
       id,
       name: 'Los Angeles',
       feed: 'la-metro-rail',
