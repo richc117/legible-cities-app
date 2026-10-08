@@ -206,6 +206,9 @@ const plan = (over: Partial<PlannedJob> = {}): PlannedJob => ({
   storyboard: 'tour',
   at: null,
   notes: [],
+  caption: null,
+  // The engine's resolved corner: top right on the reel, where bottom right is refused.
+  clock_corner: 'top-right',
   filename: 'la-metro-rail-instagram-reel.mp4',
   ...over,
 })
