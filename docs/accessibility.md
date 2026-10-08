@@ -151,7 +151,7 @@ The two reader columns are a person's, recorded per run in
 | New project sheet, a zip chosen | swept | swept | swept | swept | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
 | New project sheet, an address refused | swept | swept (the alert, the field invalid) | swept | swept | pass (`--error` on `--surface-raised`) | pass | not yet run: a person's | not yet run: a person's |
 | New project sheet, its add running: the progress line and Cancel the add | swept (held open by the stand-in's `add_delay_ms`; Cancel the add takes focus) | swept | swept | swept | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
-| Remove-feed confirmation, and a refusal naming the projects (A5.6-06) | fixed (D8) | swept idle; the refusal is an alert naming the projects, asserted in `feeds.spec.ts` and not swept | swept idle | swept idle | pass | pass | not yet run: a person's | not yet run: a person's |
+| Remove-feed confirmation, and a refusal naming the projects (A5.6-06) | fixed (D8; Cancel stops the removal, issue 351) | swept idle; the refusal is an alert naming the projects, asserted in `feeds.spec.ts` and not swept | swept idle | swept idle | pass | pass | not yet run: a person's | not yet run: a person's |
 
 ### Project: the header
 
@@ -398,20 +398,32 @@ was thrown to the top of the document with nothing said.
   dialog stays modal and takes nothing: both buttons keep their names and
   focus, say `aria-disabled`, refuse every press - a held Enter's repeats
   included - and are drawn unavailable; the first Escape is refused; and a
-  status line in the dialog says what is running ("Removing Metro de
-  Prueba… It cannot be stopped."). If the platform closes it anyway (a
+  status line in the dialog says what is running ("Deleting `<project>`…
+  It cannot be stopped."). The feed removal's confirmation is the one
+  exception (issue 351), because the engine can be asked to stop a removal:
+  its Cancel stays available and takes one press, then is unavailable like
+  the other button, and its line reads "Removing Metro de Prueba… Cancel
+  stops it unless the engine has already forgotten the feed." and, once
+  Cancel has been pressed, "Removing Metro de Prueba… Cancelling; waiting
+  for the engine to say whether it was in time."; Escape is still refused
+  there. If the platform closes it anyway (a
   second Escape), its screen is told at once, a dialog opened again for
   another feed is not closed by the first removal finishing, and a refusal
   that arrives afterwards is said on the screen only while that screen is
   still open; the project screen's delete goes back to the Library only if
   the person is still on it (`ConfirmDialog.tsx`, `kit/Button.tsx`,
   `figui-adapter.css`, `Library.tsx`, `ProjectView.tsx`). The busy window
-  is exercised only by two tests with a slow stand-in removal
-  (`remove_delay_ms`): the refused presses and Escape with one
-  `feeds.remove` sent and the unavailable look read from the kit's host and
-  inner button, and a dialog closed by two Escapes mid-removal letting the
-  next one open idle and stay open. A stalled request holding the dialog
-  was a finding, F4 below, closed by issue 107.
+  is exercised end to end only by two tests with a slow stand-in removal
+  (`remove_delay_ms`, an engine that does not stop for a cancel): the
+  refused Enter repeat and Escape, Cancel's one press and its unavailable
+  look after it, with one `feeds.remove` and one `$/cancelRequest` sent,
+  and the unavailable look of Remove read from the kit's host and inner
+  button; and a dialog closed by two Escapes mid-removal letting the next
+  one open idle and stay open. The refused press on Cancel in a dialog that
+  cannot be stopped (the project's delete, the engine's reset) is held in
+  `tests/unit/confirm-dialog.test.tsx` (`cancelPress`). A stalled request
+  holding the dialog was a finding, F4 below, closed by issue 107 and
+  answered again by issue 351.
 - **D12. Cell 01's mode and operator, disabled by a run** (issue 221; of
   this kind, and numbered after the rest because it was found after them).
   While a layout run or an export is going the mode, the operator, "Use
@@ -566,33 +578,51 @@ or a design decision.
   heading, the first thing after it; the same test asserts it there.
 
 - **F4. A stalled engine request holds a destructive confirmation.**
-  *Closed by issue 107.* *Screen:* the Library's feed removal. *Steps:*
-  remove a feed while the engine is stalled. *What a person met:* a dialog
-  that said the removal was running and could not be stopped, with both
-  buttons unavailable, for as long as the sidecar's 600 s inactivity bound;
-  `feeds.remove` had no request deadline of its own. *Now:* `feeds.remove`
-  is sent with a deadline of 30 seconds (`FEEDS_REMOVE_DEADLINE_MS` in
-  `src/main/feeds-ipc.ts`). At the deadline the dialog is released: it
-  stays open, its buttons take presses again, and the alert says "The
-  engine did not answer in time, so the feed may or may not have been
-  removed. The list of feeds is read again to show what the engine has
-  now." The pinned engine (v0.8.3, and unchanged to v0.10.1) does not stop for that: it runs
-  `feeds.remove` on the one thread that reads requests, so it finishes the
-  removal regardless, reads the app's `$/cancelRequest` only afterwards and
-  ignores it, and answers nothing else meanwhile. The list the app asks for
-  at the deadline is therefore answered once the removal is done and shows
-  it done; closing the dialog reads the list once more. Until the engine
-  answers, the list is left as it was, and a read that fails leaves it
-  too. While the engine is still in the removal the app counts it as
-  running, so "Reset engine data" refuses, and says "The engine has not
-  finished a request it stopped answering. If it does not, quit and reopen
-  Legible Cities.", because an engine that never answers is not restarted
-  for it and only a quit ends it (`src/main/sidecar.ts`, `Library.tsx`). No other confirmation waits on the engine: deleting a
-  project and resetting the engine's data are the main process's own file
-  work. Asserted in `tests/unit/sidecar.test.ts` and end to end in
-  `tests/e2e/feeds.spec.ts`, against a stand-in that blocks its reader for
-  the removal (`remove_blocks_ms`) beyond a deadline shortened through the
-  development-only `LEGIBLE_FEEDS_REMOVE_DEADLINE_MS`.
+  *Closed by issue 107; the deadline it added was replaced by a Cancel in
+  issue 351.* *Screen:* the Library's feed removal. *Steps:* remove a feed
+  while the engine is stalled. *What a person met:* a dialog that said the
+  removal was running and could not be stopped, with both buttons
+  unavailable, for as long as the sidecar's 600 s inactivity bound;
+  `feeds.remove` had no request deadline of its own. *Then (issue 107):* a
+  deadline of 30 seconds released the dialog, because the engine then pinned
+  (v0.8.3 to v0.10.1) ran `feeds.remove` on the one thread that reads
+  requests: it finished the removal regardless, read the app's
+  `$/cancelRequest` only afterwards and ignored it, and answered nothing
+  else meanwhile. *Now (issue 351, engine v0.11.0):* `feeds.remove` is a
+  job, like `feeds.add`: the reader keeps answering while it works, and the
+  write of `user-feeds.json` is its point of no return. The removal is sent
+  with no deadline of its own, and the dialog's Cancel stays available while
+  it runs: a press sends the request's own `$/cancelRequest`, and the dialog
+  says "Removing `<feed>`… Cancelling; waiting for the engine to say whether
+  it was in time." until the engine answers. A cancel before the write keeps
+  the feed with every file in place and is answered with the cancelled
+  error: the dialog closes, the page says "The removal was cancelled;
+  `<feed>` is still here." and the row stays. A cancel after it is not
+  honoured: the files are removed to the end, the answer carries
+  `cancel_too_late`, the page says "`<feed>` was already forgotten when you
+  cancelled, so it was removed." and the row goes. An engine that has
+  stopped answering ends the removal through the sidecar's 600 s inactivity
+  bound, as it does any request, and the alert says "The engine did not
+  answer in time, so the feed may or may not have been removed. The list of
+  feeds is read again to show what the engine has now."; the list is read
+  again then, and when that dialog closes. The list is read again after
+  every outcome, and a row leaves only when the engine has said the feed is
+  gone. While the engine is still in a request the app stopped waiting for,
+  the app counts it as running, so "Reset engine data" refuses, and says
+  "The engine has not finished a request it stopped answering. If it does
+  not, quit and reopen Legible Cities.", because an engine that never
+  answers is not restarted for it and only a quit ends it
+  (`src/main/sidecar.ts`, `Library.tsx`). No other confirmation waits on the
+  engine: deleting a project and resetting the engine's data are the main
+  process's own file work. Asserted in `tests/unit/library-removal.test.ts`,
+  `tests/unit/stand-in-shapes.test.ts` and `tests/unit/engine-ipc.test.ts`,
+  and end to end in `tests/e2e/feeds.spec.ts` against a stand-in that runs
+  the removal as a job (`remove_blocks_ms`, with the point of no return at
+  `remove_commits_after_ms`). The inactivity bound's ten minutes cannot be
+  waited out in a run, so that ending is held in the unit tests, and the
+  end-to-end test of a removal the engine never answers (`remove_stalls`)
+  holds the dialog past the old 30 seconds instead: still waiting, no
+  sentence, Cancel still asking.
 
 - **F5. A kit button's `aria-describedby` described nothing. Fixed
   (issue 113).** *Screen:* Settings (the Licences buttons when unavailable,
@@ -825,8 +855,9 @@ a table).
 - **Remove-feed confirmation.** Press **Remove** on an added feed a project
   uses. Listen for a dialog "Remove `<feed>`?", its description, and focus
   on **Cancel**. Press **Remove**: while it runs, listen for the status
-  "Removing `<feed>`… It cannot be stopped." and both buttons read as
-  dimmed or unavailable while they keep focus (D8); then the alert "The
+  "Removing `<feed>`… Cancel stops it unless the engine has already
+  forgotten the feed." and **Remove** reading as dimmed or unavailable while
+  it keeps focus, **Cancel** staying available (D8, issue 351); then the alert "The
   project “`<name>`” uses this feed; delete it first.", naming the project
   (A5.6-06). The busy window may
   be too short to hear; write "busy state too quick to hear" in the cell
