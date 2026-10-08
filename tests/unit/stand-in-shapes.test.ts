@@ -27,10 +27,10 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { engineEnvironment } from '../../src/main/interpreter'
 import { Sidecar } from '../../src/main/sidecar'
-import { EngineError, type EnginePin, type EngineState } from '../../src/shared/engine'
+import { EngineError, ERROR_CODES, type EnginePin, type EngineState } from '../../src/shared/engine'
 import { FAKE_ENGINE, findPython } from '../support/python'
 
 // -------------------------------------------------------------- validating
@@ -922,5 +922,154 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s answers${WHY}`, () => 
     await expect(refused('x'.repeat(1001))).rejects.toThrow(
       /provenance\.alt is 1,001 characters; it may be at most 1,000/,
     )
+  })
+})
+
+// ----------------------------------------- the removal as a job (issue 351)
+
+// Since engine v0.11.0 (its issue 35) `feeds.remove` is a job, like
+// `feeds.add`: the reader goes on answering while it works, the write of the
+// registry is its point of no return, a cancel before it is answered with the
+// cancelled error and changes nothing, and one after it is not honoured and
+// is told so. The app's Cancel in the removal's confirmation depends on all
+// three, so the stand-in is held to them here, over the protocol. Each test
+// starts a stand-in of its own, because the control file is read once.
+describe.skipIf(PYTHON === null)(`the stand-in engine’s removal is a job${WHY}`, () => {
+  const running: { sidecar: Sidecar; home: string }[] = []
+
+  afterEach(async () => {
+    for (const { sidecar, home } of running.splice(0)) {
+      await sidecar.stop()
+      rmSync(home, { recursive: true, force: true })
+    }
+  })
+
+  /** A stand-in with one added feed, "mine", in its registry and its zip on disk. */
+  async function standIn(
+    control: Record<string, unknown>,
+    inactivityMs = READY_MS,
+  ): Promise<{ sidecar: Sidecar; home: string }> {
+    const home = mkdtempSync(join(tmpdir(), 'lc-removal-'))
+    writeFileSync(join(home, 'fake-engine.json'), JSON.stringify(control))
+    mkdirSync(join(home, 'data', 'feeds'), { recursive: true })
+    writeFileSync(
+      join(home, 'data', 'feeds', 'user-feeds.json'),
+      JSON.stringify([{ key: 'mine', name: 'Mine', source: 'user' }]),
+    )
+    writeFileSync(join(home, 'data', 'feeds', 'mine.zip'), 'a zip')
+    const sidecar = new Sidecar({
+      command: [PYTHON as string, '-m', 'schematic.serve'],
+      env: engineEnvironment({
+        config: { home, loomBin: null, loomCommit: null, ffmpeg: null },
+        base: { ...process.env, PYTHONPATH: FAKE_ENGINE },
+        development: true,
+      }),
+      pin: PIN,
+      log: () => {},
+      bounds: { handshakeMs: READY_MS, inactivityMs },
+    })
+    running.push({ sidecar, home })
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('the stand-in never became ready')), READY_MS)
+      sidecar.onState((state) => {
+        if (state.state === 'ready') {
+          clearTimeout(timer)
+          resolve()
+        }
+      })
+      sidecar.start()
+    })
+    return { sidecar, home }
+  }
+
+  const zip = (home: string): string => join(home, 'data', 'feeds', 'mine.zip')
+  const registry = (home: string): string[] =>
+    (
+      JSON.parse(readFileSync(join(home, 'data', 'feeds', 'user-feeds.json'), 'utf8')) as {
+        key: string
+      }[]
+    ).map((record) => record.key)
+  const read = (home: string, method: string): number =>
+    readFileSync(join(home, 'fake-engine.received'), 'utf8')
+      .split('\n')
+      .filter((line) => line.includes(`"method": "${method}"`)).length
+  const keys = async (sidecar: Sidecar): Promise<string[]> =>
+    ((await sidecar.request('feeds.list').result) as { feeds: { key: string }[] }).feeds.map(
+      (feed) => feed.key,
+    )
+  async function until(predicate: () => boolean, what: string): Promise<void> {
+    const deadline = Date.now() + 10_000
+    while (!predicate()) {
+      if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`)
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    }
+  }
+
+  it('answers a cancel before the point of no return with the cancelled error, and the feed is kept', async () => {
+    const { sidecar, home } = await standIn({ remove_blocks_ms: 6_000 })
+    const started = Date.now()
+    const removal = sidecar.request('feeds.remove', { key: 'mine' })
+    await until(() => read(home, 'feeds.remove') === 1, 'the stand-in to read the removal')
+    sidecar.cancel(removal.id)
+    const error = (await removal.result.catch((e: unknown) => e)) as EngineError
+    expect(error, 'a rejection, not an answer').toBeInstanceOf(EngineError)
+    expect(error.code, 'the cancelled error').toBe(ERROR_CODES.cancelled)
+    expect(Date.now() - started, 'answered at the cancel, not at the removal’s end').toBeLessThan(
+      5_000,
+    )
+    expect(await keys(sidecar), 'the list still names the feed').toContain('mine')
+    expect(registry(home), 'the registry is as it was').toEqual(['mine'])
+    expect(existsSync(zip(home)), 'its zip is where it was').toBe(true)
+  })
+
+  it('answers a cancel after the point of no return with cancel_too_late, the feed forgotten and its zip gone', async () => {
+    const { sidecar, home } = await standIn({
+      remove_blocks_ms: 2_500,
+      remove_commits_after_ms: 100,
+    })
+    const started = Date.now()
+    const removal = sidecar.request('feeds.remove', { key: 'mine' })
+    await until(() => registry(home).length === 0, 'the registry to be written without the feed')
+    expect(existsSync(zip(home)), 'the zip is still there at the point of no return').toBe(true)
+    sidecar.cancel(removal.id)
+    const answer = await removal.result
+    expect(answer).toEqual({ ok: true, cancel_too_late: true })
+    expect(answerProblems('feeds.remove', answer)).toEqual([])
+    expect(Date.now() - started, 'the removal went on to its end').toBeGreaterThanOrEqual(2_400)
+    expect(await keys(sidecar), 'the list no longer names the feed').not.toContain('mine')
+    expect(existsSync(zip(home)), 'its zip went with it').toBe(false)
+  })
+
+  it('answers feeds.list while a removal runs, and the feed is still listed until it is forgotten', async () => {
+    const { sidecar } = await standIn({ remove_blocks_ms: 6_000 })
+    const started = Date.now()
+    const removal = sidecar.request('feeds.remove', { key: 'mine' })
+    const listed = await keys(sidecar)
+    expect(Date.now() - started, 'answered while the removal runs').toBeLessThan(5_000)
+    expect(listed).toContain('mine')
+    sidecar.cancel(removal.id)
+    await removal.result.catch(() => undefined)
+  })
+
+  it('answers a removal nobody cancels with exactly ok, the feed forgotten and its zip gone', async () => {
+    const { sidecar, home } = await standIn({ remove_blocks_ms: 300 })
+    const answer = await sidecar.request('feeds.remove', { key: 'mine' }).result
+    expect(answer).toEqual({ ok: true })
+    expect(answerProblems('feeds.remove', answer)).toEqual([])
+    expect(await keys(sidecar)).not.toContain('mine')
+    expect(existsSync(zip(home))).toBe(false)
+  })
+
+  it('never answers a removal it is told to stall on, so only the inactivity bound ends it', async () => {
+    const { sidecar, home } = await standIn({ remove_stalls: true }, 400)
+    const removal = sidecar.request('feeds.remove', { key: 'mine' })
+    expect(sidecar.deadlinesArmed, 'no deadline of its own is armed').toBe(0)
+    const error = (await removal.result.catch((e: unknown) => e)) as EngineError
+    expect(error.code).toBe(ERROR_CODES.inactive)
+    expect(error.data?.hint).toBe('No progress for 400 ms; the request was cancelled.')
+    // The bound asked it to cancel, once, and it still did not answer.
+    await until(() => read(home, '$/cancelRequest') === 1, 'the bound’s cancel to be read')
+    expect(registry(home), 'nothing was done').toEqual(['mine'])
+    expect(sidecar.abandoned, 'the engine still has it').toBe(1)
   })
 })
