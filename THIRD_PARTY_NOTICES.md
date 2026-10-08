@@ -37,7 +37,7 @@ FFmpeg library inside Electron, beside them (below).
 | LOOM | Schematisation: `gtfs2graph`, `topo`, `loom`, `octi`, native binaries built in this repository's CI from the commit pinned in `vendor/pins.json`, and bundled under `loom/` in the app's resources | GPL-3.0 | https://github.com/ad-freiburg/loom |
 | LOOM Windows compatibility changes, by Transport for Cairo | Building LOOM under MSYS2 on Windows. At build time the vendor workflow takes `win_compat.h` and five `cppgtfs` files (the `timezone` identifier rename) from the port at the commit pinned in `vendor/pins.json`, and applies the port's other documented changes to our own tree with `scripts/loom-windows-patch.py`. Shims only; the port states, and our parity check assumes, no change to LOOM's algorithms | GPL-3.0 | https://github.com/transportforcairo/loom-windows-port |
 | `legible-cities` engine | The Python pipeline: feeds, rendering, scheduling, animation, export | GPL-3.0-or-later: the pinned tag carries the GPL-3.0 text as `LICENSE` and declares it in `pyproject.toml` (`license-files`). Installed into the bundled runtime at the tag in `vendor/pins.json`, its licence in its `.dist-info` | https://github.com/richc117/legible-cities |
-| Esri Calcite UI icons | Four view-switcher icons inside the engine's animation page, which the app embeds; the engine redistributes them **unmodified** with the agreement's notice, and its issue E16 replaces them with Phosphor (ADR-026). The app's own tree carries none | Esri Master License Agreement | https://github.com/Esri/calcite-ui-icons |
+| Phosphor Icons in the engine's page | Four view-switcher icons (`map-trifold`, `graph`, `line-segments`, `clock`, regular weight) inside the engine's animation page, which the app embeds: the same set, from the same `@phosphor-icons/core` **2.1.1** release and under the same licence as the interface's own icons below, copied unmodified into the engine's `page/icons/` with the licence beside them. They replace four Esri Calcite UI icons at engine v0.11.0 (engine issue 19), which the page no longer carries. The app's own tree carries none of them | MIT | https://github.com/phosphor-icons/core |
 | FigUI3 core | The interface's control kit: `fig.css` and `fig.js` of `@rogieking/figui3` **9.0.7**, pinned exactly. The package is split-licensed and its `package.json` says only "SEE LICENSE IN LICENSE": the core is MIT; the editor and lab bundles are PolyForm Shield 1.0.0 and are never imported (the build refuses them, `scripts/figui-guard.ts`; ADR-026). The core vendors `@ungap/custom-elements-builtin` (ISC) | MIT (core); ISC (the vendored polyfill) | https://github.com/rogie/figui3 |
 | Phosphor Icons | The interface's icons, vendored unmodified from `@phosphor-icons/core` **2.1.1** under `src/renderer/src/icons/phosphor/` with the licence beside them; the light weight at 16px, the regular at 24px, the fill weight for toggled states | MIT | https://github.com/phosphor-icons/core |
 | FFmpeg (ADR-012, ADR-040) | Encoding MP4 and GIF exports, bundled under `ffmpeg/` in the app's resources: `ffmpeg` and `ffprobe` of **FFmpeg 9.0.1**, built in this repository by `scripts/vendor-ffmpeg.sh` in the `ffmpeg` jobs of `.github/workflows/vendor.yml`, natively on each target, from the release tarball pinned by URL and sha256 in `vendor/pins.json`, whose signature by FFmpeg's release signing key the vendor workflow verifies, and proven by the same script before it is vendored. Configured `--enable-gpl --enable-version3` with `--disable-everything --disable-autodetect --disable-network`, and only the codecs, formats, filters and protocols the engine's export uses enabled back, with three more that the checks use: the `testsrc` filter the vendoring proof makes frames with, and the `rawvideo` encoder and muxer and `gif` decoder the determinism test reads exports back with; the configure line of every target is in the pins and printed by `ffmpeg -version`. The only external libraries are x264 and zlib (the operating system's on macOS; linked statically on Windows), and the vendor jobs refuse any other. **No freetype, fontconfig, HarfBuzz, libass, libdvdread or libdvdcss**: the export needs none, because the page draws every word in it. The vendor job also builds a Linux x64 binary for tests, and neither ships nor uploads it. Patent licensing for H.264 and AAC encoders is not assessed in this repository | GPL-3.0-or-later (`--enable-gpl --enable-version3`) | https://ffmpeg.org/releases/ffmpeg-9.0.1.tar.xz (tag `n9.0.1`, commit `bf1b838f2a`), and the `ffmpeg-source` artefact on each release |
@@ -569,15 +569,14 @@ FFmpeg library inside Electron, beside them (below).
   > LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
   > OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
   > WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-- **Esri Calcite UI icons**: inside the engine's page only, redistributed
-  without modification, with this notice, which the engine keeps beside the
-  files:
-
-  > COPYRIGHT Esri. All rights reserved under the copyright laws of the United
-  > States and applicable international laws, treaties, and conventions. This
-  > material is licensed for use under the Esri Master License Agreement (MLA).
-  > You may redistribute and use this code without modification, provided you
-  > adhere to the terms of the MLA and include this copyright notice.
+- **Phosphor Icons in the engine's page**: the page's four view icons
+  are the same Phosphor Icons, from the same `@phosphor-icons/core` 2.1.1
+  release and under the same MIT licence as the interface's own, copied
+  unmodified, and the engine keeps that licence beside them in its
+  `page/icons/`. The copyright line and the licence text are the Phosphor
+  Icons notice above, and are not repeated. Until engine v0.11.0 (engine
+  issue 19) the page drew four Esri Calcite UI icons there; it carries none
+  now.
 - **Transit data**: maps made with the app derive from each agency's
   published feed and remain subject to that agency's terms. The app does not
   redistribute feeds.
