@@ -602,16 +602,30 @@ export function radiiSentence(interchange: number, station: number): string {
 }
 
 /**
+ * The engine's refusal of the pair of radii, or null: the interchange radius
+ * may not be below the station radius, judged on the values the map would be
+ * drawn with, a field left out counting as the engine's default. So a
+ * station radius above 6 with the interchange radius unset is refused too.
+ *
+ * Null as well when either number is outside its own range: the engine
+ * judges the ranges first and the pair only after them, and a number that is
+ * not one has no pair to be judged in.
+ */
+export function radiiRefusal(style: ProjectStyle): string | null {
+  const station = style.stationRadius ?? DEFAULT_STYLE.stationRadius
+  const interchange = style.interchangeRadius ?? DEFAULT_STYLE.interchangeRadius
+  if (!inStyleRange('stationRadius', station) || !inStyleRange('interchangeRadius', interchange))
+    return null
+  return interchange < station ? radiiSentence(interchange, station) : null
+}
+
+/**
  * Why the engine would refuse this style, field by field, in its own
  * sentences, before anything is sent; empty when it would take it.
  *
  * A number outside its range is that field's. The two radii are judged
- * together on the values the map would be drawn with, a field left out
- * counting as the engine's default, so a station radius above 6 with the
- * interchange radius unset is refused too - and the sentence is the
- * interchange radius's, as the engine's names it first. The pair is judged
- * only when both numbers are in range, as the engine judges it after the
- * ranges.
+ * together (`radiiRefusal`), and the sentence is the interchange radius's,
+ * as the engine's names it first.
  */
 export function styleRefusals(style: ProjectStyle): Partial<Record<StyleKey, string>> {
   const refused: Partial<Record<StyleKey, string>> = {}
@@ -619,14 +633,8 @@ export function styleRefusals(style: ProjectStyle): Partial<Record<StyleKey, str
     if (style[key] !== undefined && !inStyleRange(key, style[key]))
       refused[key] = styleRangeSentence(key)
   }
-  const station = style.stationRadius ?? DEFAULT_STYLE.stationRadius
-  const interchange = style.interchangeRadius ?? DEFAULT_STYLE.interchangeRadius
-  if (
-    refused.stationRadius === undefined &&
-    refused.interchangeRadius === undefined &&
-    interchange < station
-  )
-    refused.interchangeRadius = radiiSentence(interchange, station)
+  const radii = radiiRefusal(style)
+  if (radii !== null) refused.interchangeRadius = radii
   return refused
 }
 

@@ -20,7 +20,7 @@ import {
 } from '../../../shared/jobs'
 import type { Diagnostics, MapBuildResult, Methods } from '../../../shared/protocol'
 import type { Stage } from '../ProgressLine'
-import { styleParams } from '../styleFields'
+import { styleParams } from '../styleRules'
 
 // One layout run for one project, with no React in it: the rule is that
 // logic lives in something callable without rendering, and the tests are
