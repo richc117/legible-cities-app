@@ -652,6 +652,7 @@ describe('failing', () => {
       defaultColor: '#888888',
       lineOrder: [],
       theme: 'warm-dark' as const,
+      style: {},
     }
     const h = harness({ project: { date: '2026-09-20', drawn } })
     const { result } = h.exporter.start('tok-1', 'abcdefghijk1', REEL)

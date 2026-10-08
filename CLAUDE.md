@@ -24,7 +24,7 @@ the kit's `Tabs` control was deleted with the tab strip (A5.5-23).
 | 01 Data | `Inspect`, `StageView`, the feed's download (`DownloadLine`) | `DataCell.tsx` |
 | 02 Process | `LayoutRun`, the engine's log (`EngineLog`), `Diagnostics` | `ProcessCell.tsx` |
 | 03 Frame and service day | `ServiceDay`, the transport (`Transport`: scrub, play, speed) | `FrameCell.tsx` |
-| 04 Style | `ThemeSwitch` | `StyleCell.tsx` |
+| 04 Style | `ThemeSwitch`, `StyleFields` (the map's sizes, issue 350) | `StyleCell.tsx` |
 | 05 Lines | `LineColours`, `LineOrder` | `LinesCell.tsx` |
 | 06 Export | `ExportTab` (the export's options), which draws `ExportRun` itself | `ExportCell.tsx` |
 

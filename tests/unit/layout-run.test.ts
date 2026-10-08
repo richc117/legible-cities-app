@@ -19,6 +19,7 @@ import {
   drawnSentence,
   recolouredSentence,
   reorderedSentence,
+  restyledSentence,
   stoppedSentence,
 } from '../../src/renderer/src/LayoutRun'
 import { LAYOUT_STAGES } from '../../src/shared/layout'
@@ -184,6 +185,7 @@ function setup(
   const completeRebuild = vi.fn(async () => ({}))
   const completeColors = vi.fn(async () => ({}))
   const completeOrder = vi.fn(async () => ({}))
+  const completeStyle = vi.fn(async () => ({}))
   const record = project(over)
   const run = new LayoutRun({
     client,
@@ -191,6 +193,7 @@ function setup(
     completeRebuild,
     completeColors,
     completeOrder,
+    completeStyle,
     today: () => '2026-09-08',
     ...(onDisk === undefined ? {} : { onDisk }),
   })
@@ -201,6 +204,7 @@ function setup(
     completeRebuild,
     completeColors,
     completeOrder,
+    completeStyle,
     record,
     begin: () => run.start(record, engine),
   }
@@ -808,6 +812,7 @@ describe('the run survives the record it writes', () => {
       completeRebuild: async () => ({}),
       completeColors: async () => ({}),
       completeOrder: async () => ({}),
+      completeStyle: async () => ({}),
       today: () => '2026-09-08',
     })
     run.start(record, READY)
@@ -826,6 +831,7 @@ describe('the run survives the record it writes', () => {
       completeRebuild: async () => ({}),
       completeColors: async () => ({}),
       completeOrder: async () => ({}),
+      completeStyle: async () => ({}),
       today: () => '2026-09-08',
     })
     run.start(project({ date: '2026-01-01' }), READY)
@@ -978,6 +984,7 @@ describe('recolour', () => {
         defaultColor: '#888888',
         lineOrder: [],
         theme: 'warm-dark',
+        style: {},
       },
     })
     run.recolour(record, READY, chosen)
@@ -1207,6 +1214,251 @@ describe('the arrangement on every other draw', () => {
   })
 })
 
+// Issue 350, ADR-049. A size is a render, never a layout: the map call alone,
+// from the stored layout, for the day it already showed, with a `style`
+// only when the project has set one.
+describe('the sizes on every draw', () => {
+  const stored = { layout: LAYOUT, date: '2026-09-15', service: WINDOW }
+  const sized = { lineWidth: 12 }
+
+  it('sends no style at all for a project nobody has sized, whichever run draws', async () => {
+    // The one thing this must not get wrong: an existing project's map is
+    // what it was, so its map.build is the request it always was.
+    const layoutRun = setup({})
+    layoutRun.begin()
+    await laidOut(layoutRun.calls)
+    expect(layoutRun.calls[2].method).toBe('map.build')
+    expect(layoutRun.calls[2].params, 'a layout run').not.toHaveProperty('style')
+
+    const day = setup(stored)
+    day.run.rebuild(day.record, READY, '2026-09-16')
+    await tick()
+    expect(day.calls[0].params, 'a chosen day').not.toHaveProperty('style')
+
+    const colour = setup(stored)
+    colour.run.recolour(colour.record, READY, { colors: {}, defaultColor: '#112233' })
+    await tick()
+    expect(colour.calls[0].params, 'a colour change').not.toHaveProperty('style')
+
+    const order = setup(stored)
+    order.run.reorder(order.record, READY, ['B', 'A'])
+    await tick()
+    expect(order.calls[0].params, 'an order').not.toHaveProperty('style')
+
+    const style = setup(stored)
+    style.run.restyle(style.record, READY, {})
+    await tick()
+    expect(style.calls[0].params, 'a reset to the engine’s own').not.toHaveProperty('style')
+  })
+
+  it('sends no style for sizes that are all the engine’s own either', async () => {
+    const { run, calls, record } = setup({
+      ...stored,
+      style: { lineWidth: 7, labelSize: 11, padding: 24 },
+    })
+    run.rebuild(record, READY, '2026-09-16')
+    await tick()
+    expect(calls[0].params).not.toHaveProperty('style')
+  })
+
+  it('goes with every other draw when the project has set one, so a day or a colour does not lose it', async () => {
+    const withStyle = { ...stored, style: sized }
+    const layoutRun = setup({ style: sized })
+    layoutRun.begin()
+    await laidOut(layoutRun.calls)
+    expect(layoutRun.calls[2].params).toMatchObject({ style: { line_width: 12 } })
+
+    const day = setup(withStyle)
+    day.run.rebuild(day.record, READY, '2026-09-16')
+    await tick()
+    expect(day.calls[0].params).toMatchObject({ style: { line_width: 12 } })
+
+    const colour = setup(withStyle)
+    colour.run.recolour(colour.record, READY, { colors: {}, defaultColor: '#112233' })
+    await tick()
+    expect(colour.calls[0].params).toMatchObject({ style: { line_width: 12 } })
+
+    const order = setup(withStyle)
+    order.run.reorder(order.record, READY, ['B', 'A'])
+    await tick()
+    expect(order.calls[0].params).toMatchObject({ style: { line_width: 12 } })
+  })
+
+  it("is the record's, not the one being tried, when a colour changes", async () => {
+    const { run, calls, record } = setup({ ...stored, style: { labelSize: 20 } })
+    run.recolour(record, READY, { colors: {}, defaultColor: '#888888' })
+    await tick()
+    expect((calls[0].params as { style: unknown }).style).toEqual({ label_size: 20 })
+  })
+})
+
+describe('restyle', () => {
+  const stored = { layout: LAYOUT, date: '2026-09-15', service: WINDOW }
+
+  it('draws the stored layout for the stored day with the chosen sizes, and never lays out', async () => {
+    const { run, calls, completeStyle, record } = setup(stored)
+    run.restyle(record, READY, { lineWidth: 12 })
+    await tick()
+    expect(calls).toHaveLength(1)
+    expect(calls[0].method, 'the map alone: a size is a render').toBe('map.build')
+    expect(calls[0].params).toMatchObject({
+      key: 'la-metro-rail',
+      layout: LAYOUT,
+      date: '2026-09-15',
+      out: 'p1',
+      style: { line_width: 12 },
+    })
+    // Nothing else is in `style`: the fields a person set, in the engine's
+    // names, and none of its four colours.
+    expect((calls[0].params as { style: object }).style).toEqual({ line_width: 12 })
+    expect(
+      calls.map((c) => c.method),
+      'no graph.build, no feeds.service',
+    ).toEqual(['map.build'])
+    expect(run.snapshot.state).toBe('running')
+    expect(run.snapshot.restyled).toBe(true)
+    expect(run.snapshot.recoloured).toBe(false)
+    expect(completeStyle, 'nothing is written until the map is drawn').not.toHaveBeenCalled()
+
+    calls[0].resolve({ files: {} })
+    await tick()
+    expect(completeStyle).toHaveBeenCalledWith('p1', { lineWidth: 12 })
+    expect(run.snapshot.state).toBe('done')
+    expect(run.snapshot.restyled).toBe(true)
+    expect(run.snapshot.stages.every((s) => s.state === 'done')).toBe(true)
+  })
+
+  it('sends both radii whenever either is set, the one not set as the engine’s', async () => {
+    const { run, calls, record } = setup(stored)
+    run.restyle(record, READY, { stationRadius: 5 })
+    await tick()
+    expect((calls[0].params as { style: object }).style).toEqual({
+      station_radius: 5,
+      interchange_radius: 6,
+    })
+  })
+
+  it('sends the eight in the engine’s names, and not a colour among them', async () => {
+    const { run, calls, record } = setup(stored)
+    run.restyle(record, READY, {
+      lineWidth: 12,
+      lineGap: 2,
+      stationRadius: 5,
+      interchangeRadius: 9,
+      stationStroke: 3,
+      labelSize: 20,
+      labelOffset: 12,
+      padding: 40,
+    })
+    await tick()
+    const sent = (calls[0].params as { style: Record<string, number> }).style
+    expect(sent).toEqual({
+      line_width: 12,
+      line_gap: 2,
+      station_radius: 5,
+      interchange_radius: 9,
+      station_stroke: 3,
+      label_size: 20,
+      label_offset: 12,
+      padding: 40,
+    })
+    for (const colour of ['background', 'station_fill', 'station_stroke_color', 'label_color'])
+      expect(sent, colour).not.toHaveProperty(colour)
+  })
+
+  it('draws the day the map was drawn for, not a day merely chosen', async () => {
+    const { run, calls, record } = setup({
+      ...stored,
+      date: '2026-09-20',
+      drawn: {
+        layout: LAYOUT,
+        made: null,
+        date: '2026-09-15',
+        colors: {},
+        defaultColor: '#888888',
+        lineOrder: [],
+        theme: 'warm-dark',
+        style: {},
+      },
+    })
+    run.restyle(record, READY, { lineWidth: 12 })
+    await tick()
+    expect(calls[0].params).toMatchObject({ date: '2026-09-15' })
+    expect(run.snapshot.day, 'and the run says which day it drew').toBe('2026-09-15')
+  })
+
+  it("carries the record's colours and order, so a size does not lose them", async () => {
+    const { run, calls, record } = setup({
+      ...stored,
+      colors: { A: '#0072bc' },
+      defaultColor: '#112233',
+      lineOrder: ['C', 'A'],
+    })
+    run.restyle(record, READY, { lineWidth: 12 })
+    await tick()
+    expect(calls[0].params).toMatchObject({
+      colors: { A: '#0072bc' },
+      default_color: '#112233',
+      line_order: ['C', 'A'],
+    })
+  })
+
+  it('writes nothing when the build fails, and says so', async () => {
+    const { run, calls, completeStyle, record } = setup(stored)
+    run.restyle(record, READY, { lineWidth: 12 })
+    await tick()
+    calls[0].reject({ code: -32000, message: 'the stand-in draws nothing' })
+    await tick()
+    expect(completeStyle).not.toHaveBeenCalled()
+    expect(run.snapshot.state).toBe('failed')
+    expect(run.snapshot.restyled).toBe(true)
+    expect(stoppedSentence('failed', false, false, false, false, true)).toMatch(
+      /keeps the sizes it had/,
+    )
+  })
+
+  it('writes nothing when it is cancelled', async () => {
+    const { run, calls, completeStyle, record } = setup(stored)
+    run.restyle(record, READY, { lineWidth: 12 })
+    await tick()
+    run.cancel()
+    expect(calls[0].cancelled).toBe(true)
+    calls[0].resolve({ files: {} })
+    await tick()
+    expect(completeStyle).not.toHaveBeenCalled()
+    expect(run.snapshot.state).toBe('cancelled')
+    expect(stoppedSentence('cancelled', false, false, false, false, true)).toMatch(
+      /keeps the sizes it had/,
+    )
+  })
+
+  it('refuses a project that has not been laid out, and starts nothing', async () => {
+    const { run, calls, completeStyle, record } = setup()
+    run.restyle(record, READY, { lineWidth: 12 })
+    await tick()
+    expect(calls).toEqual([])
+    expect(completeStyle).not.toHaveBeenCalled()
+    expect(run.snapshot.state).toBe('failed')
+    expect(run.snapshot.restyled).toBe(true)
+    expect(run.snapshot.error).toMatch(/Lay the project out/)
+  })
+
+  it('refuses while another run is going: the two would rewrite one page', async () => {
+    const { run, calls, record, begin } = setup(stored)
+    begin()
+    await tick()
+    run.restyle(record, READY, { lineWidth: 12 })
+    await tick()
+    expect(calls, 'only the layout call is out').toHaveLength(1)
+    expect(calls[0].method).toBe('graph.build')
+    expect(run.snapshot.restyled).toBe(false)
+  })
+
+  it('says, when it has finished, that the stations have not moved', () => {
+    expect(restyledSentence()).toMatch(/stations have not moved/)
+  })
+})
+
 // The inspector's view of a run (A1-03, specs/024-jobs): one job per
 // attempt, derived from the snapshot, so the two can never disagree.
 describe('the run as a job', () => {
@@ -1288,7 +1540,7 @@ describe('the run as a job', () => {
     expect(run.job()?.ended).not.toBeNull()
   })
 
-  it('names a re-layout, a rebuild, a recolour and a reorder by what they are', async () => {
+  it('names a re-layout, a rebuild, a recolour, a reorder and a restyle by what they are', async () => {
     const { run, calls, record } = setup({ layout: LAYOUT, date: '2026-09-15' })
     run.start(record, READY, { force: true })
     expect(run.job()).toMatchObject({ kind: 'layout', label: 'Re-layout' })
@@ -1308,6 +1560,11 @@ describe('the run as a job', () => {
     await tick()
     run.reorder(record, READY, ['B', 'A'])
     expect(run.job()).toMatchObject({ kind: 'rebuild', label: 'Redraw in a new line order' })
+    run.cancel()
+    calls[3].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
+    await tick()
+    run.restyle(record, READY, { lineWidth: 12 })
+    expect(run.job()).toMatchObject({ kind: 'rebuild', label: 'Redraw in new sizes' })
   })
 
   it('leaves the snapshot exactly as it was: no field added', () => {
@@ -1326,6 +1583,9 @@ describe('the run as a job', () => {
         'rebuilt',
         'recoloured',
         'reordered',
+        // Added by issue 350 on purpose: the run is a redraw for sizes, and
+        // belongs to cell 04.
+        'restyled',
         'day',
         'report',
         // Added by issue 178 on purpose, not by the jobs: where the feed's

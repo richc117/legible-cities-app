@@ -105,6 +105,7 @@ describe("cell 03's summary", () => {
     defaultColor: DEFAULT_COLOR,
     lineOrder: [],
     theme: DEFAULT_THEME,
+    style: {},
   })
   const project = (overrides: Partial<ProjectRecord> = {}): ProjectRecord => ({
     version: 1,
@@ -230,6 +231,7 @@ describe('what a running or failed cell says on its row', () => {
     rebuilt: false,
     recoloured: false,
     reordered: false,
+    restyled: false,
     replaced: false,
     download: null,
     feedMissing: null,

@@ -22,6 +22,7 @@ const snapshot = (patch: Partial<RunSnapshot> = {}): RunSnapshot => ({
   rebuilt: false,
   recoloured: false,
   reordered: false,
+  restyled: false,
   day: null,
   report: null,
   download: null,

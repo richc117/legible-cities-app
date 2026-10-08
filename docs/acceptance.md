@@ -381,7 +381,9 @@ and then **Pause**, and choose another **Speed**.
   typed: "The feed covers `<start>` to `<end>`.", nothing is stored, and
   pressing **Draw for this day** refuses it again and runs nothing.
 - The cell offers no crop, rotation, margin or clip mask, not even greyed
-  out, and says in one sentence that it will gain them.
+  out, and says in one sentence: "The frame's margin is one of the sizes in
+  cell 04; the frame is padded and never cropped or rotated, and a clip mask
+  waits on a designer's intent, so this cell holds the day alone."
 - **Transport**: "Where the map is in its service day." and **Time of
   day**, a slider whose clock beside it reads `HH:MM`; the map moves to
   the hour the slider is left at. **Play day** and **Pause** start and stop
@@ -392,10 +394,14 @@ and then **Pause**, and choose another **Speed**.
 
 Result: ____
 
-### 8. Cell 04, Style: the theme
+### 8. Cell 04, Style: the theme and the sizes
 
 **Do.** With the map playing, note the hour on the clock beside cell 03's
 slider. In cell **04 Style**, press **Sepia**. Then press **Warm dark**.
+Then, under **Sizes**, type **12** into **Line width** and press Enter, and
+wait for the map to be drawn again. Type **30** into **Line width** and
+press Enter. Set **Station radius** to **8**, leave the field, and then set
+**Interchange radius** to **9**. Press **Reset to the engine's sizes**.
 
 **See.**
 - Two buttons, **Warm dark** and **Sepia**, the map's current one marked as
@@ -405,11 +411,36 @@ slider. In cell **04 Style**, press **Sepia**. Then press **Warm dark**.
   than from the start of the day, and the view and labels you had are as
   you left them. There is no progress line and no layout run; the interface
   around it keeps its own theme.
-- Beneath the two buttons, one sentence says that line width, station size
-  and label size are the engine's own for now. Nothing else in this cell
-  offers to set them, not even a control that cannot be pressed.
-- **Warm dark** brings it back. Leave it on **Warm dark** for the exports,
-  or their file names gain `-light` (step 11).
+- Under **Sizes**, one sentence names the unit once: "In the map's own
+  units: the map is drawn 1,800 wide, so a line width of 7 is seven of
+  1,800." Below it are eight fields, **Line width**, **Line gap**,
+  **Station radius**, **Interchange radius**, **Station outline**,
+  **Label size**, **Label offset** and **Margin**, each showing the
+  engine's own number (7, 1.6, 4.2, 6, 2.2, 11, 9 and 24) and saying its
+  range beneath it ("1 to 24. The engine's own is 7."). Beside **Margin**:
+  "The frame is padded, never cropped or rotated: a station is never cut
+  off, and a tighter frame is a smaller margin." **Reset to the engine's
+  sizes** cannot be pressed while nothing has been set. Nothing in the cell
+  says the engine cannot be told.
+- A figure is taken when it is left or Enter is pressed, not as it is
+  typed. **12** in **Line width** draws the map again from the stored
+  layout: cell 04 reads **running** for a moment and then **ready**, the
+  progress line is cell 02's sentence "Drawn in the sizes you chose, from
+  the stored layout. The stations have not moved.", the lines are drawn
+  thicker and no station has moved, and no cell below reads **not drawn
+  yet**. Collapsed, cell 04's row reads "Warm dark, sizes of your own".
+- **30** is refused beside the field with the engine's sentence, "style.line_width must
+  be from 1 to 24, in SVG user units at the map's width", the figure stays
+  where it was typed, and nothing is drawn.
+- **8** in **Station radius** is refused beside it, "style.interchange_radius
+  (6) must not be below style.station_radius (8); a field left out counts as
+  its default, so send both", and nothing is drawn; setting **Interchange
+  radius** to **9** takes both in one redraw.
+- **Reset to the engine's sizes** puts all eight fields back to the
+  engine's own numbers, draws the map once more as it was before, and then
+  cannot be pressed; the row reads "Warm dark" again.
+- **Warm dark** brings the theme back. Leave it on **Warm dark** for the
+  exports, or their file names gain `-light` (step 11).
 
 Result: ____
 
@@ -850,7 +881,7 @@ Copy everything in the block below into a new issue titled
 | 5 | Cell 01, Data: the feed and where its routes run | pass / fail | |
 | 6 | Cell 02, Process: the layout and what the build had to fudge | pass / fail | |
 | 7 | Cell 03, Frame and service day: pick a day, scrub the clock | pass / fail | |
-| 8 | Cell 04, Style: the theme | pass / fail | |
+| 8 | Cell 04, Style: the theme and the sizes | pass / fail | |
 | 9 | Cell 05, Lines: colours, by dragging | pass / fail | |
 | 10 | Cell 05, Lines: the order | pass / fail | |
 | 11 | Cell 06, Export: a reel (___ s) | pass / fail | |

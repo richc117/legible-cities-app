@@ -35,7 +35,7 @@ const rc4: ProjectRecord = {
   agency: null,
   date: '2026-09-12',
   service: { start: '2026-01-01', end: '2026-12-31', busiest: '2026-09-12', anchor: '2026-09-08' },
-  style: { lineWidth: 10, stationRadius: 8, interchangeRadius: 11, labelSize: 26 },
+  style: {},
   colors: { A: '#0072bc' },
   defaultColor: '#888888',
   lineOrder: ['A', 'K'],
@@ -61,6 +61,7 @@ const idle: RunFacts = {
   rebuilt: false,
   recoloured: false,
   reordered: false,
+  restyled: false,
   replaced: false,
 }
 const layoutRun = (state: RunFacts['state'], patch: Partial<RunFacts> = {}): RunFacts => ({
@@ -105,9 +106,10 @@ describe('the six cells', () => {
 })
 
 describe('cellOfRun', () => {
-  it('reads a rebuild as cell 03, a colour or an order as 05, anything else as 02', () => {
+  it('reads a rebuild as cell 03, sizes as 04, a colour or an order as 05, anything else as 02', () => {
     expect(cellOfRun(layoutRun('running'))).toBe('process')
     expect(cellOfRun(layoutRun('running', { rebuilt: true }))).toBe('frame')
+    expect(cellOfRun(layoutRun('running', { restyled: true }))).toBe('style')
     expect(cellOfRun(layoutRun('running', { recoloured: true }))).toBe('lines')
     expect(cellOfRun(layoutRun('running', { reordered: true }))).toBe('lines')
   })
@@ -120,6 +122,7 @@ describe('cellOfRun', () => {
   it('keeps a finished run with its own cell, so the failure lands there', () => {
     expect(cellOfRun(layoutRun('failed', { rebuilt: true }))).toBe('frame')
     expect(cellOfRun(layoutRun('done', { reordered: true }))).toBe('lines')
+    expect(cellOfRun(layoutRun('failed', { restyled: true }))).toBe('style')
   })
 })
 
@@ -223,9 +226,14 @@ describe('the cheap edits ADR-045 exempts', () => {
   const defaults = { ...current, defaultColor: '#123456' }
   const order = { ...current, lineOrder: ['K', 'A'] }
   const theme: ProjectRecord = { ...current, theme: 'sepia' }
+  // A size a person has set and the map has not been drawn with yet (issue
+  // 350): the redraw is the cell's own, so the record is ahead of the map
+  // for a moment and no cell is told so.
+  const sizes: ProjectRecord = { ...current, style: { lineWidth: 12, padding: 40 } }
 
   it('raise no staleness, because they redraw themselves', () => {
-    for (const record of [colours, defaults, order, theme]) {
+    // Mutation: a style source added to `stalenessOf`, as the day is.
+    for (const record of [colours, defaults, order, theme, sizes]) {
       expect(stalenessOf(record, null)).toEqual([])
       expect(states(record)).toEqual(all('ready'))
     }
@@ -240,9 +248,20 @@ describe('the cheap edits ADR-045 exempts', () => {
     )
   })
 
+  it('read as running on cell 04 while the redraw for sizes goes, and ready after', () => {
+    expect(states(sizes, layoutRun('running', { restyled: true }))).toEqual(
+      cells({ style: 'running' }),
+    )
+    expect(states(sizes, layoutRun('done', { restyled: true }))).toEqual(all('ready'))
+    // A redraw that failed is cell 04's error, and tells the cells below it.
+    expect(states(sizes, layoutRun('failed', { restyled: true }))).toEqual(
+      cells({ style: 'error', lines: 'stale', export: 'stale' }),
+    )
+  })
+
   it('are still on the record through `drawn`', () => {
     expect(drawnMatchesEdits(current)).toBe(true)
-    for (const record of [colours, defaults, order]) {
+    for (const record of [colours, defaults, order, sizes]) {
       expect(drawnMatchesEdits(record)).toBe(false)
     }
     // A record from before `drawn` has nothing to compare, and says so
@@ -261,6 +280,19 @@ describe('the cheap edits ADR-045 exempts', () => {
 
   it('sees an override removed as well as one added', () => {
     expect(drawnMatchesEdits({ ...current, colors: {} })).toBe(false)
+  })
+
+  it('compares the sizes by what is sent, so a size at the engine’s own number is no difference', () => {
+    // The draw sent nothing for it, so the map carries nothing; the record
+    // holding the engine's own number says the same.
+    expect(drawnMatchesEdits({ ...current, style: { lineWidth: 7 } })).toBe(true)
+    // A map drawn with a size matches the record that holds it, and not one
+    // that has since moved.
+    const drawnWith: ProjectRecord = { ...current, style: { lineWidth: 12 } }
+    const withSize: ProjectRecord = { ...drawnWith, drawn: drawnFrom(drawnWith) }
+    expect(drawnMatchesEdits(withSize)).toBe(true)
+    expect(drawnMatchesEdits({ ...withSize, style: { lineWidth: 13 } })).toBe(false)
+    expect(drawnMatchesEdits({ ...withSize, style: {} })).toBe(false)
   })
 })
 

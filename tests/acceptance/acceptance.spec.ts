@@ -1638,7 +1638,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
         "the calendar's own days: min and max were checked, not the platform's date picker.",
       )
       log.notAutomated(
-        'that cell 03 offers no crop, rotation, margin or clip mask, not even greyed out, and that the map moves to the hour the slider is left at.',
+        'that cell 03 offers no crop, rotation, margin or clip mask, not even greyed out, and says the margin is one of the sizes in cell 04, and that the map moves to the hour the slider is left at.',
       )
     })
 
@@ -1674,11 +1674,29 @@ test('a release, installed, through docs/acceptance.md', async () => {
           throw new Error(`Warm dark is not announced as pressed: ${await pressedState()}`)
         }
       })
-      await log.soft('the sentence about what the engine keeps', () =>
-        expect(window.locator('section.cell[data-cell="04"]')).toContainText(
-          'Line width, station size and label size are the engine’s own for now',
-        ),
-      )
+      const sizes = window.getByRole('region', { name: 'Sizes', exact: true })
+      await log.soft('eight size fields, each showing the engine’s own number', async () => {
+        for (const [name, value] of [
+          ['Line width', '7'],
+          ['Line gap', '1.6'],
+          ['Station radius', '4.2'],
+          ['Interchange radius', '6'],
+          ['Station outline', '2.2'],
+          ['Label size', '11'],
+          ['Label offset', '9'],
+          ['Margin', '24'],
+        ] as const)
+          await expect(sizes.getByLabel(name, { exact: true }), name).toHaveValue(value)
+        await expect(
+          sizes.getByRole('button', { name: 'Reset to the engine’s sizes', exact: true }),
+        ).toBeDisabled()
+        await expect(sizes).toContainText(
+          'In the map’s own units: the map is drawn 1,800 wide, so a line width of 7 is seven of 1,800.',
+        )
+        await expect(sizes).toContainText(
+          'The frame is padded, never cropped or rotated: a station is never cut off, and a tighter frame is a smaller margin.',
+        )
+      })
       const interfaceTheme = await window.locator('html').getAttribute('data-theme')
       const mark = (await saidSoFar(window)).length
       // The map takes its theme in place since engine v0.11.0 (issue 349), so
@@ -1713,8 +1731,84 @@ test('a release, installed, through docs/acceptance.md', async () => {
         ).not.toHaveAttribute('data-theme', 'sepia', { timeout: SHORT_MS })
         await expect.poll(async () => (await recordOf(window, LA)).theme).toBe('warm-dark')
       })
+      const mark2 = (await saidSoFar(window)).length
+      const width = sizes.getByLabel('Line width', { exact: true })
+      await width.fill('30')
+      await width.press('Enter')
+      await log.soft(
+        'a line width of 30 is refused beside the field, and nothing is stored',
+        async () => {
+          await expect(sizes.getByRole('alert')).toHaveText(
+            "style.line_width must be from 1 to 24, in SVG user units at the map's width",
+          )
+          expect((await recordOf(window, LA)).style).toEqual({})
+        },
+      )
+      await width.fill('12')
+      await width.press('Enter')
+      await until(
+        async () => ((await recordOf(window, LA)).style.lineWidth === 12 ? true : undefined),
+        REBUILD_MS,
+        () => 'the line width of 12 was never written to the project',
+      )
+      await log.soft('the redraw sentence, and the field keeps the figure', async () => {
+        expect((await saidSoFar(window)).slice(mark2)).toContain(
+          'Drawn in the sizes you chose, from the stored layout. The stations have not moved.',
+        )
+        await expect(width).toHaveValue('12')
+      })
+      // The row carries its sentence only while the cell is collapsed.
+      await closeCell(window, 'style')
+      await log.soft('collapsed, the row says the sizes are the person’s', () =>
+        expect(cellHeading(window, 'style').locator('.cell-summary')).toHaveText(
+          'Warm dark, sizes of your own',
+        ),
+      )
+      await openCell(window, 'style')
+      // The pair of radii, as the checklist asks: 8 against the interchange
+      // radius's own 6 is refused beside the field and nothing is stored,
+      // and 9 for the interchange radius takes both in one redraw.
+      const station = sizes.getByLabel('Station radius', { exact: true })
+      await station.fill('8')
+      await station.press('Enter')
+      await log.soft(
+        'a station radius of 8 against the interchange radius’s 6 is refused beside the field, and nothing is stored',
+        async () => {
+          await expect(sizes.getByRole('alert')).toHaveText(
+            'style.interchange_radius (6) must not be below style.station_radius (8); a field left out counts as its default, so send both',
+          )
+          await expect(station).toHaveAttribute('aria-invalid', 'true')
+          const kept = (await recordOf(window, LA)).style
+          expect(kept.stationRadius, 'the station radius was not stored').toBeUndefined()
+          expect(kept.interchangeRadius, 'nor the interchange radius').toBeUndefined()
+        },
+      )
+      const interchange = sizes.getByLabel('Interchange radius', { exact: true })
+      await interchange.fill('9')
+      await interchange.press('Enter')
+      await until(
+        async () => {
+          const { stationRadius, interchangeRadius } = (await recordOf(window, LA)).style
+          return stationRadius === 8 && interchangeRadius === 9 ? true : undefined
+        },
+        REBUILD_MS,
+        () => 'the pair of radii, 8 and 9, was never written to the project',
+      )
+      await log.soft('the refusal is gone once the pair agrees', () =>
+        expect(sizes.getByRole('alert')).toHaveCount(0),
+      )
+      await sizes.getByRole('button', { name: 'Reset to the engine’s sizes', exact: true }).click()
+      await until(
+        async () =>
+          Object.keys((await recordOf(window, LA)).style).length === 0 ? true : undefined,
+        REBUILD_MS,
+        () => 'Reset never put the sizes back to the engine’s own',
+      )
+      await log.soft('Reset shows the engine’s own number again', () =>
+        expect(width).toHaveValue('7'),
+      )
       log.notAutomated(
-        'whether the page looks sepia and then warm dark, and that nothing else in cell 04 offers to set line width, station size or label size.',
+        'whether the page looks sepia and then warm dark, and whether a line width of 12 draws the lines visibly thicker with no station moved.',
       )
     })
 

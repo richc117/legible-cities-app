@@ -756,7 +756,8 @@ test('Revert puts the day back to the one the map shows, and runs nothing', asyn
 
 // The frame's other settings are engine work and are not drawn at all, not
 // even disabled: a control with nowhere to send its value teaches a person
-// a lie (ADR-045). One sentence says what the cell will gain.
+// a lie (ADR-045). One sentence says where the margin is and what the frame
+// will not do (ADR-050, issue 350).
 test('cell 03 offers no frame control it cannot honour, and says why', async () => {
   const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
   await withApp(engineHome, async (page) => {
@@ -764,7 +765,9 @@ test('cell 03 offers no frame control it cannot honour, and says why', async () 
     await page.getByRole('button', { name: /lay out/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     const body = page.getByRole('group', { name: '03 Frame and service day', exact: true })
-    await expect(body).toContainText(/cropped, turned, margined and masked/)
+    await expect(body).toContainText(
+      /margin is one of the sizes in cell 04; the frame is padded and never cropped or rotated, and a clip mask waits on a designer.s intent/,
+    )
     // The cell's controls are the day's three and nothing else: no crop, no
     // rotation, no margin, no clip mask, not even greyed out.
     // By name, not by text: these are kit buttons, whose label lives in a

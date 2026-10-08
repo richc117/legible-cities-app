@@ -6,13 +6,64 @@ import { copyChoice, DEFAULT_CHOICE, validateExportChoice, type ExportChoice } f
 import { isLayoutId } from './layout'
 import { isStorableFolder } from './settings'
 
-export const RECORD_VERSION = 1
+// Version 2 (issue 350, ADR-049): the record's `style` is eight optional
+// numbers in the engine's own names, each unset until a person sets it. A
+// version-1 record held four numbers that were never sent and were not the
+// engine's, so what it meant has to be read differently (`readStyle`), and a
+// build that does not know the difference would misread the new one: that is
+// what moves the version (contracts/run-graph.md, "Adding a field").
+export const RECORD_VERSION = 2
 
+/**
+ * What a person chose for the map's sizes, in SVG user units at the map's
+ * width (1,800 by default, so a line width of 7 is seven of 1,800), except
+ * `lineGap`, a multiple of the line width. Every field is optional and the
+ * absence of one is the engine's own number: the app sends only what a
+ * person set (ADR-049). The names are the engine's `Style` in camel case.
+ */
 export interface ProjectStyle {
-  lineWidth: number
-  stationRadius: number
-  interchangeRadius: number
-  labelSize: number
+  lineWidth?: number
+  lineGap?: number
+  stationRadius?: number
+  interchangeRadius?: number
+  stationStroke?: number
+  labelSize?: number
+  labelOffset?: number
+  /** The margin round the drawing, on every side (ADR-050). */
+  padding?: number
+}
+
+/** The eight, in the order the cell draws them. */
+export const STYLE_KEYS = [
+  'lineWidth',
+  'lineGap',
+  'stationRadius',
+  'interchangeRadius',
+  'stationStroke',
+  'labelSize',
+  'labelOffset',
+  'padding',
+] as const satisfies readonly (keyof ProjectStyle)[]
+
+export type StyleKey = (typeof STYLE_KEYS)[number]
+
+/**
+ * What the engine accepts of each field: its name on the wire and its closed
+ * range, held to the engine's `render.STYLE_RANGES` (v0.12.0) by a unit test
+ * against the protocol's schema. `ratio` marks the one field with no unit, a
+ * multiple of the line width.
+ */
+export const STYLE_RANGES: Readonly<
+  Record<StyleKey, { wire: string; low: number; high: number; ratio: boolean }>
+> = {
+  lineWidth: { wire: 'line_width', low: 1, high: 24, ratio: false },
+  lineGap: { wire: 'line_gap', low: 1, high: 3, ratio: true },
+  stationRadius: { wire: 'station_radius', low: 1, high: 20, ratio: false },
+  interchangeRadius: { wire: 'interchange_radius', low: 1, high: 30, ratio: false },
+  stationStroke: { wire: 'station_stroke', low: 0, high: 8, ratio: false },
+  labelSize: { wire: 'label_size', low: 6, high: 32, ratio: false },
+  labelOffset: { wire: 'label_offset', low: 0, high: 40, ratio: false },
+  padding: { wire: 'padding', low: 0, high: 200, ratio: false },
 }
 
 /**
@@ -99,6 +150,14 @@ export interface DrawnFrom {
   defaultColor: string
   lineOrder: string[]
   theme: Theme
+  /**
+   * The sizes the map carries: what `map.build` was sent, in the app's names
+   * (`styleSent`), so empty for a map drawn without a style. Like the
+   * colours and the order it is a cheap edit's and raises no staleness; a
+   * block from before the field existed holds none, which is what it was
+   * drawn with (issue 350).
+   */
+  style: ProjectStyle
 }
 
 export interface ProjectRecord {
@@ -259,13 +318,36 @@ export interface DeleteResult {
   failed: { folder: 'project' | 'output'; reason: string }[]
 }
 
-// The engine's Style defaults at the pinned engine (render.py), as data.
-export const DEFAULT_STYLE: ProjectStyle = {
+/**
+ * The engine's `Style` numbers at the pinned engine (v0.12.0, `render.py`),
+ * as data. They are what a field shows while it is unset and what a value is
+ * compared with to know it is no choice at all; they are never sent. Until
+ * issue 350 this held `10, 8, 11, 26` under a comment calling them the
+ * engine's, and they were not (ADR-049); `OLD_STYLE` keeps them for the one
+ * place that still needs to recognise them.
+ */
+export const DEFAULT_STYLE: Readonly<Required<ProjectStyle>> = {
+  lineWidth: 7,
+  lineGap: 1.6,
+  stationRadius: 4.2,
+  interchangeRadius: 6,
+  stationStroke: 2.2,
+  labelSize: 11,
+  labelOffset: 9,
+  padding: 24,
+}
+
+/**
+ * What a version-1 record stored for the four numbers it had, which were
+ * never sent. A number equal to its old one is a number nobody chose, and is
+ * read as unset, field by field (`readStyle`).
+ */
+const OLD_STYLE = {
   lineWidth: 10,
   stationRadius: 8,
   interchangeRadius: 11,
   labelSize: 26,
-}
+} as const satisfies ProjectStyle
 export const DEFAULT_COLOR = '#888888'
 export const DEFAULT_THEME: Theme = 'warm-dark'
 export const DEFAULT_MODE = 'all'
@@ -477,13 +559,172 @@ export function validateMade(made: unknown): string | null {
   return null
 }
 
+// ---- The map's sizes (issue 350, ADR-049, ADR-050)
+
+/** A finite number, which is the only thing a field can hold. */
+const isFigure = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
+
 /**
- * What a record that has just been drawn was drawn from: the seven fields
- * of the record itself, copied. It is called on the record a handler is
- * about to write, never on the one it read, because the values the draw
- * used are the ones that write stores - the run is handed the record and
- * draws from it, and no cheap edit can land between the draw and the write
- * (the panels that make one are shut while a run holds the page).
+ * The engine's sentence for a number outside what a field accepts, word for
+ * word `serve._style`'s at v0.12.0, so a person is told what the engine
+ * would have said and the screen and the engine do not disagree about a
+ * word. It names the field the way the engine does (`style.line_width`).
+ */
+export function styleRangeSentence(key: StyleKey): string {
+  const { wire, low, high, ratio } = STYLE_RANGES[key]
+  return (
+    `style.${wire} must be from ${low} to ${high}, ` +
+    (ratio ? 'as a multiple of line_width' : "in SVG user units at the map's width")
+  )
+}
+
+/**
+ * Whether a value is one the engine accepts for a field: a finite number
+ * inside its closed range. Not-a-number, an infinity and a string are all
+ * refused with the range sentence, as the engine refuses them.
+ */
+export function inStyleRange(key: StyleKey, value: unknown): boolean {
+  const { low, high } = STYLE_RANGES[key]
+  return isFigure(value) && value >= low && value <= high
+}
+
+/**
+ * The engine's sentence for an interchange radius below the station radius,
+ * judged on the values the map would be drawn with. `serve._style`'s, word
+ * for word.
+ */
+export function radiiSentence(interchange: number, station: number): string {
+  return (
+    `style.interchange_radius (${interchange}) must not be below ` +
+    `style.station_radius (${station}); a field left out counts as its default, ` +
+    `so send both`
+  )
+}
+
+/**
+ * The engine's refusal of the pair of radii, or null: the interchange radius
+ * may not be below the station radius, judged on the values the map would be
+ * drawn with, a field left out counting as the engine's default. So a
+ * station radius above 6 with the interchange radius unset is refused too.
+ *
+ * Null as well when either number is outside its own range: the engine
+ * judges the ranges first and the pair only after them, and a number that is
+ * not one has no pair to be judged in.
+ */
+export function radiiRefusal(style: ProjectStyle): string | null {
+  const station = style.stationRadius ?? DEFAULT_STYLE.stationRadius
+  const interchange = style.interchangeRadius ?? DEFAULT_STYLE.interchangeRadius
+  if (!inStyleRange('stationRadius', station) || !inStyleRange('interchangeRadius', interchange))
+    return null
+  return interchange < station ? radiiSentence(interchange, station) : null
+}
+
+/**
+ * Why the engine would refuse this style, field by field, in its own
+ * sentences, before anything is sent; empty when it would take it.
+ *
+ * A number outside its range is that field's. The two radii are judged
+ * together (`radiiRefusal`), and the sentence is the interchange radius's,
+ * as the engine's names it first.
+ */
+export function styleRefusals(style: ProjectStyle): Partial<Record<StyleKey, string>> {
+  const refused: Partial<Record<StyleKey, string>> = {}
+  for (const key of STYLE_KEYS) {
+    if (style[key] !== undefined && !inStyleRange(key, style[key]))
+      refused[key] = styleRangeSentence(key)
+  }
+  const radii = radiiRefusal(style)
+  if (radii !== null) refused.interchangeRadius = radii
+  return refused
+}
+
+/**
+ * A style a store may be asked to write: an object of the eight fields, each
+ * a number the engine accepts, the pair of radii in order. Null when it is.
+ * The store is the trusted layer and checks it again after the bridge, as it
+ * does every other thing a person chose.
+ */
+export function validateStyle(style: unknown): string | null {
+  if (!isObject(style)) return 'the style must be an object'
+  for (const key of Object.keys(style)) {
+    if (!(STYLE_KEYS as readonly string[]).includes(key)) return `the style does not take ${key}`
+  }
+  const fields: ProjectStyle = {}
+  for (const key of STYLE_KEYS) {
+    const value = style[key]
+    if (value === undefined) continue
+    if (!inStyleRange(key, value)) return styleRangeSentence(key)
+    fields[key] = value as number
+  }
+  return Object.values(styleRefusals(fields))[0] ?? null
+}
+
+/** Is a field a choice? Unset, or at the engine's own number, it is not. */
+const chosen = (style: ProjectStyle, key: StyleKey): boolean =>
+  style[key] !== undefined && style[key] !== DEFAULT_STYLE[key]
+
+/**
+ * Has a person set any of the sizes? A field at the engine's own number is
+ * no choice - it would draw what is drawn without it - so it does not count,
+ * and the cell's summary says nothing of it.
+ */
+export function styleIsSet(style: ProjectStyle): boolean {
+  return STYLE_KEYS.some((key) => chosen(style, key))
+}
+
+/**
+ * The style as it is kept: the fields a person chose, and none at the
+ * engine's own number or unset. Out-of-range values are kept - they are
+ * refused where they are shown, and `styleSent` sends nothing until they
+ * are fixed.
+ */
+export function settledStyle(style: ProjectStyle): ProjectStyle {
+  const kept: ProjectStyle = {}
+  for (const key of STYLE_KEYS) if (chosen(style, key)) kept[key] = style[key]
+  return kept
+}
+
+/**
+ * Exactly what `map.build` is sent for a style, in the app's names: empty
+ * when nothing is chosen, so no `style` goes at all and the engine draws what
+ * it drew before the parameter existed; otherwise the chosen fields only
+ * (one at the engine's own number is not sent), with both radii whenever
+ * either is, the one not chosen as the engine's default, because the engine
+ * judges them together (ADR-049).
+ *
+ * A style the engine would refuse sends nothing: a record that holds one
+ * (a number written by hand, out of range) draws the map without it until
+ * the cell's refusal is dealt with, rather than failing every draw of the
+ * project, a colour change among them.
+ *
+ * The four colours the engine accepts are not in `ProjectStyle` and so can
+ * never be here: the page's theme owns the furniture (ADR-049).
+ */
+export function styleSent(style: ProjectStyle): ProjectStyle {
+  if (Object.keys(styleRefusals(style)).length > 0) return {}
+  const sent = settledStyle(style)
+  if (sent.stationRadius !== undefined || sent.interchangeRadius !== undefined) {
+    sent.stationRadius = style.stationRadius ?? DEFAULT_STYLE.stationRadius
+    sent.interchangeRadius = style.interchangeRadius ?? DEFAULT_STYLE.interchangeRadius
+  }
+  return sent
+}
+
+/** Two styles that send the same thing; a field at the engine's own number is no field. */
+export function sameStyle(a: ProjectStyle, b: ProjectStyle): boolean {
+  return STYLE_KEYS.every(
+    (key) => (a[key] ?? DEFAULT_STYLE[key]) === (b[key] ?? DEFAULT_STYLE[key]),
+  )
+}
+
+/**
+ * What a record that has just been drawn was drawn from: the eight fields
+ * of the record itself, copied (the style as `styleSent` makes it). It is
+ * called on the record a handler is about to write, never on the one it
+ * read, because the values the draw used are the ones that write stores -
+ * the run is handed the record and draws from it, and no cheap edit can
+ * land between the draw and the write (the panels that make one are shut
+ * while a run holds the page).
  *
  * A record with no layout has drawn nothing, and gets null.
  */
@@ -497,6 +738,7 @@ export function drawnFrom(record: ProjectRecord): DrawnFrom | null {
     defaultColor: record.defaultColor,
     lineOrder: [...record.lineOrder],
     theme: record.theme,
+    style: styleSent(record.style),
   }
 }
 
@@ -575,9 +817,6 @@ export function parseRecord(json: unknown): Parsed {
   const feed = json.feed
   if (!isString(feed) || !FEED_PATTERN.test(feed)) return { error: 'missing or invalid feed' }
 
-  const style = isObject(json.style) ? json.style : {}
-  const num = (v: unknown, d: number): number =>
-    typeof v === 'number' && Number.isFinite(v) ? v : d
   const colors: Record<string, string> = {}
   if (isObject(json.colors)) {
     // A label the app would refuse to write is a label it does not read
@@ -598,12 +837,7 @@ export function parseRecord(json: unknown): Parsed {
     agency: isString(json.agency) && json.agency.trim() !== '' ? json.agency : null,
     date: isString(json.date) && /^\d{4}-\d{2}-\d{2}$/.test(json.date) ? json.date : null,
     service: readServiceWindow(json.service),
-    style: {
-      lineWidth: num(style.lineWidth, DEFAULT_STYLE.lineWidth),
-      stationRadius: num(style.stationRadius, DEFAULT_STYLE.stationRadius),
-      interchangeRadius: num(style.interchangeRadius, DEFAULT_STYLE.interchangeRadius),
-      labelSize: num(style.labelSize, DEFAULT_STYLE.labelSize),
-    },
+    style: readStyle(json.style, version),
     colors,
     defaultColor: isColor(json.defaultColor) ? json.defaultColor : DEFAULT_COLOR,
     lineOrder: readLineOrder(json.lineOrder),
@@ -634,6 +868,35 @@ export function parseRecord(json: unknown): Parsed {
     modified: isString(json.modified) ? json.modified : epoch,
   }
   return { record, readOnly: version > RECORD_VERSION }
+}
+
+/**
+ * The sizes a record holds. A field is a finite number or it is unset; a
+ * number outside the engine's range is **kept**, not clamped and not
+ * dropped, so the cell shows what the record says and refuses it, and
+ * nothing is sent until a person fixes it (`styleSent`). A version-2 record
+ * is read as written.
+ *
+ * A version-1 record stored four numbers, `10, 8, 11, 26`, which were
+ * written by this app at creation, were never sent, and were not the
+ * engine's. Sending them would change every existing map (ADR-049), so a
+ * version-1 record is read **field by field**: a number equal to its old
+ * default is unset, and any other is a number somebody wrote, and is kept as
+ * set. Per field and not all-or-nothing, so that one number written by hand
+ * never sends the other three old defaults as if they were choices.
+ */
+function readStyle(value: unknown, version: number): ProjectStyle {
+  const stored = isObject(value) ? value : {}
+  const style: ProjectStyle = {}
+  for (const key of STYLE_KEYS) {
+    const field = stored[key]
+    if (typeof field === 'number' && Number.isFinite(field)) style[key] = field
+  }
+  if (version < 2) {
+    for (const key of Object.keys(OLD_STYLE) as (keyof typeof OLD_STYLE)[])
+      if (style[key] === OLD_STYLE[key]) delete style[key]
+  }
+  return style
 }
 
 /**
@@ -690,6 +953,9 @@ function readDrawn(value: unknown): DrawnFrom | null {
     defaultColor,
     lineOrder: [...(value.lineOrder as string[])],
     theme,
+    // Written as the draw sent it, so read as written; a block from before
+    // the field was drawn without one.
+    style: readStyle(value.style, RECORD_VERSION),
   }
 }
 

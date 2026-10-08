@@ -7,6 +7,7 @@ import {
   type LineOrder,
   type Palette,
   type ProjectRecord,
+  type ProjectStyle,
   type ServiceWindow,
 } from '../../../shared/project'
 import {
@@ -19,6 +20,7 @@ import {
 } from '../../../shared/jobs'
 import type { Diagnostics, MapBuildResult, Methods } from '../../../shared/protocol'
 import type { Stage } from '../ProgressLine'
+import { styleParams } from '../styleRules'
 
 // One layout run for one project, with no React in it: the rule is that
 // logic lives in something callable without rendering, and the tests are
@@ -43,9 +45,10 @@ import type { Stage } from '../ProgressLine'
 // it. A recolour is the same shape for a palette a person chose (A4-01):
 // the stored layout, the palette written only once the map carries it, and
 // the day the map already showed, never the record's, which may be a day
-// chosen and waiting to be drawn. Every draw, whichever
-// started it, sends the palette the project is being drawn with, so the
-// map on screen and the record never disagree.
+// chosen and waiting to be drawn. A restyle is the same shape for the map's
+// sizes (issue 350). Every draw, whichever started it, sends the palette,
+// the order and the style the project is being drawn with, so the map on
+// screen and the record never disagree.
 
 export interface RunSnapshot {
   state: RunState
@@ -73,6 +76,8 @@ export interface RunSnapshot {
   recoloured: boolean
   /** Set when the run is a redraw for a chosen line order: the map call alone (A4-02). */
   reordered: boolean
+  /** Set when the run is a redraw for chosen sizes: the map call alone (issue 350). */
+  restyled: boolean
   /** The day a rebuild drew for; null for a layout run. */
   day: string | null
   /** What the map call said about the map it drew; null until one has. */
@@ -250,6 +255,8 @@ export interface RunOptions {
   completeColors(id: string, palette: Palette): Promise<unknown>
   /** A redraw for a chosen line order finished: the order is written, never before the map is drawn. */
   completeOrder(id: string, order: LineOrder): Promise<unknown>
+  /** A redraw for chosen sizes finished: the style is written, never before the map is drawn. */
+  completeStyle(id: string, style: ProjectStyle): Promise<unknown>
   /** The anchor the engine's choice is made from: the machine's date, injected so a test can fix it. */
   today(): string
   /**
@@ -315,6 +322,7 @@ const IDLE: RunSnapshot = {
   rebuilt: false,
   recoloured: false,
   reordered: false,
+  restyled: false,
   day: null,
   report: null,
   download: null,
@@ -443,6 +451,7 @@ export class LayoutRun {
         rebuilt: false,
         recoloured: false,
         reordered: false,
+        restyled: false,
         day: null,
       })
     )
@@ -504,6 +513,7 @@ export class LayoutRun {
           date,
           paletteOf(project),
           orderOf(project),
+          project.style,
         )
         if (this.#cancelled) return this.#stopped()
 
@@ -549,6 +559,7 @@ export class LayoutRun {
         rebuilt: true,
         recoloured: false,
         reordered: false,
+        restyled: false,
         day: date,
         download: null,
         feedMissing: false,
@@ -561,6 +572,7 @@ export class LayoutRun {
         rebuilt: true,
         recoloured: false,
         reordered: false,
+        restyled: false,
         day: date,
       })
     )
@@ -568,7 +580,14 @@ export class LayoutRun {
 
     void (async () => {
       try {
-        const report = await this.#draw(project, layout, date, paletteOf(project), orderOf(project))
+        const report = await this.#draw(
+          project,
+          layout,
+          date,
+          paletteOf(project),
+          orderOf(project),
+          project.style,
+        )
         if (this.#cancelled) return this.#stopped()
         await completeRebuild(project.id, { date })
         this.#finish({ changed: false, relaid: false }, report)
@@ -603,6 +622,7 @@ export class LayoutRun {
         rebuilt: false,
         recoloured: true,
         reordered: false,
+        restyled: false,
         day: date,
         download: null,
         feedMissing: false,
@@ -615,6 +635,7 @@ export class LayoutRun {
         rebuilt: false,
         recoloured: true,
         reordered: false,
+        restyled: false,
         day: date,
       })
     )
@@ -622,7 +643,14 @@ export class LayoutRun {
 
     void (async () => {
       try {
-        const report = await this.#draw(project, layout, date, palette, orderOf(project))
+        const report = await this.#draw(
+          project,
+          layout,
+          date,
+          palette,
+          orderOf(project),
+          project.style,
+        )
         if (this.#cancelled) return this.#stopped()
         await completeColors(project.id, palette)
         this.#finish({ changed: false, relaid: false }, report)
@@ -655,6 +683,7 @@ export class LayoutRun {
         rebuilt: false,
         recoloured: false,
         reordered: true,
+        restyled: false,
         day: date,
         download: null,
         feedMissing: false,
@@ -667,6 +696,7 @@ export class LayoutRun {
         rebuilt: false,
         recoloured: false,
         reordered: true,
+        restyled: false,
         day: date,
       })
     )
@@ -674,9 +704,84 @@ export class LayoutRun {
 
     void (async () => {
       try {
-        const report = await this.#draw(project, layout, date, paletteOf(project), order)
+        const report = await this.#draw(
+          project,
+          layout,
+          date,
+          paletteOf(project),
+          order,
+          project.style,
+        )
         if (this.#cancelled) return this.#stopped()
         await completeOrder(project.id, order)
+        this.#finish({ changed: false, relaid: false }, report)
+      } catch (reason) {
+        this.#failed(reason)
+      }
+    })()
+  }
+
+  /**
+   * The map alone, from the stored layout, for the day it already showed,
+   * with the sizes a person chose (issue 350, ADR-049). The same shape as a
+   * recolour: the layout stages never run and the day never moves - the day
+   * the map already showed is drawn again - and the style is written only
+   * when the map has been drawn with it, so the record never claims a size
+   * the page on screen does not show. A size is a render, never a layout:
+   * the stations do not move, and the labels it re-places move the drawing's
+   * box and nothing else.
+   *
+   * `map.build` is sent a `style` only for a style that sets something
+   * (`styleParams`), so a project whose sizes are all the engine's own asks
+   * for exactly what it asked for before the parameter existed.
+   */
+  restyle(project: ProjectRecord, engine: EngineState | null, style: ProjectStyle): void {
+    if (this.#snapshot.state === 'running') return
+    const { completeStyle } = this.#options
+    this.#open('rebuild', 'Redraw in new sizes', project.id)
+    const layout = project.layout
+    // The drawn day, as a recolour takes it, and for the same reason.
+    const date = drawnDate(project)
+    if (layout === null || date === null) {
+      this.#set({
+        state: 'failed',
+        error: 'Lay the project out before choosing sizes.',
+        forced: false,
+        replaced: false,
+        rebuilt: false,
+        recoloured: false,
+        reordered: false,
+        restyled: true,
+        day: date,
+        download: null,
+        feedMissing: false,
+      })
+      return
+    }
+    if (
+      !this.#begin(engine, {
+        forced: false,
+        rebuilt: false,
+        recoloured: false,
+        reordered: false,
+        restyled: true,
+        day: date,
+      })
+    )
+      return
+
+    void (async () => {
+      try {
+        const report = await this.#draw(
+          project,
+          layout,
+          date,
+          paletteOf(project),
+          orderOf(project),
+          style,
+        )
+        if (this.#cancelled) return this.#stopped()
+        await completeStyle(project.id, style)
         this.#finish({ changed: false, relaid: false }, report)
       } catch (reason) {
         this.#failed(reason)
@@ -692,6 +797,7 @@ export class LayoutRun {
       rebuilt: boolean
       recoloured: boolean
       reordered: boolean
+      restyled: boolean
       day: string | null
     },
   ): boolean {
@@ -738,7 +844,8 @@ export class LayoutRun {
    * The map call, from a layout by its id, for a day, in a palette; its
    * stages reported as they finish. The palette is an argument rather than
    * the project's, because a colour change draws before it is stored, as a
-   * chosen day is drawn before it is stored (A3-04, A4-01).
+   * chosen day is drawn before it is stored (A3-04, A4-01); the order and
+   * the style are arguments for the same reason.
    *
    * It answers what the engine measured rather than setting it: the figures
    * belong to a finished run, beside the sentence that says it finished, so
@@ -751,6 +858,7 @@ export class LayoutRun {
     date: string,
     palette: Palette,
     order: LineOrder,
+    style: ProjectStyle,
   ): Promise<RunReport | null> {
     const map = this.#options.client.request('map.build', {
       key: project.feed,
@@ -769,6 +877,11 @@ export class LayoutRun {
       // first and every other line after them, so a stale arrangement can
       // neither drop a line nor draw one twice (engine issue 28).
       ...(order.length === 0 ? {} : { line_order: order }),
+      // The sizes, the same way (issue 350): left out when nothing is set,
+      // so a project nobody has sized asks for exactly what it asked for
+      // before the engine took a style, and only the fields a person set go
+      // when something is. Never a colour: the page's theme owns those.
+      ...styleParams(style),
     })
     this.#inFlight = map
     map.onProgress((p) => this.#report(p))

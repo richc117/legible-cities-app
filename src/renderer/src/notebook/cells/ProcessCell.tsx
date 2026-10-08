@@ -64,7 +64,10 @@ export default function ProcessCell({ cell, state, open, onToggle }: CellViewPro
       state={state}
       summary={processSummary(project)}
       progress={runRowStatus(runSnapshot, cell.id)}
-      hold={runSnapshot.state === 'running' && (runSnapshot.recoloured || runSnapshot.reordered)}
+      hold={
+        runSnapshot.state === 'running' &&
+        (runSnapshot.recoloured || runSnapshot.reordered || runSnapshot.restyled)
+      }
       open={open}
       onToggle={onToggle}
       footer={processFooter(project, engine)}

@@ -4,7 +4,6 @@ import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_COLOR,
   DEFAULT_MODE,
-  DEFAULT_STYLE,
   DEFAULT_THEME,
   drawnFrom,
   ID_PATTERN,
@@ -36,7 +35,7 @@ const WINDOW = {
 
 // The record from contracts/record.md, verbatim.
 const full: ProjectRecord = {
-  version: 1,
+  version: RECORD_VERSION,
   id: 'kq7x2mzp4dna',
   name: 'Los Angeles',
   feed: 'la-metro-rail',
@@ -44,7 +43,7 @@ const full: ProjectRecord = {
   agency: null,
   date: null,
   service: null,
-  style: { lineWidth: 10, stationRadius: 8, interchangeRadius: 11, labelSize: 26 },
+  style: {},
   colors: {},
   defaultColor: '#888888',
   lineOrder: [],
@@ -275,7 +274,12 @@ describe('parseRecord', () => {
     expect(parseRecord(structuredClone(full))).toEqual({ record: full, readOnly: false })
   })
   it('fills defaults for missing optional fields', () => {
-    const parsed = parseRecord({ version: 1, id: full.id, name: 'Minimal', feed: 'la-metro-rail' })
+    const parsed = parseRecord({
+      version: RECORD_VERSION,
+      id: full.id,
+      name: 'Minimal',
+      feed: 'la-metro-rail',
+    })
     expect('record' in parsed).toBe(true)
     if (!('record' in parsed)) return
     expect(parsed.readOnly).toBe(false)
@@ -287,7 +291,8 @@ describe('parseRecord', () => {
       mode: DEFAULT_MODE,
       agency: null,
       date: null,
-      style: DEFAULT_STYLE,
+      // Nothing chosen: every size is the engine's own (issue 350).
+      style: {},
       colors: {},
       defaultColor: DEFAULT_COLOR,
       lineOrder: [],
@@ -327,7 +332,7 @@ describe('parseRecord', () => {
       mode: DEFAULT_MODE,
       agency: 'Metro',
       date: '2026-09-07',
-      style: { ...DEFAULT_STYLE, lineWidth: 12 },
+      style: { lineWidth: 12 },
       colors: { A: '#ff0000' },
       defaultColor: DEFAULT_COLOR,
       lineOrder: ['A', 'B'],
@@ -394,9 +399,10 @@ describe('parseRecord', () => {
     }
   })
   it('marks a record from a later version read-only without rewriting it', () => {
-    const parsed = parseRecord({ ...full, version: 2, future: 'field' })
+    const later = RECORD_VERSION + 1
+    const parsed = parseRecord({ ...full, version: later, future: 'field' })
     expect('record' in parsed && parsed.readOnly).toBe(true)
-    if ('record' in parsed) expect(parsed.record.version).toBe(2)
+    if ('record' in parsed) expect(parsed.record.version).toBe(later)
   })
   it('refuses a record without its identity', () => {
     const noId: Record<string, unknown> = { ...full }
@@ -433,7 +439,7 @@ describe('drawn', () => {
     theme: 'sepia',
   }
 
-  it('is the record’s own seven fields, copied', () => {
+  it('is the record’s own eight fields, copied', () => {
     expect(drawnFrom(drew)).toEqual({
       layout: LAYOUT,
       made: MADE,
@@ -442,6 +448,7 @@ describe('drawn', () => {
       defaultColor: drew.defaultColor,
       lineOrder: ['A', 'K'],
       theme: 'sepia',
+      style: {},
     })
     // Copied, not shared: a later edit to the record must not rewrite what
     // the map was drawn from under it.

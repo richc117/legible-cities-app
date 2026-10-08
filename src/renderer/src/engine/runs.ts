@@ -266,6 +266,7 @@ export function layoutRunFor(projectId: string): LayoutRun {
     completeRebuild: (id, done) => window.api.projects.completeRebuild(id, done),
     completeColors: (id, palette) => window.api.projects.completeColors(id, palette),
     completeOrder: (id, order) => window.api.projects.completeOrder(id, order),
+    completeStyle: (id, style) => window.api.projects.completeStyle(id, style),
     today,
     // Asked afresh as a layout ends before its first stage: the list the
     // screens hold was read before the download (issue 178).

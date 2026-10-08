@@ -26,9 +26,9 @@ import {
 } from '../../src/main/replace-file'
 import {
   DEFAULT_COLOR,
-  DEFAULT_STYLE,
   DEFAULT_THEME,
   ID_PATTERN,
+  RECORD_VERSION,
   type ProjectRecord,
 } from '../../src/shared/project'
 
@@ -53,7 +53,7 @@ const B = 'bbbbbbbbbbbb'
 
 function record(id: string, overrides: Partial<ProjectRecord> = {}): ProjectRecord {
   return {
-    version: 1,
+    version: RECORD_VERSION,
     id,
     name: 'Seed',
     feed: 'la-metro-rail',
@@ -61,7 +61,7 @@ function record(id: string, overrides: Partial<ProjectRecord> = {}): ProjectReco
     agency: null,
     date: null,
     service: null,
-    style: { ...DEFAULT_STYLE },
+    style: {},
     colors: {},
     defaultColor: DEFAULT_COLOR,
     lineOrder: [],
@@ -132,7 +132,7 @@ describe('create', () => {
     // Field order and layout are the contract's: built here in that order
     // so the comparison covers both.
     const expected = {
-      version: 1,
+      version: RECORD_VERSION,
       id: created.id,
       name: 'Los Angeles',
       feed: 'la-metro-rail',
@@ -140,7 +140,9 @@ describe('create', () => {
       agency: null,
       date: null,
       service: null,
-      style: { lineWidth: 10, stationRadius: 8, interchangeRadius: 11, labelSize: 26 },
+      // A new project has chosen nothing: every size is the engine's own
+      // until a person sets one (issue 350).
+      style: {},
       colors: {},
       defaultColor: '#888888',
       lineOrder: [],
@@ -236,7 +238,7 @@ describe('list', () => {
     ])
   })
   it('marks a record from a later version read-only', async () => {
-    await seed(A, record(A, { version: 2 }))
+    await seed(A, record(A, { version: RECORD_VERSION + 1 }))
     expect((await store.list())[0]).toMatchObject({ id: A, readOnly: true })
   })
   it('orders by when a project was last opened, not when it was last changed', async () => {
@@ -351,7 +353,10 @@ describe('destinations', () => {
   })
 
   it('counts a project a newer version of the app made, which is read-only here', async () => {
-    await seed(A, record(A, { version: 2, name: 'Newer', destination: videos('newer') }))
+    await seed(
+      A,
+      record(A, { version: RECORD_VERSION + 1, name: 'Newer', destination: videos('newer') }),
+    )
     expect((await store.get(A)).readOnly).toBe(true)
     expect(await store.destinations()).toEqual([
       { id: A, name: 'Newer', destination: videos('newer') },
@@ -419,7 +424,7 @@ describe('markOpened', () => {
   })
 
   it('leaves a project a newer build made exactly as it was', async () => {
-    await seed(A, record(A, { version: 2 }))
+    await seed(A, record(A, { version: RECORD_VERSION + 1 }))
     const before = await readFile(join(root, A, 'project.json'), 'utf8')
     await store.markOpened(A)
     expect(await readFile(join(root, A, 'project.json'), 'utf8')).toBe(before)
@@ -442,11 +447,11 @@ describe('markOpened', () => {
 describe('get', () => {
   it('returns the record with readOnly false, or true for a later version', async () => {
     await seed(A, record(A, { name: 'Current' }))
-    await seed(B, record(B, { name: 'Future', version: 2 }))
+    await seed(B, record(B, { name: 'Future', version: RECORD_VERSION + 1 }))
     expect(await store.get(A)).toEqual({ ...record(A, { name: 'Current' }), readOnly: false })
     const future = await store.get(B)
     expect(future.readOnly).toBe(true)
-    expect(future.version).toBe(2)
+    expect(future.version).toBe(RECORD_VERSION + 1)
     expect(future.name).toBe('Future')
   })
   it('rejects an unknown or malformed identifier without a path', async () => {
@@ -498,7 +503,7 @@ describe('rename', () => {
     expect(await readdir(join(root, A))).toEqual(['project.json'])
   })
   it('refuses a record from a later version and leaves it as it was', async () => {
-    await seed(A, record(A, { version: 2, name: 'Future' }))
+    await seed(A, record(A, { version: RECORD_VERSION + 1, name: 'Future' }))
     const before = await readFile(join(root, A, 'project.json'), 'utf8')
     await expect(store.rename(A, 'Renamed')).rejects.toThrow(/^read-only$/)
     expect(await readFile(join(root, A, 'project.json'), 'utf8')).toBe(before)
@@ -1218,6 +1223,117 @@ describe('completeOrder', () => {
   })
 })
 
+// The sizes a person chose (issue 350, ADR-049), written once the map has
+// been drawn with them, as the colours and the order are.
+describe('completeStyle', () => {
+  const LAYOUT = 'a'.repeat(64)
+
+  async function laidOut(): Promise<ProjectRecord> {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    await store.completeLayout(project.id, {
+      date: '2026-09-15',
+      layout: LAYOUT,
+      service: WINDOW,
+      made: MADE,
+      built: BUILT,
+    })
+    return project
+  }
+
+  it('writes the style and the time, and nothing else', async () => {
+    const project = await laidOut()
+    const before = await store.get(project.id)
+    expect(before.style, 'a new project has chosen nothing').toEqual({})
+    const after = await store.completeStyle(project.id, { lineWidth: 12, labelSize: 20 })
+    expect(after.style).toEqual({ lineWidth: 12, labelSize: 20 })
+    expect(after.layout, 'a size is a render, never a layout').toBe(LAYOUT)
+    expect(after.date).toBe(before.date)
+    expect(after.colors).toEqual(before.colors)
+    expect(after.lineOrder).toEqual(before.lineOrder)
+    expect(after.modified >= before.modified).toBe(true)
+    expect(await store.get(project.id), 'and it is on disk').toEqual({ ...after, readOnly: false })
+  })
+
+  it('records what the map was drawn with, and keeps the day the map showed', async () => {
+    const project = await laidOut()
+    await store.setDate(project.id, '2026-09-12')
+    const after = await store.completeStyle(project.id, { stationRadius: 5 })
+    expect(after.drawn?.style, 'both radii go together').toEqual({
+      stationRadius: 5,
+      interchangeRadius: 6,
+    })
+    expect(after.drawn?.date, 'a size is a redraw of the same day').toBe('2026-09-15')
+    expect(after.date, 'and the day a person chose is still waiting').toBe('2026-09-12')
+  })
+
+  it('replaces the style rather than merging it, so a reset really resets', async () => {
+    const project = await laidOut()
+    await store.completeStyle(project.id, { lineWidth: 12 })
+    const after = await store.completeStyle(project.id, {})
+    expect(after.style).toEqual({})
+    expect(after.drawn?.style).toEqual({})
+  })
+
+  it('keeps nothing at the engine’s own number, which is no choice', async () => {
+    const project = await laidOut()
+    const after = await store.completeStyle(project.id, { lineWidth: 7, padding: 40 })
+    expect(after.style).toEqual({ padding: 40 })
+  })
+
+  it('reads the same style back on the next open, which is the whole point', async () => {
+    const project = await laidOut()
+    await store.completeStyle(project.id, { lineWidth: 12, padding: 0 })
+    const fresh = new ProjectStore(home, (message) => lines.push(message))
+    expect((await fresh.get(project.id)).style).toEqual({ lineWidth: 12, padding: 0 })
+  })
+
+  it('refuses what the engine would, and writes nothing', async () => {
+    const project = await laidOut()
+    for (const style of [
+      { lineWidth: 25 },
+      { lineGap: 0.5 },
+      { padding: -1 },
+      { labelSize: '12' },
+      { lineWidth: Infinity },
+      // The pair of radii, judged as the engine judges it.
+      { stationRadius: 8 },
+      { stationRadius: 5, interchangeRadius: 4 },
+      // Nothing the engine takes that is not one of the eight.
+      { background: '#000000' },
+      'big',
+      null,
+    ]) {
+      await expect(
+        store.completeStyle(project.id, style as never),
+        JSON.stringify(style),
+      ).rejects.toThrow()
+    }
+    expect((await store.get(project.id)).style, 'nothing was written').toEqual({})
+  })
+
+  it('says the engine’s sentence for a number out of range', async () => {
+    const project = await laidOut()
+    await expect(store.completeStyle(project.id, { lineWidth: 30 })).rejects.toThrow(
+      "style.line_width must be from 1 to 24, in SVG user units at the map's width",
+    )
+  })
+
+  it('refuses a project with no layout: there is nothing to draw in those sizes', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    await expect(store.completeStyle(project.id, { lineWidth: 12 })).rejects.toThrow(
+      'lay the project out first',
+    )
+  })
+
+  it('refuses a record a newer version of the app wrote', async () => {
+    const project = await laidOut()
+    const file = join(home, 'projects', project.id, 'project.json')
+    const current = await store.get(project.id)
+    await writeFile(file, JSON.stringify({ ...current, version: 99 }), 'utf8')
+    await expect(store.completeStyle(project.id, { lineWidth: 12 })).rejects.toThrow('read-only')
+  })
+})
+
 // The theme a project's map is drawn in (A4-03), written the moment it is
 // pressed: it is neither a layout nor a render, so there is nothing to wait
 // for and no project needs a layout to have one.
@@ -1416,6 +1532,7 @@ describe('drawn', () => {
       defaultColor: DEFAULT_COLOR,
       lineOrder: [],
       theme: DEFAULT_THEME,
+      style: {},
     })
   })
 

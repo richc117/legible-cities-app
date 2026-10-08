@@ -1,4 +1,4 @@
-import type { ProjectRecord } from '../../shared/project'
+import { sameStyle, styleSent, type ProjectRecord } from '../../shared/project'
 import type { ExportSnapshot } from './engine/exportRun'
 import { downloading, type RunSnapshot } from './engine/layoutRun'
 import { sameOrder } from './order'
@@ -85,7 +85,14 @@ export interface CellStatus {
  */
 export type RunFacts = Pick<
   RunSnapshot,
-  'state' | 'rebuilt' | 'recoloured' | 'reordered' | 'replaced' | 'download' | 'feedMissing'
+  | 'state'
+  | 'rebuilt'
+  | 'recoloured'
+  | 'reordered'
+  | 'restyled'
+  | 'replaced'
+  | 'download'
+  | 'feedMissing'
 >
 
 /** What the derivation reads of an export. */
@@ -111,9 +118,9 @@ export interface RunGraphInput {
 
 /**
  * Which cell a layout run belongs to, from the snapshot's own flags: a
- * rebuild for a chosen day is cell 03's, a recolour or a reorder is cell
- * 05's, and anything else - a layout, a re-layout - is cell 02's. An idle
- * run belongs to no cell.
+ * rebuild for a chosen day is cell 03's, a redraw for sizes is cell 04's, a
+ * recolour or a reorder is cell 05's, and anything else - a layout, a
+ * re-layout - is cell 02's. An idle run belongs to no cell.
  *
  * It is one function rather than a condition in each view because getting
  * it wrong shows `running` on the wrong cell for minutes at a time, and one
@@ -128,6 +135,7 @@ export function cellOfRun(run: RunFacts | null): CellId | null {
   // registry's answer (`feedMissing`), never how far the bytes had come.
   if (run.state === 'running' ? downloading(run) : run.feedMissing === true) return 'data'
   if (run.rebuilt) return 'frame'
+  if (run.restyled) return 'style'
   if (run.recoloured || run.reordered) return 'lines'
   return 'process'
 }
@@ -149,9 +157,10 @@ const at = (cell: CellId): number => CELLS.indexOf(cell)
  * Everything about this project that has moved since the map on screen was
  * drawn, in cell order.
  *
- * The cheap edits are deliberately absent: the colours, the order and the
- * theme redraw themselves as A4-01, A4-02 and A4-03 built them, so their
- * cell reads `running` while they do and never `stale` (ADR-045). Their
+ * The cheap edits are deliberately absent: the colours, the order, the
+ * theme and the map's sizes redraw themselves as A4-01, A4-02, A4-03 and
+ * issue 350 built them, so their cell reads `running` while they do and
+ * never `stale` (ADR-045). Their
  * values are still kept in `drawn`, which is what any draw copies whole;
  * Revert reads only its day (A5.5-12, contracts/run-graph.md).
  *
@@ -204,8 +213,8 @@ export function stalenessOf(record: GraphRecord, run: RunFacts | null): StaleSou
  * returns a cell to what it was - and a running cell makes nothing below it
  * stale, because running is not a change to anything yet.
  *
- * The four cheap-edit exemptions of ADR-045 fall out of `stalenessOf`
- * raising no source for a colour, a default colour, an order or a theme.
+ * The cheap-edit exemptions of ADR-045 fall out of `stalenessOf` raising
+ * no source for a colour, a default colour, an order, a theme or a size.
  */
 export function runGraph(input: RunGraphInput): Record<CellId, CellStatus> {
   const { record, run, exportRun } = input
@@ -265,8 +274,8 @@ function nearestAbove(sources: readonly StaleSource[], cell: CellId): StaleSourc
 }
 
 /**
- * Whether the record's colours and order are the ones the map on screen
- * carries. Not a staleness source - the cheap edits redraw themselves - but
+ * Whether the record's colours, order and sizes are the ones the map on
+ * screen carries. Not a staleness source - the cheap edits redraw themselves - but
  * a cell's summary may want the answer (A5.5-18). Revert does not: the
  * store writes the colours and the order together with `drawn`, so for a
  * record this build wrote the answer is always yes, and a no means the
@@ -297,6 +306,7 @@ export function drawnMatchesEdits(record: ProjectRecord): boolean {
   return (
     drawn.defaultColor === record.defaultColor &&
     sameOrder(drawn.lineOrder, record.lineOrder) &&
+    sameStyle(drawn.style, styleSent(record.style)) &&
     labels.length === Object.keys(drawn.colors).length &&
     labels.every((label) => drawn.colors[label] === record.colors[label])
   )

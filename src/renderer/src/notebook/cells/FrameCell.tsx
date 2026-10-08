@@ -22,11 +22,12 @@ import { runRowStatus } from '../runRow'
 // heading and not the toggle inside it: a reflexive Enter after "Draw for
 // this day" would otherwise collapse the cell a person is working in.
 //
-// The cell is named for the frame as well, and holds none of it. Crop,
-// rotate, margin and a clip mask are engine work that the protocol cannot
-// take, so none of them is drawn as a disabled control: a control with
-// nowhere to send its value teaches a person a lie (ADR-045). One sentence
-// says what the cell will gain instead.
+// The cell is named for the frame as well, and holds none of it. The frame's
+// margin is a size and is set in cell 04 (issue 350); the frame is padded and
+// never cropped or rotated (ADR-050); a clip mask waits on a designer's
+// intent. So none of them is drawn here as a control, disabled or not: a
+// control with nowhere to send its value teaches a person a lie (ADR-045).
+// One sentence says where the margin is and what the frame will not do.
 //
 // The cell holds two sections now (A5.5-16). Below the day is the
 // transport - the scrub, Play day and the speed - which drives the engine's
@@ -160,9 +161,9 @@ export default function FrameCell({ cell, state, open, onToggle }: CellViewProps
             />
           )}
           <p className="prose">
-            How the map is cropped, turned, margined and masked belongs in this cell too, and none
-            of it is drawn: the engine takes no such setting yet, so the cell holds the day alone
-            until it can.
+            The frame&rsquo;s margin is one of the sizes in cell 04; the frame is padded and never
+            cropped or rotated, and a clip mask waits on a designer&rsquo;s intent, so this cell
+            holds the day alone.
           </p>
           {/* The page's own transport (A5.5-16). Only where there is a page
               to drive: a project with no layout has no frame on the screen

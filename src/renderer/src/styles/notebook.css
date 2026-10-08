@@ -164,6 +164,39 @@
   overflow-wrap: anywhere;
 }
 
+/* Cell 04's sizes (issue 350): one row each, the name in the terms' column
+   so every control in the cell starts at the x every value in the cell does
+   (issue 281), the control and what it takes beside it. The name is centred
+   on the control and wraps inside its column where it is long; what is
+   under the control is its range and, if it was refused, the engine's
+   sentence. */
+.style-field {
+  display: grid;
+  grid-template-columns: var(--fields-term-width) minmax(0, 1fr);
+  column-gap: var(--space-4-4);
+  align-items: start;
+  max-width: var(--measure);
+  margin: 0 0 var(--space-4-3);
+}
+
+.style-field label {
+  display: flex;
+  align-items: center;
+  min-height: var(--control-height);
+  font-weight: var(--weight-strong);
+  overflow-wrap: anywhere;
+}
+
+.style-control {
+  display: grid;
+  gap: var(--space-2-2);
+  min-width: 0;
+}
+
+.style-control fig-input-text {
+  width: 100%;
+}
+
 /* Provenance, out of the way: the layout's id and when it was made, the
    day against the feed's window, the export's sidecar (A5.5-11). */
 .cell-footer {
