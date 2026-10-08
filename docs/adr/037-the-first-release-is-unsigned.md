@@ -53,6 +53,8 @@ afternoon. The results below are filled in from the runs against that
 candidate, which A5.6-08 and A5.6-09 rewrite the documents for and #37
 carries:
 
+**As of 8 Oct 2026:** 0.1.0 was published unsigned on the maintainer's word before the three person runs were recorded; the automated run passed against `v0.1.0` on both runners (`acceptance.yml` run 37806989926, the records on #37), which measures none of the three blocks below. They stay open for the person runs on 0.1.0, and this record stays Proposed until they are filled.
+
 [RESULTS, the stranger: the time from the release page to the first window and to the first reel; where they stalled; whether they passed the unsigned-app warning unaided]
 
 [RESULTS, the clean Mac: macOS version, what Gatekeeper showed and whether install.md matched it]
