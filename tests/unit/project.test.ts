@@ -280,12 +280,19 @@ describe('parseRecord', () => {
     }
     const kept = parseRecord({ ...structuredClone(full), export: choice })
     expect('record' in kept && kept.record.export).toEqual(choice)
-    // A blank alt text is no alt text and costs the choice nothing.
-    const blank = parseRecord({ ...structuredClone(full), export: { ...choice, alt: '  ' } })
-    expect('record' in blank && blank.record.export.preset).toBe('linkedin-video')
+    // An alt text that cannot be used - blank, over 1,000 characters, not
+    // text - is read as none and costs the choice nothing: it is not a plan
+    // option.
+    for (const alt of ['  ', '\u001c\u0085', 'x'.repeat(1001), 4, null]) {
+      const read = parseRecord({ ...structuredClone(full), export: { ...choice, alt } })
+      expect('record' in read && read.record.export, JSON.stringify(alt).slice(0, 20)).toEqual({
+        preset: 'linkedin-video',
+        options: { caption: 'Rush hour', clock_corner: 'top-right' },
+      })
+    }
+    // Any other fault in the choice still gives it up for the reel.
     for (const broken of [
-      { ...choice, alt: 'x'.repeat(1001) },
-      { ...choice, alt: 4 },
+      { ...choice, alt: 'x'.repeat(1001), options: { caption: 'x'.repeat(81) } },
       { preset: 'linkedin-video', options: { caption: 'x'.repeat(81) } },
       { preset: 'linkedin-video', options: { caption: 'two\nlines' } },
       { preset: 'linkedin-video', options: { clock_corner: 'middle' } },

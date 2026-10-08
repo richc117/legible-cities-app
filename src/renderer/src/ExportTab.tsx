@@ -253,12 +253,9 @@ export default function ExportTab({
     caption: choice.options.caption !== undefined,
   }
   const corners = preset ? offeredCorners(preset, nameBlock) : []
-  const corner =
-    choice.options.clock_corner !== undefined && corners.includes(choice.options.clock_corner)
-      ? choice.options.clock_corner
-      : preset
-        ? defaultCorner(preset)
-        : 'bottom-right'
+  // `usable` has already taken out a corner this preset would refuse, so the
+  // choice's own is on offer whenever it names one.
+  const corner = choice.options.clock_corner ?? (preset ? defaultCorner(preset) : 'bottom-right')
   const key = keyOf(choice, project)
   const refused = refusal !== null && refusal.key === key
 

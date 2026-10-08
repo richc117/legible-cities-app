@@ -2,7 +2,7 @@
 // so the preload, the renderer and the main process share one definition
 // and the unit tests run in Node. Contract: specs/003-project/contracts/record.md.
 
-import { copyChoice, DEFAULT_CHOICE, validateExportChoice, type ExportChoice } from './export'
+import { readStoredChoice, type ExportChoice } from './export'
 import { isLayoutId } from './layout'
 import { isStorableFolder } from './settings'
 
@@ -843,11 +843,10 @@ export function parseRecord(json: unknown): Parsed {
     lineOrder: readLineOrder(json.lineOrder),
     theme: isTheme(json.theme) ? json.theme : DEFAULT_THEME,
     // Whole or not at all, as the service window is: a half-valid choice
-    // is not half-trusted, and the tab starts from the reel.
-    export:
-      validateExportChoice(json.export) === null
-        ? copyChoice(json.export as ExportChoice)
-        : copyChoice(DEFAULT_CHOICE),
+    // is not half-trusted, and the tab starts from the reel. The one
+    // exception is an alt text that cannot be used, which is read as none
+    // (`readStoredChoice`): it is not a plan option.
+    export: readStoredChoice(json.export),
     // Missing, or anything that is not a folder this app would store, is
     // the app's own export folder: absent means "not told otherwise", never
     // "somewhere else" (A5.5-19).

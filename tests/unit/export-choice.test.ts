@@ -298,6 +298,45 @@ describe('the clock’s corner', () => {
     expect(withPreset(bottomRight, 'instagram-reel').options).toEqual(bottomRight.options)
   })
 
+  it('takes a corner the preset would refuse out of a choice as it is read', () => {
+    // A record written by hand, or against an older table, can name one: the
+    // plan would be refused and Export disabled for a corner the select does
+    // not show.
+    const bottomRight: ExportChoice = {
+      preset: 'instagram-reel',
+      options: { clock_corner: 'bottom-right', clock: true },
+    }
+    expect(usable(bottomRight, TABLES)).toEqual({
+      choice: { preset: 'instagram-reel', options: { clock: true } },
+      dropped: null,
+    })
+    const topLeft: ExportChoice = {
+      preset: 'instagram-reel',
+      storyboard: 'run',
+      options: { clock_corner: 'top-left' },
+      alt: 'A map.',
+    }
+    expect(usable(topLeft, TABLES).choice, 'the title is on: the top left is refused').toEqual({
+      preset: 'instagram-reel',
+      storyboard: 'run',
+      options: {},
+      alt: 'A map.',
+    })
+    // One that is offered is left, and the choice is the same object.
+    const fine: ExportChoice = {
+      preset: 'instagram-reel',
+      options: { clock_corner: 'bottom-left' },
+    }
+    expect(usable(fine, TABLES).choice).toBe(fine)
+    // Under a still preset too, where the storyboard goes and the corner is judged first.
+    expect(
+      usable(
+        { preset: 'instagram-post', storyboard: 'run', options: { clock_corner: 'top-left' } },
+        TABLES,
+      ).choice,
+    ).toEqual({ preset: 'instagram-post', options: {} })
+  })
+
   it('takes the top left out when the title or a caption comes to sit there', () => {
     const topLeft: ExportChoice = {
       preset: 'linkedin-gif',
@@ -365,6 +404,13 @@ describe('the alt text', () => {
     expect(withAlt(set, '  ')).toEqual(REEL)
     expect(withAlt(set, '  ')).not.toHaveProperty('alt')
     expect(REEL, 'the choice changed is a copy').not.toHaveProperty('alt')
+  })
+
+  it('is trimmed as the engine trims it, and blank when only Python’s whitespace is left', () => {
+    expect(withAlt(REEL, '\u001c A schematic.\u0085 ').alt).toBe('A schematic.')
+    expect(withAlt({ ...REEL, alt: 'A schematic.' }, '\u001c\u001f\u0085')).not.toHaveProperty(
+      'alt',
+    )
   })
 
   it('stays with the project through every other change', () => {

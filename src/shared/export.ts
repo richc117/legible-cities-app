@@ -163,6 +163,17 @@ const LINE_BREAK = /[\r\n\u2028\u2029]/
 export const lengthOf = (text: string): number => Array.from(text).length
 
 /**
+ * Text trimmed as the engine trims it. Python's `str.strip()` also removes
+ * U+001C to U+001F and U+0085, which JavaScript's `trim()` leaves, so an alt
+ * text made only of those would pass a `trim()` and be refused by
+ * `export.encode` after the capture has run (issue 352).
+ */
+export const trimAsEngine = (text: string): string =>
+  // The control characters are the point: they are what Python strips.
+  // eslint-disable-next-line no-control-regex
+  text.replace(/^[\s\u001c-\u001f\u0085]+|[\s\u001c-\u001f\u0085]+$/g, '')
+
+/**
  * A caption, or why it is not one, in the engine's own sentence
  * (`check_caption` in `export.py`): the bound, then which side of it this one
  * is on. Never trimmed here; the tab trims what a person typed before it asks.
@@ -184,7 +195,7 @@ export function validateCaption(value: unknown): string | null {
  */
 export function validateAlt(value: unknown): string | null {
   if (typeof value !== 'string') return 'The alt text must be text.'
-  const length = lengthOf(value.trim())
+  const length = lengthOf(trimAsEngine(value))
   if (length === 0)
     return 'The alt text is empty; leave it out, and the sidecar keeps the description the engine writes.'
   if (length > ALT_MAX)
@@ -243,6 +254,14 @@ export function validateChoiceOptions(options: unknown): string | null {
   return null
 }
 
+/**
+ * Why a stored alt text is not one, or null. A blank one is none and is not
+ * a problem: the tab never writes it and `sentChoice` drops it.
+ */
+function storedAltProblem(alt: unknown): string | null {
+  return typeof alt === 'string' && trimAsEngine(alt) === '' ? null : validateAlt(alt)
+}
+
 /** A whole choice, or the first reason it is not one. */
 export function validateExportChoice(choice: unknown): string | null {
   if (!isPlainObject(choice)) return 'the export choice must be an object'
@@ -256,8 +275,7 @@ export function validateExportChoice(choice: unknown): string | null {
   // never writes it, `sentChoice` drops it, and a record that holds one is
   // read as it is and not thrown away whole.
   if (choice.alt !== undefined) {
-    const problem =
-      typeof choice.alt === 'string' && choice.alt.trim() === '' ? null : validateAlt(choice.alt)
+    const problem = storedAltProblem(choice.alt)
     if (problem !== null) return problem
   }
   return validateChoiceOptions(choice.options)
@@ -322,7 +340,7 @@ export function sentChoice(choice: ExportChoice, preset: PresetShape): ExportCho
   // sent is the trimmed text, or nothing: a record is a file anything can
   // write, and the tab trimming what it stores is a convenience.
   if (copy.alt !== undefined) {
-    const alt = copy.alt.trim()
+    const alt = trimAsEngine(copy.alt)
     if (alt === '') delete copy.alt
     else copy.alt = alt
   }
@@ -429,3 +447,24 @@ export type ExportAccepted = { accepted: true } | { accepted: false; error: Engi
 export type ExportSettled =
   | { id: string; ok: true; result: ExportResult }
   | { id: string; ok: false; error: EngineErrorShape }
+
+/**
+ * A choice as a record stores it, read whole or as the reel: the project's
+ * own file is read at every open, and anything on the machine can write it.
+ * An alt text that is not usable - blank, over 1,000 characters, or not text
+ * - is read as none and the rest of the choice is kept, since it is not a plan
+ * option and the choice does not depend on it; any other fault gives the
+ * choice up for the reel, as the service window is (a half-valid choice is
+ * not half-trusted).
+ */
+export function readStoredChoice(value: unknown): ExportChoice {
+  let candidate = value
+  if (isPlainObject(value) && value.alt !== undefined && validateAlt(value.alt) !== null) {
+    const without = { ...value }
+    delete without.alt
+    candidate = without
+  }
+  return validateExportChoice(candidate) === null
+    ? copyChoice(candidate as ExportChoice)
+    : copyChoice(DEFAULT_CHOICE)
+}

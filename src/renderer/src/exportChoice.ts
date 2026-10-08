@@ -8,6 +8,7 @@ import {
   isStoryboardName,
   lengthOf,
   playsStoryboard,
+  trimAsEngine,
   validateCaption,
   type ExportChoice,
   type ExportChoiceOptions,
@@ -115,7 +116,10 @@ export function defaultsFor(preset: Pick<Preset, 'view' | 'labels' | 'kind'>): O
  * preset or storyboard the engine no longer returns falls back to the reel
  * and its own storyboard, and says which name was dropped (User Story 5,
  * scenario 3). A storyboard saved beside a still preset means nothing and
- * is left out quietly.
+ * is left out quietly, and so is a clock corner the preset would refuse - a
+ * record written by hand, or against an older table - the way a change of
+ * preset drops one, so the plan is not refused for a corner the select
+ * would not show (issue 352).
  */
 export function usable(
   saved: ExportChoice,
@@ -123,16 +127,18 @@ export function usable(
 ): { choice: ExportChoice; dropped: string | null } {
   const preset = tables.presets.find((row) => row.name === saved.preset)
   if (preset === undefined) return { choice: copyChoice(DEFAULT_CHOICE), dropped: saved.preset }
-  if (saved.storyboard !== undefined) {
+  const options = withoutRefusedCorner(saved.options, preset)
+  const read = options === saved.options ? saved : { ...copyChoice(saved), options }
+  if (read.storyboard !== undefined) {
     if (!plays(preset)) {
-      const kept = copyChoice(saved)
+      const kept = copyChoice(read)
       delete kept.storyboard
       return { choice: kept, dropped: null }
     }
-    if (!tables.storyboards.some((board) => board.name === saved.storyboard))
-      return { choice: copyChoice(DEFAULT_CHOICE), dropped: saved.storyboard }
+    if (!tables.storyboards.some((board) => board.name === read.storyboard))
+      return { choice: copyChoice(DEFAULT_CHOICE), dropped: read.storyboard }
   }
-  return { choice: saved, dropped: null }
+  return { choice: read, dropped: null }
 }
 
 type Flag = 'labels' | 'title' | 'clock'
@@ -228,7 +234,7 @@ const nameBlockOf = (
  * the way an option a preset cannot take already is. The corner goes back to
  * the engine's default, which is what the select then shows.
  */
-function withoutRefusedCorner(
+export function withoutRefusedCorner(
   options: ExportChoiceOptions,
   preset: Pick<Preset, 'view' | 'labels' | 'kind' | 'safe_zones'>,
 ): ExportChoiceOptions {
@@ -294,7 +300,7 @@ export function withOption(
  */
 export function withAlt(choice: ExportChoice, alt: string): ExportChoice {
   const next = copyChoice(choice)
-  const text = alt.trim()
+  const text = trimAsEngine(alt)
   if (text === '') delete next.alt
   else next.alt = text
   return next

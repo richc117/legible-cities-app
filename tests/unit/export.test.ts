@@ -46,6 +46,7 @@ import {
   STORYBOARD_NAMES,
   planOptions,
   sentChoice,
+  trimAsEngine,
   validateAlt,
   validateCaption,
   validateChoiceOptions,
@@ -1411,6 +1412,23 @@ describe('the choice itself', () => {
           validateExportChoice({ preset: 'x', options: {}, alt }),
           JSON.stringify(alt),
         ).toBeNull()
+    })
+
+    it('trims as the engine does: Python’s strip also takes U+001C to U+001F and U+0085', () => {
+      const FILE_SEPARATORS = '\u001c\u001d\u001e\u001f\u0085'
+      expect(trimAsEngine(` \n${FILE_SEPARATORS} A map. ${FILE_SEPARATORS}\t`)).toBe('A map.')
+      expect(trimAsEngine(FILE_SEPARATORS)).toBe('')
+      expect(trimAsEngine('a \u001c b'), 'only the ends').toBe('a \u001c b')
+      // An alt of only those is blank to the engine, so it is refused at the
+      // field and dropped when sent, not sent to be refused after the capture.
+      expect(validateAlt(FILE_SEPARATORS)).toMatch(/empty/)
+      expect(validateAlt(`${FILE_SEPARATORS}A map.${FILE_SEPARATORS}`)).toBeNull()
+      expect(
+        sentChoice({ preset: 'x', options: {}, alt: FILE_SEPARATORS }, shapeOf('x')),
+      ).not.toHaveProperty('alt')
+      expect(
+        sentChoice({ preset: 'x', options: {}, alt: `\u0085 A map.\u001f` }, shapeOf('x')).alt,
+      ).toBe('A map.')
     })
 
     it('keeps the alt beside the options through a copy, and never among them', () => {
