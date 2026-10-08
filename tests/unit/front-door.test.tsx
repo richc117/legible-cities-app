@@ -72,6 +72,7 @@ describe('a sample city’s card', () => {
     agency: null,
     geographic: true,
     notes: [],
+    headways: false,
     source: 'preset',
     cached: false,
     ...patch,

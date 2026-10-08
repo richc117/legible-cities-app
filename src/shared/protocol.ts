@@ -1,7 +1,7 @@
 // Generated from the engine's own description of its protocol.
 // Run `npm run typegen` to regenerate; edits here are lost.
 //
-// Engine: v0.10.1, protocol 1.
+// Engine: v0.11.0, protocol 1.
 // Source: vendor/protocol.schema.json, printed by the engine's
 // `python -m schematic.serve --schema` and committed verbatim.
 
@@ -235,9 +235,9 @@ export interface GraphBuildResult {
 }
 
 /**
- * Draw the map and the animation page for a registered feed on one service
- * day, from a stored layout. Never lays the feed out: a layout that is not
- * stored is refused, with a hint to lay it out first.
+ * Draw the map, the animation page and a thumbnail pair for a registered
+ * feed on one service day, from a stored layout. Never lays the feed out: a
+ * layout that is not stored is refused, with a hint to lay it out first.
  */
 export interface MapBuildParams {
   key: FeedKey
@@ -317,6 +317,17 @@ export interface MapBuildResult {
      */
     html: string
     positions: string
+    /**
+     * A small picture of the map for the dark palette: the network alone,
+     * about 400 units wide, no ground, every colour a literal, in the
+     * request's colors, default_color and line_order. Safe to show in an
+     * img.
+     */
+    thumb_dark: string
+    /**
+     * The same picture for the light palette.
+     */
+    thumb_light: string
   }
   /**
    * Result.summary(), the lines the CLI prints.
@@ -674,6 +685,14 @@ export interface FeedRecord {
   geographic: boolean
   notes: string[]
   /**
+   * Whether the feed's service is run from frequencies.txt (trains at a
+   * scheduled interval) rather than a timetable of trip times. A preset says
+   * so in the registry; for a feed added through feeds.add it is decided
+   * when the zip is checked: frequencies.txt has rows and the trips they
+   * name in trips.txt are at least half of the feed's trips.
+   */
+  headways: boolean
+  /**
    * Which half of the registry: a preset is curated in the engine and cannot
    * be removed; a user feed was added through feeds.add.
    */
@@ -717,10 +736,22 @@ export interface FeedsAddParams {
 
 /**
  * Forget a feed a person added, with its zips and its stored layouts. A
- * preset is refused with kind feed.
+ * preset is refused with kind feed. A long request: the registry's write is
+ * the point of no return, and a cancel before it leaves the feed registered
+ * with every file in place.
  */
 export interface FeedsRemoveParams {
   key: FeedKey
+}
+
+/**
+ * The feed is forgotten and its files are gone. `cancel_too_late` is
+ * present, and true, only when a cancel arrived after the point of no return
+ * and so was not honoured; otherwise the answer is exactly `{"ok": true}`.
+ */
+export interface FeedsRemoveResult {
+  ok: true
+  cancel_too_late?: true
 }
 
 /**
@@ -945,7 +976,7 @@ export interface Methods {
   }
   'feeds.remove': {
     params: FeedsRemoveParams
-    result: Ok
+    result: FeedsRemoveResult
   }
   'feeds.inspect': {
     params: FeedsInspectParams
