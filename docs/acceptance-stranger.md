@@ -162,7 +162,11 @@ Everything, with the clock time beside it. In particular:
 - **The unsigned-app warning**: how long it took them to get past it, and
   whether the install guide's instructions matched what they saw.
 - **Words they did not know**, or read differently from what the app means
-  (feed, layout, cell, preset, storyboard, schematic).
+  (feed, layout, cell, preset, storyboard, schematic, caption, alt text). A
+  caption is the line of words the export draws under its title, such as the
+  place and the hour; the reel does not need one, so it is not part of the
+  task and nobody tells the person it is there. Write down whether they
+  stopped at it, and what they took it for.
 - **How they started**: a sample city's card, or **New project** with a
   feed of their own, and whether they found the export in cell 06 without
   opening every cell first.

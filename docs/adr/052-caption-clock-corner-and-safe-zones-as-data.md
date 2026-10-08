@@ -46,3 +46,5 @@ Zones: **(a)** numbers in `present.js`; **(b)** a table in `export.py` that the 
 **A caption is not alt text.** The sidecar's alt is ADR-independent and #41's.
 
 **What to watch.** Meta moving its zones: the table carries a date. TikTok has no preset; if one comes, it is a row in the table, not a number in the page.
+
+**As of 8 Oct 2026, the app's half landed (issue 352).** Cell 06 offers a Caption, a Clock corner and Alt text for the file's sidecar. The caption and the corner are plan options and so are on the preview's address and in `CaptureJob`; the alt text rides in `export.encode`'s provenance. The corner list is the engine's rules restated for the select only (no bottom right on a preset with safe zones, no top left while the title or a caption is drawn), the default corner is never sent, and the engine still judges whatever is sent. Status stays Proposed until the measurement this record asks for is made on the runners.
