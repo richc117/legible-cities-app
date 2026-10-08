@@ -15,9 +15,14 @@ import { keeps, routesOf } from './Inspect'
 // so it can show a swatch and say, in words, where the colour came from.
 
 /**
- * How long the panel waits after the last change before it builds, in
- * milliseconds. Long enough that a drag through a hue is one build, short
- * enough that a single choice feels answered.
+ * A pause in milliseconds that the panels' waits are measured in. The line
+ * colours do not use it to decide when a gesture is over: a colour builds
+ * when the picker is released or the hex field's button is pressed, never
+ * on a quiet interval (issue 262), so a drag of any speed is one build.
+ * They use it for the one thing that is a wait, a release the page could
+ * not take because a run or an export was reading it, which asks again
+ * whether the way is clear after this long. The line order still builds a
+ * move on it as a debounce (`LineOrder.tsx`), which is why it is kept here.
  */
 export const REDRAW_DELAY = 400
 
@@ -189,4 +194,91 @@ export function samePalette(a: Palette, b: Palette): boolean {
   const keys = Object.keys(a.colors)
   if (keys.length !== Object.keys(b.colors).length) return false
   return keys.every((key) => a.colors[key] === b.colors[key])
+}
+
+/**
+ * What a person has chosen that the map does not carry yet, in the two
+ * shapes it can take (issue 262). The map follows the end of a gesture and
+ * not its every colour, so between a gesture's first colour and the map
+ * carrying its last, the screen shows colours the record does not hold, and
+ * the panel has to know that or it will throw them away.
+ */
+export interface Unbuilt {
+  /**
+   * The colours a gesture has reached and not yet released: a drag with the
+   * pointer still down, or an arrow key still held. The swatch and the hex
+   * field follow it; nothing has been sent.
+   */
+  readonly live: Palette | null
+  /**
+   * The last release that could not be built because a run or an export was
+   * reading the page. It builds once the way is clear, and a later release
+   * replaces it.
+   */
+  readonly held: Palette | null
+}
+
+/** Nothing chosen and unbuilt: the screen shows the record. */
+export const NOTHING_UNBUILT: Unbuilt = { live: null, held: null }
+
+/** What to do about a release, and what is left unbuilt after it. */
+export interface Outcome {
+  step: 'build' | 'wait' | 'none'
+  unbuilt: Unbuilt
+}
+
+/**
+ * A gesture reached `next`: the swatch follows and nothing is built.
+ * Whatever is already waiting stays waiting.
+ */
+export function reached(unbuilt: Unbuilt, next: Palette): Unbuilt {
+  return { ...unbuilt, live: next }
+}
+
+/**
+ * The gesture ended on `next`: the picker was released, or the hex field's
+ * button was pressed. This is the commit point, and it is decided by
+ * `nextStep` as every change is - built if the way is clear, held if it is
+ * not, nothing if it is no change. It replaces a release that was waiting,
+ * which is what a later choice means.
+ */
+export function released(unbuilt: Unbuilt, next: Palette, stored: Palette, busy: boolean): Outcome {
+  return decide({ ...unbuilt, live: null }, next, stored, busy)
+}
+
+/**
+ * Ask again whether a held release can be built now. While another
+ * gesture is going it cannot: that gesture's release will say what to
+ * build, and building the older choice under a person's hand would be a
+ * second build for what they see as one.
+ */
+export function retried(unbuilt: Unbuilt, stored: Palette, busy: boolean): Outcome {
+  if (unbuilt.held === null) return { step: 'none', unbuilt }
+  if (unbuilt.live !== null) return { step: 'wait', unbuilt }
+  return decide(unbuilt, unbuilt.held, stored, busy)
+}
+
+function decide(unbuilt: Unbuilt, next: Palette, stored: Palette, busy: boolean): Outcome {
+  const step = nextStep(next, stored, busy)
+  return { step, unbuilt: { live: unbuilt.live, held: step === 'wait' ? next : null } }
+}
+
+/**
+ * A build that stopped wrote nothing, so a release that was waiting to
+ * follow it is dropped: building it would draw colours a person has just
+ * been told the project did not keep. A gesture still going is theirs and
+ * carries on.
+ */
+export function stopped(unbuilt: Unbuilt): Unbuilt {
+  return { ...unbuilt, held: null }
+}
+
+/**
+ * May the record, as it has just been read, replace the colours on screen?
+ * Not while a gesture is going or a release is waiting: the view reads the
+ * record again whenever any run finishes, and under a pointer that would
+ * move the picker's thumb back under the person's hand.
+ */
+export function mayAdoptRecord(unbuilt: Unbuilt): boolean {
+  return unbuilt.live === null && unbuilt.held === null
 }

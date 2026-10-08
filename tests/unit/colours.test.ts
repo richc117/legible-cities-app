@@ -12,16 +12,23 @@ import {
   hasOverride,
   isReset,
   linesOf,
+  mayAdoptRecord,
   nextStep,
+  reached,
   readHex,
+  released,
   resetAll,
+  retried,
   samePalette,
   shownColour,
   sourceWords,
+  stopped,
   withDefault,
   withOverride,
   withoutOverride,
+  NOTHING_UNBUILT,
   type Line,
+  type Unbuilt,
 } from '../../src/renderer/src/colours'
 import {
   DEFAULT_COLOR,
@@ -275,6 +282,117 @@ describe('nextStep: build, wait, or nothing at all', () => {
   })
   it('sees a changed default as a change', () => {
     expect(nextStep(withDefault(stored, '#112233'), stored, false)).toBe('build')
+  })
+})
+
+// Issue 262. The map follows the end of a gesture and not its every colour,
+// so between a gesture's first colour and the map carrying its last, the
+// screen shows colours the record does not hold. These are the rules for
+// that stretch: what a release does, what a release that could not be built
+// does, and when the record may take the screen back. No interval is in any
+// of them, which is the point: a drag of any speed, with any pause in it,
+// is the same calls in the same order.
+describe('a gesture and its release: the map follows the end, never an interval', () => {
+  const stored = palette({ colors: { A: '#0072bc' } })
+  const colour = (hex: string): Palette => palette({ colors: { A: hex } })
+  const [one, two, three] = [colour('#111111'), colour('#222222'), colour('#333333')]
+
+  it('starts with nothing unbuilt, so the record may be shown', () => {
+    expect(NOTHING_UNBUILT).toEqual({ live: null, held: null })
+    expect(mayAdoptRecord(NOTHING_UNBUILT)).toBe(true)
+  })
+
+  it('follows every colour of a gesture, and the last one is the one it holds', () => {
+    let unbuilt: Unbuilt = NOTHING_UNBUILT
+    for (const next of [one, two, three]) unbuilt = reached(unbuilt, next)
+    expect(unbuilt.live).toBe(three)
+    expect(unbuilt.held).toBeNull()
+  })
+
+  it('a gesture of fifty colours is one build, on its release, with the colour it ended on', () => {
+    // However slowly or quickly the fifty arrive, the only call that can
+    // answer with a step is the release; `reached` answers with no step at
+    // all, so there is nothing for a quiet interval to be.
+    let unbuilt: Unbuilt = NOTHING_UNBUILT
+    for (let i = 0; i < 50; i++) unbuilt = reached(unbuilt, colour(`#${String(i + 10).repeat(3)}`))
+    const outcome = released(unbuilt, three, stored, false)
+    expect(outcome.step).toBe('build')
+    expect(outcome.unbuilt).toEqual({ live: null, held: null })
+  })
+
+  it('a release while something else reads the page is held, not built and not lost', () => {
+    const outcome = released(reached(NOTHING_UNBUILT, one), one, stored, true)
+    expect(outcome.step).toBe('wait')
+    expect(outcome.unbuilt).toEqual({ live: null, held: one })
+    expect(mayAdoptRecord(outcome.unbuilt), 'the record may not throw it off the screen').toBe(
+      false,
+    )
+  })
+
+  it('a later release replaces the one that was waiting: one build when the way clears', () => {
+    const first = released(NOTHING_UNBUILT, one, stored, true)
+    const second = released(first.unbuilt, two, stored, true)
+    expect(second.unbuilt.held).toBe(two)
+    const again = retried(second.unbuilt, stored, false)
+    expect(again.step).toBe('build')
+    expect(again.unbuilt).toEqual({ live: null, held: null })
+  })
+
+  it('a release that is no change builds nothing, and drops an older one that was waiting', () => {
+    const waiting = released(NOTHING_UNBUILT, one, stored, true).unbuilt
+    const back = released(waiting, stored, stored, true)
+    expect(back.step).toBe('none')
+    expect(back.unbuilt).toEqual({ live: null, held: null })
+  })
+
+  it('asks again: it builds once the way is clear, and waits while it is not', () => {
+    const waiting = released(NOTHING_UNBUILT, one, stored, true).unbuilt
+    expect(retried(waiting, stored, true)).toEqual({ step: 'wait', unbuilt: waiting })
+    expect(retried(waiting, stored, false).step).toBe('build')
+    expect(retried(NOTHING_UNBUILT, stored, false).step, 'nothing held, nothing to build').toBe(
+      'none',
+    )
+  })
+
+  it('does not build an older release under a gesture that is going', () => {
+    const waiting = released(NOTHING_UNBUILT, one, stored, true).unbuilt
+    const going = reached(waiting, two)
+    expect(retried(going, stored, false)).toEqual({ step: 'wait', unbuilt: going })
+    // That gesture's own release says what to build, and it is the one build.
+    const end = released(going, two, stored, false)
+    expect(end.step).toBe('build')
+    expect(end.unbuilt).toEqual({ live: null, held: null })
+  })
+
+  it('a build that stopped drops the release waiting for it, and leaves a gesture alone', () => {
+    const waiting = released(NOTHING_UNBUILT, one, stored, true).unbuilt
+    expect(stopped(waiting)).toEqual({ live: null, held: null })
+    expect(stopped(reached(waiting, two))).toEqual({ live: two, held: null })
+  })
+
+  it('lets the record take the screen back only when nothing is going or waiting', () => {
+    expect(mayAdoptRecord({ live: one, held: null })).toBe(false)
+    expect(mayAdoptRecord({ live: null, held: one })).toBe(false)
+    expect(mayAdoptRecord({ live: one, held: two })).toBe(false)
+    expect(mayAdoptRecord({ live: null, held: null })).toBe(true)
+  })
+})
+
+// The picker has two events, and which one builds is the whole of issue 262.
+// The end-to-end spec drives it; this keeps the unit run from passing a
+// panel that has gone back to building on every colour or on a timer.
+describe('the line colours panel builds on the picker’s release', () => {
+  const source = readFileSync(resolve(__dirname, '../../src/renderer/src/LineColours.tsx'), 'utf8')
+  it('hands the picker an onChangeEnd, and its onChange only follows', () => {
+    expect(source).toMatch(/<HexColorPicker[^>]*onChange=\{onPick\}[^>]*onChangeEnd=\{onPickEnd\}/)
+    // Two rows of controls (the default's and each line's), each with both.
+    expect(source.match(/onPick=\{\(hex\) => follow\(/g)).toHaveLength(2)
+    expect(source.match(/onPickEnd=\{\(hex\) => release\(/g)).toHaveLength(2)
+    expect(source).not.toMatch(/onPick=\{\(hex\) => release\(/)
+  })
+  it('keeps no debounce on the path from a colour to a build', () => {
+    expect(source).not.toMatch(/from '\.\/debounce'/)
+    expect(source).not.toMatch(/\bdebounce\(/)
   })
 })
 
