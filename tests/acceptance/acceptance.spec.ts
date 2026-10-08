@@ -1681,9 +1681,16 @@ test('a release, installed, through docs/acceptance.md', async () => {
       )
       const interfaceTheme = await window.locator('html').getAttribute('data-theme')
       const mark = (await saidSoFar(window)).length
+      // The map takes its theme in place since engine v0.11.0 (issue 349), so
+      // its frame is not sent anywhere: the address is the one it had.
+      const addressBefore = await viewer.getAttribute('src')
       await sepia.click()
       await log.soft('sepia at once, with no run', async () => {
-        await expect(viewer).toHaveAttribute('src', /theme=sepia/)
+        expect(addressBefore, 'the map’s frame had an address before the press').not.toBeNull()
+        await expect(
+          viewer,
+          'the frame’s address did not change across the press: the page restyled in place',
+        ).toHaveAttribute('src', addressBefore as string)
         await expect(sepia).toHaveAttribute('aria-pressed', 'true')
         await expect(window.frameLocator('iframe.viewer-frame').locator('html')).toHaveAttribute(
           'data-theme',
@@ -1700,7 +1707,10 @@ test('a release, installed, through docs/acceptance.md', async () => {
       })
       await warm.click()
       await log.soft('Warm dark brings it back', async () => {
-        await expect(viewer).toHaveAttribute('src', /theme=warm-dark/)
+        await expect(
+          window.frameLocator('iframe.viewer-frame').locator('html'),
+          'the page in the frame is no longer wearing sepia',
+        ).not.toHaveAttribute('data-theme', 'sepia', { timeout: SHORT_MS })
         await expect.poll(async () => (await recordOf(window, LA)).theme).toBe('warm-dark')
       })
       log.notAutomated(
