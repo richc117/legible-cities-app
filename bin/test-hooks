@@ -112,6 +112,14 @@ refuse 'git remote -v'          # the remote URL is private
 check "$guard" 0 'ls'
 check "$guard" 0 'git status'
 check "$guard" 0 'npm test'
+# A note that mentions the verbs is no commit (issue 341): the heredoc bodies
+# are taken out before the verbs are looked for. The first two are the issue's
+# own commands, word for word; the end-to-end rows further down show that
+# nothing is scanned for them. The third is a body with a line that, run, would
+# be a commit asking for -a, in a command that runs no git.
+check "$guard" 0 $'cat <<\'EOF\'\na body with backticks: `git commit` and `git push` mentioned, no command run\nEOF'
+check "$guard" 0 $'cat <<\'EOF\'\na note that mentions git commit and git push in a heredoc body, with no git command run\nEOF'
+check "$guard" 0 $'cat <<\'EOF\'\ngit commit -a\nEOF'
 
 # --- both hooks fail closed when they cannot read the command ---------------
 minimal=$(mktemp -d)
@@ -262,6 +270,39 @@ if command -v gitleaks >/dev/null 2>&1; then
   expect 0 "$(guard_says "git commit -q -m \"\$(cat <<'EOF'${nl}body${nl}EOF${nl})\" && git commit -q -m \"\$(cat <<'EOF'${nl}body${nl}EOF${nl})\"")" "a second heredoc commit chained after the first goes through"
   expect 2 "$(guard_says 'git add -A && git commit -a -m tidy')" "-a after a chained add is still -a"
   expect_said "asks for -a" "-a after a chained add is refused for being -a"
+  # A note that mentions the verbs is no commit (issue 341), because each
+  # heredoc body is taken out before the verbs are looked for. With a key
+  # staged, only a command the guard takes for a commit or a push can be
+  # stopped by the scan: the notes go through, and a real commit or push after
+  # one is scanned. The backticks are what the old order choked on: a word that
+  # begins with one is an expansion, and a commit's options could not be read.
+  echo "$key" > "$sandbox/staged.txt"; git -C "$sandbox" add staged.txt
+  note="cat <<'EOF' > note.md${nl}see \`git commit\` and \`git push\` in the notes${nl}EOF"
+  expect 0 "$(guard_says "$note")" "a note that mentions the verbs is no commit"
+  expect 0 "$(guard_says "cat <<'EOF'${nl}a note that mentions git commit and git push in a heredoc body, with no git command run${nl}EOF")" "a note without backticks is no commit either"
+  expect 0 "$(guard_says "cat <<'EOF'${nl}git commit -a${nl}EOF")" "a line git commit -a in a body is no commit"
+  expect 0 "$(guard_says "cat <<\"EOF\"${nl}\`git commit\`${nl}EOF")" "a terminator word in double quotes ends a body"
+  expect 0 "$(guard_says "cat <<\\EOF${nl}\`git commit\`${nl}EOF")" "a terminator word behind a backslash ends a body"
+  expect 0 "$(guard_says "cat <<A > a.md${nl}\`git commit\`${nl}A${nl}cat <<B > b.md${nl}\`git push\`${nl}B")" "two notes, each with a verb"
+  expect 2 "$(guard_says "${note}${nl}git commit -q -m x")" "a real commit after a note is scanned"
+  expect_said "gitleaks found something" "a real commit after a note is stopped by the scan"
+  expect 2 "$(guard_says "${note}${nl}git push origin main")" "a real push after a note is scanned"
+  expect_said "gitleaks found something" "a real push after a note is stopped by the scan"
+  git -C "$sandbox" rm -q --cached staged.txt; rm -f "$sandbox/staged.txt"
+  # The index is clean again, and f.txt holds a machine path that is not staged.
+  expect 2 "$(guard_says "${note}${nl}git commit -a -m tidy")" "-a after a note is still -a"
+  expect_said "asks for -a" "-a after a note is refused for being -a, not for being unreadable"
+  expect 0 "$(guard_says "${note}${nl}git commit -q -m tidy")" "a commit of the index after a note goes through"
+  expect 0 "$(guard_says "git commit -q -F - <<'EOF'${nl}the guard refuses \`git commit -a\` and \`git push\`${nl}EOF")" "a message that mentions the verbs goes through"
+  # A body this cannot find cannot be taken out, so the verbs in it count and
+  # the command is refused as one it cannot read: a heredoc with no
+  # terminator, alone, as a note, or swallowing the commit after it. (`<<-` and
+  # a quote open where a heredoc starts are refused by rows above.)
+  expect 2 "$(guard_says "git commit -q -F - <<'EOF'${nl}body")" "a heredoc with no terminator"
+  expect_said "could not be read" "a heredoc with no terminator is refused for being unreadable"
+  expect 2 "$(guard_says "cat <<'EOF'${nl}see \`git commit\` and \`git push\`")" "a note with no terminator"
+  expect_said "could not be read" "a note with no terminator is refused for being unreadable"
+  expect 2 "$(guard_says "cat <<'EOF'${nl}a note${nl}git commit -q -m tidy")" "a note with no terminator swallows the commit after it"
   # A word that is an expansion could be -a, so nothing can be said of it.
   # shellcheck disable=SC2016  # the literal `$` is the point of these cases.
   {
