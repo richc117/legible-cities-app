@@ -937,11 +937,11 @@ a table).
   the drawing itself is not read. Tab once more: the button "The network in
   words", collapsed (F2, issue 105). Press it, and listen for one sentence,
   "On the day drawn, the longest trip on one line takes `<m>` minutes: the
-  `<line>` from `<A>` to `<B>`." (a loop reads "a round trip from `<A>`"), and
-  then a list with one item per line: "`<line>`: from `<A>` to `<B>`, `<n>`
-  stations; meets `<X>` at `<P>`, and `<Y>` and `<Z>` at `<Q>`." or "...
-  meets no other line.", a loop as "a loop of `<n>` stations through `<A>`",
-  and each item followed by a button "Stations on `<line>`, in order",
+  `<line>` from `<A>` to `<B>`." (a loop reads "the `<line>`, a round trip
+  from `<A>`"), and then a list with one item per line: "`<line>`: from `<A>`
+  to `<B>`, `<n>` stations; meets `<X>` at `<P>`, and `<Y>` and `<Z>` at
+  `<Q>`." or "... meets no other line.", a loop as "a loop of `<n>` stations
+  through `<A>`", and each item followed by a button "Stations on `<line>`, in order",
   collapsed. Press one: its stations are read in order, from one end of the
   line to the other. **check:** from the sentences alone, say a line's two
   ends and where it meets another line. Press "The network in words" again
