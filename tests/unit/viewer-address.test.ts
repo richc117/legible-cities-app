@@ -24,6 +24,15 @@ describe('addressFor', () => {
     )
   })
 
+  it('carries the number of reloads only once there has been one', () => {
+    // An address that grew a key for every ordinary load would change what
+    // every page is loaded from; the key is for the one case that needs it.
+    expect(addressFor(PROJECT, 0, 'warm-dark', 0)).not.toContain('reload=')
+    expect(addressFor(PROJECT, 2, 'sepia', 1)).toBe(
+      'app://local/projects/abcdefghijk1/la-metro-rail.html?present=1&controls=1&theme=sepia&redraw=2&reload=1',
+    )
+  })
+
   it('is read by the main process as the map’s frame, whichever theme it carries', () => {
     // `controls=1` is what `roleOfAddress` reads as the map, and an address
     // it read as anything else would never be held and never be driven.
@@ -66,6 +75,27 @@ describe('wantedAddress', () => {
     )
   })
 
+  // The fallback for a page that cannot be told its theme (one from before
+  // engine v0.11.0 has no `setTheme`): the press counts a reload, and the
+  // address is made again with the theme the project has at that moment.
+  it('is made again by a reload, with the theme the project has then', () => {
+    const before = wantedAddress(null, PROJECT, 0, 0)
+    const pressed = { ...PROJECT, theme: 'sepia' as Theme }
+    expect(wantedAddress(before, pressed, 0, 0), 'the press alone changes nothing').toBe(before)
+    const reloaded = wantedAddress(before, pressed, 0, 1)
+    expect(reloaded, 'a counted reload is a new address').not.toBe(before)
+    expect(reloaded.address).toBe(addressFor(PROJECT, 0, 'sepia', 1))
+    expect(reloaded.address).toContain('theme=sepia')
+    // And the reload that follows a press back: the live theme again.
+    const back = wantedAddress(reloaded, PROJECT, 0, 2)
+    expect(back.address).toBe(addressFor(PROJECT, 0, 'warm-dark', 2))
+  })
+
+  it('is the same address once reloaded, while only the theme moves', () => {
+    const reloaded = wantedAddress(null, { ...PROJECT, theme: 'sepia' }, 0, 1)
+    expect(wantedAddress(reloaded, PROJECT, 0, 1)).toBe(reloaded)
+  })
+
   it('keeps the theme it was made with through a redraw it is the same theme for', () => {
     const redrawn = wantedAddress(wantedAddress(null, PROJECT, 0), PROJECT, 1)
     expect(redrawn.address).toContain('theme=warm-dark&redraw=1')
@@ -97,5 +127,16 @@ describe('the viewer', () => {
 
   it('gives every load the project theme as it stands, as the restore’s theme', () => {
     expect(source).toMatch(/\brestoreCalls\([^;]*\btheme\.current\b/)
+  })
+
+  it('makes its address again for a reload, and the notebook counts one for it', () => {
+    expect(source, 'the viewer’s address rule is given the count').toMatch(
+      /\bwantedAddress\(wantedFor, project, redraw, reloads\)/,
+    )
+    const preview = readFileSync(
+      resolve(__dirname, '../../src/renderer/src/notebook/Preview.tsx'),
+      'utf8',
+    )
+    expect(preview, 'the map is given the screen’s count').toMatch(/\breloads=\{themeReloads\}/)
   })
 })

@@ -11,8 +11,13 @@ import type { ProjectRecord, Theme } from '../../shared/project'
 // address carries the theme **of the moment it was made** and nothing
 // later, for the next load: a page a run has rewritten, and a project
 // opened again, boot in the project's theme before their first paint.
+//
+// The one navigation a theme still causes is for a page that cannot be told:
+// one the engine wrote before v0.11.0 has no `setTheme`, and the press then
+// bumps `reloads`, which makes the address again with the live theme and
+// sends the frame to it by the path a redraw takes.
 
-/** What an address is made from: the project's page, and how many runs have rewritten it. */
+/** What an address is made from: the project's page, and what has sent the frame to it. */
 type Page = Pick<ProjectRecord, 'id' | 'feed'>
 
 /**
@@ -37,11 +42,22 @@ type Page = Pick<ProjectRecord, 'id' | 'feed'>
  * matches the file behind it. present.js reads the keys it knows and
  * ignores the rest, and the protocol handler resolves the path alone, so it
  * costs the page nothing.
+ *
+ * `reloads` is how many times a press found a page that could not be told
+ * its theme and sent the frame to the address again instead. It is on the
+ * address for the same reason as `redraw`, and only once it is more than
+ * nothing, so the address of every ordinary load is the one it always was.
  */
-export function addressFor(project: Page, redraw: number, themeAtNavigation: Theme): string {
+export function addressFor(
+  project: Page,
+  redraw: number,
+  themeAtNavigation: Theme,
+  reloads = 0,
+): string {
   return (
     `app://local/projects/${project.id}/${project.feed}.html` +
-    `?present=1&controls=1&theme=${encodeURIComponent(themeAtNavigation)}&redraw=${redraw}`
+    `?present=1&controls=1&theme=${encodeURIComponent(themeAtNavigation)}&redraw=${redraw}` +
+    (reloads > 0 ? `&reload=${reloads}` : '')
   )
 }
 
@@ -50,34 +66,39 @@ export interface Wanted {
   id: string
   feed: string
   redraw: number
+  reloads: number
   address: string
 }
 
 /**
  * The address the frame is wanted on now, given the one wanted before.
  *
- * The same object comes back while the project, its feed and the number of
- * redraws are the same, **whatever the theme has become**; a change in any
- * of the three makes a new one, and the theme it carries is the project's
- * at that moment. That is the whole rule, and it is why a press is not a
- * navigation.
+ * The same object comes back while the project, its feed, the number of
+ * redraws and the number of reloads are the same, **whatever the theme has
+ * become**; a change in any of the four makes a new one, and the theme it
+ * carries is the project's at that moment. That is the whole rule, and it
+ * is why a press is not a navigation - unless the page cannot be told, and
+ * a reload is counted.
  */
 export function wantedAddress(
   previous: Wanted | null,
   project: Page & Pick<ProjectRecord, 'theme'>,
   redraw: number,
+  reloads = 0,
 ): Wanted {
   if (
     previous !== null &&
     previous.id === project.id &&
     previous.feed === project.feed &&
-    previous.redraw === redraw
+    previous.redraw === redraw &&
+    previous.reloads === reloads
   )
     return previous
   return {
     id: project.id,
     feed: project.feed,
     redraw,
-    address: addressFor(project, redraw, project.theme),
+    reloads,
+    address: addressFor(project, redraw, project.theme, reloads),
   }
 }

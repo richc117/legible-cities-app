@@ -79,6 +79,12 @@ export interface ProjectState {
   settling: boolean
   /** How many runs have drawn the page while this screen is open; the viewer's address carries it. */
   drawn: number
+  /**
+   * How many times a theme was pressed on a page that has no `setTheme` (one
+   * the engine wrote before v0.11.0) and so has to be loaded again to show
+   * it; the viewer's address carries it, as it carries `drawn`.
+   */
+  themeReloads: number
   /** The feed's registry entry's mode and agency, when the Library listed it. */
   registry: { mode: string; agency: string | null } | null
   /** The feed as the engine reads it, cached by the inspection module. */
@@ -160,6 +166,10 @@ export function useProjectState(
   // remounting the frame - and a remount loses the page's clock, its view
   // and its scrub position as surely as a reparent does (ADR-045).
   const [drawn, setDrawn] = useState(0)
+  // How many times the map's page refused to be told a theme because it has
+  // no `setTheme`, and has to be loaded again at an address carrying it.
+  // Zero for every page the engine has written since v0.11.0.
+  const [themeReloads, setThemeReloads] = useState(0)
   const engine = useEngineState()
   const headingRef = useRef<HTMLHeadingElement>(null)
 
@@ -390,7 +400,9 @@ export function useProjectState(
   // map's page is then told through its seam, which restyles it in place
   // and leaves the frame where it is; the record also reaches the next
   // document, on its address and as the first call of the restore (issue
-  // 349). A write that fails sends nothing.
+  // 349). A write that fails sends nothing. A page with no `setTheme` says
+  // so, and that one case loads the page again with the theme on its
+  // address, as a press always did before the seam had one.
   const setTheme = (theme: Theme): Promise<void> =>
     writeThenRestyle(
       theme,
@@ -403,6 +415,7 @@ export function useProjectState(
         )
       },
       (chosen) => window.api.viewer.call('map', 'setTheme', chosen),
+      () => setThemeReloads((count) => count + 1),
     )
   // What to export is written the moment it is chosen, as the theme is;
   // nothing is built for it (A5-01).
@@ -495,6 +508,7 @@ export function useProjectState(
     settling,
     exporting,
     drawn,
+    themeReloads,
     registry,
     inspect,
     readStage,

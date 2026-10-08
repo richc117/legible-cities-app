@@ -26,7 +26,9 @@ import { restoreCalls } from './viewerRestore'
 // (issue 349): the page restyles in place through `setTheme`, sent when the
 // record has been written (`themeWrites.ts`), so a press leaves the
 // frame's address, its document and everything the document was showing as
-// they were.
+// they were. The exception is a page the engine wrote before v0.11.0, which
+// has no `setTheme`: a press on one is a navigation after all, by the path a
+// redraw takes (the `reloads` count), because nothing else would show it.
 //
 // **This frame is never sent to the export's planned address.** Until
 // ADR-046 it was: cell 06 took it for its preview and gave it back, which
@@ -104,6 +106,7 @@ export function probeFrame(projectId: string, role: ViewerRole): Promise<unknown
 export default function Viewer({
   project,
   redraw = 0,
+  reloads = 0,
 }: {
   project: ProjectRecord
   /**
@@ -112,17 +115,27 @@ export default function Viewer({
    * the frame stays the element it always was.
    */
   redraw?: number
+  /**
+   * How many times a theme was pressed on a page that could not be told it:
+   * one the engine wrote before v0.11.0 has no `setTheme`. A change sends
+   * the frame to its address again with the theme the project has now, by
+   * the path a redraw takes, so the page is asked what it shows first and
+   * given it back after. Nothing else counts here - a page that can be told
+   * is never reloaded for a theme.
+   */
+  reloads?: number
 }): JSX.Element {
   const [problem, setProblem] = useState<string | null>(null)
 
   // The address the frame is wanted on. It is made again only when the
-  // project, its feed or the number of redraws changes, and it carries the
-  // project's theme at that moment: a theme change alone leaves it as it
-  // was (`viewerAddress.ts`). Held in state and adjusted during the render,
-  // the way React asks for a value derived from props that has to remember
-  // its last answer, so no ref is written while rendering.
-  const [wantedFor, setWantedFor] = useState(() => wantedAddress(null, project, redraw))
-  const wantedNow = wantedAddress(wantedFor, project, redraw)
+  // project, its feed, the number of redraws or the number of reloads
+  // changes, and it carries the project's theme at that moment: a theme
+  // change alone leaves it as it was (`viewerAddress.ts`). Held in state and
+  // adjusted during the render, the way React asks for a value derived from
+  // props that has to remember its last answer, so no ref is written while
+  // rendering.
+  const [wantedFor, setWantedFor] = useState(() => wantedAddress(null, project, redraw, reloads))
+  const wantedNow = wantedAddress(wantedFor, project, redraw, reloads)
   if (wantedNow !== wantedFor) setWantedFor(wantedNow)
   const wanted = wantedNow.address
 

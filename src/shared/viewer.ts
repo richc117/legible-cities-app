@@ -28,6 +28,17 @@ export const VIEWER_METHODS = [
 
 export type ViewerMethod = (typeof VIEWER_METHODS)[number]
 
+/**
+ * What the dispatcher in `src/main/viewer.ts` answers when the page has no
+ * such method: its own fixed sentence, which reaches the interface as the
+ * message of a rejected `viewer.call`. A page the engine wrote before v0.11.0
+ * answers it to `setTheme`, and that is how the interface knows to fall back
+ * to loading the theme through the address (`themeWrites.ts`). A test runs
+ * the real dispatcher against a page without the method, so the two cannot
+ * drift apart.
+ */
+export const MISSING_METHOD = 'this map cannot do that'
+
 export function isViewerMethod(value: unknown): value is ViewerMethod {
   return typeof value === 'string' && (VIEWER_METHODS as readonly string[]).includes(value)
 }

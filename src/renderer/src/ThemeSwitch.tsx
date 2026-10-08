@@ -10,8 +10,9 @@ import { nextWrite, writeThrough } from './themeWrites'
 // moment it is pressed and then the page is told through its seam, which
 // restyles it in place (`setTheme`, engine v0.11.0; issue 349). The frame is
 // not reloaded: its clock, view, labels and speed stay as they were. The
-// address carries the theme for the next load only. The line colours are not
-// themed and do not move.
+// address carries the theme for the next load only, except for a page from
+// before v0.11.0, which cannot be told and is loaded again at the new theme.
+// The line colours are not themed and do not move.
 //
 // It is the project's theme, not the interface's. The interface has its own
 // in Settings (A1-04) and the two are independent: a theme belongs to the

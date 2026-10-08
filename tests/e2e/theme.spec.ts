@@ -136,45 +136,57 @@ const exportFrame = (page: Page) => page.locator('iframe.export-frame')
  * call it was asked (`__seen`). Its clock moves only when it is sought, so
  * a clock that has been moved and is still there is a document that was not
  * replaced.
+ *
+ * `current: false` is a page the engine wrote before v0.11.0: the same page
+ * with no `setTheme` and no `theme` in `state()`, which still boots in the
+ * theme its address names, as every generated page has.
  */
-const THEMED_PAGE = [
-  '<!doctype html><meta charset="utf-8"><title>stand-in map</title><body>',
-  '<script>',
-  'var T0 = 21600, T1 = 93600, at = T0;',
-  'var boot = new URLSearchParams(location.search).get("theme") === "sepia" ? "sepia" : "warm-dark";',
-  'var root = document.documentElement;',
-  'if (boot === "sepia") root.setAttribute("data-theme", "sepia");',
-  'var themeName = function () { return root.getAttribute("data-theme") === "sepia" ? "sepia" : "warm-dark" };',
-  'window.__document = String(Math.random()).slice(2);',
-  'window.__bootTheme = boot;',
-  'window.__seen = [];',
-  'function fmt(s) {',
-  '  var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);',
-  '  return String(h % 24).padStart(2, "0") + ":" + String(m).padStart(2, "0")',
-  '       + (h >= 24 ? " +1d" : "");',
-  '}',
-  'window.__present = {',
-  '  showView: function (name) { window.__seen.push(["showView", name]) },',
-  '  setLabels: function (on) { window.__seen.push(["setLabels", !!on]) },',
-  '  setRoutes: function (keep) { window.__seen.push(["setRoutes", keep]) },',
-  '  seek: function (sec) { at = Math.max(T0, Math.min(T1, sec)); window.__seen.push(["seek", at]) },',
-  '  setSpeed: function (x) { window.__seen.push(["setSpeed", x]) },',
-  '  setPlaying: function (on) { window.__seen.push(["setPlaying", !!on]) },',
-  '  hasGeo: function () { return true },',
-  '  bounds: function () { return { t0: T0, t1: T1 } },',
-  '  setTheme: function (name) {',
-  '    if (name !== "warm-dark" && name !== "sepia") return false;',
-  '    if (name === "sepia") root.setAttribute("data-theme", "sepia");',
-  '    else root.removeAttribute("data-theme");',
-  '    window.__seen.push(["setTheme", name]);',
-  '    return true;',
-  '  },',
-  '  state: function () {',
-  '    return { now: at, clock: fmt(at), viewName: "schematic", labels: true, theme: themeName() };',
-  '  },',
-  '};',
-  '</script></body>',
-].join('\n')
+const pageSource = (current: boolean): string =>
+  [
+    '<!doctype html><meta charset="utf-8"><title>stand-in map</title><body>',
+    '<script>',
+    'var T0 = 21600, T1 = 93600, at = T0;',
+    'var boot = new URLSearchParams(location.search).get("theme") === "sepia" ? "sepia" : "warm-dark";',
+    'var root = document.documentElement;',
+    'if (boot === "sepia") root.setAttribute("data-theme", "sepia");',
+    'var themeName = function () { return root.getAttribute("data-theme") === "sepia" ? "sepia" : "warm-dark" };',
+    'window.__document = String(Math.random()).slice(2);',
+    'window.__bootTheme = boot;',
+    'window.__seen = [];',
+    'function fmt(s) {',
+    '  var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);',
+    '  return String(h % 24).padStart(2, "0") + ":" + String(m).padStart(2, "0")',
+    '       + (h >= 24 ? " +1d" : "");',
+    '}',
+    'window.__present = {',
+    '  showView: function (name) { window.__seen.push(["showView", name]) },',
+    '  setLabels: function (on) { window.__seen.push(["setLabels", !!on]) },',
+    '  setRoutes: function (keep) { window.__seen.push(["setRoutes", keep]) },',
+    '  seek: function (sec) { at = Math.max(T0, Math.min(T1, sec)); window.__seen.push(["seek", at]) },',
+    '  setSpeed: function (x) { window.__seen.push(["setSpeed", x]) },',
+    '  setPlaying: function (on) { window.__seen.push(["setPlaying", !!on]) },',
+    '  hasGeo: function () { return true },',
+    '  bounds: function () { return { t0: T0, t1: T1 } },',
+    ...(current
+      ? [
+          '  setTheme: function (name) {',
+          '    if (name !== "warm-dark" && name !== "sepia") return false;',
+          '    if (name === "sepia") root.setAttribute("data-theme", "sepia");',
+          '    else root.removeAttribute("data-theme");',
+          '    window.__seen.push(["setTheme", name]);',
+          '    return true;',
+          '  },',
+        ]
+      : []),
+    '  state: function () {',
+    `    return { now: at, clock: fmt(at), viewName: "schematic", labels: true${current ? ', theme: themeName()' : ''} };`,
+    '  },',
+    '};',
+    '</script></body>',
+  ].join('\n')
+
+const THEMED_PAGE = pageSource(true)
+const OLDER_PAGE = pageSource(false)
 
 /** The project's page file, where the engine writes it. */
 function pageFile(h: Home): string {
@@ -182,7 +194,7 @@ function pageFile(h: Home): string {
   return join(h.engineHome, 'out', id, 'la-metro-rail.html')
 }
 
-const themedPage = (h: Home): void => writeFileSync(pageFile(h), THEMED_PAGE)
+const themedPage = (h: Home, source = THEMED_PAGE): void => writeFileSync(pageFile(h), source)
 
 /**
  * Keep the themed page written over whatever the stand-in engine writes,
@@ -293,11 +305,16 @@ async function factsOf(app: ElectronApplication): Promise<Facts | null> {
  * the screen is left and entered again so the frame loads it: the viewer
  * navigates on a redraw and on nothing else.
  */
-async function openWithAPage(page: Page, app: ElectronApplication, h: Home): Promise<void> {
+async function openWithAPage(
+  page: Page,
+  app: ElectronApplication,
+  h: Home,
+  source = THEMED_PAGE,
+): Promise<void> {
   await project(page, 'Los Angeles')
   await page.getByRole('button', { name: /lay out/i }).click()
   await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
-  themedPage(h)
+  themedPage(h, source)
   await page.getByRole('button', { name: 'Back to Library' }).click()
   await page.getByRole('button', { name: 'Open Los Angeles' }).click()
   await openCell(page, 'style')
@@ -308,7 +325,7 @@ async function openWithAPage(page: Page, app: ElectronApplication, h: Home): Pro
     })
     .not.toBeNull()
   await expect
-    .poll(() => themeOf(page), { message: 'the page answers state() through the bridge' })
+    .poll(() => stateOf(page), { message: 'the page answers state() through the bridge' })
     .not.toBeNull()
 }
 
@@ -416,6 +433,73 @@ test('a chosen theme restyles the page in place, is stored, and asks the engine 
       })
       .toBe('sepia')
     await expect.poll(() => themeOf(page), { message: 'and the page says so' }).toBe('sepia')
+  })
+})
+
+// A page the engine wrote before v0.11.0 has no `setTheme`, and nothing would
+// show a press on one. The page says so ("this map cannot do that") and the
+// viewer does what it did before the seam had a theme: the frame goes to the
+// address with the project's theme, by the path a redraw takes, so the hour
+// the page was at is given back.
+test('a page with no setTheme is loaded again at the new theme, once', async () => {
+  const h = home()
+  await withApp(h, async (page, app) => {
+    await openWithAPage(page, app, h, OLDER_PAGE)
+    const address = await frame(page).getAttribute('src')
+    expect(address, 'the project opens in the theme its record holds').toContain('theme=warm-dark')
+    const asked = received(h, 'map.build').length
+
+    const LATER = 50_000
+    await askPage(page, 'seek', LATER)
+    expect((await stateOf(page))?.now, 'the page took the seek').toBe(LATER)
+    const before = await factsOf(app)
+    expect(before?.document, 'the page is a document with an identity to compare').toBeTruthy()
+    expect(before?.boot, 'and it booted in warm dark').toBe('warm-dark')
+
+    await frame(page).evaluate((element) => {
+      const counted = window as unknown as { __loads?: number }
+      counted.__loads = 0
+      element.addEventListener('load', () => {
+        counted.__loads = (counted.__loads ?? 0) + 1
+      })
+    })
+    const navigated: string[] = []
+    page.on('framenavigated', (moved) => {
+      if (moved !== page.mainFrame() && moved.url().includes('controls=1'))
+        navigated.push(moved.url())
+    })
+
+    await switchOf(page).getByRole('button', { name: 'Sepia' }).click()
+    await expect
+      .poll(() => readRecord(h).theme, { message: 'the record holds the theme' })
+      .toBe('sepia')
+    await expect(
+      frame(page),
+      'the page could not be told, so the frame was sent to the address with the new theme',
+    ).toHaveAttribute('src', /theme=sepia/)
+    await expect
+      .poll(async () => (await factsOf(app))?.boot ?? null, {
+        message: 'the page that arrived booted in sepia: its address said so',
+        timeout: 20_000,
+      })
+      .toBe('sepia')
+
+    // Once is once: a second navigation would be a state read and a load
+    // away; the pause is longer than that.
+    await page.waitForTimeout(1500)
+    expect(
+      await page.evaluate(() => (window as unknown as { __loads?: number }).__loads),
+      'the frame loaded once',
+    ).toBe(1)
+    expect(navigated, 'and was navigated once').toHaveLength(1)
+    const after = await factsOf(app)
+    expect(after?.document, 'to a new document').not.toBe(before?.document)
+    expect(after?.attribute, 'which is wearing sepia').toBe('sepia')
+    expect(after?.seen, 'and, as after a redraw, was given back the hour it was at').toContainEqual(
+      ['seek', LATER],
+    )
+    expect(received(h, 'map.build'), 'nothing was drawn again').toHaveLength(asked)
+    expect(received(h, 'graph.build'), 'and nothing was laid out').toHaveLength(1)
   })
 })
 

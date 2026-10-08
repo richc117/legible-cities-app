@@ -2,7 +2,13 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { Theme } from '../../src/shared/project'
-import { nextWrite, writeThenRestyle, writeThrough } from '../../src/renderer/src/themeWrites'
+import {
+  lacksTheSeam,
+  nextWrite,
+  writeThenRestyle,
+  writeThrough,
+} from '../../src/renderer/src/themeWrites'
+import { MISSING_METHOD } from '../../src/shared/viewer'
 
 // The theme switch's own logic (A4-03, specs/021-theme): what a press does
 // at this moment, and what happens to a press that arrives while the record
@@ -229,6 +235,101 @@ describe('writeThenRestyle', () => {
 // call to the map's frame is read, so a screen that wrote the record and
 // forgot the page fails here before it fails on a runner
 // (`tests/e2e/theme.spec.ts` is the proof it arrives).
+// A page the engine wrote before v0.11.0 has no `setTheme`, and nothing is
+// coming that would carry the theme to it: the one refusal that is answered.
+describe('a page with no setTheme', () => {
+  it('is recognised by the dispatcher’s own sentence, whole, and by nothing else', () => {
+    expect(lacksTheSeam(new Error(MISSING_METHOD))).toBe(true)
+    for (const other of [
+      'the map is not on the screen',
+      'the map is still loading',
+      'the map did not answer',
+      'the map could not do that',
+      '',
+      `${MISSING_METHOD}, really`,
+    ])
+      expect(lacksTheSeam(new Error(other)), other).toBe(false)
+    // A thing thrown that is not an error is not the dispatcher's sentence.
+    for (const other of [MISSING_METHOD, null, undefined, 7, { message: MISSING_METHOD }])
+      expect(lacksTheSeam(other), String(other)).toBe(false)
+  })
+
+  it('falls back once, after the record is written, when the page says it cannot', async () => {
+    const order: string[] = []
+    await writeThenRestyle(
+      'sepia',
+      async () => {
+        order.push('write')
+      },
+      () => Promise.reject(new Error(MISSING_METHOD)),
+      () => order.push('fall back'),
+    )
+    await tick()
+    expect(order).toEqual(['write', 'fall back'])
+  })
+
+  it('does not fall back for any other refusal', async () => {
+    const fallBack = vi.fn()
+    for (const why of [
+      'the map is not on the screen',
+      'the map is still loading',
+      'the map did not answer',
+    ])
+      await writeThenRestyle(
+        'sepia',
+        async () => undefined,
+        () => Promise.reject(new Error(why)),
+        fallBack,
+      )
+    await writeThenRestyle(
+      'sepia',
+      async () => undefined,
+      () => {
+        throw new Error(MISSING_METHOD)
+      },
+      fallBack,
+    )
+    await tick()
+    expect(fallBack, 'every other failure stays swallowed').not.toHaveBeenCalled()
+  })
+
+  it('does not fall back when the page took the theme, or when the record was not written', async () => {
+    const fallBack = vi.fn()
+    await writeThenRestyle(
+      'sepia',
+      async () => undefined,
+      async () => true,
+      fallBack,
+    )
+    await expect(
+      writeThenRestyle(
+        'sepia',
+        async () => {
+          throw new Error('the record could not be written')
+        },
+        () => Promise.reject(new Error(MISSING_METHOD)),
+        fallBack,
+      ),
+    ).rejects.toThrow('the record could not be written')
+    await tick()
+    expect(fallBack).not.toHaveBeenCalled()
+  })
+
+  it('is not an error when the fallback itself throws', async () => {
+    await expect(
+      writeThenRestyle(
+        'sepia',
+        async () => undefined,
+        () => Promise.reject(new Error(MISSING_METHOD)),
+        () => {
+          throw new Error('no state to set')
+        },
+      ),
+    ).resolves.toBeUndefined()
+    await tick()
+  })
+})
+
 describe('the project screen’s setTheme', () => {
   const source = readFileSync(
     resolve(__dirname, '../../src/renderer/src/notebook/useProjectState.ts'),
@@ -239,6 +340,9 @@ describe('the project screen’s setTheme', () => {
     expect(source).toMatch(/\bwriteThenRestyle\(/)
     expect(source, 'the call that restyles the page in place').toMatch(
       /viewer\.call\(\s*'map',\s*'setTheme'/,
+    )
+    expect(source, 'and the fallback for a page that cannot be told').toMatch(
+      /setThemeReloads\(\s*\(count\)\s*=>\s*count \+ 1\s*\)/,
     )
   })
 })

@@ -186,10 +186,10 @@ describe('what a fresh page is given back', () => {
     }
   })
 
-  // The whole reason the memory exists: a run, a theme change or the
-  // export's preview navigates the frame, and the page that arrives is at
-  // the address's own defaults. This is what `Viewer.tsx` composes and
-  // dispatches on the load that follows.
+  // The whole reason the memory exists: a run navigates the frame (so does a
+  // theme pressed on a page that cannot be told it), and the page that
+  // arrives is at the address's own defaults. This is what `Viewer.tsx`
+  // composes and dispatches on the load that follows.
   it('gives a paused, slowed map back paused and slowed', () => {
     const calls = restoreCalls(withRemembered(STATE, { speed: 30, playing: false }), 'warm-dark')
     expect(calls).toEqual([
