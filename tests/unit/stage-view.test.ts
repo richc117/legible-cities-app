@@ -5,6 +5,8 @@ import {
   MAX_SCALE,
   MIN_SCALE,
   NUDGE,
+  STAGES,
+  STAGE_SANDBOX,
   STEP,
   fit,
   forgetAllStages,
@@ -13,7 +15,6 @@ import {
   stageFor,
   zoomAt,
 } from '../../src/renderer/src/engine/stages'
-import { STAGES, STAGE_SANDBOX } from '../../src/renderer/src/StageView'
 import type { RenderStageParams, RenderStageResult } from '../../src/shared/protocol'
 
 describe('the pane keeps the point under the pointer still when it zooms', () => {

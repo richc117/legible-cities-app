@@ -12,7 +12,18 @@ import type { EngineState } from '../../shared/engine'
 import { withoutPaths } from '../../shared/engine'
 import type { RenderStageResult, StageName } from '../../shared/protocol'
 import { drawnDate, type ProjectRecord } from '../../shared/project'
-import { fit, keyed, pan, zoomAt, type View } from './engine/stages'
+import {
+  DRAW_WIDTH,
+  STAGES,
+  STAGES_EXPLAINED,
+  STAGE_SANDBOX,
+  fit,
+  frameDocument,
+  keyed,
+  pan,
+  zoomAt,
+  type View,
+} from './engine/stages'
 import Icon from './icons/Icon'
 import Button from './kit/Button'
 import Disclosure from './kit/Disclosure'
@@ -38,42 +49,6 @@ import {
 // counts, and a disclosure after the keys hint, "The network in words",
 // holds the extent and one item per line. The words are `networkWords.ts`'s
 // and are drawn here as text nodes; this file orders and computes nothing.
-
-export const STAGES: { stage: StageName; label: string; gloss: string }[] = [
-  { stage: 'gtfs2graph', label: 'gtfs2graph', gloss: 'as the feed draws its routes' },
-  { stage: 'loom', label: 'loom', gloss: 'lines sorted onto shared track' },
-]
-
-/**
- * What the two buttons are, said once under the heading (issue 282). The
- * names stay the engine's, so a stage here matches a stage in its log; the
- * sentence is what says what they are and how they relate to the map below. `topo` and `octi` are not offered: topo is
- * gtfs2graph with platforms merged, a difference of counts and not of
- * picture, and octi is the schematic the viewer already shows.
- */
-export const STAGES_EXPLAINED =
-  'The map below is the schematic. These are two earlier stages of the same layout, drawn where the routes really run: gtfs2graph is the network as the feed draws it, and loom is the same network after the engine has sorted the lines onto shared track, before anything is straightened. The names are the engine’s, so a stage here matches a stage in its log.'
-
-/** The pane's frame takes no permission at all: the whole of its sandbox. */
-export const STAGE_SANDBOX = ''
-
-/** The width the engine draws at, whatever the pane's: wide enough that a large network stays sharp when zoomed. */
-export const DRAW_WIDTH = 1600
-
-/**
- * The frame's document. srcdoc is parsed as HTML whatever it holds, so the
- * engine's SVG would land inline in a body with the browser's margin and
- * grow scrollbars; this is the chrome around it, not the drawing. The
- * frame's policy is the interface's own (a srcdoc document inherits it),
- * so loosening csp() in the main process loosens this frame too.
- */
-export function frameDocument(svg: string): string {
-  return (
-    '<!doctype html><style>html,body{margin:0;overflow:hidden;background:transparent}' +
-    'svg{display:block}</style>' +
-    svg
-  )
-}
 
 interface Props {
   project: ProjectRecord

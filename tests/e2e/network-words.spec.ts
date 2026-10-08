@@ -20,7 +20,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test'
 import { FAKE_ENGINE } from '../support/python'
 import { PYTHON, profile, sweep, withApp, type Profile } from '../support/a11y'
 import { cell, laidOutProject, panel } from '../support/project'
-import { STAGE_SANDBOX } from '../../src/renderer/src/StageView'
+import { STAGE_SANDBOX } from '../../src/renderer/src/engine/stages'
 import { networkWords } from '../../src/renderer/src/networkWords'
 import type { StageDescription } from '../../src/shared/protocol'
 

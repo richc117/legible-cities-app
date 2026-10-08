@@ -8,7 +8,7 @@ import { join, resolve } from 'node:path'
 import { _electron as electron, expect, test, type Page } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 import { cell, createProject, layOut, openCell, openProject, panel } from '../support/project'
-import { STAGE_SANDBOX } from '../../src/renderer/src/StageView'
+import { STAGE_SANDBOX } from '../../src/renderer/src/engine/stages'
 
 const repoRoot = resolve(__dirname, '../..')
 const PYTHON = findPython()
