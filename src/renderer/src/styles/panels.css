@@ -556,6 +556,22 @@ th .sort:focus-visible {
   width: 100%;
 }
 
+/* The sidecar's alt text (issue 352) is a native <textarea>: the kit has no
+   multi-line field. Its own stylesheet already draws one as a text field
+   (the raised fill, the radius, the ring); this gives it the resting edge
+   a text field has (section 3, --border-strong, as the select and the
+   checkbox have it) and the disabled look the kit gives its inputs, which
+   are pairs the contrast test already holds. */
+.export-choices textarea {
+  box-shadow: inset 0 0 0 var(--border-width) var(--border-strong);
+  resize: vertical;
+}
+
+.export-choices textarea:disabled {
+  color: var(--text-faint);
+  background-color: var(--surface-sunken);
+}
+
 .export-choices fieldset {
   display: grid;
   gap: var(--space-2-2);

@@ -6,9 +6,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   byPlatform,
+  CAPTION_COUNT_FROM,
+  cornerNote,
+  cornerWords,
+  defaultCorner,
   defaultsFor,
   exportTablesFor,
   forgetExportTables,
+  offeredCorners,
   offeredOf,
   plays,
   presetWords,
@@ -16,11 +21,13 @@ import {
   PREVIEW_DELAY,
   PreviewPlanner,
   ratioWords,
+  readCaption,
   refusalWords,
   sameChoice,
   storyboardWords,
   toggledLines,
   usable,
+  withAlt,
   withOption,
   withPreset,
   withStoryboard,
@@ -28,7 +35,7 @@ import {
   type TablesClient,
 } from '../../src/renderer/src/exportChoice'
 import type { ExportChoice, ExportPreview } from '../../src/shared/export'
-import type { Preset, Storyboard } from '../../src/shared/protocol'
+import type { ClockCorner, Preset, Storyboard } from '../../src/shared/protocol'
 
 const preset = (over: Partial<Preset> & Pick<Preset, 'name'>): Preset => ({
   platform: 'Instagram',
@@ -206,6 +213,179 @@ describe('the choice', () => {
       }),
     ).toBe('h')
     expect(refusalWords({ ok: false, error: { code: -32000, message: 'm' } })).toBe('m')
+  })
+})
+
+// Issue 352, ADR-052: a caption, the clock's corner and the sidecar's alt text.
+describe('the clock’s corner', () => {
+  const reel = PRESETS[2] // safe zones
+  const linkedinGif = PRESETS[3] // none
+  const ALL: ClockCorner[] = ['top-left', 'top-right', 'bottom-left', 'bottom-right']
+  const named = (title: boolean, caption: boolean) => ({ title, caption })
+
+  it('offers the corners the engine will plan, and leaves the others out rather than disabled', () => {
+    // A preset with safe zones: the platform's buttons cover the bottom
+    // right, and its title sits top left, so the reel offers two.
+    expect(offeredCorners(reel, named(true, false))).toEqual(['top-right', 'bottom-left'])
+    // Any other preset: all four, and the top left only while nothing
+    // sits there.
+    expect(offeredCorners(linkedinGif, named(false, false))).toEqual(ALL)
+    expect(offeredCorners(linkedinGif, named(true, false))).toEqual([
+      'top-right',
+      'bottom-left',
+      'bottom-right',
+    ])
+    // A caption sits there as the title does, on any preset.
+    expect(offeredCorners(linkedinGif, named(false, true))).not.toContain('top-left')
+    expect(offeredCorners(reel, named(false, true))).toEqual(['top-right', 'bottom-left'])
+    // With neither drawn, the engine allows the top left on a safe-zone
+    // preset too (its refusals are the bottom right, and the top left
+    // beside a name block).
+    expect(offeredCorners(reel, named(false, false))).toEqual([
+      'top-left',
+      'top-right',
+      'bottom-left',
+    ])
+  })
+
+  it('says which corner a preset starts in: the top right where the platform covers the bottom right', () => {
+    expect(defaultCorner(reel)).toBe('top-right')
+    expect(defaultCorner(linkedinGif)).toBe('bottom-right')
+    expect(ALL.map(cornerWords)).toEqual(['top left', 'top right', 'bottom left', 'bottom right'])
+  })
+
+  it('stores a corner only when it differs from the preset’s own, so the default is never sent', () => {
+    const corner = (choice: ExportChoice, preset: Preset, value: ClockCorner) =>
+      withOption(choice, preset, { key: 'clock_corner', value })
+    expect(corner(REEL, reel, 'top-right').options, 'the reel’s own').toEqual({})
+    expect(corner(REEL, reel, 'bottom-left').options).toEqual({ clock_corner: 'bottom-left' })
+    const gif: ExportChoice = { preset: 'linkedin-gif', options: {} }
+    expect(corner(gif, linkedinGif, 'bottom-right').options, 'the others’ own').toEqual({})
+    expect(corner(gif, linkedinGif, 'top-right').options).toEqual({ clock_corner: 'top-right' })
+    const set = corner(gif, linkedinGif, 'top-right')
+    expect(corner(set, linkedinGif, 'bottom-right').options, 'back to the default').toEqual({})
+  })
+
+  it('takes a corner out when the preset changes to one that would refuse it', () => {
+    const bottomRight: ExportChoice = {
+      preset: 'linkedin-gif',
+      options: { clock_corner: 'bottom-right', clock: true },
+    }
+    // Reached only from a record written by hand, since the default is never
+    // stored; the reel refuses it, so it goes.
+    expect(withPreset(bottomRight, 'instagram-reel', reel)).toEqual({
+      preset: 'instagram-reel',
+      options: { clock: true },
+    })
+    const topLeft: ExportChoice = {
+      preset: 'linkedin-gif',
+      options: { clock_corner: 'top-left', title: false },
+    }
+    expect(
+      withPreset(topLeft, 'instagram-reel', reel).options,
+      'the reel allows it with no title',
+    ).toEqual({
+      clock_corner: 'top-left',
+      title: false,
+    })
+    // A corner both presets offer stays.
+    const left: ExportChoice = { preset: 'linkedin-gif', options: { clock_corner: 'bottom-left' } }
+    expect(withPreset(left, 'instagram-reel', reel).options).toEqual({
+      clock_corner: 'bottom-left',
+    })
+    // Without the engine's entry for the new preset the corner is left for
+    // the engine to judge.
+    expect(withPreset(bottomRight, 'instagram-reel').options).toEqual(bottomRight.options)
+  })
+
+  it('takes the top left out when the title or a caption comes to sit there', () => {
+    const topLeft: ExportChoice = {
+      preset: 'linkedin-gif',
+      options: { clock_corner: 'top-left', title: false },
+    }
+    const titled = withOption(topLeft, linkedinGif, { key: 'title', value: true })
+    expect(titled.options, 'the title is back on, which is the default').toEqual({})
+    const captioned = withOption(topLeft, linkedinGif, { key: 'caption', value: 'Rush hour' })
+    expect(captioned.options).toEqual({ title: false, caption: 'Rush hour' })
+    // The same corner stays while nothing sits there.
+    expect(withOption(topLeft, linkedinGif, { key: 'labels', value: false }).options).toEqual({
+      clock_corner: 'top-left',
+      title: false,
+      labels: false,
+    })
+  })
+
+  it('explains why a corner is missing, and warns about the bottom zone before it is chosen', () => {
+    expect(cornerNote(reel, true, named(true, false))).toMatch(
+      /cover the bottom right.*Bottom left is inside its bottom zone.*top right keeps it clear.*sit top left/,
+    )
+    expect(cornerNote(linkedinGif, true, named(true, false))).toMatch(/sit top left/)
+    expect(cornerNote(linkedinGif, true, named(true, false))).not.toMatch(/bottom zone/)
+    expect(cornerNote(linkedinGif, true, named(false, false)), 'nothing to say').toBe('')
+    expect(cornerNote(reel, false, named(true, true))).toBe(
+      'The clock is off, so it has no corner to choose.',
+    )
+  })
+})
+
+describe('the caption', () => {
+  it('is stored trimmed, and not at all when blank', () => {
+    const reel = PRESETS[2]
+    const set = withOption(REEL, reel, { key: 'caption', value: '  Rush hour  ' })
+    expect(set.options).toEqual({ caption: 'Rush hour' })
+    expect(withOption(set, reel, { key: 'caption', value: '   ' }).options).toEqual({})
+    expect(REEL.options, 'the choice changed is a copy').toEqual({})
+  })
+
+  it('is read as it is typed: refused in the engine’s sentence, counted once it nears the bound', () => {
+    expect(readCaption('')).toEqual({ text: '', problem: null, count: null })
+    expect(readCaption('   ')).toEqual({ text: '', problem: null, count: null })
+    expect(readCaption('x'.repeat(CAPTION_COUNT_FROM - 1)).count, 'not yet').toBeNull()
+    expect(readCaption('x'.repeat(CAPTION_COUNT_FROM)).count).toBe('60 of 80')
+    expect(readCaption('x'.repeat(80))).toEqual({
+      text: 'x'.repeat(80),
+      problem: null,
+      count: '80 of 80',
+    })
+    expect(readCaption('x'.repeat(81)).problem).toBe(
+      'A caption is 1 to 80 characters on one line; this one is 81.',
+    )
+    expect(readCaption('x'.repeat(81)).count).toBe('81 of 80')
+    expect(readCaption('one\u2028two').problem).toMatch(/has a line break/)
+    // The count is of the caption as it will be stored.
+    expect(readCaption(`  ${'x'.repeat(80)}  `).problem).toBeNull()
+    expect(readCaption('🚆'.repeat(70)).count, 'an emoji is one character').toBe('70 of 80')
+  })
+})
+
+describe('the alt text', () => {
+  it('is stored trimmed beside the options, and not at all when blank', () => {
+    const set = withAlt(REEL, '  A schematic.\n')
+    expect(set).toEqual({ ...REEL, alt: 'A schematic.' })
+    expect(withAlt(set, '  ')).toEqual(REEL)
+    expect(withAlt(set, '  ')).not.toHaveProperty('alt')
+    expect(REEL, 'the choice changed is a copy').not.toHaveProperty('alt')
+  })
+
+  it('stays with the project through every other change', () => {
+    const reel = PRESETS[2]
+    const chosen: ExportChoice = { ...REEL, storyboard: 'run', alt: 'A schematic.' }
+    expect(withPreset(chosen, 'linkedin-gif', PRESETS[3]).alt).toBe('A schematic.')
+    expect(withStoryboard(chosen, reel, 'transform').alt).toBe('A schematic.')
+    expect(withStoryboard(chosen, reel, 'tour').alt, 'the preset’s own').toBe('A schematic.')
+    expect(withOption(chosen, reel, { key: 'clock', value: false }).alt).toBe('A schematic.')
+    const still: ExportChoice = {
+      preset: 'instagram-post',
+      storyboard: 'run',
+      options: {},
+      alt: 'A.',
+    }
+    expect(
+      usable(still, TABLES).choice,
+      'a storyboard beside a still goes, the alt does not',
+    ).toEqual({ preset: 'instagram-post', options: {}, alt: 'A.' })
+    expect(sameChoice(chosen, { ...chosen, alt: 'Another.' })).toBe(false)
+    expect(sameChoice(chosen, { ...chosen })).toBe(true)
   })
 })
 
