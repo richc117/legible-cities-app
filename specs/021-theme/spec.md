@@ -1,5 +1,36 @@
 # Feature Specification: The theme a project's map is drawn in
 
+> **As of 8 Oct 2026 (issue 349, engine v0.11.0): a press no longer reloads
+> the frame.** The seam had no theme method when this was written (engine
+> issue 29), so a theme could only reach the page on its address and a press
+> was a navigation. Engine v0.11.0 added `window.__present.setTheme(name)`,
+> which takes `warm-dark` or `sepia`, restyles the page in place, answers
+> false and changes nothing for any other name, and never writes storage;
+> `state()` reports `theme`. A press now **writes the record first and then
+> calls `setTheme` on the map's frame**, through the viewer bridge, and
+> nothing is reloaded: the frame's address, its document, its clock, its
+> view, its labels and its scrub position are as they were, and nothing is
+> sent to the engine. If the write fails nothing is sent and the switch says
+> so; if the page is not there to be told (no layout yet, the frame between
+> two documents) that is not an error a person sees, because the next load
+> carries the theme. **The address still carries `theme=` (FR-004), for the
+> next load**: it is made again only when the project, its feed or the
+> number of redraws changes, with the project's theme at that moment, and a
+> theme change alone never changes it (`viewerAddress.ts`). **The viewer also
+> gives the project's theme to every page that loads, as the first call of
+> its restore** (`viewerRestore.ts`), so a theme written between an address
+> being made and its document arriving is never lost, and a page a run has
+> rewritten is in the project's theme whatever its address said. The export
+> is unchanged: `themeFor(project.theme)` on the plan's address, and the
+> export's frame is not driven. Where this text says below that the map
+> reloads, that the frame is sent to a new address, or what a press costs
+> (the User Story 1 scenarios, the Overview, "A run in flight" and "What a
+> theme press costs"), it describes the app before this change. The switch
+> is still disabled while a run or an export holds the page: a run rewrites
+> the page file in place and then sends the frame to the result, so a press
+> then would restyle a document about to go, and the record would hold a
+> theme nothing on screen had shown taking.
+
 **Feature Branch**: `A4-03-theme`
 
 **Created**: 2026-09-12

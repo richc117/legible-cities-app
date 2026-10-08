@@ -218,7 +218,7 @@ The two reader columns are a person's, recorded per run in
 
 | Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
-| Theme switch | pass | fixed (issue 124: `aria-pressed`, a named group; asserted in `theme.spec.ts`) | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
+| Theme switch | pass | fixed (issue 124: `aria-pressed`, a named group; asserted in `theme.spec.ts`) | pass | pass (the page restyles in place and the frame is not reloaded, issue 349) | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
 
 ### Cell 05, Lines
 
@@ -998,8 +998,10 @@ a table).
 - **Theme switch.** Listen for the region "Theme" and the group "The theme
   this map is drawn in" with the buttons "Warm dark" and "Sepia", the
   current one pressed. Press the other and listen for it pressed and the
-  first not. Start a run (Lay out again) and listen for both buttons dimmed,
-  the status "The theme waits until the run that is going has finished: …",
+  first not; the map restyles in place, without reloading its frame, so
+  focus stays on the button pressed and nothing from the map is announced.
+  Start a run (Lay out again) and listen for both buttons dimmed, the
+  status "The theme waits until the run that is going has finished: …",
   and focus on the cell's own heading (D3) if it was on a button. Cell 04
   draws its one control headless (A5.5-17), so "Theme" is the region's name
   and there is no heading of that name to land on. A redraw for a colour or

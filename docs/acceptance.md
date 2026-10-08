@@ -378,13 +378,17 @@ Result: ____
 
 ### 8. Cell 04, Style: the theme
 
-**Do.** In cell **04 Style**, press **Sepia**. Then press **Warm dark**.
+**Do.** With the map playing, note the hour on the clock beside cell 03's
+slider. In cell **04 Style**, press **Sepia**. Then press **Warm dark**.
 
 **See.**
 - Two buttons, **Warm dark** and **Sepia**, the map's current one marked as
   pressed.
-- The map reloads in the sepia theme at once, with no progress line and no
-  layout run; the interface around it keeps its own theme.
+- The map changes to the sepia theme at once and in place: it does not go
+  blank or start again, its clock carries on from the hour you noted rather
+  than from the start of the day, and the view and labels you had are as
+  you left them. There is no progress line and no layout run; the interface
+  around it keeps its own theme.
 - Beneath the two buttons, one sentence says that line width, station size
   and label size are the engine's own for now. Nothing else in this cell
   offers to set them, not even a control that cannot be pressed.
