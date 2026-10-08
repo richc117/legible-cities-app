@@ -440,6 +440,31 @@ describe('the guard in front of the engine', () => {
     expect(h.cancelled, 'the new request was not cancelled by the old press').toEqual([])
   })
 
+  it('leaves no entry behind when the guard fails, and a later request with the token is neither refused nor cancelled', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((r) => {
+      release = r
+    })
+    const h = harness(true, async (method) => {
+      await gate
+      if (method === 'feeds.remove') throw new Error('the project store could not be read')
+      return null
+    })
+    const failing = h
+      .call(CHANNELS.engineRequest, 'tok1', 'feeds.remove', { key: 'x' })
+      .catch((error: unknown) => error)
+    await h.call(CHANNELS.engineCancel, 'tok1')
+    release()
+    expect(((await failing) as Error).message).toBe('the project store could not be read')
+    expect(h.requests, 'the engine was not asked').toEqual([])
+    const again = (await h.call(CHANNELS.engineRequest, 'tok1', 'feeds.list')) as {
+      accepted: boolean
+    }
+    expect(again.accepted, 'the token is free').toBe(true)
+    expect(h.requests.map((r) => r.method)).toEqual(['feeds.list'])
+    expect(h.cancelled, 'the new request was not cancelled by the old press').toEqual([])
+  })
+
   it('refuses a request the guard names, as a bad call, before the engine sees it', async () => {
     const h = harness(true, async (method) =>
       method === 'feeds.remove' ? 'One project uses this feed; delete the project first.' : null,

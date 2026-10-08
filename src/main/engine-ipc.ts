@@ -115,7 +115,17 @@ export function registerEngineHandlers(
     // The gate: what may be asked of the registry on a person's behalf is
     // decided here, with what the main process knows (the paths its own
     // chooser answered, the feeds its projects name), never on the page.
-    const refused = await guard(method, params as Record<string, unknown> | undefined)
+    let refused: string | null
+    try {
+      refused = await guard(method, params as Record<string, unknown> | undefined)
+    } catch (error) {
+      // A guard that fails answers nothing, so neither the held token nor a
+      // cancel made meanwhile may outlive the request; the page's invoke
+      // rejects as it always did.
+      idOf.delete(token)
+      cancelledEarly.delete(token)
+      throw error
+    }
     if (refused !== null) {
       idOf.delete(token)
       cancelledEarly.delete(token)

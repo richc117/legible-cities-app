@@ -1,8 +1,9 @@
 // The Library's feeds, against the stand-in engine: the list, a project
 // from a feed, an add from a file and from a URL, a refused zip, a
-// cancelled add, a remove, a refused remove, a remove the engine does not
-// answer in time, and the empty state's two steps. The stand-in keeps what was added in the home, as the engine
-// does, so a relaunch sees it.
+// cancelled add, a remove, a refused remove, a remove cancelled in time, a
+// remove cancelled too late, a remove the engine never answers, and the
+// empty state's two steps. The stand-in keeps what was added in the home, as
+// the engine does, so a relaunch sees it.
 
 import {
   existsSync,
@@ -632,8 +633,10 @@ test('a removal cancelled before the engine forgets the feed keeps it, says so, 
       .toBe(1)
 
     await cancel.click()
-    await expect(confirm, 'the dialog closes once the engine has answered').toBeHidden({
-      timeout: 10_000,
+    // Shorter than the removal's eight seconds, so a Cancel that sends no
+    // cancel, and lets the removal finish on its own, fails here.
+    await expect(confirm, 'the dialog closes once the engine has answered the cancel').toBeHidden({
+      timeout: 5_000,
     })
     await expect(
       page.getByRole('status').filter({ hasText: 'The removal was cancelled;' }),
