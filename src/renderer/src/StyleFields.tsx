@@ -135,12 +135,21 @@ export default function StyleFields({
   // on without this view.
   useEffect(() => () => schedule.flush(), [schedule])
 
+  // Whether this panel's own redraw is going, for the effect below to read
+  // without being re-run when it ends: it must not reset the panel to a
+  // record that has not been read back yet, which still holds the old sizes.
+  const drawing = useRef(false)
+  useEffect(() => {
+    drawing.current = running && restyled
+  })
+
   // The record is what the panel shows: a build that finished has written it
   // and the screen has read it back, so the two agree again. A record that
-  // arrives while a commit is still waiting is not allowed to throw it off
-  // the screen.
+  // arrives while a commit is still waiting, or while its own build goes
+  // (a rename is enough to bring one), is not allowed to throw the sizes
+  // off the screen.
   useEffect(() => {
-    if (schedule.pending) return
+    if (schedule.pending || drawing.current) return
     setView((current) => viewOf(project.style, current))
   }, [project.id, project.style, schedule])
 
