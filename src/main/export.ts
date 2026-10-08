@@ -20,6 +20,7 @@ import { frameTotal, type CaptureJob } from '../shared/capture'
 import { EngineError, ERROR_CODES, engineError, withoutPaths } from '../shared/engine'
 import {
   planOptions,
+  sentChoice,
   type ExportChoice,
   type ExportPreview,
   type ExportProgress,
@@ -509,6 +510,9 @@ export class Exporter {
       date: day,
       options: planOptions(choice, entry, themeFor(project.theme)),
     } satisfies ExportPlanParams
+    // The alt text is not a plan option: it goes to the encode, in the
+    // provenance, with the same trimming every part of the choice gets.
+    const { alt } = sentChoice(choice, entry)
     const plan = await this.#request<PlannedJob>('export.plan', planParams, control)
     this.#stopIfCancelled(control)
     if (!isObject(plan))
@@ -602,8 +606,10 @@ export class Exporter {
         source: still ? join(frames, STILL_FRAME) : frames,
         dest,
         // The day in the picture, so the sidecar beside the file and the
-        // frames inside it never name different days.
-        provenance: { service_date: day },
+        // frames inside it never name different days; and the person's own
+        // alt text, trimmed, where they wrote one, for a video, a GIF and a
+        // still alike. Left out, the engine writes its own sentence.
+        provenance: { service_date: day, ...(alt === undefined ? {} : { alt }) },
       } satisfies ExportEncodeParams
       const encoded = await this.#request<ExportEncodeResult>(
         'export.encode',
