@@ -364,10 +364,20 @@ describe('a gesture and its release: the map follows the end, never an interval'
     expect(end.unbuilt).toEqual({ live: null, held: null })
   })
 
-  it('a build that stopped drops the release waiting for it, and leaves a gesture alone', () => {
+  it('a build that stopped puts everything back, the release waiting for it and a gesture alike', () => {
     const waiting = released(NOTHING_UNBUILT, one, stored, true).unbuilt
-    expect(stopped(waiting)).toEqual({ live: null, held: null })
-    expect(stopped(reached(waiting, two))).toEqual({ live: two, held: null })
+    const going = reached(waiting, two)
+    expect(mayAdoptRecord(going), 'a gesture and a waiting release hold the record off').toBe(false)
+    expect(stopped()).toEqual(NOTHING_UNBUILT)
+    // The screen goes back to the record, and the picker clears its changed
+    // flag when the colour it is given moves under it, so a pointer or a key
+    // released without another move never reports its end. A gesture left
+    // standing here would hold the record off the screen, and hold every
+    // release back, until the panel closed. The gesture's next colour
+    // reaches it again.
+    expect(mayAdoptRecord(stopped()), 'the record may be shown again').toBe(true)
+    expect(retried(stopped(), stored, false).step, 'and nothing is left waiting').toBe('none')
+    expect(reached(stopped(), three).live, 'a gesture carries on from its next colour').toBe(three)
   })
 
   it('lets the record take the screen back only when nothing is going or waiting', () => {
@@ -383,16 +393,39 @@ describe('a gesture and its release: the map follows the end, never an interval'
 // panel that has gone back to building on every colour or on a timer.
 describe('the line colours panel builds on the picker’s release', () => {
   const source = readFileSync(resolve(__dirname, '../../src/renderer/src/LineColours.tsx'), 'utf8')
+  // Each expectation is a boolean with the rule it holds in its message, so
+  // a rename fails by naming the rule and not by dumping the file.
+  const has = (pattern: RegExp): boolean => pattern.test(source)
+  const count = (pattern: RegExp): number => (source.match(pattern) ?? []).length
+
   it('hands the picker an onChangeEnd, and its onChange only follows', () => {
-    expect(source).toMatch(/<HexColorPicker[^>]*onChange=\{onPick\}[^>]*onChangeEnd=\{onPickEnd\}/)
+    expect(
+      has(/<HexColorPicker[^>]*onChange=\{onPick\}[^>]*onChangeEnd=\{onPickEnd\}/),
+      'the picker is given onChange={onPick} to follow and onChangeEnd={onPickEnd} to release',
+    ).toBe(true)
     // Two rows of controls (the default's and each line's), each with both.
-    expect(source.match(/onPick=\{\(hex\) => follow\(/g)).toHaveLength(2)
-    expect(source.match(/onPickEnd=\{\(hex\) => release\(/g)).toHaveLength(2)
-    expect(source).not.toMatch(/onPick=\{\(hex\) => release\(/)
+    expect(
+      count(/onPick=\{\(hex\) => follow\(/g),
+      "every row's onPick follows (the default's row and each line's: two sites)",
+    ).toBe(2)
+    expect(
+      count(/onPickEnd=\{\(hex\) => release\(/g),
+      "every row's onPickEnd releases (the default's row and each line's: two sites)",
+    ).toBe(2)
+    expect(
+      has(/onPick=\{\(hex\) => release\(/),
+      "no row's onPick releases: a colour on the way to the end builds nothing",
+    ).toBe(false)
   })
   it('keeps no debounce on the path from a colour to a build', () => {
-    expect(source).not.toMatch(/from '\.\/debounce'/)
-    expect(source).not.toMatch(/\bdebounce\(/)
+    expect(
+      has(/from '\.\/debounce'/),
+      'LineColours.tsx does not import the debounce: a colour builds on release, never on a quiet interval (issue 262)',
+    ).toBe(false)
+    expect(
+      has(/\bdebounce\(/),
+      'LineColours.tsx does not call a debounce: a colour builds on release, never on a quiet interval (issue 262)',
+    ).toBe(false)
   })
 })
 

@@ -264,13 +264,19 @@ function decide(unbuilt: Unbuilt, next: Palette, stored: Palette, busy: boolean)
 }
 
 /**
- * A build that stopped wrote nothing, so a release that was waiting to
- * follow it is dropped: building it would draw colours a person has just
- * been told the project did not keep. A gesture still going is theirs and
- * carries on.
+ * A build that stopped wrote nothing, so the screen goes back to the
+ * record and nothing is left unbuilt: a release that was waiting is
+ * dropped, because building it would draw colours a person has just been
+ * told the project did not keep, and so is a gesture's live colour. The
+ * picker clears its changed flag when the colour it is given moves under
+ * it, so a pointer or a key released without another move never reports
+ * its end, and a gesture left standing would hold the record off the screen
+ * and every release back until the panel closed, and then build a colour
+ * the swatch stopped showing. The gesture's next colour reaches `reached`
+ * again, and its end follows.
  */
-export function stopped(unbuilt: Unbuilt): Unbuilt {
-  return { ...unbuilt, held: null }
+export function stopped(): Unbuilt {
+  return NOTHING_UNBUILT
 }
 
 /**

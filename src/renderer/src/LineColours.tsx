@@ -194,12 +194,15 @@ export default function LineColours({
   // back to the record's; the run's own panel says why. A stop stops
   // everything: a release that was waiting for this build is dropped, and
   // letting it through would build the colours a person had just been told
-  // the project did not keep.
+  // the project did not keep. A gesture going at that moment is dropped
+  // with it, and its next colour starts it again: the picker clears its
+  // changed flag when the colour it is given moves under it, so it would
+  // never report the end of the one that was cut off.
   useEffect(() => {
     if (recoloured && (runState === 'cancelled' || runState === 'failed')) {
       if (retry.current !== null) clearTimeout(retry.current)
       retry.current = null
-      unbuilt.current = stopped(unbuilt.current)
+      unbuilt.current = stopped()
       setPalette({ colors: project.colors, defaultColor: project.defaultColor })
     }
   }, [runState, recoloured, project.colors, project.defaultColor])
