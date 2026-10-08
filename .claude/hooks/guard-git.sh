@@ -75,14 +75,15 @@ esac
 # `-m "$(cat <<EOF ... EOF` then `)` and `-a`, so cutting everything from the
 # operator on would let that -a through, and a commit can follow a body that
 # mentions the verbs. The terminator is the operator's word with its quotes
-# and backslashes taken off, as a shell reads it (`<<'EOF'`). A heredoc with
-# no terminator, or no word to end it, or a word whose quotes do not pair, or
-# one that is `<<-` (a terminator indented by tabs, which nothing here
-# writes), is not one this can bound. Nor is one whose word is unquoted
+# and backslashes taken off, as a shell reads it, for the four spellings
+# where that is all there is to it: bare, `<<'EOF'`, `<<"EOF"`, `<<\EOF`. A
+# heredoc with no terminator, or no word to end it, or a word in any other
+# spelling, or one that is `<<-` (a terminator indented by tabs, which
+# nothing here writes), is not one this can bound. Nor is one whose word is unquoted
 # (`<<EOF`) and whose body holds a `$(` or a backtick: the shell expands
 # such a body, so what is in it runs, and it is not text to be cut out.
 strip_bodies() {
-  local word delim lead tail head line body post b inner q nl seen first before opened taken dq sq
+  local word delim lead tail head line body post b inner nl seen first before opened taken dq sq
   nl=$'\n'
   seen=''; first=1
   while IFS= read -r line; do
@@ -125,10 +126,16 @@ strip_bodies() {
     word=${tail%%[[:space:];&|<>)]*}
     delim=${word//[\"\'\\]/}
     [ -n "$delim" ] || return 2
-    # A word whose quotes do not pair (`<<"EO F"`, cut at its space) is not
-    # the word the shell reads, and the body would end where it does not.
-    q=${word//[!\"\']/}
-    [ $(( ${#q} % 2 )) -eq 0 ] || return 2
+    # Only the four spellings whose shell reading is exactly `delim`, which
+    # has no quote or backslash in it: bare, in single quotes, in double
+    # quotes, or behind one backslash. Any other word is read by the shell
+    # as something else (`<<"EO F"`, cut at its space; `<<"EOF' x"`, whose
+    # quotes pair and whose delimiter is `EOF' x`; `<<'\EOF'`), and the body
+    # would end at a line it does not end at.
+    case "$word" in
+      "$delim"|"'$delim'"|"\"$delim\""|"\\$delim") ;;
+      *) return 2 ;;
+    esac
     tail=${tail#"$word"}
     case "$tail" in
       *"$nl"*) line=${tail%%"$nl"*}; body=${tail#*"$nl"} ;;
@@ -258,7 +265,7 @@ case "$code" in
       # The words were never reached: a heredoc could not be bounded, so what
       # in the command is text and what is a command could not be told, and
       # git commit may be the command or a line of the body.
-      block "this command could not be read: it holds git commit and a heredoc this hook could not bound (no terminator line of its own, a <<- form, a quote or backslash open before its operator, a delimiter whose quotes do not pair, or an unquoted delimiter over a body with a substitution in it, say), so what is text and what is a command could not be told; nothing was scanned; nothing was run." \
+      block "this command could not be read: it holds git commit and a heredoc this hook could not bound (no terminator line of its own, a <<- form, a quote or backslash open before its operator, a delimiter the shell would read differently from this hook, or an unquoted delimiter over a body with a substitution in it, say), so what is text and what is a command could not be told; nothing was scanned; nothing was run." \
             "End the heredoc with its delimiter alone on a line, quote the delimiter ('EOF') when the body is only text, and keep a commit or push in a command of its own."
     elif [ "$all" -ne 1 ]; then
       block "the options of this commit could not be read (a word that is an expansion, say), so nothing was scanned; nothing was committed." \
