@@ -112,10 +112,12 @@ export default function ThemeSwitch({
   const group = useId()
   // What a choice does - written, kept for the write in flight, or nothing
   // - is `themeChooser.ts`, made once for the life of the switch. It takes
-  // the latest `onChange`, not the one it was made with, and the record's
-  // theme from here only when nothing is being written: the screen's copy
-  // of it arrives a render after a write has landed, and a choice made in
-  // that gap must not be compared with the old one.
+  // the latest `onChange`, not the one it was made with, and is told the
+  // record's theme each time the screen's copy of it changes, with no guard.
+  // That copy arrives a render after a write has landed, and a choice made
+  // in that gap must not be compared with the old one: the chooser remembers
+  // what each write landed, and a landing is the last word over a copy that
+  // arrived while it was going, which is what makes a guard unnecessary.
   const write = useRef(onChange)
   useLayoutEffect(() => {
     write.current = onChange

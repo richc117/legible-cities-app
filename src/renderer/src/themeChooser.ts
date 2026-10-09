@@ -31,7 +31,9 @@ export interface ThemeChooser {
   /**
    * The project's theme, as the screen has it, each time it changes there:
    * what a write has landed, which is already known here, or a change made
-   * elsewhere.
+   * elsewhere. There is no guard on it, and it needs none: a write that
+   * lands is the last word on the record, over a `sync` that arrived while
+   * it was going, so an old copy of the screen's cannot win.
    */
   sync(theme: Theme): void
   /** Forget a choice kept for a write that is going: the way closed under it. */

@@ -3,9 +3,11 @@
 //
 // Rendered to static markup, as the cell's own test is: what is asserted is
 // what the adapter draws. The theme switch's behaviour - the write, the
-// choice kept during one, the disabling while a run holds the page - is
-// `tests/unit/theme-writes.test.ts` and `tests/e2e/theme.spec.ts`, and
-// neither moved for this. What the fields do when a figure is typed is
+// choice kept during one, a choice made as one lands - is
+// `tests/unit/theme-chooser.test.ts`, over the pieces `theme-writes.test.ts`
+// holds, and the disabling while a run holds the page and the keyboard are
+// `tests/e2e/theme.spec.ts`; what is asserted here of the switch is the
+// markup it draws. What the fields do when a figure is typed is
 // `tests/unit/style-rules.test.ts` and `tests/e2e/style.spec.ts`; what is asserted
 // here is what the cell draws.
 //

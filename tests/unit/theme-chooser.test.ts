@@ -168,6 +168,33 @@ describe('the record’s theme as the screen has it', () => {
   })
 })
 
+describe('a write landing and a sync that arrived while it was going', () => {
+  // The landing is the last word. A record rewritten elsewhere while a write
+  // is in flight reaches the chooser as a `sync` of the theme the project
+  // had; the write then lands and the record holds what it wrote. A chooser
+  // that let the sync win would compare the next choice with the old theme
+  // and drop it: the bug of the gap above, brought back by another road.
+  it('wins over it: what was written is what the project is', async () => {
+    const { chooser, started } = harness('warm-dark')
+    const first = chooser.choose('sepia')
+    await settle()
+    chooser.sync('warm-dark')
+    started[0].land()
+    await first
+
+    // Sepia is what the record holds, and so a choice of it is nothing...
+    void chooser.choose('sepia')
+    await settle()
+    expect(started.map((w) => w.theme)).toEqual(['sepia'])
+    // ...and warm dark is a change, which the sync must not have hidden.
+    const back = chooser.choose('warm-dark')
+    await settle()
+    expect(started.map((w) => w.theme)).toEqual(['sepia', 'warm-dark'])
+    started[1].land()
+    await back
+  })
+})
+
 describe('a write that fails', () => {
   it('says so, lets the cards go back to the record, and drops what was kept behind it', async () => {
     const { chooser, started, asked, failed } = harness()
@@ -183,7 +210,12 @@ describe('a write that fails', () => {
     ).toEqual(['sepia'])
     expect(failed).toEqual([null, 'the record could not be written'])
     expect(asked.at(-1), 'the cards show the record again').toBeNull()
-    // Nothing landed, so the same choice is a new one.
+    // Nothing landed, so the theme the project had is still what it is, and
+    // choosing it is nothing...
+    void chooser.choose('warm-dark')
+    await settle()
+    expect(started.map((w) => w.theme)).toEqual(['sepia'])
+    // ...and the same choice is a new one.
     const again = chooser.choose('sepia')
     await settle()
     expect(started.map((w) => w.theme)).toEqual(['sepia', 'sepia'])
