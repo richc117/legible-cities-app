@@ -14,14 +14,28 @@ import type { RenderStageResult, StageName } from '../../shared/protocol'
 import { drawnDate, type ProjectRecord } from '../../shared/project'
 import {
   DRAW_WIDTH,
+  LAYOUT_ORDER,
   STAGES,
   STAGES_EXPLAINED,
   STAGE_SANDBOX,
+  clearedSentence,
+  drawnAnnouncement,
   fit,
+  forgetStagesOf,
   frameDocument,
   keyed,
+  notDrawnYet,
   pan,
+  revealSentence,
+  runSet,
+  shownStage,
+  stageSet,
+  toAsk,
+  waitsOn,
+  wordsOf,
   zoomAt,
+  type Asked,
+  type Reveal,
   type View,
 } from './engine/stages'
 import Icon from './icons/Icon'
@@ -49,10 +63,25 @@ import {
 // counts, and a disclosure after the keys hint, "The network in words",
 // holds the extent and one item per line. The words are `networkWords.ts`'s
 // and are drawn here as text nodes; this file orders and computes nothing.
+//
+// While a layout run goes, the pane draws the layout as it solves (issue
+// 382, specs/032): each of the four stages as the run reports it, asked of
+// the engine with the run's layout and cached under the run's identity, no
+// day sent, and the pane following the run. A stage the engine refuses as
+// not yet is asked again when the stage it waits on is reported; the
+// reports are the clock and nothing is asked on a timer. When the run has
+// finished and its record has been read back the view is a stored layout's
+// again; a run that stopped leaves nothing of what it drew and says so.
+// What to ask, show and say is decided in `engine/stages.ts`.
 
 interface Props {
   project: ProjectRecord
   engine: EngineState | null
+  /**
+   * A layout run that has named its layout, as `revealOf` sees it, or
+   * null; left out, as for a screen with no run (issue 382).
+   */
+  reveal?: Reveal | null
   read: (
     key: string,
     layout: string,
@@ -67,6 +96,21 @@ type State =
   | { status: 'waiting' }
   | { status: 'ready'; drawing: RenderStageResult }
   | { status: 'failed'; message: string }
+
+/** What a run's reveal has drawn, and the sentence of a refusal that was not "not yet". */
+interface Revealed {
+  run: string
+  drawings: Partial<Record<StageName, RenderStageResult>>
+  refused: string | null
+}
+
+const NONE: readonly StageName[] = []
+
+/** A refusal's sentence, as the view has always shown one: the engine's hint, never a path. */
+const refusalOf = (error: unknown): string => {
+  const reason = error as { data?: { hint?: string }; message?: string }
+  return withoutPaths(reason.data?.hint ?? reason.message ?? 'The stage could not be drawn.')
+}
 
 /** A toggle's contents: the cell row's chevron, decorative, then the words that name it. */
 const toggleSummary = (text: string): JSX.Element => (
@@ -152,7 +196,7 @@ export const NetworkInWords = memo(function NetworkInWords({
   )
 })
 
-export default function StageView({ project, engine, read }: Props): JSX.Element {
+export default function StageView({ project, engine, read, reveal = null }: Props): JSX.Element {
   const ready = engine?.state === 'ready'
   const [stage, setStage] = useState<StageName>('gtfs2graph')
   const [state, setState] = useState<State>({ status: 'waiting' })
@@ -169,6 +213,28 @@ export default function StageView({ project, engine, read }: Props): JSX.Element
   // and zoom, so the two can be compared; a new set is fitted afresh.
   const fittedTo = useRef<string | null>(null)
   const layout = project.layout
+  // The run's reveal (issue 382): live while the run goes and until its
+  // record has been read back; cleared once it stopped.
+  const live = reveal !== null && (reveal.state === 'running' || reveal.state === 'done')
+  const ending =
+    reveal !== null && (reveal.state === 'cancelled' || reveal.state === 'failed')
+      ? reveal.state
+      : null
+  const revealRun = live ? reveal.run : null
+  const revealLayout = live ? reveal.layout : null
+  const reportedKey = (live ? reveal.reported : NONE).join(' ')
+  // Where each stage's request stands, for the run asking: a ref, because
+  // the requests outlive the renders between two reports.
+  const asked = useRef<{ run: string; stages: Partial<Record<StageName, Asked>> } | null>(null)
+  const [revealed, setRevealed] = useState<Revealed | null>(null)
+  // Moved by a "not yet" refusal, so the stage it waits on is looked at
+  // again even when its report came before the refusal did.
+  const [refusals, setRefusals] = useState(0)
+  const [pressed, setPressed] = useState<{ run: string; stage: StageName; drawn: number } | null>(
+    null,
+  )
+  const [early, setEarly] = useState<{ run: string; stage: StageName } | null>(null)
+  const [announced, setAnnounced] = useState('')
   // The day the description's minutes are of: the day the map on screen was
   // drawn for, which is the day its sentence says ("On the day drawn"). A
   // day chosen and not yet drawn is not it (A5.5-15), and asking for each
@@ -178,7 +244,9 @@ export default function StageView({ project, engine, read }: Props): JSX.Element
   const day = drawnDate(project)
 
   useEffect(() => {
-    if (!ready || layout === null) {
+    // While a run reveals the layout the pane is the run's: the stored
+    // drawing goes, and the store is read again when the reveal ends.
+    if (live || !ready || layout === null) {
       setState({ status: 'waiting' })
       setLoading(false)
       return
@@ -204,19 +272,89 @@ export default function StageView({ project, engine, read }: Props): JSX.Element
       (error: unknown) => {
         if (left) return
         setLoading(false)
-        const reason = error as { data?: { hint?: string }; message?: string }
-        setState({
-          status: 'failed',
-          message: withoutPaths(
-            reason.data?.hint ?? reason.message ?? 'The stage could not be drawn.',
-          ),
-        })
+        setState({ status: 'failed', message: refusalOf(error) })
       },
     )
     return () => {
       left = true
     }
-  }, [ready, project.feed, layout, project.made, stage, day, read])
+  }, [live, ready, project.feed, layout, project.made, stage, day, read])
+
+  // The reveal's requests: each stage as the run reports it, and each
+  // refused as not yet once the stage it waits on is reported. No day is
+  // sent: it would make every stage wait on octi, and during a re-layout
+  // the engine answers a stage the build has not finished from the stored
+  // set (specs/032 FR-004).
+  useEffect(() => {
+    if (revealRun === null || revealLayout === null || !ready) return
+    if (asked.current?.run !== revealRun) asked.current = { run: revealRun, stages: {} }
+    const book = asked.current
+    const reported = reportedKey === '' ? NONE : (reportedKey.split(' ') as StageName[])
+    const set = stageSet(project.made, revealRun)
+    for (const stage of toAsk(book.stages, reported)) {
+      book.stages[stage] = { state: 'asking' }
+      read(project.feed, revealLayout, set, stage, DRAW_WIDTH, null).then(
+        (drawing) => {
+          if (asked.current !== book) return
+          book.stages[stage] = { state: 'drawn' }
+          setRevealed((was) => ({
+            run: book.run,
+            drawings: { ...(was?.run === book.run ? was.drawings : {}), [stage]: drawing },
+            refused: was?.run === book.run ? was.refused : null,
+          }))
+          setAnnounced(drawnAnnouncement(stage))
+          // The run's first drawing is fitted whole; the next ones keep the
+          // view, as a toggle between two stages does.
+          const fitted = `${revealLayout}/${set ?? ''}`
+          if (fittedTo.current !== fitted) {
+            fittedTo.current = fitted
+            const box = pane.current?.getBoundingClientRect()
+            setView(
+              fit(
+                drawing,
+                box ? { width: box.width, height: box.height } : { width: 0, height: 0 },
+              ),
+            )
+          }
+        },
+        (error: unknown) => {
+          if (asked.current !== book) return
+          const on = waitsOn(error)
+          if (on !== null) {
+            book.stages[stage] = { state: 'waiting', on, since: reported }
+            setRefusals((n) => n + 1)
+            return
+          }
+          book.stages[stage] = { state: 'refused' }
+          setRevealed((was) => ({
+            run: book.run,
+            drawings: was?.run === book.run ? was.drawings : {},
+            refused: refusalOf(error),
+          }))
+        },
+      )
+    }
+  }, [revealRun, revealLayout, reportedKey, refusals, ready, project.feed, project.made, read])
+
+  // A reveal that ends leaves nothing of itself: not its drawings on
+  // screen, not a press or a sentence, and not its drawings in the cache,
+  // since the build they were taken from is in the store now or gone.
+  useEffect(() => {
+    if (revealRun !== null) return
+    const ended = asked.current
+    asked.current = null
+    setRevealed(null)
+    setPressed(null)
+    setEarly(null)
+    setAnnounced('')
+    if (ended !== null) forgetStagesOf(runSet(ended.run))
+  }, [revealRun])
+  useEffect(
+    () => () => {
+      asked.current = null
+    },
+    [],
+  )
 
   const paneSize = (): { width: number; height: number } => {
     const box = pane.current?.getBoundingClientRect()
@@ -259,9 +397,32 @@ export default function StageView({ project, engine, read }: Props): JSX.Element
     setView(next)
   }
 
-  const drawing = state.status === 'ready' ? state.drawing : null
+  // What the reveal has drawn of this run, and which of it the pane shows.
+  const revealing = live && revealed !== null && revealed.run === reveal.run ? revealed : null
+  const drawnStages = LAYOUT_ORDER.filter((s) => revealing?.drawings[s] !== undefined)
+  const shown = live
+    ? shownStage(drawnStages, pressed !== null && pressed.run === reveal.run ? pressed : null)
+    : null
+  const earlyStage =
+    live && early !== null && early.run === reveal.run && !drawnStages.includes(early.stage)
+      ? early.stage
+      : null
+  const drawing = live
+    ? shown === null
+      ? null
+      : (revealing?.drawings[shown] ?? null)
+    : state.status === 'ready'
+      ? state.drawing
+      : null
+  const failure = live
+    ? (revealing?.refused ?? null)
+    : state.status === 'failed'
+      ? state.message
+      : null
   const counts = drawing?.counts ?? null
-  const current = STAGES.find((s) => s.stage === stage) ?? STAGES[0]
+  // The stage the buttons and the gloss beside them speak of: the one in
+  // the pane while a run reveals the layout, else the one chosen.
+  const current = wordsOf(live ? (shown ?? stage) : stage)
   // What the engine sent as the description, if it sent one: an older pin
   // sends none, and then there is no disclosure and the pane keeps the name
   // it had before the description existed (spec 031, edge cases).
@@ -269,10 +430,10 @@ export default function StageView({ project, engine, read }: Props): JSX.Element
   const words = useMemo(() => (described === null ? null : networkWords(described)), [described])
   // The name follows the drawing on screen, which stays while the next
   // stage arrives, so the counts in it are those of the stage it names.
-  const shown = STAGES.find((s) => s.stage === drawing?.stage) ?? current
+  const pictured = drawing === null ? current : wordsOf(drawing.stage)
   const name =
     counts !== null && words !== null
-      ? paneName(shown, counts)
+      ? paneName(pictured, counts)
       : `The ${current.label} stage, ${current.gloss}`
   const toggleLine = useCallback((label: string, open: boolean): void => {
     setOpenLines((was) => {
@@ -282,6 +443,22 @@ export default function StageView({ project, engine, read }: Props): JSX.Element
       return next
     })
   }, [])
+
+  // A press on a stage while a run reveals the layout shows it where it is
+  // drawn, until the next stage is; one not drawn yet is neither pressed
+  // nor disabled, and says so. Either way it is the stage chosen for when
+  // the run has ended.
+  const choose = (next: StageName): void => {
+    setStage(next)
+    if (!live) return
+    if (drawnStages.includes(next)) {
+      setPressed({ run: reveal.run, stage: next, drawn: drawnStages.length })
+      setEarly(null)
+    } else {
+      setEarly({ run: reveal.run, stage: next })
+      setAnnounced(notDrawnYet(next))
+    }
+  }
 
   const idle = state.status === 'waiting' && !loading
   return (
@@ -296,17 +473,20 @@ export default function StageView({ project, engine, read }: Props): JSX.Element
         {STAGES_EXPLAINED}
       </p>
       <div className="toolbar" role="group" aria-label="Stage" aria-describedby="stage-explain">
-        {STAGES.map((s) => (
-          <Button
-            key={s.stage}
-            variant={s.stage === stage ? 'primary' : 'secondary'}
-            aria-pressed={s.stage === stage}
-            onClick={() => setStage(s.stage)}
-          >
-            {s.label}
-          </Button>
-        ))}
-        <span className="hint">{current.gloss}</span>
+        {STAGES.map((s) => {
+          const on = live ? s.stage === shown : s.stage === stage
+          return (
+            <Button
+              key={s.stage}
+              variant={on ? 'primary' : 'secondary'}
+              aria-pressed={on}
+              onClick={() => choose(s.stage)}
+            >
+              {s.label}
+            </Button>
+          )
+        })}
+        <span className="hint">{live && shown === null ? '' : current.gloss}</span>
       </div>
       {counts !== null && (
         <dl className="fields counts" aria-label="Counts">
@@ -324,7 +504,7 @@ export default function StageView({ project, engine, read }: Props): JSX.Element
       )}
       {/* The sentences sit beside the pane, not in it: a group's children
           are read, a picture's are not. */}
-      {(idle || loading) && (
+      {!live && (idle || loading) && (
         <p className="hint" role="status">
           {layout === null
             ? 'Lay the project out to see where its routes run.'
@@ -333,9 +513,12 @@ export default function StageView({ project, engine, read }: Props): JSX.Element
               : 'Drawing the stage…'}
         </p>
       )}
-      {state.status === 'failed' && (
+      {earlyStage !== null && <p className="hint">{notDrawnYet(earlyStage)}</p>}
+      {live && <p className="hint">{revealSentence(drawnStages, reveal.running)}</p>}
+      {ending !== null && <p className="hint">{clearedSentence(ending, layout !== null)}</p>}
+      {failure !== null && (
         <p className="message error" role="alert">
-          {state.message}
+          {failure}
         </p>
       )}
       <div
@@ -396,6 +579,14 @@ export default function StageView({ project, engine, read }: Props): JSX.Element
           openLines={openLines}
           onToggleLine={toggleLine}
         />
+      )}
+      {/* Each stage once, as it is drawn while a run reveals the layout,
+          and a press on one not drawn yet: polite, and only while a run
+          is revealing, so nothing is said of a stored layout. */}
+      {live && (
+        <p className="visually-hidden" role="status">
+          {announced}
+        </p>
       )}
     </section>
   )

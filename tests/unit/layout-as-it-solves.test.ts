@@ -4,17 +4,41 @@
 // run's snapshot naming its layout, the cache's identity while a run is in
 // flight, and the view's own pure parts.
 
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
-import { LayoutRun, type RunClient } from '../../src/renderer/src/engine/layoutRun'
+import StageView from '../../src/renderer/src/StageView'
 import {
+  LayoutRun,
+  freshStages,
+  type RunClient,
+  type RunSnapshot,
+} from '../../src/renderer/src/engine/layoutRun'
+import {
+  LAYOUT_ORDER,
+  LAYOUT_STAGE_WORDS,
+  STAGES,
+  clearedSentence,
+  drawnAnnouncement,
   forgetAllStages,
   forgetStagesOf,
+  notDrawnYet,
+  revealOf,
+  revealSentence,
+  runSet,
+  shownStage,
   stageFor,
   stageSet,
+  toAsk,
+  waitsOn,
+  type Asked,
+  type Reveal,
 } from '../../src/renderer/src/engine/stages'
 import { ERROR_CODES, type EngineState } from '../../src/shared/engine'
 import type { ProjectRecord } from '../../src/shared/project'
-import type { RenderStageParams, RenderStageResult } from '../../src/shared/protocol'
+import type { RenderStageParams, RenderStageResult, StageName } from '../../src/shared/protocol'
 
 // ------------------------------------------------------------ the snapshot
 
@@ -256,7 +280,7 @@ describe('the stage cache keys a drawing by the run while one is in flight (FR-0
       stageFor(client, 'la', LAYOUT, stageSet(MADE, run), 'loom', 1600)
     await ask('job-1')
     await ask(null)
-    forgetStagesOf(stageSet(MADE, 'job-1') as string)
+    forgetStagesOf(runSet('job-1'))
     await ask('job-1')
     await ask(null)
     expect(sent, 'the run’s asked again, the stored set’s not').toHaveLength(3)
@@ -277,7 +301,7 @@ describe('the stage cache keys a drawing by the run while one is in flight (FR-0
         }
       },
     }
-    const set = stageSet(MADE, 'job-3') as string
+    const set = runSet('job-3')
     const first = stageFor(client, 'la', LAYOUT, set, 'topo', 1600).catch(() => 'refused')
     forgetStagesOf(set)
     expect((await stageFor(client, 'la', LAYOUT, set, 'topo', 1600)).svg).toBe('second')
@@ -285,5 +309,268 @@ describe('the stage cache keys a drawing by the run while one is in flight (FR-0
     expect(await first).toBe('refused')
     expect((await stageFor(client, 'la', LAYOUT, set, 'topo', 1600)).svg).toBe('second')
     expect(asked, 'the late refusal did not take the second answer with it').toBe(2)
+  })
+})
+
+// ------------------------------------------------------ which run reveals
+
+describe('a layout run is a reveal from its first report naming its layout (FR-001, FR-006)', () => {
+  const at = (states: string[]): RunSnapshot['stages'] =>
+    freshStages().map((s, i) => ({ ...s, state: (states[i] ?? 'pending') as never }))
+  const facts = (over: Partial<RunSnapshot> = {}) => ({
+    state: 'running' as RunSnapshot['state'],
+    stages: at(['done', 'running']),
+    layout: LAYOUT as string | null,
+    rebuilt: false,
+    recoloured: false,
+    reordered: false,
+    restyled: false,
+    ...over,
+  })
+
+  it('sees a layout run with its layout named, the stages it reported and the one it is at', () => {
+    expect(revealOf(facts(), 'job-4', false)).toEqual({
+      run: 'job-4',
+      layout: LAYOUT,
+      state: 'running',
+      reported: ['gtfs2graph'],
+      running: 'topo',
+    })
+    // Past the layout's four, the map is being drawn: no layout stage runs.
+    const past = facts({ stages: at(['done', 'done', 'done', 'done', 'running']) })
+    expect(revealOf(past, 'job-4', false)).toMatchObject({
+      reported: ['gtfs2graph', 'topo', 'loom', 'octi'],
+      running: null,
+    })
+  })
+
+  it('sees nothing before the layout is named, without a job, while idle, or for a redraw', () => {
+    expect(revealOf(facts({ layout: null }), 'job-4', false)).toBeNull()
+    expect(revealOf(facts(), null, false)).toBeNull()
+    expect(revealOf(facts({ state: 'idle' }), 'job-4', false)).toBeNull()
+    for (const redraw of ['rebuilt', 'recoloured', 'reordered', 'restyled'] as const) {
+      expect(revealOf(facts({ [redraw]: true }), 'job-4', false), redraw).toBeNull()
+    }
+  })
+
+  it('keeps a finished run only until its record is read back, and a stopped one until the next', () => {
+    const done = facts({ state: 'done', stages: at(['done', 'done', 'done', 'done']) })
+    expect(revealOf(done, 'job-4', true)?.state).toBe('done')
+    expect(revealOf(done, 'job-4', false), 'the store is read from then on').toBeNull()
+    expect(revealOf(facts({ state: 'cancelled' }), 'job-4', false)?.state).toBe('cancelled')
+    expect(revealOf(facts({ state: 'failed' }), 'job-4', false)?.state).toBe('failed')
+  })
+})
+
+// ------------------------------------------------------- the not-yet retry
+
+describe('a refusal as not yet waits on the stage its data names (FR-003)', () => {
+  const refusal = (data: Record<string, unknown>) => ({ code: -32000, message: 'm', data })
+
+  it('reads the stage waited on from a not-yet refusal, and nothing from any other', () => {
+    expect(
+      waitsOn(refusal({ kind: 'layout', building: true, stage: 'octi', layout: LAYOUT })),
+    ).toBe('octi')
+    // Not "not yet": no building, so it is shown as a refusal.
+    expect(waitsOn(refusal({ kind: 'layout', hint: 'no stored layout' }))).toBeNull()
+    expect(waitsOn(refusal({ kind: 'layout', stage: 'topo' }))).toBeNull()
+    expect(waitsOn(refusal({ kind: 'layout', building: 'yes', stage: 'topo' }))).toBeNull()
+    expect(waitsOn(refusal({ kind: 'layout', building: true, stage: 'sideways' }))).toBeNull()
+    expect(waitsOn(refusal({ kind: 'layout', building: true }))).toBeNull()
+    expect(waitsOn({ code: -32000, message: 'm' })).toBeNull()
+    expect(waitsOn(new Error('x'))).toBeNull()
+    expect(waitsOn(null)).toBeNull()
+  })
+
+  const waiting = (on: StageName, since: StageName[]): Asked => ({ state: 'waiting', on, since })
+
+  it.each<[string, Partial<Record<StageName, Asked>>, StageName[], StageName[]]>([
+    ['nothing reported, nothing asked', {}, [], []],
+    ['each stage reported and not asked', {}, ['gtfs2graph', 'topo'], ['gtfs2graph', 'topo']],
+    ['not a stage asked already', { gtfs2graph: { state: 'asking' } }, ['gtfs2graph'], []],
+    ['not a stage drawn', { gtfs2graph: { state: 'drawn' } }, ['gtfs2graph', 'topo'], ['topo']],
+    [
+      'not a stage refused for good',
+      { topo: { state: 'refused' } },
+      ['gtfs2graph', 'topo'],
+      ['gtfs2graph'],
+    ],
+    [
+      'not one waiting on a stage not reported yet',
+      { gtfs2graph: { state: 'drawn' }, topo: waiting('loom', ['gtfs2graph', 'topo']) },
+      ['gtfs2graph', 'topo'],
+      [],
+    ],
+    [
+      'one waiting, at the report of the stage its data named, not its own',
+      {
+        gtfs2graph: { state: 'drawn' },
+        topo: waiting('loom', ['gtfs2graph', 'topo']),
+      },
+      ['gtfs2graph', 'topo', 'loom'],
+      ['topo', 'loom'],
+    ],
+    [
+      'one waiting on octi, as a day makes it, only at octi',
+      { loom: waiting('octi', ['gtfs2graph', 'topo', 'loom']) },
+      ['gtfs2graph', 'topo', 'loom'],
+      ['gtfs2graph', 'topo'],
+    ],
+    [
+      'never one whose stage was already reported when it was asked',
+      { topo: waiting('topo', ['gtfs2graph', 'topo']) },
+      ['gtfs2graph', 'topo', 'loom'],
+      ['gtfs2graph', 'loom'],
+    ],
+  ])('asks %s', (_what, asked, reported, expected) => {
+    expect(toAsk(asked, reported)).toEqual(expected)
+  })
+})
+
+// ------------------------------------------------------------- the words
+
+describe('what the view says while a run reveals the layout (FR-007)', () => {
+  it.each<[StageName[], StageName | null, string]>([
+    [[], 'topo', 'Nothing drawn yet; topo running.'],
+    [['gtfs2graph'], 'topo', 'gtfs2graph drawn; topo running.'],
+    [['gtfs2graph', 'topo'], 'loom', 'topo drawn; loom running.'],
+    // The latest in the engine's order, whatever order the drawings landed in.
+    [['loom', 'gtfs2graph', 'topo'], 'octi', 'loom drawn; octi running.'],
+    [['gtfs2graph', 'loom'], 'octi', 'loom drawn; octi running.'],
+    [
+      ['gtfs2graph', 'topo', 'loom', 'octi'],
+      null,
+      'octi drawn; the layout’s four stages are done.',
+    ],
+    [[], null, 'Nothing drawn yet; the layout’s four stages are done.'],
+  ])('with %j drawn and %s running: "%s"', (drawn, running, sentence) => {
+    expect(revealSentence(drawn, running)).toBe(sentence)
+  })
+
+  it('says each stage once as it is drawn, and a stage not drawn yet when it is pressed', () => {
+    expect(drawnAnnouncement('topo')).toBe('topo drawn.')
+    expect(notDrawnYet('loom')).toBe('loom is not drawn yet.')
+  })
+
+  it('follows the run, and shows a pressed stage only until the next is drawn', () => {
+    expect(shownStage([], null)).toBeNull()
+    expect(shownStage(['gtfs2graph'], null)).toBe('gtfs2graph')
+    expect(shownStage(['topo', 'gtfs2graph'], null)).toBe('topo')
+    expect(shownStage(['gtfs2graph', 'topo'], { stage: 'gtfs2graph', drawn: 2 })).toBe('gtfs2graph')
+    expect(
+      shownStage(['gtfs2graph', 'topo', 'loom'], { stage: 'gtfs2graph', drawn: 2 }),
+      'a stage drawn since the press is shown',
+    ).toBe('loom')
+    expect(shownStage(['gtfs2graph'], { stage: 'loom', drawn: 1 }), 'not drawn').toBe('gtfs2graph')
+  })
+
+  it('says in one sentence that a stopped run’s stages are gone, and that a stored layout is back', () => {
+    expect(clearedSentence('cancelled', false)).toBe(
+      'The layout run was cancelled, so its stages are no longer drawn.',
+    )
+    expect(clearedSentence('failed', false)).toBe(
+      'The layout run failed, so its stages are no longer drawn.',
+    )
+    expect(clearedSentence('cancelled', true)).toBe(
+      'The layout run was cancelled, so its stages are no longer drawn. The stored layout is shown as it was.',
+    )
+  })
+
+  it('keeps the two buttons and their words, and has words for the four stages in order', () => {
+    expect(STAGES.map((s) => s.stage)).toEqual(['gtfs2graph', 'loom'])
+    expect(STAGES.map((s) => s.gloss)).toEqual([
+      'as the feed draws its routes',
+      'lines sorted onto shared track',
+    ])
+    expect(LAYOUT_ORDER).toEqual(['gtfs2graph', 'topo', 'loom', 'octi'])
+    expect(LAYOUT_STAGE_WORDS.map((s) => s.label)).toEqual([...LAYOUT_ORDER])
+  })
+})
+
+// ------------------------------------------------------------- the view
+
+describe('the stage view while a run reveals the layout, as it is first drawn', () => {
+  const stored = record({
+    layout: 'a'.repeat(64),
+    made: '2026-09-10T12:00:00+00:00',
+    date: '2026-09-12',
+  })
+  const never = (): Promise<RenderStageResult> => new Promise(() => {})
+  const view = (project: ProjectRecord, reveal: Reveal | null): string =>
+    renderToStaticMarkup(createElement(StageView, { project, engine: READY, read: never, reveal }))
+  const running: Reveal = {
+    run: 'job-9',
+    layout: LAYOUT,
+    state: 'running',
+    reported: ['gtfs2graph'],
+    running: 'topo',
+  }
+
+  it('says what is drawn and running, presses neither button and disables neither', () => {
+    const html = view(record(), running)
+    expect(html).toContain('Nothing drawn yet; topo running.')
+    expect(html, 'not the sentence of a project with nothing to draw').not.toContain(
+      'Lay the project out to see where its routes run.',
+    )
+    // The kit mirrors `aria-pressed` onto its inner button at run time, so
+    // the markup says pressed by the variant the view chose.
+    expect(html.match(/variant="primary"/g), 'neither stage is pressed').toBeNull()
+    expect(html.match(/variant="secondary"/g)).toHaveLength(2)
+    expect(html).not.toMatch(/disabled/)
+    // The live region is there before anything is drawn, empty, so the
+    // first stage drawn is said.
+    expect(html).toContain('<p class="visually-hidden" role="status"></p>')
+    expect(html).not.toContain('role="alert"')
+  })
+
+  it('draws nothing of the stored set while a re-layout reveals the new one', () => {
+    const html = view(stored, { ...running, layout: stored.layout as string })
+    expect(html).not.toContain('Drawing the stage')
+    expect(html).not.toContain('<iframe')
+  })
+
+  it('says a stopped run’s stages are gone, and that the stored layout is shown again', () => {
+    expect(view(record(), { ...running, state: 'cancelled' })).toContain(
+      'The layout run was cancelled, so its stages are no longer drawn.',
+    )
+    const back = view(stored, { ...running, state: 'failed' })
+    expect(back).toContain(
+      'The layout run failed, so its stages are no longer drawn. The stored layout is shown as it was.',
+    )
+    // Stopped, it is a stored layout's view again: its own sentence, no live region.
+    expect(back).not.toContain('visually-hidden')
+    expect(back.match(/variant="primary"/g)).toHaveLength(1)
+  })
+
+  it('is the view it always was without a run', () => {
+    const html = view(stored, null)
+    expect(html).not.toContain('drawn;')
+    expect(html).not.toContain('no longer drawn')
+    expect(html).not.toContain('visually-hidden')
+    expect(html.match(/variant="primary"/g)).toHaveLength(1)
+  })
+})
+
+// ---------------------------------------- nothing of the map, the record or the export
+
+describe('the reveal reaches the engine through its stage reader alone (FR-008, FR-004)', () => {
+  const source = (path: string): string =>
+    readFileSync(resolve(__dirname, '../../src/renderer/src', path), 'utf8')
+
+  it('asks only render.stage, through the reader the view is given, never the bridge', () => {
+    const view = source('StageView.tsx')
+    expect(view).not.toMatch(/window\.api/)
+    expect(view).not.toMatch(/\bviewer\b|projects\.|export\./)
+    const stages = source('engine/stages.ts')
+    expect(stages).not.toMatch(/window\.api/)
+    expect([...stages.matchAll(/request\(\s*'([a-z.]+)'/g)].map((m) => m[1])).toEqual([
+      'render.stage',
+    ])
+  })
+
+  it('asks for a run’s stage with no day, so a re-layout is never answered from the stored set', () => {
+    expect(source('StageView.tsx')).toMatch(
+      /read\(project\.feed, revealLayout, set, stage, DRAW_WIDTH, null\)/,
+    )
   })
 })

@@ -196,7 +196,7 @@ The two reader columns are a person's, recorded per run in
 | In the feed: the two tables | pass | pass (captions, `th scope`, `aria-sort`) | pass | pass | pass | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
 | In the feed: sortable headers | fixed (D11) | pass | pass | pass | pass | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
 | The feed's download (issue 178) | swept while it downloads (`notebook-a11y.spec.ts`, "a sample's download…"); no control of its own: the header's Stop and cell 02's Cancel stop it | swept (a region "Download"; the byte count a polite `role="status"`); a refusal's `role="alert"` asserted in `layout.spec.ts` | n/a | swept | pass (the progress line's pairs; `--text-muted` on `--surface`) | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
-| Where the routes run | pass (`+`, `-`, arrows, `0`); the disclosure's buttons swept, open and closed (`network-words.spec.ts`) | pass (pane named for the stage and its counts); fixed (F2, #105): "The network in words", a disclosure of the extent and one sentence a line, each line's stations behind a disclosure of its own | pass | pass | pass | fixed (C1) | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted); the row has changed since and the new part is not yet walked | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted); the row has changed since and the new part is not yet walked |
+| Where the routes run | pass (`+`, `-`, arrows, `0`); the disclosure's buttons swept, open and closed (`network-words.spec.ts`); while a layout runs (#382) neither stage button is disabled and a press on a stage not drawn yet leaves it unpressed (`reveal.spec.ts`) | pass (pane named for the stage and its counts); fixed (F2, #105): "The network in words", a disclosure of the extent and one sentence a line, each line's stations behind a disclosure of its own; while a layout runs (#382), a sentence beside the pane names the stage drawn and the stage running, and a visually hidden polite status says each stage once as it is drawn ("`<stage>` drawn.") and a press on one not drawn yet ("`<stage>` is not drawn yet.") | pass | pass | pass | fixed (C1) | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted); the row has changed since and the new part is not yet walked | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted); the row has changed since and the new part is not yet walked |
 
 ### Cell 02, Process
 
@@ -1015,6 +1015,20 @@ a table).
   line to the other. **check:** from the sentences alone, say a line's two
   ends and where it meets another line. Press "The network in words" again
   to close it.
+- **Geographic view, while a layout runs** (issue 382). On a project never
+  laid out, press "Lay out" in cell 02 and go back up to cell 01. Once the
+  first stage is done the heading "Where the routes run" is there, with
+  the same sentence, group and buttons; listen for "gtfs2graph drawn.",
+  said once and politely, then "topo drawn.", "loom drawn." and "octi
+  drawn." as each is drawn, and nothing else said by the pane. The sentence
+  beside the drawing, read when you reach it, names the stage drawn and
+  the stage running: "gtfs2graph drawn; topo running." The two buttons are
+  never dimmed or announced as unavailable, and a button is pressed only
+  while the drawing is of its stage: press "loom" before it is drawn and
+  listen for "loom is not drawn yet.", with "loom" still not pressed. Run
+  it again and press "Cancel" in cell 02 after the first stage: the sentence
+  "The layout run was cancelled, so its stages are no longer drawn." is
+  there beside the pane when you read it, and is not announced.
 
 #### Cell 02, Process
 

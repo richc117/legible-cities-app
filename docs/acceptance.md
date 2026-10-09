@@ -234,6 +234,18 @@ run.
 - In cell **01 Data**, **In the feed** says "Reading the feed, and
   downloading it first if it is not on this machine yet…" and then fills
   in (step 5).
+- In cell **01 Data**, once the layout's first stage is done, **Where the
+  routes run** appears and draws the layout as it solves (issue 382): each
+  stage as the engine finishes it, `gtfs2graph` first, then `topo`, `loom`
+  and `octi`, with a sentence beside the drawing naming the stage drawn and
+  the stage running ("gtfs2graph drawn; topo running.", and at the end
+  "octi drawn; the layout’s four stages are done."). **gtfs2graph** and
+  **loom** read as pressed only while the drawing is of that stage, and
+  neither is ever disabled; pressing **loom** before it is drawn says "loom
+  is not drawn yet." **check:** the drawing changes from stage to stage
+  without going blank between them (with LA, `gtfs2graph` takes most of
+  the time and the other three can pass in a moment); when the run ends,
+  the view is the one step 5 describes.
 - In cell **02 Process**, a progress line of eight named stages, in this
   order: `parse`, `collapse`, `order`, `octilinear`, `trips`, `draw`,
   `animate`, `write`. These are the app's words for the engine's eight
