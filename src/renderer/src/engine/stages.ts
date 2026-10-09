@@ -362,6 +362,14 @@ export function revealSentence(drawn: readonly StageName[], running: StageName |
 /** What the live region says as a stage is drawn: once each. */
 export const drawnAnnouncement = (stage: StageName): string => `${stage} drawn.`
 
+/**
+ * What the live region says for the stages drawn since it last spoke, in
+ * the engine's order: a stage asked for again lands with the one it waited
+ * on, and both are said.
+ */
+export const drawnAnnouncements = (stages: readonly StageName[]): string =>
+  stages.map(drawnAnnouncement).join(' ')
+
 /** What a press on a stage the run has not drawn yet says, beside the pane and aloud. */
 export const notDrawnYet = (stage: StageName): string => `${stage} is not drawn yet.`
 

@@ -22,6 +22,7 @@ import {
   STAGES,
   clearedSentence,
   drawnAnnouncement,
+  drawnAnnouncements,
   forgetAllStages,
   forgetStagesOf,
   notDrawnYet,
@@ -449,6 +450,9 @@ describe('what the view says while a run reveals the layout (FR-007)', () => {
 
   it('says each stage once as it is drawn, and a stage not drawn yet when it is pressed', () => {
     expect(drawnAnnouncement('topo')).toBe('topo drawn.')
+    expect(drawnAnnouncements(['topo'])).toBe('topo drawn.')
+    // A stage asked for again lands with the one it waited on: both are said.
+    expect(drawnAnnouncements(['loom', 'octi'])).toBe('loom drawn. octi drawn.')
     expect(notDrawnYet('loom')).toBe('loom is not drawn yet.')
   })
 

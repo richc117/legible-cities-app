@@ -76,7 +76,7 @@ As someone re-laying out a project, I want the stages drawn during the run to be
 
 - **A refusal that arrives after the stage it waits on has been reported**: the engine marks a stage readable before it reports it, but the refusal and the report travel separately, so the report can come first. The stage is asked again at once, because the report it waited for came after it was asked.
 - **A refusal that waits on a stage already reported when it was asked**: not asked again, so a wrong answer cannot become a loop of requests; the stage stays not drawn until the run ends.
-- **Drawings that land out of order** (a retry): the pane shows the latest stage drawn in the engine's order; the live region says each as it lands.
+- **Drawings that land out of order, or together** (a retry): the pane shows the latest stage drawn in the engine's order; the live region says each as it lands, and two that land at once together ("loom drawn. octi drawn.").
 - **The view mounted part way through a run** (a person comes back to the project): every stage reported so far is asked for at once.
 - **A layout already stored and not forced**: the engine replays the four reports from the store and `render.stage` answers from the store; the reveal draws them as they come.
 - **A redraw** (a chosen day, colours, an order, sizes): `map.build` replays the four stages with the layout too, but a redraw lays nothing out and the view draws nothing from it.

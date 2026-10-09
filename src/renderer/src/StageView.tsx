@@ -19,7 +19,7 @@ import {
   STAGES_EXPLAINED,
   STAGE_SANDBOX,
   clearedSentence,
-  drawnAnnouncement,
+  drawnAnnouncements,
   fit,
   forgetStagesOf,
   frameDocument,
@@ -301,12 +301,13 @@ export default function StageView({ project, engine, read, reveal = null }: Prop
         (drawing) => {
           if (asked.current !== book) return
           book.stages[stage] = { state: 'drawn' }
+          // A stage drawn takes the place of a refusal shown before it, as a
+          // drawing of the store's always has.
           setRevealed((was) => ({
             run: book.run,
             drawings: { ...(was?.run === book.run ? was.drawings : {}), [stage]: drawing },
-            refused: was?.run === book.run ? was.refused : null,
+            refused: null,
           }))
-          setAnnounced(drawnAnnouncement(stage))
           // The run's first drawing is fitted whole; the next ones keep the
           // view, as a toggle between two stages does.
           const fitted = `${revealLayout}/${set ?? ''}`
@@ -353,12 +354,52 @@ export default function StageView({ project, engine, read, reveal = null }: Prop
     setAnnounced('')
     if (ended !== null) forgetStagesOf(runSet(ended.run))
   }, [revealRun])
+  // The same when the view goes while a run is revealing: its drawings
+  // would otherwise stay in the cache under a set nothing asks for again.
   useEffect(
     () => () => {
+      const ended = asked.current
       asked.current = null
+      if (ended !== null) forgetStagesOf(runSet(ended.run))
     },
     [],
   )
+
+  // What the reveal has drawn of this run, and which of it the pane shows.
+  const revealing = live && revealed !== null && revealed.run === reveal.run ? revealed : null
+  const drawnStages = LAYOUT_ORDER.filter((s) => revealing?.drawings[s] !== undefined)
+  const shown = live
+    ? shownStage(drawnStages, pressed !== null && pressed.run === reveal.run ? pressed : null)
+    : null
+  const earlyStage =
+    live && early !== null && early.run === reveal.run && !drawnStages.includes(early.stage)
+      ? early.stage
+      : null
+  const drawing = live
+    ? shown === null
+      ? null
+      : (revealing?.drawings[shown] ?? null)
+    : state.status === 'ready'
+      ? state.drawing
+      : null
+  const failure = live
+    ? (revealing?.refused ?? null)
+    : state.status === 'failed'
+      ? state.message
+      : null
+  // Each stage the run has drawn, said once as it lands; two that land in
+  // one render are said together, so neither is lost to the other.
+  const said = useRef<{ run: string; stages: Set<StageName> } | null>(null)
+  useEffect(() => {
+    if (revealing === null) return
+    if (said.current?.run !== revealing.run)
+      said.current = { run: revealing.run, stages: new Set() }
+    const told = said.current.stages
+    const fresh = LAYOUT_ORDER.filter((s) => revealing.drawings[s] !== undefined && !told.has(s))
+    if (fresh.length === 0) return
+    for (const stage of fresh) told.add(stage)
+    setAnnounced(drawnAnnouncements(fresh))
+  }, [revealing])
 
   const paneSize = (): { width: number; height: number } => {
     const box = pane.current?.getBoundingClientRect()
@@ -391,7 +432,7 @@ export default function StageView({ project, engine, read, reveal = null }: Prop
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
     if (event.key === '0') {
-      if (state.status === 'ready') setView(fit(state.drawing, paneSize()))
+      if (drawing !== null) setView(fit(drawing, paneSize()))
       event.preventDefault()
       return
     }
@@ -401,28 +442,6 @@ export default function StageView({ project, engine, read, reveal = null }: Prop
     setView(next)
   }
 
-  // What the reveal has drawn of this run, and which of it the pane shows.
-  const revealing = live && revealed !== null && revealed.run === reveal.run ? revealed : null
-  const drawnStages = LAYOUT_ORDER.filter((s) => revealing?.drawings[s] !== undefined)
-  const shown = live
-    ? shownStage(drawnStages, pressed !== null && pressed.run === reveal.run ? pressed : null)
-    : null
-  const earlyStage =
-    live && early !== null && early.run === reveal.run && !drawnStages.includes(early.stage)
-      ? early.stage
-      : null
-  const drawing = live
-    ? shown === null
-      ? null
-      : (revealing?.drawings[shown] ?? null)
-    : state.status === 'ready'
-      ? state.drawing
-      : null
-  const failure = live
-    ? (revealing?.refused ?? null)
-    : state.status === 'failed'
-      ? state.message
-      : null
   const counts = drawing?.counts ?? null
   // The stage the buttons and the gloss beside them speak of: the one in
   // the pane while a run reveals the layout, else the one chosen.
