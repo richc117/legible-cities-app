@@ -44,16 +44,18 @@
 // stand-in's control file is written before the app starts, because the
 // stand-in reads it once.
 
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
+import type { Api } from '../../src/shared/api'
 import {
   PYTHON,
   addedFeed,
   chooserAnswers,
   heading,
   newProjectFromLibrary,
+  openLaidOut,
   pressWithKeyboard,
   profile,
   requests,
@@ -67,18 +69,28 @@ test.skip(PYTHON === null, 'no python3 or python on the PATH to run the stand-in
 const QUIET_LINE = 'Projects you make appear here, most recently opened first.'
 
 /**
- * Every picture area on the front door is empty in this half of issue 287
- * (ADR-047, as of 6 Oct 2026): one glyph at 24px - the `train`, or the New
- * project card's plus - hidden from assistive technology, with nothing a
- * screen reader is given a name for, on the sunken surface in both themes,
- * the train in --text-faint and the plus in the accent. A glyph given a
- * label would be an image in the tree, and would change the New project
- * card's name, which is its words alone.
+ * What a picture area on the front door holds (ADR-047, issue 287). An area
+ * is one of three, and the list says which, card by card in document order:
+ *
+ * - `plus`: the New project card's glyph, in the accent;
+ * - `train`: the empty area, one glyph at 24px in --text-faint, for a project
+ *   nothing has been drawn for or a picture that did not load;
+ * - `image`: the engine's picture, an `<img>` with an empty alternative
+ *   text, in the palette of the interface's theme (a sample city's from the
+ *   app's own assets, a project's from its folder), which is loaded.
+ *
+ * None is given a name: a glyph or an image with one would be an image in
+ * the tree, and would change the card's name, which is its words alone. Each
+ * sits on the sunken surface in both themes; the pictures swap with the
+ * theme without the screen being left, and the lists' names and structure,
+ * read from the accessibility tree, are the same in Night and in Parchment.
  */
-async function expectEmptyPictures(page: Page, where: string, cards: number): Promise<void> {
+type Area = 'plus' | 'train' | 'image'
+
+async function expectPictures(page: Page, where: string, expected: Area[]): Promise<void> {
   const main = page.getByRole('main')
   const areas = main.locator('.card-picture')
-  await expect(areas, `${where}: a picture area on every card`).toHaveCount(cards)
+  await expect(areas, `${where}: a picture area on every card`).toHaveCount(expected.length)
   await expect(
     main.locator('.cards').getByRole('img'),
     `${where}: no image in the tree`,
@@ -86,11 +98,43 @@ async function expectEmptyPictures(page: Page, where: string, cards: number): Pr
   await expect(
     page.getByRole('list', { name: 'Projects' }).getByRole('button').first(),
   ).toHaveAccessibleName('New project')
+  const lists = [
+    page.getByRole('list', { name: 'Projects' }),
+    page.getByRole('list', { name: 'Presets' }),
+  ]
+  let namesInNight: string[] | null = null
   for (const scheme of ['dark', 'light'] as const) {
     await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' })
     await expect
       .poll(() => page.evaluate(() => document.documentElement.getAttribute('data-theme')))
       .toBe(scheme === 'dark' ? null : 'sepia')
+    // Swapped in place: the engine's file for this palette, on every card
+    // that has one, with the screen still open. A sample's is named
+    // `<key>-<palette>-<hash>.svg` among the app's assets and a project's
+    // `<feed>-thumb-<palette>.svg` beside its page.
+    await expect
+      .poll(
+        () =>
+          areas.evaluateAll((all) =>
+            all.map((area) => {
+              const image = area.querySelector('img')
+              const found = /-(dark|light)(?:-[\w-]+)?\.svg(?:\?|$)/.exec(image?.src ?? '')
+              return found === null ? null : found[1]
+            }),
+          ),
+        { message: `${where} (${scheme}): every picture is the ${scheme} one` },
+      )
+      .toEqual(expected.map((one) => (one === 'image' ? scheme : null)))
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          [...document.querySelectorAll('.card-picture img')].every(
+            (image) =>
+              image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0,
+          ),
+        ),
+      )
+      .toBe(true)
     const want = {
       sunken: await tokenRgb(page, '--surface-sunken'),
       faint: await tokenRgb(page, '--text-faint'),
@@ -103,9 +147,11 @@ async function expectEmptyPictures(page: Page, where: string, cards: number): Pr
         return {
           create: area.closest('.card-new') !== null,
           children: glyphs.length,
+          image: glyph instanceof HTMLImageElement,
           glyph: glyph?.matches('.icon.icon-24') ?? false,
           hidden: glyph?.getAttribute('aria-hidden') === 'true',
-          named: area.querySelectorAll('[aria-label], [role], img, [alt]').length,
+          alt: glyph instanceof HTMLImageElement ? glyph.getAttribute('alt') : null,
+          named: area.querySelectorAll('[aria-label], [role], [alt]:not(img)').length,
           ground: getComputedStyle(area).backgroundColor,
           ink: glyph === undefined ? 'missing' : getComputedStyle(glyph).color,
         }
@@ -113,17 +159,32 @@ async function expectEmptyPictures(page: Page, where: string, cards: number): Pr
     )
     for (const [at, one] of seen.entries()) {
       const here = `${where} (${scheme}), picture area ${at + 1}`
+      expect(one.ground, `${here}: the sunken surface`).toBe(want.sunken)
+      if (expected[at] === 'image') {
+        expect(
+          { children: one.children, image: one.image, alt: one.alt, named: one.named },
+          `${here}: one image with an empty alternative text`,
+        ).toEqual({ children: 1, image: true, alt: '', named: 0 })
+        continue
+      }
       expect(
         { children: one.children, glyph: one.glyph, hidden: one.hidden, named: one.named },
         here,
       ).toEqual({ children: 1, glyph: true, hidden: true, named: 0 })
-      expect(one.ground, `${here}: the sunken surface`).toBe(want.sunken)
+      expect(one.create, `${here}: the plus is the New project card's`).toBe(
+        expected[at] === 'plus',
+      )
       expect(one.ink, `${here}: the glyph's colour`).toBe(one.create ? want.accent : want.faint)
       expect(
         contrast(one.ink, one.ground),
         `${here}: ${one.ink} on ${one.ground}`,
       ).toBeGreaterThanOrEqual(one.create ? 3 : 4.5)
     }
+    // What a screen reader is given does not move with the theme or with a
+    // picture: the same lists, the same buttons, the same names.
+    const names = await Promise.all(lists.map((list) => list.ariaSnapshot()))
+    if (namesInNight === null) namesInNight = names
+    else expect(names, `${where}: the cards' names in Parchment are Night's`).toEqual(namesInNight)
   }
   // Back to Night, as the session began.
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' })
@@ -149,14 +210,14 @@ test('the Library, its empty state and its three dialogs', async () => {
     ).toBeVisible()
     await expect(page.getByRole('listitem', { name: 'Metro de Prueba' })).toBeVisible()
     // "Your projects" with none (ADR-047): the New project card alone, the
-    // quiet line beside it once, and the stand-in's two sample cities, every
-    // picture area empty.
+    // quiet line beside it once, and the stand-in's two sample cities, which
+    // are two of the engine's presets and so have their pictures.
     const projects = page.getByRole('list', { name: 'Projects' })
     await expect(projects.getByRole('button')).toHaveCount(1)
     await expect(page.getByRole('list', { name: 'Presets' }).getByRole('button')).toHaveCount(2)
     await expect(page.getByText(QUIET_LINE, { exact: true })).toHaveCount(1)
     await sweep(page, 'Library, empty')
-    await expectEmptyPictures(page, 'Library, empty', 3)
+    await expectPictures(page, 'Library, empty', ['plus', 'image', 'image'])
 
     // The new project sheet, on a listed feed.
     await page.getByRole('button', { name: 'New project' }).click()
@@ -208,7 +269,7 @@ test('the Library, its empty state and its three dialogs', async () => {
     // Once there is a project the list says both things itself.
     await expect(page.getByText(QUIET_LINE)).toHaveCount(0)
     await sweep(page, 'Library, with a project')
-    await expectEmptyPictures(page, 'Library, with a project', 4)
+    await expectPictures(page, 'Library, with a project', ['plus', 'train', 'image', 'image'])
 
     // A removed feed takes its row. With another added feed left, focus
     // goes to the added feeds' heading; the last one takes its region with
@@ -277,6 +338,137 @@ async function tokenRgb(page: Page, token: string): Promise<string> {
   const n = Number.parseInt(hex.slice(1), 16)
   return `rgb(${n >> 16}, ${(n >> 8) & 255}, ${n & 255})`
 }
+
+// The engine's thumbnail of a drawn project (ADR-047, issue 287): the stand-in
+// writes the pair beside the page when it draws, as the engine has since
+// v0.11.0, and the card shows the one for the interface's palette through the
+// project route, with the layout's `made` on the address. A redraw changes the
+// address; a thumbnail that is not there leaves the empty area, and the
+// card's name is the same either way. The interface's theme is chosen in
+// Settings here, as a person chooses it; the swap on a screen that stays open
+// is `expectPictures`'s.
+//
+// A picture that is gone is tried two ways, because the interface reuses an
+// image it has already loaded from an address, across a reload of the window
+// too (a run of this test deleted the files and reloaded, and the card still
+// held its image): a project whose files were never there is seen in the same
+// session as the others, and one whose files are removed while the app is
+// closed is seen at the next start, which no reused image survives.
+test('a drawn project’s card shows the engine’s thumbnail in the interface’s palette, and the empty area where it is gone', async () => {
+  test.setTimeout(240_000)
+  const p = profile()
+  const thumbnails = (id: string, feed: string): string[] =>
+    ['dark', 'light'].map((palette) =>
+      join(p.engineHome, 'out', id, `${feed}-thumb-${palette}.svg`),
+    )
+  const drawn: { id: string; feed: string }[] = []
+  await withApp(p, async (page) => {
+    await openLaidOut(page, 'Los Angeles')
+    await page.getByRole('button', { name: 'Back to Library' }).click()
+    const projects = page.getByRole('list', { name: 'Projects' })
+    const card = projects.getByRole('button', { name: 'Open Los Angeles' })
+    await expect(card).toBeVisible()
+    await expectPictures(page, 'Library, a drawn project', ['plus', 'image', 'image', 'image'])
+
+    const bridge = (): Promise<Awaited<ReturnType<Api['projects']['get']>>> =>
+      page.evaluate(async () => {
+        const api = (globalThis as unknown as { api: Api }).api
+        const [one] = await api.projects.list()
+        return api.projects.get(one.id)
+      })
+    const record = await bridge()
+    // The stand-in wrote the pair where the test will look for it: under the
+    // engine's home, in the project's folder, named by the feed.
+    for (const file of thumbnails(record.id, record.feed))
+      expect(existsSync(file), `the stand-in wrote ${file}`).toBe(true)
+    const picture = card.locator('.card-picture img')
+    const address = async (): Promise<URL> =>
+      new URL((await picture.getAttribute('src')) ?? 'none:')
+    const first = await address()
+    expect(first.pathname, 'beside the page, named by the feed').toBe(
+      `/projects/${record.id}/${record.feed}-thumb-dark.svg`,
+    )
+    expect(first.searchParams.get('made'), 'by the layout’s `made`').toBe(record.drawn?.made)
+
+    // A project the map was drawn for before the engine wrote thumbnails, or
+    // whose folder was cleared: a record that says drawn and no files, which
+    // is what the layout run and the engine leave in those cases. Never
+    // loaded in this session, so its image fails here, in the open.
+    await page.evaluate(async () => {
+      const api = (globalThis as unknown as { api: Api }).api
+      const made = await api.projects.create({ name: 'Before thumbnails', feed: 'la-metro-rail' })
+      await api.projects.completeLayout(made.id, {
+        date: '2026-09-02',
+        layout: 'b'.repeat(64),
+        made: '2026-09-10T12:00:00+00:00',
+        built: { mode: 'all', agency: null },
+        service: {
+          start: '2026-01-01',
+          end: '2026-12-31',
+          busiest: '2026-09-15',
+          anchor: '2026-09-08',
+        },
+      })
+    })
+
+    // A redraw with the layout unchanged: the colours go in once the map is
+    // drawn with them, and the address is a new one when the Library is seen
+    // again, so the picture is fetched again.
+    await page.evaluate(
+      (id) =>
+        (globalThis as unknown as { api: Api }).api.projects.completeColors(id, {
+          colors: { A: '#112233' },
+          defaultColor: '#888888',
+        }),
+      record.id,
+    )
+    await page.getByRole('button', { name: 'Settings' }).click()
+    await page.getByRole('button', { name: 'Back to Library' }).click()
+    await expect(card).toBeVisible()
+    await expect.poll(async () => (await address()).search).not.toBe(first.search)
+    expect((await address()).searchParams.get('made')).toBe(record.drawn?.made)
+
+    // Parchment, chosen in Settings: the light thumbnail, still loaded.
+    await page.getByRole('button', { name: 'Settings' }).click()
+    await page.getByRole('combobox', { name: 'Theme' }).selectOption('sepia')
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'sepia')
+    await page.getByRole('button', { name: 'Back to Library' }).click()
+    await expect(card).toBeVisible()
+    await expect.poll(async () => (await address()).pathname).toMatch(/-thumb-light\.svg$/)
+    await expect
+      .poll(() => picture.evaluate((image: HTMLImageElement) => image.naturalWidth))
+      .toBeGreaterThan(0)
+
+    // The project with no files: the empty area in both palettes, and the same
+    // name. Its image failed in the open, so the card's own fallback ran.
+    const bare = projects.getByRole('button', { name: 'Open Before thumbnails' })
+    await expect(bare).toBeVisible()
+    await expect(bare.locator('.card-picture img')).toHaveCount(0)
+    await expect(bare.locator('.card-picture .icon')).toHaveCount(1)
+    await expect(bare).toHaveAccessibleName('Open Before thumbnails')
+    drawn.push({ id: record.id, feed: record.feed })
+  })
+
+  // The app has closed. Both files are removed from where the first run saw
+  // them, and the check that they are gone is the test's own: `rmSync` without
+  // `force` throws for a path that is not there.
+  const [{ id, feed }] = drawn
+  for (const file of thumbnails(id, feed)) {
+    rmSync(file)
+    expect(existsSync(file), `${file} is gone`).toBe(false)
+  }
+  // The next start, on the same profile (Parchment is still the choice): the
+  // card's image fails to load, and the empty area stands in for it.
+  await withApp(p, async (page) => {
+    const card = page.getByRole('list', { name: 'Projects' }).getByRole('button', {
+      name: 'Open Los Angeles',
+    })
+    await expect(card).toBeVisible()
+    await expect(card.locator('.card-picture img')).toHaveCount(0)
+    await expect(card.locator('.card-picture .icon')).toHaveCount(1)
+    await expect(card).toHaveAccessibleName('Open Los Angeles')
+  })
+})
 
 test('the new project sheet while its add runs: the progress line and Cancel the add', async () => {
   // Ten download reports six seconds apart: long enough for a sweep in

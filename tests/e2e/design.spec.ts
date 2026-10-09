@@ -6,7 +6,7 @@
 // needed; the status line reads "unavailable" and that is a state like
 // any other.
 
-import { mkdtempSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import {
@@ -22,7 +22,7 @@ const repoRoot = resolve(__dirname, '../..')
 type Bridge = { api: Api }
 
 async function withApp(
-  run: (page: Page, app: ElectronApplication) => Promise<void>,
+  run: (page: Page, app: ElectronApplication, home: string) => Promise<void>,
 ): Promise<void> {
   const home = mkdtempSync(join(tmpdir(), 'legible-cities-design-'))
   const missing = join(home, 'nowhere', process.platform === 'win32' ? 'python.exe' : 'python')
@@ -37,7 +37,7 @@ async function withApp(
   })
   const child = app.process()
   try {
-    await run(await app.firstWindow(), app)
+    await run(await app.firstWindow(), app, home)
   } finally {
     await app.close()
   }
@@ -167,7 +167,7 @@ test('a Library card holds what it has, at the narrowest column and at the fluid
   // with four, where a card is narrowest after the minimum; the window's own
   // width rather than an emulated one, since the app sets the window and it
   // is the window a person drags.
-  await withApp(async (page, app) => {
+  await withApp(async (page, app, home) => {
     const long = 'Los Angeles County Metropolitan Transportation Authority, Metro Rail'
     // As long as a name may be, with nowhere in it to break.
     const unbroken = 'Metropolitan'.repeat(10)
@@ -177,12 +177,54 @@ test('a Library card holds what it has, at the narrowest column and at the fluid
           (globalThis as unknown as Bridge).api.projects.create({ name, feed: 'la-metro-rail' }),
         name,
       )
+    // And one the map was drawn for, with the engine's thumbnail beside its
+    // page in both palettes (ADR-047): a drawing much taller than the
+    // picture area's 16:10, which has to be fitted whole and cannot make the
+    // area, or the card, any bigger. There is no engine here; the record and
+    // the files are what the engine and the layout run leave.
+    const pictured = await page.evaluate(async () => {
+      const api = (globalThis as unknown as Bridge).api
+      const made = await api.projects.create({ name: 'Pictured', feed: 'la-metro-rail' })
+      await api.projects.completeLayout(made.id, {
+        date: '2026-09-02',
+        layout: 'a'.repeat(64),
+        made: '2026-09-10T12:00:00+00:00',
+        built: { mode: 'all', agency: null },
+        service: {
+          start: '2026-01-01',
+          end: '2026-12-31',
+          busiest: '2026-09-15',
+          anchor: '2026-09-08',
+        },
+      })
+      return made.id
+    })
+    mkdirSync(join(home, 'out', pictured), { recursive: true })
+    for (const [palette, ink] of [
+      ['dark', '#f2ede6'],
+      ['light', '#2d241d'],
+    ])
+      writeFileSync(
+        join(home, 'out', pictured, `la-metro-rail-thumb-${palette}.svg`),
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 400">' +
+          `<rect width="100" height="400" fill="${ink}"/></svg>`,
+      )
     await page.reload()
     const list = page.getByRole('list', { name: 'Projects' })
     const cards = list.getByRole('button')
-    // New project and the three projects, New project first.
-    await expect(cards).toHaveCount(4)
+    // New project and the four projects, New project first.
+    await expect(cards).toHaveCount(5)
     await expect(cards.first()).toHaveAccessibleName('New project')
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          [...document.querySelectorAll('.card-picture img')].every(
+            (image) =>
+              image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0,
+          ),
+        ),
+      )
+      .toBe(true)
     // The clamp is the stylesheet's alone: the whole name is the card's
     // accessible name, and is in the document.
     await expect(list.getByRole('button', { name: `Open ${unbroken}` })).toHaveCount(1)
@@ -251,7 +293,27 @@ test('a Library card holds what it has, at the narrowest column and at the fluid
             )
             .map((part) => part.className)
           const name = card.querySelector('.card-name') as HTMLElement
+          // The picture, where there is one: whole inside its area, which
+          // keeps its ratio and holds it, and an empty alternative text.
+          const area = card.querySelector('.card-picture') as HTMLElement
+          const image = area.querySelector('img')
+          const areaBox = area.getBoundingClientRect()
+          const imageBox = image?.getBoundingClientRect()
           return {
+            picture:
+              image === null || imageBox === undefined
+                ? null
+                : {
+                    alt: image.getAttribute('alt'),
+                    inside:
+                      imageBox.left >= areaBox.left - 1 &&
+                      imageBox.right <= areaBox.right + 1 &&
+                      imageBox.top >= areaBox.top - 1 &&
+                      imageBox.bottom <= areaBox.bottom + 1,
+                    ratio: areaBox.width / areaBox.height,
+                    clipped:
+                      area.scrollWidth > area.clientWidth || area.scrollHeight > area.clientHeight,
+                  },
             label: card.getAttribute('aria-label') ?? card.textContent ?? '',
             width: box.width,
             // The kit gives a button whose descendant's first child is an
@@ -315,6 +377,14 @@ test('a Library card holds what it has, at the narrowest column and at the fluid
       // the document. A name that fits is never broken to make room.
       expect(named(unbroken)?.nameClamped, `${at}: the unbroken name is clamped`).toBe(true)
       expect(named(unbroken)?.nameText, `${at}: the whole name is in the document`).toBe(unbroken)
+      // The thumbnail is inside its area, at the area's ratio, with an empty
+      // alternative text, and the card is named as any other project's is.
+      const shown = named('Pictured')
+      expect(shown?.picture?.alt, `${at}: the thumbnail has an empty alternative text`).toBe('')
+      expect(shown?.picture?.inside, `${at}: the thumbnail is inside its area`).toBe(true)
+      expect(shown?.picture?.clipped, `${at}: the area clips nothing`).toBe(false)
+      expect(shown?.picture?.ratio, `${at}: the area is 16:10`).toBeCloseTo(1.6, 1)
+      expect(named('Short')?.picture, `${at}: a project not drawn has no image`).toBeNull()
       expect(named('Short')?.nameLines, `${at}: a short name is on one line`).toBe(1)
       expect(named('Short')?.cut, `${at}: nothing of a short card is cut`).toEqual([])
     }

@@ -145,8 +145,8 @@ The two reader columns are a person's, recorded per run in
 |---|---|---|---|---|---|---|---|---|
 | Heading, and the New project card first among the cards (ADR-047): one Tab from the heading, with projects or without | swept | swept | swept | swept | pass (the card's pairs below; the plus `--accent` on `--surface-sunken`, 5.59 and 4.49 for a glyph's 3.0) | pass | not yet run: a person's | not yet run: a person's |
 | Empty state: the introduction, then Your projects holding the New project card alone, with the quiet line beside it, "Projects you make appear here, most recently opened first." (ADR-047; a paragraph, not a live region, gone with the first project) | swept | swept | swept | swept | fixed (C6); the quiet line `--text-muted` on `--surface` | fixed (C1, C6) | not yet run: a person's | not yet run: a person's |
-| Your projects: one card each, a button named `Open <name>`, described by where it runs and how far it has got (A5.6-04, ADR-047); its picture area empty, one `train` glyph hidden from the tree (issue 287) | swept | swept | swept | swept | pass (`--text`, `--text-muted`; `--text-muted` on `--surface-hover` under the pointer; the glyph `--text-faint` on `--surface-sunken`, measured on the element in both themes) | pass | not yet run: a person's | not yet run: a person's |
-| Sample cities: the same card, one button, named by its facts - name, where it runs, and its chip "downloaded" or "not downloaded yet"; what its mode keeps is no longer among them (A5.6-02, ADR-047); one press opens it laying out (A5.6-03) | swept | swept | swept | swept | pass (the same pairs; the chip `--text-muted` on `--surface-sunken`) | pass | not yet run: a person's | not yet run: a person's |
+| Your projects: one card each, a button named `Open <name>`, described by where it runs and how far it has got (A5.6-04, ADR-047); its picture area the engine's thumbnail of the map as an `<img alt="">` in the interface's palette, or where there is none (not drawn yet, or the file did not load) the empty area, one `train` glyph hidden from the tree (issue 287) | swept | swept (names read from the tree are the same in Night and Parchment, with the thumbnail and without) | swept | swept | pass (`--text`, `--text-muted`; `--text-muted` on `--surface-hover` under the pointer; the glyph `--text-faint` on `--surface-sunken`, measured on the element in both themes; a picture is decorative and is not measured) | pass | not yet run: a person's | not yet run: a person's |
+| Sample cities: the same card, one button, named by its facts - name, where it runs, and its chip "downloaded" or "not downloaded yet"; what its mode keeps is no longer among them (A5.6-02, ADR-047); its picture the one the engine made for that city, shipped with the app, an `<img alt="">` that swaps with the theme and changes no name (issue 287); one press opens it laying out (A5.6-03) | swept | swept (names the same in both themes with the pictures present) | swept | swept | pass (the same pairs; the chip `--text-muted` on `--surface-sunken`) | pass | not yet run: a person's | not yet run: a person's |
 | Your feeds: Start a project, Remove (A5.6-06) | fixed (D5) | swept (each names its feed) | swept | swept | pass | pass | not yet run: a person's | not yet run: a person's |
 | New project sheet, a listed feed (A5.6-05) | swept | swept | swept | swept | pass (the dialog's pairs, the kit's controls) | fixed (C1) | not yet run: a person's | not yet run: a person's |
 | New project sheet, a zip chosen | swept | swept | swept | swept | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
@@ -843,13 +843,16 @@ a table).
   card is a button "Open `<name>`", with where it runs and how far it has
   got read as its description ("Los Angeles · Metro Rail, finished up to
   05 Lines", A5.6-04, ADR-047). Nothing is read for its picture area: the
-  glyph there is hidden.
+  engine's picture of the map there has an empty alternative text, and the
+  glyph of a project not yet drawn is hidden. A project's card reads the
+  same in Night and in Parchment, with the picture and without.
 - **Sample cards and feed rows (Start a project, Remove).** Listen for the
   headings "Sample cities" and, once a feed has been added, "Your feeds",
   over the lists "Presets" and "Added". Each sample is one button named by
   what its card shows, "`<name>`, `<city · network>`, downloaded" or "not
   downloaded yet" (A5.6-02, ADR-047), with nothing read for its picture
-  area; pressing one opens the
+  (the engine's drawing of the city, an image with an empty alternative
+  text, which changes with the theme and changes no name); pressing one opens the
   sample's notebook with its layout starting, and listen for the project's
   heading read first and cell 02's progress line after it (A5.6-03); an added feed's row is
   named for its feed, with the buttons "Start a project on `<feed>`" and
