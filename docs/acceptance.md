@@ -241,8 +241,7 @@ run.
   the stage running ("gtfs2graph drawn; topo running.", and at the end
   "octi drawn; the layout’s four stages are done."). **gtfs2graph** and
   **loom** read as pressed only while the drawing is of that stage, and
-  neither is ever disabled; pressing **loom** before it is drawn says "loom
-  is not drawn yet." **check:** the drawing changes from stage to stage
+  neither is ever disabled. **check:** the drawing changes from stage to stage
   without going blank between them (with LA, `gtfs2graph` takes most of
   the time and the other three can pass in a moment); when the run ends,
   the view is the one step 5 describes.

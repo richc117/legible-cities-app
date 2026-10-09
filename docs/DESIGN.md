@@ -615,7 +615,9 @@ next before it says what went wrong.
 - Contrast: text ≥ 4.5, controls and icons ≥ 3.0, in both themes; the
   token file's pairs are asserted by a unit test.
 - Live regions: the status line is polite; a finished or failed job is
-  announced once; nothing else speaks unprompted.
+  announced once; nothing else speaks unprompted, except cell 01's stage
+  view during a layout run, which says each stage once, politely, as it is
+  drawn, and nothing at any other time (issue 382).
 - Targets ≥ 24 by 24 even at the dense control height.
 - Reduced motion turns all motion off; nothing is conveyed by motion
   alone.

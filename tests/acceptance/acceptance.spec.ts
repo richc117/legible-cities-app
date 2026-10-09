@@ -1151,6 +1151,12 @@ test('a release, installed, through docs/acceptance.md', async () => {
       log.notAutomated(
         "that the sentence beside the line is the engine's for the last stage that finished: each is replaced by the next, and a short one can go before it is drawn.",
       )
+      // Cell 01 draws the layout as it solves (issue 382): with LA the last
+      // three stages pass in a moment, faster than the run watches, so the
+      // reveal is a person's to judge, as the checklist's step 4 asks.
+      log.notAutomated(
+        'cell 01\'s Where the routes run drawing each stage as the engine finishes it, gtfs2graph first and then topo, loom and octi, with the sentence naming the stage drawn and the stage running ("gtfs2graph drawn; topo running.", ending "octi drawn; the layout’s four stages are done."); gtfs2graph and loom pressed only while the drawing is theirs and never disabled; and no blank between the stages.',
+      )
       // The feed was not on disk in this run's fresh profile, so the layout
       // downloaded it first and cell 01 drew the bytes (issue 178, engine
       // v0.10.0, E36). The sentences go as the next replaces them, so they are
