@@ -1,7 +1,7 @@
 // Generated from the engine's own description of its protocol.
 // Run `npm run typegen` to regenerate; edits here are lost.
 //
-// Engine: v0.13.0, protocol 1.
+// Engine: v0.14.0, protocol 1.
 // Source: vendor/protocol.schema.json, printed by the engine's
 // `python -m schematic.serve --schema` and committed verbatim.
 
@@ -144,7 +144,10 @@ export interface LayoutMeta {
    */
   loom: string | null
   /**
-   * The graph-to-graph stages and their arguments, in order.
+   * The graph-to-graph stages and their arguments, in order. A layout laid
+   * out with a tuning shows LOOM's flags for it here (topo's -d; octi's -b,
+   * -g, --pen-N and --diag-pen), written as LOOM prints numbers; a field
+   * left at LOOM's default shows none.
    */
   stages: [string, string[]][]
   /**
@@ -165,10 +168,10 @@ export interface LayoutMeta {
 /**
  * Lay a registered feed out: gtfs2graph, topo, loom and octi, stored under
  * the home as one layout named by the hash of its inputs (the feed's bytes,
- * the mode, the agency, the label options, the LOOM build). The same inputs
- * name the same layout; a layout already stored is answered without running
- * anything. Mode, agency and the label options default to the registry
- * entry.
+ * the mode, the agency, the label options, the tuning, the LOOM build). The
+ * same inputs name the same layout; a layout already stored is answered
+ * without running anything. Mode, agency and the label options default to
+ * the registry entry; the tuning, to LOOM's own settings.
  */
 export interface GraphBuildParams {
   key: FeedKey
@@ -198,6 +201,82 @@ export interface GraphBuildParams {
    * differently.
    */
   force?: boolean
+  tuning?: LayoutTuning
+}
+
+/**
+ * LOOM's own settings for a layout, by name, with no slider mapped over
+ * them. Every field is optional. Each is passed to the tool it belongs to as
+ * that tool's flag (merge_distance to topo as -d; grid, grid_size and the
+ * penalties to octi as -b, -g and --pen-N or --diag-pen), and the flags are
+ * part of the layout's id: a tuned layout is a layout of its own, the same
+ * tuning always names the same one, and LayoutMeta.stages shows the flags. A
+ * field equal to LOOM's default writes no flag, so leaving the object out,
+ * sending {} and sending nothing but defaults all name the layout stored
+ * today. Numbers are written as LOOM's own help prints them (50, 1.5, never
+ * 50.0), so equal values name the same layout whether they were sent as
+ * integers or as decimals. A value outside its range, a grid that is not one
+ * of the four, a field that is not on the list and a null where an object
+ * goes are refused with the params kind and a sentence naming the field
+ * (tuning.merge_distance, tuning.penalties.deg45), before any tool starts.
+ * LOOM's other flags are not offered.
+ */
+export interface LayoutTuning {
+  /**
+   * How far apart two segments of track may be, in metres, and still be
+   * merged into one (topo's -d, --max-aggr-dist). LOOM's default is 50,
+   * which writes no flag.
+   */
+  merge_distance?: number
+  /**
+   * The grid octi lays the network on (octi's -b, --base-graph): octilinear,
+   * the 45-degree multiples the map has always been drawn on, ortholinear,
+   * orthoradial or hexalinear. LOOM's default is octilinear, which writes no
+   * flag. Its research variants (quadtree, octihanan, chulloctilinear,
+   * porthoradial, pseudoorthoradial) are not offered.
+   */
+  grid?: 'octilinear' | 'ortholinear' | 'orthoradial' | 'hexalinear'
+  /**
+   * The grid's cell length as a percentage of the distance between adjacent
+   * stations (octi's -g, --grid-size, written with a percent sign). A
+   * smaller cell gives octi more places to put a station, a larger one
+   * fewer. LOOM's default is 100, which writes no flag.
+   */
+  grid_size?: number
+  penalties?: LayoutPenalties
+}
+
+/**
+ * The costs octi adds while it routes, in its own scale, which has no unit:
+ * a higher cost makes octi avoid what it prices. Every field is optional,
+ * from 0 to 10, and one equal to LOOM's default writes no flag.
+ */
+export interface LayoutPenalties {
+  /**
+   * octi's --pen-45, the cost where a route makes that angle. LOOM's default
+   * is 2.
+   */
+  deg45?: number
+  /**
+   * octi's --pen-90, the cost where a route makes that angle. LOOM's default
+   * is 1.5.
+   */
+  deg90?: number
+  /**
+   * octi's --pen-135, the cost where a route makes that angle. LOOM's
+   * default is 1.
+   */
+  deg135?: number
+  /**
+   * octi's --pen-180, the cost where a route makes that angle. LOOM's
+   * default is 0.
+   */
+  deg180?: number
+  /**
+   * octi's --diag-pen, the cost of running on a diagonal. LOOM's default is
+   * 0.5.
+   */
+  diagonal?: number
 }
 
 export interface StageSummary {
@@ -479,13 +558,22 @@ export interface MapBuildResult {
  * fraction is of the download's own bytes (0 when the server did not say how
  * many), not of the request, and its message counts them; the request's own
  * steps follow with their fractions of the request. A feed already on disk
- * reports no download.
+ * reports no download. A report of one of a layout's four stages names the
+ * layout in `layout`: each stage as graph.build finishes it, the four
+ * graph.build replays for a stored layout, and the four map.build replays
+ * before its own steps; a client can draw a stage with render.stage as soon
+ * as it is reported, before the request ends. No other report carries it, a
+ * download's included, which comes before the layout's id is known.
  */
 export interface JobProgress {
   id: RequestId
   stage: string
   fraction: number
   message: string
+  /**
+   * The layout the reported stage is of; on stage reports alone.
+   */
+  layout?: LayoutId
 }
 
 /**
@@ -1070,6 +1158,17 @@ export type StageName = 'gtfs2graph' | 'topo' | 'loom' | 'octi'
  * and its description (StageDescription): what a geographic view shows
  * beside the schematic map, and what its text alternative is written from.
  * Never lays out; a stage that is not stored is refused with kind layout.
+ * While graph.build is laying the layout out in the same engine, a stage the
+ * build has finished (job/progress has reported it, naming the layout) is
+ * drawn from what the build has written, exactly as a stored stage is; one
+ * it has not reached is refused with kind layout and building true in the
+ * error's data, whose stage is the stage the answer waits on (octi when date
+ * asks for minutes, which are read from it), and is worth asking again at
+ * the next progress report. A stored layout that is being laid out again
+ * (force) is drawn from its new build once the build has finished what the
+ * answer needs, and from the store as before until then, never refused. Once
+ * the build is done the store answers, as for any stored layout; a build
+ * that is cancelled or fails leaves nothing of its own to draw.
  */
 export interface RenderStageParams {
   key: FeedKey
@@ -1205,12 +1304,25 @@ export interface StageDescription {
 
 /**
  * The `data` of an error response. `hint` is a sentence for a person and is
- * what a UI shows; `detail` says where, for a log.
+ * what a UI shows; `detail` says where, for a log. render.stage's refusal of
+ * a stage that a running build has not reached yet also carries layout,
+ * stage and building; no other error does.
  */
 export interface ErrorData {
   kind: 'params' | 'feed' | 'loom' | 'schedule' | 'export' | 'io' | 'engine' | 'layout'
   detail: string
   hint: string
+  layout?: LayoutId
+  /**
+   * The stage the answer waits on.
+   */
+  stage?: StageName
+  /**
+   * The layout is being laid out and is not stored: ask again at the next
+   * job/progress report. Absent from the refusal of a layout that is neither
+   * stored nor building.
+   */
+  building?: true
 }
 
 /** Every request the engine answers, with its parameters and its result. */
