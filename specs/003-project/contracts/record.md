@@ -123,7 +123,10 @@ The on-disk form of `ProjectRecord` (`data-model.md`), version 2:
   tuning (`specs/028-the-notebook/contracts/run-graph.md`). It is `built`'s
   counterpart for the tuning, kept by the app because reading it back from
   the engine's `LayoutMeta.stages` would mean computing LOOM's flags. The
-  front door's summaries carry both fields.
+  front door's summaries carry both fields, because a project's card says
+  how far the project has got through the notebook's own run graph,
+  derived from the summary (`projectFacts`, `progressWords`), and the run
+  graph compares the two.
 - `built` (added by A2-02, still version 1) is the mode and agency the
   engine made the stored layout with, `{ mode, agency }` from
   `graph.build`'s meta, or `null`; an empty agency reads as none, and a

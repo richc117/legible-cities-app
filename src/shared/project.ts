@@ -1315,9 +1315,13 @@ export function summarise(record: ProjectRecord, readOnly: boolean): ProjectSumm
     opened: record.opened,
     created: record.created,
     modified: record.modified,
-    // The two tunings, where the record holds them (issue 385): the run
-    // graph compares them to say a layout is of another tuning, and the
-    // front door derives a project's progress with it.
+    // The two tunings, where the record holds them (issue 385). They are
+    // read: a project's card on the front door says how far it has got
+    // through the notebook's own run graph, from this summary
+    // (`projectFacts` -> `progressWords` -> `runGraph`), and the run graph
+    // compares these two to say a layout is of another tuning - without
+    // them the card would say "finished up to 05 Lines" of a project whose
+    // cells 03 to 06 read not drawn yet.
     ...(record.tuning === undefined ? {} : { tuning: { ...record.tuning } }),
     ...(record.laidOutWith === undefined ? {} : { laidOutWith: { ...record.laidOutWith } }),
     readOnly,

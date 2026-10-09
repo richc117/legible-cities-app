@@ -9,8 +9,10 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { progressWords } from '../../src/renderer/src/projectProgress'
 import {
   DEFAULT_TUNING,
+  drawnFrom,
   GRID_SENTENCE,
   GRIDS,
   inTuningRange,
@@ -262,5 +264,23 @@ describe('reading a record’s tuning', () => {
     expect(summarise(record, false).tuning).toEqual({ grid: 'hexalinear' })
     expect(summarise(record, false)).not.toHaveProperty('laidOutWith')
     expect(summarise(read({}), false)).not.toHaveProperty('tuning')
+  })
+
+  it('makes a project’s card say how far it has got from them', () => {
+    // The card derives its words from the summary with the run graph
+    // (`projectFacts` -> `progressWords`). Mutation: the two left out of
+    // `summarise` - the card then says "finished up to 05 Lines" of a
+    // project whose layout is of another tuning.
+    const drawn = read({ layout: 'a'.repeat(64), date: '2026-09-12' })
+    const record = read({
+      layout: 'a'.repeat(64),
+      date: '2026-09-12',
+      drawn: drawnFrom(drawn),
+      tuning: { grid: 'hexalinear' },
+    })
+    expect(progressWords(summarise(record, false), null)).toBe('finished up to 02 Process')
+    expect(
+      progressWords(summarise({ ...record, laidOutWith: { grid: 'hexalinear' } }, false), null),
+    ).toBe('finished up to 05 Lines')
   })
 })

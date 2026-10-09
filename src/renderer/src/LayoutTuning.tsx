@@ -208,7 +208,7 @@ export default function LayoutTuning({ project, onChange }: Props): JSX.Element 
             {RESET_LABEL}
           </Button>
         </div>
-        <p className="message error" role="alert">
+        <p className="message error" role="alert" hidden={unsaved === null}>
           {unsaved}
         </p>
       </Disclosure>
