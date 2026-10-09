@@ -1,7 +1,7 @@
 import { useId, useLayoutEffect, useRef, useState, type JSX, type RefObject } from 'react'
 import { THEMES, isTheme, type ProjectRecord, type Theme } from '../../shared/project'
 import { themePicture } from './themePictures'
-import { nextWrite, writeThrough } from './themeWrites'
+import { createThemeChooser, type ThemeChooser } from './themeChooser'
 
 // The theme a project's map is drawn in (A4-03, specs/021-theme).
 //
@@ -110,14 +110,26 @@ export default function ThemeSwitch({
   // One name for the two radios, so they are one group to the keyboard: Tab
   // enters it once and the arrow keys move the choice.
   const group = useId()
-  // Whether a write is in flight, and the theme chosen while it was: refs
-  // rather than state, because a choice reads them in the same tick it
-  // arrives. As state, the flag would still read true through the render
-  // after the last write settled, and a choice landing in that gap would be
-  // kept by a loop that had already ended - the silent drop this exists to
-  // stop, in a narrower window.
-  const writing = useRef(false)
-  const kept = useRef<Theme | null>(null)
+  // What a choice does - written, kept for the write in flight, or nothing
+  // - is `themeChooser.ts`, made once for the life of the switch. It takes
+  // the latest `onChange`, not the one it was made with, and the record's
+  // theme from here only when nothing is being written: the screen's copy
+  // of it arrives a render after a write has landed, and a choice made in
+  // that gap must not be compared with the old one.
+  const write = useRef(onChange)
+  useLayoutEffect(() => {
+    write.current = onChange
+  })
+  const made = useRef<ThemeChooser | null>(null)
+  const chooser = (made.current ??= createThemeChooser({
+    initial: project.theme,
+    write: (theme) => write.current(theme),
+    asked: setAsked,
+    failed: setProblem,
+  }))
+  useLayoutEffect(() => {
+    chooser.sync(project.theme)
+  }, [chooser, project.theme])
   const section = useRef<HTMLElement>(null)
 
   // A run can start from a timer rather than a choice: a colour or an order
@@ -142,39 +154,12 @@ export default function ThemeSwitch({
   // a fieldset, and the radio itself for a radio, a select or a button).
   useLayoutEffect(() => {
     if (!disabled) return
-    kept.current = null
+    chooser.forget()
     const active = document.activeElement
     if (active !== null && section.current?.contains(active) === true) {
       handback.current?.focus()
     }
-  }, [disabled, handback])
-
-  const choose = async (theme: Theme): Promise<void> => {
-    const step = nextWrite(theme, project.theme, writing.current)
-    if (step === 'none') return
-    setAsked(theme)
-    if (step === 'keep') {
-      kept.current = theme
-      return
-    }
-    setProblem(null)
-    writing.current = true
-    try {
-      await writeThrough(theme, onChange, () => {
-        const next = kept.current
-        kept.current = null
-        return next
-      })
-    } catch (error) {
-      kept.current = null
-      setProblem(error instanceof Error ? error.message : String(error))
-    } finally {
-      writing.current = false
-      // The record holds what was written, or still holds what it did if
-      // the write failed: either way it is the cards' word again.
-      setAsked(null)
-    }
-  }
+  }, [chooser, disabled, handback])
 
   return (
     <section className="theme-switch" aria-label={NAME} aria-busy={disabled} ref={section}>
@@ -205,7 +190,7 @@ export default function ThemeSwitch({
                 disabled={disabled}
                 onChange={(event) => {
                   const value = event.currentTarget.value
-                  if (isTheme(value)) void choose(value)
+                  if (isTheme(value)) void chooser.choose(value)
                 }}
               />
               <span className="card-picture">
