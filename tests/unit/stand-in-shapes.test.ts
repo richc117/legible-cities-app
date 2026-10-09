@@ -515,8 +515,8 @@ describe('the check of the v0.13.0 shapes against the description', () => {
     expect(stationOrderProblems([at('0x1', 'Zone'), at('0x2', 'alder')])).toEqual([])
     expect(stationOrderProblems([at('0x2', 'alder'), at('0x1', 'Zone')])).toHaveLength(1)
     // By code point, not by UTF-16 unit: U+FFFF comes before U+10000.
-    expect(stationOrderProblems([at('0x1', '￿'), at('0x2', '\u{10000}')])).toEqual([])
-    expect(stationOrderProblems([at('0x2', '\u{10000}'), at('0x1', '￿')])).toHaveLength(1)
+    expect(stationOrderProblems([at('0x1', '\uFFFF'), at('0x2', '\u{10000}')])).toEqual([])
+    expect(stationOrderProblems([at('0x2', '\u{10000}'), at('0x1', '\uFFFF')])).toHaveLength(1)
   })
 })
 
