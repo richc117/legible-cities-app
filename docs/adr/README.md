@@ -78,7 +78,7 @@ already cites the number you mean to use.
 | 045 | [The project screen is a notebook of six cells](045-the-project-screen-is-a-notebook.md) | Accepted; the pinned map superseded in part by 046 |
 | 046 | [The map moves into the notebook's flow, and the export gets a preview of its own](046-the-map-moves-into-the-notebooks-flow.md) | Accepted |
 | 047 | [The front door shows pictures the engine made, and ships none of its layouts](047-the-front-door-shows-pictures-the-engine-made.md) | Accepted |
-| 048 | [Route mode is a trip the page finds](048-route-mode-is-a-trip-the-page-finds.md) | Proposed |
+| 048 | [Route mode is a trip the page finds](048-route-mode-is-a-trip-the-page-finds.md) | Accepted |
 | 049 | [Style goes on the wire as the engine's own fields](049-style-on-the-wire.md) | Accepted |
 | 050 | [The frame is padded, never cropped](050-the-frame-is-padded-never-cropped.md) | Accepted |
 | 051 | [A storyboard is a name or a list of beats, and the opening beat is named](051-inline-beats-and-the-opening-beat.md) | Proposed |
