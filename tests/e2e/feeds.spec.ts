@@ -854,7 +854,7 @@ async function withEngineStillStarting(run: (page: Page) => Promise<void>): Prom
 test('a name in a person’s hand when the engine becomes ready is the only name in the field', async () => {
   test.slow()
   await withEngineStillStarting(async (page) => {
-    await page.locator('.empty').getByRole('button', { name: 'New project' }).click()
+    await page.getByRole('button', { name: 'New project' }).first().click()
     const dialog = page.getByRole('dialog', { name: 'New project' })
     const name = dialog.getByLabel('Name', { exact: true })
     await expect(name).toHaveValue('')
@@ -886,7 +886,7 @@ test('a name in a person’s hand when the engine becomes ready is the only name
 test('a name no one has touched is filled once the engine is ready, and a typed one replaces it', async () => {
   test.slow()
   await withEngineStillStarting(async (page) => {
-    await page.locator('.empty').getByRole('button', { name: 'New project' }).click()
+    await page.getByRole('button', { name: 'New project' }).first().click()
     const dialog = page.getByRole('dialog', { name: 'New project' })
     const name = dialog.getByLabel('Name', { exact: true })
     await expect(name).toHaveValue('')
