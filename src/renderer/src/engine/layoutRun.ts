@@ -22,7 +22,7 @@ import type { Diagnostics, MapBuildResult, Methods } from '../../../shared/proto
 import { readStations, type Station } from '../../../shared/trip'
 import type { Stage } from '../ProgressLine'
 import { styleParams } from '../styleRules'
-import { askedWith, tuningParams } from '../layoutTuning'
+import { askedWith, tuningParams } from '../tuningRules'
 
 // One layout run for one project, with no React in it: the rule is that
 // logic lives in something callable without rendering, and the tests are

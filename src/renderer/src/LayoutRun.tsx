@@ -1,4 +1,4 @@
-import { useRef, useState, type JSX } from 'react'
+import { useRef, useState, type JSX, type ReactNode } from 'react'
 import Button from './kit/Button'
 import Icon from './icons/Icon'
 import ConfirmDialog from './ConfirmDialog'
@@ -10,6 +10,7 @@ import { shortLayoutId } from '../../shared/layout'
 import { drawnDate, type ProjectRecord } from '../../shared/project'
 import { downloading, type LayoutRun as Run } from './engine/layoutRun'
 import { NOT_LAID_OUT, WAITING_FOR_FEED } from './DownloadLine'
+import { tuningNotice } from './tuningRules'
 import { useSnapshot } from './useSnapshot'
 
 // The layout run on screen: the stages as the engine finishes them, the
@@ -30,12 +31,22 @@ export default function LayoutRun({
   project,
   engine,
   disabled = false,
+  after,
 }: {
   run: Run
   project: ProjectRecord
   engine: EngineState | null
   /** True while something else, such as an export, is reading the project's page. */
   disabled?: boolean
+  /**
+   * What follows the run's own controls inside its region: cell 02's Layout
+   * tuning (issue 385). It is the region's second child whatever state the
+   * run is in, so it is the same element from one state to the next and
+   * keeps what it holds - an open section, a half-typed number - while a
+   * run starts and ends around it. And it follows a box of the run's, never
+   * the region itself, which draws no box of its own (`display: contents`).
+   */
+  after?: ReactNode
 }): JSX.Element {
   const {
     state,
@@ -110,38 +121,54 @@ export default function LayoutRun({
       lay out to draw with {describeInputs(project)}.
     </p>
   )
+  // The record's tuning would not send what the stored layout was asked
+  // with (issue 385): the run graph's `tuning` source, which marks the cells
+  // below this one, said here, in the cell that holds it, on the inputs'
+  // terms. The map on screen stays the layout it is until a run.
+  const tuned = tuningNotice(project)
+  const tunedNotice = tuned !== null && (
+    <p className="prose" role="status">
+      {tuned}
+    </p>
+  )
   if (state === 'idle') {
     return (
       <div className="focus-region" ref={region}>
-        {/* The stages a run goes through, before one has gone in this
+        {/* One child, as the running panel's section is, so `after` is the
+            region's second whatever the run is doing (the prop says why). */}
+        <>
+          {/* The stages a run goes through, before one has gone in this
             session: the line the run itself draws, with every station
             waiting. An idle run's stages are the fresh eight, so this is
             the same data the run reports from and not a second list that
             could disagree with it. */}
-        <div className="layout-stages">
-          <ProgressLine
-            stages={inWords(stages)}
-            ariaLabel={waiting(stages, project.layout !== null)}
-          />
-        </div>
-        {project.layout !== null && (
-          <p className="prose" role="status">
-            Drawn from layout {shortLayoutId(project.layout)}
-            {/* The day the map on disk was drawn for, not the record's,
+          <div className="layout-stages">
+            <ProgressLine
+              stages={inWords(stages)}
+              ariaLabel={waiting(stages, project.layout !== null)}
+            />
+          </div>
+          {project.layout !== null && (
+            <p className="prose" role="status">
+              Drawn from layout {shortLayoutId(project.layout)}
+              {/* The day the map on disk was drawn for, not the record's,
                 which may be a day chosen and not yet drawn (A5.5-15):
                 this sentence is about the picture, and cell 03 says a few
                 lines below it that the choice has moved. */}
-            {drawn === null ? '' : ` for ${drawn}`}.
-          </p>
-        )}
-        {movedNotice}
-        <div className="toolbar">
-          <Button variant="primary" ref={layOutRef} onClick={begin} disabled={disabled}>
-            <Icon name="map" />
-            {project.layout === null ? 'Lay out' : 'Lay out again'}
-          </Button>
-          {relayoutButton}
-        </div>
+              {drawn === null ? '' : ` for ${drawn}`}.
+            </p>
+          )}
+          {movedNotice}
+          {tunedNotice}
+          <div className="toolbar">
+            <Button variant="primary" ref={layOutRef} onClick={begin} disabled={disabled}>
+              <Icon name="map" />
+              {project.layout === null ? 'Lay out' : 'Lay out again'}
+            </Button>
+            {relayoutButton}
+          </div>
+        </>
+        {after}
         {warning}
       </div>
     )
@@ -201,6 +228,7 @@ export default function LayoutRun({
                       : doneSentence(forced, changed, relaid)}
             </p>
             {movedNotice}
+            {tunedNotice}
             {/* The run outlives the screen, so this state is what a person
               comes back to; without the unforced run here, "Lay out again"
               would be unreachable until the app restarts. */}
@@ -215,6 +243,7 @@ export default function LayoutRun({
         )}
         {warning}
       </section>
+      {after}
     </div>
   )
 }

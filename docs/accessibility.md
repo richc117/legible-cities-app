@@ -204,6 +204,7 @@ The two reader columns are a person's, recorded per run in
 |---|---|---|---|---|---|---|---|---|
 | The layout run and its progress line | fixed (D1) | pass | pass | pass (the marks' transitions off) | pass | fixed (C1) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
 | Re-layout warning | fixed (D1, D8) | pass | pass | pass | pass | fixed (C1) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
+| Layout tuning: a closed disclosure, the grid, seven numeric fields and Reset to LOOM’s defaults (issue 385) | by construction: the toggle a native button in an `h3`, one Tab stop while closed; open, the grid the kit's native select and each number a labelled text field in the Tab order, committed on Enter or on leaving it, Reset handing focus to the section's `h3` as it disables itself; driven from the keyboard in `tuning.spec.ts`, written, not yet run; not yet in the sweep | by construction: the toggle named by its row, "Layout tuning" and "LOOM’s defaults" or "tuned", over a group named "Layout tuning"; the select named "Grid", each option the engine's word and its gloss; each number named by its label and described by its range and LOOM's own, the five penalties in a fieldset whose legend is "Bend penalties"; a refusal an alert and `aria-invalid` on the field; asserted in `layout-tuning.test.tsx` and `tuning.spec.ts`, the latter written, not yet run | by construction (the app's ring on the toggle, the kit's on the fields); not yet run | by construction (the chevron's turn is a transition only where motion is allowed); not yet run | by construction (`--text`, `--text-muted` on `--surface`, `.message` and `.message.error` and the kit's field, pairs the contrast test already holds); not yet run | by construction, as Night; not yet run | not yet run: a person's (this part changed after 0.1.0) | not yet run: a person's (this part changed after 0.1.0) |
 | Engine log: a closed disclosure, the box of lines, Copy log (A5.5-13) | swept, open and closed (the box `tabindex="0"`, scrolled by its own `scrollTop`) | swept (the disclosure "The engine's log for this run" and the box "Log lines" named apart; a unit test refuses two elements in the panel sharing a name) | swept | swept | pass (`--text`, `--text-muted` on `--surface-sunken`) | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
 | What the build had to fudge | fixed (D9) | pass | pass | pass (the tooltip's fade off) | pass | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
 
@@ -1040,6 +1041,24 @@ a table).
   Press **Cancel** and listen for focus back on **Re-layout**. Open it
   again and press **Re-layout**: the dialog closes and the run starts with
   focus on **Cancel** (D1, D8).
+- **Layout tuning.** Under **Lay out again** and **Re-layout**, a level-3
+  heading holding a button "Layout tuning LOOM’s defaults", collapsed (issue
+  385). Press it: listen for expanded, a group "Layout tuning", the sentence
+  "LOOM’s own settings for laying this project out. A tuned layout is a
+  layout of its own: the map keeps the layout it has until you lay out
+  again.", a select "Grid" reading "octilinear (eight directions; LOOM’s
+  own)", then the fields "Merge distance" and "Grid size", each followed by
+  its range and LOOM's own as its description ("5 to 500 metres. LOOM’s own
+  is 50."), and a group "Bend penalties" with its sentence and the fields
+  "45°", "90°", "135°", "180°" and "Diagonal". Type 600 in "Merge distance"
+  and press Enter: listen for "tuning.merge_distance must be from 5 to 500,
+  in metres" spoken once, with no focus move and the field invalid. Type 50
+  and press Enter: the sentence goes. Choose "orthoradial" in "Grid" and
+  listen, under the run, for "Lay out again to use this tuning: the map on
+  screen was laid out with LOOM’s defaults."; then press **Reset to LOOM’s
+  defaults** and listen for focus on the section's heading, "Layout
+  tuning", not on nothing, and for the sentence under the run to go; read
+  the heading again and it says "LOOM’s defaults".
 - **The engine log.** Under the stages, a button "Engine log" with its
   line count, collapsed, which opens a group named "The engine's log for
   this run". Press it: listen for expanded and a scrolling box "Log lines"
