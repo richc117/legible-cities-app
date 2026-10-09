@@ -104,6 +104,14 @@ export interface RunSnapshot {
    * does not let cell 01's inspection start a download of its own.
    */
   feedMissing: boolean | null
+  /**
+   * The layout the run's stage reports name (engine v0.14.0, issue 382):
+   * set from the first report that carries one, so cell 01 can ask the
+   * engine for each stage as it is reported, before the run ends. Null
+   * until then, at every start, and for a run that never reported a stage;
+   * a download's reports carry none.
+   */
+  layout: string | null
 }
 
 /** Where a download inside a run has got, in the engine's words. */
@@ -227,7 +235,7 @@ const stationsOf = (stations: Station[] | null): { stations?: Station[] } =>
 interface Handle<T> {
   result: Promise<T>
   onProgress(
-    listener: (p: { stage: string; message: string; fraction?: number }) => void,
+    listener: (p: { stage: string; message: string; fraction?: number; layout?: string }) => void,
   ): () => void
   /** The engine's log lines for this request; the typed client has it, a test stub may not. */
   onLog?(listener: (l: { level: string; line: string }) => void): () => void
@@ -355,6 +363,7 @@ const IDLE: RunSnapshot = {
   report: null,
   download: null,
   feedMissing: false,
+  layout: null,
 }
 
 /**
@@ -607,6 +616,7 @@ export class LayoutRun {
         day: date,
         download: null,
         feedMissing: false,
+        layout: null,
       })
       return
     }
@@ -670,6 +680,7 @@ export class LayoutRun {
         day: date,
         download: null,
         feedMissing: false,
+        layout: null,
       })
       return
     }
@@ -733,6 +744,7 @@ export class LayoutRun {
         day: date,
         download: null,
         feedMissing: false,
+        layout: null,
       })
       return
     }
@@ -803,6 +815,7 @@ export class LayoutRun {
         day: date,
         download: null,
         feedMissing: false,
+        layout: null,
       })
       return
     }
@@ -861,9 +874,11 @@ export class LayoutRun {
             ? 'The engine is still starting. Try again in a moment.'
             : `The engine is not ready to run a layout: ${engine.state}.`,
         replaced: false,
-        // A failed start is not the last run's download (issue 178).
+        // A failed start is not the last run's download (issue 178), nor
+        // its layout (issue 382).
         download: null,
         feedMissing: false,
+        layout: null,
         ...kind,
       })
       return false
@@ -885,6 +900,8 @@ export class LayoutRun {
       report: null,
       download: null,
       feedMissing: false,
+      // Named again by this run's first stage report (issue 382).
+      layout: null,
       ...kind,
     })
     return true
@@ -1037,7 +1054,7 @@ export class LayoutRun {
     })
   }
 
-  #report(p: { stage: string; message: string; fraction?: number }): void {
+  #report(p: { stage: string; message: string; fraction?: number; layout?: string }): void {
     // A feed downloading inside the run (engine v0.10.0, E36): cell 01's,
     // not a stage of the line, so it is kept apart from the stages.
     if (p.stage === 'download') {
@@ -1063,10 +1080,18 @@ export class LayoutRun {
       this.#heldDownload = null
       this.#set({ download: null })
     }
+    // The layout the stage is of (engine v0.14.0, issue 382), taken from
+    // the first report that names one and kept for the run: the map call's
+    // replays name the same layout, and nothing else names one at all.
+    const named: { layout?: string } =
+      this.#snapshot.layout === null && typeof p.layout === 'string' ? { layout: p.layout } : {}
     const stages = advance(this.#snapshot.stages, p.stage)
-    if (stages === this.#snapshot.stages) return
+    if (stages === this.#snapshot.stages) {
+      if (named.layout !== undefined) this.#set(named)
+      return
+    }
     const sentence = readableMessage(p.stage, p.message)
-    this.#set({ stages, message: sentence ?? this.#snapshot.message })
+    this.#set({ stages, message: sentence ?? this.#snapshot.message, ...named })
   }
 
   cancel(): void {

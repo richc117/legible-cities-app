@@ -1651,6 +1651,9 @@ describe('the run as a job', () => {
         // the run ended with its feed not on disk.
         'download',
         'feedMissing',
+        // Added by issue 382 on purpose: the layout the run's stage reports
+        // name (engine v0.14.0), which cell 01 draws each stage of.
+        'layout',
       ].sort(),
     )
   })

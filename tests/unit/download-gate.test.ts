@@ -27,6 +27,7 @@ const snapshot = (patch: Partial<RunSnapshot> = {}): RunSnapshot => ({
   report: null,
   download: null,
   feedMissing: false,
+  layout: null,
   ...patch,
 })
 
