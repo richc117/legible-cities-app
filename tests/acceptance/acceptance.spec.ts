@@ -1406,6 +1406,76 @@ test('a release, installed, through docs/acceptance.md', async () => {
         expect(terms).toEqual(['Layout', 'Made', 'Built with', 'Engine now'])
       })
 
+      // Layout tuning (issue 385): read, a number refused, and nothing
+      // written, so every step after this one sees the layout it always did.
+      await log.soft(
+        'Layout tuning: closed, its fields, and 600 refused with nothing written',
+        async () => {
+          const processCell = window.locator('section.cell[data-cell="02"]')
+          const row = cellHeading(window, 'process')
+          if ((await row.getAttribute('aria-expanded')) === 'false') await row.click()
+          const toggle = processCell.getByRole('button', { name: /^Layout tuning\b/ })
+          const section = processCell.getByRole('group', { name: 'Layout tuning', exact: true })
+          await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+          await expect(toggle).toHaveAccessibleName('Layout tuning LOOM’s defaults')
+          const states = (): Promise<(string | null)[]> =>
+            Promise.all(
+              ['03', '04', '05', '06'].map((n) =>
+                window.locator(`section.cell[data-cell="${n}"]`).getAttribute('data-state'),
+              ),
+            )
+          const before = await states()
+
+          await toggle.click()
+          await expect(section).toBeVisible()
+          await expect(section).toContainText(
+            'LOOM’s own settings for laying this project out. A tuned layout is a layout of its own: the map keeps the layout it has until you lay out again.',
+          )
+          const grid = section.getByRole('combobox', { name: 'Grid' })
+          await expect(grid).toHaveValue('octilinear')
+          expect(await grid.locator('option').allTextContents()).toEqual([
+            'octilinear (eight directions; LOOM’s own)',
+            'ortholinear (four directions)',
+            'orthoradial (rings and spokes)',
+            'hexalinear (six directions)',
+          ])
+          for (const [name, value] of [
+            ['Merge distance', '50'],
+            ['Grid size', '100'],
+            ['45°', '2'],
+            ['90°', '1.5'],
+            ['135°', '1'],
+            ['180°', '0'],
+            ['Diagonal', '0.5'],
+          ] as const)
+            await expect(section.getByLabel(name, { exact: true }), name).toHaveValue(value)
+          const merge = section.getByLabel('Merge distance', { exact: true })
+          await expect(merge).toHaveAccessibleDescription('5 to 500 metres. LOOM’s own is 50.')
+          await expect(section.getByRole('group', { name: 'Bend penalties' })).toBeVisible()
+          await expect(section.getByRole('slider')).toHaveCount(0)
+          await expect(
+            section.getByRole('button', { name: 'Reset to LOOM’s defaults', exact: true }),
+          ).toBeDisabled()
+
+          await merge.fill('600')
+          await merge.press('Enter')
+          await expect(
+            section.getByRole('alert').filter({ hasText: 'tuning.merge_distance' }),
+          ).toHaveText('tuning.merge_distance must be from 5 to 500, in metres')
+          await expect(merge, 'left as typed').toHaveValue('600')
+          await expect(merge).toHaveAttribute('aria-invalid', 'true')
+          await expect(toggle).toHaveAccessibleName('Layout tuning LOOM’s defaults')
+          expect((await recordOf(window, LA)).tuning, 'nothing was written').toBeUndefined()
+          expect(await states(), 'no cell changed its state').toEqual(before)
+          await expect(window.getByRole('button', { name: /^Jobs, / })).toHaveAccessibleName(
+            'Jobs, none running',
+          )
+
+          await toggle.click()
+          await expect(section).toBeHidden()
+        },
+      )
+
       await log.soft("the engine's log", async () => {
         const processCell = window.locator('section.cell[data-cell="02"]')
         const logRegion = processCell.getByRole('group', {
