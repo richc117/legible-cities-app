@@ -10,7 +10,13 @@
 import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { _electron as electron, expect, test, type Page } from '@playwright/test'
+import {
+  _electron as electron,
+  expect,
+  test,
+  type ElectronApplication,
+  type Page,
+} from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 import {
   cellHandback,
@@ -21,6 +27,16 @@ import {
   panel,
   withoutOpened,
 } from '../support/project'
+import {
+  boxNumbers,
+  buildsFor,
+  gapsBetween,
+  notebookSettled,
+  pointerSeenBy,
+  showIfHidden,
+  steady,
+  watchPointer,
+} from '../support/steady'
 
 const repoRoot = resolve(__dirname, '../..')
 const PYTHON = findPython()
@@ -36,7 +52,10 @@ function home(control: Record<string, unknown> = {}): string {
   return dir
 }
 
-async function withApp(engineHome: string, run: (page: Page) => Promise<void>): Promise<void> {
+async function withApp(
+  engineHome: string,
+  run: (page: Page, app: ElectronApplication) => Promise<void>,
+): Promise<void> {
   const app = await electron.launch({
     args: ['.'],
     cwd: repoRoot,
@@ -49,7 +68,7 @@ async function withApp(engineHome: string, run: (page: Page) => Promise<void>): 
     timeout: 30_000,
   })
   try {
-    await run(await app.firstWindow())
+    await run(await app.firstWindow(), app)
   } finally {
     await app.close()
   }
@@ -120,10 +139,10 @@ type Point = { x: number; y: number }
 type Box = { x: number; y: number; width: number; height: number }
 
 /** Pick a line up by its grip with the mouse and carry it to a point, in steps, as a hand would; the button stays down. */
-async function carry(page: Page, grip: Point, to: Point): Promise<void> {
+async function carry(page: Page, grip: Point, to: Point, steps = 8): Promise<void> {
   await page.mouse.move(grip.x, grip.y)
   await page.mouse.down()
-  await page.mouse.move(to.x, to.y, { steps: 8 })
+  await page.mouse.move(to.x, to.y, { steps })
 }
 
 /** A point inside a row's lower half, past its middle, where a line carried down to it lands. */
@@ -367,29 +386,86 @@ test('Escape in the middle of a drag puts the list back and builds nothing', asy
   })
 })
 
+/**
+ * The quiet interval a line-order move waits for before it builds
+ * (`REDRAW_DELAY` in `src/renderer/src/colours.ts`, which a spec does not
+ * import: that module reaches components).
+ */
+const REDRAW_DELAY_MS = 400
+
 test('four drags in a row are one build', async () => {
   const engineHome = home()
-  await withApp(engineHome, async (page) => {
+  await withApp(engineHome, async (page, app) => {
     await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
+    // The places are read once, below, so the column is let settle first.
+    await notebookSettled(page)
+    await showIfHidden(app, page, 'four drags in a row')
     await belowTheMap(page)
+    await steady(
+      page,
+      async () => boxNumbers((await rowsOf(page).nth(0).locator('.line-grip').boundingBox())!),
+      "the first row's grip",
+    )
     // Every place read before the first drag, so the four follow one
     // another with nothing between them but the mouse: the debounce is what
     // makes them one map, as it is for four presses.
     const { grips, rows } = await places(page)
     const before = received(engineHome, 'map.build').length
 
+    // The debounce is a time, and the time the four drags take is the
+    // runner's: each release is stamped by the page as it hears it, and what
+    // the builds are held to is read from those stamps below (issue 373).
+    // Two steps a drag, not eight: the fewer calls between two releases, the
+    // fewer chances for a starved runner to put the quiet interval between them.
+    await watchPointer(page)
     for (let i = 0; i < 4; i += 1) {
-      await carry(page, grips[0], lowIn(rows[5], grips[0].x))
+      await carry(page, grips[0], lowIn(rows[5], grips[0].x), 2)
       await page.mouse.up()
     }
+    await expect
+      .poll(async () => (await pointerSeenBy(page)).released.length, {
+        timeout: 30_000,
+        message: 'the page heard four releases',
+      })
+      .toBe(4)
+    const gaps = gapsBetween((await pointerSeenBy(page)).released)
+
+    // The last build is the one that writes the order the four drags ended
+    // on, so it is waited for by the record, not by the first sentence that
+    // says a map was drawn: a build that fell between two releases says it
+    // too, and the count below must be taken after the last one.
+    await expect
+      .poll(() => readRecord(engineHome).lineOrder, {
+        timeout: 30_000,
+        message: 'the last build wrote the order the four drags ended on',
+      })
+      .toEqual(['E', 'K', 'A', 'B', 'C', 'D'])
     await expect(page.getByText(/Drawn with the lines in the order you chose/)).toBeVisible({
       timeout: 30_000,
     })
-    expect(received(engineHome, 'map.build')).toHaveLength(before + 1)
-    await expect
-      .poll(() => readRecord(engineHome).lineOrder)
-      .toEqual(['E', 'K', 'A', 'B', 'C', 'D'])
     expect(await labelsOf(page)).toEqual(['E', 'K', 'A', 'B', 'C', 'D'])
+    // And nothing more is coming: the count holds through a pause longer
+    // than the interval.
+    await page.waitForTimeout(REDRAW_DELAY_MS + 200)
+    const made = received(engineHome, 'map.build').length - before
+    const held = buildsFor(gaps, REDRAW_DELAY_MS)
+    const said = `releases heard ${gaps.map((gap) => Math.round(gap)).join(', ')} ms apart`
+    if (held.exactlyOne) {
+      expect(made, `${said}, each inside the ${REDRAW_DELAY_MS} ms debounce: one build`).toBe(1)
+      return
+    }
+    // A gap of the interval or more is a gap a build may have fallen in: the
+    // runner could not make the four drags one gesture, which is not the
+    // debounce failing. What still holds is checked - a build, and at most
+    // one for each such gap - and then the test says it did not prove its
+    // title: recorded as skipped, not passed, and written to the log, since
+    // an annotation is not printed by the reporters CI uses.
+    expect(made, `${said}: at least one build`).toBeGreaterThanOrEqual(1)
+    expect(made, `${said}: at most ${held.most} builds`).toBeLessThanOrEqual(held.most)
+    const unproved = `${said}; the ${REDRAW_DELAY_MS} ms debounce could fit between two of them, so four drags in a row were not one gesture here, and the ${made} build(s) made do not test the debounce`
+    console.log(`four drags in a row: ${unproved}`)
+    test.info().annotations.push({ type: 'slow runner', description: unproved })
+    test.skip(true, unproved)
   })
 })
 
