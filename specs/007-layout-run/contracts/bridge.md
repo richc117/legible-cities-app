@@ -29,6 +29,13 @@ interface LayoutDone {
    * main process cannot read whole is dropped, and the run is still written.
    */
   stations?: { id: string; name: string }[]
+  /**
+   * Since issue 385: the tuning the run sent graph.build, in the record's
+   * names (spec 033), which the record keeps as `laidOutWith`. Left out for
+   * a run sent none; held to the record's own rules, and a tuning the
+   * engine would have refused is refused here too.
+   */
+  tuning?: ProjectTuning
 }
 ```
 

@@ -329,7 +329,9 @@ Result: ____
 
 ### 6. Cell 02, Process: the layout and what the build had to fudge
 
-**Do.** Read cell **02 Process**. Open **Engine log** and press **Copy
+**Do.** Read cell **02 Process**. Open **Layout tuning**, read it, type
+600 in **Merge distance** and press **Enter**, then press **Layout
+tuning** again to close it. Open **Engine log** and press **Copy
 log**. Read **What the build had to fudge**, press the
 information button beside one measure (a screen reader names it
 "What `<measure>` means"), press **Escape**, and press **Copy as text**.
@@ -341,6 +343,25 @@ Press **Re-layout**, then **Cancel** in the dialog.
 - The cell's footer lists **Layout** (`<8 characters>`), **Made** (`<date
   and time>`), **Built with** and **Engine now** (the engine's version, the
   same as the status line). Write the Layout and the Made down for step 17.
+- **Layout tuning**, under **Lay out again** and **Re-layout**, is closed
+  until opened, its row reading "Layout tuning" and "LOOM’s defaults"
+  (issue 385). Open, it says "LOOM’s own settings for laying this project
+  out. A tuned layout is a layout of its own: the map keeps the layout it
+  has until you lay out again.", then a **Grid** select showing
+  "octilinear (eight directions; LOOM’s own)" and offering ortholinear,
+  orthoradial and hexalinear, each with its gloss; **Merge distance** (50)
+  and **Grid size** (100); and under **Bend penalties**, **45°** (2),
+  **90°** (1.5), **135°** (1), **180°** (0) and **Diagonal** (0.5). Under
+  each number is its range and LOOM's own ("5 to 500 metres. LOOM’s own is
+  50."). There is no slider. **Reset to LOOM’s defaults** cannot be
+  pressed while nothing is chosen.
+- 600 in **Merge distance** is refused under the field as soon as **Enter**
+  is pressed: "tuning.merge_distance must be from 5 to 500, in metres", the
+  field still says 600, and nothing is written: the row still reads "LOOM’s
+  defaults", no cell changes its state, and no run starts. (A tuned layout
+  is a layout of its own, so a tuning committed here would make cells 03 to
+  06 **not drawn yet** until the project is laid out again; this step
+  writes none, and the steps after it see the layout they always did.)
 - **Engine log**, with the count of its lines beside it, is closed until
   opened (a screen reader names what it opens "The engine's log for this
   run"); **Copy log** says "The log is on the clipboard, with the keys in

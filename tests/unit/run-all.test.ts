@@ -78,6 +78,23 @@ describe('what Run all starts', () => {
     expect(runAllPlan({ ...current, agency: 'LACMTA' }, null)).toEqual({ kind: 'layout' })
   })
 
+  it('lays out, unforced, when the tuning has moved since the layout was asked with it', () => {
+    // Issue 385: a tuned layout is a layout of its own, so Run all lays the
+    // project out with the record's tuning and nothing less.
+    expect(runAllPlan({ ...current, tuning: { grid: 'hexalinear' } }, null)).toEqual({
+      kind: 'layout',
+    })
+    expect(
+      runAllPlan(
+        { ...current, tuning: { grid: 'hexalinear' }, laidOutWith: { grid: 'hexalinear' } },
+        null,
+      ),
+    ).toEqual({ kind: 'none' })
+    expect(sentence({ ...current, tuning: { deg45: 3 } })).toBe(
+      '03 Frame and service day to 06 Export are not drawn yet.',
+    )
+  })
+
   it("lays out when cell 02's layout is not the one the map was drawn from", () => {
     expect(runAllPlan({ ...current, layout: OTHER }, null)).toEqual({ kind: 'layout' })
     expect(runAllPlan(current, run('cancelled', { replaced: true }))).toEqual({ kind: 'layout' })

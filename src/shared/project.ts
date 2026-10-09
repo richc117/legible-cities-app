@@ -220,6 +220,22 @@ export interface ProjectRecord {
    * (specs/028-the-notebook/contracts/run-graph.md).
    */
   destination: string | null
+  /**
+   * LOOM's own settings a person chose for this project's layout (issue 385,
+   * spec 033): the grid, the merge distance, the grid size and the bend
+   * penalties. Absent means LOOM's defaults, and a field at LOOM's own
+   * number is never kept (`settledTuning`), so a project that never touched
+   * the tuning has no `tuning` at all and a reset removes it. Written the
+   * moment it is chosen (`projects.setTuning`) and sent to `graph.build` by
+   * the next layout run; nothing is laid out for it on its own.
+   *
+   * Added at `RECORD_VERSION` 2 without moving it
+   * (specs/028-the-notebook/contracts/run-graph.md, "Adding a field"): its
+   * absence is what every project before it was laid out with, and the one
+   * released build holds records at version 1 and reads this one as
+   * read-only, so it never writes one and cannot drop it.
+   */
+  tuning?: ProjectTuning
   /** The stored layout's identifier; null until the first layout produces one (ADR-027). */
   layout: string | null
   /**
@@ -228,6 +244,22 @@ export interface ProjectRecord {
    * before a layout, and for a record from before this was kept.
    */
   built: ProjectInputs | null
+  /**
+   * The tuning the stored layout was asked with (issue 385, spec 033 FR-008):
+   * what the layout run that wrote `layout` sent `graph.build`, in `tuning`'s
+   * shape and under its rules, written by `completeLayout` in the same write
+   * as the layout's id and by nothing else. Absent means LOOM's defaults,
+   * which is what every layout before the field was asked with, so an
+   * existing project reads current.
+   *
+   * It is `built`'s counterpart for the tuning: `built` is what the engine's
+   * meta says the layout was made with, and this is what the app asked it
+   * with, because reading the tuning back from `LayoutMeta.stages` would mean
+   * computing LOOM's flags here. A record whose `tuning` would not send what
+   * this does has a layout of another tuning: the run graph's `tuning`
+   * source. Added without moving `RECORD_VERSION`, as `tuning` was.
+   */
+  laidOutWith?: ProjectTuning
   /**
    * When the stored layout was made, as the engine wrote it beside the set
    * (an ISO timestamp): the same id names the same inputs, and a different
@@ -279,6 +311,8 @@ export interface ProjectSummary extends Pick<
   | 'opened'
   | 'created'
   | 'modified'
+  | 'tuning'
+  | 'laidOutWith'
 > {
   readOnly: boolean
 }
@@ -746,6 +780,232 @@ export function sameStyle(a: ProjectStyle, b: ProjectStyle): boolean {
   )
 }
 
+// ---- The layout's tuning (issue 385, spec 033; engine issue 37, v0.14.0)
+
+/**
+ * The grids octi lays a network on, in the engine's words and order
+ * (`pipeline.GRIDS` at v0.14.0): octilinear, the 45-degree multiples the map
+ * has always been drawn on and LOOM's own, then ortholinear, orthoradial and
+ * hexalinear. The engine refuses its research variants itself, so these four
+ * are all the app offers (spec 033, FR-002). Held to the protocol's enum by
+ * a unit test.
+ */
+export const GRIDS = ['octilinear', 'ortholinear', 'orthoradial', 'hexalinear'] as const
+
+export type Grid = (typeof GRIDS)[number]
+
+export function isGrid(value: unknown): value is Grid {
+  return GRIDS.some((grid) => grid === value)
+}
+
+/**
+ * LOOM's own settings a person chose for a project's layout, in the engine's
+ * names in camel case (`LayoutTuning`), the five bend penalties flat beside
+ * the others rather than inside a `penalties` object, so that one list drives
+ * the fields, the validator and the reader. Every field is optional and the
+ * absence of one is LOOM's own number: the app sends only what a person set,
+ * and the engine writes no flag for a field at LOOM's default either.
+ */
+export interface ProjectTuning {
+  /** topo's `-d`: how far apart two stretches of track may be, in metres, and still be merged. */
+  mergeDistance?: number
+  /** octi's `-b`: the grid the network is laid on. */
+  grid?: Grid
+  /** octi's `-g`: the grid's cell, as a percentage of the distance between adjacent stations. */
+  gridSize?: number
+  /** octi's `--pen-45`, `--pen-90`, `--pen-135`, `--pen-180`: the cost of a bend of that angle. */
+  deg45?: number
+  deg90?: number
+  deg135?: number
+  deg180?: number
+  /** octi's `--diag-pen`: the cost of running on a diagonal. */
+  diagonal?: number
+}
+
+/** The seven numbers, in the order the section draws them. */
+export const TUNING_KEYS = [
+  'mergeDistance',
+  'gridSize',
+  'deg45',
+  'deg90',
+  'deg135',
+  'deg180',
+  'diagonal',
+] as const satisfies readonly (keyof ProjectTuning)[]
+
+export type TuningKey = (typeof TUNING_KEYS)[number]
+
+/** The five of them that travel inside the engine's `penalties` object. */
+export const PENALTY_KEYS = [
+  'deg45',
+  'deg90',
+  'deg135',
+  'deg180',
+  'diagonal',
+] as const satisfies readonly TuningKey[]
+
+/** What a penalty counts, in the engine's words for its refusal. */
+const COST = 'as a cost without a unit'
+
+/**
+ * What the engine accepts of each number (`pipeline`'s table at v0.14.0): its
+ * name on the wire, as its refusal sentence writes it, its closed range, and
+ * what it counts, in the engine's own words. Held to the committed protocol
+ * schema by a unit test, as the style's ranges are.
+ */
+export const TUNING_RANGES: Readonly<
+  Record<TuningKey, { wire: string; low: number; high: number; unit: string }>
+> = {
+  mergeDistance: { wire: 'merge_distance', low: 5, high: 500, unit: 'in metres' },
+  gridSize: {
+    wire: 'grid_size',
+    low: 25,
+    high: 400,
+    unit: 'as a percentage of the distance between adjacent stations',
+  },
+  deg45: { wire: 'penalties.deg45', low: 0, high: 10, unit: COST },
+  deg90: { wire: 'penalties.deg90', low: 0, high: 10, unit: COST },
+  deg135: { wire: 'penalties.deg135', low: 0, high: 10, unit: COST },
+  deg180: { wire: 'penalties.deg180', low: 0, high: 10, unit: COST },
+  diagonal: { wire: 'penalties.diagonal', low: 0, high: 10, unit: COST },
+}
+
+/**
+ * LOOM's own numbers and grid, as data: what a field shows while it holds
+ * nothing, and what a value is compared with to know it is no choice at all.
+ * Never sent - the engine writes no flag for them either - and held to the
+ * schema's "LOOM's default is" by a unit test.
+ */
+export const DEFAULT_TUNING: Readonly<Required<ProjectTuning>> = {
+  mergeDistance: 50,
+  grid: 'octilinear',
+  gridSize: 100,
+  deg45: 2,
+  deg90: 1.5,
+  deg135: 1,
+  deg180: 0,
+  diagonal: 0.5,
+}
+
+/**
+ * The engine's sentence for a number outside what a field accepts, word for
+ * word `serve._tuned`'s at v0.14.0 (its `:g` prints these ranges as
+ * written), naming the field by the path a client writes it at.
+ */
+export function tuningRangeSentence(key: TuningKey): string {
+  const { wire, low, high, unit } = TUNING_RANGES[key]
+  return `tuning.${wire} must be from ${low} to ${high}, ${unit}`
+}
+
+/** The engine's sentence for a grid it does not offer, word for word `serve._tuning`'s. */
+export const GRID_SENTENCE = `tuning.grid must be one of ${GRIDS.join(', ')}`
+
+/** A finite number inside the field's closed range, as the engine judges one. */
+export function inTuningRange(key: TuningKey, value: unknown): boolean {
+  const { low, high } = TUNING_RANGES[key]
+  return isFigure(value) && value >= low && value <= high
+}
+
+/**
+ * A tuning a store may be asked to write: an object of the eight fields, the
+ * grid one of the four, each number inside its range. Null when it is. Any
+ * other field is refused, and so is a value of the wrong kind, `null`
+ * included, as the engine refuses them. Checked in the main-side handler
+ * because it arrived from another process, and in the store because the
+ * store is the trusted layer.
+ */
+export function validateTuning(tuning: unknown): string | null {
+  if (!isObject(tuning)) return 'the tuning must be an object'
+  for (const key of Object.keys(tuning)) {
+    if (key !== 'grid' && !(TUNING_KEYS as readonly string[]).includes(key))
+      return `the tuning does not take ${key}`
+  }
+  if (tuning.grid !== undefined && !isGrid(tuning.grid)) return GRID_SENTENCE
+  for (const key of TUNING_KEYS) {
+    const value = tuning[key]
+    if (value !== undefined && !inTuningRange(key, value)) return tuningRangeSentence(key)
+  }
+  return null
+}
+
+/** Is a field a choice? Not held, or at LOOM's own, it is not. */
+const tunedField = (tuning: ProjectTuning, key: keyof ProjectTuning): boolean =>
+  tuning[key] !== undefined && tuning[key] !== DEFAULT_TUNING[key]
+
+/** Every field of a tuning, in the engine's order: the merge distance, the grid, the size, the penalties. */
+const TUNING_FIELDS = [
+  'mergeDistance',
+  'grid',
+  'gridSize',
+  ...PENALTY_KEYS,
+] as const satisfies readonly (keyof ProjectTuning)[]
+
+/**
+ * The tuning as it is kept: the fields a person chose, in the engine's order,
+ * and none at LOOM's own or not held. A field at LOOM's own number is no
+ * choice - the engine would write no flag for it - so it is not kept, and a
+ * tuning of nothing but defaults is `{}`.
+ */
+export function settledTuning(tuning: ProjectTuning): ProjectTuning {
+  const kept: Record<string, unknown> = {}
+  for (const key of TUNING_FIELDS) if (tunedField(tuning, key)) kept[key] = tuning[key]
+  return kept as ProjectTuning
+}
+
+/** Has a person chosen any of the tuning? A field at LOOM's own is no choice. */
+export function tuningIsSet(tuning: ProjectTuning | undefined): boolean {
+  return tuning !== undefined && TUNING_FIELDS.some((key) => tunedField(tuning, key))
+}
+
+/**
+ * Two tunings the engine would lay out the same: every field compared as it
+ * would be sent, a field not held counting as LOOM's own. So `undefined`,
+ * `{}` and a tuning of only defaults are the same, which is what the engine's
+ * ids say of them too.
+ */
+export function sameTuning(a: ProjectTuning | undefined, b: ProjectTuning | undefined): boolean {
+  return TUNING_FIELDS.every(
+    (key) => (a?.[key] ?? DEFAULT_TUNING[key]) === (b?.[key] ?? DEFAULT_TUNING[key]),
+  )
+}
+
+/**
+ * A tuning as a record holds it, read field by field: a grid the engine
+ * offers, a number inside its range, and nothing else, then settled. A field
+ * that would be refused on write is read as not held - the colours' and the
+ * order's rule, not the style's - so a value written by hand never reaches
+ * `graph.build`, and what a person sees in the section is what the store
+ * would keep. Undefined where nothing is left, so the record carries no key.
+ */
+export function readTuning(value: unknown): ProjectTuning | undefined {
+  if (!isObject(value)) return undefined
+  const read: ProjectTuning = {}
+  if (isGrid(value.grid)) read.grid = value.grid
+  for (const key of TUNING_KEYS) {
+    if (inTuningRange(key, value[key])) read[key] = value[key] as number
+  }
+  const kept = settledTuning(read)
+  return tuningIsSet(kept) ? kept : undefined
+}
+
+/**
+ * A record with one of its two tunings set to what was asked: the fields a
+ * person chose, settled, or no key at all where none is left, so a reset and
+ * a layout asked with LOOM's defaults leave nothing behind in the file. The
+ * one place either field is written, for the store's two writers.
+ */
+export function withTuning(
+  record: ProjectRecord,
+  field: 'tuning' | 'laidOutWith',
+  tuning: ProjectTuning,
+): ProjectRecord {
+  const next: ProjectRecord = { ...record }
+  const kept = settledTuning(tuning)
+  if (tuningIsSet(kept)) next[field] = kept
+  else delete next[field]
+  return next
+}
+
 /**
  * What a record that has just been drawn was drawn from: the eight fields
  * of the record itself, copied (the style as `styleSent` makes it). It is
@@ -924,6 +1184,13 @@ export function parseRecord(json: unknown): Parsed {
     created: isString(json.created) ? json.created : epoch,
     modified: isString(json.modified) ? json.modified : epoch,
   }
+  // The tuning and what the layout was asked with (issue 385) are optional,
+  // and absent unless something is left of them once read, so a record that
+  // never held either reads, and is written back, without the keys.
+  const tuning = readTuning(json.tuning)
+  if (tuning !== undefined) record.tuning = tuning
+  const laidOutWith = readTuning(json.laidOutWith)
+  if (laidOutWith !== undefined) record.laidOutWith = laidOutWith
   return { record, readOnly: version > RECORD_VERSION }
 }
 
@@ -1048,6 +1315,15 @@ export function summarise(record: ProjectRecord, readOnly: boolean): ProjectSumm
     opened: record.opened,
     created: record.created,
     modified: record.modified,
+    // The two tunings, where the record holds them (issue 385). They are
+    // read: a project's card on the front door says how far it has got
+    // through the notebook's own run graph, from this summary
+    // (`projectFacts` -> `progressWords` -> `runGraph`), and the run graph
+    // compares these two to say a layout is of another tuning - without
+    // them the card would say "finished up to 05 Lines" of a project whose
+    // cells 03 to 06 read not drawn yet.
+    ...(record.tuning === undefined ? {} : { tuning: { ...record.tuning } }),
+    ...(record.laidOutWith === undefined ? {} : { laidOutWith: { ...record.laidOutWith } }),
     readOnly,
   }
 }

@@ -988,6 +988,72 @@ th .sort:focus-visible {
   margin: var(--space-4-2) 0 0;
 }
 
+/* Layout tuning (issue 385, spec 033): cell 02's closed disclosure under the
+   run's controls. Its toggle sits in an h3 and takes the heading's own type
+   (the cell's rule for a heading inside it), not a form control's height,
+   with the cell row's chevron turned a quarter when open; the row's word,
+   "LOOM's defaults" or "tuned", is quiet beside the name, --text-muted on
+   the cell's ground as the cell's own summary is, a pair the contrast test
+   holds. The fields take cell 04's rows (`.style-field`, notebook.css), the
+   grid's name drawn as their labels are, and the penalties are a fieldset
+   with no box of its own. */
+
+.layout-tuning {
+  margin: 0 0 var(--space-4-4);
+}
+
+.layout-tuning-toggle {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2-2);
+  min-height: var(--target-min);
+  border-radius: var(--radius-small);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.layout-tuning-toggle:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.layout-tuning-toggle[aria-expanded='true'] .cell-chevron {
+  transform: rotate(90deg);
+}
+
+.layout-tuning-word {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  font-weight: normal;
+}
+
+.layout-tuning-label {
+  display: flex;
+  align-items: center;
+  min-height: var(--control-height);
+  font-weight: var(--weight-strong);
+  overflow-wrap: anywhere;
+}
+
+.layout-tuning-penalties {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.layout-tuning-penalties legend {
+  padding: 0;
+  font-weight: var(--weight-strong);
+}
+
+.layout-tuning-penalties > .message {
+  max-width: var(--measure);
+  margin: var(--space-2-2) 0 var(--space-4-3);
+}
+
 /* The transport (A5.5-16): cell 03's second section, which drives the
    engine's page rather than the project. The controls are the platform's
    own - a native range and the kit's select - as the date control and the

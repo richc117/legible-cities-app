@@ -49,6 +49,13 @@ export interface LayoutDone {
    * when the build answered none the app would take.
    */
   stations?: import('./trip').Station[]
+  /**
+   * The tuning the run sent `graph.build`, in the record's names (issue
+   * 385, spec 033 FR-008): the record the run was started with, which a
+   * tuning committed while it ran does not change. Written as the record's
+   * `laidOutWith`; left out for a run sent none, which is LOOM's defaults.
+   */
+  tuning?: import('./project').ProjectTuning
 }
 
 /** What the main process answers with once a run's record is written. */

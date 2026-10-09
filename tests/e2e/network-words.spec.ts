@@ -219,7 +219,7 @@ test('the pane is named for its counts, and the network in words says where the 
 
     // A toggle between the stages keeps the person's place in the words: the
     // component's state is its own. The words follow the stage shown.
-    await view.getByRole('button', { name: 'loom' }).click()
+    await view.getByRole('button', { name: 'loom', exact: true }).click()
     await expect(frame, 'the loom stage is drawn').toHaveAttribute('srcdoc', /loom/)
     const loomStations = Number(await counts.nth(1).textContent())
     const loomLines = Number(await counts.nth(4).textContent())

@@ -1,4 +1,4 @@
-import { sameStyle, styleSent, type ProjectRecord } from '../../shared/project'
+import { sameStyle, sameTuning, styleSent, type ProjectRecord } from '../../shared/project'
 import type { ExportSnapshot } from './engine/exportRun'
 import { downloading, type RunSnapshot } from './engine/layoutRun'
 import { sameOrder } from './order'
@@ -63,6 +63,8 @@ export type CellReason =
   | 'layout'
   /** The same layout, laid out again since this project drew from it (A3-06). */
   | 'relaid'
+  /** The tuning has moved since the stored layout was asked with it (issue 385). */
+  | 'tuning'
   /** A re-layout replaced the stored set and no map was drawn from it (A3-05). */
   | 'replaced'
   /** The service day has moved since the map was drawn. */
@@ -105,7 +107,7 @@ export type ExportFacts = Pick<ExportSnapshot, 'state'>
  */
 export type GraphRecord = Pick<
   ProjectRecord,
-  'built' | 'mode' | 'agency' | 'drawn' | 'layout' | 'made' | 'date'
+  'built' | 'mode' | 'agency' | 'drawn' | 'layout' | 'made' | 'date' | 'tuning' | 'laidOutWith'
 >
 
 export interface RunGraphInput {
@@ -164,11 +166,12 @@ const at = (cell: CellId): number => CELLS.indexOf(cell)
  * values are still kept in `drawn`, which is what any draw copies whole;
  * Revert reads only its day (A5.5-12, contracts/run-graph.md).
  *
- * A record with no `drawn` raises nothing but the inputs: a project from
- * before the field existed cannot be proved current, and an old project's
- * map is not wrong. The inputs are the exception because they are compared
- * against `built`, which is what the engine made the stored layout with and
- * has been on the record since A2-02.
+ * A record with no `drawn` raises nothing but the inputs and the tuning: a
+ * project from before the field existed cannot be proved current, and an
+ * old project's map is not wrong. The inputs are the exception because they
+ * are compared against `built`, which is what the engine made the stored
+ * layout with and has been on the record since A2-02; the tuning, because
+ * it is compared against `laidOutWith`, which is beside the layout too.
  */
 export function stalenessOf(record: GraphRecord, run: RunFacts | null): StaleSource[] {
   const sources: StaleSource[] = []
@@ -178,6 +181,15 @@ export function stalenessOf(record: GraphRecord, run: RunFacts | null): StaleSou
   // layout is of something else now (A2-02, A5.5-09).
   if (built !== null && (built.mode !== record.mode || built.agency !== record.agency))
     sources.push({ cell: 'data', reason: 'inputs' })
+  // Cell 02 holds the tuning (issue 385, spec 033), and a change to it is
+  // as expensive as a change of inputs: a tuned layout is a layout of its
+  // own, so the stored one is of another tuning until the next layout run.
+  // The record keeps what that layout was asked with (`laidOutWith`), so
+  // this needs no `drawn`, as the inputs do not; compared as the engine
+  // would be sent them, so a field at LOOM's own number is no difference.
+  // Nothing is laid out before there is a layout to be behind.
+  if (record.layout !== null && !sameTuning(record.tuning, record.laidOutWith))
+    sources.push({ cell: 'process', reason: 'tuning' })
   if (drawn !== null) {
     // Cell 02 holds the layout. The record naming one the page was not
     // drawn from is a layout produced with no map made from it.

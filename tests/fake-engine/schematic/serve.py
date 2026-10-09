@@ -75,6 +75,14 @@ writes before the app starts (every key optional):
                       the child and records its pid in fake-engine.octi-ended; its pid while it
                       runs is in fake-engine.octi.pid
 
+``graph.build`` takes a ``tuning`` as engine v0.14.0 does (its issue 37): it
+refuses one the engine's ``serve._tuning`` refuses, with the ``params`` kind
+and the engine's sentences, before any progress; it writes LOOM's flags for
+the fields away from LOOM's defaults into ``meta.stages``; and the flags are
+part of the layout's id, so a different tuning answers a different layout and
+none, ``{}`` and nothing but defaults all answer the untuned one. The tuning
+it was given is in ``fake-engine.received`` with the rest of the request.
+
 It writes ``fake-engine.pid`` (its process id) and ``fake-engine.received``
 (one JSON line per message it read) into the home so a test can end it from
 outside and see what reached it. Standard library only; any Python 3 runs it.
@@ -232,6 +240,91 @@ ALT_MAX = 1000
 
 def _number(value) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+# The layout's tuning at engine v0.14.0 (`pipeline`'s table, `serve._tuning`):
+# each number as its refusal names it, with the tool it belongs to, its flag,
+# LOOM's default, its closed range, what it counts and the flag's suffix.
+TUNING_NUMBERS = {
+    "merge_distance": ("topo", "-d", 50, 5, 500, "in metres", ""),
+    "grid_size": ("octi", "-g", 100, 25, 400,
+                  "as a percentage of the distance between adjacent stations", "%"),
+}
+TUNING_PENALTIES = {
+    name: ("octi", flag, default, 0, 10, "as a cost without a unit", "")
+    for name, flag, default in (("deg45", "--pen-45", 2), ("deg90", "--pen-90", 1.5),
+                                ("deg135", "--pen-135", 1), ("deg180", "--pen-180", 0),
+                                ("diagonal", "--diag-pen", 0.5))}
+TUNING_GRIDS = ("octilinear", "ortholinear", "orthoradial", "hexalinear")
+
+
+def _tuned(path: str, value, spec) -> str | None:
+    _tool, _flag, _default, low, high, unit, _suffix = spec
+    if not _number(value) or not low <= value <= high:
+        return f"{path} must be from {low:g} to {high:g}, {unit}"
+    return None
+
+
+def tuning_problem(tuning) -> str | None:
+    """The engine's refusal of a tuning, in its order and its sentences
+    (`serve._tuning` at v0.14.0), or None when it takes it."""
+    if not isinstance(tuning, dict):
+        return "tuning must be an object of LOOM's own settings, or left out"
+    left = dict(tuning)
+    if "merge_distance" in left:
+        problem = _tuned("tuning.merge_distance", left.pop("merge_distance"),
+                         TUNING_NUMBERS["merge_distance"])
+        if problem:
+            return problem
+    if "grid" in left:
+        grid = left.pop("grid")
+        if not isinstance(grid, str) or grid not in TUNING_GRIDS:
+            return "tuning.grid must be one of " + ", ".join(TUNING_GRIDS)
+    if "grid_size" in left:
+        problem = _tuned("tuning.grid_size", left.pop("grid_size"), TUNING_NUMBERS["grid_size"])
+        if problem:
+            return problem
+    if "penalties" in left:
+        penalties = left.pop("penalties")
+        if not isinstance(penalties, dict):
+            return "tuning.penalties must be an object of " + ", ".join(TUNING_PENALTIES)
+        rest = dict(penalties)
+        for name, spec in TUNING_PENALTIES.items():
+            if name in rest:
+                problem = _tuned(f"tuning.penalties.{name}", rest.pop(name), spec)
+                if problem:
+                    return problem
+        if rest:
+            return f"tuning.penalties does not take {', '.join(sorted(rest))}"
+    if left:
+        return f"tuning does not take {', '.join(sorted(left))}"
+    return None
+
+
+def tuning_flags(tuning) -> dict:
+    """LOOM's flags for a tuning the engine took, by tool, as
+    `pipeline.stages_for` writes them: none for a field left out or at LOOM's
+    default, numbers as LOOM prints them (50, 1.5), the grid size with its
+    percent sign."""
+    def written(value) -> str:
+        number = float(value)
+        return str(int(number)) if number.is_integer() else repr(number)
+
+    flags: dict = {"topo": [], "loom": [], "octi": []}
+    tuning = tuning or {}
+
+    def add(spec, value) -> None:
+        tool, flag, default, _low, _high, _unit, suffix = spec
+        if value is not None and value != default:
+            flags[tool] += [flag, written(value) + suffix]
+
+    add(TUNING_NUMBERS["merge_distance"], tuning.get("merge_distance"))
+    if tuning.get("grid") not in (None, "octilinear"):
+        flags["octi"] += ["-b", tuning["grid"]]
+    add(TUNING_NUMBERS["grid_size"], tuning.get("grid_size"))
+    for name, spec in TUNING_PENALTIES.items():
+        add(spec, (tuning.get("penalties") or {}).get(name))
+    return flags
 
 
 def _clock(value) -> bool:
@@ -681,6 +774,14 @@ class Engine:
     def build(self, msg_id, params: dict) -> None:
         if self.control.get("silent"):
             return
+        # The tuning is judged before any tool starts, as the engine judges
+        # it (v0.14.0); its flags then name the layout with the rest.
+        if "tuning" in params:
+            problem = tuning_problem(params["tuning"])
+            if problem is not None:
+                error(msg_id, -32602, problem, "params")
+                return
+        flags = tuning_flags(params.get("tuning"))
         delay = self.control.get("progress_delay_ms", 30) / 1000
         # The lines follow the mode, so a narrower choice draws fewer: the
         # stand-in's feeds carry A (tram) and B (subway) for every key.
@@ -733,6 +834,11 @@ class Engine:
         entry = FEEDS.get(key, {})
         agency = params.get("agency", entry.get("agency")) or None
         inputs = {"feed": key, "mode": mode, "agency": agency}
+        # A tuned layout is a layout of its own; a tuning of nothing but
+        # LOOM's defaults writes no flag and names the untuned layout's id.
+        tuned = {tool: args for tool, args in flags.items() if args}
+        if tuned:
+            inputs["tuning"] = tuned
         layout = hashlib.sha256(json.dumps(inputs, sort_keys=True).encode()).hexdigest()
         if params.get("force") or layout not in self.layouts:
             self.builds += 1
@@ -743,7 +849,8 @@ class Engine:
         meta = {"feed": key, "feed_sha256": "0" * 64, "mode": mode,
                 "agency": agency, "label_pattern": None, "label_strip": None,
                 "loom": None, "stages": [["gtfs2graph", ["-m", mode]],
-                                         ["topo", []], ["loom", []], ["octi", []]],
+                                         ["topo", flags["topo"]], ["loom", flags["loom"]],
+                                         ["octi", flags["octi"]]],
                 "engine": self.control.get("version", "0.2.0"),
                 "made": self.layouts[layout], "migrated": False}
         write({"jsonrpc": "2.0", "id": msg_id, "result": {

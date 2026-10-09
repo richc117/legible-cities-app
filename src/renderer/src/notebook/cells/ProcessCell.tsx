@@ -2,6 +2,7 @@ import type { JSX } from 'react'
 import type { ProjectRecord } from '../../../../shared/project'
 import DiagnosticsView from '../../Diagnostics'
 import LayoutRunView from '../../LayoutRun'
+import LayoutTuning from '../../LayoutTuning'
 import Cell from '../Cell'
 import { processFooter } from '../CellFooter'
 import type { CellViewProps } from '../cells'
@@ -27,6 +28,11 @@ import EngineLog from '../EngineLog'
 // beside the stage doing it. Both were slots once; neither is now, and no
 // slot comment is left above a filled one, which is the thing those
 // comments exist to prevent.
+//
+// Under the run's own controls, and before the log, is Layout tuning (issue
+// 385, spec 033): LOOM's settings for the layout, a closed disclosure, here
+// because the tuning is an input to the layout run and to nothing else. A
+// project this version may not write is offered no run and so no tuning.
 
 /**
  * What the cell says on its collapsed row: that the project is laid out,
@@ -56,7 +62,7 @@ export function processSummary(
 }
 
 export default function ProcessCell({ cell, state, open, onToggle }: CellViewProps): JSX.Element {
-  const { project, engine, run, runSnapshot, exporting } = useProject()
+  const { project, engine, run, runSnapshot, exporting, setTuning } = useProject()
   return (
     <Cell
       number={cell.number}
@@ -92,7 +98,13 @@ export default function ProcessCell({ cell, state, open, onToggle }: CellViewPro
               This project was made by a newer version of the app, so it cannot be laid out here.
             </p>
           ) : (
-            <LayoutRunView run={run} project={project} engine={engine} disabled={exporting} />
+            <LayoutRunView
+              run={run}
+              project={project}
+              engine={engine}
+              disabled={exporting}
+              after={<LayoutTuning project={project} onChange={setTuning} />}
+            />
           )}
           {/* The engine's log for the run that is going: a closed
               disclosure, and nothing at all until a run has begun. */}

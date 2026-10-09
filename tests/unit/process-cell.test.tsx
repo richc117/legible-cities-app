@@ -222,3 +222,75 @@ describe('cell 02, Process, open', () => {
     }
   })
 })
+
+// Layout tuning (issue 385, spec 033 FR-001 and FR-009): a closed
+// disclosure under the run's own controls, drawn for a project this version
+// can write, laid out or not; and the sentence under the run while the
+// record's tuning would not send what the layout was asked with.
+describe('cell 02, Process, and its layout tuning', () => {
+  const TOGGLE = '<button type="button" class="layout-tuning-toggle" aria-expanded="false"'
+
+  it('draws the section closed, under the run’s controls, for a project it can lay out', () => {
+    // Mutation: `<LayoutTuning>` left out of ProcessCell - the section is
+    // then nowhere in the cell.
+    for (const project of [record, fresh]) {
+      const { above } = draw(project)
+      expect(count(above, TOGGLE), project.layout ?? 'no layout').toBe(1)
+      expect(above.indexOf(TOGGLE)).toBeGreaterThan(above.lastIndexOf('Lay out'))
+      expect(above).toMatch(/role="group" aria-label="Layout tuning" hidden=""/)
+    }
+  })
+
+  it('follows a box of the run’s own, never the region that draws none, whatever the run is doing', () => {
+    // The heading rhythm in `tests/e2e/cells.spec.ts` measures a heading
+    // from the box before it, and the run's region is `display: contents`:
+    // the section must follow the run's toolbar while idle and its section
+    // while a run goes, never sit after the region or after the closed
+    // dialog. Mutation: `{after}` moved below `{warning}` in the idle
+    // panel - it then follows the dialog, and this fails.
+    const { above } = draw(record)
+    expect(above).toMatch(/<\/fig-button><\/div><div class="layout-tuning">/)
+    const running = {
+      ...idle,
+      snapshot: { ...idle.snapshot, state: 'running', stages: freshStages() },
+    } as unknown as LayoutRun
+    const state = {
+      project: { ...record, readOnly: false },
+      engine: READY,
+      run: running,
+      runSnapshot: running.snapshot,
+      exporting: false,
+      layingOut: true,
+    } as unknown as ProjectState
+    const html = renderToStaticMarkup(
+      <ProjectProvider value={state}>
+        <ProcessCell cell={CELL} state="running" open={true} onToggle={() => {}} />
+      </ProjectProvider>,
+    )
+    expect(html).toContain('</section><div class="layout-tuning">')
+  })
+
+  it('draws no section for a project a newer version made, whose cell offers no run', () => {
+    const { above } = draw(record, { readOnly: true })
+    expect(above).not.toContain('layout-tuning')
+  })
+
+  it('says under the run that the layout is of another tuning, and only while it is', () => {
+    // Mutation: the notice left out of LayoutRun's idle panel - the cell is
+    // then silent over a layout of another tuning.
+    const stale = draw({ ...record, tuning: { grid: 'orthoradial' } }).above
+    const sentence =
+      '<p class="prose" role="status">Lay out again to use this tuning: the map on screen was laid out with LOOM’s defaults.</p>'
+    expect(count(stale, sentence)).toBe(1)
+    expect(stale.indexOf(sentence)).toBeLessThan(stale.indexOf('Lay out again</fig-button>'))
+    const current = draw({
+      ...record,
+      tuning: { grid: 'orthoradial' },
+      laidOutWith: { grid: 'orthoradial' },
+    }).above
+    expect(current).not.toContain('Lay out again to use')
+    expect(draw({ ...fresh, tuning: { grid: 'orthoradial' } }).above).not.toContain(
+      'Lay out again to use',
+    )
+  })
+})

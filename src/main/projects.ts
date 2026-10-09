@@ -29,7 +29,10 @@ import {
   validatePalette,
   validateStyle,
   validateTheme,
+  validateTuning,
   validateDestination,
+  sameTuning,
+  withTuning,
   type CreateProjectInput,
   type DeleteResult,
   type LineOrder,
@@ -38,6 +41,7 @@ import {
   type ProjectRecord,
   type ProjectStyle,
   type ProjectSummary,
+  type ProjectTuning,
   type RebuildDone,
   type Theme,
   validateMade,
@@ -571,23 +575,32 @@ export class ProjectStore {
     check(validateMade(done.made))
     check(validateMode(done.built?.mode ?? ''))
     check(validateAgency(done.built?.agency ?? null))
+    check(validateTuning(done.tuning ?? {}))
     const { record, readOnly } = await this.load(id)
     if (readOnly) throw new Error('read-only')
     if (!isLayoutId(done.layout))
       throw new Error('the layout run did not say which layout it drew from')
     const layout = done.layout
     const { start, end, busiest, anchor } = done.service
+    // What the layout was asked with goes in with its id (issue 385): the
+    // tuning the run sent, never the record's own, which a tuning committed
+    // while the run went has moved since. None sent is LOOM's defaults, and
+    // leaves no key.
     const updated: ProjectRecord = drew(
-      {
-        ...record,
-        version: RECORD_VERSION,
-        layout,
-        made: done.made,
-        built: { mode: done.built.mode, agency: done.built.agency?.trim() || null },
-        date: record.date ?? done.date,
-        service: { start, end, busiest, anchor },
-        modified: new Date().toISOString(),
-      },
+      withTuning(
+        {
+          ...record,
+          version: RECORD_VERSION,
+          layout,
+          made: done.made,
+          built: { mode: done.built.mode, agency: done.built.agency?.trim() || null },
+          date: record.date ?? done.date,
+          service: { start, end, busiest, anchor },
+          modified: new Date().toISOString(),
+        },
+        'laidOutWith',
+        done.tuning ?? {},
+      ),
       done.stations,
     )
     await this.writeAtomic(id, updated)
@@ -816,6 +829,37 @@ export class ProjectStore {
     if (!('opened' in written)) written.opened = opened
     await this.writeAtomic(id, written)
     return { ...record, opened }
+  }
+
+  /**
+   * LOOM's settings a person chose for this project's layout (issue 385,
+   * spec 033), written the moment they are committed, as an export choice
+   * is. Nothing is laid out for them: the next layout run sends them, and
+   * until it has, the run graph reports the layout as of another tuning.
+   *
+   * The whole tuning the section shows is what is written, not a change to
+   * the one stored, and only the fields a person chose are kept
+   * (`withTuning`): one at LOOM's own number is no choice, and a tuning of
+   * nothing removes the key, which is what Reset does. A project may be
+   * tuned before its first layout, which then sends it.
+   */
+  async setTuning(id: string, tuning: ProjectTuning): Promise<ProjectRecord> {
+    return this.#track(() => this.#serial(id, () => this.#setTuningTracked(id, tuning)))
+  }
+
+  async #setTuningTracked(id: string, tuning: ProjectTuning): Promise<ProjectRecord> {
+    this.checkId(id)
+    check(validateTuning(tuning))
+    const { record, readOnly } = await this.load(id)
+    if (readOnly) throw new Error('read-only')
+    if (sameTuning(record.tuning, tuning)) return record
+    const updated: ProjectRecord = withTuning(
+      { ...record, version: RECORD_VERSION, modified: new Date().toISOString() },
+      'tuning',
+      tuning,
+    )
+    await this.writeAtomic(id, updated)
+    return updated
   }
 
   /**

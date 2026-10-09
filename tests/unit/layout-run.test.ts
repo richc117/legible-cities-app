@@ -323,6 +323,64 @@ describe('the run asks for the layout, then the day, then the map', () => {
     expect(Object.keys(calls[0].params).sort()).toEqual(['agency', 'key', 'mode'])
   })
 
+  // Issue 385, spec 033 FR-007 and FR-008. Mutation: the `tuningParams`
+  // spread removed from the graph.build call - no `tuning` is then sent, and
+  // the first assertion fails. Mutation: the `asked` spread removed from the
+  // complete call - the store is then told the layout was asked with LOOM's
+  // defaults, and the last one does.
+  it('sends the record’s tuning in the engine’s names, and tells the store it did', async () => {
+    const { calls, complete, begin } = setup({
+      tuning: { grid: 'orthoradial', gridSize: 50, deg45: 3, diagonal: 1 },
+    })
+    begin()
+    expect(calls[0].params.tuning).toEqual({
+      grid: 'orthoradial',
+      grid_size: 50,
+      penalties: { deg45: 3, diagonal: 1 },
+    })
+    await laidOut(calls)
+    calls[2].resolve({ files: {} })
+    await tick()
+    expect(complete).toHaveBeenCalledWith(
+      'p1',
+      expect.objectContaining({
+        tuning: { grid: 'orthoradial', gridSize: 50, deg45: 3, diagonal: 1 },
+      }),
+    )
+  })
+
+  it('sends a re-layout the tuning too, since it lays out the same inputs', async () => {
+    const { run, calls, record } = setup({ layout: LAYOUT, tuning: { mergeDistance: 80 } })
+    run.start(record, READY, { force: true })
+    expect(calls[0].params).toMatchObject({ force: true, tuning: { merge_distance: 80 } })
+  })
+
+  it('sends no tuning, and tells the store none, for a project that never tuned', async () => {
+    const { calls, complete, begin } = setup()
+    begin()
+    expect(calls[0].params).not.toHaveProperty('tuning')
+    await laidOut(calls)
+    calls[2].resolve({ files: {} })
+    await tick()
+    expect(complete.mock.calls[0]).toBeDefined()
+    expect((complete.mock.calls[0] as unknown[])[1]).not.toHaveProperty('tuning')
+  })
+
+  it('sends what the run was started with, whatever the record says by the time it ends', async () => {
+    const { calls, complete, record, run } = setup({ tuning: { grid: 'hexalinear' } })
+    run.start(record, READY)
+    // A tuning committed while the run goes is a new record; the run's own
+    // is the one it was handed.
+    record.tuning = { grid: 'ortholinear' }
+    await laidOut(calls)
+    calls[2].resolve({ files: {} })
+    await tick()
+    expect(calls[0].params.tuning).toEqual({ grid: 'hexalinear' })
+    expect((complete.mock.calls[0] as unknown[])[1]).toMatchObject({
+      tuning: { grid: 'hexalinear' },
+    })
+  })
+
   it("uses the day the project already has rather than the engine's, and still asks for the window", async () => {
     const { calls, complete, begin } = setup({ date: '2026-05-04' })
     begin()

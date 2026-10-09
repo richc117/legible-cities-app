@@ -67,7 +67,7 @@ test("draws the two stages in a frame with no permissions, with the engine's cou
     // The counts are the engine's for the stage, as graph.build reported them.
     await expect(counts(page).nth(0)).toHaveText('3')
     await expect(counts(page).nth(4)).toHaveText('2')
-    await expect(view.getByRole('button', { name: 'gtfs2graph' })).toHaveAttribute(
+    await expect(view.getByRole('button', { name: 'gtfs2graph', exact: true })).toHaveAttribute(
       'aria-pressed',
       'true',
     )
@@ -89,8 +89,11 @@ test("draws the two stages in a frame with no permissions, with the engine's cou
     expect(order).toEqual([...order].sort((a, b) => a - b))
     expect(order.every((i) => i >= 0)).toBe(true)
 
-    await view.getByRole('button', { name: 'loom' }).click()
-    await expect(view.getByRole('button', { name: 'loom' })).toHaveAttribute('aria-pressed', 'true')
+    await view.getByRole('button', { name: 'loom', exact: true }).click()
+    await expect(view.getByRole('button', { name: 'loom', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
     await expect(frame).toHaveAttribute('srcdoc', /loom/)
     await expect(counts(page).nth(0)).toHaveText('3')
     // Nothing in the frame runs, and it is not the interface's document.
@@ -161,7 +164,7 @@ test('pans and zooms by keyboard on the frame, not inside it', async () => {
     // A toggle keeps the view; only a new set refits.
     await page.keyboard.press('+')
     const kept = await transform()
-    await page.getByRole('button', { name: 'loom' }).click()
+    await page.getByRole('button', { name: 'loom', exact: true }).click()
     await expect(frame).toHaveAttribute('srcdoc', /loom/)
     expect(await transform()).toBe(kept)
   })

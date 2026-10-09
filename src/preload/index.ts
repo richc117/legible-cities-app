@@ -83,6 +83,7 @@ const api: Api = {
       invoke(CHANNELS.projectsCompleteStyle, id, style, stations),
     setDate: (id, date) => invoke(CHANNELS.projectsSetDate, id, date),
     setTheme: (id, theme) => invoke(CHANNELS.projectsSetTheme, id, theme),
+    setTuning: (id, tuning) => invoke(CHANNELS.projectsSetTuning, id, tuning),
     markOpened: (id) => invoke(CHANNELS.projectsMarkOpened, id),
     setExport: (id, choice) => invoke(CHANNELS.projectsSetExport, id, choice),
   },

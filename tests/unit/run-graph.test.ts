@@ -221,6 +221,72 @@ describe('a drawn record', () => {
   })
 })
 
+// The layout's tuning (issue 385, spec 033 FR-009): an expensive edge of
+// cell 02's, read from the record's `tuning` against what the stored layout
+// was asked with (`laidOutWith`), and so needing no `drawn`.
+describe('a tuning changed since the layout was asked with it', () => {
+  it('marks 03 to 06 stale, and cell 02, which shows the change, ready', () => {
+    // Mutation: the tuning source removed from `stalenessOf` - every cell
+    // then reads ready over a layout of another tuning.
+    const tuned: ProjectRecord = { ...current, tuning: { grid: 'orthoradial' } }
+    expect(stalenessOf(tuned, null)).toEqual([{ cell: 'process', reason: 'tuning' }])
+    expect(states(tuned)).toEqual(
+      cells({ frame: 'stale', style: 'stale', lines: 'stale', export: 'stale' }),
+    )
+    expect(runGraph({ record: tuned, run: null, exportRun: null }).frame.because).toBe('tuning')
+  })
+
+  it('reads current once a layout has been asked with it', () => {
+    const relaidOut: ProjectRecord = {
+      ...current,
+      tuning: { grid: 'orthoradial' },
+      laidOutWith: { grid: 'orthoradial' },
+    }
+    expect(states(relaidOut)).toEqual(all('ready'))
+  })
+
+  it('marks the cells below when the tuning is put back to LOOM’s over a tuned layout', () => {
+    const reset: ProjectRecord = { ...current, laidOutWith: { gridSize: 50 } }
+    expect(stalenessOf(reset, null)).toEqual([{ cell: 'process', reason: 'tuning' }])
+  })
+
+  it('compares by what would be sent, so LOOM’s own number is no change', () => {
+    const same: ProjectRecord = { ...current, tuning: { grid: 'octilinear' }, laidOutWith: {} }
+    expect(stalenessOf(same, null)).toEqual([])
+  })
+
+  it('says it of a record from before `drawn`, as the inputs do', () => {
+    expect(stalenessOf({ ...rc4, tuning: { deg45: 3 } }, null)).toEqual([
+      { cell: 'process', reason: 'tuning' },
+    ])
+  })
+
+  it('says nothing before there is a layout to be behind', () => {
+    const fresh: ProjectRecord = {
+      ...rc4,
+      layout: null,
+      made: null,
+      built: null,
+      tuning: { grid: 'hexalinear' },
+    }
+    expect(stalenessOf(fresh, null)).toEqual([])
+    expect(states(fresh)).toEqual(all('ready'))
+  })
+
+  it('reads running on cell 02 while the layout that takes it goes, and nothing below stale', () => {
+    const tuned: ProjectRecord = { ...current, tuning: { grid: 'orthoradial' } }
+    expect(states(tuned, layoutRun('running'))).toEqual(
+      cells({
+        process: 'running',
+        frame: 'stale',
+        style: 'stale',
+        lines: 'stale',
+        export: 'stale',
+      }),
+    )
+  })
+})
+
 describe('the cheap edits ADR-045 exempts', () => {
   const colours = { ...current, colors: { A: '#ff0000', K: '#00ff00' } }
   const defaults = { ...current, defaultColor: '#123456' }

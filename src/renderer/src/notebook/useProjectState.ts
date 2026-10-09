@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent, type RefObjec
 import type { DeleteResult, ProjectRecord } from '../../../shared/api'
 import type { EngineState } from '../../../shared/engine'
 import type { ExportChoice } from '../../../shared/export'
-import { validateName, type Theme } from '../../../shared/project'
+import { validateName, type ProjectTuning, type Theme } from '../../../shared/project'
 import type { Inspection, RenderStageResult, StageName } from '../../../shared/protocol'
 import type { ExportRun, ExportSnapshot } from '../engine/exportRun'
 import { feedRecordFor, inspectionFor } from '../engine/inspections'
@@ -20,6 +20,7 @@ import { skipTarget } from '../SkipPastMap'
 import { forgetTheme, rememberTheme } from '../themeMemory'
 import { writeThenRestyle } from '../themeWrites'
 import type { TextInputHandle } from '../kit/TextInput'
+import { tunedProject } from '../tuningRules'
 import { useEngineState } from '../useEngineState'
 import { useSnapshot } from '../useSnapshot'
 
@@ -107,6 +108,12 @@ export interface ProjectState {
   /** The service day a person chose, written at once and drawing nothing (A5.5-15). */
   setDate: (date: string) => Promise<void>
   setTheme: (theme: Theme) => Promise<void>
+  /**
+   * LOOM's settings for the layout (issue 385), written at once and laying
+   * nothing out: the next layout run sends them. A rejection is the
+   * caller's to show.
+   */
+  setTuning: (tuning: ProjectTuning) => Promise<void>
   setExport: (choice: ExportChoice) => Promise<void>
   /** The screen's own heading, focused once there is something to read. */
   headingRef: RefObject<HTMLHeadingElement | null>
@@ -431,6 +438,20 @@ export function useProjectState(
       (chosen) => window.api.viewer.call('map', 'setTheme', chosen),
       () => setThemeReloads((count) => count + 1),
     )
+  // LOOM's settings for the layout are written the moment they are
+  // committed, as the export's options are, and nothing is laid out for
+  // them: the next layout run reads the record and sends them, and until
+  // then the run graph reports the layout as of another tuning (issue 385).
+  // The record comes back whole and goes in whole (`tunedProject`): a reset
+  // removes the key, which a merge would keep.
+  const setTuning = async (tuning: ProjectTuning): Promise<void> => {
+    const record = await window.api.projects.setTuning(id, tuning)
+    setState((current) =>
+      current.status === 'ready'
+        ? { status: 'ready', project: tunedProject(current.project, record) }
+        : current,
+    )
+  }
   // What to export is written the moment it is chosen, as the theme is;
   // nothing is built for it (A5-01).
   const setExport = async (choice: ExportChoice): Promise<void> => {
@@ -536,6 +557,7 @@ export function useProjectState(
     setInputs,
     setDate,
     setTheme,
+    setTuning,
     setExport,
     headingRef,
     skipPastMap,
