@@ -606,6 +606,68 @@ button:is(.cell-head):not([icon]):has(svg:first-child) {
   color: var(--text-faint);
 }
 
+/* The combobox (issue 272, DESIGN.md 8.2): the platform's own field, drawn
+   as the date control is - the control height, the field's ground and a
+   resting edge in --border-strong - with its popup a floating panel. */
+.combobox input {
+  box-sizing: border-box;
+  width: 100%;
+  height: var(--control-height);
+  padding: 0 var(--space-2-2);
+  font: inherit;
+  font-size: var(--font-ui);
+  color: var(--text);
+  background: var(--surface);
+  border: var(--border-width) solid var(--border-strong);
+  border-radius: var(--radius);
+}
+
+/* The popup: a manual popover in the top layer, anchored to its field by
+   the name the component gives both, below it and flipped above where there
+   is no room (the floating panel's rule, issue 284). As wide as the field,
+   as tall as --listbox-max-height and then scrolled, never cut short: every
+   match is listed. The kit styles every [popover] as a dialog, so the
+   surface, the edge and the margin go back on here. No transition on open. */
+.combobox-popup {
+  box-sizing: border-box;
+  margin: 0;
+  min-width: 0;
+  width: anchor-size(width);
+  max-height: var(--listbox-max-height);
+  overflow-y: auto;
+  padding: var(--space-2-2) 0;
+  list-style: none;
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: var(--font-ui);
+  position-area: block-end span-inline-end;
+  position-try-fallbacks: flip-block;
+}
+
+.combobox-popup [role='option'] {
+  display: flex;
+  align-items: center;
+  min-height: var(--target-min);
+  padding: 0 var(--space-4-2);
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.combobox-popup [role='option']:hover {
+  background: var(--surface-hover);
+}
+
+/* The highlighted option: the selected ground and an edge in the focus
+   colour inside it, so the highlight is told apart by more than a change of
+   ground (--focus on --surface-selected is in the contrast test). Focus
+   itself stays on the field, whose ring is the platform's :focus-visible. */
+.combobox-popup [role='option'][aria-selected='true'] {
+  background: var(--surface-selected);
+  box-shadow: inset 0 0 0 var(--focus-ring-width) var(--focus);
+}
+
 /* The project's fields. */
 
 .fields {
