@@ -46,10 +46,44 @@ The methods, which are the page's and not the app's:
 | `hasGeo`     | none                                  | whether the project has geography |
 | `bounds`     | none                                  | the first and last second         |
 | `state`      | none                                  | what the page is showing          |
+| `setTrip`    | two station ids, or `null`            | the trip it found, or its reason  |
 
 Anything else is refused before a character is injected. The list is the
 app's copy of the page's, and a test against the real page asserts the page
 still has every one of them.
+
+### `setTrip` (issue 272, spec 030, ADR-048)
+
+The page's own since engine v0.13.0 (its issue 49). `setTrip(from, to)`
+takes two ids from `map.build`'s `stations` - never a name, and nothing the
+app derives - and the page finds the trip between them, fades everything
+keyed to a line it does not ride and hides the names off it; `setTrip(null)`
+shows the whole network again. Nothing it does reaches an export: while an
+exporter drives the page a trip draws nothing.
+
+It answers what `state().trip` then says, and both are read as untrusted
+data by `readTrip` in `src/shared/trip.ts` before a word is drawn from them:
+
+- `null`: the whole network.
+- `{ from, to, legs, changes, reason?, hidden? }` with `legs` a list: a trip.
+  Each leg is `{ line, towards, board, alight, stops }`, the stations by id,
+  `line` the label verbatim, `towards` the end of the line ridden on past
+  `alight`, `stops` the stops after boarding with the alighting one
+  included. `reason`, when present, is a caveat on a trip still found (the
+  `not_serving` fallback); `hidden` names the lines hidden on the page, which
+  the trip was found without.
+- `{ from, to, legs: null, changes: 0, reason, hidden? }`: no trip, and the
+  page's reason; the map is left whole. **No trip is `legs === null`**, never
+  the presence of `reason`.
+
+The app reads back the legs, which cell 03's Trip section turns into its
+steps by looking each station up by id in the record's `drawn.stations`,
+and refuses with a sentence any answer that names a station that list does
+not hold, whose legs do not join from `from` to `to`, or whose `changes` is
+not one fewer than its legs. Called from the Trip section and from a
+reloaded page's restore (`viewerRestore.ts`), between the labels and
+playing, with the page's own `from` and `to` from `state().trip` when it
+was showing a trip.
 
 ## What the privileged process guarantees
 

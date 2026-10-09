@@ -141,6 +141,77 @@ describe('restoreCalls', () => {
     expect(after({ labels: false })).toEqual([{ method: 'setLabels', args: [false] }])
   })
 
+  // Route mode (issue 272, spec 030 FR-009 and US4): a trip the page was
+  // showing is given back after the view and the labels it is drawn over and
+  // before playing resumes, as the page's own ask - its two stations - so the
+  // page finds the trip again on the map it has just loaded.
+  const TRIP = {
+    from: '0x6000036f4a40',
+    to: '0x6000036f4010',
+    legs: [
+      {
+        line: 'A',
+        towards: '0x6000036f4010',
+        board: '0x6000036f4a40',
+        alight: '0x6000036f4010',
+        stops: 2,
+      },
+    ],
+    changes: 0,
+  }
+
+  it('gives back the trip the page was showing, between the labels and playing', () => {
+    const calls = after({ ...PAGE_STATE, trip: TRIP, speed: 30, playing: true })
+    expect(calls.map((call) => call.method)).toEqual([
+      'setPlaying',
+      'showView',
+      'setLabels',
+      'setTrip',
+      'setSpeed',
+      'seek',
+      'setPlaying',
+    ])
+    expect(calls).toContainEqual({ method: 'setTrip', args: ['0x6000036f4a40', '0x6000036f4010'] })
+    const order = calls.map((call) => call.method)
+    expect(order.indexOf('setTrip')).toBeGreaterThan(order.indexOf('setLabels'))
+    expect(order.indexOf('setTrip')).toBeLessThan(order.lastIndexOf('setPlaying'))
+  })
+
+  it('gives back the trip on a page it cannot ask whether it was playing', () => {
+    expect(names({ ...PAGE_STATE, trip: TRIP })).toEqual([
+      'showView',
+      'setLabels',
+      'setTrip',
+      'seek',
+    ])
+  })
+
+  it('gives back no trip where the page was showing the whole network', () => {
+    // A trip refused - `legs: null` and a reason - left the map whole, and a
+    // page that has just loaded is whole already; so is one with no trip.
+    const refused = { from: 'a', to: 'a', legs: null, changes: 0, reason: 'same' }
+    for (const trip of [null, undefined, refused, { ...TRIP, legs: [] }]) {
+      expect(names({ ...PAGE_STATE, trip }), JSON.stringify(trip)).toEqual([
+        'showView',
+        'setLabels',
+        'seek',
+      ])
+    }
+  })
+
+  it('drops a trip whose stations a page it does not trust got wrong', () => {
+    for (const trip of [
+      { ...TRIP, from: 42 },
+      { ...TRIP, to: '' },
+      { ...TRIP, from: 'x'.repeat(201) },
+      { ...TRIP, to: TRIP.from },
+      'a trip',
+    ]) {
+      expect(names({ trip }), JSON.stringify(trip)).toEqual([])
+    }
+    expect(names({ trip: { ...TRIP, from: 'x'.repeat(200) } })).toEqual(['setTrip'])
+  })
+
   it('takes what is not an object as nothing to restore', () => {
     for (const nonsense of ['state', 7, true, [], () => undefined]) {
       expect(after(nonsense)).toEqual([])

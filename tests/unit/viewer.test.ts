@@ -454,6 +454,8 @@ describe('the list of methods', () => {
       'setLabels',
       'setRoutes',
       'setTheme',
+      // Route mode's trip (issue 272, engine v0.13.0): two station ids or null.
+      'setTrip',
       'seek',
       'setSpeed',
       'setPlaying',
