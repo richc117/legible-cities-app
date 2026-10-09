@@ -133,15 +133,20 @@ test('a first layout is drawn stage by stage, a stage refused as not yet is draw
     await expect(stageButton(view, 'loom')).toHaveAttribute('aria-pressed', 'false')
     await expect(stageButton(view, 'loom'), 'a stage not reached is not disabled').toBeEnabled()
 
-    // A press on a stage not drawn yet says so and presses nothing.
+    await expect(sentence(view, 'topo drawn; loom running.')).toBeVisible({ timeout: 20_000 })
+    await expect(frameOf(view)).toHaveAttribute('srcdoc', /topo: A, B/)
+    await expect(liveRegion(view)).toHaveText('topo drawn.')
+    await expect(stageButton(view, 'gtfs2graph'), 'topo has no button').toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+
+    // A press on a stage not drawn yet says so and presses nothing. Nothing
+    // more is drawn until octi's report, so the line holds until then.
     await stageButton(view, 'loom').click()
     await expect(sentence(view, 'loom is not drawn yet.')).toBeVisible()
     await expect(liveRegion(view)).toHaveText('loom is not drawn yet.')
     await expect(stageButton(view, 'loom')).toHaveAttribute('aria-pressed', 'false')
-
-    await expect(sentence(view, 'topo drawn; loom running.')).toBeVisible({ timeout: 20_000 })
-    await expect(frameOf(view)).toHaveAttribute('srcdoc', /topo: A, B/)
-    await expect(liveRegion(view)).toHaveText('topo drawn.')
 
     // loom is reported and asked for, and refused as not yet: it waits on
     // octi. No failure is shown, and the sentence still names topo.
@@ -183,8 +188,8 @@ test('a first layout is drawn stage by stage, a stage refused as not yet is draw
       'loom',
       'octi',
     ])
-    // The reveal drew and wrote nothing: one layout, one map, the record
-    // as any run writes it.
+    // The reveal laid out and drew nothing of its own: one layout call and
+    // one map call, both the run's.
     expect(received(engineHome, 'graph.build')).toHaveLength(1)
     expect(received(engineHome, 'map.build')).toHaveLength(1)
   })
