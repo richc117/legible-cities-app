@@ -753,7 +753,7 @@ const measureColumn = (page: Page): Promise<Column | null> =>
         right: m.right - parseFloat(ms.paddingRight),
       },
       viewer: v === undefined ? null : { left: v.left, width: v.width },
-      rows: [...panelEl.querySelectorAll('.cell, ul.entries, ul.sample-cards')]
+      rows: [...panelEl.querySelectorAll('.cell, ul.entries, ul.cards')]
         .filter(shown)
         .map((el) => ({ what: el.className, width: width(el) })),
       prose: [...panelEl.querySelectorAll('.prose')].filter(shown).map(width),

@@ -142,10 +142,10 @@ The two reader columns are a person's, recorded per run in
 
 | Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
-| Heading and New project | swept | swept | swept | swept | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
-| Empty state | fixed (D4) | swept | swept | swept | fixed (C6) | fixed (C1, C6) | not yet run: a person's | not yet run: a person's |
-| Your projects: one button a row, `Open <name>`, the meta (feed, day, opened, how far it has got) its description (A5.6-04) | swept | swept | swept | swept | pass (`--text`, `--text-muted`; `--text-muted` on `--surface-hover` under the pointer) | pass | not yet run: a person's | not yet run: a person's |
-| Sample cities: one button a card, named by its facts (A5.6-02); one press opens it laying out (A5.6-03) | swept | swept | swept | swept | pass (the same pairs) | pass | not yet run: a person's | not yet run: a person's |
+| Heading, and the New project card first among the cards (ADR-047): one Tab from the heading, with projects or without | swept | swept | swept | swept | pass (the card's pairs below; the plus `--accent` on `--surface-sunken`, 5.59 and 4.49 for a glyph's 3.0) | pass | not yet run: a person's | not yet run: a person's |
+| Empty state: the introduction, then Your projects holding the New project card alone, with the quiet line beside it, "Projects you make appear here, most recently opened first." (ADR-047; a paragraph, not a live region, gone with the first project) | swept | swept | swept | swept | fixed (C6); the quiet line `--text-muted` on `--surface` | fixed (C1, C6) | not yet run: a person's | not yet run: a person's |
+| Your projects: one card each, a button named `Open <name>`, described by where it runs and how far it has got (A5.6-04, ADR-047); its picture area empty, one `train` glyph hidden from the tree (issue 287) | swept | swept | swept | swept | pass (`--text`, `--text-muted`; `--text-muted` on `--surface-hover` under the pointer; the glyph `--text-faint` on `--surface-sunken`, measured on the element in both themes) | pass | not yet run: a person's | not yet run: a person's |
+| Sample cities: the same card, one button, named by its facts - name, where it runs, and its chip "downloaded" or "not downloaded yet"; what its mode keeps is no longer among them (A5.6-02, ADR-047); one press opens it laying out (A5.6-03) | swept | swept | swept | swept | pass (the same pairs; the chip `--text-muted` on `--surface-sunken`) | pass | not yet run: a person's | not yet run: a person's |
 | Your feeds: Start a project, Remove (A5.6-06) | fixed (D5) | swept (each names its feed) | swept | swept | pass | pass | not yet run: a person's | not yet run: a person's |
 | New project sheet, a listed feed (A5.6-05) | swept | swept | swept | swept | pass (the dialog's pairs, the kit's controls) | fixed (C1) | not yet run: a person's | not yet run: a person's |
 | New project sheet, a zip chosen | swept | swept | swept | swept | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
@@ -381,8 +381,12 @@ was thrown to the top of the document with nothing said.
   as it is typed, with no focus move to carry it, because a focus move there
   shuts the platform's own calendar under the person's hand.
 - **D4. A project made from the Library's empty state.** The button that
-  opened the dialog goes with the empty state; focus lands on the new
-  project's row (`Library.tsx`). Asserted in the sweep.
+  opened the dialog went with the empty state, and focus was handed to the
+  new project's row (`Library.tsx`). Since ADR-047 the opener is the New
+  project card, which keeps its first slot with projects or without, so the
+  sheet hands focus back to it as a dialog does and the new project's card
+  is one Tab after it; the handback stays for a focus that falls to
+  nowhere. Asserted in the sweep.
 - **D5. A removed feed.** Its row takes its Remove with it; focus goes to the
   "Your feeds" heading while an added feed is left, or "Sample cities" once
   none is (A5.6-01), once the confirmation has closed and the list has been
@@ -507,7 +511,9 @@ on the element, in `tests/e2e/accessibility.spec.ts`:
   now, and an icon inside a button takes the button's ink, which the kit
   already gives it. Asserted on the element in both themes by
   `tests/e2e/accessibility.spec.ts`, because no arithmetic over token pairs
-  could see it.
+  could see it. Since ADR-047 the empty state holds no button (New project
+  is a card), so the filled button measured is cell 02's **Lay out**, and
+  the rule's own half is still measured on the empty state's glyph.
 
 Reduced motion needed no fix: the stylesheet already turns every transition
 and animation off, pseudo-elements and the dialog backdrop included, and the
@@ -800,25 +806,33 @@ a table).
 
 - **Heading and New project.** On opening, listen for the heading
   "Library" read first, at level 1 (focus is put there). Tab: **New
-  project**, a button. Adding a feed is inside it since A5.6-05.
+  project**, a button, the first card in the list "Projects", with
+  projects or without (ADR-047). Its plus is not read. Adding a feed is
+  inside it since A5.6-05.
 - **Empty state.** This part needs a Library with no projects, which the
   sitting only has on a new install or after **Reset engine data** at the
   end of Settings below: if you already have projects, skip it now and come
   back to it after the reset. Listen for the status "Legible Cities draws a
   transit network as a schematic map and plays a day of its service on it:
-  start from a sample city below, or add a feed of your own." and a **New project**
-  button after it. Create a project from that button: when the dialog
-  closes, listen for focus landing on the new project's row,
-  "Open `<name>`" (D4), not on nothing.
-- **Project rows.** In the list "Projects", each row is a button
-  "Open `<name>`", with its feed and service day read as its description
-  ("Feed la-metro-rail, Service day `<day>`, Opened `<when>`, finished up
-  to 05 Lines", A5.6-04).
+  start from a sample city below, or add a feed of your own.", then the
+  heading "Your projects" and the list "Projects" holding one button,
+  **New project**, and after it the sentence "Projects you make appear
+  here, most recently opened first.", which is read in its place and is
+  not announced (ADR-047). Create a project from **New project**: when the
+  dialog closes, listen for focus back on **New project**, not on nothing,
+  and the sentence gone; one Tab on is the new project's card,
+  "Open `<name>`" (D4).
+- **Project cards.** In the list "Projects", after **New project**, each
+  card is a button "Open `<name>`", with where it runs and how far it has
+  got read as its description ("Los Angeles · Metro Rail, finished up to
+  05 Lines", A5.6-04, ADR-047). Nothing is read for its picture area: the
+  glyph there is hidden.
 - **Sample cards and feed rows (Start a project, Remove).** Listen for the
   headings "Sample cities" and, once a feed has been added, "Your feeds",
   over the lists "Presets" and "Added". Each sample is one button named by
-  what its card shows, "`<name>`, `<city · network>`, keeps `<mode>`,
-  downloaded" or "not downloaded yet" (A5.6-02); pressing one opens the
+  what its card shows, "`<name>`, `<city · network>`, downloaded" or "not
+  downloaded yet" (A5.6-02, ADR-047), with nothing read for its picture
+  area; pressing one opens the
   sample's notebook with its layout starting, and listen for the project's
   heading read first and cell 02's progress line after it (A5.6-03); an added feed's row is
   named for its feed, with the buttons "Start a project on `<feed>`" and

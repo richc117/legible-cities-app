@@ -366,8 +366,9 @@ body {
   color: var(--text-muted);
 }
 
-/* The empty state: the mark, one sentence, and the action the toolbar
-   already offers. */
+/* The empty state: the mark and one sentence. On the Library its action is
+   the New project card under it, which is there with projects or without
+   (ADR-047). */
 
 .empty {
   display: grid;
@@ -377,7 +378,8 @@ body {
 }
 
 /* The empty state's own glyph, and only it: a descendant selector here
-   also caught the icon inside the primary action below, painting it
+   also caught the icon inside the primary action it held until ADR-047,
+   painting it
    --text-muted on the accent fill, far under the 3.0 a glyph needs - issue
    143 has the measurements. An icon inside a button takes the button's
    ink, which the kit already gives it. The glyph is the mark today, which
@@ -391,7 +393,10 @@ body {
   margin: 0;
 }
 
-/* Lists: each entry one full-width button, a dense row. */
+/* Lists: each entry a full-width dense row. The feeds a person added are
+   the one list of rows left on the front door; the projects and the sample
+   cities are cards (`panels.css`, ADR-047). The rules for a row drawn as a
+   button stay with the row, for the next list that is one. */
 
 /* One column, as wide as the list and no wider: left to size itself, the
    column grows to the longest word in it, and a name with no space in it

@@ -3,18 +3,18 @@ import type { CreateProjectInput, ProjectSummary } from '../../shared/api'
 import { ERROR_CODES, isEngineErrorShape } from '../../shared/engine'
 import type { FeedRecord } from '../../shared/protocol'
 import { uniqueName } from '../../shared/project'
+import Card from './Card'
 import { sentenceFor } from './engine/feedAdd'
 import { forgetFeedList, forgetInspection } from './engine/inspections'
 import { engineClient, feedAdd, peekLayoutRun, subscribeToRuns } from './engine/runs'
 import ConfirmDialog from './ConfirmDialog'
 import NewProjectSheet, { type SheetStart } from './NewProjectSheet'
-import FeedList, { FEEDS_HEADING_ID } from './FeedList'
+import FeedList, { FEEDS_HEADING_ID, placeOf } from './FeedList'
 import SampleCities, { SAMPLES_HEADING_ID } from './SampleCities'
 import { afterRendering, focusLost } from './focusHandback'
 import Icon from './icons/Icon'
-import Button from './kit/Button'
-import Time from './notebook/Time'
 import { progressWords } from './projectProgress'
+import type { RunFacts } from './runGraph'
 import { useEngineState } from './useEngineState'
 
 type LibraryState = { status: 'loading' } | { status: 'ready'; projects: ProjectSummary[] }
@@ -158,11 +158,96 @@ export function samplesSentence(ready: boolean, read: FeedsRead): string | null 
 /** Whether the feeds have been read since the screen opened, and how that went. */
 export type FeedsRead = 'unread' | 'listed' | 'failed'
 
-// The front door (A5.6-01, ADR-045). The screen answers the question a
-// person arrives with. With no projects it is the sample cities, under one
-// sentence saying what the app is; with projects it is the projects list,
-// with the samples still below it. The feeds a person added are a region
-// of their own after both (A5.6-06).
+/**
+ * The quiet line beside the New project card while there are no projects
+ * (ADR-047, issue 287): where projects appear and in what order. Once there
+ * is one the list shows both itself, so the line goes.
+ */
+export const PROJECTS_NONE = 'Projects you make appear here, most recently opened first.'
+
+/**
+ * Where a project runs, as a sample's card says it: the city and network of
+ * its feed, from the engine's list of feeds. The key the record holds while
+ * the engine has not listed the feed, or lists no place for it.
+ */
+export function whereItRuns(feed: string, feeds: readonly FeedRecord[]): string {
+  const listed = feeds.find((one) => one.key === feed)
+  return (listed === undefined ? null : placeOf(listed)) ?? `Feed ${feed}`
+}
+
+/**
+ * A project card's secondary lines (ADR-047): where it runs, then how far it
+ * has got. The service day and when it was opened are not on the card; the
+ * notebook says both, and the list's order says the second.
+ */
+export function projectFacts(
+  project: ProjectSummary,
+  feeds: readonly FeedRecord[],
+  run: RunFacts | null,
+): string[] {
+  return [whereItRuns(project.feed, feeds), progressWords(project, run)]
+}
+
+interface ProjectCardsProps {
+  projects: readonly ProjectSummary[]
+  feeds: readonly FeedRecord[]
+  onNew: () => void
+  onOpen: (id: string) => void
+  /** Each project card's button by its project, for the focus handback. */
+  cardRef?: (id: string, element: HTMLButtonElement | null) => void
+}
+
+/**
+ * "Your projects" (A5.6-04, ADR-047): the New project card first, then a card
+ * per project, newest opened first, in the same grid as the samples'. Drawn
+ * with no projects as well, holding the New project card and the quiet line
+ * beside it, so the card keeps its first slot and neither the layout nor the
+ * Tab order changes when the first project is made. Only the wrapper's class
+ * tells the two apart, so the list is never mounted again under focus.
+ */
+export function ProjectCards({
+  projects,
+  feeds,
+  onNew,
+  onOpen,
+  cardRef,
+}: ProjectCardsProps): JSX.Element {
+  const none = projects.length === 0
+  return (
+    <section className="front-door-region" aria-labelledby="projects-heading">
+      <h2 id="projects-heading">Your projects</h2>
+      <div className={none ? 'projects projects-none' : 'projects'}>
+        <ul className="cards" aria-label="Projects">
+          <li>
+            <Card name="New project" create onClick={onNew} />
+          </li>
+          {projects.map((project) => (
+            <li key={project.id}>
+              <Card
+                ref={(element) => cardRef?.(project.id, element)}
+                name={project.name}
+                label={`Open ${project.name}`}
+                facts={projectFacts(project, feeds, peekLayoutRun(project.id)?.snapshot ?? null)}
+                chip={project.readOnly ? 'read-only' : null}
+                factsId={`card-${project.id}-facts`}
+                onClick={() => onOpen(project.id)}
+              />
+            </li>
+          ))}
+        </ul>
+        {none && <p className="hint">{PROJECTS_NONE}</p>}
+      </div>
+    </section>
+  )
+}
+
+// The front door (A5.6-01, ADR-045, ADR-047). The screen answers the
+// question a person arrives with. With no projects it is one sentence
+// saying what the app is, then "Your projects" holding only the New project
+// card, then the sample cities; with projects it is the same, the sentence
+// gone and the projects' cards after New project. Both regions are one kind
+// of card in one grid. The feeds a person added are a region of their own
+// after both (A5.6-06).
 
 /** What the sheet is given while it is shut; one object, so its effect does not see a new start on every render. */
 const NO_START: SheetStart = { source: 'feed' }
@@ -180,10 +265,12 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
   const adder = feedAdd()
   const headingRef = useRef<HTMLHeadingElement>(null)
   // Where focus goes once the list has been drawn again, when the control
-  // that held it went with the change: the empty state's "New project"
-  // leaves with the empty state, a removed feed's row takes its Remove with
-  // it. Only if focus did fall to nowhere; otherwise it is a person's
-  // (A6-07).
+  // that held it went with the change: a removed feed's row takes its
+  // Remove with it. Only if focus did fall to nowhere; otherwise it is a
+  // person's (A6-07). The New project card stays in its first slot when a
+  // project is made (ADR-047), so the sheet hands focus back to it as any
+  // dialog does to its opener; a made project's card is where focus goes
+  // only if that handback found nothing.
   //
   // Two things have to have happened first, in whichever order they land:
   // the dialog has closed, which hands focus back to the control that
@@ -195,7 +282,7 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
   // rendering update - so the check runs on every render and once more
   // after the rendering has caught up with the action.
   const handBack = useRef<{ project: string } | { feed: string } | null>(null)
-  const rows = useRef(new Map<string, HTMLButtonElement>())
+  const cards = useRef(new Map<string, HTMLButtonElement>())
 
   // Reads can overlap - the one when the engine becomes ready, one when a
   // removal went unanswered, another when its dialog closes - and only the
@@ -258,8 +345,8 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
   }, [])
 
   // A project's run goes on while this screen is open (the runs outlive the
-  // views that started them), and its row says how far the project has got
-  // (A5.6-04). So the rows follow the runs' states: a change of state
+  // views that started them), and its card says how far the project has got
+  // (A5.6-04). So the cards follow the runs' states: a change of state
   // redraws them, and a run that stops has written its record, so the list
   // is read again. Keyed on the states alone, because a run tells its
   // listeners about every progress tick and the list must not be read on
@@ -319,7 +406,7 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
       let focusTarget: HTMLElement | null
       if ('project' in target) {
         if (creating !== null) return
-        focusTarget = rows.current.get(target.project) ?? null
+        focusTarget = cards.current.get(target.project) ?? null
         if (focusTarget === null) return
       } else {
         if (removing !== null || feeds.some((feed) => feed.key === target.feed)) return
@@ -471,71 +558,36 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
       <h1 id="library-heading" tabIndex={-1} ref={headingRef}>
         Library
       </h1>
-      <div className="toolbar">
-        {/* The empty state carries the primary action instead, so a first
-            visit has one thing to press (DESIGN.md 8.2). */}
-        {/* Not while the projects are still being read: the sheet numbers
-            the name it fills against them ("LA Metro Rail 2"), as the
-            sample cards do, which wait for the same list. */}
-        {library.status === 'ready' && library.projects.length > 0 && (
-          <Button variant="primary" onClick={() => setCreating({ source: 'feed' })}>
-            <Icon name="add" />
-            New project
-          </Button>
-        )}
-      </div>
       {notice && (
         <p role="alert" className="notice">
           {notice}
         </p>
       )}
+      {/* The introduction stays while there are no projects; its action is
+          the New project card under it, which is there either way
+          (ADR-047). */}
       {library.status === 'ready' && library.projects.length === 0 && (
         <div className="empty">
           <Icon name="mark" size={24} />
           <p role="status" className="prose">
             {INTRODUCTION}
           </p>
-          <Button variant="primary" onClick={() => setCreating({ source: 'feed' })}>
-            <Icon name="add" />
-            New project
-          </Button>
         </div>
       )}
-      {library.status === 'ready' && library.projects.length > 0 && (
-        <section className="front-door-region" aria-labelledby="projects-heading">
-          <h2 id="projects-heading">Your projects</h2>
-          <ul className="entries" aria-label="Projects">
-            {library.projects.map((project) => (
-              <li key={project.id}>
-                <button
-                  ref={(element) => {
-                    if (element === null) rows.current.delete(project.id)
-                    else rows.current.set(project.id, element)
-                  }}
-                  type="button"
-                  className="entry"
-                  aria-label={`Open ${project.name}`}
-                  aria-describedby={`entry-${project.id}-meta`}
-                  onClick={() => onOpen(project.id)}
-                >
-                  <span className="entry-name">{project.name}</span>
-                  <span className="entry-meta" id={`entry-${project.id}-meta`}>
-                    <span>Feed {project.feed}</span>
-                    <span>Service day {project.date ?? 'not yet chosen'}</span>
-                    <span>
-                      {project.opened === null ? 'Made ' : 'Opened '}
-                      <Time iso={project.opened ?? project.created} />
-                    </span>
-                    <span>
-                      {progressWords(project, peekLayoutRun(project.id)?.snapshot ?? null)}
-                    </span>
-                    {project.readOnly && <span>read-only</span>}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
+      {/* Not while the projects are still being read: the sheet numbers the
+          name it fills against them ("LA Metro Rail 2"), as the sample cards
+          do, which wait for the same list. */}
+      {library.status === 'ready' && (
+        <ProjectCards
+          projects={library.projects}
+          feeds={feeds}
+          onNew={() => setCreating({ source: 'feed' })}
+          onOpen={onOpen}
+          cardRef={(id, element) => {
+            if (element === null) cards.current.delete(id)
+            else cards.current.set(id, element)
+          }}
+        />
       )}
       {feedNotice && (
         <p role="status" className="notice">

@@ -131,8 +131,15 @@ const PAIRS: [string, string, number][] = [
   // and pressed fills are checked below.
   ['--on-accent', '--accent-text', 4.5],
   // A kit button unavailable while a confirmation's action runs keeps its
-  // label readable: the kit's disabled text on its disabled fill.
+  // label readable: the kit's disabled text on its disabled fill. The same
+  // pair is a front door card's empty picture area (ADR-047): the `train`
+  // glyph in --text-faint on --surface-sunken, decorative, and held to the
+  // text threshold all the same.
   ['--text-faint', '--surface-sunken', 4.5],
+  // The New project card's plus, where a picture would be (ADR-047): a
+  // glyph in the accent on the picture area's sunken ground. A sample's
+  // chip is --text-muted on --surface-sunken, above.
+  ['--accent', '--surface-sunken', 3.0],
   // A kit text field's placeholder, on the field's raised fill, is
   // --text-faint on --surface-raised, above; its resting edge, and the
   // select's, the checkbox's and the date control's, --border-strong on

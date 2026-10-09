@@ -207,10 +207,13 @@ test('creates, opens, renames and deletes a project, and serves its output', asy
 
     const entry = window.getByRole('button', { name: 'Open Los Angeles' })
     await expect(entry).toBeVisible()
-    await expect(entry).toContainText('la-metro-rail')
-    await expect(entry).toContainText('not yet chosen')
+    // Where it runs: the feed's city and network once an engine lists it,
+    // its key while none does (as on the runners); then how far it has got
+    // (ADR-047).
+    await expect(entry).toContainText(/Los Angeles · Metro Rail|Feed la-metro-rail/)
+    await expect(entry).toContainText('not laid out yet')
     await expect(window.getByRole('list', { name: 'Projects' })).toBeVisible()
-    // The empty state went with the first project.
+    // The introduction went with the first project.
     await expect(window.locator('.empty')).toHaveCount(0)
 
     // One folder, named by the identifier, holding a version-1 record with

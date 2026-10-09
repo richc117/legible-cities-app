@@ -165,12 +165,14 @@ Result: ____
 **Settings** and read the screen from the top. Press **Back to Library**.
 
 **See.**
-- The front door opens with its heading, **Library**, and the empty state:
-  "Legible Cities draws a transit network as a schematic map and plays a
-  day of its service on it: start from a sample city below, or add a feed
-  of your own." with a **New project** button, and below it the
-  **Sample cities**. There is no **Your projects** and no **Your feeds**
-  yet.
+- The front door opens with its heading, **Library**, and its
+  introduction: "Legible Cities draws a transit network as a schematic map
+  and plays a day of its service on it: start from a sample city below, or
+  add a feed of your own." Under it, **Your projects** holds one card,
+  **New project**, with a plus where a picture would be and "Projects you
+  make appear here, most recently opened first." beside it, and below that
+  the **Sample cities**. There is no other **New project** button and no
+  **Your feeds** yet.
 - The engine's status line starts at "Checking the engine…" or "Starting
   the engine." and becomes "Engine ready (`<engine version>`)." The version
   is the engine pin in `vendor/pins.json` at the release tag (0.10.1 when
@@ -181,8 +183,9 @@ Result: ____
   down its sentences and press **Copy diagnostics** in it before you close
   it.
 - Under **Sample cities**, a card for each of the engine's networks - 22 at
-  the pinned engine - each with its name, its city and network, what its
-  mode keeps and "not downloaded yet".
+  the pinned engine - the same card as **New project**: each with a faint
+  train where a picture would be, its name, its city and network, and "not
+  downloaded yet" in a small chip.
 - In Settings, **Bundled tools** says "The bundled LOOM and ffmpeg ran.",
   with **LOOM tools** "ran (`<n>` ms)." and **ffmpeg and ffprobe**
   "ran (`<n>` ms)."
@@ -203,8 +206,8 @@ nothing else until the run ends. Time it from the press to the end of the
 run.
 
 **See.**
-- The card is read aloud as "LA Metro Rail, Los Angeles · Metro Rail,
-  keeps `<mode>`, not downloaded yet".
+- The card is read aloud as "LA Metro Rail, Los Angeles · Metro Rail, not
+  downloaded yet".
 - One press opens the project, without a dialog: a heading **LA Metro
   Rail**, with **Library** in the header beside the engine's status (a
   screen reader names it "Back to Library"), and the notebook's six cells, 01 to 06, with cells 01 to 05
@@ -628,19 +631,21 @@ draws from, and is not one of the engine's presets, so it lands in
 name. If the address has stopped answering, record that and use another
 small, rail-only, current GTFS zip, and say which in the notes.
 
-**Do.** Press **Library** at the top of the project, then **New project**.
+**Do.** Press **Library** at the top of the project, then the **New
+project** card.
 Under **Start from** choose **A feed at an address**, paste the address
 into **Feed address** and press **Add the feed**. When the feed is in,
 press **Cancel**, which keeps the feed. Then press **Start a project** on
-the new row, leave the name, and press **Create**. Press the new project
-under **Your projects**, press **Run all**, and wait for it. Go back to the
+the new row, leave the name, and press **Create**. Press the new project's
+card under **Your projects**, press **Run all**, and wait for it. Go back to the
 Library, press **Remove** on the Caltrain row, **Remove** in the
 confirmation, and then **Cancel**.
 
 **See.**
-- On the front door, **Your projects** lists "LA Metro Rail", with "Feed
-  la-metro-rail", "Service day `<day>`", "Opened `<when>`" and "finished up
-  to 05 Lines" beneath it; the LA Metro Rail card now says "downloaded".
+- On the front door, **Your projects** holds the **New project** card and
+  then "LA Metro Rail", with "Los Angeles · Metro Rail" and "finished up to
+  05 Lines" beneath its name; the LA Metro Rail sample's card now says
+  "downloaded" in its chip.
 - The sheet is titled **New project**, with **Cancel** focused; **Start
   from** offers **A sample city, or a feed you added**, **A GTFS zip on
   this computer** and **A feed at an address**.
@@ -670,7 +675,7 @@ Result: ____
 
 ### 15. Another sample's operator, and deleting a project
 
-**Do.** On the front door, press **New project**, choose **Mexico City
+**Do.** On the front door, press the **New project** card, choose **Mexico City
 Metro** under **Feed**, leave the name, and press **Create**. Open it from
 **Your projects** and read cell **01 Data**. Then, without laying it out, press **Delete project** at the
 foot of the notebook and **Delete** in the confirmation.
@@ -727,9 +732,10 @@ Press **Rename** at the foot of the notebook, type `Los Angeles` and press
 - The app quits without a dialog, and **check:** no `Legible Cities`,
   `python` or LOOM tool process is left running (Activity Monitor, or Task
   Manager's Details tab).
-- On reopening: no first-run dialog; **Your projects** lists Caltrain first
-  and LA Metro Rail second (newest opened first), each with its service day
-  and "finished up to 05 Lines"; **Your feeds** still lists Caltrain.
+- On reopening: no first-run dialog; **Your projects** holds the **New
+  project** card, then Caltrain and then LA Metro Rail (newest opened
+  first), each with where it runs and "finished up to 05 Lines"; **Your
+  feeds** still lists Caltrain.
 - LA Metro Rail opens with cells 01 and 02 collapsed and the map after
   them; opening cell 02 shows "Drawn from layout `<8 characters>` for
   `<day>`.", the **same day** you wrote down in step 7, and the same
@@ -741,8 +747,8 @@ Press **Rename** at the foot of the notebook, type `Los Angeles` and press
   the map's, and **Outputs** still lists the three exports.
 - In cell **06 Export**, **Preset** is the GIF, the last choice made.
 - **Rename** opens a **New name** field; after **Save** the heading reads
-  **Los Angeles**, and the front door lists it first (a screen reader
-  reads the row as "Open Los Angeles").
+  **Los Angeles**, and the front door lists it first after **New project**
+  (a screen reader reads its card as "Open Los Angeles").
 
 Result: ____
 
@@ -804,7 +810,8 @@ again.
   `<the folders removed>`. Start the app again so the engine reads its
   folder afresh." The folders named are among `data`, `out`, `projects` and
   `frames`, and the engine folder's size goes down.
-- The front door shows the empty state again.
+- The front door shows its introduction again, and **Your projects** holds
+  only the **New project** card.
 - **check:** by the time the app has started again, **Your feeds** and
   Caltrain are gone (the engine keeps its record of added feeds in the
   removed `data` folder), and the sample cards say "not downloaded yet".
