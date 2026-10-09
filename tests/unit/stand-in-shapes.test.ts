@@ -9,7 +9,8 @@
 // file the generated types come from: `feeds.list` and `feeds.add` (a
 // registry entry carries `headways`, since v0.11.0), `map.build` (its files
 // carry the thumbnail pair, which are files on disk, beside the page, and it
-// takes `style` and `lines`, since v0.12.0), `feeds.remove` (its answer is
+// takes `style` and `lines`, since v0.12.0, and answers `stations`, sorted by
+// name as code points and then by id, since v0.13.0), `feeds.remove` (its answer is
 // `FeedsRemoveResult`), `render.stage` (its answer carries a `description`,
 // timed only for a day), `export.plan` (a `CaptureJob` carries `caption` and
 // `clock_corner`, and a storyboard may be a list of beats), `export.encode`
@@ -396,6 +397,126 @@ describe('the check of the v0.12.0 shapes against the description', () => {
     expect(stageParams({ date: '2026-06-16' })).toEqual([])
     expect(stageParams({ date: null })).not.toEqual([])
     expect(stageParams({ date: 'tomorrow' })).not.toEqual([])
+  })
+})
+
+// ------------------------------------------- the map's stations (engine v0.13.0)
+
+type Station = { id: string; name: string }
+
+/**
+ * Code points, one at a time: how the engine sorts a name (Python compares
+ * strings by code point). Not UTF-16 units, in which a character beyond the
+ * plane sorts before U+FFFF, and not a locale, in which "Z" follows "a".
+ */
+function byCodePoints(a: string, b: string): number {
+  const left = Array.from(a, (c) => c.codePointAt(0) as number)
+  const right = Array.from(b, (c) => c.codePointAt(0) as number)
+  for (let i = 0; i < Math.min(left.length, right.length); i++) {
+    if (left[i] !== right[i]) return left[i] - right[i]
+  }
+  return left.length - right.length
+}
+
+/**
+ * What is wrong with the order of a `stations` list, one sentence for each
+ * neighbour that is out of order: the schema says "sorted by name as code
+ * points and then by id", and a schema cannot say that, so this does.
+ */
+function stationOrderProblems(stations: Station[]): string[] {
+  const found: string[] = []
+  for (let i = 1; i < stations.length; i++) {
+    const before = stations[i - 1]
+    const after = stations[i]
+    const order = byCodePoints(before.name, after.name) || byCodePoints(before.id, after.id)
+    if (order > 0) found.push(`stations[${i}] ${JSON.stringify(after)} sorts before its neighbour`)
+  }
+  return found
+}
+
+// The shape v0.13.0 added, checked on an answer made by hand, so `stations` is
+// shown to be required, and what it is made of, whatever the stand-in does.
+describe('the check of the v0.13.0 shapes against the description', () => {
+  const built = {
+    layout: 'a'.repeat(64),
+    date: '2026-06-16',
+    files: {
+      svg: '/a/x.svg',
+      html: '/a/x.html',
+      positions: '/a/x.positions.json',
+      thumb_dark: '/a/x-thumb-dark.svg',
+      thumb_light: '/a/x-thumb-light.svg',
+    },
+    stations: [
+      { id: '0x1', name: 'Alpha' },
+      { id: '0x2', name: 'Bravo' },
+    ],
+    summary: 'a map',
+    diagnostics: {
+      stations: 2,
+      junctions: 0,
+      edges: 1,
+      lines: ['A'],
+      octilinear: 1,
+      stops: {
+        matched: 2,
+        total: 2,
+        unmatched: [],
+        by: { station_id: 2, parent_station: 0, name: 0 },
+      },
+      trips: { total: 1, paths: 1, unrouted: 0 },
+      degraded: { borrowed_track: 0, skipped_calls: 0 },
+      labels_dropped: 0,
+      peak_concurrent: 1,
+    },
+    caveats: [],
+    issues: 0,
+  }
+
+  it('requires a map’s stations, each an id and a name, and nothing else', () => {
+    expect(answerProblems('map.build', built)).toEqual([])
+    const bare: Record<string, unknown> = { ...built }
+    delete bare.stations
+    expect(answerProblems('map.build', bare)).toEqual(['map.build: lacks "stations"'])
+    // A station the feed gives no name is the empty string, and is still a station.
+    expect(answerProblems('map.build', { ...built, stations: [{ id: '0x3', name: '' }] })).toEqual(
+      [],
+    )
+    expect(answerProblems('map.build', { ...built, stations: [] })).toEqual([])
+    expect(answerProblems('map.build', { ...built, stations: [{ id: '0x1' }] })).toEqual([
+      'map.build.stations[0]: lacks "name"',
+    ])
+    expect(answerProblems('map.build', { ...built, stations: [{ name: 'Alpha' }] })).toEqual([
+      'map.build.stations[0]: lacks "id"',
+    ])
+    expect(answerProblems('map.build', { ...built, stations: [{ id: 1, name: 'Alpha' }] })).toEqual(
+      ['map.build.stations[0].id: expected string, got integer'],
+    )
+    expect(
+      answerProblems('map.build', {
+        ...built,
+        stations: [{ id: '0x1', name: 'Alpha', lines: ['A'] }],
+      }),
+    ).toEqual(['map.build.stations[0]: carries "lines", which the description does not define'])
+  })
+
+  it('judges the order by name as code points and then by id', () => {
+    const at = (id: string, name: string): Station => ({ id, name })
+    expect(stationOrderProblems([])).toEqual([])
+    expect(stationOrderProblems([at('0x9', 'Only')])).toEqual([])
+    expect(stationOrderProblems([at('0x2', 'Alpha'), at('0x1', 'Bravo')])).toEqual([])
+    expect(stationOrderProblems([at('0x1', 'Bravo'), at('0x2', 'Alpha')])).toHaveLength(1)
+    // Two stations that share a name are told apart by id.
+    expect(stationOrderProblems([at('0x1', 'Main'), at('0x2', 'Main')])).toEqual([])
+    expect(stationOrderProblems([at('0x2', 'Main'), at('0x1', 'Main')])).toHaveLength(1)
+    // A station without a name sorts first; capitals sort before lower case.
+    expect(stationOrderProblems([at('0x5', ''), at('0x1', 'Alpha')])).toEqual([])
+    expect(stationOrderProblems([at('0x1', 'Alpha'), at('0x5', '')])).toHaveLength(1)
+    expect(stationOrderProblems([at('0x1', 'Zone'), at('0x2', 'alder')])).toEqual([])
+    expect(stationOrderProblems([at('0x2', 'alder'), at('0x1', 'Zone')])).toHaveLength(1)
+    // By code point, not by UTF-16 unit: U+FFFF comes before U+10000.
+    expect(stationOrderProblems([at('0x1', '\uFFFF'), at('0x2', '\u{10000}')])).toEqual([])
+    expect(stationOrderProblems([at('0x2', '\u{10000}'), at('0x1', '\uFFFF')])).toHaveLength(1)
   })
 })
 
@@ -921,6 +1042,30 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s answers${WHY}`, () => 
     await expect(refused('  \n ')).rejects.toThrow(/provenance\.alt is empty; omit it instead/)
     await expect(refused('x'.repeat(1001))).rejects.toThrow(
       /provenance\.alt is 1,001 characters; it may be at most 1,000/,
+    )
+  })
+
+  // ---- engine v0.13.0
+
+  it('answers the map’s stations by id and name, sorted by name and then id', async () => {
+    const layout = await layoutOf()
+    const params = { key: 'la-metro-rail', layout, date: '2026-06-16' }
+    const answer = (await ask('map.build', params)) as { stations: Station[] }
+    expect(answerProblems('map.build', answer)).toEqual([])
+    const { stations } = answer
+    expect(stationOrderProblems(stations)).toEqual([])
+    expect(stations.map((s) => s.name)).toEqual(['Alpha', 'Bravo', 'Charlie'])
+    // Ids are what the page's setTrip takes, so each names one station.
+    expect(stations.every((s) => s.id !== '')).toBe(true)
+    expect(new Set(stations.map((s) => s.id)).size).toBe(stations.length)
+    // The same three stations the stand-in's stage describes.
+    const stage = (await ask('render.stage', {
+      key: 'la-metro-rail',
+      layout,
+      stage: 'octi',
+    })) as StageAnswer
+    expect(stations.map((s) => s.name).sort()).toEqual(
+      [...stage.description.lines[0].stations].sort(),
     )
   })
 })

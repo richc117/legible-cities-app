@@ -33,6 +33,19 @@ describe('vendor/pins.json engine block', () => {
     ).toBe(pins.engine.schema_sha256)
   })
 
+  // The release the app was moved to, and the fingerprint measured from a
+  // fresh install of it from GitHub, written out here. The test above holds
+  // the schema and its fingerprint to each other, and `npm run typegen` run
+  // against the wrong checkout rewrites both together, so only a number that
+  // was measured elsewhere can catch that. A pin that moves edits this too.
+  it('is engine v0.13.0, whose schema has the fingerprint measured at that tag', () => {
+    expect(pins.engine.tag).toBe('v0.13.0')
+    expect(pins.engine.version).toBe('0.13.0')
+    expect(pins.engine.schema_sha256).toBe(
+      'fc7f0e30c9ff00b2d7464a8fb5a370614e919b97bbd58628f2e930fdfed4aa22',
+    )
+  })
+
   it('describes the protocol the pin claims', () => {
     const schema = JSON.parse(readFileSync(resolve(repo, 'vendor/protocol.schema.json'), 'utf8'))
     expect(schema.protocol).toBe(pins.engine.protocol)

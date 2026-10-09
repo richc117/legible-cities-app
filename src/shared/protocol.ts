@@ -1,7 +1,7 @@
 // Generated from the engine's own description of its protocol.
 // Run `npm run typegen` to regenerate; edits here are lost.
 //
-// Engine: v0.12.0, protocol 1.
+// Engine: v0.13.0, protocol 1.
 // Source: vendor/protocol.schema.json, printed by the engine's
 // `python -m schematic.serve --schema` and committed verbatim.
 
@@ -437,6 +437,23 @@ export interface MapBuildResult {
      */
     thumb_light: string
   }
+  /**
+   * Every station the map draws, sorted by name as code points and then by
+   * id: what a client offers to pick a trip from. A station only a hidden
+   * line served is not drawn and not listed.
+   */
+  stations: {
+    /**
+     * The station's node id in the stored layout: what the page's
+     * window.__present.setTrip takes.
+     */
+    id: string
+    /**
+     * The name the map writes for it; the empty string where the feed gives
+     * none.
+     */
+    name: string
+  }[]
   /**
    * Result.summary(), the lines the CLI prints.
    */
