@@ -1,14 +1,17 @@
 import type { Methods, RenderStageResult, StageName } from '../../../shared/protocol'
 
-// One stage drawing per layout, stage, width and day per session. The engine
-// draws a stored stage on request (render.stage, E15) and the answer does
-// not change while the id and the set behind it stand; the set's `made`
-// is part of the key, so a forced re-layout under the same id is drawn
-// anew. The SVG is the engine's and is handed to a sandboxed frame; the
-// counts are the engine's and are shown as sent. The day is part of the key
-// because the description's minutes are of a day (issue 105): the same
-// drawing asked for another day answers other minutes, and the engine reads
-// a timetable to say them.
+// One stage drawing per layout, set, stage, width and day per session. The
+// engine draws a stored stage on request (render.stage, E15) and the answer
+// does not change while the id and the set behind it stand; the set is part
+// of the key, so a forced re-layout under the same id is drawn anew. The
+// set is the stored one's `made`, or, while a layout run is in flight, the
+// run's own identity (`stageSet`, issue 382), because the engine draws a
+// running build's stages from the build and `made` is still the stored
+// set's until the run ends. The SVG is the engine's and is handed to a
+// sandboxed frame; the counts are the engine's and are shown as sent. The
+// day is part of the key because the description's minutes are of a day
+// (issue 105): the same drawing asked for another day answers other
+// minutes, and the engine reads a timetable to say them.
 
 export interface StageClient {
   request(
@@ -19,16 +22,39 @@ export interface StageClient {
 
 const cache = new Map<string, Promise<RenderStageResult>>()
 
+/**
+ * The set a drawing is cached under (issue 382, specs/032 FR-005): the
+ * stored set's `made`, or, while a layout run is in flight, the run's own
+ * identity in its place. During a forced re-layout `made` is still the
+ * stored set's, and a run that was stopped leaves it as it was for the next
+ * one, so a drawing taken from a build would otherwise be answered for the
+ * stored set, or for another build, and theirs for it. A run's is written
+ * so that no `made` can be the same: the engine writes `made` as an ISO
+ * time, which has no space in it.
+ */
+export function stageSet(made: string | null, run: string | null): string | null {
+  return run === null ? made : `run ${run}`
+}
+
+const slotOf = (
+  key: string,
+  layout: string,
+  set: string | null,
+  stage: StageName,
+  width: number,
+  date: string | null,
+): string => JSON.stringify([key, layout, set, stage, width, date])
+
 export function stageFor(
   client: StageClient,
   key: string,
   layout: string,
-  made: string | null,
+  set: string | null,
   stage: StageName,
   width: number,
   date: string | null = null,
 ): Promise<RenderStageResult> {
-  const slot = `${key}/${layout}/${made ?? ''}/${stage}/${width}/${date ?? ''}`
+  const slot = slotOf(key, layout, set, stage, width, date)
   const held = cache.get(slot)
   if (held !== undefined) return held
   // Without a day the field is left out: the engine refuses a null, and
@@ -37,8 +63,23 @@ export function stageFor(
   if (date !== null) params.date = date
   const pending = client.request('render.stage', params).result
   cache.set(slot, pending)
-  pending.catch(() => cache.delete(slot))
+  // A refusal is not remembered, so the next ask asks again; only this
+  // ask's own entry goes, never one made for the slot since it was forgotten.
+  pending.catch(() => {
+    if (cache.get(slot) === pending) cache.delete(slot)
+  })
   return pending
+}
+
+/**
+ * Every drawing held for one set, forgotten: a layout run's, once the run
+ * has ended, since the build it drew from is in the store or gone and the
+ * view reads the store from then on (issue 382, FR-006).
+ */
+export function forgetStagesOf(set: string): void {
+  for (const slot of [...cache.keys()]) {
+    if ((JSON.parse(slot) as unknown[])[2] === set) cache.delete(slot)
+  }
 }
 
 /** For a test: nothing remembered. */

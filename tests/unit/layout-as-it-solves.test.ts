@@ -6,8 +6,15 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import { LayoutRun, type RunClient } from '../../src/renderer/src/engine/layoutRun'
+import {
+  forgetAllStages,
+  forgetStagesOf,
+  stageFor,
+  stageSet,
+} from '../../src/renderer/src/engine/stages'
 import { ERROR_CODES, type EngineState } from '../../src/shared/engine'
 import type { ProjectRecord } from '../../src/shared/project'
+import type { RenderStageParams, RenderStageResult } from '../../src/shared/protocol'
 
 // ------------------------------------------------------------ the snapshot
 
@@ -183,5 +190,100 @@ describe('the run’s snapshot names its layout from the first report that does 
     run.rebuild(record(), READY, '2026-09-15')
     expect(run.snapshot.state).toBe('failed')
     expect(run.snapshot.layout).toBeNull()
+  })
+})
+
+// ------------------------------------------------- the cache while a run runs
+
+describe('the stage cache keys a drawing by the run while one is in flight (FR-005)', () => {
+  // Each answer is numbered, so a test can tell which request it came from:
+  // a drawing answered from the wrong slot is a number it did not ask for.
+  function numbered(): { client: Parameters<typeof stageFor>[0]; sent: RenderStageParams[] } {
+    const sent: RenderStageParams[] = []
+    const client = {
+      request: (_method: 'render.stage', params: RenderStageParams) => {
+        sent.push(params)
+        return {
+          result: Promise.resolve({
+            layout: params.layout,
+            stage: params.stage,
+            svg: `answer ${sent.length}`,
+          } as RenderStageResult),
+        }
+      },
+    }
+    return { client, sent }
+  }
+  const MADE = '2026-10-09T12:00:00+00:00'
+  const LATER = '2026-10-09T12:05:00+00:00'
+  const DAY = '2026-09-15'
+  const svgOf = async (p: Promise<RenderStageResult>): Promise<string> => (await p).svg
+
+  it('never answers a build’s drawing for the stored set, another build, or the reverse', async () => {
+    forgetAllStages()
+    const { client, sent } = numbered()
+    const ask = (made: string | null, run: string | null, date: string | null = null) =>
+      svgOf(stageFor(client, 'la', LAYOUT, stageSet(made, run), 'gtfs2graph', 1600, date))
+
+    // The stored set, for the day drawn, as the view reads it today.
+    expect(await ask(MADE, null, DAY)).toBe('answer 1')
+    // A re-layout under the same id: `made` is still the stored set's.
+    expect(await ask(MADE, 'job-1'), 'the build is asked, not the store').toBe('answer 2')
+    expect(await ask(MADE, 'job-1'), 'and held for the run').toBe('answer 2')
+    // That run was stopped, so `made` did not move; the next re-layout's
+    // build is another build, and its first stage is not the first one's.
+    expect(await ask(MADE, 'job-2'), 'a second run is never answered the first’s').toBe('answer 3')
+    // The stored set, asked as the view asks it, without a day too.
+    expect(await ask(MADE, null, DAY), 'the stored set is still the store’s').toBe('answer 1')
+    expect(await ask(MADE, null), 'never a build’s, with no day either').toBe('answer 4')
+    // The run finished: the store is read under the new `made`, as today.
+    expect(await ask(LATER, null, DAY)).toBe('answer 5')
+    expect(sent.map((p) => 'date' in p)).toEqual([true, false, false, false, true])
+  })
+
+  it('writes a run’s set so that no `made` can be it', () => {
+    expect(stageSet(MADE, null)).toBe(MADE)
+    expect(stageSet(null, null)).toBeNull()
+    expect(stageSet(MADE, 'job-7')).toBe('run job-7')
+    expect(stageSet(null, 'job-7')).toBe('run job-7')
+    expect(stageSet(MADE, 'job-7')).not.toBe(stageSet(MADE, 'job-8'))
+  })
+
+  it('forgets one run’s drawings and nothing else', async () => {
+    forgetAllStages()
+    const { client, sent } = numbered()
+    const ask = (run: string | null) =>
+      stageFor(client, 'la', LAYOUT, stageSet(MADE, run), 'loom', 1600)
+    await ask('job-1')
+    await ask(null)
+    forgetStagesOf(stageSet(MADE, 'job-1') as string)
+    await ask('job-1')
+    await ask(null)
+    expect(sent, 'the run’s asked again, the stored set’s not').toHaveLength(3)
+  })
+
+  it('keeps a slot asked again after it was forgotten, whatever the first ask did', async () => {
+    forgetAllStages()
+    let refuse!: (e: unknown) => void
+    let asked = 0
+    const client = {
+      request: () => {
+        asked += 1
+        return {
+          result:
+            asked === 1
+              ? new Promise<RenderStageResult>((_r, reject) => (refuse = reject))
+              : Promise.resolve({ svg: 'second' } as RenderStageResult),
+        }
+      },
+    }
+    const set = stageSet(MADE, 'job-3') as string
+    const first = stageFor(client, 'la', LAYOUT, set, 'topo', 1600).catch(() => 'refused')
+    forgetStagesOf(set)
+    expect((await stageFor(client, 'la', LAYOUT, set, 'topo', 1600)).svg).toBe('second')
+    refuse(new Error('not yet'))
+    expect(await first).toBe('refused')
+    expect((await stageFor(client, 'la', LAYOUT, set, 'topo', 1600)).svg).toBe('second')
+    expect(asked, 'the late refusal did not take the second answer with it').toBe(2)
   })
 })
