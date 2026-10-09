@@ -34,10 +34,56 @@ jobs:
       - name: Personal paths, addresses, keys and session links
         run: bin/preflight
 
+      # The scanner the commit guard calls, which the runner does not carry:
+      # gitleaks.yml uses the action, and that leaves no binary behind. Without
+      # it bin/test-hooks cannot run its end-to-end rows (a leaked key, an
+      # unreadable index, a commit asking for -a), and under CI it fails
+      # rather than skips (issue 316).
+      #
+      # Pinned twice. The version is the one `rev` names in
+      # .pre-commit-config.yaml, and the step refuses to go on if the two
+      # differ. The checksum is the Linux x64 line of the release's own
+      # published checksums file, copied here as a literal and never computed
+      # from the download it checks:
+      #   https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_checksums.txt
+      # A new version needs a new line from the same file in the same change.
+      # The archive is checked before anything in it is extracted, and nothing
+      # is run until it has been.
+      - name: gitleaks, pinned by version and checksum
+        env:
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          set -euo pipefail
+          hook=$(grep -A1 'repo: https://github.com/gitleaks/gitleaks' .pre-commit-config.yaml |
+                 sed -n 's/^ *rev: v//p') || hook=
+          if [ "$hook" != "$GITLEAKS_VERSION" ]; then
+            echo "gitleaks is $GITLEAKS_VERSION here and ${hook:-not found} in .pre-commit-config.yaml; move them together." >&2
+            exit 1
+          fi
+          asset="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          download=$(mktemp -d "$RUNNER_TEMP/gitleaks-download.XXXXXX")
+          bindir="$RUNNER_TEMP/gitleaks-bin"
+          mkdir "$bindir"
+          curl --fail --silent --show-error --location \
+            --retry 3 --connect-timeout 30 --max-time 300 \
+            --output "$download/$asset" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${asset}"
+          (cd "$download" && printf '%s  %s\n' "$GITLEAKS_SHA256" "$asset" | sha256sum --check --strict -)
+          tar -xzf "$download/$asset" -C "$bindir" gitleaks
+          got=$("$bindir/gitleaks" version)
+          if [ "$got" != "$GITLEAKS_VERSION" ]; then
+            echo "the gitleaks that was installed says $got, not $GITLEAKS_VERSION." >&2
+            exit 1
+          fi
+          echo "$bindir" >> "$GITHUB_PATH"
+
       # The hooks decide what the assistant may run, so they are tested
       # like anything else that makes a decision. Committed again as of
       # ADR-029; before that they lived outside this repository and this
-      # step could not exist.
+      # step could not exist. With gitleaks on the path from the step above,
+      # this runs the end-to-end rows over the commit guard as well, and its
+      # last line says how many passed.
       - name: The assistant's allow and refuse tables
         run: bin/test-hooks
 

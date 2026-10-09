@@ -7,6 +7,10 @@
 # actually shipped, or a legitimate command that a fix for one broke.
 #
 # Run it directly, or let the pre-commit hook run it. No arguments.
+#
+# The end-to-end cases over the commit guard need gitleaks on PATH: without it
+# they are skipped with a line on stderr, except when CI is set, where a missing
+# scanner is a failure, so a runner without it cannot pass a table it never ran.
 set -u
 cd "$(git rev-parse --show-toplevel)" || exit 1
 # Run from a git hook, this inherits the repository's own variables: where
@@ -381,6 +385,11 @@ if command -v gitleaks >/dev/null 2>&1; then
   expect 0 "$(guard_says 'git push origin main')" "and the history pushes once the object is back"
 
   rm -rf "$sandbox" "$bare" "$said" "$spare"
+elif [ -n "${CI:-}" ]; then
+  # Under CI a skip is a green step that proved nothing (issue 316):
+  # preflight.yml installs the scanner, and a runner that lost it must fail.
+  echo "test-hooks: gitleaks is not on PATH under CI, so the end-to-end cases did not run; install it as preflight.yml does." >&2
+  fail=$((fail + 1))
 else
   echo "test-hooks: gitleaks is not installed; skipped the end-to-end cases" >&2
 fi
