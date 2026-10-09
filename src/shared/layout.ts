@@ -43,6 +43,12 @@ export interface LayoutDone {
   built: import('./project').ProjectInputs
   /** The feed's window and the engine's day, as feeds.service answered them. */
   service: import('./project').ServiceWindow
+  /**
+   * The stations map.build answered for the map the run drew (issue 272),
+   * which the record keeps in `drawn` for cell 03's Trip section. Left out
+   * when the build answered none the app would take.
+   */
+  stations?: import('./trip').Station[]
 }
 
 /** What the main process answers with once a run's record is written. */

@@ -15,6 +15,7 @@ import {
   DEFAULT_MODE,
   DEFAULT_THEME,
   drawnFrom,
+  withStations,
   openedOrder,
   ID_PATTERN,
   RECORD_VERSION,
@@ -52,6 +53,7 @@ import {
   type ExportChoice,
 } from '../shared/export'
 import { isLayoutId, type LayoutDone, type LayoutResult } from '../shared/layout'
+import type { Station } from '../shared/trip'
 import { isValidProjectId } from './paths'
 import { failedWords, renameOver, retriedWords, type ReplaceOptions } from './replace-file'
 
@@ -62,9 +64,13 @@ import { failedWords, renameOver, retriedWords, type ReplaceOptions } from './re
  * a rename, the inputs, the theme, the export choice - leaves `drawn`
  * exactly as it was, which is what lets the notebook say the map on screen
  * is behind the record.
+ *
+ * `stations` is what the build answered for the map it drew (issue 272),
+ * from a layout run or a rebuild; without it, the list the record had stays
+ * where the layout is the one it was listed for (`drawnFrom`).
  */
-function drew(record: ProjectRecord): ProjectRecord {
-  return { ...record, drawn: drawnFrom(record) }
+function drew(record: ProjectRecord, stations?: Station[]): ProjectRecord {
+  return { ...record, drawn: withStations(drawnFrom(record), stations) }
 }
 
 /**
@@ -558,16 +564,19 @@ export class ProjectStore {
       throw new Error('the layout run did not say which layout it drew from')
     const layout = done.layout
     const { start, end, busiest, anchor } = done.service
-    const updated: ProjectRecord = drew({
-      ...record,
-      version: RECORD_VERSION,
-      layout,
-      made: done.made,
-      built: { mode: done.built.mode, agency: done.built.agency?.trim() || null },
-      date: record.date ?? done.date,
-      service: { start, end, busiest, anchor },
-      modified: new Date().toISOString(),
-    })
+    const updated: ProjectRecord = drew(
+      {
+        ...record,
+        version: RECORD_VERSION,
+        layout,
+        made: done.made,
+        built: { mode: done.built.mode, agency: done.built.agency?.trim() || null },
+        date: record.date ?? done.date,
+        service: { start, end, busiest, anchor },
+        modified: new Date().toISOString(),
+      },
+      done.stations,
+    )
     await this.writeAtomic(id, updated)
     // A different id is a different layout. The same id with a different
     // `made` is the same inputs laid out again since this project last drew
@@ -594,12 +603,15 @@ export class ProjectStore {
     const { record, readOnly } = await this.load(id)
     if (readOnly) throw new Error('read-only')
     check(serviceDayRefusal(record, done.date))
-    const updated: ProjectRecord = drew({
-      ...record,
-      version: RECORD_VERSION,
-      date: done.date,
-      modified: new Date().toISOString(),
-    })
+    const updated: ProjectRecord = drew(
+      {
+        ...record,
+        version: RECORD_VERSION,
+        date: done.date,
+        modified: new Date().toISOString(),
+      },
+      done.stations,
+    )
     await this.writeAtomic(id, updated)
     return updated
   }

@@ -32,6 +32,7 @@ import {
 } from '../shared/project'
 import { copyChoice, validateExportChoice, type ExportChoice } from '../shared/export'
 import { isLayoutId, type LayoutDone } from '../shared/layout'
+import { readStations, type Station } from '../shared/trip'
 import { isViewerRole, type ViewerRole } from '../shared/viewer'
 import type { ProjectStore } from './projects'
 import type { Viewer } from './viewer'
@@ -56,9 +57,24 @@ function readName(raw: unknown): string {
 }
 
 /**
+ * The stations a build answered, as the page relayed them (issue 272), or
+ * nothing. A list that does not read whole is dropped rather than refused:
+ * it is what cell 03's Trip section picks from, and a run whose map was
+ * drawn and whose record is about to be written must not fail over it. The
+ * record then holds no list, which the section answers by asking for the
+ * map to be drawn again.
+ */
+function readDrawnStations(raw: unknown): { stations?: Station[] } {
+  if (raw === undefined) return {}
+  const stations = readStations(raw)
+  return stations === null ? {} : { stations }
+}
+
+/**
  * What a finished run hands back: the day, the engine's layout id and the
- * feed's window, as the page relayed them. All are checked for shape here;
- * none is a path, and nothing is opened.
+ * feed's window, as the page relayed them, and the stations its map was
+ * drawn with. All are checked for shape here; none is a path, and nothing
+ * is opened.
  */
 function readLayoutDone(raw: unknown): LayoutDone {
   const input = isObject(raw) ? raw : {}
@@ -79,15 +95,16 @@ function readLayoutDone(raw: unknown): LayoutDone {
     made: input.made as string,
     built,
     service: { start, end, busiest, anchor },
+    ...readDrawnStations(input.stations),
   }
 }
 
-/** What a finished rebuild hands back: the day the map was drawn for. */
+/** What a finished rebuild hands back: the day the map was drawn for, and its stations. */
 function readRebuildDone(raw: unknown): RebuildDone {
   const input = isObject(raw) ? raw : {}
   const date = typeof input.date === 'string' ? input.date : ''
   check(validateServiceDate(date))
-  return { date }
+  return { date, ...readDrawnStations(input.stations) }
 }
 
 /**

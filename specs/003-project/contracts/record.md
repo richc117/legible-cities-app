@@ -70,6 +70,23 @@ The on-disk form of `ProjectRecord` (`data-model.md`), version 2:
   `null` means only that the map cannot be proved current, never that it is
   stale. The rule that let it be added without moving the version is in
   `specs/028-the-notebook/contracts/run-graph.md`.
+- `drawn.stations` (added by issue 272, still version 2) is the list of
+  stations the map now on disk draws, `[{ id, name }]`, as `map.build`
+  answered it (engine v0.13.0): the node id the page's `setTrip` takes and
+  the name the map writes, the empty string where the feed gives none, in
+  the engine's order. Cell 03's Trip section offers it and nothing the app
+  derives, and it is in the record because a project opened again shows its
+  map from the stored files without a build. `completeLayout` and
+  `completeRebuild` write the list their build answered; a recolour, a
+  reorder and a resize, which draw the same stations from the same layout,
+  keep it; a draw from another layout, or from the same id laid out again
+  since, keeps nothing it did not answer. It is optional and read on its
+  own: missing, or a list that is not whole (an entry without a string id
+  and name, an empty or repeated id, more than 20,000 entries), reads as no
+  list and leaves the rest of `drawn` as it was, and the section then asks
+  for the map to be drawn again. An older build that writes the record
+  drops it, which the next draw puts back. The front door's summaries carry
+  `drawn` without it. A trip is never in the record.
 - `built` (added by A2-02, still version 1) is the mode and agency the
   engine made the stored layout with, `{ mode, agency }` from
   `graph.build`'s meta, or `null`; an empty agency reads as none, and a
