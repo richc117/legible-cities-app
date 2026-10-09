@@ -77,6 +77,9 @@ export type Guard = (
 
 const LEVELS = new Set(['debug', 'info', 'warning', 'error'])
 
+/** A layout's id as the engine writes one: 64 hex digits (`LayoutId`). */
+const LAYOUT_ID = /^[0-9a-f]{64}$/
+
 export function registerEngineHandlers(
   ipcMain: IpcMain,
   engine: EngineSource,
@@ -205,6 +208,13 @@ export function registerEngineHandlers(
         stage: params.stage,
         fraction: params.fraction,
         message: redactUrls(params.message),
+        // The layout a stage's report is of (engine v0.14.0, issue 382), so
+        // cell 01 can draw the stage before the run ends. Only an id in the
+        // engine's shape crosses; anything else is left behind and the
+        // report goes on without it, as one from an older engine does.
+        ...(typeof params.layout === 'string' && LAYOUT_ID.test(params.layout)
+          ? { layout: params.layout }
+          : {}),
       }
       send(CHANNELS.engineProgress, progress)
     } else if (

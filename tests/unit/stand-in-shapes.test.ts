@@ -1164,6 +1164,315 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s answers${WHY}`, () => 
   })
 })
 
+// ------------------------------ the layout as it solves (engine v0.14.0)
+
+// Since engine v0.14.0 (its issue 43) every report of a layout's stage names
+// the layout, and render.stage draws a stage a running build has reported
+// from the build, refusing one it has not reached in a shape of its own. Cell
+// 01 draws the layout as it solves from both (issue 382), and the end-to-end
+// suite sees it against this stand-in, so the stand-in is held to the
+// engine's shapes and its choices here: the reports, the drawing from the
+// build, the refusal's code, kind, sentence and data, a day waiting on octi,
+// a re-layout's stored set answering until the build has the stage, and
+// nothing left to draw after a cancel. One stand-in of its own, reporting
+// slowly, so a stage can be asked for between two reports.
+describe.skipIf(PYTHON === null)(`the stand-in engine draws a layout as it solves${WHY}`, () => {
+  const STEP_MS = 250
+  let home = ''
+  let sidecar: Sidecar
+  const notes: { method: string; params: Record<string, unknown> }[] = []
+
+  beforeAll(async () => {
+    home = mkdtempSync(join(tmpdir(), 'lc-solves-'))
+    writeFileSync(
+      join(home, 'fake-engine.json'),
+      JSON.stringify({
+        map_draws: true,
+        progress_delay_ms: STEP_MS,
+        // Mexico City is not on disk, so its first layout downloads it.
+        presets_cached: ['la-metro-rail'],
+        preset_download_delay_ms: 1,
+        stage_waits_on: { loom: 'octi' },
+      }),
+    )
+    sidecar = new Sidecar({
+      command: [PYTHON as string, '-m', 'schematic.serve'],
+      env: engineEnvironment({
+        config: { home, loomBin: null, loomCommit: null, ffmpeg: null },
+        base: { ...process.env, PYTHONPATH: FAKE_ENGINE },
+        development: true,
+      }),
+      pin: PIN,
+      log: () => {},
+      bounds: { handshakeMs: READY_MS, inactivityMs: READY_MS },
+    })
+    sidecar.onNotification((n) => {
+      if (typeof n.params === 'object' && n.params !== null)
+        notes.push({ method: n.method, params: n.params as Record<string, unknown> })
+    })
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('the stand-in never became ready')), READY_MS)
+      sidecar.onState((s) => {
+        if (s.state === 'ready') {
+          clearTimeout(timer)
+          resolve()
+        }
+      })
+      sidecar.start()
+    })
+  }, READY_MS + 5_000)
+
+  afterAll(async () => {
+    await sidecar?.stop()
+    if (home !== '') rmSync(home, { recursive: true, force: true })
+  })
+
+  /** A request's progress reports so far, in order. */
+  const reports = (id: number): Record<string, unknown>[] =>
+    notes.filter((n) => n.method === 'job/progress' && n.params.id === id).map((n) => n.params)
+  async function reportedBy(id: number, stage: string): Promise<void> {
+    const deadline = Date.now() + 20_000
+    while (!reports(id).some((r) => r.stage === stage)) {
+      if (Date.now() > deadline) throw new Error(`no report of ${stage} for request ${id}`)
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+  }
+  const ask = (params: Record<string, unknown>): Promise<unknown> =>
+    sidecar.request('render.stage', params, { deadlineMs: READY_MS }).result
+  /** A refusal's code, message and data, as the page receives them. */
+  async function refused(
+    request: Promise<unknown>,
+  ): Promise<{ code: number; message: string; data: unknown }> {
+    try {
+      await request
+    } catch (error) {
+      if (error instanceof EngineError)
+        return { code: error.code, message: error.message, data: error.data }
+      throw error
+    }
+    throw new Error('the stand-in drew a stage the engine refuses')
+  }
+  const buildOf = (svg: string): string | undefined => /data-build="(\d+)"/.exec(svg)?.[1]
+  const notYetSentence = (key: string, layout: string, stage: string): string =>
+    `'${key}' is still being laid out under layout ${layout.slice(0, 8)}, and the build has ` +
+    `not reached its ${stage} stage yet; ask again when job/progress reports it`
+
+  it('names the layout on each stage’s report, a download’s never, and the map call’s four replays', async () => {
+    const build = sidecar.request('graph.build', { key: 'cdmx-metro' }, { deadlineMs: READY_MS })
+    const built = (await build.result) as { layout: string }
+    const graph = reports(build.id)
+    for (const report of graph) {
+      expect(
+        problems(description.$defs.JobProgress, report, 'job/progress'),
+        String(report.stage),
+      ).toEqual([])
+    }
+    const download = graph.filter((r) => r.stage === 'download')
+    expect(download.length, 'the feed was downloaded first').toBeGreaterThan(0)
+    expect(
+      download.every((r) => !('layout' in r)),
+      'no download names a layout',
+    ).toBe(true)
+    const staged = graph.filter((r) => r.stage !== 'download')
+    expect(staged.map((r) => r.stage)).toEqual(['gtfs2graph', 'topo', 'loom', 'octi'])
+    expect(staged.map((r) => r.layout)).toEqual(Array(4).fill(built.layout))
+
+    const map = sidecar.request(
+      'map.build',
+      { key: 'cdmx-metro', layout: built.layout, date: '2026-06-16' },
+      { deadlineMs: READY_MS },
+    )
+    await map.result
+    const drawn = reports(map.id)
+    expect(drawn.map((r) => r.stage)).toEqual([
+      ...['gtfs2graph', 'topo', 'loom', 'octi'],
+      ...['schedule', 'render', 'animate', 'write'],
+    ])
+    expect(drawn.map((r) => r.layout ?? null)).toEqual([
+      ...Array(4).fill(built.layout),
+      ...Array(4).fill(null),
+    ])
+  }, 30_000)
+
+  it('draws a stage the build has reported, and refuses one it has not in the engine’s shape', async () => {
+    const build = sidecar.request(
+      'graph.build',
+      { key: 'la-metro-rail', mode: 'subway' },
+      { deadlineMs: READY_MS },
+    )
+    await reportedBy(build.id, 'gtfs2graph')
+    const layout = reports(build.id)[0].layout as string
+    const params = { key: 'la-metro-rail', layout, width: 800 }
+    const first = (await ask({ ...params, stage: 'gtfs2graph' })) as { svg: string }
+    expect(answerProblems('render.stage', first)).toEqual([])
+    expect(first.svg, 'drawn from the build').toContain('gtfs2graph: B')
+
+    const early = await refused(ask({ ...params, stage: 'topo' }))
+    const hint = notYetSentence('la-metro-rail', layout, 'topo')
+    expect(early).toEqual({
+      code: -32000,
+      message: hint,
+      data: { kind: 'layout', detail: hint, hint, layout, stage: 'topo', building: true },
+    })
+    expect(problems(description.$defs.ErrorData, early.data, 'data')).toEqual([])
+
+    // A day asks for minutes, which are read from octi: the answer waits on it.
+    const dated = await refused(ask({ ...params, stage: 'gtfs2graph', date: '2026-06-16' }))
+    expect(dated.data).toMatchObject({ stage: 'octi', building: true })
+    expect(dated.message).toBe(
+      `${notYetSentence('la-metro-rail', layout, 'octi')}; the minutes of a date are read ` +
+        'from the octi stage, so leave date out to draw gtfs2graph now',
+    )
+
+    // The control file has loom wait on octi, as a day does, and nothing else.
+    await reportedBy(build.id, 'loom')
+    const loom = await refused(ask({ ...params, stage: 'loom' }))
+    expect(loom.data).toMatchObject({ stage: 'octi', building: true, layout })
+    await reportedBy(build.id, 'octi')
+    expect(((await ask({ ...params, stage: 'loom' })) as { svg: string }).svg).toContain('loom: B')
+    await build.result
+  }, 30_000)
+
+  it('draws a re-layout’s stored set until its build has the stage, then the build’s', async () => {
+    const params = { key: 'la-metro-rail', mode: 'tram' }
+    const stored = (await sidecar.request('graph.build', params, { deadlineMs: READY_MS })
+      .result) as {
+      layout: string
+    }
+    const at = { key: 'la-metro-rail', layout: stored.layout, width: 800 }
+    const before = buildOf(((await ask({ ...at, stage: 'topo' })) as { svg: string }).svg)
+    expect(before, 'every drawing names its build').toMatch(/^\d+$/)
+
+    const again = sidecar.request(
+      'graph.build',
+      { ...params, force: true },
+      { deadlineMs: READY_MS },
+    )
+    await reportedBy(again.id, 'gtfs2graph')
+    // Not reached by the new build: the stored set answers, never refused.
+    expect(buildOf(((await ask({ ...at, stage: 'topo' })) as { svg: string }).svg)).toBe(before)
+    const fresh = buildOf(((await ask({ ...at, stage: 'gtfs2graph' })) as { svg: string }).svg)
+    expect(fresh, 'reached: the new build answers').toBe(String(Number(before) + 1))
+    await again.result
+    expect(buildOf(((await ask({ ...at, stage: 'topo' })) as { svg: string }).svg)).toBe(fresh)
+  }, 30_000)
+
+  it('leaves nothing to draw of a build that was cancelled', async () => {
+    const build = sidecar.request(
+      'graph.build',
+      { key: 'la-metro-rail', mode: 'rail' },
+      { deadlineMs: READY_MS },
+    )
+    await reportedBy(build.id, 'gtfs2graph')
+    const layout = reports(build.id)[0].layout as string
+    sidecar.cancel(build.id)
+    const ended = await refused(build.result)
+    expect(ended.code).toBe(ERROR_CODES.cancelled)
+    const gone = await refused(ask({ key: 'la-metro-rail', layout, stage: 'gtfs2graph' }))
+    expect(gone.code).toBe(-32000)
+    expect(gone.data, 'neither stored nor building').toMatchObject({ kind: 'layout' })
+    expect(gone.data).not.toHaveProperty('building')
+  }, 30_000)
+})
+
+// ------------------------------- two builds of one layout (issue 382)
+
+// Two projects on one feed lay out one layout, and the stand-in builds both at
+// once where the engine would have the second wait for the first. Each build
+// marks its stages readable as it reports them; a build that ends - cancelled
+// here - must forget only its own entry, or the other's next report finds
+// nothing to mark, its thread ends unanswered and its run can never end, a
+// cancel included. That is what settings.spec.ts saw on macOS: two layout
+// runs, the first cancelled while the second was still at its first stages,
+// and the second never ending. One stand-in of its own, holding each build in
+// octi until it is cancelled and reporting slowly before it.
+describe.skipIf(PYTHON === null)(`the stand-in engine's two builds of one layout${WHY}`, () => {
+  let home = ''
+  let sidecar: Sidecar
+  const notes: Record<string, unknown>[] = []
+
+  beforeAll(async () => {
+    home = mkdtempSync(join(tmpdir(), 'lc-two-builds-'))
+    writeFileSync(
+      join(home, 'fake-engine.json'),
+      JSON.stringify({ progress_delay_ms: 300, octi_child: true, octi_ms: 30_000 }),
+    )
+    sidecar = new Sidecar({
+      command: [PYTHON as string, '-m', 'schematic.serve'],
+      env: engineEnvironment({
+        config: { home, loomBin: null, loomCommit: null, ffmpeg: null },
+        base: { ...process.env, PYTHONPATH: FAKE_ENGINE },
+        development: true,
+      }),
+      pin: PIN,
+      log: () => {},
+      bounds: { handshakeMs: READY_MS, inactivityMs: READY_MS },
+    })
+    sidecar.onNotification((n) => {
+      if (n.method === 'job/progress' && typeof n.params === 'object' && n.params !== null)
+        notes.push(n.params as Record<string, unknown>)
+    })
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('the stand-in never became ready')), READY_MS)
+      sidecar.onState((s) => {
+        if (s.state === 'ready') {
+          clearTimeout(timer)
+          resolve()
+        }
+      })
+      sidecar.start()
+    })
+  }, READY_MS + 5_000)
+
+  afterAll(async () => {
+    await sidecar?.stop()
+    if (home !== '') rmSync(home, { recursive: true, force: true })
+  })
+
+  async function reported(id: number, stage: string): Promise<void> {
+    const deadline = Date.now() + 10_000
+    while (!notes.some((n) => n.id === id && n.stage === stage)) {
+      if (Date.now() > deadline) throw new Error(`request ${id} never reported ${stage}`)
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+  }
+  const cancelled = async (request: Promise<unknown>): Promise<number> => {
+    const error = (await request.then(
+      () => null,
+      (e: unknown) => e,
+    )) as EngineError | null
+    if (error === null) throw new Error('the build answered instead of being cancelled')
+    return error.code
+  }
+
+  it('reports, draws and is cancelled whole when the other build of its layout ends first', async () => {
+    const params = { key: 'la-metro-rail', mode: 'all', agency: '' }
+    const first = sidecar.request('graph.build', params, { deadlineMs: READY_MS })
+    await reported(first.id, 'loom')
+    // The second starts while the first waits in octi, and the first is
+    // cancelled while the second is still at its first stages.
+    const second = sidecar.request('graph.build', params, { deadlineMs: READY_MS })
+    await reported(second.id, 'gtfs2graph')
+    sidecar.cancel(first.id)
+    expect(await cancelled(first.result), 'the first, cancelled').toBe(ERROR_CODES.cancelled)
+
+    // The second goes on reporting, and its stages are its own build's.
+    await reported(second.id, 'loom')
+    const layout = notes.find((n) => n.id === second.id)?.layout as string
+    const drawn = (await sidecar.request('render.stage', {
+      key: 'la-metro-rail',
+      layout,
+      stage: 'topo',
+    }).result) as { svg: string }
+    expect(drawn.svg, 'drawn from the second build').toMatch(/data-build="2"/)
+
+    const started = Date.now()
+    sidecar.cancel(second.id)
+    expect(await cancelled(second.result), 'the second, cancelled').toBe(ERROR_CODES.cancelled)
+    expect(Date.now() - started, 'at the cancel, not at the hold’s end').toBeLessThan(5_000)
+  }, 30_000)
+})
+
 // ----------------------------------------- the removal as a job (issue 351)
 
 // Since engine v0.11.0 (its issue 35) `feeds.remove` is a job, like

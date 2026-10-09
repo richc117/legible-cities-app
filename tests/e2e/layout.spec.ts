@@ -318,7 +318,11 @@ test('a run that did not finish leaves no figures on the screen', async () => {
     await openNewProject(page, 'Los Angeles')
     await page.getByRole('button', { name: /lay out/i }).click()
     await page.getByRole('button', { name: /cancel/i }).click()
-    await expect(page.getByText(/was cancelled/i)).toBeVisible({ timeout: 20_000 })
+    // Cell 02's sentence: cell 01's stage view says the run was cancelled
+    // too once it has drawn a stage (issue 382).
+    await expect(cell(page, 'process').getByText(/was cancelled/i)).toBeVisible({
+      timeout: 20_000,
+    })
     await expect(panel(page, 'What the build had to fudge')).toHaveCount(0)
   })
 })
@@ -330,7 +334,9 @@ test('a cancelled run writes nothing and says so', async () => {
     const before = JSON.stringify(readRecord(engineHome))
     await page.getByRole('button', { name: /lay out/i }).click()
     await page.getByRole('button', { name: /cancel/i }).click()
-    await expect(page.getByText(/was cancelled/i)).toBeVisible({ timeout: 20_000 })
+    await expect(cell(page, 'process').getByText(/was cancelled/i)).toBeVisible({
+      timeout: 20_000,
+    })
     expect(JSON.stringify(readRecord(engineHome)), 'the record is untouched').toBe(before)
     // Stop returns the cell to what it was: a run a person stopped is not a
     // failure, and the cell says ready rather than failed (A5.5-10,
@@ -453,7 +459,7 @@ test('a cancelled re-layout leaves the project as it was', async () => {
       .getByRole('button', { name: 'Re-layout' })
       .click()
     await page.getByRole('button', { name: /cancel/i }).click()
-    await expect(page.getByText(/was cancelled/i)).toBeVisible()
+    await expect(cell(page, 'process').getByText(/was cancelled/i)).toBeVisible()
     expect(JSON.stringify(readRecord(engineHome))).toBe(JSON.stringify(before))
     await expect(page.getByRole('button', { name: 'Re-layout' })).toBeVisible()
   })

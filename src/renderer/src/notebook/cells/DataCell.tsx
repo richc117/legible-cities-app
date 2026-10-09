@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type JSX } from 'react'
 import type { Inspection } from '../../../../shared/protocol'
+import { revealOf } from '../../engine/stages'
 import Inspect from '../../Inspect'
 import StageView from '../../StageView'
 import DownloadLine from '../../DownloadLine'
@@ -26,6 +27,10 @@ import { runRowStatus } from '../runRow'
 // `DownloadLine` comes and goes with the run and holds no control.
 // `StageView` takes no `disabled`: its two stage buttons and its pane stay
 // live through a run, and it never leaves the cell once a layout exists.
+// It is given the layout run as a reveal (issue 382, specs/032): from the
+// first report that names the run's layout it draws each stage as the run
+// reaches it, so it is in the cell from that report on even for a project
+// with no layout yet, and stays after a run that stopped, to say what went.
 //
 // The one thing this file writes is the sentence the row carries while the
 // cell is collapsed. It is here and not in a table beside the six cells
@@ -103,9 +108,13 @@ export default function DataCell({ cell, state, open, onToggle }: CellViewProps)
     exporting,
     run,
     runSnapshot,
+    settling,
   } = useProject()
   const inspection = useInspection(project?.feed ?? null, engine?.state === 'ready', inspect)
   const heading = useRef<HTMLHeadingElement>(null)
+  // The run's job id is its identity for the drawings it asks for, one per
+  // attempt; `revealOf` says whether it is a layout run with a layout named.
+  const reveal = revealOf(runSnapshot, run.job()?.id ?? null, settling)
   return (
     <Cell
       number={cell.number}
@@ -141,8 +150,8 @@ export default function DataCell({ cell, state, open, onToggle }: CellViewProps)
               handback={heading}
             />
           )}
-          {project.layout !== null && (
-            <StageView project={project} engine={engine} read={readStage} />
+          {(project.layout !== null || reveal !== null) && (
+            <StageView project={project} engine={engine} read={readStage} reveal={reveal} />
           )}
         </>
       )}

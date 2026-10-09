@@ -227,6 +227,25 @@ describe('registerEngineHandlers', () => {
       error: { code: -32800, message: 'Request Cancelled' },
     })
   })
+  it('carries a stage report’s layout to the page, and only an id in the engine’s shape', async () => {
+    // Engine v0.14.0 names the layout on each stage's report (issue 382);
+    // cell 01 draws the stage from it before the run ends.
+    const { call, sent, notify } = harness()
+    await call(CHANNELS.engineRequest, 'tok-l', 'graph.build', { key: 'x' })
+    const layout = 'b'.repeat(64)
+    notify({
+      method: 'job/progress',
+      params: { id: 1, stage: 'topo', fraction: 0.5, message: 'm', layout },
+    })
+    notify({
+      method: 'job/progress',
+      params: { id: 1, stage: 'loom', fraction: 0.75, message: 'm', layout: '../elsewhere' },
+    })
+    expect(sent.map((m) => m.payload)).toEqual([
+      { id: 'tok-l', stage: 'topo', fraction: 0.5, message: 'm', layout },
+      { id: 'tok-l', stage: 'loom', fraction: 0.75, message: 'm' },
+    ])
+  })
   it('forwards progress and log lines with the page token, and drops the rest', async () => {
     const { call, requests, sent, notify, log } = harness()
     await call(CHANNELS.engineRequest, 'tok-p', 'graph.build', { key: 'x' })

@@ -123,6 +123,27 @@ interface Pending {
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
 
+const LAYOUT_ID = /^[0-9a-f]{64}$/
+const STAGE_NAMES: readonly string[] = ['gtfs2graph', 'topo', 'loom', 'octi']
+
+/**
+ * What `render.stage`'s refusal of a stage a running build has not reached
+ * carries beside the three (engine v0.14.0, issue 382): the layout, the
+ * stage the answer waits on and `building`, which tell the page to ask
+ * again at that stage's report rather than show a failure. Each is kept
+ * only in the engine's own shape and only on an error of kind `layout`,
+ * the refusal's, since no other error carries them, so every other error
+ * reads as it always has.
+ */
+function notYet(data: Record<string, unknown>): Pick<ErrorData, 'layout' | 'stage' | 'building'> {
+  const kept: Pick<ErrorData, 'layout' | 'stage' | 'building'> = {}
+  if (typeof data.layout === 'string' && LAYOUT_ID.test(data.layout)) kept.layout = data.layout
+  if (typeof data.stage === 'string' && STAGE_NAMES.includes(data.stage))
+    kept.stage = data.stage as ErrorData['stage']
+  if (data.building === true) kept.building = true
+  return kept
+}
+
 // The engine's error data has kind, detail and hint. Anything else that
 // arrives as data (a library's traceback, nothing at all) is kept in
 // `detail` so no information is lost and the shape the page reads holds.
@@ -144,7 +165,14 @@ function errorData(data: unknown, message: string): ErrorData | undefined {
       // stays in the detail. This is not where a URL's key is taken out:
       // `withoutPaths` does not match a URL, and every error is redacted on
       // its way to the page in `ipc-shape.ts` (issue 207).
-      return { kind: data.kind, detail: data.detail, hint: withoutPaths(data.hint) }
+      return {
+        kind: data.kind,
+        detail: data.detail,
+        hint: withoutPaths(data.hint),
+        // Only render.stage's refusal carries the three, and its kind is
+        // `layout`; on any other kind they are left behind.
+        ...(data.kind === 'layout' ? notYet(data) : {}),
+      }
     }
     return { kind: 'engine', detail: JSON.stringify(data), hint: data.hint }
   }
