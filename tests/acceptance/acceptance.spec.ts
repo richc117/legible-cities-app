@@ -72,6 +72,7 @@ import {
   cellHandback,
   cellHeading,
   closeCell,
+  expandHeading,
   openCell,
   type CellId,
 } from '../support/project'
@@ -2949,11 +2950,10 @@ test('a release, installed, through docs/acceptance.md', async () => {
         // region, which cell 02 draws only while a run is going or has
         // gone this session; the idle panel of a project drawn from the
         // store is the sentence below and the buttons, and no landmark,
-        // which "nothing runs" further down asserts.
-        const processHeading = cellHeading(reopened, 'process')
-        if ((await processHeading.getAttribute('aria-expanded')) !== 'true') {
-          await processHeading.click()
-        }
+        // which "nothing runs" further down asserts. `expandHeading` is
+        // `openCell`'s press without that wait: asserted, and pressed again
+        // if the first was lost (issue 365).
+        await expandHeading(reopened, 'process')
         await expect(
           reopened.getByText(`Drawn from layout ${la.layout?.slice(0, 8)} for ${session.laDay}.`, {
             exact: true,

@@ -208,7 +208,7 @@ test('cell 06 is a disclosure, closed to begin with, and the cells above it stay
     await expect(heading).toHaveAttribute('aria-expanded', 'false')
     await expect(exportPanel(page)).toBeHidden()
 
-    await heading.click()
+    await openCell(page, 'export')
     await expect(heading).toHaveAttribute('aria-expanded', 'true')
     await expect(exportPanel(page)).toBeVisible()
 
@@ -218,7 +218,7 @@ test('cell 06 is a disclosure, closed to begin with, and the cells above it stay
     await expect(cell(page, 'lines')).toBeVisible()
     await expect(cell(page, 'data')).toBeVisible()
 
-    await heading.click()
+    await closeCell(page, 'export')
     await expect(heading).toHaveAttribute('aria-expanded', 'false')
     await expect(exportPanel(page)).toBeHidden()
   })

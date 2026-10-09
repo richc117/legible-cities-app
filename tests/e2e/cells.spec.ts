@@ -10,6 +10,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { PYTHON, newProjectFromLibrary, openLaidOut, profile, withApp } from '../support/a11y'
 import { CELL_LIST } from '../../src/renderer/src/runGraph'
+import { openCell } from '../support/project'
 
 test.skip(PYTHON === null, 'no python3 or python on the PATH to run the stand-in engine')
 
@@ -80,8 +81,7 @@ test('every line inside a cell starts at the body’s one left edge, in every ce
   await withApp(profile(), async (page) => {
     await openLaidOut(page, 'Los Angeles')
     // Cell 06 starts closed; open it so its panels are on the screen.
-    const export6 = page.locator('.cell[data-cell="06"] .cell-head')
-    if ((await export6.getAttribute('aria-expanded')) !== 'true') await export6.click()
+    await openCell(page, 'export')
 
     for (const { number } of CELL_LIST) {
       const n = String(number).padStart(2, '0')

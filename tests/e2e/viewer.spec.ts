@@ -17,6 +17,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test'
+import { openCell } from '../support/project'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 import { VIEWER_SANDBOX } from '../../src/shared/viewer'
 
@@ -192,10 +193,7 @@ test('a hostile page in the viewer cannot reach the app', async () => {
     // And again in cell 06's own frame (ADR-046), which loads the same page
     // at the address the export planned: the second frame is held to the
     // same boundary as the first.
-    await page
-      .getByRole('button', { name: /^06 Export\b/ })
-      .and(page.locator('button.cell-head'))
-      .click()
+    await openCell(page, 'export')
     const preview = page.locator('iframe.export-frame')
     await expect(preview).toHaveCount(1, { timeout: 30_000 })
     await expect(preview).toHaveAttribute('sandbox', VIEWER_SANDBOX)
@@ -311,10 +309,7 @@ test('the app can still drive the page it cannot be reached from', async () => {
     // the one driven, and the preview answers whether it has loaded and is
     // refused everything else, by the main process, before anything is
     // sent into it.
-    await page
-      .getByRole('button', { name: /^06 Export\b/ })
-      .and(page.locator('button.cell-head'))
-      .click()
+    await openCell(page, 'export')
     await expect(page.locator('iframe.export-frame')).toHaveCount(1, { timeout: 30_000 })
     await expect.poll(() => driveAs('export', 'state').catch(() => null)).not.toBeNull()
     await expect(driveAs('export', 'seek', 900)).rejects.toThrow(/not driven/)
