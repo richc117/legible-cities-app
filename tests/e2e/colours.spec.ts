@@ -10,7 +10,7 @@
 // fails leaves behind is the run's unit test: the stand-in reads its control
 // file once, at start, and cannot be turned round mid-session.
 
-import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { _electron as electron, expect, test, type Locator, type Page } from '@playwright/test'
@@ -39,7 +39,11 @@ function home(control: Record<string, unknown> = {}): string {
   return dir
 }
 
-async function withApp(engineHome: string, run: (page: Page) => Promise<void>): Promise<void> {
+async function withApp(
+  engineHome: string,
+  run: (page: Page) => Promise<void>,
+  env: Record<string, string> = {},
+): Promise<void> {
   const app = await electron.launch({
     args: ['.'],
     cwd: repoRoot,
@@ -48,6 +52,7 @@ async function withApp(engineHome: string, run: (page: Page) => Promise<void>): 
       SCHEMATIC_HOME: engineHome,
       LEGIBLE_ENGINE_PYTHON: PYTHON as string,
       PYTHONPATH: FAKE_ENGINE,
+      ...env,
     } as Record<string, string>,
     timeout: 30_000,
   })
@@ -817,4 +822,93 @@ test('every control is reachable by keyboard and named for its line', async () =
     await expect(choose).toHaveAttribute('aria-expanded', 'false')
     await expect(choose).toBeFocused()
   })
+})
+
+// Issue 360. A build that is cancelled leaves the run `cancelled` until the
+// next run starts, and a record written for any other reason - a rename, a
+// theme press, an export option, a chosen day - reaches the screen as a new
+// record while it does. The panel used to go back to the record on each of
+// those, so a colour chosen after the cancel and held for an export to let
+// go of the page was dropped by a rename: the swatch snapped back to the
+// feed's colour and the colour was never drawn.
+//
+// Staged with what the stand-in can do from its start. A redraw slow enough
+// to cancel; an encode slow enough to hold the page while the colour is
+// chosen and the project renamed; and the export cancelled at the end, which
+// is what lets the held colour through.
+const CAPTURE_PAGE = resolve(__dirname, '../fixtures/capture-page.html')
+
+test('a colour chosen after a cancelled redraw waits for an export, and a rename does not take it back', async () => {
+  test.setTimeout(180_000)
+  const exportFolder = mkdtempSync(join(tmpdir(), 'legible-cities-colours-exports-'))
+  const engineHome = home({ progress_delay_ms: 500, encode_delay_ms: 3000 })
+  await withApp(
+    engineHome,
+    async (page) => {
+      await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
+      // The export captures an animated page; the stand-in's own is a placeholder.
+      const [id] = readdirSync(join(engineHome, 'projects'))
+      copyFileSync(CAPTURE_PAGE, join(engineHome, 'out', id, 'la-metro-rail.html'))
+
+      const panel = cell(page, 'lines')
+      const lineA = panel
+        .getByRole('list', { name: 'Lines', exact: true })
+        .getByRole('listitem')
+        .nth(0)
+      const picker = panel.getByRole('group', { name: 'Colour for line A' })
+      const choose = async (hex: string): Promise<void> => {
+        await panel.getByRole('button', { name: /^Choose the colour of line A/ }).click()
+        await picker.getByLabel('Hex value').fill(hex)
+        await picker.getByRole('button', { name: 'Use this colour' }).click()
+        await expect(picker).toBeHidden()
+      }
+
+      // A redraw in a new colour, cancelled while it draws: nothing was
+      // written, and the swatch goes back to the colour the feed publishes.
+      await choose('#ff0000')
+      const layoutRun = await openCell(page, 'process')
+      await layoutRun.getByRole('button', { name: 'Cancel', exact: true }).click()
+      await expect(page.getByText(/^The redraw was cancelled\./)).toBeVisible({ timeout: 30_000 })
+      await expect(lineA).toContainText('the colour in the feed, #0072bc')
+      expect(readRecord(engineHome).colors).toEqual({})
+
+      // An export now holds the page.
+      await openCell(page, 'export')
+      await page.getByRole('button', { name: 'Export', exact: true }).click()
+      await expect(page.getByText(/^Encod/)).toBeVisible({ timeout: 30_000 })
+
+      // A colour chosen while it does waits, and the swatch shows it.
+      const builds = buildsOf(engineHome)
+      await choose('#00ff00')
+      await expect(lineA).toContainText('your colour, #00ff00')
+
+      // A record written for another reason arrives with the run still
+      // cancelled. The colour is not taken back, and it is not dropped.
+      await page.getByRole('button', { name: 'Rename', exact: true }).click()
+      await page.getByLabel('New name').fill('LA Metro')
+      await page.getByRole('button', { name: 'Save', exact: true }).click()
+      await expect(page.getByRole('heading', { level: 1 })).toHaveText('LA Metro')
+      await page.waitForTimeout(LONGER_THAN_ANY_INTERVAL)
+      await expect(lineA).toContainText('your colour, #00ff00')
+      expect(buildsOf(engineHome), 'nothing is drawn while the export holds the page').toBe(builds)
+
+      // The export ends, and the colour that waited for it is drawn, once.
+      await page
+        .getByRole('region', { name: 'Export', exact: true })
+        .getByRole('button', { name: 'Cancel', exact: true })
+        .click()
+      await expect(page.getByText('The export was cancelled. Nothing was written.')).toBeVisible({
+        timeout: 30_000,
+      })
+      await expect
+        .poll(() => (readRecord(engineHome).colors as Record<string, string>).A, {
+          message: 'the colour that waited was drawn and stored',
+          timeout: 30_000,
+        })
+        .toBe('#00ff00')
+      expect(buildsOf(engineHome), 'one build, for the colour that waited').toBe(builds + 1)
+      await expect(lineA).toContainText('your colour, #00ff00')
+    },
+    { LEGIBLE_EXPORT_FOLDER: exportFolder },
+  )
 })

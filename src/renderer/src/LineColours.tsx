@@ -41,6 +41,7 @@ import {
 import type { LayoutRun as Run } from './engine/layoutRun'
 import Button from './kit/Button'
 import TextInput from './kit/TextInput'
+import { usePutBack } from './usePutBack'
 import { useSnapshot } from './useSnapshot'
 
 // The project's line colours: what the feed publishes, what a person chose
@@ -198,14 +199,18 @@ export default function LineColours({
   // with it, and its next colour starts it again: the picker clears its
   // changed flag when the colour it is given moves under it, so it would
   // never report the end of the one that was cut off.
-  useEffect(() => {
-    if (recoloured && (runState === 'cancelled' || runState === 'failed')) {
-      if (retry.current !== null) clearTimeout(retry.current)
-      retry.current = null
-      unbuilt.current = stopped()
-      setPalette({ colors: project.colors, defaultColor: project.defaultColor })
-    }
-  }, [runState, recoloured, project.colors, project.defaultColor])
+  //
+  // **Only at the moment the run stops** (`usePutBack`, issue 360), not for
+  // as long as it stays stopped: the run keeps `failed` or `cancelled` until
+  // the next one starts, and a record written for another reason is a new
+  // `project.colors` reference. Acting on that would drop, and snap back, a
+  // colour chosen afterwards and waiting for an export to let go of the page.
+  usePutBack(runState, recoloured, () => {
+    if (retry.current !== null) clearTimeout(retry.current)
+    retry.current = null
+    unbuilt.current = stopped()
+    setPalette({ colors: project.colors, defaultColor: project.defaultColor })
+  })
 
   // What `released` or `retried` decided. A layout, a rebuild or an export
   // is reading the page a build would rewrite, so a release then is held,

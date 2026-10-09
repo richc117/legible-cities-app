@@ -1,4 +1,3 @@
-import type { RunState } from '../../shared/layout'
 import type { MapStyle } from '../../shared/protocol'
 import {
   DEFAULT_STYLE,
@@ -224,17 +223,6 @@ export function nextStyleStep(
 ): 'build' | 'wait' | 'none' {
   if (sameStyle(next, stored)) return 'none'
   return busy ? 'wait' : 'build'
-}
-
-/**
- * Did a redraw for sizes stop between the last look at the run and this one?
- * True only on the change *into* failed or cancelled, with the run being a
- * restyle: the state is kept until the next run starts, so reading it as
- * "stopped" on every render after would act on every record written in the
- * meantime.
- */
-export function stoppedRestyle(before: RunState, now: RunState, restyled: boolean): boolean {
-  return restyled && before !== now && (now === 'failed' || now === 'cancelled')
 }
 
 /** What cell 04's summary adds to the theme when any size has been set, else nothing. */

@@ -21,12 +21,12 @@ import {
   FRAME_SENTENCE,
   isPending,
   nextStyleStep,
-  stoppedRestyle,
   STYLE_FIELDS,
   UNIT_SENTENCE,
   type Drafts,
   type Problems,
 } from './styleRules'
+import { usePutBack } from './usePutBack'
 import { useSnapshot } from './useSnapshot'
 
 // The map's sizes: line width and gap, the two station radii and the
@@ -160,21 +160,16 @@ export default function StyleFields({
   // letting it through would build sizes a person had just been told the
   // project did not keep.
   //
-  // **Only at the moment the run stops** (`stoppedRestyle`), not for as long
-  // as it stays stopped. The run keeps its failed or cancelled state until
-  // the next one starts, and a record written for another reason - a rename,
-  // an export option - is a new `project.style` reference: acting on that
-  // would snap back, and cancel, a size committed afterwards and waiting for
-  // an export to let go of the page.
-  const was = useRef(runState)
-  useEffect(() => {
-    const before = was.current
-    was.current = runState
-    if (stoppedRestyle(before, runState, restyled)) {
-      schedule.cancel()
-      setView(viewOf(project.style))
-    }
-  }, [runState, restyled, project.style, schedule])
+  // **Only at the moment the run stops** (`usePutBack`, issue 360), not for
+  // as long as it stays stopped. The run keeps its failed or cancelled state
+  // until the next one starts, and a record written for another reason - a
+  // rename, an export option - is a new `project.style` reference: acting on
+  // that would snap back, and cancel, a size committed afterwards and waiting
+  // for an export to let go of the page.
+  usePutBack(runState, restyled, () => {
+    schedule.cancel()
+    setView(viewOf(project.style))
+  })
 
   const commit = (next: ProjectStyle): void => {
     // `busy` is what the last render saw; the run's own state is what is
