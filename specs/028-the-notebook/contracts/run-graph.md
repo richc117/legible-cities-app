@@ -153,6 +153,7 @@ change; what is behind is everything drawn from it.
 | `drawn.layout` differs from `layout` | 02 | 03-06 | `layout` |
 | the same layout under a different `made` | 02 | 03-06 | `relaid` |
 | the run's `replaced`, once the run has stopped | 02 | 03-06 | `replaced` |
+| `tuning` would send other than `laidOutWith` (issue 385) | 02 | 03-06 | `tuning` |
 | `drawn.date` differs from `date` | 03 | 04-06 | `day` |
 | a cell's own run failed | that cell | below it | `upstream` |
 
@@ -171,6 +172,14 @@ and nothing else changes.
 record since A2-02 and is what the engine made the stored layout with, so a
 record from before `drawn` existed still reports moved inputs, exactly as
 the sentence in A2-02's panel already did.
+
+*As of 9 Oct 2026* (issue 385, spec 033): a changed tuning is the second
+expensive edge after the inputs. The record keeps beside the layout the
+tuning its run was asked with (`laidOutWith`), so, like `built`, it needs no
+`drawn`; the two are compared as the engine would be sent them, a field at
+LOOM's own number being no difference, and only once there is a layout. As
+every source does, it marks the cells below cell 02 and not cell 02, which
+says it in a sentence of its own, and Run all answers it with a layout run.
 
 `replaced` is the one source that is not on the record at all. A re-layout
 that answered and was then stopped left the engine's stored set replaced
