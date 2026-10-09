@@ -155,6 +155,26 @@ test('the notebook, Inspect, the geographic view, the inspector and its dialogs'
       await expect(page.getByRole('region', { name, exact: true })).toBeVisible()
     }
 
+    // Cell 04's theme (A7-13): a group named for what it sets holding the
+    // two radios, each named by its word and nothing else. The pictures
+    // are `alt=""`, so they are not in the tree at all and add nothing to a
+    // name, and the checked radio is announced as checked. The sweep below
+    // walks it in both of the interface's themes: Tab enters the pair once
+    // and the ring is drawn on the card.
+    await openCell(page, 'style')
+    const themeGroup = cell(page, 'style').getByRole('group', {
+      name: 'The theme this map is drawn in',
+    })
+    await expect(themeGroup).toBeVisible()
+    const themeNodes = (await themeGroup.ariaSnapshot())
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => /^- (radio|img|button)\b/.test(line))
+    expect(themeNodes, "cell 04's theme, as the accessibility tree has it").toEqual([
+      '- radio "Warm dark" [checked]',
+      '- radio "Sepia"',
+    ])
+
     await expect(page.getByRole('navigation', { name: 'Steps' })).toBeVisible()
     await expect(page.getByRole('region', { name: 'Outputs', exact: true })).toBeVisible()
     // The way back is in the window's header, not a breadcrumb (issue 275).

@@ -173,6 +173,12 @@ warm-dark project, and read the frame's address.
   first settles, rather than dropped: a press a person cannot see refused
   is indistinguishable from a dead button, and the button that would undo
   it already reads as chosen.
+- **A press just after a write has landed.** The screen has the theme the
+  write stored only a render later, so a press in that gap is compared with
+  the theme the write stored, which the switch remembers, and not with the
+  screen's copy: it is written, or ignored when it is the theme just
+  stored, and never dropped for matching the theme the project had before
+  (A7-13, issue 285, `themeChooser.ts`).
 - **A read-only record**, written by a newer version of the app: the switch
   is absent, as the rest of the project's editing is.
 

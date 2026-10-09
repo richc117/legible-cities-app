@@ -5,8 +5,10 @@ import { MISSING_METHOD } from '../../shared/viewer'
 // press should do at this moment, how a press that arrived during a write is
 // applied after it, and what a written theme does to the map on screen. The
 // rule that logic lives in something callable without rendering is what
-// makes these testable (.claude/rules/renderer.md), and the switch above
-// them (ThemeSwitch.tsx) is then only a screen.
+// makes these testable (.claude/rules/renderer.md). Over them sits the
+// chooser (themeChooser.ts), which holds what the switch remembers between
+// one press and the next, and the switch (ThemeSwitch.tsx) is then only a
+// screen over that.
 //
 // A theme is written the moment it is pressed rather than after a build, so
 // there is no debounce here and nothing to cancel - only the gap of one

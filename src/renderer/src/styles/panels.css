@@ -751,6 +751,70 @@ th .sort:focus-visible {
   color: var(--text-faint);
 }
 
+/* Cell 04's theme cards (A7-13, issue 285, DESIGN.md 8.2): two native radios
+   in a fieldset, each the `<label>` that is its card and in a sample city's
+   card's shape (`.card`, `.card-picture`, `.card-name`, above): the engine's
+   picture at 16:10 inside the card's own padding, so no picture's ground
+   meets the card's edge, over the theme's word. The fieldset's own box is
+   reset and the cards are laid out by the div inside it, in as many tracks
+   as fit at `--card-min-width`, as the front door's are. The reset includes
+   `display`: the kit's global `fieldset` rule makes every fieldset a column
+   flexbox with its children at their start, which would shrink the div to
+   its content and stack the cards in one narrow column, so it is a block
+   here, as the app's other fieldsets restate theirs.
+
+   The radio is visually hidden (`.visually-hidden`) and keeps focus, so it
+   is the card that shows both states. Focus is the app's own ring, drawn on
+   the card. Checked is an edge of `--text` twice the width of the resting
+   `--border` one, taken from the card's padding so the card keeps its size
+   and nothing moves: never `--accent`, which is the focus ring's own colour
+   (theme.css), so a checked card and a focused one are told apart in both
+   themes, and never colour alone, since the edge is also heavier.
+
+   The kit's `input[type="radio"]` rule gives the hidden input a box of 1rem
+   with its own fill and ring, which is what DevTools shows. None of it is
+   painted or hit: `.visually-hidden`'s clip-path clips all of it away, so
+   it is not a defect to be mended. */
+
+.theme-cards-group {
+  display: block;
+  min-width: 0;
+  margin: 0 0 var(--space-4-4);
+  padding: 0;
+  border: 0;
+}
+
+.theme-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--card-min-width), 1fr));
+  gap: var(--space-4-3);
+}
+
+/* The hidden radio is positioned against the card, so a focus that scrolls
+   to it scrolls to the card. */
+.theme-card {
+  position: relative;
+}
+
+.theme-card:has(input:checked) {
+  border: calc(2 * var(--border-width)) solid var(--text);
+  padding: calc(var(--space-4-3) - var(--border-width));
+}
+
+.theme-card:has(input:focus-visible) {
+  outline: var(--focus-ring-width) solid var(--focus);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* Out of reach while a run or an export holds the page: the words go faint,
+   as a disabled field's do, and the card stops answering the pointer. */
+.theme-card:has(input:disabled),
+.theme-card:has(input:disabled):hover {
+  background: var(--surface-raised);
+  color: var(--text-faint);
+  cursor: default;
+}
+
 /* The geographic view: a pane the size of the viewer's shape, holding the
    engine's drawing in a frame with no permissions, moved by transforms
    from here. The frame is sized to the drawing and never scrolls; the

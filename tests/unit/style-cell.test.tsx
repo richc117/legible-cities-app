@@ -3,9 +3,11 @@
 //
 // Rendered to static markup, as the cell's own test is: what is asserted is
 // what the adapter draws. The theme switch's behaviour - the write, the
-// press kept during one, the disabling while a run holds the page - is
-// `tests/unit/theme-writes.test.ts` and `tests/e2e/theme.spec.ts`, and
-// neither moved for this. What the fields do when a figure is typed is
+// choice kept during one, a choice made as one lands - is
+// `tests/unit/theme-chooser.test.ts`, over the pieces `theme-writes.test.ts`
+// holds, and the disabling while a run holds the page and the keyboard are
+// `tests/e2e/theme.spec.ts`; what is asserted here of the switch is the
+// markup it draws. What the fields do when a figure is typed is
 // `tests/unit/style-rules.test.ts` and `tests/e2e/style.spec.ts`; what is asserted
 // here is what the cell draws.
 //
@@ -14,10 +16,13 @@
 // the record says: a summary has to be asserted as the span it is drawn in,
 // or the assertion passes with the summary deleted. And `renderToStaticMarkup`
 // runs no effects, while `kit/Button.tsx` writes `disabled` onto its host in
-// one - so "no disabled control" cannot be read from this markup at all, and
-// what is asserted instead is the positive: the controls that are drawn,
-// by name, and nothing else.
+// one - so "no disabled kit button" cannot be read from this markup at all,
+// and what is asserted instead is the positive: the controls that are drawn,
+// by name, and nothing else. The theme's radios are native and carry their
+// state in the markup (A7-13), so theirs is read off it.
 
+import { readFileSync } from 'node:fs'
+import { basename, resolve } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { themeWord } from '../../src/renderer/src/ThemeSwitch'
@@ -31,6 +36,7 @@ import {
   THEMES,
   type ProjectRecord,
   type ProjectStyle,
+  type Theme,
 } from '../../src/shared/project'
 
 const CELL = CELL_LIST.find((cell) => cell.id === 'style') as Cell
@@ -69,9 +75,13 @@ const record: ProjectRecord = {
 function draw({
   project,
   readOnly = false,
+  exporting = false,
+  layingOut = false,
 }: {
   project: ProjectRecord | null
   readOnly?: boolean
+  exporting?: boolean
+  layingOut?: boolean
 }): string {
   const runSnapshot = { state: 'idle', recoloured: false, reordered: false, restyled: false }
   const state = {
@@ -81,8 +91,8 @@ function draw({
     run: { snapshot: runSnapshot, subscribe: () => () => {} },
     exporter: { snapshot: { state: 'idle' } },
     setTheme: async () => {},
-    exporting: false,
-    layingOut: false,
+    exporting,
+    layingOut,
     runSnapshot,
   } as unknown as ProjectState
   return renderToStaticMarkup(
@@ -95,9 +105,84 @@ function draw({
 /** What the collapsed row says beside the number, the name and the state. */
 const summary = (theme: string): string => `<span class="cell-summary">${theme}</span>`
 
-/** Every control the cell draws, by its label and in its order. */
+/** Every kit button the cell draws, by its label and in its order. */
 const controls = (drawn: string): string[] =>
   [...drawn.matchAll(/<fig-button[^>]*>([^<]*)<\/fig-button>/g)].map((found) => found[1])
+
+/** The attributes of one start tag, a bare one (`checked`) as an empty string. */
+function attributes(tag: string): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const found of tag.matchAll(/\s([a-z][\w-]*)(?:="([^"]*)")?(?=[\s/>])/g))
+    out[found[1]] = found[2] ?? ''
+  return out
+}
+
+/** What the theme's section draws, and nothing else the cell holds. */
+const themeSection = (drawn: string): string => {
+  const start = drawn.indexOf('<section class="theme-switch"')
+  expect(start, 'the cell draws the theme switch').toBeGreaterThanOrEqual(0)
+  return drawn.slice(start, drawn.indexOf('</section>', start))
+}
+
+const pictures = resolve(__dirname, '../../src/renderer/src/pictures')
+
+/** The engine's picture of a theme, as the file holds it. */
+const picture = (theme: Theme): string =>
+  readFileSync(resolve(pictures, `theme-${theme}.svg`), 'utf8')
+
+/** An attribute's value as the markup wrote it, back to the characters it stands for. */
+const unescaped = (value: string): string =>
+  value
+    .replaceAll('&#x27;', "'")
+    .replaceAll('&quot;', '"')
+    .replaceAll('&lt;', '<')
+    .replaceAll('&gt;', '>')
+    .replaceAll('&amp;', '&')
+
+/**
+ * The document an `<img>`'s `src` stands for: the file the address names.
+ * The pictures are served as files, never inlined as a `data:` address
+ * (`themePictures.ts`), and the address may carry a query (`?no-inline`
+ * where Vite serves them), which is not part of the file's name.
+ */
+function fileBehind(src: string): string {
+  const address = unescaped(src)
+  expect(address, 'the picture is a file, not a data address').not.toMatch(/^data:/)
+  return readFileSync(resolve(pictures, basename(address.split('?')[0])), 'utf8')
+}
+
+/** The colour of a picture's backdrop rectangle, which is its ground. */
+const groundOf = (svg: string): string | null =>
+  /<rect id=["']backdrop["'][^>]* fill=["'](#[0-9a-f]{6})["']/i.exec(svg)?.[1] ?? null
+
+/** One theme card as the switch draws it: the label that wraps a radio, its picture and its word. */
+interface Card {
+  /** The label's own class. */
+  label: string
+  radio: Record<string, string>
+  /** What follows the radio inside the label, tag by tag. */
+  rest: string
+  picture: Record<string, string>
+  word: string
+}
+
+function cards(drawn: string): Card[] {
+  return [...themeSection(drawn).matchAll(/<label ([^>]*)>(.*?)<\/label>/g)].map((found) => {
+    const inside = found[2]
+    const radio = /^<input ([^>]*?)\/?>/.exec(inside)
+    expect(radio, `a label opens with its radio: ${inside}`).not.toBeNull()
+    const rest = inside.slice((radio as RegExpExecArray)[0].length)
+    const image = /<img ([^>]*?)\/?>/.exec(rest)
+    expect(image, `a card holds a picture: ${rest}`).not.toBeNull()
+    return {
+      label: attributes(` ${found[1]} `).class,
+      radio: attributes(` ${(radio as RegExpExecArray)[1]} `),
+      rest,
+      picture: attributes(` ${(image as RegExpExecArray)[1]} `),
+      word: rest.replace(/<[^>]*>/g, ''),
+    }
+  })
+}
 
 describe('cell 04, Style', () => {
   it('names the theme in the map’s own words, not the interface’s', () => {
@@ -170,14 +255,94 @@ describe('cell 04, Style', () => {
     expect(drawn).not.toContain('once it can take them')
   })
 
-  it('draws the theme’s two buttons and one more, to go back to the engine’s own sizes', () => {
+  it('draws one button, to go back to the engine’s own sizes, and the theme as radios', () => {
     // By name, and nothing else: no disabled stand-in for a control that
-    // does not exist.
-    expect(controls(draw({ project: record }))).toEqual([
-      'Warm dark',
-      'Sepia',
-      'Reset to the engine’s sizes',
-    ])
+    // does not exist. The theme is not a button any more (A7-13).
+    const drawn = draw({ project: record })
+    expect(controls(drawn)).toEqual(['Reset to the engine’s sizes'])
+    expect(cards(drawn).map((card) => card.word)).toEqual(['Warm dark', 'Sepia'])
+  })
+
+  describe('the theme, as two radios each a card (A7-13)', () => {
+    it('is a fieldset named for what it sets, holding exactly the two radios, one group', () => {
+      const section = themeSection(draw({ project: record }))
+      expect(section).toContain(
+        '<legend class="visually-hidden">The theme this map is drawn in</legend>',
+      )
+      const radios = [...section.matchAll(/<input [^>]*>/g)].map((found) => attributes(found[0]))
+      expect(radios).toHaveLength(2)
+      for (const radio of radios) expect(radio.type).toBe('radio')
+      // One name, so Tab enters the pair once and the arrow keys move the choice.
+      const names = new Set(radios.map((radio) => radio.name))
+      expect(names.size).toBe(1)
+      expect([...names][0]).not.toBe('')
+      // Nothing else in the section is a control of any kind.
+      expect(section).not.toMatch(/<(button|select|textarea|fig-)/)
+    })
+
+    it('names each radio by its word, and gives each the value of the theme it sets', () => {
+      // Mutation: the two values swapped.
+      const found = cards(draw({ project: record })).map((card) => [card.word, card.radio.value])
+      expect(found).toEqual([
+        ['Warm dark', 'warm-dark'],
+        ['Sepia', 'sepia'],
+      ])
+      // And the word is the whole of the label's text, so the radio's name is it.
+      for (const card of cards(draw({ project: record })))
+        expect(card.word).toBe(themeWord(card.radio.value as Theme))
+    })
+
+    it('has the map’s current theme checked and the other not, whichever it is', () => {
+      for (const theme of THEMES) {
+        const checked = cards(draw({ project: { ...record, theme } }))
+          .filter((card) => 'checked' in card.radio)
+          .map((card) => card.radio.value)
+        expect(checked).toEqual([theme])
+      }
+    })
+
+    it('puts the radio first in its label, the picture over the word, in the card’s own shape', () => {
+      for (const card of cards(draw({ project: record }))) {
+        expect(card.label).toBe('card theme-card')
+        expect(card.radio.class).toBe('visually-hidden')
+        expect(card.rest).toMatch(
+          /^<span class="card-picture"><img [^>]*\/><\/span><span class="card-name">[^<]+<\/span>$/,
+        )
+      }
+    })
+
+    it('draws each picture as an image with no alternative text, of the engine’s file for its theme', () => {
+      // Mutation: an alt with words, which the radio's name would then say twice.
+      const found = cards(draw({ project: record }))
+      for (const card of found) expect(card.picture.alt, 'alt is present and empty').toBe('')
+      // Which file each one shows is read from its ground.
+      const grounds = found.map((card) => groundOf(fileBehind(card.picture.src)))
+      expect(grounds).toEqual(THEMES.map((theme) => groundOf(picture(theme))))
+      expect(new Set(grounds).size, 'two pictures, not one twice').toBe(2)
+    })
+
+    it('draws no map of its own: two images, and no line or station in the markup', () => {
+      const section = themeSection(draw({ project: record }))
+      expect(section.match(/<img /g)).toHaveLength(2)
+      expect(section).not.toMatch(/<(svg|circle|path|line|polyline|rect|canvas)[\s>]/)
+    })
+
+    it('is available when nothing holds the page, and radio by radio not while a run or an export does', () => {
+      const open = themeSection(draw({ project: record }))
+      expect(open).not.toContain('disabled')
+      for (const held of [{ exporting: true }, { layingOut: true }]) {
+        const section = themeSection(draw({ project: record, ...held }))
+        // Each radio is disabled itself. Never the fieldset round them:
+        // Chromium takes focus from a descendant of a disabled fieldset as the
+        // attribute is written, before the handback can hand it on.
+        expect(section).not.toMatch(/<fieldset[^>]* disabled/)
+        const radios = [...section.matchAll(/<input [^>]*>/g)].map((found) => attributes(found[0]))
+        expect(radios).toHaveLength(2)
+        for (const radio of radios) expect(radio, 'a radio is disabled').toHaveProperty('disabled')
+        // Said once, where the switch is.
+        expect(section).toContain('The theme waits until the run that is going has finished')
+      }
+    })
   })
 
   it('says it on a read-only project too, but offers nothing', () => {
@@ -188,6 +353,8 @@ describe('cell 04, Style', () => {
     // And the switch and the fields are absent rather than disabled.
     expect(controls(drawn)).toEqual([])
     expect(drawn).not.toContain('<label')
+    expect(drawn).not.toContain('type="radio"')
+    expect(drawn).not.toContain('<fieldset')
   })
 })
 

@@ -1670,30 +1670,36 @@ test('a release, installed, through docs/acceptance.md', async () => {
       const group = cell(window, 'style').getByRole('group', {
         name: 'The theme this map is drawn in',
       })
-      const warm = group.getByRole('button', { name: 'Warm dark' })
-      const sepia = group.getByRole('button', { name: 'Sepia' })
+      const warm = group.getByRole('radio', { name: 'Warm dark', exact: true })
+      const sepia = group.getByRole('radio', { name: 'Sepia', exact: true })
+      // The radios are visually hidden: a person chooses by the card round
+      // each, so that is what is pressed.
+      const warmCard = group.locator('label.theme-card', { hasText: 'Warm dark' })
+      const sepiaCard = group.locator('label.theme-card', { hasText: 'Sepia' })
       const viewer = window.locator('iframe.viewer-frame')
-      // Both halves of each kit button: the host React renders, and the
-      // button inside its shadow root, which is what the role resolves to.
-      const pressedState = (): Promise<string> =>
-        group
-          .locator('fig-button')
-          .evaluateAll((hosts) =>
-            hosts
-              .map(
-                (host) =>
-                  `${(host.textContent ?? '').trim()}: variant ${host.getAttribute('variant')}, disabled ${host.hasAttribute('disabled')}, aria-pressed on the host ${host.getAttribute('aria-pressed')} and on its inner button ${host.shadowRoot?.querySelector('button')?.getAttribute('aria-pressed') ?? null}`,
-              )
-              .join('; '),
-          )
-      log.note(`Before any press: ${await pressedState()}.`)
-      await log.soft('two buttons, Warm dark pressed', async () => {
-        await expect(group.getByRole('button')).toHaveCount(2)
+      const checkedState = (): Promise<string> =>
+        group.locator('input[type="radio"]').evaluateAll((inputs) =>
+          inputs
+            .map((input) => {
+              const radio = input as HTMLInputElement
+              const word = (radio.closest('label')?.textContent ?? '').trim()
+              return `${word}: checked ${radio.checked}, disabled ${radio.disabled}`
+            })
+            .join('; '),
+        )
+      log.note(`Before any choice: ${await checkedState()}.`)
+      await log.soft('two radios in the group, Warm dark checked', async () => {
+        await expect(group.getByRole('radio')).toHaveCount(2)
         try {
-          await expect(warm).toHaveAttribute('aria-pressed', 'true', { timeout: 5 * SECOND })
+          await expect(warm).toBeChecked({ timeout: 5 * SECOND })
         } catch {
-          throw new Error(`Warm dark is not announced as pressed: ${await pressedState()}`)
+          throw new Error(`Warm dark is not announced as checked: ${await checkedState()}`)
         }
+        await expect(sepia).not.toBeChecked()
+        // And a picture beside each word, with nothing to read in it.
+        await expect(group.locator('img')).toHaveCount(2)
+        for (const picture of await group.locator('img').all())
+          await expect(picture).toHaveAttribute('alt', '')
       })
       const sizes = window.getByRole('region', { name: 'Sizes', exact: true })
       await log.soft('eight size fields, each showing the engine’s own number', async () => {
@@ -1723,14 +1729,14 @@ test('a release, installed, through docs/acceptance.md', async () => {
       // The map takes its theme in place since engine v0.11.0 (issue 349), so
       // its frame is not sent anywhere: the address is the one it had.
       const addressBefore = await viewer.getAttribute('src')
-      await sepia.click()
+      await sepiaCard.click()
       await log.soft('sepia at once, with no run', async () => {
         expect(addressBefore, 'the map’s frame had an address before the press').not.toBeNull()
         await expect(
           viewer,
           'the frame’s address did not change across the press: the page restyled in place',
         ).toHaveAttribute('src', addressBefore as string)
-        await expect(sepia).toHaveAttribute('aria-pressed', 'true')
+        await expect(sepia).toBeChecked()
         await expect(window.frameLocator('iframe.viewer-frame').locator('html')).toHaveAttribute(
           'data-theme',
           'sepia',
@@ -1744,13 +1750,14 @@ test('a release, installed, through docs/acceptance.md', async () => {
         expect(said.filter((s) => /^(Laid out|Drawn )/.test(s))).toEqual([])
         expect(await window.locator('html').getAttribute('data-theme')).toBe(interfaceTheme)
       })
-      await warm.click()
+      await warmCard.click()
       await log.soft('Warm dark brings it back', async () => {
         await expect(
           window.frameLocator('iframe.viewer-frame').locator('html'),
           'the page in the frame is no longer wearing sepia',
         ).not.toHaveAttribute('data-theme', 'sepia', { timeout: SHORT_MS })
         await expect.poll(async () => (await recordOf(window, LA)).theme).toBe('warm-dark')
+        await expect(warm).toBeChecked()
       })
       const mark2 = (await saidSoFar(window)).length
       const width = sizes.getByLabel('Line width', { exact: true })

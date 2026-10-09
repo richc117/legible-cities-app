@@ -1687,7 +1687,7 @@ test('a theme change leaves the map’s speed and its pause as they were', async
     expect(address, 'the project was opened in warm dark').toContain('theme=warm-dark')
 
     await openCell(page, 'style')
-    await page.getByRole('button', { name: 'Sepia' }).click()
+    await page.locator('label.theme-card', { hasText: 'Sepia' }).click()
     await expect
       .poll(() => seenByPage(app), { timeout: 20_000, message: 'the page was told, in place' })
       .toContainEqual(['setTheme', 'sepia'])
@@ -1728,7 +1728,7 @@ test('a redraw gives the map back the speed and the pause it had, in the theme c
 
     // The theme goes in place, and costs the page nothing it had.
     await openCell(page, 'style')
-    await page.getByRole('button', { name: 'Sepia' }).click()
+    await page.locator('label.theme-card', { hasText: 'Sepia' }).click()
     await expect
       .poll(() => seenByPage(app), { timeout: 20_000, message: 'the page was told, in place' })
       .toContainEqual(['setTheme', 'sepia'])

@@ -1,5 +1,6 @@
 // The theme a project's map is drawn in (specs/021-theme): the switch on
-// the project screen, the page restyled in place through its seam, the
+// the project screen - since A7-13 two native radios, each a card of the
+// engine's picture over its word - the page restyled in place through its seam, the
 // theme on the address of the next load, the record on disk, the theme still
 // there when the project is opened again, and the export made in it.
 //
@@ -36,6 +37,7 @@ import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 import {
   cell,
   cellHandback,
+  cellHeading,
   closeCell,
   createProject,
   openCell,
@@ -118,6 +120,22 @@ async function project(page: Page, name: string): Promise<void> {
 }
 
 const switchOf = (page: Page) => cell(page, 'style')
+const GROUP = 'The theme this map is drawn in'
+/**
+ * A theme's radio, by the name a screen reader gives it: the word. The input
+ * is visually hidden (A7-13), so it is read, focused and asserted on here
+ * and never pressed.
+ */
+const radio = (page: Page, word: string) =>
+  switchOf(page).getByRole('radio', { name: word, exact: true })
+/**
+ * The card a theme is chosen by: the label round its radio, its picture and
+ * its word, which is where a person presses. Playwright refuses to press a
+ * hidden input, whose hit target is the card over it, so a spec presses the
+ * card, as a person does.
+ */
+const card = (page: Page, word: string) =>
+  switchOf(page).locator('label.theme-card', { hasText: word })
 const frame = (page: Page) => page.locator('iframe.viewer-frame')
 // Cell 06's own preview frame (ADR-046), there only while the cell is open.
 const exportFrame = (page: Page) => page.locator('iframe.export-frame')
@@ -329,20 +347,191 @@ async function openWithAPage(
     .not.toBeNull()
 }
 
-test('offers the two themes and says which one the map is drawn in', async () => {
+test('offers the two themes as radios and says which one the map is drawn in', async () => {
   const h = home()
   await withApp(h, async (page) => {
     await project(page, 'Los Angeles')
-    const group = switchOf(page).getByRole('group', { name: 'The theme this map is drawn in' })
-    await expect(group.getByRole('button')).toHaveCount(2)
-    await expect(group.getByRole('button', { name: 'Warm dark' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
+    // A fieldset named for what it sets, holding exactly the two radios (A7-13).
+    const group = switchOf(page).getByRole('group', { name: GROUP })
+    await expect(group.getByRole('radio')).toHaveCount(2)
+    await expect(group.getByRole('radio').first()).toHaveAccessibleName('Warm dark')
+    await expect(group.getByRole('radio').last()).toHaveAccessibleName('Sepia')
+    await expect(radio(page, 'Warm dark')).toBeChecked()
+    await expect(radio(page, 'Sepia')).not.toBeChecked()
+    // The pictures are the engine's files in images with no alternative text,
+    // so they add nothing to a name and are not read.
+    const pictures = group.locator('img')
+    await expect(pictures).toHaveCount(2)
+    for (const picture of await pictures.all()) {
+      await expect(picture).toHaveAttribute('alt', '')
+      expect(
+        await picture.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0),
+        'the picture loaded',
+      ).toBe(true)
+    }
+    // Nothing else in the section is pressable: the theme is not a button.
+    await expect(group.getByRole('button')).toHaveCount(0)
+    // The two cards share a row at the default window. The kit's own rule makes
+    // every fieldset a column flexbox, which would stack them one under the
+    // other in a single narrow column; the group restates `display` against it.
+    const warm = await card(page, 'Warm dark').boundingBox()
+    const sepia = await card(page, 'Sepia').boundingBox()
+    expect(warm, 'the Warm dark card has a box').not.toBeNull()
+    expect(sepia, 'the Sepia card has a box').not.toBeNull()
+    expect(sepia?.y, 'the cards are in one row').toBe(warm?.y)
+    expect(sepia?.x ?? 0, 'Sepia is beside Warm dark, to its right').toBeGreaterThan(
+      (warm?.x ?? 0) + (warm?.width ?? 0) - 1,
     )
-    await expect(group.getByRole('button', { name: 'Sepia' })).toHaveAttribute(
-      'aria-pressed',
-      'false',
-    )
+  })
+})
+
+test('Tab enters the pair once, the arrows move the choice, and the ring is on the card', async () => {
+  const h = home()
+  await withApp(h, async (page) => {
+    await project(page, 'Los Angeles')
+    await openCell(page, 'style')
+    const warm = radio(page, 'Warm dark')
+    const sepia = radio(page, 'Sepia')
+
+    // Tab from the cell's own row lands on the checked radio, the pair's one
+    // stop, and not on the first of two.
+    await cellHeading(page, 'style').focus()
+    await page.keyboard.press('Tab')
+    await expect(warm).toBeFocused()
+    // The ring is the card's, since the radio is not drawn: the app's own
+    // ring, in --focus, and it is there for the card holding focus alone.
+    const ring = (word: string) =>
+      card(page, word).evaluate((el) => {
+        const style = getComputedStyle(el)
+        return { style: style.outlineStyle, width: style.outlineWidth, colour: style.outlineColor }
+      })
+    expect(await ring('Warm dark')).toMatchObject({ style: 'solid', width: '2px' })
+    expect((await ring('Sepia')).style, 'and not on the other card').toBe('none')
+
+    // An arrow moves focus and the choice together, and writes it.
+    await page.keyboard.press('ArrowRight')
+    await expect(sepia).toBeFocused()
+    await expect(sepia).toBeChecked()
+    await expect(warm).not.toBeChecked()
+    await expect.poll(() => readRecord(h).theme).toBe('sepia')
+    expect((await ring('Sepia')).style).toBe('solid')
+    expect((await ring('Warm dark')).style).toBe('none')
+    await page.keyboard.press('ArrowLeft')
+    await expect(warm).toBeFocused()
+    await expect(warm).toBeChecked()
+    await expect.poll(() => readRecord(h).theme).toBe('warm-dark')
+
+    // Tab leaves the pair rather than visiting the other radio, and Shift+Tab
+    // comes back to the checked one.
+    await page.keyboard.press('Tab')
+    expect(
+      await page.evaluate(() => document.activeElement?.matches('input[type="radio"]') ?? false),
+      'Tab left the pair',
+    ).toBe(false)
+    await page.keyboard.press('Shift+Tab')
+    await expect(warm).toBeFocused()
+  })
+})
+
+test('a checked card is told from a focused one by its edge, in both of the interface’s themes', async () => {
+  const h = home()
+  await withApp(h, async (page) => {
+    await project(page, 'Los Angeles')
+    await openCell(page, 'style')
+    // A token as the colour the browser paints it in: a probe element wearing
+    // it, read back computed, in the theme the page is in now.
+    const colourOf = (token: string): Promise<string> =>
+      page.evaluate((name) => {
+        const probe = document.createElement('span')
+        probe.style.color = `var(${name})`
+        document.body.append(probe)
+        const colour = getComputedStyle(probe).color
+        probe.remove()
+        return colour
+      }, token)
+    const read = (word: string) =>
+      card(page, word).evaluate((el) => {
+        const style = getComputedStyle(el)
+        const box = el.getBoundingClientRect()
+        const root = getComputedStyle(document.documentElement)
+        return {
+          edge: style.borderTopColor,
+          edgeWidth: style.borderTopWidth,
+          ring: style.outlineColor,
+          // A ring is drawn when its style is not `none`. Its width is not
+          // evidence either way: Chromium reports `3px`, the initial
+          // `medium`, for an outline whose style is `none`.
+          ringStyle: style.outlineStyle,
+          ringWidth: style.outlineWidth,
+          width: box.width,
+          height: box.height,
+          // Where the picture sits inside the card, which is the padding and
+          // the edge together: unchanged if the edge is taken from the padding.
+          pictureTop:
+            (el.querySelector('.card-picture')?.getBoundingClientRect().top ?? 0) - box.top,
+          pictureWidth: el.querySelector('.card-picture')?.getBoundingClientRect().width ?? 0,
+          narrowest:
+            parseFloat(root.getPropertyValue('--card-min-width')) * parseFloat(root.fontSize),
+        }
+      })
+    for (const [scheme, attribute] of [
+      ['dark', null],
+      ['light', 'sepia'],
+    ] as const) {
+      // The interface follows the system until Settings says otherwise, and
+      // the attribute lands a turn after the emulation.
+      await page.emulateMedia({ colorScheme: scheme })
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.getAttribute('data-theme')))
+        .toBe(attribute)
+
+      // The same card before and after it is checked: Sepia, chosen with the
+      // pointer. Its edge goes from 1px of --border to 2px of --text, and the
+      // card is the size it was and its picture is where it was, because the
+      // edge is taken from the padding. (Two cards of one grid row are always
+      // as tall as each other, so the other card is no witness to this.)
+      const before = await read('Sepia')
+      expect(before.edgeWidth, `${scheme}: the resting edge is 1px`).toBe('1px')
+      expect(before.edge, `${scheme}: the resting edge is --border`).toBe(
+        await colourOf('--border'),
+      )
+      await card(page, 'Sepia').click()
+      await expect(radio(page, 'Sepia')).toBeChecked()
+      await expect.poll(() => readRecord(h).theme).toBe('sepia')
+      const after = await read('Sepia')
+      expect(after.edgeWidth, `${scheme}: the checked edge is 2px`).toBe('2px')
+      expect(after.edge, `${scheme}: the checked edge is --text`).toBe(await colourOf('--text'))
+      expect(after.height, `${scheme}: the card did not grow`).toBeCloseTo(before.height, 0)
+      expect(after.width, `${scheme}: nor widen`).toBeCloseTo(before.width, 0)
+      expect(after.pictureTop, `${scheme}: its picture did not move down`).toBeCloseTo(
+        before.pictureTop,
+        0,
+      )
+      expect(after.pictureWidth, `${scheme}: nor narrow`).toBeCloseTo(before.pictureWidth, 0)
+      expect(after.width, `${scheme}: a card is at least --card-min-width`).toBeGreaterThanOrEqual(
+        after.narrowest - 1,
+      )
+      // And back, so the next pass starts as this one did.
+      await card(page, 'Warm dark').click()
+      await expect(radio(page, 'Warm dark')).toBeChecked()
+      await expect.poll(() => readRecord(h).theme).toBe('warm-dark')
+
+      // Warm dark is the checked card, and focused from the keyboard: it
+      // wears the edge and the ring together, and they are two colours.
+      await cellHeading(page, 'style').focus()
+      await page.keyboard.press('Tab')
+      await expect(radio(page, 'Warm dark')).toBeFocused()
+      const checked = await read('Warm dark')
+      expect(checked.edgeWidth, `${scheme}: the checked edge is 2px`).toBe('2px')
+      expect(checked.edge, `${scheme}: the checked edge is --text`).toBe(await colourOf('--text'))
+      expect(checked.ringStyle, `${scheme}: the ring is drawn`).toBe('solid')
+      expect(checked.ringWidth, `${scheme}: the ring is 2px`).toBe('2px')
+      expect(checked.ring, `${scheme}: the ring is --focus`).toBe(await colourOf('--focus'))
+      expect(checked.edge, `${scheme}: the edge is not the ring`).not.toBe(checked.ring)
+      // The card that is neither checked nor focused has no ring.
+      expect((await read('Sepia')).ringStyle, `${scheme}: no ring on the other card`).toBe('none')
+    }
+    await page.emulateMedia({ colorScheme: null })
   })
 })
 
@@ -380,7 +569,7 @@ test('a chosen theme restyles the page in place, is stored, and asks the engine 
         navigated.push(moved.url())
     })
 
-    await switchOf(page).getByRole('button', { name: 'Sepia' }).click()
+    await card(page, 'Sepia').click()
     await expect
       .poll(() => readRecord(h).theme, { message: 'the record holds the theme' })
       .toBe('sepia')
@@ -422,10 +611,7 @@ test('a chosen theme restyles the page in place, is stored, and asks the engine 
       'src',
       /theme=sepia/,
     )
-    await expect(
-      switchOf(page).getByRole('button', { name: 'Sepia' }),
-      'and the switch says Sepia',
-    ).toHaveAttribute('aria-pressed', 'true')
+    await expect(radio(page, 'Sepia'), 'and the switch says Sepia').toBeChecked()
     await expect
       .poll(async () => (await factsOf(app))?.boot ?? null, {
         message: 'the first paint was sepia: the address gave it, before any call',
@@ -437,7 +623,7 @@ test('a chosen theme restyles the page in place, is stored, and asks the engine 
 })
 
 // A page the engine wrote before v0.11.0 has no `setTheme`, and nothing would
-// show a press on one. The page says so ("this map cannot do that") and the
+// show a choice made on one. The page says so ("this map cannot do that") and the
 // viewer does what it did before the seam had a theme: the frame goes to the
 // address with the project's theme, by the path a redraw takes, so the hour
 // the page was at is given back.
@@ -469,7 +655,7 @@ test('a page with no setTheme is loaded again at the new theme, once', async () 
         navigated.push(moved.url())
     })
 
-    await switchOf(page).getByRole('button', { name: 'Sepia' }).click()
+    await card(page, 'Sepia').click()
     await expect
       .poll(() => readRecord(h).theme, { message: 'the record holds the theme' })
       .toBe('sepia')
@@ -507,7 +693,7 @@ test('a page a run has rewritten arrives in the theme chosen before the run', as
   const h = home()
   await withApp(h, async (page, app) => {
     await openWithAPage(page, app, h)
-    await switchOf(page).getByRole('button', { name: 'Sepia' }).click()
+    await card(page, 'Sepia').click()
     await expect
       .poll(() => themeOf(page), { message: 'the page took sepia in place' })
       .toBe('sepia')
@@ -587,12 +773,12 @@ test('the switch is out of reach while a run is going, because the page is being
   const h = home({ progress_delay_ms: 400 })
   await withApp(h, async (page) => {
     await project(page, 'Los Angeles')
-    const sepia = switchOf(page).getByRole('button', { name: 'Sepia' })
+    const sepia = radio(page, 'Sepia')
     await expect(sepia).toBeEnabled()
 
     await page.getByRole('button', { name: /lay out/i }).click()
     // `map.build` writes the project's page in place and then sends the
-    // frame to the result: a press now would restyle a document that is
+    // frame to the result: a choice now would restyle a document that is
     // about to go, and nothing on screen would show it taking.
     await expect(sepia).toBeDisabled()
     // And it says why, where the switch is: the run's own panel is
@@ -604,7 +790,7 @@ test('the switch is out of reach while a run is going, because the page is being
   })
 })
 
-test('focus is handed over before the buttons go, when a timer closes the way', async () => {
+test('focus is handed over before the radios go, when a timer closes the way', async () => {
   const h = home({ progress_delay_ms: 400 })
   await withApp(h, async (page) => {
     await project(page, 'Los Angeles')
@@ -613,20 +799,20 @@ test('focus is handed over before the buttons go, when a timer closes the way', 
 
     // A change of the line order is debounced, so its build starts from a
     // timer with nobody pressing anything - and Chromium blurs a disabled
-    // element, so the buttons going would take the focus to the body. (A
+    // element, so the radios going would take the focus to the body. (A
     // colour is not the way to this: since issue 262 it builds in the press
     // that releases it, so the way closes under a person who has just
     // pressed, and there is no gap to put focus in.)
     await cell(page, 'lines').getByRole('button', { name: 'Move line A down', exact: true }).click()
 
     // Inside the order's debounce, with focus moved into the theme switch.
-    const sepia = switchOf(page).getByRole('button', { name: 'Sepia' })
+    const sepia = radio(page, 'Sepia')
     await sepia.focus()
     await expect(sepia).toBeFocused()
 
     await expect(sepia).toBeDisabled({ timeout: 30_000 })
     // The cell's heading row is the panel's heading now (A5.5-08), so that
-    // is where focus is handed when the buttons go.
+    // is where focus is handed when the radios go.
     await expect(cellHandback(page, 'style')).toBeFocused()
   })
 })
@@ -637,15 +823,16 @@ test('the switch still says which theme is chosen after a rebuild has disabled i
     await project(page, 'Los Angeles')
     await page.getByRole('button', { name: /lay out/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
-    const group = switchOf(page).getByRole('group', { name: 'The theme this map is drawn in' })
-    const warm = group.getByRole('button', { name: 'Warm dark' })
-    const sepia = group.getByRole('button', { name: 'Sepia' })
+    const warm = radio(page, 'Warm dark')
+    const sepia = radio(page, 'Sepia')
     const builds = received(h, 'map.build').length
 
     // A colour change rebuilds the map from the stored layout, and the
-    // switch is disabled while it runs. The kit re-syncs its inner button on
-    // every change of `disabled` and removed aria-pressed doing it, so after
-    // the first rebuild neither theme was announced as chosen (issue 124).
+    // switch is disabled while it runs. The kit's buttons lost their
+    // pressed state to a re-sync doing it, so after the first rebuild
+    // neither theme was announced as chosen (issue 124); the radios are
+    // native and a fieldset going unavailable and coming back leaves what
+    // was checked checked, which is asserted rather than assumed.
     const colours = cell(page, 'lines')
     await colours.getByRole('button', { name: /^Choose the colour of line A/ }).click()
     const picker = colours.getByRole('group', { name: 'Colour for line A' })
@@ -658,30 +845,26 @@ test('the switch still says which theme is chosen after a rebuild has disabled i
     await expect(sepia).toBeEnabled({ timeout: 30_000 })
     await expect(warm).toBeEnabled()
 
-    // On the button a screen reader reads: the role locator finds the kit's
-    // inner button, which is where the wrapper mirrors the state.
-    await expect(warm).toHaveAttribute('aria-pressed', 'true')
-    await expect(sepia).toHaveAttribute('aria-pressed', 'false')
+    await expect(warm).toBeChecked()
+    await expect(sepia).not.toBeChecked()
 
-    await sepia.click()
+    await card(page, 'Sepia').click()
     await expect.poll(() => readRecord(h).theme).toBe('sepia')
-    await expect(sepia).toHaveAttribute('aria-pressed', 'true')
-    await expect(warm).toHaveAttribute('aria-pressed', 'false')
+    await expect(sepia).toBeChecked()
+    await expect(warm).not.toBeChecked()
   })
 })
 
-test('two presses inside one write end where the second asked, not the first', async () => {
+test('two choices inside one write end where the second asked, not the first', async () => {
   const h = home()
   await withApp(h, async (page) => {
     await project(page, 'Los Angeles')
-    const group = switchOf(page).getByRole('group', { name: 'The theme this map is drawn in' })
-    await group.getByRole('button', { name: 'Sepia' }).click()
-    await group.getByRole('button', { name: 'Warm dark' }).click()
-    await expect(group.getByRole('button', { name: 'Warm dark' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    )
+    await card(page, 'Sepia').click()
+    await card(page, 'Warm dark').click()
+    await expect(radio(page, 'Warm dark')).toBeChecked()
     await expect.poll(() => readRecord(h).theme).toBe('warm-dark')
+    await expect(radio(page, 'Warm dark')).toBeChecked()
+    await expect(radio(page, 'Sepia')).not.toBeChecked()
   })
 })
 
@@ -695,13 +878,12 @@ test('a write that fails says so where the switch is, and changes nothing', asyn
     const [id] = readdirSync(join(h.engineHome, 'projects'))
     rmSync(join(h.engineHome, 'projects', id), { recursive: true, force: true })
 
-    await switchOf(page).getByRole('button', { name: 'Sepia' }).click()
+    await card(page, 'Sepia').click()
     await expect(switchOf(page).getByRole('alert')).toBeVisible()
-    // And the switch still shows what the project actually is.
-    await expect(switchOf(page).getByRole('button', { name: 'Warm dark' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    )
+    // And the switch still shows what the project actually is: the card
+    // that showed the choice while it was being written lets it go.
+    await expect(radio(page, 'Warm dark')).toBeChecked()
+    await expect(radio(page, 'Sepia')).not.toBeChecked()
   })
 })
 
@@ -711,7 +893,7 @@ test('an export is planned in the theme the project is drawn in', async () => {
     await project(page, 'Los Angeles')
     await page.getByRole('button', { name: /lay out/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
-    await switchOf(page).getByRole('button', { name: 'Sepia' }).click()
+    await card(page, 'Sepia').click()
     await expect.poll(() => readRecord(h).theme).toBe('sepia')
 
     // The stand-in engine's placeholder page cannot be captured; the
@@ -738,11 +920,11 @@ test('an export is planned in the theme the project is drawn in', async () => {
       timeout: 30_000,
     })
     // The switch is out of reach while the export runs: the theme it was
-    // planned with is the theme the reel will have, whatever is pressed now
+    // planned with is the theme the reel will have, whatever is chosen now
     // (FR-008). Closing the export's cell does not stop the export; the
     // encode is slowed so the export is still going.
     await closeCell(page, 'export')
-    await expect(switchOf(page).getByRole('button', { name: 'Warm dark' })).toBeDisabled()
+    await expect(radio(page, 'Warm dark')).toBeDisabled()
 
     await expect
       .poll(() => received(h, 'export.encode').length, { timeout: 30_000 })
