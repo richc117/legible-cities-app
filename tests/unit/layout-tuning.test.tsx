@@ -24,6 +24,7 @@ import {
   resettable,
   TUNING_LABELS,
   TUNING_SENTENCE,
+  tunedProject,
   tuningNotice,
   tuningParams,
   tuningViewOf,
@@ -197,6 +198,18 @@ describe('committing a field', () => {
     expect(after.tuning).toEqual({ grid: 'ortholinear' })
   })
 
+  it('keeps a number being typed through another field’s write landing, or a run ending', () => {
+    // Mutation: `tuningViewOf` keeps only refused drafts - the number half
+    // typed in 90° is then replaced by the record's as 45°'s write lands.
+    const typing = typed(commitTuningField(typed(view(), 'deg45', '3'), 'deg45'), 'deg90', '2.')
+    const landed = tuningViewOf({ deg45: 3 }, typing)
+    expect(landed.drafts.deg90).toBe('2.')
+    expect(landed.drafts.deg45, 'the committed number is the record’s').toBe('3')
+    expect(landed.problems).toEqual({})
+    // A draft that says what the record now holds is the record's.
+    expect(tuningViewOf({ deg90: 2 }, typed(view(), 'deg90', '2')).drafts.deg90).toBe('2')
+  })
+
   it('chooses a grid, LOOM’s own being no choice', () => {
     expect(chooseGrid(view({ deg45: 3 }), 'orthoradial').tuning).toEqual({
       grid: 'orthoradial',
@@ -343,5 +356,41 @@ describe('the section as it is drawn', () => {
     ])
     expect(RESET_LABEL).toBe('Reset to LOOM’s defaults')
     expect(html).not.toMatch(/type="range"|fig-slider/)
+  })
+})
+
+describe('the screen’s project once a tuning is written', () => {
+  const LAYOUT = 'a'.repeat(64)
+  const screen = {
+    id: 'kq7x2mzp4dna',
+    layout: LAYOUT,
+    tuning: { grid: 'hexalinear' },
+    laidOutWith: { grid: 'hexalinear' },
+    readOnly: false,
+  } as unknown as ProjectRecord & { readOnly: boolean }
+
+  it('loses a tuning the record no longer holds, which is what Reset leaves', () => {
+    // Mutation: `tunedProject` merges as the other writers do
+    // (`{ ...project, ...record }`) - the reset tuning then stays on the
+    // screen, the cell says the layout is behind, and the next run sends it.
+    const answered = { id: 'kq7x2mzp4dna', layout: LAYOUT } as unknown as ProjectRecord
+    const after = tunedProject(screen, answered)
+    expect(after).not.toHaveProperty('tuning')
+    expect(after).not.toHaveProperty('laidOutWith')
+    expect(after.readOnly, 'what the screen adds is kept').toBe(false)
+    expect(tuningNotice(after)).toBeNull()
+  })
+
+  it('takes a tuning the record holds, and keeps the screen’s own field', () => {
+    const answered = {
+      id: 'kq7x2mzp4dna',
+      layout: LAYOUT,
+      tuning: { deg45: 3 },
+      laidOutWith: { grid: 'hexalinear' },
+    } as unknown as ProjectRecord
+    const after = tunedProject({ ...screen, readOnly: true }, answered)
+    expect(after.tuning).toEqual({ deg45: 3 })
+    expect(after.laidOutWith).toEqual({ grid: 'hexalinear' })
+    expect(after.readOnly).toBe(true)
   })
 })

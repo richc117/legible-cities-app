@@ -20,6 +20,7 @@ import { skipTarget } from '../SkipPastMap'
 import { forgetTheme, rememberTheme } from '../themeMemory'
 import { writeThenRestyle } from '../themeWrites'
 import type { TextInputHandle } from '../kit/TextInput'
+import { tunedProject } from '../tuningRules'
 import { useEngineState } from '../useEngineState'
 import { useSnapshot } from '../useSnapshot'
 
@@ -441,11 +442,13 @@ export function useProjectState(
   // committed, as the export's options are, and nothing is laid out for
   // them: the next layout run reads the record and sends them, and until
   // then the run graph reports the layout as of another tuning (issue 385).
+  // The record comes back whole and goes in whole (`tunedProject`): a reset
+  // removes the key, which a merge would keep.
   const setTuning = async (tuning: ProjectTuning): Promise<void> => {
     const record = await window.api.projects.setTuning(id, tuning)
     setState((current) =>
       current.status === 'ready'
-        ? { status: 'ready', project: { ...current.project, ...record } }
+        ? { status: 'ready', project: tunedProject(current.project, record) }
         : current,
     )
   }

@@ -25,6 +25,13 @@
 //   outside its range is refused'.
 // - Reset's `heading.current?.focus()` removed (`LayoutTuning.tsx`): 'Reset
 //   clears' (focus falls to the page as the button disables itself).
+// - `setTuning` in `useProjectState.ts` merging its answer
+//   (`{ ...current.project, ...record }`) in place of `tunedProject`: 'Reset
+//   clears' (the screen keeps the tuning the record no longer holds, and
+//   cell 02 goes on saying the layout is behind).
+// - `{after}` at another index in the idle panel than in the running one
+//   (`LayoutRun.tsx`): 'a tuning chosen before the first layout' (the
+//   section is mounted afresh, closed, as the run starts).
 // - the stand-in's flags left out of its layout id: 'Lay out again sends the
 //   tuning' (the layout does not change).
 // - `askedWith` taken from the record at the run's end rather than its start:
@@ -327,6 +334,13 @@ test('Reset clears the record’s tuning, says LOOM’s defaults, and hands focu
     // Back to what the layout was asked with: nothing is behind.
     await expect(page.getByText(/^Lay out again to use/)).toHaveCount(0)
     await expect(said(page)).toHaveText('The map is drawn from every cell.')
+    // And the next run sends nothing of what was cleared: the screen's own
+    // record lost the tuning with the file's.
+    await page.getByRole('button', { name: 'Lay out again', exact: true }).click()
+    await expect.poll(() => requests(engineHome, 'graph.build').length).toBe(2)
+    expect(requests(engineHome, 'graph.build')[1].params).not.toHaveProperty('tuning')
+    await expect(said(page)).toHaveText('The map is drawn from every cell.', { timeout: 30_000 })
+    expect(readRecord(engineHome)).not.toHaveProperty('laidOutWith')
   })
 })
 
@@ -368,6 +382,13 @@ test('a tuning chosen before the first layout is the one it is laid out with', a
 
     await page.getByRole('button', { name: 'Lay out', exact: true }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    // The section is the same element from the idle panel to the running
+    // one and on to the finished one, so it is still open and still holds
+    // what it showed. Mutation: `{after}` given a different place in the
+    // idle and the running panels (`LayoutRun.tsx`) - it is then mounted
+    // afresh, closed, when the run starts.
+    await expect(toggle(page)).toHaveAttribute('aria-expanded', 'true')
+    await expect(field(page, 'Grid size')).toHaveValue('50')
     expect(requests(engineHome, 'graph.build')[0].params.tuning).toEqual({ grid_size: 50 })
     await expect.poll(() => readRecord(engineHome).laidOutWith).toEqual({ gridSize: 50 })
     await expect(said(page)).toHaveText('The map is drawn from every cell.')

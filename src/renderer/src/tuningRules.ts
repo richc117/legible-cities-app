@@ -194,20 +194,22 @@ export const isTuningPending = (
 ): boolean => drafts[key] !== tuningFieldText(tuning, key)
 
 /**
- * The section showing a record's tuning. A number that was refused and is
- * still waiting where it was typed is kept through it, with its sentence:
- * a record arriving for another reason - a rename, a run that ended - must
- * not take a person's half-mended number away, as cell 04's sizes keep one.
+ * The section showing a record's tuning. A number still waiting where it was
+ * typed - refused, with its sentence, or not committed yet - is kept through
+ * it: a record arriving for another reason - a rename, another field's
+ * write landing, a run that ended - must not take a person's number away
+ * while they are typing or mending it. A field whose draft says what the
+ * record now holds is the record's, which is how a committed number settles.
  */
 export function tuningViewOf(tuning: ProjectTuning | undefined, previous?: TuningView): TuningView {
   const held = settledTuning(tuning ?? {})
   const view: TuningView = { tuning: held, drafts: tuningDraftsOf(held), problems: {} }
   if (previous !== undefined) {
     for (const key of TUNING_KEYS) {
-      const problem = previous.problems[key]
-      if (problem === undefined || !isTuningPending(held, previous.drafts, key)) continue
+      if (!isTuningPending(held, previous.drafts, key)) continue
       view.drafts[key] = previous.drafts[key]
-      view.problems[key] = problem
+      const problem = previous.problems[key]
+      if (problem !== undefined) view.problems[key] = problem
     }
   }
   return view
@@ -276,4 +278,25 @@ export function tuningNotice(
   const wanted = tuningIsSet(record.tuning) ? 'this tuning' : LOOM_DEFAULTS
   const had = tuningIsSet(record.laidOutWith) ? 'another tuning' : LOOM_DEFAULTS
   return `Lay out again to use ${wanted}: the map on screen was laid out with ${had}.`
+}
+
+/**
+ * The screen's project once `projects.setTuning` has answered: the record
+ * it wrote laid over it, the two tunings included where the record holds
+ * neither, so the screen keeps only what it adds of its own (whether the
+ * project is read-only).
+ *
+ * Not the spread the other writers merge their answer with
+ * (`{ ...project, ...record }`): this is the one writer that removes a key.
+ * A reset, or a last field put back to LOOM's own, leaves the record with no
+ * `tuning` at all, and a spread would keep the tuning the screen had - so
+ * the cell would go on saying the layout is of another tuning, and the next
+ * layout run, started from the screen's record, would send the tuning a
+ * person had just cleared.
+ */
+export function tunedProject<P extends ProjectRecord>(project: P, record: ProjectRecord): P {
+  const next = { ...project, ...record }
+  if (record.tuning === undefined) delete next.tuning
+  if (record.laidOutWith === undefined) delete next.laidOutWith
+  return next
 }
