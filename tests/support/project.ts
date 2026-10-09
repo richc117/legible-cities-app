@@ -140,7 +140,11 @@ const PRESS_DEADLINE_MS = 2_000
  * the page renders a press's update before it answers a read made after
  * the press was sent, so a press that landed slowly is seen by that read.
  */
-async function pressHeading(heading: Locator, expanded: 'true' | 'false'): Promise<void> {
+async function pressHeading(
+  heading: Locator,
+  expanded: 'true' | 'false',
+  cell: CellId,
+): Promise<void> {
   if ((await heading.getAttribute('aria-expanded')) === expanded) return
   await heading.click()
   const landed = await expect(heading)
@@ -150,8 +154,16 @@ async function pressHeading(heading: Locator, expanded: 'true' | 'false'): Promi
       () => false,
     )
   if (landed) return
-  if ((await heading.getAttribute('aria-expanded')) !== expanded) await heading.click()
-  await expect(heading).toHaveAttribute('aria-expanded', expanded)
+  if ((await heading.getAttribute('aria-expanded')) !== expanded) {
+    // Said in the job's log, so a rising rate of lost presses is seen while
+    // the retry still covers it, not only once it stops covering it.
+    console.log(`openCell: the press on cell ${cell}'s heading was lost; pressing again`)
+    await heading.click()
+  }
+  await expect(
+    heading,
+    `cell ${cell}'s heading was pressed twice and still does not say aria-expanded="${expanded}"`,
+  ).toHaveAttribute('aria-expanded', expanded)
 }
 
 /**
@@ -166,7 +178,7 @@ async function pressHeading(heading: Locator, expanded: 'true' | 'false'): Promi
  * the reasoning). Deadlines throughout, never a count of turns.
  */
 export async function openCell(page: Page, id: CellId): Promise<Locator> {
-  await pressHeading(cellHeading(page, id), 'true')
+  await pressHeading(cellHeading(page, id), 'true', id)
   await expect(cell(page, id)).toBeVisible()
   return cell(page, id)
 }
@@ -180,7 +192,7 @@ export async function openCell(page: Page, id: CellId): Promise<Locator> {
  * unchanged on a fresh read, then wait for the group to be hidden.
  */
 export async function closeCell(page: Page, id: CellId): Promise<void> {
-  await pressHeading(cellHeading(page, id), 'false')
+  await pressHeading(cellHeading(page, id), 'false', id)
   await expect(cell(page, id)).toBeHidden()
 }
 
