@@ -31,8 +31,12 @@ export const STATIONS_MAX = 20_000
 /** The longest station id read: LOOM's node ids are a few dozen characters. */
 export const STATION_ID_MAX = 200
 
-/** The longest station name read, which is a name and not a paragraph. */
-export const STATION_NAME_MAX = 200
+/**
+ * The longest station name read. Generous, because one name over it makes
+ * the whole list unreadable and no redraw can change a feed's names; it is
+ * a bound on what a record can be made to carry, not a judgement of names.
+ */
+export const STATION_NAME_MAX = 1000
 
 /** The longest line label the page's answer may carry. The label is drawn verbatim. */
 export const TRIP_LABEL_MAX = 200
@@ -165,11 +169,22 @@ const isCount = (value: unknown, min: number, max: number): value is number =>
  * is a trip only when every leg is whole, every station it names is one of
  * `stations`, the legs join up from `from` to `to`, and `changes` is one
  * fewer than the legs; anything less is refused with a sentence, so a page
- * that says something odd is never drawn as a list of steps.
+ * that says something odd is never drawn as a list of steps. `asked`, when
+ * given, is the pair the page was asked for, and an answer about any other
+ * pair is refused too.
  */
-export function readTrip(value: unknown, stations: readonly Station[]): TripAnswer {
+export function readTrip(
+  value: unknown,
+  stations: readonly Station[],
+  asked?: readonly [string, string],
+): TripAnswer {
   if (value === null || value === undefined) return { kind: 'none' }
   if (!isObject(value)) return refused(UNREADABLE_TRIP)
+  // An answer about another pair than the one asked for is not this trip,
+  // whatever it says: drawn, its steps would sit under pickers naming
+  // stations it never visits.
+  if (asked !== undefined && (value.from !== asked[0] || value.to !== asked[1]))
+    return refused(UNREADABLE_TRIP)
   const hidden = readHidden(value.hidden)
   if (hidden === null) return refused(UNREADABLE_TRIP)
   if (value.legs === null) {

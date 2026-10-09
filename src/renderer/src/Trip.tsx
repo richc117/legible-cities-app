@@ -137,7 +137,7 @@ export default function Trip({
     tell(ask).then(
       (value) => {
         if (mine !== asked.current || !mounted.current) return
-        const read = readTrip(value, listNow.current ?? [])
+        const read = readTrip(value, listNow.current ?? [], ask)
         setView(read)
         // An answer the steps will not list may still be a trip the page
         // has faded the map for: the map is put back whole, so the two
@@ -281,7 +281,7 @@ export default function Trip({
               message={refusalAt('end')}
             />
           </div>
-          <p className="message error" role="alert">
+          <p className="message error trip-instead" role="alert">
             {instead}
           </p>
           <p className="prose trip-summary" role="status">

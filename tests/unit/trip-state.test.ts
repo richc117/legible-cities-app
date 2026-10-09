@@ -118,6 +118,28 @@ describe('a trip, as the pickers make it', () => {
     ).toEqual([])
   })
 
+  it('asks again for a pair the page was not told, when a station already chosen is chosen again', () => {
+    // A call that failed, or an answer the section would not draw, leaves
+    // both pickers holding the pair and the page told nothing: choosing the
+    // same station again is how a person asks again, and it asks once.
+    const pair = { start: ALPHA, end: CHARLIE }
+    expect(choose(pair, 'end', CHARLIE, null, null)).toEqual({
+      pair,
+      refusals: [],
+      send: [ALPHA, CHARLIE],
+    })
+    // Told it already, the same choice is nothing at all.
+    expect(choose(pair, 'end', CHARLIE, [ALPHA, CHARLIE], null).send).toBeUndefined()
+    // Half a pair is no trip to ask for again.
+    expect(choose({ start: ALPHA, end: null }, 'start', ALPHA, null, null).send).toBeUndefined()
+    // And while something holds the page it is refused like any choice.
+    expect(choose(pair, 'end', CHARLIE, null, HELD)).toEqual({
+      pair,
+      refusals: [{ place: 'end', sentence: HELD }],
+      send: undefined,
+    })
+  })
+
   it('names the trip a pair asks for: two stations, and two different ones', () => {
     expect(askOf({ start: ALPHA, end: CHARLIE })).toEqual([ALPHA, CHARLIE])
     expect(askOf({ start: ALPHA, end: null })).toBeNull()

@@ -88,7 +88,7 @@ describe('the stations a map was drawn with', () => {
       ],
       [{ id: 'x'.repeat(201), name: 'Long' }],
       [{ id: 'a\nb', name: 'Broken' }],
-      [{ id: 'a', name: 'n'.repeat(201) }],
+      [{ id: 'a', name: 'n'.repeat(1001) }],
       ['a'],
     ]) {
       expect(readStations(bad), JSON.stringify(bad)).toBeNull()
@@ -161,6 +161,31 @@ describe("the page's answer about a trip", () => {
       reason: 'no trip without hidden lines',
       hidden: ['Green Line', 'Red Line'],
     })
+  })
+
+  it('refuses an answer about another pair than the one asked for', () => {
+    // The page answers for the pair it was given; one that answers for some
+    // other listed pair is not this trip, whole as it may be.
+    expect(readTrip(ALDER_TO_GORSE, STATIONS, ['alder', 'gorse']).kind).toBe('trip')
+    for (const asked of [
+      ['alder', 'hazel'],
+      ['birch', 'gorse'],
+      ['gorse', 'alder'],
+    ] as const) {
+      expect(readTrip(ALDER_TO_GORSE, STATIONS, asked), asked.join(' to ')).toEqual({
+        kind: 'refused',
+        sentence: UNREADABLE_TRIP,
+      })
+    }
+    const noTrip = {
+      from: 'alder',
+      to: 'oak',
+      legs: null,
+      changes: 0,
+      reason: 'no trip joins these stations',
+    }
+    expect(readTrip(noTrip, STATIONS, ['alder', 'oak']).kind).toBe('no-trip')
+    expect(readTrip(noTrip, STATIONS, ['alder', 'elm']).kind).toBe('refused')
   })
 
   it('refuses a trip through a station the project does not list', () => {

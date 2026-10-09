@@ -118,11 +118,16 @@ const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Combobox(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active])
 
+  // The option already chosen, chosen again, is still a choice: the caller
+  // decides whether it changes anything, and may use it to ask again.
   const take = (id: string | null): void => {
-    if (id !== null && id !== value) onChoose(id)
+    if (id !== null) onChoose(id)
   }
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
+    // A key that is composing text in an input method is the method's: an
+    // Enter that ends a composition must not choose an option too.
+    if (event.nativeEvent.isComposing) return
     const outcome = keyed(state, { key: event.key, altKey: event.altKey }, matches)
     if (outcome.handled) event.preventDefault()
     // Escape is the popup's while it is open, and nothing above it hears it.
@@ -170,6 +175,12 @@ const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(function Combobox(
         role="listbox"
         aria-labelledby={labelId}
         popover="manual"
+        // Never a Tab stop, even when it overflows and Chromium would make a
+        // scroller focusable; and a press anywhere on it - its padding, its
+        // scrollbar - keeps focus in the field, so the field's blur does not
+        // shut the popup under the pointer.
+        tabIndex={-1}
+        onMouseDown={(event) => event.preventDefault()}
       >
         {showing &&
           matches.map((option, index) => (

@@ -79,7 +79,16 @@ export function choose(
   told: Ask,
   held: string | null,
 ): Outcome {
-  if (pair[picker] === id) return { pair, refusals: [], send: undefined }
+  // The station already chosen, chosen again: nothing, unless the page was
+  // never told the trip the pair asks for - a call that failed, or an
+  // answer the section refused - and then this is how a person asks again.
+  if (pair[picker] === id) {
+    const again = toTell(pair, told)
+    if (again === undefined) return { pair, refusals: [], send: undefined }
+    if (held !== null)
+      return { pair, refusals: [{ place: picker, sentence: held }], send: undefined }
+    return { pair, refusals: [], send: again }
+  }
   if (held !== null) return { pair, refusals: [{ place: picker, sentence: held }], send: undefined }
   const other = picker === 'start' ? pair.end : pair.start
   if (id !== null && id === other)
