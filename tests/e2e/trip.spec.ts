@@ -612,13 +612,22 @@ test('the page’s answers that are not a plain trip are said beside the pickers
 
 test('a choice made while a run holds the page is refused beside it, and the sentence goes with the run', async () => {
   test.setTimeout(TRIP_TIMEOUT)
-  // Slow enough that the run is still going when the choice is made.
-  const engineHome = home({ progress_delay_ms: 250 })
+  // Slow enough that the run is still going when the choice is made and
+  // the page is read: the map build alone is eight stages of this, and a
+  // run that ended early would have sent the frame to the stand-in
+  // engine's own page, which has no record to read.
+  const engineHome = home({ progress_delay_ms: 500 })
   await withApp(engineHome, async (page, app) => {
     await projectWithAPage(page, engineHome)
     const region = tripRegion(page)
     await chooseStation(page, START, 'alp')
     const held = tripRefusal({ laying: true, exporting: false }) as string
+    // A laid-out project opens with cell 02 collapsed (`Notebook.tsx`), and
+    // a collapsed cell's panel is hidden, so its "Lay out again" is not in
+    // the tree until the cell is opened. It stays open for the run's own
+    // "Laid out" below. The run in this session has finished, so the cell's
+    // "Layout run" region is drawn for `openCell` to wait on.
+    await openCell(page, 'process')
     await page.getByRole('button', { name: 'Lay out again', exact: true }).click()
     await expect(cellHeading(page, 'process')).toHaveAccessibleName(/ running/)
     await chooseStation(page, END, 'cha')
