@@ -494,8 +494,8 @@ line's row (six dots) and **drag** it down to the last place without
 letting go for a moment, then release. Drag another line a little way and,
 still holding it, press Escape; then release. Rest the pointer on a row's
 up arrow. Then press the down arrow on the first line, and the up arrow on
-another. Wait for the map. In the page, press **Linear**, then **Time**,
-and open **More** in each; then press **Schematic** again. Press **Back to
+another. Wait for the map. In the page, press **Linear**, open **More**,
+press **Time**, and then **Schematic** again. Press **Back to
 alphabetical**.
 
 **See.**
