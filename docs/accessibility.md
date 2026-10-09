@@ -1020,12 +1020,14 @@ a table).
   first stage is done the heading "Where the routes run" is there, with
   the same sentence, group and buttons; listen for "gtfs2graph drawn.",
   said once and politely, then "topo drawn.", "loom drawn." and "octi
-  drawn." as each is drawn, and nothing else said by the pane. The sentence
+  drawn." as each is drawn, or two together when two land at once, and
+  nothing else said by the pane. The sentence
   beside the drawing, read when you reach it, names the stage drawn and
   the stage running: "gtfs2graph drawn; topo running." The two buttons are
   never dimmed or announced as unavailable, and a button is pressed only
   while the drawing is of its stage: press "loom" before it is drawn and
-  listen for "loom is not drawn yet.", with "loom" still not pressed. Run
+  listen for "loom is not drawn yet.", with "loom" still not pressed, and
+  the same again on a second press. Run
   it again and press "Cancel" in cell 02 after the first stage: the sentence
   "The layout run was cancelled, so its stages are no longer drawn." is
   there beside the pane when you read it, and is not announced.

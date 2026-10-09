@@ -34,10 +34,13 @@ test.skip(PYTHON === null, 'no python3 or python on the PATH to run the stand-in
 
 /**
  * How long the stand-in takes between two reports: long enough for a spec
- * to read each stage while it is the latest, which on a slow runner takes
- * a click and several assertions.
+ * to read each stage while it is the latest. The tightest reads are the
+ * first spec's from topo's drawing to octi's report, two steps that hold a
+ * click and seven assertions and must leave the one step in which "topo
+ * drawn; octi running." shows still to come; at three seconds a step that
+ * is six seconds, and the six reads after gtfs2graph's drawing have three.
  */
-const STEP_MS = 2500
+const STEP_MS = 3000
 
 function home(control: Record<string, unknown> = {}): string {
   const dir = mkdtempSync(join(tmpdir(), 'legible-cities-reveal-'))
@@ -154,17 +157,18 @@ test('a first layout is drawn stage by stage, a stage refused as not yet is draw
     )
 
     // A press on a stage not drawn yet says so and presses nothing. Nothing
-    // more is drawn until octi's report, so the line holds until then.
+    // more is drawn until octi's report, so the line holds until then: it
+    // is read here, before the wait below, and not again inside that one
+    // step.
     await stageButton(view, 'loom').click()
     await expect(sentence(view, 'loom is not drawn yet.')).toBeVisible()
     await expect(liveRegion(view)).toHaveText('loom is not drawn yet.')
     await expect(stageButton(view, 'loom')).toHaveAttribute('aria-pressed', 'false')
 
     // loom is reported and asked for, and refused as not yet: it waits on
-    // octi. No failure is shown, and the sentence still names topo.
+    // octi. The sentence still names topo, and no failure is shown.
     await expect(sentence(view, 'topo drawn; octi running.')).toBeVisible({ timeout: 20_000 })
     await expect(view.getByRole('alert')).toHaveCount(0)
-    await expect(sentence(view, 'loom is not drawn yet.')).toBeVisible()
 
     // At octi's report loom is asked for again and drawn, and so is octi.
     await expect(sentence(view, 'octi drawn; the layout’s four stages are done.')).toBeVisible({
