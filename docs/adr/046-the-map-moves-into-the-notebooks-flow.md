@@ -1,6 +1,6 @@
 # ADR-046: The map moves into the notebook's flow, and the export gets a preview of its own
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-01
 - **Supersedes:** ADR-045, in part (the map pinned under the header, and the
   one frame per project that follows from it)
@@ -215,3 +215,5 @@ decision it replaces. Its other decisions - the six cells, the states, the
 rail, the run graph - stand. The export tab's spec has a requirement that
 says the map's frame is the export's preview while cell 06 is open; it is
 amended by the spec that carries this change.
+
+**As of 8 Oct 2026: Accepted.** The map between cells 02 and 03 and cell 06's own preview shipped in v0.1.0-rc.7 and in 0.1.0, whose automated acceptance run passed on both runners; the measurements above stand as taken on 1 Oct 2026, and nothing in the three person runs still owed on issue 37 can move them. The record's revisit clause, a person's complaint about the two live pages, is unchanged.
