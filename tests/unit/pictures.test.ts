@@ -111,7 +111,19 @@ describe("the engine's pictures of the map's two themes (A7-13)", () => {
     const urls = THEMES.map((theme) => themePictures.themePicture(theme))
     for (const url of urls) expect(url).toEqual(expect.any(String))
     expect(new Set(urls).size, 'two addresses, not one twice').toBe(2)
-    for (const url of urls) expect(url).toMatch(/^data:image\/svg\+xml,|\/theme-[a-z-]+\.svg$/)
+    // Files, served from the renderer's assets: under Vitest and in
+    // development the address carries Vite's `?no-inline`, and in a build it
+    // is a hashed file name. Never a `data:` address, which would put the
+    // engine's drawing inside the interface's own script (ADR-028).
+    for (const url of urls) expect(url).toMatch(/theme-[a-z-]+(-[\w-]+)?\.svg(\?no-inline)?$/)
+    for (const url of urls) expect(url).not.toMatch(/^data:/)
+  })
+
+  it('are imported with ?url&no-inline, so that the build emits them as files', () => {
+    // The file name a build gives them is not seen from here, so the thing
+    // that decides it is: without the query, Vite inlines a file this small.
+    const source = readFileSync(resolve(root, 'themePictures.ts'), 'utf8')
+    expect(source).toContain("query: '?url&no-inline'")
   })
 
   describe('the check itself', () => {

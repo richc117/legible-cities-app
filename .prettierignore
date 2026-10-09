@@ -16,3 +16,8 @@ src/renderer/src/icons/phosphor/LICENSE
 
 # The determinism fixture: the engine's own files, byte for byte (A5-04).
 tests/fixtures/determinism/bart/data/
+
+# The READMEs the engine's scripts wrote beside its pictures, kept as written
+# (issue 285): a second run of a script must change only its date line.
+src/renderer/src/pictures/README.md
+src/renderer/src/samples/README.md

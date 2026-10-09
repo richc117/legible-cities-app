@@ -138,14 +138,15 @@ const unescaped = (value: string): string =>
     .replaceAll('&amp;', '&')
 
 /**
- * The document an `<img>`'s `src` stands for: the data address Vite makes of
- * a small file, decoded, or the file the address names.
+ * The document an `<img>`'s `src` stands for: the file the address names.
+ * The pictures are served as files, never inlined as a `data:` address
+ * (`themePictures.ts`), and the address may carry a query (`?no-inline`
+ * where Vite serves them), which is not part of the file's name.
  */
 function fileBehind(src: string): string {
   const address = unescaped(src)
-  const data = 'data:image/svg+xml,'
-  if (address.startsWith(data)) return decodeURIComponent(address.slice(data.length))
-  return readFileSync(resolve(pictures, basename(address)), 'utf8')
+  expect(address, 'the picture is a file, not a data address').not.toMatch(/^data:/)
+  return readFileSync(resolve(pictures, basename(address.split('?')[0])), 'utf8')
 }
 
 /** The colour of a picture's backdrop rectangle, which is its ground. */
@@ -312,8 +313,7 @@ describe('cell 04, Style', () => {
       // Mutation: an alt with words, which the radio's name would then say twice.
       const found = cards(draw({ project: record }))
       for (const card of found) expect(card.picture.alt, 'alt is present and empty').toBe('')
-      // Which file each one shows is read from its ground, whether the build
-      // inlined the file as a data address (a small file is) or served it.
+      // Which file each one shows is read from its ground.
       const grounds = found.map((card) => groundOf(fileBehind(card.picture.src)))
       expect(grounds).toEqual(THEMES.map((theme) => groundOf(picture(theme))))
       expect(new Set(grounds).size, 'two pictures, not one twice').toBe(2)

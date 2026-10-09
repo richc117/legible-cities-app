@@ -3,10 +3,10 @@
 Two pictures of the map's two themes, for the desktop app's style cell to
 choose by. The app never draws a map, so these are the engine's.
 
-| File                  | Theme     | Ground    |
-| --------------------- | --------- | --------- |
+| File | Theme | Ground |
+| --- | --- | --- |
 | `theme-warm-dark.svg` | Warm dark | `#15120f` |
-| `theme-sepia.svg`     | Sepia     | `#f7efe1` |
+| `theme-sepia.svg` | Sepia | `#f7efe1` |
 
 Made by engine 0.12.0 on 2026-10-08.
 

@@ -11,12 +11,19 @@ import type { Theme } from '../../shared/project'
 // `styles/tokens.css`, so a retheme on the engine's side fails there until
 // the files are made again.
 //
+// `?url&no-inline`, so that Vite emits each file under the renderer's assets
+// and the page is given an address to fetch: the engine's output stays out
+// of the interface's own script and document (ADR-028), and nothing rides
+// inside the bundle as a `data:` address, which a file this small would
+// otherwise become. In development and under Vitest the address carries a
+// trailing `?no-inline`, which is harmless.
+//
 // A module of its own, and not part of `ThemeSwitch.tsx`, because
 // `import.meta.glob` is something Vite evaluates and Playwright's loader
 // cannot: no spec imports this file, or a file that does.
 
 const files = import.meta.glob('./pictures/*.svg', {
-  query: '?url',
+  query: '?url&no-inline',
   import: 'default',
   eager: true,
 }) as Record<string, string>
