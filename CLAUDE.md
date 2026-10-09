@@ -27,7 +27,7 @@ the kit's `Tabs` control was deleted with the tab strip (A5.5-23).
 | Cell | Holds | Adapter under `src/renderer/src/notebook/cells/` |
 | --- | --- | --- |
 | 01 Data | `Inspect`, `StageView`, the feed's download (`DownloadLine`) | `DataCell.tsx` |
-| 02 Process | `LayoutRun`, the engine's log (`EngineLog`), `Diagnostics` | `ProcessCell.tsx` |
+| 02 Process | `LayoutRun`, the layout's tuning (`LayoutTuning`, issue 385), the engine's log (`EngineLog`), `Diagnostics` | `ProcessCell.tsx` |
 | 03 Frame and service day | `ServiceDay`, the transport (`Transport`: scrub, play, speed), the trip (`Trip`: two pickers, the steps; issue 272) | `FrameCell.tsx` |
 | 04 Style | `ThemeSwitch`, `StyleFields` (the map's sizes, issue 350) | `StyleCell.tsx` |
 | 05 Lines | `LineColours`, `LineOrder` | `LinesCell.tsx` |
