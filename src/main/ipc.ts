@@ -304,15 +304,27 @@ export function registerProjectHandlers(
   handle(CHANNELS.projectsSetInputs, (id, inputs) =>
     store.setInputs(readId(id), readInputs(inputs)),
   )
-  handle(CHANNELS.projectsCompleteColors, (id, palette) =>
-    store.completeColors(readId(id), readPalette(palette)),
-  )
-  handle(CHANNELS.projectsCompleteOrder, (id, order) =>
-    store.completeOrder(readId(id), readLineOrder(order)),
-  )
-  handle(CHANNELS.projectsCompleteStyle, (id, style) =>
-    store.completeStyle(readId(id), readStyle(style)),
-  )
+  // A redraw's stations (issue 272) ride as an optional last argument,
+  // passed on only when the list reads whole, so a call without one reaches
+  // the store exactly as it always did.
+  handle(CHANNELS.projectsCompleteColors, (id, palette, stations) => {
+    const { stations: drawn } = readDrawnStations(stations)
+    return drawn === undefined
+      ? store.completeColors(readId(id), readPalette(palette))
+      : store.completeColors(readId(id), readPalette(palette), drawn)
+  })
+  handle(CHANNELS.projectsCompleteOrder, (id, order, stations) => {
+    const { stations: drawn } = readDrawnStations(stations)
+    return drawn === undefined
+      ? store.completeOrder(readId(id), readLineOrder(order))
+      : store.completeOrder(readId(id), readLineOrder(order), drawn)
+  })
+  handle(CHANNELS.projectsCompleteStyle, (id, style, stations) => {
+    const { stations: drawn } = readDrawnStations(stations)
+    return drawn === undefined
+      ? store.completeStyle(readId(id), readStyle(style))
+      : store.completeStyle(readId(id), readStyle(style), drawn)
+  })
   handle(CHANNELS.projectsSetDate, (id, date) => store.setDate(readId(id), readServiceDay(date)))
   handle(CHANNELS.projectsSetTheme, (id, theme) => store.setTheme(readId(id), readTheme(theme)))
   handle(CHANNELS.projectsMarkOpened, (id) => store.markOpened(readId(id)))

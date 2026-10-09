@@ -75,9 +75,12 @@ const api: Api = {
     completeLayout: (id, done) => invoke(CHANNELS.projectsCompleteLayout, id, done),
     completeRebuild: (id, done) => invoke(CHANNELS.projectsCompleteRebuild, id, done),
     setInputs: (id, inputs) => invoke(CHANNELS.projectsSetInputs, id, inputs),
-    completeColors: (id, palette) => invoke(CHANNELS.projectsCompleteColors, id, palette),
-    completeOrder: (id, order) => invoke(CHANNELS.projectsCompleteOrder, id, order),
-    completeStyle: (id, style) => invoke(CHANNELS.projectsCompleteStyle, id, style),
+    completeColors: (id, palette, stations) =>
+      invoke(CHANNELS.projectsCompleteColors, id, palette, stations),
+    completeOrder: (id, order, stations) =>
+      invoke(CHANNELS.projectsCompleteOrder, id, order, stations),
+    completeStyle: (id, style, stations) =>
+      invoke(CHANNELS.projectsCompleteStyle, id, style, stations),
     setDate: (id, date) => invoke(CHANNELS.projectsSetDate, id, date),
     setTheme: (id, theme) => invoke(CHANNELS.projectsSetTheme, id, theme),
     markOpened: (id) => invoke(CHANNELS.projectsMarkOpened, id),

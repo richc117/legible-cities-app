@@ -4,11 +4,13 @@
 // from the stored files without a build, so the list has to outlive the
 // build that answered it.
 //
-// What is held here: a layout run and a rebuild write the list their build
-// answered; a recolour, a reorder and a resize keep it, because they draw
-// the same stations from the same layout; a map drawn from another layout,
-// or the same id laid out again, does not inherit a list that was not its
-// own; an older record has none; a list that does not read whole is no list
+// What is held here: every draw writes the list its build answered - a
+// layout run and a rebuild in their `done`, a recolour, a reorder and a
+// resize as a last argument, since another project may have laid the set
+// out again under them; a draw that answered none keeps the list it had
+// while the layout is the one it was listed for; a map drawn from another
+// layout, or the same id laid out again, does not inherit a list that was
+// not its own; an older record has none; a list that does not read whole is no list
 // and leaves the rest of the block alone; the bridge drops a list it cannot
 // read rather than failing the run; and the front door's summaries carry
 // none.
@@ -102,6 +104,19 @@ describe('the record keeps the stations its map was drawn with', () => {
     expect((await store.get(id)).drawn?.stations, 'after a reorder').toEqual(STATIONS)
     await store.completeStyle(id, { lineWidth: 9 })
     expect((await store.get(id)).drawn?.stations, 'after a resize').toEqual(STATIONS)
+  })
+
+  it('writes the list a recolour, a reorder or a resize answered, which may be another set’s', async () => {
+    // Another project on the same inputs laid the set out again since this
+    // one drew from it (A3-06): the record's `made` cannot see that, and a
+    // redraw draws the set as it is now, with that set's stations.
+    const id = await laidOut()
+    await store.completeColors(id, { colors: {}, defaultColor: '#888888' }, WITHOUT_BRAVO)
+    expect((await store.get(id)).drawn?.stations, 'after a recolour').toEqual(WITHOUT_BRAVO)
+    await store.completeOrder(id, ['A'], STATIONS)
+    expect((await store.get(id)).drawn?.stations, 'after a reorder').toEqual(STATIONS)
+    await store.completeStyle(id, { lineWidth: 9 }, WITHOUT_BRAVO)
+    expect((await store.get(id)).drawn?.stations, 'after a resize').toEqual(WITHOUT_BRAVO)
   })
 
   it('writes the list a rebuild answered, and keeps the one it had when it answered none', async () => {
@@ -248,6 +263,21 @@ describe('the bridge', () => {
     expect(calls[1].args[1]).toEqual({ date: '2026-09-12', stations: STATIONS })
   })
 
+  it('passes a redraw’s list as the last argument, and no argument where there is none', async () => {
+    const { call, calls } = harness()
+    const palette = { colors: {}, defaultColor: '#888888' }
+    await call(CHANNELS.projectsCompleteColors, 'abcdefghijk1', palette, STATIONS)
+    await call(CHANNELS.projectsCompleteOrder, 'abcdefghijk1', ['A'], STATIONS)
+    await call(CHANNELS.projectsCompleteStyle, 'abcdefghijk1', { lineWidth: 9 }, STATIONS)
+    expect(calls.map((c) => c.args[2])).toEqual([STATIONS, STATIONS, STATIONS])
+    // None given, or one that does not read whole: the call is the one it
+    // always was, two arguments and no third.
+    await call(CHANNELS.projectsCompleteColors, 'abcdefghijk1', palette)
+    await call(CHANNELS.projectsCompleteOrder, 'abcdefghijk1', ['A'], 'Alpha')
+    await call(CHANNELS.projectsCompleteStyle, 'abcdefghijk1', { lineWidth: 9 }, [{ id: 7 }])
+    expect(calls.slice(3).map((c) => c.args.length)).toEqual([2, 2, 2])
+  })
+
   it('drops a list it cannot read, and still writes the run', async () => {
     const { call, calls } = harness()
     for (const stations of [
@@ -343,7 +373,8 @@ describe('the layout run hands the record its build’s stations', () => {
         return { changed: false, relaid: false }
       },
       completeRebuild: async (_id, done) => written.push({ method: 'completeRebuild', done }),
-      completeColors: async () => written.push({ method: 'completeColors', done: null }),
+      completeColors: async (_id, _palette, stations) =>
+        written.push({ method: 'completeColors', done: stations ?? null }),
       completeOrder: async () => undefined,
       completeStyle: async () => undefined,
       today: () => '2026-09-08',
@@ -370,6 +401,14 @@ describe('the layout run hands the record its build’s stations', () => {
     expect(written).toEqual([
       { method: 'completeRebuild', done: { date: '2026-09-16', stations: STATIONS } },
     ])
+  })
+
+  it('with a recolour, the same, as the last argument', async () => {
+    const { run, written } = made(STATIONS)
+    const end = ended(run)
+    run.recolour(project, READY, { colors: {}, defaultColor: '#888888' })
+    expect(await end).toBe('done')
+    expect(written).toEqual([{ method: 'completeColors', done: STATIONS }])
   })
 
   it('and nothing at all where the build listed none it can read', async () => {

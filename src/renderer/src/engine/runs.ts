@@ -264,9 +264,10 @@ export function layoutRunFor(projectId: string): LayoutRun {
     client: engineClient(),
     complete: (id, done) => window.api.projects.completeLayout(id, done),
     completeRebuild: (id, done) => window.api.projects.completeRebuild(id, done),
-    completeColors: (id, palette) => window.api.projects.completeColors(id, palette),
-    completeOrder: (id, order) => window.api.projects.completeOrder(id, order),
-    completeStyle: (id, style) => window.api.projects.completeStyle(id, style),
+    completeColors: (id, palette, stations) =>
+      window.api.projects.completeColors(id, palette, stations),
+    completeOrder: (id, order, stations) => window.api.projects.completeOrder(id, order, stations),
+    completeStyle: (id, style, stations) => window.api.projects.completeStyle(id, style, stations),
     today,
     // Asked afresh as a layout ends before its first stage: the list the
     // screens hold was read before the download (issue 178).

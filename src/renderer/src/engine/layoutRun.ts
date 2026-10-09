@@ -272,12 +272,16 @@ export interface RunOptions {
    * window or not at all, with the stations the map was drawn with.
    */
   completeRebuild(id: string, done: { date: string; stations?: Station[] }): Promise<unknown>
-  /** A redraw for chosen colours finished: the palette is written, never before the map is drawn. */
-  completeColors(id: string, palette: Palette): Promise<unknown>
+  /**
+   * A redraw for chosen colours finished: the palette is written, never
+   * before the map is drawn, with the stations the build answered where it
+   * answered a list (issue 272). So are the two below.
+   */
+  completeColors(id: string, palette: Palette, stations?: Station[]): Promise<unknown>
   /** A redraw for a chosen line order finished: the order is written, never before the map is drawn. */
-  completeOrder(id: string, order: LineOrder): Promise<unknown>
+  completeOrder(id: string, order: LineOrder, stations?: Station[]): Promise<unknown>
   /** A redraw for chosen sizes finished: the style is written, never before the map is drawn. */
-  completeStyle(id: string, style: ProjectStyle): Promise<unknown>
+  completeStyle(id: string, style: ProjectStyle, stations?: Station[]): Promise<unknown>
   /** The anchor the engine's choice is made from: the machine's date, injected so a test can fix it. */
   today(): string
   /**
@@ -668,7 +672,7 @@ export class LayoutRun {
 
     void (async () => {
       try {
-        const { report } = await this.#draw(
+        const { report, stations } = await this.#draw(
           project,
           layout,
           date,
@@ -677,7 +681,9 @@ export class LayoutRun {
           project.style,
         )
         if (this.#cancelled) return this.#stopped()
-        await completeColors(project.id, palette)
+        await (stations === null
+          ? completeColors(project.id, palette)
+          : completeColors(project.id, palette, stations))
         this.#finish({ changed: false, relaid: false }, report)
       } catch (reason) {
         this.#failed(reason)
@@ -729,7 +735,7 @@ export class LayoutRun {
 
     void (async () => {
       try {
-        const { report } = await this.#draw(
+        const { report, stations } = await this.#draw(
           project,
           layout,
           date,
@@ -738,7 +744,9 @@ export class LayoutRun {
           project.style,
         )
         if (this.#cancelled) return this.#stopped()
-        await completeOrder(project.id, order)
+        await (stations === null
+          ? completeOrder(project.id, order)
+          : completeOrder(project.id, order, stations))
         this.#finish({ changed: false, relaid: false }, report)
       } catch (reason) {
         this.#failed(reason)
@@ -797,7 +805,7 @@ export class LayoutRun {
 
     void (async () => {
       try {
-        const { report } = await this.#draw(
+        const { report, stations } = await this.#draw(
           project,
           layout,
           date,
@@ -806,7 +814,9 @@ export class LayoutRun {
           style,
         )
         if (this.#cancelled) return this.#stopped()
-        await completeStyle(project.id, style)
+        await (stations === null
+          ? completeStyle(project.id, style)
+          : completeStyle(project.id, style, stations))
         this.#finish({ changed: false, relaid: false }, report)
       } catch (reason) {
         this.#failed(reason)
@@ -877,9 +887,10 @@ export class LayoutRun {
    * they never appear on screen before the map they describe and never go
    * again because the record could not be written (spec 017). With them, the
    * stations the map draws (issue 272), read whole or not at all, for the
-   * handlers that write `drawn` from a layout run and a rebuild; a recolour,
-   * a reorder and a resize draw the same stations from the same layout, and
-   * the record keeps the list it had.
+   * handlers that write `drawn`, every draw's: a recolour, a reorder and a
+   * resize draw from the stored set as it is now, which another project may
+   * have laid out again since, so the list is the build's and not the
+   * record's to assume.
    */
   async #draw(
     project: ProjectRecord,

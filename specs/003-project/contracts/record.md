@@ -76,11 +76,14 @@ The on-disk form of `ProjectRecord` (`data-model.md`), version 2:
   the name the map writes, the empty string where the feed gives none, in
   the engine's order. Cell 03's Trip section offers it and nothing the app
   derives, and it is in the record because a project opened again shows its
-  map from the stored files without a build. `completeLayout` and
-  `completeRebuild` write the list their build answered; a recolour, a
-  reorder and a resize, which draw the same stations from the same layout,
-  keep it; a draw from another layout, or from the same id laid out again
-  since, keeps nothing it did not answer. It is optional and read on its
+  map from the stored files without a build. Every draw writes the list
+  its build answered - `completeLayout` and `completeRebuild` in their
+  `done`, `completeColors`, `completeOrder` and `completeStyle` as an
+  optional last argument - because a redraw draws the stored set as it is
+  now, which another project may have laid out again (A3-06). A draw whose
+  build answered no list the bridge would take keeps the one the record had
+  while the layout and its `made` are unchanged, and nothing from another
+  layout or from the same id laid out again since. It is optional and read on its
   own: missing, or a list that is not whole (an entry without a string id
   and name, an empty or repeated id, more than 20,000 entries), reads as no
   list and leaves the rest of `drawn` as it was, and the section then asks

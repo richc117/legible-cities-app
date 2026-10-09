@@ -167,10 +167,13 @@ export interface DrawnFrom {
    * build: a project opened again shows its map from the stored files
    * without one.
    *
-   * It is the map's own fact, like the colours and the order, and no cheap
-   * edit moves it, so a redraw from the same layout keeps the list it had
-   * (`drawnFrom`); a layout run or a rebuild writes the list its build
-   * answered. Absent for a record drawn before it was kept, for a block
+   * It is the map's own fact, like the colours and the order: every draw -
+   * a layout run, a rebuild, a recolour, a reorder, a resize - writes the
+   * list its build answered, since a redraw draws the stored set as it is
+   * now and another project may have laid it out again (A3-06); a draw whose
+   * build answered none the app would take keeps the list it had while the
+   * layout is the one it was listed for (`drawnFrom`). Absent for a record
+   * drawn before it was kept, for a block
    * whose list does not read whole, and for a map drawn from another layout
    * than the list was - which reads as "draw the map again to pick a trip",
    * never as a map with no stations. Added without moving `RECORD_VERSION`
@@ -766,10 +769,11 @@ export function drawnFrom(record: ProjectRecord): DrawnFrom | null {
     theme: record.theme,
     style: styleSent(record.style),
   }
-  // The stations are the layout's (issue 272): a colour, an order, a size
-  // or a day draws the same stations from the same layout, so the list the
-  // last draw kept is still the map's. From another layout, or the same id
-  // laid out again since, it is not, and it is left out rather than claimed.
+  // The stations are the layout's (issue 272). A draw writes the list its
+  // build answered (`withStations`); this is the fallback for one that
+  // answered none: the list the last draw kept, while the layout and its
+  // `made` are the record's. From another layout, or the same id laid out
+  // again since, it is left out rather than claimed.
   const before = record.drawn
   if (
     before !== null &&
