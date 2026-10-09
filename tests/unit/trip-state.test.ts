@@ -245,6 +245,27 @@ describe('the sentences beside the controls, act by act', () => {
     expect(refusals()).toEqual([])
   })
 
+  it('keeps the hold’s sentence when the station already chosen is chosen again during it', () => {
+    // A to C is shown, a run starts, and End is chosen during it: refused
+    // with the hold's sentence. Then the same Charlie is chosen in End again,
+    // which changes nothing: the hold's sentence stays until the hold lifts.
+    const shown = { start: ALPHA, end: CHARLIE }
+    const told: Ask = [ALPHA, CHARLIE]
+    const refused = choose(shown, 'end', BRAVO, told, HELD)
+    let refusals = refusalsAfter([], refused, 'end', shown)
+    expect(refusals).toEqual([{ place: 'end', sentence: HELD }])
+    const again = choose(shown, 'end', CHARLIE, told, HELD)
+    expect(again.send).toBeUndefined()
+    refusals = refusalsAfter(refusals, again, 'end', shown)
+    expect(refusals).toEqual([{ place: 'end', sentence: HELD }])
+    // Once the hold has lifted, the same choice is nothing at all.
+    expect(choose(shown, 'end', CHARLIE, told, null)).toEqual({
+      pair: shown,
+      refusals: [],
+      send: undefined,
+    })
+  })
+
   it('keeps the other picker’s sentence when a picker asks again, and clears all on a new pair', () => {
     const start: Refusal = {
       place: 'start',

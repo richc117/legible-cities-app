@@ -212,6 +212,19 @@ describe('restoreCalls', () => {
     expect(names({ trip: { ...TRIP, from: 'x'.repeat(200) } })).toEqual(['setTrip'])
   })
 
+  it('composes no setTrip the main process would refuse: one rule for a station id', () => {
+    // `isStationId` is the rule `src/main/viewer.ts` holds setTrip's
+    // arguments to; an id with a control character in it fails it there,
+    // so the restore does not send it either.
+    for (const trip of [
+      { ...TRIP, from: 'a\nb' },
+      { ...TRIP, to: 'tab\there' },
+      { ...TRIP, from: '\u0000' },
+    ]) {
+      expect(names({ trip }), JSON.stringify(trip)).toEqual([])
+    }
+  })
+
   it('takes what is not an object as nothing to restore', () => {
     for (const nonsense of ['state', 7, true, [], () => undefined]) {
       expect(after(nonsense)).toEqual([])

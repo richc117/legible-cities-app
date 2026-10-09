@@ -27,7 +27,7 @@
 // specs/029-the-map-in-the-flow (FR-006).
 
 import type { WebContents, WebFrameMain } from 'electron'
-import { isTheme } from '../shared/project'
+import { COLORS_MAX, LABEL_MAX, isTheme } from '../shared/project'
 import { isStationId } from '../shared/trip'
 import {
   EXPORT_FRAME_METHODS,
@@ -52,11 +52,11 @@ const finite = (value: unknown): value is number =>
 /** A view's name: the page's own word, read back from its `state()`. */
 const isViewName = (value: unknown): boolean =>
   typeof value === 'string' && value.length > 0 && value.length <= 64
-/** A line's label as the page's chips name it. */
+/** A line's label, held to the record's own bound on one (`LABEL_MAX`). */
 const isLabel = (value: unknown): boolean =>
-  typeof value === 'string' && value.length > 0 && value.length <= 200
-/** The most lines a keep list may name: a feed's colours are capped at 512. */
-const KEEP_MAX = 1024
+  typeof value === 'string' && value.length > 0 && value.length <= LABEL_MAX
+/** The most lines a keep list may name: the record's own bound on a feed's lines (`COLORS_MAX`). */
+const KEEP_MAX = COLORS_MAX
 
 export const VIEWER_ARGUMENTS: Readonly<Record<ViewerMethod, (args: unknown[]) => boolean>> = {
   // A view's name, and optionally a duration in seconds, which the restore
@@ -84,9 +84,12 @@ export const VIEWER_ARGUMENTS: Readonly<Record<ViewerMethod, (args: unknown[]) =
 }
 
 /**
- * The most the serialised arguments of one call may weigh, in characters:
- * a keep list of every line a feed could carry, with room, and far below
- * anything that would make an injection a burden on the page.
+ * The most the serialised arguments of one call may weigh, in characters,
+ * checked after the table. It bounds the text injected into the page. The
+ * table's heaviest call - a keep list of `COLORS_MAX` labels of `LABEL_MAX`
+ * characters each, about 34,300 - fits under it with room, so for every
+ * call the table admits today it is defence in depth: the line that still
+ * holds if an entry is ever written wider than it should be.
  */
 export const VIEWER_ARGUMENTS_MAX = 65_536
 

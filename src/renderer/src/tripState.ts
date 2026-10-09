@@ -82,12 +82,12 @@ export function choose(
   // The station already chosen, chosen again: nothing, unless the page was
   // never told the trip the pair asks for - a call that failed, or an
   // answer the section refused - and then this is how a person asks again.
+  // A hold is looked at first, so a re-choice made while it stands says the
+  // hold again rather than clearing the sentence that says it.
   if (pair[picker] === id) {
-    const again = toTell(pair, told)
-    if (again === undefined) return { pair, refusals: [], send: undefined }
     if (held !== null)
       return { pair, refusals: [{ place: picker, sentence: held }], send: undefined }
-    return { pair, refusals: [], send: again }
+    return { pair, refusals: [], send: toTell(pair, told) }
   }
   if (held !== null) return { pair, refusals: [{ place: picker, sentence: held }], send: undefined }
   const other = picker === 'start' ? pair.end : pair.start

@@ -12,6 +12,7 @@ import {
   dispatcher,
   roleOfAddress,
 } from '../../src/main/viewer'
+import { COLORS_MAX, LABEL_MAX } from '../../src/shared/project'
 import {
   MISSING_METHOD,
   VIEWER_METHODS,
@@ -529,11 +530,25 @@ describe('the arguments a method may be sent', () => {
     for (const method of VIEWER_METHODS) expect(typeof VIEWER_ARGUMENTS[method]).toBe('function')
   })
 
-  it('refuses a call whose arguments would weigh more than the cap', async () => {
-    const many = Array.from({ length: 1000 }, (_, i) => `${'L'.repeat(150)}${i}`)
-    expect(JSON.stringify([many]).length).toBeGreaterThan(VIEWER_ARGUMENTS_MAX)
-    expect(await sent('setRoutes', [many])).toBe('the map cannot be asked that')
-    expect(await sent('setRoutes', [many.slice(0, 100)])).toBe('sent')
+  it('holds a keep list to the record’s own bounds on lines and labels', async () => {
+    // `COLORS_MAX` labels of `LABEL_MAX` characters: the heaviest keep
+    // list the record could describe is admitted, and one more line, or one
+    // label a character longer, is not.
+    const heaviest = Array.from({ length: COLORS_MAX }, (_, i) => `${i}`.padStart(LABEL_MAX, 'L'))
+    expect(await sent('setRoutes', [heaviest])).toBe('sent')
+    expect(await sent('setRoutes', [[...heaviest, 'M']])).toBe('the map cannot be asked that')
+    expect(await sent('setRoutes', [['L'.repeat(LABEL_MAX + 1)]])).toBe(
+      'the map cannot be asked that',
+    )
+  })
+
+  it('caps the serialised arguments above the heaviest call the table admits', async () => {
+    // The cap bounds the text injected into the page. The table's heaviest
+    // admitted call fits under it, so the cap refuses nothing the app sends
+    // and stands behind the table if an entry is ever written too wide.
+    const heaviest = Array.from({ length: COLORS_MAX }, (_, i) => `${i}`.padStart(LABEL_MAX, 'L'))
+    expect(JSON.stringify([heaviest]).length).toBeLessThan(VIEWER_ARGUMENTS_MAX)
+    expect(await sent('setRoutes', [heaviest])).toBe('sent')
   })
 })
 

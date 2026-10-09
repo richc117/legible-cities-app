@@ -1,4 +1,5 @@
 import type { Theme } from '../../shared/project'
+import { isStationId } from '../../shared/trip'
 import type { ViewerMethod } from '../../shared/viewer'
 
 // Giving the engine's page back what the page before it was showing.
@@ -100,11 +101,12 @@ const seconds = (value: unknown): number | null =>
 const rate = (value: unknown): number | null =>
   typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null
 
-/** A station id the page was asked for: an id, not an essay. */
-const STATION_ID_MAX = 200
-
-const station = (value: unknown): string | null =>
-  typeof value === 'string' && value.length > 0 && value.length <= STATION_ID_MAX ? value : null
+/**
+ * A station id the page was asked for, by the one rule the main process
+ * holds `setTrip`'s arguments to (`isStationId`), so the restore composes
+ * nothing the main process would refuse.
+ */
+const station = (value: unknown): string | null => (isStationId(value) ? value : null)
 
 /**
  * The two stations of a trip the page was showing, or null. Only a trip it
