@@ -1,0 +1,40 @@
+<!-- Drawn by the schematic engine 0.12.0 with bin/theme-thumbnails: an invented network of four lines, the same drawing in both themes, colours resolved to literals. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200" viewBox="-31.00 -31.38 510.00 318.75" data-viewbox-nolabels="-31.00 -31.00 510.00 318.00" font-family="Helvetica Neue, Helvetica, Arial, sans-serif">
+<rect id="backdrop" x="-31.00" y="-31.38" width="510.00" height="318.75" fill="#15120f"/>
+<g id="lines" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<g class="line" data-line="A" stroke="#d6322f" stroke-width="7.00">
+<path id="t0_A" data-src="x1y5" data-dst="x5y5" d="M 0.00 128.00 L 128.00 128.00"/>
+<path id="t1_A" data-src="x5y5" data-dst="x8y5" d="M 128.00 128.00 L 224.00 128.00"/>
+<path id="t2_A" data-src="x8y5" data-dst="x11y5" d="M 224.00 128.00 L 320.00 128.00"/>
+<path id="t3_A" data-src="x11y5" data-dst="x15y5" d="M 320.00 128.00 L 448.00 128.00"/>
+</g>
+<g class="line" data-line="B" stroke="#2f6fd6" stroke-width="7.00">
+<path id="t4_B" data-src="x5y9" data-dst="x5y5" d="M 128.00 0.00 L 128.00 128.00"/>
+<path id="t5_B" data-src="x5y5" data-dst="x5y1" d="M 128.00 128.00 L 128.00 256.00"/>
+</g>
+<g class="line" data-line="C" stroke="#1e9150" stroke-width="7.00">
+<path id="t6_C" data-src="x8y8" data-dst="x11y5" d="M 224.00 32.00 L 320.00 128.00"/>
+<path id="t7_C" data-src="x11y5" data-dst="x14y2" d="M 320.00 128.00 L 416.00 224.00"/>
+</g>
+<g class="line" data-line="D" stroke="#c2690f" stroke-width="7.00">
+<path id="t8_D" data-src="x11y9" data-dst="x11y5" d="M 320.00 0.00 L 320.00 128.00"/>
+<path id="t9_D" data-src="x11y5" data-dst="x11y3" d="M 320.00 128.00 L 320.00 192.00"/>
+<path id="t10_D" data-src="x11y3" data-dst="x11y1" d="M 320.00 192.00 L 320.00 256.00"/>
+</g>
+</g>
+<g id="stations">
+<circle cx="0.00" cy="128.00" r="4.20" fill="#f2ede6" stroke="#15120f" stroke-width="2.20" data-node="x1y5" data-station-id="x1y5"/>
+<circle cx="128.00" cy="128.00" r="6.00" fill="#f2ede6" stroke="#15120f" stroke-width="2.20" data-node="x5y5" data-station-id="x5y5"/>
+<circle cx="224.00" cy="128.00" r="4.20" fill="#f2ede6" stroke="#15120f" stroke-width="2.20" data-node="x8y5" data-station-id="x8y5"/>
+<circle cx="320.00" cy="128.00" r="6.00" fill="#f2ede6" stroke="#15120f" stroke-width="2.20" data-node="x11y5" data-station-id="x11y5"/>
+<circle cx="448.00" cy="128.00" r="4.20" fill="#f2ede6" stroke="#15120f" stroke-width="2.20" data-node="x15y5" data-station-id="x15y5"/>
+<circle cx="128.00" cy="0.00" r="4.20" fill="#f2ede6" stroke="#15120f" stroke-width="2.20" data-node="x5y9" data-station-id="x5y9"/>
+<circle cx="128.00" cy="256.00" r="4.20" fill="#f2ede6" stroke="#15120f" stroke-width="2.20" data-node="x5y1" data-station-id="x5y1"/>
+<circle cx="224.00" cy="32.00" r="4.20" fill="#f2ede6" stroke="#15120f" stroke-width="2.20" data-node="x8y8" data-station-id="x8y8"/>
+<circle cx="416.00" cy="224.00" r="4.20" fill="#f2ede6" stroke="#15120f" stroke-width="2.20" data-node="x14y2" data-station-id="x14y2"/>
+<circle cx="320.00" cy="0.00" r="4.20" fill="#f2ede6" stroke="#15120f" stroke-width="2.20" data-node="x11y9" data-station-id="x11y9"/>
+<circle cx="320.00" cy="192.00" r="4.20" fill="#f2ede6" stroke="#15120f" stroke-width="2.20" data-node="x11y3" data-station-id="x11y3"/>
+<circle cx="320.00" cy="256.00" r="4.20" fill="#f2ede6" stroke="#15120f" stroke-width="2.20" data-node="x11y1" data-station-id="x11y1"/>
+</g>
+<g id="trains"></g>
+</svg>

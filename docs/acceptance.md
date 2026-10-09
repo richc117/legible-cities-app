@@ -412,15 +412,22 @@ Result: ____
 ### 8. Cell 04, Style: the theme and the sizes
 
 **Do.** With the map playing, note the hour on the clock beside cell 03's
-slider. In cell **04 Style**, press **Sepia**. Then press **Warm dark**.
-Then, under **Sizes**, type **12** into **Line width** and press Enter, and
-wait for the map to be drawn again. Type **30** into **Line width** and
-press Enter. Set **Station radius** to **8**, leave the field, and then set
-**Interchange radius** to **9**. Press **Reset to the engine's sizes**.
+slider. In cell **04 Style**, choose **Sepia** by pressing its card. Then
+choose **Warm dark**. Then, with the keyboard, Tab to the pair and press the
+arrow keys, once each way. Then, under **Sizes**, type **12** into **Line
+width** and press Enter, and wait for the map to be drawn again. Type **30**
+into **Line width** and press Enter. Set **Station radius** to **8**, leave
+the field, and then set **Interchange radius** to **9**. Press **Reset to the
+engine's sizes**.
 
 **See.**
-- Two buttons, **Warm dark** and **Sepia**, the map's current one marked as
-  pressed.
+- Two cards, **Warm dark** and **Sepia**, each the engine's small picture of
+  a map in that theme over its name, in one group called "The theme this map
+  is drawn in" (two radio buttons to a screen reader, not two buttons). The
+  map's current one is **selected**: its edge is heavier, and it is in the
+  text colour, not the blue the focus ring is. Tab reaches the pair once, on
+  the selected card, and the arrow keys change the theme; the focus ring is
+  drawn round the card.
 - The map changes to the sepia theme at once and in place: it does not go
   blank or start again, its clock carries on from the hour you noted rather
   than from the start of the day, and the view and labels you had are as

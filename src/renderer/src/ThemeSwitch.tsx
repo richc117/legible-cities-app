@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type JSX, type RefObject } from 'react'
-import { THEMES, type ProjectRecord, type Theme } from '../../shared/project'
-import Button from './kit/Button'
+import { useId, useLayoutEffect, useRef, useState, type JSX, type RefObject } from 'react'
+import { THEMES, isTheme, type ProjectRecord, type Theme } from '../../shared/project'
+import { themePicture } from './themePictures'
 import { nextWrite, writeThrough } from './themeWrites'
 
 // The theme a project's map is drawn in (A4-03, specs/021-theme).
@@ -18,6 +18,17 @@ import { nextWrite, writeThrough } from './themeWrites'
 // in Settings (A1-04) and the two are independent: a theme belongs to the
 // map, which is exported and published, rather than to the room the person
 // making it is sitting in.
+//
+// **Two native radios, each a card** (A7-13, issue 285, DESIGN.md 8.2). A
+// theme is a stored choice and the two exclude each other, which is what a
+// radio group says to a screen reader and to the arrow keys; a pair of
+// pressed buttons says only that each is pressed or not. Each radio sits in
+// the `<label>` that is its card, over the engine's picture of the theme
+// and the theme's word, and is visually hidden but keeps focus, so the card
+// draws the ring and the checked edge (`panels.css`). The picture is
+// `alt=""`: it sits beside the word that names it, and the radio takes its
+// name from the word alone. The pictures are the engine's files
+// (`themePictures.ts`); nothing here draws a line or a station.
 
 /**
  * What each theme is called on the screen; the values are the engine page's
@@ -35,8 +46,8 @@ const WORDS: Record<Theme, string> = {
 }
 
 /**
- * The theme in the map's own words, for the buttons here and for cell 04's
- * collapsed summary (A5.5-17). Beside the buttons that say it rather than
+ * The theme in the map's own words, for the cards here and for cell 04's
+ * collapsed summary (A5.5-17). Beside the cards that say it rather than
  * in a module of its own, so the row and the summary cannot drift apart.
  */
 export const themeWord = (theme: Theme): string => WORDS[theme]
@@ -54,7 +65,7 @@ interface Props {
    * place and then sends the frame to the result, so a theme set on the page
    * now on screen would be set on a document that is about to go (the record
    * would hold it and the next page would carry it, but nothing would show
-   * the press taking); an export took the theme when it planned, so a change
+   * the choice taking); an export took the theme when it planned, so a change
    * during one would not reach the reel it is making.
    */
   disabled?: boolean
@@ -68,7 +79,7 @@ interface Props {
    */
   handback: RefObject<HTMLElement | null>
   /**
-   * Say nothing about why the buttons are disabled. A redraw for colours
+   * Say nothing about why the cards are disabled. A redraw for colours
    * or order is over in moments and started by the person's own hand, and
    * the sentence added fifty-odd pixels under the cell the colour panel is
    * opened from, moving it (issue 304).
@@ -87,22 +98,41 @@ export default function ThemeSwitch({
   quiet = false,
 }: Props): JSX.Element {
   const [problem, setProblem] = useState<string | null>(null)
-  // Whether a write is in flight, and the theme pressed while it was: refs
-  // rather than state, because a press reads them in the same tick it
+  // The theme most recently asked for while its write is still on its way,
+  // so the cards show the person's last choice at once and not the record's
+  // until the write has landed. A radio the person has just checked and the
+  // page then unchecks - the record still holding the old theme for the
+  // moment a write takes - is read out as a choice that did not take, and a
+  // second choice back to the old theme would be a click on a radio that
+  // already looks checked, which the browser never reports.
+  const [asked, setAsked] = useState<Theme | null>(null)
+  const shown = asked ?? project.theme
+  // One name for the two radios, so they are one group to the keyboard: Tab
+  // enters it once and the arrow keys move the choice.
+  const group = useId()
+  // Whether a write is in flight, and the theme chosen while it was: refs
+  // rather than state, because a choice reads them in the same tick it
   // arrives. As state, the flag would still read true through the render
-  // after the last write settled, and a press landing in that gap would be
+  // after the last write settled, and a choice landing in that gap would be
   // kept by a loop that had already ended - the silent drop this exists to
   // stop, in a narrower window.
   const writing = useRef(false)
   const kept = useRef<Theme | null>(null)
   const section = useRef<HTMLElement>(null)
 
-  // A run can start from a timer rather than a press: a colour or an order
+  // A run can start from a timer rather than a choice: a colour or an order
   // change is debounced, so the way closes with nobody touching anything.
   // Chromium blurs a disabled element, so focus is handed to the cell's heading
-  // before the buttons go, and a press kept from before is forgotten -
+  // before the radios go, and a choice kept from before is forgotten -
   // applying it after the way closed is what the closing is for.
-  useEffect(() => {
+  //
+  // A layout effect, so it runs in the commit that disables the fieldset,
+  // as the DOM is written and before any task of the browser's own. The
+  // kit's buttons this replaced were disabled by an effect of their own,
+  // which ran just before this one in the same flush; the fieldset is
+  // disabled by the commit itself, and an effect left to the scheduler runs
+  // later and could find focus already gone.
+  useLayoutEffect(() => {
     if (!disabled) return
     kept.current = null
     const active = document.activeElement
@@ -114,6 +144,7 @@ export default function ThemeSwitch({
   const choose = async (theme: Theme): Promise<void> => {
     const step = nextWrite(theme, project.theme, writing.current)
     if (step === 'none') return
+    setAsked(theme)
     if (step === 'keep') {
       kept.current = theme
       return
@@ -131,6 +162,9 @@ export default function ThemeSwitch({
       setProblem(error instanceof Error ? error.message : String(error))
     } finally {
       writing.current = false
+      // The record holds what was written, or still holds what it did if
+      // the write failed: either way it is the cards' word again.
+      setAsked(null)
     }
   }
 
@@ -140,23 +174,38 @@ export default function ThemeSwitch({
         The map is drawn in one of the engine&rsquo;s two themes, and so is every export of it. The
         interface has its own theme in Settings; neither follows the other.
       </p>
-      <div className="toolbar" role="group" aria-label="The theme this map is drawn in">
-        {THEMES.map((theme) => (
-          <Button
-            key={theme}
-            variant={theme === project.theme ? 'primary' : 'secondary'}
-            aria-pressed={theme === project.theme}
-            /* Not disabled while the write is in flight: it takes a
-               moment, and a button that disables itself under a person's
-               hands takes the focus with it (A3-04). A press that arrives
-               then is kept and applied when the write settles. */
-            disabled={disabled}
-            onClick={() => void choose(theme)}
-          >
-            {WORDS[theme]}
-          </Button>
-        ))}
-      </div>
+      {/* A fieldset named for what it sets. Its legend is the group's name
+          and is not drawn: the paragraph above says the same in words, and
+          the cards are the control. Disabled as a whole while a run or an
+          export holds the page, which disables the radios inside it. Not
+          disabled while the write is in flight: it takes a moment, and a
+          control that disables itself under a person's hands takes the
+          focus with it (A3-04). A choice that arrives then is kept and
+          applied when the write settles. */}
+      <fieldset className="theme-cards-group" disabled={disabled}>
+        <legend className="visually-hidden">The theme this map is drawn in</legend>
+        <div className="theme-cards">
+          {THEMES.map((theme) => (
+            <label key={theme} className="card theme-card">
+              <input
+                type="radio"
+                className="visually-hidden"
+                name={group}
+                value={theme}
+                checked={theme === shown}
+                onChange={(event) => {
+                  const value = event.currentTarget.value
+                  if (isTheme(value)) void choose(value)
+                }}
+              />
+              <span className="card-picture">
+                <img src={themePicture(theme)} alt="" />
+              </span>
+              <span className="card-name">{WORDS[theme]}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
       {disabled && !quiet && (
         <p className="hint" role="status">
           The theme waits until the run that is going has finished: the map on screen is being

@@ -15,6 +15,7 @@ const styles = resolve(__dirname, '../../src/renderer/src/styles')
 const theme = readFileSync(resolve(styles, 'theme.css'), 'utf8')
 const adapter = readFileSync(resolve(styles, 'figui-adapter.css'), 'utf8')
 const app = readFileSync(resolve(styles, 'app.css'), 'utf8')
+const panels = readFileSync(resolve(styles, 'panels.css'), 'utf8')
 
 type Theme = 'dark' | 'sepia'
 const SELECTOR: Record<Theme, RegExp> = {
@@ -164,6 +165,16 @@ const PAIRS: [string, string, number][] = [
   // --text-muted, and --text under the pointer, on --surface; the carried
   // row is --surface-raised with a --border-strong edge, and the place, the
   // name and the grip on it are --text-muted and --text. All are above.
+  //
+  // Nor do cell 04's theme cards (A7-13): a card is --surface-raised and
+  // --surface-hover under the pointer, its word --text on both, its checked
+  // edge --text on both (a control's edge needs 3.0 and has far more, so
+  // the text pairs above hold it), its disabled word --text-faint on
+  // --surface-raised, and its focus ring --focus on the ground the cell
+  // sits on. The picture area is --surface-sunken with a --border edge, the
+  // card's picture and not the interface's. All are above, and the section
+  // at the end of this file holds the one thing the pairs cannot: that the
+  // checked edge and the focus ring are different colours.
 ]
 
 /**
@@ -355,5 +366,58 @@ describe('the design tokens clear WCAG AA in both themes', () => {
       expect(map['--tone-0']).toBe(resolveToken(map, '--bg'))
       expect(map['--tone-11']).toBe(resolveToken(map, '--text'))
     }
+  })
+})
+
+// Cell 04's theme cards (A7-13, DESIGN.md 8.2). The checked card's edge is
+// 2px of --text in place of its 1px --border, and the focus ring is --focus,
+// which is --accent: the two are told apart by being different colours in
+// both themes, and that is what choosing --text for the edge was for. The
+// arithmetic cannot say it, so this does: the rules, and the tokens they
+// resolve to. The same thing on the element, in both themes, is
+// `tests/e2e/theme.spec.ts`.
+describe('a checked theme card and a focused one are told apart (A7-13)', () => {
+  const checked = rule(panels, '.theme-card:has(input:checked) {')
+  const focused = rule(panels, '.theme-card:has(input:focus-visible) {')
+
+  it('draws the checked edge in --text, twice as wide as the resting edge, never in --accent', () => {
+    expect(checked).toMatch(/border:\s*calc\(2 \* var\(--border-width\)\) solid var\(--text\);/)
+    expect(checked).not.toContain('--accent')
+    expect(checked).not.toContain('--focus')
+    // Taken from the card's own padding, so a checked card is its resting size.
+    expect(checked).toMatch(/padding:\s*calc\(var\(--space-4-3\) - var\(--border-width\)\);/)
+  })
+
+  it('draws the focus ring on the card, in --focus, as the rest of the interface does', () => {
+    expect(focused).toMatch(/outline:\s*var\(--focus-ring-width\) solid var\(--focus\);/)
+    expect(focused).toMatch(/outline-offset:\s*var\(--focus-ring-offset\);/)
+  })
+
+  for (const which of ['dark', 'sepia'] as Theme[]) {
+    it(`${which}: the edge and the ring are two colours, the edge clears 3.0 on a card in every state`, () => {
+      const map = tokensFor(which)
+      const edge = resolveToken(map, '--text')
+      expect(edge, '--text is not the ring').not.toBe(resolveToken(map, '--focus'))
+      // And not the accent either, which the ring is: if the two tokens ever
+      // came apart, the edge would still be one of them.
+      expect(edge).not.toBe(resolveToken(map, '--accent'))
+      for (const ground of ['--surface-raised', '--surface-hover']) {
+        expect(
+          contrast(edge, resolveToken(map, ground)),
+          `--text on ${ground}`,
+        ).toBeGreaterThanOrEqual(3)
+      }
+    })
+  }
+
+  it('is held to the ratios the design document prints for it', () => {
+    const printed =
+      /\((\d+\.\d\d):1 on `--surface-raised` in Night, (\d+\.\d\d) in Parchment\)/.exec(design)
+    expect(printed, 'DESIGN.md 8.2 prints the checked edge’s two ratios').not.toBeNull()
+    const [night, parchment] = (['dark', 'sepia'] as Theme[]).map((which) => {
+      const map = tokensFor(which)
+      return contrast(resolveToken(map, '--text'), resolveToken(map, '--surface-raised')).toFixed(2)
+    })
+    expect([printed?.[1], printed?.[2]]).toEqual([night, parchment])
   })
 })

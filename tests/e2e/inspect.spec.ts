@@ -326,7 +326,7 @@ test('a change of mode marks 02 to 06 stale, starts nothing, and leaves the map 
     expect(builds()).toBe(laid)
     await expect(page.getByRole('region', { name: 'Map' })).toBeVisible()
     await expect(
-      panel(page, 'Theme').getByRole('button', { name: 'Sepia', exact: true }),
+      panel(page, 'Theme').getByRole('radio', { name: 'Sepia', exact: true }),
     ).toBeEnabled()
     await expect(page.getByRole('button', { name: /lay out/i })).toBeEnabled()
   })
@@ -508,7 +508,7 @@ test('a collapsed cell 01 hands nothing over, and focus on its row stays on its 
     // with every control that waits for a run, as cell 04's theme did.
     await expect(hidden).toBeDisabled({ timeout: 30_000 })
     await expect(
-      panel(page, 'Theme').getByRole('button', { name: 'Sepia', exact: true }),
+      panel(page, 'Theme').getByRole('radio', { name: 'Sepia', exact: true }),
     ).toBeDisabled()
     await expect(row).toBeFocused()
     await expect(row).toHaveAttribute('aria-expanded', 'false')

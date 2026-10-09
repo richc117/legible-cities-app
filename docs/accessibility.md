@@ -219,7 +219,7 @@ The two reader columns are a person's, recorded per run in
 
 | Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
-| Theme switch | pass | fixed (issue 124: `aria-pressed`, a named group; asserted in `theme.spec.ts`) | pass | pass (the page restyles in place and the frame is not reloaded, issue 349) | pass | fixed (C1) | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted); the row has changed since and the new part is not yet walked | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted); the row has changed since and the new part is not yet walked |
+| Theme switch: two native radios in a fieldset, each a card of the engine's picture over its word (A7-13) | by construction: one Tab stop, on the checked radio, the arrow keys moving the choice and writing it, the radios visually hidden and keeping focus; asserted in `theme.spec.ts` and walked by the cell 04 sweep in both themes, written, not yet run | by construction: a group named "The theme this map is drawn in" (the fieldset's legend, not drawn) holding exactly the radios "Warm dark" and "Sepia", each named by its word alone, the pictures `alt=""`; asserted in `theme.spec.ts` and `notebook-a11y.spec.ts`, written, not yet run | by construction: the ring is the app's own, drawn on the card (`--focus`, 2px at a 2px offset) and not on the hidden input, and the checked card's edge is 2px of `--text`, never `--accent`, so the two are told apart in both themes; asserted on the element in `theme.spec.ts` and by arithmetic in `contrast.test.ts`, written, not yet run | pass (the page restyles in place and the frame is not reloaded, issue 349; the cards have no transition) | pass (`--text` on `--surface-raised` and `--surface-hover`, the word and the checked edge at 14.19:1; `--text-faint` on `--surface-raised` for the word while a run holds the page) | pass (11.03:1, and the same pairs) | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted); the row has changed since and the new part is not yet walked | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted); the row has changed since and the new part is not yet walked |
 | Sizes: eight numeric fields and Reset to the engine's sizes (issue 350) | by construction: each field a labelled text field in the Tab order, committed on Enter or on leaving it, Reset handing focus to the cell's heading as it disables itself; not yet run in the sweep | by construction: each field named by its label and described by its range, the margin's by the sentence about the frame too, a refusal an alert and `aria-invalid` on the field; asserted in `style.spec.ts`, not yet run | by construction (the kit's ring); not yet run | by construction (nothing moves); not yet run | by construction (`.message`, `.message.error` and the kit's field, pairs the contrast test already holds); not yet run | by construction, as Night; not yet run | not yet run: a person's (this part changed after 0.1.0) | not yet run: a person's (this part changed after 0.1.0) |
 
 ### Cell 05, Lines
@@ -1094,19 +1094,25 @@ a table).
 #### Cell 04, Style
 
 - **Theme switch.** Listen for the region "Theme" and the group "The theme
-  this map is drawn in" with the buttons "Warm dark" and "Sepia", the
-  current one pressed. Press the other and listen for it pressed and the
-  first not; the map restyles in place, without reloading its frame, so
-  focus stays on the button pressed and nothing from the map is announced.
-  Start a run (Lay out again) and listen for both buttons dimmed, the
-  status "The theme waits until the run that is going has finished: …",
-  and focus on the cell's own heading (D3) if it was on a button. Cell 04
-  draws its controls headless (A5.5-17), so "Theme" is the region's name
-  and there is no heading of that name to land on. A redraw for a colour or
-  a line order, which a person starts and which takes moments, dims the
-  buttons without the sentence: it would add a line under the cell a colour
-  panel is being picked from and move the panel (issue 304). The sentence
-  is still said when an export is the reason.
+  this map is drawn in" with the radio buttons "Warm dark" and "Sepia", the
+  current one checked; each is read by its word alone, and the pictures
+  above the words are not read. Tab enters the pair once, on the checked
+  radio, and Tab again leaves it for the next control; the arrow keys move
+  to the other radio and check it, and a change is a theme chosen. Look for
+  the focus ring round the card and not round a hidden box, and for the
+  checked card's heavier edge in the text colour, which is not the ring's
+  blue. Choose the other and listen for it checked and the first not; the
+  map restyles in place, without reloading its frame, so focus stays on the
+  radio chosen and nothing from the map is announced. Start a run (Lay out
+  again) and listen for both radios dimmed, the status "The theme waits
+  until the run that is going has finished: …", and focus on the cell's own
+  heading (D3) if it was on a radio. Cell 04 draws its controls headless
+  (A5.5-17), so "Theme" is the region's name and there is no heading of that
+  name to land on. A redraw for a colour or a line order, which a person
+  starts and which takes moments, dims the radios without the sentence: it
+  would add a line under the cell a colour panel is being picked from and
+  move the panel (issue 304). The sentence is still said when an export is
+  the reason.
 - **Sizes.** Listen for the region "Sizes", then the sentence "In the
   map's own units: the map is drawn 1,800 wide, so a line width of 7 is
   seven of 1,800." and eight text fields, each read with its name and its
