@@ -32,8 +32,12 @@ const PYTHON = findPython()
 
 test.skip(PYTHON === null, 'no python3 or python on the PATH to run the stand-in engine')
 
-/** How long the stand-in takes between two reports: long enough to read each stage. */
-const STEP_MS = 1500
+/**
+ * How long the stand-in takes between two reports: long enough for a spec
+ * to read each stage while it is the latest, which on a slow runner takes
+ * a click and several assertions.
+ */
+const STEP_MS = 2500
 
 function home(control: Record<string, unknown> = {}): string {
   const dir = mkdtempSync(join(tmpdir(), 'legible-cities-reveal-'))
@@ -96,7 +100,15 @@ const stageView = (page: Page): Locator => panel(page, 'Where the routes run')
 const frameOf = (view: Locator): Locator => view.locator('iframe.stage-frame')
 /** The polite region that says each stage once as it is drawn. */
 const liveRegion = (view: Locator): Locator => view.locator('p.visually-hidden[role="status"]')
-const sentence = (view: Locator, text: string): Locator => view.getByText(text, { exact: true })
+/**
+ * One of the view's sentences beside the pane, by its exact words. The
+ * visible line only: the live region can say the same words, and is not
+ * this.
+ */
+const sentence = (view: Locator, text: string): Locator =>
+  view
+    .locator('p.hint')
+    .filter({ hasText: new RegExp(`^${text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`) })
 const stageButton = (view: Locator, name: 'gtfs2graph' | 'loom'): Locator =>
   view.getByRole('group', { name: 'Stage', exact: true }).getByRole('button', { name })
 const processCell = (page: Page): Locator =>
@@ -213,7 +225,7 @@ test('a run cancelled after its first stage leaves nothing it drew, and says so'
       sentence(view, 'The layout run was cancelled, so its stages are no longer drawn.'),
     ).toBeVisible({ timeout: 20_000 })
     await expect(frameOf(view), 'the build is gone, and so is its drawing').toHaveCount(0)
-    await expect(view.getByText(/ drawn; /)).toHaveCount(0)
+    await expect(view.locator('p.hint').filter({ hasText: / drawn; / })).toHaveCount(0)
     await expect(liveRegion(view)).toHaveCount(0)
     await expect(sentence(view, 'Lay the project out to see where its routes run.')).toBeVisible()
     expect(JSON.stringify(readRecord(engineHome)), 'the record is untouched').toBe(before)
