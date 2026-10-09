@@ -21,6 +21,8 @@ import { expect, test, type Page } from '@playwright/test'
 import {
   PYTHON,
   controlsOf,
+  expectNamed,
+  expectNoDuplicatedNames,
   fixture,
   heading,
   installProbe,
@@ -144,10 +146,13 @@ test('the notebook, Inspect, the geographic view, the inspector and its dialogs'
     // And the panels that keep a name of their own carry it a level below,
     // which is what the region each one is named by still answers to: cell
     // 01's two sections, cell 02's report, and cell 05's two (A5.5-18).
+    // Cell 03's Trip (issue 272) is one of them: drawn whatever the page
+    // can do, a region named by its `h3` alone.
     for (const name of [
       'In the feed',
       'Where the routes run',
       'What the build had to fudge',
+      'Trip',
       'Line colours',
       'Line order',
     ]) {
@@ -418,6 +423,79 @@ test("cell 03's transport, on a page that answers what day it has", async () => 
         })
     expect(await ground('.transport .inline-form')).toBe(await ground('.service-day .inline-form'))
     await sweep(page, 'the project, the transport drawn')
+  })
+})
+
+test("cell 03's trip: a picker is one Tab stop, its options are reached by arrows, and its popup is swept open", async () => {
+  // The kit's combobox (issue 272, spec 030 FR-003, SC-004): the first
+  // control here with a popup and `aria-activedescendant`. The pickers'
+  // stations are the record's, which the stand-in's `map.build` answered,
+  // so no page with a seam is needed to walk them. A launch, a layout run,
+  // the popup read in both themes and a walk of the whole project screen.
+  test.setTimeout(180_000)
+  const p = profile()
+  await withApp(p, async (page) => {
+    await openLaidOut(page, 'Los Angeles')
+    await openCell(page, 'frame')
+    const trip = page.getByRole('region', { name: 'Trip', exact: true })
+    await expect(trip.getByRole('heading', { level: 3, name: 'Trip', exact: true })).toBeVisible()
+    const start = trip.getByRole('combobox', { name: 'Start', exact: true })
+    const end = trip.getByRole('combobox', { name: 'End', exact: true })
+    const options = page.getByRole('listbox', { name: 'Start' }).getByRole('option')
+
+    // One Tab stop a picker: with its popup open, Tab leaves Start for End
+    // and never enters the popup, which shuts behind it.
+    await start.focus()
+    await start.pressSequentially('a')
+    await expect(options).toHaveCount(3)
+    await page.keyboard.press('Tab')
+    await expect(end).toBeFocused()
+    await expect(start).toHaveAttribute('aria-expanded', 'false')
+    // The ring is on the field itself, from the keyboard.
+    expect(await end.evaluate((el) => getComputedStyle(el).outlineStyle)).not.toBe('none')
+
+    // The options by the arrows, each its own name, each by its own id,
+    // while DOM focus stays in the field.
+    await start.focus()
+    const reached: string[] = []
+    const ids: string[] = []
+    for (let i = 0; i < 3; i++) {
+      await start.press('ArrowDown')
+      const id = (await start.getAttribute('aria-activedescendant')) ?? ''
+      ids.push(id)
+      reached.push((await page.locator(`[id="${id}"]`).textContent()) ?? '')
+      await expect(start).toBeFocused()
+    }
+    expect(reached).toEqual(['Alpha', 'Bravo', 'Charlie'])
+    expect(new Set(ids).size, 'one option a station').toBe(3)
+    const names = await options.allTextContents()
+    expect(new Set(names).size, 'no two options share a name').toBe(names.length)
+
+    // The popup open, read in both of the interface's themes: every control
+    // named, and no name said twice on the way in.
+    for (const [scheme, attribute, name] of [
+      ['dark', null, 'Night'],
+      ['light', 'sepia', 'Parchment'],
+    ] as const) {
+      await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' })
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.getAttribute('data-theme')))
+        .toBe(attribute)
+      await start.focus()
+      if ((await start.getAttribute('aria-expanded')) !== 'true') await start.press('ArrowDown')
+      await expect(start).toHaveAttribute('aria-expanded', 'true')
+      const snapshot = await page.locator('body').ariaSnapshot()
+      expect(snapshot, 'the popup is in the tree while it is open').toContain('- listbox "Start"')
+      await expectNamed(snapshot, `the project, a trip's popup open (${name})`)
+      await expectNoDuplicatedNames(snapshot, `the project, a trip's popup open (${name})`)
+    }
+    await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' })
+    await start.press('Escape')
+    await expect(start).toHaveAttribute('aria-expanded', 'false')
+
+    // And the whole screen walked with the Trip section on it, in both
+    // themes: the two fields reached by Tab, each with its ring.
+    await sweep(page, 'the project, the trip’s pickers used')
   })
 })
 

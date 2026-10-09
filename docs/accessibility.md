@@ -214,6 +214,7 @@ The two reader columns are a person's, recorded per run in
 | Service day and date control | fixed (D3) | pass | pass | pass | fixed (C4) | fixed (C1, C4) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
 | Revert, while a chosen day is not drawn (A5.5-12) | goes with its own press, focus to the date control holding the day; a refusal to the form's alert and focus to the control | pass (named with its day, "Revert to `<day>`") | pass | pass | pass | fixed (C1) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
 | Transport: Time of day, Play day and Pause, Speed (A5.5-16) | swept on a page that answers what day it has (`notebook-a11y.spec.ts`, "cell 03's transport…"); refused with an alert rather than disabled while a run, an export or the export's preview holds the page | swept (a region named by its `h3`, "Transport"; the range's `aria-valuetext` the page's clock) | swept | swept | pass (`--text`, the range's `--accent`) | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
+| Trip: Start, End, the steps, Show the whole network (issue 272) | swept, with a picker's popup open and closed (`notebook-a11y.spec.ts`, "cell 03's trip…"): each picker one Tab stop, its options reached by Up and Down with focus kept in the field, Enter choosing, Escape shutting the popup; "Show the whole network" hands focus to Start as it goes; a refusal is an alert beside the control and nothing disables | swept (a region named by its `h3`, "Trip"; two comboboxes "Start" and "End", each controlling a listbox of the same name whose options are named apart; "`<n>` stations match" a polite line while typing; the trip's "`<n>` stops, `<m>` changes." a polite `role="status"`) | swept (the platform's ring on the field; the highlighted option an inset edge in `--focus`) | swept | pass (`--text`, `--text-muted`, `--error` on `--surface`; `--focus` on `--surface-selected`) | pass | not yet run: a person's (this part changed after 0.1.0) | not yet run: a person's (this part changed after 0.1.0) |
 
 ### Cell 04, Style
 
@@ -1090,6 +1091,24 @@ a table).
   for "The map is being drawn. It can be moved again when the run ends."
   as an alert, with focus not moved, and for nothing said on a second
   press.
+- **Trip.** Listen for the heading "Trip" (level 3) after the transport,
+  the sentence "Choose a start and an end station: …", and two editable
+  combo boxes, "Start" and "End". In **Start** type "a": listen for "3
+  stations match" (on the stand-in; the count of the map's own stations
+  elsewhere), then type more letters and listen for the count to follow.
+  Press Down Arrow: listen for the first station read while focus stays in
+  the field, and Down and Up moving through the list; press Escape and
+  listen for the list closing with what you typed left in the field; press
+  Down Arrow and Enter, and listen for the station's name as the field's
+  value. Choose a station in **End** the same way: listen for "`<n>` stops,
+  `<m>` changes." said once, and read the numbered list, one item a leg,
+  "At `<station>`, board the `<line>` towards `<end>`. Ride `<n>` stops to
+  `<station>` and get off.", then the button **Show the whole network**.
+  Press it: listen for focus on **Start**, both fields empty, and the
+  button gone. Choose the same station in both: listen for "Start and end
+  are the same station." as an alert beside **End**, with focus not moved
+  and the field back as it was. Tab from **Start**: listen for **End**, not
+  for anything in the list.
 
 #### Cell 04, Style
 
