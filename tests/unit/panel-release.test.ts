@@ -12,7 +12,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { stoppedNow } from '../../src/renderer/src/panelRelease'
+import { stoppedNow, type Seen } from '../../src/renderer/src/panelRelease'
 import { usePutBack } from '../../src/renderer/src/usePutBack'
 import type { RunState } from '../../src/shared/layout'
 
@@ -58,17 +58,20 @@ const STOPS = ['failed', 'cancelled'] as const
 const NOT_STOPS = ['idle', 'running', 'done'] as const
 const EVERY_STATE = [...NOT_STOPS, ...STOPS] as const
 
+/** What a panel sees of the run at one render. */
+const seen = (state: RunState, own: boolean): Seen => ({ state, own })
+
 describe('when the run has just stopped, for a panel', () => {
   it('is the change into failed or cancelled, from whatever state the run was in', () => {
     for (const now of STOPS)
       for (const before of EVERY_STATE.filter((state) => state !== now))
-        expect(stoppedNow(before, now, true), `${before} to ${now}`).toBe(true)
+        expect(stoppedNow(seen(before, true), seen(now, true)), `${before} to ${now}`).toBe(true)
   })
 
   it('is nothing for a change into any other state', () => {
     for (const now of NOT_STOPS)
       for (const before of EVERY_STATE)
-        expect(stoppedNow(before, now, true), `${before} to ${now}`).toBe(false)
+        expect(stoppedNow(seen(before, true), seen(now, true)), `${before} to ${now}`).toBe(false)
   })
 
   it('is nothing for a run the panel did not start', () => {
@@ -76,7 +79,11 @@ describe('when the run has just stopped, for a panel', () => {
     // control where it is: its own change was never part of it.
     for (const now of STOPS)
       for (const before of EVERY_STATE)
-        expect(stoppedNow(before, now, false), `${before} to ${now}, not its own`).toBe(false)
+        for (const wasOwn of [false, true])
+          expect(
+            stoppedNow(seen(before, wasOwn), seen(now, false)),
+            `${before} to ${now}, not its own`,
+          ).toBe(false)
   })
 
   it('is not true again for as long as the run stays stopped', () => {
@@ -86,7 +93,33 @@ describe('when the run has just stopped, for a panel', () => {
     // has not moved. Acting on that would drop, and snap back, the change a
     // person made after the failure and left waiting for an export to let go
     // of the page.
-    for (const state of STOPS) expect(stoppedNow(state, state, true), state).toBe(false)
+    for (const state of STOPS)
+      expect(stoppedNow(seen(state, true), seen(state, true)), state).toBe(false)
+  })
+
+  it('is true when a start is refused at once for a run that was already stopped for another kind', () => {
+    // `LayoutRun.#begin` sets `failed` and the new kind in one change when
+    // the engine is not ready, and never passes through `running`. A layout
+    // run that failed, then a colour refused at its start: the state is
+    // `failed` before and after, and only the kind of run moved. The
+    // colour's swatch holds a colour the record does not, and nothing will
+    // ever build it, so the panel has to go back. The effect this rule
+    // replaced listed the kind among its dependencies and did.
+    for (const state of STOPS)
+      expect(stoppedNow(seen(state, false), seen(state, true)), state).toBe(true)
+    expect(stoppedNow(seen('failed', false), seen('cancelled', true))).toBe(true)
+  })
+
+  it('is not true when the kind moves away from the panel’s, or never reaches it', () => {
+    for (const state of STOPS) {
+      expect(
+        stoppedNow(seen(state, true), seen(state, false)),
+        `${state}, its own to another`,
+      ).toBe(false)
+      expect(stoppedNow(seen(state, false), seen(state, false)), `${state}, never its own`).toBe(
+        false,
+      )
+    }
   })
 })
 
@@ -134,6 +167,25 @@ describe('the hook the panels put themselves back through', () => {
     render('running', true, putBack)
     render('cancelled', true, putBack)
     expect(putBack).toHaveBeenCalledTimes(1)
+  })
+
+  it('puts the panel back for a start refused at once while the run sat failed for another kind', () => {
+    const calls: string[] = []
+    const at = (record: string) => (): void => {
+      calls.push(record)
+    }
+    // A layout run fails: not this panel's, so it does nothing. A colour is
+    // then held for an export, and the retry's start is refused because the
+    // engine is not ready: the run is `failed` again, now the colour panel's
+    // own, and never passed through `running`.
+    render('running', false, at('while the layout ran'))
+    render('failed', false, at('after the layout failed'))
+    expect(calls).toEqual([])
+    render('failed', true, at('after the start was refused'))
+    expect(calls).toEqual(['after the start was refused'])
+    // And a record written afterwards is not another stop.
+    render('failed', true, at('after a rename'))
+    expect(calls).toHaveLength(1)
   })
 
   it('does not put the panel back for a run it did not start', () => {

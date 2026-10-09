@@ -17,16 +17,36 @@ import type { RunState } from '../../shared/layout'
 // the panel last saw, and never the record's reference.
 
 /**
- * Has the run just stopped, for a panel whose own redraw it was? True only
- * on the change into `failed` or `cancelled`, and only for the kind of run
- * the panel started (`own`: the snapshot's `recoloured`, `reordered` or
- * `restyled`).
- *
- * Both states are needed. The current one alone is true for as long as the
- * run stays stopped; the previous one is what makes a second failure a
- * second transition, since `failed` then `running` then `failed` changes
- * twice and a run that is merely `failed` twice in a row does not.
+ * What a panel sees of the run at one render: its state, and whether the
+ * run is the kind the panel started (`own`: the snapshot's `recoloured`,
+ * `reordered` or `restyled`).
  */
-export function stoppedNow(before: RunState, now: RunState, own: boolean): boolean {
-  return own && before !== now && (now === 'failed' || now === 'cancelled')
+export interface Seen {
+  state: RunState
+  own: boolean
+}
+
+const isStop = (state: RunState): boolean => state === 'failed' || state === 'cancelled'
+
+/**
+ * Has the run just stopped, for a panel whose own redraw it was? True when
+ * the run now is the panel's own and stopped, and either its state changed
+ * since the panel last looked - the change into `failed` or `cancelled` -
+ * or the run before was not the panel's own.
+ *
+ * The last look is needed as well as this one. The current state alone is
+ * true for as long as the run stays stopped; the previous state is what
+ * makes a second failure a second transition, since `failed` then `running`
+ * then `failed` changes twice and a run that is merely `failed` twice in a
+ * row does not.
+ *
+ * The kind of run has to be remembered with the state because a start that
+ * is refused at once - the engine is not ready - sets `failed` without
+ * passing through `running`. If the run was already `failed` for another
+ * kind (a layout run, say), a colour refused at its start goes from
+ * `failed` to `failed` and only the kind has changed. That is the panel's
+ * own redraw stopping, and its control has to go back as for any other.
+ */
+export function stoppedNow(before: Seen, now: Seen): boolean {
+  return now.own && isStop(now.state) && (before.state !== now.state || !before.own)
 }

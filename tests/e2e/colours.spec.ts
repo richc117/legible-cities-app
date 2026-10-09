@@ -894,7 +894,7 @@ test('a colour chosen after a cancelled redraw waits for an export, and a rename
 
       // The export ends, and the colour that waited for it is drawn, once.
       await page
-        .getByRole('region', { name: 'Export', exact: true })
+        .getByRole('region', { name: 'Export run', exact: true })
         .getByRole('button', { name: 'Cancel', exact: true })
         .click()
       await expect(page.getByText('The export was cancelled. Nothing was written.')).toBeVisible({
