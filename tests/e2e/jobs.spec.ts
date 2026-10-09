@@ -123,7 +123,7 @@ const inspector = (page: Page): Locator => page.getByRole('complementary', { nam
 const jobs = (page: Page): Locator => inspector(page).getByRole('listitem')
 const jobNamed = (page: Page, name: string | RegExp): Locator =>
   inspector(page).getByRole('listitem', { name })
-const announcement = (page: Page): Locator => page.locator('.visually-hidden[role="status"]')
+const announcement = (page: Page): Locator => page.locator('[data-announces="jobs"]')
 
 async function openInspector(page: Page): Promise<void> {
   await toggle(page).click()
@@ -398,7 +398,7 @@ test('twenty-one finished jobs keep the newest twenty', async () => {
     // Every sentence the live region is given, as a screen reader hears
     // it: the same sentence twenty-one times has to be twenty-one changes.
     await page.evaluate(() => {
-      const region = document.querySelector('.visually-hidden[role="status"]') as HTMLElement
+      const region = document.querySelector('[data-announces="jobs"]') as HTMLElement
       const said: string[] = []
       ;(window as unknown as { said: string[] }).said = said
       new MutationObserver(() => {

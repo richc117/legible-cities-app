@@ -768,15 +768,21 @@ test('cell 03 offers no frame control it cannot honour, and says why', async () 
     await expect(body).toContainText(
       /margin is one of the sizes in cell 04; the frame is padded and never cropped or rotated, and a clip mask waits on a designer.s intent/,
     )
-    // The cell's controls are the day's three and nothing else: no crop, no
-    // rotation, no margin, no clip mask, not even greyed out.
+    // The cell's controls are the day's three and the Trip section's two
+    // pickers (issue 272), and nothing else: no crop, no rotation, no
+    // margin, no clip mask, not even greyed out. The Trip section's one
+    // button, "Show the whole network", is drawn only while a trip is shown,
+    // and none is shown here.
     // By name, not by text: these are kit buttons, whose label lives in a
     // shadow root, so innerText reads empty. Two, and exactly these two.
     await expect(body.getByRole('button')).toHaveCount(2)
     for (const name of ['Use the busiest weekday', 'Draw for this day'])
       await expect(body.getByRole('button', { name, exact: true })).toBeVisible()
-    expect(await body.locator('input, select, textarea').count()).toBe(1)
+    // Three fields, each by its name: the day's date and the trip's two.
+    expect(await body.locator('input, select, textarea').count()).toBe(3)
     await expect(body.getByLabel('Draw for another day')).toBeEnabled()
+    for (const name of ['Start', 'End'])
+      await expect(body.getByRole('combobox', { name, exact: true })).toBeEnabled()
   })
 })
 

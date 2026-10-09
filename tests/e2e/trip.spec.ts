@@ -330,6 +330,8 @@ test('a trip chosen by keyboard is one setTrip, its steps and one announcement, 
     await expect(start).toBeFocused()
     // Down highlights by aria-activedescendant, and focus stays in the field.
     await start.press('ArrowDown')
+    // Waited for, then read, as the steps are: an attribute a render sets.
+    await expect(start).toHaveAttribute('aria-activedescendant', /.+/)
     const active = await start.getAttribute('aria-activedescendant')
     expect(active).toBeTruthy()
     await expect(page.locator(`[id="${active}"]`)).toHaveText('Alpha')
@@ -462,7 +464,11 @@ test('a page a redraw reloaded is given its trip back between the labels and pla
     await chooseStation(page, START, 'alp')
     await chooseStation(page, END, 'cha')
     await expect.poll(() => trips(app), { timeout: 20_000 }).toEqual([['setTrip', ALPHA, CHARLIE]])
-    const steps = await region.getByRole('listitem').allTextContents()
+    // The steps as the stand-in page's answer draws them, waited for rather
+    // than read: the call is recorded before its answer has come back and
+    // the list has rendered, and a slow runner read an empty list here.
+    const steps = ['At Alpha, board the A towards Charlie. Ride 2 stops to Charlie and get off.']
+    await expect(region.getByRole('listitem')).toHaveText(steps)
     const frame = page.locator('iframe.viewer-frame')
     const address = await frame.getAttribute('src')
 

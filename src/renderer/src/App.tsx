@@ -194,8 +194,10 @@ export default function App(): JSX.Element {
           onClose={() => setFirstRunSeen(true)}
         />
       )}
-      {/* One polite line for the ends of jobs, on every screen, never shown. */}
-      <p className="visually-hidden" role="status" aria-live="polite">
+      {/* One polite line for the ends of jobs, on every screen, never shown.
+          `data-announces` names it for a test: other polite lines are
+          visually hidden too, such as a combobox's match count (issue 272). */}
+      <p className="visually-hidden" role="status" aria-live="polite" data-announces="jobs">
         {announcement}
       </p>
       <div className="app-body" data-inspector={inspectorOpen ? 'open' : 'closed'}>
