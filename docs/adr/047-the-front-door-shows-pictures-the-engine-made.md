@@ -180,3 +180,22 @@ and not `currentColor`. Six undrawn cards at `--card-min-width`, mocked in
 both themes, showed the mark repeated as a brand pattern louder than the
 names, a bare field reading as missing, and the faint glyph reading as a
 placeholder.
+
+**As of 8 Oct 2026:** the forecast above is measured. The sample cities'
+pictures are 44 files, a pair for every one of the 22 presets, Mexico City
+included, so no card is left on the empty area; they come to 619,102 bytes,
+and the README beside them is 1,433 more. That is 0.62 MB, inside the
+forecast: the largest pair is the New York City Subway's, 61,236 bytes a
+file, and the smallest Minneapolis's, 3,332. The engine side landed in two
+steps, the thumbnail pair beside a project's page at v0.11.0 (engine issue
+51) and the sample script at v0.12.0 (engine issue 52), and the files were
+made from v0.12.0 on 8 Oct 2026. The feeds' credit is in `THIRD_PARTY_NOTICES.md`,
+under "Sample city pictures": each preset's name, city and network with the
+public address the engine's registry holds for it, which the registry says
+is the credit the feed is owed; a feed's own terms govern its data, and no
+licence is named that the registry does not record. One caveat: the README
+names no LOOM commit, because the stored layouts the pictures were drawn from
+carried none (read at the app's pinned commit, every preset reports no layout
+at that LOOM), so this first set's provenance is the engine version and the
+date alone. The next time the layouts are made at a recorded LOOM, the script
+is run again and the README names it.

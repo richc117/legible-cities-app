@@ -42,6 +42,12 @@ type Pictured = {
  * the layout, and so `made`, unchanged. FNV-1a over the fields, the colours
  * sorted by label; it is a cache key and not a secret, so a collision costs
  * nothing worse than one picture shown late.
+ *
+ * `style` and `lines` are left out: at engine v0.12.0 the thumbnail takes no
+ * style (`thumbnail.draw` scales its own) and the record has no `lines`
+ * field yet. When the per-line hidden flag of ADR-053 lands in the record it
+ * must join this, or a redraw that hides a line leaves the old picture on
+ * the card until the document reloads.
  */
 function fingerprint(drawn: DrawnFrom): string {
   const colours = Object.keys(drawn.colors)

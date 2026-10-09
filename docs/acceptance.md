@@ -164,7 +164,8 @@ Result: ____
 **Do.** Wait without pressing anything for about thirty seconds. Then press
 **Settings** and read the screen from the top. Press **Back to Library**.
 Press **Settings** again, choose **Parchment** under **Theme**, press **Back
-to Library**, and look at the sample cards; then choose **Night** again.
+to Library**, and look at the sample cards; then choose **Follow the system**
+again.
 
 **See.**
 - The front door opens with its heading, **Library**, and its
@@ -189,11 +190,12 @@ to Library**, and look at the sample cards; then choose **Night** again.
   picture of that city's network where the picture would be (the lines in
   their feed's colours on the card's sunken ground, no labels, and nothing
   to load: they come with the app), its name, its city and network, and
-  "not downloaded yet" in a small chip. In Night every picture is the one
-  for the dark ground; in Parchment, after the change above, every one is
-  the one for the light ground, and Night puts the dark ones back, each
-  time without the front door being reloaded. A picture is not read aloud
-  and changes no card's name.
+  "not downloaded yet" in a small chip. At first, under **Follow the
+  system**, every picture is the one for the ground of the system's own
+  theme (the dark ones on a dark system); in Parchment, after the change
+  above, every one is the one for the light ground, with none left empty;
+  and **Follow the system** puts the system's back. A picture is not read
+  aloud and changes no card's name.
 - In Settings, **Bundled tools** says "The bundled LOOM and ffmpeg ran.",
   with **LOOM tools** "ran (`<n>` ms)." and **ffmpeg and ffprobe**
   "ran (`<n>` ms)."
