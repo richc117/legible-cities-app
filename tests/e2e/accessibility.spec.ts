@@ -44,7 +44,7 @@
 // stand-in's control file is written before the app starts, because the
 // stand-in reads it once.
 
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
@@ -347,9 +347,21 @@ async function tokenRgb(page: Page, token: string): Promise<string> {
 // card's name is the same either way. The interface's theme is chosen in
 // Settings here, as a person chooses it; the swap on a screen that stays open
 // is `expectPictures`'s.
+//
+// A picture that is gone is tried two ways, because the interface reuses an
+// image it has already loaded from an address, across a reload of the window
+// too (a run of this test deleted the files and reloaded, and the card still
+// held its image): a project whose files were never there is seen in the same
+// session as the others, and one whose files are removed while the app is
+// closed is seen at the next start, which no reused image survives.
 test('a drawn project’s card shows the engine’s thumbnail in the interface’s palette, and the empty area where it is gone', async () => {
   test.setTimeout(240_000)
   const p = profile()
+  const thumbnails = (id: string, feed: string): string[] =>
+    ['dark', 'light'].map((palette) =>
+      join(p.engineHome, 'out', id, `${feed}-thumb-${palette}.svg`),
+    )
+  const drawn: { id: string; feed: string }[] = []
   await withApp(p, async (page) => {
     await openLaidOut(page, 'Los Angeles')
     await page.getByRole('button', { name: 'Back to Library' }).click()
@@ -365,6 +377,10 @@ test('a drawn project’s card shows the engine’s thumbnail in the interface�
         return api.projects.get(one.id)
       })
     const record = await bridge()
+    // The stand-in wrote the pair where the test will look for it: under the
+    // engine's home, in the project's folder, named by the feed.
+    for (const file of thumbnails(record.id, record.feed))
+      expect(existsSync(file), `the stand-in wrote ${file}`).toBe(true)
     const picture = card.locator('.card-picture img')
     const address = async (): Promise<URL> =>
       new URL((await picture.getAttribute('src')) ?? 'none:')
@@ -373,6 +389,27 @@ test('a drawn project’s card shows the engine’s thumbnail in the interface�
       `/projects/${record.id}/${record.feed}-thumb-dark.svg`,
     )
     expect(first.searchParams.get('made'), 'by the layout’s `made`').toBe(record.drawn?.made)
+
+    // A project the map was drawn for before the engine wrote thumbnails, or
+    // whose folder was cleared: a record that says drawn and no files, which
+    // is what the layout run and the engine leave in those cases. Never
+    // loaded in this session, so its image fails here, in the open.
+    await page.evaluate(async () => {
+      const api = (globalThis as unknown as { api: Api }).api
+      const made = await api.projects.create({ name: 'Before thumbnails', feed: 'la-metro-rail' })
+      await api.projects.completeLayout(made.id, {
+        date: '2026-09-02',
+        layout: 'b'.repeat(64),
+        made: '2026-09-10T12:00:00+00:00',
+        built: { mode: 'all', agency: null },
+        service: {
+          start: '2026-01-01',
+          end: '2026-12-31',
+          busiest: '2026-09-15',
+          anchor: '2026-09-08',
+        },
+      })
+    })
 
     // A redraw with the layout unchanged: the colours go in once the map is
     // drawn with them, and the address is a new one when the Library is seen
@@ -402,15 +439,32 @@ test('a drawn project’s card shows the engine’s thumbnail in the interface�
       .poll(() => picture.evaluate((image: HTMLImageElement) => image.naturalWidth))
       .toBeGreaterThan(0)
 
-    // Both files gone, as for a project drawn before the engine wrote them
-    // or one whose folder was cleared: the empty area, and the same name.
-    for (const palette of ['dark', 'light'])
-      rmSync(join(p.engineHome, 'out', record.id, `${record.feed}-thumb-${palette}.svg`), {
-        force: true,
-      })
-    await page.reload()
+    // The project with no files: the empty area in both palettes, and the same
+    // name. Its image failed in the open, so the card's own fallback ran.
+    const bare = projects.getByRole('button', { name: 'Open Before thumbnails' })
+    await expect(bare).toBeVisible()
+    await expect(bare.locator('.card-picture img')).toHaveCount(0)
+    await expect(bare.locator('.card-picture .icon')).toHaveCount(1)
+    await expect(bare).toHaveAccessibleName('Open Before thumbnails')
+    drawn.push({ id: record.id, feed: record.feed })
+  })
+
+  // The app has closed. Both files are removed from where the first run saw
+  // them, and the check that they are gone is the test's own: `rmSync` without
+  // `force` throws for a path that is not there.
+  const [{ id, feed }] = drawn
+  for (const file of thumbnails(id, feed)) {
+    rmSync(file)
+    expect(existsSync(file), `${file} is gone`).toBe(false)
+  }
+  // The next start, on the same profile (Parchment is still the choice): the
+  // card's image fails to load, and the empty area stands in for it.
+  await withApp(p, async (page) => {
+    const card = page.getByRole('list', { name: 'Projects' }).getByRole('button', {
+      name: 'Open Los Angeles',
+    })
     await expect(card).toBeVisible()
-    await expect(picture).toHaveCount(0)
+    await expect(card.locator('.card-picture img')).toHaveCount(0)
     await expect(card.locator('.card-picture .icon')).toHaveCount(1)
     await expect(card).toHaveAccessibleName('Open Los Angeles')
   })
