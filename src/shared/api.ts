@@ -26,6 +26,7 @@ import type {
   ProjectInputs,
   ProjectStyle,
   ProjectSummary,
+  ProjectTuning,
   RebuildDone,
   Theme,
 } from './project'
@@ -158,6 +159,15 @@ export interface Api {
      * address (specs/021-theme/contracts/bridge.md, issue 349).
      */
     setTheme(id: string, theme: Theme): Promise<ProjectRecord>
+    /**
+     * LOOM's settings a person chose for this project's layout (issue 385,
+     * spec 033), written the moment they are committed, as the export's
+     * options are; nothing is laid out for them. The whole tuning the
+     * section shows is what is sent, and the record keeps only the fields
+     * away from LOOM's own. The main process checks the grid and every
+     * number against the engine's own rules, and the store checks again.
+     */
+    setTuning(id: string, tuning: ProjectTuning): Promise<ProjectRecord>
     /**
      * That the project's screen has just been opened (A5.6-04): writes
      * `opened` and nothing else, so the front door lists projects newest
@@ -364,6 +374,7 @@ export const CHANNELS = {
   projectsCompleteStyle: 'projects:complete-style',
   projectsSetDate: 'projects:set-date',
   projectsSetTheme: 'projects:set-theme',
+  projectsSetTuning: 'projects:set-tuning',
   projectsMarkOpened: 'projects:mark-opened',
   projectsSetExport: 'projects:set-export',
   viewerAttach: 'viewer:attach',

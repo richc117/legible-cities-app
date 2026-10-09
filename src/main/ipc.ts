@@ -18,13 +18,16 @@ import {
   validatePalette,
   validateStyle,
   validateTheme,
+  validateTuning,
   STYLE_KEYS,
+  TUNING_KEYS,
   type CreateProjectInput,
   type LineOrder,
   type Palette,
   type Theme,
   type ProjectInputs,
   type ProjectStyle,
+  type ProjectTuning,
   type RebuildDone,
   validateMade,
   validateServiceDate,
@@ -96,6 +99,9 @@ function readLayoutDone(raw: unknown): LayoutDone {
     built,
     service: { start, end, busiest, anchor },
     ...readDrawnStations(input.stations),
+    // The tuning the run sent (issue 385), held to the rules the record's
+    // own is, or nothing for a run sent none.
+    ...(input.tuning === undefined ? {} : { tuning: readTuning(input.tuning) }),
   }
 }
 
@@ -160,6 +166,22 @@ function readStyle(raw: unknown): ProjectStyle {
   const style: ProjectStyle = {}
   for (const key of STYLE_KEYS) if (given[key] !== undefined) style[key] = given[key]
   return style
+}
+
+/**
+ * LOOM's settings a person chose for a project's layout (issue 385), or the
+ * ones a layout run sent: the grid one of the engine's four and every number
+ * inside the engine's own range, with the engine's own sentences, and only
+ * the eight fields taken. Anything else on it, the engine's nested
+ * `penalties` among them, is refused.
+ */
+function readTuning(raw: unknown): ProjectTuning {
+  check(validateTuning(raw))
+  const given = raw as ProjectTuning
+  const tuning: ProjectTuning = {}
+  if (given.grid !== undefined) tuning.grid = given.grid
+  for (const key of TUNING_KEYS) if (given[key] !== undefined) tuning[key] = given[key]
+  return tuning
 }
 
 function readTheme(raw: unknown): Theme {
@@ -327,6 +349,9 @@ export function registerProjectHandlers(
   })
   handle(CHANNELS.projectsSetDate, (id, date) => store.setDate(readId(id), readServiceDay(date)))
   handle(CHANNELS.projectsSetTheme, (id, theme) => store.setTheme(readId(id), readTheme(theme)))
+  handle(CHANNELS.projectsSetTuning, (id, tuning) =>
+    store.setTuning(readId(id), readTuning(tuning)),
+  )
   handle(CHANNELS.projectsMarkOpened, (id) => store.markOpened(readId(id)))
   handle(CHANNELS.projectsSetExport, (id, choice) =>
     store.setExport(readId(id), readExportChoice(choice)),

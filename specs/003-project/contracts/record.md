@@ -93,6 +93,37 @@ The on-disk form of `ProjectRecord` (`data-model.md`), version 2:
   and nothing else. An older build that writes the record
   drops it, which the next draw puts back. The front door's summaries carry
   `drawn` without it. A trip is never in the record.
+- `tuning` (added by issue 385, still version 2; spec 033) is LOOM's own
+  settings a person chose for the project's layout, in the engine's names
+  in camel case with the bend penalties flat: `mergeDistance` (5 to 500
+  metres), `grid` (`octilinear`, `ortholinear`, `orthoradial` or
+  `hexalinear`), `gridSize` (25 to 400 percent of the distance between
+  adjacent stations) and `deg45`, `deg90`, `deg135`, `deg180`, `diagonal`
+  (each 0 to 10). Every field is optional, and the key itself is absent
+  until a person chooses something: a field at LOOM's own number (50,
+  `octilinear`, 100, 2, 1.5, 1, 0, 0.5) is no choice and is not kept, so a
+  project that never touched the tuning has no `tuning` and a reset
+  removes it. It is written the moment it is chosen
+  (`projects.setTuning`) and sent to `graph.build` by the next layout run.
+  On read it is taken field by field, and a field the store would refuse
+  on write - a number out of range or of the wrong kind, a grid the engine
+  does not offer, a field not on the list - reads as not held, so a value
+  written by hand never reaches the engine. It is admitted at version 2
+  under the rule below: optional on read, absent meaning LOOM's defaults,
+  which is what every earlier layout was made with, and the one released
+  build, v0.1.0, holds version 1 and reads this record as read-only, so it
+  cannot drop the field.
+- `laidOutWith` (added by issue 385, still version 2) is the tuning the
+  stored layout was asked with: what the layout run that wrote `layout`
+  sent `graph.build`, in `tuning`'s shape and under its rules, written by
+  `completeLayout` from the run's `done.tuning` in the same write as the
+  layout's id, and by nothing else. Absent means LOOM's defaults, which is
+  what every layout before the field was asked with. Where `tuning` would
+  send something else, the notebook reports the layout as of another
+  tuning (`specs/028-the-notebook/contracts/run-graph.md`). It is `built`'s
+  counterpart for the tuning, kept by the app because reading it back from
+  the engine's `LayoutMeta.stages` would mean computing LOOM's flags. The
+  front door's summaries carry both fields.
 - `built` (added by A2-02, still version 1) is the mode and agency the
   engine made the stored layout with, `{ mode, agency }` from
   `graph.build`'s meta, or `null`; an empty agency reads as none, and a
