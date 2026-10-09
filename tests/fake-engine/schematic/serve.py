@@ -65,6 +65,11 @@ writes before the app starts (every key optional):
                       included, as an engine that has stopped answering would
     inspect_refuses   a sentence: feeds.inspect refuses with it, kind feed
     stage_refuses     a sentence: render.stage refuses with it, kind engine
+    stage_waits_on    {stage: later stage}: while a build of the layout runs, render.stage for
+                      a stage named here waits on the later one too, as the engine's answer
+                      with a date waits on octi, and is refused as not yet until the later one
+                      is reported (issue 382); without it nothing the app asks during a run is
+                      ever refused as not yet, since the app asks for a stage at its report
     empty_modes       modes graph.build keeps no routes for: after gtfs2graph it refuses with
                       the engine's route-type sentence as the hint and a different detail
                       (pipeline.require_edges, classified), as the engine does
@@ -541,6 +546,14 @@ class Engine:
         # rewrites it (A3-06).
         self.layouts: dict = {}
         self.layout_stages: dict = {}
+        # Which build each stored layout is, by number, and each build in
+        # flight: what it has reported, the counts it will store and its
+        # number. render.stage draws a reported stage from the build, as
+        # the engine draws from its scratch (E27, issue 382), and every
+        # drawing names its build, so a test can tell a new build's from
+        # the stored set's.
+        self.layout_builds: dict = {}
+        self.building: dict = {}
         # The presets not on disk at the start that a graph.build has since
         # downloaded whole (E36).
         self.downloaded: set = set()
@@ -653,16 +666,14 @@ class Engine:
                 error(msg_id, -32602, "stage must be one of gtfs2graph, topo, loom, octi", "params")
             elif "date" in params and stage_date_problem(params["date"]) is not None:
                 error(msg_id, -32602, stage_date_problem(params["date"]), "params")
-            elif not isinstance(layout, str) or layout not in self.layouts:
+            elif not isinstance(layout, str) or (layout not in self.layouts
+                                                 and layout not in self.building):
                 error(msg_id, -32000, f"{params.get('key', 'x')!r} has no stored {stage} graph; "
                       "lay the feed out first (graph.build)", "layout")
             elif self.control.get("stage_refuses"):
                 error(msg_id, -32000, self.control["stage_refuses"], "engine")
             else:
-                write({"jsonrpc": "2.0", "id": msg_id,
-                       "result": self.stage_drawing(params.get("key", "x"), layout, stage,
-                                                    params.get("width", 1200),
-                                                    params.get("date"))})
+                self.stage_answer(msg_id, params)
             return True
         if method == "feeds.list":
             write({"jsonrpc": "2.0", "id": msg_id, "result": {"feeds": self.feed_records()}})
@@ -792,6 +803,41 @@ class Engine:
                               "line": line.replace("{home}", str(Path.home()))}})
         if not self.preset_download(msg_id, params.get("key", "x")):
             return
+        lines = ["A", "B"] if mode == "all" else ["A"] if "tram" in mode else ["B"]
+        summary = {"nodes": 3, "stations": 3, "junctions": 0, "edges": 2, "lines": lines}
+        stages = {s: dict(summary) for s in ("gtfs2graph", "topo", "loom", "octi")}
+        stages["octi"]["octilinear"] = 1.0
+        key = params.get("key", "x")
+        # The id names the inputs, as the real engine's does: the same feed
+        # and options give the same id, so two projects on one feed share one.
+        # A missing mode or agency is the registry entry's and an empty
+        # agency is none, as the engine's resolved() reads them. It is known
+        # before the first stage, which names it (engine v0.14.0).
+        entry = FEEDS.get(key, {})
+        agency = params.get("agency", entry.get("agency")) or None
+        inputs = {"feed": key, "mode": mode, "agency": agency}
+        # A tuned layout is a layout of its own; a tuning of nothing but
+        # LOOM's defaults writes no flag and names the untuned layout's id.
+        tuned = {tool: args for tool, args in flags.items() if args}
+        if tuned:
+            inputs["tuning"] = tuned
+        layout = hashlib.sha256(json.dumps(inputs, sort_keys=True).encode()).hexdigest()
+        builds = bool(params.get("force")) or layout not in self.layouts
+        if builds:
+            # A build of its own, readable stage by stage as it reports;
+            # one already stored and not forced is read from the store, as
+            # the engine replays it, and has none.
+            self.building[layout] = {"reported": set(), "stages": stages,
+                                     "build": self.builds + 1}
+        try:
+            self.lay_out(msg_id, key, mode, agency, layout, stages, builds, delay, flags)
+        finally:
+            # A cancel or a failure leaves nothing of the build to draw; a
+            # build that answered is the store's by now.
+            self.building.pop(layout, None)
+
+    def lay_out(self, msg_id, key, mode, agency, layout, stages, builds, delay,
+                flags) -> None:
         for i, stage in enumerate(("gtfs2graph", "topo", "loom", "octi"), start=1):
             if stage == "octi" and self.control.get("octi_child"):
                 if self.octi(msg_id):
@@ -810,7 +856,6 @@ class Engine:
                 # The engine's own words (pipeline.require_edges at v0.8.2),
                 # classified the way its serve.classify does: the hint is the
                 # sentence, the detail the exception and where it was raised.
-                key = params.get("key", "x")
                 hint = (f"{key}: the line graph is empty -- gtfs2graph -m {mode!r} "
                         "matched no routes. Check the feed's route_type values; agencies "
                         "disagree about which of tram/subway/rail their network is.")
@@ -819,31 +864,19 @@ class Engine:
                                  "data": {"kind": "engine", "hint": hint,
                                           "detail": f"ValueError: {hint} (pipeline.py:403)"}}})
                 return
+            # Readable before it is reported, as the engine marks a stage
+            # whole before its report goes out; the report names the layout.
+            if builds:
+                self.building[layout]["reported"].add(stage)
             write({"jsonrpc": "2.0", "method": "job/progress",
                    "params": {"id": msg_id, "stage": stage, "fraction": i / 4,
-                              "message": f"{stage}: 3 nodes, 2 edges"}})
-        lines = ["A", "B"] if mode == "all" else ["A"] if "tram" in mode else ["B"]
-        summary = {"nodes": 3, "stations": 3, "junctions": 0, "edges": 2, "lines": lines}
-        stages = {s: dict(summary) for s in ("gtfs2graph", "topo", "loom", "octi")}
-        stages["octi"]["octilinear"] = 1.0
-        key = params.get("key", "x")
-        # The id names the inputs, as the real engine's does: the same feed
-        # and options give the same id, so two projects on one feed share one.
-        # A missing mode or agency is the registry entry's and an empty
-        # agency is none, as the engine's resolved() reads them.
-        entry = FEEDS.get(key, {})
-        agency = params.get("agency", entry.get("agency")) or None
-        inputs = {"feed": key, "mode": mode, "agency": agency}
-        # A tuned layout is a layout of its own; a tuning of nothing but
-        # LOOM's defaults writes no flag and names the untuned layout's id.
-        tuned = {tool: args for tool, args in flags.items() if args}
-        if tuned:
-            inputs["tuning"] = tuned
-        layout = hashlib.sha256(json.dumps(inputs, sort_keys=True).encode()).hexdigest()
-        if params.get("force") or layout not in self.layouts:
+                              "message": f"{stage}: 3 nodes, 2 edges", "layout": layout}})
+        if builds:
             self.builds += 1
             self.layouts[layout] = "2026-09-10T00:%02d:%02d+00:00" % divmod(self.builds, 60)
+            self.layout_builds[layout] = self.builds
         self.layout_stages[layout] = stages
+        self.building.pop(layout, None)
         paths = {s: str(HOME / "data" / "graphs" / key / layout / f"0{i}_{s}.json")
                  for i, s in enumerate(stages)}
         meta = {"feed": key, "feed_sha256": "0" * 64, "mode": mode,
@@ -904,9 +937,13 @@ class Engine:
             # The real engine's last message is the folder it wrote into,
             # which is a path; the app must not put that on a screen.
             message = str(out) if stage == "write" else f"{stage}: 3 nodes, 2 edges"
-            write({"jsonrpc": "2.0", "method": "job/progress",
-                   "params": {"id": msg_id, "stage": stage, "fraction": i / len(stages),
-                              "message": message}})
+            report = {"id": msg_id, "stage": stage, "fraction": i / len(stages),
+                      "message": message}
+            # The four the map replays name the layout, as the engine's do
+            # (v0.14.0); its own four name none.
+            if i <= 4:
+                report["layout"] = params["layout"]
+            write({"jsonrpc": "2.0", "method": "job/progress", "params": report})
         files = {}
         for name, suffix in (("svg", ".svg"), ("html", ".html"),
                              ("positions", ".positions.json")):
@@ -999,13 +1036,60 @@ class Engine:
                       "to": line["trip"]["to"]}
         return {"extent": extent, "lines": described}
 
-    def stage_drawing(self, key: str, layout: str, stage: str, width, date=None) -> dict:
-        counts = self.layout_stages.get(layout, {}).get(stage) or {
+    def stage_answer(self, msg_id, params: dict) -> None:
+        """render.stage's drawing, as the engine's _drawn_stage chooses it (E27,
+        issue 43): from a build of the layout in flight once it has reported
+        what the answer needs - the stage, octi too when a date asks for the
+        minutes, and whatever `stage_waits_on` adds - and otherwise from the
+        store. A layout that is building and not stored is refused as not
+        yet, in the engine's sentence and shape; one being laid out again
+        (force) is drawn from the store until its build has what is asked."""
+        key = params.get("key", "x")
+        layout = params["layout"]
+        stage = params["stage"]
+        date = params.get("date")
+        width = params.get("width", 1200)
+        needed = [stage] if date is None or stage == "octi" else [stage, "octi"]
+        waits = self.control.get("stage_waits_on", {}).get(stage)
+        if waits is not None and waits not in needed:
+            needed.append(waits)
+        building = self.building.get(layout)
+        if building is not None:
+            missing = next((s for s in needed if s not in building["reported"]), None)
+            if missing is None:
+                write({"jsonrpc": "2.0", "id": msg_id,
+                       "result": self.stage_drawing(key, layout, stage, width, date,
+                                                    building["stages"], building["build"])})
+                return
+            if layout not in self.layouts:
+                hint = (f"{key!r} is still being laid out under layout {layout[:8]}, and the "
+                        f"build has not reached its {missing} stage yet; ask again when "
+                        "job/progress reports it")
+                if missing != stage and missing == "octi" and date is not None:
+                    hint += (f"; the minutes of a date are read from the {missing} stage, so "
+                             f"leave date out to draw {stage} now")
+                write({"jsonrpc": "2.0", "id": msg_id,
+                       "error": {"code": -32000, "message": hint,
+                                 "data": {"kind": "layout", "detail": hint, "hint": hint,
+                                          "layout": layout, "stage": missing,
+                                          "building": True}}})
+                return
+        write({"jsonrpc": "2.0", "id": msg_id,
+               "result": self.stage_drawing(key, layout, stage, width, date,
+                                            self.layout_stages.get(layout),
+                                            self.layout_builds.get(layout))})
+
+    def stage_drawing(self, key: str, layout: str, stage: str, width, date=None,
+                      stages=None, build=None) -> dict:
+        counts = (stages or {}).get(stage) or {
             "nodes": 3, "stations": 3, "junctions": 0, "edges": 2, "lines": ["A"]}
         lines = counts["lines"]
         height = round(float(width) * 0.6)
-        svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
-               f'viewBox="0 0 {width} {height}"><rect width="100%" height="100%" '
+        # The build the drawing is of, where the stand-in knows it, as an
+        # attribute: the stage's text is left as tests read it.
+        built = "" if build is None else f' data-build="{build}"'
+        svg = (f'<svg xmlns="http://www.w3.org/2000/svg"{built} width="{width}" '
+               f'height="{height}" viewBox="0 0 {width} {height}"><rect width="100%" height="100%" '
                f'fill="#eee"/><text x="20" y="40" font-size="24">{stage}: '
                f'{", ".join(lines)}</text></svg>')
         return {"layout": layout, "stage": stage, "svg": svg, "width": float(width),
