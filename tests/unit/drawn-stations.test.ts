@@ -32,7 +32,7 @@ import {
   withStations,
   type ProjectRecord,
 } from '../../src/shared/project'
-import type { Station } from '../../src/shared/trip'
+import { readStations, type Station } from '../../src/shared/trip'
 
 const WINDOW = {
   start: '2026-01-01',
@@ -177,6 +177,31 @@ describe('the record keeps the stations its map was drawn with', () => {
       expect(parsed.record.drawn, JSON.stringify(stations)).not.toBeNull()
       expect(parsed.record.drawn?.stations, JSON.stringify(stations)).toBeUndefined()
     }
+  })
+
+  it('reads the list again in the store, keeping two fields and refusing one that is not whole', async () => {
+    // The store is the trusted layer and has callers of its own: what the
+    // handler read is read again here, as every other field is.
+    const id = await laidOut()
+    const extra = STATIONS.map((station) => ({ ...station, colour: '#ff0000', note: 'x' }))
+    await store.completeColors(id, { colors: {}, defaultColor: '#888888' }, extra)
+    const raw = await onDisk(id)
+    expect((raw.drawn as { stations: unknown }).stations, 'id and name only').toEqual(STATIONS)
+    // A list a caller passed round the handler that does not read whole is
+    // no list: the record keeps the one it had.
+    const twice = [STATIONS[0], STATIONS[0]]
+    await store.completeOrder(id, ['A'], twice)
+    expect((await store.get(id)).drawn?.stations).toEqual(STATIONS)
+    await store.completeLayout(id, done({ stations: [{ id: '', name: 'Nowhere' }] }))
+    expect((await store.get(id)).drawn?.stations).toEqual(STATIONS)
+  })
+
+  it('reads a list whose ids and names weigh more than any city as no list', () => {
+    // Twenty thousand entries of the longest name each would read whole
+    // entry by entry; the whole list has a bound of its own.
+    const heavy = Array.from({ length: 1001 }, (_, i) => ({ id: `n${i}`, name: 'n'.repeat(999) }))
+    expect(readStations(heavy)).toBeNull()
+    expect(readStations(heavy.slice(0, 900))).toHaveLength(900)
   })
 
   it('lists projects without their stations', async () => {

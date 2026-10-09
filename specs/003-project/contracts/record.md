@@ -85,9 +85,12 @@ The on-disk form of `ProjectRecord` (`data-model.md`), version 2:
   while the layout and its `made` are unchanged, and nothing from another
   layout or from the same id laid out again since. It is optional and read on its
   own: missing, or a list that is not whole (an entry without a string id
-  and name, an empty or repeated id, more than 20,000 entries), reads as no
+  and name, an empty or repeated id, more than 20,000 entries, more than
+  1,000,000 characters of ids and names together), reads as no
   list and leaves the rest of `drawn` as it was, and the section then asks
-  for the map to be drawn again. An older build that writes the record
+  for the map to be drawn again. The store reads the list again, as
+  it reads every field the handler read, and keeps an entry's id and name
+  and nothing else. An older build that writes the record
   drops it, which the next draw puts back. The front door's summaries carry
   `drawn` without it. A trip is never in the record.
 - `built` (added by A2-02, still version 1) is the mode and agency the

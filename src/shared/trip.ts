@@ -38,6 +38,15 @@ export const STATION_ID_MAX = 200
  */
 export const STATION_NAME_MAX = 1000
 
+/**
+ * The most characters a whole list may carry, ids and names together. Each
+ * entry is bounded, and so is their number, but the two bounds multiply to
+ * about twenty-four million characters - a record parsed on every listing
+ * of the front door. The registry's largest network is a few tens of
+ * thousands; this is room for a city many times larger.
+ */
+export const STATIONS_CHARACTERS_MAX = 1_000_000
+
 /** The longest line label the page's answer may carry. The label is drawn verbatim. */
 export const TRIP_LABEL_MAX = 200
 
@@ -72,6 +81,14 @@ const isText = (value: unknown, max: number): value is string => {
 }
 
 /**
+ * A station id as the page is asked for one: an id this app would read in a
+ * list of stations. The main process holds `setTrip`'s arguments to it before
+ * anything reaches the page (`src/main/viewer.ts`).
+ */
+export const isStationId = (value: unknown): value is string =>
+  isText(value, STATION_ID_MAX) && value !== ''
+
+/**
  * The stations of a map, whole, or null. Every entry is an object with an
  * id and a name, each a string of sensible length, and no id appears
  * twice: an id is what the page is asked for, so two the same would make
@@ -83,11 +100,14 @@ export function readStations(value: unknown): Station[] | null {
   if (!Array.isArray(value) || value.length > STATIONS_MAX) return null
   const seen = new Set<string>()
   const stations: Station[] = []
+  let characters = 0
   for (const entry of value) {
     if (!isObject(entry)) return null
     const { id, name } = entry
     if (!isText(id, STATION_ID_MAX) || id === '' || seen.has(id)) return null
     if (!isFeedText(name, STATION_NAME_MAX)) return null
+    characters += id.length + name.length
+    if (characters > STATIONS_CHARACTERS_MAX) return null
     seen.add(id)
     stations.push({ id, name })
   }

@@ -53,7 +53,7 @@ import {
   type ExportChoice,
 } from '../shared/export'
 import { isLayoutId, type LayoutDone, type LayoutResult } from '../shared/layout'
-import type { Station } from '../shared/trip'
+import { readStations, type Station } from '../shared/trip'
 import { isValidProjectId } from './paths'
 import { failedWords, renameOver, retriedWords, type ReplaceOptions } from './replace-file'
 
@@ -70,7 +70,17 @@ import { failedWords, renameOver, retriedWords, type ReplaceOptions } from './re
  * where the layout is the one it was listed for (`drawnFrom`).
  */
 function drew(record: ProjectRecord, stations?: Station[]): ProjectRecord {
-  return { ...record, drawn: withStations(drawnFrom(record), stations) }
+  return { ...record, drawn: withStations(drawnFrom(record), listed(stations)) }
+}
+
+/**
+ * A draw's stations as the store will keep them: read again here, as every
+ * other field is checked in the handler and again in the store, which is the
+ * trusted layer and has callers of its own. A list that does not read whole
+ * is no list, and the record keeps what `drawnFrom` carries.
+ */
+function listed(stations: Station[] | undefined): Station[] | undefined {
+  return stations === undefined ? undefined : (readStations(stations) ?? undefined)
 }
 
 /**
@@ -95,7 +105,7 @@ function redrew(record: ProjectRecord, stations?: Station[]): ProjectRecord {
   // The stations the build answered, where it answered a list (issue 272):
   // a redraw from a set another project laid out again since draws that
   // set's stations, which the record's own `made` cannot see.
-  const drawn = withStations(drawnFrom(record), stations)
+  const drawn = withStations(drawnFrom(record), listed(stations))
   if (drawn === null || before === null) return { ...record, drawn }
   return { ...record, drawn: { ...drawn, date: before.date } }
 }

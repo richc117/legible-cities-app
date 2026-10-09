@@ -90,6 +90,7 @@ was showing a trip.
 - It injects into a frame it is holding, never one found by address at the moment of use, and never the interface's own frame. A held frame that has gone is a refusal, not a fallback.
 - What is held is the **frame**, not the document in it. A page may navigate itself, which is allowed and which the sandbox follows: every document loaded there is opaque-origin, so the boundary does not move. The app would then be driving a different document in the same frame, which is why the page is asked what it is showing rather than assumed.
 - It builds the injected text itself: a fixed dispatcher, the method's name checked against the list, and the arguments as data. Nothing a caller sends becomes code.
+- It checks each method's arguments by shape and size before serialising them (`VIEWER_ARGUMENTS` in `src/main/viewer.ts`, issue 272): `setTrip` two station ids or `null`, `seek` a second of the day, `setSpeed` a positive number, `setLabels` and `setPlaying` a boolean, `showView` a view's name and an optional duration, `setRoutes` a list of labels or nothing, `setTheme` one of the two themes, and the three reads nothing; the serialised arguments are capped at `VIEWER_ARGUMENTS_MAX`. A call outside the table is answered "the map cannot be asked that" and never reaches the page.
 - It answers with what the page returned, as data. A page that throws becomes a sentence.
 - It holds one frame at a time, for one window.
 

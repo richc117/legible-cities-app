@@ -796,7 +796,8 @@ export function withStations(
   stations: Station[] | undefined,
 ): DrawnFrom | null {
   if (drawn === null || stations === undefined) return drawn
-  return { ...drawn, stations: stations.map((station) => ({ ...station })) }
+  // The two fields and nothing else, whatever the caller's objects carried.
+  return { ...drawn, stations: stations.map(({ id, name }) => ({ id, name })) }
 }
 
 /**

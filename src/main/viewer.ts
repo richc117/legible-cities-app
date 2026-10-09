@@ -27,12 +27,68 @@
 // specs/029-the-map-in-the-flow (FR-006).
 
 import type { WebContents, WebFrameMain } from 'electron'
+import { isTheme } from '../shared/project'
+import { isStationId } from '../shared/trip'
 import {
   EXPORT_FRAME_METHODS,
   isViewerMethod,
   type ViewerMethod,
   type ViewerRole,
 } from '../shared/viewer'
+
+/**
+ * The arguments each method may be sent, by shape and size, checked here
+ * before a character is serialised (issue 272). The page is the one thing
+ * the app must keep contained, and the arguments reach its main world as
+ * data: a caller that sent the right method with the wrong arguments - a
+ * station id that is a paragraph, a list of a million lines - would hand
+ * the page exactly what it was sent. Each entry is what the app's own
+ * callers send (`viewerRestore.ts`, `Transport.tsx`, `Trip.tsx`, the theme
+ * switch) and nothing wider; a call outside it is refused with a sentence
+ * and never reaches the page.
+ */
+const finite = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value)
+/** A view's name: the page's own word, read back from its `state()`. */
+const isViewName = (value: unknown): boolean =>
+  typeof value === 'string' && value.length > 0 && value.length <= 64
+/** A line's label as the page's chips name it. */
+const isLabel = (value: unknown): boolean =>
+  typeof value === 'string' && value.length > 0 && value.length <= 200
+/** The most lines a keep list may name: a feed's colours are capped at 512. */
+const KEEP_MAX = 1024
+
+export const VIEWER_ARGUMENTS: Readonly<Record<ViewerMethod, (args: unknown[]) => boolean>> = {
+  // A view's name, and optionally a duration in seconds, which the restore
+  // sends as 0.
+  showView: (a) =>
+    (a.length === 1 || a.length === 2) &&
+    isViewName(a[0]) &&
+    (a.length === 1 || (finite(a[1]) && a[1] >= 0)),
+  setLabels: (a) => a.length === 1 && typeof a[0] === 'boolean',
+  // The lines to keep, or nothing (or null) for all of them.
+  setRoutes: (a) =>
+    a.length === 0 ||
+    (a.length === 1 &&
+      (a[0] === null || (Array.isArray(a[0]) && a[0].length <= KEEP_MAX && a[0].every(isLabel)))),
+  setTheme: (a) => a.length === 1 && isTheme(a[0]),
+  // Two station ids from `map.build`'s list, or null for the whole network.
+  setTrip: (a) =>
+    (a.length === 1 && a[0] === null) || (a.length === 2 && isStationId(a[0]) && isStationId(a[1])),
+  seek: (a) => a.length === 1 && finite(a[0]) && a[0] >= 0,
+  setSpeed: (a) => a.length === 1 && finite(a[0]) && a[0] > 0,
+  setPlaying: (a) => a.length === 1 && typeof a[0] === 'boolean',
+  hasGeo: (a) => a.length === 0,
+  bounds: (a) => a.length === 0,
+  state: (a) => a.length === 0,
+}
+
+/**
+ * The most the serialised arguments of one call may weigh, in characters:
+ * a keep list of every line a feed could carry, with room, and far below
+ * anything that would make an injection a burden on the page.
+ */
+export const VIEWER_ARGUMENTS_MAX = 65_536
 
 /**
  * Which of the two frames an address can be held as, for this project, or
@@ -168,6 +224,12 @@ export class Viewer {
     if (role === 'export' && !EXPORT_FRAME_METHODS.includes(method)) {
       throw new Error("the export's preview is not driven from here")
     }
+    // The arguments by shape and size, before anything is serialised or
+    // sent: a call the table does not admit is answered with a sentence and
+    // never reaches the page.
+    if (!Array.isArray(args) || !VIEWER_ARGUMENTS[method](args)) {
+      throw new Error('the map cannot be asked that')
+    }
     const frame = this.#usable(contents, role)
     if (frame === null) {
       throw new Error(
@@ -180,6 +242,7 @@ export class Viewer {
     } catch {
       throw new Error('the map cannot be asked that')
     }
+    if (serialised.length > VIEWER_ARGUMENTS_MAX) throw new Error('the map cannot be asked that')
     const answer = (await frame.executeJavaScript(dispatcher(method, serialised))) as
       { ok: true; value: unknown } | { ok: false; error: string } | undefined
     // `typeof null` is 'object', which is exactly the sort of thing that
@@ -211,7 +274,7 @@ export class Viewer {
  * inside an injected script comes back as a fixed sentence with the page's
  * own message lost.
  */
-function dispatcher(method: ViewerMethod, args: string): string {
+export function dispatcher(method: ViewerMethod, args: string): string {
   return `(function () {
   try {
     var present = window.__present
