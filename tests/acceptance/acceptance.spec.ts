@@ -1299,16 +1299,15 @@ test('a release, installed, through docs/acceptance.md', async () => {
         )
       })
       await log.soft('gtfs2graph first', async () => {
-        await expect(group.getByRole('button', { name: 'gtfs2graph' })).toHaveAttribute(
-          'aria-pressed',
-          'true',
-        )
+        await expect(
+          group.getByRole('button', { name: 'gtfs2graph', exact: true }),
+        ).toHaveAttribute('aria-pressed', 'true')
         await expect(group.locator('.hint')).toHaveText('as the feed draws its routes')
       })
       const frame = stages.locator('iframe.stage-frame')
       const before = (await frame.getAttribute('srcdoc')) ?? ''
-      await group.getByRole('button', { name: 'gtfs2graph' }).click()
-      await group.getByRole('button', { name: 'loom' }).click()
+      await group.getByRole('button', { name: 'gtfs2graph', exact: true }).click()
+      await group.getByRole('button', { name: 'loom', exact: true }).click()
       let blank = false
       const sampleUntil = Date.now() + 3 * SECOND
       while (Date.now() < sampleUntil) {
@@ -1316,14 +1315,13 @@ test('a release, installed, through docs/acceptance.md', async () => {
         await sleep(100)
       }
       await log.soft('loom pressed, its description only, a new drawing', async () => {
-        await expect(group.getByRole('button', { name: 'loom' })).toHaveAttribute(
+        await expect(group.getByRole('button', { name: 'loom', exact: true })).toHaveAttribute(
           'aria-pressed',
           'true',
         )
-        await expect(group.getByRole('button', { name: 'gtfs2graph' })).toHaveAttribute(
-          'aria-pressed',
-          'false',
-        )
+        await expect(
+          group.getByRole('button', { name: 'gtfs2graph', exact: true }),
+        ).toHaveAttribute('aria-pressed', 'false')
         await expect(group.locator('.hint')).toHaveText('lines sorted onto shared track')
         expect(await stages.innerText()).not.toContain('as the feed draws its routes')
         await expect
