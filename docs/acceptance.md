@@ -179,8 +179,8 @@ again.
   **Your feeds** yet.
 - The engine's status line starts at "Checking the engine…" or "Starting
   the engine." and becomes "Engine ready (`<engine version>`)." The version
-  is the engine pin in `vendor/pins.json` at the release tag (0.10.1 when
-  this was written).
+  is the engine pin in `vendor/pins.json` at the release tag (v0.10.1 in
+  0.1.0; a later build pins a later engine).
 - **No dialog opens.** The first-run check of the bundled LOOM and ffmpeg
   passes silently; a dialog titled "LOOM will not run", "ffmpeg will not
   run" or "LOOM and ffmpeg will not run" is a failure of this step. Write
@@ -494,9 +494,11 @@ line's row (six dots) and **drag** it down to the last place without
 letting go for a moment, then release. Drag another line a little way and,
 still holding it, press Escape; then release. Rest the pointer on a row's
 up arrow. Then press the down arrow on the first line, and the up arrow on
-another. Wait for the map. In the page, press **Linear**, open **More**,
-press **Time**, and then **Schematic** again. Press **Back to
-alphabetical**.
+another. Wait for the map. The page's views are the icon buttons at the
+map's top right, named by tooltips that begin with their words ("Linear —
+one row per line", "Time — the service day as a Marey chart", "Schematic —
+straightened onto a 45° grid"): press **Linear**, then **Time**, then
+**Schematic** again. Press **Back to alphabetical**.
 
 **See.**
 - A list "Lines in the order they are drawn", each row with a grip at its
@@ -518,25 +520,23 @@ alphabetical**.
   names it), the page follows the list (engine issue 63,
   richc117/legible-cities#63). In its **Linear** and **Time** views the
   lines run from the top down in the order of the list, so the line at the
-  top of the list is the top row; in **More**, the **Sort** group has a
-  third button, **As arranged**, pressed, beside **A–Z** and **Stations**,
-  which sort the rows as they always did. On the schematic, where two
-  lines share track the one lower in the list is drawn over the one above
-  it.
+  top of the list is the top row. On the schematic, where two lines share
+  track the one lower in the list is drawn over the one above it. (The
+  page's own header, which the app's frame does not show, has an
+  **As arranged** sort, pressed when the map was built with an order.)
 - **check:** an export made while the order is set follows it too: the
   reel's own storyboard goes through the Linear and Time views, and their
   rows are in the order of the list. Step 11's reel is exported after
   **Back to alphabetical**, so its rows are A–Z; to look at a file, export
-  once more before pressing it.
+  once, as step 11 does, before pressing it.
 - With an engine before v0.12.0 (the first release, 0.1.0, carries
   v0.10.1) skip the two lines above: the page sorts its Linear and Time
-  rows A–Z whatever the order, has no **As arranged**, and the order shows
-  only on the schematic, where two lines share track. A page that looks the
-  same there is not a failure of the app (issue 343).
+  rows A–Z whatever the order, and the order shows only on the schematic,
+  where two lines share track. A page that looks the same there is not a
+  failure of the app (issue 343).
 - **Back to alphabetical** says "The lines are in alphabetical order
   again." and becomes unavailable. The map is drawn once more with no
-  order; from engine v0.12.0 the page's rows are A–Z again and **As
-  arranged** is gone.
+  order; from engine v0.12.0 the page's Linear and Time rows are A–Z again.
 
 Result: ____
 
