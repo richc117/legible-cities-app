@@ -529,6 +529,20 @@ describe('the stage view while a run reveals the layout, as it is first drawn', 
     expect(html).not.toContain('<iframe')
   })
 
+  it('holds nothing once the run has finished, until its record has been read back', () => {
+    const html = view(stored, {
+      ...running,
+      state: 'done',
+      reported: ['gtfs2graph', 'topo', 'loom', 'octi'],
+      running: null,
+    })
+    expect(html).toContain('Drawing the stage…')
+    expect(html).not.toContain('<iframe')
+    expect(html, 'no sentence of the run').not.toContain('drawn;')
+    expect(html, 'nothing said aloud of the run').not.toContain('visually-hidden')
+    expect(html.match(/variant="primary"/g), 'the stage chosen, as before the run').toHaveLength(1)
+  })
+
   it('says a stopped run’s stages are gone, and that the stored layout is shown again', () => {
     expect(view(record(), { ...running, state: 'cancelled' })).toContain(
       'The layout run was cancelled, so its stages are no longer drawn.',

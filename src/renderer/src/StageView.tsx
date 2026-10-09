@@ -213,9 +213,12 @@ export default function StageView({ project, engine, read, reveal = null }: Prop
   // and zoom, so the two can be compared; a new set is fitted afresh.
   const fittedTo = useRef<string | null>(null)
   const layout = project.layout
-  // The run's reveal (issue 382): live while the run goes and until its
-  // record has been read back; cleared once it stopped.
-  const live = reveal !== null && (reveal.state === 'running' || reveal.state === 'done')
+  // The run's reveal (issue 382): live while the run goes; handing back
+  // once it has finished and until its record has been read back, when the
+  // pane holds nothing, neither the build's last stage nor the stored set
+  // it replaced; cleared once it stopped.
+  const live = reveal !== null && reveal.state === 'running'
+  const handing = reveal !== null && reveal.state === 'done'
   const ending =
     reveal !== null && (reveal.state === 'cancelled' || reveal.state === 'failed')
       ? reveal.state
@@ -245,10 +248,11 @@ export default function StageView({ project, engine, read, reveal = null }: Prop
 
   useEffect(() => {
     // While a run reveals the layout the pane is the run's: the stored
-    // drawing goes, and the store is read again when the reveal ends.
-    if (live || !ready || layout === null) {
+    // drawing goes, and the store is read again when the reveal ends, under
+    // the record the run wrote, so not while that is being read back.
+    if (live || handing || !ready || layout === null) {
       setState({ status: 'waiting' })
-      setLoading(false)
+      setLoading(handing)
       return
     }
     let left = false
@@ -278,7 +282,7 @@ export default function StageView({ project, engine, read, reveal = null }: Prop
     return () => {
       left = true
     }
-  }, [live, ready, project.feed, layout, project.made, stage, day, read])
+  }, [live, handing, ready, project.feed, layout, project.made, stage, day, read])
 
   // The reveal's requests: each stage as the run reports it, and each
   // refused as not yet once the stage it waits on is reported. No day is
@@ -506,11 +510,13 @@ export default function StageView({ project, engine, read, reveal = null }: Prop
           are read, a picture's are not. */}
       {!live && (idle || loading) && (
         <p className="hint" role="status">
-          {layout === null
-            ? 'Lay the project out to see where its routes run.'
-            : !ready
-              ? 'The engine is not ready, so the stage cannot be drawn yet.'
-              : 'Drawing the stage…'}
+          {handing
+            ? 'Drawing the stage…'
+            : layout === null
+              ? 'Lay the project out to see where its routes run.'
+              : !ready
+                ? 'The engine is not ready, so the stage cannot be drawn yet.'
+                : 'Drawing the stage…'}
         </p>
       )}
       {earlyStage !== null && <p className="hint">{notDrawnYet(earlyStage)}</p>}

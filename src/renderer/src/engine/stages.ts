@@ -267,9 +267,10 @@ type RevealFacts = Pick<
  * run, a run that has named no layout yet, or a redraw, whose map call
  * names the stored layout on its replays and lays nothing out. A finished
  * run is a reveal only until the record it wrote has been read back
- * (`settling`), so the view goes from the build's drawings to the store's
- * with no moment of the stored set it replaced, or of no layout at all; a
- * stopped one stays, for the view to say what went (FR-006).
+ * (`settling`), and the view holds nothing meanwhile, so it goes from the
+ * build's drawings to the store's with no moment of the stored set it
+ * replaced, nor of a project with no layout; a stopped one stays, for the
+ * view to say what went (FR-006).
  */
 export function revealOf(run: RevealFacts, job: string | null, settling: boolean): Reveal | null {
   if (job === null || run.layout === null) return null
