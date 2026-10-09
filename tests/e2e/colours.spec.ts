@@ -13,7 +13,14 @@
 import { copyFileSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { _electron as electron, expect, test, type Locator, type Page } from '@playwright/test'
+import {
+  _electron as electron,
+  expect,
+  test,
+  type ElectronApplication,
+  type Locator,
+  type Page,
+} from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 import {
   cell,
@@ -24,6 +31,14 @@ import {
   openProject,
   withoutOpened,
 } from '../support/project'
+import {
+  afterFrames,
+  notebookSettled,
+  pointerHasReached,
+  showIfHidden,
+  steady,
+  watchPointer,
+} from '../support/steady'
 
 const repoRoot = resolve(__dirname, '../..')
 const PYTHON = findPython()
@@ -41,7 +56,7 @@ function home(control: Record<string, unknown> = {}): string {
 
 async function withApp(
   engineHome: string,
-  run: (page: Page) => Promise<void>,
+  run: (page: Page, app: ElectronApplication) => Promise<void>,
   env: Record<string, string> = {},
 ): Promise<void> {
   const app = await electron.launch({
@@ -57,7 +72,7 @@ async function withApp(
     timeout: 30_000,
   })
   try {
-    await run(await app.firstWindow())
+    await run(await app.firstWindow(), app)
   } finally {
     await app.close()
   }
@@ -411,21 +426,41 @@ test('the picker stays open through a drag, and closes when it is dismissed', as
 test('a drag is one build, made on its release, however slowly the hand moves', async () => {
   // Slowed, so that a build is a stretch with something to be in flight.
   const engineHome = home({ progress_delay_ms: 50 })
-  await withApp(engineHome, async (page) => {
+  await withApp(engineHome, async (page, app) => {
     await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
+    // The square is measured below, so the column is let settle first: the
+    // header holds its sentence while a finished run's record is read back,
+    // and on a runner slow to settle the field did not follow a press for
+    // the whole of its wait (issue 373).
+    await notebookSettled(page)
+    await showIfHidden(app, page, 'a drag is one build')
     const panel = cell(page, 'lines')
     const drawnBefore = buildsOf(engineHome)
     await panel.getByRole('button', { name: 'Choose the colour of line A' }).click()
     const picker = panel.getByRole('group', { name: 'Colour for line A' })
     const saturation = picker.getByRole('slider').first()
     const field = picker.getByLabel('Hex value')
-    const square = (await saturation.boundingBox())!
+    await expect(picker).toBeVisible()
+    await watchPointer(page)
 
-    await page.mouse.move(square.x + 20, square.y + 20)
+    // The pointer goes to the square through Playwright's own checks that it
+    // is still and that the square is what receives a press there, and the
+    // square is measured after, not the moment the panel opened.
+    await saturation.hover({ position: { x: 20, y: 20 } })
+    const square = (await saturation.boundingBox())!
     await page.mouse.down()
-    await page.mouse.move(square.x + 120, square.y + 60, { steps: 50 })
+    // A press is a colour (issue 87), so this is the press landing and
+    // nothing yet about the moves.
+    await expect(field, 'the press landed on the square').not.toHaveValue('#0072bc')
+    // The pace is the page's: a drag is followed once the page has heard the
+    // pointer arrive, then two frames for the field to draw it, however many
+    // of the fifty moves a slow runner delivered one by one.
+    const first = { x: square.x + 120, y: square.y + 60 }
+    await page.mouse.move(first.x, first.y, { steps: 50 })
+    await pointerHasReached(page, first, 'the drag to its first stop')
+    await afterFrames(page)
+    const midDrag = await field.inputValue()
     await expect(field, 'the field follows the drag').not.toHaveValue('#0072bc')
-    const midDrag = await settledValue(field)
     expect(buildsOf(engineHome), 'nothing is built while the pointer moves').toBe(drawnBefore)
 
     // The pause, pointer down, longer than any interval the app ever had.
@@ -437,8 +472,11 @@ test('a drag is one build, made on its release, however slowly the hand moves', 
 
     // And the drag goes on to somewhere else, so the colour at release is
     // not the one at the pause.
-    await page.mouse.move(square.x + 60, square.y + 100, { steps: 50 })
-    const atRelease = await settledValue(field)
+    const second = { x: square.x + 60, y: square.y + 100 }
+    await page.mouse.move(second.x, second.y, { steps: 50 })
+    await pointerHasReached(page, second, 'the drag to its second stop')
+    await afterFrames(page)
+    const atRelease = await field.inputValue()
     expect(atRelease, 'the drag went on after the pause').not.toBe(midDrag)
     expect(buildsOf(engineHome), 'still nothing built with the pointer down').toBe(drawnBefore)
 
@@ -695,8 +733,14 @@ test('a chip opens its picker in a floating panel that moves no row, and the las
   // Issue 284. The picker used to unfold under its row and push every row
   // below it down, and could be pushed behind the pinned map.
   const engineHome = home()
-  await withApp(engineHome, async (page) => {
+  await withApp(engineHome, async (page, app) => {
     await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
+    // Rows are measured before and after the picker opens, so the column has
+    // to be still before the first read: the header holds its sentence while
+    // a finished run's record is read back, and on a runner slow to settle
+    // row 0 was read 24px from where it had been a moment before (issue 373).
+    await notebookSettled(page)
+    await showIfHidden(app, page, 'a chip opens its picker in a floating panel')
     const panel = cell(page, 'lines')
     const rows = panel.getByRole('list', { name: 'Lines', exact: true }).getByRole('listitem')
     const chipOf = (line: string): Locator =>
@@ -720,10 +764,13 @@ test('a chip opens its picker in a floating panel that moves no row, and the las
     )
 
     // Opening it moves no row.
-    const before = await tops()
+    const before = await steady(page, tops, 'the rows of cell 05')
     await chipOf('A').click()
     const picker = panel.getByRole('group', { name: 'Colour for line A' })
     await expect(picker).toBeVisible()
+    // Read once the panel has been drawn, not the instant it is shown. A row
+    // moved by the panel moves for as long as the panel is open.
+    await afterFrames(page)
     // Within a pixel, not equal and not rounded: a position is a fraction
     // that wobbles by a ten-thousandth between reads, and a number that
     // sits near a half rounds to either side. A row that moved moved by the
@@ -731,7 +778,10 @@ test('a chip opens its picker in a floating panel that moves no row, and the las
     const after = await tops()
     expect(after).toHaveLength(before.length)
     after.forEach((top, i) =>
-      expect(Math.abs(top - before[i]), `row ${i} moved`).toBeLessThanOrEqual(1),
+      expect(
+        Math.abs(top - before[i]),
+        `row ${i} moved from ${before[i]} to ${top} (rows before: ${JSON.stringify(before)})`,
+      ).toBeLessThanOrEqual(1),
     )
     // It is a popover, in the top layer, and it never covers its chip:
     // below it where there is room, above it where there is not.

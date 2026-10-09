@@ -35,6 +35,7 @@ import {
 } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 import { openCell, openProject } from '../support/project'
+import { afterFrames, showIfHidden, visibilityOf } from '../support/steady'
 
 const repoRoot = resolve(__dirname, '../..')
 const fixture = resolve(__dirname, '../fixtures/capture-page.html')
@@ -387,11 +388,49 @@ test('Copy log puts the job on the clipboard with the feed key and the home fold
   })
 })
 
+/**
+ * How long a job's end is given to be heard in the live region. The
+ * announcer empties the region at the end and fills it again on the second
+ * animation frame after, so the sentence is as late as the frames are, and a
+ * runner that is starved draws them late (issue 373).
+ */
+const HEARD_MS = 20_000
+
+/**
+ * What a sentence that never came leaves to be read: which job it was, what
+ * the region holds, whether the window is painting at all, and every
+ * sentence the page did hear. A failure that said only "expected 21,
+ * received 20" could not be told from a lost refill or from a window that
+ * drew no frames, which are different faults.
+ */
+async function unheard(
+  page: Page,
+  count: number,
+  job: string | null,
+  said: () => Promise<string[]>,
+): Promise<string> {
+  const region = await announcement(page).textContent()
+  const frame = await afterFrames(page, 1, 2_000).then(
+    () => 'a frame was drawn',
+    () => 'no frame was drawn in 2 s',
+  )
+  const heard = await said()
+  return (
+    `job ${count} of 21 (${job}) ended and is the first in the list, but the live region was given ` +
+    `${heard.length} sentence(s) in ${HEARD_MS} ms, not ${count}. It holds ${JSON.stringify(region)} ` +
+    `now; the window is ${await visibilityOf(page)} and ${frame}. Heard: ${JSON.stringify(heard)}`
+  )
+}
+
 test('twenty-one finished jobs keep the newest twenty', async () => {
+  // Twenty-one jobs, each with a wait of up to twenty seconds for the list
+  // and again for its announcement: the suite's minute is not enough to get
+  // to the message a late one leaves.
+  test.setTimeout(180_000)
   // A run that fails writes nothing, so twenty-one of them make no write to
   // race; each is waited for in the list before the next is started.
   const h = home({ empty_modes: ['all'] })
-  await withApp(h, async (page) => {
+  await withApp(h, async (page, app) => {
     await openNewProject(page, 'Los Angeles')
     await openInspector(page)
     await expect(inspector(page).getByText('There are no jobs this session.')).toBeVisible()
@@ -412,6 +451,10 @@ test('twenty-one finished jobs keep the newest twenty', async () => {
     // has not moved yet cannot pass for one that has.
     let newest: string | null = null
     for (let i = 1; i <= 21; i++) {
+      // The announcement waits on animation frames, which a window macOS
+      // has put behind others is not given; a window that is shown is left
+      // as it is.
+      await showIfHidden(app, page, `job ${i} of 21`)
       await layOut.click()
       await expect(async () => {
         const first = jobs(page).first()
@@ -420,8 +463,15 @@ test('twenty-one finished jobs keep the newest twenty', async () => {
       }).toPass({ timeout: 20_000 })
       newest = await jobs(page).first().getAttribute('aria-labelledby')
       await expect(toggle(page)).toHaveAccessibleName('Jobs, none running')
-      await expect(jobs(page)).toHaveCount(Math.min(i, 20))
-      await expect.poll(async () => (await said()).length).toBe(i)
+      await expect(
+        jobs(page),
+        `after job ${i} of 21 (${newest}) the list keeps ${Math.min(i, 20)}`,
+      ).toHaveCount(Math.min(i, 20))
+      try {
+        await expect.poll(async () => (await said()).length, { timeout: HEARD_MS }).toBe(i)
+      } catch (error) {
+        throw new Error(await unheard(page, i, newest, said), { cause: error })
+      }
     }
     expect(new Set(await said())).toEqual(new Set(['Los Angeles: Layout run, failed.']))
   })
