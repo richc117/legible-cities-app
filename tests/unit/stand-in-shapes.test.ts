@@ -1375,6 +1375,104 @@ describe.skipIf(PYTHON === null)(`the stand-in engine draws a layout as it solve
   }, 30_000)
 })
 
+// ------------------------------- two builds of one layout (issue 382)
+
+// Two projects on one feed lay out one layout, and the stand-in builds both at
+// once where the engine would have the second wait for the first. Each build
+// marks its stages readable as it reports them; a build that ends - cancelled
+// here - must forget only its own entry, or the other's next report finds
+// nothing to mark, its thread ends unanswered and its run can never end, a
+// cancel included. That is what settings.spec.ts saw on macOS: two layout
+// runs, the first cancelled while the second was still at its first stages,
+// and the second never ending. One stand-in of its own, holding each build in
+// octi until it is cancelled and reporting slowly before it.
+describe.skipIf(PYTHON === null)(`the stand-in engine's two builds of one layout${WHY}`, () => {
+  let home = ''
+  let sidecar: Sidecar
+  const notes: Record<string, unknown>[] = []
+
+  beforeAll(async () => {
+    home = mkdtempSync(join(tmpdir(), 'lc-two-builds-'))
+    writeFileSync(
+      join(home, 'fake-engine.json'),
+      JSON.stringify({ progress_delay_ms: 300, octi_child: true, octi_ms: 30_000 }),
+    )
+    sidecar = new Sidecar({
+      command: [PYTHON as string, '-m', 'schematic.serve'],
+      env: engineEnvironment({
+        config: { home, loomBin: null, loomCommit: null, ffmpeg: null },
+        base: { ...process.env, PYTHONPATH: FAKE_ENGINE },
+        development: true,
+      }),
+      pin: PIN,
+      log: () => {},
+      bounds: { handshakeMs: READY_MS, inactivityMs: READY_MS },
+    })
+    sidecar.onNotification((n) => {
+      if (n.method === 'job/progress' && typeof n.params === 'object' && n.params !== null)
+        notes.push(n.params as Record<string, unknown>)
+    })
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('the stand-in never became ready')), READY_MS)
+      sidecar.onState((s) => {
+        if (s.state === 'ready') {
+          clearTimeout(timer)
+          resolve()
+        }
+      })
+      sidecar.start()
+    })
+  }, READY_MS + 5_000)
+
+  afterAll(async () => {
+    await sidecar?.stop()
+    if (home !== '') rmSync(home, { recursive: true, force: true })
+  })
+
+  async function reported(id: number, stage: string): Promise<void> {
+    const deadline = Date.now() + 10_000
+    while (!notes.some((n) => n.id === id && n.stage === stage)) {
+      if (Date.now() > deadline) throw new Error(`request ${id} never reported ${stage}`)
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+  }
+  const cancelled = async (request: Promise<unknown>): Promise<number> => {
+    const error = (await request.then(
+      () => null,
+      (e: unknown) => e,
+    )) as EngineError | null
+    if (error === null) throw new Error('the build answered instead of being cancelled')
+    return error.code
+  }
+
+  it('reports, draws and is cancelled whole when the other build of its layout ends first', async () => {
+    const params = { key: 'la-metro-rail', mode: 'all', agency: '' }
+    const first = sidecar.request('graph.build', params, { deadlineMs: READY_MS })
+    await reported(first.id, 'loom')
+    // The second starts while the first waits in octi, and the first is
+    // cancelled while the second is still at its first stages.
+    const second = sidecar.request('graph.build', params, { deadlineMs: READY_MS })
+    await reported(second.id, 'gtfs2graph')
+    sidecar.cancel(first.id)
+    expect(await cancelled(first.result), 'the first, cancelled').toBe(ERROR_CODES.cancelled)
+
+    // The second goes on reporting, and its stages are its own build's.
+    await reported(second.id, 'loom')
+    const layout = notes.find((n) => n.id === second.id)?.layout as string
+    const drawn = (await sidecar.request('render.stage', {
+      key: 'la-metro-rail',
+      layout,
+      stage: 'topo',
+    }).result) as { svg: string }
+    expect(drawn.svg, 'drawn from the second build').toMatch(/data-build="2"/)
+
+    const started = Date.now()
+    sidecar.cancel(second.id)
+    expect(await cancelled(second.result), 'the second, cancelled').toBe(ERROR_CODES.cancelled)
+    expect(Date.now() - started, 'at the cancel, not at the hold’s end').toBeLessThan(5_000)
+  }, 30_000)
+})
+
 // ----------------------------------------- the removal as a job (issue 351)
 
 // Since engine v0.11.0 (its issue 35) `feeds.remove` is a job, like

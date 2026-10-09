@@ -554,6 +554,11 @@ class Engine:
         # the stored set's.
         self.layout_builds: dict = {}
         self.building: dict = {}
+        # Two builds of one layout can run at once here (two projects on one
+        # feed), where the engine would have the second wait for the first:
+        # the newer one is the layout's, and each build only ever forgets its
+        # own entry, under this lock, never the other's.
+        self.building_lock = threading.Lock()
         # The presets not on disk at the start that a graph.build has since
         # downloaded whole (E36).
         self.downloaded: set = set()
@@ -823,25 +828,34 @@ class Engine:
             inputs["tuning"] = tuned
         layout = hashlib.sha256(json.dumps(inputs, sort_keys=True).encode()).hexdigest()
         builds = bool(params.get("force")) or layout not in self.layouts
-        number = None
+        entry = None
         if builds:
             # A build of its own, numbered as it starts, so no two builds
             # share a number even when one is cancelled, and readable stage
             # by stage as it reports; one already stored and not forced is
             # read from the store, as the engine replays it, and has none.
             self.builds += 1
-            number = self.builds
-            self.building[layout] = {"reported": set(), "stages": stages, "build": number}
+            entry = {"reported": set(), "stages": stages, "build": self.builds}
+            with self.building_lock:
+                self.building[layout] = entry
         try:
-            self.lay_out(msg_id, key, mode, agency, layout, stages, number, delay, flags)
+            self.lay_out(msg_id, key, mode, agency, layout, stages, entry, delay, flags)
         finally:
             # A cancel or a failure leaves nothing of the build to draw; a
             # build that answered is the store's by now.
-            self.building.pop(layout, None)
+            self.forget_build(layout, entry)
 
-    def lay_out(self, msg_id, key, mode, agency, layout, stages, number, delay,
+    def forget_build(self, layout: str, entry) -> None:
+        """A build's own entry, forgotten: never another build's of the same
+        layout that started since and holds the layout now, whose reports
+        would otherwise find nothing to mark and end its thread unanswered."""
+        with self.building_lock:
+            if entry is not None and self.building.get(layout) is entry:
+                del self.building[layout]
+
+    def lay_out(self, msg_id, key, mode, agency, layout, stages, entry, delay,
                 flags) -> None:
-        builds = number is not None
+        builds = entry is not None
         for i, stage in enumerate(("gtfs2graph", "topo", "loom", "octi"), start=1):
             if stage == "octi" and self.control.get("octi_child"):
                 if self.octi(msg_id):
@@ -871,15 +885,16 @@ class Engine:
             # Readable before it is reported, as the engine marks a stage
             # whole before its report goes out; the report names the layout.
             if builds:
-                self.building[layout]["reported"].add(stage)
+                entry["reported"].add(stage)
             write({"jsonrpc": "2.0", "method": "job/progress",
                    "params": {"id": msg_id, "stage": stage, "fraction": i / 4,
                               "message": f"{stage}: 3 nodes, 2 edges", "layout": layout}})
         if builds:
+            number = entry["build"]
             self.layouts[layout] = "2026-09-10T00:%02d:%02d+00:00" % divmod(number, 60)
             self.layout_builds[layout] = number
         self.layout_stages[layout] = stages
-        self.building.pop(layout, None)
+        self.forget_build(layout, entry)
         paths = {s: str(HOME / "data" / "graphs" / key / layout / f"0{i}_{s}.json")
                  for i, s in enumerate(stages)}
         meta = {"feed": key, "feed_sha256": "0" * 64, "mode": mode,
