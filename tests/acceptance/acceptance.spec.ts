@@ -2105,7 +2105,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
         () => 'the alphabetical order was never written',
       )
       log.notAutomated(
-        "whether the page's line rows follow the order; whether the dragged line followed the pointer and the lines it passed stepped aside; whether an arrow's tooltip shows on hover and on focus.",
+        "whether the page's line rows, and an export's, follow the order; whether the dragged line followed the pointer and the lines it passed stepped aside; whether an arrow's tooltip shows on hover and on focus.",
       )
     })
 

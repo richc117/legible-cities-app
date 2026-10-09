@@ -59,6 +59,23 @@ pins it; without it every order the app sends would have to be a complete
 list of every label the layout carries, which the app cannot promise for a
 label its own record refuses to hold.
 
+> **As of 8 Oct 2026 (issue 343, engine v0.12.0).** The page followed the
+> order only in the stacking on shared track until this engine version.
+> Its Linear and Time views sorted their rows A to Z whatever `line_order`
+> said (the Sort group had A to Z, pressed, and Stations, and nothing that
+> showed the arrangement), so a reorder was visible only in the stacking on
+> shared track, in the page and in an export alike. From engine v0.12.0
+> (engine issue 63) the Sort group has a third button, "As arranged",
+> pressed on load when the map was built with an order that names a line
+> the layout carries, so the rows of both views, in the page and in every
+> export, start in that order; A to Z and Stations sort as they did. A map
+> built with no order has no such button and its rows are A to Z, as they
+> were. Where this spec says the page's rows follow the order (the
+> Overview, User Story 1, SC-001 and the Assumptions), that holds from
+> v0.12.0 and not before. The app has pinned v0.12.0 since 8 Oct 2026 and
+> sent the order all along: what changed is the pin, and the acceptance
+> checklist's step 10 says what a person should see.
+
 ## User Scenarios & Testing _(mandatory)_
 
 ### User Story 1 - Putting a line on top (Priority: P1)

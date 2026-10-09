@@ -102,6 +102,7 @@ What it cannot do stays a person's, and the record says so step by step
   the disk image rather than dragged to Applications; the Windows installer
   runs silently and so does not open the app.
 - **Judgement**: whether a map, a colour, a theme or a GIF looks right,
+  whether the page's rows follow a line order (step 10's two checks),
   whether a drag feels right (the spec drags the picker with the mouse and
   checks it stays open, and a line of the order by its grip and checks
   where it lands), and whether the Finder or File Explorer came to
@@ -178,8 +179,8 @@ again.
   **Your feeds** yet.
 - The engine's status line starts at "Checking the engine…" or "Starting
   the engine." and becomes "Engine ready (`<engine version>`)." The version
-  is the engine pin in `vendor/pins.json` at the release tag (0.10.1 when
-  this was written).
+  is the engine pin in `vendor/pins.json` at the release tag (v0.10.1 in
+  0.1.0; a later build pins a later engine).
 - **No dialog opens.** The first-run check of the bundled LOOM and ffmpeg
   passes silently; a dialog titled "LOOM will not run", "ffmpeg will not
   run" or "LOOM and ffmpeg will not run" is a failure of this step. Write
@@ -493,7 +494,11 @@ line's row (six dots) and **drag** it down to the last place without
 letting go for a moment, then release. Drag another line a little way and,
 still holding it, press Escape; then release. Rest the pointer on a row's
 up arrow. Then press the down arrow on the first line, and the up arrow on
-another. Wait for the map. Press **Back to alphabetical**.
+another. Wait for the map. The page's views are the icon buttons at the
+map's top right, named by tooltips that begin with their words ("Linear —
+one row per line", "Time — the service day as a Marey chart", "Schematic —
+straightened onto a 45° grid"): press **Linear**, then **Time**, then
+**Schematic** again. Press **Back to alphabetical**.
 
 **See.**
 - A list "Lines in the order they are drawn", each row with a grip at its
@@ -511,13 +516,27 @@ another. Wait for the map. Press **Back to alphabetical**.
 - After a press, a status sentence "`<line>` is now `<n>` of `<total>`.",
   and after a moment "Drawn with the lines in the order you chose, from the
   stored layout. The stations have not moved."
-- The page's line rows follow the new order only from engine v0.12.0
-  (richc117/legible-cities#63); with the pinned v0.10.1 the page sorts
-  its Linear and Time rows A to Z whatever the order, and on the
-  schematic the change shows only where two lines share track, so a map
-  that looks the same here is not a failure of the app (issue 343).
+- **check:** with engine v0.12.0 or later (the status line of step 3
+  names it), the page follows the list (engine issue 63,
+  richc117/legible-cities#63). In its **Linear** and **Time** views the
+  lines run from the top down in the order of the list, so the line at the
+  top of the list is the top row. On the schematic, where two lines share
+  track the one lower in the list is drawn over the one above it. (The
+  page's own header, which the app's frame does not show, has an
+  **As arranged** sort, pressed when the map was built with an order.)
+- **check:** an export made while the order is set follows it too: the
+  reel's own storyboard goes through the Linear and Time views, and their
+  rows are in the order of the list. Step 11's reel is exported after
+  **Back to alphabetical**, so its rows are A–Z; to look at a file, export
+  once, as step 11 does, before pressing it.
+- With an engine before v0.12.0 (the first release, 0.1.0, carries
+  v0.10.1) skip the two lines above: the page sorts its Linear and Time
+  rows A–Z whatever the order, and the order shows only on the schematic,
+  where two lines share track. A page that looks the same there is not a
+  failure of the app (issue 343).
 - **Back to alphabetical** says "The lines are in alphabetical order
-  again." and becomes unavailable.
+  again." and becomes unavailable. The map is drawn once more with no
+  order; from engine v0.12.0 the page's Linear and Time rows are A–Z again.
 
 Result: ____
 
