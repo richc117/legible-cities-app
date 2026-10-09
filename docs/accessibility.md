@@ -1105,9 +1105,10 @@ a table).
   "At `<station>`, board the `<line>` towards `<end>`. Ride `<n>` stops to
   `<station>` and get off.", then the button **Show the whole network**.
   Press it: listen for focus on **Start**, both fields empty, and the
-  button gone. Choose the same station in both: listen for "Start and end
-  are the same station." as an alert beside **End**, with focus not moved
-  and the field back as it was. Tab from **Start**: listen for **End**, not
+  button gone. Choose a station in **Start**, then choose in **End** the
+  station **Start** holds: listen for "Start and end are the same
+  station." as an alert beside **End**, with focus not moved and the field
+  back as it was. Tab from **Start**: listen for **End**, not
   for anything in the list.
 
 #### Cell 04, Style

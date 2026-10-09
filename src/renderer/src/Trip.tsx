@@ -6,6 +6,7 @@ import { lacksTheSeam } from './themeWrites'
 import {
   EMPTY,
   choose,
+  refusalsAfter,
   restation,
   stationsKey,
   wholeNetwork,
@@ -158,17 +159,10 @@ export default function Trip({
 
   /** An act's outcome: the pair, the sentences beside the control, the call. */
   const apply = (outcome: Outcome, place: Place): void => {
-    if (outcome.refusals.length > 0) {
-      setRefusals((current) => [
-        ...current.filter((refusal) => refusal.place !== place),
-        ...outcome.refusals,
-      ])
-      return
-    }
-    if (outcome.pair !== pairNow.current) {
-      update(outcome.pair)
-      setRefusals([])
-    }
+    const before = pairNow.current
+    setRefusals((current) => refusalsAfter(current, outcome, place, before))
+    if (outcome.refusals.length > 0) return
+    if (outcome.pair !== before) update(outcome.pair)
     if (outcome.send !== undefined) send(outcome.send)
   }
 

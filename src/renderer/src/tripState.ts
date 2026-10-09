@@ -98,6 +98,26 @@ export function choose(
 }
 
 /**
+ * The sentences beside the controls after an act at `place`. A refusal
+ * replaces whatever that place said before. An act that was taken clears
+ * that place's sentence whether or not it changed the pair - a station
+ * chosen again to ask again leaves the pair as it was, and the sentence
+ * that stood beside it no longer says anything true - and one that changed
+ * the pair clears every sentence, since each was about the pair before.
+ */
+export function refusalsAfter(
+  current: readonly Refusal[],
+  outcome: Outcome,
+  place: Place,
+  before: Pair,
+): Refusal[] {
+  if (outcome.refusals.length > 0)
+    return [...current.filter((refusal) => refusal.place !== place), ...outcome.refusals]
+  if (outcome.pair !== before) return []
+  return current.filter((refusal) => refusal.place !== place)
+}
+
+/**
  * "Show the whole network" (FR-008): both pickers empty, and the page told
  * once. Refused, like a choice, while something holds the page.
  */

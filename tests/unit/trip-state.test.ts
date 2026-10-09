@@ -16,9 +16,11 @@ import {
   restation,
   stationsKey,
   wholeNetwork,
+  refusalsAfter,
   type Ask,
   type Outcome,
   type Pair,
+  type Refusal,
 } from '../../src/renderer/src/tripState'
 import { SAME_STATION, tripRefusal } from '../../src/renderer/src/tripWords'
 
@@ -209,6 +211,53 @@ describe('a refusal is not taken, and tells the page nothing (FR-011)', () => {
       refusals: [{ place: 'whole', sentence: HELD }],
       send: undefined,
     })
+  })
+})
+
+describe('the sentences beside the controls, act by act', () => {
+  /**
+   * Drive the section's two halves together, as `Trip.tsx` does: the pair
+   * and what the page was told from `choose`, the sentences from
+   * `refusalsAfter`.
+   */
+  function section(pair: Pair, told: Ask) {
+    let refusals: Refusal[] = []
+    const act = (picker: 'start' | 'end', id: string | null): Outcome => {
+      const outcome = choose(pair, picker, id, told, null)
+      refusals = refusalsAfter(refusals, outcome, picker, pair)
+      pair = outcome.pair
+      if (outcome.send !== undefined) told = outcome.send
+      return outcome
+    }
+    return { act, refusals: () => refusals }
+  }
+
+  it('clears a picker’s refusal when the same picker asks again, though the pair did not move', () => {
+    // The page refused or failed an earlier call: both pickers hold A to C,
+    // and the page was told nothing.
+    const { act, refusals } = section({ start: ALPHA, end: CHARLIE }, null)
+    act('end', ALPHA)
+    expect(refusals()).toEqual([{ place: 'end', sentence: SAME_STATION }])
+    // C chosen in End again: the trip is asked for and shown, and the
+    // sentence beside End goes with it.
+    const again = act('end', CHARLIE)
+    expect(again.send).toEqual([ALPHA, CHARLIE])
+    expect(refusals()).toEqual([])
+  })
+
+  it('keeps the other picker’s sentence when a picker asks again, and clears all on a new pair', () => {
+    const start: Refusal = {
+      place: 'start',
+      sentence: 'Alpha is not on the map drawn now, so Start is empty.',
+    }
+    const end: Refusal = { place: 'end', sentence: SAME_STATION }
+    const pair = { start: ALPHA, end: CHARLIE }
+    const asked = choose(pair, 'end', CHARLIE, null, null)
+    expect(refusalsAfter([start, end], asked, 'end', pair)).toEqual([start])
+    const moved = choose(pair, 'end', BRAVO, null, null)
+    expect(refusalsAfter([start, end], moved, 'end', pair)).toEqual([])
+    const refused = choose(pair, 'end', ALPHA, null, null)
+    expect(refusalsAfter([start], refused, 'end', pair)).toEqual([start, end])
   })
 })
 

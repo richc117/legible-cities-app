@@ -120,6 +120,7 @@ As someone recolouring a line while looking at a trip, I want the trip still the
 - **SC-001**: A trip is chosen by keyboard alone, from Tab into the section to the first leg read, in under twelve key presses on the fixture.
 - **SC-002**: The end-to-end test records exactly one `setTrip` per completed choice and no engine call.
 - **SC-003**: Clearing the trip ("Show the whole network" pressed, or a picker emptied) restores the page within tolerance 8 in RGB.
+  - *As of 8 Oct 2026:* no test in this repository can assert it yet. The end-to-end suite drives the stand-in page, which draws nothing for a trip, so it proves the one `setTrip(null)` and not the pixels; the fade and its clearing are the engine's, and its own browser tests hold them. Until a real-engine spec is gated in here, SC-003 is a person's check, made at acceptance step 7.
 - **SC-004**: The accessibility sweep passes over cell 03 with the popup open and closed, in both themes.
 
 ## Assumptions
@@ -127,4 +128,5 @@ As someone recolouring a line while looking at a trip, I want the trip still the
 - The engine pin carries E38: `setTrip`, `state().trip`, `stations` on `map.build`.
 - The fade and the penalty constant are the engine's.
 - The three documents quote the section's heading, both pickers' names and the leg sentence.
+  - *As of 8 Oct 2026:* two of them do - the acceptance checklist (step 7) and the accessibility pass (cell 03's row and walkthrough). The stranger's timed run (`docs/acceptance-stranger.md`) never reaches cell 03, so it gains no sentence; ADR-048's consequence "Three documents gain sentences" needs the same correction.
 - `docs/DESIGN.md` 8.2 gains a "Trip" row under cell 03.

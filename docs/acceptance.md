@@ -377,8 +377,8 @@ range the section gives and pressing **Draw for this day**. Then, under
 and then **Pause**, and choose another **Speed**. Then, under **Trip**,
 type three letters of a station's name in **Start**, press Down Arrow and
 Enter; do the same in **End** for a station on another line; read the
-steps; press **Show the whole network**. Choose the same station in both
-pickers.
+steps; press **Show the whole network**. Then choose a station in
+**Start**, and choose in **End** the station **Start** holds.
 
 **See.**
 - The section says "Drawn for `<day>`. The feed covers `<start>` to
@@ -422,9 +422,10 @@ pickers.
   second item on, the last ending "and get off."), with "`<n>` stops,
   `<m>` changes." above it and **Show the whole network** after it.
   Pressing that brings the whole map back, empties both fields and puts
-  the cursor in **Start**; the button goes. The same station in both is
-  refused under **End**: "Start and end are the same station.", and the
-  map does not change. None of this starts a job or changes the project.
+  the cursor in **Start**; the button goes. Choosing in **End** the
+  station **Start** holds is refused under **End**: "Start and end are the
+  same station.", **End** goes back to what it held, and the map does not
+  change. None of this starts a job or changes the project.
 - End on the busiest weekday, and write the day down for step 17.
 
 Result: ____
