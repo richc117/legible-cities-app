@@ -131,8 +131,9 @@ const STAGE_NAMES: readonly string[] = ['gtfs2graph', 'topo', 'loom', 'octi']
  * carries beside the three (engine v0.14.0, issue 382): the layout, the
  * stage the answer waits on and `building`, which tell the page to ask
  * again at that stage's report rather than show a failure. Each is kept
- * only in the engine's own shape, and no other error carries them, so an
- * error without them reads as it always has.
+ * only in the engine's own shape and only on an error of kind `layout`,
+ * the refusal's, since no other error carries them, so every other error
+ * reads as it always has.
  */
 function notYet(data: Record<string, unknown>): Pick<ErrorData, 'layout' | 'stage' | 'building'> {
   const kept: Pick<ErrorData, 'layout' | 'stage' | 'building'> = {}
@@ -168,7 +169,9 @@ function errorData(data: unknown, message: string): ErrorData | undefined {
         kind: data.kind,
         detail: data.detail,
         hint: withoutPaths(data.hint),
-        ...notYet(data),
+        // Only render.stage's refusal carries the three, and its kind is
+        // `layout`; on any other kind they are left behind.
+        ...(data.kind === 'layout' ? notYet(data) : {}),
       }
     }
     return { kind: 'engine', detail: JSON.stringify(data), hint: data.hint }

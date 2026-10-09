@@ -39,6 +39,7 @@ import {
   type View,
 } from './engine/stages'
 import Icon from './icons/Icon'
+import { createAnnouncer } from './Jobs'
 import Button from './kit/Button'
 import Disclosure from './kit/Disclosure'
 import {
@@ -238,6 +239,25 @@ export default function StageView({ project, engine, read, reveal = null }: Prop
   )
   const [early, setEarly] = useState<{ run: string; stage: StageName } | null>(null)
   const [announced, setAnnounced] = useState('')
+  // The live region is written through the jobs' announcer: emptied, and
+  // filled two frames later, so the same sentence twice - a second press on
+  // a stage not drawn yet - is said twice, and sentences that arrive in one
+  // frame are said together. A sentence whose frame comes after the reveal
+  // has ended is dropped, so the next run's region starts empty.
+  const liveNow = useRef(false)
+  useEffect(() => {
+    liveNow.current = live
+  }, [live])
+  const announce = useMemo(
+    () =>
+      createAnnouncer(
+        (text) => {
+          if (text === '' || liveNow.current) setAnnounced(text)
+        },
+        (then) => requestAnimationFrame(() => requestAnimationFrame(then)),
+      ),
+    [],
+  )
   // The day the description's minutes are of: the day the map on screen was
   // drawn for, which is the day its sentence says ("On the day drawn"). A
   // day chosen and not yet drawn is not it (A5.5-15), and asking for each
@@ -398,8 +418,8 @@ export default function StageView({ project, engine, read, reveal = null }: Prop
     const fresh = LAYOUT_ORDER.filter((s) => revealing.drawings[s] !== undefined && !told.has(s))
     if (fresh.length === 0) return
     for (const stage of fresh) told.add(stage)
-    setAnnounced(drawnAnnouncements(fresh))
-  }, [revealing])
+    announce(drawnAnnouncements(fresh))
+  }, [revealing, announce])
 
   const paneSize = (): { width: number; height: number } => {
     const box = pane.current?.getBoundingClientRect()
@@ -479,7 +499,7 @@ export default function StageView({ project, engine, read, reveal = null }: Prop
       setEarly(null)
     } else {
       setEarly({ run: reveal.run, stage: next })
-      setAnnounced(notDrawnYet(next))
+      announce(notDrawnYet(next))
     }
   }
 

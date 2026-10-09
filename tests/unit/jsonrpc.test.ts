@@ -165,6 +165,22 @@ describe('JsonRpcClient', () => {
       detail: 'd',
       hint: 'h',
     })
+
+    // Well formed, but on another kind: only render.stage's refusal, kind
+    // layout, carries them, so another error keeps its three fields alone.
+    const third = c.request('render.stage', { key: 'x' })
+    const params = { kind: 'params', detail: 'd', hint: 'h' }
+    reply({
+      jsonrpc: '2.0',
+      id: 3,
+      error: {
+        code: -32602,
+        message: 'h',
+        data: { ...params, layout, stage: 'octi', building: true },
+      },
+    })
+    const other = (await third.result.catch((e: unknown) => e)) as EngineError
+    expect(other.data, 'not on a kind that is not layout').toEqual(params)
   })
   // A kind outside the engine's seven cannot come from an engine of the
   // pinned version. It is read as the engine failing in a way it never

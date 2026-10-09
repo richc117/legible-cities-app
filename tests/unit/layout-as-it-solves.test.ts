@@ -9,6 +9,7 @@ import { resolve } from 'node:path'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
+import { createAnnouncer } from '../../src/renderer/src/Jobs'
 import StageView from '../../src/renderer/src/StageView'
 import {
   LayoutRun,
@@ -454,6 +455,38 @@ describe('what the view says while a run reveals the layout (FR-007)', () => {
     // A stage asked for again lands with the one it waited on: both are said.
     expect(drawnAnnouncements(['loom', 'octi'])).toBe('loom drawn. octi drawn.')
     expect(notDrawnYet('loom')).toBe('loom is not drawn yet.')
+  })
+
+  it('says a second press on a stage not drawn yet again, through the announcer the jobs use', () => {
+    // The region is emptied and filled a frame later, so the same words
+    // twice change it twice; what arrives in one frame is said together.
+    const written: string[] = []
+    const frames: (() => void)[] = []
+    const announce = createAnnouncer(
+      (text) => written.push(text),
+      (then) => frames.push(then),
+    )
+    announce(notDrawnYet('loom'))
+    frames.shift()?.()
+    announce(notDrawnYet('loom'))
+    frames.shift()?.()
+    announce(drawnAnnouncements(['topo']))
+    announce(notDrawnYet('loom'))
+    frames.shift()?.()
+    expect(written).toEqual([
+      '',
+      'loom is not drawn yet.',
+      '',
+      'loom is not drawn yet.',
+      '',
+      'topo drawn. loom is not drawn yet.',
+    ])
+    // And the view writes its sentences through it, never straight into
+    // the region, where a repeat would change nothing and be said once.
+    const view = readFileSync(resolve(__dirname, '../../src/renderer/src/StageView.tsx'), 'utf8')
+    expect(view).toMatch(/announce\(notDrawnYet\(next\)\)/)
+    expect(view).toMatch(/announce\(drawnAnnouncements\(fresh\)\)/)
+    expect(view).not.toMatch(/setAnnounced\((notDrawnYet|drawnAnnouncement)/)
   })
 
   it('follows the run, and shows a pressed stage only until the next is drawn', () => {
