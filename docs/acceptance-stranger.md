@@ -169,7 +169,10 @@ Everything, with the clock time beside it. In particular:
   stopped at it, and what they took it for.
 - **How they started**: a sample city's card, or the **New project** card
   with a feed of their own, and whether they found the export in cell 06 without
-  opening every cell first.
+  opening every cell first. Each sample city's card carries a small picture
+  of that city's network above its name: write down whether the person
+  looked at the pictures, chose a card by one, or took them for something
+  else (a map to press, a button of their own).
 - **Anything they said they liked**, or that went quicker than you expected.
 
 Stop writing at the stop time, then spend five minutes asking what was

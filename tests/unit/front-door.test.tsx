@@ -1,8 +1,14 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 import Card from '../../src/renderer/src/Card'
+import {
+  paletteOfTheme,
+  pictureToShow,
+  projectPictureAddress,
+  type Palette,
+} from '../../src/renderer/src/frontDoorPictures'
 import { iconMarkup } from '../../src/renderer/src/icons/Icon'
 import Library, {
   INTRODUCTION,
@@ -20,6 +26,7 @@ import SampleCities, {
   sampleName,
   sampleStatus,
 } from '../../src/renderer/src/SampleCities'
+import { samplePicture } from '../../src/renderer/src/samplePictures'
 import { drawnFrom, summarise, type ProjectRecord } from '../../src/shared/project'
 import type { FeedRecord } from '../../src/shared/protocol'
 
@@ -86,10 +93,29 @@ const project = (
   return summarise({ ...record, drawn: drawnFrom(record) }, readOnly)
 }
 
-const projects = (list: ReturnType<typeof summarise>[], feeds: FeedRecord[] = []): string =>
+const projects = (
+  list: ReturnType<typeof summarise>[],
+  feeds: FeedRecord[] = [],
+  palette: Palette = 'dark',
+): string =>
   renderToStaticMarkup(
-    <ProjectCards projects={list} feeds={feeds} onNew={() => undefined} onOpen={() => undefined} />,
+    <ProjectCards
+      projects={list}
+      feeds={feeds}
+      palette={palette}
+      onNew={() => undefined}
+      onOpen={() => undefined}
+    />,
   )
+
+/** The samples region for these presets, in a palette. */
+const samples = (presets: FeedRecord[], palette: Palette = 'dark'): string =>
+  renderToStaticMarkup(
+    <SampleCities presets={presets} palette={palette} sentence={null} onOpen={() => undefined} />,
+  )
+
+/** Every `alt` attribute in the markup, in order. */
+const alts = (html: string): string[] => [...html.matchAll(/ alt="([^"]*)"/g)].map((m) => m[1])
 
 /** Each list item's markup, in document order. */
 const items = (html: string): string[] =>
@@ -149,9 +175,7 @@ describe('a sample city’s card', () => {
   it('says less than a row did: what its mode keeps is not on it or in its name', () => {
     const tram = feed({ mode: 'tram,rail', cached: true })
     expect(sampleName(tram)).toBe('LA Metro Rail, Los Angeles · Metro Rail, downloaded')
-    const html = renderToStaticMarkup(
-      <SampleCities presets={[tram]} sentence={null} onOpen={() => undefined} />,
-    )
+    const html = samples([tram])
     expect(html).not.toMatch(/keeps|tram/)
   })
 
@@ -159,6 +183,7 @@ describe('a sample city’s card', () => {
     const html = renderToStaticMarkup(
       <SampleCities
         presets={[feed(), feed({ key: 'b', name: 'B', cached: true })]}
+        palette="dark"
         sentence="x"
         onOpen={() => undefined}
       />,
@@ -238,10 +263,11 @@ describe('Your projects', () => {
   })
 
   it('is one grid of the same card as the samples’', () => {
-    const html = projects([project()])
+    const html = projects([project({ layout: null, made: null, built: null })])
     expect(html).toContain('<ul class="cards" aria-label="Projects">')
     expect(html.match(/<button type="button" class="card[" ]/g)).toHaveLength(2)
-    // Every picture area holds one hidden glyph: the plus, then the train.
+    // A project nothing was drawn for: every picture area holds one hidden
+    // glyph, the plus and then the train.
     expect(pictures(html)).toEqual([
       `<span class="icon icon-24" aria-hidden="true">${PLUS}</span>`,
       `<span class="icon icon-24" aria-hidden="true">${iconMarkup('train', 24)}</span>`,
@@ -291,6 +317,207 @@ describe('Your projects', () => {
   })
 })
 
+// The engine's pictures on the cards (ADR-047, issue 287 halves b and c).
+// Every one is a file the engine wrote, shown in an image whose alternative
+// text is empty: the card's name already says whose it is, and a name that
+// moved would be a change a screen reader hears.
+describe('the pictures on the sample cities', () => {
+  const TRAIN = `<span class="icon icon-24" aria-hidden="true">${iconMarkup('train', 24)}</span>`
+
+  it('shows the city’s picture in the interface’s palette, as an image with an empty alternative', () => {
+    const dark = samples([feed()], 'dark')
+    const light = samples([feed()], 'light')
+    const url = (html: string): string => /<img src="([^"]*)"/.exec(html)?.[1] ?? ''
+    expect(pictures(dark)).toEqual([`<img src="${url(dark)}" alt=""/>`])
+    expect(url(dark)).toMatch(/la-metro-rail-dark[^/?]*\.svg(\?.*)?$/)
+    expect(url(light)).toMatch(/la-metro-rail-light[^/?]*\.svg(\?.*)?$/)
+    expect(alts(dark)).toEqual([''])
+    expect(alts(light)).toEqual([''])
+    // The glyph stands in for a picture, never beside one.
+    expect(dark).not.toContain('class="icon')
+  })
+
+  it('is the file of that city, not another’s', () => {
+    expect(samplePicture('la-metro-rail', 'dark')).toMatch(/la-metro-rail-dark/)
+    expect(samplePicture('cdmx-metro', 'light')).toMatch(/cdmx-metro-light/)
+    // `foo-dark` is a key of its own, not `foo` in a palette.
+    expect(samplePicture('la-metro-rail-dark', 'dark')).toBeNull()
+    expect(samplePicture('la-metro-rail', 'dark')).not.toBe(samplePicture('la-metro-rail', 'light'))
+  })
+
+  it('shows the empty area for a key the engine’s script wrote no file for', () => {
+    expect(samplePicture('nowhere', 'dark')).toBeNull()
+    expect(samplePicture('nowhere', 'light')).toBeNull()
+    const html = samples([feed({ key: 'nowhere', name: 'Nowhere' })])
+    expect(pictures(html)).toEqual([TRAIN])
+    expect(html).not.toMatch(/<img|src=/)
+  })
+
+  it('leaves the card’s name as it was', () => {
+    const html = samples([feed({ cached: true })])
+    expect(html).toContain('<li aria-label="LA Metro Rail">')
+    expect(html).toContain(`aria-label="${sampleName(feed({ cached: true }))}"`)
+  })
+
+  // The stand-in engine's two presets are real ones, so the end-to-end
+  // suite sees a picture on both.
+  it('has a picture for each of the stand-in’s presets, in both palettes', () => {
+    for (const key of ['la-metro-rail', 'cdmx-metro'])
+      for (const palette of ['dark', 'light'] as const)
+        expect(samplePicture(key, palette), `${key} ${palette}`).not.toBeNull()
+  })
+})
+
+describe('the shipped pictures', () => {
+  const folder = resolve(__dirname, '../../src/renderer/src/samples')
+  const svgs = readdirSync(folder)
+    .filter((name) => name.endsWith('.svg'))
+    .sort()
+
+  it('come in pairs, one in each palette, for every city', () => {
+    expect(svgs.length).toBeGreaterThan(0)
+    const keys = new Set(svgs.map((name) => name.replace(/-(dark|light)\.svg$/, '')))
+    for (const key of keys) {
+      expect(svgs, key).toContain(`${key}-dark.svg`)
+      expect(svgs, key).toContain(`${key}-light.svg`)
+      expect(samplePicture(key, 'dark'), key).not.toBeNull()
+      expect(samplePicture(key, 'light'), key).not.toBeNull()
+    }
+    expect(svgs.every((name) => /^[a-z0-9-]+-(dark|light)\.svg$/.test(name))).toBe(true)
+  })
+
+  // The README is the engine's, as the script wrote it; it must agree with
+  // the folder, or the folder was edited by hand or only half regenerated.
+  it('are the ones the engine’s README counts', () => {
+    const readme = readFileSync(resolve(folder, 'README.md'), 'utf8')
+    expect(/^- Files: (\d+)$/m.exec(readme)?.[1]).toBe(String(svgs.length))
+    const total = svgs.reduce((sum, name) => sum + statSync(resolve(folder, name)).size, 0)
+    expect(/^- Total size: (\d+) bytes/m.exec(readme)?.[1]).toBe(String(total))
+    expect(readme).toMatch(/^- Engine: \d+\.\d+\.\d+$/m)
+    expect(readme).toMatch(/^- Made on: \d{4}-\d{2}-\d{2}$/m)
+    // A public file: no folder of anybody's machine.
+    expect(readme).not.toMatch(/\/(Users|home)\/|[A-Za-z]:\\/)
+  })
+
+  // They are shown in an image, where a script would not run, but they are
+  // also the engine's output shipped inside the installer: only the four
+  // elements the engine draws, nothing that reaches out.
+  it('hold drawing and nothing else', () => {
+    for (const name of svgs) {
+      const text = readFileSync(resolve(folder, name), 'utf8')
+      expect(text.startsWith('<svg xmlns="http://www.w3.org/2000/svg"'), name).toBe(true)
+      const elements = new Set([...text.matchAll(/<([a-zA-Z][\w-]*)/g)].map((m) => m[1]))
+      expect([...elements].sort(), name).toEqual(['circle', 'g', 'path', 'svg'])
+      expect(text, name).not.toMatch(/\bhref\s*=|\bon[a-z]+\s*=|url\(|<!|<\?/i)
+    }
+  })
+})
+
+describe('the pictures on the project cards', () => {
+  const TRAIN = `<span class="icon icon-24" aria-hidden="true">${iconMarkup('train', 24)}</span>`
+  const src = (html: string): string | undefined =>
+    /<img src="([^"]*)"/.exec(html)?.[1]?.replace(/&amp;/g, '&')
+
+  it('shows the engine’s thumbnail beside the page, in the interface’s palette', () => {
+    const dark = projects([project()], [feed()], 'dark')
+    const light = projects([project()], [feed()], 'light')
+    const url = new URL(src(dark) ?? 'none:')
+    expect(`${url.protocol}//${url.host}${url.pathname}`).toBe(
+      'app://local/projects/kq7x2mzp4dna/la-metro-rail-thumb-dark.svg',
+    )
+    expect(new URL(src(light) ?? 'none:').pathname).toBe(
+      '/projects/kq7x2mzp4dna/la-metro-rail-thumb-light.svg',
+    )
+    // The New project card keeps its plus; the project's area is the image.
+    expect(pictures(dark)).toEqual([
+      `<span class="icon icon-24" aria-hidden="true">${iconMarkup('add', 24)}</span>`,
+      `<img src="${(/<img src="([^"]*)"/.exec(dark) ?? [])[1]}" alt=""/>`,
+    ])
+    expect(alts(dark)).toEqual([''])
+  })
+
+  it('names the address by the layout’s `made`, so a redraw refreshes it', () => {
+    const html = projects([project()])
+    expect(new URL(src(html) ?? 'none:').searchParams.get('made')).toBe(RECORD.made)
+    const made = '2026-10-01T08:30:00+00:00'
+    const again = projects([project({ made })])
+    expect(new URL(src(again) ?? 'none:').searchParams.get('made')).toBe(made)
+    expect(src(again)).not.toBe(src(html))
+  })
+
+  // A cheap edit redraws the map with the layout unchanged, and the engine
+  // draws the thumbnails in the project's colours and order.
+  it('changes with what the thumbnail is drawn in, though the layout is the same', () => {
+    const at = (patch: Partial<ProjectRecord>): string | undefined =>
+      src(projects([project(patch)]))
+    const base = at({})
+    expect(at({})).toBe(base)
+    expect(at({ colors: { A: '#112233' } })).not.toBe(base)
+    expect(at({ colors: { A: '#112233' } })).not.toBe(at({ colors: { A: '#112234' } }))
+    expect(at({ defaultColor: '#999999' })).not.toBe(base)
+    expect(at({ lineOrder: ['B', 'A'] })).not.toBe(at({ lineOrder: ['A', 'B'] }))
+    // The order a record happened to list its colours in is not a change.
+    expect(at({ colors: { A: '#112233', B: '#445566' } })).toBe(
+      at({ colors: { B: '#445566', A: '#112233' } }),
+    )
+    // The project's own theme is not in it: the picture follows the interface's.
+    expect(at({ theme: 'sepia' })).toBe(base)
+  })
+
+  it('shows the empty area for a project nothing was drawn for', () => {
+    const html = projects([project({ layout: null, made: null, built: null })])
+    expect(pictures(html).slice(1)).toEqual([TRAIN])
+    expect(html).not.toMatch(/<img|thumb/)
+    expect(
+      projectPictureAddress({ id: 'a', feed: 'b', drawn: null }, 'dark'),
+      'no address at all',
+    ).toBeNull()
+  })
+
+  it('leaves the card’s name and description as they were', () => {
+    const html = projects([project({}, true)], [feed()])
+    expect(html).toContain('aria-label="Open Los Angeles"')
+    expect(html).toContain('aria-describedby="card-kq7x2mzp4dna-facts"')
+    expect(html).toContain('<span class="card-name">Los Angeles</span>')
+  })
+
+  it('keeps asking for a record whose `made` the layout never recorded', () => {
+    const address = projectPictureAddress(
+      {
+        id: 'a',
+        feed: 'b',
+        drawn: { ...(project().drawn as NonNullable<typeof RECORD.drawn>), made: null },
+      },
+      'dark',
+    )
+    expect(new URL(address ?? 'none:').searchParams.get('made')).toBe('')
+  })
+})
+
+describe('which picture a card shows', () => {
+  const thumb = 'app://local/projects/a/b-thumb-dark.svg?made=m&drawn=1'
+
+  it('is the one asked for until that very address fails to load', () => {
+    expect(pictureToShow(thumb, null)).toBe(thumb)
+    expect(pictureToShow(thumb, thumb)).toBeNull()
+  })
+
+  it('tries a new address afresh, after a map is drawn again', () => {
+    expect(pictureToShow(`${thumb}2`, thumb)).toBe(`${thumb}2`)
+  })
+
+  it('is none where none is asked for', () => {
+    expect(pictureToShow(null, null)).toBeNull()
+    expect(pictureToShow(null, thumb)).toBeNull()
+  })
+
+  it('follows the document’s theme attribute: Parchment is the light picture, anything else the dark', () => {
+    expect(paletteOfTheme('sepia')).toBe('light')
+    expect(paletteOfTheme(undefined)).toBe('dark')
+    expect(paletteOfTheme('warm-dark')).toBe('dark')
+  })
+})
+
 // Nothing on a card moves (ADR-047, DESIGN.md section 7): no transition and
 // no animation in any of the cards' rules, so an empty picture area can never
 // become a shimmer, which says loading about a state that will not load.
@@ -323,6 +550,19 @@ describe('the cards', () => {
     expect(found, selector).toHaveLength(1)
     return found[0][2]
   }
+
+  // The engine's picture is placed against the area's own box and fitted
+  // whole: its drawings are wider or taller than the area's 16:10 by turns,
+  // and a percentage of a height the ratio supplies is not one to lean on.
+  it('place the engine’s picture against the area, whole', () => {
+    expect(declared('.card-picture')).toMatch(/position:\s*relative/)
+    expect(declared('.card-picture')).toMatch(/aspect-ratio:\s*16 \/ 10/)
+    expect(declared('.card-picture')).toMatch(/background:\s*var\(--surface-sunken\)/)
+    const image = declared('.card-picture img')
+    expect(image).toMatch(/position:\s*absolute/)
+    expect(image).toMatch(/inset:\s*0/)
+    expect(image).toMatch(/object-fit:\s*contain/)
+  })
 
   // The kit's unlayered button rules (components.css, "Button") stand on
   // every native button the app declares nothing on, and two of them

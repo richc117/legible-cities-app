@@ -1,4 +1,5 @@
-import type { JSX, Ref } from 'react'
+import { useState, type JSX, type Ref } from 'react'
+import { pictureToShow } from './frontDoorPictures'
 import Icon from './icons/Icon'
 
 // One card of the front door (ADR-047, issue 287). "Your projects" and
@@ -13,15 +14,16 @@ import Icon from './icons/Icon'
 // in the document, and the caller's `label` carries it into the name a
 // screen reader says.
 //
-// The picture area is drawn empty in this half of the issue: the sunken
-// surface with a muted `train` glyph, decorative and hidden from assistive
-// technology, never a shimmer (this state is permanent or waits on the
-// person, and a shimmer says loading) and never a flat blank (which reads as
-// broken). It is not the mark, which is never given a meaning (DESIGN.md,
-// section 6). The pictures themselves are files the engine wrote, shown in
-// an image with an empty alternative text, since the card's name already
-// says whose picture it is; nothing here draws a map (constitution
-// principle I).
+// The picture area holds the engine's picture where there is one: a file the
+// engine wrote, shown in an image with an empty alternative text, since the
+// card's name already says whose picture it is; nothing here draws a map
+// (constitution principle I). Where there is none, or the file did not load -
+// a project drawn before the engine wrote thumbnails, or whose files are gone
+// - it is drawn empty: the sunken surface with a muted `train` glyph,
+// decorative and hidden from assistive technology, never a shimmer (this
+// state is permanent or waits on the person, and a shimmer says loading) and
+// never a flat blank (which reads as broken). It is not the mark, which is
+// never given a meaning (DESIGN.md, section 6).
 
 export interface CardProps {
   /** The primary line. */
@@ -31,8 +33,8 @@ export interface CardProps {
   /** A status in a small chip after the facts, rather than a line of its own. */
   chip?: string | null
   /**
-   * The engine's picture of the map, by address. None in this half of the
-   * issue: every caller leaves it out and the area is drawn empty.
+   * The engine's picture of the map, by address, or none: the area is then
+   * drawn empty, and so it is for an address that does not load.
    */
   picture?: string | null
   /** The New project card: the plus where a picture would be, since a press makes something. */
@@ -57,6 +59,10 @@ export default function Card({
   onClick,
 }: CardProps): JSX.Element {
   const hasFacts = facts.length > 0 || chip !== null
+  // The address that failed to load, so the empty area stands in for it. A
+  // new address (the map was drawn again) is tried afresh.
+  const [failed, setFailed] = useState<string | null>(null)
+  const shown = pictureToShow(picture, failed)
   return (
     <button
       ref={ref}
@@ -67,10 +73,10 @@ export default function Card({
       onClick={onClick}
     >
       <span className="card-picture">
-        {picture === null ? (
+        {shown === null ? (
           <Icon name={create ? 'add' : 'train'} size={24} />
         ) : (
-          <img src={picture} alt="" />
+          <img src={shown} alt="" onError={() => setFailed(shown)} />
         )}
       </span>
       <span className="card-name">{name}</span>

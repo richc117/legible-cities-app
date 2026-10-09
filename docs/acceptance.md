@@ -163,6 +163,8 @@ Result: ____
 
 **Do.** Wait without pressing anything for about thirty seconds. Then press
 **Settings** and read the screen from the top. Press **Back to Library**.
+Press **Settings** again, choose **Parchment** under **Theme**, press **Back
+to Library**, and look at the sample cards; then choose **Night** again.
 
 **See.**
 - The front door opens with its heading, **Library**, and its
@@ -183,9 +185,15 @@ Result: ____
   down its sentences and press **Copy diagnostics** in it before you close
   it.
 - Under **Sample cities**, a card for each of the engine's networks - 22 at
-  the pinned engine - the same card as **New project**: each with a faint
-  train where a picture would be, its name, its city and network, and "not
-  downloaded yet" in a small chip.
+  the pinned engine - the same card as **New project**: each with a small
+  picture of that city's network where the picture would be (the lines in
+  their feed's colours on the card's sunken ground, no labels, and nothing
+  to load: they come with the app), its name, its city and network, and
+  "not downloaded yet" in a small chip. In Night every picture is the one
+  for the dark ground; in Parchment, after the change above, every one is
+  the one for the light ground, and Night puts the dark ones back, each
+  time without the front door being reloaded. A picture is not read aloud
+  and changes no card's name.
 - In Settings, **Bundled tools** says "The bundled LOOM and ffmpeg ran.",
   with **LOOM tools** "ran (`<n>` ms)." and **ffmpeg and ffprobe**
   "ran (`<n>` ms)."
@@ -207,7 +215,8 @@ run.
 
 **See.**
 - The card is read aloud as "LA Metro Rail, Los Angeles · Metro Rail, not
-  downloaded yet".
+  downloaded yet", with nothing said for its picture, the drawing of the LA
+  network above its name.
 - One press opens the project, without a dialog: a heading **LA Metro
   Rail**, with **Library** in the header beside the engine's status (a
   screen reader names it "Back to Library"), and the notebook's six cells, 01 to 06, with cells 01 to 05
@@ -644,8 +653,10 @@ confirmation, and then **Cancel**.
 **See.**
 - On the front door, **Your projects** holds the **New project** card and
   then "LA Metro Rail", with "Los Angeles · Metro Rail" and "finished up to
-  05 Lines" beneath its name; the LA Metro Rail sample's card now says
-  "downloaded" in its chip.
+  05 Lines" beneath its name and, above it, the engine's small picture of
+  the map it drew for this project, in the project's own line colours and
+  in the interface's palette, whichever theme the project's map wears; the
+  LA Metro Rail sample's card now says "downloaded" in its chip.
 - The sheet is titled **New project**, with **Cancel** focused; **Start
   from** offers **A sample city, or a feed you added**, **A GTFS zip on
   this computer** and **A feed at an address**.
@@ -686,7 +697,10 @@ foot of the notebook and **Delete** in the confirmation.
   "every operator", followed by the feed's operators. The routes table's
   caption reads "Routes of METRO: `<n>`".
 - Nothing is laid out: the sentence under the heading is "Nothing has been
-  laid out yet."
+  laid out yet." On the front door, after **Create** and before the
+  project is opened, its card under **Your projects** has the empty picture
+  area, a faint train, because no map has been drawn for it, while the
+  **Mexico City Metro** card under **Sample cities** has its picture.
 - The confirmation is titled "Delete Mexico City Metro?", says "This
   removes the project and its generated output. The feed stays.", and has
   **Cancel** focused. After **Delete** the app goes back to the front door,
@@ -734,8 +748,8 @@ Press **Rename** at the foot of the notebook, type `Los Angeles` and press
   Manager's Details tab).
 - On reopening: no first-run dialog; **Your projects** holds the **New
   project** card, then Caltrain and then LA Metro Rail (newest opened
-  first), each with where it runs and "finished up to 05 Lines"; **Your
-  feeds** still lists Caltrain.
+  first), each with the engine's picture of its map, where it runs and
+  "finished up to 05 Lines"; **Your feeds** still lists Caltrain.
 - LA Metro Rail opens with cells 01 and 02 collapsed and the map after
   them; opening cell 02 shows "Drawn from layout `<8 characters>` for
   `<day>`.", the **same day** you wrote down in step 7, and the same

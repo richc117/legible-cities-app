@@ -2,6 +2,8 @@ import type { JSX } from 'react'
 import type { FeedRecord } from '../../shared/protocol'
 import Card from './Card'
 import { placeOf } from './FeedList'
+import type { Palette } from './frontDoorPictures'
+import { samplePicture } from './samplePictures'
 
 // The sample cities (A5.6-02): every preset the engine's registry holds,
 // drawn as a card on the front door before anything is downloaded. Since
@@ -14,8 +16,9 @@ import { placeOf } from './FeedList'
 // which is the opposite of what the milestone decided (ADR-045). If the
 // cards read thin, that is an engine issue to put counts in the registry,
 // not a reason to prefetch. A picture of each city is the engine's, made by
-// a script at the pinned LOOM and shipped with the app (ADR-047); until those
-// files exist the picture area is drawn empty, and drawing a card still asks
+// a script at the pinned LOOM and shipped with the app (ADR-047,
+// `samplePictures.ts`), in the palette of the interface's theme; a preset
+// with no file draws its picture area empty, and drawing a card still asks
 // the engine for nothing but the list.
 //
 // What the mode keeps is not on the card (ADR-047): it is configuration, and
@@ -54,6 +57,8 @@ export function sampleName(feed: FeedRecord): string {
 
 interface Props {
   presets: FeedRecord[]
+  /** The palette the interface wears: the pictures follow it (ADR-047). */
+  palette: Palette
   /**
    * What the region says when there are no presets to draw, or null to say
    * nothing - the front door knows which of its reasons it is.
@@ -62,7 +67,7 @@ interface Props {
   onOpen: (feed: FeedRecord) => void
 }
 
-export default function SampleCities({ presets, sentence, onOpen }: Props): JSX.Element {
+export default function SampleCities({ presets, palette, sentence, onOpen }: Props): JSX.Element {
   return (
     <section className="front-door-region" aria-labelledby={SAMPLES_HEADING_ID}>
       <h2 id={SAMPLES_HEADING_ID} tabIndex={-1}>
@@ -78,6 +83,7 @@ export default function SampleCities({ presets, sentence, onOpen }: Props): JSX.
               <li key={feed.key} aria-label={feed.name}>
                 <Card
                   name={feed.name}
+                  picture={samplePicture(feed.key, palette)}
                   facts={place === null ? [] : [place]}
                   chip={sampleStatus(feed)}
                   label={sampleName(feed)}

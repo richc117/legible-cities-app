@@ -12,10 +12,12 @@ import NewProjectSheet, { type SheetStart } from './NewProjectSheet'
 import FeedList, { FEEDS_HEADING_ID, placeOf } from './FeedList'
 import SampleCities, { SAMPLES_HEADING_ID } from './SampleCities'
 import { afterRendering, focusLost } from './focusHandback'
+import { projectPictureAddress, type Palette } from './frontDoorPictures'
 import Icon from './icons/Icon'
 import { progressWords } from './projectProgress'
 import type { RunFacts } from './runGraph'
 import { useEngineState } from './useEngineState'
+import { useInterfacePalette } from './useInterfacePalette'
 
 type LibraryState = { status: 'loading' } | { status: 'ready'; projects: ProjectSummary[] }
 
@@ -191,6 +193,8 @@ export function projectFacts(
 interface ProjectCardsProps {
   projects: readonly ProjectSummary[]
   feeds: readonly FeedRecord[]
+  /** The palette the interface wears: the pictures follow it (ADR-047). */
+  palette: Palette
   onNew: () => void
   onOpen: (id: string) => void
   /** Each project card's button by its project, for the focus handback. */
@@ -208,6 +212,7 @@ interface ProjectCardsProps {
 export function ProjectCards({
   projects,
   feeds,
+  palette,
   onNew,
   onOpen,
   cardRef,
@@ -226,6 +231,7 @@ export function ProjectCards({
               <Card
                 ref={(element) => cardRef?.(project.id, element)}
                 name={project.name}
+                picture={projectPictureAddress(project, palette)}
                 label={`Open ${project.name}`}
                 facts={projectFacts(project, feeds, peekLayoutRun(project.id)?.snapshot ?? null)}
                 chip={project.readOnly ? 'read-only' : null}
@@ -262,6 +268,8 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
   const [feedNotice, setFeedNotice] = useState<string | null>(null)
   const engine = useEngineState()
   const ready = engine?.state === 'ready'
+  // The pictures on every card follow the interface's theme (ADR-047).
+  const palette = useInterfacePalette()
   const adder = feedAdd()
   const headingRef = useRef<HTMLHeadingElement>(null)
   // Where focus goes once the list has been drawn again, when the control
@@ -581,6 +589,7 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
         <ProjectCards
           projects={library.projects}
           feeds={feeds}
+          palette={palette}
           onNew={() => setCreating({ source: 'feed' })}
           onOpen={onOpen}
           cardRef={(id, element) => {
@@ -599,6 +608,7 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
       {library.status === 'ready' && (
         <SampleCities
           presets={presets}
+          palette={palette}
           sentence={samples}
           onOpen={(feed) => void openSample(feed)}
         />
