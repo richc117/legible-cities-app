@@ -1,7 +1,7 @@
 # ADR-037: The first release is unsigned
 
-- **Status:** Proposed. It becomes Accepted when the A6-04 results in
-  Context are filled in.
+- **Status:** Accepted, 8 Oct 2026, with the A6-04 results in Context filled
+  in as far as they were recorded.
 - **Date:** 2026-09-13
 - **Revisit:** at the first release with an update to deliver
 - **Supersedes:** none
@@ -55,11 +55,11 @@ carries:
 
 **As of 8 Oct 2026:** 0.1.0 was published unsigned on the maintainer's word before the three person runs were recorded; the automated run passed against `v0.1.0` on both runners (`acceptance.yml` run 37806989926, the records on #37), which measures none of the three blocks below. They stay open for the person runs on 0.1.0, and this record stays Proposed until they are filled.
 
-[RESULTS, the stranger: the time from the release page to the first window and to the first reel; where they stalled; whether they passed the unsigned-app warning unaided]
+**Results, the stranger (0.1.0, reported 8 Oct 2026):** the run was done and no issue was noted; the times from the release page to the first window and to the first reel, where they stalled, and whether they passed the unsigned-app warning unaided were not recorded, so the fifteen-minute measure is not established by this run either way. The record is on issue 37.
 
-[RESULTS, the clean Mac: macOS version, what Gatekeeper showed and whether install.md matched it]
+**Results, the Mac (0.1.0, reported 8 Oct 2026):** all twenty-one steps passed with no issue noted, the VoiceOver walk included; the macOS version, what Gatekeeper showed and whether `docs/install.md` matched it were not recorded. The record is on issue 37.
 
-[RESULTS, Windows: the version, what SmartScreen and the browser showed, any antivirus quarantine, and whether install.md matched it]
+**Results, Windows (0.1.0, reported 8 Oct 2026):** all twenty-one steps passed with no issue noted, the Narrator walk included; the Windows version, what SmartScreen and the browser showed, and whether `docs/install.md` matched it were not recorded, and no antivirus quarantine was reported. The record is on issue 37.
 
 What else shaped the answer:
 
@@ -154,3 +154,5 @@ takes it up should check first:
 **What to watch.** If the person runs show the warning stopping people,
 which is where the brief leaned towards signing the Mac, that is a reason to
 revisit before the first update rather than at it.
+
+**As of 8 Oct 2026: Accepted.** The three person runs on 0.1.0 were reported done with no issue noted, which is the one thing the record needed to know: nobody was stopped at a warning. What each warning showed was not written down, so the blocks above say so rather than guess, and the next release's gate records it at the time of the run. The decision to stay unsigned stands, and the revisit clause is unchanged.

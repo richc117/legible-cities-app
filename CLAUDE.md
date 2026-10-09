@@ -12,8 +12,9 @@ release drafted by `build.yml` and published by hand), unsigned, as
 ADR-037 decided; the automated acceptance run passed against it on a
 macOS and a Windows runner (`acceptance.yml` run 37806989926, both
 records on #37). The three person runs of the gate, which that run cannot
-measure, are still to be recorded on #37, and ADR-037 stays Proposed
-until they are. The screen has been rebuilt twice over since the features
+measure, were reported done on 8 Oct 2026 with no issue noted and are on
+#37 with the fields the report did not carry marked not recorded; ADR-037
+is Accepted on that basis. The screen has been rebuilt twice over since the features
 below were first written, so read this before the history under it.
 
 **The project screen is a notebook of six numbered cells** (ADR-045, Phase
