@@ -66,6 +66,52 @@ FFmpeg library inside Electron, beside them (below).
 | BART GTFS feed (test fixture) | The determinism test's fixture (A5-04): BART's published GTFS zip, byte for byte, and the LOOM stage graphs made from it, under `tests/fixtures/determinism/bart/`, whose README says where each came from. Test data: present in this repository, not shipped in the app | BART Developer License Agreement: a non-exclusive, limited and revocable right to use, reproduce and redistribute BART Data, provided as is, with BART's trademarks not used in association with it; BART may modify or revoke the agreement at any time (read 2026-09-12) | https://www.bart.gov/schedules/developers/developer-license-agreement |
 | Contributor Covenant 2.1 | The code of conduct text | CC BY 4.0 | https://www.contributor-covenant.org/ |
 
+## Sample city pictures
+
+The 44 pictures under `src/renderer/src/samples/` - one for a dark ground
+and one for a light ground for each of the 22 sample cities below - are
+shown on the front door's cards and are inside every installer. The engine
+made them: `legible-cities` version 0.12.0, on 8 Oct 2026, with its
+`bin/thumbnails` script, from the public GTFS feeds its registry names. Each
+shows one network as lines and stations, in the agency's own route colours
+where the feed publishes them, and nothing else: no labels, no schedule and
+none of the feed's tables. The README beside them says which engine version
+and date made them, and they are regenerated, not edited by hand, when the
+engine's pin moves.
+
+The feed's public address is the credit it is owed. That is the engine's own
+stance: `Feed.shown_url`, in the engine's `feeds.py`, gives a preset's
+address "as the registry has it, which is public and is the credit the feed
+is owed". So the table gives each address exactly as the registry has it. A
+feed's own terms govern its data. This file names no licence for any of
+them, because the registry records none, and it does not say what any
+agency's terms allow.
+
+| Preset | Name | City | Network | Public address of the feed |
+|---|---|---|---|---|
+| `la-metro-rail` | LA Metro Rail | Los Angeles | Metro Rail | https://gitlab.com/LACMTA/gtfs_rail/-/raw/master/gtfs_rail.zip |
+| `bart` | BART | San Francisco Bay Area | BART | https://www.bart.gov/dev/schedules/google_transit.zip |
+| `trimet-max` | TriMet MAX | Portland | MAX Light Rail | https://developer.trimet.org/schedule/gtfs.zip |
+| `nyc-subway` | New York City Subway | New York | Subway | https://rrgtfsfeeds.s3.amazonaws.com/gtfs_subway.zip |
+| `chicago-l` | Chicago 'L' | Chicago | The 'L' | https://www.transitchicago.com/downloads/sch_data/google_transit.zip |
+| `boston-t` | MBTA Subway | Boston | MBTA Subway | https://cdn.mbta.com/MBTA_GTFS.zip |
+| `marta` | MARTA Rail | Atlanta | MARTA Rail | https://www.itsmarta.com/google_transit_feed/google_transit.zip |
+| `miami-metrorail` | Miami Metrorail & Metromover | Miami | Metrorail & Metromover | https://www.miamidade.gov/transit/googletransit/current/google_transit.zip |
+| `cleveland-rta` | Cleveland RTA Rapid | Cleveland | RTA Rapid Transit | https://www.riderta.com/sites/default/files/gtfs/latest/google_transit.zip |
+| `sf-muni-metro` | Muni Metro | San Francisco | Muni Metro | https://muni-gtfs.apps.sfmta.com/data/muni_gtfs-current.zip |
+| `denver-rtd` | RTD Denver Rail | Denver | RTD Rail | https://www.rtd-denver.com/files/gtfs/google_transit.zip |
+| `seattle-link` | Sound Transit Link & Sounder | Seattle | Link & Sounder | https://gtfs.sound.obaweb.org/prod/40_gtfs.zip |
+| `dallas-dart` | DART Light Rail | Dallas | DART Light Rail | https://www.dart.org/transitdata/latest/google_transit.zip |
+| `minneapolis-metro` | Metro Transit Light Rail | Minneapolis | Metro Light Rail | https://svc.metrotransit.org/mtgtfs/gtfs.zip |
+| `phoenix-valley-metro` | Valley Metro Rail | Phoenix | Valley Metro Rail | https://phoenixopendata.com/dataset/3eae9a4a-98b9-40c8-8df7-8c00c1756235/resource/28ccc0a5-49c8-495c-b91f-193de5ce2cb7/download/googletransit.zip |
+| `salt-lake-uta` | UTA TRAX & FrontRunner | Salt Lake City | TRAX & FrontRunner | https://gtfsfeed.rideuta.com/GTFS.zip |
+| `pittsburgh-t` | Pittsburgh Light Rail | Pittsburgh | The T | https://www.portauthority.org/developerresources/GTFS.zip |
+| `metra` | Metra | Chicago | Metra | https://schedules.metrarail.com/gtfs/schedule.zip |
+| `septa-regional-rail` | SEPTA Regional Rail | Philadelphia | SEPTA Regional Rail | https://www3.septa.org/developer/google_rail.zip |
+| `nj-transit-rail` | NJ Transit Rail | New Jersey | NJ Transit Rail | https://www.njtransit.com/rail_data.zip |
+| `lirr` | Long Island Rail Road | New York | Long Island Rail Road | https://rrgtfsfeeds.s3.amazonaws.com/gtfslirr.zip |
+| `cdmx-metro` | Mexico City Metro | Mexico City | Metro | https://storage.googleapis.com/storage/v1/b/mdb-latest/o/mx-unknown-pumabus-gtfs-1830.zip?alt=media |
+
 ## Obligations we take on
 
 - **GPL components** (LOOM, FFmpeg with x264, the engine): every GitHub
