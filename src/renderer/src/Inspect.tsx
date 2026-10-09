@@ -161,14 +161,15 @@ export default function Inspect({
   // disabled element, so focus is handed to the cell's heading first
   // (`handsBack` says when).
   //
-  // A layout effect, where the theme switch's is a passive one. The kit's
-  // buttons are disabled by their wrapper's own passive effect, which runs
-  // straight before a parent's, so nothing comes between the two. The kit's
-  // dropdown takes `disabled` as an attribute, which React writes in the
-  // commit itself: the browser may update the rendering, and move focus to
-  // the body, before any passive effect has run, and this would then find
-  // nothing of its own holding focus. A layout effect runs in that same
-  // commit, while the select just disabled is still what holds it.
+  // A layout effect, as the theme switch's is (A7-13). The kit's dropdown
+  // takes `disabled` as an attribute, which React writes in the commit
+  // itself, as it does the theme switch's fieldset: the browser may update
+  // the rendering, and move focus to the body, before any passive effect has
+  // run, and this would then find nothing of its own holding focus. A layout
+  // effect runs in that same commit, while the select just disabled is still
+  // what holds it. A kit button is the other way about: its wrapper
+  // disables it from a passive effect that runs straight before a parent's,
+  // so nothing comes between the two.
   const was = useRef(disabled)
   useLayoutEffect(() => {
     const hand = handsBack<Node>(was.current, disabled, document.activeElement, [

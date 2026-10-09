@@ -421,3 +421,16 @@ describe('a checked theme card and a focused one are told apart (A7-13)', () => 
     expect([printed?.[1], printed?.[2]]).toEqual([night, parchment])
   })
 })
+
+// The cards share a row (A7-13). The kit's own stylesheet makes every
+// `fieldset` a column flexbox with its children at their start, and a rule
+// of the app's that leaves `display` out lets that stand: the div holding the
+// cards then shrinks to its content and the grid repeats once, so the two
+// stack in one narrow column. Every other fieldset of the app restates it.
+// Where the cards land on the screen is `tests/e2e/theme.spec.ts`.
+describe('the theme cards’ fieldset is not the kit’s column flexbox (A7-13)', () => {
+  it('restates display, as the other fieldsets of the app do', () => {
+    expect(rule(panels, '.theme-cards-group {')).toMatch(/display:\s*block;/)
+    expect(rule(panels, '.theme-cards {')).toMatch(/display:\s*grid;/)
+  })
+})

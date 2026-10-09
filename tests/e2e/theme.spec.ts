@@ -371,6 +371,17 @@ test('offers the two themes as radios and says which one the map is drawn in', a
     }
     // Nothing else in the section is pressable: the theme is not a button.
     await expect(group.getByRole('button')).toHaveCount(0)
+    // The two cards share a row at the default window. The kit's own rule makes
+    // every fieldset a column flexbox, which would stack them one under the
+    // other in a single narrow column; the group restates `display` against it.
+    const warm = await card(page, 'Warm dark').boundingBox()
+    const sepia = await card(page, 'Sepia').boundingBox()
+    expect(warm, 'the Warm dark card has a box').not.toBeNull()
+    expect(sepia, 'the Sepia card has a box').not.toBeNull()
+    expect(sepia?.y, 'the cards are in one row').toBe(warm?.y)
+    expect(sepia?.x ?? 0, 'Sepia is beside Warm dark, to its right').toBeGreaterThan(
+      (warm?.x ?? 0) + (warm?.width ?? 0) - 1,
+    )
   })
 })
 
@@ -450,6 +461,11 @@ test('a checked card is told from a focused one by its edge, in both of the inte
           ringWidth: style.outlineWidth,
           width: box.width,
           height: box.height,
+          // Where the picture sits inside the card, which is the padding and
+          // the edge together: unchanged if the edge is taken from the padding.
+          pictureTop:
+            (el.querySelector('.card-picture')?.getBoundingClientRect().top ?? 0) - box.top,
+          pictureWidth: el.querySelector('.card-picture')?.getBoundingClientRect().width ?? 0,
           narrowest:
             parseFloat(root.getPropertyValue('--card-min-width')) * parseFloat(root.fontSize),
         }
@@ -465,33 +481,50 @@ test('a checked card is told from a focused one by its edge, in both of the inte
         .poll(() => page.evaluate(() => document.documentElement.getAttribute('data-theme')))
         .toBe(attribute)
 
+      // The same card before and after it is checked: Sepia, chosen with the
+      // pointer. Its edge goes from 1px of --border to 2px of --text, and the
+      // card is the size it was and its picture is where it was, because the
+      // edge is taken from the padding. (Two cards of one grid row are always
+      // as tall as each other, so the other card is no witness to this.)
+      const before = await read('Sepia')
+      expect(before.edgeWidth, `${scheme}: the resting edge is 1px`).toBe('1px')
+      expect(before.edge, `${scheme}: the resting edge is --border`).toBe(
+        await colourOf('--border'),
+      )
+      await card(page, 'Sepia').click()
+      await expect(radio(page, 'Sepia')).toBeChecked()
+      await expect.poll(() => readRecord(h).theme).toBe('sepia')
+      const after = await read('Sepia')
+      expect(after.edgeWidth, `${scheme}: the checked edge is 2px`).toBe('2px')
+      expect(after.edge, `${scheme}: the checked edge is --text`).toBe(await colourOf('--text'))
+      expect(after.height, `${scheme}: the card did not grow`).toBeCloseTo(before.height, 0)
+      expect(after.width, `${scheme}: nor widen`).toBeCloseTo(before.width, 0)
+      expect(after.pictureTop, `${scheme}: its picture did not move down`).toBeCloseTo(
+        before.pictureTop,
+        0,
+      )
+      expect(after.pictureWidth, `${scheme}: nor narrow`).toBeCloseTo(before.pictureWidth, 0)
+      expect(after.width, `${scheme}: a card is at least --card-min-width`).toBeGreaterThanOrEqual(
+        after.narrowest - 1,
+      )
+      // And back, so the next pass starts as this one did.
+      await card(page, 'Warm dark').click()
+      await expect(radio(page, 'Warm dark')).toBeChecked()
+      await expect.poll(() => readRecord(h).theme).toBe('warm-dark')
+
       // Warm dark is the checked card, and focused from the keyboard: it
       // wears the edge and the ring together, and they are two colours.
       await cellHeading(page, 'style').focus()
       await page.keyboard.press('Tab')
       await expect(radio(page, 'Warm dark')).toBeFocused()
       const checked = await read('Warm dark')
-      const resting = await read('Sepia')
       expect(checked.edgeWidth, `${scheme}: the checked edge is 2px`).toBe('2px')
       expect(checked.edge, `${scheme}: the checked edge is --text`).toBe(await colourOf('--text'))
       expect(checked.ringWidth, `${scheme}: the ring is 2px`).toBe('2px')
       expect(checked.ring, `${scheme}: the ring is --focus`).toBe(await colourOf('--focus'))
       expect(checked.edge, `${scheme}: the edge is not the ring`).not.toBe(checked.ring)
-      // The card that is neither keeps its 1px --border.
-      expect(resting.edgeWidth, `${scheme}: the resting edge is 1px`).toBe('1px')
-      expect(resting.edge, `${scheme}: the resting edge is --border`).toBe(
-        await colourOf('--border'),
-      )
-      // Inset, in place of the resting edge: the checked card is the size it
-      // was, and no card is narrower than a card may be.
-      expect(
-        Math.abs(checked.height - resting.height),
-        `${scheme}: the card did not grow`,
-      ).toBeLessThan(1)
-      expect(
-        checked.width,
-        `${scheme}: a card is at least --card-min-width`,
-      ).toBeGreaterThanOrEqual(checked.narrowest - 1)
+      // The card that is neither checked nor focused has no ring.
+      expect((await read('Sepia')).ringWidth, `${scheme}: no ring on the other card`).toBe('0px')
     }
     await page.emulateMedia({ colorScheme: null })
   })

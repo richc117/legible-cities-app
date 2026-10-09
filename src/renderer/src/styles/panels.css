@@ -757,7 +757,11 @@ th .sort:focus-visible {
    picture at 16:10 inside the card's own padding, so no picture's ground
    meets the card's edge, over the theme's word. The fieldset's own box is
    reset and the cards are laid out by the div inside it, in as many tracks
-   as fit at `--card-min-width`, as the front door's are.
+   as fit at `--card-min-width`, as the front door's are. The reset includes
+   `display`: the kit's global `fieldset` rule makes every fieldset a column
+   flexbox with its children at their start, which would shrink the div to
+   its content and stack the cards in one narrow column, so it is a block
+   here, as the app's other fieldsets restate theirs.
 
    The radio is visually hidden (`.visually-hidden`) and keeps focus, so it
    is the card that shows both states. Focus is the app's own ring, drawn on
@@ -765,9 +769,15 @@ th .sort:focus-visible {
    `--border` one, taken from the card's padding so the card keeps its size
    and nothing moves: never `--accent`, which is the focus ring's own colour
    (theme.css), so a checked card and a focused one are told apart in both
-   themes, and never colour alone, since the edge is also heavier. */
+   themes, and never colour alone, since the edge is also heavier.
+
+   The kit's `input[type="radio"]` rule gives the hidden input a box of 1rem
+   with its own fill and ring, which is what DevTools shows. None of it is
+   painted or hit: `.visually-hidden`'s clip-path clips all of it away, so
+   it is not a defect to be mended. */
 
 .theme-cards-group {
+  display: block;
   min-width: 0;
   margin: 0 0 var(--space-4-4);
   padding: 0;
