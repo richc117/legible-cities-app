@@ -22,6 +22,7 @@ import type { Diagnostics, MapBuildResult, Methods } from '../../../shared/proto
 import { readStations, type Station } from '../../../shared/trip'
 import type { Stage } from '../ProgressLine'
 import { styleParams } from '../styleRules'
+import { askedWith, tuningParams } from '../layoutTuning'
 
 // One layout run for one project, with no React in it: the rule is that
 // logic lives in something callable without rendering, and the tests are
@@ -265,6 +266,8 @@ export interface RunOptions {
       service: ServiceWindow
       /** The stations the map was drawn with, for cell 03's trip (issue 272); absent when unread. */
       stations?: Station[]
+      /** The tuning graph.build was sent (issue 385); absent for a run sent none. */
+      tuning?: import('../../../shared/project').ProjectTuning
     },
   ): Promise<{ changed: boolean; relaid: boolean }>
   /**
@@ -487,6 +490,13 @@ export class LayoutRun {
 
     void (async () => {
       try {
+        // LOOM's settings the record holds (issue 385), taken once, as the
+        // run starts, so what is sent and what the store is told was sent
+        // are one copy; none at all for a project that never tuned, whose
+        // request is the one it always was. A tuned layout is a layout of
+        // its own, so this is part of what names it.
+        const asked = askedWith(project.tuning)
+
         // The project's mode and agency are its inputs (A2-02): the engine
         // names a layout by them, so a change here is a different layout.
         // An agency of none is left out, which the engine reads as the
@@ -500,6 +510,7 @@ export class LayoutRun {
           mode: project.mode,
           agency: project.agency ?? '',
           ...(force ? { force } : {}),
+          ...tuningParams(asked.tuning),
         })
         this.#inFlight = layout
         layout.onProgress((p) => this.#report(p))
@@ -559,6 +570,10 @@ export class LayoutRun {
           // kept with the record because a project opened again draws its
           // map from the stored files without a build.
           ...stationsOf(stations),
+          // The tuning graph.build was sent above, which the record keeps as
+          // what this layout was asked with (issue 385): this run's, not the
+          // record's now, which a tuning committed meanwhile has moved.
+          ...asked,
         })
         // The store cannot see `force`: a re-layout from this project moves
         // `made` too, and that is not another project's doing.
