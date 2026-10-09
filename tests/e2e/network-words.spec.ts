@@ -44,6 +44,23 @@ const stageRequests = (p: Profile): { params: Record<string, unknown> }[] =>
     .map((line) => JSON.parse(line))
 
 /**
+ * The render.stage requests made of the stored layout: those after the
+ * layout run's own. Since issue 382 cell 01 draws each stage as the run
+ * reports it, with no day (specs/032 FR-004), and those requests come
+ * first, each stage once - so a request of the store's sent without its
+ * day would repeat one of them, and is held here rather than let through.
+ */
+function storedStageRequests(p: Profile): { params: Record<string, unknown> }[] {
+  const all = stageRequests(p)
+  const first = all.findIndex((request) => 'date' in request.params)
+  const during = (first === -1 ? all : all.slice(0, first)).map((r) => String(r.params.stage))
+  expect(new Set(during).size, `the run asked for each stage once: ${during.join(', ')}`).toBe(
+    during.length,
+  )
+  return first === -1 ? [] : all.slice(first)
+}
+
+/**
  * The description the stand-in answers for a drawing of these lines on this
  * day, asked of the stand-in's own function. Run from the profile's folder,
  * so nothing beside the interpreter is on its path but the stand-in.
@@ -146,7 +163,7 @@ test('the pane is named for its counts, and the network in words says where the 
     const record = readRecord(p)
     expect(record.date, 'the layout run stored a day').not.toBeNull()
     expect(record.drawn?.date, 'and the map was drawn for it').toBe(record.date)
-    const asked = stageRequests(p)
+    const asked = storedStageRequests(p)
     expect(asked.length, 'the stage was asked for').toBeGreaterThan(0)
     for (const request of asked)
       expect(
@@ -241,10 +258,10 @@ test('the pane is named for its counts, and the network in words says where the 
       first.stations,
     )
     expect(
-      stageRequests(p).some((request) => request.params.stage === 'loom'),
+      storedStageRequests(p).some((request) => request.params.stage === 'loom'),
       'the engine was asked for the loom stage’s description too',
     ).toBe(true)
-    for (const request of stageRequests(p))
+    for (const request of storedStageRequests(p))
       expect(
         request.params.date,
         `every render.stage carries the day: ${JSON.stringify(request.params)}`,

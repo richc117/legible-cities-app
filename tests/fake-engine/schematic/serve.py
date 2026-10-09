@@ -823,21 +823,25 @@ class Engine:
             inputs["tuning"] = tuned
         layout = hashlib.sha256(json.dumps(inputs, sort_keys=True).encode()).hexdigest()
         builds = bool(params.get("force")) or layout not in self.layouts
+        number = None
         if builds:
-            # A build of its own, readable stage by stage as it reports;
-            # one already stored and not forced is read from the store, as
-            # the engine replays it, and has none.
-            self.building[layout] = {"reported": set(), "stages": stages,
-                                     "build": self.builds + 1}
+            # A build of its own, numbered as it starts, so no two builds
+            # share a number even when one is cancelled, and readable stage
+            # by stage as it reports; one already stored and not forced is
+            # read from the store, as the engine replays it, and has none.
+            self.builds += 1
+            number = self.builds
+            self.building[layout] = {"reported": set(), "stages": stages, "build": number}
         try:
-            self.lay_out(msg_id, key, mode, agency, layout, stages, builds, delay, flags)
+            self.lay_out(msg_id, key, mode, agency, layout, stages, number, delay, flags)
         finally:
             # A cancel or a failure leaves nothing of the build to draw; a
             # build that answered is the store's by now.
             self.building.pop(layout, None)
 
-    def lay_out(self, msg_id, key, mode, agency, layout, stages, builds, delay,
+    def lay_out(self, msg_id, key, mode, agency, layout, stages, number, delay,
                 flags) -> None:
+        builds = number is not None
         for i, stage in enumerate(("gtfs2graph", "topo", "loom", "octi"), start=1):
             if stage == "octi" and self.control.get("octi_child"):
                 if self.octi(msg_id):
@@ -872,9 +876,8 @@ class Engine:
                    "params": {"id": msg_id, "stage": stage, "fraction": i / 4,
                               "message": f"{stage}: 3 nodes, 2 edges", "layout": layout}})
         if builds:
-            self.builds += 1
-            self.layouts[layout] = "2026-09-10T00:%02d:%02d+00:00" % divmod(self.builds, 60)
-            self.layout_builds[layout] = self.builds
+            self.layouts[layout] = "2026-09-10T00:%02d:%02d+00:00" % divmod(number, 60)
+            self.layout_builds[layout] = number
         self.layout_stages[layout] = stages
         self.building.pop(layout, None)
         paths = {s: str(HOME / "data" / "graphs" / key / layout / f"0{i}_{s}.json")
