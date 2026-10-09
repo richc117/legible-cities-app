@@ -1,6 +1,6 @@
 # ADR-048: Route mode is a trip the page finds
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-02
 - **Supersedes:** none
 - **Superseded by:** none
@@ -47,6 +47,8 @@ What to watch, if E38 ignores both LOOM properties (445,076 pairs): the steps mo
 ## Consequences
 
 **The page grows a router and a graph.** The graph is the line graph the layout already carries, not the timetable. The page's size before and after is measured and written here before the record is Accepted.
+
+**As of 9 Oct 2026, the page's size.** The engine's page for the Los Angeles layout, drawn from the same stored layout (`9dc37088…`) for the same day (20 June 2026) at v0.12.0 and at v0.13.0, grew from 157,103 to 197,640 bytes: the page's script from 63,693 to 99,609, its stylesheet from 19,432 to 23,782, and the routing graph it now carries 253 bytes, the inline SVG and the day's data unchanged. The growth is the release's whole change to the page, route mode and the accessibility fixes of issues 56 to 61 together, since both were cut in v0.13.0. On the page the app draws, for the busiest weekday, the timetable's data is 419,733 of 599,646 bytes, so the same growth is under seven percent of what the frame loads.
 
 **Hidden lines change the answer.** A person who hid a line to tidy the view may get a longer trip and not know why, so the step list says which lines the trip avoided whenever any are hidden.
 
