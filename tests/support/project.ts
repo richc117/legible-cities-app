@@ -110,18 +110,89 @@ export const cell = (page: Page, id: CellId): Locator => {
     : panel(page, name)
 }
 
-/** A cell's panel, opened first if it is collapsed. */
+/**
+ * How long a press on a cell's heading is given to show in the heading's
+ * `aria-expanded` before it is taken for lost. The attribute follows a
+ * press that landed within a frame or two; this is generous for a runner
+ * that is starved, and short beside the ten seconds a lost press used to
+ * cost, which were spent waiting on a group that was never going to appear
+ * (issue 363).
+ */
+const PRESS_DEADLINE_MS = 2_000
+
+/**
+ * Press a cell's heading until `aria-expanded` says `expanded`, pressing a
+ * second time at most, and only when the attribute shows the first press
+ * was lost.
+ *
+ * A press can be lost: Playwright scrolls the heading into view, checks
+ * what is under the point it will press, and then sends the mouse event,
+ * and the column can move in between (issue 363's trace has the map's block
+ * arriving), so the press lands where the heading was and nothing opens.
+ * Pressing once and waiting on the group cannot tell that from a slow cell.
+ * The attribute can: it is the heading's own state, written by the same
+ * render as the group's.
+ *
+ * Why the attribute is read between the presses and not the press simply
+ * repeated: a press that landed late must not be followed by one that
+ * undoes it. Whether the second press is made is decided by a read of the
+ * attribute taken right before it, after the whole deadline has passed, and
+ * the page renders a press's update before it answers a read made after
+ * the press was sent, so a press that landed slowly is seen by that read.
+ */
+async function pressHeading(
+  heading: Locator,
+  expanded: 'true' | 'false',
+  cell: CellId,
+): Promise<void> {
+  if ((await heading.getAttribute('aria-expanded')) === expanded) return
+  await heading.click()
+  const landed = await expect(heading)
+    .toHaveAttribute('aria-expanded', expanded, { timeout: PRESS_DEADLINE_MS })
+    .then(
+      () => true,
+      () => false,
+    )
+  if (landed) return
+  if ((await heading.getAttribute('aria-expanded')) !== expanded) {
+    // Said in the job's log, so a rising rate of lost presses is seen while
+    // the retry still covers it, not only once it stops covering it.
+    console.log(`openCell: the press on cell ${cell}'s heading was lost; pressing again`)
+    await heading.click()
+  }
+  await expect(
+    heading,
+    `cell ${cell}'s heading was pressed twice and still does not say aria-expanded="${expanded}"`,
+  ).toHaveAttribute('aria-expanded', expanded)
+}
+
+/**
+ * A cell's panel, opened first if it is collapsed.
+ *
+ * The contract, in order: press the cell's heading unless it already says
+ * `aria-expanded="true"`; assert that it says so, within a short deadline;
+ * if it does not, and still does not when read again, press once more and
+ * assert it with the expectation's own timeout; and only then wait for the
+ * cell's group to be visible. A press that was swallowed by a layout shift
+ * is retried; a press that landed is never repeated (`pressHeading` has
+ * the reasoning). Deadlines throughout, never a count of turns.
+ */
 export async function openCell(page: Page, id: CellId): Promise<Locator> {
-  const heading = cellHeading(page, id)
-  if ((await heading.getAttribute('aria-expanded')) !== 'true') await heading.click()
+  await pressHeading(cellHeading(page, id), 'true', id)
   await expect(cell(page, id)).toBeVisible()
   return cell(page, id)
 }
 
-/** Collapse a cell, for a spec that asserts what happens once it is closed. */
+/**
+ * Collapse a cell, for a spec that asserts what happens once it is closed.
+ *
+ * The same contract as `openCell`, for `aria-expanded="false"` and the
+ * cell's group hidden: press unless the heading already says so, assert
+ * the attribute within a short deadline, press again once if it is still
+ * unchanged on a fresh read, then wait for the group to be hidden.
+ */
 export async function closeCell(page: Page, id: CellId): Promise<void> {
-  const heading = cellHeading(page, id)
-  if ((await heading.getAttribute('aria-expanded')) === 'true') await heading.click()
+  await pressHeading(cellHeading(page, id), 'false', id)
   await expect(cell(page, id)).toBeHidden()
 }
 

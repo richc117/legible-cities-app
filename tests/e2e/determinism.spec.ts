@@ -98,6 +98,13 @@ const GIF_MIN_BYTES = 64 * 1024
 
 test.skip(!OPTED_IN, 'opt in with LEGIBLE_DETERMINISM_TEST=1; it takes minutes')
 
+/**
+ * What the map's status region says once the map is drawn
+ * (`notebook/Preview.tsx`, `MAP_DRAWN`). Restated rather than imported: the
+ * component file brings React with it.
+ */
+const MAP_DRAWN = 'The map is drawn.'
+
 const exportPanel = (page: Page): Locator => cell(page, 'export')
 
 test('the same project, exported twice, captures the same frames within the tolerance, from the same stored layout', async () => {
@@ -153,6 +160,14 @@ test('the same project, exported twice, captures the same frames within the tole
     })
     await page.getByRole('button', { name: `Open ${PROJECT_NAME}` }).click()
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(PROJECT_NAME)
+    // The map is in the column before cell 06 is pressed, whose heading the
+    // map's block sits above: a press made while the column is still being
+    // laid out can land where the heading was (issue 363). The export needs
+    // the map anyway. The class and not the role: the engine's status and
+    // the header's are statuses too.
+    await expect(page.locator('.preview .preview-status')).toHaveText(MAP_DRAWN, {
+      timeout: 20_000,
+    })
     await openCell(page, 'export')
     const panel = exportPanel(page)
     await expect(panel.getByRole('combobox', { name: 'Preset' })).toHaveValue(
