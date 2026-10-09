@@ -95,7 +95,13 @@ Commits are a few seconds slower, and the first commit in a fresh checkout
 is slower still while `pre-commit` builds its environment. The gitleaks
 version is pinned in two files — `rev` in `.pre-commit-config.yaml` and
 `GITLEAKS_VERSION` in the workflow — and they have to be moved together;
-they are commented to say so.
+they are commented to say so. As of 8 Oct 2026 (issue 316) it is pinned in
+three: `rev` there, `GITLEAKS_VERSION` in `gitleaks.yml`, and
+`GITLEAKS_VERSION` with `GITLEAKS_SHA256`, the hash of the Linux x64
+archive from the release's published checksums file, in `preflight.yml`,
+which installs the binary so `bin/test-hooks` can run its end-to-end rows.
+A bump moves all of them in one change, and the preflight step refuses to
+run when the other two differ from its own.
 
 An allowlist is a liability that grows. Every entry in `.gitleaks.toml` says
 what it is for, and an entry without a reason should be deleted rather than

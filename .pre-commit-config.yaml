@@ -12,6 +12,9 @@
 # The gitleaks version is pinned by `rev`; pre-commit builds it in its own
 # environment, so nothing needs to be installed for it. Update the pin with
 # `pre-commit autoupdate` and read the changelog before committing the bump.
+# The same version is pinned in gitleaks.yml and in preflight.yml (with the
+# sha256 of its Linux archive, from the release's checksums file), all moved
+# in one change; preflight.yml refuses to run when either differs from `rev`.
 
 default_install_hook_types: [pre-commit, commit-msg]
 minimum_pre_commit_version: "3.2.0"
