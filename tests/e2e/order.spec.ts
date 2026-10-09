@@ -452,18 +452,20 @@ test('four drags in a row are one build', async () => {
     const said = `releases heard ${gaps.map((gap) => Math.round(gap)).join(', ')} ms apart`
     if (held.exactlyOne) {
       expect(made, `${said}, each inside the ${REDRAW_DELAY_MS} ms debounce: one build`).toBe(1)
-    } else {
-      // A gap the interval could fit in is a gap a build may have fallen in:
-      // the runner could not make the four drags one gesture, which is not
-      // the debounce failing. At most one build for each such gap, and the
-      // run says so.
-      test.info().annotations.push({
-        type: 'slow runner',
-        description: `${said}; the ${REDRAW_DELAY_MS} ms debounce could fit between two of them`,
-      })
-      expect(made, `${said}: at least one build`).toBeGreaterThanOrEqual(1)
-      expect(made, `${said}: at most ${held.most} builds`).toBeLessThanOrEqual(held.most)
+      return
     }
+    // A gap of the interval or more is a gap a build may have fallen in: the
+    // runner could not make the four drags one gesture, which is not the
+    // debounce failing. What still holds is checked - a build, and at most
+    // one for each such gap - and then the test says it did not prove its
+    // title: recorded as skipped, not passed, and written to the log, since
+    // an annotation is not printed by the reporters CI uses.
+    expect(made, `${said}: at least one build`).toBeGreaterThanOrEqual(1)
+    expect(made, `${said}: at most ${held.most} builds`).toBeLessThanOrEqual(held.most)
+    const unproved = `${said}; the ${REDRAW_DELAY_MS} ms debounce could fit between two of them, so four drags in a row were not one gesture here, and the ${made} build(s) made do not test the debounce`
+    console.log(`four drags in a row: ${unproved}`)
+    test.info().annotations.push({ type: 'slow runner', description: unproved })
+    test.skip(true, unproved)
   })
 })
 

@@ -74,22 +74,22 @@ const sameWithin = (a: number[], b: number[], tolerance: number): boolean =>
 
 /**
  * A reading that held across two animation frames: read, wait two frames,
- * read again, and answer once the two agree within `tolerance` (a position is
- * a fraction that wobbles by a ten-thousandth between reads). A reading that
- * is still moving at the deadline fails with the last two it saw.
+ * read again, and answer once the two agree. A reading that is still moving
+ * at the deadline fails with the last two it saw.
  */
-export async function steady(
+async function held<T>(
   page: Evaluates,
-  read: () => Promise<number[]>,
+  read: () => Promise<T>,
+  same: (a: T, b: T) => boolean,
   what: string,
-  { tolerance = 0.5, deadlineMs = 20_000 }: { tolerance?: number; deadlineMs?: number } = {},
-): Promise<number[]> {
+  deadlineMs: number,
+): Promise<T> {
   const end = Date.now() + deadlineMs
   let last = await read()
   for (;;) {
     await afterFrames(page)
     const now = await read()
-    if (sameWithin(last, now, tolerance)) return now
+    if (same(last, now)) return now
     if (Date.now() >= end) {
       throw new Error(
         `${what} did not stop moving within ${deadlineMs} ms: it read ${JSON.stringify(last)}, then ${JSON.stringify(now)}`,
@@ -98,6 +98,29 @@ export async function steady(
     last = now
   }
 }
+
+/**
+ * Positions that held across two animation frames, each within `tolerance`
+ * of its earlier reading (a position is a fraction that wobbles by a
+ * ten-thousandth between reads).
+ */
+export const steady = (
+  page: Evaluates,
+  read: () => Promise<number[]>,
+  what: string,
+  { tolerance = 0.5, deadlineMs = 20_000 }: { tolerance?: number; deadlineMs?: number } = {},
+): Promise<number[]> => held(page, read, (a, b) => sameWithin(a, b, tolerance), what, deadlineMs)
+
+/**
+ * A text that held across two animation frames: a field the page is still
+ * drawing a pointer's last move into, read once, can be one render behind.
+ */
+export const steadyText = (
+  page: Evaluates,
+  read: () => Promise<string>,
+  what: string,
+  deadlineMs = 20_000,
+): Promise<string> => held(page, read, (a, b) => a === b, what, deadlineMs)
 
 /** A box as the four numbers `steady` compares. */
 export const boxNumbers = (box: {
@@ -135,8 +158,10 @@ export async function notebookSettled(page: Page): Promise<void> {
  * in `tests/acceptance/acceptance.spec.ts` has the same note), so a window
  * left behind others cannot hear what waits on a frame: the announcement of
  * a job's end is cleared and filled again two animation frames later. A
- * window that is already visible is left alone - nothing is raised, no
- * focus is taken from a person at a desk - and a raise is said in the job's
+ * window that is visible is left alone. One the page reports hidden is
+ * raised and focused, and for a developer running the suite at a desk that
+ * means one they have covered or minimised: their focus is taken, as the
+ * acceptance spec's `bringToFront` takes it. A raise is said in the job's
  * log, so how often a runner needs one is seen.
  */
 export async function showIfHidden(
@@ -182,11 +207,13 @@ export interface PointerSeen {
  * `page.evaluate` is given are sent as text, so this one reaches for
  * nothing outside itself; a test hands it a stand-in window instead.
  *
- * A move is recorded on the way out of the window, after the document's
- * own listeners (react-colorful's, which listens for mouse events there) have
- * run, so a position seen is a position the app has handled. A release is
- * recorded on the way in, before the app's handler, so the time is the
- * handler's to within the handler's own length.
+ * A move is recorded by a bubble-phase listener on the window, where
+ * react-colorful listens too; this one is registered first, so for one event
+ * it runs first. A position is therefore a position the app has handled only
+ * because it is read back by a later task (`pointerSeenBy`), after the whole
+ * dispatch. A release is recorded in the capture phase, before the app's
+ * handler starts the debounce in the same dispatch, so the stamp is never
+ * later than the timer's start.
  */
 export function recordPointer(win: Window = window): void {
   const seen: PointerSeen = { at: null, released: [] }
@@ -233,18 +260,24 @@ export const gapsBetween = (times: number[]): number[] =>
   times.slice(1).map((time, i) => time - times[i])
 
 /**
- * What a debounce of `delay` ms allows for changes arriving `gaps` apart,
- * read from the page's own clock: with every gap under the delay by `margin`
- * (the handler's own length, and the time a starved renderer takes to run
- * it), the timer cannot have fired between two of them and the changes are
- * exactly one build; with a longer gap, a build may have fallen in it, and
- * at most one did for each such gap.
+ * A timer is never early, but the stamps and the timer's due time are read
+ * from clocks that round: a gap within this many milliseconds of the delay
+ * is counted as one the timer could fit in, which is the safe side. It is
+ * not a margin for a slow runner (see `buildsFor`).
  */
-export function buildsFor(
-  gaps: number[],
-  delay: number,
-  margin = 100,
-): { exactlyOne: boolean; most: number } {
-  const long = gaps.filter((gap) => gap >= delay - margin).length
+const TIMER_ROUNDING_MS = 2
+
+/**
+ * What a debounce of `delay` ms allows for changes arriving `gaps` apart,
+ * stamped by the page as each release's dispatch begins. The debounce starts
+ * its timer in that dispatch, after the stamp, and a timer fires on time or
+ * late, never early, and cannot run while a dispatch does. So when every
+ * gap is under the delay, the timer cannot have fired between two of the
+ * changes, however slow the runner or the handler: exactly one build. A
+ * gap of the delay or more may have had a build fall in it, and at most one
+ * did for each such gap.
+ */
+export function buildsFor(gaps: number[], delay: number): { exactlyOne: boolean; most: number } {
+  const long = gaps.filter((gap) => gap >= delay - TIMER_ROUNDING_MS).length
   return { exactlyOne: long === 0, most: 1 + long }
 }

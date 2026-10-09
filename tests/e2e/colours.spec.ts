@@ -37,6 +37,7 @@ import {
   pointerHasReached,
   showIfHidden,
   steady,
+  steadyText,
   watchPointer,
 } from '../support/steady'
 
@@ -453,13 +454,17 @@ test('a drag is one build, made on its release, however slowly the hand moves', 
     // nothing yet about the moves.
     await expect(field, 'the press landed on the square').not.toHaveValue('#0072bc')
     // The pace is the page's: a drag is followed once the page has heard the
-    // pointer arrive, then two frames for the field to draw it, however many
-    // of the fifty moves a slow runner delivered one by one.
+    // pointer arrive, and the field is read once it has held its text across
+    // two frames, however many of the fifty moves a slow runner delivered
+    // one by one.
     const first = { x: square.x + 120, y: square.y + 60 }
     await page.mouse.move(first.x, first.y, { steps: 50 })
     await pointerHasReached(page, first, 'the drag to its first stop')
-    await afterFrames(page)
-    const midDrag = await field.inputValue()
+    const midDrag = await steadyText(
+      page,
+      () => field.inputValue(),
+      'the hex field at the first stop',
+    )
     await expect(field, 'the field follows the drag').not.toHaveValue('#0072bc')
     expect(buildsOf(engineHome), 'nothing is built while the pointer moves').toBe(drawnBefore)
 
@@ -475,8 +480,11 @@ test('a drag is one build, made on its release, however slowly the hand moves', 
     const second = { x: square.x + 60, y: square.y + 100 }
     await page.mouse.move(second.x, second.y, { steps: 50 })
     await pointerHasReached(page, second, 'the drag to its second stop')
-    await afterFrames(page)
-    const atRelease = await field.inputValue()
+    const atRelease = await steadyText(
+      page,
+      () => field.inputValue(),
+      'the hex field at the second stop',
+    )
     expect(atRelease, 'the drag went on after the pause').not.toBe(midDrag)
     expect(buildsOf(engineHome), 'still nothing built with the pointer down').toBe(drawnBefore)
 
