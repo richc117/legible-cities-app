@@ -1035,3 +1035,47 @@ th .sort:focus-visible {
 .transport-speed {
   margin: 0;
 }
+
+/* The trip (issue 272): cell 03's third section, which drives the engine's
+   page as the transport does. Its two pickers stand one under the other in
+   the container the transport's controls and "Draw for another day" sit in,
+   so the cell's three sections read as one family. The steps are prose, an
+   ordered list at the reading measure; a caveat or the lines a trip avoided
+   are a quiet line under them, and the button follows. It adds no colour
+   pair: --text, --text-muted and --error on --surface are all checked. */
+.trip-form .field:last-child {
+  margin-bottom: 0;
+}
+
+.trip-summary {
+  margin: var(--space-4-3) 0 0;
+}
+
+/* Empty while no trip is shown, and still in the tree: a live region that
+   came and went with its text would not be heard as it arrived. */
+.trip-summary:empty {
+  margin: 0;
+}
+
+.trip-steps {
+  max-width: var(--measure);
+  margin: var(--space-2-2) 0 0;
+  padding-inline-start: var(--space-4-6);
+  font-family: var(--font-prose);
+  font-size: var(--font-text);
+  line-height: var(--line-text);
+}
+
+.trip-steps li + li {
+  margin-top: var(--space-2-2);
+}
+
+.trip-note {
+  max-width: var(--measure);
+  margin: var(--space-2-2) 0 0;
+  color: var(--text-muted);
+}
+
+.trip .actions {
+  justify-content: flex-start;
+}

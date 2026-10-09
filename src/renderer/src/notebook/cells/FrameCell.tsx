@@ -2,6 +2,7 @@ import { useRef, type JSX } from 'react'
 import type { ProjectRecord } from '../../../../shared/project'
 import ServiceDay, { dayUndrawn } from '../../ServiceDay'
 import Transport from '../../Transport'
+import Trip from '../../Trip'
 import Cell from '../Cell'
 import { frameFooter } from '../CellFooter'
 import type { CellViewProps } from '../cells'
@@ -39,9 +40,15 @@ import { runRowStatus } from '../runRow'
 // which one is a judgement about the panel (lane 197's rule). The reasoning
 // for each of the two is where the second one is drawn, in `Transport.tsx`.
 //
+// The third section is the trip (issue 272, spec 030, ADR-048): a start
+// and an end station, the map faded around the trip between them, and the
+// steps in words. It drives the page as the transport does and keeps
+// nothing, and it names itself with an `h3` for the transport's reason: it
+// is about the map on screen, which nothing above names.
+//
 // It is offered to a read-only project as well as a writable one, and that
 // is deliberate: looking is not editing, and a project this build may not
-// write still has a map worth watching.
+// write still has a map worth watching. The trip too: viewing is not editing.
 
 /**
  * What the cell says on its collapsed row: the day the project is set to,
@@ -179,6 +186,17 @@ export default function FrameCell({ cell, state, open, onToggle }: CellViewProps
               exporting={exporting}
             />
           )}
+          {/* The trip (issue 272), after the transport. Drawn whatever the
+              page can do: before a layout it is one sentence and no
+              control, and over a record that kept no stations it says the
+              map has to be drawn again. Its stations are the ones the map
+              on disk was drawn with, from the record's `drawn`. */}
+          <Trip
+            hasLayout={project.layout !== null}
+            stations={project.drawn?.stations ?? null}
+            laying={layingOut}
+            exporting={exporting}
+          />
         </>
       )}
     </Cell>

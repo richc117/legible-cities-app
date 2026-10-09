@@ -23,6 +23,12 @@ interface LayoutDone {
   service: ServiceWindow
   /** Since A3-06: when the engine made the layout, graph.build's meta.made. */
   made: string
+  /**
+   * Since issue 272: the stations map.build answered for the map the run
+   * drew, `{ id, name }[]`, for cell 03's Trip section. Optional: a list the
+   * main process cannot read whole is dropped, and the run is still written.
+   */
+  stations?: { id: string; name: string }[]
 }
 ```
 

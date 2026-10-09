@@ -32,6 +32,12 @@ run, because a fresh feed may carry a fresh calendar.
 interface RebuildDone {
   /** The day the map was just drawn for, YYYY-MM-DD. */
   date: string
+  /**
+   * Since issue 272: the stations map.build answered, written into the
+   * record's `drawn`; left out, or not whole, the list the record had is
+   * kept for the layout it was listed for.
+   */
+  stations?: { id: string; name: string }[]
 }
 ```
 

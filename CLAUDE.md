@@ -28,7 +28,7 @@ the kit's `Tabs` control was deleted with the tab strip (A5.5-23).
 | --- | --- | --- |
 | 01 Data | `Inspect`, `StageView`, the feed's download (`DownloadLine`) | `DataCell.tsx` |
 | 02 Process | `LayoutRun`, the engine's log (`EngineLog`), `Diagnostics` | `ProcessCell.tsx` |
-| 03 Frame and service day | `ServiceDay`, the transport (`Transport`: scrub, play, speed) | `FrameCell.tsx` |
+| 03 Frame and service day | `ServiceDay`, the transport (`Transport`: scrub, play, speed), the trip (`Trip`: two pickers, the steps; issue 272) | `FrameCell.tsx` |
 | 04 Style | `ThemeSwitch`, `StyleFields` (the map's sizes, issue 350) | `StyleCell.tsx` |
 | 05 Lines | `LineColours`, `LineOrder` | `LinesCell.tsx` |
 | 06 Export | `ExportTab` (the export's options), which draws `ExportRun` itself | `ExportCell.tsx` |
@@ -138,6 +138,13 @@ is then told through its seam (`setTheme`) and restyles in place, the
 address carrying the theme for the next load only (issue 349) - and the
 interface's own theme in Settings is a separate thing that neither follows;
 `src/renderer/src/ThemeSwitch.tsx`). That is the first reel.
+
+Route mode came with issue 272 on the engine pin at v0.13.0 (spec 030,
+ADR-048): the page finds the trip between two stations and fades the rest,
+and the app asks for it through the seam's `setTrip`, reads `state().trip`
+as untrusted data, composes the steps in words, and keeps the map's
+`stations` with the record's `drawn` so a reopened project offers its
+pickers; a trip is never written to the record.
 
 Installers (A0-10) came with Phase 5: `build.yml` runs the vendor jobs in
 the same run, refuses a target whose Python, LOOM or ffmpeg is missing,

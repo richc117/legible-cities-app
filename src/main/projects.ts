@@ -15,6 +15,7 @@ import {
   DEFAULT_MODE,
   DEFAULT_THEME,
   drawnFrom,
+  withStations,
   openedOrder,
   ID_PATTERN,
   RECORD_VERSION,
@@ -52,6 +53,7 @@ import {
   type ExportChoice,
 } from '../shared/export'
 import { isLayoutId, type LayoutDone, type LayoutResult } from '../shared/layout'
+import { readStations, type Station } from '../shared/trip'
 import { isValidProjectId } from './paths'
 import { failedWords, renameOver, retriedWords, type ReplaceOptions } from './replace-file'
 
@@ -62,9 +64,23 @@ import { failedWords, renameOver, retriedWords, type ReplaceOptions } from './re
  * a rename, the inputs, the theme, the export choice - leaves `drawn`
  * exactly as it was, which is what lets the notebook say the map on screen
  * is behind the record.
+ *
+ * `stations` is what the build answered for the map it drew (issue 272),
+ * from a layout run or a rebuild; without it, the list the record had stays
+ * where the layout is the one it was listed for (`drawnFrom`).
  */
-function drew(record: ProjectRecord): ProjectRecord {
-  return { ...record, drawn: drawnFrom(record) }
+function drew(record: ProjectRecord, stations?: Station[]): ProjectRecord {
+  return { ...record, drawn: withStations(drawnFrom(record), listed(stations)) }
+}
+
+/**
+ * A draw's stations as the store will keep them: read again here, as every
+ * other field is checked in the handler and again in the store, which is the
+ * trusted layer and has callers of its own. A list that does not read whole
+ * is no list, and the record keeps what `drawnFrom` carries.
+ */
+function listed(stations: Station[] | undefined): Station[] | undefined {
+  return stations === undefined ? undefined : (readStations(stations) ?? undefined)
 }
 
 /**
@@ -84,9 +100,12 @@ function drew(record: ProjectRecord): ProjectRecord {
  * A record whose `drawn` is null has nothing to keep, and the redraw did
  * draw `record.date`, which is what `drawnDate` answered for it.
  */
-function redrew(record: ProjectRecord): ProjectRecord {
+function redrew(record: ProjectRecord, stations?: Station[]): ProjectRecord {
   const before = record.drawn
-  const drawn = drawnFrom(record)
+  // The stations the build answered, where it answered a list (issue 272):
+  // a redraw from a set another project laid out again since draws that
+  // set's stations, which the record's own `made` cannot see.
+  const drawn = withStations(drawnFrom(record), listed(stations))
   if (drawn === null || before === null) return { ...record, drawn }
   return { ...record, drawn: { ...drawn, date: before.date } }
 }
@@ -558,16 +577,19 @@ export class ProjectStore {
       throw new Error('the layout run did not say which layout it drew from')
     const layout = done.layout
     const { start, end, busiest, anchor } = done.service
-    const updated: ProjectRecord = drew({
-      ...record,
-      version: RECORD_VERSION,
-      layout,
-      made: done.made,
-      built: { mode: done.built.mode, agency: done.built.agency?.trim() || null },
-      date: record.date ?? done.date,
-      service: { start, end, busiest, anchor },
-      modified: new Date().toISOString(),
-    })
+    const updated: ProjectRecord = drew(
+      {
+        ...record,
+        version: RECORD_VERSION,
+        layout,
+        made: done.made,
+        built: { mode: done.built.mode, agency: done.built.agency?.trim() || null },
+        date: record.date ?? done.date,
+        service: { start, end, busiest, anchor },
+        modified: new Date().toISOString(),
+      },
+      done.stations,
+    )
     await this.writeAtomic(id, updated)
     // A different id is a different layout. The same id with a different
     // `made` is the same inputs laid out again since this project last drew
@@ -594,12 +616,15 @@ export class ProjectStore {
     const { record, readOnly } = await this.load(id)
     if (readOnly) throw new Error('read-only')
     check(serviceDayRefusal(record, done.date))
-    const updated: ProjectRecord = drew({
-      ...record,
-      version: RECORD_VERSION,
-      date: done.date,
-      modified: new Date().toISOString(),
-    })
+    const updated: ProjectRecord = drew(
+      {
+        ...record,
+        version: RECORD_VERSION,
+        date: done.date,
+        modified: new Date().toISOString(),
+      },
+      done.stations,
+    )
     await this.writeAtomic(id, updated)
     return updated
   }
@@ -647,23 +672,32 @@ export class ProjectStore {
    * feed's own colour over the default, so only the two fields are kept
    * here; the app resolves nothing and stores no feed colour.
    */
-  async completeColors(id: string, palette: Palette): Promise<ProjectRecord> {
-    return this.#track(() => this.#serial(id, () => this.#completeColorsTracked(id, palette)))
+  async completeColors(id: string, palette: Palette, stations?: Station[]): Promise<ProjectRecord> {
+    return this.#track(() =>
+      this.#serial(id, () => this.#completeColorsTracked(id, palette, stations)),
+    )
   }
 
-  async #completeColorsTracked(id: string, palette: Palette): Promise<ProjectRecord> {
+  async #completeColorsTracked(
+    id: string,
+    palette: Palette,
+    stations?: Station[],
+  ): Promise<ProjectRecord> {
     this.checkId(id)
     check(validatePalette(palette))
     const { record, readOnly } = await this.load(id)
     if (readOnly) throw new Error('read-only')
     if (record.layout === null) throw new Error('lay the project out first')
-    const updated: ProjectRecord = redrew({
-      ...record,
-      version: RECORD_VERSION,
-      colors: { ...palette.colors },
-      defaultColor: palette.defaultColor,
-      modified: new Date().toISOString(),
-    })
+    const updated: ProjectRecord = redrew(
+      {
+        ...record,
+        version: RECORD_VERSION,
+        colors: { ...palette.colors },
+        defaultColor: palette.defaultColor,
+        modified: new Date().toISOString(),
+      },
+      stations,
+    )
     await this.writeAtomic(id, updated)
     return updated
   }
@@ -674,22 +708,31 @@ export class ProjectStore {
    * arrangement the panel showed, not a change to the one stored, so what
    * is written is what was seen.
    */
-  async completeOrder(id: string, order: LineOrder): Promise<ProjectRecord> {
-    return this.#track(() => this.#serial(id, () => this.#completeOrderTracked(id, order)))
+  async completeOrder(id: string, order: LineOrder, stations?: Station[]): Promise<ProjectRecord> {
+    return this.#track(() =>
+      this.#serial(id, () => this.#completeOrderTracked(id, order, stations)),
+    )
   }
 
-  async #completeOrderTracked(id: string, order: LineOrder): Promise<ProjectRecord> {
+  async #completeOrderTracked(
+    id: string,
+    order: LineOrder,
+    stations?: Station[],
+  ): Promise<ProjectRecord> {
     this.checkId(id)
     check(validateLineOrder(order))
     const { record, readOnly } = await this.load(id)
     if (readOnly) throw new Error('read-only')
     if (record.layout === null) throw new Error('lay the project out first')
-    const updated: ProjectRecord = redrew({
-      ...record,
-      version: RECORD_VERSION,
-      lineOrder: [...order],
-      modified: new Date().toISOString(),
-    })
+    const updated: ProjectRecord = redrew(
+      {
+        ...record,
+        version: RECORD_VERSION,
+        lineOrder: [...order],
+        modified: new Date().toISOString(),
+      },
+      stations,
+    )
     await this.writeAtomic(id, updated)
     return updated
   }
@@ -705,22 +748,35 @@ export class ProjectStore {
    * A redraw of the *same day*, so it goes through `redrew` as a recolour
    * does: the day the map already showed stays the one it showed.
    */
-  async completeStyle(id: string, style: ProjectStyle): Promise<ProjectRecord> {
-    return this.#track(() => this.#serial(id, () => this.#completeStyleTracked(id, style)))
+  async completeStyle(
+    id: string,
+    style: ProjectStyle,
+    stations?: Station[],
+  ): Promise<ProjectRecord> {
+    return this.#track(() =>
+      this.#serial(id, () => this.#completeStyleTracked(id, style, stations)),
+    )
   }
 
-  async #completeStyleTracked(id: string, style: ProjectStyle): Promise<ProjectRecord> {
+  async #completeStyleTracked(
+    id: string,
+    style: ProjectStyle,
+    stations?: Station[],
+  ): Promise<ProjectRecord> {
     this.checkId(id)
     check(validateStyle(style))
     const { record, readOnly } = await this.load(id)
     if (readOnly) throw new Error('read-only')
     if (record.layout === null) throw new Error('lay the project out first')
-    const updated: ProjectRecord = redrew({
-      ...record,
-      version: RECORD_VERSION,
-      style: settledStyle(style),
-      modified: new Date().toISOString(),
-    })
+    const updated: ProjectRecord = redrew(
+      {
+        ...record,
+        version: RECORD_VERSION,
+        style: settledStyle(style),
+        modified: new Date().toISOString(),
+      },
+      stations,
+    )
     await this.writeAtomic(id, updated)
     return updated
   }

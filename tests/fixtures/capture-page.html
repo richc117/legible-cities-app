@@ -9,6 +9,17 @@
   that do not seek and stop the clock would therefore differ; two that do are
   byte-identical, which is what tests/e2e/capture.spec.ts asserts. The seam
   is the real page's `window.__present`, method for method.
+
+  Since engine v0.13.0 that includes `setTrip` and `state().trip` (issue 272,
+  ADR-048), answered over the stand-in engine's three stations as one line,
+  "A", that runs Alpha, Bravo, Charlie: the ids are the ones its `map.build`
+  lists. Alpha to Charlie is one leg of two stops towards Charlie; the same
+  station, an unknown id and `null` answer as the real page does, with the
+  real page's own reasons. It draws nothing for a trip, so a capture is the
+  capture it always was. Every call that changes what the page shows is
+  recorded in `window.__seen`, for a test that counts what the page was
+  asked; the reads (`state`, `bounds`, `hasGeo`) and the exporter's own
+  (`advance`, `setCapture`, `settle`) are not.
 -->
 <style>
   html,
@@ -53,6 +64,41 @@
         last = performance.now()
       var view = 'map',
         labels = true
+      var seen = (window.__seen = [])
+      // The stand-in engine's map: one line through its three stations, in
+      // order, by the ids its `map.build` answers in `stations`.
+      var LINE = 'A'
+      var STOPS = ['0x6000036f4a40', '0x6000036f4c80', '0x6000036f4010']
+      var trip = null
+      function findTrip(from, to) {
+        var refused = function (reason) {
+          return { from: from, to: to, legs: null, changes: 0, reason: reason }
+        }
+        var a = STOPS.indexOf(from),
+          b = STOPS.indexOf(to)
+        if (typeof from !== 'string' || a === -1)
+          return refused('the start is not a station on this map')
+        if (typeof to !== 'string' || b === -1)
+          return refused('the end is not a station on this map')
+        if (a === b) return refused('start and end are the same station')
+        return {
+          from: from,
+          to: to,
+          legs: [
+            {
+              line: LINE,
+              towards: b > a ? STOPS[STOPS.length - 1] : STOPS[0],
+              board: from,
+              alight: to,
+              stops: Math.abs(b - a),
+            },
+          ],
+          changes: 0,
+        }
+      }
+      function copy(value) {
+        return value === null ? null : JSON.parse(JSON.stringify(value))
+      }
       function fmt(s) {
         var h = Math.floor(s / 3600) % 24,
           m = Math.floor((s % 3600) / 60)
@@ -82,6 +128,7 @@
         },
         seek: function (sec) {
           now = Math.max(t0, Math.min(t1, sec))
+          seen.push(['seek', now])
           draw()
         },
         setCapture: function (on) {
@@ -98,9 +145,11 @@
         },
         setPlaying: function (on) {
           playing = on
+          seen.push(['setPlaying', !!on])
         },
         setSpeed: function (x) {
           speed = x
+          seen.push(['setSpeed', x])
         },
         setView: function (v) {
           view = v
@@ -109,6 +158,7 @@
         setGeo: function () {},
         showView: function (name) {
           view = name
+          seen.push(['showView', name])
           draw()
         },
         hasGeo: function () {
@@ -116,9 +166,19 @@
         },
         setLabels: function (on) {
           labels = !!on
+          seen.push(['setLabels', labels])
           draw()
         },
-        setRoutes: function () {},
+        setRoutes: function (keep) {
+          seen.push(['setRoutes', keep === undefined ? null : keep])
+        },
+        setTrip: function (from, to) {
+          var a = from === undefined ? null : from,
+            b = to === undefined ? null : to
+          seen.push(['setTrip', a, b])
+          trip = a === null ? null : findTrip(a, b)
+          return copy(trip)
+        },
         setFrame: function () {},
         settle: function () {
           draw()
@@ -134,6 +194,7 @@
             shown: now >= 6 * 3600 && now <= 22 * 3600 ? 1 : 0,
             viewName: view,
             labels: labels,
+            trip: copy(trip),
           }
         },
       }

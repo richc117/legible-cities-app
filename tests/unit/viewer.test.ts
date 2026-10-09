@@ -5,7 +5,14 @@
 // page.
 
 import { describe, expect, it, vi } from 'vitest'
-import { Viewer, roleOfAddress } from '../../src/main/viewer'
+import {
+  VIEWER_ARGUMENTS,
+  VIEWER_ARGUMENTS_MAX,
+  Viewer,
+  dispatcher,
+  roleOfAddress,
+} from '../../src/main/viewer'
+import { COLORS_MAX, LABEL_MAX } from '../../src/shared/project'
 import {
   MISSING_METHOD,
   VIEWER_METHODS,
@@ -329,15 +336,14 @@ describe('driving the page', () => {
 
   // `__proto__` in an object literal is the prototype setter; parsed from
   // JSON it is an ordinary key. The arguments are parsed, so it is a key.
+  // No method takes an object since the argument table (issue 272), so the
+  // dispatcher is handed one directly: the table is one wall and this is
+  // the one behind it.
   it('sends __proto__ as a key rather than as the prototype setter', async () => {
-    const { contents, child } = stub()
-    const viewer = new Viewer()
-    viewer.attach(contents, 'abcdefghijk1', 'map')
     // Built from JSON so it has an own `__proto__` key: written as a literal
     // it would set the prototype and never be an own property at all.
     const withKey = JSON.parse('{"__proto__":{"polluted":true}}') as object
-    await viewer.call(contents, 'map', 'seek', [withKey])
-    const injected = child.executeJavaScript.mock.calls[0][0] as string
+    const injected = dispatcher('seek', JSON.stringify([withKey]))
     let received: unknown[] = []
     const page = {
       __present: {
@@ -447,6 +453,105 @@ describe('the sandbox', () => {
   })
 })
 
+// What each method may be sent (issue 272): checked by shape and size in
+// the main process, before anything is serialised, so a call outside the
+// table is answered with a sentence and never reaches the page.
+describe('the arguments a method may be sent', () => {
+  async function sent(method: string, args: unknown[]): Promise<'sent' | string> {
+    const { contents, child } = stub()
+    const viewer = new Viewer()
+    viewer.attach(contents, 'abcdefghijk1', 'map')
+    try {
+      await viewer.call(contents, 'map', method, args)
+    } catch (error) {
+      expect(
+        child.executeJavaScript,
+        `${method} refused, and nothing injected`,
+      ).not.toHaveBeenCalled()
+      return (error as Error).message
+    }
+    expect(child.executeJavaScript).toHaveBeenCalledTimes(1)
+    return 'sent'
+  }
+
+  const ID = '0x6000036f4a40'
+
+  it('sends setTrip two station ids, or null for the whole network', async () => {
+    expect(await sent('setTrip', [ID, '0x6000036f4010'])).toBe('sent')
+    expect(await sent('setTrip', [null])).toBe('sent')
+    expect(await sent('setTrip', ['x'.repeat(200), ID])).toBe('sent')
+  })
+
+  it('refuses setTrip anything else, with a sentence, and the page is never asked', async () => {
+    for (const args of [
+      [],
+      [ID],
+      [ID, ID, ID],
+      [ID, null],
+      [null, null],
+      [42, ID],
+      ['', ID],
+      ['x'.repeat(201), ID],
+      [ID, 'a\nb'],
+      [{ from: ID }, ID],
+      [[ID], ID],
+    ]) {
+      expect(await sent('setTrip', args), JSON.stringify(args)).toBe('the map cannot be asked that')
+    }
+  })
+
+  it('holds an existing method to the shape its callers send: seek a second of the day', async () => {
+    expect(await sent('seek', [30_600])).toBe('sent')
+    expect(await sent('seek', [0])).toBe('sent')
+    for (const args of [[], ['noon'], [-1], [Number.POSITIVE_INFINITY], [30, 60], [null]]) {
+      expect(await sent('seek', args), JSON.stringify(args)).toBe('the map cannot be asked that')
+    }
+  })
+
+  it('admits every call the app makes', async () => {
+    for (const [method, args] of [
+      ['showView', ['schematic', 0]],
+      ['showView', ['linear']],
+      ['setLabels', [true]],
+      ['setRoutes', [['A', 'B']]],
+      ['setRoutes', []],
+      ['setRoutes', [null]],
+      ['setTheme', ['sepia']],
+      ['setTheme', ['warm-dark']],
+      ['setSpeed', [300]],
+      ['setPlaying', [false]],
+      ['hasGeo', []],
+      ['bounds', []],
+      ['state', []],
+    ] as [string, unknown[]][]) {
+      expect(await sent(method, args), `${method} ${JSON.stringify(args)}`).toBe('sent')
+    }
+    // Every allow-listed method has its entry: none falls through.
+    for (const method of VIEWER_METHODS) expect(typeof VIEWER_ARGUMENTS[method]).toBe('function')
+  })
+
+  it('holds a keep list to the record’s own bounds on lines and labels', async () => {
+    // `COLORS_MAX` labels of `LABEL_MAX` characters: the heaviest keep
+    // list the record could describe is admitted, and one more line, or one
+    // label a character longer, is not.
+    const heaviest = Array.from({ length: COLORS_MAX }, (_, i) => `${i}`.padStart(LABEL_MAX, 'L'))
+    expect(await sent('setRoutes', [heaviest])).toBe('sent')
+    expect(await sent('setRoutes', [[...heaviest, 'M']])).toBe('the map cannot be asked that')
+    expect(await sent('setRoutes', [['L'.repeat(LABEL_MAX + 1)]])).toBe(
+      'the map cannot be asked that',
+    )
+  })
+
+  it('caps the serialised arguments above the heaviest call the table admits', async () => {
+    // The cap bounds the text injected into the page. The table's heaviest
+    // admitted call fits under it, so the cap refuses nothing the app sends
+    // and stands behind the table if an entry is ever written too wide.
+    const heaviest = Array.from({ length: COLORS_MAX }, (_, i) => `${i}`.padStart(LABEL_MAX, 'L'))
+    expect(JSON.stringify([heaviest]).length).toBeLessThan(VIEWER_ARGUMENTS_MAX)
+    expect(await sent('setRoutes', [heaviest])).toBe('sent')
+  })
+})
+
 describe('the list of methods', () => {
   it('is what the page exposes and nothing that would be dangerous', () => {
     expect([...VIEWER_METHODS]).toEqual([
@@ -454,6 +559,8 @@ describe('the list of methods', () => {
       'setLabels',
       'setRoutes',
       'setTheme',
+      // Route mode's trip (issue 272, engine v0.13.0): two station ids or null.
+      'setTrip',
       'seek',
       'setSpeed',
       'setPlaying',

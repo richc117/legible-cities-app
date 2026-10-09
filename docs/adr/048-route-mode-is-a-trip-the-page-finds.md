@@ -56,6 +56,8 @@ What to watch, if E38 ignores both LOOM properties (445,076 pairs): the steps mo
 
 **Three documents gain sentences**: acceptance, stranger and accessibility quote the section's heading, the pickers' names and the leg sentence.
 
+**As of 8 Oct 2026:** two documents gained sentences, the acceptance checklist and the accessibility record; the stranger's run never reaches cell 03.
+
 **As of 6 Oct 2026:** honouring LOOM's `not_serving` disconnects 12.5% of the registry's station pairs (Seattle from 2,582 to 1,670, Metra from 57,360 to 22,178), so the router must not trust `not_serving` without a check.
 
 **Evidence.** APG combobox: "List autocomplete with manual selection: When the popup is triggered, it presents suggested values."; Escape "Closes the popup and returns focus to the combobox."; "DOM focus remains on the combobox and the combobox has aria-activedescendant set to a value that refers to the focused element within the popup." (https://www.w3.org/WAI/ARIA/apg/patterns/combobox/). OpenTripPlanner, quoted above (https://docs.opentripplanner.org/en/latest/RouteRequest/). Mapway's schematic-map planners offer "guides that take you step-by-step through your route on the metro map, highlighting changes." (https://www.mapway.com/apps/tokyo-metro-subway/). Transit: "Route names, stops, and trip durations are presented in concise, easy-to-understand sentences." (https://resources.transitapp.com/article/522-transit-and-universal-accessibility). WCAG 4.1.3: status messages are "presented to the user by assistive technologies without receiving focus" (https://www.w3.org/WAI/WCAG22/Understanding/status-messages.html). None gives a penalty value or a fade amount; those are judgements. The pages were read as served and the words are quoted from them.

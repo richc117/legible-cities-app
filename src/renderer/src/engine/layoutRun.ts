@@ -19,6 +19,7 @@ import {
   type JobKind,
 } from '../../../shared/jobs'
 import type { Diagnostics, MapBuildResult, Methods } from '../../../shared/protocol'
+import { readStations, type Station } from '../../../shared/trip'
 import type { Stage } from '../ProgressLine'
 import { styleParams } from '../styleRules'
 
@@ -207,6 +208,21 @@ export function reportOf(result: MapBuildResult, date: string): RunReport | null
   }
 }
 
+/**
+ * The stations a map result lists (engine v0.13.0, issue 272), whole, or
+ * null where there are none the app would take. The answer crosses from
+ * another process, so it is read rather than assumed, as the report is.
+ */
+export function stationsFrom(result: MapBuildResult): Station[] | null {
+  const answer = result as Partial<MapBuildResult> | null | undefined
+  if (!isObject(answer)) return null
+  return readStations(answer.stations)
+}
+
+/** A list to hand the record's writer, or nothing at all where there is none. */
+const stationsOf = (stations: Station[] | null): { stations?: Station[] } =>
+  stations === null ? {} : { stations }
+
 interface Handle<T> {
   result: Promise<T>
   onProgress(
@@ -247,16 +263,25 @@ export interface RunOptions {
       made: string
       built: { mode: string; agency: string | null }
       service: ServiceWindow
+      /** The stations the map was drawn with, for cell 03's trip (issue 272); absent when unread. */
+      stations?: Station[]
     },
   ): Promise<{ changed: boolean; relaid: boolean }>
-  /** A rebuild for a chosen day finished: the day is written, inside the window or not at all. */
-  completeRebuild(id: string, done: { date: string }): Promise<unknown>
-  /** A redraw for chosen colours finished: the palette is written, never before the map is drawn. */
-  completeColors(id: string, palette: Palette): Promise<unknown>
+  /**
+   * A rebuild for a chosen day finished: the day is written, inside the
+   * window or not at all, with the stations the map was drawn with.
+   */
+  completeRebuild(id: string, done: { date: string; stations?: Station[] }): Promise<unknown>
+  /**
+   * A redraw for chosen colours finished: the palette is written, never
+   * before the map is drawn, with the stations the build answered where it
+   * answered a list (issue 272). So are the two below.
+   */
+  completeColors(id: string, palette: Palette, stations?: Station[]): Promise<unknown>
   /** A redraw for a chosen line order finished: the order is written, never before the map is drawn. */
-  completeOrder(id: string, order: LineOrder): Promise<unknown>
+  completeOrder(id: string, order: LineOrder, stations?: Station[]): Promise<unknown>
   /** A redraw for chosen sizes finished: the style is written, never before the map is drawn. */
-  completeStyle(id: string, style: ProjectStyle): Promise<unknown>
+  completeStyle(id: string, style: ProjectStyle, stations?: Station[]): Promise<unknown>
   /** The anchor the engine's choice is made from: the machine's date, injected so a test can fix it. */
   today(): string
   /**
@@ -507,7 +532,7 @@ export class LayoutRun {
 
         // The map is drawn from the layout just answered, by its id; the
         // engine never lays out on the way to a map.
-        const report = await this.#draw(
+        const { report, stations } = await this.#draw(
           project,
           built.layout,
           date,
@@ -530,6 +555,10 @@ export class LayoutRun {
             busiest: window.busiest_weekday,
             anchor: window.anchor,
           },
+          // What cell 03's trip picks from (issue 272): the map's own list,
+          // kept with the record because a project opened again draws its
+          // map from the stored files without a build.
+          ...stationsOf(stations),
         })
         // The store cannot see `force`: a re-layout from this project moves
         // `made` too, and that is not another project's doing.
@@ -580,7 +609,7 @@ export class LayoutRun {
 
     void (async () => {
       try {
-        const report = await this.#draw(
+        const { report, stations } = await this.#draw(
           project,
           layout,
           date,
@@ -589,7 +618,7 @@ export class LayoutRun {
           project.style,
         )
         if (this.#cancelled) return this.#stopped()
-        await completeRebuild(project.id, { date })
+        await completeRebuild(project.id, { date, ...stationsOf(stations) })
         this.#finish({ changed: false, relaid: false }, report)
       } catch (reason) {
         this.#failed(reason)
@@ -643,7 +672,7 @@ export class LayoutRun {
 
     void (async () => {
       try {
-        const report = await this.#draw(
+        const { report, stations } = await this.#draw(
           project,
           layout,
           date,
@@ -652,7 +681,9 @@ export class LayoutRun {
           project.style,
         )
         if (this.#cancelled) return this.#stopped()
-        await completeColors(project.id, palette)
+        await (stations === null
+          ? completeColors(project.id, palette)
+          : completeColors(project.id, palette, stations))
         this.#finish({ changed: false, relaid: false }, report)
       } catch (reason) {
         this.#failed(reason)
@@ -704,7 +735,7 @@ export class LayoutRun {
 
     void (async () => {
       try {
-        const report = await this.#draw(
+        const { report, stations } = await this.#draw(
           project,
           layout,
           date,
@@ -713,7 +744,9 @@ export class LayoutRun {
           project.style,
         )
         if (this.#cancelled) return this.#stopped()
-        await completeOrder(project.id, order)
+        await (stations === null
+          ? completeOrder(project.id, order)
+          : completeOrder(project.id, order, stations))
         this.#finish({ changed: false, relaid: false }, report)
       } catch (reason) {
         this.#failed(reason)
@@ -772,7 +805,7 @@ export class LayoutRun {
 
     void (async () => {
       try {
-        const report = await this.#draw(
+        const { report, stations } = await this.#draw(
           project,
           layout,
           date,
@@ -781,7 +814,9 @@ export class LayoutRun {
           style,
         )
         if (this.#cancelled) return this.#stopped()
-        await completeStyle(project.id, style)
+        await (stations === null
+          ? completeStyle(project.id, style)
+          : completeStyle(project.id, style, stations))
         this.#finish({ changed: false, relaid: false }, report)
       } catch (reason) {
         this.#failed(reason)
@@ -850,7 +885,12 @@ export class LayoutRun {
    * It answers what the engine measured rather than setting it: the figures
    * belong to a finished run, beside the sentence that says it finished, so
    * they never appear on screen before the map they describe and never go
-   * again because the record could not be written (spec 017).
+   * again because the record could not be written (spec 017). With them, the
+   * stations the map draws (issue 272), read whole or not at all, for the
+   * handlers that write `drawn`, every draw's: a recolour, a reorder and a
+   * resize draw from the stored set as it is now, which another project may
+   * have laid out again since, so the list is the build's and not the
+   * record's to assume.
    */
   async #draw(
     project: ProjectRecord,
@@ -859,7 +899,7 @@ export class LayoutRun {
     palette: Palette,
     order: LineOrder,
     style: ProjectStyle,
-  ): Promise<RunReport | null> {
+  ): Promise<{ report: RunReport | null; stations: Station[] | null }> {
     const map = this.#options.client.request('map.build', {
       key: project.feed,
       layout,
@@ -890,7 +930,7 @@ export class LayoutRun {
     this.#inFlight = null
     // What the engine measured drawing this map: kept for the panel, and
     // for a rebuild too, which draws the same way for another day.
-    return reportOf(drawn, date)
+    return { report: reportOf(drawn, date), stations: stationsFrom(drawn) }
   }
 
   #finish(outcome: { changed: boolean; relaid: boolean }, report: RunReport | null): void {

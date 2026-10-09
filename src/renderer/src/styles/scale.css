@@ -95,6 +95,9 @@
   --export-preview-cap: min(60svh, 640px);
   /* A tooltip's measure: a sentence or two, never a column of prose. */
   --tooltip-width: 20rem;
+  /* A combobox's popup (issue 272): about eight options, then it scrolls.
+     Every match is listed; this is how much of the list shows at once. */
+  --listbox-max-height: 16rem;
   /* A sample city's card (A5.6-02): the narrowest a card may be before the
      gallery puts one fewer in a row. Wide enough for "not downloaded yet"
      and the longest city and network pair on one line each. */

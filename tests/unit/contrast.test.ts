@@ -175,6 +175,15 @@ const PAIRS: [string, string, number][] = [
   // card's picture and not the interface's. All are above, and the section
   // at the end of this file holds the one thing the pairs cannot: that the
   // checked edge and the focus ring are different colours.
+  //
+  // The combobox (issue 272). Its field is the date control's pairs:
+  // --text on --surface, a --border-strong edge on the form's
+  // --surface-raised. Its popup's options are --text on --surface-raised,
+  // --surface-hover under the pointer and --surface-selected highlighted,
+  // all above. The highlighted option also carries an edge in --focus inside
+  // it, so it is told apart by more than its ground: that mark on that
+  // ground is the one pair it adds.
+  ['--focus', '--surface-selected', 3.0],
 ]
 
 /**

@@ -1661,6 +1661,12 @@ test('a release, installed, through docs/acceptance.md', async () => {
       log.notAutomated(
         'that cell 03 offers no crop, rotation, margin or clip mask, not even greyed out, and says the margin is one of the sizes in cell 04, and that the map moves to the hour the slider is left at.',
       )
+      // The Trip section (issue 272) is checked against the stand-in engine and
+      // page by tests/e2e/trip.spec.ts; against the real engine's page its
+      // fade and its steps are for the person running the checklist.
+      log.notAutomated(
+        "the Trip section: the pickers' lists, the trip faded on the map, its steps and Show the whole network, and the same station refused under End.",
+      )
     })
 
     // ---------------------------------------------------------------- 8

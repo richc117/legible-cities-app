@@ -13,11 +13,21 @@
 // `warm-dark` or `sepia`, restyles the page in place and answers false for any
 // other name. A page the engine wrote before that has no such method, and the
 // dispatcher answers "this map cannot do that" for it.
+//
+// `setTrip` is the page's own since engine v0.13.0 (its issue 49, app issue
+// 272, ADR-048): `setTrip(from, to)` with two station ids from `map.build`'s
+// `stations` fades everything off the trip the page finds between them, and
+// `setTrip(null)` shows the whole network again. It answers what
+// `state().trip` then says - null, a trip with its legs, or `legs: null` and
+// the page's reason - which the app reads as untrusted data
+// (`readTrip` in `trip.ts`). Called from cell 03's Trip section and from a
+// reloaded page's restore, through the main process, as every method here is.
 export const VIEWER_METHODS = [
   'showView',
   'setLabels',
   'setRoutes',
   'setTheme',
+  'setTrip',
   'seek',
   'setSpeed',
   'setPlaying',
@@ -56,6 +66,8 @@ export interface ViewerState {
   viewName: string
   labels: boolean
   theme?: string
+  /** What `setTrip` last answered, from engine v0.13.0: null, or a trip or a reason (`readTrip`). */
+  trip?: unknown
   [key: string]: unknown
 }
 

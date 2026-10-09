@@ -1,4 +1,5 @@
 import type { Theme } from '../../shared/project'
+import { isStationId } from '../../shared/trip'
 import type { ViewerMethod } from '../../shared/viewer'
 
 // Giving the engine's page back what the page before it was showing.
@@ -31,9 +32,16 @@ import type { ViewerMethod } from '../../shared/viewer'
 //   1. The page is stopped, whatever it was doing, because every call below
 //      is a round trip through the privileged process and a running clock
 //      moves between them.
-//   2. The view, the labels and the speed, which redraw.
-//   3. The clock last of the things that move it.
-//   4. Playing again, only if it was.
+//   2. The view and the labels, which redraw.
+//   3. The trip the page was showing, if it was showing one (issue 272,
+//      spec 030 FR-009): after the view and the labels, which it is drawn
+//      over, and before playing resumes, so the map never runs a moment
+//      whole between two documents that both showed the trip. It is the
+//      page's own ask given back - `state().trip`'s `from` and `to` - and
+//      only for a trip it found: a refusal left the map whole, and whole is
+//      what a new page already is.
+//   4. The speed, and the clock last of the things that move it.
+//   5. Playing again, only if it was.
 //
 // What can be given back is what the page will say. Its `state()` answers
 // `viewName`, `labels` and `now`, and says nothing about the speed or
@@ -70,6 +78,11 @@ export interface PageState {
   speed?: unknown
   /** Not reported by the page either; known only to a caller that set it. */
   playing?: unknown
+  /**
+   * What the page's `setTrip` last answered (engine v0.13.0): null, a trip
+   * with its legs, or `legs: null` and a reason.
+   */
+  trip?: unknown
 }
 
 /** A view name is long enough to be readable and short enough not to be an essay. */
@@ -87,6 +100,29 @@ const seconds = (value: unknown): number | null =>
 /** A speed the page can run at: finite and above zero. Zero is what pausing is for. */
 const rate = (value: unknown): number | null =>
   typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null
+
+/**
+ * A station id the page was asked for, by the one rule the main process
+ * holds `setTrip`'s arguments to (`isStationId`), so the restore composes
+ * nothing the main process would refuse.
+ */
+const station = (value: unknown): string | null => (isStationId(value) ? value : null)
+
+/**
+ * The two stations of a trip the page was showing, or null. Only a trip it
+ * found - one with legs - is given back: an answer with `legs: null` left the
+ * map whole, and a page that has just loaded is whole already. The legs
+ * themselves are not read here; the page finds them again, and the section
+ * reads its own answer (`readTrip`).
+ */
+function shownTrip(value: unknown): [string, string] | null {
+  if (value === null || typeof value !== 'object') return null
+  const { from, to, legs } = value as { from?: unknown; to?: unknown; legs?: unknown }
+  if (!Array.isArray(legs) || legs.length === 0) return null
+  const a = station(from)
+  const b = station(to)
+  return a === null || b === null || a === b ? null : [a, b]
+}
 
 /**
  * The calls that put a freshly loaded page back where the last one was, in
@@ -108,6 +144,7 @@ export function restoreCalls(state: unknown, theme: Theme): ViewerCall[] {
   const labels = flag(was.labels)
   const speed = rate(was.speed)
   const at = seconds(was.now)
+  const trip = shownTrip(was.trip)
 
   // Stopped first of what moves the page, and only when the caller knows it
   // was stopped or running: a page paused by this that nothing then restarts
@@ -115,6 +152,7 @@ export function restoreCalls(state: unknown, theme: Theme): ViewerCall[] {
   if (playing !== null) calls.push({ method: 'setPlaying', args: [false] })
   if (name !== null) calls.push({ method: 'showView', args: [name, 0] })
   if (labels !== null) calls.push({ method: 'setLabels', args: [labels] })
+  if (trip !== null) calls.push({ method: 'setTrip', args: trip })
   if (speed !== null) calls.push({ method: 'setSpeed', args: [speed] })
   if (at !== null) calls.push({ method: 'seek', args: [at] })
   if (playing === true) calls.push({ method: 'setPlaying', args: [true] })

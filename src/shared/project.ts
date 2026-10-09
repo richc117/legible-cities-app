@@ -5,6 +5,7 @@
 import { readStoredChoice, type ExportChoice } from './export'
 import { isLayoutId } from './layout'
 import { isStorableFolder } from './settings'
+import { readStations, type Station } from './trip'
 
 // Version 2 (issue 350, ADR-049): the record's `style` is eight optional
 // numbers in the engine's own names, each unset until a person sets it. A
@@ -158,6 +159,28 @@ export interface DrawnFrom {
    * drawn with (issue 350).
    */
   style: ProjectStyle
+  /**
+   * The stations the map draws, as `map.build` listed them for it - each an
+   * id the page's `setTrip` takes and the name the map writes - in the
+   * engine's order (issue 272, spec 030 FR-004). Cell 03's Trip section
+   * offers these and nothing the app derives, and it has to outlive the
+   * build: a project opened again shows its map from the stored files
+   * without one.
+   *
+   * It is the map's own fact, like the colours and the order: every draw -
+   * a layout run, a rebuild, a recolour, a reorder, a resize - writes the
+   * list its build answered, since a redraw draws the stored set as it is
+   * now and another project may have laid it out again (A3-06); a draw whose
+   * build answered none the app would take keeps the list it had while the
+   * layout is the one it was listed for (`drawnFrom`). Absent for a record
+   * drawn before it was kept, for a block
+   * whose list does not read whole, and for a map drawn from another layout
+   * than the list was - which reads as "draw the map again to pick a trip",
+   * never as a map with no stations. Added without moving `RECORD_VERSION`
+   * (specs/028-the-notebook/contracts/run-graph.md, "Adding a field"). A
+   * trip is never written here or anywhere in the record (FR-001).
+   */
+  stations?: Station[]
 }
 
 export interface ProjectRecord {
@@ -270,6 +293,12 @@ export interface CreateProjectInput {
 /** What a rebuild for a chosen day hands back once the map is drawn. */
 export interface RebuildDone {
   date: string
+  /**
+   * The stations `map.build` answered for the map just drawn (issue 272),
+   * written into `drawn`; left out, the list the record had is kept when
+   * the layout is the one it was listed for.
+   */
+  stations?: Station[]
 }
 
 /** The two inputs a person chooses with the feed in view (A2-02): what LOOM keeps, and whose routes. */
@@ -730,7 +759,7 @@ export function sameStyle(a: ProjectStyle, b: ProjectStyle): boolean {
  */
 export function drawnFrom(record: ProjectRecord): DrawnFrom | null {
   if (record.layout === null) return null
-  return {
+  const drawn: DrawnFrom = {
     layout: record.layout,
     made: record.made,
     date: record.date,
@@ -740,6 +769,35 @@ export function drawnFrom(record: ProjectRecord): DrawnFrom | null {
     theme: record.theme,
     style: styleSent(record.style),
   }
+  // The stations are the layout's (issue 272). A draw writes the list its
+  // build answered (`withStations`); this is the fallback for one that
+  // answered none: the list the last draw kept, while the layout and its
+  // `made` are the record's. From another layout, or the same id laid out
+  // again since, it is left out rather than claimed.
+  const before = record.drawn
+  if (
+    before !== null &&
+    before.stations !== undefined &&
+    before.layout === record.layout &&
+    before.made === record.made
+  )
+    drawn.stations = before.stations.map((station) => ({ ...station }))
+  return drawn
+}
+
+/**
+ * A draw's block with the stations its build answered (issue 272), or the
+ * block as it is when the build answered none the bridge would take. The
+ * list replaces whatever `drawnFrom` carried, because it is the map just
+ * drawn.
+ */
+export function withStations(
+  drawn: DrawnFrom | null,
+  stations: Station[] | undefined,
+): DrawnFrom | null {
+  if (drawn === null || stations === undefined) return drawn
+  // The two fields and nothing else, whatever the caller's objects carried.
+  return { ...drawn, stations: stations.map(({ id, name }) => ({ id, name })) }
 }
 
 /**
@@ -944,7 +1002,7 @@ function readDrawn(value: unknown): DrawnFrom | null {
   if (!isTheme(theme)) return null
   if (validatePalette({ colors: value.colors, defaultColor }) !== null) return null
   if (validateLineOrder(value.lineOrder) !== null) return null
-  return {
+  const drawn: DrawnFrom = {
     layout,
     made: made === null ? null : (made as string),
     date: date === null ? null : (date as string),
@@ -956,6 +1014,13 @@ function readDrawn(value: unknown): DrawnFrom | null {
     // the field was drawn without one.
     style: readStyle(value.style, RECORD_VERSION),
   }
+  // The stations are read on their own (issue 272): a list that is not
+  // whole is no list, and leaves the rest of the block as it was, because
+  // the block says whether the map is current and the list says only what
+  // a trip may be picked from.
+  const stations = readStations(value.stations)
+  if (stations !== null) drawn.stations = stations
+  return drawn
 }
 
 /** The stored window, whole, or null: a half-valid block is not half-trusted. */
@@ -976,12 +1041,23 @@ export function summarise(record: ProjectRecord, readOnly: boolean): ProjectSumm
     layout: record.layout,
     made: record.made,
     built: record.built,
-    drawn: record.drawn,
+    // Without its stations (issue 272): the front door reads `drawn` to say
+    // how far a project has got, and a list of hundreds of stations a
+    // project, for every project, is weight on every listing for nothing.
+    drawn: withoutStations(record.drawn),
     opened: record.opened,
     created: record.created,
     modified: record.modified,
     readOnly,
   }
+}
+
+/** A draw's block without its stations, for a summary; the same block where it has none. */
+function withoutStations(drawn: DrawnFrom | null): DrawnFrom | null {
+  if (drawn === null || drawn.stations === undefined) return drawn
+  const rest = { ...drawn }
+  delete rest.stations
+  return rest
 }
 
 /**

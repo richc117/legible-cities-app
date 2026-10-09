@@ -15,6 +15,7 @@ import type { FirstRunResult } from './first-run'
 import type { LayoutDone, LayoutResult } from './layout'
 import type { LicencesView } from './licences'
 import type { AppTheme, FolderSize, ResetOutcome, SettingsView } from './settings'
+import type { Station } from './trip'
 import type { ViewerMethod, ViewerRole } from './viewer'
 import type {
   CreateProjectInput,
@@ -117,16 +118,19 @@ export interface Api {
      * been drawn with them, as a chosen day is: the record and the page on
      * screen always agree. The main process checks every label and every
      * colour before the store sees them
-     * (specs/018-colours/contracts/bridge.md).
+     * (specs/018-colours/contracts/bridge.md). With it, and with the order
+     * and the sizes below, the stations the build answered (issue 272): a
+     * redraw from a set another project laid out again since draws that
+     * set's stations, so the record's list follows the map, not the record.
      */
-    completeColors(id: string, palette: Palette): Promise<ProjectRecord>
+    completeColors(id: string, palette: Palette, stations?: Station[]): Promise<ProjectRecord>
     /**
      * The order a person arranged the lines in (A4-02), written once the
      * map has been drawn in it, as the colours are. The main process checks
      * every label before the store sees it
      * (specs/020-line-order/contracts/bridge.md).
      */
-    completeOrder(id: string, order: LineOrder): Promise<ProjectRecord>
+    completeOrder(id: string, order: LineOrder, stations?: Station[]): Promise<ProjectRecord>
     /**
      * The sizes a person chose for the map (issue 350, ADR-049), written
      * once the map has been drawn with them, as the colours and the order
@@ -135,7 +139,7 @@ export interface Api {
      * The main process checks every number against the engine's own ranges
      * before the store sees it, and the store checks it again.
      */
-    completeStyle(id: string, style: ProjectStyle): Promise<ProjectRecord>
+    completeStyle(id: string, style: ProjectStyle, stations?: Station[]): Promise<ProjectRecord>
     /**
      * The service day a person chose (A5.5-15), written the moment it is
      * chosen rather than after the rebuild that draws it, as the inputs and

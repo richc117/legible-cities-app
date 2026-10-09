@@ -127,6 +127,21 @@ describe.skipIf(PAGE === null)(`the real generated page${WHY}`, () => {
     )
   })
 
+  // Cell 03's Trip section asks the page for a trip through `setTrip` and a
+  // reloaded page is given its trip back by the same call (issue 272, spec
+  // 030 FR-005 and FR-009). Both rest on engine v0.13.0 (its issue 49):
+  // `setTrip(from, to)`, and `trip` in `state()`, which the restore reads to
+  // know what to give back. Named here for the reason the two before it are:
+  // the loop above asserts the app's own list, and would lose the assertion
+  // with the method. A page the engine wrote before v0.13.0 fails this by
+  // design - rebuild the checkout's map to see it pass.
+  it('still has setTrip, and still says which trip it is showing', () => {
+    expect(html, 'the page no longer has setTrip').toMatch(/^\s*setTrip\s*\(/m)
+    expect(html, 'state() no longer reports the trip').toMatch(
+      /^\s*state\s*\(\s*\)\s*\{[^}]*\btrip\s*:/m,
+    )
+  })
+
   // The app's address names neither `speed` nor `play`, so what an
   // untouched page is doing is what present.js falls back to - and the
   // transport shows those two values before a person has pressed anything
