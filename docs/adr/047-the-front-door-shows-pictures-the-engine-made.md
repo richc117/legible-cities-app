@@ -1,6 +1,6 @@
 # ADR-047: The front door shows pictures the engine made, and ships none of its layouts
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-01
 - **Supersedes:** none
 - **Superseded by:** none
@@ -199,3 +199,5 @@ carried none (read at the app's pinned commit, every preset reports no layout
 at that LOOM), so this first set's provenance is the engine version and the
 date alone. The next time the layouts are made at a recorded LOOM, the script
 is run again and the README names it.
+
+**Accepted on 8 Oct 2026**, once the pictures shipped (pull request 368, merged as bef83ea) and the measurement above was written: 44 files for the 22 presets, 619,102 bytes, plus the two theme pictures of issue 285, about 7 KB, so the installer grows by under 0.63 MB for both. The one open caveat, the LOOM commit the README does not name, is recorded above and closes when the layouts are next made at a recorded LOOM.
