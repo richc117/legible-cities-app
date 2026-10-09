@@ -175,7 +175,11 @@ most likely to fail it.
   already cached this session, so nothing is asked twice.
 - A rebuild that is cancelled or fails writes nothing; the panel goes back
   to the record's colours and the run's own sentence says the map on
-  screen may be the old one.
+  screen may be the old one. It goes back at the stop, the run changing
+  into cancelled or failed (issue 360), and never on a later write of the
+  record: a rename, a theme press or an export option while the run sits
+  stopped leaves a colour chosen since, and waiting for the page, where it
+  is.
 - A colour change cannot start a build while a layout, a rebuild or an
   export is running, and neither can start while a colour rebuild is: they
   share the project's page. A change made during one is not refused or
@@ -232,7 +236,8 @@ most likely to fail it.
 - **FR-005**: The record MUST be written only when the map has been drawn,
   through a bridge method of its own, as a chosen day is (A3-04). A
   cancelled or failed build MUST leave the record unchanged and the panel
-  MUST return to the record's colours.
+  MUST return to the record's colours, once, when the build stops and not
+  on a later record write (issue 360).
 - **FR-006**: The bridge's main side MUST refuse a malformed colour map -
   a value that is not `#rrggbb`, a key that is not a line label, a map too
   large - before the store sees it, and the store MUST check again.

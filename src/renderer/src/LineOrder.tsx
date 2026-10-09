@@ -37,6 +37,7 @@ import {
   sameOrder,
   standAside,
 } from './order'
+import { usePutBack } from './usePutBack'
 import { useSnapshot } from './useSnapshot'
 
 // The order a project's lines are drawn in (A4-02, specs/020-line-order).
@@ -240,13 +241,18 @@ export default function LineOrder({
   // go back to the record's; the run's own panel says why. A move made
   // while the build ran is waiting on the same timer, and letting it
   // through would draw an order a person had just been told was not kept.
-  useEffect(() => {
-    if (reordered && (runState === 'cancelled' || runState === 'failed')) {
-      schedule.cancel()
-      setWaiting(false)
-      setOrder(project.lineOrder)
-    }
-  }, [runState, reordered, project.lineOrder, schedule])
+  //
+  // **Only at the moment the run stops** (`usePutBack`, issue 360), not for
+  // as long as it stays stopped: the run keeps `failed` or `cancelled` until
+  // the next one starts, and a record written for another reason is a new
+  // `project.lineOrder` reference. Acting on that would cancel, and snap
+  // back, a move made afterwards and waiting for an export to let go of the
+  // page.
+  usePutBack(runState, reordered, () => {
+    schedule.cancel()
+    setWaiting(false)
+    setOrder(project.lineOrder)
+  })
 
   const commit = (next: Order): void => {
     // The store's own rule, run here as well: a feed with more lines than a
