@@ -750,6 +750,28 @@ class Engine:
             "layout": layout, "meta": meta, "stages": stages, "paths": paths}})
 
 
+    # Since engine v0.13.0 (issue 49) map.build answers `stations`: the stations
+    # of the map it drew, each by the node id the page's `setTrip` takes and the
+    # name the map writes, sorted by name as code points and then by id. The
+    # stand-in's graph draws its three stations (the ones render.stage
+    # describes). The ids are node addresses as LOOM writes them, and they are
+    # listed here in neither the order of the names nor the order of the ids,
+    # so an answer that was not sorted, or was sorted by the wrong key, would
+    # show.
+    MAP_STATIONS = (
+        ("0x6000036f4c80", "Bravo"),
+        ("0x6000036f4010", "Charlie"),
+        ("0x6000036f4a40", "Alpha"),
+    )
+
+    @classmethod
+    def map_stations(cls) -> list:
+        """The `stations` of the map the stand-in draws. A line's `hidden` flag,
+        like the rest of `lines`, is taken and not acted on: the stand-in has
+        one line over all three, and draws no map to leave one out of."""
+        return sorted(({"id": node, "name": name} for node, name in cls.MAP_STATIONS),
+                      key=lambda station: (station["name"], station["id"]))
+
     def draw(self, msg_id, params: dict) -> None:
         """The map build, when the control file asks for one. Reports the same
         eight stages the real engine does, writes the same three files, and
@@ -823,6 +845,7 @@ class Engine:
                 diagnostics[key] = value
         write({"jsonrpc": "2.0", "id": msg_id, "result": {
             "layout": params["layout"], "date": params["date"], "files": files,
+            "stations": self.map_stations(),
             "summary": "the stand-in drew a map",
             "diagnostics": diagnostics,
             # Since engine v0.8.0 (E05): the same numbers as sentences, and
