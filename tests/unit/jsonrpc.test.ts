@@ -139,6 +139,33 @@ describe('JsonRpcClient', () => {
     expect((error as EngineError).message).toBe('date is required')
     expect((error as EngineError).data).toEqual(data)
   })
+  // render.stage's refusal of a stage a running build has not reached
+  // (engine v0.14.0, issue 382): the three fields beside kind, detail and
+  // hint are what tell the page to ask again rather than show a failure.
+  it('keeps a not-yet refusal’s layout, stage and building, each only in the engine’s shape', async () => {
+    const { c, reply } = client()
+    const layout = 'a'.repeat(64)
+    const hint = 'still being laid out; ask again when job/progress reports it'
+    const whole = { kind: 'layout', detail: hint, hint, layout, stage: 'octi', building: true }
+    const first = c.request('render.stage', { key: 'x' })
+    reply({ jsonrpc: '2.0', id: 1, error: { code: -32000, message: hint, data: whole } })
+    const kept = (await first.result.catch((e: unknown) => e)) as EngineError
+    expect(kept.data).toEqual(whole)
+
+    const second = c.request('render.stage', { key: 'x' })
+    const odd = { kind: 'layout', detail: 'd', hint: 'h', layout: 'short', stage: 'sideways' }
+    reply({
+      jsonrpc: '2.0',
+      id: 2,
+      error: { code: -32000, message: 'h', data: { ...odd, building: 'yes' } },
+    })
+    const dropped = (await second.result.catch((e: unknown) => e)) as EngineError
+    expect(dropped.data, 'none of the three in a shape the engine does not send').toEqual({
+      kind: 'layout',
+      detail: 'd',
+      hint: 'h',
+    })
+  })
   // A kind outside the engine's seven cannot come from an engine of the
   // pinned version. It is read as the engine failing in a way it never
   // described, and everything it sent is kept where a log will show it.
