@@ -14,7 +14,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { delimiter, join, resolve } from 'node:path'
 import {
   _electron as electron,
   expect,
@@ -803,4 +803,99 @@ test('without an engine the New project sheet takes a typed key, as before', asy
   } finally {
     await app.close()
   }
+})
+
+// The name the sheet writes when the engine becomes ready after the sheet
+// opened (issue 263). A name typed "as the sheet opens" landed beside it
+// ("LA Metro RailLos Angeles") when the engine's list arrived between a
+// fill's two halves: the field is focused and selected while it is empty,
+// the text is inserted a moment later, and a value written in between puts
+// the caret at its end. The first half is done by hand here and the second
+// after the list has arrived, so the order is the test's and not the
+// machine's. The engine is made slow to start so the sheet opens before it
+// has a list to give; a machine too quick for that fails at the first
+// assertion and does not pass for the wrong reason.
+
+/**
+ * An app whose engine is still starting when `run` begins. A folder holding
+ * a `sitecustomize.py` goes in front of the stand-in on PYTHONPATH, which
+ * the app passes to the engine in development; Python imports that file as
+ * it starts, before the engine, and it only waits: six seconds, which leaves a
+ * slow runner room to open the sheet first and stays inside the supervisor's
+ * ten for the handshake, interpreter start included.
+ */
+async function withEngineStillStarting(run: (page: Page) => Promise<void>): Promise<void> {
+  const engineHome = home()
+  const slow = mkdtempSync(join(tmpdir(), 'legible-cities-slow-start-'))
+  writeFileSync(join(slow, 'sitecustomize.py'), 'import time\n\ntime.sleep(6)\n')
+  const app = await electron.launch({
+    args: ['.'],
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      SCHEMATIC_HOME: engineHome,
+      LEGIBLE_ENGINE_PYTHON: PYTHON as string,
+      PYTHONPATH: [slow, FAKE_ENGINE].join(delimiter),
+    } as Record<string, string>,
+    timeout: 30_000,
+  })
+  try {
+    const page = await app.firstWindow()
+    await expect(
+      page.getByRole('status', { name: 'Engine' }),
+      'the engine is still starting when the sheet is opened',
+    ).not.toContainText(/ready/i)
+    await run(page)
+  } finally {
+    await app.close()
+  }
+}
+
+test('a name in a person’s hand when the engine becomes ready is the only name in the field', async () => {
+  test.slow()
+  await withEngineStillStarting(async (page) => {
+    await page.getByRole('button', { name: 'New project' }).first().click()
+    const dialog = page.getByRole('dialog', { name: 'New project' })
+    const name = dialog.getByLabel('Name', { exact: true })
+    await expect(name).toHaveValue('')
+
+    // The first half of a fill: focus the empty field and select it.
+    await name.focus()
+    await name.evaluate((input) => (input as HTMLInputElement).select())
+
+    // The engine becomes ready and the sheet is given its list: the select
+    // takes the typed key's place. The field is in a hand, so it is left as
+    // it is. Nothing signals that a write did not happen, so the wait is a
+    // time, and a short one: the old write came within a few milliseconds.
+    await expect(page.getByRole('status', { name: 'Engine' })).toContainText(/ready/i, {
+      timeout: 20_000,
+    })
+    await expect(dialog.getByRole('combobox', { name: 'Feed' })).toHaveValue('la-metro-rail')
+    await page.waitForTimeout(500)
+    await expect(name).toBeFocused()
+    await expect(name, 'the list did not write into a field in a hand').toHaveValue('')
+
+    // The second half: the text, which is the whole name.
+    await page.keyboard.insertText('Los Angeles')
+    await expect(name).toHaveValue('Los Angeles')
+    await dialog.getByRole('button', { name: 'Create', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'Open Los Angeles' })).toBeVisible()
+  })
+})
+
+test('a name no one has touched is filled once the engine is ready, and a typed one replaces it', async () => {
+  test.slow()
+  await withEngineStillStarting(async (page) => {
+    await page.getByRole('button', { name: 'New project' }).first().click()
+    const dialog = page.getByRole('dialog', { name: 'New project' })
+    const name = dialog.getByLabel('Name', { exact: true })
+    await expect(name).toHaveValue('')
+
+    await expect(page.getByRole('status', { name: 'Engine' })).toContainText(/ready/i, {
+      timeout: 20_000,
+    })
+    await expect(name, 'the feed’s own name, once the list is in').toHaveValue('LA Metro Rail')
+    await name.fill('Los Angeles')
+    await expect(name).toHaveValue('Los Angeles')
+  })
 })

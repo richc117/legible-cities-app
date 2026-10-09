@@ -15,6 +15,21 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, type JSX } from 're
 
 export interface TextInputHandle {
   focus(): void
+  /**
+   * Writes a value into the page now, when it differs from what the page
+   * holds. The value prop does the same in an effect after a render, which
+   * is later than a caller that has just decided on a value may wait: a
+   * hand can come to the field in between (issue 263). The effect then
+   * finds the page holding the value and writes nothing.
+   */
+  write(value: string): void
+  /** Whether the field is in a hand: its input is the focused element. */
+  isFocused(): boolean
+}
+
+/** The one write of a value into the kit's host, only when it differs. */
+function writeValue(element: HTMLElement | null, value: string): void {
+  if (element && element.getAttribute('value') !== value) element.setAttribute('value', value)
 }
 
 export interface TextInputProps {
@@ -40,6 +55,11 @@ const TextInput = forwardRef<TextInputHandle, TextInputProps>(function TextInput
 
   useImperativeHandle(ref, () => ({
     focus: () => (inner() ?? host.current)?.focus(),
+    write: (next) => writeValue(host.current, next),
+    isFocused: () => {
+      const input = inner()
+      return input !== null && input === document.activeElement
+    },
   }))
 
   useEffect(() => {
@@ -59,8 +79,7 @@ const TextInput = forwardRef<TextInputHandle, TextInputProps>(function TextInput
   }, [onChange])
 
   useEffect(() => {
-    const element = host.current
-    if (element && element.getAttribute('value') !== value) element.setAttribute('value', value)
+    writeValue(host.current, value)
   }, [value])
 
   useEffect(() => {
