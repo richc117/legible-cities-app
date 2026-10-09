@@ -72,26 +72,27 @@ person's, recorded in [Reader runs](#reader-runs).
    `menuitemcheckbox`, `menuitemradio`, `option`, `radio`, `row`,
    `rowheader`, `switch`, `tab`, `tooltip` and `treeitem`; a unit test
    holds it to the list in the installed version. And the pairs listed in
-   `tests/support/a11y-names.ts`, each one name under two roles, decided
-   with a run of the sweep in hand and naming the issue that decided it.
+   `tests/support/a11y-names.ts` (none today), each one name under two
+   roles, decided with a run of the sweep in hand and naming the issue that
+   decided it.
    The rule is a function of the snapshot's text and is tested without the
    app (`tests/unit/a11y-names.test.ts`); a line of the snapshot it cannot
    read fails the sweep rather than being stepped over. It is the sweep's
    one soft check: a repeated name stops nothing after it, so the test
    carries on and one run lists every screen's pairs, with the snapshot
-   they were read from attached to the test as a file. With a known pair
-   in place a sweep is green whether the rule reads the tree or has
-   stopped, so `notebook-a11y.spec.ts` also asks the rule with no known
-   pair at all, over the project once an export has finished, and expects
-   the one pair that screen holds. **Its first run**
+   they were read from attached to the test as a file. A sweep with
+   nothing excused is green just the same when the rule has stopped
+   reading the tree, so `notebook-a11y.spec.ts` also shows the rule a pair
+   it has to find: over the project once an export has finished it names
+   cell 06's region "Export" again on the live page, asks the rule alone,
+   and expects that one pair. **Its first run**
    (macOS, 2026-09-29, by the coordinator, not by the lane that wrote it) went
    over every swept screen and dialog in Night and in Parchment, read
    every line of every snapshot, and found one pair: in cell 06, once an
    export has run, a region named "Export" around a button named
-   "Export". It is a real duplicate and not a false positive. It is not
-   mended yet, because renaming the region changes an accessible name the
-   release gate's documents follow; it is carried as a known pair under
-   issue 258, and the entry goes when that issue closes.
+   "Export". It was a real duplicate and not a false positive, and it is
+   mended (D13, issue 258): the region is named "Export run", and the list
+   of known pairs is empty.
 3. **Contrast** is arithmetic, not a screenshot: `tests/unit/contrast.test.ts`
    recomputes every text and control pair the stylesheets use, in both
    themes, now including the kit's filled buttons at rest, under the
@@ -238,7 +239,7 @@ The two reader columns are a person's, recorded per run in
 | Start time, filename tag | pass | pass | pass | pass | fixed (C5) | fixed (C5) | not yet run: a person's | not yet run: a person's |
 | Caption, Clock corner, Alt text for the file's sidecar (issue 352) | not yet swept: drawn on the default reel, so `notebook-a11y.spec.ts` ("cell 06, and focus through an export") walks them; the corner select is unavailable while the clock is off, and its list changes with the preset and the title | not yet swept (Caption and Alt text are named by a `<label for>`; Clock corner is the kit's select named by its `label`; a refused caption or alt text is `aria-invalid` and its sentence is the field's `aria-describedby` message) | not yet swept | not yet swept (nothing moves) | no new pair: `--text`, `--text-muted`, `--text-faint` and `--error` on `--surface-raised` and `--surface-sunken`, and the `--border-strong` edge, all held by `contrast.test.ts` | no new pair | not yet run: a person's | not yet run: a person's |
 | Where it goes: Choose folder, and Use the app's folder once a folder is chosen (A5.5-19) | Choose folder swept; Use the app's folder not swept (it is drawn only once a folder is chosen, which no sweep does) | Choose folder swept (the sentence its description); "Where it goes" is a label's text, not a field | Choose folder swept | Choose folder swept | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
-| Export, its progress line, Cancel, Reveal | fixed (D2) | pass | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
+| Export, its progress line, Cancel, Reveal | fixed (D2) | fixed (D13) | pass | pass | pass | fixed (C1) | not yet run: a person's | not yet run: a person's |
 
 ### Project: the footer
 
@@ -348,12 +349,13 @@ which it is.
   were read in `playwright-core` 1.63.0 (`toAriaNode` in its
   `ariaSnapshot.ts`, `elementProhibitsNaming` in its `roleUtils.ts`) and
   seen on a page in Chromium. The
-  walkthrough is what catches those by ear. And one pair it found and no
-  longer reports: the region named "Export" around the button named
-  "Export" in cell 06 once an export has run, from the rule's first run
-  (macOS, 2026-09-29), a known pair under issue 258 until it is mended. A known
-  pair is matched by its two roles and its name on any screen, so while
-  the entry stands a second region and button of that name would pass.
+  walkthrough is what catches those by ear. And what a known pair would
+  hide: the list in `tests/support/a11y-names.ts` is empty, the one pair
+  the rule's first run found (the region named "Export" around the button
+  named "Export" in cell 06 once an export has run, macOS, 2026-09-29)
+  having gone with issue 258 (D13), but an entry is matched by its two
+  roles and its name on any screen, so once one is added a second region
+  and button of that name would pass.
 - **The engine's page** (F1) and **the geographic view's drawing**: the drawing is hidden from assistive technology, and what stands for it (F2, closed by issue 105) is swept as text and controls, not judged for whether it tells a person where the routes run, which is a person's.
 
 ## Defects fixed in this pass
@@ -467,6 +469,21 @@ The rest:
   (`app.css`). Asserted in the sweep.
 - **D11. Sortable table headers were 16px targets**, under the design's 24.
   They are at least `--target-min` high (`app.css`). Asserted in the sweep.
+- **D13. The export run's region shared its name with the button inside it**
+  (issue 258). Cell 06, once an export had been started, drew a section named
+  "Export" around the progress line, its sentences and the button that starts
+  the next export, which is named "Export" too, so a screen reader entering
+  the section heard "Export, region" and then, a few items on, "Export,
+  button": one name for where a person is and for what they can do there. The
+  sweep's rule for a name said twice (#208) found it on its first run, the one
+  pair on any screen in either theme. The region is named "Export run", as
+  cell 02's is "Layout run" (`ExportRun.tsx`): a run's region is a noun naming
+  the run, its controls are verbs ("Lay out", "Export", "Cancel", "Reveal"),
+  and no region shares its name with a control inside it. Cell 01's "Download"
+  passes that rule, nothing inside it being named Download, and is not renamed
+  for symmetry. Asserted in `tests/unit/export-run-region.test.tsx` for each
+  state the run is drawn in, and in `tests/e2e/notebook-a11y.spec.ts` on the
+  page; the sweep's list of known pairs is empty.
 
 Contrast. C1 to C5 are in the token stylesheets and asserted in
 `tests/unit/contrast.test.ts`, which recomputes token pairs. C6 was not,
@@ -1187,7 +1204,7 @@ a table).
   inside the app itself; nothing can be kept there" (A5.5-19).
 - **Export, its progress line, Cancel, Reveal.** Choose a still preset (it
   is quick) and press **Export**. Listen for focus moving to **Cancel**
-  (D2), a region "Export", an image "Running: `<sentence>`", and the
+  (D2), a region "Export run", an image "Running: `<sentence>`", and the
   polite status reading the export's sentences, among them "Planning the
   export.", "Capturing `<n>` frames.", "Captured `<n>` of `<n>` frames.",
   "Encoding `<n>` frames." and "Encoded `<n>` of `<n>` frames."; the choices above are dimmed, with

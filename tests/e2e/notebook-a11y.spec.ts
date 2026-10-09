@@ -443,33 +443,41 @@ test('cell 06, and focus through an export', async () => {
       await expect(tab.getByRole('button', { name: 'Reveal' })).toBeFocused()
       await sweep(page, 'the project, an export finished')
 
-      // The rule, seen to see (issue 208). This screen holds the one pair
-      // the sweep's first run found, a region named "Export" around a
-      // button named "Export", and the sweep above leaves it alone because
-      // it is a known pair (issue 258, `KNOWN_PAIRS`). With that entry in
-      // place both accessibility specs are green whether the rule reads the
-      // tree or has stopped - a later Playwright writing a name where the
-      // rule takes it for text would pass every sweep there is. So the rule
-      // is asked here with no known pair at all, over this same screen, and
-      // has to answer that pair and only that pair, with every line read.
-      //
-      // **It goes red the day issue 258 is mended**, and is meant to: the
-      // pair is gone, and that is what takes the entry out of `KNOWN_PAIRS`
-      // and its two tests out of `tests/unit/a11y-names.test.ts`. This
-      // check then wants another pair to look for; expecting none would
-      // leave it proving that the screen is clean and no longer that the
-      // rule can see.
+      // The run's region is named for the run (issue 258): "Export run", as
+      // cell 02's is "Layout run", and not "Export", which is the name of
+      // the button inside it that starts the next one. The sweep above says
+      // so as well, but only by finding no pair; this is the name itself.
+      const run = tab.getByRole('region', { name: 'Export run', exact: true })
+      await expect(run).toBeVisible()
+      await expect(run.getByRole('button', { name: 'Export', exact: true })).toBeVisible()
+
+      // The rule, seen to see (issue 208). There is no known pair now, so
+      // the sweep is the rule with nothing excused, and a sweep is green
+      // just the same when the rule has stopped reading the tree - a later
+      // Playwright writing a name where the rule takes it for text would
+      // pass every sweep there is. So the rule is shown a pair it has to
+      // find: the one this screen held until issue 258, put back on the live
+      // tree by naming the region "Export" again, and asked alone, with
+      // every line read. It has to answer that pair and only that pair.
       //
       // What it does not notice is the call inside `sweep()` being
       // deleted, since it asks the rule and not the sweep. A unit test
-      // reads the sweep's source for that call ("the sweep", in the same
-      // unit file), and nothing that runs the application does.
-      const alone = duplicatedNames(await page.locator('body').ariaSnapshot(), [])
-      expect(alone.unread, 'every line of the snapshot is read').toEqual([])
-      expect(
-        alone.pairs.map(describePair),
-        'the rule alone, with no known pair, over the project once an export has finished',
-      ).toEqual(['region "Export" contains button "Export"'])
+      // reads the sweep's source for that call ("the sweep", in
+      // `tests/unit/a11y-names.test.ts`), and nothing that runs the
+      // application does.
+      const region = await run.elementHandle()
+      if (region === null) throw new Error('the export run has no region to rename')
+      await region.evaluate((el) => el.setAttribute('aria-label', 'Export'))
+      try {
+        const alone = duplicatedNames(await page.locator('body').ariaSnapshot(), [])
+        expect(alone.unread, 'every line of the snapshot is read').toEqual([])
+        expect(
+          alone.pairs.map(describePair),
+          'the rule alone, over the project once an export has finished, with the region named as the button is',
+        ).toEqual(['region "Export" contains button "Export"'])
+      } finally {
+        await region.evaluate((el) => el.setAttribute('aria-label', 'Export run'))
+      }
     },
     { env: { LEGIBLE_EXPORT_FOLDER: exportFolder } },
   )

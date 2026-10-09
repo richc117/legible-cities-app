@@ -183,6 +183,15 @@ const TAG = process.env.LEGIBLE_ACCEPTANCE_TAG ?? ''
 const tagContains = (feature: Feature): boolean | null =>
   gitTagContains({ tag: TAG, commit: feature.commit, cwd: repoRoot })
 
+/**
+ * The export run's region in cell 06: "Export run" since issue 258, "Export"
+ * before it. The anchored pattern stays, scoped to cell 06, because a
+ * release cut before the rename (rc.7 is one) must still be accepted with
+ * this spec, which comes from the dispatch ref while the app comes from the
+ * tag.
+ */
+const EXPORT_RUN = /^Export( run)?$/
+
 interface Pins {
   engine: { version: string }
   python: { version: string }
@@ -2108,7 +2117,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
     ): Promise<{ seconds: number; path: string }> => {
       const window = page()
       const panel = cell(window, 'export')
-      const region = panel.getByRole('region', { name: 'Export' })
+      const region = panel.getByRole('region', { name: EXPORT_RUN })
       const before =
         (await region.count()) === 0
           ? ''
@@ -2231,7 +2240,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
       const visibilities = new Set<string>()
       await bringToFront(session.app as ElectronApplication, window)
       const watch = (async () => {
-        const region = panel.getByRole('region', { name: 'Export' })
+        const region = panel.getByRole('region', { name: EXPORT_RUN })
         const cancel = region.getByRole('button', { name: 'Cancel', exact: true })
         await expect(cancel).toBeVisible({ timeout: SHORT_MS })
         const labels = (await region.locator('svg text').allTextContents()).map((l) => l.trim())
@@ -2266,7 +2275,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
       await log.soft('the stages moved through to the end', async () => {
         expect(current.has('capture'), `current stages seen: ${[...current].join(', ')}`).toBe(true)
         const marks = await panel
-          .getByRole('region', { name: 'Export' })
+          .getByRole('region', { name: EXPORT_RUN })
           .locator('svg circle.mark')
           .evaluateAll((stations) => stations.map((s) => s.getAttribute('class') ?? ''))
         expect(marks.map((m) => m.includes('mark-done'))).toEqual([true, true, true])

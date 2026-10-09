@@ -504,17 +504,14 @@ describe('the pairs that were decided', () => {
       'region "Preview" contains button "Preview"',
     ])
   })
-
-  it('with nothing said about them, the list is the one the sweep ships with', () => {
-    expect(duplicatedNames(EXPORT)).toEqual(duplicatedNames(EXPORT, KNOWN_PAIRS))
-  })
 })
 
 describe('the list the sweep ships with', () => {
-  // Cell 06 once an export has run, cut down to the pair the sweep's first
-  // run found (macOS, 2026-09-29), and beside it the three nearest things that
-  // pair is not: another role inside, another role outside, another name.
-  const CELL_06 = [
+  // Cell 06 once an export has run, as it was drawn until issue 258: the
+  // pair the sweep's first run found (macOS, 2026-09-29), and beside it the
+  // three nearest things that pair is not: another role inside, another role
+  // outside, another name.
+  const CELL_06_BEFORE = [
     '- main:',
     '  - heading "06 Export" [level=2]:',
     '    - button "06 Export" [expanded]',
@@ -529,30 +526,37 @@ describe('the list the sweep ships with', () => {
     '      - button "Reveal"',
   ].join('\n')
 
-  // These two tests and the entry go together, when issue 258 closes.
-  it('holds the pair the first run found, under issue 258', () => {
-    expect(KNOWN_PAIRS).toContainEqual({
-      ancestorRole: 'region',
-      role: 'button',
-      name: 'Export',
-      issue: 258,
-    })
+  // The same screen as it is drawn now: the run's region is named for the
+  // run, as cell 02's is "Layout run", and holds the verbs.
+  const CELL_06_NOW = [
+    '- main:',
+    '  - heading "06 Export" [level=2]:',
+    '    - button "06 Export" [expanded]',
+    '  - group "06 Export":',
+    '    - region "Export run":',
+    '      - button "Reveal"',
+    '      - button "Export"',
+  ].join('\n')
+
+  it('holds no pair, which issue 258 closed', () => {
+    expect(KNOWN_PAIRS.filter((pair) => pair.issue === 258)).toEqual([])
   })
 
-  it('so the sweep leaves that pair alone, and nothing beside it', () => {
+  it('so the sweep reports the pair the first run found, should a region be named so again', () => {
     // The rule alone finds four, the first of them that pair.
-    expect(pairsOf(CELL_06)).toEqual([
+    expect(pairsOf(CELL_06_BEFORE)).toEqual([
       'region "Export" contains button "Export"',
       'region "Export" contains link "Export"',
       'group "Export" contains button "Export"',
       'region "Reveal" contains button "Reveal"',
     ])
-    // The sweep reports the other three.
-    expect(swept(CELL_06)).toEqual([
-      'region "Export" contains link "Export"',
-      'group "Export" contains button "Export"',
-      'region "Reveal" contains button "Reveal"',
-    ])
+    // And the sweep reports all four.
+    expect(swept(CELL_06_BEFORE)).toEqual(pairsOf(CELL_06_BEFORE))
+  })
+
+  it('and finds nothing on the screen as it is drawn now', () => {
+    expect(pairsOf(CELL_06_NOW)).toEqual([])
+    expect(swept(CELL_06_NOW)).toEqual([])
   })
 
   it('does not excuse the defect the rule was written for', () => {
@@ -563,8 +567,8 @@ describe('the list the sweep ships with', () => {
     ])
   })
 
-  // Over the list as it stands. It is not empty while the test above it is
-  // here, and once it is there is nothing for this to say.
+  // Over the list as it stands, which is empty and so draws no test here
+  // today; the day an entry is added, each one is held to these.
   it.each(KNOWN_PAIRS.map((pair) => [JSON.stringify(pair), pair] as const))(
     '%s names the issue that decided it, is one the rule would find, and is said once',
     (_, pair) => {
@@ -609,10 +613,11 @@ describe('the list the sweep ships with', () => {
 
 describe('the sweep', () => {
   // Read from the source, which is as much as can be asked of it without
-  // the application. The two end-to-end specs are green with the known pair
-  // in place whether the sweep calls the rule or not, and the check beside
-  // cell 06 in `notebook-a11y.spec.ts` asks the rule itself and not the
-  // sweep: **this is the only thing that notices the call being deleted.**
+  // the application. The two end-to-end specs are green whether the sweep
+  // calls the rule or not, there being no pair on any screen to find, and
+  // the check beside cell 06 in `notebook-a11y.spec.ts` asks the rule itself
+  // and not the sweep: **this is the only thing that notices the call being
+  // deleted.**
   // It notices the text of it and no more - a call that is there and handed
   // the wrong thing is past it.
   const source = readFileSync(resolve(__dirname, '../support/a11y.ts'), 'utf8')
