@@ -1068,6 +1068,100 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s answers${WHY}`, () => 
       [...stage.description.lines[0].stations].sort(),
     )
   })
+
+  // ---- engine v0.14.0: graph.build's tuning (issue 37; the app's issue 385)
+
+  interface Built {
+    layout: string
+    meta: { stages: [string, string[]][] }
+  }
+  const build = async (extra: Record<string, unknown> = {}): Promise<Built> => {
+    const params = { key: 'la-metro-rail', ...extra }
+    expect(paramsProblems('graph.build', params), JSON.stringify(extra)).toEqual([])
+    return (await ask('graph.build', params)) as Built
+  }
+
+  it('lays out a tuning as a layout of its own, found again by the same tuning', async () => {
+    // Mutation: the flags left out of the stand-in's id - every tuning then
+    // answers the untuned layout, and the suite could not see one cross.
+    const untuned = await build()
+    const tuned = await build({ tuning: { grid: 'orthoradial', penalties: { deg45: 3 } } })
+    expect(answerProblems('graph.build', tuned)).toEqual([])
+    expect(tuned.layout).not.toBe(untuned.layout)
+    expect((await build({ tuning: { penalties: { deg45: 3 }, grid: 'orthoradial' } })).layout).toBe(
+      tuned.layout,
+    )
+    expect((await build({ tuning: { grid: 'hexalinear' } })).layout).not.toBe(tuned.layout)
+  })
+
+  it('names the untuned layout for no tuning, an empty one and one of nothing but LOOM’s defaults', async () => {
+    const untuned = (await build()).layout
+    expect((await build({ tuning: {} })).layout).toBe(untuned)
+    const defaults = {
+      merge_distance: 50,
+      grid: 'octilinear',
+      grid_size: 100,
+      penalties: { deg45: 2, deg90: 1.5, deg135: 1, deg180: 0, diagonal: 0.5 },
+    }
+    expect((await build({ tuning: defaults })).layout).toBe(untuned)
+  })
+
+  it('writes LOOM’s flags into the meta’s stages, as LOOM prints them, none for a default', async () => {
+    const tuned = await build({
+      tuning: {
+        merge_distance: 80,
+        grid: 'hexalinear',
+        grid_size: 50.0,
+        penalties: { deg45: 2, deg90: 2.5, diagonal: 1 },
+      },
+    })
+    expect(tuned.meta.stages).toEqual([
+      ['gtfs2graph', ['-m', 'all']],
+      ['topo', ['-d', '80']],
+      ['loom', []],
+      ['octi', ['-b', 'hexalinear', '-g', '50%', '--pen-90', '2.5', '--diag-pen', '1']],
+    ])
+    expect((await build()).meta.stages).toEqual([
+      ['gtfs2graph', ['-m', 'all']],
+      ['topo', []],
+      ['loom', []],
+      ['octi', []],
+    ])
+  })
+
+  it('refuses a tuning as the engine’s handler does, before any tool starts, as a params error', async () => {
+    // Mutation: the stand-in's range check dropped - 600 is then laid out.
+    const refused = (tuning: unknown): Promise<Refusal> =>
+      refusal(ask('graph.build', { key: 'la-metro-rail', tuning }))
+    const params = (message: string): Refusal => ({ code: PARAMS, kind: 'params', message })
+    expect(await refused({ merge_distance: 600 })).toEqual(
+      params('tuning.merge_distance must be from 5 to 500, in metres'),
+    )
+    expect(await refused({ grid_size: 24 })).toEqual(
+      params(
+        'tuning.grid_size must be from 25 to 400, as a percentage of the distance between adjacent stations',
+      ),
+    )
+    expect(await refused({ penalties: { deg180: 10.5 } })).toEqual(
+      params('tuning.penalties.deg180 must be from 0 to 10, as a cost without a unit'),
+    )
+    expect(await refused({ grid: 'quadtree' })).toEqual(
+      params('tuning.grid must be one of octilinear, ortholinear, orthoradial, hexalinear'),
+    )
+    expect(await refused({ slider: 3 })).toEqual(params('tuning does not take slider'))
+    expect(await refused({ penalties: { deg30: 1 } })).toEqual(
+      params('tuning.penalties does not take deg30'),
+    )
+    expect(await refused(null)).toEqual(
+      params("tuning must be an object of LOOM's own settings, or left out"),
+    )
+    // The description refuses each of them too, so no test can send one.
+    for (const tuning of [{ merge_distance: 600 }, { grid: 'quadtree' }, { slider: 3 }, null])
+      expect(
+        paramsProblems('graph.build', { key: 'la-metro-rail', tuning }),
+        JSON.stringify(tuning),
+      ).not.toEqual([])
+  })
 })
 
 // ----------------------------------------- the removal as a job (issue 351)
