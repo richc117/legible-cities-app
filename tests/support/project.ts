@@ -167,6 +167,26 @@ async function pressHeading(
 }
 
 /**
+ * A cell's heading pressed open, with `openCell`'s press and its retry, and
+ * no panel waited on afterwards (issue 365).
+ *
+ * For the spec that cannot name a panel to wait for. Cell 02 is the case:
+ * its "Layout run" region is drawn only while a run is going or has gone in
+ * this session, so for a project drawn from the store `openCell` would wait
+ * out its deadline on a region that was never going to appear.
+ *
+ * The contract is `openCell`'s up to that wait, and `pressHeading` has the
+ * reasoning: press unless the heading already says `aria-expanded="true"`,
+ * assert that it does within a short deadline, press a second time only
+ * when a fresh read shows the first was lost, and print the one line
+ * `pressHeading` prints when that happens. The heading's own state is all
+ * that is asserted; what the cell then shows is the caller's to wait for.
+ */
+export async function expandHeading(page: Page, id: CellId): Promise<void> {
+  await pressHeading(cellHeading(page, id), 'true', id)
+}
+
+/**
  * A cell's panel, opened first if it is collapsed.
  *
  * The contract, in order: press the cell's heading unless it already says

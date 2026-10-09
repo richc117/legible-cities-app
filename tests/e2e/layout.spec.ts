@@ -31,6 +31,7 @@ import {
   cellHeading,
   cellLabel,
   closeCell,
+  expandHeading,
   openCell,
   openProject,
   panel,
@@ -46,10 +47,8 @@ const repoRoot = resolve(__dirname, '../..')
  * `openCell` waits for.
  */
 async function expandCell(page: Page, id: 'data' | 'process'): Promise<void> {
-  const row = cellHeading(page, id)
-  await expect(row).toBeVisible()
-  if ((await row.getAttribute('aria-expanded')) !== 'true') await row.click()
-  await expect(row).toHaveAttribute('aria-expanded', 'true')
+  await expect(cellHeading(page, id)).toBeVisible()
+  await expandHeading(page, id)
 }
 const PYTHON = findPython()
 
