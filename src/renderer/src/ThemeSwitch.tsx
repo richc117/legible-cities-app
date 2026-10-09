@@ -126,12 +126,20 @@ export default function ThemeSwitch({
   // before the radios go, and a choice kept from before is forgotten -
   // applying it after the way closed is what the closing is for.
   //
-  // A layout effect, so it runs in the commit that disables the fieldset,
-  // as the DOM is written and before any task of the browser's own. The
-  // kit's buttons this replaced were disabled by an effect of their own,
-  // which ran just before this one in the same flush; the fieldset is
-  // disabled by the commit itself, and an effect left to the scheduler runs
-  // later and could find focus already gone.
+  // A layout effect, so it runs in the commit that disables the radios, as the
+  // DOM is written and before any task of the browser's own. The kit's
+  // buttons this replaced were disabled by an effect of their own, which ran
+  // just before this one in the same flush; a radio is disabled by the commit
+  // itself, and an effect left to the scheduler runs later and could find
+  // focus already gone.
+  //
+  // **Each radio is disabled itself and not the fieldset round them.**
+  // Chromium takes focus from an element disabled directly at its next
+  // focus check, a task later, so it is still there to be found; but from
+  // a descendant of a disabled fieldset it takes focus as the attribute is
+  // written, and this would find the body (measured in Chromium 153:
+  // `document.activeElement` is the body in the same task as the write for
+  // a fieldset, and the radio itself for a radio, a select or a button).
   useLayoutEffect(() => {
     if (!disabled) return
     kept.current = null
@@ -176,13 +184,14 @@ export default function ThemeSwitch({
       </p>
       {/* A fieldset named for what it sets. Its legend is the group's name
           and is not drawn: the paragraph above says the same in words, and
-          the cards are the control. Disabled as a whole while a run or an
-          export holds the page, which disables the radios inside it. Not
-          disabled while the write is in flight: it takes a moment, and a
-          control that disables itself under a person's hands takes the
-          focus with it (A3-04). A choice that arrives then is kept and
-          applied when the write settles. */}
-      <fieldset className="theme-cards-group" disabled={disabled}>
+          the cards are the control. The radios are disabled one by one while
+          a run or an export holds the page, and not the fieldset, which would
+          take focus from the radio holding it before the handback above could
+          hand it on. Not disabled while the write is in flight: it takes a
+          moment, and a control that disables itself under a person's hands
+          takes the focus with it (A3-04). A choice that arrives then is kept
+          and applied when the write settles. */}
+      <fieldset className="theme-cards-group">
         <legend className="visually-hidden">The theme this map is drawn in</legend>
         <div className="theme-cards">
           {THEMES.map((theme) => (
@@ -193,6 +202,7 @@ export default function ThemeSwitch({
                 name={group}
                 value={theme}
                 checked={theme === shown}
+                disabled={disabled}
                 onChange={(event) => {
                   const value = event.currentTarget.value
                   if (isTheme(value)) void choose(value)

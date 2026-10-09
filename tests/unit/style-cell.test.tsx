@@ -325,13 +325,18 @@ describe('cell 04, Style', () => {
       expect(section).not.toMatch(/<(svg|circle|path|line|polyline|rect|canvas)[\s>]/)
     })
 
-    it('is available when nothing holds the page, and as a whole not while a run or an export does', () => {
+    it('is available when nothing holds the page, and radio by radio not while a run or an export does', () => {
       const open = themeSection(draw({ project: record }))
-      expect(open).not.toMatch(/<fieldset[^>]* disabled/)
       expect(open).not.toContain('disabled')
       for (const held of [{ exporting: true }, { layingOut: true }]) {
         const section = themeSection(draw({ project: record, ...held }))
-        expect(section).toMatch(/<fieldset[^>]* disabled/)
+        // Each radio is disabled itself. Never the fieldset round them:
+        // Chromium takes focus from a descendant of a disabled fieldset as the
+        // attribute is written, before the handback can hand it on.
+        expect(section).not.toMatch(/<fieldset[^>]* disabled/)
+        const radios = [...section.matchAll(/<input [^>]*>/g)].map((found) => attributes(found[0]))
+        expect(radios).toHaveLength(2)
+        for (const radio of radios) expect(radio, 'a radio is disabled').toHaveProperty('disabled')
         // Said once, where the switch is.
         expect(section).toContain('The theme waits until the run that is going has finished')
       }

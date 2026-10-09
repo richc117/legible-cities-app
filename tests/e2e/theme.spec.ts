@@ -458,6 +458,10 @@ test('a checked card is told from a focused one by its edge, in both of the inte
           edge: style.borderTopColor,
           edgeWidth: style.borderTopWidth,
           ring: style.outlineColor,
+          // A ring is drawn when its style is not `none`. Its width is not
+          // evidence either way: Chromium reports `3px`, the initial
+          // `medium`, for an outline whose style is `none`.
+          ringStyle: style.outlineStyle,
           ringWidth: style.outlineWidth,
           width: box.width,
           height: box.height,
@@ -520,11 +524,12 @@ test('a checked card is told from a focused one by its edge, in both of the inte
       const checked = await read('Warm dark')
       expect(checked.edgeWidth, `${scheme}: the checked edge is 2px`).toBe('2px')
       expect(checked.edge, `${scheme}: the checked edge is --text`).toBe(await colourOf('--text'))
+      expect(checked.ringStyle, `${scheme}: the ring is drawn`).toBe('solid')
       expect(checked.ringWidth, `${scheme}: the ring is 2px`).toBe('2px')
       expect(checked.ring, `${scheme}: the ring is --focus`).toBe(await colourOf('--focus'))
       expect(checked.edge, `${scheme}: the edge is not the ring`).not.toBe(checked.ring)
       // The card that is neither checked nor focused has no ring.
-      expect((await read('Sepia')).ringWidth, `${scheme}: no ring on the other card`).toBe('0px')
+      expect((await read('Sepia')).ringStyle, `${scheme}: no ring on the other card`).toBe('none')
     }
     await page.emulateMedia({ colorScheme: null })
   })
