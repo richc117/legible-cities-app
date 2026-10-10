@@ -24,8 +24,11 @@
 // - `styleParams` puts `dot_radius` and `trail` inside `style` (the stand-in
 //   refuses the draw): 'the trains'.
 // - `commitDrafts` reads the eight sizes only: 'the trains'.
-// - `StyleFields`'s `show` draws a choice without the debounce, or never
-//   schedules one: 'a marker and the face'.
+// - `StyleFields`'s `show` never schedules a choice: 'a marker and the face'.
+//   (A choice drawn without the debounce is not caught here: the count of
+//   builds for three quick choices depends on the runner. The debounce is
+//   the one the sizes share, held by `debounce.test.ts` and by
+//   `style.spec.ts`'s "one build, not one per keystroke".)
 // - Reset schedules `{ ...view.style }` with the sizes alone cleared, or
 //   writes the theme: 'Reset clears the whole group'.
 // - `readStyle` drops the markers, the face or the trains: 'a reopened

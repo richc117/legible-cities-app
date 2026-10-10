@@ -515,9 +515,12 @@ map play for a moment. Press **Reset to the engine's sizes**.
   (6) must not be below style.station_radius (8); a field left out counts as
   its default, so send both", and nothing is drawn; setting **Interchange
   radius** to **9** takes both in one redraw.
-- Above the unit's sentence, **Look** shows **The engine's sizes** and
-  offers **Beck**, **Blueprint** and **Paper**, with "A look sets the sizes
-  and the markers; the typeface and the trains stay as they are." under it.
+- Above the unit's sentence, **Look** shows **Custom** by the time you
+  reach it, since the sizes are your own, and offers **The engine's
+  sizes**, **Beck**, **Blueprint**, **Paper** and **Custom** (on a project
+  with no size of its own it shows **The engine's sizes** and offers no
+  **Custom**), with "A look sets the sizes and the markers; the typeface
+  and the trains stay as they are." under it.
   After the eight fields come **Station marker** (Circle, with "A tick
   stands on the side of the station's name, as on the London diagram."
   under it), **Interchange marker** (Ring) and **Label typeface** (System),
