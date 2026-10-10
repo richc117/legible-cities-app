@@ -157,7 +157,17 @@ describe('what each control does to a line’s options', () => {
     expect(nextLinesStep({ A: { hidden: true } }, undefined, false)).toBe('build')
     expect(nextLinesStep({ A: { hidden: true } }, undefined, true)).toBe('wait')
     expect(nextLinesStep({ A: { hidden: false } }, undefined, false)).toBe('none')
-    expect(nextLinesStep({}, { A: { width: 1 } }, true)).toBe('none')
+    expect(nextLinesStep({}, { A: { width: 1 } }, false)).toBe('none')
+  })
+
+  it('waits before it compares, so a choice undone while a build runs is not dropped', () => {
+    // Mutation: compared with the record before the wait (the colours' and
+    // the order's order) - B's switch turned off and on again while the
+    // first build runs would equal the record not yet written, be dropped,
+    // and the build would then write B hidden and turn the switch off.
+    expect(nextLinesStep({}, undefined, true)).toBe('wait')
+    // Asked again once the way is clear, against the record that build wrote.
+    expect(nextLinesStep({}, { B: { hidden: true } }, false)).toBe('build')
   })
 })
 

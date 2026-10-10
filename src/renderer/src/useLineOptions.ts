@@ -69,7 +69,8 @@ export function useLineOptions({
   /** The same question at this instant rather than at the last render (A4-01). */
   busyNow?: () => boolean
 }): LineOptionsState {
-  const { state: runState, recoloured } = useSnapshot(run)
+  const snapshot = useSnapshot(run)
+  const { state: runState, recoloured } = snapshot
   const running = runState === 'running'
   const [lines, setLines] = useState<ProjectLines>(() => linesSent(project.lines))
   // What is shown at this moment, for a choice to build on: two choices in
@@ -91,8 +92,18 @@ export function useLineOptions({
     [],
   )
   // A choice seen on screen is not lost to a screen that goes inside the
-  // delay: the build is the project's, as a run is, and carries on.
-  useEffect(() => () => schedule.flush(), [schedule])
+  // delay: the build is the project's, as a run is, and carries on - if the
+  // way is clear as the screen goes. If it is not, the choice is dropped
+  // rather than left waiting on a screen that is gone, whose last render's
+  // record would be drawn from long after a run had moved it on.
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+      schedule.flush()
+    }
+  }, [schedule])
 
   // Whether a redraw of this cell's is going, read by the effect below
   // without being re-run when it ends: the record has not been read back
@@ -125,17 +136,25 @@ export function useLineOptions({
   })
 
   const commit = (next: ProjectLines): void => {
-    // `held` is what the last render saw; the run's own state is what is
-    // true at this moment, and a run can start between the two.
-    const step = nextLinesStep(
-      next,
-      project.lines,
-      held || run.snapshot.state === 'running' || busyNow?.() === true,
-    )
+    // `held` and the record are what the last render saw. The run's own
+    // state is what is true at this moment, and a run can start between the
+    // two - or end: a run that has moved on since this render (its snapshot
+    // is not the one rendered) wrote a record this render has not read, so
+    // drawing now would draw the colours, the order and the sizes from
+    // before it. A casing's colour under a hand waits for its release, as a
+    // line's own colour does.
+    const busy =
+      held ||
+      live.current !== null ||
+      run.snapshot !== snapshot ||
+      run.snapshot.state === 'running' ||
+      busyNow?.() === true
+    const step = nextLinesStep(next, project.lines, busy)
     // Something holds the page: wait rather than refuse, the same delay
-    // again, until the way is clear.
-    if (step === 'wait') schedule(next)
-    else if (step === 'build') run.redrawLines(project, engine, next)
+    // again, until the way is clear; never on a screen that has gone.
+    if (step === 'wait') {
+      if (mounted.current) schedule(next)
+    } else if (step === 'build') run.redrawLines(project, engine, next)
   }
   useEffect(() => {
     commitRef.current = commit

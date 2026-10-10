@@ -235,7 +235,12 @@ export default function LineColours({
   // `busy` is what the last render saw; the run's own state is what is true
   // at this moment, and a run can start between the two. Without it a colour
   // would be handed to a run that refuses it, silently.
-  const stillBusy = (): boolean => busy || run.snapshot.state === 'running' || busyNow?.() === true
+  // While the record a finished run wrote is being read back, too (issue
+  // 394): every draw now carries the line options, and one drawn from the
+  // record before that run could put a hidden line back on the map while
+  // the store, writing `drawn` from the record after it, said it was gone.
+  const stillBusy = (): boolean =>
+    busy || settling || run.snapshot.state === 'running' || busyNow?.() === true
   // The commit point: the picker released, or the hex field's button.
   const commit = (next: Palette): void =>
     act(released(unbuilt.current, next, paletteOf(project), stillBusy()), next)

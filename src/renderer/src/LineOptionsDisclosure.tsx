@@ -224,6 +224,11 @@ export default function LineOptions({
   }
 
   const shown = choice.hidden !== true
+  // The refusal goes once another line is drawn again: this switch would
+  // work now, and a sentence saying it would not is wrong beside it.
+  useEffect(() => {
+    if (!lastShown) setRefusedShown(null)
+  }, [lastShown])
   const toggleShown = (on: boolean): void => {
     // The last line drawn stays drawn: the engine refuses a map with none.
     if (!on && lastShown) {

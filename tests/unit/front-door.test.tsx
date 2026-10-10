@@ -462,6 +462,17 @@ describe('the pictures on the project cards', () => {
     )
     // The project's own theme is not in it: the picture follows the interface's.
     expect(at({ theme: 'sepia' })).toBe(base)
+    // Mutation: the line options left out of the fingerprint.
+    // A line hidden, or drawn another width (issue 394): the engine draws
+    // both thumbnails without the one and in the other. A line shown as the
+    // engine's own is no change, and the order the lines were written in is
+    // not one either.
+    expect(at({ lines: { B: { hidden: true } } })).not.toBe(base)
+    expect(at({ lines: { B: { width: 1.5 } } })).not.toBe(at({ lines: { B: { width: 1.25 } } }))
+    expect(at({ lines: { B: { hidden: false } } })).toBe(base)
+    expect(at({ lines: { A: { dash: 'dotted' }, B: { hidden: true } } })).toBe(
+      at({ lines: { B: { hidden: true }, A: { dash: 'dotted' } } }),
+    )
   })
 
   it('shows the empty area for a project nothing was drawn for', () => {
