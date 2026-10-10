@@ -756,7 +756,9 @@ export class ProjectStore {
    * record never claims a size the page on screen does not show. The whole
    * style is what is written, not a change to the one stored, so what is
    * kept is what the cell showed - minus any field at the engine's own
-   * number, which is no choice and is not kept (`settledStyle`).
+   * number, which is no choice and is not kept (`settledStyle`). Since
+   * issue 391 the style carries the markers, the label face and the two
+   * train numbers too, under the same rules and the same validator.
    *
    * A redraw of the *same day*, so it goes through `redrew` as a recolour
    * does: the day the map already showed stays the one it showed.

@@ -32,6 +32,27 @@ export interface ProjectStyle {
   labelOffset?: number
   /** The margin round the drawing, on every side (ADR-050). */
   padding?: number
+  /**
+   * The marker of a station on one line (engine issue 74, issue 391): the
+   * engine's circle, TfL's tick or a square. Absent is the circle.
+   */
+  stationShape?: StationShape
+  /** The marker of a station where lines meet: the ring or a square. Absent is the ring. */
+  interchangeShape?: InterchangeShape
+  /**
+   * The face the station names are set in (engine issue 76): the system's,
+   * or one of the two the engine ships and embeds. Absent is the system's.
+   */
+  labelFont?: LabelFont
+  /**
+   * The radius of a train's dot on the animation page, in the sizes' unit
+   * (engine issue 75). Kept with the style, the smallest change, and sent as
+   * `map.build`'s own `dot_radius`, never inside `style`: it is the
+   * animation's and never reaches the SVG (spec 034, FR-004).
+   */
+  dotRadius?: number
+  /** How far behind a train its trail reaches, in seconds of playback; sent as `map.build`'s own `trail`. */
+  trail?: number
 }
 
 /** The eight, in the order the cell draws them. */
@@ -66,6 +87,76 @@ export const STYLE_RANGES: Readonly<
   labelOffset: { wire: 'label_offset', low: 0, high: 40, ratio: false },
   padding: { wire: 'padding', low: 0, high: 200, ratio: false },
 }
+
+/**
+ * The markers and the faces the engine offers (`render.STATION_SHAPES`,
+ * `INTERCHANGE_SHAPES` and `LABEL_FONTS` at v0.15.0), in the engine's order
+ * and its names. An interchange is never a tick. Held to the protocol's
+ * enums by a unit test.
+ */
+export const STATION_SHAPES = ['circle', 'tick', 'square'] as const
+export type StationShape = (typeof STATION_SHAPES)[number]
+export const INTERCHANGE_SHAPES = ['circle', 'square'] as const
+export type InterchangeShape = (typeof INTERCHANGE_SHAPES)[number]
+export const LABEL_FONTS = ['system', 'inter', 'atkinson-hyperlegible-next'] as const
+export type LabelFont = (typeof LABEL_FONTS)[number]
+
+/** The three fields a person chooses from a list, in the order the cell draws them. */
+export const CHOICE_KEYS = [
+  'stationShape',
+  'interchangeShape',
+  'labelFont',
+] as const satisfies readonly (keyof ProjectStyle)[]
+
+export type ChoiceKey = (typeof CHOICE_KEYS)[number]
+
+/** What each choice is called on the wire, inside `style`, and what it may be. */
+export const STYLE_CHOICES: Readonly<
+  Record<ChoiceKey, { wire: string; options: readonly string[] }>
+> = {
+  stationShape: { wire: 'station_shape', options: STATION_SHAPES },
+  interchangeShape: { wire: 'interchange_shape', options: INTERCHANGE_SHAPES },
+  labelFont: { wire: 'label_font', options: LABEL_FONTS },
+}
+
+/** The two numbers that say how a train is drawn, in the order the cell draws them. */
+export const TRAIN_KEYS = ['dotRadius', 'trail'] as const satisfies readonly (keyof ProjectStyle)[]
+
+export type TrainKey = (typeof TRAIN_KEYS)[number]
+
+/**
+ * What the engine accepts of the two train numbers (`animate.DOT_RADIUS_RANGE`
+ * and `TRAIL_RANGE` at v0.15.0, `serve._animation_number`): each a parameter
+ * of `map.build` itself, by the name its refusal writes, its closed range,
+ * and the unit the refusal says it in. Held to the schema by a unit test.
+ */
+export const TRAIN_RANGES: Readonly<
+  Record<TrainKey, { wire: string; low: number; high: number; unit: string }>
+> = {
+  dotRadius: { wire: 'dot_radius', low: 2, high: 12, unit: "SVG user units at the map's width" },
+  trail: { wire: 'trail', low: 0, high: 3, unit: 'seconds of playback' },
+}
+
+/** Every field a person types a number into: the eight sizes, then the trains. */
+export const FIGURE_KEYS = [...STYLE_KEYS, ...TRAIN_KEYS] as const
+
+export type FigureKey = StyleKey | TrainKey
+
+/**
+ * Every field of the group, in the order the cell draws them (spec 034,
+ * FR-005): the eight sizes, the two markers and the face, the trains. One
+ * list drives the validator, the reader and what is kept.
+ */
+export const STYLE_GROUP = [
+  ...STYLE_KEYS,
+  ...CHOICE_KEYS,
+  ...TRAIN_KEYS,
+] as const satisfies readonly (keyof ProjectStyle)[]
+
+export type StyleGroupKey = (typeof STYLE_GROUP)[number]
+
+const isTrainKey = (key: FigureKey): key is TrainKey =>
+  (TRAIN_KEYS as readonly string[]).includes(key)
 
 /**
  * The two themes the engine's page draws itself in: warm-dark, which is
@@ -383,7 +474,7 @@ export interface DeleteResult {
 
 /**
  * The engine's `Style` numbers at the pinned engine (v0.12.0, `render.py`),
- * as data. They are what a field shows while it is unset and what a value is
+ * and since v0.15.0 its markers, face and train numbers, as data. They are what a field shows while it is unset and what a value is
  * compared with to know it is no choice at all; they are never sent. Until
  * issue 350 this held `10, 8, 11, 26` under a comment calling them the
  * engine's, and they were not (ADR-049); `OLD_STYLE` keeps them for the one
@@ -398,6 +489,13 @@ export const DEFAULT_STYLE: Readonly<Required<ProjectStyle>> = {
   labelSize: 11,
   labelOffset: 9,
   padding: 24,
+  // The engine's own markers, face and trains (v0.15.0): what is drawn
+  // without the field, so a field at one of these is no choice (spec 034).
+  stationShape: 'circle',
+  interchangeShape: 'circle',
+  labelFont: 'system',
+  dotRadius: 5,
+  trail: 0,
 }
 
 /**
@@ -622,18 +720,31 @@ export function validateMade(made: unknown): string | null {
   return null
 }
 
-// ---- The map's sizes (issue 350, ADR-049, ADR-050)
+// ---- The map's sizes (issue 350, ADR-049, ADR-050), and since issue 391 its
+// markers, its label face and its trains (spec 034)
 
 /** A finite number, which is the only thing a field can hold. */
 const isFigure = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
+
+/** `a, b or c`: the names a refusal offers, in the table's order, as the engine writes them. */
+const either = (names: readonly string[]): string =>
+  names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}`
 
 /**
  * The engine's sentence for a number outside what a field accepts, word for
  * word `serve._style`'s at v0.12.0, so a person is told what the engine
  * would have said and the screen and the engine do not disagree about a
  * word. It names the field the way the engine does (`style.line_width`).
+ *
+ * A train number is a parameter of `map.build` itself, and the engine's
+ * sentence for it (`serve._animation_number` at v0.15.0) names it bare:
+ * "dot_radius must be from 2 to 12, in SVG user units at the map's width".
  */
-export function styleRangeSentence(key: StyleKey): string {
+export function styleRangeSentence(key: FigureKey): string {
+  if (isTrainKey(key)) {
+    const { wire, low, high, unit } = TRAIN_RANGES[key]
+    return `${wire} must be from ${low} to ${high}, in ${unit}`
+  }
   const { wire, low, high, ratio } = STYLE_RANGES[key]
   return (
     `style.${wire} must be from ${low} to ${high}, ` +
@@ -641,14 +752,34 @@ export function styleRangeSentence(key: StyleKey): string {
   )
 }
 
+/** The closed range a number field accepts, a size's or a train's. */
+function rangeOf(key: FigureKey): { low: number; high: number } {
+  return isTrainKey(key) ? TRAIN_RANGES[key] : STYLE_RANGES[key]
+}
+
 /**
  * Whether a value is one the engine accepts for a field: a finite number
  * inside its closed range. Not-a-number, an infinity and a string are all
  * refused with the range sentence, as the engine refuses them.
  */
-export function inStyleRange(key: StyleKey, value: unknown): boolean {
-  const { low, high } = STYLE_RANGES[key]
+export function inStyleRange(key: FigureKey, value: unknown): boolean {
+  const { low, high } = rangeOf(key)
   return isFigure(value) && value >= low && value <= high
+}
+
+/** Whether a value is one the engine offers for a marker or the face. */
+export function isStyleChoice(key: ChoiceKey, value: unknown): boolean {
+  return typeof value === 'string' && STYLE_CHOICES[key].options.includes(value)
+}
+
+/**
+ * The engine's sentence for a marker or a face it does not offer, word for
+ * word `serve._style`'s at v0.15.0: "style.station_shape must be circle,
+ * tick or square".
+ */
+export function styleChoiceSentence(key: ChoiceKey): string {
+  const { wire, options } = STYLE_CHOICES[key]
+  return `style.${wire} must be ${either(options)}`
 }
 
 /**
@@ -682,19 +813,28 @@ export function radiiRefusal(style: ProjectStyle): string | null {
   return interchange < station ? radiiSentence(interchange, station) : null
 }
 
+/** Why the engine would refuse a style, by field. */
+export type StyleRefusals = Partial<Record<FigureKey | ChoiceKey, string>>
+
 /**
  * Why the engine would refuse this style, field by field, in its own
  * sentences, before anything is sent; empty when it would take it.
  *
- * A number outside its range is that field's. The two radii are judged
- * together (`radiiRefusal`), and the sentence is the interchange radius's,
- * as the engine's names it first.
+ * A number outside its range is that field's, a train number's included. The
+ * two radii are judged together (`radiiRefusal`), and the sentence is the
+ * interchange radius's, as the engine's names it first. A marker or a face
+ * the engine does not offer is that field's too, though no control can choose
+ * one and a record that holds one reads it as not held (`readStyle`).
  */
-export function styleRefusals(style: ProjectStyle): Partial<Record<StyleKey, string>> {
-  const refused: Partial<Record<StyleKey, string>> = {}
-  for (const key of STYLE_KEYS) {
+export function styleRefusals(style: ProjectStyle): StyleRefusals {
+  const refused: StyleRefusals = {}
+  for (const key of FIGURE_KEYS) {
     if (style[key] !== undefined && !inStyleRange(key, style[key]))
       refused[key] = styleRangeSentence(key)
+  }
+  for (const key of CHOICE_KEYS) {
+    if (style[key] !== undefined && !isStyleChoice(key, style[key]))
+      refused[key] = styleChoiceSentence(key)
   }
   const radii = radiiRefusal(style)
   if (radii !== null) refused.interchangeRadius = radii
@@ -702,15 +842,19 @@ export function styleRefusals(style: ProjectStyle): Partial<Record<StyleKey, str
 }
 
 /**
- * A style a store may be asked to write: an object of the eight fields, each
- * a number the engine accepts, the pair of radii in order. Null when it is.
- * The store is the trusted layer and checks it again after the bridge, as it
- * does every other thing a person chose.
+ * A style a store may be asked to write: an object of the group's fields,
+ * each a number the engine accepts or a marker or face it offers, the pair of
+ * radii in order. Null when it is. The store is the trusted layer and checks
+ * it again after the bridge, as it does every other thing a person chose.
+ *
+ * In the engine's order where it has one: the eight sizes, the markers and
+ * the face, the pair of radii, and then the two train numbers, which the
+ * engine judges after the style as the parameters they are.
  */
 export function validateStyle(style: unknown): string | null {
   if (!isObject(style)) return 'the style must be an object'
   for (const key of Object.keys(style)) {
-    if (!(STYLE_KEYS as readonly string[]).includes(key)) return `the style does not take ${key}`
+    if (!(STYLE_GROUP as readonly string[]).includes(key)) return `the style does not take ${key}`
   }
   const fields: ProjectStyle = {}
   for (const key of STYLE_KEYS) {
@@ -719,41 +863,62 @@ export function validateStyle(style: unknown): string | null {
     if (!inStyleRange(key, value)) return styleRangeSentence(key)
     fields[key] = value as number
   }
-  return Object.values(styleRefusals(fields))[0] ?? null
+  for (const key of CHOICE_KEYS) {
+    const value = style[key]
+    if (value !== undefined && !isStyleChoice(key, value)) return styleChoiceSentence(key)
+  }
+  const radii = radiiRefusal(fields)
+  if (radii !== null) return radii
+  for (const key of TRAIN_KEYS) {
+    const value = style[key]
+    if (value !== undefined && !inStyleRange(key, value)) return styleRangeSentence(key)
+  }
+  return null
 }
 
-/** Is a field a choice? Unset, or at the engine's own number, it is not. */
-const chosen = (style: ProjectStyle, key: StyleKey): boolean =>
+/** Is a field a choice? Unset, or at the engine's own value, it is not. */
+const chosen = (style: ProjectStyle, key: StyleGroupKey): boolean =>
   style[key] !== undefined && style[key] !== DEFAULT_STYLE[key]
 
 /**
- * Has a person set any of the sizes? A field at the engine's own number is
- * no choice - it would draw what is drawn without it - so it does not count,
- * and the cell's summary says nothing of it.
+ * Has a person set anything in the group - a size, a marker, the face or a
+ * train number? A field at the engine's own value is no choice - it would
+ * draw what is drawn without it - so it does not count. Reset can be pressed
+ * while this is true.
  */
 export function styleIsSet(style: ProjectStyle): boolean {
+  return STYLE_GROUP.some((key) => chosen(style, key))
+}
+
+/**
+ * Has a person set one of the eight sizes? The cell's collapsed row says
+ * "sizes of your own" for this and for nothing else (DESIGN.md 8.2).
+ */
+export function sizesAreSet(style: ProjectStyle): boolean {
   return STYLE_KEYS.some((key) => chosen(style, key))
 }
 
 /**
  * The style as it is kept: the fields a person chose, and none at the
- * engine's own number or unset. Out-of-range values are kept - they are
+ * engine's own value or unset. Out-of-range values are kept - they are
  * refused where they are shown, and `styleSent` sends nothing until they
  * are fixed.
  */
 export function settledStyle(style: ProjectStyle): ProjectStyle {
-  const kept: ProjectStyle = {}
-  for (const key of STYLE_KEYS) if (chosen(style, key)) kept[key] = style[key]
-  return kept
+  const kept: Record<string, unknown> = {}
+  for (const key of STYLE_GROUP) if (chosen(style, key)) kept[key] = style[key]
+  return kept as ProjectStyle
 }
 
 /**
  * Exactly what `map.build` is sent for a style, in the app's names: empty
- * when nothing is chosen, so no `style` goes at all and the engine draws what
- * it drew before the parameter existed; otherwise the chosen fields only
- * (one at the engine's own number is not sent), with both radii whenever
- * either is, the one not chosen as the engine's default, because the engine
- * judges them together (ADR-049).
+ * when nothing is chosen, so no `style`, no `dot_radius` and no `trail` go
+ * at all and the engine draws what it drew before the parameters existed;
+ * otherwise the chosen fields only (one at the engine's own value is not
+ * sent), with both radii whenever either is, the one not chosen as the
+ * engine's default, because the engine judges them together (ADR-049).
+ * Which of them go inside `style` and which beside it is `styleParams`'s
+ * (`styleRules.ts`), the one place this is put on the wire.
  *
  * A style the engine would refuse sends nothing: a record that holds one
  * (a number written by hand, out of range) draws the map without it until
@@ -761,7 +926,8 @@ export function settledStyle(style: ProjectStyle): ProjectStyle {
  * project, a colour change among them.
  *
  * The four colours the engine accepts are not in `ProjectStyle` and so can
- * never be here: the page's theme owns the furniture (ADR-049).
+ * never be here: the page's theme owns the furniture (ADR-049). Nor is a
+ * look's name: a look is written as its fields (spec 034, FR-001).
  */
 export function styleSent(style: ProjectStyle): ProjectStyle {
   if (Object.keys(styleRefusals(style)).length > 0) return {}
@@ -773,9 +939,9 @@ export function styleSent(style: ProjectStyle): ProjectStyle {
   return sent
 }
 
-/** Two styles that send the same thing; a field at the engine's own number is no field. */
+/** Two styles that send the same thing; a field at the engine's own value is no field. */
 export function sameStyle(a: ProjectStyle, b: ProjectStyle): boolean {
-  return STYLE_KEYS.every(
+  return STYLE_GROUP.every(
     (key) => (a[key] ?? DEFAULT_STYLE[key]) === (b[key] ?? DEFAULT_STYLE[key]),
   )
 }
@@ -1208,14 +1374,22 @@ export function parseRecord(json: unknown): Parsed {
  * default is unset, and any other is a number somebody wrote, and is kept as
  * set. Per field and not all-or-nothing, so that one number written by hand
  * never sends the other three old defaults as if they were choices.
+ *
+ * The train numbers (issue 391) are read as the sizes are: a finite number
+ * is kept, in range or not. A marker or a face is read only when it is one
+ * the engine offers, field by field, since a select cannot show any other
+ * and a record that named one would send what the engine refuses.
  */
 function readStyle(value: unknown, version: number): ProjectStyle {
   const stored = isObject(value) ? value : {}
   const style: ProjectStyle = {}
-  for (const key of STYLE_KEYS) {
+  for (const key of FIGURE_KEYS) {
     const field = stored[key]
     if (typeof field === 'number' && Number.isFinite(field)) style[key] = field
   }
+  const choices: Record<string, unknown> = {}
+  for (const key of CHOICE_KEYS) if (isStyleChoice(key, stored[key])) choices[key] = stored[key]
+  Object.assign(style, choices)
   if (version < 2) {
     for (const key of Object.keys(OLD_STYLE) as (keyof typeof OLD_STYLE)[])
       if (style[key] === OLD_STYLE[key]) delete style[key]

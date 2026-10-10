@@ -52,6 +52,21 @@ The on-disk form of `ProjectRecord` (`data-model.md`), version 2:
   choices; a version-2 record is read as written, those numbers included. A build that does not know version 2 reads the record
   as read-only. The colours the engine also accepts are not here and are
   never sent (ADR-049).
+- `style` also holds, since issue 391 (spec 034, engine v0.15.0, still
+  version 2), the station's marker `stationShape` (`circle`, `tick` or
+  `square`), the interchange's `interchangeShape` (`circle` or `square`),
+  the label face `labelFont` (`system`, `inter` or
+  `atkinson-hyperlegible-next`), and the two numbers that say how a train
+  is drawn, `dotRadius` (2 to 12) and `trail` (0 to 3 seconds), which are
+  sent as `map.build`'s own `dot_radius` and `trail` and never inside its
+  `style`. Each is present only when a person chose it and is absent at the
+  engine's own (`circle`, `circle`, `system`, 5, 0). A marker or a face the
+  engine does not offer reads as missing, field by field; a train number
+  is read as a size is, a number outside its range kept and shown refused.
+  A look is never stored by name: choosing one writes its fields. The
+  version did not move: every field is optional, its absence is what every
+  map before was drawn with, and the one released build reads a version-2
+  record as read-only.
 - Readers accept a missing optional field and refuse a `version` above 2.
 - `made` (added by A3-06, still version 1) is when the engine made the
   stored layout, its `meta.made` as answered by `graph.build`, or `null`;
@@ -60,8 +75,9 @@ The on-disk form of `ProjectRecord` (`data-model.md`), version 2:
   project's output folder was drawn from:
   `{ layout, made, date, colors, defaultColor, lineOrder, theme, style }`,
   the record's own values as they were at the end of the draw that produced
-  it (`style` is what `map.build` was sent, in the app's names, empty for a
-  map drawn without one, and a block from before the field reads as empty),
+  it (`style` is what `map.build` was sent, in the app's names, the train
+  numbers included, empty for a map drawn without one, and a block from
+  before the field reads as empty),
   or `null`. It is written by the four handlers that write the record at
   the end of a draw - `completeLayout`, `completeRebuild`, `completeColors`
   and `completeOrder` - and by nothing else, so an edit that draws nothing

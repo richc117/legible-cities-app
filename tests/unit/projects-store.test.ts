@@ -1318,6 +1318,47 @@ describe('completeStyle', () => {
     )
   })
 
+  // Issue 391 (spec 034, FR-008): the markers, the face and the trains live
+  // in the style, under the same writer, the same rules and the same checks.
+  it('writes the markers, the face and the trains, and keeps none at the engine’s own', async () => {
+    const project = await laidOut()
+    const after = await store.completeStyle(project.id, {
+      stationShape: 'tick',
+      interchangeShape: 'circle',
+      labelFont: 'inter',
+      dotRadius: 8,
+      trail: 0,
+    })
+    expect(after.style).toEqual({ stationShape: 'tick', labelFont: 'inter', dotRadius: 8 })
+    expect(after.drawn?.style).toEqual({ stationShape: 'tick', labelFont: 'inter', dotRadius: 8 })
+    const fresh = new ProjectStore(home, (message) => lines.push(message))
+    expect((await fresh.get(project.id)).style, 'and reads back').toEqual(after.style)
+    expect(after.version, 'without moving the version').toBe(2)
+  })
+
+  it('refuses a marker, a face or a train number the engine would, in its sentence', async () => {
+    const project = await laidOut()
+    await expect(
+      store.completeStyle(project.id, { stationShape: 'triangle' } as never),
+    ).rejects.toThrow('style.station_shape must be circle, tick or square')
+    await expect(
+      store.completeStyle(project.id, { interchangeShape: 'tick' } as never),
+    ).rejects.toThrow('style.interchange_shape must be circle or square')
+    await expect(
+      store.completeStyle(project.id, { labelFont: 'comic-sans' } as never),
+    ).rejects.toThrow('style.label_font must be system, inter or atkinson-hyperlegible-next')
+    await expect(store.completeStyle(project.id, { dotRadius: 1 })).rejects.toThrow(
+      "dot_radius must be from 2 to 12, in SVG user units at the map's width",
+    )
+    await expect(store.completeStyle(project.id, { trail: 4 })).rejects.toThrow(
+      'trail must be from 0 to 3, in seconds of playback',
+    )
+    await expect(store.completeStyle(project.id, { preset: 'beck' } as never)).rejects.toThrow(
+      'the style does not take preset',
+    )
+    expect((await store.get(project.id)).style, 'nothing was written').toEqual({})
+  })
+
   it('refuses a project with no layout: there is nothing to draw in those sizes', async () => {
     const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
     await expect(store.completeStyle(project.id, { lineWidth: 12 })).rejects.toThrow(

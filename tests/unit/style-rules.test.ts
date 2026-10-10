@@ -121,6 +121,47 @@ describe('the style map.build is sent', () => {
     )
     for (const colour of COLOURS) expect(sent, colour).not.toHaveProperty(colour)
   })
+
+  // Issue 391 (spec 034, FR-004 and FR-009): the markers and the face go
+  // inside `style` in the engine's names, the two train numbers beside it as
+  // parameters of `map.build` itself, and nothing at all for what is unset.
+  it('carries a marker and the face inside the style, in the engine’s names', () => {
+    expect(styleParams({ stationShape: 'tick' })).toEqual({ style: { station_shape: 'tick' } })
+    expect(styleParams({ interchangeShape: 'square', labelFont: 'inter' })).toEqual({
+      style: { interchange_shape: 'square', label_font: 'inter' },
+    })
+  })
+
+  it('carries the train numbers beside the style, never inside it', () => {
+    // Mutation: `dot_radius` and `trail` put inside `style`. The engine
+    // refuses the whole draw ("style does not take dot_radius").
+    expect(styleParams({ dotRadius: 8, trail: 1.5 })).toEqual({ dot_radius: 8, trail: 1.5 })
+    expect('style' in styleParams({ dotRadius: 8 }), 'no style for the trains alone').toBe(false)
+    const both = styleParams({ lineWidth: 12, labelFont: 'inter', dotRadius: 8, trail: 2 })
+    expect(both).toEqual({
+      style: { line_width: 12, label_font: 'inter' },
+      dot_radius: 8,
+      trail: 2,
+    })
+    expect(mapStyle({ dotRadius: 8, trail: 2 }), 'the map’s style has none of them').toBeNull()
+  })
+
+  it('carries nothing of the new fields at the engine’s own value', () => {
+    expect(
+      styleParams({
+        stationShape: 'circle',
+        interchangeShape: 'circle',
+        labelFont: 'system',
+        dotRadius: 5,
+        trail: 0,
+      }),
+    ).toEqual({})
+  })
+
+  it('carries nothing at all while a train number would be refused', () => {
+    expect(styleParams({ trail: 9, lineWidth: 12, labelFont: 'inter' })).toEqual({})
+    expect(styleParams({ dotRadius: 1, stationShape: 'tick' })).toEqual({})
+  })
 })
 
 const RANGE = (key: StyleKey): string => styleRangeSentence(key)
@@ -149,6 +190,9 @@ describe('what a field shows and takes', () => {
       labelSize: '20',
       labelOffset: '9',
       padding: '24',
+      // And the two train numbers (issue 391), the engine's own while unset.
+      dotRadius: '5',
+      trail: '0',
     })
   })
 
