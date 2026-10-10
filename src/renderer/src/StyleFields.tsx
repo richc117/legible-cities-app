@@ -31,6 +31,7 @@ import {
   TRAINS_LEGEND,
   TRAINS_SENTENCE,
   UNIT_SENTENCE,
+  viewForRecord,
   viewOf,
   type View,
 } from './styleRules'
@@ -138,9 +139,16 @@ export default function StyleFields({
   // arrives while a commit is still waiting, or while its own build goes
   // (a rename is enough to bring one), is not allowed to throw the sizes
   // off the screen.
+  //
+  // Nor is a choice that is waiting for a number written by hand to be
+  // mended (`viewForRecord`): it has not been drawn, so the record cannot
+  // hold it yet.
+  const shownFor = useRef(project.id)
   useEffect(() => {
     if (schedule.pending || drawing.current) return
-    setView((current) => viewOf(project.style, current))
+    const sameProject = shownFor.current === project.id
+    shownFor.current = project.id
+    setView((current) => viewForRecord(project.style, current, sameProject))
   }, [project.id, project.style, schedule])
 
   // A build that stopped wrote nothing, so the sizes on screen must go back

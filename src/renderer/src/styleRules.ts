@@ -339,6 +339,21 @@ export function viewOf(style: ProjectStyle, previous?: View): View {
 }
 
 /**
+ * The group when the record arrives again - a build written, a rename, a
+ * theme pressed: the record's style, keeping a refused figure waiting where
+ * it was typed (`viewOf`). Except while the group shows a style that cannot
+ * be drawn, which only a record holding a number written by hand out of
+ * range gives it: a choice made beside that number has not been drawn and
+ * so cannot be in the record, and taking the record would take the choice
+ * off the screen (spec 034's edge case, "a choice made meanwhile is shown
+ * and drawn with the fix"). Another project's record is always taken.
+ */
+export function viewForRecord(style: ProjectStyle, current: View, sameProject: boolean): View {
+  if (sameProject && !drawable(current.style)) return current
+  return viewOf(style, current)
+}
+
+/**
  * A marker or the face chosen (spec 034, FR-002 and FR-003): the view with
  * the choice in its style, the engine's own kept as no choice, and the
  * fields as they were - a figure refused and waiting stays where it is.

@@ -23,6 +23,7 @@ import {
   mapStyle,
   styleParams,
   TRAIN_FIELDS,
+  viewForRecord,
   viewOf,
   type Drafts,
 } from '../../src/renderer/src/styleRules'
@@ -478,5 +479,25 @@ describe('what Reset has to do', () => {
     const waiting = viewOf({})
     waiting.drafts.dotRadius = '30'
     expect(resettable(waiting), 'a refused figure waiting').toBe(true)
+  })
+})
+
+describe('the group when the record arrives again', () => {
+  it('takes the record’s style, keeping a refused figure waiting', () => {
+    const current = viewOf({ lineWidth: 12 })
+    current.drafts.dotRadius = '30'
+    current.problems.dotRadius = styleRangeSentence('dotRadius')
+    const next = viewForRecord({ lineWidth: 12, labelFont: 'inter' }, current, true)
+    expect(next.style).toEqual({ lineWidth: 12, labelFont: 'inter' })
+    expect(next.drafts.dotRadius).toBe('30')
+  })
+
+  it('keeps a choice waiting beside a number written by hand out of range, for the same project', () => {
+    // Mutation: the record always taken - a rename or a theme pressed would
+    // take the choice off the screen before the number is mended.
+    const record: ProjectStyle = { trail: 9 }
+    const chosen = chooseIn(viewOf(record), 'stationShape', 'tick')
+    expect(viewForRecord(record, chosen, true)).toBe(chosen)
+    expect(viewForRecord(record, chosen, false).style, 'another project’s record').toEqual(record)
   })
 })
