@@ -393,14 +393,17 @@ describe('a gesture and its release: the map follows the end, never an interval'
 // panel that has gone back to building on every colour or on a timer.
 describe('the line colours panel builds on the picker’s release', () => {
   const source = readFileSync(resolve(__dirname, '../../src/renderer/src/LineColours.tsx'), 'utf8')
+  // The chip, its panel and the picker in it live in a file of their own
+  // since issue 394, which gave a line's casing the same control.
+  const chip = readFileSync(resolve(__dirname, '../../src/renderer/src/ColourChip.tsx'), 'utf8')
   // Each expectation is a boolean with the rule it holds in its message, so
   // a rename fails by naming the rule and not by dumping the file.
-  const has = (pattern: RegExp): boolean => pattern.test(source)
+  const has = (pattern: RegExp, text = source): boolean => pattern.test(text)
   const count = (pattern: RegExp): number => (source.match(pattern) ?? []).length
 
   it('hands the picker an onChangeEnd, and its onChange only follows', () => {
     expect(
-      has(/<HexColorPicker[^>]*onChange=\{onPick\}[^>]*onChangeEnd=\{onPickEnd\}/),
+      has(/<HexColorPicker[^>]*onChange=\{onPick\}[^>]*onChangeEnd=\{onPickEnd\}/, chip),
       'the picker is given onChange={onPick} to follow and onChangeEnd={onPickEnd} to release',
     ).toBe(true)
     // Two rows of controls (the default's and each line's), each with both.
@@ -425,6 +428,10 @@ describe('the line colours panel builds on the picker’s release', () => {
     expect(
       has(/\bdebounce\(/),
       'LineColours.tsx does not call a debounce: a colour builds on release, never on a quiet interval (issue 262)',
+    ).toBe(false)
+    expect(
+      has(/from '\.\/debounce'/, chip) || has(/\bdebounce\(/, chip),
+      'ColourChip.tsx neither: its picker reports a gesture’s end, and the build is the panel’s',
     ).toBe(false)
   })
 })
