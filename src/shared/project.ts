@@ -4,6 +4,7 @@
 
 import { readStoredChoice, type ExportChoice } from './export'
 import { isLayoutId } from './layout'
+import type { LineOptions } from './protocol'
 import { isStorableFolder } from './settings'
 import { readStations, type Station } from './trip'
 
@@ -251,6 +252,16 @@ export interface DrawnFrom {
    */
   style: ProjectStyle
   /**
+   * The options its lines were drawn with (issue 394, spec 036): what
+   * `map.build` was sent as `lines`, as `linesSent` makes it - a name, a
+   * hidden line, a width, a casing and a dash by line label, each only where
+   * it is not the engine's own. Absent for a map drawn with none, which is
+   * every map drawn before the field existed, so a block from before it
+   * reads as what it was drawn with. Like the colours it is a cheap edit's
+   * and raises no staleness.
+   */
+  lines?: ProjectLines
+  /**
    * The stations the map draws, as `map.build` listed them for it - each an
    * id the page's `setTrip` takes and the name the map writes - in the
    * engine's order (issue 272, spec 030 FR-004). Cell 03's Trip section
@@ -289,6 +300,24 @@ export interface ProjectRecord {
   colors: Record<string, string>
   defaultColor: string
   lineOrder: string[]
+  /**
+   * What a person chose for each line beyond its colour and its place
+   * (issue 394, spec 036): a name, whether it is drawn, its width, a casing
+   * and a dash, by line label, in the engine's own names, so an entry is
+   * exactly what `map.build` takes for the line. Each field is kept only
+   * where it is not the engine's own and an entry with none is removed
+   * (`linesSent`), so a project that never touched them has no `lines` at
+   * all. Written once the map carries them (`projects.completeLines`), as
+   * the colours are.
+   *
+   * Added at `RECORD_VERSION` 2 without moving it
+   * (specs/028-the-notebook/contracts/run-graph.md, "Adding a field"): its
+   * absence is every line drawn as the engine draws it, which is what every
+   * map before it was, and the one released build holds records at version 1
+   * and reads this one as read-only, so it never writes one and cannot drop
+   * a name a person typed.
+   */
+  lines?: ProjectLines
   theme: Theme
   /**
    * What the project was last set to export: the preset, the storyboard and
@@ -1175,6 +1204,304 @@ export function withTuning(
   return next
 }
 
+// ---- A line's options (issue 394, spec 036; engine issues 42 and 55, at
+// v0.12.0 and v0.16.0)
+
+/**
+ * What a person chose for one line beyond its colour and its place: a name,
+ * whether it is drawn, its width, a casing and a dash. It is the engine's own
+ * `LineOptions`, so the record's entry and `map.build`'s are one shape and a
+ * pin that moves one is a build error here. Every field is optional and the
+ * absence of one is the engine's own: the line's label, drawn, a width of 1,
+ * no casing, solid.
+ */
+export type LineChoice = LineOptions
+
+/** The options of every line that has any, by line label. */
+export type ProjectLines = Record<string, LineChoice>
+
+/** How a line's stroke is painted, in the engine's words and order (`render.LINE_DASHES`). */
+export const LINE_DASHES = ['solid', 'dashed', 'dotted'] as const satisfies readonly NonNullable<
+  LineChoice['dash']
+>[]
+
+export type LineDash = (typeof LINE_DASHES)[number]
+
+/**
+ * What the engine accepts of a line's options at v0.16.0 (`serve._lines`,
+ * `render.LINE_WIDTH_RANGE` and `CASING_WIDTH_RANGE`): a name of 1 to 40
+ * characters, counted as Python counts them (code points), with no line
+ * break of any kind; a width that is a multiple of the map's line width; a
+ * casing that is a multiple of it on each side. Held to the committed
+ * protocol schema by a unit test.
+ */
+export const LINE_NAME_MAX = 40
+export const LINE_WIDTH_RANGE = { low: 0.75, high: 1.5 } as const
+export const CASING_WIDTH_RANGE = { low: 0, high: 1 } as const
+
+/**
+ * The engine's own, as data: what a field shows while it holds nothing, and
+ * what a value is compared with to know it is no choice at all. A casing of
+ * width 0 draws none.
+ */
+export const DEFAULT_LINE = { width: 1, casingWidth: 0, dash: 'solid' } as const
+
+/**
+ * What a casing is drawn in until a person chooses another (spec 036,
+ * FR-005): white, a literal, as the engine takes it; the page's theme does
+ * not change it. Here and not in the renderer, whose component files carry
+ * no colour literal.
+ */
+export const DEFAULT_CASING_COLOR = '#ffffff'
+
+/** The five fields, in the engine's order, and nothing else. */
+const LINE_FIELDS = [
+  'name',
+  'hidden',
+  'width',
+  'casing',
+  'dash',
+] as const satisfies readonly (keyof LineChoice)[]
+
+/** No line break of any kind, as the engine's `LINE_NAME_PATTERN` says it. */
+const LINE_BREAK = /[\r\n\u2028\u2029]/
+
+/** A finite number, and not a boolean: what the engine's `_number` takes. */
+const isLineNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
+
+/** A name the engine takes: 1 to 40 code points, with no line break. */
+export function isLineName(value: unknown): value is string {
+  if (typeof value !== 'string') return false
+  const length = [...value].length
+  return length >= 1 && length <= LINE_NAME_MAX && !LINE_BREAK.test(value)
+}
+
+/** A width the engine takes: a multiple of the line width inside its closed range. */
+export function isLineWidth(value: unknown): value is number {
+  return isLineNumber(value) && value >= LINE_WIDTH_RANGE.low && value <= LINE_WIDTH_RANGE.high
+}
+
+/** A casing's width the engine takes, 0 included (which draws none). */
+export function isCasingWidth(value: unknown): value is number {
+  return isLineNumber(value) && value >= CASING_WIDTH_RANGE.low && value <= CASING_WIDTH_RANGE.high
+}
+
+export function isLineDash(value: unknown): value is LineDash {
+  return LINE_DASHES.some((dash) => dash === value)
+}
+
+/** A whole casing the engine takes: exactly a width in range and a `#rrggbb` colour. */
+function isCasing(value: unknown): value is { width: number; color: string } {
+  if (!isObject(value)) return false
+  const keys = Object.keys(value)
+  return (
+    keys.length === 2 &&
+    keys.includes('width') &&
+    keys.includes('color') &&
+    isCasingWidth(value.width) &&
+    isHexColor(value.color)
+  )
+}
+
+/**
+ * A label as Python's `repr` writes it, which is how the engine names a line
+ * in a refusal (`lines['A'].width ...`): in single quotes, or in double quotes
+ * where the label holds a single quote and no double one; a backslash and the
+ * quote escaped, and a character Python does not print as itself written as
+ * its code. A label the record can hold carries no control character, so the
+ * last rule is for the rare space or format character.
+ */
+export function pythonRepr(text: string): string {
+  const quote = text.includes("'") && !text.includes('"') ? '"' : "'"
+  let out = quote
+  for (const character of text) {
+    const code = character.codePointAt(0) ?? 0
+    if (character === '\\' || character === quote) out += `\\${character}`
+    else if (character === '\n') out += '\\n'
+    else if (character === '\r') out += '\\r'
+    else if (character === '\t') out += '\\t'
+    else if (character !== ' ' && /[\p{C}\p{Z}]/u.test(character)) {
+      const hex = code.toString(16)
+      out +=
+        code < 0x100
+          ? `\\x${hex.padStart(2, '0')}`
+          : code < 0x10000
+            ? `\\u${hex.padStart(4, '0')}`
+            : `\\U${hex.padStart(8, '0')}`
+    } else out += character
+  }
+  return out + quote
+}
+
+/** Where a refusal names a line's field, as the engine writes the path. */
+const linePath = (label: string): string => `lines[${pythonRepr(label)}]`
+
+/** The engine's sentence for a name it does not take, word for word `serve._lines`'s. */
+export function lineNameSentence(label: string): string {
+  return `${linePath(label)}.name must be from 1 to ${LINE_NAME_MAX} characters with no line break`
+}
+
+/** The engine's sentence for a width outside its range. */
+export function lineWidthSentence(label: string): string {
+  const { low, high } = LINE_WIDTH_RANGE
+  return `${linePath(label)}.width must be from ${low} to ${high}, as a multiple of line_width`
+}
+
+/**
+ * The engine's sentence for a map whose every line is hidden (ADR-053, "as of
+ * 7 Oct 2026"), less the feed key the engine opens it with: cell 05 says it
+ * beside the switch that would have hidden the last line.
+ */
+export const EVERY_LINE_HIDDEN =
+  'every line on this map is hidden; show at least one line to draw it'
+
+/**
+ * Why the engine would refuse one line's options, in its own sentence and
+ * order (`serve._lines` at v0.16.0), or null: the name, hidden, the width, the
+ * casing, the dash, and then any key it does not take.
+ */
+export function validateLineChoice(label: string, choice: unknown): string | null {
+  const at = linePath(label)
+  if (!isObject(choice)) return `${at} must be an object of name, hidden, width, casing and dash`
+  // A field that is undefined is a field not given, as the style's validator
+  // reads one: JSON never carries one, and a call over the bridge can.
+  if (choice.name !== undefined && !isLineName(choice.name)) return lineNameSentence(label)
+  if (choice.hidden !== undefined && typeof choice.hidden !== 'boolean')
+    return `${at}.hidden must be true or false`
+  if (choice.width !== undefined && !isLineWidth(choice.width)) return lineWidthSentence(label)
+  if (choice.casing !== undefined) {
+    const casing = choice.casing
+    if (!isObject(casing) || Object.keys(casing).some((key) => key !== 'width' && key !== 'color'))
+      return `${at}.casing must be an object of width and color`
+    if (casing.width === undefined || casing.color === undefined)
+      return `${at}.casing must have both width and color`
+    if (!isCasingWidth(casing.width)) {
+      const { low, high } = CASING_WIDTH_RANGE
+      return `${at}.casing.width must be from ${low} to ${high}, as a multiple of line_width on each side`
+    }
+    if (!isHexColor(casing.color)) return `${at}.casing.color must be a colour written #rrggbb`
+  }
+  if (choice.dash !== undefined && !isLineDash(choice.dash))
+    return `${at}.dash must be ${either(LINE_DASHES)}`
+  const rest = Object.keys(choice)
+    .filter((key) => !(LINE_FIELDS as readonly string[]).includes(key))
+    .sort()
+  if (rest.length > 0) return `${at} does not take ${rest.join(', ')}`
+  return null
+}
+
+/**
+ * The options a store may be asked to write: an object of line label to one
+ * line's options, each label one the record can hold, no more lines than a
+ * record holds colours, and each line's options as the engine takes them, in
+ * its sentences. Null when they are. Checked in the main-side handler because
+ * they arrived from another process, and in the store because the store is
+ * the trusted layer.
+ */
+export function validateLines(lines: unknown): string | null {
+  if (!isObject(lines))
+    return "lines must be an object of line label to the line's name, hidden, width, casing and dash"
+  const entries = Object.entries(lines)
+  if (entries.length > COLORS_MAX) return `that is more than ${COLORS_MAX} lines`
+  for (const [label, choice] of entries) {
+    const problem = validateLineLabel(label) ?? validateLineChoice(label, choice)
+    if (problem !== null) return problem
+  }
+  return null
+}
+
+/**
+ * One line's options as they are kept and sent: only the fields that are not
+ * the engine's own, in the engine's order. A name equal to the line's own
+ * label is no name (it would draw what is drawn without it), `hidden` is kept
+ * only as true, a width of 1, a casing of width 0 and a solid dash are no
+ * choice. Empty when nothing is left.
+ */
+export function settledLine(label: string, choice: LineChoice): LineChoice {
+  const kept: LineChoice = {}
+  if (choice.name !== undefined && choice.name !== label) kept.name = choice.name
+  if (choice.hidden === true) kept.hidden = true
+  if (choice.width !== undefined && choice.width !== DEFAULT_LINE.width) kept.width = choice.width
+  if (choice.casing !== undefined && choice.casing.width !== DEFAULT_LINE.casingWidth)
+    kept.casing = { width: choice.casing.width, color: choice.casing.color }
+  if (choice.dash !== undefined && choice.dash !== DEFAULT_LINE.dash) kept.dash = choice.dash
+  return kept
+}
+
+/**
+ * Every line's options as they are kept, and exactly what `map.build` is sent
+ * as `lines`: each line settled (`settledLine`), and a line with nothing left
+ * not there at all, so a project that chose nothing has `{}` and sends no
+ * `lines` key. `hidden` is never sent false.
+ */
+export function linesSent(lines: ProjectLines | undefined): ProjectLines {
+  const kept: ProjectLines = {}
+  for (const [label, choice] of Object.entries(lines ?? {})) {
+    const line = settledLine(label, choice)
+    if (Object.keys(line).length > 0) kept[label] = line
+  }
+  return kept
+}
+
+/** Has any line an option of its own? */
+export function linesAreSet(lines: ProjectLines | undefined): boolean {
+  return Object.keys(linesSent(lines)).length > 0
+}
+
+/** Two sets of options that send the same thing; a field at the engine's own is no field. */
+export function sameLines(a: ProjectLines | undefined, b: ProjectLines | undefined): boolean {
+  return JSON.stringify(sortedLines(linesSent(a))) === JSON.stringify(sortedLines(linesSent(b)))
+}
+
+/** The same options with the labels in one order, so two that differ only in it compare equal. */
+function sortedLines(lines: ProjectLines): [string, LineChoice][] {
+  return Object.entries(lines).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+}
+
+/**
+ * The options a record holds, read field by field: a field the store would
+ * refuse on write - a name past 40 or with a line break, a width or casing
+ * outside its range, a casing without its colour, a dash the engine does not
+ * offer, `hidden` that is not a boolean, a key not on the list - is read as
+ * not held, the colours' rule, so a value written by hand never reaches
+ * `map.build`. A label the record could not hold is dropped with its line, a
+ * line with nothing left is dropped, and no more lines are read than a record
+ * holds colours. Undefined where nothing is left, so the record carries no key.
+ */
+export function readLines(value: unknown): ProjectLines | undefined {
+  if (!isObject(value)) return undefined
+  const read: ProjectLines = {}
+  let count = 0
+  for (const [label, stored] of Object.entries(value)) {
+    if (count === COLORS_MAX) break
+    if (validateLineLabel(label) !== null || !isObject(stored)) continue
+    const choice: LineChoice = {}
+    if (isLineName(stored.name)) choice.name = stored.name
+    if (typeof stored.hidden === 'boolean') choice.hidden = stored.hidden
+    if (isLineWidth(stored.width)) choice.width = stored.width
+    if (isCasing(stored.casing)) choice.casing = { ...stored.casing }
+    if (isLineDash(stored.dash)) choice.dash = stored.dash
+    const line = settledLine(label, choice)
+    if (Object.keys(line).length === 0) continue
+    read[label] = line
+    count += 1
+  }
+  return Object.keys(read).length > 0 ? read : undefined
+}
+
+/**
+ * A record with its options set to what was asked, settled, or no key at all
+ * where nothing is left, so a reset leaves nothing behind in the file. The
+ * one place the field is written, for the store.
+ */
+export function withLines(record: ProjectRecord, lines: ProjectLines): ProjectRecord {
+  const next: ProjectRecord = { ...record }
+  const kept = linesSent(lines)
+  if (Object.keys(kept).length > 0) next.lines = kept
+  else delete next.lines
+  return next
+}
+
 /**
  * What a record that has just been drawn was drawn from: the eight fields
  * of the record itself, copied (the style as `styleSent` makes it). It is
@@ -1198,6 +1525,10 @@ export function drawnFrom(record: ProjectRecord): DrawnFrom | null {
     theme: record.theme,
     style: styleSent(record.style),
   }
+  // The line options as they were sent (issue 394), and no key for none, so
+  // a block drawn without any is the block it always was.
+  const lines = linesSent(record.lines)
+  if (Object.keys(lines).length > 0) drawn.lines = lines
   // The stations are the layout's (issue 272). A draw writes the list its
   // build answered (`withStations`); this is the fallback for one that
   // answered none: the list the last draw kept, while the layout and its
@@ -1360,6 +1691,10 @@ export function parseRecord(json: unknown): Parsed {
   if (tuning !== undefined) record.tuning = tuning
   const laidOutWith = readTuning(json.laidOutWith)
   if (laidOutWith !== undefined) record.laidOutWith = laidOutWith
+  // The line options (issue 394), the same way: absent unless something is
+  // left of them once read.
+  const lines = readLines(json.lines)
+  if (lines !== undefined) record.lines = lines
   return { record, readOnly: version > RECORD_VERSION }
 }
 
@@ -1458,6 +1793,10 @@ function readDrawn(value: unknown): DrawnFrom | null {
     // the field was drawn without one.
     style: readStyle(value.style, RECORD_VERSION),
   }
+  // Written as the draw sent them (issue 394), so read under the record's
+  // own rule; a block from before the field was drawn with none.
+  const lines = readLines(value.lines)
+  if (lines !== undefined) drawn.lines = lines
   // The stations are read on their own (issue 272): a list that is not
   // whole is no list, and leaves the rest of the block as it was, because
   // the block says whether the map is current and the list says only what

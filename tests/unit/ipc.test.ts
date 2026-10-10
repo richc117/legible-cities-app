@@ -76,6 +76,9 @@ describe('registerProjectHandlers', () => {
       [CHANNELS.projectsCompleteColors, 'aaaaaaaaaaaa', { colors: {}, defaultColor: '#888888' }],
       [CHANNELS.projectsCompleteOrder, 'aaaaaaaaaaaa', ['A']],
       [CHANNELS.projectsCompleteStyle, 'aaaaaaaaaaaa', { lineWidth: 12 }],
+      // The line options (issue 394) are written at the end of a draw, as
+      // the colours are.
+      [CHANNELS.projectsCompleteLines, 'aaaaaaaaaaaa', { A: { hidden: true } }],
       [CHANNELS.projectsSetDate, 'aaaaaaaaaaaa', '2026-09-15'],
       [CHANNELS.projectsSetTheme, 'aaaaaaaaaaaa', 'sepia'],
       // The layout's tuning (issue 385) is a record write like the theme.

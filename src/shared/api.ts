@@ -22,6 +22,7 @@ import type {
   DeleteResult,
   LineOrder,
   Palette,
+  ProjectLines,
   ProjectRecord,
   ProjectInputs,
   ProjectStyle,
@@ -141,6 +142,16 @@ export interface Api {
      * before the store sees it, and the store checks it again.
      */
     completeStyle(id: string, style: ProjectStyle, stations?: Station[]): Promise<ProjectRecord>
+    /**
+     * What a person chose for the lines beyond their colours and their order
+     * (issue 394, spec 036): a name, hidden, a width, a casing and a dash by
+     * line label, written once the map has been drawn with them, as the
+     * colours are. The whole set the cell showed is what is written; the
+     * record keeps only the fields away from the engine's own. The main
+     * process checks every label and field against the engine's own rules,
+     * in its sentences, and the store checks them again.
+     */
+    completeLines(id: string, lines: ProjectLines, stations?: Station[]): Promise<ProjectRecord>
     /**
      * The service day a person chose (A5.5-15), written the moment it is
      * chosen rather than after the rebuild that draws it, as the inputs and
@@ -372,6 +383,7 @@ export const CHANNELS = {
   projectsCompleteColors: 'projects:complete-colors',
   projectsCompleteOrder: 'projects:complete-order',
   projectsCompleteStyle: 'projects:complete-style',
+  projectsCompleteLines: 'projects:complete-lines',
   projectsSetDate: 'projects:set-date',
   projectsSetTheme: 'projects:set-theme',
   projectsSetTuning: 'projects:set-tuning',

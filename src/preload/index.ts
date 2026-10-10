@@ -81,6 +81,8 @@ const api: Api = {
       invoke(CHANNELS.projectsCompleteOrder, id, order, stations),
     completeStyle: (id, style, stations) =>
       invoke(CHANNELS.projectsCompleteStyle, id, style, stations),
+    completeLines: (id, lines, stations) =>
+      invoke(CHANNELS.projectsCompleteLines, id, lines, stations),
     setDate: (id, date) => invoke(CHANNELS.projectsSetDate, id, date),
     setTheme: (id, theme) => invoke(CHANNELS.projectsSetTheme, id, theme),
     setTuning: (id, tuning) => invoke(CHANNELS.projectsSetTuning, id, tuning),

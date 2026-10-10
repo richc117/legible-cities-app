@@ -6,6 +6,7 @@ import {
   paletteOf,
   type LineOrder,
   type Palette,
+  type ProjectLines,
   type ProjectRecord,
   type ProjectStyle,
   type ServiceWindow,
@@ -20,6 +21,7 @@ import {
 } from '../../../shared/jobs'
 import type { Diagnostics, MapBuildResult, Methods } from '../../../shared/protocol'
 import { readStations, type Station } from '../../../shared/trip'
+import { linesParams } from '../lineOptions'
 import type { Stage } from '../ProgressLine'
 import { styleParams } from '../styleRules'
 import { askedWith, tuningParams } from '../tuningRules'
@@ -49,8 +51,8 @@ import { askedWith, tuningParams } from '../tuningRules'
 // the day the map already showed, never the record's, which may be a day
 // chosen and waiting to be drawn. A restyle is the same shape for the map's
 // sizes (issue 350). Every draw, whichever started it, sends the palette,
-// the order and the style the project is being drawn with, so the map on
-// screen and the record never disagree.
+// the order, the style and the line options (issue 394) the project is
+// being drawn with, so the map on screen and the record never disagree.
 
 export interface RunSnapshot {
   state: RunState
@@ -559,6 +561,7 @@ export class LayoutRun {
           paletteOf(project),
           orderOf(project),
           project.style,
+          project.lines,
         )
         if (this.#cancelled) return this.#stopped()
 
@@ -641,6 +644,7 @@ export class LayoutRun {
           paletteOf(project),
           orderOf(project),
           project.style,
+          project.lines,
         )
         if (this.#cancelled) return this.#stopped()
         await completeRebuild(project.id, { date, ...stationsOf(stations) })
@@ -705,6 +709,7 @@ export class LayoutRun {
           palette,
           orderOf(project),
           project.style,
+          project.lines,
         )
         if (this.#cancelled) return this.#stopped()
         await (stations === null
@@ -769,6 +774,7 @@ export class LayoutRun {
           paletteOf(project),
           order,
           project.style,
+          project.lines,
         )
         if (this.#cancelled) return this.#stopped()
         await (stations === null
@@ -840,6 +846,7 @@ export class LayoutRun {
           paletteOf(project),
           orderOf(project),
           style,
+          project.lines,
         )
         if (this.#cancelled) return this.#stopped()
         await (stations === null
@@ -911,8 +918,8 @@ export class LayoutRun {
    * The map call, from a layout by its id, for a day, in a palette; its
    * stages reported as they finish. The palette is an argument rather than
    * the project's, because a colour change draws before it is stored, as a
-   * chosen day is drawn before it is stored (A3-04, A4-01); the order and
-   * the style are arguments for the same reason.
+   * chosen day is drawn before it is stored (A3-04, A4-01); the order, the
+   * style and the line options are arguments for the same reason.
    *
    * It answers what the engine measured rather than setting it: the figures
    * belong to a finished run, beside the sentence that says it finished, so
@@ -931,6 +938,7 @@ export class LayoutRun {
     palette: Palette,
     order: LineOrder,
     style: ProjectStyle,
+    lines: ProjectLines | undefined,
   ): Promise<{ report: RunReport | null; stations: Station[] | null }> {
     const map = this.#options.client.request('map.build', {
       key: project.feed,
@@ -957,6 +965,12 @@ export class LayoutRun {
       // the trains' `dot_radius` and `trail` beside it, on every draw, so a
       // day, a colour or an order keeps them (`styleParams`).
       ...styleParams(style),
+      // The line options, the same way (issue 394): a name, a hidden line, a
+      // width, a casing and a dash by line label, left out when there are
+      // none, so a project that chose none asks for exactly what it asked
+      // for before; on every draw, so a day, a colour, an order or a size
+      // keeps a hidden line hidden.
+      ...linesParams(lines),
     })
     this.#inFlight = map
     map.onProgress((p) => this.#report(p))

@@ -1350,6 +1350,60 @@ describe('the sizes on every draw', () => {
   })
 })
 
+// Issue 394 (spec 036, FR-009): the line options go on every draw the
+// record is drawn with, and on none for a project that chose none.
+describe('the line options on every draw', () => {
+  const stored = { layout: LAYOUT, date: '2026-09-15', service: WINDOW }
+  const lines = { B: { hidden: true }, A: { name: 'Airport Express', width: 1 } }
+  const sent = { B: { hidden: true }, A: { name: 'Airport Express' } }
+
+  it('sends no lines at all for a project that chose none, whichever run draws', async () => {
+    // Mutation: the draw sends `lines` whatever it holds - `{}` then goes on
+    // every request, which no project sent before this feature.
+    const layoutRun = setup({})
+    layoutRun.begin()
+    await laidOut(layoutRun.calls)
+    expect(layoutRun.calls[2].params, 'a layout run').not.toHaveProperty('lines')
+    const plain = setup({ ...stored, lines: { A: { hidden: false } } })
+    plain.run.rebuild(plain.record, READY, '2026-09-16')
+    await tick()
+    expect(plain.calls[0].params, 'only the engine’s own').not.toHaveProperty('lines')
+  })
+
+  it('goes with every draw of a project that chose some, so a day, a colour, an order or a size keeps them', async () => {
+    // Mutation: one caller of the draw passes no lines - a colour changed
+    // then draws a hidden line back on the map.
+    const withLines = { ...stored, lines }
+    const layoutRun = setup({ lines })
+    layoutRun.begin()
+    await laidOut(layoutRun.calls)
+    expect(layoutRun.calls[2].params).toMatchObject({ lines: sent })
+
+    const day = setup(withLines)
+    day.run.rebuild(day.record, READY, '2026-09-16')
+    await tick()
+    expect((day.calls[0].params as { lines: unknown }).lines, 'a chosen day').toEqual(sent)
+
+    const colour = setup(withLines)
+    colour.run.recolour(colour.record, READY, { colors: {}, defaultColor: '#112233' })
+    await tick()
+    expect((colour.calls[0].params as { lines: unknown }).lines, 'a colour').toEqual(sent)
+
+    const order = setup(withLines)
+    order.run.reorder(order.record, READY, ['B', 'A'])
+    await tick()
+    expect((order.calls[0].params as { lines: unknown }).lines, 'an order').toEqual(sent)
+
+    const size = setup(withLines)
+    size.run.restyle(size.record, READY, { lineWidth: 12 })
+    await tick()
+    expect((size.calls[0].params as { lines: unknown }).lines, 'a size').toEqual(sent)
+    // Beside the colours and the order, never in place of them.
+    expect(colour.calls[0].params).toMatchObject({ colors: {}, default_color: '#112233' })
+    expect(order.calls[0].params).toMatchObject({ line_order: ['B', 'A'] })
+  })
+})
+
 describe('restyle', () => {
   const stored = { layout: LAYOUT, date: '2026-09-15', service: WINDOW }
 

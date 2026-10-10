@@ -26,17 +26,20 @@ import {
   validateMode,
   validateName,
   validateLineOrder,
+  validateLines,
   validatePalette,
   validateStyle,
   validateTheme,
   validateTuning,
   validateDestination,
   sameTuning,
+  withLines,
   withTuning,
   type CreateProjectInput,
   type DeleteResult,
   type LineOrder,
   type Palette,
+  type ProjectLines,
   type ProjectInputs,
   type ProjectRecord,
   type ProjectStyle,
@@ -790,6 +793,46 @@ export class ProjectStore {
         style: settledStyle(style),
         modified: new Date().toISOString(),
       },
+      stations,
+    )
+    await this.writeAtomic(id, updated)
+    return updated
+  }
+
+  /**
+   * What a person chose for the lines beyond their colours and their order
+   * (issue 394, spec 036) - a name, hidden, a width, a casing, a dash -
+   * written once the map has been drawn with them, as the colours are: the
+   * record never claims an option the page on screen does not show. The whole
+   * set the cell showed is what is written, not a change to the one stored,
+   * and only the fields away from the engine's own are kept (`withLines`), so
+   * a set of nothing removes the key.
+   *
+   * A redraw of the *same day*, so it goes through `redrew` as a recolour
+   * does: the day the map already showed stays the one it showed.
+   */
+  async completeLines(
+    id: string,
+    lines: ProjectLines,
+    stations?: Station[],
+  ): Promise<ProjectRecord> {
+    return this.#track(() =>
+      this.#serial(id, () => this.#completeLinesTracked(id, lines, stations)),
+    )
+  }
+
+  async #completeLinesTracked(
+    id: string,
+    lines: ProjectLines,
+    stations?: Station[],
+  ): Promise<ProjectRecord> {
+    this.checkId(id)
+    check(validateLines(lines))
+    const { record, readOnly } = await this.load(id)
+    if (readOnly) throw new Error('read-only')
+    if (record.layout === null) throw new Error('lay the project out first')
+    const updated: ProjectRecord = redrew(
+      withLines({ ...record, version: RECORD_VERSION, modified: new Date().toISOString() }, lines),
       stations,
     )
     await this.writeAtomic(id, updated)
