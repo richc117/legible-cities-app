@@ -327,7 +327,10 @@ describe('the cheap edits ADR-045 exempts', () => {
 
   it('are still on the record through `drawn`', () => {
     expect(drawnMatchesEdits(current)).toBe(true)
-    for (const record of [colours, defaults, order, sizes]) {
+    // Mutation: `sameLines` left out of the comparison - a line option the
+    // map has not been drawn with would then read as matching.
+    const lines: ProjectRecord = { ...current, lines: { A: { hidden: true } } }
+    for (const record of [colours, defaults, order, sizes, lines]) {
       expect(drawnMatchesEdits(record)).toBe(false)
     }
     // A record from before `drawn` has nothing to compare, and says so

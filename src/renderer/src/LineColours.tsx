@@ -1,15 +1,12 @@
 import {
   useEffect,
-  useId,
   useMemo,
   useRef,
   useState,
-  type FormEvent,
   type JSX,
   type ReactNode,
   type RefObject,
 } from 'react'
-import { HexColorPicker } from 'react-colorful'
 import type { EngineState } from '../../shared/engine'
 import { withoutPaths } from '../../shared/engine'
 import type { Inspection } from '../../shared/protocol'
@@ -21,7 +18,6 @@ import {
   linesOf,
   mayAdoptRecord,
   reached,
-  readHex,
   released,
   resetAll,
   retried,
@@ -38,9 +34,12 @@ import {
   type Shown,
   type Unbuilt,
 } from './colours'
+import { useColourPanel, type ColourPanelProps } from './ColourChip'
 import type { LayoutRun as Run } from './engine/layoutRun'
 import Button from './kit/Button'
-import TextInput from './kit/TextInput'
+import { choiceOf, hidesEveryLine, isHidden } from './lineOptions'
+import LineOptionsDisclosure from './LineOptionsDisclosure'
+import { useLineOptions } from './useLineOptions'
 import { usePutBack } from './usePutBack'
 import { useSnapshot } from './useSnapshot'
 
@@ -70,9 +69,6 @@ import { useSnapshot } from './useSnapshot'
 // A held arrow key sends one `keydown` per repeat and a single `keyup`, so
 // it is one gesture and one build, and each separate tap is a gesture of
 // its own.
-
-/** A line's own colour is data, not a token: it is drawn from the record, never from a stylesheet. */
-const swatch = (colour: string): { background: string } => ({ background: colour })
 
 type State =
   | { status: 'waiting' }
@@ -108,6 +104,12 @@ interface Props {
    * to the body - and a shape that cannot say it cannot ship it.
    */
   handback: RefObject<HTMLElement | null>
+  /**
+   * True from a run's end until the record it wrote has been read back
+   * (A5.5-22). A line option chosen in that beat waits for it, since a build
+   * then would draw from the record as it was before the run (issue 394).
+   */
+  settling?: boolean
 }
 
 /** What the section is called, as its heading and as the name of its region. */
@@ -121,9 +123,16 @@ export default function LineColours({
   disabled = false,
   busyNow,
   handback,
+  settling = false,
 }: Props): JSX.Element {
   const ready = engine?.state === 'ready'
-  const { state: runState, recoloured } = useSnapshot(run)
+  const snapshot = useSnapshot(run)
+  const { state: runState, optioned } = snapshot
+  // A redraw for line options is the colours' kind of run to the run graph,
+  // but it carries none of the colours chosen and waiting here, so its stop
+  // is not this panel's: putting the palette back for it would drop a colour
+  // held until the build ended (issue 394).
+  const recoloured = snapshot.recoloured && !optioned
   const running = runState === 'running'
   // Something else is reading or rewriting the project's page. Nothing here
   // is disabled for it: a change made now waits and builds once the way is
@@ -232,7 +241,12 @@ export default function LineColours({
   // `busy` is what the last render saw; the run's own state is what is true
   // at this moment, and a run can start between the two. Without it a colour
   // would be handed to a run that refuses it, silently.
-  const stillBusy = (): boolean => busy || run.snapshot.state === 'running' || busyNow?.() === true
+  // While the record a finished run wrote is being read back, too (issue
+  // 394): every draw now carries the line options, and one drawn from the
+  // record before that run could put a hidden line back on the map while
+  // the store, writing `drawn` from the record after it, said it was gone.
+  const stillBusy = (): boolean =>
+    busy || settling || run.snapshot.state === 'running' || busyNow?.() === true
   // The commit point: the picker released, or the hex field's button.
   const commit = (next: Palette): void =>
     act(released(unbuilt.current, next, paletteOf(project), stillBusy()), next)
@@ -290,6 +304,16 @@ export default function LineColours({
     [inspection, mode, agency],
   )
   const nothingToReset = isReset(palette)
+  // Each line's options (issue 394), in a closed disclosure under its row:
+  // the colours' kind of cheap edit, held and drawn by their own hook.
+  const options = useLineOptions({
+    run,
+    project,
+    engine,
+    held: disabled || settling,
+    busyNow,
+  })
+  const labels = lines.map((line) => line.label)
 
   return (
     <section
@@ -308,7 +332,8 @@ export default function LineColours({
       <p className="prose">
         A line is drawn in the colour its feed publishes. Choose another here and the map, the chips
         over it and the time chart all follow. The stations do not move: the stored layout is drawn
-        again, never laid out again.
+        again, never laid out again. Under each line, Line options gives it a name, leaves it off
+        the map, or draws it bolder, cased or dashed, the same way.
       </p>
       {state.status === 'waiting' && (
         <p className="hint" role="status">
@@ -347,6 +372,19 @@ export default function LineColours({
                   onPickEnd={(hex) => release(withOverride(palette, line.label, hex))}
                   onClosed={panelClosed}
                   onReset={() => release(withoutOverride(palette, line.label))}
+                  hidden={isHidden(options.lines, line.label)}
+                  options={
+                    <LineOptionsDisclosure
+                      label={line.label}
+                      choice={choiceOf(options.lines, line.label)}
+                      onChoose={(next) => options.choose(line.label, next)}
+                      onFollow={(next) => options.follow(line.label, next)}
+                      onPanelClosed={options.panelClosed}
+                      onReset={() => options.reset(line.label)}
+                      lastShown={hidesEveryLine(options.lines, labels, line.label)}
+                      handback={handback}
+                    />
+                  }
                 />
               ))}
             </ul>
@@ -369,124 +407,22 @@ export default function LineColours({
 }
 
 /**
- * The colour chip and the panel it opens, in one place for both kinds of row.
- *
- * The chip is a native button at the row's start, in the line's own colour:
- * the preview and the control in one (issue 284). A native button and not
- * the kit's, so the kit's inner-button trap (`.claude/rules/renderer.md`,
- * issue 121) does not arise. The panel is an auto popover anchored to it.
- *
- * What the platform does here is what a hand-written dismissal (issue 87's) used to do. An auto
- * popover is light-dismissed only when the press and the release both land
- * outside it, so a drag that begins in the square and ends on the map is a
- * colour and the panel stays (issue 87); a click outside closes it, Escape
- * closes it, and opening another row's chip closes this one. It is in the
- * top layer, so it is never clipped by the cell or hidden behind the pinned
- * band, and it takes nothing out of the flow, so the old reason to dismiss
- * on the click and not the press - a picker leaving the flow between press
- * and release moved the button being pressed - is gone with the flow.
- *
- * The panel is always in the document and its contents are mounted while it
- * is open. React follows the element, by its `beforetoggle` event, and
- * never drives it except to close it from a finished gesture.
+ * The colour chip at a row's start, beside the row's words, and the panel it
+ * opens (`ColourChip.tsx`, issue 284): a line's own colour, or the default
+ * for the lines the feed leaves uncoloured.
  */
 function ColourControl({
-  label,
-  colour,
-  panelName,
-  onPick,
-  onPickEnd,
-  onClosed,
-  reset,
   children,
-}: {
-  label: string
-  colour: string
-  panelName: string
-  /** Every colour a gesture reaches. */
-  onPick: (hex: string) => void
-  /** The colour a gesture ended on, or a typed one chosen with the button. */
-  onPickEnd: (hex: string) => void
-  /** The panel closed, whatever closed it. */
-  onClosed: () => void
-  /** Only a line that can have an override offers Reset. */
-  reset?: { label: string; enabled: boolean; onReset: () => void }
-  children: ReactNode
-}): JSX.Element {
-  const panelId = useId()
-  // Whether this panel is showing, as the element last said. It lives here
-  // and not in the parent so that it goes with the row: a popover removed
-  // from the document sends no event, and a flag kept above would read
-  // "open" for a row that came back closed (an engine restart, a change of
-  // mode). Nothing above needs to know which is open: opening one closes
-  // the others, which is the platform's.
-  const [open, setOpen] = useState(false)
-  const chip = useRef<HTMLButtonElement>(null)
-  const panel = useRef<HTMLDivElement>(null)
-  // A person saying they have finished: close the panel and go back to the
-  // chip that opened it, as the rename form's does.
-  const done = (): void => {
-    if (panel.current?.matches(':popover-open') === true) panel.current.hidePopover()
-    chip.current?.focus()
-  }
+  ...panel
+}: ColourPanelProps & { children: ReactNode }): JSX.Element {
+  const { chip, panel: popover } = useColourPanel(panel)
   return (
     <>
       <div className="line-row">
-        <button
-          ref={chip}
-          type="button"
-          className="colour-chip"
-          style={swatch(colour)}
-          popoverTarget={panelId}
-          aria-expanded={open}
-          aria-controls={panelId}
-          aria-label={label}
-        />
+        {chip}
         {children}
       </div>
-      <div
-        ref={panel}
-        id={panelId}
-        className="colour-popover"
-        popover="auto"
-        role="group"
-        aria-label={panelName}
-        // Mounted before the panel is shown, so its contents are there for
-        // its first frame and the flip is decided on the box it will have,
-        // not an empty one; unmounted only after it has gone. The platform
-        // gives focus back to the chip when a panel closes with focus in it,
-        // and it can only do that if the focused field is still there
-        // when it looks.
-        onBeforeToggle={(event) => {
-          if (event.newState === 'open') setOpen(true)
-        }}
-        onToggle={(event) => {
-          if (event.newState === 'closed') {
-            onClosed()
-            setOpen(false)
-          }
-        }}
-      >
-        {open && (
-          <ColourPicker
-            colour={colour}
-            onPick={onPick}
-            onPickEnd={onPickEnd}
-            onDone={done}
-            reset={
-              reset === undefined
-                ? undefined
-                : {
-                    ...reset,
-                    onReset: () => {
-                      reset.onReset()
-                      done()
-                    },
-                  }
-            }
-          />
-        )}
-      </div>
+      {popover}
     </>
   )
 }
@@ -527,6 +463,8 @@ function LineRow({
   onPickEnd,
   onClosed,
   onReset,
+  hidden,
+  options,
 }: {
   line: Line
   shown: Shown
@@ -535,9 +473,16 @@ function LineRow({
   onPickEnd: (hex: string) => void
   onClosed: () => void
   onReset: () => void
+  /**
+   * The line is left off the map (issue 394): the row stays, its words
+   * dimmed and its controls all working, so it can be shown again.
+   */
+  hidden: boolean
+  /** The line's options, in a closed disclosure under the row. */
+  options: ReactNode
 }): JSX.Element {
   return (
-    <li className="line-row-group">
+    <li className="line-row-group" data-hidden={hidden ? 'true' : undefined}>
       <ColourControl
         label={`Choose the colour of line ${line.label}`}
         colour={shown.color}
@@ -558,100 +503,7 @@ function LineRow({
         <span className="line-feed">{feedWords(line)}</span>
         <span className="line-source">{sourceWords(shown)}</span>
       </ColourControl>
+      {options}
     </li>
-  )
-}
-
-/**
- * One colour, two ways: the picker for a pointing device, and a typed hex
- * value for everything else. The picker is keyboard-operable in its own
- * right (its two areas are sliders that take the arrow keys), and the field
- * beside it is the path that needs no pointing device at all.
- *
- * `onPick` is every colour the picker is given, including each step of a
- * drag, and it sends nothing: the swatch and the hex field follow it.
- * `onPickEnd` is the colour a gesture ended on - the picker's own
- * `onChangeEnd`, on the release of the pointer or of an arrow key - or the
- * one typed into the field and chosen with its button, and it is the only
- * thing here that builds the map (issue 262). `onDone` is a person saying
- * they have finished, which only the typed field's own button means. `onPick`
- * and `onDone` were one callback until issue 87, and the row closed on the
- * first colour - so a drag ended on the pointer event that began it.
- *
- * It stays live while something else is reading the project's page. Turning
- * it off would take the focus with it, and refusing its changes would lose
- * a colour moved by an arrow key without a word; `commit` holds the change
- * instead and builds once the way is clear.
- */
-function ColourPicker({
-  colour,
-  onPick,
-  onPickEnd,
-  onDone,
-  reset,
-}: {
-  colour: string
-  onPick: (hex: string) => void
-  onPickEnd: (hex: string) => void
-  onDone: () => void
-  reset?: { label: string; enabled: boolean; onReset: () => void }
-}): JSX.Element {
-  const [text, setText] = useState(colour)
-  const [message, setMessage] = useState<string | null>(null)
-  const fieldId = useId()
-  const messageId = useId()
-
-  // The picker and the field show one colour: a drag moves the value, and
-  // the field follows it.
-  useEffect(() => {
-    setText(colour)
-    setMessage(null)
-  }, [colour])
-
-  const submit = (event: FormEvent<HTMLFormElement>): void => {
-    event.preventDefault()
-    const hex = readHex(text)
-    if (hex === null) {
-      setMessage('A colour is six hexadecimal digits, such as 0072bc.')
-      return
-    }
-    setMessage(null)
-    onPickEnd(hex)
-    onDone()
-  }
-
-  return (
-    <div className="colour-picker">
-      <HexColorPicker color={colour} onChange={onPick} onChangeEnd={onPickEnd} />
-      <form className="inline-form" noValidate onSubmit={submit}>
-        <div className="field">
-          <label htmlFor={fieldId}>Hex value</label>
-          <TextInput
-            id={fieldId}
-            value={text}
-            onChange={(value) => {
-              setText(value)
-              setMessage(null)
-            }}
-            spellCheck={false}
-            aria-describedby={messageId}
-            aria-invalid={message ? true : undefined}
-          />
-          <p id={messageId} className="message error">
-            {message}
-          </p>
-        </div>
-        <div className="actions">
-          <Button variant="primary" type="submit">
-            Use this colour
-          </Button>
-          {reset !== undefined && (
-            <Button aria-label={reset.label} disabled={!reset.enabled} onClick={reset.onReset}>
-              Reset
-            </Button>
-          )}
-        </div>
-      </form>
-    </div>
   )
 }

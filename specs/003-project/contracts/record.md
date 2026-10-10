@@ -171,6 +171,30 @@ The on-disk form of `ProjectRecord` (`data-model.md`), version 2:
   over itself and another's place would be ambiguous. A label the layout
   does not carry is harmless, because the engine ignores it and draws every
   line an order leaves out (engine issue 28).
+- `lines` (added by issue 394, still version 2; spec 036) is what a person
+  chose for each line beyond its colour and its place, by line label, in
+  the engine's own names, so an entry is exactly what `map.build` takes for
+  the line (`LineOptions`): `name` (1 to 40 characters, counted in code
+  points, with no line break), `hidden` (kept only as `true`), `width` (0.75
+  to 1.5 times the map's line width), `casing` (`{ width, color }`: 0 to 1
+  times the line width on each side, and a `#rrggbb` colour, both held) and
+  `dash` (`dashed` or `dotted`). Each field is kept only where it is not the
+  engine's own - a name that is the line's own label, a width of 1, a casing
+  of width 0 and a solid dash are no choice - and an entry with nothing left
+  is removed, so a project that never touched them has no `lines` key at all
+  and a line reset leaves nothing behind. It is written once the map carries
+  it (`projects.completeLines`), as the colours are, and copied into
+  `drawn.lines` by the same write. Labels are held to the `colors` rules,
+  512 lines at most. On read each field is taken on its own, and one the
+  store would refuse on write - a name past 40 or with a line break, a width
+  or casing outside its range, a casing without its colour, a dash the
+  engine does not offer, `hidden` that is not a boolean, a key not on the
+  list - reads as not held, so a value written by hand never reaches the
+  engine. It is admitted at version 2 under the rule below: optional on
+  read, absent meaning every line drawn as the engine draws it, which is
+  what every earlier map was, and the one released build, v0.1.0, holds
+  version 1 and reads this record as read-only, so it cannot drop a name a
+  person typed.
 - `theme` (defined by A1-05, first written by A4-03, still version 1) is
   the theme the project's map is drawn in: `warm-dark` or `sepia`, the
   engine page's own names, which reach it as `theme=` on its address and

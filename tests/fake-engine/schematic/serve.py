@@ -107,6 +107,19 @@ two markers and its label face (issues 74 and 76) and the two train numbers
 number sent inside it among them - before anything is drawn. It draws none of
 them: what the app sent is in ``fake-engine.received``.
 
+``map.build`` takes ``lines`` as engine v0.16.0 does (its issues 42 and 55):
+per line label a ``name``, ``hidden``, a ``width``, a ``casing`` and a
+``dash``, refused with the ``params`` kind and the engine's sentences where
+``serve._lines`` refuses them, before anything is drawn, and a map whose every
+layout line is hidden refused with the ``feed`` kind and the engine's sentence
+after the layout's four stages replay, as ``pipeline.run`` refuses it. A draw
+sent ``lines`` shows what it did with ``hidden`` and ``name`` in the page it
+writes, which is ``{}`` for a draw sent none: ``{"lines": [...], "names":
+{...}}``, the layout's lines less the hidden ones and the names given to the
+lines it draws, as the engine's page carries ``data.lines`` and
+``data.names``, so a test can read them off the file. The stroke's three are
+taken and drawn by nothing.
+
 It writes ``fake-engine.pid`` (its process id) and ``fake-engine.received``
 (one JSON line per message it read) into the home so a test can end it from
 outside and see what reached it. Standard library only; any Python 3 runs it.
@@ -467,6 +480,64 @@ def animation_problem(params: dict) -> str | None:
             number = params[name]
             if not _number(number) or not low <= number <= high:
                 return f"{name} must be from {low:g} to {high:g}, in {unit}"
+    return None
+
+
+# A line's options (engine v0.16.0, `serve._lines`): a name's length (the
+# line breaks it may not hold are a caption's, LINE_BREAKS above), the
+# width's and the casing's ranges as multiples of the line width, and the
+# dashes, in the engine's order.
+LINE_NAME_LENGTH = 40
+LINE_WIDTH_RANGE = (0.75, 1.5)
+CASING_WIDTH_RANGE = (0.0, 1.0)
+LINE_DASHES = ("solid", "dashed", "dotted")
+
+
+def lines_problem(lines) -> str | None:
+    """The engine's refusal of `map.build`'s `lines`, in its order and its
+    sentences (`serve._lines` at v0.16.0), the label in Python's repr, or None
+    when it takes them. A label the layout does not carry is not refused."""
+    if lines is None:
+        return None
+    if not isinstance(lines, dict):
+        return ("lines must be an object of line label to the line's name, hidden, "
+                "width, casing and dash")
+    for label, chosen in lines.items():
+        at = f"lines[{label!r}]"
+        if not isinstance(chosen, dict):
+            return f"{at} must be an object of name, hidden, width, casing and dash"
+        rest = dict(chosen)
+        if "name" in rest:
+            name = rest.pop("name")
+            if (not isinstance(name, str) or not 1 <= len(name) <= LINE_NAME_LENGTH
+                    or any(b in name for b in LINE_BREAKS)):
+                return (f"{at}.name must be from 1 to {LINE_NAME_LENGTH} characters "
+                        "with no line break")
+        if "hidden" in rest and not isinstance(rest.pop("hidden"), bool):
+            return f"{at}.hidden must be true or false"
+        if "width" in rest:
+            low, high = LINE_WIDTH_RANGE
+            width = rest.pop("width")
+            if not _number(width) or not low <= width <= high:
+                return f"{at}.width must be from {low:g} to {high:g}, as a multiple of line_width"
+        if "casing" in rest:
+            casing = rest.pop("casing")
+            if not isinstance(casing, dict) or set(casing) - {"width", "color"}:
+                return f"{at}.casing must be an object of width and color"
+            if set(casing) != {"width", "color"}:
+                return f"{at}.casing must have both width and color"
+            low, high = CASING_WIDTH_RANGE
+            if not _number(casing["width"]) or not low <= casing["width"] <= high:
+                return (f"{at}.casing.width must be from {low:g} to {high:g}, "
+                        "as a multiple of line_width on each side")
+            if not isinstance(casing["color"], str) or not STYLE_COLOR.fullmatch(casing["color"]):
+                return f"{at}.casing.color must be a colour written #rrggbb"
+        if "dash" in rest:
+            dash = rest.pop("dash")
+            if not isinstance(dash, str) or dash not in LINE_DASHES:
+                return f"{at}.dash must be {_either(LINE_DASHES)}"
+        if rest:
+            return f"{at} does not take {', '.join(sorted(rest))}"
     return None
 
 
@@ -835,15 +906,18 @@ class Engine:
                 error(msg_id, -32602, style_problem(params.get("style")), "params")
             elif animation_problem(params) is not None:
                 error(msg_id, -32602, animation_problem(params), "params")
+            elif lines_problem(params.get("lines")) is not None:
+                error(msg_id, -32602, lines_problem(params.get("lines")), "params")
             elif layout not in self.layouts:
                 error(msg_id, -32000, f"{params.get('key', 'x')} has no stored layout "
                       f"{layout[:8]}; lay the feed out first (graph.build)", "layout")
             elif self.control.get("map_draws"):
-                # `style` and `lines` (engine v0.12.0), and the markers, the
-                # face and the trains (v0.15.0), are taken and left alone once
-                # judged: the stand-in draws no map to restyle or hide a line
-                # from. fake-engine.received keeps them, so a test reads what
-                # the app sent.
+                # `style` (engine v0.12.0), and the markers, the face and the
+                # trains (v0.15.0), are taken and left alone once judged: the
+                # stand-in draws no map to restyle. `lines` (v0.12.0 and
+                # v0.16.0) hides and names lines in the page it writes, and its
+                # stroke is drawn by nothing. fake-engine.received keeps them
+                # all, so a test reads what the app sent.
                 threading.Thread(target=self.draw, args=(msg_id, params),
                                  daemon=True).start()
             else:
@@ -1141,9 +1215,10 @@ class Engine:
 
     @classmethod
     def map_stations(cls) -> list:
-        """The `stations` of the map the stand-in draws. A line's `hidden` flag,
-        like the rest of `lines`, is taken and not acted on: the stand-in has
-        one line over all three, and draws no map to leave one out of."""
+        """The `stations` of the map the stand-in draws. Every line of the
+        stand-in's layout runs over all three, so hiding a line leaves none of
+        them served by no line, and hiding every line is refused before this is
+        asked: the list is the same whatever `lines` hides."""
         return sorted(({"id": node, "name": name} for node, name in cls.MAP_STATIONS),
                       key=lambda station: (station["name"], station["id"]))
 
@@ -1153,6 +1228,15 @@ class Engine:
         answers with the same shape, so a test can drive a whole run."""
         key = params.get("key", "x")
         delay = self.control.get("progress_delay_ms", 30) / 1000
+        # The lines the page draws, for a draw sent `lines`: the layout's,
+        # less the hidden ones; None for a draw sent none, whose page is `{}`.
+        chosen = params.get("lines")
+        drawn_lines = None
+        if chosen is not None:
+            carried = self.layout_stages.get(params["layout"], {}).get("octi", {}).get(
+                "lines", ["A", "B"])
+            drawn_lines = [label for label in carried
+                           if not (chosen.get(label) or {}).get("hidden")]
         graphs = HOME / "data" / "graphs" / key / params["layout"]
         graphs.mkdir(parents=True, exist_ok=True)
         for i, stage in enumerate(("gtfs2graph", "topo", "loom", "octi")):
@@ -1179,11 +1263,28 @@ class Engine:
             if i <= 4:
                 report["layout"] = params["layout"]
             write({"jsonrpc": "2.0", "method": "job/progress", "params": report})
+            if i == 4 and drawn_lines is not None and not drawn_lines:
+                # Every line the layout carries hidden: refused once the
+                # stored layout has been read, as `pipeline.run` refuses it
+                # (engine v0.12.0, app ADR-053), with the feed's kind.
+                hint = (f"{key}: every line on this map is hidden; show at least one line "
+                        "to draw it")
+                error(msg_id, -32000, hint, "feed", f"ValueError: {hint} (pipeline.py:786)")
+                return
         files = {}
+        # A draw sent `lines` writes what its page would show of them: the
+        # lines it draws, hidden ones gone, and the names given to those, as
+        # the engine's page carries `data.lines` and `data.names` (the names
+        # only where there is one).
+        page = "{}"
+        if drawn_lines is not None:
+            names = {label: chosen[label]["name"] for label in drawn_lines
+                     if isinstance(chosen.get(label), dict) and "name" in chosen[label]}
+            page = json.dumps({"lines": drawn_lines, **({"names": names} if names else {})})
         for name, suffix in (("svg", ".svg"), ("html", ".html"),
                              ("positions", ".positions.json")):
             path = out / f"{key}{suffix}"
-            path.write_text("<svg/>" if suffix == ".svg" else "{}")
+            path.write_text("<svg/>" if suffix == ".svg" else page if suffix == ".html" else "{}")
             files[name] = str(path)
         # Since engine v0.11.0 (issue 51) a pair of small pictures of the map
         # is written into the same folder as the page, `<key>-thumb-dark.svg`

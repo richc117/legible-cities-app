@@ -1,4 +1,10 @@
-import { sameStyle, sameTuning, styleSent, type ProjectRecord } from '../../shared/project'
+import {
+  sameLines,
+  sameStyle,
+  sameTuning,
+  styleSent,
+  type ProjectRecord,
+} from '../../shared/project'
 import type { ExportSnapshot } from './engine/exportRun'
 import { downloading, type RunSnapshot } from './engine/layoutRun'
 import { sameOrder } from './order'
@@ -319,6 +325,7 @@ export function drawnMatchesEdits(record: ProjectRecord): boolean {
     drawn.defaultColor === record.defaultColor &&
     sameOrder(drawn.lineOrder, record.lineOrder) &&
     sameStyle(drawn.style, styleSent(record.style)) &&
+    sameLines(drawn.lines, record.lines) &&
     labels.length === Object.keys(drawn.colors).length &&
     labels.every((label) => drawn.colors[label] === record.colors[label])
   )

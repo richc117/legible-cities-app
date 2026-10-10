@@ -15,6 +15,7 @@ import {
   validateMode,
   validateName,
   validateLineOrder,
+  validateLines,
   validatePalette,
   validateStyle,
   validateTheme,
@@ -22,8 +23,10 @@ import {
   STYLE_GROUP,
   TUNING_KEYS,
   type CreateProjectInput,
+  type LineChoice,
   type LineOrder,
   type Palette,
+  type ProjectLines,
   type Theme,
   type ProjectInputs,
   type ProjectStyle,
@@ -168,6 +171,29 @@ function readStyle(raw: unknown): ProjectStyle {
   const style: Record<string, unknown> = {}
   for (const key of STYLE_GROUP) if (given[key] !== undefined) style[key] = given[key]
   return style as ProjectStyle
+}
+
+/**
+ * The line options a person chose (issue 394), as the page relayed them once
+ * the map was drawn with them: every label one the record can hold, and each
+ * line's name, hidden, width, casing and dash held to the engine's own rules,
+ * in its sentences. Only the five fields are taken, and a casing's two: a
+ * line with anything else on it is refused before the store sees it.
+ */
+function readLines(raw: unknown): ProjectLines {
+  check(validateLines(raw))
+  const lines: ProjectLines = {}
+  for (const [label, given] of Object.entries(raw as ProjectLines)) {
+    const line: LineChoice = {}
+    if (given.name !== undefined) line.name = given.name
+    if (given.hidden !== undefined) line.hidden = given.hidden
+    if (given.width !== undefined) line.width = given.width
+    if (given.casing !== undefined)
+      line.casing = { width: given.casing.width, color: given.casing.color }
+    if (given.dash !== undefined) line.dash = given.dash
+    lines[label] = line
+  }
+  return lines
 }
 
 /**
@@ -348,6 +374,12 @@ export function registerProjectHandlers(
     return drawn === undefined
       ? store.completeStyle(readId(id), readStyle(style))
       : store.completeStyle(readId(id), readStyle(style), drawn)
+  })
+  handle(CHANNELS.projectsCompleteLines, (id, lines, stations) => {
+    const { stations: drawn } = readDrawnStations(stations)
+    return drawn === undefined
+      ? store.completeLines(readId(id), readLines(lines))
+      : store.completeLines(readId(id), readLines(lines), drawn)
   })
   handle(CHANNELS.projectsSetDate, (id, date) => store.setDate(readId(id), readServiceDay(date)))
   handle(CHANNELS.projectsSetTheme, (id, theme) => store.setTheme(readId(id), readTheme(theme)))

@@ -2172,6 +2172,9 @@ test('a release, installed, through docs/acceptance.md', async () => {
       log.notAutomated(
         "the drag's feel, and whether the map, its chips and the time chart show the new colour.",
       )
+      log.notAutomated(
+        'the line options (issue 394): a name, a refusal past 40 characters, a bold, cased and dashed line, Shown off and Reset line, and whether the map, its chips, rows and trains show them.',
+      )
     })
 
     // ---------------------------------------------------------------- 10

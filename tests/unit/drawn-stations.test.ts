@@ -402,6 +402,7 @@ describe('the layout run hands the record its build’s stations', () => {
         written.push({ method: 'completeColors', done: stations ?? null }),
       completeOrder: async () => undefined,
       completeStyle: async () => undefined,
+      completeLines: async () => undefined,
       today: () => '2026-09-08',
     })
     return { run, written }

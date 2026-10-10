@@ -209,6 +209,77 @@
   outline-offset: var(--focus-ring-offset);
 }
 
+/* A line's options (issue 394, spec 036): a closed disclosure under each
+   row of the colours list, its toggle the layout tuning's (a text row with
+   the cell row's chevron, turned a quarter when open) and its word, "Default"
+   or what the line holds, quiet beside it in --text-muted. Its controls take
+   cell 04's rows (`.style-field`, notebook.css), read from the row's own
+   left edge. Every pair is one the contrast test already holds. */
+.line-options {
+  margin: 0 0 var(--space-4-2);
+}
+
+.line-options-toggle {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2-2);
+  min-height: var(--target-min);
+  border-radius: var(--radius-small);
+  color: var(--text);
+  font-size: var(--font-ui);
+  cursor: pointer;
+}
+
+.line-options-toggle:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.line-options-toggle[aria-expanded='true'] .cell-chevron {
+  transform: rotate(90deg);
+}
+
+.line-options-word {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.line-options .disclosure-region {
+  padding: var(--space-4-2) 0 0;
+}
+
+/* A select and what stands beside it on its line: the casing's colour chip. */
+.line-options-select {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4-2);
+  min-width: 0;
+}
+
+.line-options-select fig-dropdown {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Shown: the platform's checkbox read as a switch, drawn as the kit draws a
+   checkbox, centred on its label's line. */
+.line-options-switch {
+  display: flex;
+  align-items: center;
+  min-height: var(--control-height);
+}
+
+/* A hidden line keeps its row, dimmed: its words in --text-faint (4.5 on the
+   cell's ground, which the contrast test holds), its chip its own colour,
+   and "Hidden" in its summary, so the dimming is never the only sign. */
+.line-row-group[data-hidden] .line-name,
+.line-row-group[data-hidden] .line-feed,
+.line-row-group[data-hidden] .line-source {
+  color: var(--text-faint);
+}
+
 /* The front door's regions (A5.6-01): the projects, the sample cities and
    the feeds a person added, each a section with its own heading. The first
    two are one grid of one kind of card (ADR-047); the feeds are a dense

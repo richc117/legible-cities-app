@@ -43,22 +43,27 @@ type Pictured = {
  * sorted by label; it is a cache key and not a secret, so a collision costs
  * nothing worse than one picture shown late.
  *
- * `style` and `lines` are left out: at engine v0.12.0 the thumbnail takes no
- * style (`thumbnail.draw` scales its own) and the record has no `lines`
- * field yet. When the per-line hidden flag of ADR-053 lands in the record it
- * must join this, or a redraw that hides a line leaves the old picture on
- * the card until the document reloads.
+ * `style` is left out: at engine v0.12.0 the thumbnail takes no style
+ * (`thumbnail.draw` scales its own). The line options are in it since issue
+ * 394 (ADR-053): the engine leaves a hidden line off both thumbnails and
+ * draws them in each line's width, casing and dash, so a redraw that hides a
+ * line, or thickens one, would otherwise leave the old picture on the card
+ * until the document reloads. Sorted by label, each line as it was sent.
  */
 function fingerprint(drawn: DrawnFrom): string {
   const colours = Object.keys(drawn.colors)
     .sort()
     .map((label) => `${label}=${drawn.colors[label]}`)
+  const lines = Object.keys(drawn.lines ?? {})
+    .sort()
+    .map((label) => `${label}=${JSON.stringify((drawn.lines ?? {})[label])}`)
   const text = [
     drawn.layout,
     drawn.date ?? '',
     drawn.defaultColor,
     colours.join(','),
     drawn.lineOrder.join(','),
+    lines.join(','),
   ].join('|')
   let hash = 0x811c9dc5
   for (let at = 0; at < text.length; at++) {

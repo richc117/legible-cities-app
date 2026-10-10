@@ -17,11 +17,13 @@ import { ON_DISK_DEADLINE, downloading } from '../../src/renderer/src/engine/lay
 import {
   doneSentence,
   drawnSentence,
+  optionedSentence,
   recolouredSentence,
   reorderedSentence,
   restyledSentence,
   stoppedSentence,
 } from '../../src/renderer/src/LayoutRun'
+import { cellOfRun } from '../../src/renderer/src/runGraph'
 import { LAYOUT_STAGES } from '../../src/shared/layout'
 import { ERROR_CODES, type EngineState } from '../../src/shared/engine'
 import type { ProjectRecord } from '../../src/shared/project'
@@ -186,6 +188,7 @@ function setup(
   const completeColors = vi.fn(async () => ({}))
   const completeOrder = vi.fn(async () => ({}))
   const completeStyle = vi.fn(async () => ({}))
+  const completeLines = vi.fn(async () => ({}))
   const record = project(over)
   const run = new LayoutRun({
     client,
@@ -194,6 +197,7 @@ function setup(
     completeColors,
     completeOrder,
     completeStyle,
+    completeLines,
     today: () => '2026-09-08',
     ...(onDisk === undefined ? {} : { onDisk }),
   })
@@ -205,6 +209,7 @@ function setup(
     completeColors,
     completeOrder,
     completeStyle,
+    completeLines,
     record,
     begin: () => run.start(record, engine),
   }
@@ -871,6 +876,7 @@ describe('the run survives the record it writes', () => {
       completeColors: async () => ({}),
       completeOrder: async () => ({}),
       completeStyle: async () => ({}),
+      completeLines: async () => ({}),
       today: () => '2026-09-08',
     })
     run.start(record, READY)
@@ -890,6 +896,7 @@ describe('the run survives the record it writes', () => {
       completeColors: async () => ({}),
       completeOrder: async () => ({}),
       completeStyle: async () => ({}),
+      completeLines: async () => ({}),
       today: () => '2026-09-08',
     })
     run.start(project({ date: '2026-01-01' }), READY)
@@ -1350,6 +1357,60 @@ describe('the sizes on every draw', () => {
   })
 })
 
+// Issue 394 (spec 036, FR-009): the line options go on every draw the
+// record is drawn with, and on none for a project that chose none.
+describe('the line options on every draw', () => {
+  const stored = { layout: LAYOUT, date: '2026-09-15', service: WINDOW }
+  const lines = { B: { hidden: true }, A: { name: 'Airport Express', width: 1 } }
+  const sent = { B: { hidden: true }, A: { name: 'Airport Express' } }
+
+  it('sends no lines at all for a project that chose none, whichever run draws', async () => {
+    // Mutation: the draw sends `lines` whatever it holds - `{}` then goes on
+    // every request, which no project sent before this feature.
+    const layoutRun = setup({})
+    layoutRun.begin()
+    await laidOut(layoutRun.calls)
+    expect(layoutRun.calls[2].params, 'a layout run').not.toHaveProperty('lines')
+    const plain = setup({ ...stored, lines: { A: { hidden: false } } })
+    plain.run.rebuild(plain.record, READY, '2026-09-16')
+    await tick()
+    expect(plain.calls[0].params, 'only the engine’s own').not.toHaveProperty('lines')
+  })
+
+  it('goes with every draw of a project that chose some, so a day, a colour, an order or a size keeps them', async () => {
+    // Mutation: one caller of the draw passes no lines - a colour changed
+    // then draws a hidden line back on the map.
+    const withLines = { ...stored, lines }
+    const layoutRun = setup({ lines })
+    layoutRun.begin()
+    await laidOut(layoutRun.calls)
+    expect(layoutRun.calls[2].params).toMatchObject({ lines: sent })
+
+    const day = setup(withLines)
+    day.run.rebuild(day.record, READY, '2026-09-16')
+    await tick()
+    expect((day.calls[0].params as { lines: unknown }).lines, 'a chosen day').toEqual(sent)
+
+    const colour = setup(withLines)
+    colour.run.recolour(colour.record, READY, { colors: {}, defaultColor: '#112233' })
+    await tick()
+    expect((colour.calls[0].params as { lines: unknown }).lines, 'a colour').toEqual(sent)
+
+    const order = setup(withLines)
+    order.run.reorder(order.record, READY, ['B', 'A'])
+    await tick()
+    expect((order.calls[0].params as { lines: unknown }).lines, 'an order').toEqual(sent)
+
+    const size = setup(withLines)
+    size.run.restyle(size.record, READY, { lineWidth: 12 })
+    await tick()
+    expect((size.calls[0].params as { lines: unknown }).lines, 'a size').toEqual(sent)
+    // Beside the colours and the order, never in place of them.
+    expect(colour.calls[0].params).toMatchObject({ colors: {}, default_color: '#112233' })
+    expect(order.calls[0].params).toMatchObject({ line_order: ['B', 'A'] })
+  })
+})
+
 describe('restyle', () => {
   const stored = { layout: LAYOUT, date: '2026-09-15', service: WINDOW }
 
@@ -1556,6 +1617,162 @@ describe('restyle', () => {
   })
 })
 
+// Issue 394 (spec 036, FR-010): a redraw for chosen line options, the
+// colours' kind of cheap edit.
+describe('redrawLines', () => {
+  const stored = {
+    layout: LAYOUT,
+    date: '2026-09-20',
+    service: WINDOW,
+    colors: { A: '#0072bc' },
+    lineOrder: ['B', 'A'],
+    style: { labelSize: 20 },
+    drawn: {
+      layout: LAYOUT,
+      made: null,
+      date: '2026-09-15',
+      colors: { A: '#0072bc' },
+      defaultColor: '#888888',
+      lineOrder: ['B', 'A'],
+      theme: 'warm-dark' as const,
+      style: { labelSize: 20 },
+    },
+  }
+  const lines = { B: { hidden: true }, A: { name: 'Airport Express', width: 1.25 } }
+
+  it('draws the stored layout for the day the map showed, with the options, and never lays out', async () => {
+    // Mutation: the redraw draws the record's options rather than the ones
+    // chosen - the map would then never show a choice until it was stored,
+    // and it is stored only once the map shows it.
+    const { run, calls, completeLines, completeColors, record } = setup(stored)
+    run.redrawLines(record, READY, lines)
+    await tick()
+    expect(
+      calls.map((c) => c.method),
+      'the map alone: an option is a render',
+    ).toEqual(['map.build'])
+    expect(calls[0].params).toMatchObject({
+      key: 'la-metro-rail',
+      layout: LAYOUT,
+      // The day the map on disk was drawn for, not the one chosen and waiting.
+      date: '2026-09-15',
+      out: 'p1',
+      lines,
+      // The record's colours, order and sizes beside them, never in place.
+      colors: { A: '#0072bc' },
+      line_order: ['B', 'A'],
+      style: { label_size: 20 },
+    })
+    expect(run.snapshot.state).toBe('running')
+    expect(completeLines, 'nothing is written until the map is drawn').not.toHaveBeenCalled()
+
+    calls[0].resolve({ files: {} })
+    await tick()
+    expect(completeLines).toHaveBeenCalledWith('p1', lines)
+    expect(completeColors).not.toHaveBeenCalled()
+    expect(run.snapshot.state).toBe('done')
+  })
+
+  it('writes the stations the build answered with the options', async () => {
+    // Mutation: the stations left off the write - cell 03's Trip would then
+    // offer a hidden line's stations after the map dropped them.
+    const { run, calls, completeLines, record } = setup(stored)
+    run.redrawLines(record, READY, lines)
+    await tick()
+    calls[0].resolve({ files: {}, stations: [{ id: '0x1', name: 'Alpha' }] })
+    await tick()
+    expect(completeLines).toHaveBeenCalledWith('p1', lines, [{ id: '0x1', name: 'Alpha' }])
+  })
+
+  it('is the colours’ kind of run, so cell 05 is the one running and a stop puts both back', async () => {
+    // Mutation: the redraw marked as none of the cheap edits - the run graph
+    // would then show cell 02 running for a line option.
+    const { run, record } = setup(stored)
+    run.redrawLines(record, READY, lines)
+    await tick()
+    expect(run.snapshot).toMatchObject({
+      recoloured: true,
+      optioned: true,
+      reordered: false,
+      restyled: false,
+      rebuilt: false,
+      forced: false,
+    })
+    expect(cellOfRun(run.snapshot)).toBe('lines')
+    expect(run.job()).toMatchObject({ kind: 'rebuild', label: 'Redraw with new line options' })
+  })
+
+  it('says its own words, and a recolour does not say them', async () => {
+    // Mutation: `optioned` left false in the redraw - cell 02 would then say
+    // the map was drawn in the colours a person chose after a rename.
+    const { run, record } = setup(stored)
+    run.redrawLines(record, READY, lines)
+    await tick()
+    expect(run.snapshot.optioned).toBe(true)
+    const recolour = setup(stored)
+    recolour.run.recolour(recolour.record, READY, {
+      colors: { A: '#ff0000' },
+      defaultColor: '#00ff00',
+    })
+    await tick()
+    expect(recolour.run.snapshot).toMatchObject({ recoloured: true, optioned: false })
+    expect(optionedSentence()).toMatch(/line options you chose.*stations have not moved/)
+    expect(optionedSentence()).not.toMatch(/colours/)
+    expect(stoppedSentence('cancelled', false, false, true, false, false, true)).toMatch(
+      /keeps the line options it had/,
+    )
+    expect(stoppedSentence('failed', false, false, true, false, false, true)).toMatch(
+      /not drawn with those line options/,
+    )
+    expect(stoppedSentence('failed', false, false, true)).toMatch(/not drawn in those colours/)
+  })
+
+  it('writes nothing when the build fails or is cancelled', async () => {
+    // Mutation: the cancel not looked at after the draw - a stopped redraw
+    // would then write options the map on screen does not show.
+    const failing = setup(stored)
+    failing.run.redrawLines(failing.record, READY, lines)
+    await tick()
+    failing.calls[0].reject({
+      code: -32000,
+      message: 'every line on this map is hidden',
+      data: { kind: 'feed', hint: 'every line on this map is hidden' },
+    })
+    await tick()
+    expect(failing.completeLines).not.toHaveBeenCalled()
+    expect(failing.run.snapshot.state).toBe('failed')
+    expect(failing.run.snapshot.recoloured).toBe(true)
+
+    const cancelled = setup(stored)
+    cancelled.run.redrawLines(cancelled.record, READY, lines)
+    await tick()
+    cancelled.run.cancel()
+    cancelled.calls[0].resolve({ files: {} })
+    await tick()
+    expect(cancelled.completeLines).not.toHaveBeenCalled()
+    expect(cancelled.run.snapshot.state).toBe('cancelled')
+  })
+
+  it('refuses a project that has not been laid out, and while another run is going', async () => {
+    // Mutation: the layout's check removed - a project with no map would then
+    // send a map.build with no layout.
+    const fresh = setup()
+    fresh.run.redrawLines(fresh.record, READY, lines)
+    await tick()
+    expect(fresh.calls).toEqual([])
+    expect(fresh.run.snapshot.state).toBe('failed')
+    expect(fresh.run.snapshot.error).toBe('Lay the project out before choosing line options.')
+
+    const busy = setup(stored)
+    busy.begin()
+    await tick()
+    busy.run.redrawLines(busy.record, READY, lines)
+    await tick()
+    expect(busy.calls, 'only the layout call is out').toHaveLength(1)
+    expect(busy.calls[0].method).toBe('graph.build')
+  })
+})
+
 // The inspector's view of a run (A1-03, specs/024-jobs): one job per
 // attempt, derived from the snapshot, so the two can never disagree.
 describe('the run as a job', () => {
@@ -1679,6 +1896,9 @@ describe('the run as a job', () => {
         'replaced',
         'rebuilt',
         'recoloured',
+        // Added by issue 394 on purpose: the redraw for line options is the
+        // colours' kind of run, told apart only so cell 02 says what it drew.
+        'optioned',
         'reordered',
         // Added by issue 350 on purpose: the run is a redraw for sizes, and
         // belongs to cell 04.

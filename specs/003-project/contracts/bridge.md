@@ -17,13 +17,15 @@ filesystem path.
 | `projects.setInputs(id, { mode, agency })` (A2-02) | the mode by the engine's rule; an agency id or none | the updated `ProjectRecord`, unchanged when nothing differs | `mode …`; `agency …`; `not found`; `read-only` |
 | `projects.setTuning(id, tuning)` (issue 385) | LOOM's settings in the record's names: a grid of the engine's four and seven numbers, each inside the engine's own range | the updated `ProjectRecord`, holding only the fields away from LOOM's own, and unchanged when nothing differs | the engine's own sentences ("tuning.merge_distance must be from 5 to 500, in metres", "tuning.grid must be one of …"); `the tuning does not take <field>`; `not found`; `read-only`; refused during a reset |
 | `projects.completeColors(id, { colors, defaultColor })` (A4-01) | a line label to a `#rrggbb` colour, and the colour of a line the feed leaves uncoloured | the updated `ProjectRecord` | `the colours must be …`; `the colour for <line> …`; `a line label …`; `lay the project out first`; `not found`; `read-only` |
+| `projects.completeLines(id, lines, stations?)` (issue 394) | a line label to that line's options in the engine's names (`name`, `hidden`, `width`, `casing: { width, color }`, `dash`), written once the map has been drawn with them; the stations the build answered, as for the colours | the updated `ProjectRecord`, holding only the fields away from the engine's own, with `drawn.lines` the same | the engine's own sentences ("lines['A'].width must be from 0.75 to 1.5, as a multiple of line_width", "lines['A'] does not take colour", …); `a line label …`; `lay the project out first`; `not found`; `read-only`; refused during a reset |
 
 Channels, constants in `src/shared/api.ts`: `projects:list`, `projects:get`,
 `projects:create`, `projects:rename`, `projects:delete`; since A3-01
 `projects:complete-layout`, since A3-04 `projects:complete-rebuild`, since
 A2-02 `projects:set-inputs`, since A4-01 `projects:complete-colors`
 (`specs/018-colours/contracts/bridge.md`), since issue 385
-`projects:set-tuning`. `projects.completeLayout`'s `done` carries the
+`projects:set-tuning`, since issue 394 `projects:complete-lines`.
+`projects.completeLayout`'s `done` carries the
 tuning the run sent as an optional `tuning`, held to the same rules, since
 issue 385.
 

@@ -196,6 +196,19 @@ describe('the hook the panels put themselves back through', () => {
   })
 })
 
+describe('a redraw for line options belongs to the options and not to the colours', () => {
+  const read = (file: string): string =>
+    readFileSync(resolve(__dirname, '../../src/renderer/src', file), 'utf8')
+
+  it('is put back by its own hook only, and the colours ignore it', () => {
+    // Mutation: either side reading `recoloured` alone - a stopped options
+    // redraw would drop a colour held until it ended, and a stopped colours
+    // redraw a waiting option (issue 394).
+    expect(read('useLineOptions.ts').includes('usePutBack(runState, optioned, () => {')).toBe(true)
+    expect(read('LineColours.tsx').includes('snapshot.recoloured && !optioned')).toBe(true)
+  })
+})
+
 describe('the three panels share the one shape', () => {
   const panels = [
     { file: 'LineColours.tsx', own: 'recoloured' },

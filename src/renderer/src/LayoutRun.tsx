@@ -59,6 +59,7 @@ export default function LayoutRun({
     replaced,
     rebuilt,
     recoloured,
+    optioned,
     reordered,
     restyled,
     day,
@@ -203,7 +204,7 @@ export default function LayoutRun({
         {(state === 'cancelled' || state === 'failed') && (
           <>
             <p className="prose" role="status">
-              {stoppedSentence(state, replaced, rebuilt, recoloured, reordered, restyled)}
+              {stoppedSentence(state, replaced, rebuilt, recoloured, reordered, restyled, optioned)}
             </p>
             <div className="toolbar">
               <Button variant="primary" ref={layOutRef} onClick={begin} disabled={disabled}>
@@ -221,11 +222,13 @@ export default function LayoutRun({
                 ? restyledSentence()
                 : reordered
                   ? reorderedSentence()
-                  : recoloured
-                    ? recolouredSentence()
-                    : rebuilt
-                      ? drawnSentence(day)
-                      : doneSentence(forced, changed, relaid)}
+                  : optioned
+                    ? optionedSentence()
+                    : recoloured
+                      ? recolouredSentence()
+                      : rebuilt
+                        ? drawnSentence(day)
+                        : doneSentence(forced, changed, relaid)}
             </p>
             {movedNotice}
             {tunedNotice}
@@ -288,6 +291,11 @@ export function recolouredSentence(): string {
   return 'Drawn in the colours you chose, from the stored layout. The stations have not moved.'
 }
 
+/** What a redraw for chosen line options says when the map has been drawn (issue 394). */
+export function optionedSentence(): string {
+  return 'Drawn with the line options you chose, from the stored layout. The stations have not moved.'
+}
+
 /** What a redraw for a chosen line order says when the map has been drawn. */
 export function reorderedSentence(): string {
   return 'Drawn with the lines in the order you chose, from the stored layout. The stations have not moved.'
@@ -312,6 +320,7 @@ export function stoppedSentence(
   recoloured = false,
   reordered = false,
   restyled = false,
+  optioned = false,
 ): string {
   if (restyled) {
     return state === 'cancelled'
@@ -322,6 +331,11 @@ export function stoppedSentence(
     return state === 'cancelled'
       ? 'The redraw was cancelled. The project keeps the order it had; the map on screen may be the old one until the next build.'
       : 'The map was not drawn in that order. The project keeps the order it had; the map on screen may be the old one until the next build.'
+  }
+  if (optioned) {
+    return state === 'cancelled'
+      ? 'The redraw was cancelled. The project keeps the line options it had; the map on screen may be the old one until the next build.'
+      : 'The map was not drawn with those line options. The project keeps the line options it had; the map on screen may be the old one until the next build.'
   }
   if (recoloured) {
     return state === 'cancelled'

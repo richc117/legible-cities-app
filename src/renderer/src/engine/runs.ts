@@ -268,6 +268,7 @@ export function layoutRunFor(projectId: string): LayoutRun {
       window.api.projects.completeColors(id, palette, stations),
     completeOrder: (id, order, stations) => window.api.projects.completeOrder(id, order, stations),
     completeStyle: (id, style, stations) => window.api.projects.completeStyle(id, style, stations),
+    completeLines: (id, lines, stations) => window.api.projects.completeLines(id, lines, stations),
     today,
     // Asked afresh as a layout ends before its first stage: the list the
     // screens hold was read before the download (issue 178).
