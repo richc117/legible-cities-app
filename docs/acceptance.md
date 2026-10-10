@@ -648,6 +648,12 @@ Result: ____
   frame, with the parts Instagram covers shaded, and a caption under it,
   "9:16, 1080 x 1920." and that the shading is guidance and not in the
   export. The map above it keeps running where it was.
+- After **Storyboard**, an **Opening** select on "None", offering "None",
+  "Title card", "The network drawing in" and "Title card, then the network
+  drawing in", with "What plays before the storyboard: a title card naming
+  the city, the network and the service day, with the caption under them,
+  or the network drawing itself in, line by line." under it.
+  Leave it on "None": the reel is timed as it comes.
 - Among the choices, a **Caption** field, a **Clock corner** select and,
   near the foot, **Alt text for the file’s sidecar**. On the reel
   **Clock corner** lists "top right (the preset’s own)" and "bottom left"
@@ -688,7 +694,8 @@ under the field. Replace them with `Rush hour on the Red Line` and press
 Tab. In **Alt text for the file’s sidecar** type
 `A schematic of the Los Angeles rail lines.` with a space before it and one
 after, and click elsewhere. Press **Export**. Then choose
-"instagram-reel-gif: 630 by 1120, GIF" and press **Export**.
+"instagram-reel-gif: 630 by 1120, GIF", choose **Opening** "Title card, then
+the network drawing in", and press **Export**.
 
 **See.**
 - For the post: a **View** select and a **Start time** field appear, and
@@ -708,8 +715,25 @@ after, and click elsewhere. Press **Export**. Then choose
   no shaded parts to keep the clock out of the bottom right; the caption
   and the alt text are the project’s own and stay as they were. It ends with
   "Exported la-metro-rail-instagram-reel-gif.gif."
+- For the GIF's opening: **Card** and **Draw-in** appear under **Opening**,
+  showing 2 and 6, with "How long the title card stays up: 1 to 10 seconds,
+  2 unless you change it." and "How long the network takes to draw itself
+  in: 2 to 20 seconds, 6 unless you change it." under them; "The opening
+  plays in the export and not in the preview, which shows the map it plays
+  over." appears above the preview; and, because the caption's words are on
+  the card too, the engine's note under the choices, "the title card at
+  storyboard[0] says `<n>` words, about `<s>` seconds of reading at 0.3
+  seconds a word, and lasts 2. Lengthen the beat, or shorten the caption."
+  The export is not refused for it.
 - **check:** open both files. The post is a still of the map with
-  `Rush hour on the Red Line` under its title, the GIF plays with it.
+  `Rush hour on the Red Line` under its title, the GIF plays with it. The
+  GIF opens on a title card over bare ground naming Los Angeles, Metro Rail,
+  the service day and `Rush hour on the Red Line`; the card goes, the
+  network draws itself in line by line, and the storyboard then plays. Its
+  sidecar, `la-metro-rail-instagram-reel-gif.gif.json`, says
+  `"storyboard": "custom"`, the engine's name for a storyboard written as a
+  list, and not `"morph"`: with an opening the app sends the storyboard as
+  one.
 
 Result: ____
 
@@ -874,7 +898,8 @@ Press **Rename** at the foot of the notebook, type `Los Angeles` and press
   from every cell.", and the diagnostics are absent (they are shown only
   for a map drawn in this session). The line colours and order you left are
   the map's, and **Outputs** still lists the three exports.
-- In cell **06 Export**, **Preset** is the GIF, the last choice made.
+- In cell **06 Export**, **Preset** is the GIF and **Opening** is "Title
+  card, then the network drawing in", the last choices made.
 - **Rename** opens a **New name** field; after **Save** the heading reads
   **Los Angeles**, and the front door lists it first after **New project**
   (a screen reader reads its card as "Open Los Angeles").

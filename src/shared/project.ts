@@ -292,8 +292,11 @@ export interface ProjectRecord {
   theme: Theme
   /**
    * What the project was last set to export: the preset, the storyboard and
-   * the options (A5-01). The reel with the engine's defaults for a record
-   * from before the export tab, which is what the one button exported.
+   * the options (A5-01), and since issue 392 the opening a video plays first
+   * (`opening`, `cardSecs`, `drawInSecs`, each optional, absent meaning none
+   * and the defaults; added without moving `RECORD_VERSION`, spec 035). The
+   * reel with the engine's defaults for a record from before the export tab,
+   * which is what the one button exported.
    */
   export: ExportChoice
   /**

@@ -13,7 +13,8 @@
 // name as code points and then by id, since v0.13.0), `feeds.remove` (its answer is
 // `FeedsRemoveResult`), `render.stage` (its answer carries a `description`,
 // timed only for a day), `export.plan` (a `CaptureJob` carries `caption` and
-// `clock_corner`, and a storyboard may be a list of beats), `export.encode`
+// `clock_corner`, and a storyboard may be a list of beats, which since
+// v0.15.0 may open on a title card and a draw-in), `export.encode`
 // (a person's `alt` replaces the engine's sentence) and the two tables
 // `export.presets` and `export.storyboards`. The requests the tests send are
 // held to the description's params as well, so a test cannot ask the stand-in
@@ -32,6 +33,8 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { engineEnvironment } from '../../src/main/interpreter'
 import { Sidecar } from '../../src/main/sidecar'
 import { EngineError, ERROR_CODES, type EnginePin, type EngineState } from '../../src/shared/engine'
+import { openingBeats, OPENINGS } from '../../src/shared/opening'
+import type { Storyboard } from '../../src/shared/protocol'
 import { FAKE_ENGINE, findPython } from '../support/python'
 
 // -------------------------------------------------------------- validating
@@ -1762,5 +1765,215 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s removal is a job${WHY}
     await until(() => read(home, '$/cancelRequest') === 1, 'the bound’s cancel to be read')
     expect(registry(home), 'nothing was done').toEqual(['mine'])
     expect(sidecar.abandoned, 'the engine still has it').toBe(1)
+  })
+})
+
+// ------------------------------------------- the opening (engine v0.15.0)
+
+// A storyboard's title card and draw-in (engine issue 44, app issue 392):
+// the stand-in takes `card` and `draw_in` on a list with the engine's bounds
+// and its sentences, writes them into the plan's beats only where true, adds
+// the engine's note for a card too short for its words, and takes them back
+// at the encode. Every list `openingBeats` makes from the stand-in's own
+// table is one it plans. Its own control file, so one storyboard opens on
+// the rows, which none of the engine's does.
+describe.skipIf(PYTHON === null)(`the stand-in engine’s opening${WHY}`, () => {
+  let home = ''
+  let sidecar: Sidecar
+
+  const ask = (method: string, params: Record<string, unknown> = {}): Promise<unknown> =>
+    sidecar.request(method, params, { deadlineMs: READY_MS }).result
+
+  beforeAll(async () => {
+    home = mkdtempSync(join(tmpdir(), 'lc-opening-'))
+    writeFileSync(
+      join(home, 'fake-engine.json'),
+      JSON.stringify({ storyboard_first_view: { run: 'linear' } }),
+    )
+    sidecar = new Sidecar({
+      command: [PYTHON as string, '-m', 'schematic.serve'],
+      env: engineEnvironment({
+        config: { home, loomBin: null, loomCommit: null, ffmpeg: null },
+        base: { ...process.env, PYTHONPATH: FAKE_ENGINE },
+        development: true,
+      }),
+      pin: PIN,
+      log: () => {},
+      bounds: { handshakeMs: READY_MS, inactivityMs: READY_MS },
+    })
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('the stand-in never became ready')), READY_MS)
+      sidecar.onState((s) => {
+        if (s.state === 'ready') {
+          clearTimeout(timer)
+          resolve()
+        }
+      })
+      sidecar.start()
+    })
+  }, READY_MS + 5_000)
+
+  afterAll(async () => {
+    await sidecar?.stop()
+    if (home !== '') rmSync(home, { recursive: true, force: true })
+  })
+
+  interface Beat {
+    secs: number
+    view: string | null
+    at: number | null
+    tween: number
+    card?: boolean
+    draw_in?: boolean
+  }
+  interface Plan {
+    storyboard: string
+    beats: Beat[]
+    notes: string[]
+  }
+
+  const plan = async (
+    storyboard: unknown,
+    options: Record<string, unknown> = {},
+    preset = 'linkedin-video',
+  ): Promise<Plan> => {
+    const params = {
+      key: 'la-metro-rail',
+      preset,
+      date: '2026-06-16',
+      options: { storyboard, ...options },
+    }
+    expect(paramsProblems('export.plan', params), 'the request').toEqual([])
+    const answer = (await ask('export.plan', params)) as Plan
+    expect(answerProblems('export.plan', answer), 'the answer').toEqual([])
+    return answer
+  }
+
+  const refusedWith = async (storyboard: unknown[]): Promise<string> => {
+    try {
+      await ask('export.plan', {
+        key: 'la-metro-rail',
+        preset: 'linkedin-video',
+        options: { storyboard },
+      })
+    } catch (error) {
+      if (error instanceof EngineError) {
+        expect(error.code, error.message).toBe(-32602)
+        expect(error.data?.kind).toBe('params')
+        return error.message
+      }
+      throw error
+    }
+    throw new Error('the stand-in planned a list the engine refuses')
+  }
+
+  const map = { secs: 2, view: 'map', at: '08:00' }
+
+  it('writes a card and a draw-in into the plan’s beats only where true', async () => {
+    const answer = await plan([
+      { ...map, card: true },
+      { secs: 3, view: 'map', draw_in: true },
+      { secs: 2, view: 'linear', card: false, draw_in: false },
+    ])
+    expect(answer.storyboard).toBe('custom')
+    expect(answer.beats.map((b) => [b.card, b.draw_in])).toEqual([
+      [true, undefined],
+      [undefined, true],
+      [undefined, undefined],
+    ])
+    expect(answer.beats[2]).not.toHaveProperty('card')
+  })
+
+  it('refuses what the engine’s authored_beats refuses, in its sentences', async () => {
+    expect(await refusedWith([{ ...map, card: 'yes' }])).toBe(
+      'storyboard[0].card must be true or false',
+    )
+    expect(await refusedWith([{ ...map, secs: 0.5, card: true }])).toBe(
+      'storyboard[0].secs must be at least 1 second on a title card',
+    )
+    expect(await refusedWith([{ ...map, draw_in: 1 }])).toBe(
+      'storyboard[0].draw_in must be true or false',
+    )
+    expect(await refusedWith([{ ...map, secs: 1.5, draw_in: true }])).toBe(
+      'storyboard[0].secs must be at least 2 seconds on a draw-in',
+    )
+    expect(
+      await refusedWith([
+        { ...map, draw_in: true },
+        { secs: 2, draw_in: true },
+      ]),
+    ).toBe(
+      'storyboard[1].draw_in is a second draw-in: a storyboard draws the network in once, and storyboard[0] does',
+    )
+    expect(await refusedWith([{ ...map, sweep: true, hours: 1, draw_in: true }])).toBe(
+      'storyboard[0].sweep must be false on a draw-in: the clock holds while the network draws in',
+    )
+    expect(await refusedWith([{ ...map, view: 'linear', draw_in: true }])).toBe(
+      'storyboard[0].view must be geographic or map on a draw-in, not linear',
+    )
+    expect(
+      await refusedWith([
+        { ...map, view: 'time' },
+        { secs: 2, draw_in: true },
+      ]),
+    ).toBe(
+      'storyboard[1].draw_in is on the time view, which it keeps from the beat before: a draw-in is on the geographic or map view',
+    )
+    expect(
+      await refusedWith([
+        map,
+        { secs: 2, view: 'linear' },
+        { secs: 2, view: 'map', draw_in: true },
+      ]),
+    ).toBe(
+      'storyboard[1].view must be geographic or map: the network is undrawn until the draw-in at storyboard[2], and the linear view shows it whole',
+    )
+  })
+
+  it('notes a title card too short for its words, and is silent for one long enough', async () => {
+    // Los Angeles, Metro Rail, Tuesday 16 June 2026 and six words of caption:
+    // fourteen words, 4.2 seconds of reading.
+    const short = await plan([{ ...map, card: true }], { caption: 'Rush hour on the Red Line' })
+    expect(short.notes).toEqual([
+      'the title card at storyboard[0] says 14 words, about 4.2 seconds of reading at 0.3 seconds a word, and lasts 2. Lengthen the beat, or shorten the caption.',
+    ])
+    const plain = await plan([{ ...map, card: true }])
+    expect(plain.notes).toEqual([
+      'the title card at storyboard[0] says 8 words, about 2.4 seconds of reading at 0.3 seconds a word, and lasts 2. Lengthen the beat.',
+    ])
+    expect((await plan([{ ...map, secs: 5, card: true }])).notes).toEqual([])
+  })
+
+  it('plans every opening openingBeats makes from its own table, and opens one storyboard on the rows', async () => {
+    const table = (await ask('export.storyboards')) as { storyboards: Storyboard[] }
+    expect(answerProblems('export.storyboards', table)).toEqual([])
+    const run = table.storyboards.find((b) => b.name === 'run')
+    expect(run?.beats[0].view, 'the control turns it').toBe('linear')
+    expect(run?.views).toBe('linear')
+    // Every opening on every storyboard, the one on the rows included: the
+    // engine takes them all (spec 035, as of 10 Oct 2026).
+    for (const storyboard of table.storyboards) {
+      for (const opening of OPENINGS) {
+        const list = openingBeats(storyboard, opening, { card: 1, drawIn: 20 })
+        expect(list, `${storyboard.name}, ${opening}`).not.toBeNull()
+        const answer = await plan(list)
+        expect(answer.beats, `${storyboard.name}, ${opening}`).toHaveLength((list ?? []).length)
+      }
+    }
+  })
+
+  it('takes the flags back at the encode, and refuses one that is not true or false', async () => {
+    const answer = (await plan([{ ...map, secs: 1, card: true }], {}, 'linkedin-gif')) as Plan &
+      Record<string, unknown>
+    const frames = join(home, 'frames-opening')
+    mkdirSync(frames, { recursive: true })
+    writeFileSync(join(frames, '000000.png'), 'png')
+    const dest = join(home, 'exports', 'opening.gif')
+    const encoded = await ask('export.encode', { plan: answer, source: frames, dest })
+    expect(answerProblems('export.encode', encoded)).toEqual([])
+    const bad = { ...answer, beats: [{ ...answer.beats[0], card: 'yes' }] }
+    await expect(
+      ask('export.encode', { plan: bad, source: frames, dest: join(home, 'exports', 'bad.gif') }),
+    ).rejects.toMatchObject({ message: 'plan.beats[0] has a card that is not true or false' })
   })
 })

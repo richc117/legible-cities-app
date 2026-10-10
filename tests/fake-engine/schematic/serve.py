@@ -26,6 +26,9 @@ writes before the app starts (every key optional):
     service_refuses   a sentence: feeds.service refuses with it, kind feed, as the engine
                       does for a feed with neither calendar table
     export_seconds    the one beat's length in a video plan export.plan answers (default 1)
+    storyboard_first_view  {name: view}: export.storyboards answers that storyboard opening
+                      on that view, so a test has one that opens on the rows (none of the
+                      engine's does); its plan by name is the one beat as for any other
     export_refuses    a sentence: export.plan refuses with it as the hint
     no_geographic     true: the feeds carry no geographic geometry, so a plan whose view or
                       storyboard visits the geographic view is refused, as the engine does
@@ -79,6 +82,13 @@ writes before the app starts (every key optional):
                       octi tool, and waits octi_ms (default 2000) for a cancel; a cancel ends
                       the child and records its pid in fake-engine.octi-ended; its pid while it
                       runs is in fake-engine.octi.pid
+
+``export.plan`` takes a list's ``card`` and ``draw_in`` as engine v0.15.0 does
+(its issue 44): with the engine's bounds and its sentences (``authored_beats``),
+written into the plan's beats only where true (``beat_payload``), and the
+engine's note for a title card whose words need longer to read than it lasts
+(``_reading_notes``). ``export.encode`` takes them back, refusing a flag that
+is not true or false as the engine's handler does (``_beat_payload``).
 
 ``graph.build`` takes a ``tuning`` as engine v0.14.0 does (its issue 37): it
 refuses one the engine's ``serve._tuning`` refuses, with the ``params`` kind
@@ -235,7 +245,15 @@ STORYBOARDS = {b["name"]: b for b in EXPORT_STORYBOARDS}
 # (`authored_beats`), a caption, and the corner the clock sits in.
 VIEWS = ("geographic", "map", "linear", "time")
 MAX_BEATS, BEAT_SECS, MAX_SECONDS, MAX_HOURS = 16, (0.5, 30.0), 90.0, 24.0
-BEAT_FIELDS = ("secs", "view", "labels", "at", "speed", "sweep", "hours", "span", "tween")
+BEAT_FIELDS = ("secs", "view", "labels", "at", "speed", "sweep", "hours", "span", "tween",
+               "card", "draw_in")
+# A title card's floor and a draw-in's, the views a draw-in may be on, and the
+# seconds a word of the card takes to read (engine v0.15.0, issue 44).
+CARD_SECS, DRAW_IN_SECS, READING_SECS = 1.0, 2.0, 0.3
+DRAW_IN_VIEWS = ("geographic", "map")
+DAY_NAMES = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+MONTH_NAMES = ("January", "February", "March", "April", "May", "June", "July", "August",
+               "September", "October", "November", "December")
 BESIDE_A_LIST = "view and at go on a list's first beat (storyboard[0]), not beside the list"
 CLOCK = re.compile(r"^[0-9]{1,2}:[0-9]{2}(:[0-9]{2})?$")
 CLOCK_CORNERS = ("top-left", "top-right", "bottom-left", "bottom-right")
@@ -475,6 +493,9 @@ def beats_problem(beats) -> str | None:
                 f"1 to {MAX_BEATS} beats")
     low, high = BEAT_SECS
     total = 0.0
+    shows: list = []          # the view each beat is on, named or kept
+    drawn_at = None           # the draw-in's beat
+    views: list = []          # each beat's own view, for the check after the loop
     for i, fields in enumerate(beats):
         where = f"storyboard[{i}]"
         if not isinstance(fields, dict):
@@ -528,6 +549,38 @@ def beats_problem(beats) -> str | None:
                 return (f"{where}.at is missing: frame 0 is not reproducible without a "
                         "clock, so the first beat names one, unless it sweeps a span "
                         "rather than a number of hours")
+        shows.append(view if view is not None else shows[-1])
+        views.append(view)
+        card = fields.get("card", False)
+        if not isinstance(card, bool):
+            return f"{where}.card must be true or false"
+        if card and secs < CARD_SECS:
+            return f"{where}.secs must be at least {CARD_SECS:g} second on a title card"
+        draw_in = fields.get("draw_in", False)
+        if not isinstance(draw_in, bool):
+            return f"{where}.draw_in must be true or false"
+        if draw_in:
+            if secs < DRAW_IN_SECS:
+                return f"{where}.secs must be at least {DRAW_IN_SECS:g} seconds on a draw-in"
+            if drawn_at is not None:
+                return (f"{where}.draw_in is a second draw-in: a storyboard draws the network "
+                        f"in once, and storyboard[{drawn_at}] does")
+            if sweep:
+                return (f"{where}.sweep must be false on a draw-in: the clock holds while the "
+                        "network draws in")
+            if shows[i] not in DRAW_IN_VIEWS:
+                if view is not None:
+                    return f"{where}.view must be geographic or map on a draw-in, not {view}"
+                return (f"{where}.draw_in is on the {shows[i]} view, which it keeps from the "
+                        "beat before: a draw-in is on the geographic or map view")
+            drawn_at = i
+    # The network is undrawn until its draw-in, and the rows and the chart
+    # cannot show it undrawn.
+    for j in range(drawn_at or 0):
+        if views[j] is not None and views[j] not in DRAW_IN_VIEWS:
+            return (f"storyboard[{j}].view must be geographic or map: the network is undrawn "
+                    f"until the draw-in at storyboard[{drawn_at}], and the {views[j]} view "
+                    "shows it whole")
     return None
 
 
@@ -545,8 +598,39 @@ def beat_payloads(beats: list) -> list:
                     "sweep": b.get("sweep", False), "hours": hours,
                     "lo": None if hours else (_hms(span[0]) if span else 0.0),
                     "hi": None if hours else (_hms(span[1]) if span else 86_400.0),
-                    "tween": tween if tween is not None else min(b["secs"], 1.2)})
+                    "tween": tween if tween is not None else min(b["secs"], 1.2),
+                    **{flag: True for flag in ("card", "draw_in") if b.get(flag) is True}})
     return out
+
+
+def day_text(date) -> str:
+    """The service day as the page names it (the engine's `service_day_text`):
+    "Tuesday 16 June 2026"; empty without a day."""
+    try:
+        d = datetime.date.fromisoformat(date)
+    except (TypeError, ValueError):
+        return ""
+    return f"{DAY_NAMES[d.weekday()]} {d.day} {MONTH_NAMES[d.month - 1]} {d.year}"
+
+
+def reading_notes(key: str, beats: list, date, caption) -> list:
+    """The engine's `_reading_notes`: a note for each title card whose words -
+    the city, the network, the day and the caption - need longer to read than
+    the beat lasts, at 0.3 seconds a word."""
+    feed = FEEDS.get(key, {})
+    said = [feed.get("city") or "", feed.get("network") or "", day_text(date), caption or ""]
+    words = sum(len(part.split()) for part in said)
+    notes = []
+    for i, beat in enumerate(beats):
+        if beat.get("card") is not True:
+            continue
+        needed = round(words * READING_SECS, 6)
+        if needed > beat["secs"]:
+            notes.append(f"the title card at storyboard[{i}] says {words} words, about "
+                         f"{needed:.1f} seconds of reading at {READING_SECS:g} seconds a "
+                         f"word, and lasts {beat['secs']:g}. Lengthen the beat"
+                         + (", or shorten the caption." if caption else "."))
+    return notes
 
 
 def caption_problem(caption) -> str | None:
@@ -841,7 +925,7 @@ class Engine:
             return True
         if method == "export.storyboards":
             write({"jsonrpc": "2.0", "id": msg_id,
-                   "result": {"storyboards": EXPORT_STORYBOARDS}})
+                   "result": {"storyboards": self.storyboards()}})
             return True
         if method == "export.plan":
             params = message.get("params") or {}
@@ -1576,6 +1660,21 @@ class Engine:
             "busiest_weekday": self.control.get("busiest", "2026-06-16"),
             "anchor": anchor}})
 
+    def storyboards(self) -> list:
+        """The storyboard table, with any storyboard the control file names
+        opening on the view it names (`storyboard_first_view`)."""
+        turned = self.control.get("storyboard_first_view") or {}
+        out = []
+        for board in EXPORT_STORYBOARDS:
+            view = turned.get(board["name"])
+            if view is None:
+                out.append(board)
+                continue
+            beats = [dict(b) for b in board["beats"]]
+            beats[0]["view"] = view
+            out.append(_storyboard(board["name"], *beats))
+        return out
+
     @staticmethod
     def plan_problem(params: dict) -> tuple[str, str] | None:
         """The real server's refusals, in shape, as (kind, sentence). In the
@@ -1720,7 +1819,9 @@ class Engine:
                 "beats": beats, "keep": quality != "standard", "crf": 26,
                 "fade": float(options.get("fade", 0.0)), "stem": stem, "theme": theme,
                 "view": view, "storyboard": board, "at": pinned,
-                "notes": [corner_note] if corner_note else [],
+                "notes": ((reading_notes(key, beats, params.get("date"), caption)
+                           if listed else [])
+                          + ([corner_note] if corner_note else [])),
                 "caption": caption if caption else None, "clock_corner": corner,
                 "filename": f"{stem}.{preset['format']}"}
 
@@ -1747,6 +1848,15 @@ class Engine:
         plan = params.get("plan") or {}
         source = Path(params.get("source") or "")
         dest = Path(params.get("dest") or "")
+        # The plan's beats come back as the plan wrote them: a title card and
+        # a draw-in only where true, and refused when they are not true or
+        # false, as the engine's handler refuses them (`_beat_payload`).
+        for i, beat in enumerate(plan.get("beats") or []):
+            for flag in ("card", "draw_in"):
+                if isinstance(beat, dict) and not isinstance(beat.get(flag, False), bool):
+                    error(msg_id, -32602,
+                          f"plan.beats[{i}] has a {flag} that is not true or false", "params")
+                    return
         # Since engine v0.12.0 a person's own alt text goes into the sidecar
         # in place of the sentence the engine writes, trimmed and otherwise
         # as given; the engine refuses one that is not text, one over 1,000

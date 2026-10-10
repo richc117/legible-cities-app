@@ -27,6 +27,7 @@ import type { Inspection } from '../../shared/protocol'
 import { linesOf } from './colours'
 import { engineClient } from './engine/runs'
 import type { ExportRun as Run } from './engine/exportRun'
+import ExportOpening from './ExportOpening'
 import ExportRunView from './ExportRun'
 import {
   byPlatform,
@@ -37,6 +38,7 @@ import {
   exportTablesFor,
   forgetExportTables,
   offeredCorners,
+  playedBy,
   plays,
   presetWords,
   PreviewPlanner,
@@ -54,6 +56,7 @@ import {
   type PreviewAddress,
 } from './exportChoice'
 import { focusLost } from './focusHandback'
+import { openingOf, PREVIEW_NOTE } from './opening'
 import Icon from './icons/Icon'
 import Button from './kit/Button'
 import Select from './kit/Select'
@@ -64,7 +67,9 @@ import { useSnapshot } from './useSnapshot'
 // A5.5-08 and its own tab before that: a preset from the engine's
 // table, grouped by platform; a storyboard for a video or a GIF; the
 // options, a caption and the clock's corner among them, and the sidecar's
-// alt text beside them (issue 352, ADR-052); and the export itself, with the
+// alt text beside them (issue 352, ADR-052); for a video or a GIF, the
+// opening it plays first, a title card or the network drawing in
+// (`ExportOpening.tsx`, issue 392); and the export itself, with the
 // progress line, cancel and "Reveal" it always had.
 //
 // The panel has no heading of its own: cell 06's row is its heading, and
@@ -256,6 +261,11 @@ export default function ExportTab({
   // `usable` has already taken out a corner this preset would refuse, so the
   // choice's own is on offer whenever it names one.
   const corner = choice.options.clock_corner ?? (preset ? defaultCorner(preset) : 'bottom-right')
+  // The storyboard this choice plays, as the engine lists it, which an
+  // opening is made from; none for a still (issue 392).
+  const played =
+    preset && tables.status === 'ready' ? playedBy(choice, preset, tables.tables) : undefined
+  const opening = played === undefined ? 'none' : openingOf(choice)
   const key = keyOf(choice, project)
   const refused = refusal !== null && refusal.key === key
 
@@ -540,6 +550,7 @@ export default function ExportTab({
             The preview shows the frame the export will have, with the parts a platform covers with
             its own buttons shaded where it has them. The theme is the map&rsquo;s own.
           </p>
+          {opening !== 'none' && <p className="prose">{PREVIEW_NOTE}</p>}
           {preview}
           <form className="export-choices" ref={choicesRef} noValidate onSubmit={submit}>
             <div className="field">
@@ -592,6 +603,11 @@ export default function ExportTab({
                   ))}
                 </Select>
               </div>
+            )}
+            {/* What plays before the storyboard, and how long: after the
+                storyboard it opens, and only once that is known. */}
+            {played !== undefined && (
+              <ExportOpening key={project.id} choice={choice} locked={locked} onChange={change} />
             )}
             {refused && refusal !== null && (
               <p className="message error" role="alert">

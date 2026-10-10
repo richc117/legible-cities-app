@@ -141,6 +141,20 @@ export function usable(
   return { choice: read, dropped: null }
 }
 
+/**
+ * The storyboard a choice plays, as the engine's table lists it: the one it
+ * names, else the preset's own; none for a still, or one the table lacks.
+ */
+export function playedBy(
+  choice: Pick<ExportChoice, 'storyboard'>,
+  preset: Pick<Preset, 'kind' | 'storyboard'>,
+  tables: Pick<ExportTables, 'storyboards'>,
+): Storyboard | undefined {
+  if (!plays(preset)) return undefined
+  const name = choice.storyboard ?? preset.storyboard
+  return tables.storyboards.find((board) => board.name === name)
+}
+
 type Flag = 'labels' | 'title' | 'clock'
 
 /**

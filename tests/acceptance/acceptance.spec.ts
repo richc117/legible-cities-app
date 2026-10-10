@@ -109,6 +109,15 @@ const CAPTION = 'Rush hour on the Red Line'
 const ALT = 'A schematic of the Los Angeles rail lines.'
 const REEL = 'la-metro-rail-instagram-reel.mp4'
 const POST = 'la-metro-rail-instagram-post.png'
+/** Cell 06's Opening as step 11 reads it (issue 392): its four options, and the sentence under it. */
+const OPENINGS = [
+  'None',
+  'Title card',
+  'The network drawing in',
+  'Title card, then the network drawing in',
+]
+const OPENING_SENTENCE =
+  'What plays before the storyboard: a title card naming the city, the network and the service day, with the caption under them, or the network drawing itself in, line by line.'
 /** What step 17 renames it to. */
 const RENAMED = 'Los Angeles'
 /** The notebook's six cells, in the order they are read (ADR-045). */
@@ -2409,6 +2418,17 @@ test('a release, installed, through docs/acceptance.md', async () => {
           expect((await frameParams(window)).get('safe')).toBe('1')
         },
       )
+      // The opening issue 392 added, after the storyboard, on None: the reel
+      // is timed as it comes.
+      await log.soft('an Opening select after Storyboard, on None, with its four', async () => {
+        const opening = panel.getByRole('combobox', { name: 'Opening' })
+        await expect(opening).toBeVisible()
+        await expect(opening).toHaveValue('none')
+        expect((await opening.locator('option').allTextContents()).map((o) => o.trim())).toEqual(
+          OPENINGS,
+        )
+        await expect(panel.getByText(OPENING_SENTENCE)).toBeVisible()
+      })
       // The three controls issue 352 added are on the screen and, on the
       // reel, the corner select offers two corners with the sentence about
       // the platform's buttons. They are left as they are: the reel is timed
@@ -2648,6 +2668,40 @@ test('a release, installed, through docs/acceptance.md', async () => {
           expect((await recordOf(window, LA)).export.alt).toBe(ALT)
         },
       )
+      // The GIF opens on its title card and the network drawing in (issue
+      // 392), at the durations' defaults; the caption's words are on the
+      // card too, so the engine notes that two seconds is short for them.
+      await panel.getByRole('combobox', { name: 'Opening' }).selectOption('card-then-draw-in')
+      await log.soft(
+        'the opening: Card and Draw-in at 2 and 6, the preview’s note and the card’s reading note',
+        async () => {
+          await expect
+            .poll(async () => (await recordOf(window, LA)).export.opening)
+            .toBe('card-then-draw-in')
+          await expect(panel.getByLabel('Card', { exact: true })).toHaveValue('2')
+          await expect(panel.getByLabel('Draw-in', { exact: true })).toHaveValue('6')
+          await expect(
+            panel.getByText(
+              'How long the title card stays up: 1 to 10 seconds, 2 unless you change it.',
+            ),
+          ).toBeVisible()
+          await expect(
+            panel.getByText(
+              'How long the network takes to draw itself in: 2 to 20 seconds, 6 unless you change it.',
+            ),
+          ).toBeVisible()
+          await expect(
+            panel.getByText(
+              'The opening plays in the export and not in the preview, which shows the map it plays over.',
+            ),
+          ).toBeVisible()
+          await expect(
+            panel.getByText(
+              /the title card at storyboard\[0\] says \d+ words, about [\d.]+ seconds of reading at 0\.3 seconds a word, and lasts 2\. Lengthen the beat, or shorten the caption\./,
+            ),
+          ).toBeVisible({ timeout: 2 * MINUTE })
+        },
+      )
       const gif = await exportTo(log, 'la-metro-rail-instagram-reel-gif.gif', EXPORT_MS)
       await log.soft('the GIF has frames', () => {
         expect(readFileSync(gif.path).subarray(0, 6).toString('latin1')).toMatch(/^GIF8[79]a$/)
@@ -2663,6 +2717,9 @@ test('a release, installed, through docs/acceptance.md', async () => {
       )
       log.notAutomated(
         'whether the caption is drawn under the title, in the preview and in the post and the GIF (the preview’s address and the record carry it, and the alt text is read from the sidecar in step 13).',
+      )
+      log.notAutomated(
+        'whether the GIF opens on its title card over bare ground, naming the city, the network, the day and the caption, and the network then draws itself in line by line (the record and the plan carry the opening; the look is a person’s).',
       )
     })
 
@@ -3197,11 +3254,14 @@ test('a release, installed, through docs/acceptance.md', async () => {
             .getByRole('button', { name: /^Reveal / }),
         ).toHaveCount(3)
       })
-      await log.soft('cell 06 keeps the GIF', async () => {
+      await log.soft('cell 06 keeps the GIF and its opening', async () => {
         const panel = await openCell(reopened, 'export')
         await expect(panel.getByRole('combobox', { name: 'Preset' })).toHaveValue(
           'instagram-reel-gif',
           { timeout: 2 * MINUTE },
+        )
+        await expect(panel.getByRole('combobox', { name: 'Opening' })).toHaveValue(
+          'card-then-draw-in',
         )
         await closeCell(reopened, 'export')
       })

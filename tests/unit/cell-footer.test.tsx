@@ -319,15 +319,21 @@ describe('which cells reach for a footer at all', () => {
 
   /**
    * The files a cell with a strip is read from for a list of its own, from
-   * the renderer's root: its adapter, and for cell 06 the two files its
+   * the renderer's root: its adapter, and for cell 06 the three files its
    * body is drawn by. `ExportCell.tsx` draws nothing of its own but
-   * `ExportTab`, and `ExportTab` draws the run's panel from `ExportRun`, so
-   * a guard that read the adapter alone would hold nothing about cell 06.
+   * `ExportTab`, and `ExportTab` draws the run's panel from `ExportRun` and
+   * the opening from `ExportOpening` (issue 392), so a guard that read the
+   * adapter alone would hold nothing about cell 06.
    */
   const bodyOf: Record<keyof typeof withFooter, string[]> = {
     'ProcessCell.tsx': ['notebook/cells/ProcessCell.tsx'],
     'FrameCell.tsx': ['notebook/cells/FrameCell.tsx'],
-    'ExportCell.tsx': ['notebook/cells/ExportCell.tsx', 'ExportTab.tsx', 'ExportRun.tsx'],
+    'ExportCell.tsx': [
+      'notebook/cells/ExportCell.tsx',
+      'ExportTab.tsx',
+      'ExportRun.tsx',
+      'ExportOpening.tsx',
+    ],
   }
 
   /** A source file without its comments, which name things to say they are gone. */
