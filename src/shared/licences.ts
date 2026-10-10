@@ -173,6 +173,12 @@ export const BUNDLED_COMPONENTS: readonly BundledComponent[] = [
     identifiers: ['MIT'],
     notice: "Phosphor Icons in the engine's page",
   },
+  {
+    name: 'Inter and Atkinson Hyperlegible Next, inside the engine’s package',
+    licence: 'OFL-1.1',
+    identifiers: ['OFL-1.1'],
+    notice: "Inter and Atkinson Hyperlegible Next in the engine's package",
+  },
 ]
 
 /**

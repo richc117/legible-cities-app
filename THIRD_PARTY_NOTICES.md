@@ -38,6 +38,7 @@ FFmpeg library inside Electron, beside them (below).
 | LOOM Windows compatibility changes, by Transport for Cairo | Building LOOM under MSYS2 on Windows. At build time the vendor workflow takes `win_compat.h` and five `cppgtfs` files (the `timezone` identifier rename) from the port at the commit pinned in `vendor/pins.json`, and applies the port's other documented changes to our own tree with `scripts/loom-windows-patch.py`. Shims only; the port states, and our parity check assumes, no change to LOOM's algorithms | GPL-3.0 | https://github.com/transportforcairo/loom-windows-port |
 | `legible-cities` engine | The Python pipeline: feeds, rendering, scheduling, animation, export | GPL-3.0-or-later: the pinned tag carries the GPL-3.0 text as `LICENSE` and declares it in `pyproject.toml` (`license-files`). Installed into the bundled runtime at the tag in `vendor/pins.json`, its licence in its `.dist-info` | https://github.com/richc117/legible-cities |
 | Phosphor Icons in the engine's page | Four view-switcher icons (`map-trifold`, `graph`, `line-segments`, `clock`, regular weight) inside the engine's animation page, which the app embeds: the same set, from the same `@phosphor-icons/core` **2.1.1** release and under the same licence as the interface's own icons below, copied unmodified into the engine's `page/icons/` with the licence beside them. They replace four Esri Calcite UI icons at engine v0.11.0 (engine issue 19), which the page no longer carries. The app's own tree carries none of them | MIT | https://github.com/phosphor-icons/core |
+| Inter and Atkinson Hyperlegible Next in the engine's package | The two faces a map's station names can be drawn in (`label_font`, engine issue 76), shipped inside the installed engine package under `fonts/<name>/`, each with its `OFL.txt` beside the WOFF2: **Inter 4.1** (`web/Inter-Regular.woff2` from the release file `Inter-4.1.zip` of rsms/inter) and **Atkinson Hyperlegible Next 2.001** (`fonts/ttf/AtkinsonHyperlegibleNext-Regular.ttf` of googlefonts/atkinson-hyperlegible-next at commit `5d633f80`). Weight 400 only, subset to the Latin of station names by the engine's `bin/build-fonts` (a Modified Version in the licence's words), and embedded in a map's SVG as a WOFF2 only when a style chooses the face. Neither licence names a Reserved Font Name. The app's own tree carries neither | OFL-1.1, the SIL Open Font License, Version 1.1 | https://github.com/rsms/inter, https://github.com/googlefonts/atkinson-hyperlegible-next |
 | FigUI3 core | The interface's control kit: `fig.css` and `fig.js` of `@rogieking/figui3` **9.0.7**, pinned exactly. The package is split-licensed and its `package.json` says only "SEE LICENSE IN LICENSE": the core is MIT; the editor and lab bundles are PolyForm Shield 1.0.0 and are never imported (the build refuses them, `scripts/figui-guard.ts`; ADR-026). The core vendors `@ungap/custom-elements-builtin` (ISC) | MIT (core); ISC (the vendored polyfill) | https://github.com/rogie/figui3 |
 | Phosphor Icons | The interface's icons, vendored unmodified from `@phosphor-icons/core` **2.1.1** under `src/renderer/src/icons/phosphor/` with the licence beside them; the light weight at 16px, the regular at 24px, the fill weight for toggled states | MIT | https://github.com/phosphor-icons/core |
 | FFmpeg (ADR-012, ADR-040) | Encoding MP4 and GIF exports, bundled under `ffmpeg/` in the app's resources: `ffmpeg` and `ffprobe` of **FFmpeg 9.0.1**, built in this repository by `scripts/vendor-ffmpeg.sh` in the `ffmpeg` jobs of `.github/workflows/vendor.yml`, natively on each target, from the release tarball pinned by URL and sha256 in `vendor/pins.json`, whose signature by FFmpeg's release signing key the vendor workflow verifies, and proven by the same script before it is vendored. Configured `--enable-gpl --enable-version3` with `--disable-everything --disable-autodetect --disable-network`, and only the codecs, formats, filters and protocols the engine's export uses enabled back, with three more that the checks use: the `testsrc` filter the vendoring proof makes frames with, and the `rawvideo` encoder and muxer and `gif` decoder the determinism test reads exports back with; the configure line of every target is in the pins and printed by `ffmpeg -version`. The only external libraries are x264 and zlib (the operating system's on macOS; linked statically on Windows), and the vendor jobs refuse any other. **No freetype, fontconfig, HarfBuzz, libass, libdvdread or libdvdcss**: the export needs none, because the page draws every word in it. The vendor job also builds a Linux x64 binary for tests, and neither ships nor uploads it. Patent licensing for H.264 and AAC encoders is not assessed in this repository | GPL-3.0-or-later (`--enable-gpl --enable-version3`) | https://ffmpeg.org/releases/ffmpeg-9.0.1.tar.xz (tag `n9.0.1`, commit `bf1b838f2a`), and the `ffmpeg-source` artefact on each release |
@@ -623,6 +624,59 @@ agency's terms allow.
   Icons notice above, and are not repeated. Until engine v0.11.0 (engine
   issue 19) the page drew four Esri Calcite UI icons there; it carries none
   now.
+- **Inter and Atkinson Hyperlegible Next in the engine's package** (SIL Open
+  Font License 1.1): the two faces a map's station names can be drawn in,
+  Inter 4.1 and Atkinson Hyperlegible Next 2.001, which the installers carry
+  inside the engine package as weight-400 Latin subsets in WOFF2, each in its
+  own folder with the licence's text as `OFL.txt` beside it and a `README.md`
+  naming the release it was made from. A map's SVG embeds the face a style
+  chooses, and only that one, which the licence allows in full or in part.
+  Neither licence reserves a font name. The copyright lines are the first
+  line of each `OFL.txt`; the permission and the conditions are the same
+  text in both, and the rest of the licence, from its preamble to its
+  disclaimer, is in the two files.
+
+  > Inter: Copyright (c) 2016 The Inter Project Authors
+  > (https://github.com/rsms/inter)
+  >
+  > Atkinson Hyperlegible Next: Copyright 2020-2024 The Atkinson Hyperlegible
+  > Next Project Authors
+  > (https://github.com/googlefonts/atkinson-hyperlegible-next)
+  >
+  > This Font Software is licensed under the SIL Open Font License,
+  > Version 1.1.
+  >
+  > Permission is hereby granted, free of charge, to any person obtaining
+  > a copy of the Font Software, to use, study, copy, merge, embed, modify,
+  > redistribute, and sell modified and unmodified copies of the Font
+  > Software, subject to the following conditions:
+  >
+  > 1) Neither the Font Software nor any of its individual components,
+  > in Original or Modified Versions, may be sold by itself.
+  >
+  > 2) Original or Modified Versions of the Font Software may be bundled,
+  > redistributed and/or sold with any software, provided that each copy
+  > contains the above copyright notice and this license. These can be
+  > included either as stand-alone text files, human-readable headers or
+  > in the appropriate machine-readable metadata fields within text or
+  > binary files as long as those fields can be easily viewed by the user.
+  >
+  > 3) No Modified Version of the Font Software may use the Reserved Font
+  > Name(s) unless explicit written permission is granted by the corresponding
+  > Copyright Holder. This restriction only applies to the primary font name as
+  > presented to the users.
+  >
+  > 4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+  > Software shall not be used to promote, endorse or advertise any
+  > Modified Version, except to acknowledge the contribution(s) of the
+  > Copyright Holder(s) and the Author(s) or with their explicit written
+  > permission.
+  >
+  > 5) The Font Software, modified or unmodified, in part or in whole,
+  > must be distributed entirely under this license, and must not be
+  > distributed under any other license. The requirement for fonts to
+  > remain under this license does not apply to any document created
+  > using the Font Software.
 - **Transit data**: maps made with the app derive from each agency's
   published feed and remain subject to that agency's terms. The app does not
   redistribute feeds.
