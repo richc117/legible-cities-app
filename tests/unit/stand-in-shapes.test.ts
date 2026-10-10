@@ -1308,6 +1308,150 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s answers${WHY}`, () => 
         JSON.stringify(extra),
       ).not.toEqual([])
   })
+
+  // Issue 394 (spec 036): a line's name, hidden, width, casing and dash, as
+  // engine v0.16.0 takes them in `map.build`'s `lines`.
+  it('takes a line’s five options and shows what it did with hidden and name in the page it writes', async () => {
+    // Mutation: the page written `{}` whatever was sent - nothing the suite
+    // reads would then show a hidden line gone or a name taken.
+    const layout = await layoutOf()
+    const params = {
+      key: 'la-metro-rail',
+      layout,
+      date: '2026-06-16',
+      lines: {
+        A: {
+          name: 'Airport Express',
+          width: 1.25,
+          casing: { width: 0.5, color: '#112233' },
+          dash: 'dashed',
+        },
+        B: { hidden: true, name: 'Gone' },
+        Z: { hidden: true },
+      },
+    }
+    expect(paramsProblems('map.build', params)).toEqual([])
+    const answer = (await ask('map.build', params)) as { files: { html: string } }
+    expect(answerProblems('map.build', answer)).toEqual([])
+    const sent = readFileSync(join(home, 'fake-engine.received'), 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as { method?: string; params?: Record<string, unknown> })
+      .filter((m) => m.method === 'map.build')
+      .pop()
+    expect(sent?.params?.lines).toEqual(params.lines)
+    // The layout carries A and B; B is hidden, and Z, which it does not
+    // carry, is ignored as the engine ignores it.
+    expect(JSON.parse(readFileSync(answer.files.html, 'utf8'))).toEqual({
+      lines: ['A'],
+      names: { A: 'Airport Express' },
+    })
+    // A draw sent none writes the page it always did.
+    const plain = (await ask('map.build', {
+      key: 'la-metro-rail',
+      layout,
+      date: '2026-06-16',
+    })) as {
+      files: { html: string }
+    }
+    expect(readFileSync(plain.files.html, 'utf8')).toBe('{}')
+  })
+
+  it('refuses a line’s options as the engine’s handler does, before anything is drawn', async () => {
+    // Mutation: the stand-in takes any `lines` - a width of 2 would then be
+    // drawn here and refused by the engine.
+    const layout = await layoutOf()
+    const refused = (lines: unknown): Promise<Refusal> =>
+      refusal(ask('map.build', { key: 'la-metro-rail', layout, date: '2026-06-16', lines }))
+    const params = (message: string): Refusal => ({ code: PARAMS, kind: 'params', message })
+    const cases: [unknown, string][] = [
+      [
+        ['A'],
+        "lines must be an object of line label to the line's name, hidden, width, casing and dash",
+      ],
+      [{ A: 7 }, "lines['A'] must be an object of name, hidden, width, casing and dash"],
+      [{ A: { name: '' } }, "lines['A'].name must be from 1 to 40 characters with no line break"],
+      [
+        { A: { name: 'x'.repeat(41) } },
+        "lines['A'].name must be from 1 to 40 characters with no line break",
+      ],
+      [
+        { A: { name: 'two\u2028lines' } },
+        "lines['A'].name must be from 1 to 40 characters with no line break",
+      ],
+      [{ A: { hidden: 'yes' } }, "lines['A'].hidden must be true or false"],
+      [
+        { A: { width: 2 } },
+        "lines['A'].width must be from 0.75 to 1.5, as a multiple of line_width",
+      ],
+      [
+        { A: { width: true } },
+        "lines['A'].width must be from 0.75 to 1.5, as a multiple of line_width",
+      ],
+      [{ A: { casing: 0.5 } }, "lines['A'].casing must be an object of width and color"],
+      [
+        { A: { casing: { width: 0.5, color: '#ffffff', dash: 1 } } },
+        "lines['A'].casing must be an object of width and color",
+      ],
+      [{ A: { casing: { width: 0.5 } } }, "lines['A'].casing must have both width and color"],
+      [
+        { A: { casing: { width: 1.5, color: '#ffffff' } } },
+        "lines['A'].casing.width must be from 0 to 1, as a multiple of line_width on each side",
+      ],
+      [
+        { A: { casing: { width: 0.5, color: 'white' } } },
+        "lines['A'].casing.color must be a colour written #rrggbb",
+      ],
+      [{ A: { dash: 'wavy' } }, "lines['A'].dash must be solid, dashed or dotted"],
+      [{ A: { colour: '#ff0000', alias: 'x' } }, "lines['A'] does not take alias, colour"],
+      [
+        { "it's": { width: 2 } },
+        `lines["it's"].width must be from 0.75 to 1.5, as a multiple of line_width`,
+      ],
+    ]
+    for (const [lines, message] of cases)
+      expect(await refused(lines), JSON.stringify(lines)).toEqual(params(message))
+    // The description refuses every one of them too, so no test can send one.
+    for (const [lines] of cases)
+      expect(
+        paramsProblems('map.build', { key: 'la-metro-rail', layout, date: '2026-06-16', lines }),
+        JSON.stringify(lines),
+      ).not.toEqual([])
+  })
+
+  it('refuses a map whose every line is hidden, with the feed’s kind and the engine’s sentence', async () => {
+    // Mutation: the stand-in draws a map with no line - the app's own
+    // refusal would then have nothing behind it to stand in for.
+    const layout = await layoutOf()
+    expect(
+      await refusal(
+        ask('map.build', {
+          key: 'la-metro-rail',
+          layout,
+          date: '2026-06-16',
+          lines: { A: { hidden: true }, B: { hidden: true } },
+        }),
+      ),
+    ).toEqual({
+      code: -32000,
+      kind: 'feed',
+      message: 'la-metro-rail: every line on this map is hidden; show at least one line to draw it',
+    })
+    // A narrower layout carries A alone, so hiding A is every line there.
+    const tram = await layoutOf({ mode: 'tram' })
+    expect(
+      (
+        await refusal(
+          ask('map.build', {
+            key: 'la-metro-rail',
+            layout: tram,
+            date: '2026-06-16',
+            lines: { A: { hidden: true } },
+          }),
+        )
+      ).kind,
+    ).toBe('feed')
+  })
 })
 
 // ------------------------------ the layout as it solves (engine v0.14.0)
