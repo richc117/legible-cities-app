@@ -1,7 +1,7 @@
 // Generated from the engine's own description of its protocol.
 // Run `npm run typegen` to regenerate; edits here are lost.
 //
-// Engine: v0.14.0, protocol 1.
+// Engine: v0.15.0, protocol 1.
 // Source: vendor/protocol.schema.json, printed by the engine's
 // `python -m schematic.serve --schema` and committed verbatim.
 
@@ -360,6 +360,30 @@ export interface MapBuildParams {
    */
   lines?: Record<string, LineOptions>
   style?: MapStyle
+  /**
+   * The radius of a train's dot on the animation page, in SVG user units at
+   * the map's width, the unit MapStyle's numbers are in; 5 when omitted. The
+   * animation's and not the map's, which is why it is a parameter beside
+   * style and not a field of it: it reaches the page's data and never the
+   * SVG, and no style preset changes it. The dot's halo is the page's and
+   * fixed. Written into the page's data only when it is not 5.
+   */
+  dot_radius?: number
+  /**
+   * How far behind a train its trail reaches, in seconds of playback; 0, no
+   * trail, when omitted. The trail is four copies of the train's dot at the
+   * places it was a quarter, a half, three quarters and the whole of this
+   * many seconds of playback before (a length of playback time, so it
+   * reaches back further on the clock at a faster speed; a paused or
+   * scrubbed page keeps the trail its speed implies, and at a speed of 0
+   * there is none), in the line's colour, faded from 0.6 to 0.15 in opacity
+   * and drawn under the dots. A train standing at a station has none, nor
+   * has the Time view, nor a page under reduced motion that no exporter is
+   * capturing, in present mode as in any other. The animation's and not the
+   * map's, like dot_radius: it never reaches the SVG. Written into the
+   * page's data only when it is not 0.
+   */
+  trail?: number
 }
 
 /**
@@ -374,9 +398,24 @@ export interface MapBuildParams {
  * label_offset re-place the labels and move the drawing's viewBox, never the
  * stored layout. The four colours are the literals a standalone SVG falls
  * back to; the animation page's theme overrides them, which is why the
- * desktop app does not send them.
+ * desktop app does not send them. Instead of the fields, preset names a look
+ * (style.presets answers the numbers each resolves to) and is sent alone or
+ * with label_font: beside any other field it is refused with the params
+ * kind, and the map is drawn exactly as when those numbers are sent field by
+ * field.
  */
 export interface MapStyle {
+  /**
+   * A named look over the eight numbers, and for beck the station shape:
+   * beck, blueprint or paper. style.presets answers the fields each resolves
+   * to, and a name draws exactly what those fields sent one by one draw.
+   * Sent alone, or with label_font, since a preset carries no face: beside
+   * any other field of this object it is refused with the params kind. A
+   * preset carries no colour either, the page's theme owning them; alone it
+   * draws in system, and beside label_font it draws its fields in that face.
+   * Held equal to the engine's table by a test.
+   */
+  preset?: 'beck' | 'blueprint' | 'paper'
   /**
    * Line stroke width, in SVG user units at the map's width; 7 when omitted.
    */
@@ -413,6 +452,20 @@ export interface MapStyle {
    */
   label_offset?: number
   /**
+   * The face the station names are drawn in, and measured in when they are
+   * placed. system is the viewer's own Helvetica Neue, Helvetica, Arial or
+   * sans-serif, measured at 0.56 of an em a character; inter and
+   * atkinson-hyperlegible-next ship with the engine as Latin subsets under
+   * the SIL Open Font License, each name measured from the face's own
+   * advances, and the SVG embeds the chosen face as a woff2 data URI and
+   * names it first in font-family. system when omitted, which draws exactly
+   * what is drawn without the field. The labels are placed again, so the
+   * viewBox moves. Beside preset, the preset's numbers are drawn in this
+   * face; a preset alone draws in system. Held equal to the engine's table
+   * by a test.
+   */
+  label_font?: 'system' | 'inter' | 'atkinson-hyperlegible-next'
+  /**
    * Margin round the drawing on every side, in SVG user units at the map's
    * width; 24 when omitted.
    */
@@ -437,6 +490,59 @@ export interface MapStyle {
    * page's theme overrides it. #111111 when omitted.
    */
   label_color?: HexColor
+  /**
+   * The marker of a station on one line; circle when omitted, which draws
+   * exactly what was drawn before. tick is TfL's: a square 0.66 line_width
+   * on a side standing out from the line's edge, in the line's own colour,
+   * perpendicular to the line (bisecting a bend) on the side its name is on,
+   * else the edge's right; at the end of a line, a bar across both sides.
+   * square is 2 station_radius on a side, turned with the line, in a
+   * circle's fill and outline. The stored layout never moves. Held equal to
+   * the engine's table by a test.
+   */
+  station_shape?: 'circle' | 'tick' | 'square'
+  /**
+   * The marker of a station where lines meet; circle when omitted, the ring,
+   * whatever station_shape is. square is 2 interchange_radius on a side with
+   * its corners rounded by a quarter of it, turned with the line. Never a
+   * tick, which has no side where lines meet. Held equal to the engine's
+   * table by a test.
+   */
+  interchange_shape?: 'circle' | 'square'
+}
+
+/**
+ * One named look: its name and the fields it resolves to, the eight numbers
+ * in MapStyle's units and ranges and complete, and a marker shape where the
+ * look has its own (beck's tick), so a client could send them field by field
+ * as map.build's style. No colour: the theme owns them.
+ */
+export interface StylePreset {
+  /**
+   * What MapStyle.preset takes. Held equal to the engine's table by a test.
+   */
+  name: 'beck' | 'blueprint' | 'paper'
+  style: {
+    line_width: number
+    line_gap: number
+    station_radius: number
+    interchange_radius: number
+    station_stroke: number
+    label_size: number
+    label_offset: number
+    padding: number
+    station_shape?: 'circle' | 'tick' | 'square'
+    interchange_shape?: 'circle' | 'square'
+  }
+}
+
+/**
+ * The named looks map.build's style takes in place of its fields, beck,
+ * blueprint and paper in that order. Nothing is stored: the table is the
+ * engine's, and a name resolves to exactly the fields listed here.
+ */
+export interface StylePresets {
+  presets: StylePreset[]
 }
 
 /**
@@ -693,13 +799,18 @@ export interface ExportPresets {
 
 /**
  * A stretch of video with one set of state, as the storyboard is written;
- * export.storyboards answers every field, and a client writing a list gives
- * only secs and what changes. A field left out or null carries over from the
- * beat before. The server also checks what this cannot say: the beats last
- * 90 seconds in all at most, a span's first clock is before its second, the
- * first beat names a view and has tween 0 or none, since frame 0 must
- * already be in a view, and the first beat names at unless it sweeps without
- * hours, since frame 0 is not reproducible without a clock.
+ * export.storyboards answers every field but card and draw_in, which it
+ * writes only where true, and a client writing a list gives only secs and
+ * what changes. A field left out or null carries over from the beat before,
+ * except card and draw_in, which are the beat's own and false when left out.
+ * The server also checks what this cannot say: the beats last 90 seconds in
+ * all at most, a span's first clock is before its second, the first beat
+ * names a view and has tween 0 or none, since frame 0 must already be in a
+ * view, and the first beat names at unless it sweeps without hours, since
+ * frame 0 is not reproducible without a clock; a card beat lasts 1 second at
+ * least and a draw_in beat 2, a list has one draw_in at most, which does not
+ * sweep, and it and every beat before it are on the geographic or map view,
+ * named or carried over.
  */
 export interface StoryboardBeat {
   secs: number
@@ -711,6 +822,23 @@ export interface StoryboardBeat {
   hours?: number | null
   span?: Clock[] | null
   tween?: number | null
+  /**
+   * The title card over the whole beat: the city, the network, the service
+   * day and the caption on a scrim of the page's ground, the overlay's name
+   * and clock hidden under it. It cuts in at the beat's first frame and out
+   * after its last. Over the map in place, or over bare ground when a
+   * draw_in follows it. A plan with a card carries the city, the network and
+   * the day on its address, title or not, and a note when the card's words
+   * need longer to read than the beat lasts.
+   */
+  card?: boolean
+  /**
+   * The network draws itself in over the beat, the shown lines in their
+   * stacking order from each one's spine's first end; the network is undrawn
+   * on every beat before it, and the trains and the clock hold until it is
+   * whole.
+   */
+  draw_in?: boolean
 }
 
 export interface Storyboard {
@@ -817,6 +945,19 @@ export interface BeatPayload {
   lo: number | null
   hi: number | null
   tween: number | null
+  /**
+   * Written only where true: put the title card up for this beat
+   * (__present.setCard), and take it down at the next beat that has none.
+   */
+  card?: boolean
+  /**
+   * Written only where true. The capture calls __present.setDrawn(0) after
+   * its settle when any beat has one, and on frame i of n of this beat,
+   * after the frame's advance, setDrawn(i / (n - 1)), the sweep's step. The
+   * page holds the clock while the network is not whole, so the beat's last
+   * frame is the plain map at the clock the draw-in began at.
+   */
+  draw_in?: boolean
 }
 
 /**
@@ -1342,6 +1483,10 @@ export interface Methods {
   'map.build': {
     params: MapBuildParams
     result: MapBuildResult
+  }
+  'style.presets': {
+    params: NoParams
+    result: StylePresets
   }
   'export.presets': {
     params: NoParams

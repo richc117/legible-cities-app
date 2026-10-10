@@ -203,11 +203,19 @@ describe('what the engine accepts of each field', () => {
 
   it('names no field the schema does not, and leaves out the four colours', () => {
     const named = new Set(STYLE_KEYS.map((key) => STYLE_RANGES[key].wire))
-    const colours = Object.keys(wire).filter((name) => !named.has(name))
-    expect(colours.sort()).toEqual([
+    const left = Object.keys(wire).filter((name) => !named.has(name))
+    // The four colours the page's theme owns, and the four fields engine
+    // v0.15.0 added that the app does not send yet (the named looks, the
+    // two markers and the label face): each is an issue of its own, and
+    // the one that sends it moves it out of this list.
+    expect(left.sort()).toEqual([
       'background',
+      'interchange_shape',
       'label_color',
+      'label_font',
+      'preset',
       'station_fill',
+      'station_shape',
       'station_stroke_color',
     ])
   })
