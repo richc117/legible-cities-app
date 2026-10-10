@@ -299,26 +299,29 @@ describe('asking the engine for its looks', () => {
     return stub
   }
 
-  it('asks once while the engine stays up, and every cell reads the same answer', async () => {
+  it('asks once while an engine of one version answers, and every cell reads the same answer', async () => {
     // Mutation: no cache - every project opened would ask again.
     forgetLooks()
     const engine = client(() => Promise.resolve(ANSWER))
-    const first = await looksFor(engine)
-    const second = await looksFor(engine)
+    const first = await looksFor(engine, '0.15.0')
+    const second = await looksFor(engine, '0.15.0')
     expect(first.map((found) => found.name)).toEqual(['beck', 'blueprint', 'paper'])
     expect(second).toBe(first)
     expect(engine.asked).toBe(1)
   })
 
-  it('asks again after the engine went, and after a refusal', async () => {
-    // Mutation: a refusal kept, so the looks never came back.
+  it('asks again of an engine of another version, and after a refusal', async () => {
+    // Mutation: a refusal kept, so the looks never came back; or the answer
+    // kept whatever the version, so a restarted engine of another table
+    // would be offered the first one's looks.
     forgetLooks()
     const refusing = client(() => Promise.reject(new Error('Method Not Found: style.presets')))
-    await expect(looksFor(refusing)).rejects.toThrow('Method Not Found')
+    await expect(looksFor(refusing, '0.14.0')).rejects.toThrow('Method Not Found')
     const answering = client(() => Promise.resolve(ANSWER))
-    expect(await looksFor(answering)).toHaveLength(3)
-    forgetLooks()
-    await looksFor(answering)
-    expect(answering.asked).toBe(2)
+    expect(await looksFor(answering, '0.14.0')).toHaveLength(3)
+    await looksFor(answering, '0.14.0')
+    expect(answering.asked).toBe(1)
+    await looksFor(answering, '0.15.0')
+    expect(answering.asked, 'another version is asked again').toBe(2)
   })
 })

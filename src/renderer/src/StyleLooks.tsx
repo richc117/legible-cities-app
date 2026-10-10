@@ -4,7 +4,6 @@ import { DEFAULT_STYLE, type ChoiceKey, type ProjectStyle } from '../../shared/p
 import { engineClient } from './engine/runs'
 import Select from './kit/Select'
 import {
-  forgetLooks,
   LOOK_LABEL,
   lookOptions,
   looksFor,
@@ -103,19 +102,20 @@ export function LookSelect({
   /** A value chosen in the select, with the looks it was offered from. */
   onChoose: (value: string, looks: readonly Look[]) => void
 }): JSX.Element {
-  const ready = engine?.state === 'ready'
+  // The engine's version while it is ready, else null: not running, or not
+  // known yet, as it is for a moment on every project screen that opens.
+  const version = engine?.state === 'ready' ? engine.version : null
   const [looks, setLooks] = useState<Looks>({ status: 'waiting' })
 
-  // The engine's looks, once while it stays up. A restarted engine may be
-  // another version, so they are asked again, as the export's tables are.
+  // The engine's looks, once while an engine of this version answers
+  // (`looksFor`): a project opened again reads the answer already given.
   useEffect(() => {
-    if (!ready) {
-      forgetLooks()
+    if (version === null) {
       setLooks({ status: 'waiting' })
       return
     }
     let left = false
-    looksFor(engineClient()).then(
+    looksFor(engineClient(), version).then(
       (answer) => {
         if (!left) setLooks({ status: 'ready', looks: answer })
       },
@@ -126,7 +126,7 @@ export function LookSelect({
     return () => {
       left = true
     }
-  }, [ready])
+  }, [version])
 
   const offered = offeredLooks(looks)
   return (

@@ -225,24 +225,29 @@ export interface LooksClient {
   request(method: 'style.presets'): { result: Promise<StylePresets> }
 }
 
-let asked: Promise<Look[]> | null = null
+/** The answer asked for, and the engine's version it was asked of. */
+let asked: { version: string; looks: Promise<Look[]> } | null = null
 
 /**
- * The engine's looks, asked once while it stays up (spec 034, FR-001): every
- * project's cell 04 reads the same answer, and a refusal is not kept, so the
- * next opening asks again.
+ * The engine's looks, asked once while an engine of this version answers
+ * (spec 034, FR-001): every project's cell 04 reads the same answer, and a
+ * project opened again asks nothing. The answer is kept by the engine's
+ * version rather than forgotten whenever a screen sees the engine's state
+ * unknown, as each project screen does for a moment as it opens; an engine
+ * restarted at another version is another table and is asked again. A
+ * refusal is not kept, so the next opening asks again.
  */
-export function looksFor(client: LooksClient): Promise<Look[]> {
-  if (asked !== null) return asked
-  const pending = client.request('style.presets').result.then(looksOf)
-  asked = pending
-  pending.catch(() => {
-    if (asked === pending) asked = null
+export function looksFor(client: LooksClient, version: string): Promise<Look[]> {
+  if (asked !== null && asked.version === version) return asked.looks
+  const entry = { version, looks: client.request('style.presets').result.then(looksOf) }
+  asked = entry
+  entry.looks.catch(() => {
+    if (asked === entry) asked = null
   })
-  return pending
+  return entry.looks
 }
 
-/** The engine went away; the one that comes back may be another version, so ask it again. */
+/** For a test: nothing remembered. */
 export function forgetLooks(): void {
   asked = null
 }
