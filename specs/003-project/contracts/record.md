@@ -187,7 +187,14 @@ The on-disk form of `ProjectRecord` (`data-model.md`), version 2:
   the safe zones and the fade are never in it. A block that is not that
   shape reads as the reel with no options, which is what the one button
   exported before, and is refused on write
-  (specs/022-export-tab).
+  (specs/022-export-tab). Since issue 392 it may hold three more, beside
+  `options` and not in them: `opening` (`card`, `draw-in` or
+  `card-then-draw-in`; absent is none, which is never stored), `cardSecs`
+  (1 to 10; absent is 2) and `drawInSecs` (2 to 20; absent is 6), a
+  duration at its default never stored. Each of the three that would be
+  refused on write is read as absent and the rest of the block kept, since
+  an export without an opening is what every export before them was
+  (specs/035-opening-the-export).
 - `opened` (added by A5.6-04, still version 1) is when the project's
   screen was last opened, an ISO timestamp, written by `projects.markOpened`
   as the screen loads and by nothing else: it does not move `modified`,

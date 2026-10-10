@@ -19,6 +19,9 @@ import { claimFramesRoot, reasonOf } from './frames'
 import { frameTotal, type CaptureJob } from '../shared/capture'
 import { EngineError, ERROR_CODES, engineError, withoutPaths } from '../shared/engine'
 import {
+  needsStoryboards,
+  OPENING_UNMADE,
+  openingList,
   planOptions,
   sentChoice,
   type ExportChoice,
@@ -26,6 +29,7 @@ import {
   type ExportProgress,
   type ExportResult,
   type ExportStage,
+  type ListedStoryboard,
 } from '../shared/export'
 import { drawnDate, validateDestination, type ProjectRecord, type Theme } from '../shared/project'
 import type {
@@ -233,7 +237,7 @@ export function normalise(reason: unknown): EngineError {
 export function entryOf(
   table: unknown,
   choice: Pick<ExportChoice, 'preset'>,
-): Pick<Preset, 'name' | 'kind' | 'format' | 'safe_zones'> {
+): Pick<Preset, 'name' | 'kind' | 'format' | 'safe_zones' | 'storyboard'> {
   const presets = isObject(table) && Array.isArray(table.presets) ? table.presets : []
   const entry: unknown = presets.find((p) => isObject(p) && p.name === choice.preset)
   if (
@@ -247,7 +251,46 @@ export function entryOf(
     kind: entry.kind as Preset['kind'],
     format: entry.format as Preset['format'],
     safe_zones: entry.safe_zones === true,
+    // The storyboard the preset plays unless told another, which an opening
+    // is made from when the choice names none (spec 035).
+    storyboard: typeof entry.storyboard === 'string' ? entry.storyboard : null,
   }
+}
+
+/**
+ * The engine's storyboards from `export.storyboards`, as far as an opening is
+ * made from them: each with a name and a list of beats, every beat an object
+ * with its seconds. They arrived from another process, so anything else is
+ * left out; the list made from them is the engine's to judge again, beat by
+ * beat, when it plans.
+ */
+export function storyboardsOf(table: unknown): ListedStoryboard[] {
+  const listed = isObject(table) && Array.isArray(table.storyboards) ? table.storyboards : []
+  return listed.filter(
+    (board): board is ListedStoryboard =>
+      isObject(board) &&
+      typeof board.name === 'string' &&
+      Array.isArray(board.beats) &&
+      board.beats.every((beat) => isObject(beat) && typeof beat.secs === 'number'),
+  )
+}
+
+/**
+ * The engine's storyboards for a choice with an opening, refused - in the
+ * bad-call kind, as a choice the plan cannot take - where its list cannot be
+ * made from them: the storyboard is not among them, or it has no clock to
+ * open at. Planning by the name instead would export without the opening
+ * the person chose while cell 06 says it plays (spec 035, FR-004).
+ */
+export function openingStoryboards(
+  choice: ExportChoice,
+  entry: Pick<Preset, 'kind' | 'format' | 'storyboard'>,
+  table: unknown,
+): ListedStoryboard[] {
+  const storyboards = storyboardsOf(table)
+  if (openingList(choice, entry, storyboards) === null)
+    throw engineError(ERROR_CODES.badCall, OPENING_UNMADE, 'params')
+  return storyboards
 }
 
 /** The engine's advice about the plan; it goes on screen, so it gets the same treatment as a hint. */
@@ -352,12 +395,17 @@ export class Exporter {
       // app's: asked each time, since both calls are pure and instant,
       // rather than held across an engine restart.
       const entry = entryOf(await engine.request('export.presets').result, choice)
+      // An opening is a list of beats made from the storyboard's own, so
+      // the storyboards are asked for then, and only then (spec 035).
+      const storyboards = needsStoryboards(choice, entry)
+        ? openingStoryboards(choice, entry, await engine.request('export.storyboards').result)
+        : undefined
       const params = {
         key: project.feed,
         preset: choice.preset,
         page: pageUrl(project),
         date: day,
-        options: planOptions(choice, entry, themeFor(project.theme), entry.safe_zones),
+        options: planOptions(choice, entry, themeFor(project.theme), entry.safe_zones, storyboards),
       } satisfies ExportPlanParams
       const plan = (await engine.request('export.plan', params).result) as PlannedJob
       if (!isObject(plan) || !isProjectPage(plan.url, project))
@@ -500,6 +548,15 @@ export class Exporter {
       choice,
     )
     this.#stopIfCancelled(control)
+    // An opening is made from the storyboard's own beats, which are asked
+    // for only when there is one (spec 035): an export without one asks
+    // the engine exactly what it asked before.
+    let storyboards: ListedStoryboard[] | undefined
+    if (needsStoryboards(choice, entry)) {
+      const table = await this.#request<unknown>('export.storyboards', undefined, control)
+      this.#stopIfCancelled(control)
+      storyboards = openingStoryboards(choice, entry, table)
+    }
     // The options are the person's, from the export tab, and the theme the
     // project's own. `safe` is never set here, whatever the preview showed:
     // the safe zones are a preview aid and never a deliverable (FR-006).
@@ -508,7 +565,7 @@ export class Exporter {
       preset: choice.preset,
       page: pageUrl(project),
       date: day,
-      options: planOptions(choice, entry, themeFor(project.theme)),
+      options: planOptions(choice, entry, themeFor(project.theme), false, storyboards),
     } satisfies ExportPlanParams
     // The alt text is not a plan option: it goes to the encode, in the
     // provenance, with the same trimming every part of the choice gets.

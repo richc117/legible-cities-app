@@ -20,6 +20,18 @@
   recorded in `window.__seen`, for a test that counts what the page was
   asked; the reads (`state`, `bounds`, `hasGeo`) and the exporter's own
   (`advance`, `setCapture`, `settle`) are not.
+
+  Since engine v0.15.0 (its issue 44) it has `setCard(on)` and
+  `setDrawn(fraction)`, and `state()` reports `card` and `drawn`; `settle()`
+  answers a promise, as the engine's now does. The card is a band across the
+  stage and the draw-in the line's length, so a frame kept from a capture
+  shows both; neither moves anything a capture without them takes. While the
+  page is being captured it says each call the capture makes of it - the
+  settle, the card, the draw-in, each step of the clock, each seek and each
+  read of its state, with the clock it read - on
+  its console, one line each, `seam ["name", value]`, which an end-to-end
+  test reads in the main process: the capture's window is gone by the time
+  the export ends, and the console is the one way out of it.
 -->
 <style>
   html,
@@ -37,7 +49,8 @@
 <body>
   <div id="stage">
     <svg width="540" height="960" viewBox="0 0 540 960">
-      <line x1="40" y1="480" x2="500" y2="480" stroke="#888" stroke-width="6" />
+      <line id="network" x1="40" y1="480" x2="500" y2="480" stroke="#888" stroke-width="6" />
+      <rect id="card" x="0" y="380" width="540" height="200" fill="#333" visibility="hidden" />
       <circle id="train" cx="40" cy="480" r="14" fill="#e8b04a" />
       <text id="clock" x="20" y="60" fill="#eee" font-size="32px" font-family="monospace">
         00:00
@@ -63,8 +76,14 @@
         rafId = null,
         last = performance.now()
       var view = 'map',
-        labels = true
+        labels = true,
+        carded = false,
+        drawn = 1
       var seen = (window.__seen = [])
+      // What the capture asked, said while it is capturing (see above).
+      function said(name, value) {
+        if (capture) console.info('seam ' + JSON.stringify([name, value]))
+      }
       // The stand-in engine's map: one line through its three stations, in
       // order, by the ids its `map.build` answers in `stations`.
       var LINE = 'A'
@@ -107,6 +126,8 @@
       function draw() {
         var p = (now % 3600) / 3600
         document.getElementById('train').setAttribute('cx', String(40 + 460 * p))
+        document.getElementById('network').setAttribute('x2', String(40 + 460 * drawn))
+        document.getElementById('card').setAttribute('visibility', carded ? 'visible' : 'hidden')
         document.getElementById('clock').textContent = fmt(now) + (labels ? '' : ' (no labels)')
         document.getElementById('view').textContent = view
       }
@@ -123,12 +144,14 @@
       }
       window.__present = {
         advance: function (dt) {
+          said('advance', dt)
           advance(dt)
           draw()
         },
         seek: function (sec) {
           now = Math.max(t0, Math.min(t1, sec))
           seen.push(['seek', now])
+          said('seek', now)
           draw()
         },
         setCapture: function (on) {
@@ -181,6 +204,21 @@
         },
         setFrame: function () {},
         settle: function () {
+          said('settle', null)
+          draw()
+          return Promise.resolve()
+        },
+        setCard: function (on) {
+          carded = !!on
+          seen.push(['setCard', carded])
+          said('setCard', carded)
+          draw()
+        },
+        setDrawn: function (fraction) {
+          var f = typeof fraction === 'number' && fraction === fraction ? fraction : 1
+          drawn = Math.min(1, Math.max(0, f))
+          seen.push(['setDrawn', drawn])
+          said('setDrawn', drawn)
           draw()
         },
         bounds: function () {
@@ -188,6 +226,7 @@
         },
         onDraw: function () {},
         state: function () {
+          said('state', fmt(now))
           return {
             now: now,
             clock: fmt(now),
@@ -195,6 +234,8 @@
             viewName: view,
             labels: labels,
             trip: copy(trip),
+            card: carded,
+            drawn: drawn,
           }
         },
       }

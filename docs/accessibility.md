@@ -241,6 +241,7 @@ The two reader columns are a person's, recorded per run in
 | Frame switches, lines to keep | pass | pass (`fieldset` and `legend`) | pass | pass | fixed (C3) | fixed (C3) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
 | Start time, filename tag | pass | pass | pass | pass | fixed (C5) | fixed (C5) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
 | Caption, Clock corner, Alt text for the file's sidecar (issue 352) | not yet swept: drawn on the default reel, so `notebook-a11y.spec.ts` ("cell 06, and focus through an export") walks them; the corner select is unavailable while the clock is off, and its list changes with the preset and the title | not yet swept (Caption and Alt text are named by a `<label for>`; Clock corner is the kit's select named by its `label`; a refused caption or alt text is `aria-invalid` and its sentence is the field's `aria-describedby` message) | not yet swept | not yet swept (nothing moves) | no new pair: `--text`, `--text-muted`, `--text-faint` and `--error` on `--surface-raised` and `--surface-sunken`, and the `--border-strong` edge, all held by `contrast.test.ts` | no new pair | not yet run: a person's (this part changed after 0.1.0) | not yet run: a person's (this part changed after 0.1.0) |
+| Opening, Card and Draw-in (issue 392) | not yet swept: Opening is drawn on the default reel, on "None", so `notebook-a11y.spec.ts` ("cell 06, and focus through an export") walks it; Card and Draw-in are drawn only once an opening is chosen, which no sweep does | not yet swept (Opening is the kit's select named by its `label`, its sentence after it in the reading order, since the kit's select takes no description; Card and Draw-in are named by a `<label for>`, their rule the field's `aria-describedby` message, a refused number `aria-invalid` with its sentence in the message's place) | not yet swept | not yet swept (nothing in the interface moves; the card and the draw-in are the export's frames, the engine's page's) | no new pair: `--text`, `--text-muted` and `--error` on `--surface-raised` and `--surface-sunken`, held by `contrast.test.ts` | no new pair | not yet run: a person's (new after 0.1.0) | not yet run: a person's (new after 0.1.0) |
 | Where it goes: Choose folder, and Use the app's folder once a folder is chosen (A5.5-19) | Choose folder swept; Use the app's folder not swept (it is drawn only once a folder is chosen, which no sweep does) | Choose folder swept (the sentence its description); "Where it goes" is a label's text, not a field | Choose folder swept | Choose folder swept | pass | fixed (C1) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
 | Export, its progress line, Cancel, Reveal | fixed (D2) | fixed (D13) | pass | pass | pass | fixed (C1) | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted); the row has changed since and the new part is not yet walked | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted); the row has changed since and the new part is not yet walked |
 
@@ -1274,6 +1275,19 @@ a table).
   words. Left blank, the engine writes its own sentence."; paste 1,001
   characters and listen for it read as invalid, with "The alt text is 1,001
   characters; it may be at most 1,000."
+- **Opening, card and draw-in (issue 392).** On a video or GIF preset, after
+  "Storyboard", listen for the pop-up button "Opening", its options "None",
+  "Title card", "The network drawing in" and "Title card, then the network
+  drawing in", and after it in the reading order the sentence "What plays
+  before the storyboard: …". Choose "Title card, then the network drawing
+  in" and listen for two text fields: "Card", read with "How long the title
+  card stays up: 1 to 10 seconds, 2 unless you change it.", and "Draw-in",
+  read with "How long the network takes to draw itself in: 2 to 20 seconds, 6
+  unless you change it."; and, before the preview, "The opening plays in the
+  export and not in the preview, which shows the map it plays over." Type
+  `12` in "Card", Tab away and return: the field is read as invalid, with "A
+  title card lasts from 1 to 10 seconds." Clear it, Tab away, and listen for
+  2 again; then set "Opening" back to "None".
 - **Where it goes.** Listen for the label "Where it goes" (text, not a
   field: nothing refers to it, which is itself worth noting) and, with no
   folder of the project's own chosen, the sentence "This project's exports

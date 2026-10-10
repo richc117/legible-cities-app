@@ -1229,10 +1229,24 @@ dereference that takes the process down; then attach the debugger and
 which wins over the display's in both directions; `setCapture(true)` before
 any wait, so the page's own clock stops before the fonts and the settle;
 `bounds()` and `state()`, and a clock with no trains refused with the
-recorder's sentence; the stage's rect in CSS pixels; `settle()`; then per
+recorder's sentence; the stage's rect in CSS pixels; `settle()`, waited
+for, since the page's answers a promise that resolves once the map's face
+has loaded (engine v0.15.0; an older page's answers nothing, and a promise
+that never resolves ends in the frame's timeout); then per
 frame `advance(1/fps)` or a `seek` along a sweep, two animation frames, and
 `Page.captureScreenshot` at that clip with `scale: 1` - never
 `capturePage()`, which ignores the emulation and follows the window.
+
+A job whose beats open on a title card or draw the network in (engine
+v0.15.0's `card` and `draw_in`; issue 392, spec 035) takes the engine
+recorder's calls for them in the recorder's order (`bin/_record.js`): the
+page is asked once whether it has `setCard` and `setDrawn`, and one drawn
+before the pin is refused before any frame; after the settle, `setDrawn(0)`
+when any beat draws in; `setCard` at each beat's start when any beat has a
+card; and on each frame of the draw-in the step first and then
+`setDrawn(i / (n - 1))`. A job with neither flag makes exactly the calls it
+made before the opening but for the settle being waited for, held to a
+transcript by `tests/unit/capture-opening.test.ts`.
 
 `src/main/capture.ts` is the order, behind a `CapturePage` interface, so
 `tests/unit/capture.test.ts` asserts every step against a fake page;
@@ -1420,11 +1434,14 @@ Every list is the engine's. `export.presets` and `export.storyboards` are
 asked once while the engine stays up, and the presets are narrowed to
 `OFFERED_PRESETS` - the thirteen social ones, each checked against the
 generated `PresetName`; the three `portfolio-*` presets are the published
-site's. The choice - `{ preset, storyboard?, options, alt? }`, where the options
+site's. The choice - `{ preset, storyboard?, options, alt?, opening?,
+cardSecs?, drawInSecs? }`, where the options
 are the engine's `ExportOptions` without the theme (the project's), the
 safe zones (the app's, for a preview only), the storyboard (beside them) and
-the fade (not offered), and `alt` is the sidecar's alt text, which is not a
-plan option and travels in the encode's provenance (issue 352) - is written
+the fade (not offered), `alt` is the sidecar's alt text, which is not a
+plan option and travels in the encode's provenance (issue 352), and the
+last three are what a video or GIF opens on - a title card, the network
+drawing in, or both, and how long each lasts (issue 392) - is written
 to the record the moment it is made,
 a typed field when it is committed, through `setExport`. An option set back
 to what the engine does without it is removed rather than sent. What is
@@ -1433,7 +1450,19 @@ process before every plan (`sentChoice`): a view and a start time are a
 still's only, since a storyboard's first beat names its own and the capture
 applies it; a still the table says is JPEG is made at standard quality only,
 because the capture writes PNG and the engine keeps a capture unchanged at
-draft and high. The record keeps what a person chose.
+draft and high. The record keeps what a person chose. An opening is not an
+engine option either: for a plan that has one, and only then, the main
+process asks `export.storyboards` for the storyboard's beats and sends the
+plan a list in place of the storyboard's name - the card, then the draw-in,
+at the page's own start clock, 07:00, on the storyboard's first view where
+that is the map or the geographic one and on the map otherwise - so the
+capture's first look for trains is where it has always been - then the
+storyboard's own beats, its first jumping to its own clock and given the
+tween of 0 it was always read with
+(`openingBeats` in `src/shared/opening.ts`, spec 035). A plan without one is
+the request it always was. A plan with one whose list cannot be made - the
+storyboard not listed, or its first beat naming no clock - is refused, never
+planned by the name without it.
 
 Where the file goes is the cell's one choice that is not the engine's
 (A5.5-19), and it is not part of any plan: `export.encode` has always taken

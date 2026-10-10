@@ -29,6 +29,18 @@ export interface Beat {
   hi?: number | null
   /** Transition length in seconds; the engine defaults it to min(secs, 1.2). */
   tween?: number | null
+  /**
+   * The title card over the whole beat (engine v0.15.0, issue 44), written
+   * only where true: the capture puts it up at the beat's start and takes it
+   * down at the next beat that has none (spec 035).
+   */
+  card?: boolean
+  /**
+   * The network drawing itself in over the beat, written only where true:
+   * the capture draws it to 0 after its settle and, on each frame of this
+   * beat, steps the clock and then draws it to `i / (n - 1)`.
+   */
+  draw_in?: boolean
 }
 
 export interface CaptureJob {

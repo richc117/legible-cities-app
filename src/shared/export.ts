@@ -5,9 +5,25 @@
 // specs/022-export-tab.
 
 import { VIEWS } from './capture'
-import type { EngineErrorShape } from './engine'
+import { ERROR_CODES, engineError, type EngineErrorShape } from './engine'
+import {
+  OPENING_KEYS,
+  openingBeats,
+  readOpeningFields,
+  validateOpeningFields,
+  type OpeningChoice,
+  type StoredOpening,
+  type StoryboardBeats,
+} from './opening'
 import { COLORS_MAX, validateLineLabel } from './project'
-import type { ClockCorner, ExportOptions, Preset, PresetName, StoryboardName } from './protocol'
+import type {
+  ClockCorner,
+  ExportOptions,
+  Preset,
+  PresetName,
+  StoryboardBeat,
+  StoryboardName,
+} from './protocol'
 
 /**
  * The presets the interface offers: the thirteen social ones (A5-01). Each
@@ -96,12 +112,23 @@ export const CHOICE_OPTION_KEYS = [
  * is not one of the engine's plan options: it travels in `export.encode`'s
  * provenance, so it sits beside `options` and not in them. Absent means the
  * engine writes its own sentence.
+ *
+ * `opening`, `cardSecs` and `drawInSecs` are what plays before the
+ * storyboard of a video or GIF (issue 392, spec 035): a title card, the
+ * network drawing in, or both, and how long each lasts. They are not the
+ * engine's options either: the main process makes them into the list of
+ * beats `export.plan` is sent in place of the storyboard's name
+ * (`src/shared/opening.ts`). Absent means no opening, and a duration at its
+ * default is never kept.
  */
 export interface ExportChoice {
   preset: OfferedPreset
   storyboard?: StoryboardName
   options: ExportChoiceOptions
   alt?: string
+  opening?: StoredOpening
+  cardSecs?: number
+  drawInSecs?: number
 }
 
 /** What the one button exported before this: the reel, with the engine's defaults. */
@@ -266,11 +293,19 @@ function storedAltProblem(alt: unknown): string | null {
 export function validateExportChoice(choice: unknown): string | null {
   if (!isPlainObject(choice)) return 'the export choice must be an object'
   for (const key of Object.keys(choice))
-    if (key !== 'preset' && key !== 'storyboard' && key !== 'options' && key !== 'alt')
+    if (
+      key !== 'preset' &&
+      key !== 'storyboard' &&
+      key !== 'options' &&
+      key !== 'alt' &&
+      !(OPENING_KEYS as readonly string[]).includes(key)
+    )
       return `${key} is not part of an export choice`
   if (!isOfferedPreset(choice.preset)) return 'the app does not offer that preset'
   if (choice.storyboard !== undefined && !isStoryboardName(choice.storyboard))
     return 'that is not a storyboard the engine has'
+  const opening = validateOpeningFields(choice)
+  if (opening !== null) return opening
   // A blank one is no alt text, as an empty caption is no caption: the tab
   // never writes it, `sentChoice` drops it, and a record that holds one is
   // read as it is and not thrown away whole.
@@ -298,6 +333,9 @@ export function copyChoice(choice: ExportChoice): ExportChoice {
       ? { preset: choice.preset, options }
       : { preset: choice.preset, storyboard: choice.storyboard, options }
   if (choice.alt !== undefined) copy.alt = choice.alt
+  if (choice.opening !== undefined) copy.opening = choice.opening
+  if (choice.cardSecs !== undefined) copy.cardSecs = choice.cardSecs
+  if (choice.drawInSecs !== undefined) copy.drawInSecs = choice.drawInSecs
   return copy
 }
 
@@ -348,10 +386,57 @@ export function sentChoice(choice: ExportChoice, preset: PresetShape): ExportCho
     delete copy.options.view
     delete copy.options.at
   } else {
+    // A still plays no storyboard, so it has nothing for an opening to
+    // open: the record keeps it, as it keeps the storyboard, and nothing
+    // of it is sent (spec 035).
     delete copy.storyboard
+    for (const key of OPENING_KEYS) delete copy[key]
   }
   if (standardQualityOnly(preset)) delete copy.options.quality
   return copy
+}
+
+/** A storyboard as `export.storyboards` lists it, as far as an opening is made from it. */
+export type ListedStoryboard = { name: string } & StoryboardBeats
+
+/**
+ * Said when an opening was chosen and its list cannot be made from the
+ * storyboard (spec 035, FR-004): the export is refused rather than made
+ * without it.
+ */
+export const OPENING_UNMADE =
+  'The opening cannot be made from this storyboard; choose None or another storyboard.'
+
+/**
+ * Does the plan for this choice need the engine's storyboards? Only when an
+ * opening is to be sent, which only a video or a GIF can play (spec 035,
+ * FR-004): every other plan asks the engine exactly what it asked before.
+ */
+export function needsStoryboards(choice: ExportChoice, preset: PresetShape): boolean {
+  return sentChoice(choice, preset).opening !== undefined
+}
+
+/**
+ * The beats sent in place of the storyboard's name when the choice opens on
+ * a title card or a draw-in, or null where there is no list: no opening, a
+ * still, a storyboard the table does not list, or one with no clock to open
+ * at. `storyboard` is the preset's own, for a choice that names none.
+ *
+ * Null for a choice with an opening (`needsStoryboards`) is not a plan by
+ * name: the main process refuses it with `OPENING_UNMADE`, because sending
+ * the name would export without the opening cell 06 says plays.
+ */
+export function openingList(
+  choice: ExportChoice,
+  preset: PresetShape & { storyboard?: string | null },
+  storyboards: readonly ListedStoryboard[],
+): StoryboardBeat[] | null {
+  const sent = sentChoice(choice, preset)
+  if (sent.opening === undefined) return null
+  const name = sent.storyboard ?? preset.storyboard ?? null
+  const board = storyboards.find((listed) => listed.name === name)
+  if (board === undefined) return null
+  return openingBeats(board, sent.opening, { card: sent.cardSecs, drawIn: sent.drawInSecs })
 }
 
 /**
@@ -361,17 +446,30 @@ export function sentChoice(choice: ExportChoice, preset: PresetShape): ExportCho
  * and only here, so an export's plan cannot carry it (FR-006). The alt text
  * is not here: it is not a plan option, and travels in `export.encode`'s
  * provenance (`sentChoice(...).alt`).
+ *
+ * With an opening, the storyboard is the list `openingList` makes from the
+ * engine's storyboards in place of its name (spec 035). Where that list
+ * cannot be made - the storyboards not given, the storyboard not among them,
+ * or no clock to open at - it throws `OPENING_UNMADE`, in the bad-call kind,
+ * rather than send the name: an export without the opening the person chose
+ * is never made, whoever calls this. Without an opening the options are
+ * exactly what they were before it.
  */
 export function planOptions(
   choice: ExportChoice,
-  preset: PresetShape,
+  preset: PresetShape & { storyboard?: string | null },
   theme: 'dark' | 'light',
   safe = false,
+  storyboards?: readonly ListedStoryboard[],
 ): ExportOptions {
   const sent = sentChoice(choice, preset)
+  const list = storyboards === undefined ? null : openingList(choice, preset, storyboards)
+  if (sent.opening !== undefined && list === null)
+    throw engineError(ERROR_CODES.badCall, OPENING_UNMADE, 'params')
+  const storyboard = list ?? sent.storyboard
   return {
     ...sent.options,
-    ...(sent.storyboard === undefined ? {} : { storyboard: sent.storyboard }),
+    ...(storyboard === undefined ? {} : { storyboard }),
     theme,
     ...(safe ? { safe: true } : {}),
   }
@@ -453,18 +551,23 @@ export type ExportSettled =
  * own file is read at every open, and anything on the machine can write it.
  * An alt text that is not usable - blank, over 1,000 characters, or not text
  * - is read as none and the rest of the choice is kept, since it is not a plan
- * option and the choice does not depend on it; any other fault gives the
- * choice up for the reel, as the service window is (a half-valid choice is
- * not half-trusted).
+ * option and the choice does not depend on it; so is each of the opening's
+ * three fields (spec 035, FR-003), since an opening read as none sends what
+ * every export before it sent. Any other fault gives the choice up for the
+ * reel, opening and all, as the service window is (a half-valid choice is not
+ * half-trusted).
  */
 export function readStoredChoice(value: unknown): ExportChoice {
   let candidate = value
-  if (isPlainObject(value) && value.alt !== undefined && validateAlt(value.alt) !== null) {
+  let opening: OpeningChoice = {}
+  if (isPlainObject(value)) {
     const without = { ...value }
-    delete without.alt
+    if (without.alt !== undefined && validateAlt(without.alt) !== null) delete without.alt
+    opening = readOpeningFields(without)
+    for (const key of OPENING_KEYS) delete without[key]
     candidate = without
   }
   return validateExportChoice(candidate) === null
-    ? copyChoice(candidate as ExportChoice)
+    ? copyChoice({ ...(candidate as ExportChoice), ...opening })
     : copyChoice(DEFAULT_CHOICE)
 }

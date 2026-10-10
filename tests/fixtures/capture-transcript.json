@@ -1,0 +1,690 @@
+{
+  "jobs": [
+    {
+      "name": "a storyboard: a clock, a view, a sweep in hours and a sweep over a span",
+      "job": {
+        "url": "app://local/projects/p1/stand-in.html?present=1",
+        "width": 540,
+        "height": 960,
+        "scale": 2,
+        "fps": 4,
+        "settle": 300,
+        "beats": [
+          {
+            "view": "map",
+            "labels": null,
+            "at": 28800,
+            "speed": 120,
+            "sweep": false,
+            "hours": null,
+            "lo": null,
+            "hi": null,
+            "tween": 0,
+            "secs": 1
+          },
+          {
+            "view": "linear",
+            "labels": null,
+            "at": null,
+            "speed": null,
+            "sweep": false,
+            "hours": null,
+            "lo": null,
+            "hi": null,
+            "tween": 0.5,
+            "secs": 0.5
+          },
+          {
+            "view": null,
+            "labels": false,
+            "at": null,
+            "speed": null,
+            "sweep": true,
+            "hours": 1,
+            "lo": null,
+            "hi": null,
+            "tween": 0.5,
+            "secs": 0.5
+          },
+          {
+            "view": "time",
+            "labels": null,
+            "at": null,
+            "speed": null,
+            "sweep": true,
+            "hours": null,
+            "lo": 32400,
+            "hi": 36000,
+            "tween": 0.5,
+            "secs": 0.5
+          }
+        ]
+      },
+      "calls": [
+        {
+          "kind": "navigate",
+          "url": "app://local/projects/p1/stand-in.html?present=1"
+        },
+        {
+          "kind": "attach"
+        },
+        {
+          "kind": "send",
+          "method": "Emulation.setDeviceMetricsOverride",
+          "params": {
+            "width": 540,
+            "height": 960,
+            "deviceScaleFactor": 2,
+            "mobile": false
+          }
+        },
+        {
+          "kind": "send",
+          "method": "Emulation.setEmulatedMedia",
+          "params": {
+            "features": [
+              {
+                "name": "prefers-reduced-motion",
+                "value": "no-preference"
+              }
+            ]
+          }
+        },
+        {
+          "kind": "evaluate",
+          "code": "!!(window.__present && window.__present.state)"
+        },
+        {
+          "kind": "evaluate",
+          "code": "window.__present.setCapture(true); true"
+        },
+        {
+          "kind": "evaluate",
+          "code": "document.fonts ? document.fonts.ready.then(function () { return true }) : true"
+        },
+        {
+          "kind": "evaluate",
+          "code": "window.__present.bounds()"
+        },
+        {
+          "kind": "evaluate",
+          "code": "window.__present.state()"
+        },
+        {
+          "kind": "evaluate",
+          "code": "(function () { var el = document.getElementById(\"stage\"); if (!el) return null; var r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height } })()"
+        },
+        {
+          "kind": "evaluate",
+          "code": "Promise.resolve(window.__present.settle()).then(function () { return true })"
+        },
+        {
+          "kind": "settled"
+        },
+        {
+          "kind": "evaluate",
+          "code": "(function (b) {\n    var P = window.__present;\n    if (b.at != null) P.seek(b.at);\n    if (b.labels != null) P.setLabels(b.labels);\n    if (b.speed != null) P.setSpeed(b.speed);\n    if (b.view) {\n      var geo = b.view === \"geographic\";\n      P.setGeo(geo, b.tween);\n      P.setView(geo ? \"map\" : (b.view === \"time\" ? \"string\" : b.view), b.tween);\n    }\n    P.setPlaying(!b.sweep && b.speed !== 0);\n    return true;\n  })({\"view\":\"map\",\"labels\":null,\"at\":28800,\"speed\":120,\"sweep\":false,\"hours\":null,\"lo\":null,\"hi\":null,\"tween\":0,\"secs\":1})"
+        },
+        {
+          "kind": "evaluate",
+          "code": "window.__present.advance(0.25); true"
+        },
+        {
+          "kind": "evaluate",
+          "code": "new Promise(function (resolve) { requestAnimationFrame(function () { requestAnimationFrame(function () { resolve(true) }) }) })"
+        },
+        {
+          "kind": "send",
+          "method": "Page.captureScreenshot",
+          "params": {
+            "format": "png",
+            "clip": {
+              "x": 10,
+              "y": 20,
+              "width": 540,
+              "height": 960,
+              "scale": 1
+            },
+            "captureBeyondViewport": false
+          }
+        },
+        {
+          "kind": "evaluate",
+          "code": "window.__present.advance(0.25); true"
+        },
+        {
+          "kind": "evaluate",
+          "code": "new Promise(function (resolve) { requestAnimationFrame(function () { requestAnimationFrame(function () { resolve(true) }) }) })"
+        },
+        {
+          "kind": "send",
+          "method": "Page.captureScreenshot",
+          "params": {
+            "format": "png",
+            "clip": {
+              "x": 10,
+              "y": 20,
+              "width": 540,
+              "height": 960,
+              "scale": 1
+            },
+            "captureBeyondViewport": false
+          }
+        },
+        {
+          "kind": "evaluate",
+          "code": "window.__present.advance(0.25); true"
+        },
+        {
+          "kind": "evaluate",
+          "code": "new Promise(function (resolve) { requestAnimationFrame(function () { requestAnimationFrame(function () { resolve(true) }) }) })"
+        },
+        {
+          "kind": "send",
+          "method": "Page.captureScreenshot",
+          "params": {
+            "format": "png",
+            "clip": {
+              "x": 10,
+              "y": 20,
+              "width": 540,
+              "height": 960,
+              "scale": 1
+            },
+            "captureBeyondViewport": false
+          }
+        },
+        {
+          "kind": "evaluate",
+          "code": "window.__present.advance(0.25); true"
+        },
+        {
+          "kind": "evaluate",
+          "code": "new Promise(function (resolve) { requestAnimationFrame(function () { requestAnimationFrame(function () { resolve(true) }) }) })"
+        },
+        {
+          "kind": "send",
+          "method": "Page.captureScreenshot",
+          "params": {
+            "format": "png",
+            "clip": {
+              "x": 10,
+              "y": 20,
+              "width": 540,
+              "height": 960,
+              "scale": 1
+            },
+            "captureBeyondViewport": false
+          }
+        },
+        {
+          "kind": "evaluate",
+          "code": "(function (b) {\n    var P = window.__present;\n    if (b.at != null) P.seek(b.at);\n    if (b.labels != null) P.setLabels(b.labels);\n    if (b.speed != null) P.setSpeed(b.speed);\n    if (b.view) {\n      var geo = b.view === \"geographic\";\n      P.setGeo(geo, b.tween);\n      P.setView(geo ? \"map\" : (b.view === \"time\" ? \"string\" : b.view), b.tween);\n    }\n    P.setPlaying(!b.sweep && b.speed !== 0);\n    return true;\n  })({\"view\":\"linear\",\"labels\":null,\"at\":null,\"speed\":null,\"sweep\":false,\"hours\":null,\"lo\":null,\"hi\":null,\"tween\":0.5,\"secs\":0.5})"
+        },
+        {
+          "kind": "evaluate",
+          "code": "window.__present.advance(0.25); true"
+        },
+        {
+          "kind": "evaluate",
+          "code": "new Promise(function (resolve) { requestAnimationFrame(function () { requestAnimationFrame(function () { resolve(true) }) }) })"
+        },
+        {
+          "kind": "send",
+          "method": "Page.captureScreenshot",
+          "params": {
+            "format": "png",
+            "clip": {
+              "x": 10,
+              "y": 20,
+              "width": 540,
+              "height": 960,
+              "scale": 1
+            },
+            "captureBeyondViewport": false
+          }
+        },
+        {
+          "kind": "evaluate",
+          "code": "window.__present.advance(0.25); true"
+        },
+        {
+          "kind": "evaluate",
+          "code": "new Promise(function (resolve) { requestAnimationFrame(function () { requestAnimationFrame(function () { resolve(true) }) }) })"
+        },
+        {
+          "kind": "send",
+          "method": "Page.captureScreenshot",
+          "params": {
+            "format": "png",
+            "clip": {
+              "x": 10,
+              "y": 20,
+              "width": 540,
+              "height": 960,
+              "scale": 1
+            },
+            "captureBeyondViewport": false
+          }
+        },
+        {
+          "kind": "evaluate",
+          "code": "(function (b) {\n    var P = window.__present;\n    if (b.at != null) P.seek(b.at);\n    if (b.labels != null) P.setLabels(b.labels);\n    if (b.speed != null) P.setSpeed(b.speed);\n    if (b.view) {\n      var geo = b.view === \"geographic\";\n      P.setGeo(geo, b.tween);\n      P.setView(geo ? \"map\" : (b.view === \"time\" ? \"string\" : b.view), b.tween);\n    }\n    P.setPlaying(!b.sweep && b.speed !== 0);\n    return true;\n  })({\"view\":null,\"labels\":false,\"at\":null,\"speed\":null,\"sweep\":true,\"hours\":1,\"lo\":null,\"hi\":null,\"tween\":0.5,\"secs\":0.5})"
+        },
+        {
+          "kind": "evaluate",
+          "code": "window.__present.state()"
+        },
+        {
+          "kind": "evaluate",
+          "code": "window.__present.seek(28980); true"
+        },
+        {
+          "kind": "evaluate",
+          "code": "new Promise(function (resolve) { requestAnimationFrame(function () { requestAnimationFrame(function () { resolve(true) }) }) })"
+        },
+        {
+          "kind": "send",
+          "method": "Page.captureScreenshot",
+          "params": {
+            "format": "png",
+            "clip": {
+              "x": 10,
+              "y": 20,
+              "width": 540,
+              "height": 960,
+              "scale": 1
+            },
+            "captureBeyondViewport": false
+          }
+        },
+        {
+          "kind": "evaluate",
+          "code": "window.__present.seek(32580); true"
+        },
+        {
+          "kind": "evaluate",
+          "code": "new Promise(function (resolve) { requestAnimationFrame(function () { requestAnimationFrame(function () { resolve(true) }) }) })"
+        },
+        {
+          "kind": "send",
+          "method": "Page.captureScreenshot",
+          "params": {
+            "format": "png",
+            "clip": {
+              "x": 10,
+              "y": 20,
+              "width": 540,
+              "height": 960,
+              "scale": 1
+            },
+            "captureBeyondViewport": false
+          }
+        },
+        {
+          "kind": "evaluate",
+          "code": "(function (b) {\n    var P = window.__present;\n    if (b.at != null) P.seek(b.at);\n    if (b.labels != null) P.setLabels(b.labels);\n    if (b.speed != null) P.setSpeed(b.speed);\n    if (b.view) {\n      var geo = b.view === \"geographic\";\n      P.setGeo(geo, b.tween);\n      P.setView(geo ? \"map\" : (b.view === \"time\" ? \"string\" : b.view), b.tween);\n    }\n    P.setPlaying(!b.sweep && b.speed !== 0);\n    return true;\n  })({\"view\":\"time\",\"labels\":null,\"at\":null,\"speed\":null,\"sweep\":true,\"hours\":null,\"lo\":32400,\"hi\":36000,\"tween\":0.5,\"secs\":0.5})"
+        },
+        {
+          "kind": "evaluate",
+          "code": "window.__present.seek(32400); true"
+        },
+        {
+          "kind": "evaluate",
+          "code": "new Promise(function (resolve) { requestAnimationFrame(function () { requestAnimationFrame(function () { resolve(true) }) }) })"
+        },
+        {
+          "kind": "send",
+          "method": "Page.captureScreenshot",
+          "params": {
+            "format": "png",
+            "clip": {
+              "x": 10,
+              "y": 20,
+              "width": 540,
+              "height": 960,
+              "scale": 1
+            },
+            "captureBeyondViewport": false
+          }
+        },
+        {
+          "kind": "evaluate",
+          "code": "window.__present.seek(36000); true"
+        },
+        {
+          "kind": "evaluate",
+          "code": "new Promise(function (resolve) { requestAnimationFrame(function () { requestAnimationFrame(function () { resolve(true) }) }) })"
+        },
+        {
+          "kind": "send",
+          "method": "Page.captureScreenshot",
+          "params": {
+            "format": "png",
+            "clip": {
+              "x": 10,
+              "y": 20,
+              "width": 540,
+              "height": 960,
+              "scale": 1
+            },
+            "captureBeyondViewport": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "a still, as jobOf makes one",
+      "job": {
+        "url": "app://local/projects/p1/stand-in.html?present=1",
+        "width": 540,
+        "height": 960,
+        "scale": 1,
+        "fps": 30,
+        "settle": 1200,
+        "beats": [
+          {
+            "view": "map",
+            "labels": null,
+            "at": 25200,
+            "speed": 0,
+            "sweep": false,
+            "hours": null,
+            "lo": null,
+            "hi": null,
+            "tween": 0,
+            "secs": 0.03333333333333333
+          }
+        ]
+      },
+      "calls": [
+        {
+          "kind": "navigate",
+          "url": "app://local/projects/p1/stand-in.html?present=1"
+        },
+        {
+          "kind": "attach"
+        },
+        {
+          "kind": "send",
+          "method": "Emulation.setDeviceMetricsOverride",
+          "params": {
+            "width": 540,
+            "height": 960,
+            "deviceScaleFactor": 1,
+            "mobile": false
+          }
+        },
+        {
+          "kind": "send",
+          "method": "Emulation.setEmulatedMedia",
+          "params": {
+            "features": [
+              {
+                "name": "prefers-reduced-motion",
+                "value": "no-preference"
+              }
+            ]
+          }
+        },
+        {
+          "kind": "evaluate",
+          "code": "!!(window.__present && window.__present.state)"
+        },
+        {
+          "kind": "evaluate",
+          "code": "window.__present.setCapture(true); true"
+        },
+        {
+          "kind": "evaluate",
+          "code": "document.fonts ? document.fonts.ready.then(function () { return true }) : true"
+        },
+        {
+          "kind": "evaluate",
+          "code": "window.__present.bounds()"
+        },
+        {
+          "kind": "evaluate",
+          "code": "window.__present.state()"
+        },
+        {
+          "kind": "evaluate",
+          "code": "(function () { var el = document.getElementById(\"stage\"); if (!el) return null; var r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height } })()"
+        },
+        {
+          "kind": "evaluate",
+          "code": "Promise.resolve(window.__present.settle()).then(function () { return true })"
+        },
+        {
+          "kind": "settled"
+        },
+        {
+          "kind": "evaluate",
+          "code": "(function (b) {\n    var P = window.__present;\n    if (b.at != null) P.seek(b.at);\n    if (b.labels != null) P.setLabels(b.labels);\n    if (b.speed != null) P.setSpeed(b.speed);\n    if (b.view) {\n      var geo = b.view === \"geographic\";\n      P.setGeo(geo, b.tween);\n      P.setView(geo ? \"map\" : (b.view === \"time\" ? \"string\" : b.view), b.tween);\n    }\n    P.setPlaying(!b.sweep && b.speed !== 0);\n    return true;\n  })({\"view\":\"map\",\"labels\":null,\"at\":25200,\"speed\":0,\"sweep\":false,\"hours\":null,\"lo\":null,\"hi\":null,\"tween\":0,\"secs\":0.03333333333333333})"
+        },
+        {
+          "kind": "evaluate",
+          "code": "window.__present.advance(0.03333333333333333); true"
+        },
+        {
+          "kind": "evaluate",
+          "code": "new Promise(function (resolve) { requestAnimationFrame(function () { requestAnimationFrame(function () { resolve(true) }) }) })"
+        },
+        {
+          "kind": "send",
+          "method": "Page.captureScreenshot",
+          "params": {
+            "format": "png",
+            "clip": {
+              "x": 10,
+              "y": 20,
+              "width": 540,
+              "height": 960,
+              "scale": 1
+            },
+            "captureBeyondViewport": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "the geographic view, then the map with a tween",
+      "job": {
+        "url": "app://local/projects/p1/stand-in.html?present=1",
+        "width": 320,
+        "height": 320,
+        "scale": 2,
+        "fps": 2,
+        "settle": 0,
+        "beats": [
+          {
+            "view": "geographic",
+            "labels": null,
+            "at": 28800,
+            "speed": 60,
+            "sweep": false,
+            "hours": null,
+            "lo": null,
+            "hi": null,
+            "tween": 0,
+            "secs": 1
+          },
+          {
+            "view": "map",
+            "labels": null,
+            "at": null,
+            "speed": null,
+            "sweep": false,
+            "hours": null,
+            "lo": null,
+            "hi": null,
+            "tween": 1.2,
+            "secs": 1
+          }
+        ]
+      },
+      "calls": [
+        {
+          "kind": "navigate",
+          "url": "app://local/projects/p1/stand-in.html?present=1"
+        },
+        {
+          "kind": "attach"
+        },
+        {
+          "kind": "send",
+          "method": "Emulation.setDeviceMetricsOverride",
+          "params": {
+            "width": 320,
+            "height": 320,
+            "deviceScaleFactor": 2,
+            "mobile": false
+          }
+        },
+        {
+          "kind": "send",
+          "method": "Emulation.setEmulatedMedia",
+          "params": {
+            "features": [
+              {
+                "name": "prefers-reduced-motion",
+                "value": "no-preference"
+              }
+            ]
+          }
+        },
+        {
+          "kind": "evaluate",
+          "code": "!!(window.__present && window.__present.state)"
+        },
+        {
+          "kind": "evaluate",
+          "code": "window.__present.setCapture(true); true"
+        },
+        {
+          "kind": "evaluate",
+          "code": "document.fonts ? document.fonts.ready.then(function () { return true }) : true"
+        },
+        {
+          "kind": "evaluate",
+          "code": "window.__present.bounds()"
+        },
+        {
+          "kind": "evaluate",
+          "code": "window.__present.state()"
+        },
+        {
+          "kind": "evaluate",
+          "code": "(function () { var el = document.getElementById(\"stage\"); if (!el) return null; var r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height } })()"
+        },
+        {
+          "kind": "evaluate",
+          "code": "Promise.resolve(window.__present.settle()).then(function () { return true })"
+        },
+        {
+          "kind": "settled"
+        },
+        {
+          "kind": "evaluate",
+          "code": "(function (b) {\n    var P = window.__present;\n    if (b.at != null) P.seek(b.at);\n    if (b.labels != null) P.setLabels(b.labels);\n    if (b.speed != null) P.setSpeed(b.speed);\n    if (b.view) {\n      var geo = b.view === \"geographic\";\n      P.setGeo(geo, b.tween);\n      P.setView(geo ? \"map\" : (b.view === \"time\" ? \"string\" : b.view), b.tween);\n    }\n    P.setPlaying(!b.sweep && b.speed !== 0);\n    return true;\n  })({\"view\":\"geographic\",\"labels\":null,\"at\":28800,\"speed\":60,\"sweep\":false,\"hours\":null,\"lo\":null,\"hi\":null,\"tween\":0,\"secs\":1})"
+        },
+        {
+          "kind": "evaluate",
+          "code": "window.__present.advance(0.5); true"
+        },
+        {
+          "kind": "evaluate",
+          "code": "new Promise(function (resolve) { requestAnimationFrame(function () { requestAnimationFrame(function () { resolve(true) }) }) })"
+        },
+        {
+          "kind": "send",
+          "method": "Page.captureScreenshot",
+          "params": {
+            "format": "png",
+            "clip": {
+              "x": 10,
+              "y": 20,
+              "width": 540,
+              "height": 960,
+              "scale": 1
+            },
+            "captureBeyondViewport": false
+          }
+        },
+        {
+          "kind": "evaluate",
+          "code": "window.__present.advance(0.5); true"
+        },
+        {
+          "kind": "evaluate",
+          "code": "new Promise(function (resolve) { requestAnimationFrame(function () { requestAnimationFrame(function () { resolve(true) }) }) })"
+        },
+        {
+          "kind": "send",
+          "method": "Page.captureScreenshot",
+          "params": {
+            "format": "png",
+            "clip": {
+              "x": 10,
+              "y": 20,
+              "width": 540,
+              "height": 960,
+              "scale": 1
+            },
+            "captureBeyondViewport": false
+          }
+        },
+        {
+          "kind": "evaluate",
+          "code": "(function (b) {\n    var P = window.__present;\n    if (b.at != null) P.seek(b.at);\n    if (b.labels != null) P.setLabels(b.labels);\n    if (b.speed != null) P.setSpeed(b.speed);\n    if (b.view) {\n      var geo = b.view === \"geographic\";\n      P.setGeo(geo, b.tween);\n      P.setView(geo ? \"map\" : (b.view === \"time\" ? \"string\" : b.view), b.tween);\n    }\n    P.setPlaying(!b.sweep && b.speed !== 0);\n    return true;\n  })({\"view\":\"map\",\"labels\":null,\"at\":null,\"speed\":null,\"sweep\":false,\"hours\":null,\"lo\":null,\"hi\":null,\"tween\":1.2,\"secs\":1})"
+        },
+        {
+          "kind": "evaluate",
+          "code": "window.__present.advance(0.5); true"
+        },
+        {
+          "kind": "evaluate",
+          "code": "new Promise(function (resolve) { requestAnimationFrame(function () { requestAnimationFrame(function () { resolve(true) }) }) })"
+        },
+        {
+          "kind": "send",
+          "method": "Page.captureScreenshot",
+          "params": {
+            "format": "png",
+            "clip": {
+              "x": 10,
+              "y": 20,
+              "width": 540,
+              "height": 960,
+              "scale": 1
+            },
+            "captureBeyondViewport": false
+          }
+        },
+        {
+          "kind": "evaluate",
+          "code": "window.__present.advance(0.5); true"
+        },
+        {
+          "kind": "evaluate",
+          "code": "new Promise(function (resolve) { requestAnimationFrame(function () { requestAnimationFrame(function () { resolve(true) }) }) })"
+        },
+        {
+          "kind": "send",
+          "method": "Page.captureScreenshot",
+          "params": {
+            "format": "png",
+            "clip": {
+              "x": 10,
+              "y": 20,
+              "width": 540,
+              "height": 960,
+              "scale": 1
+            },
+            "captureBeyondViewport": false
+          }
+        }
+      ]
+    }
+  ]
+}

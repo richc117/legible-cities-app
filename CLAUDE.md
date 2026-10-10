@@ -31,7 +31,7 @@ the kit's `Tabs` control was deleted with the tab strip (A5.5-23).
 | 03 Frame and service day | `ServiceDay`, the transport (`Transport`: scrub, play, speed), the trip (`Trip`: two pickers, the steps; issue 272) | `FrameCell.tsx` |
 | 04 Style | `ThemeSwitch`, `StyleFields` (the map's sizes, issue 350; the looks, the markers, the label face and the trains, issue 391, with `StyleLooks`) | `StyleCell.tsx` |
 | 05 Lines | `LineColours`, `LineOrder` | `LinesCell.tsx` |
-| 06 Export | `ExportTab` (the export's options), which draws `ExportRun` itself | `ExportCell.tsx` |
+| 06 Export | `ExportTab` (the export's options, and the opening's controls in `ExportOpening`, issue 392), which draws `ExportRun` itself | `ExportCell.tsx` |
 
 Around the cells, under `src/renderer/src/notebook/` unless a path says
 otherwise: the project's own header with its one status line and **Run
@@ -247,7 +247,9 @@ once and are cell 06 now. Export offers the thirteen social presets
 from `export.presets` grouped by platform, a storyboard from
 `export.storyboards` for a video or GIF, and view, labels, title, clock,
 start time, lines, quality and a filename tag, and since issue 352 a caption,
-the clock's corner and the sidecar's alt text; the choice is the project's,
+the clock's corner and the sidecar's alt text, and for a video or GIF an opening (a title card, the
+network drawing in, or both, composed as an authored beat list ahead of the storyboard's own, with the
+capture driving the page's `setCard` and `setDrawn`); the choice is the project's,
 written to the record's `export` the moment it is made. While cell 06 is
 open a frame of the cell's own is the preview (ADR-046; until then it was
 the map's frame), at the address `export.plan` answers with `safe` on

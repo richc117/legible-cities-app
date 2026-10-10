@@ -12,6 +12,19 @@
 // set; a CSS-pixel clip at scale 1, which is what Playwright issues
 // underneath and why the two agree; a session of the window's own, because a
 // persisted per-host zoom level scales every capture silently.
+//
+// Every capture waits for the page's settle, which since engine v0.15.0
+// answers a promise that resolves once the map's face has loaded: a frame
+// taken before then draws the names in the fallback face (spec 035).
+//
+// A job whose beats open on a title card or draw the network in (engine
+// v0.15.0, issue 44; app issue 392, spec 035) makes the engine recorder's
+// calls for them, in the recorder's order (`bin/_record.js`): after the
+// settle it draws the network to 0; it puts the card up or takes it down at
+// each beat's start; and on each frame of the draw-in it steps the clock
+// first and then draws the network to `i / (n - 1)`. A job with neither flag
+// makes exactly the calls it made before the opening, script for script,
+// but for the settle being waited for (`tests/unit/capture-opening.test.ts`).
 
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
@@ -143,6 +156,7 @@ export function validateCaptureJob(job: unknown): string | null {
   if (!isInt(j.fps, 1, 120)) return 'fps is a whole number between 1 and 120'
   if (!isInt(j.settle, 0, MAX_SETTLE)) return `settle is milliseconds between 0 and ${MAX_SETTLE}`
   if (!Array.isArray(j.beats) || j.beats.length === 0) return 'a job has at least one beat'
+  let drawnAt: number | null = null
   for (const [i, raw] of j.beats.entries()) {
     const where = `beat ${i + 1}`
     if (typeof raw !== 'object' || raw === null) return `${where} is not an object`
@@ -164,6 +178,26 @@ export function validateCaptureJob(job: unknown): string | null {
     if (b.sweep === true) {
       const span = isSeconds(b.lo) && isSeconds(b.hi) && b.hi >= b.lo
       if (!(isSeconds(b.hours) && b.hours > 0) && !span) return `${where} sweeps over no span`
+    }
+    // The opening's two flags (spec 035): true or false where given, and a
+    // draw-in holds the clock, so it never sweeps; the engine refuses one
+    // too, and this is the guard on what reaches the page.
+    for (const flag of ['card', 'draw_in'] as const) {
+      if (b[flag] !== undefined && typeof b[flag] !== 'boolean')
+        return `${where} has a ${flag} that is not true or false`
+    }
+    if (b.draw_in === true && b.sweep === true)
+      return `${where} draws the network in and sweeps the clock, which holds while it draws in`
+    // A draw-in leaves the network undrawn until its own frames draw it,
+    // so a draw-in of no frame, or a second one, would leave the network
+    // undrawn: the engine never plans either, and this is the guard against
+    // one that would.
+    if (b.draw_in === true) {
+      if (Math.round((b.secs as number) * (j.fps as number)) < 1)
+        return `${where} draws the network in over no frame at ${j.fps as number} frames a second`
+      if (drawnAt !== null)
+        return `${where} draws the network in a second time; beat ${drawnAt} already does`
+      drawnAt = i + 1
     }
   }
   const first = j.beats[0] as Record<string, unknown>
@@ -240,6 +274,32 @@ const FONTS_READY = 'document.fonts ? document.fonts.ready.then(function () { re
 
 const STAGE_RECT =
   '(function () { var el = document.getElementById("stage"); if (!el) return null; var r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height } })()'
+
+/**
+ * The page's settle, waited for, by every capture (spec 035): since engine
+ * v0.15.0 it answers a promise that resolves once the map's face has loaded,
+ * and an older page answers nothing, which this waits for as well. It snaps
+ * every tween before the page answers, as it always did; a promise that never
+ * resolves ends in the frame's own timeout, like any other step.
+ */
+export const SETTLE_AWAITED =
+  'Promise.resolve(window.__present.settle()).then(function () { return true })'
+
+/** Whether the page has the calls an opening needs: a page drawn by an earlier pin has neither. */
+function hasOpening(card: boolean, drawIn: boolean): string {
+  const asked = [
+    ...(card ? ['typeof window.__present.setCard === "function"'] : []),
+    ...(drawIn ? ['typeof window.__present.setDrawn === "function"'] : []),
+  ]
+  return `!!(window.__present && ${asked.join(' && ')})`
+}
+
+/** The card up or down; only a boolean is ever written into the script. */
+const setCard = (on: boolean): string => `window.__present.setCard(${on === true}); true`
+
+/** The network drawn to a fraction; only a number is ever written into the script. */
+const setDrawn = (fraction: number): string =>
+  `window.__present.setDrawn(${Number(fraction)}); true`
 
 /** Everything a beat names is applied at its start; what it leaves out carries over. */
 function applyBeat(beat: Beat): string {
@@ -385,14 +445,34 @@ export async function runCapture(
       throw new CaptureError(`no trains at ${first.clock}; this feed runs ${hms(t0)}-${hms(t1)}`)
 
     const clip = asClip(await evaluate('measuring the stage', STAGE_RECT))
+    // The opening the job plays, if any (spec 035): a job with neither flag
+    // asks nothing of it.
+    const carded = job.beats.some((b) => b.card === true)
+    const drawsIn = job.beats.some((b) => b.draw_in === true)
+    if (carded || drawsIn) {
+      // A page drawn before the engine could open on a card or draw itself
+      // in has neither call: refused here, before any frame, in a sentence,
+      // rather than as a script error halfway through.
+      const able = await evaluate('asking for the opening', hasOpening(carded, drawsIn))
+      if (able !== true)
+        throw new CaptureError(
+          'this map was drawn before it could open on a title card or draw itself in; draw the map again, or choose no opening',
+        )
+    }
     // Snap every tween before the first beat, so nothing from the page's own
-    // start-up leaks into frame 0.
-    await evaluate('settling the page', 'window.__present.settle(); true')
+    // start-up leaks into frame 0, and wait for the map's face, which the
+    // page's settle answers a promise for since engine v0.15.0.
+    await evaluate('settling the page', SETTLE_AWAITED)
+    // The network is undrawn on every beat before its draw-in.
+    if (drawsIn) await evaluate('undrawing the network', setDrawn(0))
 
     log(`capture: ${total} frames of ${clip.width}x${clip.height} at ${job.scale}x, ${job.fps} fps`)
     for (const beat of job.beats) {
       if (ended !== null) throw ended
       const frames = Math.round(beat.secs * job.fps)
+      // The card goes up at its beat's start and down at the next beat's
+      // that has none; asked only of a job that has one.
+      if (carded) await evaluate('putting the card up', setCard(beat.card === true))
       await evaluate('applying a beat', applyBeat(beat))
       let lo = Number(beat.lo ?? t0)
       let hi = Number(beat.hi ?? t1)
@@ -412,6 +492,10 @@ export async function runCapture(
             ? `window.__present.seek(${at}); true`
             : `window.__present.advance(${Number(1 / job.fps)}); true`
         await evaluate('stepping the clock', advance)
+        // The draw-in's fraction is the sweep's step, taken after the clock's,
+        // so the beat's last frame is the network whole.
+        if (beat.draw_in === true)
+          await evaluate('drawing the network in', setDrawn(frames > 1 ? i / (frames - 1) : 1))
         await evaluate('waiting for the paint', TWO_FRAMES)
         const shot = (await step(
           'taking the frame',
