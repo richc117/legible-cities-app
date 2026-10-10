@@ -26,13 +26,23 @@ import { basename, resolve } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { themeWord } from '../../src/renderer/src/ThemeSwitch'
-import { FRAME_SENTENCE, STYLE_FIELDS, UNIT_SENTENCE } from '../../src/renderer/src/styleRules'
+import { LOOKS_WAITING } from '../../src/renderer/src/looks'
+import {
+  CHOICE_FIELDS,
+  FRAME_SENTENCE,
+  STYLE_FIELDS,
+  TICK_SENTENCE,
+  TRAIL_SENTENCE,
+  TRAINS_SENTENCE,
+  UNIT_SENTENCE,
+} from '../../src/renderer/src/styleRules'
 import { ProjectProvider } from '../../src/renderer/src/notebook/context'
 import StyleCell, { styleSummary } from '../../src/renderer/src/notebook/cells/StyleCell'
 import type { ProjectState } from '../../src/renderer/src/notebook/useProjectState'
 import { CELL_LIST, type Cell } from '../../src/renderer/src/runGraph'
 import {
   DEFAULT_STYLE,
+  STYLE_CHOICES,
   THEMES,
   type ProjectRecord,
   type ProjectStyle,
@@ -216,6 +226,7 @@ describe('cell 04, Style', () => {
   it('draws a field for each of the eight sizes, in order, each named and with its range', () => {
     const drawn = draw({ project: record })
     const labels = [...drawn.matchAll(/<label for="[^"]*">([^<]*)<\/label>/g)].map((m) => m[1])
+    // The eight sizes, then the trains' two (issue 391), each a labelled field.
     expect(labels).toEqual([
       'Line width',
       'Line gap',
@@ -225,8 +236,10 @@ describe('cell 04, Style', () => {
       'Label size',
       'Label offset',
       'Margin',
+      'Dot size',
+      'Trail',
     ])
-    expect(STYLE_FIELDS.map((field) => field.label)).toEqual(labels)
+    expect(STYLE_FIELDS.map((field) => field.label)).toEqual(labels.slice(0, 8))
     // The engine's range in each field's description, and its own number.
     expect(drawn).toContain('1 to 24. The engine’s own is 7.')
     expect(drawn).toContain('1 to 3, times the line width. The engine’s own is 1.6.')
@@ -355,6 +368,162 @@ describe('cell 04, Style', () => {
     expect(drawn).not.toContain('<label')
     expect(drawn).not.toContain('type="radio"')
     expect(drawn).not.toContain('<fieldset')
+    expect(drawn, 'no look, marker or face either').not.toContain('<fig-dropdown')
+  })
+})
+
+// ---- Issue 391 (spec 034): the look, the markers, the face and the trains,
+// in the one group, as the cell draws them. What a choice does is
+// `tests/unit/looks.test.ts` and `style-rules.test.ts`; that it reaches the
+// engine is `tests/e2e/looks.spec.ts`.
+
+/** The sizes' group, and nothing else the cell holds. */
+const sizesGroup = (drawn: string): string => {
+  const start = drawn.indexOf('<section class="style-fields"')
+  expect(start, 'the cell draws the sizes').toBeGreaterThanOrEqual(0)
+  return drawn.slice(start, drawn.indexOf('</section>', start))
+}
+
+/** Every control's name in the group, in the order it is drawn, and the sentences that head a part. */
+const walk = (drawn: string): string[] =>
+  [
+    ...sizesGroup(drawn).matchAll(
+      /<fig-dropdown label="([^"]*)"|<label for="[^"]*">([^<]*)<\/label>|<legend>([^<]*)<\/legend>|<fig-button[^>]*>([^<]*)<\/fig-button>|<p class="prose">/g,
+    ),
+  ].map((found) =>
+    found[1] !== undefined
+      ? `select ${found[1]}`
+      : found[2] !== undefined
+        ? found[2]
+        : found[3] !== undefined
+          ? `group ${found[3]}`
+          : found[4] !== undefined
+            ? `button ${found[4]}`
+            : 'the unit',
+  )
+
+/** One select's row: the name drawn beside it, its options, and what is said under it. */
+function selectRow(drawn: string, name: string) {
+  const group = sizesGroup(drawn)
+  const at = group.indexOf(`<fig-dropdown label="${name}"`)
+  expect(at, `a select named ${name}`).toBeGreaterThanOrEqual(0)
+  const rowStart = group.lastIndexOf('<div class="style-field">', at)
+  const end = group.indexOf('</fig-dropdown>', at)
+  const after = group.slice(end, group.indexOf('<div class="style-field">', end + 1))
+  return {
+    beside: group.slice(rowStart, at),
+    options: [...group.slice(at, end).matchAll(/<option value="([^"]*)">([^<]*)<\/option>/g)].map(
+      (found) => [found[1], found[2]],
+    ),
+    said: [...after.matchAll(/<p id="[^"]*" class="message">([^<]*)<\/p>/g)].map((m) => m[1]),
+  }
+}
+
+describe('cell 04’s looks, markers, face and trains (issue 391)', () => {
+  it('draws one group in the decided order: the look, the eight sizes, the markers, the face, the trains, one Reset', () => {
+    // Mutation: the look drawn after the sizes, or the face before the markers.
+    expect(walk(draw({ project: record }))).toEqual([
+      'select Look',
+      'the unit',
+      'Line width',
+      'Line gap',
+      'Station radius',
+      'Interchange radius',
+      'Station outline',
+      'Label size',
+      'Label offset',
+      'Margin',
+      'select Station marker',
+      'select Interchange marker',
+      'select Label typeface',
+      'group Trains',
+      'Dot size',
+      'Trail',
+      'button Reset to the engine’s sizes',
+    ])
+  })
+
+  it('names each select by its label, the name beside it drawn and hidden from the accessibility tree', () => {
+    for (const name of ['Look', 'Station marker', 'Interchange marker', 'Label typeface'])
+      expect(selectRow(draw({ project: record }), name).beside).toBe(
+        `<div class="style-field"><span class="style-name" aria-hidden="true">${name}</span><div class="style-control">`,
+      )
+  })
+
+  it('offers the engine’s own sizes alone, and says the looks come from the engine, while it is away', () => {
+    // The markup is drawn with no engine: the looks are not asked.
+    const own = selectRow(draw({ project: record }), 'Look')
+    expect(own.options).toEqual([['engine-own', 'The engine’s sizes']])
+    expect(own.said).toEqual([LOOKS_WAITING])
+    expect(LOOKS_WAITING).toBe(
+      'The looks come from the engine, and are offered once it is running.',
+    )
+    // A style of its own is Custom: no look can be known without the engine.
+    const custom = selectRow(draw({ project: { ...record, style: { lineWidth: 6 } } }), 'Look')
+    expect(custom.options).toEqual([
+      ['engine-own', 'The engine’s sizes'],
+      ['custom', 'Custom'],
+    ])
+    // Nothing else in the group waits on the engine.
+    expect(sizesGroup(draw({ project: record }))).not.toMatch(/disabled/)
+  })
+
+  it('offers the engine’s markers and faces in its order, each by its word', () => {
+    // Mutation: the interchange's circle called Circle, or an option dropped.
+    const drawn = draw({ project: record })
+    expect(selectRow(drawn, 'Station marker').options).toEqual([
+      ['circle', 'Circle'],
+      ['tick', 'Tick'],
+      ['square', 'Square'],
+    ])
+    expect(selectRow(drawn, 'Interchange marker').options).toEqual([
+      ['circle', 'Ring'],
+      ['square', 'Square'],
+    ])
+    expect(selectRow(drawn, 'Label typeface').options).toEqual([
+      ['system', 'System'],
+      ['inter', 'Inter'],
+      ['atkinson-hyperlegible-next', 'Atkinson Hyperlegible Next'],
+    ])
+    for (const [key, { options }] of Object.entries(CHOICE_FIELDS))
+      expect(
+        options.map((option) => option.value),
+        key,
+      ).toEqual(STYLE_CHOICES[key as keyof typeof STYLE_CHOICES].options)
+  })
+
+  it('glosses the tick under the station’s marker, and nowhere else', () => {
+    // Mutation: the gloss left off the station's marker.
+    const drawn = draw({ project: record })
+    expect(selectRow(drawn, 'Station marker').said).toEqual([TICK_SENTENCE])
+    expect(TICK_SENTENCE).toBe(
+      'A tick stands on the side of the station’s name, as on the London diagram.',
+    )
+    expect(selectRow(drawn, 'Interchange marker').said).toEqual([])
+    expect(selectRow(drawn, 'Label typeface').said).toEqual([])
+  })
+
+  it('draws the trains as a group of two fields in the sizes’ pattern, the trail’s note in its description', () => {
+    // Mutation: the trail's note drawn but not in the field's description.
+    const group = sizesGroup(draw({ project: record }))
+    const trains = group.slice(
+      group.indexOf('<fieldset class="style-trains">'),
+      group.indexOf('</fieldset>'),
+    )
+    expect(trains).toContain('<legend>Trains</legend>')
+    expect(trains).toContain(`<p class="message">${TRAINS_SENTENCE}</p>`)
+    expect(TRAINS_SENTENCE).toBe(
+      'How a train is drawn as the map plays; the map itself does not change.',
+    )
+    expect(trains).toContain('2 to 12. The engine’s own is 5.')
+    expect(trains).toContain('0 to 3 seconds. The engine’s own is 0.')
+    const trail = /<label for="([^"]*)">Trail<\/label>/.exec(trains)?.[1] as string
+    const described = new RegExp(`aria-describedby="${trail}-range ${trail}-note"`)
+    expect(trains).toMatch(described)
+    expect(trains).toContain(`<p id="${trail}-note" class="message">${TRAIL_SENTENCE}</p>`)
+    expect(TRAIL_SENTENCE).toBe(
+      'There is no trail while a train stands at a station, in the Time view, or for a person who has asked for reduced motion.',
+    )
   })
 })
 
@@ -371,6 +540,15 @@ describe('what the collapsed row says of the sizes', () => {
   it('says nothing of a size at the engine’s own number: that is no choice', () => {
     expect(row({ ...DEFAULT_STYLE })).toBe('Warm dark')
     expect(row({ lineWidth: DEFAULT_STYLE.lineWidth })).toBe('Warm dark')
+  })
+
+  it('says nothing of a look’s marker, the face or the trains: the row is about the sizes', () => {
+    // Issue 391 (spec 034, FR-012): the row says what DESIGN.md 8.2 says it
+    // says. Mutation: the row judged on the whole group (`styleIsSet`).
+    expect(row({ labelFont: 'inter', trail: 2, dotRadius: 8, stationShape: 'tick' })).toBe(
+      'Warm dark',
+    )
+    expect(row({ stationShape: 'tick', lineWidth: 6 })).toBe('Warm dark, sizes of your own')
   })
 
   it('says, after the theme, that the sizes are a person’s own once any has been set', () => {

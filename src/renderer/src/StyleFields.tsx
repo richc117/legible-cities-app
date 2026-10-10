@@ -1,30 +1,38 @@
 import { useEffect, useId, useMemo, useRef, useState, type JSX, type RefObject } from 'react'
 import type { EngineState } from '../../shared/engine'
 import {
+  isStyleChoice,
   sameStyle,
-  STYLE_KEYS,
-  styleIsSet,
-  styleRefusals,
+  type ChoiceKey,
+  type FigureKey,
   type ProjectRecord,
   type ProjectStyle,
-  type StyleKey,
 } from '../../shared/project'
 import { REDRAW_DELAY } from './colours'
 import { debounce } from './debounce'
 import type { LayoutRun as Run } from './engine/layoutRun'
 import Button from './kit/Button'
 import TextInput from './kit/TextInput'
+import { chooseValue, type Look } from './looks'
+import { ChoiceSelect, LookSelect } from './StyleLooks'
 import {
+  chooseIn,
   commitDrafts,
   describeField,
   draftsOf,
+  drawable,
   FRAME_SENTENCE,
-  isPending,
   nextStyleStep,
+  resettable,
   STYLE_FIELDS,
+  TICK_SENTENCE,
+  TRAIL_SENTENCE,
+  TRAIN_FIELDS,
+  TRAINS_LEGEND,
+  TRAINS_SENTENCE,
   UNIT_SENTENCE,
-  type Drafts,
-  type Problems,
+  viewOf,
+  type View,
 } from './styleRules'
 import { usePutBack } from './usePutBack'
 import { useSnapshot } from './useSnapshot'
@@ -48,6 +56,14 @@ import { useSnapshot } from './useSnapshot'
 // path a colour change uses, and nothing is written to the record until the
 // map has been drawn with it (A4-01's rule), so a cancelled or failed build
 // leaves the record alone and the panel goes back to it.
+//
+// Since issue 391 (spec 034) the group holds the rest of how the map is
+// drawn, in this order: the engine's named looks at its head (`LookSelect`),
+// the eight sizes, the station's and the interchange's marker and the label
+// face (`ChoiceSelect`), and the trains' dot size and trail, which are fields
+// in the sizes' pattern. Every one of them is the same cheap edit by the
+// same path: shown at once, drawn once after the delay, written once the map
+// carries it. One Reset clears them all and leaves the theme.
 
 interface Props {
   run: Run
@@ -75,33 +91,6 @@ interface Props {
 
 /** What the section is called, as the name of its region. */
 const NAME = 'Sizes'
-
-/** What the panel shows: the style it is drawing, the fields as typed, and what was refused. */
-interface View {
-  style: ProjectStyle
-  drafts: Drafts
-  problems: Problems
-}
-
-/**
- * The panel showing a record's style. A figure that was refused and is still
- * waiting where it was typed is kept through it, with its sentence: a redraw
- * finishing elsewhere in the cell must not take a person's half-mended
- * number away.
- */
-function viewOf(style: ProjectStyle, previous?: View): View {
-  const drafts = draftsOf(style)
-  // A record that holds a number the engine would refuse shows it refused.
-  const problems: Problems = styleRefusals(style)
-  if (previous !== undefined) {
-    for (const key of STYLE_KEYS) {
-      if (previous.problems[key] === undefined || !isPending(style, previous.drafts, key)) continue
-      drafts[key] = previous.drafts[key]
-      problems[key] = previous.problems[key]
-    }
-  }
-  return { style, drafts, problems }
-}
 
 export default function StyleFields({
   run,
@@ -189,13 +178,32 @@ export default function StyleFields({
     commitRef.current = commit
   })
 
-  const type = (key: StyleKey, text: string): void =>
+  const type = (key: FigureKey, text: string): void =>
     setView((current) => ({ ...current, drafts: { ...current.drafts, [key]: text } }))
 
-  const commitField = (key: StyleKey): void => {
+  const commitField = (key: FigureKey): void => {
     const done = commitDrafts(view.style, view.drafts, key)
     setView({ style: done.style, drafts: done.drafts, problems: done.problems })
     if (!sameStyle(done.style, view.style)) schedule(done.style)
+  }
+
+  // A look, a marker or the face chosen (issue 391): shown at once and drawn
+  // after the same delay as a figure, so a look and a marker chosen one after
+  // the other are one map build. A style that still holds a number written
+  // by hand out of range is not drawn, as `commitDrafts` draws nothing then:
+  // the choice waits on the screen and goes with the fix.
+  const show = (next: View): void => {
+    setView(next)
+    if (!sameStyle(next.style, view.style) && drawable(next.style)) schedule(next.style)
+  }
+
+  const chooseLook = (value: string, looks: readonly Look[]): void => {
+    const next = chooseValue(view, looks, value)
+    if (next !== null) show(next)
+  }
+
+  const choose = (key: ChoiceKey, value: string): void => {
+    if (isStyleChoice(key, value)) show(chooseIn(view, key, value))
   }
 
   // A button that removes the last thing it had to remove disables itself,
@@ -207,60 +215,78 @@ export default function StyleFields({
     handback.current?.focus()
   }
 
-  const nothingToReset =
-    !styleIsSet(view.style) && !STYLE_KEYS.some((key) => isPending(view.style, view.drafts, key))
+  // A field in the sizes' pattern, a size's or a train's: its name, the
+  // control, what it takes, and the engine's sentence when it was refused.
+  const field = (key: FigureKey, label: string): JSX.Element => {
+    const id = `${ids}-${key}`
+    const problem = view.problems[key]
+    // The margin's sentence about the frame, the trail's about where it is
+    // not drawn: said beside the field, and in its description.
+    const note = key === 'padding' ? FRAME_SENTENCE : key === 'trail' ? TRAIL_SENTENCE : null
+    return (
+      <div className="style-field" key={key}>
+        <label htmlFor={id}>{label}</label>
+        <div
+          className="style-control"
+          onBlur={() => commitField(key)}
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter') return
+            event.preventDefault()
+            commitField(key)
+          }}
+        >
+          <TextInput
+            id={id}
+            value={view.drafts[key]}
+            onChange={(text) => type(key, text)}
+            spellCheck={false}
+            aria-describedby={[
+              `${id}-range`,
+              note === null ? null : `${id}-note`,
+              problem === undefined ? null : `${id}-refused`,
+            ]
+              .filter((described) => described !== null)
+              .join(' ')}
+            aria-invalid={problem !== undefined ? true : undefined}
+          />
+          <p id={`${id}-range`} className="message">
+            {describeField(key)}
+          </p>
+          {note !== null && (
+            <p id={`${id}-note`} className="message">
+              {note}
+            </p>
+          )}
+          {problem !== undefined && (
+            <p id={`${id}-refused`} className="message error" role="alert">
+              {problem}
+            </p>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <section className="style-fields" aria-label={NAME} aria-busy={busy}>
+      <LookSelect style={view.style} engine={engine} onChoose={chooseLook} />
       <p className="prose">{UNIT_SENTENCE}</p>
-      {STYLE_FIELDS.map(({ key, label }) => {
-        const id = `${ids}-${key}`
-        const problem = view.problems[key]
-        return (
-          <div className="style-field" key={key}>
-            <label htmlFor={id}>{label}</label>
-            <div
-              className="style-control"
-              onBlur={() => commitField(key)}
-              onKeyDown={(event) => {
-                if (event.key !== 'Enter') return
-                event.preventDefault()
-                commitField(key)
-              }}
-            >
-              <TextInput
-                id={id}
-                value={view.drafts[key]}
-                onChange={(text) => type(key, text)}
-                spellCheck={false}
-                aria-describedby={[
-                  `${id}-range`,
-                  key === 'padding' ? `${id}-frame` : null,
-                  problem === undefined ? null : `${id}-refused`,
-                ]
-                  .filter((described) => described !== null)
-                  .join(' ')}
-                aria-invalid={problem !== undefined ? true : undefined}
-              />
-              <p id={`${id}-range`} className="message">
-                {describeField(key)}
-              </p>
-              {key === 'padding' && (
-                <p id={`${id}-frame`} className="message">
-                  {FRAME_SENTENCE}
-                </p>
-              )}
-              {problem !== undefined && (
-                <p id={`${id}-refused`} className="message error" role="alert">
-                  {problem}
-                </p>
-              )}
-            </div>
-          </div>
-        )
-      })}
+      {STYLE_FIELDS.map(({ key, label }) => field(key, label))}
+      <ChoiceSelect
+        choice="stationShape"
+        style={view.style}
+        sentence={TICK_SENTENCE}
+        onChoose={choose}
+      />
+      <ChoiceSelect choice="interchangeShape" style={view.style} onChoose={choose} />
+      <ChoiceSelect choice="labelFont" style={view.style} onChoose={choose} />
+      <fieldset className="style-trains">
+        <legend>{TRAINS_LEGEND}</legend>
+        <p className="message">{TRAINS_SENTENCE}</p>
+        {TRAIN_FIELDS.map(({ key, label }) => field(key, label))}
+      </fieldset>
       <div className="toolbar">
-        <Button disabled={nothingToReset} onClick={reset}>
+        <Button disabled={!resettable(view)} onClick={reset}>
           Reset to the engine’s sizes
         </Button>
       </div>

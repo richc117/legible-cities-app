@@ -10,15 +10,20 @@
 
 import { describe, expect, it } from 'vitest'
 import {
+  chooseIn,
   commitDrafts,
   describeField,
   draftsOf,
+  drawable,
   fieldText,
   nextStyleStep,
   parseFigure,
+  resettable,
   sizesWords,
   mapStyle,
   styleParams,
+  TRAIN_FIELDS,
+  viewOf,
   type Drafts,
 } from '../../src/renderer/src/styleRules'
 import {
@@ -391,5 +396,87 @@ describe('what the collapsed row adds to the theme', () => {
     expect(sizesWords({})).toBeNull()
     expect(sizesWords({ ...DEFAULT_STYLE })).toBeNull()
     expect(sizesWords({ padding: 0 })).toBe('sizes of your own')
+  })
+})
+
+// ---- Issue 391 (spec 034): the trains' fields, a marker or the face chosen,
+// and what Reset has to do.
+
+describe('the trains’ fields', () => {
+  it('are named for a person and described by the engine’s range and its own number', () => {
+    expect(TRAIN_FIELDS.map((field) => [field.key, field.label])).toEqual([
+      ['dotRadius', 'Dot size'],
+      ['trail', 'Trail'],
+    ])
+    expect(describeField('dotRadius')).toBe('2 to 12. The engine’s own is 5.')
+    expect(describeField('trail')).toBe('0 to 3 seconds. The engine’s own is 0.')
+  })
+
+  it('refuse a figure outside the range in the engine’s sentence beside the field, and apply nothing', () => {
+    // Mutation: the trains left out of `commitDrafts` - a figure typed into
+    // either would never be read at all.
+    const stored: ProjectStyle = {}
+    for (const [key, figure] of [
+      ['dotRadius', '13'],
+      ['dotRadius', '1.5'],
+      ['trail', '4'],
+      ['trail', 'long'],
+    ] as const) {
+      const done = commitDrafts(stored, typed(stored, { [key]: figure }), key)
+      expect(done.problems, `${key} ${figure}`).toEqual({ [key]: styleRangeSentence(key) })
+      expect(done.style).toEqual(stored)
+      expect(done.drafts[key], 'kept as typed').toBe(figure)
+    }
+    expect(styleRangeSentence('dotRadius')).toBe(
+      "dot_radius must be from 2 to 12, in SVG user units at the map's width",
+    )
+  })
+
+  it('take a figure in range, and an empty field back to the engine’s own', () => {
+    const done = commitDrafts({}, typed({}, { dotRadius: '8', trail: '1.5' }), 'trail')
+    expect(done.problems).toEqual({})
+    expect(done.style).toEqual({ dotRadius: 8, trail: 1.5 })
+    const back = commitDrafts(done.style, typed(done.style, { trail: '' }), 'trail')
+    expect(back.style).toEqual({ dotRadius: 8 })
+    expect(back.drafts.trail).toBe('0')
+  })
+})
+
+describe('a marker or the face chosen', () => {
+  it('is shown in the style at once, the engine’s own kept as no choice, the fields as they were', () => {
+    const view = viewOf({ lineWidth: 12 })
+    view.drafts.trail = 'long'
+    view.problems.trail = styleRangeSentence('trail')
+    const ticked = chooseIn(view, 'stationShape', 'tick')
+    expect(ticked.style).toEqual({ lineWidth: 12, stationShape: 'tick' })
+    expect(ticked.drafts).toBe(view.drafts)
+    expect(ticked.problems).toBe(view.problems)
+    expect(chooseIn(ticked, 'stationShape', 'circle').style).toEqual({ lineWidth: 12 })
+    expect(chooseIn(view, 'labelFont', 'inter').style).toEqual({
+      lineWidth: 12,
+      labelFont: 'inter',
+    })
+  })
+
+  it('is drawn unless the style holds a number the engine would refuse', () => {
+    expect(drawable({ stationShape: 'tick' })).toBe(true)
+    expect(drawable({ stationShape: 'tick', trail: 9 })).toBe(false)
+    expect(drawable({ lineWidth: 99 })).toBe(false)
+  })
+})
+
+describe('what Reset has to do', () => {
+  it('is something while any field of the group is set or a figure waits, and nothing otherwise', () => {
+    // Mutation: Reset judged on the eight sizes alone - a typeface or a
+    // trail on its own could not be reset.
+    expect(resettable(viewOf({}))).toBe(false)
+    expect(resettable(viewOf({ labelFont: 'system', trail: 0 })), 'the engine’s own').toBe(false)
+    expect(resettable(viewOf({ labelFont: 'inter' }))).toBe(true)
+    expect(resettable(viewOf({ interchangeShape: 'square' }))).toBe(true)
+    expect(resettable(viewOf({ trail: 1 }))).toBe(true)
+    expect(resettable(viewOf({ lineWidth: 12 }))).toBe(true)
+    const waiting = viewOf({})
+    waiting.drafts.dotRadius = '30'
+    expect(resettable(waiting), 'a refused figure waiting').toBe(true)
   })
 })
