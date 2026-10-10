@@ -953,6 +953,9 @@ export class LayoutRun {
       // so a project nobody has sized asks for exactly what it asked for
       // before the engine took a style, and only the fields a person set go
       // when something is. Never a colour: the page's theme owns those.
+      // Since issue 391 the markers and the label face go inside `style` and
+      // the trains' `dot_radius` and `trail` beside it, on every draw, so a
+      // day, a colour or an order keeps them (`styleParams`).
       ...styleParams(style),
     })
     this.#inFlight = map

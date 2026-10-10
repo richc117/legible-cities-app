@@ -19,7 +19,7 @@ import {
   validateStyle,
   validateTheme,
   validateTuning,
-  STYLE_KEYS,
+  STYLE_GROUP,
   TUNING_KEYS,
   type CreateProjectInput,
   type LineOrder,
@@ -155,17 +155,19 @@ function readLineOrder(raw: unknown): LineOrder {
 
 /**
  * The sizes a person chose, as the page relayed them once the map was drawn
- * with them (issue 350). Every number is held to the engine's own range and
- * the pair of radii to the engine's rule, with the engine's own sentences,
- * and only the eight fields are taken: a style with anything else on it,
- * one of the four colours the page's theme owns among it, is refused.
+ * with them (issue 350), and since issue 391 the markers, the label face and
+ * the two train numbers. Every number is held to the engine's own range, the
+ * markers and the face to the engine's lists and the pair of radii to the
+ * engine's rule, with the engine's own sentences, and only the group's fields
+ * are taken: a style with anything else on it, one of the four colours the
+ * page's theme owns or a look's name among it, is refused.
  */
 function readStyle(raw: unknown): ProjectStyle {
   check(validateStyle(raw))
-  const given = raw as Record<string, number | undefined>
-  const style: ProjectStyle = {}
-  for (const key of STYLE_KEYS) if (given[key] !== undefined) style[key] = given[key]
-  return style
+  const given = raw as Record<string, unknown>
+  const style: Record<string, unknown> = {}
+  for (const key of STYLE_GROUP) if (given[key] !== undefined) style[key] = given[key]
+  return style as ProjectStyle
 }
 
 /**

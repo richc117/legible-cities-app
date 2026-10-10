@@ -11,7 +11,9 @@ import { runRowStatus } from '../runRow'
 // Cell 04, Style: how the map is drawn (ADR-045).
 //
 // Two sections, the project's theme (A4-03) and the map's sizes (issue 350,
-// ADR-049), both drawn headless: the cell's own heading is the section's
+// ADR-049) - which since issue 391 hold the engine's looks at their head and
+// the markers, the label face and the trains after the eight sizes, one
+// group with one Reset (spec 034) - both drawn headless: the cell's own heading is the section's
 // heading, and its focus handback lands there - on the heading, not on the
 // toggle inside it, which a press after the handback would collapse. Each
 // names its region by an `aria-label` ("Theme", "Sizes") and not by a

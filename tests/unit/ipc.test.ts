@@ -310,6 +310,20 @@ describe('registerProjectHandlers', () => {
       { background: '#000000' },
       { lineWidth: 12, label_color: '#111111' },
       { line_width: 12 },
+      // The markers, the face and the trains (issue 391): the engine's lists
+      // and ranges, the record's names, and never a look's name.
+      { stationShape: 'triangle' },
+      { interchangeShape: 'tick' },
+      { labelFont: 'comic-sans' },
+      { dotRadius: 13 },
+      { trail: -0.5 },
+      { trail: '1' },
+      { trail: true },
+      { dotRadius: Number.NaN },
+      { stationShape: {} },
+      { labelFont: 7 },
+      { dot_radius: 8 },
+      { preset: 'beck' },
     ]) {
       await expect(
         call(CHANNELS.projectsCompleteStyle, 'abcdefghijk1', style),
@@ -324,13 +338,23 @@ describe('registerProjectHandlers', () => {
     const style = { lineWidth: 12, stationRadius: 5, interchangeRadius: 6 }
     await call(CHANNELS.projectsCompleteStyle, 'abcdefghijk1', style)
     await call(CHANNELS.projectsCompleteStyle, 'abcdefghijk1', {})
+    const chosen = { stationShape: 'tick', labelFont: 'inter', dotRadius: 8, trail: 1.5 }
+    await call(CHANNELS.projectsCompleteStyle, 'abcdefghijk1', chosen)
     style.lineWidth = 13
+    chosen.dotRadius = 9
     expect(calls).toEqual([
       {
         method: 'completeStyle',
         args: ['abcdefghijk1', { lineWidth: 12, stationRadius: 5, interchangeRadius: 6 }],
       },
       { method: 'completeStyle', args: ['abcdefghijk1', {}] },
+      {
+        method: 'completeStyle',
+        args: [
+          'abcdefghijk1',
+          { stationShape: 'tick', labelFont: 'inter', dotRadius: 8, trail: 1.5 },
+        ],
+      },
     ])
   })
 

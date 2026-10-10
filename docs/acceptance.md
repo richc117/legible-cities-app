@@ -470,8 +470,12 @@ choose **Warm dark**. Then, with the keyboard, Tab to the pair and press the
 arrow keys, once each way. Then, under **Sizes**, type **12** into **Line
 width** and press Enter, and wait for the map to be drawn again. Type **30**
 into **Line width** and press Enter. Set **Station radius** to **8**, leave
-the field, and then set **Interchange radius** to **9**. Press **Reset to the
-engine's sizes**.
+the field, and then set **Interchange radius** to **9**. Choose **Beck** in
+**Look**, and wait for the map to be drawn again; then type **7** into **Line
+width** and press Enter. Choose **Square** in **Interchange marker** and
+**Inter** in **Label typeface**. Type **13** into **Dot size** and press
+Enter, then **8**; type **1.5** into **Trail** and press Enter, and watch the
+map play for a moment. Press **Reset to the engine's sizes**.
 
 **See.**
 - Two cards, **Warm dark** and **Sepia**, each the engine's small picture of
@@ -511,9 +515,39 @@ engine's sizes**.
   (6) must not be below style.station_radius (8); a field left out counts as
   its default, so send both", and nothing is drawn; setting **Interchange
   radius** to **9** takes both in one redraw.
-- **Reset to the engine's sizes** puts all eight fields back to the
-  engine's own numbers, draws the map once more as it was before, and then
-  cannot be pressed; the row reads "Warm dark" again.
+- Above the unit's sentence, **Look** shows **Custom** by the time you
+  reach it, since the sizes are your own, and offers **The engine's
+  sizes**, **Beck**, **Blueprint**, **Paper** and **Custom** (on a project
+  with no size of its own it shows **The engine's sizes** and offers no
+  **Custom**), with "A look sets the sizes and the markers; the typeface
+  and the trains stay as they are." under it.
+  After the eight fields come **Station marker** (Circle, with "A tick
+  stands on the side of the station's name, as on the London diagram."
+  under it), **Interchange marker** (Ring) and **Label typeface** (System),
+  each a list to choose from, and then **Trains**: "How a train is drawn as
+  the map plays; the map itself does not change.", **Dot size** (5, "2 to
+  12. The engine's own is 5.") and **Trail** (0, "0 to 3 seconds. The
+  engine's own is 0." and "There is no trail while a train stands at a
+  station, in the Time view, or for a person who has asked for reduced
+  motion.").
+- **Beck** draws the map again once, from the stored layout, with no
+  station moved: thinner lines, the stations on one line drawn as short
+  ticks on the side of their names and the interchanges as rings. The eight
+  fields show Beck's numbers (6, 1.33, 3.6, 7.5, 3, 11, 10 and 24) and
+  **Station marker** shows **Tick**. **7** in **Line width** turns **Look**
+  to **Custom**.
+- **Square** draws the interchanges as squares and **Inter** sets the
+  station names in Inter; the names may move to fit, the stations do not.
+- **13** in **Dot size** is refused beside the field with the engine's
+  sentence, "dot_radius must be from 2 to 12, in SVG user units at the map's
+  width", and nothing is drawn; **8** draws the trains larger, and **1.5**
+  in **Trail** draws a short fading trail behind each moving train, none
+  behind a train standing at a station.
+- **Reset to the engine's sizes** puts every field of the group back to the
+  engine's own: the eight sizes, **Look** to **The engine's sizes**, the
+  markers to Circle and Ring, the typeface to System and the trains to 5
+  and 0. It draws the map once more as it was before, leaves the theme as
+  it is, and then cannot be pressed; the row reads "Warm dark" again.
 - **Warm dark** brings the theme back. Leave it on **Warm dark** for the
   exports, or their file names gain `-light` (step 11).
 

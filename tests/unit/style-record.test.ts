@@ -12,19 +12,29 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
+  CHOICE_KEYS,
   DEFAULT_STYLE,
   drawnFrom,
   inStyleRange,
+  INTERCHANGE_SHAPES,
+  LABEL_FONTS,
   parseRecord,
   RECORD_VERSION,
   sameStyle,
   settledStyle,
+  sizesAreSet,
+  STATION_SHAPES,
+  STYLE_CHOICES,
+  STYLE_GROUP,
   STYLE_KEYS,
   STYLE_RANGES,
+  styleChoiceSentence,
   styleIsSet,
   styleRangeSentence,
   styleRefusals,
   styleSent,
+  TRAIN_KEYS,
+  TRAIN_RANGES,
   validateStyle,
   type ProjectRecord,
   type ProjectStyle,
@@ -201,21 +211,22 @@ describe('what the engine accepts of each field', () => {
     }
   })
 
-  it('names no field the schema does not, and leaves out the four colours', () => {
-    const named = new Set(STYLE_KEYS.map((key) => STYLE_RANGES[key].wire))
+  it('names no field the schema does not, and leaves out the four colours and the look’s name', () => {
+    const named = new Set([
+      ...STYLE_KEYS.map((key) => STYLE_RANGES[key].wire),
+      ...CHOICE_KEYS.map((key) => STYLE_CHOICES[key].wire),
+    ])
+    for (const name of named) expect(wire[name], name).toBeDefined()
     const left = Object.keys(wire).filter((name) => !named.has(name))
-    // The four colours the page's theme owns, and the four fields engine
-    // v0.15.0 added that the app does not send yet (the named looks, the
-    // two markers and the label face): each is an issue of its own, and
-    // the one that sends it moves it out of this list.
+    // The four colours the page's theme owns, and `preset`, which the app
+    // never sends: a look is written as its fields (issue 391, spec 034
+    // FR-001). The two markers and the label face moved out of this list
+    // with the issue that sends them.
     expect(left.sort()).toEqual([
       'background',
-      'interchange_shape',
       'label_color',
-      'label_font',
       'preset',
       'station_fill',
-      'station_shape',
       'station_stroke_color',
     ])
   })
@@ -374,5 +385,220 @@ describe('what a style sends', () => {
       labelSize: 20,
     })
     expect(settledStyle({ lineWidth: 99 })).toEqual({ lineWidth: 99 })
+  })
+})
+
+// ---- The markers, the label face and the trains (issue 391, spec 034)
+
+describe('the markers, the face and the trains, as the engine takes them (v0.15.0)', () => {
+  const schema = JSON.parse(
+    readFileSync(resolve(__dirname, '../../vendor/protocol.schema.json'), 'utf8'),
+  ) as {
+    $defs: {
+      MapStyle: { properties: Record<string, { enum?: string[]; description: string }> }
+      MapBuildParams: {
+        properties: Record<string, { minimum?: number; maximum?: number; default?: number }>
+      }
+    }
+  }
+  const style = schema.$defs.MapStyle.properties
+  const params = schema.$defs.MapBuildParams.properties
+
+  it('offers exactly the engine’s markers and faces, in its order, from the committed schema', () => {
+    // Mutation: an option added the engine does not have ('triangle').
+    expect(STYLE_CHOICES.stationShape.options).toEqual(style.station_shape.enum)
+    expect(STYLE_CHOICES.interchangeShape.options).toEqual(style.interchange_shape.enum)
+    expect(STYLE_CHOICES.labelFont.options).toEqual(style.label_font.enum)
+    expect([...STATION_SHAPES]).toEqual(['circle', 'tick', 'square'])
+    expect([...INTERCHANGE_SHAPES], 'an interchange is never a tick').toEqual(['circle', 'square'])
+    expect([...LABEL_FONTS]).toEqual(['system', 'inter', 'atkinson-hyperlegible-next'])
+  })
+
+  it('is the engine’s own marker and face when one is left out, from the schema’s words', () => {
+    for (const key of CHOICE_KEYS) {
+      const said = /(\S+) when omitted/.exec(style[STYLE_CHOICES[key].wire].description)
+      expect(said, key).not.toBeNull()
+      expect(DEFAULT_STYLE[key], key).toBe(said?.[1])
+    }
+  })
+
+  it('takes the train numbers beside the style, in the engine’s ranges and defaults', () => {
+    // Mutation: a bound loosened (dot_radius up to 20).
+    for (const key of TRAIN_KEYS) {
+      const { wire: name, low, high } = TRAIN_RANGES[key]
+      expect(params[name], `${key} is a parameter of map.build`).toBeDefined()
+      expect(style[name], `${key} is not a field of the style`).toBeUndefined()
+      expect(params[name].minimum, `${key} minimum`).toBe(low)
+      expect(params[name].maximum, `${key} maximum`).toBe(high)
+      expect(DEFAULT_STYLE[key], `${key} default`).toBe(params[name].default)
+    }
+  })
+
+  it('says each refusal in the engine’s sentence, word for word', () => {
+    // `serve._style` and `serve._animation_number` at v0.15.0.
+    expect(styleChoiceSentence('stationShape')).toBe(
+      'style.station_shape must be circle, tick or square',
+    )
+    expect(styleChoiceSentence('interchangeShape')).toBe(
+      'style.interchange_shape must be circle or square',
+    )
+    expect(styleChoiceSentence('labelFont')).toBe(
+      'style.label_font must be system, inter or atkinson-hyperlegible-next',
+    )
+    expect(styleRangeSentence('dotRadius')).toBe(
+      "dot_radius must be from 2 to 12, in SVG user units at the map's width",
+    )
+    expect(styleRangeSentence('trail')).toBe('trail must be from 0 to 3, in seconds of playback')
+  })
+
+  it('takes either end of a train’s range and refuses a step past it', () => {
+    for (const key of TRAIN_KEYS) {
+      const { low, high } = TRAIN_RANGES[key]
+      expect(inStyleRange(key, low), `${key} at ${low}`).toBe(true)
+      expect(inStyleRange(key, high), `${key} at ${high}`).toBe(true)
+      for (const past of [low - 0.1, high + 0.1])
+        expect(styleRefusals({ [key]: past })[key], `${key} at ${past}`).toBe(
+          styleRangeSentence(key),
+        )
+    }
+  })
+
+  it('is what a store is asked about before it writes, the engine’s sentence naming the field', () => {
+    expect(
+      validateStyle({
+        stationShape: 'tick',
+        interchangeShape: 'square',
+        labelFont: 'atkinson-hyperlegible-next',
+        dotRadius: 12,
+        trail: 0,
+      }),
+    ).toBeNull()
+    // Mutation: an unknown shape let through (the choices' check dropped).
+    expect(validateStyle({ stationShape: 'triangle' })).toBe(styleChoiceSentence('stationShape'))
+    expect(validateStyle({ interchangeShape: 'tick' }), 'never a tick').toBe(
+      styleChoiceSentence('interchangeShape'),
+    )
+    expect(validateStyle({ labelFont: 'comic-sans' })).toBe(styleChoiceSentence('labelFont'))
+    expect(validateStyle({ labelFont: null })).toBe(styleChoiceSentence('labelFont'))
+    expect(validateStyle({ dotRadius: 13 })).toBe(styleRangeSentence('dotRadius'))
+    expect(validateStyle({ dotRadius: '8' })).toBe(styleRangeSentence('dotRadius'))
+    expect(validateStyle({ trail: 3.5 })).toBe(styleRangeSentence('trail'))
+    expect(validateStyle({ trail: -1 })).toBe(styleRangeSentence('trail'))
+    // What is not a number or a name at all, in the same sentences.
+    expect(validateStyle({ trail: true })).toBe(styleRangeSentence('trail'))
+    expect(validateStyle({ dotRadius: Number.NaN })).toBe(styleRangeSentence('dotRadius'))
+    expect(validateStyle({ stationShape: {} })).toBe(styleChoiceSentence('stationShape'))
+    expect(validateStyle({ interchangeShape: ['square'] })).toBe(
+      styleChoiceSentence('interchangeShape'),
+    )
+    expect(validateStyle({ labelFont: 7 })).toBe(styleChoiceSentence('labelFont'))
+    // The wire's names and a look's name are not the record's.
+    expect(validateStyle({ dot_radius: 8 })).toBe('the style does not take dot_radius')
+    expect(validateStyle({ station_shape: 'tick' })).toBe('the style does not take station_shape')
+    expect(validateStyle({ preset: 'beck' })).toBe('the style does not take preset')
+    // The pair of radii is judged as before, beside the new fields.
+    expect(validateStyle({ stationRadius: 8, stationShape: 'tick' })).toMatch(
+      /^style\.interchange_radius \(6\)/,
+    )
+  })
+})
+
+describe('reading a record’s markers, face and trains', () => {
+  it('reads them as written, each optional', () => {
+    const chosen: ProjectStyle = {
+      lineWidth: 6,
+      stationShape: 'tick',
+      interchangeShape: 'square',
+      labelFont: 'inter',
+      dotRadius: 8,
+      trail: 1.5,
+    }
+    expect(read({ version: RECORD_VERSION, style: chosen }).style).toEqual(chosen)
+    expect(read({ version: 1, style: { labelFont: 'inter' } }).style).toEqual({
+      labelFont: 'inter',
+    })
+  })
+
+  it('reads a marker or a face the engine does not offer as not held, field by field', () => {
+    // Mutation: `readStyle` keeps any string. A select could not show it,
+    // and the next draw would send what the engine refuses.
+    expect(
+      read({
+        version: RECORD_VERSION,
+        style: {
+          stationShape: 'triangle',
+          interchangeShape: 'tick',
+          labelFont: 'inter',
+          dotRadius: '8',
+          trail: null,
+        },
+      }).style,
+    ).toEqual({ labelFont: 'inter' })
+  })
+
+  it('keeps a train number outside its range, refuses it where it is shown, and sends nothing', () => {
+    const record = read({ version: RECORD_VERSION, style: { trail: 9, labelFont: 'inter' } })
+    expect(record.style).toEqual({ trail: 9, labelFont: 'inter' })
+    expect(styleRefusals(record.style)).toEqual({ trail: styleRangeSentence('trail') })
+    expect(styleSent(record.style), 'the face waits with the refused number').toEqual({})
+  })
+})
+
+describe('what is kept and sent of the markers, the face and the trains', () => {
+  it('keeps nothing at the engine’s own value, so a project that chose nothing gains no key', () => {
+    // Mutation: a default stored (`settledStyle` keeps a field at the
+    // engine's own value). The record would then claim a choice nobody made.
+    const own: ProjectStyle = {
+      stationShape: 'circle',
+      interchangeShape: 'circle',
+      labelFont: 'system',
+      dotRadius: 5,
+      trail: 0,
+    }
+    expect(settledStyle(own)).toEqual({})
+    expect(styleSent(own)).toEqual({})
+    expect(styleIsSet(own)).toBe(false)
+    expect(settledStyle({ ...DEFAULT_STYLE })).toEqual({})
+    expect(Object.keys(DEFAULT_STYLE).sort()).toEqual([...STYLE_GROUP].sort())
+  })
+
+  it('sends what was chosen, in the app’s names, the radii rule untouched', () => {
+    expect(styleSent({ stationShape: 'tick', dotRadius: 8, trail: 1.5 })).toEqual({
+      stationShape: 'tick',
+      dotRadius: 8,
+      trail: 1.5,
+    })
+    expect(styleSent({ labelFont: 'inter', stationRadius: 5 })).toEqual({
+      labelFont: 'inter',
+      stationRadius: 5,
+      interchangeRadius: DEFAULT_STYLE.interchangeRadius,
+    })
+  })
+
+  it('counts any of them as something to reset, and none of them as a size', () => {
+    expect(styleIsSet({ labelFont: 'inter' })).toBe(true)
+    expect(styleIsSet({ trail: 1 })).toBe(true)
+    expect(sizesAreSet({ labelFont: 'inter', trail: 1, stationShape: 'tick' })).toBe(false)
+    expect(sizesAreSet({ padding: 0 })).toBe(true)
+  })
+
+  it('compares two styles by what they send, the new fields included', () => {
+    expect(sameStyle({ labelFont: 'system' }, {})).toBe(true)
+    expect(sameStyle({ labelFont: 'inter' }, {})).toBe(false)
+    expect(sameStyle({ dotRadius: 8 }, { dotRadius: 8 })).toBe(true)
+    expect(sameStyle({ stationShape: 'tick' }, { stationShape: 'square' })).toBe(false)
+  })
+
+  it('is part of what a map was drawn from, and reads back as written', () => {
+    const drew: ProjectRecord = {
+      ...read({ version: RECORD_VERSION }),
+      layout: 'a'.repeat(64),
+      made: '2026-09-10T12:00:00+00:00',
+      date: '2026-09-12',
+      style: { stationShape: 'tick', labelFont: 'inter', dotRadius: 8, trail: 0 },
+    }
+    const drawn = drawnFrom(drew)
+    expect(drawn?.style).toEqual({ stationShape: 'tick', labelFont: 'inter', dotRadius: 8 })
+    expect(read({ ...drew, drawn }).drawn).toEqual(drawn)
   })
 })

@@ -10,15 +10,21 @@
 
 import { describe, expect, it } from 'vitest'
 import {
+  chooseIn,
   commitDrafts,
   describeField,
   draftsOf,
+  drawable,
   fieldText,
   nextStyleStep,
   parseFigure,
+  resettable,
   sizesWords,
   mapStyle,
   styleParams,
+  TRAIN_FIELDS,
+  viewForRecord,
+  viewOf,
   type Drafts,
 } from '../../src/renderer/src/styleRules'
 import {
@@ -121,6 +127,47 @@ describe('the style map.build is sent', () => {
     )
     for (const colour of COLOURS) expect(sent, colour).not.toHaveProperty(colour)
   })
+
+  // Issue 391 (spec 034, FR-004 and FR-009): the markers and the face go
+  // inside `style` in the engine's names, the two train numbers beside it as
+  // parameters of `map.build` itself, and nothing at all for what is unset.
+  it('carries a marker and the face inside the style, in the engine’s names', () => {
+    expect(styleParams({ stationShape: 'tick' })).toEqual({ style: { station_shape: 'tick' } })
+    expect(styleParams({ interchangeShape: 'square', labelFont: 'inter' })).toEqual({
+      style: { interchange_shape: 'square', label_font: 'inter' },
+    })
+  })
+
+  it('carries the train numbers beside the style, never inside it', () => {
+    // Mutation: `dot_radius` and `trail` put inside `style`. The engine
+    // refuses the whole draw ("style does not take dot_radius").
+    expect(styleParams({ dotRadius: 8, trail: 1.5 })).toEqual({ dot_radius: 8, trail: 1.5 })
+    expect('style' in styleParams({ dotRadius: 8 }), 'no style for the trains alone').toBe(false)
+    const both = styleParams({ lineWidth: 12, labelFont: 'inter', dotRadius: 8, trail: 2 })
+    expect(both).toEqual({
+      style: { line_width: 12, label_font: 'inter' },
+      dot_radius: 8,
+      trail: 2,
+    })
+    expect(mapStyle({ dotRadius: 8, trail: 2 }), 'the map’s style has none of them').toBeNull()
+  })
+
+  it('carries nothing of the new fields at the engine’s own value', () => {
+    expect(
+      styleParams({
+        stationShape: 'circle',
+        interchangeShape: 'circle',
+        labelFont: 'system',
+        dotRadius: 5,
+        trail: 0,
+      }),
+    ).toEqual({})
+  })
+
+  it('carries nothing at all while a train number would be refused', () => {
+    expect(styleParams({ trail: 9, lineWidth: 12, labelFont: 'inter' })).toEqual({})
+    expect(styleParams({ dotRadius: 1, stationShape: 'tick' })).toEqual({})
+  })
 })
 
 const RANGE = (key: StyleKey): string => styleRangeSentence(key)
@@ -149,6 +196,9 @@ describe('what a field shows and takes', () => {
       labelSize: '20',
       labelOffset: '9',
       padding: '24',
+      // And the two train numbers (issue 391), the engine's own while unset.
+      dotRadius: '5',
+      trail: '0',
     })
   })
 
@@ -347,5 +397,107 @@ describe('what the collapsed row adds to the theme', () => {
     expect(sizesWords({})).toBeNull()
     expect(sizesWords({ ...DEFAULT_STYLE })).toBeNull()
     expect(sizesWords({ padding: 0 })).toBe('sizes of your own')
+  })
+})
+
+// ---- Issue 391 (spec 034): the trains' fields, a marker or the face chosen,
+// and what Reset has to do.
+
+describe('the trains’ fields', () => {
+  it('are named for a person and described by the engine’s range and its own number', () => {
+    expect(TRAIN_FIELDS.map((field) => [field.key, field.label])).toEqual([
+      ['dotRadius', 'Dot size'],
+      ['trail', 'Trail'],
+    ])
+    expect(describeField('dotRadius')).toBe('2 to 12. The engine’s own is 5.')
+    expect(describeField('trail')).toBe('0 to 3 seconds. The engine’s own is 0.')
+  })
+
+  it('refuse a figure outside the range in the engine’s sentence beside the field, and apply nothing', () => {
+    // Mutation: the trains left out of `commitDrafts` - a figure typed into
+    // either would never be read at all.
+    const stored: ProjectStyle = {}
+    for (const [key, figure] of [
+      ['dotRadius', '13'],
+      ['dotRadius', '1.5'],
+      ['trail', '4'],
+      ['trail', 'long'],
+    ] as const) {
+      const done = commitDrafts(stored, typed(stored, { [key]: figure }), key)
+      expect(done.problems, `${key} ${figure}`).toEqual({ [key]: styleRangeSentence(key) })
+      expect(done.style).toEqual(stored)
+      expect(done.drafts[key], 'kept as typed').toBe(figure)
+    }
+    expect(styleRangeSentence('dotRadius')).toBe(
+      "dot_radius must be from 2 to 12, in SVG user units at the map's width",
+    )
+  })
+
+  it('take a figure in range, and an empty field back to the engine’s own', () => {
+    const done = commitDrafts({}, typed({}, { dotRadius: '8', trail: '1.5' }), 'trail')
+    expect(done.problems).toEqual({})
+    expect(done.style).toEqual({ dotRadius: 8, trail: 1.5 })
+    const back = commitDrafts(done.style, typed(done.style, { trail: '' }), 'trail')
+    expect(back.style).toEqual({ dotRadius: 8 })
+    expect(back.drafts.trail).toBe('0')
+  })
+})
+
+describe('a marker or the face chosen', () => {
+  it('is shown in the style at once, the engine’s own kept as no choice, the fields as they were', () => {
+    const view = viewOf({ lineWidth: 12 })
+    view.drafts.trail = 'long'
+    view.problems.trail = styleRangeSentence('trail')
+    const ticked = chooseIn(view, 'stationShape', 'tick')
+    expect(ticked.style).toEqual({ lineWidth: 12, stationShape: 'tick' })
+    expect(ticked.drafts).toBe(view.drafts)
+    expect(ticked.problems).toBe(view.problems)
+    expect(chooseIn(ticked, 'stationShape', 'circle').style).toEqual({ lineWidth: 12 })
+    expect(chooseIn(view, 'labelFont', 'inter').style).toEqual({
+      lineWidth: 12,
+      labelFont: 'inter',
+    })
+  })
+
+  it('is drawn unless the style holds a number the engine would refuse', () => {
+    expect(drawable({ stationShape: 'tick' })).toBe(true)
+    expect(drawable({ stationShape: 'tick', trail: 9 })).toBe(false)
+    expect(drawable({ lineWidth: 99 })).toBe(false)
+  })
+})
+
+describe('what Reset has to do', () => {
+  it('is something while any field of the group is set or a figure waits, and nothing otherwise', () => {
+    // Mutation: Reset judged on the eight sizes alone - a typeface or a
+    // trail on its own could not be reset.
+    expect(resettable(viewOf({}))).toBe(false)
+    expect(resettable(viewOf({ labelFont: 'system', trail: 0 })), 'the engine’s own').toBe(false)
+    expect(resettable(viewOf({ labelFont: 'inter' }))).toBe(true)
+    expect(resettable(viewOf({ interchangeShape: 'square' }))).toBe(true)
+    expect(resettable(viewOf({ trail: 1 }))).toBe(true)
+    expect(resettable(viewOf({ lineWidth: 12 }))).toBe(true)
+    const waiting = viewOf({})
+    waiting.drafts.dotRadius = '30'
+    expect(resettable(waiting), 'a refused figure waiting').toBe(true)
+  })
+})
+
+describe('the group when the record arrives again', () => {
+  it('takes the record’s style, keeping a refused figure waiting', () => {
+    const current = viewOf({ lineWidth: 12 })
+    current.drafts.dotRadius = '30'
+    current.problems.dotRadius = styleRangeSentence('dotRadius')
+    const next = viewForRecord({ lineWidth: 12, labelFont: 'inter' }, current, true)
+    expect(next.style).toEqual({ lineWidth: 12, labelFont: 'inter' })
+    expect(next.drafts.dotRadius).toBe('30')
+  })
+
+  it('keeps a choice waiting beside a number written by hand out of range, for the same project', () => {
+    // Mutation: the record always taken - a rename or a theme pressed would
+    // take the choice off the screen before the number is mended.
+    const record: ProjectStyle = { trail: 9 }
+    const chosen = chooseIn(viewOf(record), 'stationShape', 'tick')
+    expect(viewForRecord(record, chosen, true)).toBe(chosen)
+    expect(viewForRecord(record, chosen, false).style, 'another project’s record').toEqual(record)
   })
 })

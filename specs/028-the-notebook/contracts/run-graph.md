@@ -205,6 +205,12 @@ ADR-045 says why: a control that disables itself under a person's hands
 takes the focus with it, and a refused change is a lost one. Stale is for
 the edits that cost a re-layout.
 
+*As of 10 Oct 2026* (issue 391, spec 034): the looks, the two marker shapes, the
+label typeface and the trains' dot size and trail are cheap edits of the same
+kind as the map's sizes: they raise no source, redraw through `restyle` from the
+stored layout, and are written only once the map carries them. The dot size and
+the trail go to `map.build` beside `style` and not inside it.
+
 Their values are still kept in `drawn`, because a draw copies the record
 whole; Revert reads only the day (A5.5-12, below). `drawnMatchesEdits`
 answers whether the record's colours and order are the ones the map

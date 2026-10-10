@@ -1396,6 +1396,45 @@ describe('restyle', () => {
     })
   })
 
+  // Issue 391 (spec 034, FR-004 and FR-009): the markers and the face go
+  // inside `style`, the trains beside it as `map.build`'s own parameters.
+  it('sends the markers and the face inside the style and the trains beside it', async () => {
+    // Mutation: `dot_radius` and `trail` sent inside `style`, which the
+    // engine refuses whole.
+    const { run, calls, completeStyle, record } = setup(stored)
+    const chosen = { stationShape: 'tick', labelFont: 'inter', dotRadius: 8, trail: 1.5 } as const
+    run.restyle(record, READY, chosen)
+    await tick()
+    const params = calls[0].params as Record<string, unknown>
+    expect(params.style).toEqual({ station_shape: 'tick', label_font: 'inter' })
+    expect(params.dot_radius).toBe(8)
+    expect(params.trail).toBe(1.5)
+    expect(params).not.toHaveProperty('preset')
+    calls[0].resolve({ files: {} })
+    await tick()
+    expect(completeStyle).toHaveBeenCalledWith('p1', chosen)
+  })
+
+  it('sends the trains on every draw of a project that set them, and nothing of them for one that did not', async () => {
+    const trains = { ...stored, style: { dotRadius: 8 } }
+    const colour = setup(trains)
+    colour.run.recolour(colour.record, READY, { colors: {}, defaultColor: '#112233' })
+    await tick()
+    expect(colour.calls[0].params).toMatchObject({ dot_radius: 8 })
+    expect(colour.calls[0].params, 'no style for the trains alone').not.toHaveProperty('style')
+
+    const day = setup(trains)
+    day.run.rebuild(day.record, READY, '2026-09-16')
+    await tick()
+    expect(day.calls[0].params).toMatchObject({ dot_radius: 8 })
+
+    const plain = setup(stored)
+    plain.run.restyle(plain.record, READY, {})
+    await tick()
+    for (const name of ['style', 'dot_radius', 'trail'])
+      expect(plain.calls[0].params, name).not.toHaveProperty(name)
+  })
+
   it('sends the eight in the engine’s names, and not a colour among them', async () => {
     const { run, calls, record } = setup(stored)
     run.restyle(record, READY, {

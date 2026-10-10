@@ -1,21 +1,32 @@
-import type { MapStyle } from '../../shared/protocol'
+import type { MapBuildParams, MapStyle } from '../../shared/protocol'
 import {
+  CHOICE_KEYS,
   DEFAULT_STYLE,
+  FIGURE_KEYS,
   inStyleRange,
   radiiRefusal,
   sameStyle,
   settledStyle,
+  sizesAreSet,
+  STYLE_CHOICES,
   STYLE_KEYS,
   STYLE_RANGES,
-  styleIsSet,
   styleRangeSentence,
   styleRefusals,
   styleSent,
+  TRAIN_KEYS,
+  TRAIN_RANGES,
+  styleIsSet,
+  type ChoiceKey,
+  type FigureKey,
   type ProjectStyle,
   type StyleKey,
+  type StyleRefusals,
+  type TrainKey,
 } from '../../shared/project'
 
-// The map's sizes (issue 350, ADR-049): what `map.build` is sent for them,
+// The map's sizes (issue 350, ADR-049), and since issue 391 its markers, its
+// label face and its trains (spec 034): what `map.build` is sent for them,
 // and what cell 04's fields do with what is typed. The logic of
 // `StyleFields.tsx`, as `colours.ts` is of `LineColours.tsx` and `order.ts`
 // of `LineOrder.tsx`: pure, so that what a field refuses and what a commit
@@ -23,13 +34,18 @@ import {
 //
 // What a style sends is decided in `shared/project.ts`, beside the record,
 // because the main process needs the same rule to record what a draw carried
-// (`styleSent`): the fields a person chose, none at the engine's own number,
+// (`styleSent`): the fields a person chose, none at the engine's own value,
 // both radii whenever either, and nothing at all for a style the engine would
-// refuse. The first half of this module only puts that in the engine's names.
+// refuse. The first half of this module only puts that on the wire, and is
+// the one place that does: everything inside `style` in the engine's names,
+// except the two train numbers, which are `map.build`'s own.
 
 /**
- * The `style` object `map.build` is sent for a project's sizes, in the
- * engine's snake-case names, or null when there is none to send.
+ * The `style` object `map.build` is sent for a project's style, in the
+ * engine's snake-case names, or null when there is none to send: the eight
+ * sizes, the two markers and the label face. Never the two train numbers,
+ * which are not the map's (`styleParams`), and never a look's name, which
+ * the record does not hold (spec 034, FR-001).
  *
  * Null, never `{}`: an omitted object draws exactly what is drawn without the
  * parameter, which is what keeps every existing project's map where it is,
@@ -40,21 +56,38 @@ import {
  */
 export function mapStyle(style: ProjectStyle): MapStyle | null {
   const sent = styleSent(style)
-  const wire: Record<string, number> = {}
+  const wire: Record<string, number | string> = {}
   for (const key of STYLE_KEYS) {
     const value = sent[key]
     if (value !== undefined) wire[STYLE_RANGES[key].wire] = value
   }
+  for (const key of CHOICE_KEYS) {
+    const value = sent[key]
+    if (value !== undefined) wire[STYLE_CHOICES[key].wire] = value
+  }
   return Object.keys(wire).length === 0 ? null : (wire as MapStyle)
 }
 
+/** The part of `map.build`'s params a project's style adds. */
+export type StyleParams = Pick<MapBuildParams, 'style' | 'dot_radius' | 'trail'>
+
 /**
  * The part of `map.build`'s params a style adds: `{ style }` when something
- * is set, and nothing at all - not a key with nothing in it - when not.
+ * of the map is set, and the two train numbers beside it - `dot_radius` and
+ * `trail`, parameters of `map.build` itself, because they are the
+ * animation's and never reach the SVG (engine issue 75, spec 034 FR-004).
+ * Nothing at all - not a key with nothing in it - for what is not set.
  */
-export function styleParams(style: ProjectStyle): { style?: MapStyle } {
+export function styleParams(style: ProjectStyle): StyleParams {
+  const params: StyleParams = {}
   const wire = mapStyle(style)
-  return wire === null ? {} : { style: wire }
+  if (wire !== null) params.style = wire
+  const sent = styleSent(style)
+  for (const key of TRAIN_KEYS) {
+    const value = sent[key]
+    if (value !== undefined) params[TRAIN_RANGES[key].wire as 'dot_radius' | 'trail'] = value
+  }
+  return params
 }
 
 // ---- Cell 04's fields
@@ -84,30 +117,99 @@ export const STYLE_FIELDS: readonly { key: StyleKey; label: string }[] = [
 ]
 
 /**
+ * The two train numbers' names (issue 391, spec 034 FR-004): the engine's
+ * `dot_radius` is the dot's size to a person, and `trail` is the trail.
+ */
+export const TRAIN_FIELDS: readonly { key: TrainKey; label: string }[] = [
+  { key: 'dotRadius', label: 'Dot size' },
+  { key: 'trail', label: 'Trail' },
+]
+
+/** The trains' group, by its legend, and what it is said once under it. */
+export const TRAINS_LEGEND = 'Trains'
+export const TRAINS_SENTENCE =
+  'How a train is drawn as the map plays; the map itself does not change.'
+
+/**
+ * What the engine says of the trail (`MapBuildParams.trail`), said beside the
+ * field: none while a train stands, none in the Time view, none for a person
+ * who has asked for reduced motion.
+ */
+export const TRAIL_SENTENCE =
+  'There is no trail while a train stands at a station, in the Time view, or for a person who has asked for reduced motion.'
+
+/**
+ * The markers and the label face, each a select with the engine's choices in
+ * the engine's order and the word a person reads for each (spec 034, FR-002
+ * and FR-003). The interchange's circle is the ring the map has always drawn
+ * round an interchange, so it is called that.
+ */
+export const CHOICE_FIELDS: Readonly<
+  Record<ChoiceKey, { label: string; options: readonly { value: string; label: string }[] }>
+> = {
+  stationShape: {
+    label: 'Station marker',
+    options: [
+      { value: 'circle', label: 'Circle' },
+      { value: 'tick', label: 'Tick' },
+      { value: 'square', label: 'Square' },
+    ],
+  },
+  interchangeShape: {
+    label: 'Interchange marker',
+    options: [
+      { value: 'circle', label: 'Ring' },
+      { value: 'square', label: 'Square' },
+    ],
+  },
+  labelFont: {
+    label: 'Label typeface',
+    options: [
+      { value: 'system', label: 'System' },
+      { value: 'inter', label: 'Inter' },
+      { value: 'atkinson-hyperlegible-next', label: 'Atkinson Hyperlegible Next' },
+    ],
+  },
+}
+
+/** The tick's gloss, said under the station's marker whichever is chosen. */
+export const TICK_SENTENCE =
+  'A tick stands on the side of the station’s name, as on the London diagram.'
+
+/**
  * What a field takes, said under it: the engine's range, and the engine's
  * own number for a field left alone. The gap is the one field with no unit,
- * a multiple of the line width.
+ * a multiple of the line width; the trail is in seconds, and the dot in the
+ * sizes' own unit.
  */
-export function describeField(key: StyleKey): string {
+export function describeField(key: FigureKey): string {
+  if (key === 'trail') {
+    const { low, high } = TRAIN_RANGES.trail
+    return `${low} to ${high} seconds. The engine’s own is ${DEFAULT_STYLE.trail}.`
+  }
+  if (key === 'dotRadius') {
+    const { low, high } = TRAIN_RANGES.dotRadius
+    return `${low} to ${high}. The engine’s own is ${DEFAULT_STYLE.dotRadius}.`
+  }
   const { low, high, ratio } = STYLE_RANGES[key]
   const range = ratio ? `${low} to ${high}, times the line width` : `${low} to ${high}`
   return `${range}. The engine’s own is ${DEFAULT_STYLE[key]}.`
 }
 
 /** What a field shows: the number a person set, else the engine's own. */
-export const fieldText = (style: ProjectStyle, key: StyleKey): string =>
+export const fieldText = (style: ProjectStyle, key: FigureKey): string =>
   String(style[key] ?? DEFAULT_STYLE[key])
 
 /** What the fields have been typed to say, one string each. */
-export type Drafts = Record<StyleKey, string>
+export type Drafts = Record<FigureKey, string>
 
 /** The fields showing what a style holds. */
 export function draftsOf(style: ProjectStyle): Drafts {
-  return Object.fromEntries(STYLE_KEYS.map((key) => [key, fieldText(style, key)])) as Drafts
+  return Object.fromEntries(FIGURE_KEYS.map((key) => [key, fieldText(style, key)])) as Drafts
 }
 
 /** The sentences beside the fields that were refused, by field. */
-export type Problems = Partial<Record<StyleKey, string>>
+export type Problems = StyleRefusals
 
 /**
  * A decimal number as a person writes one, or null: an optional sign, digits
@@ -122,7 +224,7 @@ export function parseFigure(text: string): number | null {
 }
 
 /** Has the field been typed to say something other than what the style holds? */
-export const isPending = (style: ProjectStyle, drafts: Drafts, key: StyleKey): boolean =>
+export const isPending = (style: ProjectStyle, drafts: Drafts, key: FigureKey): boolean =>
   drafts[key] !== fieldText(style, key)
 
 /** What a commit made of the fields. */
@@ -141,7 +243,8 @@ export interface Committed {
  * read, a figure outside the engine's range or not a figure is refused in
  * the engine's sentence beside its field, an empty field goes back to the
  * engine's own number, and the pair of radii is judged together as the
- * engine judges them.
+ * engine judges them. The two train numbers are fields like the sizes, with
+ * the engine's sentences for them.
  *
  * **Every pending field is read, not only the one just left**, so that a
  * refusal that depended on another field mends itself when the other is
@@ -153,11 +256,11 @@ export interface Committed {
  * written by hand - applies nothing until that is fixed, since nothing the
  * store would write could be; each refused field says so beside itself.
  */
-export function commitDrafts(stored: ProjectStyle, drafts: Drafts, edited: StyleKey): Committed {
+export function commitDrafts(stored: ProjectStyle, drafts: Drafts, edited: FigureKey): Committed {
   const problems: Problems = {}
   let candidate: ProjectStyle = { ...stored }
-  const read: StyleKey[] = []
-  for (const key of STYLE_KEYS) {
+  const read: FigureKey[] = []
+  for (const key of FIGURE_KEYS) {
     if (!isPending(stored, drafts, key)) continue
     const text = drafts[key].trim()
     if (text === '') {
@@ -198,16 +301,81 @@ export function commitDrafts(stored: ProjectStyle, drafts: Drafts, edited: Style
   // draw, and is said where it is.
   const held = styleRefusals(candidate)
   const blocked = Object.keys(held).length > 0
-  for (const key of STYLE_KEYS) {
-    const sentence = held[key]
-    if (sentence !== undefined && problems[key] === undefined) problems[key] = sentence
-  }
+  for (const [key, sentence] of Object.entries(held) as [keyof Problems, string][])
+    if (problems[key] === undefined) problems[key] = sentence
 
   const style = blocked ? stored : candidate
   const next = { ...drafts }
   if (!blocked) for (const key of read) next[key] = fieldText(style, key)
   return { style, problems, drafts: next }
 }
+
+/** What the group shows: the style it is drawing, the fields as typed, and what was refused. */
+export interface View {
+  style: ProjectStyle
+  drafts: Drafts
+  problems: Problems
+}
+
+/**
+ * The group showing a record's style (lifted out of `StyleFields.tsx` for
+ * issue 391, so a look's choice can be made of it without rendering). A
+ * figure that was refused and is still waiting where it was typed is kept
+ * through it, with its sentence: a redraw finishing elsewhere in the cell
+ * must not take a person's half-mended number away.
+ */
+export function viewOf(style: ProjectStyle, previous?: View): View {
+  const drafts = draftsOf(style)
+  // A record that holds a number the engine would refuse shows it refused.
+  const problems: Problems = styleRefusals(style)
+  if (previous !== undefined) {
+    for (const key of FIGURE_KEYS) {
+      if (previous.problems[key] === undefined || !isPending(style, previous.drafts, key)) continue
+      drafts[key] = previous.drafts[key]
+      problems[key] = previous.problems[key]
+    }
+  }
+  return { style, drafts, problems }
+}
+
+/**
+ * The group when the record arrives again - a build written, a rename, a
+ * theme pressed: the record's style, keeping a refused figure waiting where
+ * it was typed (`viewOf`). Except while the group shows a style that cannot
+ * be drawn, which only a record holding a number written by hand out of
+ * range gives it: a choice made beside that number has not been drawn and
+ * so cannot be in the record, and taking the record would take the choice
+ * off the screen (spec 034's edge case, "a choice made meanwhile is shown
+ * and drawn with the fix"). Another project's record is always taken.
+ */
+export function viewForRecord(style: ProjectStyle, current: View, sameProject: boolean): View {
+  if (sameProject && !drawable(current.style)) return current
+  return viewOf(style, current)
+}
+
+/**
+ * A marker or the face chosen (spec 034, FR-002 and FR-003): the view with
+ * the choice in its style, the engine's own kept as no choice, and the
+ * fields as they were - a figure refused and waiting stays where it is.
+ */
+export function chooseIn(view: View, key: ChoiceKey, value: string): View {
+  return { ...view, style: settledStyle({ ...view.style, [key]: value }) }
+}
+
+/**
+ * Whether a style can be drawn as it is: nothing in it the engine would
+ * refuse. A choice made while a record holds a number written by hand out
+ * of range is shown, and drawn with the fix, as a size typed beside it is.
+ */
+export const drawable = (style: ProjectStyle): boolean =>
+  Object.keys(styleRefusals(style)).length === 0
+
+/**
+ * Whether Reset has anything to do: any field of the group away from the
+ * engine's own, or a figure typed and not yet taken (spec 034, FR-007).
+ */
+export const resettable = (view: View): boolean =>
+  styleIsSet(view.style) || FIGURE_KEYS.some((key) => isPending(view.style, view.drafts, key))
 
 /**
  * What to do with a style a person has chosen, at this moment: draw it, wait
@@ -225,6 +393,10 @@ export function nextStyleStep(
   return busy ? 'wait' : 'build'
 }
 
-/** What cell 04's summary adds to the theme when any size has been set, else nothing. */
+/**
+ * What cell 04's summary adds to the theme when any of the eight sizes has
+ * been set, else nothing. The markers, the face and the trains are not in
+ * it (spec 034, FR-012): the row says what DESIGN.md 8.2 says it says.
+ */
 export const sizesWords = (style: ProjectStyle): string | null =>
-  styleIsSet(style) ? 'sizes of your own' : null
+  sizesAreSet(style) ? 'sizes of your own' : null

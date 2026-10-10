@@ -1906,6 +1906,111 @@ test('a release, installed, through docs/acceptance.md', async () => {
       await log.soft('the refusal is gone once the pair agrees', () =>
         expect(sizes.getByRole('alert')).toHaveCount(0),
       )
+      // The looks, the markers, the face and the trains (issue 391, spec 034),
+      // as the checklist asks: Beck, then Custom, Square and Inter, a dot
+      // size refused and then taken, and a trail.
+      const look = sizes.getByRole('combobox', { name: 'Look' })
+      const stationMarker = sizes.getByRole('combobox', { name: 'Station marker' })
+      const interchangeMarker = sizes.getByRole('combobox', { name: 'Interchange marker' })
+      const typeface = sizes.getByRole('combobox', { name: 'Label typeface' })
+      const dot = sizes.getByLabel('Dot size', { exact: true })
+      const trail = sizes.getByLabel('Trail', { exact: true })
+      await log.soft('the look, the markers, the face and the trains, in the group', async () => {
+        await expect
+          .poll(() => look.locator('option').allTextContents(), { timeout: SHORT_MS })
+          .toEqual(['The engine’s sizes', 'Beck', 'Blueprint', 'Paper', 'Custom'])
+        // The sizes are the person's own by now, as step 8 says.
+        await expect(look).toHaveValue('custom')
+        await expect(look).toHaveAccessibleDescription(
+          'A look sets the sizes and the markers; the typeface and the trains stay as they are.',
+        )
+        expect(await stationMarker.locator('option').allTextContents()).toEqual([
+          'Circle',
+          'Tick',
+          'Square',
+        ])
+        await expect(stationMarker).toHaveValue('circle')
+        await expect(stationMarker).toHaveAccessibleDescription(
+          'A tick stands on the side of the station’s name, as on the London diagram.',
+        )
+        expect(await interchangeMarker.locator('option').allTextContents()).toEqual([
+          'Ring',
+          'Square',
+        ])
+        expect(await typeface.locator('option').allTextContents()).toEqual([
+          'System',
+          'Inter',
+          'Atkinson Hyperlegible Next',
+        ])
+        await expect(sizes.getByRole('group', { name: 'Trains' })).toBeVisible()
+        await expect(sizes.getByRole('group', { name: 'Trains' })).toContainText(
+          'How a train is drawn as the map plays; the map itself does not change.',
+        )
+        await expect(dot).toHaveValue('5')
+        await expect(dot).toHaveAccessibleDescription('2 to 12. The engine’s own is 5.')
+        await expect(trail).toHaveValue('0')
+        await expect(trail).toHaveAccessibleDescription(
+          /^0 to 3 seconds\. The engine’s own is 0\. There is no trail while a train stands at a station/,
+        )
+      })
+      await look.selectOption('beck')
+      await until(
+        async () => ((await recordOf(window, LA)).style.stationShape === 'tick' ? true : undefined),
+        REBUILD_MS,
+        () => 'choosing Beck was never written to the project',
+      )
+      await log.soft('Beck is written as its fields, never its name', async () => {
+        expect((await recordOf(window, LA)).style).toEqual({
+          lineWidth: 6,
+          lineGap: 1.33,
+          stationRadius: 3.6,
+          interchangeRadius: 7.5,
+          stationStroke: 3,
+          labelOffset: 10,
+          stationShape: 'tick',
+        })
+        await expect(look).toHaveValue('beck')
+        await expect(stationMarker).toHaveValue('tick')
+        await expect(width).toHaveValue('6')
+      })
+      await width.fill('7')
+      await width.press('Enter')
+      await log.soft('a size typed over a look turns it to Custom', () =>
+        expect(look).toHaveValue('custom'),
+      )
+      await interchangeMarker.selectOption('square')
+      await typeface.selectOption('inter')
+      await until(
+        async () => {
+          const { interchangeShape, labelFont } = (await recordOf(window, LA)).style
+          return interchangeShape === 'square' && labelFont === 'inter' ? true : undefined
+        },
+        REBUILD_MS,
+        () => 'the square interchange and Inter were never written to the project',
+      )
+      await dot.fill('13')
+      await dot.press('Enter')
+      await log.soft(
+        'a dot size of 13 is refused beside the field, and nothing is stored',
+        async () => {
+          await expect(sizes.getByRole('alert')).toHaveText(
+            "dot_radius must be from 2 to 12, in SVG user units at the map's width",
+          )
+          expect((await recordOf(window, LA)).style.dotRadius).toBeUndefined()
+        },
+      )
+      await dot.fill('8')
+      await dot.press('Enter')
+      await trail.fill('1.5')
+      await trail.press('Enter')
+      await until(
+        async () => {
+          const { dotRadius, trail: behind } = (await recordOf(window, LA)).style
+          return dotRadius === 8 && behind === 1.5 ? true : undefined
+        },
+        REBUILD_MS,
+        () => 'the dot size of 8 and the trail of 1.5 were never written to the project',
+      )
       await sizes.getByRole('button', { name: 'Reset to the engine’s sizes', exact: true }).click()
       await until(
         async () =>
@@ -1916,8 +2021,22 @@ test('a release, installed, through docs/acceptance.md', async () => {
       await log.soft('Reset shows the engine’s own number again', () =>
         expect(width).toHaveValue('7'),
       )
+      await log.soft(
+        'Reset puts the look, the markers, the face and the trains back too',
+        async () => {
+          await expect(look).toHaveValue('engine-own')
+          await expect(stationMarker).toHaveValue('circle')
+          await expect(interchangeMarker).toHaveValue('circle')
+          await expect(typeface).toHaveValue('system')
+          await expect(dot).toHaveValue('5')
+          await expect(trail).toHaveValue('0')
+        },
+      )
       log.notAutomated(
         'whether the page looks sepia and then warm dark, and whether a line width of 12 draws the lines visibly thicker with no station moved.',
+      )
+      log.notAutomated(
+        'whether Beck draws ticks on the side of the names and rings at interchanges, Square draws square interchanges, Inter sets the names in Inter, a dot size of 8 draws larger trains, and a trail of 1.5 draws a fading trail behind a moving train and none behind a standing one.',
       )
     })
 

@@ -179,7 +179,8 @@
   margin: 0 0 var(--space-4-3);
 }
 
-.style-field label {
+.style-field label,
+.style-name {
   display: flex;
   align-items: center;
   min-height: var(--control-height);
@@ -195,6 +196,30 @@
 
 .style-control fig-input-text {
   width: 100%;
+}
+
+/* Since issue 391 the sizes' group holds selects too - the look, the two
+   markers and the label face - whose name is drawn in the terms' column as
+   a field's label is (`.style-name`, hidden from the accessibility tree,
+   where the select's own label names it), and the trains, a fieldset with
+   no box of its own whose legend reads as a field's name does and whose
+   sentence sits under it at the cell's measure, as cell 02's bend
+   penalties do. */
+.style-trains {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.style-trains legend {
+  padding: 0;
+  font-weight: var(--weight-strong);
+}
+
+.style-trains > .message {
+  max-width: var(--measure);
+  margin: var(--space-2-2) 0 var(--space-4-3);
 }
 
 /* Provenance, out of the way: the layout's id and when it was made, the
