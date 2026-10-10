@@ -38,11 +38,11 @@ describe('vendor/pins.json engine block', () => {
   // the schema and its fingerprint to each other, and `npm run typegen` run
   // against the wrong checkout rewrites both together, so only a number that
   // was measured elsewhere can catch that. A pin that moves edits this too.
-  it('is engine v0.15.0, whose schema has the fingerprint measured at that tag', () => {
-    expect(pins.engine.tag).toBe('v0.15.0')
-    expect(pins.engine.version).toBe('0.15.0')
+  it('is engine v0.16.0, whose schema has the fingerprint measured at that tag', () => {
+    expect(pins.engine.tag).toBe('v0.16.0')
+    expect(pins.engine.version).toBe('0.16.0')
     expect(pins.engine.schema_sha256).toBe(
-      '9820234b8f6d0f2315fb383b69c1df223d3f685bd780713a5f60ec8759685d83',
+      'e97a618390accd3b27124755b2475221d016aad978bc98bf31c154d8d20c31e9',
     )
   })
 
