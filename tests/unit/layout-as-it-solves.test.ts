@@ -139,6 +139,7 @@ function setup(): { run: LayoutRun; calls: Pending[] } {
     completeColors: vi.fn(async () => ({})),
     completeOrder: vi.fn(async () => ({})),
     completeStyle: vi.fn(async () => ({})),
+    completeLines: vi.fn(async () => ({})),
     today: () => '2026-09-08',
   })
   return { run, calls }

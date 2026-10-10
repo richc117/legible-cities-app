@@ -30,7 +30,7 @@ the kit's `Tabs` control was deleted with the tab strip (A5.5-23).
 | 02 Process | `LayoutRun`, the layout's tuning (`LayoutTuning`, issue 385), the engine's log (`EngineLog`), `Diagnostics` | `ProcessCell.tsx` |
 | 03 Frame and service day | `ServiceDay`, the transport (`Transport`: scrub, play, speed), the trip (`Trip`: two pickers, the steps; issue 272) | `FrameCell.tsx` |
 | 04 Style | `ThemeSwitch`, `StyleFields` (the map's sizes, issue 350; the looks, the markers, the label face and the trains, issue 391, with `StyleLooks`) | `StyleCell.tsx` |
-| 05 Lines | `LineColours`, `LineOrder` | `LinesCell.tsx` |
+| 05 Lines | `LineColours` (and under each row its line options, issue 394: `LineOptionsDisclosure`, held by `useLineOptions`), `LineOrder` | `LinesCell.tsx` |
 | 06 Export | `ExportTab` (the export's options, and the opening's controls in `ExportOpening`, issue 392), which draws `ExportRun` itself | `ExportCell.tsx` |
 
 Around the cells, under `src/renderer/src/notebook/` unless a path says

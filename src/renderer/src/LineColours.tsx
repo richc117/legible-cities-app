@@ -37,6 +37,9 @@ import {
 import { useColourPanel, type ColourPanelProps } from './ColourChip'
 import type { LayoutRun as Run } from './engine/layoutRun'
 import Button from './kit/Button'
+import { choiceOf, hidesEveryLine, isHidden } from './lineOptions'
+import LineOptionsDisclosure from './LineOptionsDisclosure'
+import { useLineOptions } from './useLineOptions'
 import { usePutBack } from './usePutBack'
 import { useSnapshot } from './useSnapshot'
 
@@ -101,6 +104,12 @@ interface Props {
    * to the body - and a shape that cannot say it cannot ship it.
    */
   handback: RefObject<HTMLElement | null>
+  /**
+   * True from a run's end until the record it wrote has been read back
+   * (A5.5-22). A line option chosen in that beat waits for it, since a build
+   * then would draw from the record as it was before the run (issue 394).
+   */
+  settling?: boolean
 }
 
 /** What the section is called, as its heading and as the name of its region. */
@@ -114,6 +123,7 @@ export default function LineColours({
   disabled = false,
   busyNow,
   handback,
+  settling = false,
 }: Props): JSX.Element {
   const ready = engine?.state === 'ready'
   const { state: runState, recoloured } = useSnapshot(run)
@@ -283,6 +293,16 @@ export default function LineColours({
     [inspection, mode, agency],
   )
   const nothingToReset = isReset(palette)
+  // Each line's options (issue 394), in a closed disclosure under its row:
+  // the colours' kind of cheap edit, held and drawn by their own hook.
+  const options = useLineOptions({
+    run,
+    project,
+    engine,
+    held: disabled || settling,
+    busyNow,
+  })
+  const labels = lines.map((line) => line.label)
 
   return (
     <section
@@ -301,7 +321,8 @@ export default function LineColours({
       <p className="prose">
         A line is drawn in the colour its feed publishes. Choose another here and the map, the chips
         over it and the time chart all follow. The stations do not move: the stored layout is drawn
-        again, never laid out again.
+        again, never laid out again. Under each line, Line options gives it a name, leaves it off
+        the map, or draws it bolder, cased or dashed, the same way.
       </p>
       {state.status === 'waiting' && (
         <p className="hint" role="status">
@@ -340,6 +361,19 @@ export default function LineColours({
                   onPickEnd={(hex) => release(withOverride(palette, line.label, hex))}
                   onClosed={panelClosed}
                   onReset={() => release(withoutOverride(palette, line.label))}
+                  hidden={isHidden(options.lines, line.label)}
+                  options={
+                    <LineOptionsDisclosure
+                      label={line.label}
+                      choice={choiceOf(options.lines, line.label)}
+                      onChoose={(next) => options.choose(line.label, next)}
+                      onFollow={(next) => options.follow(line.label, next)}
+                      onPanelClosed={options.panelClosed}
+                      onReset={() => options.reset(line.label)}
+                      lastShown={hidesEveryLine(options.lines, labels, line.label)}
+                      handback={handback}
+                    />
+                  }
                 />
               ))}
             </ul>
@@ -418,6 +452,8 @@ function LineRow({
   onPickEnd,
   onClosed,
   onReset,
+  hidden,
+  options,
 }: {
   line: Line
   shown: Shown
@@ -426,9 +462,16 @@ function LineRow({
   onPickEnd: (hex: string) => void
   onClosed: () => void
   onReset: () => void
+  /**
+   * The line is left off the map (issue 394): the row stays, its words
+   * dimmed and its controls all working, so it can be shown again.
+   */
+  hidden: boolean
+  /** The line's options, in a closed disclosure under the row. */
+  options: ReactNode
 }): JSX.Element {
   return (
-    <li className="line-row-group">
+    <li className="line-row-group" data-hidden={hidden ? 'true' : undefined}>
       <ColourControl
         label={`Choose the colour of line ${line.label}`}
         colour={shown.color}
@@ -449,6 +492,7 @@ function LineRow({
         <span className="line-feed">{feedWords(line)}</span>
         <span className="line-source">{sourceWords(shown)}</span>
       </ColourControl>
+      {options}
     </li>
   )
 }

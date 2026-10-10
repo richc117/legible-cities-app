@@ -231,6 +231,7 @@ The two reader columns are a person's, recorded per run in
 |---|---|---|---|---|---|---|---|---|
 | Line colours | pass | pass (every control names its line) | pass | pass | pass | fixed (C1) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
 | Colour picker | pass (sliders take the arrows; hex field) | pass; the chip controls its panel, an auto popover, by `aria-controls` and `popovertarget` (F6, issue 284) | fixed (D10) | pass | pass | fixed (C1) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
+| Line options: a disclosure under each colour row, its name, Shown, Width, Casing with its colour, Dash and Reset line (issue 394, spec 036) | by construction: the disclosure a native button, closed, Space and Enter toggling it; the name a labelled text field committed on Enter or on leaving it; Shown the platform's checkbox read as a switch, Space toggling it; each select the kit's native select, one Tab stop, the arrow keys moving the choice; the casing's chip the colour picker's own (above); Reset line handing focus to the cell's heading as it disables itself; set programmatically in `line-options.spec.ts` (`fill`, `check`, `selectOption`), written, not yet run; not yet in the sweep | by construction: the toggle named "Line options for line `<label>`, `<summary>`" (the line in a visually hidden part) and its group "Line options for line `<label>`"; the name's field described by its sentence, a refusal an alert and `aria-invalid` on it; the switch "Shown", on or off, described by its sentence and, when the last line is refused, by the engine's sentence; each select named by its own label and described by its sentence, the name beside it hidden from the tree; the casing's chip "Choose the casing colour of line `<label>`" and its panel "Casing colour for line `<label>`"; Reset line "Reset line `<label>`'s options"; the names, options, sentences and the switch's state asserted in `line-options-cell.test.tsx`, the descriptions written in effects only in `line-options.spec.ts`, written, not yet run | by construction (the toggle's ring is the app's own, as the layout tuning's; the kit's ring elsewhere); not yet run | by construction (the chevron turns only where motion is allowed; nothing else moves); not yet run | by construction (`--text`, `--text-muted`, `--text-faint` for a hidden line's words, `.message`, `.message.error`, the kit's field, select and checkbox and the chip's `--border-strong` edge, pairs the contrast test already holds); not yet run | by construction, as Night; not yet run | not yet run: a person's (this part changed after 0.1.0) | not yet run: a person's (this part changed after 0.1.0) |
 | Line order, and its drag (issue 283) | pass (the arrows are every move the grip makes; the grip takes no focus) | pass (the arrows keep "Move line `<label>` up" and "down" and carry them as tooltips on hover and focus, which Escape dismisses; the grip is `aria-hidden` and has no name; asserted in `order.spec.ts`) | pass | pass (the rows the carried line passes step aside with no transition; the drag still works) | pass | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
 
 ### Cell 06, Export
@@ -1221,6 +1222,26 @@ a table).
   the chip. Type a hex value that is not one, press **Use this colour**,
   and listen for "A colour is six hexadecimal digits, such as 0072bc." read
   with the field when you return to it.
+- **Line options** (issue 394). After each row of "Lines", listen for the
+  button "Line options for line `<label>`, Default", collapsed. Press it:
+  listen for expanded and the group "Line options for line `<label>`",
+  holding the text field "Name" (empty, the label read as its placeholder)
+  described by "Shown in place of `<label>` in the page's chips, rows and
+  time chart, and on its trains. Up to 40 characters; left empty, the line
+  is called `<label>`.", the switch "Shown, on" described by what turning it
+  off does, the pop-up buttons "Width, Regular", "Casing, None" and "Dash,
+  Solid", each described by what its words stand for and each name said
+  once, and the button "Reset line `<label>`'s options", dimmed. Type 41
+  characters into Name and press Enter: listen for the alert "lines['A'].name
+  must be from 1 to 40 characters with no line break" (the line's own label
+  in place of A) and the field read as invalid when you return to it. Choose Regular in Casing: listen for the
+  button "Choose the casing colour of line `<label>`" after the select and the
+  sentence that the casing keeps its colour in both themes. Turn Shown off:
+  nothing is said while the map is drawn again, and the toggle then reads
+  "…, Hidden, cased"; on the last line still drawn, listen for the alert
+  "every line on this map is hidden; show at least one line to draw it" and
+  the switch staying on. Press Reset line and listen for focus on the cell's
+  own heading.
 - **Line order.** Listen for the heading "Line order" and an ordered list
   "Lines in the order they are drawn", each row read with its position
   ("1 of 6"), its label, and the buttons "Move line `<label>` up" (dimmed on

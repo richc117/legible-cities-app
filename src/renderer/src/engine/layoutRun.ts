@@ -295,6 +295,11 @@ export interface RunOptions {
   completeOrder(id: string, order: LineOrder, stations?: Station[]): Promise<unknown>
   /** A redraw for chosen sizes finished: the style is written, never before the map is drawn. */
   completeStyle(id: string, style: ProjectStyle, stations?: Station[]): Promise<unknown>
+  /**
+   * A redraw for chosen line options finished (issue 394): the options are
+   * written, never before the map is drawn.
+   */
+  completeLines(id: string, lines: ProjectLines, stations?: Station[]): Promise<unknown>
   /** The anchor the engine's choice is made from: the machine's date, injected so a test can fix it. */
   today(): string
   /**
@@ -852,6 +857,77 @@ export class LayoutRun {
         await (stations === null
           ? completeStyle(project.id, style)
           : completeStyle(project.id, style, stations))
+        this.#finish({ changed: false, relaid: false }, report)
+      } catch (reason) {
+        this.#failed(reason)
+      }
+    })()
+  }
+
+  /**
+   * The map alone, from the stored layout, for the day it already showed,
+   * with the line options a person chose (issue 394, spec 036): a name,
+   * hidden, a width, a casing and a dash by line label. The same shape as a
+   * recolour: the layout stages never run, the day never moves, and the
+   * options are written only when the map has been drawn with them.
+   *
+   * It is the colours' kind of run (`recoloured`): the options live in cell
+   * 05's colours list, so the cell reads running while it goes and ready
+   * after, `cellOfRun` answers `lines` without being told anything new, and
+   * a stop puts the colours and the options back together. Its job says
+   * what it is.
+   */
+  redrawLines(project: ProjectRecord, engine: EngineState | null, lines: ProjectLines): void {
+    if (this.#snapshot.state === 'running') return
+    const { completeLines } = this.#options
+    this.#open('rebuild', 'Redraw with new line options', project.id)
+    const layout = project.layout
+    // The drawn day, as a recolour takes it, and for the same reason.
+    const date = drawnDate(project)
+    if (layout === null || date === null) {
+      this.#set({
+        state: 'failed',
+        error: 'Lay the project out before choosing line options.',
+        forced: false,
+        replaced: false,
+        rebuilt: false,
+        recoloured: true,
+        reordered: false,
+        restyled: false,
+        day: date,
+        download: null,
+        feedMissing: false,
+        layout: null,
+      })
+      return
+    }
+    if (
+      !this.#begin(engine, {
+        forced: false,
+        rebuilt: false,
+        recoloured: true,
+        reordered: false,
+        restyled: false,
+        day: date,
+      })
+    )
+      return
+
+    void (async () => {
+      try {
+        const { report, stations } = await this.#draw(
+          project,
+          layout,
+          date,
+          paletteOf(project),
+          orderOf(project),
+          project.style,
+          lines,
+        )
+        if (this.#cancelled) return this.#stopped()
+        await (stations === null
+          ? completeLines(project.id, lines)
+          : completeLines(project.id, lines, stations))
         this.#finish({ changed: false, relaid: false }, report)
       } catch (reason) {
         this.#failed(reason)

@@ -8,7 +8,9 @@ import { useProject } from '../context'
 import { runRowStatus } from '../runRow'
 
 // Cell 05, Lines: each line's colour and where it sits in the stack
-// (ADR-045).
+// (ADR-045), and since issue 394 each line's options - a name, hidden, a
+// width, a casing and a dash - in a closed disclosure under its colour's row
+// (`LineOptionsDisclosure.tsx`), the colours' kind of cheap edit.
 //
 // One cell of two sections, `LineColours` (A4-01) and `LineOrder` (A4-02),
 // each named by a heading of its own a level below the cell's: the cell is
@@ -69,7 +71,7 @@ export function linesSummary(
 }
 
 export default function LinesCell({ cell, state, open, onToggle }: CellViewProps): JSX.Element {
-  const { project, engine, run, runSnapshot, exporter, inspect, exporting } = useProject()
+  const { project, engine, run, runSnapshot, exporter, inspect, exporting, settling } = useProject()
   const heading = useRef<HTMLHeadingElement>(null)
   const busyNow = (): boolean => exporter.snapshot.state === 'running'
   return (
@@ -110,6 +112,7 @@ export default function LinesCell({ cell, state, open, onToggle }: CellViewProps
               disabled={exporting}
               busyNow={busyNow}
               handback={heading}
+              settling={settling}
             />
             <LineOrderPanel
               run={run}

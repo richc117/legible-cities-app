@@ -562,6 +562,12 @@ the picker. Click somewhere outside the picker. Press the chip again and
 **Reset** in its panel. Choose a colour
 for the default row, "Lines with no colour in the feed", by typing a hex
 value and pressing **Use this colour**; then **Reset every line**.
+Then, under the second line's row, press **Line options**. Type **Airport
+Express** into **Name** and press Enter; then type a name of 41 characters
+and press Enter. Choose **Bold** in **Width**, **Regular** in **Casing**,
+press the colour chip beside it, type a hex value and press **Use this
+colour**, and choose **Dashed** in **Dash**. Turn **Shown** off, and look
+at the row and at **Line order** below. Then press **Reset line**.
 
 **See.**
 - The picker opens **floating under the chip** and moves no row; near the
@@ -578,6 +584,37 @@ value and pressing **Use this colour**; then **Reset every line**.
   "the default, ...") and the map follows; **Reset every line** does the
   same for all and then is unavailable.
 - Nothing is laid out again: no "Laid out." here.
+- Under every row, a closed **Line options** reading "Default". Opened, it
+  holds **Name** (empty, with the line's own label greyed in it, and the
+  sentence "Shown in place of `<label>` in the page's chips, rows and time
+  chart, and on its trains. Up to 40 characters; left empty, the line is
+  called `<label>`."), **Shown** (on), **Width** (Regular), **Casing** (None,
+  with no colour chip beside it), **Dash** (Solid) and **Reset line**, which
+  cannot be pressed yet.
+- **Airport Express** draws the map once more, cell 02's progress line saying
+  "Drawn in the colours you chose, from the stored layout. The stations
+  have not moved."; the line's chip, its row in the Linear and Time views
+  and its trains say Airport Express, and the row's summary reads
+  "Renamed". The 41 characters are refused beside the field with the
+  engine's sentence, "lines['B'].name must be from 1 to 40 characters with
+  no line break" (the line's own label in place of B), the name stays as
+  typed, and nothing is drawn.
+- **Regular** in **Casing** puts a white chip beside the select and, under
+  it, "The casing keeps this colour in both of the map's themes, so choose
+  one that reads on the map's ground." Bold, the casing in the colour you
+  typed and the dash are drawn together, once, a moment after the last of
+  them: the line thicker, outlined either side and dashed, the lines beside
+  it moved out to make room, no station moved. The summary reads "Bold,
+  cased, dashed, renamed".
+- **Shown** off draws the map once more without the line: its track, its
+  trains, its chip and its row on the page are gone and the lines it shared
+  track with close up. Its row in cell 05 stays where it was, its words
+  faint, its summary "Hidden, bold, cased, dashed, renamed", and **Line
+  order** still lists it in its place.
+- **Reset line** puts that line's options back - **Name** empty, **Shown**
+  on, Regular, None, Solid - and draws the map once more with the line as it
+  was, its colour untouched; it then cannot be pressed, and focus is on cell
+  05's heading. No cell reads **not drawn yet** at any point.
 
 Result: ____
 

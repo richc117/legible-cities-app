@@ -83,6 +83,7 @@ interface DrawnFrom {
   lineOrder: string[]
   theme: Theme
   style: ProjectStyle // issue 350: what `map.build` was sent; {} for none
+  lines?: ProjectLines // issue 394: the line options as sent; absent for none
 }
 ```
 
@@ -210,6 +211,13 @@ label typeface and the trains' dot size and trail are cheap edits of the same
 kind as the map's sizes: they raise no source, redraw through `restyle` from the
 stored layout, and are written only once the map carries them. The dot size and
 the trail go to `map.build` beside `style` and not inside it.
+
+*As of 10 Oct 2026* (issue 394, spec 036): a line's options - its name, hidden,
+its width, a casing and a dash - are cheap edits of the colours' kind: they
+raise no source, redraw through `redrawLines` from the stored layout as the
+colours' kind of run (`recoloured`, so `cellOfRun` answers `lines`), and are
+written only once the map carries them, with `drawn.lines` the options as
+sent.
 
 Their values are still kept in `drawn`, because a draw copies the record
 whole; Revert reads only the day (A5.5-12, below). `drawnMatchesEdits`
