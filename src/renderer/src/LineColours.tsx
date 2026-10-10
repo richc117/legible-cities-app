@@ -126,7 +126,13 @@ export default function LineColours({
   settling = false,
 }: Props): JSX.Element {
   const ready = engine?.state === 'ready'
-  const { state: runState, recoloured } = useSnapshot(run)
+  const snapshot = useSnapshot(run)
+  const { state: runState, optioned } = snapshot
+  // A redraw for line options is the colours' kind of run to the run graph,
+  // but it carries none of the colours chosen and waiting here, so its stop
+  // is not this panel's: putting the palette back for it would drop a colour
+  // held until the build ended (issue 394).
+  const recoloured = snapshot.recoloured && !optioned
   const running = runState === 'running'
   // Something else is reading or rewriting the project's page. Nothing here
   // is disabled for it: a change made now waits and builds once the way is

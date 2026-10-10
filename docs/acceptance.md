@@ -601,11 +601,11 @@ at the row and at **Line order** below. Then press **Reset line**.
   typed, and nothing is drawn.
 - **Regular** in **Casing** puts a white chip beside the select and, under
   it, "The casing keeps this colour in both of the map's themes, so choose
-  one that reads on the map's ground." Bold, the casing in the colour you
-  typed and the dash are drawn together, once, a moment after the last of
-  them: the line thicker, outlined either side and dashed, the lines beside
-  it moved out to make room, no station moved. The summary reads "Bold,
-  cased, dashed, renamed".
+  one that reads on the map's ground." Each choice is drawn a moment after
+  it is made (choices made within that moment are drawn together, once): the
+  line thicker, outlined either side and dashed, the lines beside it moved
+  out to make room, no station moved. The summary reads "Bold, cased,
+  dashed, renamed".
 - **Shown** off draws the map once more without the line: its track, its
   trains, its chip and its row on the page are gone and the lines it shared
   track with close up. Its row in cell 05 stays where it was, its words

@@ -1272,6 +1272,10 @@ const isLineNumber = (v: unknown): v is number => typeof v === 'number' && Numbe
 /** A name the engine takes: 1 to 40 code points, with no line break. */
 export function isLineName(value: unknown): value is string {
   if (typeof value !== 'string') return false
+  // Bounded before it is spread: a code point is at most two UTF-16 units, so a
+  // string past twice the limit is past the limit, and spreading a very long
+  // one from the renderer would allocate an array of it first.
+  if (value.length > LINE_NAME_MAX * 2) return false
   const length = [...value].length
   return length >= 1 && length <= LINE_NAME_MAX && !LINE_BREAK.test(value)
 }

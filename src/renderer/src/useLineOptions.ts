@@ -70,7 +70,7 @@ export function useLineOptions({
   busyNow?: () => boolean
 }): LineOptionsState {
   const snapshot = useSnapshot(run)
-  const { state: runState, recoloured } = snapshot
+  const { state: runState, recoloured, optioned } = snapshot
   const running = runState === 'running'
   const [lines, setLines] = useState<ProjectLines>(() => linesSent(project.lines))
   // What is shown at this moment, for a choice to build on: two choices in
@@ -126,10 +126,11 @@ export function useLineOptions({
   // A build that stopped wrote nothing, so the rows go back to the record's
   // at the moment it stops (`usePutBack`, issue 360), and a choice waiting
   // on the timer is dropped with it: drawing it would show options a person
-  // had just been told the project did not keep. It is the colours' kind of
-  // run, so a stopped colour puts the options back too, as one stop of the
-  // section's.
-  usePutBack(runState, recoloured, () => {
+  // had just been told the project did not keep. Only the options' own
+  // redraw is this hook's to put back for: a colours' redraw that stops
+  // carries none of the options waiting here, which are drawn once the way is
+  // clear (the run graph sees both as the colours' kind, `recoloured`).
+  usePutBack(runState, optioned, () => {
     schedule.cancel()
     live.current = null
     show(linesSent(project.lines))

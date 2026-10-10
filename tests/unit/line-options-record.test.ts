@@ -8,7 +8,7 @@
 
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { linesParams } from '../../src/renderer/src/lineOptions'
 import {
   CASING_WIDTH_RANGE,
@@ -119,6 +119,23 @@ describe('what the engine takes of a line, from the committed schema', () => {
     const train = String.fromCodePoint(0x1f686)
     expect(isLineName(train.repeat(40))).toBe(true)
     expect(isLineName(train.repeat(41))).toBe(false)
+  })
+
+  it('refuses a very long name without reading it character by character', () => {
+    // Mutation: the length bound before the spread removed - the main
+    // process would allocate an array of the renderer's whole string, one
+    // entry per character, before it said no.
+    const huge = 'x'.repeat(LINE_NAME_MAX * 2 + 1)
+    const iterate = vi.spyOn(String.prototype, Symbol.iterator)
+    try {
+      expect(isLineName(huge)).toBe(false)
+      expect(iterate).not.toHaveBeenCalled()
+    } finally {
+      iterate.mockRestore()
+    }
+    // At the bound itself it is still counted in code points.
+    expect(isLineName('x'.repeat(LINE_NAME_MAX * 2))).toBe(false)
+    expect(isLineName(String.fromCodePoint(0x1f686).repeat(LINE_NAME_MAX))).toBe(true)
   })
 
   it('is the engine’s own range for a width and a casing, and its dashes', () => {
