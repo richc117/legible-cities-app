@@ -88,6 +88,15 @@ part of the layout's id, so a different tuning answers a different layout and
 none, ``{}`` and nothing but defaults all answer the untuned one. The tuning
 it was given is in ``fake-engine.received`` with the rest of the request.
 
+``style.presets`` answers the engine's three looks at v0.15.0 (its issue 73),
+each the fields of ``style`` it stands for, and ``map.build`` takes the style's
+two markers and its label face (issues 74 and 76) and the two train numbers
+``dot_radius`` and ``trail`` beside the style (issue 75), refusing with the
+``params`` kind and the engine's sentences what ``serve._style`` and
+``serve.map_build`` refuse of them - a field the style does not take, a train
+number sent inside it among them - before anything is drawn. It draws none of
+them: what the app sent is in ``fake-engine.received``.
+
 It writes ``fake-engine.pid`` (its process id) and ``fake-engine.received``
 (one JSON line per message it read) into the home so a test can end it from
 outside and see what reached it. Standard library only; any Python 3 runs it.
@@ -330,6 +339,116 @@ def tuning_flags(tuning) -> dict:
     for name, spec in TUNING_PENALTIES.items():
         add(spec, (tuning.get("penalties") or {}).get(name))
     return flags
+
+
+# How a map is drawn at engine v0.15.0 (`render.STYLE_RANGES`, `STYLE_SHAPES`,
+# `LABEL_FONTS` and `PRESETS`, `serve.STYLE_COLORS`, `animate.DOT_RADIUS_RANGE`
+# and `TRAIL_RANGE`), restated so the stand-in refuses what the engine refuses
+# in its words and answers its looks (issues 73 to 76; the app's issue 391).
+STYLE_UNITS = "SVG user units at the map's width"
+STYLE_RANGES = {
+    "line_width": (1, 24, STYLE_UNITS),
+    "line_gap": (1, 3, None),
+    "station_radius": (1, 20, STYLE_UNITS),
+    "interchange_radius": (1, 30, STYLE_UNITS),
+    "station_stroke": (0, 8, STYLE_UNITS),
+    "label_size": (6, 32, STYLE_UNITS),
+    "label_offset": (0, 40, STYLE_UNITS),
+    "padding": (0, 200, STYLE_UNITS),
+}
+STYLE_DEFAULT_RADII = {"station_radius": 4.2, "interchange_radius": 6.0}
+STYLE_COLORS = ("background", "station_fill", "station_stroke_color", "label_color")
+STYLE_SHAPES = {"station_shape": ("circle", "tick", "square"),
+                "interchange_shape": ("circle", "square")}
+LABEL_FONTS = ("system", "inter", "atkinson-hyperlegible-next")
+STYLE_PRESETS = [
+    {"name": "beck", "style": {"line_width": 6, "line_gap": 1.33, "station_radius": 3.6,
+                               "interchange_radius": 7.5, "station_stroke": 3,
+                               "label_size": 11, "label_offset": 10, "padding": 24,
+                               "station_shape": "tick"}},
+    {"name": "blueprint", "style": {"line_width": 4, "line_gap": 2, "station_radius": 3,
+                                    "interchange_radius": 4.5, "station_stroke": 1.5,
+                                    "label_size": 10, "label_offset": 8, "padding": 32}},
+    {"name": "paper", "style": {"line_width": 6, "line_gap": 1.6, "station_radius": 3.6,
+                                "interchange_radius": 5.5, "station_stroke": 1.8,
+                                "label_size": 12, "label_offset": 10, "padding": 28}},
+]
+ANIMATION_NUMBERS = {"dot_radius": (2, 12, STYLE_UNITS), "trail": (0, 3, "seconds of playback")}
+STYLE_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def _either(names) -> str:
+    """``a, b or c``, as the engine's `serve._or` writes a refusal's names."""
+    names = list(names)
+    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} or {names[-1]}"
+
+
+def _label_font_problem(left: dict) -> str | None:
+    if "label_font" in left:
+        face = left.pop("label_font")
+        if not isinstance(face, str) or face not in LABEL_FONTS:
+            return f"style.label_font must be {_either(LABEL_FONTS)}"
+    return None
+
+
+def style_problem(style) -> str | None:
+    """The engine's refusal of `map.build`'s `style`, in its order and its
+    sentences (`serve._style` at v0.15.0), or None when it takes it."""
+    if style is None:
+        return None
+    if not isinstance(style, dict):
+        return "style must be an object"
+    left = dict(style)
+    if "preset" in left:
+        name = left.pop("preset")
+        if set(left) - {"label_font"}:
+            return ("style.preset cannot be sent with the fields it resolves to; "
+                    "send one or the other")
+        if not isinstance(name, str) or name not in [p["name"] for p in STYLE_PRESETS]:
+            names = _either([p["name"] for p in STYLE_PRESETS])
+            return f"style.preset must be {names}; style.presets describes each"
+        return _label_font_problem(left)
+    drawn = dict(STYLE_DEFAULT_RADII)
+    for name, (low, high, unit) in STYLE_RANGES.items():
+        if name not in left:
+            continue
+        number = left.pop(name)
+        if not _number(number) or not low <= number <= high:
+            return (f"style.{name} must be from {low:g} to {high:g}, "
+                    + (f"in {unit}" if unit else "as a multiple of line_width"))
+        drawn[name] = number
+    for name in STYLE_COLORS:
+        if name in left:
+            color = left.pop(name)
+            if not isinstance(color, str) or not STYLE_COLOR.match(color):
+                return f"style.{name} must be a colour written #rrggbb"
+    for name, shapes in STYLE_SHAPES.items():
+        if name in left:
+            shape = left.pop(name)
+            if not isinstance(shape, str) or shape not in shapes:
+                return f"style.{name} must be {_either(shapes)}"
+    problem = _label_font_problem(left)
+    if problem:
+        return problem
+    if left:
+        return f"style does not take {', '.join(sorted(left))}"
+    station, interchange = drawn["station_radius"], drawn["interchange_radius"]
+    if interchange < station:
+        return (f"style.interchange_radius ({interchange:g}) must not be below "
+                f"style.station_radius ({station:g}); a field left out counts as its "
+                f"default, so send both")
+    return None
+
+
+def animation_problem(params: dict) -> str | None:
+    """The engine's refusal of `map.build`'s `dot_radius` or `trail`, beside
+    the style (`serve._animation_number` at v0.15.0), or None."""
+    for name, (low, high, unit) in ANIMATION_NUMBERS.items():
+        if name in params:
+            number = params[name]
+            if not _number(number) or not low <= number <= high:
+                return f"{name} must be from {low:g} to {high:g}, in {unit}"
+    return None
 
 
 def _clock(value) -> bool:
@@ -627,14 +746,19 @@ class Engine:
                 error(msg_id, -32602, "date is required: the service day to draw, as "
                       "YYYY-MM-DD. The engine never picks one, because its choice "
                       "would depend on the day you asked.", "params")
+            elif style_problem(params.get("style")) is not None:
+                error(msg_id, -32602, style_problem(params.get("style")), "params")
+            elif animation_problem(params) is not None:
+                error(msg_id, -32602, animation_problem(params), "params")
             elif layout not in self.layouts:
                 error(msg_id, -32000, f"{params.get('key', 'x')} has no stored layout "
                       f"{layout[:8]}; lay the feed out first (graph.build)", "layout")
             elif self.control.get("map_draws"):
-                # `style` and `lines` (engine v0.12.0) are taken and left alone:
-                # the stand-in draws no map to restyle or hide a line from.
-                # fake-engine.received keeps them, so a test reads what the
-                # app sent.
+                # `style` and `lines` (engine v0.12.0), and the markers, the
+                # face and the trains (v0.15.0), are taken and left alone once
+                # judged: the stand-in draws no map to restyle or hide a line
+                # from. fake-engine.received keeps them, so a test reads what
+                # the app sent.
                 threading.Thread(target=self.draw, args=(msg_id, params),
                                  daemon=True).start()
             else:
@@ -702,6 +826,14 @@ class Engine:
                                  daemon=True).start()
             else:
                 self.replying(msg_id, self.remove_feed, msg_id, key)
+            return True
+        if method == "style.presets":
+            # The engine's looks (v0.15.0, its issue 73), a method with no
+            # parameters, as `serve._no_params` refuses one sent some.
+            if message.get("params") not in (None, {}):
+                error(msg_id, -32602, "style.presets takes no parameters", "params")
+            else:
+                write({"jsonrpc": "2.0", "id": msg_id, "result": {"presets": STYLE_PRESETS}})
             return True
         if method == "export.presets":
             write({"jsonrpc": "2.0", "id": msg_id, "result": {"presets": EXPORT_PRESETS}})

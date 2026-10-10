@@ -1162,6 +1162,148 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s answers${WHY}`, () => 
         JSON.stringify(tuning),
       ).not.toEqual([])
   })
+
+  // ---- engine v0.15.0: the looks, the markers, the face and the trains
+  // (its issues 73 to 76; the app's issue 391)
+
+  it('answers style.presets with the engine’s three looks, as the description shapes them', async () => {
+    const answer = (await ask('style.presets')) as { presets: { name: string; style: object }[] }
+    expect(answerProblems('style.presets', answer)).toEqual([])
+    // `render.PRESETS` at v0.15.0, as `style.presets` answers it there.
+    expect(answer.presets).toEqual([
+      {
+        name: 'beck',
+        style: {
+          line_width: 6,
+          line_gap: 1.33,
+          station_radius: 3.6,
+          interchange_radius: 7.5,
+          station_stroke: 3,
+          label_size: 11,
+          label_offset: 10,
+          padding: 24,
+          station_shape: 'tick',
+        },
+      },
+      {
+        name: 'blueprint',
+        style: {
+          line_width: 4,
+          line_gap: 2,
+          station_radius: 3,
+          interchange_radius: 4.5,
+          station_stroke: 1.5,
+          label_size: 10,
+          label_offset: 8,
+          padding: 32,
+        },
+      },
+      {
+        name: 'paper',
+        style: {
+          line_width: 6,
+          line_gap: 1.6,
+          station_radius: 3.6,
+          interchange_radius: 5.5,
+          station_stroke: 1.8,
+          label_size: 12,
+          label_offset: 10,
+          padding: 28,
+        },
+      },
+    ])
+    expect(await refusal(ask('style.presets', { name: 'beck' }))).toEqual({
+      code: PARAMS,
+      kind: 'params',
+      message: 'style.presets takes no parameters',
+    })
+  })
+
+  it('takes the markers and the face in the style and the trains beside it, and keeps what was sent', async () => {
+    const params = {
+      key: 'la-metro-rail',
+      layout: await layoutOf(),
+      date: '2026-06-16',
+      style: {
+        line_width: 6,
+        station_shape: 'tick',
+        interchange_shape: 'square',
+        label_font: 'inter',
+      },
+      dot_radius: 8,
+      trail: 1.5,
+    }
+    expect(paramsProblems('map.build', params)).toEqual([])
+    const answer = await ask('map.build', params)
+    expect(answerProblems('map.build', answer)).toEqual([])
+    const sent = readFileSync(join(home, 'fake-engine.received'), 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as { method?: string; params?: Record<string, unknown> })
+      .filter((m) => m.method === 'map.build')
+      .pop()
+    expect(sent?.params).toMatchObject({ style: params.style, dot_radius: 8, trail: 1.5 })
+  })
+
+  it('refuses a marker, a face, a train number or a field the style does not take, as the engine’s handler does', async () => {
+    // Mutation: the stand-in takes any style - a train number sent inside
+    // `style` is then drawn here and refused by the engine.
+    const layout = await layoutOf()
+    const refused = (extra: Record<string, unknown>): Promise<Refusal> =>
+      refusal(ask('map.build', { key: 'la-metro-rail', layout, date: '2026-06-16', ...extra }))
+    const params = (message: string): Refusal => ({ code: PARAMS, kind: 'params', message })
+    const cases: [Record<string, unknown>, string][] = [
+      [
+        { style: { station_shape: 'triangle' } },
+        'style.station_shape must be circle, tick or square',
+      ],
+      [
+        { style: { interchange_shape: 'tick' } },
+        'style.interchange_shape must be circle or square',
+      ],
+      [
+        { style: { label_font: 'comic-sans' } },
+        'style.label_font must be system, inter or atkinson-hyperlegible-next',
+      ],
+      [{ style: { dot_radius: 8 } }, 'style does not take dot_radius'],
+      [{ dot_radius: 13 }, "dot_radius must be from 2 to 12, in SVG user units at the map's width"],
+      [{ trail: 3.5 }, 'trail must be from 0 to 3, in seconds of playback'],
+      [{ trail: '1' }, 'trail must be from 0 to 3, in seconds of playback'],
+      [
+        { style: { line_width: 30 } },
+        "style.line_width must be from 1 to 24, in SVG user units at the map's width",
+      ],
+      [
+        { style: { station_radius: 8 } },
+        'style.interchange_radius (6) must not be below style.station_radius (8); a field left out counts as its default, so send both',
+      ],
+      [
+        { style: { preset: 'beck', line_width: 6 } },
+        'style.preset cannot be sent with the fields it resolves to; send one or the other',
+      ],
+      [
+        { style: { preset: 'sketch' } },
+        'style.preset must be beck, blueprint or paper; style.presets describes each',
+      ],
+    ]
+    for (const [extra, message] of cases)
+      expect(await refused(extra), JSON.stringify(extra)).toEqual(params(message))
+    // A look's name alone, with or without a face, is the engine's to take.
+    expect(
+      await ask('map.build', {
+        key: 'la-metro-rail',
+        layout,
+        date: '2026-06-16',
+        style: { preset: 'paper', label_font: 'inter' },
+      }),
+    ).toBeTruthy()
+    // The description refuses the shapes the schema can hold, so no test can send one.
+    for (const [extra] of cases.slice(0, 7))
+      expect(
+        paramsProblems('map.build', { key: 'la-metro-rail', layout, date: '2026-06-16', ...extra }),
+        JSON.stringify(extra),
+      ).not.toEqual([])
+  })
 })
 
 // ------------------------------ the layout as it solves (engine v0.14.0)
