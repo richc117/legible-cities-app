@@ -36,6 +36,8 @@
 // - `useLineOptions.reset` clears every line: 'Reset line clears one line'.
 // - `readLines` drops the casing on read: 'a reopened project'.
 // - `CasingColour` drawn whatever the casing: 'the casing’s colour'.
+// - `redrawLines` leaving `optioned` false (cell 02 says the colours were
+//   drawn): 'each option reaches'.
 
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -219,6 +221,11 @@ test('each option reaches the stand-in’s request and the record, once drawn, a
       .poll(() => linesOf(engineHome), { timeout: 30_000 })
       .toEqual({ A: { name: 'Airport Express' } })
     expect(mapBuilds(engineHome), 'one build for the name').toHaveLength(2)
+    // Cell 02 says what was drawn, in the options' words and not the colours'.
+    await expect(page.getByText(/Drawn with the line options you chose/)).toBeVisible({
+      timeout: 30_000,
+    })
+    await expect(page.getByText(/Drawn in the colours you chose/)).toHaveCount(0)
     expect(lastBuild(engineHome).lines).toEqual({ A: { name: 'Airport Express' } })
     expect(lastBuild(engineHome).layout, 'from the stored layout').toBe(layout)
     expect(requests(engineHome, 'graph.build'), 'no layout run').toHaveLength(1)

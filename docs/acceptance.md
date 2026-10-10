@@ -592,8 +592,8 @@ at the row and at **Line order** below. Then press **Reset line**.
   with no colour chip beside it), **Dash** (Solid) and **Reset line**, which
   cannot be pressed yet.
 - **Airport Express** draws the map once more, cell 02's progress line saying
-  "Drawn in the colours you chose, from the stored layout. The stations
-  have not moved."; the line's chip, its row in the Linear and Time views
+  "Drawn with the line options you chose, from the stored layout. The
+  stations have not moved."; the line's chip, its row in the Linear and Time views
   and its trains say Airport Express, and the row's summary reads
   "Renamed". The 41 characters are refused beside the field with the
   engine's sentence, "lines['B'].name must be from 1 to 40 characters with

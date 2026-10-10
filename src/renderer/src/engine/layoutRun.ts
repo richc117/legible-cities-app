@@ -78,6 +78,12 @@ export interface RunSnapshot {
   rebuilt: boolean
   /** Set when the run is a redraw for chosen colours: the map call alone (A4-01). */
   recoloured: boolean
+  /**
+   * Set, with `recoloured`, when the run is a redraw for chosen line options
+   * (issue 394): it refines the colours' kind of run, so everything that reads
+   * `recoloured` still holds and only the words differ.
+   */
+  optioned: boolean
   /** Set when the run is a redraw for a chosen line order: the map call alone (A4-02). */
   reordered: boolean
   /** Set when the run is a redraw for chosen sizes: the map call alone (issue 350). */
@@ -364,6 +370,7 @@ const IDLE: RunSnapshot = {
   replaced: false,
   rebuilt: false,
   recoloured: false,
+  optioned: false,
   reordered: false,
   restyled: false,
   day: null,
@@ -494,6 +501,7 @@ export class LayoutRun {
         forced: force,
         rebuilt: false,
         recoloured: false,
+        optioned: false,
         reordered: false,
         restyled: false,
         day: null,
@@ -619,6 +627,7 @@ export class LayoutRun {
         replaced: false,
         rebuilt: true,
         recoloured: false,
+        optioned: false,
         reordered: false,
         restyled: false,
         day: date,
@@ -633,6 +642,7 @@ export class LayoutRun {
         forced: false,
         rebuilt: true,
         recoloured: false,
+        optioned: false,
         reordered: false,
         restyled: false,
         day: date,
@@ -684,6 +694,7 @@ export class LayoutRun {
         replaced: false,
         rebuilt: false,
         recoloured: true,
+        optioned: false,
         reordered: false,
         restyled: false,
         day: date,
@@ -698,6 +709,7 @@ export class LayoutRun {
         forced: false,
         rebuilt: false,
         recoloured: true,
+        optioned: false,
         reordered: false,
         restyled: false,
         day: date,
@@ -749,6 +761,7 @@ export class LayoutRun {
         replaced: false,
         rebuilt: false,
         recoloured: false,
+        optioned: false,
         reordered: true,
         restyled: false,
         day: date,
@@ -763,6 +776,7 @@ export class LayoutRun {
         forced: false,
         rebuilt: false,
         recoloured: false,
+        optioned: false,
         reordered: true,
         restyled: false,
         day: date,
@@ -821,6 +835,7 @@ export class LayoutRun {
         replaced: false,
         rebuilt: false,
         recoloured: false,
+        optioned: false,
         reordered: false,
         restyled: true,
         day: date,
@@ -835,6 +850,7 @@ export class LayoutRun {
         forced: false,
         rebuilt: false,
         recoloured: false,
+        optioned: false,
         reordered: false,
         restyled: true,
         day: date,
@@ -871,7 +887,8 @@ export class LayoutRun {
    * recolour: the layout stages never run, the day never moves, and the
    * options are written only when the map has been drawn with them.
    *
-   * It is the colours' kind of run (`recoloured`): the options live in cell
+   * It is the colours' kind of run (`recoloured`, refined by `optioned` so
+   * that cell 02 says what was drawn): the options live in cell
    * 05's colours list, so the cell reads running while it goes and ready
    * after, `cellOfRun` answers `lines` without being told anything new, and
    * a stop puts the colours and the options back together. Its job says
@@ -892,6 +909,7 @@ export class LayoutRun {
         replaced: false,
         rebuilt: false,
         recoloured: true,
+        optioned: true,
         reordered: false,
         restyled: false,
         day: date,
@@ -906,6 +924,7 @@ export class LayoutRun {
         forced: false,
         rebuilt: false,
         recoloured: true,
+        optioned: true,
         reordered: false,
         restyled: false,
         day: date,
@@ -942,6 +961,7 @@ export class LayoutRun {
       forced: boolean
       rebuilt: boolean
       recoloured: boolean
+      optioned: boolean
       reordered: boolean
       restyled: boolean
       day: string | null

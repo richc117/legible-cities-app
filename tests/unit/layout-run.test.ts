@@ -17,6 +17,7 @@ import { ON_DISK_DEADLINE, downloading } from '../../src/renderer/src/engine/lay
 import {
   doneSentence,
   drawnSentence,
+  optionedSentence,
   recolouredSentence,
   reorderedSentence,
   restyledSentence,
@@ -1691,6 +1692,7 @@ describe('redrawLines', () => {
     await tick()
     expect(run.snapshot).toMatchObject({
       recoloured: true,
+      optioned: true,
       reordered: false,
       restyled: false,
       rebuilt: false,
@@ -1698,6 +1700,31 @@ describe('redrawLines', () => {
     })
     expect(cellOfRun(run.snapshot)).toBe('lines')
     expect(run.job()).toMatchObject({ kind: 'rebuild', label: 'Redraw with new line options' })
+  })
+
+  it('says its own words, and a recolour does not say them', async () => {
+    // Mutation: `optioned` left false in the redraw - cell 02 would then say
+    // the map was drawn in the colours a person chose after a rename.
+    const { run, record } = setup(stored)
+    run.redrawLines(record, READY, lines)
+    await tick()
+    expect(run.snapshot.optioned).toBe(true)
+    const recolour = setup(stored)
+    recolour.run.recolour(recolour.record, READY, {
+      colors: { A: '#ff0000' },
+      defaultColor: '#00ff00',
+    })
+    await tick()
+    expect(recolour.run.snapshot).toMatchObject({ recoloured: true, optioned: false })
+    expect(optionedSentence()).toMatch(/line options you chose.*stations have not moved/)
+    expect(optionedSentence()).not.toMatch(/colours/)
+    expect(stoppedSentence('cancelled', false, false, true, false, false, true)).toMatch(
+      /keeps the line options it had/,
+    )
+    expect(stoppedSentence('failed', false, false, true, false, false, true)).toMatch(
+      /not drawn with those line options/,
+    )
+    expect(stoppedSentence('failed', false, false, true)).toMatch(/not drawn in those colours/)
   })
 
   it('writes nothing when the build fails or is cancelled', async () => {
@@ -1869,6 +1896,9 @@ describe('the run as a job', () => {
         'replaced',
         'rebuilt',
         'recoloured',
+        // Added by issue 394 on purpose: the redraw for line options is the
+        // colours' kind of run, told apart only so cell 02 says what it drew.
+        'optioned',
         'reordered',
         // Added by issue 350 on purpose: the run is a redraw for sizes, and
         // belongs to cell 04.
