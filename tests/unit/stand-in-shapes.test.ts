@@ -1269,6 +1269,7 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s answers${WHY}`, () => 
       [{ dot_radius: 13 }, "dot_radius must be from 2 to 12, in SVG user units at the map's width"],
       [{ trail: 3.5 }, 'trail must be from 0 to 3, in seconds of playback'],
       [{ trail: '1' }, 'trail must be from 0 to 3, in seconds of playback'],
+      [{ style: { background: '#ffffff\n' } }, 'style.background must be a colour written #rrggbb'],
       [
         { style: { line_width: 30 } },
         "style.line_width must be from 1 to 24, in SVG user units at the map's width",

@@ -318,6 +318,10 @@ describe('registerProjectHandlers', () => {
       { dotRadius: 13 },
       { trail: -0.5 },
       { trail: '1' },
+      { trail: true },
+      { dotRadius: Number.NaN },
+      { stationShape: {} },
+      { labelFont: 7 },
       { dot_radius: 8 },
       { preset: 'beck' },
     ]) {

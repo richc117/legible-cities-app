@@ -484,6 +484,14 @@ describe('the markers, the face and the trains, as the engine takes them (v0.15.
     expect(validateStyle({ dotRadius: '8' })).toBe(styleRangeSentence('dotRadius'))
     expect(validateStyle({ trail: 3.5 })).toBe(styleRangeSentence('trail'))
     expect(validateStyle({ trail: -1 })).toBe(styleRangeSentence('trail'))
+    // What is not a number or a name at all, in the same sentences.
+    expect(validateStyle({ trail: true })).toBe(styleRangeSentence('trail'))
+    expect(validateStyle({ dotRadius: Number.NaN })).toBe(styleRangeSentence('dotRadius'))
+    expect(validateStyle({ stationShape: {} })).toBe(styleChoiceSentence('stationShape'))
+    expect(validateStyle({ interchangeShape: ['square'] })).toBe(
+      styleChoiceSentence('interchangeShape'),
+    )
+    expect(validateStyle({ labelFont: 7 })).toBe(styleChoiceSentence('labelFont'))
     // The wire's names and a look's name are not the record's.
     expect(validateStyle({ dot_radius: 8 })).toBe('the style does not take dot_radius')
     expect(validateStyle({ station_shape: 'tick' })).toBe('the style does not take station_shape')

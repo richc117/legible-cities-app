@@ -420,7 +420,8 @@ def style_problem(style) -> str | None:
     for name in STYLE_COLORS:
         if name in left:
             color = left.pop(name)
-            if not isinstance(color, str) or not STYLE_COLOR.match(color):
+            # fullmatch, as the engine's: `$` would let a trailing newline by.
+            if not isinstance(color, str) or not STYLE_COLOR.fullmatch(color):
                 return f"style.{name} must be a colour written #rrggbb"
     for name, shapes in STYLE_SHAPES.items():
         if name in left:

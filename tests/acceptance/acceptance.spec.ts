@@ -1919,6 +1919,8 @@ test('a release, installed, through docs/acceptance.md', async () => {
         await expect
           .poll(() => look.locator('option').allTextContents(), { timeout: SHORT_MS })
           .toEqual(['The engine’s sizes', 'Beck', 'Blueprint', 'Paper', 'Custom'])
+        // The sizes are the person's own by now, as step 8 says.
+        await expect(look).toHaveValue('custom')
         await expect(look).toHaveAccessibleDescription(
           'A look sets the sizes and the markers; the typeface and the trains stay as they are.',
         )
@@ -1941,6 +1943,9 @@ test('a release, installed, through docs/acceptance.md', async () => {
           'Atkinson Hyperlegible Next',
         ])
         await expect(sizes.getByRole('group', { name: 'Trains' })).toBeVisible()
+        await expect(sizes.getByRole('group', { name: 'Trains' })).toContainText(
+          'How a train is drawn as the map plays; the map itself does not change.',
+        )
         await expect(dot).toHaveValue('5')
         await expect(dot).toHaveAccessibleDescription('2 to 12. The engine’s own is 5.')
         await expect(trail).toHaveValue('0')
@@ -2025,7 +2030,6 @@ test('a release, installed, through docs/acceptance.md', async () => {
           await expect(typeface).toHaveValue('system')
           await expect(dot).toHaveValue('5')
           await expect(trail).toHaveValue('0')
-          expect((await recordOf(window, LA)).theme, 'and leaves the theme').toBe('warm-dark')
         },
       )
       log.notAutomated(

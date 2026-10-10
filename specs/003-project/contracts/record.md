@@ -78,9 +78,10 @@ The on-disk form of `ProjectRecord` (`data-model.md`), version 2:
   it (`style` is what `map.build` was sent, in the app's names, the train
   numbers included, empty for a map drawn without one, and a block from
   before the field reads as empty),
-  or `null`. It is written by the four handlers that write the record at
-  the end of a draw - `completeLayout`, `completeRebuild`, `completeColors`
-  and `completeOrder` - and by nothing else, so an edit that draws nothing
+  or `null`. It is written by the five handlers that write the record at
+  the end of a draw - `completeLayout`, `completeRebuild`, `completeColors`,
+  `completeOrder` and, since issue 350, `completeStyle` - and by nothing
+  else, so an edit that draws nothing
   leaves it behind, which is how the notebook knows a cell is stale
   (ADR-045). A block that is not whole reads as `null`, as the window does.
   `null` means only that the map cannot be proved current, never that it is
