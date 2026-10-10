@@ -7,6 +7,7 @@ import {
   LOOK_LABEL,
   lookOptions,
   looksFor,
+  looksKnown,
   looksSentence,
   matchLook,
   offeredLooks,
@@ -86,8 +87,9 @@ function SelectRow({
 }
 
 /**
- * The Look (spec 034, FR-001): the engine's looks, asked once while the
- * engine stays up, and what the style the group shows is - the engine's own
+ * The Look (spec 034, FR-001): the engine's looks, asked once for each
+ * version of the engine that answers (so a restart at the same version asks
+ * nothing), and what the style the group shows is - the engine's own
  * sizes, a look, or Custom. While the engine is not running, or did not list
  * its looks, it offers the engine's own sizes and, where the style is not
  * them, Custom, and says why; nothing else in the group waits on it.
@@ -102,18 +104,19 @@ export function LookSelect({
   /** A value chosen in the select, with the looks it was offered from. */
   onChoose: (value: string, looks: readonly Look[]) => void
 }): JSX.Element {
-  // The engine's version while it is ready, else null: not running, or not
-  // known yet, as it is for a moment on every project screen that opens.
+  // Whether the engine's state is known yet - it is not, for a moment, on
+  // every project screen that opens - and its version while it is ready.
+  const known = engine !== null
   const version = engine?.state === 'ready' ? engine.version : null
-  const [looks, setLooks] = useState<Looks>({ status: 'waiting' })
+  // Started from the last list an engine answered (`looksKnown`), so a
+  // project opened again shows its look from the first frame.
+  const [looks, setLooks] = useState<Looks>(() => looksKnown(known, version))
 
   // The engine's looks, once while an engine of this version answers
   // (`looksFor`): a project opened again reads the answer already given.
   useEffect(() => {
-    if (version === null) {
-      setLooks({ status: 'waiting' })
-      return
-    }
+    setLooks(looksKnown(known, version))
+    if (version === null) return
     let left = false
     looksFor(engineClient(), version).then(
       (answer) => {
@@ -126,7 +129,7 @@ export function LookSelect({
     return () => {
       left = true
     }
-  }, [version])
+  }, [known, version])
 
   const offered = offeredLooks(looks)
   return (

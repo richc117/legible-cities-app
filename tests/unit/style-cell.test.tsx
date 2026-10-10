@@ -26,7 +26,7 @@ import { basename, resolve } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { themeWord } from '../../src/renderer/src/ThemeSwitch'
-import { LOOKS_WAITING } from '../../src/renderer/src/looks'
+import { forgetLooks, LOOK_SENTENCE, looksFor, LOOKS_WAITING } from '../../src/renderer/src/looks'
 import {
   CHOICE_FIELDS,
   FRAME_SENTENCE,
@@ -466,6 +466,51 @@ describe('cell 04’s looks, markers, face and trains (issue 391)', () => {
     ])
     // Nothing else in the group waits on the engine.
     expect(sizesGroup(draw({ project: record }))).not.toMatch(/disabled/)
+  })
+
+  it('shows a look from the first frame of a project opened again, the engine’s state not known yet', async () => {
+    // Mutation: the select starts from waiting rather than from the last
+    // list an engine answered - a Beck project would open reading Custom and
+    // "The looks come from the engine…" with the engine running.
+    forgetLooks()
+    const presets = {
+      presets: [
+        {
+          name: 'beck' as const,
+          style: {
+            line_width: 6,
+            line_gap: 1.33,
+            station_radius: 3.6,
+            interchange_radius: 7.5,
+            station_stroke: 3,
+            label_size: 11,
+            label_offset: 10,
+            padding: 24,
+            station_shape: 'tick' as const,
+          },
+        },
+      ],
+    }
+    await looksFor({ request: () => ({ result: Promise.resolve(presets) }) }, '0.15.0')
+    try {
+      const beck = {
+        lineWidth: 6,
+        lineGap: 1.33,
+        stationRadius: 3.6,
+        interchangeRadius: 7.5,
+        stationStroke: 3,
+        labelOffset: 10,
+        stationShape: 'tick' as const,
+      }
+      const row = selectRow(draw({ project: { ...record, style: beck } }), 'Look')
+      expect(row.options).toEqual([
+        ['engine-own', 'The engine’s sizes'],
+        ['beck', 'Beck'],
+      ])
+      expect(row.said).toEqual([LOOK_SENTENCE])
+    } finally {
+      forgetLooks()
+    }
   })
 
   it('offers the engine’s markers and faces in its order, each by its word', () => {

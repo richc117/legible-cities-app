@@ -17,6 +17,7 @@ import {
   lookOf,
   lookOptions,
   looksFor,
+  looksKnown,
   LOOKS_FAILED,
   looksOf,
   looksSentence,
@@ -323,5 +324,49 @@ describe('asking the engine for its looks', () => {
     expect(answering.asked).toBe(1)
     await looksFor(answering, '0.15.0')
     expect(answering.asked, 'another version is asked again').toBe(2)
+  })
+})
+
+describe('what the select shows before it asks', () => {
+  const answering = (): LooksClient => ({
+    request: () => ({ result: Promise.resolve(ANSWER) }),
+  })
+
+  it('shows nothing of the looks before any engine has answered', () => {
+    forgetLooks()
+    expect(looksKnown(false, null)).toEqual({ status: 'waiting' })
+    expect(looksKnown(true, null)).toEqual({ status: 'waiting' })
+    expect(looksKnown(true, '0.15.0')).toEqual({ status: 'waiting' })
+  })
+
+  it('shows the last list while the engine’s state is not known yet, as at every opening', async () => {
+    // Mutation: the reset to waiting whenever no version is ready - a Beck
+    // project would read Custom, and the engine-away sentence, at every
+    // opening with the engine running.
+    forgetLooks()
+    await looksFor(answering(), '0.15.0')
+    const shown = looksKnown(false, null)
+    expect(shown.status).toBe('ready')
+    expect(offeredLooks(shown).map((found) => found.name)).toEqual(['beck', 'blueprint', 'paper'])
+    expect(matchLook(BECK, offeredLooks(shown))).toBe('beck')
+    expect(looksKnown(true, '0.15.0').status, 'the same version, running').toBe('ready')
+  })
+
+  it('shows none while the engine is known to be away, or is another version not asked yet', async () => {
+    forgetLooks()
+    await looksFor(answering(), '0.15.0')
+    expect(looksKnown(true, null), 'the engine away: the decision’s case').toEqual({
+      status: 'waiting',
+    })
+    expect(looksKnown(true, '0.16.0')).toEqual({ status: 'waiting' })
+  })
+
+  it('keeps no list from a refusal', async () => {
+    forgetLooks()
+    const refusing: LooksClient = {
+      request: () => ({ result: Promise.reject(new Error('Method Not Found: style.presets')) }),
+    }
+    await expect(looksFor(refusing, '0.15.0')).rejects.toThrow()
+    expect(looksKnown(false, null)).toEqual({ status: 'waiting' })
   })
 })

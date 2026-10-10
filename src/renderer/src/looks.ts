@@ -167,10 +167,8 @@ export function lookOptions(style: ProjectStyle, looks: readonly Look[]): LookOp
  * circle, and the label face and the trains are kept. Null is the engine's
  * own look, which puts all ten back to the engine's own.
  *
- * "The engine's sizes" is read as that (spec 034, FR-001, with a
- * clarification marker): the issue's "clears the group as Reset does" is
- * read as the sizes group. If the whole group is meant, this is where the
- * face and the trains would go too.
+ * "The engine's sizes" is that: settled by the coordinator, 10 Oct 2026,
+ * as the engine's own look (spec 034, FR-001); Reset alone clears the group.
  */
 export function withLook(style: ProjectStyle, look: Look | null): ProjectStyle {
   const next: Record<string, unknown> = { ...style }
@@ -228,18 +226,31 @@ export interface LooksClient {
 /** The answer asked for, and the engine's version it was asked of. */
 let asked: { version: string; looks: Promise<Look[]> } | null = null
 
+/** The last list an engine answered, and its version: what the select can show before it asks. */
+let resolved: { version: string; looks: Look[] } | null = null
+
 /**
  * The engine's looks, asked once while an engine of this version answers
  * (spec 034, FR-001): every project's cell 04 reads the same answer, and a
  * project opened again asks nothing. The answer is kept by the engine's
  * version rather than forgotten whenever a screen sees the engine's state
  * unknown, as each project screen does for a moment as it opens; an engine
- * restarted at another version is another table and is asked again. A
- * refusal is not kept, so the next opening asks again.
+ * restarted at the same version keeps it, one restarted at another version
+ * is another table and is asked again. A refusal is not kept, so the next
+ * opening asks again.
  */
 export function looksFor(client: LooksClient, version: string): Promise<Look[]> {
   if (asked !== null && asked.version === version) return asked.looks
-  const entry = { version, looks: client.request('style.presets').result.then(looksOf) }
+  const entry = {
+    version,
+    looks: client
+      .request('style.presets')
+      .result.then(looksOf)
+      .then((looks) => {
+        if (asked === entry) resolved = { version, looks }
+        return looks
+      }),
+  }
   asked = entry
   entry.looks.catch(() => {
     if (asked === entry) asked = null
@@ -247,7 +258,24 @@ export function looksFor(client: LooksClient, version: string): Promise<Look[]> 
   return entry.looks
 }
 
+/**
+ * What the select shows before it has asked, or while it cannot: the last
+ * list an engine answered, where that list is still the truth, else nothing
+ * yet. Every project screen reads the engine's state as unknown for a moment
+ * as it opens (`known` false), and saying then that the looks come from the
+ * engine, or calling a Beck project Custom, would be false at every opening
+ * of a project with the engine running; so an unknown engine shows the last
+ * list. An engine known to be away is the decision's case and shows none,
+ * and an engine at another version than the list's is asked first.
+ */
+export function looksKnown(known: boolean, version: string | null): Looks {
+  if (resolved === null) return { status: 'waiting' }
+  if (!known || version === resolved.version) return { status: 'ready', looks: resolved.looks }
+  return { status: 'waiting' }
+}
+
 /** For a test: nothing remembered. */
 export function forgetLooks(): void {
   asked = null
+  resolved = null
 }
