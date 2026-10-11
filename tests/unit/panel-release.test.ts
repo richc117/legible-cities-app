@@ -293,6 +293,34 @@ describe('every cheap edit waits for the read-back of a finished run’s record'
   })
 })
 
+describe('a change waiting when the screen goes is dropped, and nothing waits again', () => {
+  // Issue 399. The sizes flush their debounce as the screen goes, so a size
+  // seen on screen is drawn if the way is clear; when it is not, the flush
+  // asked to wait again and armed the timer after the screen had gone, to
+  // draw later from the record that screen last saw. They now do what the
+  // options' hook does, which `tests/unit/line-options-hook.test.tsx` holds
+  // by rendering it; this holds that the sizes keep the same two lines,
+  // since nothing in this suite renders a panel to a DOM. The order and the
+  // colours cancel what is waiting as they go, and arm nothing.
+  const read = (file: string): string =>
+    readFileSync(resolve(__dirname, '../../src/renderer/src', file), 'utf8')
+
+  for (const file of ['StyleFields.tsx', 'useLineOptions.ts'])
+    it(`${file} marks itself gone before it flushes, and waits only while it is there`, () => {
+      // Mutation: the wait re-armed whatever the screen, as the sizes did.
+      const source = read(file)
+      expect(source).toMatch(/mounted\.current = false\s+schedule\.flush\(\)/)
+      expect(source).toMatch(/if \(step === 'wait'\) \{\s+if \(mounted\.current\) schedule\(next\)/)
+    })
+
+  it('the order cancels what is waiting as it goes, and the colours clear their retry', () => {
+    expect(read('LineOrder.tsx')).toContain('useEffect(() => () => schedule.cancel(), [schedule])')
+    expect(read('LineColours.tsx')).toMatch(
+      /\(\) => \(\) => \{\s+if \(retry\.current !== null\) clearTimeout\(retry\.current\)/,
+    )
+  })
+})
+
 describe('a redraw for line options belongs to the options and not to the colours', () => {
   const read = (file: string): string =>
     readFileSync(resolve(__dirname, '../../src/renderer/src', file), 'utf8')

@@ -134,8 +134,19 @@ export default function StyleFields({
   )
   // A figure committed and seen on screen is not lost to a screen that goes
   // inside the delay: the build is the project's, as a run is, and carries
-  // on without this view.
-  useEffect(() => () => schedule.flush(), [schedule])
+  // on without this view - if the way is clear as the screen goes. If it is
+  // not, the size is dropped rather than left waiting on a screen that is
+  // gone, whose last render's record would be drawn from long after a run
+  // had moved it on, and nothing arms the timer again (issue 399, as
+  // `useLineOptions` does).
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+      schedule.flush()
+    }
+  }, [schedule])
 
   // Whether this panel's own redraw is going, for the effect below to read
   // without being re-run when it ends: it must not reset the panel to a
@@ -193,9 +204,10 @@ export default function StyleFields({
     )
     // A layout, a rebuild or an export is reading the page this would
     // rewrite. Wait rather than refuse: the same delay again, and again,
-    // until the way is clear.
-    if (step === 'wait') schedule(next)
-    else if (step === 'build') run.restyle(project, engine, next)
+    // until the way is clear; never on a screen that has gone.
+    if (step === 'wait') {
+      if (mounted.current) schedule(next)
+    } else if (step === 'build') run.restyle(project, engine, next)
   }
   useEffect(() => {
     commitRef.current = commit
