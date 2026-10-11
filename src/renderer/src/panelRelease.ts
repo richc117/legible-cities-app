@@ -86,3 +86,37 @@ export function mustWait<S extends { readonly state: RunState }>(way: {
   const now = way.run.snapshot
   return way.held || now !== way.rendered || now.state === 'running' || way.busyNow?.() === true
 }
+
+/**
+ * Starts a panel's own redraw (`start`), and answers true when the start was
+ * refused at once in the one way `stoppedNow` cannot see, so the panel puts
+ * itself back to the record then, as it does for any stop (issue 399).
+ *
+ * A start the run cannot make - the engine is restarting, the project has no
+ * layout to draw - is refused inside the call: the run goes to `failed` with
+ * the panel's kind, and never passes through `running`. After any other
+ * state, or after a stop of another kind, that is a change `stoppedNow`
+ * sees at the next render. After a stop of the panel's own kind it is not:
+ * a redraw that failed, then a choice made while the engine restarts, is
+ * `failed` to `failed` with the kind unmoved, and the choice would stay on
+ * screen though it was neither drawn nor written and nothing will draw it.
+ * Cell 02 says for it what it says for any stopped redraw - the project
+ * keeps what it had - so the panel goes back to the record, and is not left
+ * to retry what a person was told to try again.
+ *
+ * `own` says whether a snapshot is the panel's kind of run, as `Seen.own`
+ * does. Only a refusal that the next render would not see answers true, so
+ * nothing is put back twice.
+ */
+export function refusedAtStart<S extends { readonly state: RunState }>(
+  run: { readonly snapshot: S },
+  own: (snapshot: S) => boolean,
+  start: () => void,
+): boolean {
+  const before = run.snapshot
+  start()
+  const after = run.snapshot
+  if (after === before) return false
+  const now = { state: after.state, own: own(after) }
+  return now.own && isStop(now.state) && !stoppedNow({ state: before.state, own: own(before) }, now)
+}

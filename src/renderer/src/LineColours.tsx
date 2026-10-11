@@ -35,11 +35,11 @@ import {
   type Unbuilt,
 } from './colours'
 import { useColourPanel, type ColourPanelProps } from './ColourChip'
-import type { LayoutRun as Run } from './engine/layoutRun'
+import type { LayoutRun as Run, RunSnapshot } from './engine/layoutRun'
 import Button from './kit/Button'
 import { choiceOf, hidesEveryLine, isHidden } from './lineOptions'
 import LineOptionsDisclosure from './LineOptionsDisclosure'
-import { mustWait } from './panelRelease'
+import { mustWait, refusedAtStart } from './panelRelease'
 import { useLineOptions } from './useLineOptions'
 import { usePutBack } from './usePutBack'
 import { useSnapshot } from './useSnapshot'
@@ -115,6 +115,9 @@ interface Props {
 
 /** What the section is called, as its heading and as the name of its region. */
 const NAME = 'Line colours'
+
+/** A redraw for colours, and not for line options: the colours' own kind of run (issue 394). */
+const ownRun = (snapshot: RunSnapshot): boolean => snapshot.recoloured && !snapshot.optioned
 
 export default function LineColours({
   run,
@@ -215,12 +218,16 @@ export default function LineColours({
   // the next one starts, and a record written for another reason is a new
   // `project.colors` reference. Acting on that would drop, and snap back, a
   // colour chosen afterwards and waiting for an export to let go of the page.
-  usePutBack(runState, recoloured, () => {
+  //
+  // And at the moment a start of its own is refused after a stop of its own
+  // (`refusedAtStart`, issue 399), which `usePutBack` cannot see.
+  const backToRecord = (): void => {
     if (retry.current !== null) clearTimeout(retry.current)
     retry.current = null
     unbuilt.current = stopped()
     setPalette({ colors: project.colors, defaultColor: project.defaultColor })
-  })
+  }
+  usePutBack(runState, recoloured, backToRecord)
 
   // What `released` or `retried` decided. A layout, a rebuild or an export
   // is reading the page a build would rewrite, so a release then is held,
@@ -236,7 +243,7 @@ export default function LineColours({
         askAgain.current()
       }, REDRAW_DELAY)
     } else if (step === 'build') {
-      run.recolour(project, engine, next)
+      if (refusedAtStart(run, ownRun, () => run.recolour(project, engine, next))) backToRecord()
     }
   }
   // `busy` is what the last render saw; the run's own state is what is true

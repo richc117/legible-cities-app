@@ -10,11 +10,11 @@ import {
 } from '../../shared/project'
 import { REDRAW_DELAY } from './colours'
 import { debounce } from './debounce'
-import type { LayoutRun as Run } from './engine/layoutRun'
+import type { LayoutRun as Run, RunSnapshot } from './engine/layoutRun'
 import Button from './kit/Button'
 import TextInput from './kit/TextInput'
 import { chooseValue, type Look } from './looks'
-import { mustWait } from './panelRelease'
+import { mustWait, refusedAtStart } from './panelRelease'
 import { ChoiceSelect, LookSelect } from './StyleLooks'
 import {
   chooseIn,
@@ -102,6 +102,9 @@ interface Props {
 /** What the section is called, as the name of its region. */
 const NAME = 'Sizes'
 
+/** A redraw for sizes: this section's own kind of run. */
+const ownRun = (snapshot: RunSnapshot): boolean => snapshot.restyled
+
 export default function StyleFields({
   run,
   project,
@@ -185,10 +188,14 @@ export default function StyleFields({
   // rename, an export option - is a new `project.style` reference: acting on
   // that would snap back, and cancel, a size committed afterwards and waiting
   // for an export to let go of the page.
-  usePutBack(runState, restyled, () => {
+  //
+  // And at the moment a start of its own is refused after a stop of its own
+  // (`refusedAtStart`, issue 399), which `usePutBack` cannot see.
+  const backToRecord = (): void => {
     schedule.cancel()
     setView(viewOf(project.style))
-  })
+  }
+  usePutBack(runState, restyled, backToRecord)
 
   const commit = (next: ProjectStyle): void => {
     // `busy` is what the last render saw; the run's own state is what is
@@ -207,7 +214,9 @@ export default function StyleFields({
     // until the way is clear; never on a screen that has gone.
     if (step === 'wait') {
       if (mounted.current) schedule(next)
-    } else if (step === 'build') run.restyle(project, engine, next)
+    } else if (step === 'build') {
+      if (refusedAtStart(run, ownRun, () => run.restyle(project, engine, next))) backToRecord()
+    }
   }
   useEffect(() => {
     commitRef.current = commit

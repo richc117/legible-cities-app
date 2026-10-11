@@ -22,7 +22,7 @@ import {
 } from '../../shared/project'
 import { linesOf, REDRAW_DELAY, shownColour, type Line } from './colours'
 import { debounce } from './debounce'
-import type { LayoutRun as Run } from './engine/layoutRun'
+import type { LayoutRun as Run, RunSnapshot } from './engine/layoutRun'
 import Icon from './icons/Icon'
 import Button from './kit/Button'
 import {
@@ -37,7 +37,7 @@ import {
   sameOrder,
   standAside,
 } from './order'
-import { mustWait } from './panelRelease'
+import { mustWait, refusedAtStart } from './panelRelease'
 import { usePutBack } from './usePutBack'
 import { useSnapshot } from './useSnapshot'
 
@@ -152,6 +152,9 @@ interface Props {
 /** What the section is called, as its heading and as the name of its region. */
 const NAME = 'Line order'
 
+/** A redraw for a line order: this section's own kind of run. */
+const ownRun = (snapshot: RunSnapshot): boolean => snapshot.reordered
+
 export default function LineOrder({
   run,
   project,
@@ -259,11 +262,15 @@ export default function LineOrder({
   // `project.lineOrder` reference. Acting on that would cancel, and snap
   // back, a move made afterwards and waiting for an export to let go of the
   // page.
-  usePutBack(runState, reordered, () => {
+  //
+  // And at the moment a start of its own is refused after a stop of its own
+  // (`refusedAtStart`, issue 399), which `usePutBack` cannot see.
+  const backToRecord = (): void => {
     schedule.cancel()
     setWaiting(false)
     setOrder(project.lineOrder)
-  })
+  }
+  usePutBack(runState, reordered, backToRecord)
 
   const commit = (next: Order): void => {
     // The store's own rule, run here as well: a feed with more lines than a
@@ -299,7 +306,8 @@ export default function LineOrder({
       schedule(next)
     } else {
       setWaiting(false)
-      if (step === 'build') run.reorder(project, engine, next)
+      if (step === 'build' && refusedAtStart(run, ownRun, () => run.reorder(project, engine, next)))
+        backToRecord()
     }
   }
   useEffect(() => {

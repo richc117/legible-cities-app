@@ -12,7 +12,12 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { mustWait, stoppedNow, type Seen } from '../../src/renderer/src/panelRelease'
+import {
+  mustWait,
+  refusedAtStart,
+  stoppedNow,
+  type Seen,
+} from '../../src/renderer/src/panelRelease'
 import { usePutBack } from '../../src/renderer/src/usePutBack'
 import type { RunState } from '../../src/shared/layout'
 
@@ -253,7 +258,7 @@ describe('the four cheap edits ask that one question', () => {
       // Mutation: a control keeping its own copy of the question, without
       // the run having moved on since the render (issue 399).
       const source = read(file)
-      expect(source.includes("import { mustWait } from './panelRelease'")).toBe(true)
+      expect(source).toMatch(/import \{ mustWait[^}]*\} from '\.\/panelRelease'/)
       expect(/mustWait\(\{ held: [^}]*rendered: snapshot, run, busyNow \}\)/.test(source)).toBe(
         true,
       )
@@ -321,6 +326,97 @@ describe('a change waiting when the screen goes is dropped, and nothing waits ag
   })
 })
 
+// Issue 399: a start refused at once after a stop of the panel's own kind,
+// `failed` to `failed` with the kind unmoved, which `stoppedNow` cannot see.
+describe('a start refused at once, where the next render will not see it', () => {
+  type Snap = { state: RunState; own: boolean }
+  /** A run whose start moves it to `to`, or leaves it alone for null. */
+  const runFrom = (from: Snap) => {
+    const run = { snapshot: from }
+    const startTo = (to: Snap | null) => (): void => {
+      if (to !== null) run.snapshot = to
+    }
+    return { run, startTo }
+  }
+  const own = (snapshot: Snap): boolean => snapshot.own
+  const refused = (from: Snap, to: Snap | null): boolean => {
+    const { run, startTo } = runFrom(from)
+    return refusedAtStart(run, own, startTo(to))
+  }
+
+  it('is the panel’s own redraw failed, then its own start refused', () => {
+    // A colours redraw failed when the engine went; a colour chosen while it
+    // restarts is refused at its start. Mutation: `refusedAtStart` answering
+    // false (the panels as they were) - the colour would stay on screen,
+    // neither drawn nor written.
+    expect(refused({ state: 'failed', own: true }, { state: 'failed', own: true })).toBe(true)
+  })
+
+  it('is nothing for a refusal the next render sees, so nothing is put back twice', () => {
+    // Mutation: the `stoppedNow` clause left out - each of these would be put
+    // back here and again by `usePutBack`.
+    for (const before of ['idle', 'done', 'cancelled'] as const)
+      expect(refused({ state: before, own: true }, { state: 'failed', own: true }), before).toBe(
+        false,
+      )
+    expect(
+      refused({ state: 'failed', own: false }, { state: 'failed', own: true }),
+      'after another kind',
+    ).toBe(false)
+  })
+
+  it('is nothing for a start that started, or one that did nothing', () => {
+    expect(refused({ state: 'failed', own: true }, { state: 'running', own: true })).toBe(false)
+    // Mutation: the identity check left out - a run left exactly as it was
+    // would read as refused.
+    expect(refused({ state: 'failed', own: true }, null)).toBe(false)
+  })
+
+  it('is nothing for a start that left a run of another kind', () => {
+    expect(refused({ state: 'failed', own: true }, { state: 'failed', own: false })).toBe(false)
+  })
+
+  it('starts the redraw it is given, once', () => {
+    const start = vi.fn()
+    refusedAtStart({ snapshot: { state: 'idle' as RunState } }, () => true, start)
+    expect(start).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('the four cheap edits go back to the record for it', () => {
+  const read = (file: string): string =>
+    readFileSync(resolve(__dirname, '../../src/renderer/src', file), 'utf8')
+  const starts = [
+    { file: 'LineColours.tsx', start: 'run.recolour(project, engine, next)' },
+    { file: 'useLineOptions.ts', start: 'run.redrawLines(project, engine, next)' },
+    { file: 'LineOrder.tsx', start: 'run.reorder(project, engine, next)' },
+    { file: 'StyleFields.tsx', start: 'run.restyle(project, engine, next)' },
+  ]
+  for (const { file, start } of starts)
+    it(`${file} starts its redraw through it, and goes back as for a stop`, () => {
+      // Mutation: the start made bare, as it was.
+      const source = read(file)
+      expect(source).toContain(`refusedAtStart(run, ownRun, () => ${start})`)
+      expect(source.split(start)).toHaveLength(2)
+      expect(source).toMatch(/refusedAtStart\(run, ownRun, \(\) => [^)]*\)\)\)?\s*backToRecord\(\)/)
+    })
+
+  it('each knows its own kind of run as `usePutBack` is told it', () => {
+    expect(read('LineColours.tsx')).toContain(
+      'const ownRun = (snapshot: RunSnapshot): boolean => snapshot.recoloured && !snapshot.optioned',
+    )
+    expect(read('useLineOptions.ts')).toContain(
+      'const ownRun = (snapshot: RunSnapshot): boolean => snapshot.optioned',
+    )
+    expect(read('LineOrder.tsx')).toContain(
+      'const ownRun = (snapshot: RunSnapshot): boolean => snapshot.reordered',
+    )
+    expect(read('StyleFields.tsx')).toContain(
+      'const ownRun = (snapshot: RunSnapshot): boolean => snapshot.restyled',
+    )
+  })
+})
+
 describe('a redraw for line options belongs to the options and not to the colours', () => {
   const read = (file: string): string =>
     readFileSync(resolve(__dirname, '../../src/renderer/src', file), 'utf8')
@@ -329,7 +425,9 @@ describe('a redraw for line options belongs to the options and not to the colour
     // Mutation: either side reading `recoloured` alone - a stopped options
     // redraw would drop a colour held until it ended, and a stopped colours
     // redraw a waiting option (issue 394).
-    expect(read('useLineOptions.ts').includes('usePutBack(runState, optioned, () => {')).toBe(true)
+    expect(read('useLineOptions.ts').includes('usePutBack(runState, optioned, backToRecord)')).toBe(
+      true,
+    )
     expect(read('LineColours.tsx').includes('snapshot.recoloured && !optioned')).toBe(true)
   })
 })
@@ -347,7 +445,9 @@ describe('the three panels share the one shape', () => {
       expect(source.includes("import { usePutBack } from './usePutBack'"), 'imports the hook').toBe(
         true,
       )
-      expect(source.includes(`usePutBack(runState, ${own}, () => {`), 'and calls it').toBe(true)
+      expect(source.includes(`usePutBack(runState, ${own}, backToRecord)`), 'and calls it').toBe(
+        true,
+      )
     })
 
     it(`${file} keeps no reading of the run's state of its own for this`, () => {

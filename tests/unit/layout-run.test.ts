@@ -23,6 +23,7 @@ import {
   restyledSentence,
   stoppedSentence,
 } from '../../src/renderer/src/LayoutRun'
+import { refusedAtStart, stoppedNow } from '../../src/renderer/src/panelRelease'
 import { cellOfRun } from '../../src/renderer/src/runGraph'
 import { LAYOUT_STAGES } from '../../src/shared/layout'
 import { ERROR_CODES, type EngineState } from '../../src/shared/engine'
@@ -1771,6 +1772,58 @@ describe('redrawLines', () => {
     expect(busy.calls, 'only the layout call is out').toHaveLength(1)
     expect(busy.calls[0].method).toBe('graph.build')
   })
+})
+
+// Issue 399: what `refusedAtStart` rests on, against the run itself. A
+// redraw that failed, then the same kind refused at its start because the
+// engine is restarting: `failed` to `failed` with the kind unmoved, which
+// `stoppedNow` does not see and `refusedAtStart` must.
+describe('a redraw refused at its start after one of its own kind failed', () => {
+  const stored = { layout: LAYOUT, date: '2026-09-15', service: WINDOW }
+  type Start = (run: LayoutRun, record: ProjectRecord, engine: EngineState | null) => void
+  const kinds: Array<{ name: string; start: Start; own: (s: LayoutRun['snapshot']) => boolean }> = [
+    {
+      name: 'recolour',
+      start: (run, record, engine) =>
+        run.recolour(record, engine, { colors: { A: '#ff0000' }, defaultColor: '#00ff00' }),
+      own: (s) => s.recoloured && !s.optioned,
+    },
+    {
+      name: 'redrawLines',
+      start: (run, record, engine) => run.redrawLines(record, engine, { B: { hidden: true } }),
+      own: (s) => s.optioned,
+    },
+    {
+      name: 'reorder',
+      start: (run, record, engine) => run.reorder(record, engine, ['B', 'A']),
+      own: (s) => s.reordered,
+    },
+    {
+      name: 'restyle',
+      start: (run, record, engine) => run.restyle(record, engine, { lineWidth: 12 }),
+      own: (s) => s.restyled,
+    },
+  ]
+  for (const { name, start, own } of kinds)
+    it(`${name}: refused after its own failure is seen only by refusedAtStart`, async () => {
+      // Mutation: `refusedAtStart` answering false - the panels as they were.
+      const { run, calls, record } = setup(stored)
+      start(run, record, READY)
+      await tick()
+      calls[0].reject({ code: -32000, message: 'the engine went away' })
+      await tick()
+      const before = run.snapshot
+      expect(before.state).toBe('failed')
+      expect(refusedAtStart(run, own, () => start(run, record, null))).toBe(true)
+      expect(calls, 'nothing was sent for the refused start').toHaveLength(1)
+      const seen = (snapshot: LayoutRun['snapshot']) => ({
+        state: snapshot.state,
+        own: own(snapshot),
+      })
+      expect(stoppedNow(seen(before), seen(run.snapshot)), 'which the next render cannot see').toBe(
+        false,
+      )
+    })
 })
 
 // The inspector's view of a run (A1-03, specs/024-jobs): one job per
