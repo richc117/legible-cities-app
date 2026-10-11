@@ -274,15 +274,15 @@ export function unkeptSentence(
   optioned: boolean,
 ): string | null {
   if (restyled)
-    return 'The map was drawn in those sizes, but the project could not keep them. Nothing was written: it keeps the sizes it had, and the next build draws the map in them again.'
+    return 'The map was drawn in those sizes, but the project could not keep them. Nothing was written: it keeps the sizes it had, and the next build draws the map in them again. An export made before then is taken from the map as drawn.'
   if (reordered)
-    return 'The map was drawn in that order, but the project could not keep it. Nothing was written: it keeps the order it had, and the next build draws the map in it again.'
+    return 'The map was drawn in that order, but the project could not keep it. Nothing was written: it keeps the order it had, and the next build draws the map in it again. An export made before then is taken from the map as drawn.'
   if (optioned)
-    return 'The map was drawn with those line options, but the project could not keep them. Nothing was written: it keeps the line options it had, and the next build draws the map with them again.'
+    return 'The map was drawn with those line options, but the project could not keep them. Nothing was written: it keeps the line options it had, and the next build draws the map with them again. An export made before then is taken from the map as drawn.'
   if (recoloured)
-    return 'The map was drawn in those colours, but the project could not keep them. Nothing was written: it keeps the colours it had, and the next build draws the map in them again.'
+    return 'The map was drawn in those colours, but the project could not keep them. Nothing was written: it keeps the colours it had, and the next build draws the map in them again. An export made before then is taken from the map as drawn.'
   if (rebuilt)
-    return 'The map was drawn for that day, but the project could not keep it. Nothing was written: it keeps its day, and the next build draws the map for it again.'
+    return 'The map was drawn for that day, but the project could not keep it. Nothing was written: it keeps its day, and the next build draws the map for it again. An export made before then is taken from the map as drawn.'
   return null
 }
 

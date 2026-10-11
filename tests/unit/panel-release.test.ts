@@ -249,20 +249,50 @@ describe('whether a change must wait before it is compared', () => {
   })
 })
 
+describe('cell 02 tells a redraw whose record was refused from one that was not drawn', () => {
+  it('hands `unkept` to the stopped sentence', () => {
+    // Mutation: the eighth argument left out - the sentence would then say
+    // the map was not drawn when it was (issue 399).
+    const source = readFileSync(resolve(__dirname, '../../src/renderer/src/LayoutRun.tsx'), 'utf8')
+    expect(source).toMatch(
+      /stoppedSentence\(\s*state,\s*replaced,\s*rebuilt,\s*recoloured,\s*reordered,\s*restyled,\s*optioned,\s*unkept,?\s*\)/,
+    )
+  })
+})
+
 describe('the four cheap edits ask that one question', () => {
   const read = (file: string): string =>
     readFileSync(resolve(__dirname, '../../src/renderer/src', file), 'utf8')
 
-  for (const file of ['LineColours.tsx', 'LineOrder.tsx', 'StyleFields.tsx', 'useLineOptions.ts'])
-    it(`${file} asks \`mustWait\` with the snapshot it rendered`, () => {
-      // Mutation: a control keeping its own copy of the question, without
-      // the run having moved on since the render (issue 399).
+  // Where each control uses the answer: the call that decides its step. A
+  // regex that only found the question asked would pass a control that asked
+  // and then ignored it.
+  const ASK = String.raw`mustWait\(\{ held: busy \|\| settling, rendered: snapshot, run, busyNow \}\)`
+  const uses: Record<string, RegExp[]> = {
+    'LineColours.tsx': [
+      new RegExp(String.raw`const stillBusy = \(\): boolean =>\s+${ASK}`),
+      /released\(unbuilt\.current, next, paletteOf\(project\), stillBusy\(\)\)/,
+      /retried\(unbuilt\.current, paletteOf\(project\), stillBusy\(\)\)/,
+    ],
+    'LineOrder.tsx': [
+      new RegExp(String.raw`nextStep\(\s*next,\s*orderOf\(project\),\s*${ASK},?\s*\)`),
+    ],
+    'StyleFields.tsx': [
+      new RegExp(String.raw`nextStyleStep\(\s*next,\s*project\.style,\s*${ASK},?\s*\)`),
+    ],
+    'useLineOptions.ts': [
+      /const busy = mustWait\(\{ held: held \|\| live\.current !== null, rendered: snapshot, run, busyNow \}\)\s+const step = nextLinesStep\(next, project\.lines, busy\)/,
+    ],
+  }
+  for (const file of Object.keys(uses))
+    it(`${file} asks \`mustWait\` with the snapshot it rendered, and its answer decides the step`, () => {
+      // Mutation: a control keeping its own copy of the question, or asking
+      // it and not passing the answer on (issue 399).
       const source = read(file)
       expect(source).toMatch(/import \{ mustWait[^}]*\} from '\.\/panelRelease'/)
-      expect(/mustWait\(\{ held: [^}]*rendered: snapshot, run, busyNow \}\)/.test(source)).toBe(
-        true,
-      )
+      for (const use of uses[file]) expect(source).toMatch(use)
       expect(source.includes("run.snapshot.state === 'running'"), 'and no copy of it').toBe(false)
+      expect(/snapshot\.state === 'running'/.test(source), 'and no other copy of it').toBe(false)
     })
 })
 
@@ -314,7 +344,9 @@ describe('a change waiting when the screen goes is dropped, and nothing waits ag
     it(`${file} marks itself gone before it flushes, and waits only while it is there`, () => {
       // Mutation: the wait re-armed whatever the screen, as the sizes did.
       const source = read(file)
-      expect(source).toMatch(/mounted\.current = false\s+schedule\.flush\(\)/)
+      expect(source, 'set again when the effect runs, as StrictMode runs it twice').toMatch(
+        /mounted\.current = true\s+return \(\) => \{\s+mounted\.current = false\s+schedule\.flush\(\)/,
+      )
       expect(source).toMatch(/if \(step === 'wait'\) \{\s+if \(mounted\.current\) schedule\(next\)/)
     })
 
@@ -398,7 +430,10 @@ describe('the four cheap edits go back to the record for it', () => {
       const source = read(file)
       expect(source).toContain(`refusedAtStart(run, ownRun, () => ${start})`)
       expect(source.split(start)).toHaveLength(2)
-      expect(source).toMatch(/refusedAtStart\(run, ownRun, \(\) => [^)]*\)\)\)?\s*backToRecord\(\)/)
+      expect(source).toMatch(
+        /\bif \((?:step === 'build' && )?refusedAtStart\(run, ownRun, \(\) => [^)]*\)\)\)?\s*backToRecord\(\)/,
+      )
+      expect(source, 'taken as it is, not negated').not.toMatch(/!refusedAtStart/)
     })
 
   it('each knows its own kind of run as `usePutBack` is told it', () => {

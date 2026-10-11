@@ -775,7 +775,7 @@ export default function ExportTab({
             <fieldset className="export-lines" disabled={locked}>
               <legend>Lines to keep</legend>
               <p className="message">None chosen draws every line.</p>
-              {lines.length === 0 && (
+              {inspection === null && (
                 <p className="hint">The lines are read from the feed once the engine answers.</p>
               )}
               {lines.map((label) => (
