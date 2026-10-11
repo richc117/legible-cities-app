@@ -970,3 +970,46 @@ test('a colour chosen after a cancelled redraw waits for an export, and a rename
     { LEGIBLE_EXPORT_FOLDER: exportFolder },
   )
 })
+
+test('a colour put back while its build runs is drawn once that build has written', async () => {
+  // Issue 399. Line A in #ff0000, and reset to the feed's colour while the
+  // build of it runs: the reset equals the record still on disk, which that
+  // build is about to change. It is held, and drawn once the build has
+  // written. Written, not run in the lane; the coordinator's mutation:
+  // `colours.ts` `nextStep` comparing before it waits - the reset is
+  // dropped, the build writes #ff0000, and the row follows the record back.
+  const engineHome = home({ progress_delay_ms: 300 })
+  await withApp(engineHome, async (page) => {
+    await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
+    const panel = cell(page, 'lines')
+    const before = received(engineHome, 'map.build').length
+
+    await panel.getByRole('button', { name: /^Choose the colour of line A/ }).click()
+    const picker = panel.getByRole('group', { name: 'Colour for line A' })
+    await picker.getByLabel('Hex value').fill('#ff0000')
+    await picker.getByRole('button', { name: 'Use this colour' }).click()
+    await expect
+      .poll(() => received(engineHome, 'map.build').length, { timeout: 15_000 })
+      .toBe(before + 1)
+
+    // The build of #ff0000 is running: the line goes back to the feed's.
+    await panel.getByRole('button', { name: /^Choose the colour of line A/ }).click()
+    await picker.getByRole('button', { name: /^Reset line A/ }).click()
+    await expect(picker).toBeHidden()
+
+    await expect
+      .poll(() => received(engineHome, 'map.build').length, { timeout: 30_000 })
+      .toBe(before + 2)
+    expect(received(engineHome, 'map.build')[before], 'the first build is the red').toContain(
+      '"#ff0000"',
+    )
+    expect(
+      received(engineHome, 'map.build')[before + 1],
+      'the second is the feed’s own colour',
+    ).not.toContain('"#ff0000"')
+    await expect.poll(() => readRecord(engineHome).colors, { timeout: 30_000 }).toEqual({})
+    await expect(
+      panel.getByRole('list', { name: 'Lines' }).getByRole('listitem').nth(0),
+    ).toContainText('the colour in the feed, #0072bc')
+  })
+})

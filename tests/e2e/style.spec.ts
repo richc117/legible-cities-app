@@ -27,6 +27,8 @@
 // - a style source added to `stalenessOf`: 'one map build ... never stale'.
 // - `restyle` sends a `graph.build`, or `rebuild` is used in its place:
 //   'one map build ... from the stored layout'.
+// - `nextStyleStep` comparing before it waits (issue 399): 'a size put back
+//   while its build runs'.
 
 import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -430,5 +432,33 @@ test('a project made before this change opens with every size unset and draws wi
     // And the write that followed made it a version-2 record with nothing set.
     await expect.poll(() => readRecord(engineHome).version).toBe(2)
     expect(readRecord(engineHome).style).toEqual({})
+  })
+})
+
+test('a size put back while its build runs is drawn once that build has written', async () => {
+  // Issue 399. A line width of 12 committed, and Reset pressed while the
+  // build of it runs: the sizes put back equal the record still on disk,
+  // which that build is about to change. They wait, and are drawn once the
+  // build has written. Written, not run in the lane; the coordinator's
+  // mutation: `nextStyleStep` comparing before it waits - the reset is
+  // dropped, the build writes 12, and the field follows the record back.
+  const engineHome = home({ progress_delay_ms: 300 })
+  await withApp(engineHome, async (page) => {
+    await laidOut(page)
+    const before = mapBuilds(engineHome).length
+
+    await set(page, 'Line width', '12')
+    await expect.poll(() => mapBuilds(engineHome).length, { timeout: 15_000 }).toBe(before + 1)
+
+    // The build of 12 is running: every size back to the engine's own.
+    await reset(page).click()
+    await expect(field(page, 'Line width')).toHaveValue('7')
+
+    await expect.poll(() => mapBuilds(engineHome).length, { timeout: 30_000 }).toBe(before + 2)
+    const draws = mapBuilds(engineHome)
+    expect(draws[before].params.style, 'the first build is the 12').toEqual({ line_width: 12 })
+    expect(draws[before + 1].params, 'the second carries no style').not.toHaveProperty('style')
+    await expect.poll(() => readRecord(engineHome).style, { timeout: 30_000 }).toEqual({})
+    await expect(field(page, 'Line width')).toHaveValue('7')
   })
 })

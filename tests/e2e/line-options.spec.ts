@@ -38,6 +38,8 @@
 // - `CasingColour` drawn whatever the casing: 'the casing’s colour'.
 // - `redrawLines` leaving `optioned` false (cell 02 says the colours were
 //   drawn): 'each option reaches'.
+// - `nextLinesStep` comparing before it waits (issue 399): 'a line shown
+//   again while the build that hid it runs'.
 
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -524,5 +526,37 @@ test('a reopened project shows its options, and opening draws nothing', async ()
       options(page, 'B').getByRole('button', { name: 'Choose the casing colour of line B' }),
     ).toBeVisible()
     expect(mapBuilds(engineHome), 'opening a project builds nothing').toHaveLength(built)
+  })
+})
+
+test('a line shown again while the build that hid it runs is drawn shown once that build has written', async () => {
+  // Issue 399, the issue's own case. B hidden, and shown again while the
+  // build that hides it runs: shown equals the record still on disk, which
+  // that build is about to change. It waits, and is drawn once the build
+  // has written. Written, not run in the lane; the coordinator's mutation:
+  // `nextLinesStep` comparing before it waits - the switch turned back on
+  // is dropped, the build writes B hidden, and the switch goes back off.
+  // (`tests/unit/line-options-hook.test.tsx` holds the same in the hook.)
+  const engineHome = home({ progress_delay_ms: 300 })
+  await withApp(engineHome, async (page) => {
+    await laidOut(page)
+    await openOptions(page, 'B')
+    const before = mapBuilds(engineHome).length
+
+    await shown(page, 'B').click()
+    await expect(shown(page, 'B')).not.toBeChecked()
+    await expect.poll(() => mapBuilds(engineHome).length, { timeout: 15_000 }).toBe(before + 1)
+
+    // The build that hides B is running: B is shown again.
+    await shown(page, 'B').click()
+    await expect(shown(page, 'B')).toBeChecked()
+
+    await expect.poll(() => mapBuilds(engineHome).length, { timeout: 30_000 }).toBe(before + 2)
+    expect(mapBuilds(engineHome)[before].params.lines, 'the first build hides B').toEqual({
+      B: { hidden: true },
+    })
+    expect(lastBuild(engineHome), 'the second hides nothing').not.toHaveProperty('lines')
+    await expect.poll(() => linesOf(engineHome), { timeout: 30_000 }).toBeUndefined()
+    await expect(shown(page, 'B')).toBeChecked()
   })
 })
