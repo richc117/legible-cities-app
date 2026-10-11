@@ -62,6 +62,7 @@ export default function LayoutRun({
     optioned,
     reordered,
     restyled,
+    unkept,
     day,
     download,
     feedMissing,
@@ -204,7 +205,16 @@ export default function LayoutRun({
         {(state === 'cancelled' || state === 'failed') && (
           <>
             <p className="prose" role="status">
-              {stoppedSentence(state, replaced, rebuilt, recoloured, reordered, restyled, optioned)}
+              {stoppedSentence(
+                state,
+                replaced,
+                rebuilt,
+                recoloured,
+                reordered,
+                restyled,
+                optioned,
+                unkept,
+              )}
             </p>
             <div className="toolbar">
               <Button variant="primary" ref={layOutRef} onClick={begin} disabled={disabled}>
@@ -249,6 +259,31 @@ export default function LayoutRun({
       {after}
     </div>
   )
+}
+
+/**
+ * What a redraw says when its map was drawn and the project then could not
+ * keep what it was drawn with (issue 399); null for a run that is not a
+ * redraw, whose own sentence is already true.
+ */
+export function unkeptSentence(
+  rebuilt: boolean,
+  recoloured: boolean,
+  reordered: boolean,
+  restyled: boolean,
+  optioned: boolean,
+): string | null {
+  if (restyled)
+    return 'The map was drawn in those sizes, but the project could not keep them. Nothing was written: it keeps the sizes it had, and the next build draws the map in them again.'
+  if (reordered)
+    return 'The map was drawn in that order, but the project could not keep it. Nothing was written: it keeps the order it had, and the next build draws the map in it again.'
+  if (optioned)
+    return 'The map was drawn with those line options, but the project could not keep them. Nothing was written: it keeps the line options it had, and the next build draws the map with them again.'
+  if (recoloured)
+    return 'The map was drawn in those colours, but the project could not keep them. Nothing was written: it keeps the colours it had, and the next build draws the map in them again.'
+  if (rebuilt)
+    return 'The map was drawn for that day, but the project could not keep it. Nothing was written: it keeps its day, and the next build draws the map for it again.'
+  return null
 }
 
 /**
@@ -312,6 +347,11 @@ export function restyledSentence(): string {
  * a new layout stored under the project's id, and the map on screen is the
  * old one until the next run draws the new; and a rebuild that stopped may
  * have left the page half-drawn for the day it did not record.
+ *
+ * A redraw whose map was drawn and whose record was then refused (`unkept`,
+ * issue 399) says so, rather than that the map was not drawn: the page was
+ * written with the choice, the project kept what it had, and the next build
+ * draws the map from that again.
  */
 export function stoppedSentence(
   state: string,
@@ -321,7 +361,12 @@ export function stoppedSentence(
   reordered = false,
   restyled = false,
   optioned = false,
+  unkept = false,
 ): string {
+  if (unkept && state === 'failed') {
+    const kept = unkeptSentence(rebuilt, recoloured, reordered, restyled, optioned)
+    if (kept !== null) return kept
+  }
   if (restyled) {
     return state === 'cancelled'
       ? 'The redraw was cancelled. The project keeps the sizes it had; the map on screen may be the old one until the next build.'
