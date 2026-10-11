@@ -275,10 +275,15 @@ describe('nextStep: build, wait, or nothing at all', () => {
   it('waits rather than refusing while something else reads the page', () => {
     expect(nextStep(changed, stored, true)).toBe('wait')
   })
-  it('does nothing for a change that is not one, busy or not', () => {
+  it('does nothing for a change that is not one, once the way is clear', () => {
     expect(nextStep(stored, stored, false)).toBe('none')
     expect(nextStep(palette({ colors: { A: '#0072BC' } }), stored, false)).toBe('build')
-    expect(nextStep(stored, stored, true), 'and does not wait for one either').toBe('none')
+  })
+  it('waits before it compares: while the page is held, even no change waits (issue 399)', () => {
+    // Mutation: the comparison first, as it was - the record a build is
+    // about to change would answer "no change" for a colour put back while
+    // that build runs, and the colour would be dropped.
+    expect(nextStep(stored, stored, true)).toBe('wait')
   })
   it('sees a changed default as a change', () => {
     expect(nextStep(withDefault(stored, '#112233'), stored, false)).toBe('build')
@@ -338,11 +343,39 @@ describe('a gesture and its release: the map follows the end, never an interval'
     expect(again.unbuilt).toEqual({ live: null, held: null })
   })
 
-  it('a release that is no change builds nothing, and drops an older one that was waiting', () => {
+  it('a release that is no change builds nothing once the way is clear, and drops an older one that was waiting', () => {
     const waiting = released(NOTHING_UNBUILT, one, stored, true).unbuilt
-    const back = released(waiting, stored, stored, true)
+    const back = released(waiting, stored, stored, false)
     expect(back.step).toBe('none')
     expect(back.unbuilt).toEqual({ live: null, held: null })
+  })
+
+  it('a colour put back while the build of the one before runs is held, and drawn from the record that build wrote (issue 399)', () => {
+    // The record says `stored`; `one` is released and its build starts; the
+    // person puts the colour back while it runs. Mutation: `nextStep`
+    // comparing before it waits - the release back would equal the record
+    // still on disk and be dropped, the build would write `one`, and the
+    // swatch would follow the record back to `one` by itself.
+    const back = released(NOTHING_UNBUILT, stored, stored, true)
+    expect(back.step, 'it waits, rather than being compared with a record about to move').toBe(
+      'wait',
+    )
+    expect(back.unbuilt).toEqual({ live: null, held: stored })
+    expect(mayAdoptRecord(back.unbuilt), 'the record the build writes does not take it away').toBe(
+      false,
+    )
+    // The build wrote `one`, and the record now says so.
+    const after = retried(back.unbuilt, one, false)
+    expect(after.step, 'drawn, from the record that build wrote').toBe('build')
+    expect(after.unbuilt).toEqual({ live: null, held: null })
+  })
+
+  it('a release back to the record while the page is held, with nothing moving it, builds nothing once clear', () => {
+    const back = released(NOTHING_UNBUILT, stored, stored, true)
+    expect(back.step).toBe('wait')
+    const after = retried(back.unbuilt, stored, false)
+    expect(after.step).toBe('none')
+    expect(after.unbuilt, 'and nothing is left waiting').toEqual({ live: null, held: null })
   })
 
   it('asks again: it builds once the way is clear, and waits while it is not', () => {

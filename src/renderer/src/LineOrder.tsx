@@ -37,6 +37,7 @@ import {
   sameOrder,
   standAside,
 } from './order'
+import { mustWait } from './panelRelease'
 import { usePutBack } from './usePutBack'
 import { useSnapshot } from './useSnapshot'
 
@@ -153,7 +154,8 @@ export default function LineOrder({
   handback,
 }: Props): JSX.Element {
   const ready = engine?.state === 'ready'
-  const { state: runState, reordered } = useSnapshot(run)
+  const snapshot = useSnapshot(run)
+  const { state: runState, reordered } = snapshot
   const running = runState === 'running'
   // Nothing here disables itself because something else is going: a move
   // made now waits and draws once the way is clear, so no control goes out
@@ -269,11 +271,14 @@ export default function LineOrder({
     }
     // `busy` is what the last render saw; the run's own state is what is
     // true at this moment, and a run can start between the two. Without it
-    // an arrangement would be handed to a run that refuses it, silently.
+    // an arrangement would be handed to a run that refuses it, silently. A
+    // run that has moved on since this render wrote a record it has not
+    // read, so that waits too; and it is all asked before the move is
+    // compared with the record (issue 399).
     const step = nextStep(
       next,
       orderOf(project),
-      busy || run.snapshot.state === 'running' || busyNow?.() === true,
+      mustWait({ held: busy, rendered: snapshot, run, busyNow }),
     )
     // A layout, a rebuild or an export is reading the page this would
     // rewrite. Wait rather than refuse: the same delay again, and again,

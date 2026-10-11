@@ -12,7 +12,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { stoppedNow, type Seen } from '../../src/renderer/src/panelRelease'
+import { mustWait, stoppedNow, type Seen } from '../../src/renderer/src/panelRelease'
 import { usePutBack } from '../../src/renderer/src/usePutBack'
 import type { RunState } from '../../src/shared/layout'
 
@@ -194,6 +194,71 @@ describe('the hook the panels put themselves back through', () => {
     render('failed', false, putBack)
     expect(putBack).not.toHaveBeenCalled()
   })
+})
+
+// Issue 399: whether a cheap edit waits, asked before its own rule compares
+// the change with the record. Each case was watched failing with its own
+// clause taken out of `mustWait`.
+describe('whether a change must wait before it is compared', () => {
+  const at = (state: RunState): { state: RunState } => ({ state })
+  const runAt = (snapshot: { state: RunState }): { snapshot: { state: RunState } } => ({ snapshot })
+
+  it('does not wait when nothing holds the page and the run is as the render saw it', () => {
+    const rendered = at('done')
+    expect(mustWait({ held: false, rendered, run: runAt(rendered) })).toBe(false)
+    expect(mustWait({ held: false, rendered, run: runAt(rendered), busyNow: () => false })).toBe(
+      false,
+    )
+  })
+
+  it('waits for what the render saw holding the page or the record', () => {
+    // Mutation: `held` left out - an export, the read-back or a hand on a
+    // gesture would no longer hold a change.
+    const rendered = at('idle')
+    expect(mustWait({ held: true, rendered, run: runAt(rendered) })).toBe(true)
+  })
+
+  it('waits for a run going at this instant, though the render saw it idle', () => {
+    // Mutation: the run's own state left out. The snapshot object is the
+    // rendered one, so only the state can say it.
+    const rendered = { state: 'idle' as RunState }
+    const run = { snapshot: rendered }
+    rendered.state = 'running'
+    expect(mustWait({ held: false, rendered, run })).toBe(true)
+  })
+
+  it('waits for what only this instant can answer, an export begun since the render', () => {
+    // Mutation: `busyNow` left out.
+    const rendered = at('idle')
+    expect(mustWait({ held: false, rendered, run: runAt(rendered), busyNow: () => true })).toBe(
+      true,
+    )
+  })
+
+  it('waits for a run that has moved on since the render, whose record the render has not read', () => {
+    // Mutation: the snapshot's identity left out. The run ended in the gap
+    // between the render and this call: it is not running and nothing holds
+    // the page, but the record in hand is from before it.
+    expect(mustWait({ held: false, rendered: at('running'), run: runAt(at('done')) })).toBe(true)
+    expect(mustWait({ held: false, rendered: at('idle'), run: runAt(at('failed')) })).toBe(true)
+  })
+})
+
+describe('the four cheap edits ask that one question', () => {
+  const read = (file: string): string =>
+    readFileSync(resolve(__dirname, '../../src/renderer/src', file), 'utf8')
+
+  for (const file of ['LineColours.tsx', 'LineOrder.tsx', 'StyleFields.tsx', 'useLineOptions.ts'])
+    it(`${file} asks \`mustWait\` with the snapshot it rendered`, () => {
+      // Mutation: a control keeping its own copy of the question, without
+      // the run having moved on since the render (issue 399).
+      const source = read(file)
+      expect(source.includes("import { mustWait } from './panelRelease'")).toBe(true)
+      expect(/mustWait\(\{ held: [^}]*rendered: snapshot, run, busyNow \}\)/.test(source)).toBe(
+        true,
+      )
+      expect(source.includes("run.snapshot.state === 'running'"), 'and no copy of it').toBe(false)
+    })
 })
 
 describe('a redraw for line options belongs to the options and not to the colours', () => {

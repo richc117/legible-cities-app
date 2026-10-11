@@ -10,6 +10,7 @@ import { REDRAW_DELAY } from './colours'
 import { debounce } from './debounce'
 import type { LayoutRun as Run } from './engine/layoutRun'
 import { linesWith, nextLinesStep } from './lineOptions'
+import { mustWait } from './panelRelease'
 import { usePutBack } from './usePutBack'
 import { useSnapshot } from './useSnapshot'
 
@@ -144,12 +145,7 @@ export function useLineOptions({
     // drawing now would draw the colours, the order and the sizes from
     // before it. A casing's colour under a hand waits for its release, as a
     // line's own colour does.
-    const busy =
-      held ||
-      live.current !== null ||
-      run.snapshot !== snapshot ||
-      run.snapshot.state === 'running' ||
-      busyNow?.() === true
+    const busy = mustWait({ held: held || live.current !== null, rendered: snapshot, run, busyNow })
     const step = nextLinesStep(next, project.lines, busy)
     // Something holds the page: wait rather than refuse, the same delay
     // again, until the way is clear; never on a screen that has gone.

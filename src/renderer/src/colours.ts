@@ -182,10 +182,16 @@ export function feedWords(line: Line): string {
  * or an export is reading the page a colour build would rewrite, so a
  * change made during one waits rather than being refused - no control has
  * to disable itself under a person's hands (FR-009).
+ *
+ * It waits before it is compared (issue 399, `mustWait`): while something
+ * holds the page the record may be about to move, and a colour put back
+ * while a build of the one before runs would equal a record that build is
+ * about to change. Compared once the way is clear, it is compared with the
+ * record that build wrote.
  */
 export function nextStep(next: Palette, stored: Palette, busy: boolean): 'build' | 'wait' | 'none' {
-  if (samePalette(next, stored)) return 'none'
-  return busy ? 'wait' : 'build'
+  if (busy) return 'wait'
+  return samePalette(next, stored) ? 'none' : 'build'
 }
 
 /** Two palettes with the same overrides and the same default; nothing is rebuilt for a change that is not one. */
@@ -238,9 +244,9 @@ export function reached(unbuilt: Unbuilt, next: Palette): Unbuilt {
 /**
  * The gesture ended on `next`: the picker was released, or the hex field's
  * button was pressed. This is the commit point, and it is decided by
- * `nextStep` as every change is - built if the way is clear, held if it is
- * not, nothing if it is no change. It replaces a release that was waiting,
- * which is what a later choice means.
+ * `nextStep` as every change is - held if the way is not clear, whatever it
+ * is, and once it is, built, or nothing if it is no change. It replaces a
+ * release that was waiting, which is what a later choice means.
  */
 export function released(unbuilt: Unbuilt, next: Palette, stored: Palette, busy: boolean): Outcome {
   return decide({ ...unbuilt, live: null }, next, stored, busy)

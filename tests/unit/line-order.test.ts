@@ -226,9 +226,18 @@ describe('nextStep', () => {
     expect(nextStep(['B', 'A'], ['A', 'B'], true)).toBe('wait')
   })
 
-  it('does nothing at all for a move that ends where it began', () => {
+  it('does nothing at all for a move that ends where it began, once the way is clear', () => {
     expect(nextStep(['A', 'B'], ['A', 'B'], false)).toBe('none')
-    expect(nextStep(['A', 'B'], ['A', 'B'], true)).toBe('none')
+  })
+
+  it('waits before it compares, so a move undone while its build runs is not dropped (issue 399)', () => {
+    // A moved down and its build started; A moved back while it runs. The
+    // record still says the old order, so the move back equals it.
+    // Mutation: the comparison first, as it was - this answers 'none', the
+    // build writes the move, and the list follows the record back to it.
+    expect(nextStep(['A', 'B'], ['A', 'B'], true)).toBe('wait')
+    // Once the build has written the move, the move back is a change.
+    expect(nextStep(['A', 'B'], ['B', 'A'], false)).toBe('build')
   })
 })
 

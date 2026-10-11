@@ -383,14 +383,19 @@ export const resettable = (view: View): boolean =>
  * because it is not a change. A change made during a run waits rather than
  * being refused, so no control has to disable itself under a person's hands
  * (A4-01's rule, `nextStep` in `colours.ts`).
+ *
+ * It waits before it is compared (issue 399, `mustWait`): a size put back
+ * while the build of the one before runs equals the record that build is
+ * about to change, and comparing then would drop it. Compared once the way
+ * is clear, it is compared with the record that build wrote.
  */
 export function nextStyleStep(
   next: ProjectStyle,
   stored: ProjectStyle,
   busy: boolean,
 ): 'build' | 'wait' | 'none' {
-  if (sameStyle(next, stored)) return 'none'
-  return busy ? 'wait' : 'build'
+  if (busy) return 'wait'
+  return sameStyle(next, stored) ? 'none' : 'build'
 }
 
 /**

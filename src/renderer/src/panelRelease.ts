@@ -50,3 +50,39 @@ const isStop = (state: RunState): boolean => state === 'failed' || state === 'ca
 export function stoppedNow(before: Seen, now: Seen): boolean {
   return now.own && isStop(now.state) && (before.state !== now.state || !before.own)
 }
+
+/**
+ * Whether a change a panel holds must wait, rather than be compared with the
+ * record now (issue 399). The four cheap edits - the colours, the line
+ * options, the order and the sizes - ask this one question before their own
+ * rule compares anything.
+ *
+ * It waits while the last render saw something hold the page or the record
+ * (`held`: an export reading the page, the record a finished run wrote being
+ * read back, a gesture under a hand); while a run is going at this instant;
+ * while `busyNow` says something has started since that render, as an
+ * export can; and while the run has moved on since that render - its
+ * snapshot is not the one the render drew from - since a run that ended in
+ * that gap wrote a record the render has not read, and a build begun from
+ * it would draw the colours, the order, the sizes and the line options from
+ * before it.
+ *
+ * **It is asked before the change is compared with the record, never
+ * after.** While something holds the page the record is about to move: a
+ * build of this very change may be about to write it. A colour chosen and
+ * then put back while its build runs equals the record still on disk, and
+ * comparing then would drop it; the build would write the first colour, and
+ * the control would go back to it by itself. Asked once the way is clear,
+ * it is compared with the record that build wrote.
+ */
+export function mustWait<S extends { readonly state: RunState }>(way: {
+  held: boolean
+  /** The run's snapshot as the last render saw it. */
+  rendered: S
+  /** The run itself, read at this instant. */
+  run: { readonly snapshot: S }
+  busyNow?: () => boolean
+}): boolean {
+  const now = way.run.snapshot
+  return way.held || now !== way.rendered || now.state === 'running' || way.busyNow?.() === true
+}

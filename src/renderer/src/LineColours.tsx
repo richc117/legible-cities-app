@@ -39,6 +39,7 @@ import type { LayoutRun as Run } from './engine/layoutRun'
 import Button from './kit/Button'
 import { choiceOf, hidesEveryLine, isHidden } from './lineOptions'
 import LineOptionsDisclosure from './LineOptionsDisclosure'
+import { mustWait } from './panelRelease'
 import { useLineOptions } from './useLineOptions'
 import { usePutBack } from './usePutBack'
 import { useSnapshot } from './useSnapshot'
@@ -245,8 +246,11 @@ export default function LineColours({
   // 394): every draw now carries the line options, and one drawn from the
   // record before that run could put a hidden line back on the map while
   // the store, writing `drawn` from the record after it, said it was gone.
+  // And while the run has moved on since this render, which is the same
+  // beat before the read-back has begun (issue 399). `released` and
+  // `retried` ask this before they compare anything with the record.
   const stillBusy = (): boolean =>
-    busy || settling || run.snapshot.state === 'running' || busyNow?.() === true
+    mustWait({ held: busy || settling, rendered: snapshot, run, busyNow })
   // The commit point: the picker released, or the hex field's button.
   const commit = (next: Palette): void =>
     act(released(unbuilt.current, next, paletteOf(project), stillBusy()), next)

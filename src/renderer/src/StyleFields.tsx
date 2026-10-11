@@ -14,6 +14,7 @@ import type { LayoutRun as Run } from './engine/layoutRun'
 import Button from './kit/Button'
 import TextInput from './kit/TextInput'
 import { chooseValue, type Look } from './looks'
+import { mustWait } from './panelRelease'
 import { ChoiceSelect, LookSelect } from './StyleLooks'
 import {
   chooseIn,
@@ -101,7 +102,8 @@ export default function StyleFields({
   busyNow,
   handback,
 }: Props): JSX.Element {
-  const { state: runState, restyled } = useSnapshot(run)
+  const snapshot = useSnapshot(run)
+  const { state: runState, restyled } = snapshot
   const running = runState === 'running'
   // Something else is reading or rewriting the project's page. Nothing here
   // is disabled for it: a change made now waits and builds once the way is
@@ -170,11 +172,14 @@ export default function StyleFields({
 
   const commit = (next: ProjectStyle): void => {
     // `busy` is what the last render saw; the run's own state is what is
-    // true at this moment, and a run can start between the two.
+    // true at this moment, and a run can start between the two. A run that
+    // has moved on since this render wrote a record it has not read, so
+    // that waits too; and it is all asked before the size is compared with
+    // the record (issue 399).
     const step = nextStyleStep(
       next,
       project.style,
-      busy || run.snapshot.state === 'running' || busyNow?.() === true,
+      mustWait({ held: busy, rendered: snapshot, run, busyNow }),
     )
     // A layout, a rebuild or an export is reading the page this would
     // rewrite. Wait rather than refuse: the same delay again, and again,

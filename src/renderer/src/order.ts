@@ -161,12 +161,18 @@ export function positionWords(index: number, total: number): string {
  * same three answers for the same reason - a layout, a rebuild or an export
  * is reading the page a draw would rewrite, so a move made during one waits
  * rather than being refused (FR-009).
+ *
+ * It waits before it is compared (issue 399, `mustWait`): a move undone
+ * while the build of the move runs equals the record that build is about to
+ * change, and comparing then would drop it and leave the list to follow the
+ * build back to the move. Compared once the way is clear, it is compared
+ * with the record that build wrote.
  */
 export function nextStep(
   next: LineOrder,
   stored: LineOrder,
   busy: boolean,
 ): 'build' | 'wait' | 'none' {
-  if (sameOrder(next, stored)) return 'none'
-  return busy ? 'wait' : 'build'
+  if (busy) return 'wait'
+  return sameOrder(next, stored) ? 'none' : 'build'
 }
