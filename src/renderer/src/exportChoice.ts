@@ -16,8 +16,10 @@ import {
   type OfferedPreset,
   type Quality,
 } from '../../shared/export'
+import type { ProjectLines } from '../../shared/project'
 import type { ClockCorner, Preset, Storyboard, View } from '../../shared/protocol'
 import { debounce, type Debounced } from './debounce'
+import { isHidden } from './lineOptions'
 
 // The export tab's logic, with no React in it (A5-01, specs/022-export-tab):
 // which presets are offered and how they read, what an option defaults to,
@@ -402,6 +404,49 @@ export function toggledLines(
   const listed = all.filter((line) => chosen.has(line))
   const unlisted = [...chosen].filter((line) => !all.includes(line))
   return [...listed, ...unlisted]
+}
+
+/**
+ * The lines cell 06 offers to keep (issue 399): the lines the feed lists
+ * under the layout's mode and agency, less any hidden in cell 05.
+ *
+ * The page the export reads keeps the lines `lines` names and hides every
+ * other line it draws, and a hidden line is not one it draws: its trips
+ * never reach the page (ADR-053). A line hidden there is not offered here,
+ * since keeping it keeps nothing, and keeping only hidden lines would hide
+ * every line the page has.
+ */
+export function keepableLines(
+  lines: readonly string[],
+  options: ProjectLines | undefined,
+): string[] {
+  return lines.filter((label) => !isHidden(options ?? {}, label))
+}
+
+/**
+ * The choice an export and its preview are planned from: the stored one,
+ * less any line hidden in cell 05 among the lines to keep (issue 399).
+ *
+ * The engine refuses no label in `lines`, and the page it plans hides every
+ * line not named. A hidden line named beside a drawn one is harmless, but a
+ * choice naming only hidden lines would export a map with no lines at all.
+ * So what is sent leaves them out, and a choice left with none sends none,
+ * which draws every line, as the cell says. The stored choice is not
+ * touched: a line shown again is kept again. The same choice, unchanged,
+ * when nothing kept is hidden.
+ */
+export function plannedChoice(
+  choice: ExportChoice,
+  options: ProjectLines | undefined,
+): ExportChoice {
+  const kept = choice.options.lines
+  if (kept === undefined) return choice
+  const drawn = keepableLines(kept, options)
+  if (drawn.length === kept.length) return choice
+  const next = copyChoice(choice)
+  if (drawn.length === 0) delete next.options.lines
+  else next.options.lines = drawn
+  return next
 }
 
 /**
