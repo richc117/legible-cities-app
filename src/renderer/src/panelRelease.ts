@@ -15,6 +15,11 @@ import type { RunState } from '../../shared/layout'
 // change made after the failure that is waiting for an export to let go of
 // the page. So the rule is the *change into* a stopped state, from the state
 // the panel last saw, and never the record's reference.
+//
+// Since issue 399 the four cheap edits (the line options with them) share
+// two more rules here: when a change must wait rather than be compared with
+// the record (`mustWait`), and the one stop the rule above cannot see, a
+// start refused at once after a stop of the same kind (`refusedAtStart`).
 
 /**
  * What a panel sees of the run at one render: its state, and whether the
