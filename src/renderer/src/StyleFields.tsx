@@ -89,6 +89,14 @@ interface Props {
    * itself: Chromium blurs a disabled element and focus falls to the body.
    */
   handback: RefObject<HTMLElement | null>
+  /**
+   * True from a run's end until the record it wrote has been read back
+   * (A5.5-22). A size committed in that beat waits for it, as a colour and a
+   * line option do: every draw carries the line options, and one drawn from
+   * the record before that run could put a line it hid back on the map
+   * (issue 399).
+   */
+  settling?: boolean
 }
 
 /** What the section is called, as the name of its region. */
@@ -101,6 +109,7 @@ export default function StyleFields({
   disabled = false,
   busyNow,
   handback,
+  settling = false,
 }: Props): JSX.Element {
   const snapshot = useSnapshot(run)
   const { state: runState, restyled } = snapshot
@@ -173,13 +182,14 @@ export default function StyleFields({
   const commit = (next: ProjectStyle): void => {
     // `busy` is what the last render saw; the run's own state is what is
     // true at this moment, and a run can start between the two. A run that
-    // has moved on since this render wrote a record it has not read, so
-    // that waits too; and it is all asked before the size is compared with
-    // the record (issue 399).
+    // has moved on since this render wrote a record it has not read, and so
+    // has one whose record is still being read back (`settling`), so both
+    // wait too; and it is all asked before the size is compared with the
+    // record (issue 399).
     const step = nextStyleStep(
       next,
       project.style,
-      mustWait({ held: busy, rendered: snapshot, run, busyNow }),
+      mustWait({ held: busy || settling, rendered: snapshot, run, busyNow }),
     )
     // A layout, a rebuild or an export is reading the page this would
     // rewrite. Wait rather than refuse: the same delay again, and again,

@@ -261,6 +261,38 @@ describe('the four cheap edits ask that one question', () => {
     })
 })
 
+describe('every cheap edit waits for the read-back of a finished run’s record', () => {
+  // Issue 399: a draw in the beat after a run finishes, before the record it
+  // wrote has been read, is drawn from the record before it, and every draw
+  // carries the line options - a line that run hid would be drawn again.
+  // The colours and the options waited for `settling` already; the order and
+  // the sizes now do. Read from the source, since nothing in this suite
+  // renders a panel to a DOM; `tests/unit/line-options-hook.test.tsx` holds
+  // the options' hold by rendering the hook.
+  const read = (file: string): string =>
+    readFileSync(resolve(__dirname, '../../src/renderer/src', file), 'utf8')
+
+  for (const file of ['LineColours.tsx', 'LineOrder.tsx', 'StyleFields.tsx'])
+    it(`${file} holds a change while the record is read back`, () => {
+      // Mutation: `settling` left out of what the panel holds for.
+      const source = read(file)
+      expect(source.includes('settling = false,'), 'takes it, false when not given').toBe(true)
+      expect(source.includes('mustWait({ held: busy || settling,'), 'and waits for it').toBe(true)
+    })
+
+  it('the options wait for it through what the colours section holds for them', () => {
+    expect(read('LineColours.tsx').includes('held: disabled || settling,')).toBe(true)
+  })
+
+  it('the cells hand it to every panel that takes it', () => {
+    // Mutation: an adapter that does not pass it, which leaves the panel's
+    // default, false, and the panel drawing from a record about to move.
+    const lines = read('notebook/cells/LinesCell.tsx')
+    expect(lines.match(/settling=\{settling\}/g), 'the colours and the order').toHaveLength(2)
+    expect(read('notebook/cells/StyleCell.tsx').match(/settling=\{settling\}/g)).toHaveLength(1)
+  })
+})
+
 describe('a redraw for line options belongs to the options and not to the colours', () => {
   const read = (file: string): string =>
     readFileSync(resolve(__dirname, '../../src/renderer/src', file), 'utf8')

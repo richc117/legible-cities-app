@@ -139,6 +139,14 @@ interface Props {
    * to the body - and a shape that cannot say it cannot ship it.
    */
   handback: RefObject<HTMLElement | null>
+  /**
+   * True from a run's end until the record it wrote has been read back
+   * (A5.5-22). A move made in that beat waits for it, as a colour and a line
+   * option do: every draw carries the line options, and one drawn from the
+   * record before that run could put a line it hid back on the map (issue
+   * 399).
+   */
+  settling?: boolean
 }
 
 /** What the section is called, as its heading and as the name of its region. */
@@ -152,6 +160,7 @@ export default function LineOrder({
   disabled = false,
   busyNow,
   handback,
+  settling = false,
 }: Props): JSX.Element {
   const ready = engine?.state === 'ready'
   const snapshot = useSnapshot(run)
@@ -273,12 +282,13 @@ export default function LineOrder({
     // true at this moment, and a run can start between the two. Without it
     // an arrangement would be handed to a run that refuses it, silently. A
     // run that has moved on since this render wrote a record it has not
-    // read, so that waits too; and it is all asked before the move is
+    // read, and so has one whose record is still being read back
+    // (`settling`), so both wait too; and it is all asked before the move is
     // compared with the record (issue 399).
     const step = nextStep(
       next,
       orderOf(project),
-      mustWait({ held: busy, rendered: snapshot, run, busyNow }),
+      mustWait({ held: busy || settling, rendered: snapshot, run, busyNow }),
     )
     // A layout, a rebuild or an export is reading the page this would
     // rewrite. Wait rather than refuse: the same delay again, and again,
