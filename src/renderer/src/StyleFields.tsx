@@ -10,10 +10,11 @@ import {
 } from '../../shared/project'
 import { REDRAW_DELAY } from './colours'
 import { debounce } from './debounce'
-import type { LayoutRun as Run } from './engine/layoutRun'
+import type { LayoutRun as Run, RunSnapshot } from './engine/layoutRun'
 import Button from './kit/Button'
 import TextInput from './kit/TextInput'
 import { chooseValue, type Look } from './looks'
+import { mustWait, refusedAtStart } from './panelRelease'
 import { ChoiceSelect, LookSelect } from './StyleLooks'
 import {
   chooseIn,
@@ -88,10 +89,21 @@ interface Props {
    * itself: Chromium blurs a disabled element and focus falls to the body.
    */
   handback: RefObject<HTMLElement | null>
+  /**
+   * True from a run's end until the record it wrote has been read back
+   * (A5.5-22). A size committed in that beat waits for it, as a colour and a
+   * line option do: every draw carries the line options, and one drawn from
+   * the record before that run could put a line it hid back on the map
+   * (issue 399).
+   */
+  settling?: boolean
 }
 
 /** What the section is called, as the name of its region. */
 const NAME = 'Sizes'
+
+/** A redraw for sizes: this section's own kind of run. */
+const ownRun = (snapshot: RunSnapshot): boolean => snapshot.restyled
 
 export default function StyleFields({
   run,
@@ -100,8 +112,10 @@ export default function StyleFields({
   disabled = false,
   busyNow,
   handback,
+  settling = false,
 }: Props): JSX.Element {
-  const { state: runState, restyled } = useSnapshot(run)
+  const snapshot = useSnapshot(run)
+  const { state: runState, restyled } = snapshot
   const running = runState === 'running'
   // Something else is reading or rewriting the project's page. Nothing here
   // is disabled for it: a change made now waits and builds once the way is
@@ -123,8 +137,19 @@ export default function StyleFields({
   )
   // A figure committed and seen on screen is not lost to a screen that goes
   // inside the delay: the build is the project's, as a run is, and carries
-  // on without this view.
-  useEffect(() => () => schedule.flush(), [schedule])
+  // on without this view - if the way is clear as the screen goes. If it is
+  // not, the size is dropped rather than left waiting on a screen that is
+  // gone, whose last render's record would be drawn from long after a run
+  // had moved it on, and nothing arms the timer again (issue 399, as
+  // `useLineOptions` does).
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+      schedule.flush()
+    }
+  }, [schedule])
 
   // Whether this panel's own redraw is going, for the effect below to read
   // without being re-run when it ends: it must not reset the panel to a
@@ -163,24 +188,35 @@ export default function StyleFields({
   // rename, an export option - is a new `project.style` reference: acting on
   // that would snap back, and cancel, a size committed afterwards and waiting
   // for an export to let go of the page.
-  usePutBack(runState, restyled, () => {
+  //
+  // And at the moment a start of its own is refused after a stop of its own
+  // (`refusedAtStart`, issue 399), which `usePutBack` cannot see.
+  const backToRecord = (): void => {
     schedule.cancel()
     setView(viewOf(project.style))
-  })
+  }
+  usePutBack(runState, restyled, backToRecord)
 
   const commit = (next: ProjectStyle): void => {
     // `busy` is what the last render saw; the run's own state is what is
-    // true at this moment, and a run can start between the two.
+    // true at this moment, and a run can start between the two. A run that
+    // has moved on since this render wrote a record it has not read, and so
+    // has one whose record is still being read back (`settling`), so both
+    // wait too; and it is all asked before the size is compared with the
+    // record (issue 399).
     const step = nextStyleStep(
       next,
       project.style,
-      busy || run.snapshot.state === 'running' || busyNow?.() === true,
+      mustWait({ held: busy || settling, rendered: snapshot, run, busyNow }),
     )
     // A layout, a rebuild or an export is reading the page this would
     // rewrite. Wait rather than refuse: the same delay again, and again,
-    // until the way is clear.
-    if (step === 'wait') schedule(next)
-    else if (step === 'build') run.restyle(project, engine, next)
+    // until the way is clear; never on a screen that has gone.
+    if (step === 'wait') {
+      if (mounted.current) schedule(next)
+    } else if (step === 'build') {
+      if (refusedAtStart(run, ownRun, () => run.restyle(project, engine, next))) backToRecord()
+    }
   }
   useEffect(() => {
     commitRef.current = commit

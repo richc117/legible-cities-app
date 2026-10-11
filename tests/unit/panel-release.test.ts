@@ -12,7 +12,12 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { stoppedNow, type Seen } from '../../src/renderer/src/panelRelease'
+import {
+  mustWait,
+  refusedAtStart,
+  stoppedNow,
+  type Seen,
+} from '../../src/renderer/src/panelRelease'
 import { usePutBack } from '../../src/renderer/src/usePutBack'
 import type { RunState } from '../../src/shared/layout'
 
@@ -196,6 +201,257 @@ describe('the hook the panels put themselves back through', () => {
   })
 })
 
+// Issue 399: whether a cheap edit waits, asked before its own rule compares
+// the change with the record. Each case was watched failing with its own
+// clause taken out of `mustWait`.
+describe('whether a change must wait before it is compared', () => {
+  const at = (state: RunState): { state: RunState } => ({ state })
+  const runAt = (snapshot: { state: RunState }): { snapshot: { state: RunState } } => ({ snapshot })
+
+  it('does not wait when nothing holds the page and the run is as the render saw it', () => {
+    const rendered = at('done')
+    expect(mustWait({ held: false, rendered, run: runAt(rendered) })).toBe(false)
+    expect(mustWait({ held: false, rendered, run: runAt(rendered), busyNow: () => false })).toBe(
+      false,
+    )
+  })
+
+  it('waits for what the render saw holding the page or the record', () => {
+    // Mutation: `held` left out - an export, the read-back or a hand on a
+    // gesture would no longer hold a change.
+    const rendered = at('idle')
+    expect(mustWait({ held: true, rendered, run: runAt(rendered) })).toBe(true)
+  })
+
+  it('waits for a run going at this instant, though the render saw it idle', () => {
+    // Mutation: the run's own state left out. The snapshot object is the
+    // rendered one, so only the state can say it.
+    const rendered = { state: 'idle' as RunState }
+    const run = { snapshot: rendered }
+    rendered.state = 'running'
+    expect(mustWait({ held: false, rendered, run })).toBe(true)
+  })
+
+  it('waits for what only this instant can answer, an export begun since the render', () => {
+    // Mutation: `busyNow` left out.
+    const rendered = at('idle')
+    expect(mustWait({ held: false, rendered, run: runAt(rendered), busyNow: () => true })).toBe(
+      true,
+    )
+  })
+
+  it('waits for a run that has moved on since the render, whose record the render has not read', () => {
+    // Mutation: the snapshot's identity left out. The run ended in the gap
+    // between the render and this call: it is not running and nothing holds
+    // the page, but the record in hand is from before it.
+    expect(mustWait({ held: false, rendered: at('running'), run: runAt(at('done')) })).toBe(true)
+    expect(mustWait({ held: false, rendered: at('idle'), run: runAt(at('failed')) })).toBe(true)
+  })
+})
+
+describe('cell 02 tells a redraw whose record was refused from one that was not drawn', () => {
+  it('hands `unkept` to the stopped sentence', () => {
+    // Mutation: the eighth argument left out - the sentence would then say
+    // the map was not drawn when it was (issue 399).
+    const source = readFileSync(resolve(__dirname, '../../src/renderer/src/LayoutRun.tsx'), 'utf8')
+    expect(source).toMatch(
+      /stoppedSentence\(\s*state,\s*replaced,\s*rebuilt,\s*recoloured,\s*reordered,\s*restyled,\s*optioned,\s*unkept,?\s*\)/,
+    )
+  })
+})
+
+describe('the four cheap edits ask that one question', () => {
+  const read = (file: string): string =>
+    readFileSync(resolve(__dirname, '../../src/renderer/src', file), 'utf8')
+
+  // Where each control uses the answer: the call that decides its step. A
+  // regex that only found the question asked would pass a control that asked
+  // and then ignored it.
+  const ASK = String.raw`mustWait\(\{ held: busy \|\| settling, rendered: snapshot, run, busyNow \}\)`
+  const uses: Record<string, RegExp[]> = {
+    'LineColours.tsx': [
+      new RegExp(String.raw`const stillBusy = \(\): boolean =>\s+${ASK}`),
+      /released\(unbuilt\.current, next, paletteOf\(project\), stillBusy\(\)\)/,
+      /retried\(unbuilt\.current, paletteOf\(project\), stillBusy\(\)\)/,
+    ],
+    'LineOrder.tsx': [
+      new RegExp(String.raw`nextStep\(\s*next,\s*orderOf\(project\),\s*${ASK},?\s*\)`),
+    ],
+    'StyleFields.tsx': [
+      new RegExp(String.raw`nextStyleStep\(\s*next,\s*project\.style,\s*${ASK},?\s*\)`),
+    ],
+    'useLineOptions.ts': [
+      /const busy = mustWait\(\{ held: held \|\| live\.current !== null, rendered: snapshot, run, busyNow \}\)\s+const step = nextLinesStep\(next, project\.lines, busy\)/,
+    ],
+  }
+  for (const file of Object.keys(uses))
+    it(`${file} asks \`mustWait\` with the snapshot it rendered, and its answer decides the step`, () => {
+      // Mutation: a control keeping its own copy of the question, or asking
+      // it and not passing the answer on (issue 399).
+      const source = read(file)
+      expect(source).toMatch(/import \{ mustWait[^}]*\} from '\.\/panelRelease'/)
+      for (const use of uses[file]) expect(source).toMatch(use)
+      expect(source.includes("run.snapshot.state === 'running'"), 'and no copy of it').toBe(false)
+      expect(/snapshot\.state === 'running'/.test(source), 'and no other copy of it').toBe(false)
+    })
+})
+
+describe('every cheap edit waits for the read-back of a finished run’s record', () => {
+  // Issue 399: a draw in the beat after a run finishes, before the record it
+  // wrote has been read, is drawn from the record before it, and every draw
+  // carries the line options - a line that run hid would be drawn again.
+  // The colours and the options waited for `settling` already; the order and
+  // the sizes now do. Read from the source, since nothing in this suite
+  // renders a panel to a DOM; `tests/unit/line-options-hook.test.tsx` holds
+  // the options' hold by rendering the hook.
+  const read = (file: string): string =>
+    readFileSync(resolve(__dirname, '../../src/renderer/src', file), 'utf8')
+
+  for (const file of ['LineColours.tsx', 'LineOrder.tsx', 'StyleFields.tsx'])
+    it(`${file} holds a change while the record is read back`, () => {
+      // Mutation: `settling` left out of what the panel holds for.
+      const source = read(file)
+      expect(source.includes('settling = false,'), 'takes it, false when not given').toBe(true)
+      expect(source.includes('mustWait({ held: busy || settling,'), 'and waits for it').toBe(true)
+    })
+
+  it('the options wait for it through what the colours section holds for them', () => {
+    expect(read('LineColours.tsx').includes('held: disabled || settling,')).toBe(true)
+  })
+
+  it('the cells hand it to every panel that takes it', () => {
+    // Mutation: an adapter that does not pass it, which leaves the panel's
+    // default, false, and the panel drawing from a record about to move.
+    const lines = read('notebook/cells/LinesCell.tsx')
+    expect(lines.match(/settling=\{settling\}/g), 'the colours and the order').toHaveLength(2)
+    expect(read('notebook/cells/StyleCell.tsx').match(/settling=\{settling\}/g)).toHaveLength(1)
+  })
+})
+
+describe('a change waiting when the screen goes is dropped, and nothing waits again', () => {
+  // Issue 399. The sizes flush their debounce as the screen goes, so a size
+  // seen on screen is drawn if the way is clear; when it is not, the flush
+  // asked to wait again and armed the timer after the screen had gone, to
+  // draw later from the record that screen last saw. They now do what the
+  // options' hook does, which `tests/unit/line-options-hook.test.tsx` holds
+  // by rendering it; this holds that the sizes keep the same two lines,
+  // since nothing in this suite renders a panel to a DOM. The order and the
+  // colours cancel what is waiting as they go, and arm nothing.
+  const read = (file: string): string =>
+    readFileSync(resolve(__dirname, '../../src/renderer/src', file), 'utf8')
+
+  for (const file of ['StyleFields.tsx', 'useLineOptions.ts'])
+    it(`${file} marks itself gone before it flushes, and waits only while it is there`, () => {
+      // Mutation: the wait re-armed whatever the screen, as the sizes did.
+      const source = read(file)
+      expect(source, 'set again when the effect runs, as StrictMode runs it twice').toMatch(
+        /mounted\.current = true\s+return \(\) => \{\s+mounted\.current = false\s+schedule\.flush\(\)/,
+      )
+      expect(source).toMatch(/if \(step === 'wait'\) \{\s+if \(mounted\.current\) schedule\(next\)/)
+    })
+
+  it('the order cancels what is waiting as it goes, and the colours clear their retry', () => {
+    expect(read('LineOrder.tsx')).toContain('useEffect(() => () => schedule.cancel(), [schedule])')
+    expect(read('LineColours.tsx')).toMatch(
+      /\(\) => \(\) => \{\s+if \(retry\.current !== null\) clearTimeout\(retry\.current\)/,
+    )
+  })
+})
+
+// Issue 399: a start refused at once after a stop of the panel's own kind,
+// `failed` to `failed` with the kind unmoved, which `stoppedNow` cannot see.
+describe('a start refused at once, where the next render will not see it', () => {
+  type Snap = { state: RunState; own: boolean }
+  /** A run whose start moves it to `to`, or leaves it alone for null. */
+  const runFrom = (from: Snap) => {
+    const run = { snapshot: from }
+    const startTo = (to: Snap | null) => (): void => {
+      if (to !== null) run.snapshot = to
+    }
+    return { run, startTo }
+  }
+  const own = (snapshot: Snap): boolean => snapshot.own
+  const refused = (from: Snap, to: Snap | null): boolean => {
+    const { run, startTo } = runFrom(from)
+    return refusedAtStart(run, own, startTo(to))
+  }
+
+  it('is the panel’s own redraw failed, then its own start refused', () => {
+    // A colours redraw failed when the engine went; a colour chosen while it
+    // restarts is refused at its start. Mutation: `refusedAtStart` answering
+    // false (the panels as they were) - the colour would stay on screen,
+    // neither drawn nor written.
+    expect(refused({ state: 'failed', own: true }, { state: 'failed', own: true })).toBe(true)
+  })
+
+  it('is nothing for a refusal the next render sees, so nothing is put back twice', () => {
+    // Mutation: the `stoppedNow` clause left out - each of these would be put
+    // back here and again by `usePutBack`.
+    for (const before of ['idle', 'done', 'cancelled'] as const)
+      expect(refused({ state: before, own: true }, { state: 'failed', own: true }), before).toBe(
+        false,
+      )
+    expect(
+      refused({ state: 'failed', own: false }, { state: 'failed', own: true }),
+      'after another kind',
+    ).toBe(false)
+  })
+
+  it('is nothing for a start that started, or one that did nothing', () => {
+    expect(refused({ state: 'failed', own: true }, { state: 'running', own: true })).toBe(false)
+    // Mutation: the identity check left out - a run left exactly as it was
+    // would read as refused.
+    expect(refused({ state: 'failed', own: true }, null)).toBe(false)
+  })
+
+  it('is nothing for a start that left a run of another kind', () => {
+    expect(refused({ state: 'failed', own: true }, { state: 'failed', own: false })).toBe(false)
+  })
+
+  it('starts the redraw it is given, once', () => {
+    const start = vi.fn()
+    refusedAtStart({ snapshot: { state: 'idle' as RunState } }, () => true, start)
+    expect(start).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('the four cheap edits go back to the record for it', () => {
+  const read = (file: string): string =>
+    readFileSync(resolve(__dirname, '../../src/renderer/src', file), 'utf8')
+  const starts = [
+    { file: 'LineColours.tsx', start: 'run.recolour(project, engine, next)' },
+    { file: 'useLineOptions.ts', start: 'run.redrawLines(project, engine, next)' },
+    { file: 'LineOrder.tsx', start: 'run.reorder(project, engine, next)' },
+    { file: 'StyleFields.tsx', start: 'run.restyle(project, engine, next)' },
+  ]
+  for (const { file, start } of starts)
+    it(`${file} starts its redraw through it, and goes back as for a stop`, () => {
+      // Mutation: the start made bare, as it was.
+      const source = read(file)
+      expect(source).toContain(`refusedAtStart(run, ownRun, () => ${start})`)
+      expect(source.split(start)).toHaveLength(2)
+      expect(source).toMatch(
+        /\bif \((?:step === 'build' && )?refusedAtStart\(run, ownRun, \(\) => [^)]*\)\)\)?\s*backToRecord\(\)/,
+      )
+      expect(source, 'taken as it is, not negated').not.toMatch(/!refusedAtStart/)
+    })
+
+  it('each knows its own kind of run as `usePutBack` is told it', () => {
+    expect(read('LineColours.tsx')).toContain(
+      'const ownRun = (snapshot: RunSnapshot): boolean => snapshot.recoloured && !snapshot.optioned',
+    )
+    expect(read('useLineOptions.ts')).toContain(
+      'const ownRun = (snapshot: RunSnapshot): boolean => snapshot.optioned',
+    )
+    expect(read('LineOrder.tsx')).toContain(
+      'const ownRun = (snapshot: RunSnapshot): boolean => snapshot.reordered',
+    )
+    expect(read('StyleFields.tsx')).toContain(
+      'const ownRun = (snapshot: RunSnapshot): boolean => snapshot.restyled',
+    )
+  })
+})
+
 describe('a redraw for line options belongs to the options and not to the colours', () => {
   const read = (file: string): string =>
     readFileSync(resolve(__dirname, '../../src/renderer/src', file), 'utf8')
@@ -204,7 +460,9 @@ describe('a redraw for line options belongs to the options and not to the colour
     // Mutation: either side reading `recoloured` alone - a stopped options
     // redraw would drop a colour held until it ended, and a stopped colours
     // redraw a waiting option (issue 394).
-    expect(read('useLineOptions.ts').includes('usePutBack(runState, optioned, () => {')).toBe(true)
+    expect(read('useLineOptions.ts').includes('usePutBack(runState, optioned, backToRecord)')).toBe(
+      true,
+    )
     expect(read('LineColours.tsx').includes('snapshot.recoloured && !optioned')).toBe(true)
   })
 })
@@ -222,7 +480,9 @@ describe('the three panels share the one shape', () => {
       expect(source.includes("import { usePutBack } from './usePutBack'"), 'imports the hook').toBe(
         true,
       )
-      expect(source.includes(`usePutBack(runState, ${own}, () => {`), 'and calls it').toBe(true)
+      expect(source.includes(`usePutBack(runState, ${own}, backToRecord)`), 'and calls it').toBe(
+        true,
+      )
     })
 
     it(`${file} keeps no reading of the run's state of its own for this`, () => {

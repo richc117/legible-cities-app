@@ -37,7 +37,9 @@ import {
   defaultsFor,
   exportTablesFor,
   forgetExportTables,
+  keepableLines,
   offeredCorners,
+  plannedChoice,
   playedBy,
   plays,
   presetWords,
@@ -232,9 +234,17 @@ export default function ExportTab({
   }, [ready, project.feed, inspect])
   const mode = project.built === null ? project.mode : project.built.mode
   const agency = project.built === null ? project.agency : project.built.agency
+  // A line hidden in cell 05 is not offered (issue 399): the page has no
+  // such line to keep, and keeping only hidden lines would hide them all.
   const lines = useMemo(
-    () => (inspection === null ? [] : linesOf(inspection, { mode, agency }).map((l) => l.label)),
-    [inspection, mode, agency],
+    () =>
+      inspection === null
+        ? []
+        : keepableLines(
+            linesOf(inspection, { mode, agency }).map((l) => l.label),
+            project.lines,
+          ),
+    [inspection, mode, agency, project.lines],
   )
 
   const { choice, dropped } = useMemo(
@@ -266,7 +276,11 @@ export default function ExportTab({
   const played =
     preset && tables.status === 'ready' ? playedBy(choice, preset, tables.tables) : undefined
   const opening = played === undefined ? 'none' : openingOf(choice)
-  const key = keyOf(choice, project)
+  // What the preview and the export are planned from: the choice, less any
+  // line hidden in cell 05 among the lines to keep, which the stored choice
+  // keeps for a line shown again (issue 399).
+  const asked = useMemo(() => plannedChoice(choice, project.lines), [choice, project.lines])
+  const key = keyOf(asked, project)
   const refused = refusal !== null && refusal.key === key
 
   // The drafts of the two typed fields: written to the choice when they are
@@ -354,9 +368,9 @@ export default function ExportTab({
   // carries the choice, the theme, the day and the layout, and `made` a
   // layout laid out again under the same id. Read through a ref, so the
   // effect's dependencies are exactly those.
-  const choiceRef = useRef(choice)
+  const choiceRef = useRef(asked)
   useEffect(() => {
-    choiceRef.current = choice
+    choiceRef.current = asked
   })
   const made = project.made
   useEffect(() => {
@@ -761,7 +775,7 @@ export default function ExportTab({
             <fieldset className="export-lines" disabled={locked}>
               <legend>Lines to keep</legend>
               <p className="message">None chosen draws every line.</p>
-              {lines.length === 0 && (
+              {inspection === null && (
                 <p className="hint">The lines are read from the feed once the engine answers.</p>
               )}
               {lines.map((label) => (
@@ -946,7 +960,7 @@ export default function ExportTab({
           run={run}
           project={project}
           engine={engine}
-          choice={choice}
+          choice={asked}
           disabled={layingOut || refused || tables.status !== 'ready'}
         />
       )}

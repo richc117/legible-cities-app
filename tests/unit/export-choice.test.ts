@@ -3,6 +3,8 @@
 // does to the choice, and the preview's planning - once when the changes
 // stop, and never with an answer older than the newest question.
 
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   byPlatform,
@@ -13,8 +15,10 @@ import {
   defaultsFor,
   exportTablesFor,
   forgetExportTables,
+  keepableLines,
   offeredCorners,
   offeredOf,
+  plannedChoice,
   plays,
   presetWords,
   previewCaption,
@@ -213,6 +217,63 @@ describe('the choice', () => {
       }),
     ).toBe('h')
     expect(refusalWords({ ok: false, error: { code: -32000, message: 'm' } })).toBe('m')
+  })
+})
+
+// Issue 399: a line hidden in cell 05 is not one the export's page draws.
+// The engine refuses no label in `lines`, and the page keeps the lines named
+// and hides every other line it draws (`present.js` `setRoutes` at v0.16.1),
+// so a choice naming only hidden lines would export no lines at all.
+describe('the lines to keep, beside the lines cell 05 hides', () => {
+  const hiding = { B: { hidden: true }, C: { hidden: false, name: 'Crosstown' } }
+
+  it('offers every line that is not hidden, in the order it was given', () => {
+    // Mutation: hidden lines offered, as they were.
+    expect(keepableLines(['A', 'B', 'C', 'D'], hiding)).toEqual(['A', 'C', 'D'])
+    expect(keepableLines(['A', 'B'], undefined), 'a project that hides none').toEqual(['A', 'B'])
+  })
+
+  it('plans without a hidden line kept, and leaves the stored choice alone', () => {
+    // Mutation: the choice sent as stored - `B` would reach `export.plan`.
+    const stored: ExportChoice = { preset: 'instagram-reel', options: { lines: ['A', 'B'] } }
+    const planned = plannedChoice(stored, hiding)
+    expect(planned.options.lines).toEqual(['A'])
+    expect(stored.options.lines, 'kept for when the line is shown again').toEqual(['A', 'B'])
+  })
+
+  it('plans no lines at all for a choice whose every line is hidden, which draws every line', () => {
+    // Mutation: an empty list sent - the page would hide every line it has.
+    const planned = plannedChoice({ preset: 'instagram-reel', options: { lines: ['B'] } }, hiding)
+    expect(planned.options).not.toHaveProperty('lines')
+  })
+
+  it('is the same choice when nothing kept is hidden, so the preview is not planned again', () => {
+    const none: ExportChoice = { preset: 'instagram-reel', options: {} }
+    const shown: ExportChoice = { preset: 'instagram-reel', options: { lines: ['A', 'C'] } }
+    expect(plannedChoice(none, hiding)).toBe(none)
+    expect(plannedChoice(shown, hiding)).toBe(shown)
+    expect(plannedChoice(shown, undefined)).toBe(shown)
+  })
+
+  it('is what cell 06 offers, plans and exports from', () => {
+    // Read from the source, since nothing in this suite renders the cell.
+    // Mutation: the export or the preview handed the stored choice.
+    const source = readFileSync(resolve(__dirname, '../../src/renderer/src/ExportTab.tsx'), 'utf8')
+    expect(source).toContain('const asked = useMemo(() => plannedChoice(choice, project.lines),')
+    expect(source).toContain('const key = keyOf(asked, project)')
+    expect(source).toContain('choiceRef.current = asked')
+    expect(source).toMatch(
+      /<ExportRunView\s+run=\{run\}\s+project=\{project\}\s+engine=\{engine\}\s+choice=\{asked\}/,
+    )
+    expect(source).toMatch(/keepableLines\(\s*linesOf\(inspection, \{ mode, agency \}\)/)
+  })
+
+  it('keeps a hidden line a person kept when another is turned on or off', () => {
+    // The list offers no hidden line, so a kept one is outside it and stays.
+    expect(toggledLines(keepableLines(['A', 'B', 'C'], hiding), ['B'], 'A', true)).toEqual([
+      'A',
+      'B',
+    ])
   })
 })
 

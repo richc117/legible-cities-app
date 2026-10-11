@@ -23,6 +23,7 @@ import {
   restyledSentence,
   stoppedSentence,
 } from '../../src/renderer/src/LayoutRun'
+import { refusedAtStart, stoppedNow } from '../../src/renderer/src/panelRelease'
 import { cellOfRun } from '../../src/renderer/src/runGraph'
 import { LAYOUT_STAGES } from '../../src/shared/layout'
 import { ERROR_CODES, type EngineState } from '../../src/shared/engine'
@@ -1773,6 +1774,198 @@ describe('redrawLines', () => {
   })
 })
 
+// Issue 399: what `refusedAtStart` rests on, against the run itself. A
+// redraw that failed, then the same kind refused at its start because the
+// engine is restarting: `failed` to `failed` with the kind unmoved, which
+// `stoppedNow` does not see and `refusedAtStart` must.
+describe('a redraw refused at its start after one of its own kind failed', () => {
+  const stored = { layout: LAYOUT, date: '2026-09-15', service: WINDOW }
+  type Start = (run: LayoutRun, record: ProjectRecord, engine: EngineState | null) => void
+  const kinds: Array<{ name: string; start: Start; own: (s: LayoutRun['snapshot']) => boolean }> = [
+    {
+      name: 'recolour',
+      start: (run, record, engine) =>
+        run.recolour(record, engine, { colors: { A: '#ff0000' }, defaultColor: '#00ff00' }),
+      own: (s) => s.recoloured && !s.optioned,
+    },
+    {
+      name: 'redrawLines',
+      start: (run, record, engine) => run.redrawLines(record, engine, { B: { hidden: true } }),
+      own: (s) => s.optioned,
+    },
+    {
+      name: 'reorder',
+      start: (run, record, engine) => run.reorder(record, engine, ['B', 'A']),
+      own: (s) => s.reordered,
+    },
+    {
+      name: 'restyle',
+      start: (run, record, engine) => run.restyle(record, engine, { lineWidth: 12 }),
+      own: (s) => s.restyled,
+    },
+  ]
+  for (const { name, start, own } of kinds)
+    it(`${name}: refused after its own failure is seen only by refusedAtStart`, async () => {
+      // Mutation: `refusedAtStart` answering false - the panels as they were.
+      const { run, calls, record } = setup(stored)
+      start(run, record, READY)
+      await tick()
+      calls[0].reject({ code: -32000, message: 'the engine went away' })
+      await tick()
+      const before = run.snapshot
+      expect(before.state).toBe('failed')
+      expect(refusedAtStart(run, own, () => start(run, record, null))).toBe(true)
+      expect(calls, 'nothing was sent for the refused start').toHaveLength(1)
+      const seen = (snapshot: LayoutRun['snapshot']) => ({
+        state: snapshot.state,
+        own: own(snapshot),
+      })
+      expect(stoppedNow(seen(before), seen(run.snapshot)), 'which the next render cannot see').toBe(
+        false,
+      )
+    })
+})
+
+// Issue 399: a redraw whose map was drawn and whose record the store then
+// refused said the map was not drawn. It says what happened now.
+describe('a redraw drawn and then not kept', () => {
+  const stored = { layout: LAYOUT, date: '2026-09-15', service: WINDOW }
+  type Setup = ReturnType<typeof setup>
+  const kinds: Array<{
+    name: string
+    start: (run: LayoutRun, record: ProjectRecord, engine: EngineState | null) => void
+    refuse: (setup: Setup) => void
+    words: RegExp
+  }> = [
+    {
+      name: 'recolour',
+      start: (run, record, engine) =>
+        run.recolour(record, engine, { colors: { A: '#ff0000' }, defaultColor: '#00ff00' }),
+      refuse: ({ completeColors }) => completeColors.mockRejectedValueOnce(new Error('refused')),
+      words:
+        /^The map was drawn in those colours, but the project could not keep them\. Nothing was written: it keeps the colours it had/,
+    },
+    {
+      name: 'redrawLines',
+      start: (run, record, engine) => run.redrawLines(record, engine, { B: { hidden: true } }),
+      refuse: ({ completeLines }) => completeLines.mockRejectedValueOnce(new Error('refused')),
+      words:
+        /^The map was drawn with those line options, but the project could not keep them\. Nothing was written: it keeps the line options it had/,
+    },
+    {
+      name: 'reorder',
+      start: (run, record, engine) => run.reorder(record, engine, ['B', 'A']),
+      refuse: ({ completeOrder }) => completeOrder.mockRejectedValueOnce(new Error('refused')),
+      words:
+        /^The map was drawn in that order, but the project could not keep it\. Nothing was written: it keeps the order it had/,
+    },
+    {
+      name: 'restyle',
+      start: (run, record, engine) => run.restyle(record, engine, { lineWidth: 12 }),
+      refuse: ({ completeStyle }) => completeStyle.mockRejectedValueOnce(new Error('refused')),
+      words:
+        /^The map was drawn in those sizes, but the project could not keep them\. Nothing was written: it keeps the sizes it had/,
+    },
+    {
+      name: 'rebuild',
+      start: (run, record, engine) => run.rebuild(record, engine, '2026-09-12'),
+      refuse: ({ completeRebuild }) =>
+        completeRebuild.mockRejectedValueOnce(
+          new Error('the feed covers 2026-01-01 to 2026-12-31'),
+        ),
+      words:
+        /^The map was drawn for that day, but the project could not keep it\. Nothing was written: it keeps its day/,
+    },
+  ]
+  const sentence = (snapshot: LayoutRun['snapshot']): string =>
+    stoppedSentence(
+      snapshot.state,
+      snapshot.replaced,
+      snapshot.rebuilt,
+      snapshot.recoloured,
+      snapshot.reordered,
+      snapshot.restyled,
+      snapshot.optioned,
+      snapshot.unkept,
+    )
+
+  for (const { name, start, refuse, words } of kinds) {
+    it(`${name}: a write refused after the draw says the map was drawn and not kept`, async () => {
+      // Mutation: `#failed` not told the map was drawn - the sentence would
+      // say the map was not drawn, which is false.
+      const made = setup(stored)
+      refuse(made)
+      start(made.run, made.record, READY)
+      await tick()
+      made.calls[0].resolve({ files: {} })
+      await tick()
+      expect(made.run.snapshot).toMatchObject({ state: 'failed', unkept: true })
+      expect(sentence(made.run.snapshot)).toMatch(words)
+      expect(sentence(made.run.snapshot)).toMatch(/Nothing was written/)
+      expect(sentence(made.run.snapshot)).not.toMatch(/was not drawn/)
+    })
+
+    it(`${name}: a draw that failed still says the map was not drawn`, async () => {
+      // Mutation: `unkept` set for any failure of a redraw.
+      const made = setup(stored)
+      start(made.run, made.record, READY)
+      await tick()
+      made.calls[0].reject({ code: -32000, message: 'the stand-in draws nothing' })
+      await tick()
+      expect(made.run.snapshot).toMatchObject({ state: 'failed', unkept: false })
+      expect(sentence(made.run.snapshot)).toMatch(/was not drawn/)
+    })
+  }
+
+  it('is cleared by the next start, refused or not', async () => {
+    // Mutation: `#begin` not clearing it - a start refused while the engine
+    // restarts would say the map had been drawn.
+    const made = setup(stored)
+    made.completeColors.mockRejectedValueOnce(new Error('refused'))
+    made.run.recolour(made.record, READY, { colors: { A: '#ff0000' }, defaultColor: '#00ff00' })
+    await tick()
+    made.calls[0].resolve({ files: {} })
+    await tick()
+    expect(made.run.snapshot.unkept).toBe(true)
+    made.run.recolour(made.record, null, { colors: { A: '#00ff00' }, defaultColor: '#00ff00' })
+    expect(made.run.snapshot).toMatchObject({ state: 'failed', unkept: false })
+    made.run.recolour(made.record, READY, { colors: { A: '#00ff00' }, defaultColor: '#00ff00' })
+    expect(made.run.snapshot).toMatchObject({ state: 'running', unkept: false })
+  })
+
+  it('is cleared by a refusal for a project with no layout', async () => {
+    // Mutation: a refusal for a missing layout not clearing it.
+    const made = setup(stored)
+    made.completeOrder.mockRejectedValueOnce(new Error('refused'))
+    made.run.reorder(made.record, READY, ['B', 'A'])
+    await tick()
+    made.calls[0].resolve({ files: {} })
+    await tick()
+    expect(made.run.snapshot.unkept).toBe(true)
+    made.run.reorder({ ...made.record, layout: null }, READY, ['B', 'A'])
+    expect(made.run.snapshot).toMatchObject({ state: 'failed', unkept: false })
+  })
+
+  it('leaves a layout run’s sentence as it was, which was already true', async () => {
+    // A layout run whose map was drawn and whose record was refused: nothing
+    // was saved, and the project is as it was.
+    const { run, calls, complete, begin } = setup()
+    complete.mockRejectedValueOnce(new Error('the project could not be written'))
+    begin()
+    await laidOut(calls)
+    calls[2].resolve(MAP)
+    await tick()
+    expect(run.snapshot).toMatchObject({ state: 'failed', unkept: false })
+    expect(sentence(run.snapshot)).toBe('Nothing was saved. The project is as it was.')
+  })
+
+  it('says nothing of its own for a cancel, which never reaches the write', () => {
+    expect(stoppedSentence('cancelled', false, false, true, false, false, false, true)).toMatch(
+      /^The redraw was cancelled/,
+    )
+  })
+})
+
 // The inspector's view of a run (A1-03, specs/024-jobs): one job per
 // attempt, derived from the snapshot, so the two can never disagree.
 describe('the run as a job', () => {
@@ -1903,6 +2096,9 @@ describe('the run as a job', () => {
         // Added by issue 350 on purpose: the run is a redraw for sizes, and
         // belongs to cell 04.
         'restyled',
+        // Added by issue 399 on purpose: a redraw whose map was drawn and
+        // whose record was refused, so cell 02 does not say it was not drawn.
+        'unkept',
         'day',
         'report',
         // Added by issue 178 on purpose, not by the jobs: where the feed's

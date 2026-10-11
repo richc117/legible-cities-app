@@ -640,3 +640,40 @@ test('every control is named for its line, and focus follows the line that moved
     await expect(down).toBeFocused()
   })
 })
+
+test('a move undone while its build runs is drawn once that build has written', async () => {
+  // Issue 399. A moved down, and moved back up while the build of the move
+  // runs: the move back equals the record still on disk, which that build
+  // is about to change. It waits, and is drawn once the build has written.
+  // Written, not run in the lane; the coordinator's mutation: `order.ts`
+  // `nextStep` comparing before it waits - the move back is dropped, the
+  // build writes B first, and the list follows the record back to it.
+  const engineHome = home({ progress_delay_ms: 300 })
+  await withApp(engineHome, async (page) => {
+    await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
+    const panel = panelOf(page)
+    const before = received(engineHome, 'map.build').length
+
+    await panel.getByRole('button', { name: 'Move line A down' }).click()
+    await expect
+      .poll(() => received(engineHome, 'map.build').length, { timeout: 15_000 })
+      .toBe(before + 1)
+
+    // The build of the move is running: A goes back to the top, which is
+    // the engine's own order, and the move back says it is waiting.
+    await panel.getByRole('button', { name: 'Move line A up' }).click()
+    await expect(rowsOf(page).nth(0)).toContainText('A')
+    await expect(panel.getByRole('status')).toContainText('Waiting for the map to be free')
+
+    await expect
+      .poll(() => received(engineHome, 'map.build').length, { timeout: 30_000 })
+      .toBe(before + 2)
+    expect(
+      received(engineHome, 'map.build')[before + 1],
+      'the second build is the engine’s own order',
+    ).not.toContain('line_order')
+    await expect.poll(() => readRecord(engineHome).lineOrder, { timeout: 30_000 }).toEqual([])
+    await expect(rowsOf(page).nth(0)).toContainText('A')
+    await expect(rowsOf(page).nth(1)).toContainText('B')
+  })
+})

@@ -8,8 +8,9 @@ import {
 } from '../../shared/project'
 import { REDRAW_DELAY } from './colours'
 import { debounce } from './debounce'
-import type { LayoutRun as Run } from './engine/layoutRun'
+import type { LayoutRun as Run, RunSnapshot } from './engine/layoutRun'
 import { linesWith, nextLinesStep } from './lineOptions'
+import { mustWait, refusedAtStart } from './panelRelease'
 import { usePutBack } from './usePutBack'
 import { useSnapshot } from './useSnapshot'
 
@@ -35,6 +36,9 @@ import { useSnapshot } from './useSnapshot'
 // It is a hook of its own, beside the section, because the colours build on
 // a gesture's release and never on a quiet interval, and the section's own
 // file is held to that (`tests/unit/colours.test.ts`).
+
+/** A redraw for line options: the options' own kind of run (`optioned`). */
+const ownRun = (snapshot: RunSnapshot): boolean => snapshot.optioned
 
 export interface LineOptionsState {
   /** Every line's options as the rows show them: kept as the store keeps them. */
@@ -130,11 +134,14 @@ export function useLineOptions({
   // redraw is this hook's to put back for: a colours' redraw that stops
   // carries none of the options waiting here, which are drawn once the way is
   // clear (the run graph sees both as the colours' kind, `recoloured`).
-  usePutBack(runState, optioned, () => {
+  // And at the moment a start of its own is refused after a stop of its own
+  // (`refusedAtStart`, issue 399), which `usePutBack` cannot see.
+  const backToRecord = (): void => {
     schedule.cancel()
     live.current = null
     show(linesSent(project.lines))
-  })
+  }
+  usePutBack(runState, optioned, backToRecord)
 
   const commit = (next: ProjectLines): void => {
     // `held` and the record are what the last render saw. The run's own
@@ -144,18 +151,15 @@ export function useLineOptions({
     // drawing now would draw the colours, the order and the sizes from
     // before it. A casing's colour under a hand waits for its release, as a
     // line's own colour does.
-    const busy =
-      held ||
-      live.current !== null ||
-      run.snapshot !== snapshot ||
-      run.snapshot.state === 'running' ||
-      busyNow?.() === true
+    const busy = mustWait({ held: held || live.current !== null, rendered: snapshot, run, busyNow })
     const step = nextLinesStep(next, project.lines, busy)
     // Something holds the page: wait rather than refuse, the same delay
     // again, until the way is clear; never on a screen that has gone.
     if (step === 'wait') {
       if (mounted.current) schedule(next)
-    } else if (step === 'build') run.redrawLines(project, engine, next)
+    } else if (step === 'build') {
+      if (refusedAtStart(run, ownRun, () => run.redrawLines(project, engine, next))) backToRecord()
+    }
   }
   useEffect(() => {
     commitRef.current = commit

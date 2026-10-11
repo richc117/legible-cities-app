@@ -45,7 +45,7 @@ export function styleSummary(project: Pick<ProjectRecord, 'theme' | 'style'>): s
 }
 
 export default function StyleCell({ cell, state, open, onToggle }: CellViewProps): JSX.Element {
-  const { project, engine, run, runSnapshot, exporter, setTheme, exporting, layingOut } =
+  const { project, engine, run, runSnapshot, exporter, setTheme, exporting, layingOut, settling } =
     useProject()
   const redrawing =
     runSnapshot.state === 'running' &&
@@ -92,6 +92,7 @@ export default function StyleCell({ cell, state, open, onToggle }: CellViewProps
               disabled={exporting}
               busyNow={busyNow}
               handback={heading}
+              settling={settling}
             />
           </>
         ))}

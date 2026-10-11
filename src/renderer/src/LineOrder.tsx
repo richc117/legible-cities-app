@@ -22,7 +22,7 @@ import {
 } from '../../shared/project'
 import { linesOf, REDRAW_DELAY, shownColour, type Line } from './colours'
 import { debounce } from './debounce'
-import type { LayoutRun as Run } from './engine/layoutRun'
+import type { LayoutRun as Run, RunSnapshot } from './engine/layoutRun'
 import Icon from './icons/Icon'
 import Button from './kit/Button'
 import {
@@ -37,6 +37,7 @@ import {
   sameOrder,
   standAside,
 } from './order'
+import { mustWait, refusedAtStart } from './panelRelease'
 import { usePutBack } from './usePutBack'
 import { useSnapshot } from './useSnapshot'
 
@@ -138,10 +139,21 @@ interface Props {
    * to the body - and a shape that cannot say it cannot ship it.
    */
   handback: RefObject<HTMLElement | null>
+  /**
+   * True from a run's end until the record it wrote has been read back
+   * (A5.5-22). A move made in that beat waits for it, as a colour and a line
+   * option do: every draw carries the line options, and one drawn from the
+   * record before that run could put a line it hid back on the map (issue
+   * 399).
+   */
+  settling?: boolean
 }
 
 /** What the section is called, as its heading and as the name of its region. */
 const NAME = 'Line order'
+
+/** A redraw for a line order: this section's own kind of run. */
+const ownRun = (snapshot: RunSnapshot): boolean => snapshot.reordered
 
 export default function LineOrder({
   run,
@@ -151,9 +163,11 @@ export default function LineOrder({
   disabled = false,
   busyNow,
   handback,
+  settling = false,
 }: Props): JSX.Element {
   const ready = engine?.state === 'ready'
-  const { state: runState, reordered } = useSnapshot(run)
+  const snapshot = useSnapshot(run)
+  const { state: runState, reordered } = snapshot
   const running = runState === 'running'
   // Nothing here disables itself because something else is going: a move
   // made now waits and draws once the way is clear, so no control goes out
@@ -248,11 +262,15 @@ export default function LineOrder({
   // `project.lineOrder` reference. Acting on that would cancel, and snap
   // back, a move made afterwards and waiting for an export to let go of the
   // page.
-  usePutBack(runState, reordered, () => {
+  //
+  // And at the moment a start of its own is refused after a stop of its own
+  // (`refusedAtStart`, issue 399), which `usePutBack` cannot see.
+  const backToRecord = (): void => {
     schedule.cancel()
     setWaiting(false)
     setOrder(project.lineOrder)
-  })
+  }
+  usePutBack(runState, reordered, backToRecord)
 
   const commit = (next: Order): void => {
     // The store's own rule, run here as well: a feed with more lines than a
@@ -269,11 +287,15 @@ export default function LineOrder({
     }
     // `busy` is what the last render saw; the run's own state is what is
     // true at this moment, and a run can start between the two. Without it
-    // an arrangement would be handed to a run that refuses it, silently.
+    // an arrangement would be handed to a run that refuses it, silently. A
+    // run that has moved on since this render wrote a record it has not
+    // read, and so has one whose record is still being read back
+    // (`settling`), so both wait too; and it is all asked before the move is
+    // compared with the record (issue 399).
     const step = nextStep(
       next,
       orderOf(project),
-      busy || run.snapshot.state === 'running' || busyNow?.() === true,
+      mustWait({ held: busy || settling, rendered: snapshot, run, busyNow }),
     )
     // A layout, a rebuild or an export is reading the page this would
     // rewrite. Wait rather than refuse: the same delay again, and again,
@@ -284,7 +306,8 @@ export default function LineOrder({
       schedule(next)
     } else {
       setWaiting(false)
-      if (step === 'build') run.reorder(project, engine, next)
+      if (step === 'build' && refusedAtStart(run, ownRun, () => run.reorder(project, engine, next)))
+        backToRecord()
     }
   }
   useEffect(() => {

@@ -122,6 +122,7 @@ export default function LinesCell({ cell, state, open, onToggle }: CellViewProps
               disabled={exporting}
               busyNow={busyNow}
               handback={heading}
+              settling={settling}
             />
           </>
         ))}

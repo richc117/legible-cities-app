@@ -31,7 +31,7 @@ import {
   type Page,
 } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
-import { cell, cellHeading, closeCell, openCell, withoutOpened } from '../support/project'
+import { cell, cellHeading, closeCell, openCell, panel, withoutOpened } from '../support/project'
 import { withWhatTheScreenSaid } from '../support/store-lines'
 
 const repoRoot = resolve(__dirname, '../..')
@@ -612,5 +612,48 @@ test('the app refuses a folder inside itself or around the engine data, under th
 
     // A refusal leaves the choice as it was and does not stop the next one.
     await expect(panel.getByText(/exports go to the app’s export folder/)).toBeVisible()
+  })
+})
+
+test('a line hidden in cell 05 is not offered to keep, and a choice keeping it plans without it', async () => {
+  // Issue 399. The engine refuses no label in `export.plan`'s `lines`, and
+  // the page it plans keeps the lines named and hides every other line it
+  // draws; a hidden line is not one it draws, so a choice keeping only it
+  // would export no lines at all. Written, not run in the lane; the
+  // coordinator's mutations: `keepableLines` offering hidden lines (B is
+  // still offered), and `plannedChoice` answering the stored choice (the
+  // preview's address keeps `lines=B`).
+  const h = home()
+  await withApp(h, async (page) => {
+    await laidOut(page, h)
+    await openExportTab(page)
+    const choices = exportPanel(page)
+    await choices.getByRole('checkbox', { name: 'B', exact: true }).check()
+    await expect
+      .poll(async () => (await frameQuery(page)).get('lines'), { timeout: 20_000 })
+      .toBe('B')
+
+    // B left off the map in cell 05.
+    await openCell(page, 'lines')
+    const colours = panel(page, 'Line colours')
+    const toggle = colours.getByRole('button', { name: /^Line options for line B,/ })
+    await expect(toggle).toBeVisible({ timeout: 15_000 })
+    await toggle.click()
+    await colours
+      .getByRole('group', { name: 'Line options for line B', exact: true })
+      .getByRole('switch', { name: 'Shown', exact: true })
+      .click()
+    await expect
+      .poll(() => readRecord(h).lines, { timeout: 30_000 })
+      .toEqual({ B: { hidden: true } })
+
+    await expect(choices.getByRole('checkbox', { name: 'B', exact: true })).toHaveCount(0)
+    await expect(choices.getByRole('checkbox', { name: 'A', exact: true })).toBeVisible()
+    // Planned without it, which is every line, as "None chosen draws every
+    // line." says; the stored choice keeps it for when B is shown again.
+    await expect
+      .poll(async () => (await frameQuery(page)).get('lines'), { timeout: 20_000 })
+      .toBeNull()
+    expect((readRecord(h).export as { options: { lines?: string[] } }).options.lines).toEqual(['B'])
   })
 })

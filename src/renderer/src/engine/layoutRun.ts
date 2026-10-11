@@ -88,6 +88,14 @@ export interface RunSnapshot {
   reordered: boolean
   /** Set when the run is a redraw for chosen sizes: the map call alone (issue 350). */
   restyled: boolean
+  /**
+   * Set when a redraw failed after its map had been drawn (issue 399): the
+   * engine wrote the page with what was chosen, and the record then refused
+   * to keep it - a label past the store's bound, the reset's flag. The
+   * project keeps what it had, and the next build draws the map from that;
+   * the page on disk is the one drawn. Cleared at every start.
+   */
+  unkept: boolean
   /** The day a rebuild drew for; null for a layout run. */
   day: string | null
   /** What the map call said about the map it drew; null until one has. */
@@ -373,6 +381,7 @@ const IDLE: RunSnapshot = {
   optioned: false,
   reordered: false,
   restyled: false,
+  unkept: false,
   day: null,
   report: null,
   download: null,
@@ -631,6 +640,7 @@ export class LayoutRun {
         reordered: false,
         restyled: false,
         day: date,
+        unkept: false,
         download: null,
         feedMissing: false,
         layout: null,
@@ -651,6 +661,9 @@ export class LayoutRun {
       return
 
     void (async () => {
+      // Whether the map was drawn before anything failed: a write refused
+      // after it leaves a page the record does not describe (`unkept`).
+      let drawn = false
       try {
         const { report, stations } = await this.#draw(
           project,
@@ -662,10 +675,11 @@ export class LayoutRun {
           project.lines,
         )
         if (this.#cancelled) return this.#stopped()
+        drawn = true
         await completeRebuild(project.id, { date, ...stationsOf(stations) })
         this.#finish({ changed: false, relaid: false }, report)
       } catch (reason) {
-        this.#failed(reason)
+        this.#failed(reason, drawn)
       }
     })()
   }
@@ -698,6 +712,7 @@ export class LayoutRun {
         reordered: false,
         restyled: false,
         day: date,
+        unkept: false,
         download: null,
         feedMissing: false,
         layout: null,
@@ -718,6 +733,9 @@ export class LayoutRun {
       return
 
     void (async () => {
+      // Whether the map was drawn before anything failed: a write refused
+      // after it leaves a page the record does not describe (`unkept`).
+      let drawn = false
       try {
         const { report, stations } = await this.#draw(
           project,
@@ -729,12 +747,13 @@ export class LayoutRun {
           project.lines,
         )
         if (this.#cancelled) return this.#stopped()
+        drawn = true
         await (stations === null
           ? completeColors(project.id, palette)
           : completeColors(project.id, palette, stations))
         this.#finish({ changed: false, relaid: false }, report)
       } catch (reason) {
-        this.#failed(reason)
+        this.#failed(reason, drawn)
       }
     })()
   }
@@ -765,6 +784,7 @@ export class LayoutRun {
         reordered: true,
         restyled: false,
         day: date,
+        unkept: false,
         download: null,
         feedMissing: false,
         layout: null,
@@ -785,6 +805,9 @@ export class LayoutRun {
       return
 
     void (async () => {
+      // Whether the map was drawn before anything failed: a write refused
+      // after it leaves a page the record does not describe (`unkept`).
+      let drawn = false
       try {
         const { report, stations } = await this.#draw(
           project,
@@ -796,12 +819,13 @@ export class LayoutRun {
           project.lines,
         )
         if (this.#cancelled) return this.#stopped()
+        drawn = true
         await (stations === null
           ? completeOrder(project.id, order)
           : completeOrder(project.id, order, stations))
         this.#finish({ changed: false, relaid: false }, report)
       } catch (reason) {
-        this.#failed(reason)
+        this.#failed(reason, drawn)
       }
     })()
   }
@@ -839,6 +863,7 @@ export class LayoutRun {
         reordered: false,
         restyled: true,
         day: date,
+        unkept: false,
         download: null,
         feedMissing: false,
         layout: null,
@@ -859,6 +884,9 @@ export class LayoutRun {
       return
 
     void (async () => {
+      // Whether the map was drawn before anything failed: a write refused
+      // after it leaves a page the record does not describe (`unkept`).
+      let drawn = false
       try {
         const { report, stations } = await this.#draw(
           project,
@@ -870,12 +898,13 @@ export class LayoutRun {
           project.lines,
         )
         if (this.#cancelled) return this.#stopped()
+        drawn = true
         await (stations === null
           ? completeStyle(project.id, style)
           : completeStyle(project.id, style, stations))
         this.#finish({ changed: false, relaid: false }, report)
       } catch (reason) {
-        this.#failed(reason)
+        this.#failed(reason, drawn)
       }
     })()
   }
@@ -913,6 +942,7 @@ export class LayoutRun {
         reordered: false,
         restyled: false,
         day: date,
+        unkept: false,
         download: null,
         feedMissing: false,
         layout: null,
@@ -933,6 +963,9 @@ export class LayoutRun {
       return
 
     void (async () => {
+      // Whether the map was drawn before anything failed: a write refused
+      // after it leaves a page the record does not describe (`unkept`).
+      let drawn = false
       try {
         const { report, stations } = await this.#draw(
           project,
@@ -944,12 +977,13 @@ export class LayoutRun {
           lines,
         )
         if (this.#cancelled) return this.#stopped()
+        drawn = true
         await (stations === null
           ? completeLines(project.id, lines)
           : completeLines(project.id, lines, stations))
         this.#finish({ changed: false, relaid: false }, report)
       } catch (reason) {
-        this.#failed(reason)
+        this.#failed(reason, drawn)
       }
     })()
   }
@@ -977,6 +1011,7 @@ export class LayoutRun {
             ? 'The engine is still starting. Try again in a moment.'
             : `The engine is not ready to run a layout: ${engine.state}.`,
         replaced: false,
+        unkept: false,
         // A failed start is not the last run's download (issue 178), nor
         // its layout (issue 382).
         download: null,
@@ -998,6 +1033,7 @@ export class LayoutRun {
       changed: false,
       relaid: false,
       replaced: false,
+      unkept: false,
       // The panel describes the build being started, so the last one's
       // figures go now rather than when this one answers.
       report: null,
@@ -1089,7 +1125,11 @@ export class LayoutRun {
     })
   }
 
-  #failed(reason: unknown): void {
+  /**
+   * A run that failed. `drawn` says the map call had answered before the
+   * failure, so what failed was the write after it (issue 399, `unkept`).
+   */
+  #failed(reason: unknown, drawn = false): void {
     this.#inFlight = null
     if (isEngineErrorShape(reason) && reason.code === ERROR_CODES.cancelled) {
       this.#end({
@@ -1105,6 +1145,7 @@ export class LayoutRun {
     this.#end({
       state: 'failed',
       error: sentenceFor(reason),
+      unkept: drawn,
       stages: this.#snapshot.stages.map((s) =>
         s.state === 'running' ? { ...s, state: 'failed' as const } : s,
       ),
