@@ -777,6 +777,22 @@ def load_control() -> dict:
         return {}
 
 
+def replace_file(src: Path, dst: Path) -> None:
+    """``src.replace(dst)``, tried again for a moment while Windows refuses it
+    with a PermissionError, as it does when a virus scanner or an indexer has
+    the file just written open. The engine's swap does the same (v0.16.2); a
+    stand-in that did not failed a unit test on a Windows runner with
+    "[WinError 5] Access is denied: 'user-feeds.json.writing'"."""
+    for tried in range(1, 6):
+        try:
+            src.replace(dst)
+            return
+        except PermissionError:
+            if tried == 5:
+                raise
+        time.sleep(0.1)
+
+
 def write(message: dict) -> None:
     body = json.dumps(message).encode("utf-8")
     with LOCK:
@@ -1602,7 +1618,7 @@ class Engine:
         with FEEDS_LOCK:
             staging = folder / "user-feeds.json.writing"
             staging.write_text(json.dumps(list(records.values()), indent=2))
-            staging.replace(folder / "user-feeds.json")
+            replace_file(staging, folder / "user-feeds.json")
 
     def preset_on_disk(self, key) -> bool:
         return (key not in FEEDS or key in self.control.get("presets_cached", list(FEEDS))
@@ -1735,7 +1751,7 @@ class Engine:
                 staging.unlink()
                 error(msg_id, -32000, f"{key!r} is already a feed; choose another key", "feed")
                 return
-            staging.replace(folder / f"{key}.zip")
+            replace_file(staging, folder / f"{key}.zip")
             record = {"key": key, "name": name, "city": "", "network": "", "url": url,
                       "mode": params.get("mode") or "all", "label_pattern": None,
                       "label_strip": None, "agency": params.get("agency"), "geographic": True,
