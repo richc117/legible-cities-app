@@ -82,6 +82,9 @@ writes before the app starts (every key optional):
                       octi tool, and waits octi_ms (default 2000) for a cancel; a cancel ends
                       the child and records its pid in fake-engine.octi-ended; its pid while it
                       runs is in fake-engine.octi.pid
+    forget_stall_ms   wait this long in a build's forgetting of itself, before its entry goes: a
+                      build that answers before it forgets itself leaves its stages drawable
+                      for a moment, as a starved thread would on a loaded machine (default 0)
 
 ``export.plan`` takes a list's ``card`` and ``draw_in`` as engine v0.15.0 does
 (its issue 44): with the engine's bounds and its sentences (``authored_beats``),
@@ -1140,6 +1143,9 @@ class Engine:
         """A build's own entry, forgotten: never another build's of the same
         layout that started since and holds the layout now, whose reports
         would otherwise find nothing to mark and end its thread unanswered."""
+        stall = self.control.get("forget_stall_ms", 0)
+        if stall and entry is not None and self.building.get(layout) is entry:
+            time.sleep(stall / 1000)
         with self.building_lock:
             if entry is not None and self.building.get(layout) is entry:
                 del self.building[layout]
@@ -1150,12 +1156,17 @@ class Engine:
         for i, stage in enumerate(("gtfs2graph", "topo", "loom", "octi"), start=1):
             if stage == "octi" and self.control.get("octi_child"):
                 if self.octi(msg_id):
+                    # Forgotten before the answer, as the engine unregisters a
+                    # build before it answers: a client that asks for a stage
+                    # the moment it reads the cancellation finds nothing.
+                    self.forget_build(layout, entry)
                     write({"jsonrpc": "2.0", "id": msg_id,
                            "error": {"code": -32800, "message": "Request Cancelled"}})
                     return
             else:
                 time.sleep(delay)
             if msg_id in self.cancelled:
+                self.forget_build(layout, entry)
                 write({"jsonrpc": "2.0", "id": msg_id,
                        "error": {"code": -32800, "message": "Request Cancelled"}})
                 return
@@ -1168,6 +1179,7 @@ class Engine:
                 hint = (f"{key}: the line graph is empty -- gtfs2graph -m {mode!r} "
                         "matched no routes. Check the feed's route_type values; agencies "
                         "disagree about which of tram/subway/rail their network is.")
+                self.forget_build(layout, entry)
                 write({"jsonrpc": "2.0", "id": msg_id,
                        "error": {"code": -32000, "message": hint,
                                  "data": {"kind": "engine", "hint": hint,

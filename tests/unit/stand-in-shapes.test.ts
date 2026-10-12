@@ -1665,6 +1665,97 @@ describe.skipIf(PYTHON === null)(`the stand-in engine draws a layout as it solve
   }, 30_000)
 })
 
+// ------------------------- a cancelled build is forgotten before its answer
+
+// A build forgets itself before it answers, however it ends: a client that asks
+// for a stage the moment it reads the cancellation finds nothing to draw, as it
+// does of the engine, which unregisters a build before the job's answer goes
+// out. The control stalls the forgetting, as a thread starved on a loaded
+// machine would be, so an answer written first is read by a client that asks at
+// once - on Windows in the CI of 12 Oct 2026 it was, and the test above failed
+// with "the stand-in drew a stage the engine refuses".
+describe.skipIf(PYTHON === null)(
+  `the stand-in engine forgets a build before it answers${WHY}`,
+  () => {
+    let home = ''
+    let sidecar: Sidecar
+
+    beforeAll(async () => {
+      home = mkdtempSync(join(tmpdir(), 'lc-forget-'))
+      writeFileSync(
+        join(home, 'fake-engine.json'),
+        JSON.stringify({ progress_delay_ms: 50, forget_stall_ms: 600 }),
+      )
+      sidecar = new Sidecar({
+        command: [PYTHON as string, '-m', 'schematic.serve'],
+        env: engineEnvironment({
+          config: { home, loomBin: null, loomCommit: null, ffmpeg: null },
+          base: { ...process.env, PYTHONPATH: FAKE_ENGINE },
+          development: true,
+        }),
+        pin: PIN,
+        log: () => {},
+        bounds: { handshakeMs: READY_MS, inactivityMs: READY_MS },
+      })
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(
+          () => reject(new Error('the stand-in never became ready')),
+          READY_MS,
+        )
+        sidecar.onState((s) => {
+          if (s.state === 'ready') {
+            clearTimeout(timer)
+            resolve()
+          }
+        })
+        sidecar.start()
+      })
+    }, READY_MS + 5_000)
+
+    afterAll(async () => {
+      await sidecar?.stop()
+      if (home !== '') rmSync(home, { recursive: true, force: true })
+    })
+
+    it('answers a cancelled build only after its stages are gone, so nothing is drawn at once', async () => {
+      // Mutation: the entry forgotten after the answer is written, as it was -
+      // the stage asked for the moment the cancellation is read is drawn.
+      const seen: Record<string, unknown>[] = []
+      sidecar.onNotification((n) => {
+        if (n.method === 'job/progress' && typeof n.params === 'object' && n.params !== null)
+          seen.push(n.params as Record<string, unknown>)
+      })
+      const build = sidecar.request(
+        'graph.build',
+        { key: 'la-metro-rail', mode: 'rail' },
+        { deadlineMs: READY_MS },
+      )
+      const deadline = Date.now() + 10_000
+      while (!seen.some((n) => n.id === build.id && n.stage === 'gtfs2graph')) {
+        if (Date.now() > deadline) throw new Error('the build never reported gtfs2graph')
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      }
+      const layout = seen.find((n) => n.id === build.id)?.layout as string
+      sidecar.cancel(build.id)
+      const ended = (await build.result.then(
+        () => null,
+        (e: unknown) => e,
+      )) as EngineError | null
+      expect(ended?.code).toBe(ERROR_CODES.cancelled)
+      const gone = (await sidecar
+        .request('render.stage', { key: 'la-metro-rail', layout, stage: 'gtfs2graph' })
+        .result.then(
+          () => null,
+          (e: unknown) => e,
+        )) as EngineError | null
+      expect(gone, 'a stage of a cancelled build is not drawn').not.toBeNull()
+      expect(gone?.code).toBe(-32000)
+      expect(gone?.data).toMatchObject({ kind: 'layout' })
+      expect(gone?.data).not.toHaveProperty('building')
+    }, 30_000)
+  },
+)
+
 // ------------------------------- two builds of one layout (issue 382)
 
 // Two projects on one feed lay out one layout, and the stand-in builds both at
