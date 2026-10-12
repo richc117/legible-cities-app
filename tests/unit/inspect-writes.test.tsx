@@ -19,6 +19,7 @@ import Inspect from '../../src/renderer/src/Inspect'
 import type { EngineState } from '../../src/shared/engine'
 import type { ProjectInputs, ProjectRecord } from '../../src/shared/project'
 import type { Inspection } from '../../src/shared/protocol'
+import { find, text } from '../support/element-tree'
 
 // React's client reads this to know it is driven by `act`.
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -105,29 +106,6 @@ function container(): Element {
     removeEventListener: () => undefined,
   } as unknown as Element
 }
-
-interface Element_ {
-  type: unknown
-  props: Record<string, unknown> & { children?: unknown }
-}
-
-/** Every element in a tree that `found` accepts, depth first. */
-function find(node: unknown, found: (element: Element_) => boolean): Element_[] {
-  if (Array.isArray(node)) return node.flatMap((child) => find(child, found))
-  if (node === null || typeof node !== 'object' || !('props' in node)) return []
-  const element = node as Element_
-  return [...(found(element) ? [element] : []), ...find(element.props.children, found)]
-}
-
-/** The text an element's children carry, as far as plain strings go. */
-const text = (node: unknown): string =>
-  typeof node === 'string'
-    ? node
-    : Array.isArray(node)
-      ? node.map(text).join('')
-      : node !== null && typeof node === 'object' && 'props' in node
-        ? text((node as Element_).props.children)
-        : ''
 
 /**
  * A store that keeps every write until `answerAll`, then writes them one at

@@ -2618,6 +2618,35 @@ describe('Run all with a write to the record on its way', () => {
     })
   })
 
+  it('a layout at the press that becomes a rebuild forgets the feed: a cancel then asks the registry nothing', async () => {
+    // A mode chosen, so the press's plan is a layout, and put back by the
+    // write on its way, so only the day is behind once it lands. A layout
+    // stopped before its first stage asks the registry whether its feed is
+    // on disk (issue 178); a rebuild never does. Mutation: the feed kept
+    // when the run becomes a rebuild (`this.#feedKey = null` dropped from
+    // `runAll`) - the stopped rebuild asks the registry about the feed.
+    const onDisk = vi.fn(async () => true)
+    const { run, calls, record } = setup(dayBehind({ mode: 'subway' }), READY, onDisk)
+    expect(runAllPlan(record, run.snapshot), 'the plan at the press').toEqual({ kind: 'layout' })
+    const write = held()
+    void run.writing(write.promise)
+    run.runAll(record, READY, runAllPlan)
+    expect(run.snapshot).toMatchObject({ state: 'running', rebuilt: false, day: null })
+    expect(run.job()).toMatchObject({ kind: 'layout', label: 'Layout run' })
+
+    write.answer({ ...record, mode: 'all' })
+    await tick()
+    expect(calls.map((c) => c.method)).toEqual(['map.build'])
+    expect(run.snapshot).toMatchObject({ state: 'running', rebuilt: true, day: '2026-09-12' })
+    expect(run.job()).toMatchObject({ kind: 'rebuild', label: 'Rebuild for 2026-09-12' })
+
+    run.cancel()
+    calls[0].resolve({ files: {} })
+    await tick()
+    expect(run.snapshot).toMatchObject({ state: 'cancelled', rebuilt: true, feedMissing: false })
+    expect(onDisk, 'the registry is not asked about a rebuild').not.toHaveBeenCalled()
+  })
+
   it('a write that leaves nothing to run puts the run back as it stood: nothing asked, no job ended', async () => {
     // A day chosen and then put back to the one the map shows, the second
     // write still on its way at the press. Mutation: a plan of none after
