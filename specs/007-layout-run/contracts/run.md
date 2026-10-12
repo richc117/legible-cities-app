@@ -3,6 +3,7 @@
 ## The sequence
 
 1. **Refuse early.** If the engine is not ready, the run does not start; the state's own sentence says why. If a run for this project is already in flight, the second is refused, not queued.
+1a. **Wait for the writes on their way** (issue 388, spec 033 FR-007). A field committed by leaving it for the press that starts the run (the tuning, the mode and operator, the day) is a write through the bridge still on its way. The screen hands each such write to the run as it sends it; a start or a rebuild made while one is on its way is `running` from the press, waits for the writes that were on their way at the press, and reads the store's answer to the last it took, or, where it took none, the record it was handed. With nothing on its way it reads the record handed in the same turn. A refused write is shown where it always was and does not stop the run.
 2. **The service day.** A project that has one uses it. A project that has none gets today, on the machine, resolved once; it is stored with the rest when the run completes, and never resolved again.
 3. **Ask for the layout.** `graph.build` with the project's feed key, and `force` for a re-layout; since issue 385, with the record's `tuning` in the engine's names where it holds one, and no `tuning` at all where it does not (spec 033). Four stages report as they finish. The answer carries the layout's id and meta, the stage summaries and the four paths.
 4. **Ask for the map.** `map.build` with the feed key, the layout's id, the service day, and the project's identifier as the output folder, which is where the app already serves a project's output from. Eight stages report; the first four are already finished and their repeats are ignored. The engine never lays out on the way to a map (ADR-033).
@@ -13,7 +14,7 @@ and only the map call produces a page.
 
 ## Cancelling
 
-`cancel()` on whichever request is in flight. The engine ends the
+`cancel()` ends the wait for the writes on their way (step 1a) when the run is still in it, and nothing is asked when those writes answer later; otherwise it acts on whichever request is in flight. The engine ends the
 layout-tool process it is waiting on and answers with its cancelled error.
 The run's state becomes `cancelled`, nothing is written, and the project
 keeps whatever it had.

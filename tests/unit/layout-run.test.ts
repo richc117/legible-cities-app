@@ -2401,10 +2401,24 @@ describe('a start with a write to the record on its way', () => {
     run.cancel()
     await tick()
     expect(run.snapshot.state).toBe('cancelled')
-    expect(stoppedSentence('cancelled', false)).toBe(
-      'The run was cancelled. The project is as it was.',
-    )
     write.answer({ ...record, mode: 'subway' })
+    await tick()
+    expect(calls, 'nothing was asked').toHaveLength(0)
+    expect(run.snapshot.state).toBe('cancelled')
+  })
+
+  it('a cancel ends a rebuild’s wait too, and map.build is not sent when the write answers after it', async () => {
+    // Mutation: `rebuild` not looking at the cancel after the wait - a
+    // cancelled rebuild would then draw the map and rewrite the page on disk.
+    const { run, calls, record } = setup({ layout: LAYOUT, service: WINDOW })
+    const write = held()
+    void run.writing(write.promise)
+    run.rebuild(record, READY, '2026-09-12')
+    expect(run.snapshot).toMatchObject({ state: 'running', rebuilt: true })
+    run.cancel()
+    await tick()
+    expect(run.snapshot.state).toBe('cancelled')
+    write.answer({ ...record, colors: { A: '#0072bc' } })
     await tick()
     expect(calls, 'nothing was asked').toHaveLength(0)
     expect(run.snapshot.state).toBe('cancelled')

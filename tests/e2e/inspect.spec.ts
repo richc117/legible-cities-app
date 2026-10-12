@@ -179,7 +179,9 @@ test('a feed with several operators offers the choice, filters the routes, and s
     )
     // The record is on disk before the screen holds it. Pressed in between,
     // the run once asked with SUB (#147); it now waits for the write and
-    // asks with what the write left (issue 388, held by the last test here).
+    // asks with what the write left (issue 388, held by the last test here),
+    // but for the beat between the store's answer and the screen rendering
+    // it, which is issue 407.
     await expect(page.getByRole('definition').filter({ hasText: /^none$/ })).toBeVisible()
     await page.getByRole('button', { name: /lay out/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })

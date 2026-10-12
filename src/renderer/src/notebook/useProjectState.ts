@@ -395,8 +395,10 @@ export function useProjectState(
   // a write still on its way as that press starts the run. The run waits for
   // it and reads the record it leaves, not the one this screen held at the
   // press; every start goes through the run, so Lay out, Lay out again,
-  // Re-layout, Run all and the rebuild for a day all do. The theme and the
-  // export's choice are fields no run reads, and are not handed over.
+  // Re-layout and the rebuild for a day all do. Run all does for the run it
+  // makes, but chooses which run from the record at the press, which is not
+  // yet the record the write leaves (issue 407). The theme and the export's
+  // choice are fields no run reads, and are not handed over.
   const setInputs = async (inputs: { mode: string; agency: string | null }): Promise<void> => {
     const record = await run.writing(window.api.projects.setInputs(id, inputs))
     setState((current) =>
