@@ -14,6 +14,8 @@
 // (`Pick<Page, 'evaluate'>`), so their own logic can be run in Node against
 // a stand-in page.
 
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { expect, type ElectronApplication, type Page } from '@playwright/test'
 
 /** What a wait needs of a page: to run a function in it. */
@@ -281,3 +283,60 @@ export function buildsFor(gaps: number[], delay: number): { exactlyOne: boolean;
   const long = gaps.filter((gap) => gap >= delay - TIMER_ROUNDING_MS).length
   return { exactlyOne: long === 0, most: 1 + long }
 }
+
+/** What `watchKeys` has recorded in the page. */
+export interface KeysSeen {
+  /** Each keydown the page heard, repeats included: when, in milliseconds on the page's own clock (`performance.now()`), and which key. */
+  downs: Array<{ at: number; key: string }>
+}
+
+/**
+ * Starts the page recording keydowns, and answers nothing. Like
+ * `recordPointer` it reaches for nothing outside itself, and it records in
+ * the capture phase on the window, so a stamp is never later than the
+ * start of the handler that the same keydown reaches (issue 380).
+ */
+export function recordKeys(win: Window = window): void {
+  const seen: KeysSeen = { downs: [] }
+  ;(win as unknown as { __keysSeen: KeysSeen }).__keysSeen = seen
+  win.addEventListener(
+    'keydown',
+    (event) => seen.downs.push({ at: performance.now(), key: (event as KeyboardEvent).key }),
+    true,
+  )
+}
+
+/** Start recording keydowns in the page. */
+export const watchKeys = (page: Evaluates): Promise<void> => page.evaluate(recordKeys as () => void)
+
+/** What the page has recorded of the keyboard since `watchKeys`. */
+export const keysSeenBy = (page: Evaluates): Promise<KeysSeen> =>
+  page.evaluate(() => (window as unknown as { __keysSeen: KeysSeen }).__keysSeen)
+
+/** What a page heard, `what`, and how far apart: "four presses heard 12, 30, 41 ms apart". */
+export const heardApart = (what: string, gaps: number[]): string =>
+  gaps.length === 0
+    ? `${what} heard once`
+    : `${what} heard ${gaps.map((gap) => Math.round(gap)).join(', ')} ms apart`
+
+/**
+ * The quiet interval in `source`, the text of `colours.ts`: the number
+ * `REDRAW_DELAY` is declared as. A spec may not import that module (it
+ * reaches components, and Playwright's loader cannot evaluate them), and a
+ * copy of the number in a spec is one that drifts, so the spec reads the
+ * app's own declaration instead. A declaration that is no longer a plain
+ * number is an error that says so, not a window of zero.
+ */
+export function redrawDelayIn(source: string): number {
+  const declared = /^export const REDRAW_DELAY\s*=\s*(\d[\d_]*)\s*$/m.exec(source)
+  if (declared === null) {
+    throw new Error(
+      'REDRAW_DELAY is no longer declared as `export const REDRAW_DELAY = <number>` in src/renderer/src/colours.ts; tests/support/steady.ts reads the window from that line',
+    )
+  }
+  return Number(declared[1].replace(/_/g, ''))
+}
+
+/** The app's `REDRAW_DELAY` in milliseconds, read from its source under `repoRoot`. */
+export const appRedrawDelay = (repoRoot: string): number =>
+  redrawDelayIn(readFileSync(join(repoRoot, 'src/renderer/src/colours.ts'), 'utf8'))

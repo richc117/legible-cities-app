@@ -33,11 +33,17 @@ import {
 } from '../support/project'
 import {
   afterFrames,
+  appRedrawDelay,
+  buildsFor,
+  gapsBetween,
+  heardApart,
+  keysSeenBy,
   notebookSettled,
   pointerHasReached,
   showIfHidden,
   steady,
   steadyText,
+  watchKeys,
   watchPointer,
 } from '../support/steady'
 
@@ -45,6 +51,14 @@ const repoRoot = resolve(__dirname, '../..')
 const PYTHON = findPython()
 
 test.skip(PYTHON === null, 'no python3 or python on the PATH to run the stand-in engine')
+
+/**
+ * The longest quiet interval the panels ever waited on: the app's own
+ * `REDRAW_DELAY` (`src/renderer/src/colours.ts`), read from its source,
+ * because a spec does not import that module (it reaches components) and a
+ * copy of the number is one that drifts (issue 380).
+ */
+const REDRAW_DELAY_MS = appRedrawDelay(repoRoot)
 
 function home(control: Record<string, unknown> = {}): string {
   const dir = mkdtempSync(join(tmpdir(), 'legible-cities-colours-'))
@@ -520,25 +534,86 @@ test('the hex field builds on its button and never on a keystroke', async () => 
   })
 })
 
+/**
+ * Holds `key` down for `repeats` keydowns, as Playwright's keyboard repeats
+ * a key that has not come up, and answers once the page has heard every one
+ * of them, with how far apart it heard them (issue 380). A call that has
+ * returned is not a keydown the page has handled and drawn, so what a test
+ * reads next is read after the page's own stamps say the last repeat came.
+ */
+async function holdKey(
+  page: Page,
+  key: string,
+  repeats: number,
+  what: string,
+): Promise<{ gaps: number[] }> {
+  const heardOf = async (): Promise<number[]> =>
+    (await keysSeenBy(page)).downs.filter((down) => down.key === key).map((down) => down.at)
+  const before = (await heardOf()).length
+  for (let i = 0; i < repeats; i++) await page.keyboard.down(key)
+  await expect
+    .poll(async () => (await heardOf()).length - before, {
+      timeout: 30_000,
+      message: `${what}: the page heard ${repeats} keydowns of the held ${key}`,
+    })
+    .toBe(repeats)
+  return { gaps: gapsBetween((await heardOf()).slice(before)) }
+}
+
+/**
+ * Skips the test, with a sentence naming the widest gap and the window,
+ * when the page heard a held key's repeats further apart than the window
+ * (issue 380; the decision issue 373 made for the drags, `buildsFor`).
+ *
+ * The window is the app's own `REDRAW_DELAY`, the longest quiet interval
+ * the panel ever had and the one the line order, the line options and the
+ * sizes still wait on. A colour has no interval on this path - a key ends
+ * nothing until it comes up (issue 262) - so the window is not a timer the
+ * run can lose to; it is the width of "held" that the title and the pause
+ * below (`LONGER_THAN_ANY_INTERVAL`) are written for. Repeats that far apart
+ * are not a key held on this runner, and a run that says so is a skip, not
+ * a pass for a hold that did not happen.
+ */
+function skipIfNotHeld(what: string, key: string, gaps: number[], windowMs: number): void {
+  if (buildsFor(gaps, windowMs).exactlyOne) return
+  const widest = Math.round(Math.max(...gaps))
+  const unproved = `${heardApart(`the held ${key}'s repeats were`, gaps)}; the widest, ${widest} ms, is not inside the ${windowMs} ms the panel's quiet interval was (REDRAW_DELAY), so the key was not held here and this run does not test that a hold is one gesture`
+  console.log(`${what}: ${unproved}`)
+  test.info().annotations.push({ type: 'slow runner', description: unproved })
+  test.skip(true, unproved)
+}
+
 test('a held arrow key is one gesture and one build, and each tap is a build of its own', async () => {
   // react-colorful sends one change per keydown, repeats included, and its
   // end - the one that builds - on the key's keyup. A held key is therefore
   // many colours and one build on its release; three taps are three.
   const engineHome = home({ progress_delay_ms: 50 })
-  await withApp(engineHome, async (page) => {
+  await withApp(engineHome, async (page, app) => {
     await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
+    // The field is read once it has held its text across two frames, and a
+    // window the page reports hidden draws none (issue 373).
+    await showIfHidden(app, page, 'a held arrow key')
     const panel = cell(page, 'lines')
     const drawnBefore = buildsOf(engineHome)
     await panel.getByRole('button', { name: 'Choose the colour of line A' }).click()
     const picker = panel.getByRole('group', { name: 'Colour for line A' })
     const hue = picker.getByRole('slider').last()
     const field = picker.getByLabel('Hex value')
+    await watchKeys(page)
 
-    // Held: the key goes down and repeats, and nothing has come up.
+    // Held: the key goes down and repeats, and nothing has come up. Its
+    // colour is read after the page has heard every repeat and the field has
+    // drawn the last of them: two of four repeats can be on the field for
+    // longer than a poll when the runner is starved (issue 380).
     await hue.focus()
-    for (let i = 0; i < 4; i++) await page.keyboard.down('ArrowRight')
+    const heldKey = await holdKey(page, 'ArrowRight', 4, 'a held arrow key')
+    skipIfNotHeld('a held arrow key', 'ArrowRight', heldKey.gaps, REDRAW_DELAY_MS)
     await expect(field, 'the field follows the held key').not.toHaveValue('#0072bc')
-    const held = await settledValue(field)
+    const held = await steadyText(
+      page,
+      () => field.inputValue(),
+      'the hex field once the held key had repeated four times',
+    )
     await page.waitForTimeout(LONGER_THAN_ANY_INTERVAL)
     expect(buildsOf(engineHome), 'a key held down builds nothing, however long it is held').toBe(
       drawnBefore,
@@ -574,8 +649,13 @@ test('a held arrow key is one gesture and one build, and each tap is a build of 
     // A panel that closes under a held key has not lost the colour the
     // person saw: the swatch is what they chose, and the map follows it.
     await hue.focus()
-    for (let i = 0; i < 2; i++) await page.keyboard.down('ArrowRight')
-    const seen = await settledValue(field)
+    const heldAgain = await holdKey(page, 'ArrowRight', 2, 'a key held under a closing panel')
+    skipIfNotHeld('a key held under a closing panel', 'ArrowRight', heldAgain.gaps, REDRAW_DELAY_MS)
+    const seen = await steadyText(
+      page,
+      () => field.inputValue(),
+      'the hex field once the held key had repeated twice',
+    )
     expect(seen, 'the held key moved the colour').not.toBe(colour)
     await panel.getByText(/^A line is drawn in the colour its feed publishes/).click()
     await expect(picker).toBeHidden()

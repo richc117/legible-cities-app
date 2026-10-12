@@ -15,6 +15,7 @@ import {
   expect,
   test,
   type ElectronApplication,
+  type Locator,
   type Page,
 } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
@@ -28,9 +29,11 @@ import {
   withoutOpened,
 } from '../support/project'
 import {
+  appRedrawDelay,
   boxNumbers,
   buildsFor,
   gapsBetween,
+  heardApart,
   notebookSettled,
   pointerSeenBy,
   showIfHidden,
@@ -42,6 +45,14 @@ const repoRoot = resolve(__dirname, '../..')
 const PYTHON = findPython()
 
 test.skip(PYTHON === null, 'no python3 or python on the PATH to run the stand-in engine')
+
+/**
+ * The quiet interval a line-order move waits for before it builds: the
+ * app's own `REDRAW_DELAY` (`src/renderer/src/colours.ts`), read from its
+ * source, because a spec does not import that module (it reaches
+ * components) and a copy of the number is one that drifts (issue 380).
+ */
+const REDRAW_DELAY_MS = appRedrawDelay(repoRoot)
 
 function home(control: Record<string, unknown> = {}): string {
   const dir = mkdtempSync(join(tmpdir(), 'legible-cities-order-'))
@@ -223,24 +234,106 @@ test('a move redraws the map once, is stored, and is there on the next open', as
   })
 })
 
+/** How long a press may take to land before the test says which press it was. */
+const PRESS_MS = 10_000
+
+/** How long the project may take to be laid out, before the test says it was that. */
+const LAY_OUT_MS = 30_000
+
+/**
+ * A wait with a deadline of its own and a name, for a call that has none
+ * (issue 380): the test's 60 s timeout names nothing, so a wait that hangs
+ * says only that the test ran out. The work is left to finish or fail
+ * behind the deadline; the app closes under it.
+ */
+async function within<T>(what: string, ms: number, work: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${what} did not finish within ${ms} ms`)), ms)
+  })
+  try {
+    return await Promise.race([work, late])
+  } finally {
+    clearTimeout(timer)
+    work.catch(() => undefined)
+  }
+}
+
+/** A press with a deadline of its own, so a press that never lands says which one it was. */
+async function pressed(button: Locator, what: string): Promise<void> {
+  try {
+    await button.click({ timeout: PRESS_MS })
+  } catch (error) {
+    const why = error instanceof Error ? error.message : String(error)
+    throw new Error(`${what} did not land within ${PRESS_MS} ms: ${why}`, { cause: error })
+  }
+}
+
 test('four presses in a row are one build', async () => {
   const engineHome = home()
   await withApp(engineHome, async (page) => {
-    await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
+    await within(
+      'the project being laid out',
+      LAY_OUT_MS,
+      laidOutProject(page, 'LA Metro Rail', 'Los Angeles'),
+    )
     const panel = panelOf(page)
     const before = received(engineHome, 'map.build').length
 
+    // The debounce is a time, and the time four presses take is the
+    // runner's: each press is stamped by the page as it hears it, and what
+    // the builds are held to is read from those stamps below (issue 380, as
+    // for the drags, issue 373).
+    await watchPointer(page)
     // The same line to the bottom, one press at a time: the debounce is
     // what makes this one map.
     for (let i = 0; i < 4; i += 1)
-      await panel.getByRole('button', { name: 'Move line A down' }).click()
-    await expect(page.getByText(/Drawn with the lines in the order you chose/)).toBeVisible({
-      timeout: 30_000,
-    })
-    expect(received(engineHome, 'map.build')).toHaveLength(before + 1)
+      await pressed(
+        panel.getByRole('button', { name: 'Move line A down' }),
+        `press ${i + 1} of 4 on "Move line A down"`,
+      )
     await expect
-      .poll(() => readRecord(engineHome).lineOrder)
+      .poll(async () => (await pointerSeenBy(page)).released.length, {
+        timeout: 10_000,
+        message: 'the page heard four presses',
+      })
+      .toBe(4)
+    const gaps = gapsBetween((await pointerSeenBy(page)).released)
+
+    // The last build is the one that writes the order the four presses
+    // ended on, so it is waited for by the record, not by the first
+    // sentence that says a map was drawn: a build that fell between two
+    // presses says it too, and the count below must be taken after the last.
+    await expect
+      .poll(() => readRecord(engineHome).lineOrder, {
+        timeout: 30_000,
+        message: 'the last build wrote the order the four presses ended on',
+      })
       .toEqual(['B', 'C', 'D', 'E', 'A', 'K'])
+    await expect(
+      page.getByText(/Drawn with the lines in the order you chose/),
+      'the map says it was drawn with the order chosen',
+    ).toBeVisible({ timeout: 30_000 })
+    // And nothing more is coming: the count holds through a pause longer
+    // than the interval.
+    await page.waitForTimeout(REDRAW_DELAY_MS + 200)
+    const made = received(engineHome, 'map.build').length - before
+    const held = buildsFor(gaps, REDRAW_DELAY_MS)
+    const said = heardApart('the presses were', gaps)
+    if (held.exactlyOne) {
+      expect(made, `${said}, each inside the ${REDRAW_DELAY_MS} ms debounce: one build`).toBe(1)
+      return
+    }
+    // As for the drags: a gap of the interval or more is a gap a build may
+    // have fallen in, so the runner could not make the four presses one
+    // gesture, which is not the debounce failing. What still holds is
+    // checked, and then the test says it did not prove its title.
+    expect(made, `${said}: at least one build`).toBeGreaterThanOrEqual(1)
+    expect(made, `${said}: at most ${held.most} builds`).toBeLessThanOrEqual(held.most)
+    const unproved = `${said}; the ${REDRAW_DELAY_MS} ms debounce could fit between two of them, so four presses in a row were not one gesture here, and the ${made} build(s) made do not test the debounce`
+    console.log(`four presses in a row: ${unproved}`)
+    test.info().annotations.push({ type: 'slow runner', description: unproved })
+    test.skip(true, unproved)
   })
 })
 
@@ -385,13 +478,6 @@ test('Escape in the middle of a drag puts the list back and builds nothing', asy
     expect(received(engineHome, 'map.build')).toHaveLength(before + 1)
   })
 })
-
-/**
- * The quiet interval a line-order move waits for before it builds
- * (`REDRAW_DELAY` in `src/renderer/src/colours.ts`, which a spec does not
- * import: that module reaches components).
- */
-const REDRAW_DELAY_MS = 400
 
 test('four drags in a row are one build', async () => {
   const engineHome = home()
