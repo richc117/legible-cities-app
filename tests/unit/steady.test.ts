@@ -3,15 +3,22 @@
 // not come, how many builds a debounce allows for releases so far apart - is
 // what the macOS smoke job's flaky specs lean on, and it needs no window.
 
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { REDRAW_DELAY as APP_REDRAW_DELAY } from '../../src/renderer/src/colours'
 import {
   afterFrames,
+  appRedrawDelay,
   buildsFor,
   gapsBetween,
+  heardApart,
+  recordKeys,
   recordPointer,
+  redrawDelayIn,
   steady,
   steadyText,
   type Evaluates,
+  type KeysSeen,
   type PointerSeen,
 } from '../support/steady'
 
@@ -123,5 +130,54 @@ describe('recordPointer', () => {
     expect(seen.at).toEqual({ x: 130, y: 80 })
     expect(seen.released).toHaveLength(2)
     expect(gapsBetween(seen.released)[0]).toBeGreaterThanOrEqual(25)
+  })
+})
+
+describe('recordKeys', () => {
+  const key = (name: string): Event => Object.assign(new Event('keydown'), { key: name })
+
+  it('keeps when each keydown arrived and which key it was, repeats included', async () => {
+    const win = new EventTarget()
+    recordKeys(win as unknown as Window)
+    win.dispatchEvent(key('ArrowRight'))
+    win.dispatchEvent(key('ArrowRight'))
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    win.dispatchEvent(key('ArrowLeft'))
+    win.dispatchEvent(new Event('keyup'))
+    const seen = (win as unknown as { __keysSeen: KeysSeen }).__keysSeen
+    expect(seen.downs.map((down) => down.key)).toEqual(['ArrowRight', 'ArrowRight', 'ArrowLeft'])
+    expect(gapsBetween(seen.downs.map((down) => down.at))[1]).toBeGreaterThanOrEqual(25)
+  })
+})
+
+describe('heardApart', () => {
+  it.each([
+    [[], 'the presses heard once'],
+    [[12.4], 'the presses heard 12 ms apart'],
+    [[12.4, 30, 520.6], 'the presses heard 12, 30, 521 ms apart'],
+  ])('%j is %j', (gaps, said) => {
+    expect(heardApart('the presses', gaps)).toBe(said)
+  })
+})
+
+describe("the window a spec waits on is the app's own", () => {
+  it.each([
+    ['export const REDRAW_DELAY = 400', 400],
+    ['// a comment\nexport const REDRAW_DELAY = 750\nexport const OTHER = 1\n', 750],
+    ['export const REDRAW_DELAY=1_200', 1200],
+  ])('%j is read as %j', (source, ms) => {
+    expect(redrawDelayIn(source)).toBe(ms)
+  })
+
+  it.each([
+    ['not declared at all', 'export const OTHER = 400'],
+    ['an expression', 'export const REDRAW_DELAY = 4 * 100'],
+    ['only mentioned in a comment', ' * `export const REDRAW_DELAY = 400` was here'],
+  ])('refuses %s rather than answer a window of its own', (_what, source) => {
+    expect(() => redrawDelayIn(source)).toThrow(/REDRAW_DELAY is no longer declared/)
+  })
+
+  it('reads what colours.ts exports, so the spec cannot keep a copy that drifts', () => {
+    expect(appRedrawDelay(resolve(__dirname, '../..'))).toBe(APP_REDRAW_DELAY)
   })
 })
