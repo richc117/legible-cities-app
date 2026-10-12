@@ -87,10 +87,13 @@ export default function ProjectHeader(): JSX.Element {
     () => (layingOut ? stopRef.current : offered ? runAllRef.current : stateRef.current),
     `${runSnapshot.state}/${offered}`,
   )
+  // Offered from the plan this render made, but the run makes it again, from
+  // the record it reads: a tuning or a mode the press committed, or a day
+  // chosen a moment before, is a write still on its way, and which run it
+  // takes is the record's once that has landed (issue 407).
   const runAll = (): void => {
-    if (project === null || plan === null || !offered) return
-    if (plan.kind === 'layout') run.start(project, engine)
-    else if (plan.kind === 'rebuild') run.rebuild(project, engine, plan.date)
+    if (project === null || !offered) return
+    run.runAll(project, engine, runAllPlan)
   }
 
   return (

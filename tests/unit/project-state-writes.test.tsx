@@ -1,8 +1,9 @@
 // The record's writers and the layout run's start, together (issue 388):
 // `useProjectState` rendered with the real `LayoutRun`, the bridge's writes
 // held open, and a start made as cell 02's "Lay out" and "Lay out again"
-// make one and as Run all makes one - `run.start(project, engine)`, handed
-// the record the screen held at the press.
+// make one - `run.start(project, engine)`, handed the record the screen held
+// at the press - and, since issue 407, as Run all makes one,
+// `run.runAll(project, engine, runAllPlan)`.
 //
 // A field in cell 02's Layout tuning commits when it is left, and cell 01's
 // mode and operator when they are chosen. When what takes focus away is the
@@ -27,8 +28,9 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LayoutRun, type RunClient } from '../../src/renderer/src/engine/layoutRun'
 import { useProjectState, type ProjectState } from '../../src/renderer/src/notebook/useProjectState'
+import { runAllPlan } from '../../src/renderer/src/runAll'
 import type { EngineState } from '../../src/shared/engine'
-import type { ProjectRecord } from '../../src/shared/project'
+import { drawnFrom, type ProjectRecord } from '../../src/shared/project'
 
 const runs = vi.hoisted(() => ({
   layout: null as unknown,
@@ -307,5 +309,126 @@ describe('a value committed by the press on Lay out is the one the run sends', (
     press()
     expect(builds(), 'asked in the press’s own turn').toHaveLength(1)
     expect(builds()[0].tuning).toEqual({ grid_size: 50 })
+  })
+})
+
+// Issue 407. Run all chooses which run to make, a layout or a rebuild for
+// the day, and it chooses from the record the writes on its way leave, as
+// `ProjectHeader.tsx` asks it: `run.runAll(project, engine, runAllPlan)`,
+// handed the record the screen held at the press.
+describe('Run all chooses its run from the record the writes on their way leave', () => {
+  /** Laid out and drawn for the 15th, with the 12th chosen since: only the day is behind. */
+  const drawnFor15 = { ...RECORD, date: '2026-09-15' } as ProjectRecord
+  const DAY_BEHIND = {
+    ...drawnFor15,
+    drawn: drawnFrom(drawnFor15),
+    date: '2026-09-12',
+  } as ProjectRecord
+
+  /** The press on Run all, as the header makes it. */
+  function runAll(): void {
+    act(() => shown.run.runAll(shown.project as ProjectRecord, shown.engine, runAllPlan))
+  }
+
+  it('a tuning committed by its press, with only the day behind: a layout, with the tuning', async () => {
+    // Mutation: `runAll` making the plan after the wait from the record it
+    // was handed (`engine/layoutRun.ts`), or `setTuning` not handing its
+    // write to the run (`useProjectState.ts`) - map.build alone, for the
+    // day, and cell 02 left saying to lay out again.
+    api.projects.get.mockImplementation(async () => ({ ...DAY_BEHIND, readOnly: false }))
+    await opened()
+    expect(runAllPlan(shown.project as ProjectRecord, shown.runSnapshot)).toEqual({
+      kind: 'rebuild',
+      date: '2026-09-12',
+    })
+    const write = deferred<ProjectRecord>()
+    api.projects.setTuning.mockReturnValueOnce(write.promise)
+    let committed!: Promise<void>
+    act(() => {
+      committed = shown.setTuning({ gridSize: 50 })
+    })
+    runAll()
+    expect(sent, 'nothing asked while the tuning is on its way').toHaveLength(0)
+    await act(async () => {
+      write.resolve({ ...DAY_BEHIND, tuning: { gridSize: 50 } })
+      await committed
+      await tick()
+    })
+    expect(builds(), 'a layout').toHaveLength(1)
+    expect(builds()[0].tuning).toEqual({ grid_size: 50 })
+  })
+
+  it('nothing left to run once the write lands: the run goes back as it stood, and the map is not loaded again', async () => {
+    // A mode chosen and put back, the second choice committed by the press.
+    // The run had finished a draw before, which this screen read back.
+    // Mutation: the read-back after a run taking the snapshot the run was
+    // put back to for a finish (`snapshot !== settled` dropped in
+    // `useProjectState.ts`) - the record is read again and the page's
+    // address moves, reloading a map nobody drew.
+    const answering: { method: string; resolve: (value: unknown) => void }[] = []
+    runs.layout = new LayoutRun({
+      client: {
+        request(method) {
+          let resolve!: (value: unknown) => void
+          const result = new Promise((yes) => {
+            resolve = yes
+          })
+          answering.push({ method, resolve })
+          return {
+            result,
+            onProgress: () => () => undefined,
+            cancel: () => undefined,
+          } as unknown as ReturnType<RunClient['request']>
+        },
+      },
+      complete: async () => ({ changed: false, relaid: false }),
+      completeRebuild: async () => ({}),
+      completeColors: async () => ({}),
+      completeOrder: async () => ({}),
+      completeStyle: async () => ({}),
+      completeLines: async () => ({}),
+      today: () => '2026-09-08',
+    })
+    api.projects.get.mockImplementation(async () => ({
+      ...RECORD,
+      mode: 'subway',
+      readOnly: false,
+    }))
+    await opened()
+    act(() => shown.run.rebuild(shown.project as ProjectRecord, shown.engine, '2026-09-15'))
+    await act(async () => {
+      answering[0].resolve({ files: {} })
+      await tick()
+      await tick()
+    })
+    expect(shown.runSnapshot.state).toBe('done')
+    expect(shown.drawn, 'the finished draw was read back').toBe(1)
+    const reads = api.projects.get.mock.calls.length
+
+    expect(runAllPlan(shown.project as ProjectRecord, shown.runSnapshot)).toEqual({
+      kind: 'layout',
+    })
+    const write = deferred<ProjectRecord>()
+    api.projects.setInputs.mockReturnValueOnce(write.promise)
+    let committed!: Promise<void>
+    act(() => {
+      committed = shown.setInputs({ mode: 'all', agency: null })
+    })
+    runAll()
+    expect(shown.runSnapshot.state).toBe('running')
+    await act(async () => {
+      write.resolve({ ...RECORD })
+      await committed
+      await tick()
+      await tick()
+    })
+    expect(
+      answering.map((a) => a.method),
+      'only the first draw was ever asked',
+    ).toEqual(['map.build'])
+    expect(shown.runSnapshot.state).toBe('done')
+    expect(shown.settling).toBe(false)
+    expect(api.projects.get.mock.calls.length, 'nothing read back').toBe(reads)
+    expect(shown.drawn, 'the page not loaded again').toBe(1)
   })
 })

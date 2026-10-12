@@ -41,6 +41,12 @@
 //   its way (`const project = handed` in `engine/layoutRun.ts`): 'a number
 //   committed by the press'. So does `setTuning` in `useProjectState.ts`
 //   calling the bridge without `run.writing` around it.
+// - issue 407: Run all's plan made from the record the header held at the
+//   press - `ProjectHeader.tsx` calling `run.rebuild(project, engine,
+//   plan.date)` for its own plan, as before, or `runAll` in
+//   `engine/layoutRun.ts` planning after the wait from the record it was
+//   handed (`planOf(handed, …)`): 'a number committed by the press on Run
+//   all, with only the day behind'.
 
 import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -61,6 +67,7 @@ import {
   createProject,
   expandHeading,
   laidOutProject,
+  openCell,
   openProject,
   panel,
   withoutOpened,
@@ -476,5 +483,51 @@ test('a number committed by the press on Lay out again, or on Run all, is the on
     await expect
       .poll(() => readRecord(engineHome).laidOutWith)
       .toEqual({ mergeDistance: 80, deg45: 3, diagonal: 1 })
+  })
+})
+
+// Issue 407. Run all chooses its run, a layout or a rebuild for the day,
+// from the record a start reads. With a day chosen and not drawn, and nothing
+// else behind, it is offered as the rebuild for the day; a number typed in
+// the tuning and committed by the press on Run all is a write on its way at
+// the press, held here, and once it lands the run lays out with it and
+// draws the day, in that one press.
+test('a number committed by the press on Run all, with only the day behind, is laid out with it', async () => {
+  const engineHome = home()
+  await withApp(engineHome, async (page, app) => {
+    await laidOutAndOpen(page)
+    const day = await openCell(page, 'frame')
+    await day.getByLabel('Draw for another day').fill('2026-06-20')
+    await expect.poll(() => readRecord(engineHome).date).toBe('2026-06-20')
+    // Only the day is behind: cell 02 ready, the cells below cell 03 not drawn.
+    await expect(cellHeading(page, 'process')).toContainText('ready')
+    for (const id of ['style', 'lines', 'export'] as const)
+      await expect(cellHeading(page, id), id).toContainText('not drawn yet')
+    await expect(page.getByRole('button', { name: 'Run all' })).toBeEnabled()
+
+    // Typed, and never committed with Enter: the press on Run all commits it.
+    const writes = await holdWrites(app, CHANNELS.projectsSetTuning)
+    await field(page, 'Merge distance').fill('80')
+    await page.getByRole('button', { name: 'Run all' }).click()
+    await expect
+      .poll(() => writes.arrived(), { message: 'the commit is on its way, and held' })
+      .toBe(1)
+    await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeVisible()
+    expect(requests(engineHome, 'graph.build'), 'nothing laid out before it lands').toHaveLength(1)
+
+    await writes.release()
+    await expect(said(page)).toHaveText('The map is drawn from every cell.', { timeout: 30_000 })
+    const builds = requests(engineHome, 'graph.build')
+    expect(builds, 'laid out, and not only drawn for the day').toHaveLength(2)
+    expect(builds[1].params.tuning, 'the number the press committed').toEqual({
+      merge_distance: 80,
+    })
+    const draws = requests(engineHome, 'map.build')
+    expect(draws[draws.length - 1].params.date, 'and the day drawn').toBe('2026-06-20')
+    await expect.poll(() => readRecord(engineHome).laidOutWith).toEqual({ mergeDistance: 80 })
+    const record = readRecord(engineHome)
+    expect(record.date).toBe('2026-06-20')
+    expect((record.drawn as { date: string }).date).toBe('2026-06-20')
+    await expect(page.getByText(/^Lay out again to use/)).toHaveCount(0)
   })
 })

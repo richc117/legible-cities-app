@@ -24,10 +24,11 @@ import {
   stoppedSentence,
 } from '../../src/renderer/src/LayoutRun'
 import { refusedAtStart, stoppedNow } from '../../src/renderer/src/panelRelease'
+import { runAllPlan } from '../../src/renderer/src/runAll'
 import { cellOfRun } from '../../src/renderer/src/runGraph'
 import { LAYOUT_STAGES } from '../../src/shared/layout'
 import { ERROR_CODES, type EngineState } from '../../src/shared/engine'
-import type { ProjectRecord } from '../../src/shared/project'
+import { drawnFrom, type ProjectRecord } from '../../src/shared/project'
 
 interface Pending {
   method: string
@@ -2455,5 +2456,194 @@ describe('a start with a write to the record on its way', () => {
       method: 'map.build',
       params: { layout: LAYOUT, date: '2026-09-12', colors: { A: '#0072bc' } },
     })
+  })
+})
+
+// Issue 407. Run all chooses its run - a layout, or a rebuild for the
+// record's day - and it chooses it from the record a start reads: with a
+// write on its way it is going from the press as the press's plan would go,
+// waits as a start does, and makes the plan again from the record the
+// writes leave, with the run as the press found it. `runAllPlan` is the real
+// one, handed in as the header hands it; what is held here is which record
+// and which run it is asked about, and what is started.
+describe('Run all with a write to the record on its way', () => {
+  /** A write on its way: held until the test answers it, as the store's are. */
+  function held(): {
+    promise: Promise<ProjectRecord>
+    answer: (record: ProjectRecord) => void
+    refuse: (reason: unknown) => void
+  } {
+    let answer!: (record: ProjectRecord) => void
+    let refuse!: (reason: unknown) => void
+    const promise = new Promise<ProjectRecord>((yes, no) => {
+      answer = yes
+      refuse = no
+    })
+    return { promise, answer, refuse }
+  }
+
+  /** Laid out and drawn for the 15th, and the 12th chosen since: only the day is behind. */
+  function dayBehind(over: Partial<ProjectRecord> = {}): ProjectRecord {
+    const drawn = project({
+      layout: LAYOUT,
+      made: MADE,
+      built: { mode: 'all', agency: null },
+      service: WINDOW,
+      date: '2026-09-15',
+    })
+    return { ...drawn, drawn: drawnFrom(drawn), date: '2026-09-12', ...over }
+  }
+
+  it('a tuning that lands while it waits makes it a layout, though only the day was behind at the press', async () => {
+    // Mutation: the plan after the wait made from the record handed at the
+    // press (`planOf(handed, …)` in `runAll`) - a rebuild for the day, and
+    // no graph.build, so the tuning waits for one more press.
+    const { run, calls, record, complete } = setup(dayBehind())
+    expect(runAllPlan(record, run.snapshot), 'the plan at the press').toEqual({
+      kind: 'rebuild',
+      date: '2026-09-12',
+    })
+    const write = held()
+    void run.writing(write.promise)
+    run.runAll(record, READY, runAllPlan)
+    // Going from the press as the press's plan would go: cell 03's run.
+    expect(run.snapshot).toMatchObject({ state: 'running', rebuilt: true, day: '2026-09-12' })
+    expect(run.job()).toMatchObject({ kind: 'rebuild', label: 'Rebuild for 2026-09-12' })
+    const job = run.job()?.id
+    expect(calls, 'nothing is asked while the write is on its way').toHaveLength(0)
+
+    write.answer({ ...record, tuning: { gridSize: 50 } })
+    await tick()
+    expect(calls.map((c) => c.method)).toEqual(['graph.build'])
+    expect(calls[0].params.tuning).toEqual({ grid_size: 50 })
+    // Now the layout it is, cell 02's, the same job under its own name.
+    expect(run.snapshot).toMatchObject({
+      state: 'running',
+      rebuilt: false,
+      forced: false,
+      day: null,
+    })
+    expect(run.job()).toMatchObject({ id: job, kind: 'layout', label: 'Layout run' })
+
+    await laidOut(calls)
+    expect(calls[2]).toMatchObject({ method: 'map.build', params: { date: '2026-09-12' } })
+    calls[2].resolve({ files: {} })
+    await tick()
+    expect(run.snapshot.state).toBe('done')
+    expect((complete.mock.calls[0] as unknown[])[1]).toMatchObject({
+      date: '2026-09-12',
+      tuning: { gridSize: 50 },
+    })
+  })
+
+  it('a day that lands while it waits is the day the rebuild draws and writes', async () => {
+    // Mutation: the rebuild started for the day of the plan at the press
+    // (`pressed.date` after the wait) - the 12th is drawn, and written back
+    // over the 20th the person chose.
+    const { run, calls, record, completeRebuild } = setup(dayBehind())
+    const write = held()
+    void run.writing(write.promise)
+    run.runAll(record, READY, runAllPlan)
+    write.answer({ ...record, date: '2026-09-20' })
+    await tick()
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toMatchObject({
+      method: 'map.build',
+      params: { layout: LAYOUT, date: '2026-09-20' },
+    })
+    expect(run.snapshot).toMatchObject({ rebuilt: true, day: '2026-09-20' })
+    expect(run.job()).toMatchObject({ kind: 'rebuild', label: 'Rebuild for 2026-09-20' })
+    calls[0].resolve({ files: {} })
+    await tick()
+    expect(completeRebuild).toHaveBeenCalledWith('p1', { date: '2026-09-20' })
+  })
+
+  it('a refused write: the plan is the one the record as it stands makes, and the writer hears why', async () => {
+    // Mutation: `writing` without its refusal handler - Run all waits for
+    // ever, and nothing is drawn.
+    const { run, calls, record } = setup(dayBehind())
+    const write = held()
+    const writer = run.writing(write.promise)
+    run.runAll(record, READY, runAllPlan)
+    write.refuse(new Error('read-only'))
+    await expect(writer).rejects.toThrow('read-only')
+    await tick()
+    expect(calls.map((c) => c.method)).toEqual(['map.build'])
+    expect(calls[0].params.date).toBe('2026-09-12')
+  })
+
+  it('a cancel ends the wait, and nothing is asked when the write answers after it', async () => {
+    // Mutation: `runAll` not looking at the cancel after the wait - a Run
+    // all that was stopped lays the project out once the write lands.
+    const { run, calls, record } = setup(dayBehind())
+    const write = held()
+    void run.writing(write.promise)
+    run.runAll(record, READY, runAllPlan)
+    run.cancel()
+    await tick()
+    expect(run.snapshot).toMatchObject({ state: 'cancelled', rebuilt: true, day: '2026-09-12' })
+    write.answer({ ...record, tuning: { gridSize: 50 } })
+    await tick()
+    expect(calls, 'nothing was asked').toHaveLength(0)
+    expect(run.snapshot.state).toBe('cancelled')
+  })
+
+  it('with nothing on its way, starts the plan in the press’s own turn, as cell 02’s or cell 03’s own press would', () => {
+    // Mutation: `runAll` waiting for the writes whatever is on its way -
+    // nothing is asked in the press's turn.
+    const day = setup(dayBehind())
+    day.run.runAll(day.record, READY, runAllPlan)
+    expect(day.calls.map((c) => c.method)).toEqual(['map.build'])
+    expect(day.calls[0].params.date).toBe('2026-09-12')
+    expect(day.run.snapshot).toMatchObject({ state: 'running', rebuilt: true, day: '2026-09-12' })
+    expect(day.run.job()).toMatchObject({ kind: 'rebuild', label: 'Rebuild for 2026-09-12' })
+
+    const tuned = setup(dayBehind({ date: '2026-09-15', tuning: { gridSize: 50 } }))
+    tuned.run.runAll(tuned.record, READY, runAllPlan)
+    expect(tuned.calls.map((c) => c.method)).toEqual(['graph.build'])
+    expect(tuned.run.snapshot).toMatchObject({ rebuilt: false, forced: false, day: null })
+    expect(tuned.run.job()).toMatchObject({ kind: 'layout', label: 'Layout run' })
+
+    // And refused in that turn, as the press's own run is, where the engine
+    // cannot run it: with a write on its way too, since nothing waits to be
+    // refused.
+    const refused = setup(dayBehind(), null)
+    void refused.run.writing(held().promise)
+    refused.run.runAll(refused.record, null, runAllPlan)
+    expect(refused.run.snapshot).toMatchObject({
+      state: 'failed',
+      rebuilt: true,
+      day: '2026-09-12',
+      error: 'The engine is still starting. Try again in a moment.',
+    })
+  })
+
+  it('a write that leaves nothing to run puts the run back as it stood: nothing asked, no job ended', async () => {
+    // A day chosen and then put back to the one the map shows, the second
+    // write still on its way at the press. Mutation: a plan of none after
+    // the wait taken for the press's plan (`#withdraw` not called) - the
+    // run never ends, or draws a day nobody now chose.
+    const { run, calls, record, completeRebuild } = setup(dayBehind())
+    // A run that finished before, so there is a job to go back to.
+    run.rebuild(record, READY, '2026-09-12')
+    calls[0].resolve({ files: {} })
+    await tick()
+    const before = run.snapshot
+    const job = run.job()
+    expect(before.state).toBe('done')
+    const ended: string[] = []
+    run.subscribe((s) => ended.push(s.state))
+
+    const write = held()
+    void run.writing(write.promise)
+    run.runAll(record, READY, runAllPlan)
+    expect(run.snapshot.state).toBe('running')
+    write.answer({ ...record, date: '2026-09-15' })
+    await tick()
+    expect(calls, 'only the first rebuild was ever asked').toHaveLength(1)
+    expect(completeRebuild).toHaveBeenCalledTimes(1)
+    expect(run.snapshot, 'the very snapshot it had').toBe(before)
+    expect(run.job(), 'the job it had').toEqual(job)
+    expect(ended).toEqual(['running', 'done'])
   })
 })
