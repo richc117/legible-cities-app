@@ -10,7 +10,7 @@ import {
 } from 'react'
 import type { EngineState } from '../../shared/engine'
 import { validateServiceDate, withinWindow, type ProjectRecord } from '../../shared/project'
-import { debounce } from './debounce'
+import { debounce, type Debounced } from './debounce'
 import type { LayoutRun as Run } from './engine/layoutRun'
 import Icon from './icons/Icon'
 import Button from './kit/Button'
@@ -76,10 +76,43 @@ const NAME = 'Service day'
  * day, and holding an arrow key passes through one per key repeat, each of
  * which would otherwise be a record rewritten and a modification time moved.
  *
- * A pending choice is never dropped: the form flushes it when it goes, and
- * "Draw for this day" writes the day itself before it draws.
+ * A pending choice is never dropped: the form flushes it when it goes, a
+ * layout run or a rebuild flushes it as it starts (`useDayChoice`), and "Draw
+ * for this day" writes the day itself before it draws.
  */
 const CHOICE_DELAY = 250
+
+/**
+ * The chosen day's write, held back by `CHOICE_DELAY` and never lost: sent at
+ * once when the form goes, and when a layout run, a rebuild or Run all
+ * starts (issue 407), whichever control started it. The second is the
+ * run's own hook (`beforeStart`), told of the press before the run looks
+ * for the writes on their way, so a day picked a moment before "Lay out
+ * again" or Run all is a write the run waits for and draws. Left to its
+ * timer it landed while the run went, with the control already disabled,
+ * and the layout run's write kept it and recorded it as the day drawn
+ * (`drew` in the store); a rebuild wrote its own day back over it.
+ *
+ * Flushed rather than cancelled, which is the opposite of what the colour
+ * and order panels do with theirs: their pending call is a redraw a person
+ * will see fail to happen, and this one is a choice they have already seen
+ * the control take. Leaving the screen, or starting a run, a fifth of a
+ * second after choosing a day must not lose the day. `write` is read
+ * through a ref, so a waiting call is never the one from three renders ago
+ * - the pattern `LineColours` already uses for its map builds.
+ */
+export function useDayChoice(
+  run: Pick<Run, 'beforeStart'>,
+  write: RefObject<(date: string) => void>,
+): Debounced<[string]> {
+  const schedule = useMemo(
+    () => debounce((date: string) => write.current(date), CHOICE_DELAY),
+    [write],
+  )
+  useEffect(() => () => schedule.flush(), [schedule])
+  useEffect(() => run.beforeStart(() => schedule.flush()), [run, schedule])
+  return schedule
+}
 
 /**
  * Has the day on the record not been drawn? `drawn` is what the map now on
@@ -169,20 +202,9 @@ export default function ServiceDay({
   }, [state, rebuilt, project.date])
 
   // The write waits: a date control reports every whole value on the way to
-  // the one a person means. Made once, with the current writer read through
-  // a ref so a waiting call is never the one from three renders ago - the
-  // pattern `LineColours` already uses for its map builds.
+  // the one a person means (`useDayChoice`).
   const writeRef = useRef<(date: string) => void>(() => undefined)
-  const schedule = useMemo(
-    () => debounce((date: string) => writeRef.current(date), CHOICE_DELAY),
-    [],
-  )
-  // Flushed and not cancelled, which is the opposite of what the colour and
-  // order panels do with theirs: their pending call is a redraw a person
-  // will see fail to happen, and this one is a choice they have already
-  // seen the control take. Leaving the screen a fifth of a second after
-  // choosing a day must not lose the day.
-  useEffect(() => () => schedule.flush(), [schedule])
+  const schedule = useDayChoice(run, writeRef)
 
   if (service === null) {
     return (

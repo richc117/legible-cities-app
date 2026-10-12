@@ -23,12 +23,14 @@
 //
 // Each test was watched failing under the change named in it.
 
-import { act, type JSX } from 'react'
+import { act, useRef, type JSX } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LayoutRun, type RunClient } from '../../src/renderer/src/engine/layoutRun'
 import { useProjectState, type ProjectState } from '../../src/renderer/src/notebook/useProjectState'
+import type { Debounced } from '../../src/renderer/src/debounce'
 import { runAllPlan } from '../../src/renderer/src/runAll'
+import { useDayChoice } from '../../src/renderer/src/ServiceDay'
 import type { EngineState } from '../../src/shared/engine'
 import { drawnFrom, type ProjectRecord } from '../../src/shared/project'
 
@@ -111,6 +113,43 @@ function recordingClient(): { client: RunClient; sent: { method: string; params:
     },
   }
   return { client, sent }
+}
+
+/** A run whose every request is answered when the test says, and what it asked, in order. */
+function answeringRun(complete = vi.fn(async () => ({ changed: false, relaid: false }))): {
+  run: LayoutRun
+  asked: { method: string; params: Record<string, unknown>; resolve: (value: unknown) => void }[]
+  complete: typeof complete
+} {
+  const asked: {
+    method: string
+    params: Record<string, unknown>
+    resolve: (value: unknown) => void
+  }[] = []
+  const run = new LayoutRun({
+    client: {
+      request(method, params) {
+        let resolve!: (value: unknown) => void
+        const result = new Promise((yes) => {
+          resolve = yes
+        })
+        asked.push({ method, params: params as unknown as Record<string, unknown>, resolve })
+        return {
+          result,
+          onProgress: () => () => undefined,
+          cancel: () => undefined,
+        } as unknown as ReturnType<RunClient['request']>
+      },
+    },
+    complete,
+    completeRebuild: async () => ({}),
+    completeColors: async () => ({}),
+    completeOrder: async () => ({}),
+    completeStyle: async () => ({}),
+    completeLines: async () => ({}),
+    today: () => '2026-09-08',
+  })
+  return { run, asked, complete }
 }
 
 interface Bridge {
@@ -365,30 +404,8 @@ describe('Run all chooses its run from the record the writes on their way leave'
     // put back to for a finish (`snapshot !== settled` dropped in
     // `useProjectState.ts`) - the record is read again and the page's
     // address moves, reloading a map nobody drew.
-    const answering: { method: string; resolve: (value: unknown) => void }[] = []
-    runs.layout = new LayoutRun({
-      client: {
-        request(method) {
-          let resolve!: (value: unknown) => void
-          const result = new Promise((yes) => {
-            resolve = yes
-          })
-          answering.push({ method, resolve })
-          return {
-            result,
-            onProgress: () => () => undefined,
-            cancel: () => undefined,
-          } as unknown as ReturnType<RunClient['request']>
-        },
-      },
-      complete: async () => ({ changed: false, relaid: false }),
-      completeRebuild: async () => ({}),
-      completeColors: async () => ({}),
-      completeOrder: async () => ({}),
-      completeStyle: async () => ({}),
-      completeLines: async () => ({}),
-      today: () => '2026-09-08',
-    })
+    const { run, asked: answering } = answeringRun()
+    runs.layout = run
     api.projects.get.mockImplementation(async () => ({
       ...RECORD,
       mode: 'subway',
@@ -462,5 +479,73 @@ describe('a press between a write’s answer and the screen rendering it', () =>
     expect(builds()).toHaveLength(1)
     expect(builds()[0].tuning, 'the tuning the store answered with').toEqual({ grid_size: 50 })
     expect(shown.project?.tuning, 'which the screen then shows').toEqual({ gridSize: 50 })
+  })
+})
+
+// Issue 407. A day picked in cell 03 is written a quarter of a second
+// later, so a press on "Lay out again" in that beat found nothing on its
+// way: the run drew the day the record held, and the day landed while it
+// went - the control already disabled - and was kept by the layout's write
+// and recorded as the day drawn. The day's write is held back by
+// `useDayChoice`, which `ServiceDay` draws with, and that hears the press.
+describe('a day picked in cell 03, still waiting to be written at the press', () => {
+  let schedule!: Debounced<[string]>
+
+  /** The screen's state, and the service day's write as `ServiceDay` makes it. */
+  function DayHarness(): JSX.Element | null {
+    shown = useProjectState('p1', () => undefined)
+    const write = useRef<(date: string) => void>(() => undefined)
+    write.current = (date) => {
+      void shown.setDate(date).catch(() => undefined)
+    }
+    schedule = useDayChoice(shown.run, write)
+    return null
+  }
+
+  it('is sent by the press, waited for, drawn, and so is the day the record says was drawn', async () => {
+    // Mutation: `useDayChoice` without its `beforeStart` effect
+    // (`ServiceDay.tsx`) - graph.build goes at the press, the map is drawn
+    // for the 15th, and the 20th lands while the run goes.
+    const { run, asked, complete } = answeringRun()
+    runs.layout = run
+    await act(async () => root.render(<DayHarness />))
+    await act(tick)
+    const write = deferred<ProjectRecord>()
+    api.projects.setDate.mockReturnValueOnce(write.promise)
+    act(() => schedule('2026-09-20'))
+    expect(api.projects.setDate, 'still waiting on its delay').not.toHaveBeenCalled()
+
+    press()
+    expect(api.projects.setDate, 'sent by the press').toHaveBeenCalledWith('p1', '2026-09-20')
+    expect(asked, 'and waited for').toHaveLength(0)
+    await act(async () => {
+      write.resolve({ ...RECORD, date: '2026-09-20' })
+      await tick()
+    })
+    expect(asked.map((a) => a.method)).toEqual(['graph.build'])
+    await act(async () => {
+      asked[0].resolve({
+        layout: RECORD.layout,
+        paths: {},
+        meta: { made: RECORD.made, mode: 'all', agency: null },
+        stages: { octi: { lines: ['A'] } },
+      })
+      await tick()
+      asked[1].resolve({
+        start: '2026-01-01',
+        end: '2026-12-31',
+        busiest_weekday: '2026-09-15',
+        anchor: '2026-09-08',
+      })
+      await tick()
+    })
+    expect(asked[2]).toMatchObject({ method: 'map.build', params: { date: '2026-09-20' } })
+    await act(async () => {
+      asked[2].resolve({ files: {} })
+      await tick()
+    })
+    expect((complete.mock.calls[0] as unknown[])[1], 'the day drawn').toMatchObject({
+      date: '2026-09-20',
+    })
   })
 })

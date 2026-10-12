@@ -488,6 +488,8 @@ export class LayoutRun {
    * was written after that record.
    */
   #taken: { record: ProjectRecord; sent: number } | null = null
+  /** Told of each press on a layout run, a rebuild or Run all, first (issue 407, `beforeStart`). */
+  readonly #starting = new Set<() => void>()
   readonly #options: RunOptions
 
   constructor(options: RunOptions) {
@@ -592,6 +594,28 @@ export class LayoutRun {
   }
 
   /**
+   * Hear each press on a layout run, a rebuild or Run all, before the run
+   * looks for the writes on their way (issue 407). A control that holds a
+   * choice back on a timer - cell 03's day, written a beat after it is
+   * picked - sends it here, so it is a write on its way at the press: the
+   * run waits for it and draws the day, rather than the day landing while
+   * the run goes and being recorded as the day it drew. The redraws for
+   * colours, the order, the sizes and the line options draw the day the map
+   * already shows and record that day, so they tell nobody.
+   */
+  beforeStart(listener: () => void): () => void {
+    this.#starting.add(listener)
+    return () => {
+      this.#starting.delete(listener)
+    }
+  }
+
+  /** A press on a run that reads the record's day: every `beforeStart` listener, first. */
+  #pressed(): void {
+    for (const listener of this.#starting) listener()
+  }
+
+  /**
    * The project and the engine's state as they are at this moment.
    * `force` is the re-layout: every stage runs again, and the engine keeps
    * the stored layout until the new set is whole, so a cancel or a failure
@@ -608,6 +632,7 @@ export class LayoutRun {
     options: { force?: boolean } = {},
   ): void {
     if (this.#snapshot.state === 'running') return
+    this.#pressed()
     this.#startLayout(this.#current(handed), engine, options.force === true)
   }
 
@@ -746,6 +771,7 @@ export class LayoutRun {
    */
   rebuild(handed: ProjectRecord, engine: EngineState | null, date: string): void {
     if (this.#snapshot.state === 'running') return
+    this.#pressed()
     this.#startRebuild(this.#current(handed), engine, date)
   }
 
@@ -830,6 +856,7 @@ export class LayoutRun {
    */
   runAll(handed: ProjectRecord, engine: EngineState | null, planOf: RunAllPlanOf): void {
     if (this.#snapshot.state === 'running') return
+    this.#pressed()
     // The run as the press found it, for the plan, which reads a failure
     // and a re-layout stopped half way from it: the one before this press,
     // never the one the press itself starts.

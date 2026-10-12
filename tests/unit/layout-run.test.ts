@@ -2721,3 +2721,78 @@ describe('a press after a write has answered and before the screen has drawn it'
     expect(calls[0].params).toMatchObject({ mode: 'subway', agency: 'METRO' })
   })
 })
+
+// Issue 407. Cell 03's day is written a beat after it is picked, so a press
+// on "Lay out again" or Run all in that beat found no write on its way: the
+// run drew the day the record held, and the day landed while it went, to be
+// recorded as the day drawn. A control holding a choice back hears the
+// press first (`beforeStart`) and sends it, so it is a write on its way.
+describe('a press tells what holds a choice back, before it reads the record', () => {
+  function held(): { promise: Promise<ProjectRecord>; answer: (r: ProjectRecord) => void } {
+    let answer!: (r: ProjectRecord) => void
+    const promise = new Promise<ProjectRecord>((yes) => (answer = yes))
+    return { promise, answer }
+  }
+
+  /** Laid out and drawn for the 15th, and nothing behind. */
+  function drawn(): ProjectRecord {
+    const record = project({
+      layout: LAYOUT,
+      made: MADE,
+      built: { mode: 'all', agency: null },
+      service: WINDOW,
+      date: '2026-09-15',
+    })
+    return { ...record, drawn: drawnFrom(record) }
+  }
+
+  it('a write sent as the press is heard is waited for, by a layout run, a rebuild and Run all', async () => {
+    // Mutation: the listeners told after the record is read, or not at all
+    // (`#pressed()` in `start`, `rebuild` or `runAll`) - the run goes at the
+    // press, for the 15th.
+    const presses: [string, (run: LayoutRun, record: ProjectRecord) => void][] = [
+      ['a layout run', (run, record) => run.start(record, READY)],
+      ['a rebuild', (run, record) => run.rebuild(record, READY, '2026-09-20')],
+      ['Run all', (run, record) => run.runAll(record, READY, runAllPlan)],
+    ]
+    for (const [name, press] of presses) {
+      const { run, calls, record } = setup(drawn())
+      const write = held()
+      run.beforeStart(() => void run.writing(write.promise))
+      press(run, record)
+      expect(run.snapshot.state, name).toBe('running')
+      expect(calls, `${name}: nothing asked while the day is on its way`).toHaveLength(0)
+      write.answer({ ...record, date: '2026-09-20' })
+      await tick()
+      if (calls[0].method === 'graph.build') await laidOut(calls)
+      const map = calls.find((c) => c.method === 'map.build')
+      expect(map?.params.date, `${name} draws the day`).toBe('2026-09-20')
+    }
+  })
+
+  it('tells nobody of a redraw, a refused second press, or once the listener has gone', async () => {
+    // Mutation: the listener left in place by the function `beforeStart`
+    // answers - it is told of the press after it was taken away.
+    const { run, calls, record } = setup(drawn())
+    const heard = vi.fn()
+    const off = run.beforeStart(heard)
+    run.recolour(record, READY, { colors: { A: '#0072bc' }, defaultColor: '#888888' })
+    expect(heard, 'a redraw draws the day the map shows').not.toHaveBeenCalled()
+    run.start(record, READY)
+    expect(heard, 'refused: a run is going').not.toHaveBeenCalled()
+    run.cancel()
+    calls[0].resolve({ files: {} })
+    await tick()
+    expect(run.snapshot.state).toBe('cancelled')
+    run.start(record, READY)
+    expect(heard, 'told of a press while it listens').toHaveBeenCalledTimes(1)
+    run.cancel()
+    calls[1].resolve(BUILT)
+    await tick()
+    expect(run.snapshot.state).toBe('cancelled')
+    off()
+    run.start(record, READY)
+    expect(run.snapshot.state, 'started').toBe('running')
+    expect(heard, 'and not once it has gone').toHaveBeenCalledTimes(1)
+  })
+})

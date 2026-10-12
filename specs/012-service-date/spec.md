@@ -163,6 +163,31 @@ passes.
   the feed key, the machine's date as `anchor`, and the octi stage's
   `lines`, and MUST draw the map for the day answered when the project has
   no day. A project that has a day MUST keep it.
+  - *As of 12 Oct 2026 (issue 407):* a day picked in cell 03 and still
+    waiting on the control's delay when a layout run, a rebuild or Run
+    all starts is the day that run draws and records. The control writes
+    a picked day a quarter of a second after it is picked
+    (`CHOICE_DELAY`, A5.5-15). A press inside that beat found no write on
+    its way, so the run drew the day the record held, and the day landed
+    while the run went, the control already disabled; the layout's write
+    then kept it (`completeLayout` keeps the record's day and `drew`
+    copies it into `drawn`), so the record said the map showed a day it
+    was not drawn for, and a rebuild wrote its own day back over it. The
+    run now tells what holds a choice back of every press on a layout
+    run, a rebuild or Run all, before it looks for the writes on their
+    way (`LayoutRun.beforeStart`), and the control sends its waiting day
+    there (`useDayChoice` in `ServiceDay.tsx`): the day is then a write on
+    its way at the press, which the run waits for and draws, as issue
+    388 made it wait for any (spec 033 FR-007). Chosen over having the
+    store refuse to move the day while a run goes: the day was picked
+    before the press and the control already shows it, so a refusal
+    would lose a choice a person saw taken, and holding it until the run
+    ends would draw the day before it; the store is also the main
+    process's, and the run's own start covers every way a run begins.
+    The redraws for colours, the order, the sizes and the line options
+    are not told: they draw the day the map shows and keep it as the day
+    drawn (`redrew`), so a day that lands during one reads as chosen and
+    not drawn, which it is.
 - **FR-003**: The record MUST store the engine's answer, `{start, end,
   busiest, anchor}` (the engine's `busiest_weekday`), beside the day, and MUST write it together
   with the layout's id or not at all. The record version stays at 1: a
