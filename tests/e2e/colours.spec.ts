@@ -33,8 +33,6 @@ import {
 } from '../support/project'
 import {
   afterFrames,
-  appRedrawDelay,
-  buildsFor,
   gapsBetween,
   heardApart,
   keysSeenBy,
@@ -51,14 +49,6 @@ const repoRoot = resolve(__dirname, '../..')
 const PYTHON = findPython()
 
 test.skip(PYTHON === null, 'no python3 or python on the PATH to run the stand-in engine')
-
-/**
- * The longest quiet interval the panels ever waited on: the app's own
- * `REDRAW_DELAY` (`src/renderer/src/colours.ts`), read from its source,
- * because a spec does not import that module (it reaches components) and a
- * copy of the number is one that drifts (issue 380).
- */
-const REDRAW_DELAY_MS = appRedrawDelay(repoRoot)
 
 function home(control: Record<string, unknown> = {}): string {
   const dir = mkdtempSync(join(tmpdir(), 'legible-cities-colours-'))
@@ -560,29 +550,6 @@ async function holdKey(
   return { gaps: gapsBetween((await heardOf()).slice(before)) }
 }
 
-/**
- * Skips the test, with a sentence naming the widest gap and the window,
- * when the page heard a held key's repeats further apart than the window
- * (issue 380; the decision issue 373 made for the drags, `buildsFor`).
- *
- * The window is the app's own `REDRAW_DELAY`, the longest quiet interval
- * the panel ever had and the one the line order, the line options and the
- * sizes still wait on. A colour has no interval on this path - a key ends
- * nothing until it comes up (issue 262) - so the window is not a timer the
- * run can lose to; it is the width of "held" that the title and the pause
- * below (`LONGER_THAN_ANY_INTERVAL`) are written for. Repeats that far apart
- * are not a key held on this runner, and a run that says so is a skip, not
- * a pass for a hold that did not happen.
- */
-function skipIfNotHeld(what: string, key: string, gaps: number[], windowMs: number): void {
-  if (buildsFor(gaps, windowMs).exactlyOne) return
-  const widest = Math.round(Math.max(...gaps))
-  const unproved = `${heardApart(`the held ${key}'s repeats were`, gaps)}; the widest, ${widest} ms, is not inside the ${windowMs} ms the panel's quiet interval was (REDRAW_DELAY), so the key was not held here and this run does not test that a hold is one gesture`
-  console.log(`${what}: ${unproved}`)
-  test.info().annotations.push({ type: 'slow runner', description: unproved })
-  test.skip(true, unproved)
-}
-
 test('a held arrow key is one gesture and one build, and each tap is a build of its own', async () => {
   // react-colorful sends one change per keydown, repeats included, and its
   // end - the one that builds - on the key's keyup. A held key is therefore
@@ -607,7 +574,6 @@ test('a held arrow key is one gesture and one build, and each tap is a build of 
     // longer than a poll when the runner is starved (issue 380).
     await hue.focus()
     const heldKey = await holdKey(page, 'ArrowRight', 4, 'a held arrow key')
-    skipIfNotHeld('a held arrow key', 'ArrowRight', heldKey.gaps, REDRAW_DELAY_MS)
     await expect(field, 'the field follows the held key').not.toHaveValue('#0072bc')
     const held = await steadyText(
       page,
@@ -625,7 +591,7 @@ test('a held arrow key is one gesture and one build, and each tap is a build of 
       'A',
       held,
       drawnBefore + 1,
-      'a held arrow key is one build, on its release',
+      `a held arrow key is one build, on its release (${heardApart('the repeats were', heldKey.gaps)})`,
     )
 
     // Three taps, each drawn before the next: three gestures, three builds.
@@ -650,7 +616,6 @@ test('a held arrow key is one gesture and one build, and each tap is a build of 
     // person saw: the swatch is what they chose, and the map follows it.
     await hue.focus()
     const heldAgain = await holdKey(page, 'ArrowRight', 2, 'a key held under a closing panel')
-    skipIfNotHeld('a key held under a closing panel', 'ArrowRight', heldAgain.gaps, REDRAW_DELAY_MS)
     const seen = await steadyText(
       page,
       () => field.inputValue(),
@@ -666,7 +631,7 @@ test('a held arrow key is one gesture and one build, and each tap is a build of 
       'A',
       seen,
       drawnBefore + 5,
-      'a panel closed under a held key still builds what was seen',
+      `a panel closed under a held key still builds what was seen (${heardApart('the repeats were', heldAgain.gaps)})`,
     )
     await quietAt(page, engineHome, drawnBefore + 5, 'the closed panel')
   })
