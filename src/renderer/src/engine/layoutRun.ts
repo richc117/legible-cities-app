@@ -503,7 +503,8 @@ export class LayoutRun {
    * the moment the store answers, and the screen draws the answer a task or
    * so later, when React renders it; a press in that beat is handed the
    * record the screen still holds. `#current` reads this instead where it
-   * was written after that record.
+   * was written after that record. Forgotten when a run finishes: its own
+   * write, and the record read back after it, supersede it.
    */
   #taken: { record: ProjectRecord; sent: number } | null = null
   /** Told of each press on a layout run, a rebuild or Run all, first (issue 407, `beforeStart`). */
@@ -1489,6 +1490,11 @@ export class LayoutRun {
   }
 
   #finish(outcome: { changed: boolean; relaid: boolean }, report: RunReport | null): void {
+    // The run's own write, and the record the screen reads back after it,
+    // are newer than any answer kept for the beat before a render (issue
+    // 407, `#current`); kept past them, it would rest on the store's clock
+    // never stepping back.
+    this.#taken = null
     this.#set({
       state: 'done',
       stages: this.#snapshot.stages.map((s) => ({ ...s, state: 'done' as const })),

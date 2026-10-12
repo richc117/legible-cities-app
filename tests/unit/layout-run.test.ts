@@ -2754,6 +2754,25 @@ describe('a press after a write has answered and before the screen has drawn it'
     expect(calls[0].params.mode).toBe('tram')
   })
 
+  it('forgets the answer once a run of its own has finished, whose write and read-back are newer', async () => {
+    // The stamps are the main process's clock. A clock stepped back between
+    // the answer and the run's own write would make the answer look newer
+    // than the record read back after the run, which it is not. Mutation:
+    // `#finish` keeping `#taken` - the next run goes from the answer from
+    // before the last one, with the mode it held then.
+    const { run, calls, record } = setup({ layout: LAYOUT, service: WINDOW, modified: EARLIER })
+    await run.writing(
+      Promise.resolve({ ...record, mode: 'subway', modified: '2026-09-01T00:00:09.000Z' }),
+    )
+    run.rebuild(record, READY, '2026-09-12')
+    calls[0].resolve({ files: {} })
+    await tick()
+    expect(run.snapshot.state).toBe('done')
+    // The record as the screen reads it back, stamped after the clock stepped back.
+    run.start({ ...record, mode: 'tram', modified: LATER }, READY)
+    expect(calls[1]).toMatchObject({ method: 'graph.build', params: { mode: 'tram' } })
+  })
+
   it('keeps the answer to the write sent last, whichever answer arrived last', async () => {
     // The store answers in the order it was sent; the rule does not lean
     // on it. Mutation: every answer kept as it arrives (the order of the
