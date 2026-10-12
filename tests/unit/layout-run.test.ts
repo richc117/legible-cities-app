@@ -2277,3 +2277,169 @@ describe("a feed's download inside the run", () => {
     expect(run.snapshot.download).toBeNull()
   })
 })
+
+// Issue 388. A field in cell 02's Layout tuning commits when it is left, and
+// cell 01's mode and operator when they are chosen, each through a write the
+// screen hands the run (`writing`) as it sends it. When what took focus away
+// is the press on "Lay out", that write is on its way as the press starts
+// the run: the run is going from the press, and reads the record once the
+// write has answered. `tests/unit/project-state-writes.test.tsx` holds the
+// screen's writers to it; these hold the run's own rules.
+describe('a start with a write to the record on its way', () => {
+  /** A write on its way: held until the test answers it, as the store's are. */
+  function held(): {
+    promise: Promise<ProjectRecord>
+    answer: (record: ProjectRecord) => void
+    refuse: (reason: unknown) => void
+  } {
+    let answer!: (record: ProjectRecord) => void
+    let refuse!: (reason: unknown) => void
+    const promise = new Promise<ProjectRecord>((yes, no) => {
+      answer = yes
+      refuse = no
+    })
+    return { promise, answer, refuse }
+  }
+
+  it('waits for it, sends what the store answered, and tells the store that is what was sent', async () => {
+    // Mutation: `start` reading the record it was handed whatever is on its
+    // way (`this.#writes.size === 0 ? handed : …` made `handed`) - graph.build
+    // goes at the press, with LOOM's defaults.
+    const { run, calls, complete, record, begin } = setup({ layout: LAYOUT })
+    const write = held()
+    void run.writing(write.promise)
+    begin()
+    expect(run.snapshot.state, 'going from the press: Cancel is on the screen').toBe('running')
+    expect(calls, 'nothing is asked while the write is on its way').toHaveLength(0)
+    begin()
+    write.answer({ ...record, tuning: { gridSize: 50 } })
+    await tick()
+    expect(calls, 'one run: the second press was refused as any is').toHaveLength(1)
+    expect(calls[0].params.tuning).toEqual({ grid_size: 50 })
+    await laidOut(calls)
+    calls[2].resolve({ files: {} })
+    await tick()
+    expect((complete.mock.calls[0] as unknown[])[1]).toMatchObject({ tuning: { gridSize: 50 } })
+  })
+
+  it('takes the mode and the operator the same way', async () => {
+    const { run, calls, record, begin } = setup()
+    const write = held()
+    void run.writing(write.promise)
+    begin()
+    write.answer({ ...record, mode: 'subway', agency: 'METRO' })
+    await tick()
+    expect(calls[0].params).toEqual({ key: 'la-metro-rail', mode: 'subway', agency: 'METRO' })
+  })
+
+  it('sends graph.build in the same turn as the press when nothing is on its way', async () => {
+    // Mutation: `start` awaiting `#afterWrites` whatever is on its way -
+    // nothing is asked until a later turn, and the first assertion fails.
+    const { run, calls, record, begin } = setup()
+    // A write that has answered is behind the press, not on its way.
+    await run.writing(Promise.resolve({ ...record, mode: 'rail' }))
+    begin()
+    expect(calls, 'asked at once').toHaveLength(1)
+    expect(calls[0].params.mode, 'from the record handed').toBe('all')
+  })
+
+  it('takes the last write the store took, whichever answer arrived first', async () => {
+    // Two commits on their way: a grid, then a penalty. The store writes a
+    // project's record one write at a time, in the order they were sent, so
+    // the second answer holds both. Mutation: `#afterWrites` taking the
+    // first answer rather than the last - the run goes without the penalty.
+    const { run, calls, record, begin } = setup()
+    const grid = held()
+    const penalty = held()
+    void run.writing(grid.promise)
+    void run.writing(penalty.promise)
+    begin()
+    penalty.answer({ ...record, tuning: { grid: 'orthoradial', deg45: 3 } })
+    await tick()
+    expect(calls, 'not while the grid is still on its way').toHaveLength(0)
+    grid.answer({ ...record, tuning: { grid: 'orthoradial' } })
+    await tick()
+    expect(calls[0].params.tuning).toEqual({ grid: 'orthoradial', penalties: { deg45: 3 } })
+  })
+
+  it('takes the last write the store took when a later one was refused', async () => {
+    const { run, calls, record, begin } = setup()
+    const grid = held()
+    const penalty = held()
+    void run.writing(grid.promise)
+    run.writing(penalty.promise).catch(() => undefined)
+    begin()
+    grid.answer({ ...record, tuning: { grid: 'orthoradial' } })
+    penalty.refuse(new Error('tuning.penalties.deg45 must be from 0 to 10'))
+    await tick()
+    expect(calls[0].params.tuning).toEqual({ grid: 'orthoradial' })
+  })
+
+  it('a refused write: the run goes from the record as it stands, and the writer hears why', async () => {
+    // Mutation: `writing` without its refusal handler - the wait never ends
+    // (or ends in an unhandled rejection), and nothing is asked. Mutation:
+    // `writing` answering the writer with its own settled promise rather
+    // than the write - the writer is told nothing was refused.
+    const { run, calls, begin } = setup({ mode: 'all' })
+    const write = held()
+    const writer = run.writing(write.promise)
+    begin()
+    write.refuse(new Error('read-only'))
+    await expect(writer).rejects.toThrow('read-only')
+    await tick()
+    expect(calls).toHaveLength(1)
+    expect(calls[0].params.mode, 'the record handed: the store took nothing').toBe('all')
+  })
+
+  it('a cancel ends the wait, and nothing is asked when the write answers after it', async () => {
+    // Mutation: `cancel` not waking the wait - the run stays running until
+    // the store answers, and then lays out a run that was cancelled.
+    const { run, calls, record, begin } = setup()
+    const write = held()
+    void run.writing(write.promise)
+    begin()
+    run.cancel()
+    await tick()
+    expect(run.snapshot.state).toBe('cancelled')
+    expect(stoppedSentence('cancelled', false)).toBe(
+      'The run was cancelled. The project is as it was.',
+    )
+    write.answer({ ...record, mode: 'subway' })
+    await tick()
+    expect(calls, 'nothing was asked').toHaveLength(0)
+    expect(run.snapshot.state).toBe('cancelled')
+  })
+
+  it('does not wait for a write sent after the start: the run sends what it was started with', async () => {
+    // Mutation: `#afterWrites` waiting until no write at all is on its way
+    // - a field committed while the run waits would hold it, and be sent.
+    const { run, calls, record, begin } = setup()
+    const first = held()
+    const later = held()
+    void run.writing(first.promise)
+    begin()
+    void run.writing(later.promise)
+    first.answer({ ...record, mode: 'subway' })
+    await tick()
+    expect(calls).toHaveLength(1)
+    expect(calls[0].params.mode).toBe('subway')
+    later.answer({ ...record, mode: 'tram' })
+  })
+
+  it('a rebuild for a chosen day reads the record the same way', async () => {
+    // Mutation: `rebuild` reading the record it was handed whatever is on
+    // its way - map.build goes at the press, in the colours handed.
+    const { run, calls, record } = setup({ layout: LAYOUT, service: WINDOW })
+    const write = held()
+    void run.writing(write.promise)
+    run.rebuild(record, READY, '2026-09-12')
+    expect(run.snapshot).toMatchObject({ state: 'running', rebuilt: true })
+    expect(calls).toHaveLength(0)
+    write.answer({ ...record, colors: { A: '#0072bc' } })
+    await tick()
+    expect(calls[0]).toMatchObject({
+      method: 'map.build',
+      params: { layout: LAYOUT, date: '2026-09-12', colors: { A: '#0072bc' } },
+    })
+  })
+})

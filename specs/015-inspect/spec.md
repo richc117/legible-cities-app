@@ -114,6 +114,14 @@ sentence is the engine's.
   a bridge method validated on the main side with the record's own
   rules, and the run MUST pass the record's mode and agency to
   `graph.build`.
+  - *As of 12 Oct 2026 (issue 388):* a mode or an operator chosen just
+    before **Lay out** is the one the run asks with. The choice is a
+    write still on its way as the press starts the run, so the run waits
+    for it and reads the record it leaves; the screen hands the write to
+    the run as it sends it (`run.writing` around `projects.setInputs`).
+    The decision, and why waiting rather than reading a value the moment
+    it is chosen, is recorded once, under FR-007 of
+    `specs/033-layout-tuning/spec.md`.
 - **FR-004**: The histogram MUST mark the types the chosen mode keeps,
   from the engine's `modes` per type (every name that keeps it) and the
   type's own number.

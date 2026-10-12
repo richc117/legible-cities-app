@@ -388,8 +388,17 @@ export function useProjectState(
 
   // The two inputs chosen with the feed in view: the record comes back
   // written, and the run reads it when it next starts.
+  //
+  // Three writers hand their write to the run as they send it - this one,
+  // the day's and the tuning's (`run.writing`, issue 388): they write fields
+  // a layout run reads, and a field committed by leaving it for "Lay out" is
+  // a write still on its way as that press starts the run. The run waits for
+  // it and reads the record it leaves, not the one this screen held at the
+  // press; every start goes through the run, so Lay out, Lay out again,
+  // Re-layout, Run all and the rebuild for a day all do. The theme and the
+  // export's choice are fields no run reads, and are not handed over.
   const setInputs = async (inputs: { mode: string; agency: string | null }): Promise<void> => {
-    const record = await window.api.projects.setInputs(id, inputs)
+    const record = await run.writing(window.api.projects.setInputs(id, inputs))
     setState((current) =>
       current.status === 'ready'
         ? { status: 'ready', project: { ...current.project, ...record } }
@@ -403,7 +412,7 @@ export function useProjectState(
   // never say the map does not show the day a person picked. A rejection
   // is the caller's to show, as the rename's is.
   const setDate = async (date: string): Promise<void> => {
-    const record = await window.api.projects.setDate(id, date)
+    const record = await run.writing(window.api.projects.setDate(id, date))
     setState((current) =>
       current.status === 'ready'
         ? { status: 'ready', project: { ...current.project, ...record } }
@@ -445,7 +454,7 @@ export function useProjectState(
   // The record comes back whole and goes in whole (`tunedProject`): a reset
   // removes the key, which a merge would keep.
   const setTuning = async (tuning: ProjectTuning): Promise<void> => {
-    const record = await window.api.projects.setTuning(id, tuning)
+    const record = await run.writing(window.api.projects.setTuning(id, tuning))
     setState((current) =>
       current.status === 'ready'
         ? { status: 'ready', project: tunedProject(current.project, record) }

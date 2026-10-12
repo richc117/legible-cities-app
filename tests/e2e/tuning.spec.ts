@@ -37,11 +37,24 @@
 // - `askedWith` taken from the record at the run's end rather than its start:
 //   no test here can hold it (the stand-in answers too fast to commit between
 //   the request and the answer); `tests/unit/layout-run.test.ts` does.
+// - issue 388: `start` reading the record it was handed whatever write is on
+//   its way (`const project = handed` in `engine/layoutRun.ts`): 'a number
+//   committed by the press'. So does `setTuning` in `useProjectState.ts`
+//   calling the bridge without `run.writing` around it.
 
 import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { _electron as electron, expect, test, type Locator, type Page } from '@playwright/test'
+import {
+  _electron as electron,
+  expect,
+  test,
+  type ElectronApplication,
+  type Locator,
+  type Page,
+} from '@playwright/test'
+import { CHANNELS } from '../../src/shared/api'
+import { holdWrites } from '../support/hold-writes'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 import {
   cellHeading,
@@ -49,6 +62,7 @@ import {
   expandHeading,
   laidOutProject,
   openProject,
+  panel,
   withoutOpened,
 } from '../support/project'
 
@@ -75,7 +89,10 @@ function home(control: Record<string, unknown> = {}): string {
   return dir
 }
 
-async function withApp(engineHome: string, run: (page: Page) => Promise<void>): Promise<void> {
+async function withApp(
+  engineHome: string,
+  run: (page: Page, app: ElectronApplication) => Promise<void>,
+): Promise<void> {
   const app = await electron.launch({
     args: ['.'],
     cwd: repoRoot,
@@ -88,7 +105,7 @@ async function withApp(engineHome: string, run: (page: Page) => Promise<void>): 
     timeout: 30_000,
   })
   try {
-    await run(await app.firstWindow())
+    await run(await app.firstWindow(), app)
   } finally {
     await app.close()
   }
@@ -392,5 +409,72 @@ test('a tuning chosen before the first layout is the one it is laid out with', a
     expect(requests(engineHome, 'graph.build')[0].params.tuning).toEqual({ grid_size: 50 })
     await expect.poll(() => readRecord(engineHome).laidOutWith).toEqual({ gridSize: 50 })
     await expect(said(page)).toHaveText('The map is drawn from every cell.')
+  })
+})
+
+// Issue 388. A field commits when it is left, and when what took focus away
+// is the press on "Lay out again", or on Run all, the commit is a write still
+// on its way as the press starts the run. The write is held in the main
+// process (`holdWrites`), so the press lands inside it every time rather
+// than some of the time; the run must be going from the press, lay nothing
+// out while the write is held, and send the number once it has landed.
+test('a number committed by the press on Lay out again, or on Run all, is the one that run sends', async () => {
+  const engineHome = home()
+  await withApp(engineHome, async (page, app) => {
+    await laidOutAndOpen(page)
+    const run = panel(page, 'Layout run')
+
+    // Typed, and never committed with Enter: the press commits it.
+    let writes = await holdWrites(app, CHANNELS.projectsSetTuning)
+    await field(page, 'Merge distance').fill('80')
+    await page.getByRole('button', { name: 'Lay out again', exact: true }).click()
+    await expect
+      .poll(() => writes.arrived(), { message: 'the commit is on its way, and held' })
+      .toBe(1)
+    // Going from the press, so Cancel is there, and still at its start.
+    await expect(run.getByRole('button', { name: 'Cancel', exact: true })).toBeVisible()
+    await expect(run).toContainText('Starting the layout.')
+    expect(readRecord(engineHome), 'the write has not landed').not.toHaveProperty('tuning')
+    expect(requests(engineHome, 'graph.build'), 'nothing laid out before it lands').toHaveLength(1)
+
+    await writes.release()
+    await expect(
+      page.getByText(
+        'Laid out. The layout differs from the one the project had recorded, so the project now names this one.',
+      ),
+    ).toBeVisible({ timeout: 30_000 })
+    const builds = requests(engineHome, 'graph.build')
+    expect(builds).toHaveLength(2)
+    expect(builds[1].params.tuning, 'the number the press committed').toEqual({
+      merge_distance: 80,
+    })
+    await expect.poll(() => readRecord(engineHome).laidOutWith).toEqual({ mergeDistance: 80 })
+    await expect(page.getByText(/^Lay out again to use/)).toHaveCount(0)
+    await expect(said(page)).toHaveText('The map is drawn from every cell.')
+
+    // Run all, the same way: a penalty committed with Enter puts the layout
+    // behind, so Run all is offered; a second is typed and the press on Run
+    // all commits it.
+    await set(page, '45°', '3')
+    await expect.poll(() => readRecord(engineHome).tuning).toEqual({ mergeDistance: 80, deg45: 3 })
+    await expect(page.getByRole('button', { name: 'Run all' })).toBeEnabled()
+    writes = await holdWrites(app, CHANNELS.projectsSetTuning)
+    await field(page, 'Diagonal').fill('1')
+    await page.getByRole('button', { name: 'Run all' }).click()
+    await expect.poll(() => writes.arrived()).toBe(1)
+    await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeVisible()
+    expect(requests(engineHome, 'graph.build')).toHaveLength(2)
+
+    await writes.release()
+    await expect(said(page)).toHaveText('The map is drawn from every cell.', { timeout: 30_000 })
+    const again = requests(engineHome, 'graph.build')
+    expect(again).toHaveLength(3)
+    expect(again[2].params.tuning).toEqual({
+      merge_distance: 80,
+      penalties: { deg45: 3, diagonal: 1 },
+    })
+    await expect
+      .poll(() => readRecord(engineHome).laidOutWith)
+      .toEqual({ mergeDistance: 80, deg45: 3, diagonal: 1 })
   })
 })

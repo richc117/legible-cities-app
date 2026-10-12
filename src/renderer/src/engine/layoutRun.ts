@@ -407,6 +407,17 @@ interface Attempt {
   rawDetail: string | null
 }
 
+/**
+ * A write to the project's record on its way from the screen (issue 388),
+ * and what the store answered it with once it has.
+ */
+interface RecordWrite {
+  /** Settles once the store has answered or refused; never rejects. */
+  settled: Promise<void>
+  /** The record as the store answered: null until then, and for a write it refused. */
+  answer: ProjectRecord | null
+}
+
 export class LayoutRun {
   #snapshot: RunSnapshot = IDLE
   #listeners = new Set<(s: RunSnapshot) => void>()
@@ -419,6 +430,10 @@ export class LayoutRun {
   #drawnDownload = 0
   /** A report the throttle held back, drawn if the run ends before the next one. */
   #heldDownload: RunDownload | null = null
+  /** Writes to the project's record on their way, in the order they were sent (issue 388). */
+  readonly #writes = new Set<RecordWrite>()
+  /** Ends a start's wait for those writes, for a cancel; null while nothing waits. */
+  #wake: (() => void) | null = null
   readonly #options: RunOptions
 
   constructor(options: RunOptions) {
@@ -491,20 +506,53 @@ export class LayoutRun {
   }
 
   /**
+   * A write to the project's record on its way (issue 388). The screen hands
+   * the run every write of a field a layout run reads - the mode and the
+   * operator (cell 01), the tuning (cell 02), the day (cell 03) - as it
+   * sends it, because a field commits when it is left, and when what took
+   * focus away is the press on "Lay out" the write is still on its way as
+   * the run starts. A start waits for the writes on their way and reads the
+   * record they leave (`#afterWrites`). The write is answered as it was:
+   * the writer gets the store's record, or its refusal, exactly as before.
+   */
+  writing<T extends ProjectRecord>(write: Promise<T>): Promise<T> {
+    const entry: RecordWrite = { settled: Promise.resolve(), answer: null }
+    // No longer on its way the moment the store answers, before the writer
+    // hears it, so a start the writer's own answer leads to does not wait.
+    entry.settled = write.then(
+      (record) => {
+        entry.answer = record
+        this.#writes.delete(entry)
+      },
+      // A refusal is the writer's to show; here it is only a write that has
+      // ended, which must not keep a start waiting.
+      () => {
+        this.#writes.delete(entry)
+      },
+    )
+    this.#writes.add(entry)
+    return write
+  }
+
+  /**
    * The project and the engine's state as they are at this moment.
    * `force` is the re-layout: every stage runs again, and the engine keeps
    * the stored layout until the new set is whole, so a cancel or a failure
    * leaves the project exactly as it was.
+   *
+   * The record is the one handed unless a write to it is on its way (issue
+   * 388, `writing`): the run is then going from the press, and reads the
+   * record once the write has answered.
    */
   start(
-    project: ProjectRecord,
+    handed: ProjectRecord,
     engine: EngineState | null,
     options: { force?: boolean } = {},
   ): void {
     if (this.#snapshot.state === 'running') return
     const { client, complete, today } = this.#options
     const force = options.force === true
-    this.#open('layout', force ? 'Re-layout' : 'Layout run', project.id)
+    this.#open('layout', force ? 'Re-layout' : 'Layout run', handed.id)
     if (
       !this.#begin(engine, {
         forced: force,
@@ -518,11 +566,18 @@ export class LayoutRun {
     )
       return
     // Only a layout can download its feed; a redraw works from the stored
-    // layout, whose feed is on disk.
-    this.#feedKey = project.feed
+    // layout, whose feed is on disk. No writer moves the feed.
+    this.#feedKey = handed.feed
 
     void (async () => {
       try {
+        // The record as it is once the writes on their way have landed
+        // (issue 388): a tuning field or a mode left for the button that
+        // started this run is a write still on its way. With none, it is the
+        // record handed, at once, and graph.build goes in this same turn.
+        const project = this.#writes.size === 0 ? handed : await this.#afterWrites(handed)
+        if (this.#cancelled) return this.#stopped()
+
         // LOOM's settings the record holds (issue 385), taken once, as the
         // run starts, so what is sent and what the store is told was sent
         // are one copy; none at all for a project that never tuned, whose
@@ -622,12 +677,16 @@ export class LayoutRun {
    * The map alone, from the stored layout, for a day a person chose. The
    * layout stages never run; the day is written only when the map has been
    * drawn, and the main process refuses a day outside the stored window.
+   *
+   * It reads its record as a layout run does (issue 388): the one handed,
+   * or, with a write to it on its way, the one that write leaves. No writer
+   * moves the layout, so the one handed is the one checked here.
    */
-  rebuild(project: ProjectRecord, engine: EngineState | null, date: string): void {
+  rebuild(handed: ProjectRecord, engine: EngineState | null, date: string): void {
     if (this.#snapshot.state === 'running') return
     const { completeRebuild } = this.#options
-    this.#open('rebuild', `Rebuild for ${date}`, project.id)
-    const layout = project.layout
+    this.#open('rebuild', `Rebuild for ${date}`, handed.id)
+    const layout = handed.layout
     if (layout === null) {
       this.#set({
         state: 'failed',
@@ -665,6 +724,8 @@ export class LayoutRun {
       // after it leaves a page the record does not describe (`unkept`).
       let drawn = false
       try {
+        const project = this.#writes.size === 0 ? handed : await this.#afterWrites(handed)
+        if (this.#cancelled) return this.#stopped()
         const { report, stations } = await this.#draw(
           project,
           layout,
@@ -988,6 +1049,34 @@ export class LayoutRun {
     })()
   }
 
+  /**
+   * The record a layout run or a rebuild reads when a write to it was on
+   * its way as it started (issue 388). Once every write on its way then has
+   * been answered or refused, it is the store's answer to the last of them
+   * it took - the record as it then stood, every write sent before that one
+   * in it, since the store writes a project's record one write at a time in
+   * the order they were sent - or, where it took none, the record handed,
+   * which is then the record as it stands. A write sent after the start is
+   * not waited for: a run sends what it was started with (spec 033, FR-007).
+   *
+   * It has no deadline: a write the store has not answered has not landed,
+   * and reading the record before it lands is the fault this is here for.
+   * The run is `running` while it waits, so Cancel is on the screen, and a
+   * cancel ends the wait at once; the caller then finds the run cancelled.
+   */
+  #afterWrites(handed: ProjectRecord): Promise<ProjectRecord> {
+    const writes = [...this.#writes]
+    return new Promise<ProjectRecord>((settle) => {
+      this.#wake = () => settle(handed)
+      void Promise.all(writes.map((write) => write.settled)).then(() => {
+        const taken = writes.filter((write) => write.answer !== null)
+        settle(taken[taken.length - 1]?.answer ?? handed)
+      })
+    }).finally(() => {
+      this.#wake = null
+    })
+  }
+
   /** The engine ready, the line reset, the snapshot running; false when it cannot start. */
   #begin(
     engine: EngineState | null,
@@ -1252,6 +1341,8 @@ export class LayoutRun {
     if (this.#snapshot.state !== 'running') return
     this.#cancelled = true
     this.#inFlight?.cancel()
+    // A start still waiting for a write to the record stops waiting (issue 388).
+    this.#wake?.()
   }
 
   /** Releases the client's subscriptions. The view calls this when it goes. */
