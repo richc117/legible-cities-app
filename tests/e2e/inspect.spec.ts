@@ -179,9 +179,9 @@ test('a feed with several operators offers the choice, filters the routes, and s
     )
     // The record is on disk before the screen holds it. Pressed in between,
     // the run once asked with SUB (#147); it now waits for the write and
-    // asks with what the write left (issue 388, held by the last test here),
-    // but for the beat between the store's answer and the screen rendering
-    // it, which is issue 407.
+    // asks with what the write left (issue 388, held by a test below), and
+    // since issue 407 reads the store's answer in the beat between it
+    // arriving and the screen rendering it too.
     await expect(page.getByRole('definition').filter({ hasText: /^none$/ })).toBeVisible()
     await page.getByRole('button', { name: /lay out/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
@@ -598,5 +598,47 @@ test('a mode chosen just before Lay out is the one the run asks with, however lo
     await expect.poll(() => readRecord(engineHome).mode).toBe('subway')
     // The layout is of the record's inputs, so nothing says they have moved.
     await expect(page.getByText(/the choice has changed since/)).toHaveCount(0)
+  })
+})
+
+// Issue 407. The mode and the operator go to the store together, so an
+// operator chosen while a mode was on its way was sent with the mode the
+// screen held, and the store, writing it second, put the old mode back. The
+// mode's write is held in the main process, so the operator is chosen while
+// it is on its way every time: the operator must go with that mode once it
+// has landed. Mutation the coordinator runs: `chooseAgency` in `Inspect.tsx`
+// writing `{ mode: project.mode, agency: next }` again - the record ends on
+// subway, the mode the screen held.
+test('an operator chosen while a mode is on its way goes with that mode, and does not put the old one back', async () => {
+  const engineHome = home()
+  await withApp(engineHome, async (page, app) => {
+    await openProjectOn(page, 'Mexico City Metro', 'CDMX')
+    const inspect = cell(page, 'data')
+    const mode = inspect.getByRole('combobox', { name: 'Mode' })
+    const operator = inspect.getByRole('combobox', { name: 'Operator' })
+    await expect(mode).toHaveValue('subway')
+    await expect(operator).toHaveValue('METRO')
+
+    const writes = await holdWrites(app, CHANNELS.projectsSetInputs)
+    await mode.selectOption('all')
+    await expect
+      .poll(() => writes.arrived(), { message: 'the mode is on its way, and held' })
+      .toBe(1)
+    await operator.selectOption('SUB')
+    await expect(operator).toHaveValue('SUB')
+    expect(readRecord(engineHome).mode, 'the mode has not landed').toBe('subway')
+
+    await writes.release()
+    await withWhatTheScreenSaid(page, launched, () =>
+      expect
+        .poll(() => {
+          const { mode: kept, agency } = readRecord(engineHome)
+          return { mode: kept, agency }
+        })
+        .toEqual({ mode: 'all', agency: 'SUB' }),
+    )
+    await expect(mode).toHaveValue('all')
+    await expect(operator).toHaveValue('SUB')
+    await expect(inspect.locator('.inputs .message'), 'nothing refused').toHaveText('')
   })
 })

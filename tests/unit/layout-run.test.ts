@@ -23,11 +23,12 @@ import {
   restyledSentence,
   stoppedSentence,
 } from '../../src/renderer/src/LayoutRun'
-import { refusedAtStart, stoppedNow } from '../../src/renderer/src/panelRelease'
+import { refusedAtStart, stoppedNow, type Seen } from '../../src/renderer/src/panelRelease'
+import { runAllPlan } from '../../src/renderer/src/runAll'
 import { cellOfRun } from '../../src/renderer/src/runGraph'
 import { LAYOUT_STAGES } from '../../src/shared/layout'
 import { ERROR_CODES, type EngineState } from '../../src/shared/engine'
-import type { ProjectRecord } from '../../src/shared/project'
+import { drawnFrom, type ProjectRecord } from '../../src/shared/project'
 
 interface Pending {
   method: string
@@ -2455,5 +2456,557 @@ describe('a start with a write to the record on its way', () => {
       method: 'map.build',
       params: { layout: LAYOUT, date: '2026-09-12', colors: { A: '#0072bc' } },
     })
+  })
+})
+
+// Issue 407. Run all chooses its run - a layout, or a rebuild for the
+// record's day - and it chooses it from the record a start reads: with a
+// write on its way it is going from the press as the press's plan would go,
+// waits as a start does, and makes the plan again from the record the
+// writes leave, with the run as the press found it. `runAllPlan` is the real
+// one, handed in as the header hands it; what is held here is which record
+// and which run it is asked about, and what is started.
+describe('Run all with a write to the record on its way', () => {
+  /** A write on its way: held until the test answers it, as the store's are. */
+  function held(): {
+    promise: Promise<ProjectRecord>
+    answer: (record: ProjectRecord) => void
+    refuse: (reason: unknown) => void
+  } {
+    let answer!: (record: ProjectRecord) => void
+    let refuse!: (reason: unknown) => void
+    const promise = new Promise<ProjectRecord>((yes, no) => {
+      answer = yes
+      refuse = no
+    })
+    return { promise, answer, refuse }
+  }
+
+  /** Laid out and drawn for the 15th, and the 12th chosen since: only the day is behind. */
+  function dayBehind(over: Partial<ProjectRecord> = {}): ProjectRecord {
+    const drawn = project({
+      layout: LAYOUT,
+      made: MADE,
+      built: { mode: 'all', agency: null },
+      service: WINDOW,
+      date: '2026-09-15',
+    })
+    return { ...drawn, drawn: drawnFrom(drawn), date: '2026-09-12', ...over }
+  }
+
+  it('a tuning that lands while it waits makes it a layout, though only the day was behind at the press', async () => {
+    // Mutation: the plan after the wait made from the record handed at the
+    // press (`planOf(handed, …)` in `runAll`) - a rebuild for the day, and
+    // no graph.build, so the tuning waits for one more press.
+    const { run, calls, record, complete } = setup(dayBehind())
+    expect(runAllPlan(record, run.snapshot), 'the plan at the press').toEqual({
+      kind: 'rebuild',
+      date: '2026-09-12',
+    })
+    const write = held()
+    void run.writing(write.promise)
+    run.runAll(record, READY, runAllPlan)
+    // Going from the press as the press's plan would go: cell 03's run.
+    expect(run.snapshot).toMatchObject({ state: 'running', rebuilt: true, day: '2026-09-12' })
+    expect(run.job()).toMatchObject({ kind: 'rebuild', label: 'Rebuild for 2026-09-12' })
+    const job = run.job()?.id
+    expect(calls, 'nothing is asked while the write is on its way').toHaveLength(0)
+
+    write.answer({ ...record, tuning: { gridSize: 50 } })
+    await tick()
+    expect(calls.map((c) => c.method)).toEqual(['graph.build'])
+    expect(calls[0].params.tuning).toEqual({ grid_size: 50 })
+    // Now the layout it is, cell 02's, the same job under its own name.
+    expect(run.snapshot).toMatchObject({
+      state: 'running',
+      rebuilt: false,
+      forced: false,
+      day: null,
+    })
+    expect(run.job()).toMatchObject({ id: job, kind: 'layout', label: 'Layout run' })
+
+    await laidOut(calls)
+    expect(calls[2]).toMatchObject({ method: 'map.build', params: { date: '2026-09-12' } })
+    calls[2].resolve({ files: {} })
+    await tick()
+    expect(run.snapshot.state).toBe('done')
+    expect((complete.mock.calls[0] as unknown[])[1]).toMatchObject({
+      date: '2026-09-12',
+      tuning: { gridSize: 50 },
+    })
+  })
+
+  it('a day that lands while it waits is the day the rebuild draws and writes', async () => {
+    // Mutation: the rebuild started for the day of the plan at the press
+    // (`pressed.date` after the wait) - the 12th is drawn, and written back
+    // over the 20th the person chose.
+    const { run, calls, record, completeRebuild } = setup(dayBehind())
+    const write = held()
+    void run.writing(write.promise)
+    run.runAll(record, READY, runAllPlan)
+    write.answer({ ...record, date: '2026-09-20' })
+    await tick()
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toMatchObject({
+      method: 'map.build',
+      params: { layout: LAYOUT, date: '2026-09-20' },
+    })
+    expect(run.snapshot).toMatchObject({ rebuilt: true, day: '2026-09-20' })
+    expect(run.job()).toMatchObject({ kind: 'rebuild', label: 'Rebuild for 2026-09-20' })
+    calls[0].resolve({ files: {} })
+    await tick()
+    expect(completeRebuild).toHaveBeenCalledWith('p1', { date: '2026-09-20' })
+  })
+
+  it('a refused write: the plan is the one the record as it stands makes, and the writer hears why', async () => {
+    // Mutation: `writing` without its refusal handler - Run all waits for
+    // ever, and nothing is drawn.
+    const { run, calls, record } = setup(dayBehind())
+    const write = held()
+    const writer = run.writing(write.promise)
+    run.runAll(record, READY, runAllPlan)
+    write.refuse(new Error('read-only'))
+    await expect(writer).rejects.toThrow('read-only')
+    await tick()
+    expect(calls.map((c) => c.method)).toEqual(['map.build'])
+    expect(calls[0].params.date).toBe('2026-09-12')
+  })
+
+  it('a cancel ends the wait, and nothing is asked when the write answers after it', async () => {
+    // Mutation: `runAll` not looking at the cancel after the wait - a Run
+    // all that was stopped lays the project out once the write lands.
+    const { run, calls, record } = setup(dayBehind())
+    const write = held()
+    void run.writing(write.promise)
+    run.runAll(record, READY, runAllPlan)
+    run.cancel()
+    await tick()
+    expect(run.snapshot).toMatchObject({ state: 'cancelled', rebuilt: true, day: '2026-09-12' })
+    write.answer({ ...record, tuning: { gridSize: 50 } })
+    await tick()
+    expect(calls, 'nothing was asked').toHaveLength(0)
+    expect(run.snapshot.state).toBe('cancelled')
+  })
+
+  it('with nothing on its way, starts the plan in the press’s own turn, as cell 02’s or cell 03’s own press would', () => {
+    // Mutation: `runAll` waiting for the writes whatever is on its way -
+    // nothing is asked in the press's turn.
+    const day = setup(dayBehind())
+    day.run.runAll(day.record, READY, runAllPlan)
+    expect(day.calls.map((c) => c.method)).toEqual(['map.build'])
+    expect(day.calls[0].params.date).toBe('2026-09-12')
+    expect(day.run.snapshot).toMatchObject({ state: 'running', rebuilt: true, day: '2026-09-12' })
+    expect(day.run.job()).toMatchObject({ kind: 'rebuild', label: 'Rebuild for 2026-09-12' })
+
+    const tuned = setup(dayBehind({ date: '2026-09-15', tuning: { gridSize: 50 } }))
+    tuned.run.runAll(tuned.record, READY, runAllPlan)
+    expect(tuned.calls.map((c) => c.method)).toEqual(['graph.build'])
+    expect(tuned.run.snapshot).toMatchObject({ rebuilt: false, forced: false, day: null })
+    expect(tuned.run.job()).toMatchObject({ kind: 'layout', label: 'Layout run' })
+
+    // And refused in that turn, as the press's own run is, where the engine
+    // cannot run it: with a write on its way too, since nothing waits to be
+    // refused.
+    const refused = setup(dayBehind(), null)
+    void refused.run.writing(held().promise)
+    refused.run.runAll(refused.record, null, runAllPlan)
+    expect(refused.run.snapshot).toMatchObject({
+      state: 'failed',
+      rebuilt: true,
+      day: '2026-09-12',
+      error: 'The engine is still starting. Try again in a moment.',
+    })
+  })
+
+  it('a layout at the press that becomes a rebuild forgets the feed: a cancel then asks the registry nothing', async () => {
+    // A mode chosen, so the press's plan is a layout, and put back by the
+    // write on its way, so only the day is behind once it lands. A layout
+    // stopped before its first stage asks the registry whether its feed is
+    // on disk (issue 178); a rebuild never does. Mutation: the feed kept
+    // when the run becomes a rebuild (`this.#feedKey = null` dropped from
+    // `runAll`) - the stopped rebuild asks the registry about the feed.
+    const onDisk = vi.fn(async () => true)
+    const { run, calls, record } = setup(dayBehind({ mode: 'subway' }), READY, onDisk)
+    expect(runAllPlan(record, run.snapshot), 'the plan at the press').toEqual({ kind: 'layout' })
+    const write = held()
+    void run.writing(write.promise)
+    run.runAll(record, READY, runAllPlan)
+    expect(run.snapshot).toMatchObject({ state: 'running', rebuilt: false, day: null })
+    expect(run.job()).toMatchObject({ kind: 'layout', label: 'Layout run' })
+
+    write.answer({ ...record, mode: 'all' })
+    await tick()
+    expect(calls.map((c) => c.method)).toEqual(['map.build'])
+    expect(run.snapshot).toMatchObject({ state: 'running', rebuilt: true, day: '2026-09-12' })
+    expect(run.job()).toMatchObject({ kind: 'rebuild', label: 'Rebuild for 2026-09-12' })
+
+    run.cancel()
+    calls[0].resolve({ files: {} })
+    await tick()
+    expect(run.snapshot).toMatchObject({ state: 'cancelled', rebuilt: true, feedMissing: false })
+    expect(onDisk, 'the registry is not asked about a rebuild').not.toHaveBeenCalled()
+  })
+
+  it('a write that leaves nothing to run puts the run back as it stood: nothing asked, no job ended', async () => {
+    // A day chosen and then put back to the one the map shows, the second
+    // write still on its way at the press. Mutation: a plan of none after
+    // the wait taken for the press's plan (`#withdraw` not called) - the
+    // run never ends, or draws a day nobody now chose.
+    const { run, calls, record, completeRebuild } = setup(dayBehind())
+    // A run that finished before, so there is a job to go back to.
+    run.rebuild(record, READY, '2026-09-12')
+    calls[0].resolve({ files: {} })
+    await tick()
+    const before = run.snapshot
+    const job = run.job()
+    expect(before.state).toBe('done')
+    const ended: string[] = []
+    run.subscribe((s) => ended.push(s.state))
+
+    const write = held()
+    void run.writing(write.promise)
+    run.runAll(record, READY, runAllPlan)
+    expect(run.snapshot.state).toBe('running')
+    write.answer({ ...record, date: '2026-09-15' })
+    await tick()
+    expect(calls, 'only the first rebuild was ever asked').toHaveLength(1)
+    expect(completeRebuild).toHaveBeenCalledTimes(1)
+    expect(run.snapshot, 'the very snapshot it had').toBe(before)
+    expect(run.job(), 'the job it had').toEqual(job)
+    expect(ended).toEqual(['running', 'done'])
+  })
+
+  it('puts a stopped redraw back as idle, so its panel sees no second stop, and a stopped layout as it was', async () => {
+    // A panel puts its control back on the change into its own stop
+    // (`stoppedNow`); a stop put back after the press would be a second one.
+    // Mutation: `#withdraw` restoring every snapshot as it was (the
+    // `stoppedRedraw` branch dropped) - the colours see a stop of their own.
+    const redrawn = setup(dayBehind())
+    redrawn.run.recolour(redrawn.record, READY, {
+      colors: { A: '#0072bc' },
+      defaultColor: '#888888',
+    })
+    redrawn.run.cancel()
+    redrawn.calls[0].resolve({ files: {} })
+    await tick()
+    expect(redrawn.run.snapshot).toMatchObject({ state: 'cancelled', recoloured: true })
+    let seen: Seen = { state: 'cancelled', own: true }
+    const stops: string[] = []
+    redrawn.run.subscribe((s) => {
+      const now = { state: s.state, own: s.recoloured }
+      if (stoppedNow(seen, now)) stops.push(s.state)
+      seen = now
+    })
+    const write = held()
+    void redrawn.run.writing(write.promise)
+    redrawn.run.runAll(redrawn.record, READY, runAllPlan)
+    write.answer({ ...redrawn.record, date: '2026-09-15' })
+    await tick()
+    expect(stops, 'no stop of the colours’ own').toEqual([])
+    expect(redrawn.run.snapshot).toMatchObject({
+      state: 'idle',
+      recoloured: false,
+      error: null,
+      report: null,
+    })
+
+    // A stopped layout run has no panel to put back, and is restored as it was.
+    const laid = setup(dayBehind())
+    laid.run.start(laid.record, READY)
+    laid.run.cancel()
+    laid.calls[0].resolve(BUILT)
+    await tick()
+    const stopped = laid.run.snapshot
+    expect(stopped.state).toBe('cancelled')
+    const again = held()
+    void laid.run.writing(again.promise)
+    laid.run.runAll(laid.record, READY, runAllPlan)
+    again.answer({ ...laid.record, date: '2026-09-15' })
+    await tick()
+    expect(laid.run.snapshot).toBe(stopped)
+  })
+})
+
+// Issue 407. A write leaves those on their way the moment the store answers
+// it, and the screen draws the answer when React next renders, a task or so
+// later; a press in that beat is handed the record from before the write.
+// The run keeps the store's latest answer and reads it where it was written
+// after the record handed, by the store's own stamp (`modified`).
+describe('a press after a write has answered and before the screen has drawn it', () => {
+  const EARLIER = '2026-09-01T00:00:00.000Z'
+  const LATER = '2026-09-01T00:00:01.000Z'
+  const LATEST = '2026-09-01T00:00:02.000Z'
+
+  it('lays out, rebuilds and runs all from the answer, in the press’s own turn', async () => {
+    // Mutation: `#current` answering the record handed whatever the store
+    // took - each run goes from the record before the write.
+    const laid = setup({ modified: EARLIER })
+    await laid.run.writing(Promise.resolve({ ...laid.record, mode: 'subway', modified: LATER }))
+    laid.begin()
+    expect(laid.calls, 'asked at once: nothing is on its way').toHaveLength(1)
+    expect(laid.calls[0].params.mode).toBe('subway')
+
+    const drawn = setup({ layout: LAYOUT, service: WINDOW, modified: EARLIER })
+    await drawn.run.writing(
+      Promise.resolve({ ...drawn.record, colors: { A: '#0072bc' }, modified: LATER }),
+    )
+    drawn.run.rebuild(drawn.record, READY, '2026-09-12')
+    expect(drawn.calls[0]).toMatchObject({
+      method: 'map.build',
+      params: { date: '2026-09-12', colors: { A: '#0072bc' } },
+    })
+
+    // Only the day behind on the screen's record, and a tuning the store has
+    // taken: a layout, with it.
+    const shown = project({
+      layout: LAYOUT,
+      made: MADE,
+      built: { mode: 'all', agency: null },
+      service: WINDOW,
+      date: '2026-09-15',
+      modified: EARLIER,
+    })
+    const behind = { ...shown, drawn: drawnFrom(shown), date: '2026-09-12' }
+    const all = setup(behind)
+    await all.run.writing(Promise.resolve({ ...behind, tuning: { gridSize: 50 }, modified: LATER }))
+    all.run.runAll(all.record, READY, runAllPlan)
+    expect(all.calls.map((c) => c.method)).toEqual(['graph.build'])
+    expect(all.calls[0].params.tuning).toEqual({ grid_size: 50 })
+  })
+
+  it('reads the record handed where it was written after the answer: a later edit the screen has drawn', async () => {
+    // Mutation: `#current` taking the answer whenever there is one - the
+    // run goes from a record older than the one the screen holds.
+    const { run, calls, record } = setup({ modified: EARLIER })
+    await run.writing(Promise.resolve({ ...record, mode: 'subway', modified: LATER }))
+    run.start({ ...record, mode: 'tram', modified: LATEST }, READY)
+    expect(calls[0].params.mode).toBe('tram')
+  })
+
+  it('forgets the answer once a run of its own has finished, whose write and read-back are newer', async () => {
+    // The stamps are the main process's clock. A clock stepped back between
+    // the answer and the run's own write would make the answer look newer
+    // than the record read back after the run, which it is not. Mutation:
+    // `#finish` keeping `#taken` - the next run goes from the answer from
+    // before the last one, with the mode it held then.
+    const { run, calls, record } = setup({ layout: LAYOUT, service: WINDOW, modified: EARLIER })
+    await run.writing(
+      Promise.resolve({ ...record, mode: 'subway', modified: '2026-09-01T00:00:09.000Z' }),
+    )
+    run.rebuild(record, READY, '2026-09-12')
+    calls[0].resolve({ files: {} })
+    await tick()
+    expect(run.snapshot.state).toBe('done')
+    // The record as the screen reads it back, stamped after the clock stepped back.
+    run.start({ ...record, mode: 'tram', modified: LATER }, READY)
+    expect(calls[1]).toMatchObject({ method: 'graph.build', params: { mode: 'tram' } })
+  })
+
+  it('keeps the answer to the write sent last, whichever answer arrived last', async () => {
+    // The store answers in the order it was sent; the rule does not lean
+    // on it. Mutation: every answer kept as it arrives (the order of the
+    // writes not compared) - the run goes from the first write's answer.
+    const { run, calls, record, begin } = setup({ modified: EARLIER })
+    let first!: (r: ProjectRecord) => void
+    let second!: (r: ProjectRecord) => void
+    void run.writing(new Promise<ProjectRecord>((yes) => (first = yes)))
+    void run.writing(new Promise<ProjectRecord>((yes) => (second = yes)))
+    second({ ...record, mode: 'subway', agency: 'METRO', modified: LATEST })
+    await tick()
+    first({ ...record, mode: 'subway', modified: LATER })
+    await tick()
+    begin()
+    expect(calls[0].params).toMatchObject({ mode: 'subway', agency: 'METRO' })
+  })
+})
+
+// Issue 407. Cell 03's day is written a beat after it is picked, so a press
+// on "Lay out again" or Run all in that beat found no write on its way: the
+// run drew the day the record held, and the day landed while it went, to be
+// recorded as the day drawn. A control holding a choice back hears the
+// press first (`beforeStart`) and sends it, so it is a write on its way.
+describe('a press tells what holds a choice back, before it reads the record', () => {
+  function held(): { promise: Promise<ProjectRecord>; answer: (r: ProjectRecord) => void } {
+    let answer!: (r: ProjectRecord) => void
+    const promise = new Promise<ProjectRecord>((yes) => (answer = yes))
+    return { promise, answer }
+  }
+
+  /** Laid out and drawn for the 15th, and nothing behind. */
+  function drawn(): ProjectRecord {
+    const record = project({
+      layout: LAYOUT,
+      made: MADE,
+      built: { mode: 'all', agency: null },
+      service: WINDOW,
+      date: '2026-09-15',
+    })
+    return { ...record, drawn: drawnFrom(record) }
+  }
+
+  it('a write sent as the press is heard is waited for, by a layout run, a rebuild and Run all', async () => {
+    // Mutation: the listeners told after the record is read, or not at all
+    // (`#pressed()` in `start`, `rebuild` or `runAll`) - the run goes at the
+    // press, for the 15th.
+    const presses: [string, (run: LayoutRun, record: ProjectRecord) => void][] = [
+      ['a layout run', (run, record) => run.start(record, READY)],
+      ['a rebuild', (run, record) => run.rebuild(record, READY, '2026-09-20')],
+      ['Run all', (run, record) => run.runAll(record, READY, runAllPlan)],
+    ]
+    for (const [name, press] of presses) {
+      const { run, calls, record } = setup(drawn())
+      const write = held()
+      run.beforeStart(() => void run.writing(write.promise))
+      press(run, record)
+      expect(run.snapshot.state, name).toBe('running')
+      expect(calls, `${name}: nothing asked while the day is on its way`).toHaveLength(0)
+      write.answer({ ...record, date: '2026-09-20' })
+      await tick()
+      if (calls[0].method === 'graph.build') await laidOut(calls)
+      const map = calls.find((c) => c.method === 'map.build')
+      expect(map?.params.date, `${name} draws the day`).toBe('2026-09-20')
+    }
+  })
+
+  it('tells nobody of a redraw, a refused second press, or once the listener has gone', async () => {
+    // Mutation: the listener left in place by the function `beforeStart`
+    // answers - it is told of the press after it was taken away.
+    const { run, calls, record } = setup(drawn())
+    const heard = vi.fn()
+    const off = run.beforeStart(heard)
+    run.recolour(record, READY, { colors: { A: '#0072bc' }, defaultColor: '#888888' })
+    expect(heard, 'a redraw draws the day the map shows').not.toHaveBeenCalled()
+    run.start(record, READY)
+    expect(heard, 'refused: a run is going').not.toHaveBeenCalled()
+    run.cancel()
+    calls[0].resolve({ files: {} })
+    await tick()
+    expect(run.snapshot.state).toBe('cancelled')
+    run.start(record, READY)
+    expect(heard, 'told of a press while it listens').toHaveBeenCalledTimes(1)
+    run.cancel()
+    calls[1].resolve(BUILT)
+    await tick()
+    expect(run.snapshot.state).toBe('cancelled')
+    off()
+    run.start(record, READY)
+    expect(run.snapshot.state, 'started').toBe('running')
+    expect(heard, 'and not once it has gone').toHaveBeenCalledTimes(1)
+  })
+})
+
+// Issue 407. The bridge writes the mode and the operator together, so an
+// operator chosen while a mode is on its way was sent with the mode the
+// screen held, and put the old mode back. `writingFrom` makes a write from
+// the record the writes ahead of it leave, and sends it once they have
+// landed; it is on its way from the moment it is handed over, so a start
+// waits for it as for any.
+describe('a write made from the record the writes ahead of it leave', () => {
+  function held(): {
+    promise: Promise<ProjectRecord>
+    answer: (r: ProjectRecord) => void
+    refuse: (reason: unknown) => void
+  } {
+    let answer!: (r: ProjectRecord) => void
+    let refuse!: (reason: unknown) => void
+    const promise = new Promise<ProjectRecord>((yes, no) => {
+      answer = yes
+      refuse = no
+    })
+    return { promise, answer, refuse }
+  }
+
+  /** What the writer sends: the operator, with the mode of the record it was handed. */
+  const operator = (agency: string) =>
+    vi.fn((record: ProjectRecord) => Promise.resolve({ ...record, agency }))
+
+  it('is sent at once, from the record handed, where nothing is on its way', () => {
+    const { run, record } = setup()
+    const send = operator('METRO')
+    void run.writingFrom(record, send)
+    expect(send).toHaveBeenCalledWith(record)
+  })
+
+  it('waits for a mode on its way, and is made from the record it leaves', async () => {
+    // Mutation: `writingFrom` sending at once from the record handed (no
+    // wait on `#ahead`) - the operator goes with the old mode, and the store,
+    // writing it second, puts that mode back.
+    const { run, record } = setup()
+    const mode = held()
+    void run.writing(mode.promise)
+    const send = operator('METRO')
+    const written = run.writingFrom(record, send)
+    expect(send, 'not while the mode is on its way').not.toHaveBeenCalled()
+    mode.answer({ ...record, mode: 'subway' })
+    await tick()
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ mode: 'subway' }))
+    await expect(written).resolves.toMatchObject({ mode: 'subway', agency: 'METRO' })
+  })
+
+  it('waits for a write sent while it waits too, so it is written after it and holds it', async () => {
+    // A mode on its way, the operator, then another mode, sent at once.
+    // Mutation: `#ahead` waiting only for the writes handed over before it -
+    // the operator goes after the first mode with that mode, and is written
+    // after the second, putting the first back.
+    const { run, record } = setup()
+    const first = held()
+    const second = held()
+    void run.writing(first.promise)
+    const send = operator('METRO')
+    void run.writingFrom(record, send)
+    void run.writing(second.promise)
+    first.answer({ ...record, mode: 'subway' })
+    await tick()
+    expect(send, 'not while the second mode is on its way').not.toHaveBeenCalled()
+    second.answer({ ...record, mode: 'tram' })
+    await tick()
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ mode: 'tram' }))
+  })
+
+  it('a start waits for it, and reads its answer, which holds the writes sent before it', async () => {
+    // It is sent last of the three, so its answer is the record as the store
+    // last wrote it, though it was handed over second. Mutation: the answer
+    // a start reads taken by the order the writes were handed over (the last
+    // of them answered) rather than sent - the run goes without the operator.
+    const { run, calls, record, begin } = setup()
+    const first = held()
+    const second = held()
+    void run.writing(first.promise)
+    void run.writingFrom(record, operator('METRO'))
+    void run.writing(second.promise)
+    begin()
+    first.answer({ ...record, mode: 'subway' })
+    second.answer({ ...record, mode: 'tram' })
+    await tick()
+    await tick()
+    expect(calls).toHaveLength(1)
+    expect(calls[0].params).toMatchObject({ mode: 'tram', agency: 'METRO' })
+  })
+
+  it('a refusal ahead of it: made from the record as it stands', async () => {
+    const { run, record } = setup()
+    const mode = held()
+    run.writing(mode.promise).catch(() => undefined)
+    const send = operator('METRO')
+    void run.writingFrom(record, send)
+    mode.refuse(new Error('read-only'))
+    await tick()
+    expect(send).toHaveBeenCalledWith(record)
+  })
+
+  it('two made from the record: the second waits for the first, and is made from its answer', async () => {
+    // Mutation: `#ahead` counting one made after it that has not been sent -
+    // each waits for the other, and neither is ever sent.
+    const { run, record } = setup()
+    const mode = held()
+    void run.writing(mode.promise)
+    const sub = operator('SUB')
+    const metro = vi.fn((r: ProjectRecord) => Promise.resolve({ ...r, lineOrder: ['A'] }))
+    void run.writingFrom(record, sub)
+    void run.writingFrom(record, metro)
+    mode.answer({ ...record, mode: 'subway' })
+    await tick()
+    expect(sub).toHaveBeenCalledWith(expect.objectContaining({ mode: 'subway' }))
+    expect(metro).toHaveBeenCalledWith(expect.objectContaining({ mode: 'subway', agency: 'SUB' }))
   })
 })

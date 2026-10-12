@@ -23,7 +23,8 @@ import {
   type Locator,
   type Page,
 } from '@playwright/test'
-import type { Api } from '../../src/shared/api'
+import { CHANNELS, type Api } from '../../src/shared/api'
+import { holdWrites } from '../support/hold-writes'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 import { keepStandInPage, standInPage, type StandInPageOptions } from '../support/standInPage'
 import {
@@ -581,6 +582,53 @@ test('a chosen day is drawn from the stored layout alone, and written when the m
     await expect(control).toHaveValue('2026-06-20')
     // The stored day is nothing to draw again.
     await expect(section.getByRole('button', { name: 'Draw for this day' })).toBeDisabled()
+  })
+})
+
+// Issue 407. A picked day is written a quarter of a second after it is
+// picked, so a press on "Lay out again" inside that beat found no write on
+// its way: the run drew the day the record held, and the day landed while
+// it went and was recorded as the day drawn. The press now sends the
+// waiting day, and the run waits for it and draws it. The day's write is
+// held in the main process, so the run is seen waiting for it. Mutation:
+// `useDayChoice` without its `beforeStart` effect (`ServiceDay.tsx`), or
+// `start` not telling its listeners (`#pressed()` in
+// `engine/layoutRun.ts`) - graph.build goes at the press, before the day is
+// written. (Where the runner is slower than the quarter second between the
+// fill and the press, the day is on its way by the press either way and
+// the test passes under the mutation too; it never fails the right code.)
+test('a day picked a moment before Lay out again is the day that run draws and records', async () => {
+  const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
+  await withApp(engineHome, async (page, app) => {
+    await openNewProject(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    expect(readRecord(engineHome).date).toBe('2026-06-16')
+
+    const writes = await holdWrites(app, CHANNELS.projectsSetDate)
+    await cell(page, 'frame').getByLabel('Draw for another day').fill('2026-06-20')
+    await page.getByRole('button', { name: 'Lay out again', exact: true }).click()
+    await expect
+      .poll(() => writes.arrived(), { message: 'the day is on its way, and held' })
+      .toBe(1)
+    expect(received(engineHome, 'graph.build'), 'nothing laid out before it lands').toHaveLength(1)
+
+    await writes.release()
+    await expect
+      .poll(() => (readRecord(engineHome).drawn as { date: string } | null)?.date, {
+        timeout: 30_000,
+      })
+      .toBe('2026-06-20')
+    expect(readRecord(engineHome).date).toBe('2026-06-20')
+    expect(received(engineHome, 'graph.build')).toHaveLength(2)
+    const maps = received(engineHome, 'map.build')
+    expect(maps).toHaveLength(2)
+    expect(maps[1], 'the day the record says was drawn is the day drawn').toContain(
+      '"date": "2026-06-20"',
+    )
+    await expect(page.locator('.project-run').getByRole('status')).toHaveText(
+      'The map is drawn from every cell.',
+    )
   })
 })
 

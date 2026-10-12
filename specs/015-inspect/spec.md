@@ -122,6 +122,27 @@ sentence is the engine's.
     The decision, and why waiting rather than reading a value the moment
     it is chosen, is recorded once, under FR-007 of
     `specs/033-layout-tuning/spec.md`.
+  - *As of 12 Oct 2026 (issue 407):* an operator chosen while a mode is
+    on its way goes with that mode. The bridge takes the two together
+    (`projects.setInputs`), and the operator went with the mode the
+    screen held, so the store, writing it second, put the old mode back.
+    The operator's write is now made from the record as the writes ahead
+    of it leave it, and sent once they have landed
+    (`LayoutRun.writingFrom`, which `setInputs` uses when `Inspect`'s
+    `chooseAgency` hands it a function of the record): the record's mode,
+    as a run reads it, and not the one the panel shows, so a typed mode
+    that was refused is not sent again with an operator. It waits for
+    every write sent before it, a mode sent while it waits included, and
+    is on its way from the choice, so a run started meanwhile waits for
+    it too; which answer holds the others is taken from the order the
+    writes were sent, not handed over. **Use the feed's entry** is queued
+    the same way, the entry whole: an operator still waiting for a mode
+    is sent once that mode lands, and an entry sent at once would go
+    ahead of it and be written over by it, though the entry is the later
+    press. A mode chosen from the list or typed is still sent at once,
+    with the operator the panel shows, which an operator still waiting
+    then sends again with it. Sending the operator alone would need a
+    bridge method of the main process's, which this left as it was.
 - **FR-004**: The histogram MUST mark the types the chosen mode keeps,
   from the engine's `modes` per type (every name that keeps it) and the
   type's own number.

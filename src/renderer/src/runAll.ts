@@ -27,7 +27,10 @@ import {
 // disk and can take minutes; a button that promises "everything" must not
 // do that as a side effect, and the header says so beside it.
 //
-// Pure, as the run graph is: a table of records in a unit test.
+// Pure, as the run graph is: a table of records in a unit test. The run
+// asks it (`LayoutRun.runAll`, handed `runAllPlan`), from the record a start
+// reads: the one the header held, or, with a write to it on its way at the
+// press, the one that write leaves (issue 407).
 
 /** What a press of Run all would start, or that nothing needs to. */
 export type RunAllPlan =
