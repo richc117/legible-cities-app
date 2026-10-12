@@ -1347,8 +1347,14 @@ export class LayoutRun {
    * in it, since the store writes a project's record one write at a time in
    * the order they were sent - or, where it took none, the record handed,
    * which is then the record as it stands (`#current` made it so at the
-   * press). A write sent after the start is
-   * not waited for: a run sends what it was started with (spec 033, FR-007).
+   * press). A write sent after the start is not waited for: a run sends
+   * what it was started with (spec 033, FR-007). With one qualification
+   * (issue 407): an operator still waiting at the press is a write on its
+   * way, sent only once every write sent before it has landed, a field
+   * committed after the press among them, and made from the store's answer
+   * to those; its answer, which this reads, then carries that field. The
+   * run sends it, and the record stays whole, since what the layout was
+   * asked with is written beside it (`laidOutWith`).
    *
    * It has no deadline: a write the store has not answered has not landed,
    * and reading the record before it lands is the fault this is here for.
