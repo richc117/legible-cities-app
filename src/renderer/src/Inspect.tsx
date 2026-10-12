@@ -280,7 +280,15 @@ export default function Inspect({
     setCustom(false)
     setMode(registry.mode)
     setAgency(registry.agency)
-    void store(registry)
+    // The entry whole, but queued as the operator is (issue 407): an
+    // operator chosen a moment before waits for the writes ahead of it, and
+    // an entry sent at once would go ahead of it and be written over by it,
+    // though the entry is the later press.
+    const { mode: entryMode, agency: entryAgency } = registry
+    void write(validateMode(entryMode) ?? validateAgency(entryAgency), () => ({
+      mode: entryMode,
+      agency: entryAgency,
+    }))
   }
   // A stored agency the feed does not list is shown so it can be cleared.
   const agencyOptions = [...(inspection?.agencies ?? [])]
