@@ -952,6 +952,11 @@ export class LayoutRun {
       this.#open('rebuild', `Rebuild for ${pressed.date}`, now.id)
       this.#begin(engine, rebuildKind(pressed.date))
     } else {
+      // A plan of nothing goes this way too, as a layout, for as long as the
+      // wait: cell 02 reads running and the inspector lists a layout run
+      // until the plan is made again. It is rare - the header offers Run all
+      // only for a plan of its own, so this is a record read newer than the
+      // render's - and nothing runs unless the writes leave a run to make.
       this.#open('layout', 'Layout run', now.id)
       this.#begin(engine, layoutKind(false))
       this.#feedKey = now.feed
