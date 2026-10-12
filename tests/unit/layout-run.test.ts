@@ -23,7 +23,7 @@ import {
   restyledSentence,
   stoppedSentence,
 } from '../../src/renderer/src/LayoutRun'
-import { refusedAtStart, stoppedNow } from '../../src/renderer/src/panelRelease'
+import { refusedAtStart, stoppedNow, type Seen } from '../../src/renderer/src/panelRelease'
 import { runAllPlan } from '../../src/renderer/src/runAll'
 import { cellOfRun } from '../../src/renderer/src/runGraph'
 import { LAYOUT_STAGES } from '../../src/shared/layout'
@@ -2645,6 +2645,56 @@ describe('Run all with a write to the record on its way', () => {
     expect(run.snapshot, 'the very snapshot it had').toBe(before)
     expect(run.job(), 'the job it had').toEqual(job)
     expect(ended).toEqual(['running', 'done'])
+  })
+
+  it('puts a stopped redraw back as idle, so its panel sees no second stop, and a stopped layout as it was', async () => {
+    // A panel puts its control back on the change into its own stop
+    // (`stoppedNow`); a stop put back after the press would be a second one.
+    // Mutation: `#withdraw` restoring every snapshot as it was (the
+    // `stoppedRedraw` branch dropped) - the colours see a stop of their own.
+    const redrawn = setup(dayBehind())
+    redrawn.run.recolour(redrawn.record, READY, {
+      colors: { A: '#0072bc' },
+      defaultColor: '#888888',
+    })
+    redrawn.run.cancel()
+    redrawn.calls[0].resolve({ files: {} })
+    await tick()
+    expect(redrawn.run.snapshot).toMatchObject({ state: 'cancelled', recoloured: true })
+    let seen: Seen = { state: 'cancelled', own: true }
+    const stops: string[] = []
+    redrawn.run.subscribe((s) => {
+      const now = { state: s.state, own: s.recoloured }
+      if (stoppedNow(seen, now)) stops.push(s.state)
+      seen = now
+    })
+    const write = held()
+    void redrawn.run.writing(write.promise)
+    redrawn.run.runAll(redrawn.record, READY, runAllPlan)
+    write.answer({ ...redrawn.record, date: '2026-09-15' })
+    await tick()
+    expect(stops, 'no stop of the colours’ own').toEqual([])
+    expect(redrawn.run.snapshot).toMatchObject({
+      state: 'idle',
+      recoloured: false,
+      error: null,
+      report: null,
+    })
+
+    // A stopped layout run has no panel to put back, and is restored as it was.
+    const laid = setup(dayBehind())
+    laid.run.start(laid.record, READY)
+    laid.run.cancel()
+    laid.calls[0].resolve(BUILT)
+    await tick()
+    const stopped = laid.run.snapshot
+    expect(stopped.state).toBe('cancelled')
+    const again = held()
+    void laid.run.writing(again.promise)
+    laid.run.runAll(laid.record, READY, runAllPlan)
+    again.answer({ ...laid.record, date: '2026-09-15' })
+    await tick()
+    expect(laid.run.snapshot).toBe(stopped)
   })
 })
 

@@ -998,11 +998,24 @@ export class LayoutRun {
    * ended: no job ends, no cell says it was stopped, and the screen, which
    * reads a record back only after a run that has just finished, does not
    * take one put back for one (`useProjectState.ts`).
+   *
+   * Except a redraw for colours, line options, the order or the sizes that
+   * had stopped. Its panel puts its control back to the record on the
+   * change *into* its own stop (`stoppedNow`, `usePutBack`), and the press
+   * was a change out of it: put back as it was, the stop would read as a
+   * second one, and the panel would drop a change a person made while Run
+   * all waited and that panel held. The run goes back to idle instead, with
+   * no kind, no sentence and no figures of that redraw, so no panel sees a
+   * stop of its own; a run that finished, or never ran, goes back exactly.
    */
   #withdraw(before: { snapshot: RunSnapshot; attempt: Attempt | null }): void {
+    const was = before.snapshot
+    const stoppedRedraw =
+      (was.state === 'cancelled' || was.state === 'failed') &&
+      (was.recoloured || was.optioned || was.reordered || was.restyled)
     this.#feedKey = null
     this.#attempt = before.attempt
-    this.#snapshot = before.snapshot
+    this.#snapshot = stoppedRedraw ? IDLE : was
     for (const listener of this.#listeners) listener(this.#snapshot)
   }
 

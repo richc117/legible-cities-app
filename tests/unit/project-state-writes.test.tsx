@@ -31,6 +31,7 @@ import { useProjectState, type ProjectState } from '../../src/renderer/src/noteb
 import type { Debounced } from '../../src/renderer/src/debounce'
 import { runAllPlan } from '../../src/renderer/src/runAll'
 import { useDayChoice } from '../../src/renderer/src/ServiceDay'
+import { usePutBack } from '../../src/renderer/src/usePutBack'
 import type { EngineState } from '../../src/shared/engine'
 import { drawnFrom, type ProjectRecord } from '../../src/shared/project'
 
@@ -588,5 +589,82 @@ describe('an operator chosen while a mode is on its way', () => {
       await tick()
     })
     expect(shown.project).toMatchObject({ mode: 'subway', agency: 'METRO' })
+  })
+})
+
+// Issue 407. Run all that found nothing to run after its wait puts the run
+// back as it stood. Where that was a redraw for colours (or line options,
+// the order, the sizes) that had been stopped, its panel puts its control
+// back to the record on the change into its own stop (`usePutBack`), and
+// the press was a change out of it: put back as it was, the stop reads as a
+// second one, and the panel drops a change made while Run all waited. The
+// panel here is the hook every cheap edit puts itself back through.
+describe('Run all with nothing to run, after a redraw for colours was stopped', () => {
+  const drawnFor15 = { ...RECORD, date: '2026-09-15' } as ProjectRecord
+  const DAY_BEHIND = {
+    ...drawnFor15,
+    drawn: drawnFrom(drawnFor15),
+    date: '2026-09-12',
+  } as ProjectRecord
+  const putBack = vi.fn()
+
+  /** The screen's state, and cell 05's colours as they put themselves back. */
+  function ColoursHarness(): JSX.Element | null {
+    shown = useProjectState('p1', () => undefined)
+    usePutBack(shown.runSnapshot.state, shown.runSnapshot.recoloured, putBack)
+    return null
+  }
+
+  it('does not tell the colours they were stopped a second time', async () => {
+    // Mutation: `#withdraw` putting a stopped redraw back as it was (the
+    // `stoppedRedraw` branch dropped) - the panel is put back again, and a
+    // colour held while Run all waited is lost.
+    putBack.mockClear()
+    const { run, asked } = answeringRun()
+    runs.layout = run
+    api.projects.get.mockImplementation(async () => ({ ...DAY_BEHIND, readOnly: false }))
+    await act(async () => root.render(<ColoursHarness />))
+    await act(tick)
+
+    // A colour's redraw, stopped: the panel goes back to the record, once.
+    act(() =>
+      shown.run.recolour(shown.project as ProjectRecord, shown.engine, {
+        colors: { A: '#0072bc' },
+        defaultColor: '#888888',
+      }),
+    )
+    act(() => shown.run.cancel())
+    await act(async () => {
+      asked[0].resolve({ files: {} })
+      await tick()
+    })
+    expect(shown.runSnapshot).toMatchObject({ state: 'cancelled', recoloured: true })
+    expect(putBack, 'the stop').toHaveBeenCalledTimes(1)
+
+    // The drawn day put back in cell 03, its write on its way, and Run all.
+    const write = deferred<ProjectRecord>()
+    api.projects.setDate.mockReturnValueOnce(write.promise)
+    let committed!: Promise<void>
+    act(() => {
+      committed = shown.setDate('2026-09-15')
+    })
+    act(() => shown.run.runAll(shown.project as ProjectRecord, shown.engine, runAllPlan))
+    expect(shown.runSnapshot.state).toBe('running')
+    await act(async () => {
+      write.resolve({ ...DAY_BEHIND, date: '2026-09-15' })
+      await committed
+      await tick()
+    })
+    expect(
+      asked.map((a) => a.method),
+      'nothing run',
+    ).toEqual(['map.build'])
+    expect(putBack, 'and no second stop').toHaveBeenCalledTimes(1)
+    expect(shown.runSnapshot).toMatchObject({
+      state: 'idle',
+      recoloured: false,
+      error: null,
+      report: null,
+    })
   })
 })
