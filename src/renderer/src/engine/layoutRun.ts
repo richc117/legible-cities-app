@@ -417,6 +417,24 @@ interface RecordWrite {
   settled: Promise<void>
   /** The record as the store answered: null until then, and for a write it refused. */
   answer: ProjectRecord | null
+  /**
+   * Its place in the order the store was sent the writes, counted from 1;
+   * 0 until it has been sent (issue 407). A write is sent as it is handed
+   * over, except one made from the record the others leave
+   * (`writingFrom`), which is sent once they have landed and is counted
+   * then. The store writes a project's record one write at a time, in the
+   * order it was sent them, so of writes that have all settled, the answer
+   * with the highest count holds every other.
+   */
+  sent: number
+}
+
+/** Of writes that have all settled, the answer holding every other; null where the store took none. */
+function lastTaken(writes: readonly RecordWrite[]): ProjectRecord | null {
+  let last: RecordWrite | null = null
+  for (const write of writes)
+    if (write.answer !== null && (last === null || write.sent > last.sent)) last = write
+  return last?.answer ?? null
 }
 
 /**
@@ -572,8 +590,62 @@ export class LayoutRun {
    * the writer gets the store's record, or its refusal, exactly as before.
    */
   writing<T extends ProjectRecord>(write: Promise<T>): Promise<T> {
-    const entry: RecordWrite = { settled: Promise.resolve(), answer: null }
-    const sent = ++this.#sent
+    const entry: RecordWrite = { settled: Promise.resolve(), answer: null, sent: ++this.#sent }
+    this.#writes.add(entry)
+    return this.#held(entry, write)
+  }
+
+  /**
+   * A write made from the record as the writes ahead of it leave it (issue
+   * 407), for a writer that sends one field of two and must send the other
+   * as the record holds it: cell 01's operator, sent with the mode, where a
+   * mode chosen a moment before and still on its way would otherwise be put
+   * back by the mode the screen held. It is on its way from now, so a start
+   * waits for it as for any write, and it is sent once every write handed
+   * over before it, and every write sent while it waits, has landed - at
+   * once where none is on its way. It is made from the record as they leave
+   * it, as a start that waited reads it: the store's answer to the last of
+   * them it took, or, where it took none, the record as it stood when the
+   * write was handed over (`#current`). Sent after them, it is written
+   * after them, and its answer holds them.
+   */
+  writingFrom<T extends ProjectRecord>(
+    handed: ProjectRecord,
+    send: (record: ProjectRecord) => Promise<T>,
+  ): Promise<T> {
+    const entry: RecordWrite = { settled: Promise.resolve(), answer: null, sent: 0 }
+    const now = this.#current(handed)
+    const taken = this.#taken
+    this.#writes.add(entry)
+    const write = (async () => {
+      for (let ahead = this.#ahead(entry); ahead.length > 0; ahead = this.#ahead(entry))
+        await Promise.all(ahead.map((other) => other.settled))
+      // Every write sent before this one has landed or been refused, so the
+      // store's latest answer, where it has taken one since, holds them all.
+      const latest = this.#taken !== taken ? this.#taken : null
+      entry.sent = ++this.#sent
+      return send(latest?.record ?? now)
+    })()
+    return this.#held(entry, write)
+  }
+
+  /**
+   * What a write made from the record waits for: every write handed over
+   * before it, and every write sent since. Not one made from the record
+   * after it, which is waiting for this one.
+   */
+  #ahead(entry: RecordWrite): RecordWrite[] {
+    const ahead: RecordWrite[] = []
+    let before = true
+    for (const other of this.#writes) {
+      if (other === entry) before = false
+      else if (before || other.sent > 0) ahead.push(other)
+    }
+    return ahead
+  }
+
+  /** A write on its way until the store answers it or refuses; answered as it was. */
+  #held<T extends ProjectRecord>(entry: RecordWrite, write: Promise<T>): Promise<T> {
     // No longer on its way the moment the store answers, before the writer
     // hears it, so a start the writer's own answer leads to does not wait;
     // and kept, for a start made before the screen has rendered it.
@@ -581,7 +653,8 @@ export class LayoutRun {
       (record) => {
         entry.answer = record
         this.#writes.delete(entry)
-        if (this.#taken === null || sent > this.#taken.sent) this.#taken = { record, sent }
+        if (this.#taken === null || entry.sent > this.#taken.sent)
+          this.#taken = { record, sent: entry.sent }
       },
       // A refusal is the writer's to show; here it is only a write that has
       // ended, which must not keep a start waiting.
@@ -589,7 +662,6 @@ export class LayoutRun {
         this.#writes.delete(entry)
       },
     )
-    this.#writes.add(entry)
     return write
   }
 
@@ -1275,8 +1347,7 @@ export class LayoutRun {
     return new Promise<ProjectRecord>((settle) => {
       this.#wake = () => settle(handed)
       void Promise.all(writes.map((write) => write.settled)).then(() => {
-        const taken = writes.filter((write) => write.answer !== null)
-        settle(taken[taken.length - 1]?.answer ?? handed)
+        settle(lastTaken(writes) ?? handed)
       })
     }).finally(() => {
       this.#wake = null

@@ -549,3 +549,44 @@ describe('a day picked in cell 03, still waiting to be written at the press', ()
     })
   })
 })
+
+// Issue 407. Cell 01 writes the mode and the operator together, because the
+// bridge takes them together. An operator chosen while a mode was on its way
+// was sent with the mode this screen held, and the store, writing it second,
+// put the old mode back. `Inspect` now hands the writer a function of the
+// record (`chooseAgency`), and the writer sends it once the mode has landed.
+describe('an operator chosen while a mode is on its way', () => {
+  it('goes with that mode, once it has landed, and does not put the old one back', async () => {
+    // Mutation: `setInputs` making a function's inputs from the record this
+    // screen held and sending them at once (`run.writing(send(inputs(project)))`
+    // in `useProjectState.ts`) - the operator is sent at once with `all`.
+    await opened()
+    const mode = deferred<ProjectRecord>()
+    const both = deferred<ProjectRecord>()
+    api.projects.setInputs.mockReturnValueOnce(mode.promise).mockReturnValueOnce(both.promise)
+    let chosen!: Promise<void>
+    let operator!: Promise<void>
+    act(() => {
+      chosen = shown.setInputs({ mode: 'subway', agency: null })
+    })
+    act(() => {
+      operator = shown.setInputs((record) => ({ mode: record.mode, agency: 'METRO' }))
+    })
+    expect(api.projects.setInputs, 'the operator waits for the mode').toHaveBeenCalledTimes(1)
+    await act(async () => {
+      mode.resolve({ ...RECORD, mode: 'subway' })
+      await chosen
+      await tick()
+    })
+    expect(api.projects.setInputs).toHaveBeenLastCalledWith('p1', {
+      mode: 'subway',
+      agency: 'METRO',
+    })
+    await act(async () => {
+      both.resolve({ ...RECORD, mode: 'subway', agency: 'METRO' })
+      await operator
+      await tick()
+    })
+    expect(shown.project).toMatchObject({ mode: 'subway', agency: 'METRO' })
+  })
+})

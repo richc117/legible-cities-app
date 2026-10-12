@@ -101,8 +101,12 @@ interface Props {
   project: ProjectRecord
   engine: EngineState | null
   inspect: (key: string) => Promise<Inspection>
-  /** Stores the two inputs; a rejection's message is shown beside the controls. */
-  onInputs: (inputs: ProjectInputs) => Promise<void>
+  /**
+   * Stores the two inputs; a rejection's message is shown beside the
+   * controls. Handed a function, it makes the two from the record as the
+   * writes on their way leave it (issue 407).
+   */
+  onInputs: (inputs: ProjectInputs | ((record: ProjectRecord) => ProjectInputs)) => Promise<void>
   /** The feed's registry entry's mode and agency, when the Library listed it. */
   registry?: { mode: string; agency: string | null } | null
   /**
@@ -227,8 +231,11 @@ export default function Inspect({
     [inspection, agency, sort],
   )
 
-  const store = async (inputs: ProjectInputs): Promise<void> => {
-    const problem = validateMode(inputs.mode) ?? validateAgency(inputs.agency)
+  /** Write the inputs, or say why not: the problem found before, or the store's refusal. */
+  const write = async (
+    problem: string | null,
+    inputs: ProjectInputs | ((record: ProjectRecord) => ProjectInputs),
+  ): Promise<void> => {
     if (problem !== null) {
       setMessage(problem)
       return
@@ -240,6 +247,8 @@ export default function Inspect({
       setMessage(error instanceof Error ? error.message : String(error))
     }
   }
+  const store = (inputs: ProjectInputs): Promise<void> =>
+    write(validateMode(inputs.mode) ?? validateAgency(inputs.agency), inputs)
 
   const chooseMode = (value: string): void => {
     if (value === 'other') {
@@ -251,10 +260,15 @@ export default function Inspect({
     setMode(value)
     void store({ mode: value, agency })
   }
+  // The operator goes with the mode the record holds once a mode chosen a
+  // moment before has landed, not this render's: that choice is a write
+  // still on its way, and the mode this render holds would put it back
+  // (issue 407). The record's, and not the one this panel shows, so a typed
+  // mode that was refused is not sent again with it.
   const chooseAgency = (value: string): void => {
     const next = value === '' ? null : value
     setAgency(next)
-    void store({ mode: project.mode, agency: next })
+    void write(validateAgency(next), (record) => ({ mode: record.mode, agency: next }))
   }
   const useEntry = (): void => {
     if (registry === null) return

@@ -2796,3 +2796,119 @@ describe('a press tells what holds a choice back, before it reads the record', (
     expect(heard, 'and not once it has gone').toHaveBeenCalledTimes(1)
   })
 })
+
+// Issue 407. The bridge writes the mode and the operator together, so an
+// operator chosen while a mode is on its way was sent with the mode the
+// screen held, and put the old mode back. `writingFrom` makes a write from
+// the record the writes ahead of it leave, and sends it once they have
+// landed; it is on its way from the moment it is handed over, so a start
+// waits for it as for any.
+describe('a write made from the record the writes ahead of it leave', () => {
+  function held(): {
+    promise: Promise<ProjectRecord>
+    answer: (r: ProjectRecord) => void
+    refuse: (reason: unknown) => void
+  } {
+    let answer!: (r: ProjectRecord) => void
+    let refuse!: (reason: unknown) => void
+    const promise = new Promise<ProjectRecord>((yes, no) => {
+      answer = yes
+      refuse = no
+    })
+    return { promise, answer, refuse }
+  }
+
+  /** What the writer sends: the operator, with the mode of the record it was handed. */
+  const operator = (agency: string) =>
+    vi.fn((record: ProjectRecord) => Promise.resolve({ ...record, agency }))
+
+  it('is sent at once, from the record handed, where nothing is on its way', () => {
+    const { run, record } = setup()
+    const send = operator('METRO')
+    void run.writingFrom(record, send)
+    expect(send).toHaveBeenCalledWith(record)
+  })
+
+  it('waits for a mode on its way, and is made from the record it leaves', async () => {
+    // Mutation: `writingFrom` sending at once from the record handed (no
+    // wait on `#ahead`) - the operator goes with the old mode, and the store,
+    // writing it second, puts that mode back.
+    const { run, record } = setup()
+    const mode = held()
+    void run.writing(mode.promise)
+    const send = operator('METRO')
+    const written = run.writingFrom(record, send)
+    expect(send, 'not while the mode is on its way').not.toHaveBeenCalled()
+    mode.answer({ ...record, mode: 'subway' })
+    await tick()
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ mode: 'subway' }))
+    await expect(written).resolves.toMatchObject({ mode: 'subway', agency: 'METRO' })
+  })
+
+  it('waits for a write sent while it waits too, so it is written after it and holds it', async () => {
+    // A mode on its way, the operator, then another mode, sent at once.
+    // Mutation: `#ahead` waiting only for the writes handed over before it -
+    // the operator goes after the first mode with that mode, and is written
+    // after the second, putting the first back.
+    const { run, record } = setup()
+    const first = held()
+    const second = held()
+    void run.writing(first.promise)
+    const send = operator('METRO')
+    void run.writingFrom(record, send)
+    void run.writing(second.promise)
+    first.answer({ ...record, mode: 'subway' })
+    await tick()
+    expect(send, 'not while the second mode is on its way').not.toHaveBeenCalled()
+    second.answer({ ...record, mode: 'tram' })
+    await tick()
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ mode: 'tram' }))
+  })
+
+  it('a start waits for it, and reads its answer, which holds the writes sent before it', async () => {
+    // It is sent last of the three, so its answer is the record as the store
+    // last wrote it, though it was handed over second. Mutation: the answer
+    // a start reads taken by the order the writes were handed over (the last
+    // of them answered) rather than sent - the run goes without the operator.
+    const { run, calls, record, begin } = setup()
+    const first = held()
+    const second = held()
+    void run.writing(first.promise)
+    void run.writingFrom(record, operator('METRO'))
+    void run.writing(second.promise)
+    begin()
+    first.answer({ ...record, mode: 'subway' })
+    second.answer({ ...record, mode: 'tram' })
+    await tick()
+    await tick()
+    expect(calls).toHaveLength(1)
+    expect(calls[0].params).toMatchObject({ mode: 'tram', agency: 'METRO' })
+  })
+
+  it('a refusal ahead of it: made from the record as it stands', async () => {
+    const { run, record } = setup()
+    const mode = held()
+    run.writing(mode.promise).catch(() => undefined)
+    const send = operator('METRO')
+    void run.writingFrom(record, send)
+    mode.refuse(new Error('read-only'))
+    await tick()
+    expect(send).toHaveBeenCalledWith(record)
+  })
+
+  it('two made from the record: the second waits for the first, and is made from its answer', async () => {
+    // Mutation: `#ahead` counting one made after it that has not been sent -
+    // each waits for the other, and neither is ever sent.
+    const { run, record } = setup()
+    const mode = held()
+    void run.writing(mode.promise)
+    const sub = operator('SUB')
+    const metro = vi.fn((r: ProjectRecord) => Promise.resolve({ ...r, lineOrder: ['A'] }))
+    void run.writingFrom(record, sub)
+    void run.writingFrom(record, metro)
+    mode.answer({ ...record, mode: 'subway' })
+    await tick()
+    expect(sub).toHaveBeenCalledWith(expect.objectContaining({ mode: 'subway' }))
+    expect(metro).toHaveBeenCalledWith(expect.objectContaining({ mode: 'subway', agency: 'SUB' }))
+  })
+})

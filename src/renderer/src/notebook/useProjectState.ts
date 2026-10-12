@@ -2,7 +2,12 @@ import { useCallback, useEffect, useRef, useState, type FormEvent, type RefObjec
 import type { DeleteResult, ProjectRecord } from '../../../shared/api'
 import type { EngineState } from '../../../shared/engine'
 import type { ExportChoice } from '../../../shared/export'
-import { validateName, type ProjectTuning, type Theme } from '../../../shared/project'
+import {
+  validateName,
+  type ProjectInputs,
+  type ProjectTuning,
+  type Theme,
+} from '../../../shared/project'
 import type { Inspection, RenderStageResult, StageName } from '../../../shared/protocol'
 import type { ExportRun, ExportSnapshot } from '../engine/exportRun'
 import { feedRecordFor, inspectionFor } from '../engine/inspections'
@@ -104,7 +109,12 @@ export interface ProjectState {
     width: number,
     date: string | null,
   ) => Promise<RenderStageResult>
-  setInputs: (inputs: { mode: string; agency: string | null }) => Promise<void>
+  /**
+   * The mode and the operator, written at once (A2-02). Handed a function,
+   * the two are made from the record as the writes on their way leave it,
+   * and sent once they have landed (issue 407, `LayoutRun.writingFrom`).
+   */
+  setInputs: (inputs: ProjectInputs | ((record: ProjectRecord) => ProjectInputs)) => Promise<void>
   /** The service day a person chose, written at once and drawing nothing (A5.5-15). */
   setDate: (date: string) => Promise<void>
   setTheme: (theme: Theme) => Promise<void>
@@ -407,8 +417,21 @@ export function useProjectState(
   // which run to make from the record the write leaves, too (issue 407). The
   // theme and the export's choice are fields no run reads, and are not
   // handed over.
-  const setInputs = async (inputs: { mode: string; agency: string | null }): Promise<void> => {
-    const record = await run.writing(window.api.projects.setInputs(id, inputs))
+  //
+  // The operator alone is sent with the mode the record holds once the writes
+  // ahead of it have landed, not the mode this screen held (issue 407): the
+  // bridge takes the two together, and a mode chosen a moment before and
+  // still on its way would otherwise be put back by it.
+  const setInputs = async (
+    inputs: ProjectInputs | ((record: ProjectRecord) => ProjectInputs),
+  ): Promise<void> => {
+    const send = (chosen: ProjectInputs): Promise<ProjectRecord> =>
+      window.api.projects.setInputs(id, chosen)
+    let write: Promise<ProjectRecord>
+    if (typeof inputs !== 'function') write = run.writing(send(inputs))
+    else if (project !== null) write = run.writingFrom(project, (landed) => send(inputs(landed)))
+    else throw new Error('The project has not been read yet.')
+    const record = await write
     setState((current) =>
       current.status === 'ready'
         ? { status: 'ready', project: { ...current.project, ...record } }
