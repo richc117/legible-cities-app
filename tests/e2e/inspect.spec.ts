@@ -11,7 +11,15 @@
 import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { _electron as electron, expect, test, type Page } from '@playwright/test'
+import {
+  _electron as electron,
+  expect,
+  test,
+  type ElectronApplication,
+  type Page,
+} from '@playwright/test'
+import { CHANNELS } from '../../src/shared/api'
+import { holdWrites } from '../support/hold-writes'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 import {
   cell,
@@ -47,7 +55,7 @@ let launched = { folder: '', since: new Date() }
 
 async function withApp(
   engineHome: string,
-  run: (page: Page) => Promise<void>,
+  run: (page: Page, app: ElectronApplication) => Promise<void>,
   env: Record<string, string> = {},
 ): Promise<void> {
   // Every launch here logs to the suite's shared folder, so a failed wait
@@ -66,7 +74,7 @@ async function withApp(
     timeout: 30_000,
   })
   try {
-    await run(await app.firstWindow())
+    await run(await app.firstWindow(), app)
   } finally {
     await app.close()
   }
@@ -169,8 +177,11 @@ test('a feed with several operators offers the choice, filters the routes, and s
     await withWhatTheScreenSaid(page, launched, () =>
       expect.poll(() => readRecord(engineHome).agency).toBeNull(),
     )
-    // The record is on disk before the screen holds it, and the run starts
-    // from the screen's copy: pressed in between, it asks with SUB (#147).
+    // The record is on disk before the screen holds it. Pressed in between,
+    // the run once asked with SUB (#147); it now waits for the write and
+    // asks with what the write left (issue 388, held by the last test here),
+    // but for the beat between the store's answer and the screen rendering
+    // it, which is issue 407.
     await expect(page.getByRole('definition').filter({ hasText: /^none$/ })).toBeVisible()
     await page.getByRole('button', { name: /lay out/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
@@ -547,4 +558,45 @@ test('without the engine the section says so and the rest of the screen works', 
     },
     { LEGIBLE_ENGINE_PYTHON: join(engineHome, 'no-such-python'), LEGIBLE_ENGINE_CHECKOUT: '' },
   )
+})
+
+// Issue 388. A mode is written the moment it is chosen, and a press on "Lay
+// out" a moment later starts the run while that write is still on its way.
+// The write is held in the main process (`holdWrites`), so the press lands
+// inside it every time rather than some of the time: the run must be going
+// from the press, lay nothing out while the write is held, and ask with the
+// mode once it has landed. Mutations the coordinator runs: `start` reading
+// the record it was handed whatever write is on its way (`const project =
+// handed` in `engine/layoutRun.ts`), and `setInputs` in `useProjectState.ts`
+// calling the bridge without `run.writing` around it - each asks with `all`.
+test('a mode chosen just before Lay out is the one the run asks with, however long its write takes', async () => {
+  const engineHome = home()
+  await withApp(engineHome, async (page, app) => {
+    await openProjectOn(page, 'LA Metro Rail', 'Los Angeles')
+    const mode = cell(page, 'data').getByRole('combobox', { name: 'Mode' })
+    await expect(mode).toHaveValue('all')
+
+    const writes = await holdWrites(app, CHANNELS.projectsSetInputs)
+    await mode.selectOption('subway')
+    await expect
+      .poll(() => writes.arrived(), { message: 'the choice is on its way, and held' })
+      .toBe(1)
+    await page.getByRole('button', { name: 'Lay out', exact: true }).click()
+    // Going from the press, so Cancel is there, and still at its start.
+    const run = panel(page, 'Layout run')
+    await expect(run.getByRole('button', { name: 'Cancel', exact: true })).toBeVisible()
+    await expect(run).toContainText('Starting the layout.')
+    expect(readRecord(engineHome).mode, 'the write has not landed').toBe('all')
+
+    await writes.release()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    const asked = readFileSync(join(engineHome, 'fake-engine.received'), 'utf8')
+      .split('\n')
+      .filter((l) => l.includes('graph.build'))
+    expect(asked).toHaveLength(1)
+    expect(asked[0]).toContain('"mode": "subway"')
+    await expect.poll(() => readRecord(engineHome).mode).toBe('subway')
+    // The layout is of the record's inputs, so nothing says they have moved.
+    await expect(page.getByText(/the choice has changed since/)).toHaveCount(0)
+  })
 })
