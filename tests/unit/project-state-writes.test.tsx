@@ -432,3 +432,35 @@ describe('Run all chooses its run from the record the writes on their way leave'
     expect(shown.drawn, 'the page not loaded again').toBe(1)
   })
 })
+
+// Issue 407. The write has answered, so it is no longer on its way, but the
+// screen has not rendered the record it answered with: the writer's update
+// is queued, and a press in that beat closes over the record the screen
+// held. The run keeps the store's latest answer and reads it where it was
+// written after the record it was handed.
+describe('a press between a write’s answer and the screen rendering it', () => {
+  it('lays out what the store answered, not the record the screen still holds', async () => {
+    // Mutation: `#current` answering the record handed whatever the store
+    // took (`engine/layoutRun.ts`) - graph.build goes without the tuning,
+    // which the screen draws a moment later.
+    await opened()
+    const write = deferred<ProjectRecord>()
+    api.projects.setTuning.mockReturnValueOnce(write.promise)
+    let committed!: Promise<void>
+    act(() => {
+      committed = shown.setTuning({ gridSize: 50 })
+    })
+    const held = shown.project as ProjectRecord
+    await act(async () => {
+      write.resolve({ ...RECORD, tuning: { gridSize: 50 }, modified: '2026-09-01T00:00:01.000Z' })
+      await committed
+      // Answered, and the screen's update queued but not rendered: the
+      // press closes over the record it rendered last.
+      expect(shown.project, 'not rendered yet').toBe(held)
+      shown.run.start(shown.project as ProjectRecord, shown.engine)
+    })
+    expect(builds()).toHaveLength(1)
+    expect(builds()[0].tuning, 'the tuning the store answered with').toEqual({ grid_size: 50 })
+    expect(shown.project?.tuning, 'which the screen then shows').toEqual({ gridSize: 50 })
+  })
+})

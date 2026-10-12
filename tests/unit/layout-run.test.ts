@@ -2647,3 +2647,77 @@ describe('Run all with a write to the record on its way', () => {
     expect(ended).toEqual(['running', 'done'])
   })
 })
+
+// Issue 407. A write leaves those on their way the moment the store answers
+// it, and the screen draws the answer when React next renders, a task or so
+// later; a press in that beat is handed the record from before the write.
+// The run keeps the store's latest answer and reads it where it was written
+// after the record handed, by the store's own stamp (`modified`).
+describe('a press after a write has answered and before the screen has drawn it', () => {
+  const EARLIER = '2026-09-01T00:00:00.000Z'
+  const LATER = '2026-09-01T00:00:01.000Z'
+  const LATEST = '2026-09-01T00:00:02.000Z'
+
+  it('lays out, rebuilds and runs all from the answer, in the press’s own turn', async () => {
+    // Mutation: `#current` answering the record handed whatever the store
+    // took - each run goes from the record before the write.
+    const laid = setup({ modified: EARLIER })
+    await laid.run.writing(Promise.resolve({ ...laid.record, mode: 'subway', modified: LATER }))
+    laid.begin()
+    expect(laid.calls, 'asked at once: nothing is on its way').toHaveLength(1)
+    expect(laid.calls[0].params.mode).toBe('subway')
+
+    const drawn = setup({ layout: LAYOUT, service: WINDOW, modified: EARLIER })
+    await drawn.run.writing(
+      Promise.resolve({ ...drawn.record, colors: { A: '#0072bc' }, modified: LATER }),
+    )
+    drawn.run.rebuild(drawn.record, READY, '2026-09-12')
+    expect(drawn.calls[0]).toMatchObject({
+      method: 'map.build',
+      params: { date: '2026-09-12', colors: { A: '#0072bc' } },
+    })
+
+    // Only the day behind on the screen's record, and a tuning the store has
+    // taken: a layout, with it.
+    const shown = project({
+      layout: LAYOUT,
+      made: MADE,
+      built: { mode: 'all', agency: null },
+      service: WINDOW,
+      date: '2026-09-15',
+      modified: EARLIER,
+    })
+    const behind = { ...shown, drawn: drawnFrom(shown), date: '2026-09-12' }
+    const all = setup(behind)
+    await all.run.writing(Promise.resolve({ ...behind, tuning: { gridSize: 50 }, modified: LATER }))
+    all.run.runAll(all.record, READY, runAllPlan)
+    expect(all.calls.map((c) => c.method)).toEqual(['graph.build'])
+    expect(all.calls[0].params.tuning).toEqual({ grid_size: 50 })
+  })
+
+  it('reads the record handed where it was written after the answer: a later edit the screen has drawn', async () => {
+    // Mutation: `#current` taking the answer whenever there is one - the
+    // run goes from a record older than the one the screen holds.
+    const { run, calls, record } = setup({ modified: EARLIER })
+    await run.writing(Promise.resolve({ ...record, mode: 'subway', modified: LATER }))
+    run.start({ ...record, mode: 'tram', modified: LATEST }, READY)
+    expect(calls[0].params.mode).toBe('tram')
+  })
+
+  it('keeps the answer to the write sent last, whichever answer arrived last', async () => {
+    // The store answers in the order it was sent; the rule does not lean
+    // on it. Mutation: every answer kept as it arrives (the order of the
+    // writes not compared) - the run goes from the first write's answer.
+    const { run, calls, record, begin } = setup({ modified: EARLIER })
+    let first!: (r: ProjectRecord) => void
+    let second!: (r: ProjectRecord) => void
+    void run.writing(new Promise<ProjectRecord>((yes) => (first = yes)))
+    void run.writing(new Promise<ProjectRecord>((yes) => (second = yes)))
+    second({ ...record, mode: 'subway', agency: 'METRO', modified: LATEST })
+    await tick()
+    first({ ...record, mode: 'subway', modified: LATER })
+    await tick()
+    begin()
+    expect(calls[0].params).toMatchObject({ mode: 'subway', agency: 'METRO' })
+  })
+})

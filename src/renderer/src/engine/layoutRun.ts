@@ -419,6 +419,14 @@ interface RecordWrite {
   answer: ProjectRecord | null
 }
 
+/**
+ * Whether one record was written after another, by the time the store
+ * stamps on every write it makes (`modified`). A stamp that does not read as
+ * a time is never the later, and nor is the same stamp.
+ */
+const writtenAfter = (record: ProjectRecord, other: ProjectRecord): boolean =>
+  Date.parse(record.modified) > Date.parse(other.modified)
+
 /** What Run all would start for a record (issue 407): `runAllPlan`'s answer, handed in. */
 type RunAllPlanOf = (record: ProjectRecord, run: RunSnapshot) => RunAllPlan
 
@@ -469,6 +477,17 @@ export class LayoutRun {
   readonly #writes = new Set<RecordWrite>()
   /** Ends a start's wait for those writes, for a cancel; null while nothing waits. */
   #wake: (() => void) | null = null
+  /** How many writes have been handed over, which is the order the store was sent them in. */
+  #sent = 0
+  /**
+   * The store's answer to the latest write it was sent and took (issue 407),
+   * and that write's place in the order. A write leaves those on their way
+   * the moment the store answers, and the screen draws the answer a task or
+   * so later, when React renders it; a press in that beat is handed the
+   * record the screen still holds. `#current` reads this instead where it
+   * was written after that record.
+   */
+  #taken: { record: ProjectRecord; sent: number } | null = null
   readonly #options: RunOptions
 
   constructor(options: RunOptions) {
@@ -552,12 +571,15 @@ export class LayoutRun {
    */
   writing<T extends ProjectRecord>(write: Promise<T>): Promise<T> {
     const entry: RecordWrite = { settled: Promise.resolve(), answer: null }
+    const sent = ++this.#sent
     // No longer on its way the moment the store answers, before the writer
-    // hears it, so a start the writer's own answer leads to does not wait.
+    // hears it, so a start the writer's own answer leads to does not wait;
+    // and kept, for a start made before the screen has rendered it.
     entry.settled = write.then(
       (record) => {
         entry.answer = record
         this.#writes.delete(entry)
+        if (this.#taken === null || sent > this.#taken.sent) this.#taken = { record, sent }
       },
       // A refusal is the writer's to show; here it is only a write that has
       // ended, which must not keep a start waiting.
@@ -577,7 +599,8 @@ export class LayoutRun {
    *
    * The record is the one handed unless a write to it is on its way (issue
    * 388, `writing`): the run is then going from the press, and reads the
-   * record once the write has answered.
+   * record once the write has answered. A write the store has answered and
+   * the screen has not yet drawn is read too (issue 407, `#current`).
    */
   start(
     handed: ProjectRecord,
@@ -585,7 +608,7 @@ export class LayoutRun {
     options: { force?: boolean } = {},
   ): void {
     if (this.#snapshot.state === 'running') return
-    this.#startLayout(handed, engine, options.force === true)
+    this.#startLayout(this.#current(handed), engine, options.force === true)
   }
 
   /** `start` once a second run has been refused: the job, the engine's refusal, the record read. */
@@ -716,12 +739,14 @@ export class LayoutRun {
    * drawn, and the main process refuses a day outside the stored window.
    *
    * It reads its record as a layout run does (issue 388): the one handed,
-   * or, with a write to it on its way, the one that write leaves. No writer
-   * moves the layout, so the one handed is the one checked here.
+   * or, with a write to it on its way, the one that write leaves, or the
+   * store's latest answer the screen has not drawn yet (issue 407). No
+   * writer moves the layout, so the one read at the press is the one
+   * checked here.
    */
   rebuild(handed: ProjectRecord, engine: EngineState | null, date: string): void {
     if (this.#snapshot.state === 'running') return
-    this.#startRebuild(handed, engine, date)
+    this.#startRebuild(this.#current(handed), engine, date)
   }
 
   /** `rebuild` once a second run has been refused: the job, the refusals, the record read. */
@@ -809,30 +834,31 @@ export class LayoutRun {
     // and a re-layout stopped half way from it: the one before this press,
     // never the one the press itself starts.
     const before = { snapshot: this.#snapshot, attempt: this.#attempt }
-    const pressed = planOf(handed, before.snapshot)
+    const now = this.#current(handed)
+    const pressed = planOf(now, before.snapshot)
     // With nothing on its way the press's plan is the plan, started in this
     // turn as a press on cell 02's or cell 03's own button starts it; and an
     // engine that cannot run refuses at once, whatever is on its way, as
     // that run refuses.
     if (this.#writes.size === 0 || engine === null || engine.state !== 'ready') {
-      if (pressed.kind === 'layout') this.#startLayout(handed, engine, false)
-      else if (pressed.kind === 'rebuild') this.#startRebuild(handed, engine, pressed.date)
+      if (pressed.kind === 'layout') this.#startLayout(now, engine, false)
+      else if (pressed.kind === 'rebuild') this.#startRebuild(now, engine, pressed.date)
       return
     }
     // A write on its way: going from the press as the press's plan would go
     // - its job, its flags, the cell that reads running - until the writes
     // have landed. The engine is ready, so `#begin` starts it.
     if (pressed.kind === 'rebuild') {
-      this.#open('rebuild', `Rebuild for ${pressed.date}`, handed.id)
+      this.#open('rebuild', `Rebuild for ${pressed.date}`, now.id)
       this.#begin(engine, rebuildKind(pressed.date))
     } else {
-      this.#open('layout', 'Layout run', handed.id)
+      this.#open('layout', 'Layout run', now.id)
       this.#begin(engine, layoutKind(false))
-      this.#feedKey = handed.feed
+      this.#feedKey = now.feed
     }
 
     void (async () => {
-      const project = await this.#afterWrites(handed)
+      const project = await this.#afterWrites(now)
       if (this.#cancelled) return this.#stopped()
       const plan = planOf(project, before.snapshot)
       if (plan.kind === 'none') return this.#withdraw(before)
@@ -1186,13 +1212,30 @@ export class LayoutRun {
   }
 
   /**
+   * The record as it stands, as far as the screen's writes tell (issue 407):
+   * the one handed, or the store's answer to the latest write it took where
+   * that was written after the one handed. A press made in the beat between
+   * a write's answer and the screen rendering it is handed the record from
+   * before the write; the store's answer is the whole record as the store
+   * then held it, every write before it in it, so it is read whole, as a
+   * start that waited reads it. A record handed that was written after the
+   * answer - a later edit the screen has drawn, a run's own write read back
+   * - is the newer, and is read.
+   */
+  #current(handed: ProjectRecord): ProjectRecord {
+    const taken = this.#taken?.record
+    return taken !== undefined && writtenAfter(taken, handed) ? taken : handed
+  }
+
+  /**
    * The record a layout run or a rebuild reads when a write to it was on
    * its way as it started (issue 388). Once every write on its way then has
    * been answered or refused, it is the store's answer to the last of them
    * it took - the record as it then stood, every write sent before that one
    * in it, since the store writes a project's record one write at a time in
    * the order they were sent - or, where it took none, the record handed,
-   * which is then the record as it stands. A write sent after the start is
+   * which is then the record as it stands (`#current` made it so at the
+   * press). A write sent after the start is
    * not waited for: a run sends what it was started with (spec 033, FR-007).
    *
    * It has no deadline: a write the store has not answered has not landed,
