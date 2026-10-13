@@ -1280,22 +1280,39 @@ stage files, must not move between the exports (`layoutDrift` in
 request's method so the test can assert two `export.encode` and no
 `graph.build`. The pinned engine's sidecar carries no layout id, so the
 record and the stored set are what name the layout. The delivered GIFs are
-checked for structure only: both there, at the preset's size, holding the
-captured number of frames, not trivially small, and moving. Their pixels
-are compared and written down, never asserted. Everything goes into
+checked for their structure - both there, at the preset's size, holding
+the captured number of frames, not trivially small, and moving - and, from
+engine v0.17.0, whose GIF colour table is composed from the plan rather
+than counted from the frames (ADR-055), they are judged by their colour
+tables and by what moved: each global table has 256 entries, the format's
+largest and not a count of the map, no image carries a table of its own,
+and the two tables are byte for byte the same (`judgeTables` in
+`tests/support/gif.ts`, which reads the container itself); and, decoded
+frame by frame beside the two captures, the GIFs differ on no pixel the
+captures agree on - agreeing exactly, in every channel - and in no frame
+on more pixels than the captures do (`compareThroughGifs`). The tolerance
+of 8 is the captures' verdict and is never applied to the GIFs: within 8
+in, within 8 out does not hold, because a pixel near the boundary between
+two entries flips by the gap between them, so their max-channel
+comparison is written down, never asserted. What the table holds is the
+engine's own test (`tests/test_gif_palette.py` there). Everything goes into
 `captured-frames.json` among the test's results: per captured frame, the
 pixels over the tolerance, the box they lie in and whether the frame is
-the other run's frame before or after it, and the GIF comparison beside
-it. `.github/workflows/determinism.yml` proves the fixture's id against the
-engine it installed and then runs the test on Ubuntu, macOS and Windows,
+the other run's frame before or after it; and for the GIFs their
+max-channel comparison, their tables (`gif.tables`), and the pixels
+differing between the captures and between the GIFs, per frame and in
+all (`gif.pixels`). `.github/workflows/determinism.yml` proves the
+fixture's id against the engine it installed and then runs the test on
+Ubuntu, macOS and Windows,
 once per pull request that touches what the export is made of, five
 times on a weekly schedule, and as many times as a dispatch asks, under
 load if asked; it keeps that report from every run, and the
 two GIFs and the differing captured frames for a week when a run fails. It
 is not a required check.
 
-Why the GIFs are not the verdict was measured, against the real engine on
-one macOS machine with other work loading it. At engine v0.8.2, five
+Why the GIFs were checked for structure only until engine v0.17.0 was
+measured, against the real engine on one macOS machine with other work
+loading it. At engine v0.8.2, five
 unaltered runs kept their captured frames: in one, all 108 PNG files of the
 two captures were byte-identical; in the other four, 93 were, the other 15
 differed below the tolerance, and no frame had a pixel over 8. Four of
@@ -1308,8 +1325,11 @@ far more than it. ffmpeg itself is steady: the engine's two GIF commands,
 run by the pinned ffmpeg on one folder of frames, gave byte-identical files
 five times in a row, five times at once and once on a single thread, while
 one 10x10 box added to one frame of 108 moved colours past the tolerance in
-all 108. The delivered GIF does not preserve the tolerance; that is the
-engine's to fix (engine issue 33).
+all 108. The delivered GIF did not preserve the tolerance, and that was
+the engine's to fix (engine issue 33). With the table composed from the
+plan it still cannot promise 8 per pixel, but two captures within the
+tolerance get one table, and their GIFs move only where they moved
+(ADR-055), which is what the test now asserts.
 
 What the capture verdict catches was measured the same way at engine
 v0.8.3, against which the fixture's layout id was proven too. Of thirteen
