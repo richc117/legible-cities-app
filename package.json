@@ -29,7 +29,7 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
-    "@playwright/test": "1.63.0",
+    "@playwright/test": "1.64.0",
     "@rogieking/figui3": "9.0.7",
     "@swc/core": "1.16.13",
     "@types/node": "22.20.1",
@@ -41,7 +41,7 @@
     "electron-vite": "5.0.0",
     "eslint": "10.12.0",
     "eslint-plugin-react-hooks": "7.1.1",
-    "prettier": "3.9.9",
+    "prettier": "3.9.10",
     "react-colorful": "5.8.1",
     "typescript": "5.9.3",
     "typescript-eslint": "8.71.1",
