@@ -1,6 +1,6 @@
 # ADR-055: A GIF export takes a fixed palette composed from the plan
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-06
 - **Supersedes:** none
 - **Superseded by:** none
@@ -56,5 +56,31 @@ BART frames at draft quality the mean error was 1.34 dark and 0.26 light
 against today's 1.77 and 1.54, the worst frame 1.74 and 0.67, at 52% of the
 bytes, inside the bounds above. The app sends `out: project.id` with both of
 its `export.plan` calls at the pin to v0.17.0. The app's gate (issue 324,
-comparing the delivered GIFs' colour tables) is the half still to come, and
-this record stays Proposed until it is in.
+comparing the delivered GIFs' colour tables) is the half that followed; see below.
+
+
+*As of 13 Oct 2026 (the gate, issue 324):* the app's determinism gate judges the
+delivered GIFs by what this record promises, and the record is Accepted. Its
+first real run, `determinism.yml` dispatched on the branch with three repeats
+on each of the three platforms, passed nine of nine against the real engine at
+v0.17.0 and the vendored ffmpeg, draft `instagram-reel-gif`, the BART fixture
+exported twice each: the two GIFs' global colour tables were byte-identical in
+all nine, each of 256 entries and with no local table. Four of the nine had
+capture noise inside the tolerance (the two captures differed on 7, 38, 1,528
+and 1,529 pixels over the 108 frames); the GIFs differed on 0, 0, 48 and 45
+pixels, every one of them where the captures differ, and on none where they
+agree. The other five had identical captures and identical GIFs. The worst
+channel difference between two GIFs in these runs was 26, where the old counted
+palette moved every frame by 72 and, once, by 221 (engine issue 33). The gate
+asserts the colour tables, that no pixel the captures agree on differs in the
+GIFs, and that the GIFs differ on no more pixels than the captures do; the
+structural floor stays; the max-channel comparison at 8 is not applied to the
+GIFs, for the reason the Decision gives. One refinement to this record's own
+wording: "the pixels the captures agree on" means pixels equal in all three
+channels, not within 8. A within-8 reading fails on the near twin measured
+locally (2% of pixels moved by 1 to 8): the captures differed on 420,270
+pixels, all by 8 or less, and the GIFs on 86,667, every one of them among
+those 420,270, so a rule that called a pixel within 8 "agreed" would have
+failed all 86,667 for pixels that the captures themselves differ on. The exact
+form is what the Consequences above ask for ("their differing pixels to lie
+where the captures differ").
