@@ -1,7 +1,7 @@
 // Generated from the engine's own description of its protocol.
 // Run `npm run typegen` to regenerate; edits here are lost.
 //
-// Engine: v0.16.2, protocol 1.
+// Engine: v0.17.0, protocol 1.
 // Source: vendor/protocol.schema.json, printed by the engine's
 // `python -m schematic.serve --schema` and committed verbatim.
 
@@ -957,9 +957,11 @@ export interface ExportOptions {
 }
 
 /**
- * Describe an export: what to capture and how to encode it. Pure and
- * instant; nothing is written. A vector preset is refused (it is resolved
- * from the built map, not captured).
+ * Describe an export: what to capture and how to encode it. Instant, and
+ * nothing is written; besides the feed registry, a GIF's plan reads the
+ * positions file beside its page (at most 32 MB), for the line colours. A
+ * vector preset is refused (it is resolved from the built map, not
+ * captured).
  */
 export interface ExportPlanParams {
   key: FeedKey
@@ -970,6 +972,16 @@ export interface ExportPlanParams {
    * project does).
    */
   date?: ServiceDate
+  /**
+   * The out map.build was given: the folder under the home's out/ the page
+   * was written into, which must be the folder of the page that page names.
+   * A GIF's plan reads the line colours of the page there into colors; a
+   * folder that is a link leading outside the home's out/, or a positions
+   * file there that is a link leading outside the folder, is an export
+   * error. Omitted, they are read beside the site's page when page is
+   * omitted too, and otherwise not at all. Any other plan ignores it.
+   */
+  out?: Token
   options?: ExportOptions
 }
 
@@ -1058,6 +1070,14 @@ export interface CaptureJob {
    * names none.
    */
   clock_corner: ClockCorner
+  /**
+   * A GIF's: the line colours of the page it is captured from, distinct,
+   * sorted and in lower case, which export.encode composes its palette from.
+   * Null for any other format, and where the plan could not read them (no
+   * out, or no page there), when a GIF's palette is counted from its frames
+   * as before. A plan handed back without it is read as null.
+   */
+  colors?: HexColor[] | null
   /**
    * stem plus the format's extension; the plan's convenience.
    */

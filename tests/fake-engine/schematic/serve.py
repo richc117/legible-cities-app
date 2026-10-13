@@ -1818,6 +1818,11 @@ class Engine:
         page = params.get("page")
         if page is not None and (not isinstance(page, str) or "://" not in page):
             return "params", "page must be the page's address, with its scheme"
+        out = params.get("out")
+        if out is not None and (not isinstance(out, str)
+                                or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", out)):
+            return "params", ("out must be a folder name: letters, digits, dot, underscore and "
+                              "hyphen, not starting with a dot, never a path")
         options = params.get("options") or {}
         if not isinstance(options, dict):
             return "params", "options must be an object"
@@ -1952,6 +1957,10 @@ class Engine:
                            if listed else [])
                           + ([corner_note] if corner_note else [])),
                 "caption": caption if caption else None, "clock_corner": corner,
+                # Engine v0.17.0 (issue 33): a GIF's plan names the colours of the
+                # page its `out` folder holds; the stand-in writes no positions
+                # file, so it, like the engine for a folder with none, says null.
+                "colors": None,
                 "filename": f"{stem}.{preset['format']}"}
 
 
