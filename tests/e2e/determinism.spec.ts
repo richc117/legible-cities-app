@@ -5,25 +5,42 @@
 // app, against the real engine at the pin and the vendored ffmpeg, exports
 // its draft `instagram-reel-gif` through cell 06, Export, twice.
 //
-// The verdict is the capture's. The app keeps each export's captured frames
-// (LEGIBLE_KEEP_FRAMES, which this test sets and a packaged app ignores), and
-// the two captures must have the same frames, compared one by one in RGB
-// with a channel tolerance of 8 - never RGBA, never exact equality - and must
-// move: the first and last captured frames differ by more than the
-// tolerance. The layout must not have moved either: the record's id and
-// made, the stored set's meta and stage files, and the engine's own record
-// of what it was asked, which must hold two export.encode and no graph.build.
-// No node count appears anywhere in it (ADR-019).
+// The verdict on the frames is the capture's. The app keeps each export's
+// captured frames (LEGIBLE_KEEP_FRAMES, which this test sets and a packaged
+// app ignores), and the two captures must have the same frames, compared one
+// by one in RGB with a channel tolerance of 8 - never RGBA, never exact
+// equality - and must move: the first and last captured frames differ by
+// more than the tolerance. The layout must not have moved either: the
+// record's id and made, the stored set's meta and stage files, and the
+// engine's own record of what it was asked, which must hold two
+// export.encode and no graph.build. No node count appears anywhere in it
+// (ADR-019).
 //
-// The delivered GIFs are checked for their structure only: both there, the
-// preset's size, the captured number of frames each, and not trivially
-// small. Their pixels are compared and logged, never asserted, because the
-// engine's GIF encode does not preserve the tolerance: it builds one palette
-// from every captured frame (palettegen=stats_mode=diff), so differences
-// below 8 in a few captured pixels move palette entries, and with them
-// colours in every frame, by far more than 8. That is the engine's to fix
-// (engine issue 33); ADR-039 records why the gate judges the capture until
-// it is.
+// The delivered GIFs are judged by their colour tables and by what moved,
+// from engine v0.17.0 (issue 324, ADR-055), whose GIF encode composes its
+// table from the plan - the theme and the map's line colours - instead of
+// counting it from the frames. Their structure is the floor: both there,
+// the preset's size, the captured number of frames each, not trivially
+// small, and moving. Their tables, read from the files: each a global table
+// of 256 entries, the format's largest and not a count of the map, no image
+// with a table of its own, and the two byte for byte the same. And what
+// moved: decoded frame by frame beside the captures, the GIFs differ on no
+// pixel the two captures agree on, and in no frame on more pixels than the
+// captures do; agreeing is exact, in every channel (tests/support/gif.ts
+// says why). The max-channel comparison at the tolerance of 8 is NOT
+// applied to the GIFs: within 8 in, within 8 out does not hold, because a
+// pixel near the boundary between two entries of the table flips by the gap
+// between them (ADR-055, measured up to 153 on a channel). It is still
+// measured and logged, for information. What the table holds is the
+// engine's own test (tests/test_gif_palette.py in the engine: BART composes
+// 68 distinct entries and 188 ground), referenced here, never repeated.
+//
+// Before v0.17.0 the GIFs were checked for their structure only (ADR-039):
+// the encode built one palette from every captured frame
+// (palettegen=stats_mode=diff), so differences below 8 in a few captured
+// pixels moved palette entries, and with them colours in every frame, by
+// far more than 8 (engine issue 33). Against such an engine two captures
+// that differ at all can give two tables, and this test fails on them.
 //
 // What this verdict catches, as measured on 12 September 2026 against the
 // real engine (docs/ARCHITECTURE.md, "The capture", has the numbers): a
@@ -46,7 +63,8 @@
 //
 // Opted in, a missing interpreter or ffmpeg fails rather than skips: a
 // scheduled job that skipped would read as green. The per-frame report is
-// captured-frames.json among the test's results, beside the two GIFs.
+// captured-frames.json among the test's results, beside the two GIFs; the
+// GIFs' verdict is in it under gif.tables and gif.pixels.
 
 import {
   copyFileSync,
@@ -83,6 +101,7 @@ import {
   probeSize,
   TOLERANCE,
 } from '../support/frames'
+import { compareThroughGifs, judgeTables } from '../support/gif'
 import { cell, openCell } from '../support/project'
 
 const OPTED_IN = process.env.LEGIBLE_DETERMINISM_TEST === '1'
@@ -107,7 +126,7 @@ const MAP_DRAWN = 'The map is drawn.'
 
 const exportPanel = (page: Page): Locator => cell(page, 'export')
 
-test('the same project, exported twice, captures the same frames within the tolerance, from the same stored layout', async () => {
+test('the same project, exported twice, captures the same frames within the tolerance and delivers GIFs that differ only where they do, from the same stored layout', async () => {
   test.setTimeout(45 * 60_000)
   const testInfo = test.info()
   expect(PYTHON, 'LEGIBLE_ENGINE_PYTHON names an interpreter with the pinned engine').not.toBe('')
@@ -270,7 +289,7 @@ test('the same project, exported twice, captures the same frames within the tole
       { ffmpeg: FFMPEG, count: Math.min(captured.framesA, captured.framesB) },
     )
 
-    // The delivered GIFs: structure, and their pixels for information only.
+    // The delivered GIFs: their structure, their colour tables and what moved.
     const a = join(dir, 'first.gif')
     const b = join(dir, 'second.gif')
     const frameBytes = WIDTH * HEIGHT * 3
@@ -283,10 +302,18 @@ test('the same project, exported twice, captures the same frames within the tole
       gifEnds[0].first !== null && gifEnds[0].last !== null
         ? channelsOver(gifEnds[0].first, gifEnds[0].last)
         : 0
-    // Never asserted: the engine's palette quantisation turns differences
-    // below the tolerance in the capture into differences far above it in
-    // every frame of the GIF (see the top of this file).
+    // The max-channel comparison at the tolerance: measured and logged, never
+    // asserted of the GIFs, because a pixel within 8 in the captures can flip
+    // by the gap between two of the table's entries (ADR-055; the top of this
+    // file).
     const gif = await compareDecoded(a, b, { ffmpeg: FFMPEG, frameBytes })
+    // The judgement (ADR-055): the two colour tables, read from the files, and
+    // the GIFs' pixels beside the captures', four frames at a time.
+    const tables = judgeTables(
+      { name: 'first.gif', bytes: readFileSync(a) },
+      { name: 'second.gif', bytes: readFileSync(b) },
+    )
+    const pixels = await compareThroughGifs(ka, kb, a, b, { ffmpeg: FFMPEG, ffprobe })
 
     mkdirSync(testInfo.outputDir, { recursive: true })
     writeFileSync(
@@ -303,6 +330,8 @@ test('the same project, exported twice, captures the same frames within the tole
             frames: gifEnds.map((e) => e.frames),
             moved: gifMoved,
             comparison: gif,
+            tables,
+            pixels,
           },
         },
         null,
@@ -330,11 +359,24 @@ test('the same project, exported twice, captures the same frames within the tole
           `B vs A[-1,0,+1] ${n.bAgainstA.before},${n.bAgainstA.same},${n.bAgainstA.after} pixels`,
       )
     console.log(
-      `GIFs, for information and never the verdict: ${statSync(a).size} and ${statSync(b).size} ` +
-        `bytes, byte-identical: ${readFileSync(a).equals(readFileSync(b))}; ${gif.frames} frames; ` +
-        `max channel difference ${gif.maxDiff}, ${gif.over} channels over ${TOLERANCE} in ` +
-        `${gif.differing.length} frames; ${gifMoved} channels over ${TOLERANCE} between the ` +
-        `first GIF's first and last frames`,
+      `GIFs, measured for information and never the verdict (ADR-055): ${statSync(a).size} and ` +
+        `${statSync(b).size} bytes, byte-identical: ${readFileSync(a).equals(readFileSync(b))}; ` +
+        `${gif.frames} frames; max channel difference ${gif.maxDiff}, ${gif.over} channels over ` +
+        `${TOLERANCE} in ${gif.differing.length} frames; ${gifMoved} channels over ${TOLERANCE} ` +
+        `between the first GIF's first and last frames`,
+    )
+    // What the GIFs' verdict saw, and on a violation the first entry the
+    // tables differ at and the first frames and pixels that moved, before
+    // anything is asserted.
+    console.log(
+      `GIFs, judged by their colour tables and by what moved: tables ` +
+        `${tables.identical ? 'byte-identical' : 'not identical'}, ` +
+        `${tables.files.map((f) => f.entries ?? 'no').join(' and ')} entries, local tables on ` +
+        `${tables.files.map((f) => f.localTables?.length ?? 'unread').join(' and ')} images; ` +
+        `${pixels.frames.length} frames compared; pixels differing between the captures ` +
+        `${pixels.total.captures}, between the GIFs ${pixels.total.gifs}, between the GIFs ` +
+        `where the captures agree ${pixels.total.outside}` +
+        [...tables.problems, ...pixels.problems].map((p) => `\n  ${p}`).join(''),
     )
     const pairs = join(evidence, 'captured')
     mkdirSync(pairs, { recursive: true })
@@ -342,6 +384,18 @@ test('the same project, exported twice, captures the same frames within the tole
       const name = `${String(f.frame).padStart(6, '0')}.png`
       copyFileSync(join(ka, name), join(pairs, `first-${name}`))
       copyFileSync(join(kb, name), join(pairs, `second-${name}`))
+    }
+    // The captured frames the GIFs moved in where the captures agree, so the
+    // encode can be run again on them.
+    const outside = pixels.frames.filter((f) => f.outside > 0)
+    if (outside.length > 0) {
+      const moved = join(evidence, 'gif-outside')
+      mkdirSync(moved, { recursive: true })
+      for (const f of outside.slice(0, 12)) {
+        const name = `${String(f.frame).padStart(6, '0')}.png`
+        copyFileSync(join(ka, name), join(moved, `first-${name}`))
+        copyFileSync(join(kb, name), join(moved, `second-${name}`))
+      }
     }
 
     // The verdict: the two captures agree within the tolerance, and move.
@@ -375,6 +429,24 @@ test('the same project, exported twice, captures the same frames within the tole
     }
     expect(gif.bytes % frameBytes, 'the GIFs decode to whole frames').toBe(0)
     expect(gifMoved, 'the GIF moves: its first and last frames differ').toBeGreaterThan(0)
+
+    // The GIFs' colour tables (engine v0.17.0, ADR-055): composed from the
+    // plan, not counted from the frames, so the two exports carry the same
+    // one. 256 entries each is the GIF format's largest table, which ffmpeg
+    // writes from paletteuse's palette, and not a count of the map; what the
+    // entries are is the engine's to test (tests/test_gif_palette.py: BART
+    // composes 68 distinct entries and 188 ground), and no count of them is
+    // asserted here: a count is not a determinism test (ADR-019).
+    expect(tables.problems, "the GIFs' colour tables: 256 entries, none local, the same").toEqual(
+      [],
+    )
+    // What moved: the GIFs differ only where the captures differ, exactly in
+    // every channel, and never on more pixels in a frame. The max-channel
+    // comparison at the tolerance of 8, the captures' verdict above, is not
+    // applied to the GIFs: within 8 in, within 8 out does not hold, because a
+    // pixel near the boundary between two entries flips by the gap between
+    // them (ADR-055).
+    expect(pixels.problems, 'the GIFs differ only where the captures differ').toEqual([])
   } finally {
     console.log(`determinism test: ${Math.round((Date.now() - started) / 1000)} s in all`)
     await app.close()

@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-09-12
 - **Supersedes:** none
-- **Superseded by:** none
+- **Superseded by:** ADR-055, in part: the GIFs are now judged by their colour tables and by what moved (issue 324); the capture stays the verdict for the frames
 
 ## Context
 

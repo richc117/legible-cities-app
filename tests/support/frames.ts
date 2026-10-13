@@ -132,7 +132,7 @@ export async function compareStreams(
   }
 }
 
-interface Decoder {
+export interface Decoder {
   stdout: Readable
   /** Settles when ffmpeg has exited and closed its output: resolved on a clean exit, rejected otherwise. */
   finished: Promise<void>
@@ -152,7 +152,7 @@ interface Decoder {
  */
 export type Command = string | readonly string[]
 
-function decoder(ffmpeg: Command, file: string, args = decodeArgs(file)): Decoder {
+export function decoder(ffmpeg: Command, file: string, args = decodeArgs(file)): Decoder {
   const [program, ...leading] = typeof ffmpeg === 'string' ? [ffmpeg] : ffmpeg
   const child = spawn(program, [...leading, ...args], {
     windowsHide: true,
