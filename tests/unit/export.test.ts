@@ -408,13 +408,16 @@ describe('the export, step by step', () => {
     const { result } = h.exporter.start('tok-1', 'abcdefghijk1', REEL)
     await settle()
 
-    // The plan: the project's feed, page, service day and theme, nothing else.
+    // The plan: the project's feed, page, the folder the page was written
+    // into (a GIF's plan reads its line colours there, engine v0.17.0),
+    // service day and theme, nothing else.
     expect(h.eng.requests).toHaveLength(1)
     expect(h.eng.requests[0].method).toBe('export.plan')
     expect(h.eng.requests[0].params).toEqual({
       key: 'la-metro-rail',
       preset: 'instagram-reel',
       page: 'app://local/projects/abcdefghijk1/la-metro-rail.html',
+      out: 'abcdefghijk1',
       date: '2026-09-08',
       options: { theme: 'dark' },
     })
@@ -1148,6 +1151,7 @@ describe('what the export tab chooses', () => {
         key: 'la-metro-rail',
         preset: choice.preset,
         page: 'app://local/projects/abcdefghijk1/la-metro-rail.html',
+        out: 'abcdefghijk1',
         date: '2026-09-08',
         options: planOptions(choice, presetOf(choice.preset), 'dark', safe),
       })

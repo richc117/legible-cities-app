@@ -112,6 +112,9 @@ interface Node {
   minLength?: number
   minItems?: number
   maxItems?: number
+  // Distinct items: a constraint on values, read and ignored (a list's type is
+  // the same with or without it).
+  uniqueItems?: boolean
   prefixItems?: Node[]
   maxLength?: number
 }
@@ -146,6 +149,7 @@ const KNOWN = new Set([
   'minLength',
   'minItems',
   'maxItems',
+  'uniqueItems',
   'prefixItems',
   'maxLength',
 ])

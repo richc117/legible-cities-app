@@ -404,6 +404,10 @@ export class Exporter {
         key: project.feed,
         preset: choice.preset,
         page: pageUrl(project),
+        // The folder map.build wrote the project's page into: a GIF's plan
+        // reads its line colours there, so the palette is the map's and not
+        // counted from the frames (engine v0.17.0, ADR-055).
+        out: project.id,
         date: day,
         options: planOptions(choice, entry, themeFor(project.theme), entry.safe_zones, storyboards),
       } satisfies ExportPlanParams
@@ -564,6 +568,8 @@ export class Exporter {
       key: project.feed,
       preset: choice.preset,
       page: pageUrl(project),
+      // As in the preview's plan: the folder the page was written into.
+      out: project.id,
       date: day,
       options: planOptions(choice, entry, themeFor(project.theme), false, storyboards),
     } satisfies ExportPlanParams

@@ -56,6 +56,7 @@ interface Node {
   maxLength?: number
   minItems?: number
   maxItems?: number
+  uniqueItems?: boolean
   prefixItems?: Node[]
   additionalProperties?: boolean | Node
   [other: string]: unknown
@@ -88,6 +89,7 @@ const KNOWN = new Set([
   'minLength',
   'minItems',
   'maxItems',
+  'uniqueItems',
   'prefixItems',
   'maxLength',
 ])
@@ -151,6 +153,11 @@ function problems(node: Node, value: unknown, path: string): string[] {
   if (Array.isArray(value)) {
     if (node.minItems !== undefined && value.length < node.minItems) found.push(`${path}: short`)
     if (node.maxItems !== undefined && value.length > node.maxItems) found.push(`${path}: long`)
+    if (
+      node.uniqueItems === true &&
+      new Set(value.map((v) => JSON.stringify(v))).size !== value.length
+    )
+      found.push(`${path}: not distinct`)
     if (node.prefixItems !== undefined) {
       node.prefixItems.forEach((item, i) =>
         found.push(...problems(item, value[i], `${path}[${i}]`)),
@@ -337,6 +344,23 @@ describe('the check of the v0.12.0 shapes against the description', () => {
     expect(answerProblems('export.plan', { ...job, caption: '' })).not.toEqual([])
     expect(answerProblems('export.plan', { ...job, caption: 'a\nb' })).not.toEqual([])
     expect(answerProblems('export.plan', { ...job, storyboard: 'custom' })).toEqual([])
+  })
+
+  it('takes a plan’s folder as the engine’s token, and its colours as distinct #rrggbb or null', () => {
+    // Engine v0.17.0 (issue 33). Mutation: the checker's `uniqueItems` left
+    // out - a list naming one colour twice would then pass as a plan.
+    const asked = (out: unknown) =>
+      paramsProblems('export.plan', { key: 'la-metro-rail', preset: 'instagram-reel', out })
+    expect(asked('abcdefghijk1')).toEqual([])
+    for (const out of ['../x', '/x', 'a/b', '.hidden', '', null, 7])
+      expect(asked(out)).not.toEqual([])
+    expect(answerProblems('export.plan', { ...job, colors: null })).toEqual([])
+    expect(answerProblems('export.plan', { ...job, colors: ['#0072bc', '#e0245e'] })).toEqual([])
+    expect(answerProblems('export.plan', { ...job, colors: ['#0072bc', '#0072bc'] })).not.toEqual(
+      [],
+    )
+    expect(answerProblems('export.plan', { ...job, colors: ['red'] })).not.toEqual([])
+    expect(answerProblems('export.plan', { ...job, colors: '#0072bc' })).not.toEqual([])
   })
 
   it('asks a beat for its seconds alone, and a storyboard as a name or a list', () => {

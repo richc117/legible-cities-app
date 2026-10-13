@@ -43,3 +43,18 @@ most 2.0) sit just above what was measured and are to be confirmed on the
 first real run. The change lands in the engine as a v0.12.0 candidate
 (issue 33); the app's gate follows at the pin that carries it, and this
 record becomes Accepted when both are in.
+
+*As of 13 Oct 2026:* the engine half shipped as v0.17.0 (issue 33, closed). It
+composes the table as decided, and counts a line's casing colour with the
+lines' colours, which the measurement had not (a cased line's casing pixels
+would otherwise be snapped to the nearest entry). The colours reach the encode
+through the plan: `export.plan` takes an optional `out`, the folder `map.build`
+wrote the page into, and answers `colors` for a GIF (distinct, sorted, or null,
+read from the page's positions file, at most 32 MB); `export.encode` composes
+from the plan alone, and a plan with no colours is encoded as before. On real
+BART frames at draft quality the mean error was 1.34 dark and 0.26 light
+against today's 1.77 and 1.54, the worst frame 1.74 and 0.67, at 52% of the
+bytes, inside the bounds above. The app sends `out: project.id` with both of
+its `export.plan` calls at the pin to v0.17.0. The app's gate (issue 324,
+comparing the delivered GIFs' colour tables) is the half still to come, and
+this record stays Proposed until it is in.
