@@ -808,6 +808,30 @@ describe('the small functions', () => {
     const engine = new EngineError(-32000, 'x')
     expect(normalise(engine)).toBe(engine)
   })
+  it('takes out a quoted path and one with spaces in it, whole (issue 419)', () => {
+    // Assembled from pieces at run time, so no literal path of a user's
+    // shape is committed: bin/preflight refuses one.
+    const folder = ['', 'Users', 'jane', 'Desktop', 'Legible Cities', 'My BART map'].join('/')
+    const winFolder = ['C:', 'Users', 'Jane Doe', 'Desktop', 'Legible Cities'].join('\\')
+    // Node quotes the path it failed on, and the space inside it is no end.
+    expect(
+      normalise(new Error(`EACCES: permission denied, open '${folder}/bart-reel.mp4'`)).data?.hint,
+    ).toBe("EACCES: permission denied, open 'a file'")
+    // Node does not escape a quote inside the path: the closing quote is the
+    // one with a space, punctuation or the end after it.
+    const quoted = ['', 'Users', 'jane', "O'Neil maps", 'x.zip'].join('/')
+    expect(
+      normalise(new Error(`ENOENT: no such file or directory, open '${quoted}'`)).data?.hint,
+    ).toBe("ENOENT: no such file or directory, open 'a file'")
+    for (const reason of [
+      new Error(`could not write ${winFolder}\\My BART map\\bart-reel.mp4`),
+      new CaptureError(`the page did not load: ${folder}/bart.html`),
+    ]) {
+      const error = normalise(reason)
+      for (const text of [error.message, error.data?.hint, error.data?.detail])
+        expect(text, reason.message).not.toMatch(/jane|Doe|Desktop|Cities|BART/i)
+    }
+  })
 })
 
 // The frames live under the engine's home while an export runs, and the

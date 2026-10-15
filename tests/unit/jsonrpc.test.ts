@@ -182,6 +182,54 @@ describe('JsonRpcClient', () => {
     const other = (await third.result.catch((e: unknown) => e)) as EngineError
     expect(other.data, 'not on a kind that is not layout').toEqual(params)
   })
+  // The engine's hint for an I/O failure is "{reason}: {filename}" (its
+  // `classify`), and Python's own sentence quotes the file. Until issue 419
+  // the path came out only up to its first space, and not at all behind a
+  // quote. Every path here is assembled from pieces at run time, so no
+  // literal path of a user's shape is committed: bin/preflight refuses one.
+  it('takes a path with spaces or quotes out of the hint, whole, and keeps it in the detail', async () => {
+    const macHome = ['', 'Users', 'jane'].join('/')
+    const engineHome = [macHome, 'Library', 'Application Support', 'Legible Cities', 'engine'].join(
+      '/',
+    )
+    const winHome = ['C:', 'Users', 'Jane Doe'].join('\\')
+    const winFile = [
+      winHome,
+      'AppData',
+      'Roaming',
+      'Legible Cities',
+      'engine',
+      'data',
+      'x.zip',
+    ].join('\\')
+    const cases: [string, string][] = [
+      [`Permission denied: ${engineHome}/data/feeds/bart.zip`, 'Permission denied: a file'],
+      [
+        `[Errno 2] No such file or directory: '${engineHome}/out/abc/bart.html'`,
+        "[Errno 2] No such file or directory: 'a file'",
+      ],
+      [`Access is denied: ${winFile}`, 'Access is denied: a file'],
+      [`[WinError 5] Access is denied: '${winFile}'`, "[WinError 5] Access is denied: 'a file'"],
+      // Quoted, a name with a space at the very end is still the path's.
+      [
+        `[Errno 21] Is a directory: '${macHome}/Desktop/My Maps'`,
+        "[Errno 21] Is a directory: 'a file'",
+      ],
+      // A path under no folder with no space keeps what it had.
+      ['FeedError: /x/y has no stops.txt', 'FeedError: a file has no stops.txt'],
+    ]
+    const { c, reply } = client()
+    for (const [i, [hint, shown]] of cases.entries()) {
+      const r = c.request('feeds.add', { key: 'x' })
+      const data = { kind: 'io', detail: `OSError: ${hint} (feeds.py:12)`, hint }
+      reply({ jsonrpc: '2.0', id: i + 1, error: { code: -32000, message: hint, data } })
+      const error = (await r.result.catch((e: unknown) => e)) as EngineError
+      expect(error.data?.hint, hint).toBe(shown)
+      expect(error.data?.hint, hint).not.toMatch(/jane|Doe|Support|Cities|AppData|Maps/i)
+      expect(error.data?.detail, 'the detail keeps the path for the log').toBe(data.detail)
+    }
+  })
+
   // A kind outside the engine's seven cannot come from an engine of the
   // pinned version. It is read as the engine failing in a way it never
   // described, and everything it sent is kept where a log will show it.

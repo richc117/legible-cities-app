@@ -164,7 +164,11 @@ function errorData(data: unknown, message: string): ErrorData | undefined {
       // an I/O failure, so the path comes out of the sentence here and
       // stays in the detail. This is not where a URL's key is taken out:
       // `withoutPaths` does not match a URL, and every error is redacted on
-      // its way to the page in `ipc-shape.ts` (issue 207).
+      // its way to the page in `ipc-shape.ts` (issue 207). Nor is it the
+      // only place a path comes out: the same door takes out every path
+      // under a folder the main process knows, from all three fields, and
+      // runs `withoutPaths` again (issue 419), which changes nothing it
+      // already took out here.
       return {
         kind: data.kind,
         detail: data.detail,

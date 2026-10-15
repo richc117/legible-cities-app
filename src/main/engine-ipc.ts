@@ -47,11 +47,17 @@
 // Only text that already carries a secret changes. `redactUrls` is stable
 // under a second pass, so the clipboard's own redaction still changes
 // nothing.
+//
+// The error door takes paths out as well, since issue 419: `toShape` and
+// `badCall` are handed the folders the main process knows (`roots`, from
+// `index.ts`), and every path under one of them leaves all three fields as
+// "a file". The progress message and the log line are not given that
+// treatment; they keep the two guards described above.
 
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { CHANNELS, type EngineAccepted, type EngineSettled } from '../shared/api'
 import type { EngineState, JobLog, JobProgress } from '../shared/engine'
-import { badCall, isObject, TOKEN, toShape } from './ipc-shape'
+import { badCall, isObject, NO_ROOTS, TOKEN, toShape, type PathRoots } from './ipc-shape'
 import { redactUrls } from './redact'
 import type { Notification } from './sidecar'
 
@@ -87,6 +93,8 @@ export function registerEngineHandlers(
   send: Send,
   log: (message: string) => void,
   guard: Guard = async () => null,
+  /** The folders a path in an error can start with, for the door (issue 419). */
+  roots: PathRoots = NO_ROOTS,
 ): () => void {
   const idOf = new Map<string, number>()
   const tokenOf = new Map<number, string>()
@@ -107,10 +115,13 @@ export function registerEngineHandlers(
   handle(CHANNELS.engineState, async () => engine.state)
 
   handle(CHANNELS.engineRequest, async (token, method, params): Promise<EngineAccepted> => {
-    if (typeof token !== 'string' || !TOKEN.test(token)) return badCall('a request needs an id')
-    if (typeof method !== 'string' || method === '') return badCall('a request needs a method name')
-    if (params !== undefined && !isObject(params)) return badCall('parameters must be an object')
-    if (idOf.has(token)) return badCall('a request with this id is already running')
+    if (typeof token !== 'string' || !TOKEN.test(token))
+      return badCall('a request needs an id', roots)
+    if (typeof method !== 'string' || method === '')
+      return badCall('a request needs a method name', roots)
+    if (params !== undefined && !isObject(params))
+      return badCall('parameters must be an object', roots)
+    if (idOf.has(token)) return badCall('a request with this id is already running', roots)
     // The token is taken before the guard's await, so a second invoke with
     // the same token during it is refused rather than reaching the engine
     // twice with one map entry between them.
@@ -132,7 +143,7 @@ export function registerEngineHandlers(
     if (refused !== null) {
       idOf.delete(token)
       cancelledEarly.delete(token)
-      return badCall(refused)
+      return badCall(refused, roots)
     }
     // No request has a deadline of its own: the supervisor's inactivity
     // bound is the only limit, a removal's included (issue 351). A person
@@ -148,7 +159,7 @@ export function registerEngineHandlers(
       cancelledEarly.delete(token)
       const what = error instanceof Error ? error.message : String(error)
       log(`refused ${method} before sending it: ${what}`)
-      return badCall(`the request could not be sent: ${what}`)
+      return badCall(`the request could not be sent: ${what}`, roots)
     }
     const { id, result } = sent
     if (id !== 0) {
@@ -167,7 +178,7 @@ export function registerEngineHandlers(
         send(CHANNELS.engineSettled, settled)
       },
       (error: unknown) => {
-        const settled: EngineSettled = { id: token, ok: false, error: toShape(error) }
+        const settled: EngineSettled = { id: token, ok: false, error: toShape(error, roots) }
         send(CHANNELS.engineSettled, settled)
       },
     )

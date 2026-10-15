@@ -659,7 +659,8 @@ and the log cell 02 draws carry the same bytes the log file does. An
 error is the fourth: `src/main/ipc-shape.ts` redacts the `message`, `hint`
 and `detail` of every error shape that crosses to the page, the engine's
 and the app's own refusals alike, since until engine v0.10.1 a failed
-download's error named the whole URL in all three (issue 207). What
+download's error named the whole URL in all three (issue 207). The same
+door takes the paths out of them, as the next paragraph says. What
 redacts is one function (`src/main/redact.ts`): a URL can carry a key, and
 whatever prints one on the engine's stderr or into an error is redacted
 here, whoever wrote it. Since v0.10.1 the engine redacts a person's feed
@@ -686,6 +687,52 @@ before its `?`; and a URL with whitespace inside it. Each run of text is
 looked at once, and percent-encoded addresses are walked with a cursor, so
 a long line costs linear time. `tests/unit/redact-generated.test.ts` puts
 600 seeded URLs through the engine's message shapes.
+
+Since issue 419 the error door takes paths out of the same three fields.
+Until then the only rule was `withoutPaths` (`src/shared/engine.ts`), on
+the engine's hint alone, and it stopped at the first space and did not see
+a path behind a quote: on the default macOS install the engine's home is
+under "Application Support", so an I/O failure showed the rest of the
+engine's data path, and Python's `OSError`, which quotes its file, showed
+all of it. The main process knows every folder such a path starts with -
+the engine's home, the user-data folder, the resources folder, the home
+folder and the export folder in force, which Settings can change and is
+therefore asked at each error - and `src/main/paths-in-text.ts` matches each
+whole, whatever its names hold, in every form the diagnostics copy matches
+the home in (either separator, separators doubled as `repr` and JSON print
+them, percent-encoded, any case on Windows and macOS, and on Windows the
+8.3 short name). Each folder's real path, and the home's short form from
+the diagnostics copy's own lookup, are added once their lookups answer,
+bounded at `HOMES_TIMEOUT_MS`; the door never waits, so until then, and for
+good if a lookup lapses, the folder as named is what is matched. From the
+folder the path runs to the quote that closes it where a quote opened it;
+bare, it runs to a space unless a later word in the same clause carries it
+on (has a separator in it and starts nothing of its own), or to a comma, a
+semicolon or a colon before a space, a closing parenthesis or the end of
+the line. The whole path becomes "a file", the words the engine's sentences
+already used. `withoutPaths` then runs as the backstop for a path under no
+known folder: it now reads a path behind a single or a double quote to the
+quote that closes it (the one with a space, punctuation or the end after
+it, since Node does not escape a quote inside a path), carries a bare path
+past a space by the same rule, and leaves a slash with a space after it
+alone, so "LA / Metro" in a person's project name is not a path. The two
+bridges always hand the door the folders; a shape made without them has its
+URLs redacted and its paths left, which is the exporter's preview shaping
+its own refusal before the export bridge puts it through the door. The
+error a shape is made from is never changed, and the engine logs its own
+failures, paths included, to `engine.log`. Not covered: a path under no
+known folder whose last name has a space in it shows the rest of that name
+after the space; the engine's hint has been through
+`withoutPaths` in the JSON-RPC client (`errorData`) before the door sees
+it, so for the hint the known folders add nothing and the same limit holds
+there - a home folder named with a space, at the very end of a hint, shows
+its last word; under a known folder, a name with a space at the end of the
+path shows the words after the space; the progress message, the log lines
+cell 02 draws and the engine state's reason are redacted for URLs only; an
+error thrown from any other handler (the projects', Settings', a
+destination's) does not pass this door and relies on its own sentence
+carrying no path; and the renderer still runs `withoutPaths` itself where
+it did before.
 
 Lines logged before the app is ready are held in memory, two thousand at
 most, and written first once the files open, which is the first thing the
@@ -1557,7 +1604,10 @@ and Escape closes it.
 A job is one read-only shape (`src/shared/jobs.ts`): an id per attempt, a
 kind (`layout`, `rebuild`, `export`, `feed-add`), the project's id, a
 label, the state, the stages, the last sentence, the engine's hint and
-detail when it failed, the last 200 log lines and the start and end. The
+detail when it failed (both with their paths already taken out at the
+error door since issue 419, so a copied log says "a file" where the detail
+named one, and `engine.log` keeps the path), the last 200 log lines and the
+start and end. The
 runs do not change: `LayoutRun`, `ExportRun` and `FeedAdd` each gain a
 `job()` derived from the snapshot they already keep, plus what the
 snapshot does not hold - the times, the detail and a bounded log buffer

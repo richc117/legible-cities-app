@@ -24,19 +24,20 @@ import { EngineError, ERROR_CODES, type EngineErrorShape } from '../shared/engin
 import { validateId } from '../shared/project'
 import type { Destinations, Exporter } from './export'
 import type { StoreBlocked } from './ipc'
-import { badCall, redactShape, TOKEN, toShape } from './ipc-shape'
+import { badCall, NO_ROOTS, redactShape, TOKEN, toShape, type PathRoots } from './ipc-shape'
 import { RESERVED_NAME } from './paths'
 
 export type Send = (channel: string, payload: unknown) => void
 
 /** A refusal in the engine's shape, for an answer that is not an `Accepted`. */
-const refusal = (what: string): EngineErrorShape =>
+const refusal = (what: string, roots: PathRoots): EngineErrorShape =>
   redactShape(
     new EngineError(ERROR_CODES.badCall, what, {
       kind: 'params',
       detail: what,
       hint: what,
     }).toJSON(),
+    roots,
   )
 
 /** What the handlers need from the exporter; a test hands in a fake. */
@@ -68,6 +69,8 @@ export function registerExportHandlers(
    * record land in the folder it is removing.
    */
   blocked: StoreBlocked = () => null,
+  /** The folders a path in an error can start with, for the door (issue 419). */
+  roots: PathRoots = NO_ROOTS,
 ): () => void {
   const handle = (channel: string, handler: (...args: unknown[]) => Promise<unknown>): void => {
     ipcMain.handle(channel, async (event, ...args: unknown[]) => {
@@ -80,18 +83,18 @@ export function registerExportHandlers(
     // The token becomes a folder name under the engine home, so a name
     // Windows reserves is refused with the rest.
     if (typeof token !== 'string' || !TOKEN.test(token) || RESERVED_NAME.test(token))
-      return badCall('an export needs an id')
+      return badCall('an export needs an id', roots)
     if (typeof projectId !== 'string' || validateId(projectId) !== null)
-      return badCall('an export needs a project')
+      return badCall('an export needs a project', roots)
     // Every field of the choice against the engine's own rules, and a copy
     // with nothing else on it, before the exporter or the engine sees it.
     const problem = validateExportChoice(choice)
-    if (problem !== null) return badCall(problem)
+    if (problem !== null) return badCall(problem, roots)
     let started: ReturnType<Exporter['start']>
     try {
       started = exporter.start(token, projectId, copyChoice(choice as ExportChoice))
     } catch (error) {
-      return { accepted: false, error: toShape(error) }
+      return { accepted: false, error: toShape(error, roots) }
     }
     started.result.then(
       (value) => {
@@ -99,7 +102,7 @@ export function registerExportHandlers(
         send(CHANNELS.exportSettled, settled)
       },
       (error: unknown) => {
-        const settled: ExportSettled = { id: token, ok: false, error: toShape(error) }
+        const settled: ExportSettled = { id: token, ok: false, error: toShape(error, roots) }
         send(CHANNELS.exportSettled, settled)
       },
     )
@@ -110,10 +113,14 @@ export function registerExportHandlers(
   // keeps its `data` on the way to the sentence the tab shows.
   handle(CHANNELS.exportPreview, async (projectId, choice): Promise<ExportPreview> => {
     if (typeof projectId !== 'string' || validateId(projectId) !== null)
-      return { ok: false, error: refusal('a preview needs a project') }
+      return { ok: false, error: refusal('a preview needs a project', roots) }
     const problem = validateExportChoice(choice)
-    if (problem !== null) return { ok: false, error: refusal(problem) }
-    return exporter.preview(projectId, copyChoice(choice as ExportChoice))
+    if (problem !== null) return { ok: false, error: refusal(problem, roots) }
+    const answer = await exporter.preview(projectId, copyChoice(choice as ExportChoice))
+    // The exporter shapes its own refusal with its URLs redacted and its
+    // paths left in; the door takes them out here, with the folders (issue
+    // 419). A second pass of `redactUrls` changes nothing.
+    return answer.ok ? answer : { ...answer, error: redactShape(answer.error, roots) }
   })
 
   handle(CHANNELS.exportCancel, async (token) => {
