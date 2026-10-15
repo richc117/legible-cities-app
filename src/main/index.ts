@@ -10,6 +10,7 @@ import { BrowserWindow, app, clipboard, dialog, ipcMain, session, shell } from '
 import pins from '../../vendor/pins.json'
 import { CHANNELS } from '../shared/api'
 import type { AppSettings, FolderSource } from '../shared/settings'
+import { CAPTURE_PARTITION } from './capture'
 import { abortCaptures, capture, configureCapture } from './capture-window'
 import {
   describeConfig,
@@ -195,6 +196,10 @@ function sourceOf(source: Source): FolderSource {
 }
 
 function createWindow(): BrowserWindow {
+  // The spellchecker service is the session's and fetches dictionaries on
+  // Windows and Linux whatever the windows say (constitution IV).
+  session.defaultSession.setSpellCheckerEnabled(false)
+  session.fromPartition(CAPTURE_PARTITION).setSpellCheckerEnabled(false)
   const window = new BrowserWindow({
     title: PRODUCT_NAME,
     width: 1100,

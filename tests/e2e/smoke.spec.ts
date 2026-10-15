@@ -25,6 +25,7 @@ import {
   type Locator,
   type Page,
 } from '@playwright/test'
+import { CAPTURE_PARTITION } from '../../src/main/capture'
 import { RECORD_VERSION } from '../../src/shared/project'
 import { cellLabel } from '../support/project'
 
@@ -175,9 +176,7 @@ test('the spellchecker is off in both sessions, so no dictionary is fetched', as
   const child = app.process()
   try {
     await app.firstWindow()
-    // Copied from CAPTURE_PARTITION in src/main/capture.ts, which imports
-    // Electron and so cannot be imported into the test runner.
-    const partition = 'capture'
+    const partition = CAPTURE_PARTITION
     const enabled = await app.evaluate(
       ({ session }, name) => ({
         interface: session.defaultSession.isSpellCheckerEnabled(),

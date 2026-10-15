@@ -33,8 +33,9 @@ what.
   engine's supervisor: the one child process the app starts.
 - **Preload** (`src/preload/`): a `contextBridge` exposing `window.api` and
   nothing else. `contextIsolation` on, `nodeIntegration` off, `sandbox` on,
-  and the main window's spellchecker off (`spellcheck: false`), because on
-  Windows and Linux it fetches dictionaries from a CDN.
+  and the spellchecker off, in the main window (`spellcheck: false`) and in
+  both sessions (`setSpellCheckerEnabled(false)`), because on Windows and
+  Linux its service fetches dictionaries from a CDN.
 - **Renderer** (`src/renderer/`): React. It draws the Library (the front
   door) and its New project sheet, and a project as a notebook of six
   cells with the viewer's sandboxed frame in the column between cells 02
@@ -49,10 +50,10 @@ what.
 One custom scheme and host, registered as a standard, secure origin before
 the app is ready and handled in the main process. Two path prefixes:
 
-| Path | Serves |
-|---|---|
-| `/ui/…` | The interface: built assets in a packaged app, the Vite dev server proxied through the same handler in development, so the page's origin is `app://local` either way |
-| `/projects/<id>/…` | Generated project output, from `<SCHEMATIC_HOME>/out/<id>/`, read only |
+| Path               | Serves                                                                                                                                                               |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/ui/…`            | The interface: built assets in a packaged app, the Vite dev server proxied through the same handler in development, so the page's origin is `app://local` either way |
+| `/projects/<id>/…` | Generated project output, from `<SCHEMATIC_HOME>/out/<id>/`, read only                                                                                               |
 
 Anything else is a clean 404. The identifier and the path are validated
 before a filesystem path is built: identifiers match
@@ -79,27 +80,27 @@ engine under `api.engine`, the export under `api.export`, one clipboard
 write under `api.clipboard`, a job's copied log under `api.jobs`, and the
 app's own settings under `api.settings`:
 
-| Method | Does |
-|---|---|
-| `list()` | the Library's entries, newest opened first (a project never opened since `opened` was kept by when it was made, A5.6-04); an unreadable record is skipped and logged, never shown broken |
-| `get(id)` | one record, with `readOnly` set when a newer version of the app wrote it |
-| `create({ name, feed, mode?, agency? })` | a new record, every other field at its default |
-| `rename(id, name)` | changes `name` and `modified` and nothing else |
-| `delete(id)` | removes the project and its output, and reports what could not be removed by folder role |
-| `markOpened(id)` | writes `opened` onto the record as stored and nothing else - not `modified`, and not a read-only project (A5.6-04) |
-| `completeLayout(id, done)` | records the layout's id, the feed's window and the service day a finished run produced; the id is the engine's own, as `graph.build` answered it (A3-01, ADR-033), the window is `feeds.service`'s answer (A3-04, ADR-031) |
-| `completeRebuild(id, done)` | records the day a finished rebuild drew the map for, inside the stored window or not at all (A3-04) |
-| `setInputs(id, { mode, agency })` | stores the mode and agency a person chose with the feed in view; the next layout passes them to the engine, which names a layout for them (A2-02) |
-| `setDate(id, date)` | stores the service day a person chose, at once and before anything is drawn for it; it refuses exactly what `completeRebuild` refuses and never touches `drawn`, so a day chosen and not yet drawn is what the notebook's cell 03 reports (A5.5-15) |
-| `completeColors(id, palette)` | records the line colours a person chose, once the map has been drawn with them; every label and every colour is checked on the main side first (A4-01) |
-| `completeOrder(id, order)` | records the order a person arranged the lines in, once the map has been drawn in it; every label is checked on the main side first, and the same line twice is refused (A4-02) |
-| `completeStyle(id, style)` | records the sizes a person chose for the map - up to eight numbers in the engine's own names - once the map has been drawn with them, as the colours and the order are; every number is held to the engine's range and the two radii to the engine's rule on the main side first, in the engine's own sentences (issue 350, ADR-049) |
-| `setTheme(id, theme)` | records the theme the project's map is drawn in, at once rather than after a build: a theme is neither a layout nor a render, and the page restyles in place when told (the app calls its `setTheme` after the write; the next load carries the theme on its address; A4-03, issue 349) |
-| `setExport(id, choice)` | records what the project is set to export - a preset, a storyboard, the options - at once; every field is held to the engine's own rules on the main side first (A5-01) |
-| `export.chooseDestination(id)` | opens the platform's folder chooser for one project's exports and applies its own answer, then hands back the record; no path crosses inward, as Settings' two folders do not (A1-04, A5.5-19) |
-| `export.useAppFolder(id)` | forgets that folder, so the project's exports go to the app's again; it takes no path at all (A5.5-19) |
-| | both write a project's record, so both are refused while the engine's data is being reset, as every other record write is |
-| `feeds.pickZip()` | opens the platform's file chooser for a GTFS zip and remembers the answer; the one native dialog, since a page cannot choose a file (A2-01) |
+| Method                                   | Does                                                                                                                                                                                                                                                                                                                                 |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `list()`                                 | the Library's entries, newest opened first (a project never opened since `opened` was kept by when it was made, A5.6-04); an unreadable record is skipped and logged, never shown broken                                                                                                                                             |
+| `get(id)`                                | one record, with `readOnly` set when a newer version of the app wrote it                                                                                                                                                                                                                                                             |
+| `create({ name, feed, mode?, agency? })` | a new record, every other field at its default                                                                                                                                                                                                                                                                                       |
+| `rename(id, name)`                       | changes `name` and `modified` and nothing else                                                                                                                                                                                                                                                                                       |
+| `delete(id)`                             | removes the project and its output, and reports what could not be removed by folder role                                                                                                                                                                                                                                             |
+| `markOpened(id)`                         | writes `opened` onto the record as stored and nothing else - not `modified`, and not a read-only project (A5.6-04)                                                                                                                                                                                                                   |
+| `completeLayout(id, done)`               | records the layout's id, the feed's window and the service day a finished run produced; the id is the engine's own, as `graph.build` answered it (A3-01, ADR-033), the window is `feeds.service`'s answer (A3-04, ADR-031)                                                                                                           |
+| `completeRebuild(id, done)`              | records the day a finished rebuild drew the map for, inside the stored window or not at all (A3-04)                                                                                                                                                                                                                                  |
+| `setInputs(id, { mode, agency })`        | stores the mode and agency a person chose with the feed in view; the next layout passes them to the engine, which names a layout for them (A2-02)                                                                                                                                                                                    |
+| `setDate(id, date)`                      | stores the service day a person chose, at once and before anything is drawn for it; it refuses exactly what `completeRebuild` refuses and never touches `drawn`, so a day chosen and not yet drawn is what the notebook's cell 03 reports (A5.5-15)                                                                                  |
+| `completeColors(id, palette)`            | records the line colours a person chose, once the map has been drawn with them; every label and every colour is checked on the main side first (A4-01)                                                                                                                                                                               |
+| `completeOrder(id, order)`               | records the order a person arranged the lines in, once the map has been drawn in it; every label is checked on the main side first, and the same line twice is refused (A4-02)                                                                                                                                                       |
+| `completeStyle(id, style)`               | records the sizes a person chose for the map - up to eight numbers in the engine's own names - once the map has been drawn with them, as the colours and the order are; every number is held to the engine's range and the two radii to the engine's rule on the main side first, in the engine's own sentences (issue 350, ADR-049) |
+| `setTheme(id, theme)`                    | records the theme the project's map is drawn in, at once rather than after a build: a theme is neither a layout nor a render, and the page restyles in place when told (the app calls its `setTheme` after the write; the next load carries the theme on its address; A4-03, issue 349)                                              |
+| `setExport(id, choice)`                  | records what the project is set to export - a preset, a storyboard, the options - at once; every field is held to the engine's own rules on the main side first (A5-01)                                                                                                                                                              |
+| `export.chooseDestination(id)`           | opens the platform's folder chooser for one project's exports and applies its own answer, then hands back the record; no path crosses inward, as Settings' two folders do not (A1-04, A5.5-19)                                                                                                                                       |
+| `export.useAppFolder(id)`                | forgets that folder, so the project's exports go to the app's again; it takes no path at all (A5.5-19)                                                                                                                                                                                                                               |
+|                                          | both write a project's record, so both are refused while the engine's data is being reset, as every other record write is                                                                                                                                                                                                            |
+| `feeds.pickZip()`                        | opens the platform's file chooser for a GTFS zip and remembers the answer; the one native dialog, since a page cannot choose a file (A2-01)                                                                                                                                                                                          |
 
 | `viewer.attach(projectId, role)` | holds the project page's frame in a role, `map` or `export`, by identity once it has loaded, and answers whether it did (ADR-028). The role is read from the address once, here: `safe=1` is always the export's, the app's own `controls=1` the map's, and anything else under the project's folder a planned page without safe zones, the export's; the frame the other role holds is never taken (ADR-046) |
 | `viewer.release(role)` | lets that role's frame go, and keeps the other |
@@ -161,7 +162,7 @@ first interpreter of these that exists and by nothing else: the one
 `LEGIBLE_ENGINE_PYTHON` names; in development, the engine checkout's own
 `.venv`; in a packaged app, the bundled runtime under the app's resources,
 started with `PYTHONDONTWRITEBYTECODE=1` so nothing it imports is ever
-written into the bundle (see "Packaging" below). With none, the state is *unavailable* with a sentence that names the key to
+written into the bundle (see "Packaging" below). With none, the state is _unavailable_ with a sentence that names the key to
 set, and the app is otherwise usable.
 
 `src/main/sidecar.ts` spawns it with an argument array, `windowsHide`, a
@@ -177,7 +178,7 @@ the request id, which the client must therefore assign and know.
 
 The handshake is `engine.info`, bounded at 10 s: the version and the
 protocol must equal the pin, or the page's own dialog names both and the
-state is *mismatched* for the rest of the run. Every other request has an
+state is _mismatched_ for the rest of the run. Every other request has an
 inactivity bound (10 min without a `job/progress` or `job/log` line for it),
 after which the app cancels it and says so. A request may also be sent with
 a deadline of its own (`request(method, params, { deadlineMs })`), which
@@ -227,11 +228,11 @@ parameter and every result, so that a change on the engine's side the app
 has not followed is a build error rather than a refused request in front of
 a person (constitution, principle II).
 
-| File | What it is |
-|---|---|
-| `vendor/protocol.schema.json` | the engine's description, printed by `python -m schematic.serve --schema` and committed byte for byte |
-| `vendor/pins.json`, `engine.schema_sha256` | its fingerprint, beside the engine's tag and version |
-| `src/shared/protocol.ts` | the types, generated from the description and committed; edits are lost |
+| File                                       | What it is                                                                                            |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| `vendor/protocol.schema.json`              | the engine's description, printed by `python -m schematic.serve --schema` and committed byte for byte |
+| `vendor/pins.json`, `engine.schema_sha256` | its fingerprint, beside the engine's tag and version                                                  |
+| `src/shared/protocol.ts`                   | the types, generated from the description and committed; edits are lost                               |
 
 `npm run typegen` writes all three from the engine checkout named by
 `LEGIBLE_ENGINE_CHECKOUT`, or stops and changes nothing when there is none.
@@ -339,15 +340,15 @@ environment, then `.env.local` (development only, gitignored; `.env.example`
 documents it), then the two folders a person chose in Settings, then what a
 packaged app carries (reported as `bundled`), then defaults:
 
-| Key | Default |
-|---|---|
-| `SCHEMATIC_HOME` | the folder chosen in Settings, else `<userData>/engine` (ADR-016) |
-| `SCHEMATIC_LOOM_BIN` | in a packaged app, `loom/` under its resources whenever that folder exists, so a missing tool is the engine's error and never a fall back to Docker; otherwise unset. A directory of native LOOM binaries, which the engine runs instead of its Docker image |
-| `SCHEMATIC_LOOM_COMMIT` | passed when set, or with a LOOM directory, where the default is the app's pin (`loom.commit` in `vendor/pins.json`); the binaries cannot say which LOOM they are, so the engine reports what it is told as `engine.info.loom.commit` |
-| `SCHEMATIC_FFMPEG` | in a packaged app, `ffmpeg/ffmpeg` (`.exe` on Windows) under its resources whenever the `ffmpeg/` folder exists; otherwise unset, and the engine takes the first on `PATH` |
-| `LEGIBLE_EXPORT_FOLDER` | the folder chosen in Settings, else `<desktop>/Legible Cities`; where exports go, in a folder per project |
-| `LEGIBLE_ENGINE_CHECKOUT` | unset; the tokens test reads the engine page from it, and the engine runs from its `.venv` |
-| `LEGIBLE_ENGINE_PYTHON` | unset; an interpreter named explicitly (a path, or a bare command for PATH), which wins over the checkout |
+| Key                       | Default                                                                                                                                                                                                                                                      |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `SCHEMATIC_HOME`          | the folder chosen in Settings, else `<userData>/engine` (ADR-016)                                                                                                                                                                                            |
+| `SCHEMATIC_LOOM_BIN`      | in a packaged app, `loom/` under its resources whenever that folder exists, so a missing tool is the engine's error and never a fall back to Docker; otherwise unset. A directory of native LOOM binaries, which the engine runs instead of its Docker image |
+| `SCHEMATIC_LOOM_COMMIT`   | passed when set, or with a LOOM directory, where the default is the app's pin (`loom.commit` in `vendor/pins.json`); the binaries cannot say which LOOM they are, so the engine reports what it is told as `engine.info.loom.commit`                         |
+| `SCHEMATIC_FFMPEG`        | in a packaged app, `ffmpeg/ffmpeg` (`.exe` on Windows) under its resources whenever the `ffmpeg/` folder exists; otherwise unset, and the engine takes the first on `PATH`                                                                                   |
+| `LEGIBLE_EXPORT_FOLDER`   | the folder chosen in Settings, else `<desktop>/Legible Cities`; where exports go, in a folder per project                                                                                                                                                    |
+| `LEGIBLE_ENGINE_CHECKOUT` | unset; the tokens test reads the engine page from it, and the engine runs from its `.venv`                                                                                                                                                                   |
+| `LEGIBLE_ENGINE_PYTHON`   | unset; an interpreter named explicitly (a path, or a bare command for PATH), which wins over the checkout                                                                                                                                                    |
 
 At startup the main process logs every value with its source, and what is
 unset, before the window opens, so a misconfigured run is diagnosable from
@@ -735,11 +736,11 @@ Three stylesheets, loaded from `src/renderer/src/main.tsx` in this order,
 each building on the one before; the design system they implement is
 [`docs/DESIGN.md`](DESIGN.md), and every interface issue cites it.
 
-| File | Holds |
-|---|---|
-| `styles/theme.css` | the interface's own ground and ink per theme, the four brand lines and the station pair, the twelve-step ramp solved between ground and ink, and the semantic tokens on top of it (surfaces, borders, muted text, the accent, success, warning, error, selection), declared once per theme |
-| `styles/scale.css` | everything that is not a colour: the two type tracks, the 4px spacing grid, control heights, radii, layers, motion |
-| `styles/figui-adapter.css` | the mapping from the app's tokens onto the control kit's own variables, so a kit control is drawn in the app's colours and at the app's sizes without a rule of its own |
+| File                       | Holds                                                                                                                                                                                                                                                                                      |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `styles/theme.css`         | the interface's own ground and ink per theme, the four brand lines and the station pair, the twelve-step ramp solved between ground and ink, and the semantic tokens on top of it (surfaces, borders, muted text, the accent, success, warning, error, selection), declared once per theme |
+| `styles/scale.css`         | everything that is not a colour: the two type tracks, the 4px spacing grid, control heights, radii, layers, motion                                                                                                                                                                         |
+| `styles/figui-adapter.css` | the mapping from the app's tokens onto the control kit's own variables, so a kit control is drawn in the app's colours and at the app's sizes without a rule of its own                                                                                                                    |
 
 There is a fourth, `styles/tokens.css`, which nothing loads. It is a
 verbatim copy of the two theme blocks in the engine's animation page, kept
@@ -922,7 +923,7 @@ would make a record read-only to an older app, for numbers that go stale
 the moment another project re-lays out the set this one draws from.
 
 The app formats and never computes. Two of the engine's names are worth
-reading twice: `degraded.skipped_calls` counts *trips* that skip an
+reading twice: `degraded.skipped_calls` counts _trips_ that skip an
 unmatched stop rather than calls, and `stops.unmatched` is the first few
 ids only, so the number that did not match is not in the block - the
 caveat sentences carry it, which is why they are shown word for word. The
@@ -932,6 +933,7 @@ keyboard alike; "Copy as text" hands over what the panel shows, through
 the bridge's one clipboard method, because the app refuses every
 permission request and Chromium's own clipboard write is one
 (`specs/017-diagnostics`).
+
 ### Line colours
 
 A line is drawn in the colour its feed publishes as `route_color`, and a
@@ -1218,7 +1220,8 @@ Escape. The hygiene checks (`gitleaks`, `bin/preflight`) run beside them.
 The export path's middle, built before its ends (A5-02a; ADR-024). A
 project page is loaded as the top-level document of a hidden offscreen
 `BrowserWindow` with no preload, no node integration, the sandbox on, the
-spellchecker off (it would fetch dictionaries from a CDN), and a
+spellchecker off in the window and in its session (it would fetch
+dictionaries from a CDN), and a
 session of its own - the in-memory partition `capture`, which serves
 project pages and nothing else and refuses every permission. Nothing the
 interface's session holds reaches it, and a persisted per-host zoom level,
@@ -1608,16 +1611,16 @@ A packaged app carries everything the engine needs, under its resources and
 outside the asar, in the same shape on every target
 (`electron-builder.yml`):
 
-| Path under the resources | What | Found by |
-|---|---|---|
-| `python/` | the python-build-standalone runtime with the engine installed, its bytecode compiled | `src/main/interpreter.ts` |
-| `python/licenses/`, `python/PYTHON.json` | the licence texts of the libraries linked into the runtime and CPython's `Doc/license.rst`, with the build metadata they are checked against (ADR-042) | a person, through Settings › Licences |
-| `loom/` | `gtfs2graph`, `topo`, `loom`, `octi` | `src/main/config.ts`, as `SCHEMATIC_LOOM_BIN` |
-| `ffmpeg/` | `ffmpeg` and `ffprobe`, built by the vendor workflow from pinned FFmpeg and x264 sources with only what the export uses (ADR-040) | `src/main/config.ts`, as `SCHEMATIC_FFMPEG` |
-| `vendor-manifest.json` | the pins' sha256 and every component's exact version, the runtime's Python packages included | a person, and the release job, which checks each installer's against the run drafting the Release |
-| `first-run-gtfs/` | a GTFS folder of three stops and one subway trip, 588 bytes | `src/main/first-run.ts`, the first-run check |
-| `LICENSE`, `THIRD_PARTY_NOTICES.md` | the app's licence and the notices | a person, and Settings › Licences |
-| `LICENSE.electron.txt`, `LICENSES.chromium.html` | Electron's and Chromium's licences: in the resources on a Mac, where `electron-builder.yml` puts them back after electron-builder deletes them, and one folder up, beside the executable, on Windows | a person, and Settings › Licences |
+| Path under the resources                         | What                                                                                                                                                                                                 | Found by                                                                                          |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `python/`                                        | the python-build-standalone runtime with the engine installed, its bytecode compiled                                                                                                                 | `src/main/interpreter.ts`                                                                         |
+| `python/licenses/`, `python/PYTHON.json`         | the licence texts of the libraries linked into the runtime and CPython's `Doc/license.rst`, with the build metadata they are checked against (ADR-042)                                               | a person, through Settings › Licences                                                             |
+| `loom/`                                          | `gtfs2graph`, `topo`, `loom`, `octi`                                                                                                                                                                 | `src/main/config.ts`, as `SCHEMATIC_LOOM_BIN`                                                     |
+| `ffmpeg/`                                        | `ffmpeg` and `ffprobe`, built by the vendor workflow from pinned FFmpeg and x264 sources with only what the export uses (ADR-040)                                                                    | `src/main/config.ts`, as `SCHEMATIC_FFMPEG`                                                       |
+| `vendor-manifest.json`                           | the pins' sha256 and every component's exact version, the runtime's Python packages included                                                                                                         | a person, and the release job, which checks each installer's against the run drafting the Release |
+| `first-run-gtfs/`                                | a GTFS folder of three stops and one subway trip, 588 bytes                                                                                                                                          | `src/main/first-run.ts`, the first-run check                                                      |
+| `LICENSE`, `THIRD_PARTY_NOTICES.md`              | the app's licence and the notices                                                                                                                                                                    | a person, and Settings › Licences                                                                 |
+| `LICENSE.electron.txt`, `LICENSES.chromium.html` | Electron's and Chromium's licences: in the resources on a Mac, where `electron-builder.yml` puts them back after electron-builder deletes them, and one folder up, beside the executable, on Windows | a person, and Settings › Licences                                                                 |
 
 `.github/workflows/build.yml` builds the installers - a dmg on each Mac
 runner and an nsis installer on Windows - from the vendor artefacts of its
@@ -1797,10 +1800,10 @@ Electron than the pins name.
 
 ## Deliberately absent
 
-| Not here | Arrives with |
-|---|---|
+| Not here                                                                                                                                                                                                                                                                          | Arrives with       |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
 | The contract tests running in continuous integration; they exist and are gated on an engine checkout. The vendor job's schema check is not them: it proves only that the runtime it builds starts `schematic.serve --schema` and that the output hashes to `engine.schema_sha256` | Open; no issue yet |
-| The left rail, and the project's fields and diagnostics in the inspector; the inspector holds only the jobs, and the fields and the diagnostics stay on the project screen (ADR-036) | Open; no issue yet |
-| Editing the numeric style fields; the record holds the engine's defaults, and the colours, the order and the theme are a person's since A4-01, A4-02 and A4-03 | post-MVP |
-| Installers signed with an identity, and notarised | A6-05 |
-| Signing and auto-update | A6-05 |
+| The left rail, and the project's fields and diagnostics in the inspector; the inspector holds only the jobs, and the fields and the diagnostics stay on the project screen (ADR-036)                                                                                              | Open; no issue yet |
+| Editing the numeric style fields; the record holds the engine's defaults, and the colours, the order and the theme are a person's since A4-01, A4-02 and A4-03                                                                                                                    | post-MVP           |
+| Installers signed with an identity, and notarised                                                                                                                                                                                                                                 | A6-05              |
+| Signing and auto-update                                                                                                                                                                                                                                                           | A6-05              |
