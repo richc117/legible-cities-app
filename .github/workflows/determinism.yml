@@ -41,6 +41,7 @@ on:
     paths:
       - 'src/**'
       - 'tests/e2e/determinism.spec.ts'
+      - 'tests/e2e/typeface.spec.ts'
       - 'tests/e2e/global-*.ts'
       - 'tests/unit/determinism-real.test.ts'
       - 'tests/support/**'
