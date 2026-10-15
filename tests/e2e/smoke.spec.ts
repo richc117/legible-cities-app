@@ -10,6 +10,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  rmSync,
   readFileSync,
   symlinkSync,
   writeFileSync,
@@ -31,11 +32,15 @@ import { cellLabel } from '../support/project'
 
 const repoRoot = resolve(__dirname, '../..')
 
-function launch(home: string): Promise<ElectronApplication> {
+function launch(home: string, userData?: string): Promise<ElectronApplication> {
   return electron.launch({
     args: ['.'],
     cwd: repoRoot,
-    env: { ...process.env, SCHEMATIC_HOME: home },
+    env: {
+      ...process.env,
+      SCHEMATIC_HOME: home,
+      ...(userData === undefined ? {} : { LEGIBLE_USER_DATA: userData }),
+    },
     timeout: 30_000,
   })
 }
@@ -172,7 +177,10 @@ test('opens to an empty Library on the app://local origin, and quits', async () 
 
 test('the spellchecker is off in both sessions, so no dictionary is fetched', async () => {
   const home = mkdtempSync(join(tmpdir(), 'legible-cities-e2e-'))
-  const app = await launch(home)
+  // The spellchecker's flag is persisted per profile: on the developer's own
+  // it would be read back from an earlier run, so this launch has a fresh one.
+  const userData = mkdtempSync(join(tmpdir(), 'legible-cities-e2e-profile-'))
+  const app = await launch(home, userData)
   const child = app.process()
   try {
     await app.firstWindow()
@@ -189,6 +197,8 @@ test('the spellchecker is off in both sessions, so no dictionary is fetched', as
     await app.close()
   }
   await expect.poll(() => child.exitCode, { timeout: 10_000 }).not.toBeNull()
+  rmSync(userData, { recursive: true, force: true })
+  rmSync(home, { recursive: true, force: true })
 })
 
 test('creates, opens, renames and deletes a project, and serves its output', async () => {
