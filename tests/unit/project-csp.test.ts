@@ -60,6 +60,9 @@ describe('a generated project page', () => {
     expect(csp).toContain("style-src 'unsafe-inline'")
     expect(csp).toContain("default-src 'none'")
     expect(csp).toContain('img-src data:')
+    // A bundled label face is embedded as a data: URL; without this the
+    // names fall through to the system face and nothing else notices.
+    expect(csp).toContain('font-src data:')
     // And no route out: no connections, no forms, no base rewriting.
     expect(csp).not.toContain('connect-src')
     expect(csp).toContain("form-action 'none'")
