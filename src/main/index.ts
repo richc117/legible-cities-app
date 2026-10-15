@@ -207,6 +207,9 @@ function createWindow(): BrowserWindow {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      // The checker would fetch dictionaries from a CDN on Windows and Linux;
+      // the app makes no network call but a feed (constitution IV).
+      spellcheck: false,
     },
   })
   // Nothing this app shows may open a window or move the one it has. The

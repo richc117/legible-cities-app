@@ -169,6 +169,29 @@ test('opens to an empty Library on the app://local origin, and quits', async () 
   await expect.poll(() => child.exitCode, { timeout: 10_000 }).not.toBeNull()
 })
 
+test('the spellchecker is off in both sessions, so no dictionary is fetched', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'legible-cities-e2e-'))
+  const app = await launch(home)
+  const child = app.process()
+  try {
+    await app.firstWindow()
+    // Copied from CAPTURE_PARTITION in src/main/capture.ts, which imports
+    // Electron and so cannot be imported into the test runner.
+    const partition = 'capture'
+    const enabled = await app.evaluate(
+      ({ session }, name) => ({
+        interface: session.defaultSession.isSpellCheckerEnabled(),
+        capture: session.fromPartition(name).isSpellCheckerEnabled(),
+      }),
+      partition,
+    )
+    expect(enabled).toEqual({ interface: false, capture: false })
+  } finally {
+    await app.close()
+  }
+  await expect.poll(() => child.exitCode, { timeout: 10_000 }).not.toBeNull()
+})
+
 test('creates, opens, renames and deletes a project, and serves its output', async () => {
   // Two launches in one test: the project has to survive a relaunch.
   test.slow()

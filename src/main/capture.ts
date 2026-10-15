@@ -109,6 +109,8 @@ export function captureWindowOptions(job: CaptureJob): BrowserWindowConstructorO
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
+      // Off for the reason the main window's is: no dictionary fetch.
+      spellcheck: false,
     },
   }
 }
