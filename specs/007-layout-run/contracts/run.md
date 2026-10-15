@@ -26,13 +26,14 @@ already guarantees.
 
 The engine's error reaches the run with its code, kind, hint and detail. The
 stage that was running is marked failed. The screen shows `data.hint`, the
-sentence the engine wrote for a person; `data.detail` keeps everything.
+sentence the engine wrote for a person; `data.detail` keeps everything but
+the paths.
 Nothing is written.
 
-One thing is not passed through untouched: the engine writes a filename into
-the hint for an input or output failure, and a path is not for a screen. The
-main process takes it out of the hint as the error crosses, once, for every
-consumer, and the detail still carries it.
+The main process takes every path out of the hint, the message and the
+detail at the error door as the error crosses (issue 419;
+`docs/ARCHITECTURE.md`, "The log files"); the error itself, in the main
+process, and `engine.log` keep it.
 
 ## What the screen shows
 

@@ -37,7 +37,7 @@
 // whatever the engine sent. A field the scrub fails on is replaced whole by
 // `UNCHECKED`, because the shape is what a settling request is sent with,
 // and a throw here would leave the page waiting for an answer that never
-// comes.
+// comes; the first such failure is written to `main.log`.
 //
 // The folders are what make a call the door, and every caller names them:
 // the two bridges hand in `index.ts`'s, `NO_ROOTS` where a test names none,
@@ -50,6 +50,7 @@
 
 import type { Accepted } from '../shared/api'
 import { EngineError, ERROR_CODES, type EngineErrorShape } from '../shared/engine'
+import { log } from './log'
 import { pathScrubber } from './paths-in-text'
 import { redactUrls } from './redact'
 
@@ -72,7 +73,11 @@ export const URLS_ONLY: unique symbol = Symbol('URLs only')
 /** What a shape is cleaned with: the folders, at the door, or `URLS_ONLY` on the way to it. */
 export type Cleaning = PathRoots | typeof URLS_ONLY
 
-/** The most of each field that crosses, in UTF-16 code units, the marker included. */
+/**
+ * How much of each field is looked through for paths, in UTF-16 code units,
+ * the marker included. It bounds the work on one error, not the length the
+ * page is sent: taking a path out can lengthen a field (`/a` is "a file").
+ */
 export const FIELD_CHARS = 4_096
 
 /** What a cut field ends with. */
@@ -136,7 +141,8 @@ function outward(shape: EngineErrorShape, cleaning: Cleaning, backstop: boolean)
       if (cleaning === URLS_ONLY) return redacted
       scrub ??= pathScrubber(knownNow(cleaning), process.platform, { backstop })
       return scrub(redacted)
-    } catch {
+    } catch (error) {
+      warnOnce(error)
       return UNCHECKED
     }
   }
@@ -153,18 +159,52 @@ function outward(shape: EngineErrorShape, cleaning: Cleaning, backstop: boolean)
   }
 }
 
+/** Whether the scrub's failure has been written to the log yet. */
+let warned = false
+
+/**
+ * The scrub's failure, in `main.log`, the first time only: a failure that
+ * repeats would otherwise turn every error on screen into `UNCHECKED` with
+ * no trace of why, and one line says that as well as a thousand.
+ */
+function warnOnce(error: unknown): void {
+  if (warned) return
+  warned = true
+  const why = error instanceof Error ? `${error.name}: ${error.message}` : String(error)
+  log.warn(
+    'errors',
+    `an error's text could not be checked for paths, so the page was sent a fixed sentence instead (${why}); later failures are not logged`,
+  )
+}
+
+/** A separator, plain or percent-encoded, as a known folder's pattern accepts one. */
+const SEPARATOR = /[\\/]|%2[Ff]|%5[Cc]/
+
+/** The index of the last whitespace character in a text, or -1. */
+function lastSpace(text: string): number {
+  for (let at = text.length - 1; at >= 0; at -= 1) if (/\s/.test(text[at])) return at
+  return -1
+}
+
 /**
  * A field no longer than `FIELD_CHARS`, the marker included. A cut that
  * falls in the last few hundred characters' final word goes back to the
  * space before it, so a path the cut goes through keeps no half of a folder's
- * name that its whole would have matched. Stable: a field cut once is not
- * cut again.
+ * name that its whole would have matched; and the word before that space
+ * goes too where it has a separator in it, since a folder fastened to `/`,
+ * `:` or `,` - a file URL's `file:///C:/…` - starts no path the backstop
+ * would find, and would be left as "Jane" of "Jane Doe". Stable: a field cut
+ * once is not cut again.
  */
 function capped(text: string): string {
   if (text.length <= FIELD_CHARS) return text
   let head = text.slice(0, FIELD_CHARS - CUT.length)
-  const space = head.search(/\s\S*$/)
-  if (space >= head.length - 256) head = head.slice(0, space)
+  const space = lastSpace(head)
+  if (space >= head.length - 256) {
+    head = head.slice(0, space)
+    const word = lastSpace(head) + 1
+    if (SEPARATOR.test(head.slice(word))) head = head.slice(0, word).trimEnd()
+  }
   if (/[\uD800-\uDBFF]$/.test(head)) head = head.slice(0, -1)
   return `${head}${CUT}`
 }

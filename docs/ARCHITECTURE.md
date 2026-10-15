@@ -1618,7 +1618,8 @@ kind (`layout`, `rebuild`, `export`, `feed-add`), the project's id, a
 label, the state, the stages, the last sentence, the engine's hint and
 detail when it failed (both with their paths already taken out at the
 error door since issue 419, so a copied log says "a file" where the detail
-named one, and `engine.log` keeps the path), the last 200 log lines and the
+named one, and `engine.log` keeps the path for the engine's own failures;
+an export's own failure keeps it nowhere), the last 200 log lines and the
 start and end. The
 runs do not change: `LayoutRun`, `ExportRun` and `FeedAdd` each gain a
 `job()` derived from the snapshot they already keep, plus what the

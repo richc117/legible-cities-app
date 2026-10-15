@@ -1,5 +1,5 @@
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { registerEngineHandlers, type EngineSource } from '../../src/main/engine-ipc'
 import { registerExportHandlers, type ExportSource } from '../../src/main/export-ipc'
 import {
@@ -17,6 +17,7 @@ import { CHANNELS, type EngineSettled } from '../../src/shared/api'
 import { EngineError, ERROR_CODES, type EngineErrorShape } from '../../src/shared/engine'
 import type { ExportPreview, ExportSettled } from '../../src/shared/export'
 import { inUseSentence } from '../../src/main/feeds-ipc'
+import { log } from '../../src/main/log'
 
 // The one door an error goes through on its way to the page (issue 207).
 // Until v0.10.1 the engine named a failed download's whole URL in its
@@ -280,6 +281,19 @@ describe('a field too long to look through', () => {
     expect(shape.message.length).toBeLessThanOrEqual(FIELD_CHARS)
     expect(shape.message).not.toMatch(/Jane|Do\b|Doe/)
   })
+
+  it('drops the word a known folder starts in, where nothing the backstop knows starts it', () => {
+    // A file URL: the folder is fastened to `/`, and the cut falls after
+    // "Jane D". Back at the space, the word is the URL up to "Jane": no path
+    // the backstop starts on, and no longer the folder, so it goes whole.
+    const url = ` url=file:///${HOME.replace(/\\/g, '/')}`
+    const filler = 'x'.repeat(FIELD_CHARS - CUT.length - url.length + 'oe'.length)
+    const said = `${filler}${url}/x.zip and the rest of a long detail`
+    const shape = toShape(new Error(said), ROOTS)
+    expect(shape.message.length).toBeLessThanOrEqual(FIELD_CHARS)
+    expect(shape.message).not.toMatch(/Jane|Users|file:/)
+    expect(shape.message.endsWith(`x${CUT}`)).toBe(true)
+  })
 })
 
 describe('a field the paths cannot be looked for in', () => {
@@ -293,6 +307,7 @@ describe('a field the paths cannot be looked for in', () => {
       onState: () => () => {},
       onNotification: () => () => {},
     }
+    const warned = vi.spyOn(log, 'warn').mockImplementation(() => {})
     // A folder that is not a string makes the scrub throw, which is how a
     // pattern too large for the engine's own stack would.
     const broken: PathRoots = () => [42 as unknown as string]
@@ -313,6 +328,13 @@ describe('a field the paths cannot be looked for in', () => {
     const error = (settled as { error: EngineErrorShape }).error
     expect(everyField(error)).toEqual([UNCHECKED, UNCHECKED, UNCHECKED])
     expect(error.data?.kind).toBe('io')
+    // Said in main.log once, however many fields and errors fail after it.
+    await call(CHANNELS.engineRequest, 'tok-2', 'map.build', {})
+    await tick()
+    const said = warned.mock.calls.filter(([tag]) => tag === 'errors')
+    expect(said).toHaveLength(1)
+    expect(said[0][1]).toContain('root.split is not a function')
+    warned.mockRestore()
   })
 })
 

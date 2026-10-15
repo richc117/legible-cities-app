@@ -133,9 +133,10 @@ detail, and "Copy log" puts the job's log on the clipboard for an issue.
    state, its stages and its log lines, with feed URLs redacted and the
    home folder written as `~`, as A6-03's copy does, and a sentence says
    it was copied.
-4. **Given** no path in any hint or detail, **When** the job is shown,
-   **Then** no absolute path is on screen, as the run views already
-   guarantee (`withoutPaths`).
+4. **Given** a hint or detail that named a path, **When** the job is
+   shown, **Then** no absolute path is on screen, as the run views already
+   guarantee (`withoutPaths`), as the error door guarantees for every error
+   that reaches the page (`src/main/ipc-shape.ts`, issue 419).
 
 ---
 
