@@ -410,14 +410,14 @@ jobs:
 
       - name: Export twice and compare (Linux, under a display server)
         if: runner.os == 'Linux'
-        run: xvfb-run -a npx playwright test tests/e2e/determinism.spec.ts
+        run: xvfb-run -a npx playwright test tests/e2e/determinism.spec.ts tests/e2e/typeface.spec.ts
         env:
           CI: 'true'
           LEGIBLE_DETERMINISM_TEST: '1'
 
       - name: Export twice and compare
         if: runner.os != 'Linux'
-        run: npx playwright test tests/e2e/determinism.spec.ts
+        run: npx playwright test tests/e2e/determinism.spec.ts tests/e2e/typeface.spec.ts
         env:
           CI: 'true'
           LEGIBLE_DETERMINISM_TEST: '1'

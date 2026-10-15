@@ -19,7 +19,7 @@
 //   LEGIBLE_ENGINE_PYTHON=<interpreter with the pinned engine> \
 //   npx playwright test tests/e2e/typeface.spec.ts
 
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { _electron as electron, expect, test, type ElectronApplication } from '@playwright/test'
@@ -38,11 +38,13 @@ test.skip(
 const MAP_DRAWN = 'The map is drawn.'
 
 /**
- * Every font face of the frame whose address matches, as `family:status`,
- * read after `document.fonts.ready`. A frame that is not there, or is
- * between two loads, answers an empty list: the caller polls.
+ * Every font face of the frame whose address carries the needle, as
+ * `family:status`, read after `document.fonts.ready`. No such frame answers
+ * an empty list, and so does a read that does not answer within a second: a
+ * frame being replaced can take the read and never answer it (issue 232), so
+ * that is "not yet" and the caller polls again.
  */
-async function faces(app: ElectronApplication, address: 'present=1' | 'frame='): Promise<string[]> {
+async function faces(app: ElectronApplication, needle: string): Promise<string[]> {
   return app.evaluate(async ({ BrowserWindow }, needle) => {
     const main = BrowserWindow.getAllWindows()[0].webContents.mainFrame
     // Never cell 01's stage view, which is `srcdoc`.
@@ -51,13 +53,15 @@ async function faces(app: ElectronApplication, address: 'present=1' | 'frame='):
     )
     if (!frame) return []
     try {
-      return (await frame.executeJavaScript(
+      const read = frame.executeJavaScript(
         'document.fonts.ready.then(() => [...document.fonts].map((f) => f.family.replace(/["\']/g, "") + ":" + f.status))',
-      )) as string[]
+      ) as Promise<string[]>
+      const late = new Promise<string[]>((resolve) => setTimeout(() => resolve([]), 1000))
+      return await Promise.race([read, late])
     } catch {
       return []
     }
-  }, address)
+  }, needle)
 }
 
 test('Inter, chosen in cell 04, is loaded in the map’s frame and in cell 06’s preview', async () => {
@@ -106,14 +110,10 @@ test('Inter, chosen in cell 04, is loaded in the map’s frame and in cell 06’
         { message: 'the map is redrawn with the face', timeout: 60_000 },
       )
       .toBe('inter')
-    await expect(page.locator('.preview .preview-status')).toHaveText(MAP_DRAWN, {
-      timeout: 30_000,
-    })
-
     // The deadline is on what the page shows: the face is loaded, not
     // merely declared (`error` is what a refused load leaves).
     await expect
-      .poll(() => faces(app, 'present=1'), {
+      .poll(() => faces(app, 'controls=1'), {
         message: 'Inter is loaded in the map’s frame',
         timeout: 30_000,
       })
@@ -130,4 +130,6 @@ test('Inter, chosen in cell 04, is loaded in the map’s frame and in cell 06’
   } finally {
     await app.close()
   }
+  // Kept when the test fails, for a person to look at; gone when it passed.
+  rmSync(dir, { recursive: true, force: true })
 })

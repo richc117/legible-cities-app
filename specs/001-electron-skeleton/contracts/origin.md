@@ -45,7 +45,7 @@ extensions are `application/octet-stream`. HTML is served with a
 `Content-Security-Policy` header:
 
 - `/ui/`: `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'` (the style allowance since `specs/005`: the control kit styles its shadow roots with inline `<style>` elements) — plus, in development only, `ws://localhost:5173` in `connect-src` for Vite's HMR client and `'unsafe-inline'` in `script-src` and `style-src` for its injected client and styles.
-- `/projects/`: reserved for the viewer feature (A3-02); the generated page is self-contained and will need inline scripts. Not served in this feature beyond the routing above. As of 16 Oct 2026 the policy is `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; frame-ancestors 'self'; base-uri 'none'; form-action 'none'`; `font-src data:` is there because the engine embeds a bundled label face as a `data:` URL, and without it the face is refused and the names fall back to the system face.
+- `/projects/`: reserved for the viewer feature (A3-02); the generated page is self-contained and will need inline scripts. Not served in this feature beyond the routing above. Since issue 417 the policy is `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; frame-ancestors 'self'; base-uri 'none'; form-action 'none'`; `font-src data:` is there because the engine embeds a bundled label face as a `data:` URL, and without it the face is refused and the names fall back to the system face.
 
 ## Privileges
 
