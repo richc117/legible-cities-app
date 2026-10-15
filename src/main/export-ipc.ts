@@ -20,25 +20,13 @@ import {
   type ExportPreview,
   type ExportSettled,
 } from '../shared/export'
-import { EngineError, ERROR_CODES, type EngineErrorShape } from '../shared/engine'
 import { validateId } from '../shared/project'
 import type { Destinations, Exporter } from './export'
 import type { StoreBlocked } from './ipc'
-import { badCall, NO_ROOTS, redactShape, TOKEN, toShape, type PathRoots } from './ipc-shape'
+import { badCall, redactShape, refusal, TOKEN, toShape, type PathRoots } from './ipc-shape'
 import { RESERVED_NAME } from './paths'
 
 export type Send = (channel: string, payload: unknown) => void
-
-/** A refusal in the engine's shape, for an answer that is not an `Accepted`. */
-const refusal = (what: string, roots: PathRoots): EngineErrorShape =>
-  redactShape(
-    new EngineError(ERROR_CODES.badCall, what, {
-      kind: 'params',
-      detail: what,
-      hint: what,
-    }).toJSON(),
-    roots,
-  )
 
 /** What the handlers need from the exporter; a test hands in a fake. */
 export type ExportSource = Pick<Exporter, 'start' | 'cancel' | 'fileOf' | 'onProgress' | 'preview'>
@@ -69,8 +57,11 @@ export function registerExportHandlers(
    * record land in the folder it is removing.
    */
   blocked: StoreBlocked = () => null,
-  /** The folders a path in an error can start with, for the door (issue 419). */
-  roots: PathRoots = NO_ROOTS,
+  /**
+   * The folders a path in an error can start with, for the door (issue 419).
+   * Required: a bridge that named none would be a quieter door.
+   */
+  roots: PathRoots,
 ): () => void {
   const handle = (channel: string, handler: (...args: unknown[]) => Promise<unknown>): void => {
     ipcMain.handle(channel, async (event, ...args: unknown[]) => {

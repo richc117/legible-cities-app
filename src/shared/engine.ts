@@ -100,14 +100,30 @@ export const ERROR_CODES = {
 // full stop, end the path.
 const PATH_CHAR = String.raw`(?:[^\s'",;:)]|[',;:)](?=[^\s'",;:).]))`
 
-/** A word that is a path of its own, or a web address, and so never the rest of the one before. */
-const STARTS_ANEW = String.raw`(?:[A-Za-z]:[\\/]|[\\/]|[A-Za-z][\w+.-]*:[\\/]{2})`
+/**
+ * One separator: either slash, or either one percent-encoded as a file URL
+ * writes it. A known folder's pattern accepts all four
+ * (`src/main/paths-in-text.ts`), so all four end a word here.
+ */
+const SEP = String.raw`(?:[\\/]|%2[Ff]|%5[Cc])`
+
+/** Where a path starts: a separator, or a drive and a separator, its colon plain or percent-encoded. */
+const PATH_START = String.raw`(?:[A-Za-z](?::|%3[Aa]))?${SEP}`
+
+/**
+ * A word that is a path of its own, quoted or not, or a web address, and so
+ * never the rest of the one before. Every form a known folder's pattern can
+ * start on is one of these, so a scan for the rest of a path ends wherever
+ * the next known folder could begin, and a line full of them costs linear
+ * time.
+ */
+export const STARTS_ANEW = String.raw`(?:['"]?${PATH_START}|[A-Za-z][\w+.-]*:[\\/]{2})`
 
 /** A later word with no separator in it. */
-const WORD = String.raw`(?:(?![\\/])${PATH_CHAR})+`
+const WORD = String.raw`(?:(?!${SEP})${PATH_CHAR})+`
 
 /** A later word that carries the path on: one with a separator in it that starts nothing of its own. */
-const CARRIES_ON = String.raw`(?!${STARTS_ANEW})(?:(?![\\/])${PATH_CHAR})*[\\/]${PATH_CHAR}*`
+const CARRIES_ON = String.raw`(?!${STARTS_ANEW})(?:(?!${SEP})${PATH_CHAR})*${SEP}${PATH_CHAR}*`
 
 /**
  * The rest of a path once its start is found: its first word, then the
@@ -123,11 +139,12 @@ export const PATH_REST = String.raw`${PATH_CHAR}*(?:[ \t]+(?:${WORD}[ \t]+)*${CA
 export const QUOTE_CLOSES = String.raw`(?=[\s,;:.)\]}>'"]|$)`
 
 /**
- * A character inside a quoted path: anything on the line but the start of
- * another quoted path, which also bounds how far the closing quote is looked
- * for, so a line of unclosed quotes costs linear time.
+ * A character inside a quoted path: anything on the line but a quote that
+ * starts another path, in any form a known folder can start on, which also
+ * bounds how far the closing quote is looked for, so a line of unclosed
+ * quotes costs linear time.
  */
-export const QUOTED_CHAR = String.raw`(?:(?!['"](?:[A-Za-z]:)?[\\/])[^\r\n])`
+export const QUOTED_CHAR = String.raw`(?:(?!['"]${PATH_START})[^\r\n])`
 
 /**
  * A path behind a single or a double quote, as Python's `OSError` and
@@ -155,14 +172,15 @@ const BARE_PATH = new RegExp(
  *
  * The engine writes `hint` for a person, and for an I/O failure it writes
  * "{reason}: {filename}" with an absolute path in it (its `classify`). A
- * path is not for a screen (constitution V), and this is the sentence the
- * interface shows, so the path comes out here, at the boundary, once, for
- * every consumer. `detail` keeps the whole of it for the log.
+ * path is not for a screen (constitution V).
  *
- * Since issue 419 this is the backstop, not the rule: at the error door the
- * main process first takes out every path under a folder it knows - the
- * engine's home, the home folder and the rest - matching the folder whole,
- * whatever its names hold (`src/main/paths-in-text.ts`). This guesses. A
+ * Since issue 419 this is the backstop, not the rule: at the one door every
+ * error goes through on its way to the page, the main process first takes
+ * out every path under a folder it knows - the engine's home, the home
+ * folder and the rest - matching the folder whole, whatever its names hold
+ * (`src/main/paths-in-text.ts`), and then runs this over what is left. The
+ * renderer's own calls, and the export's for its own errors and the engine's
+ * notes on a plan, run it with no folder known. This guesses. A
  * quoted path goes to its closing quote; an unquoted one runs on past a
  * space only while a later word in its clause has a separator in it, so a
  * path whose last name has a space in it (a home folder named "Jane Doe" at

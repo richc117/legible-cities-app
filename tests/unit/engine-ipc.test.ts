@@ -5,6 +5,7 @@
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { describe, expect, it } from 'vitest'
 import { registerEngineHandlers, type EngineSource } from '../../src/main/engine-ipc'
+import { NO_ROOTS } from '../../src/main/ipc-shape'
 import type { Notification } from '../../src/main/sidecar'
 import { CHANNELS } from '../../src/shared/api'
 import { EngineError, ERROR_CODES, type EngineState, type ErrorData } from '../../src/shared/engine'
@@ -78,6 +79,8 @@ function harness(topFrame = true, guard?: (method: string) => Promise<string | n
     (channel, payload) => sent.push({ channel, payload }),
     (m) => log.push(m),
     guard,
+    // No folder known: the door's own tests are in ipc-shape.test.ts.
+    NO_ROOTS,
   )
   const event = {} as IpcMainInvokeEvent
   const call = (channel: string, ...args: unknown[]) => handlers.get(channel)!(event, ...args)

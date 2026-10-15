@@ -194,14 +194,19 @@ can confirm the app sends nothing.
   home-folder replacement is a scrubber for anything else. The copied text
   is shown to nobody until the person pastes it.
 
-  *As of 16 Oct 2026:* the error door is a scrubber for paths as well
-  (issue 419). Every path in an error's `message`, `hint` or `detail` under
-  the engine's home, the user-data folder, the resources folder, the export
-  folder in force or the home folder, written any way the home-folder
-  replacement knows, becomes "a file" on its way to the page, and
-  `withoutPaths` follows as the backstop for a path under no known folder,
-  quoted or with spaces. The error itself, and the logs, keep the paths.
-  `docs/ARCHITECTURE.md`, "The log files", says what is still not covered.
+  Since issue 419 the error door is a scrubber for paths as well. Every
+  path in an error's `message`, `hint` or `detail` under the engine's home,
+  the user-data folder, the resources folder, the export folder in force or
+  the home folder, written any way the home-folder replacement knows,
+  becomes "a file" on its way to the page, and `withoutPaths` follows as the
+  backstop for a path under no known folder, quoted or with spaces (not over
+  the app's own refusals, which can quote a project's name). The error a
+  shape is made from keeps its paths, and the engine writes its own
+  failures, paths included, to `engine.log`. An export's own failure is the
+  exception: `normalise` in `src/main/export.ts` takes the path out of the
+  error itself, and nothing writes that failure to a log, so its path is
+  kept nowhere. `docs/ARCHITECTURE.md`, "The log files", says what is still
+  not covered.
 - **Paths outside the home folder** (an export folder on another volume)
   are left as they are: they are the person's choice, and they can see the
   text before they paste it.

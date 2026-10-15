@@ -3,7 +3,9 @@
 // lookups that find each folder's other forms without the door ever waiting.
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { homePattern } from '../../src/main/diagnostics-text'
 import { knownRoots, withoutKnownPaths, type RootSources } from '../../src/main/paths-in-text'
+import { QUOTED_CHAR, STARTS_ANEW } from '../../src/shared/engine'
 
 // Every path below is assembled from pieces at run time, so no literal path
 // of a user's shape is committed: bin/preflight refuses one, and the commit
@@ -110,16 +112,9 @@ describe('withoutKnownPaths', () => {
     )
   })
 
-  it('reads a long line of quotes that never close in linear time', () => {
-    for (const line of [
-      "'/a ".repeat(32_000),
-      `'${macEngineHome}/a `.repeat(2_000),
-      ' /a w'.repeat(32_000),
-    ]) {
-      const started = performance.now()
-      withoutKnownPaths(line, [macEngineHome], 'darwin')
-      expect(performance.now() - started).toBeLessThan(200)
-    }
+  it('takes a quoted path after a bare one as a path of its own', () => {
+    const said = `moved ${macEngineHome}/a.zip '${macEngineHome}/b c.zip' back`
+    expect(withoutKnownPaths(said, [macEngineHome], 'darwin')).toBe("moved a file 'a file' back")
   })
 
   it('changes nothing on a second pass', () => {
@@ -127,6 +122,77 @@ describe('withoutKnownPaths', () => {
     const once = withoutKnownPaths(said, [winHome, winEngineHome], 'win32')
     expect(withoutKnownPaths(once, [winHome, winEngineHome], 'win32')).toBe(once)
   })
+})
+
+// The work is linear because every scan for the rest of a path, and for a
+// quoted path's closing quote, ends where the next known folder could
+// begin. That holds only while every form a folder's pattern can start on
+// is a word that starts anew (`STARTS_ANEW`) and a quote before it ends a
+// quoted path (`QUOTED_CHAR`); a form missing from either lets each folder
+// in a line walk to the end of it.
+describe('where a known folder can start', () => {
+  const resources = ['', 'Applications', 'Legible Cities.app', 'Contents', 'Resources'].join('/')
+  const encoded = (path: string, separator: string): string =>
+    path
+      .split(/[\\/]/)
+      .map((part) => encodeURIComponent(part))
+      .join(separator)
+  const forms: [string, string, string][] = [
+    [resources, 'darwin', resources],
+    [resources, 'darwin', resources.replace(/\//g, '\\')],
+    [resources, 'darwin', `/${resources}`],
+    [resources, 'darwin', `\\${resources.replace(/\//g, '\\')}`],
+    [resources, 'darwin', encoded(resources, '%2F')],
+    [resources, 'darwin', encoded(resources, '%5C')],
+    [resources, 'darwin', encoded(resources, '%2f')],
+    [winHome, 'win32', winHome],
+    [winHome, 'win32', winHome.replace(/\\/g, '/')],
+    [winHome, 'win32', winHome.toLowerCase()],
+    [winHome, 'win32', `C:${encoded(winHome.slice(2), '%5C')}`],
+    [winHome, 'win32', encoded(winHome, '%5C')],
+    [winHome, 'win32', ['C:', 'Users', 'JANEDO~1'].join('\\')],
+    [winHome, 'win32', `\\\\?\\${winHome}`],
+  ]
+  const startsAnew = new RegExp(`^${STARTS_ANEW}`)
+  const quotedChar = new RegExp(`^${QUOTED_CHAR}`)
+
+  for (const [root, platform, form] of forms) {
+    it(`is a word that starts anew, and ends a quoted path: ${form}`, () => {
+      // A real form: the folder's own pattern matches it, from its first
+      // character or, after a doubled separator, its second.
+      const match = homePattern(root, platform)!.exec(form)
+      expect(match, 'the folder’s pattern matches this form').not.toBeNull()
+      const from = form.slice(match!.index)
+      for (const word of [form, from]) {
+        expect(startsAnew.test(word), word).toBe(true)
+        for (const quote of ["'", '"']) expect(quotedChar.test(`${quote}${word}`), word).toBe(false)
+      }
+    })
+  }
+
+  it('makes a line full of them cost linear time', () => {
+    // A line of the resources folder percent-encoded, bare and quoted: before
+    // `%2F` ended a scan, each occurrence walked to the end of the line, and
+    // eight times the line took about sixty-four times as long.
+    for (const unit of [` ${encoded(resources, '%2F')}`, ` '${encoded(resources, '%2F')}`]) {
+      const time = (bytes: number): number => {
+        const line = unit.repeat(Math.ceil(bytes / unit.length))
+        withoutKnownPaths(line, [resources], 'darwin')
+        let least = Infinity
+        for (let run = 0; run < 5; run += 1) {
+          const started = performance.now()
+          withoutKnownPaths(line, [resources], 'darwin')
+          least = Math.min(least, performance.now() - started)
+        }
+        return least
+      }
+      const small = time(32 * 1024)
+      const large = time(8 * 32 * 1024)
+      // Linear gives about 8 and quadratic about 64; both sides scale with
+      // the machine's load, so the ratio does not.
+      expect(large / small, unit).toBeLessThan(20)
+    }
+  }, 180_000)
 })
 
 describe('knownRoots', () => {
@@ -181,11 +247,14 @@ describe('knownRoots', () => {
     }
   }
 
-  it('answers the folders as named at once, before any lookup has answered', () => {
+  it('asks the disk nothing until the first error, then answers the folders as named at once', () => {
     vi.useFakeTimers()
     const h = harness()
+    // The export folder is on the desktop by default, which macOS keeps
+    // behind a privacy prompt: nothing is looked up at launch.
+    expect(h.asked, 'nothing asked at launch').toEqual([])
     expect(h.roots()).toEqual([engine, ['', 'srv', 'jane', 'Exports'].join('/')])
-    expect(h.asked, 'each folder asked once, at the start').toEqual([
+    expect(h.asked, 'each folder asked once, at the first error').toEqual([
       engine,
       ['', 'srv', 'jane', 'Exports'].join('/'),
     ])
@@ -194,6 +263,7 @@ describe('knownRoots', () => {
   it('adds a folder’s real path and the home’s other forms once they answer in time', async () => {
     vi.useFakeTimers()
     const h = harness()
+    h.roots()
     h.answer(engine).resolve(realEngine)
     const short = ['C:', 'Users', 'JANEDO~1'].join('\\')
     h.homes.resolve([winHome, short])
@@ -204,6 +274,7 @@ describe('knownRoots', () => {
   it('asks for the export folder at every call, so the one in force is the one used', async () => {
     vi.useFakeTimers()
     const h = harness()
+    expect(h.roots(), 'the first error').toContain(['', 'srv', 'jane', 'Exports'].join('/'))
     const moved = ['', 'srv', 'jane', 'Elsewhere'].join('/')
     h.moveExport(moved)
     const now = h.roots()
@@ -215,6 +286,7 @@ describe('knownRoots', () => {
   it('abandons a lookup that lapses: the folder as named, the late answer ignored, never asked again', async () => {
     vi.useFakeTimers()
     const h = harness()
+    h.roots()
     await vi.advanceTimersByTimeAsync(MS + 1)
     h.answer(engine).resolve(realEngine)
     await vi.advanceTimersByTimeAsync(10)
@@ -230,6 +302,7 @@ describe('knownRoots', () => {
   it('asks again at the next call about a folder whose lookup failed in time', async () => {
     vi.useFakeTimers()
     const h = harness()
+    h.roots()
     h.answer(engine).reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))
     await vi.advanceTimersByTimeAsync(10)
     expect(h.roots()).toContain(engine)

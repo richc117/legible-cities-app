@@ -6,7 +6,7 @@
 // import; tested over in-memory streams.
 
 import type { Readable, Writable } from 'node:stream'
-import { EngineError, isEngineErrorKind, withoutPaths, type ErrorData } from '../shared/engine'
+import { EngineError, isEngineErrorKind, type ErrorData } from '../shared/engine'
 
 export class ProtocolError extends Error {
   constructor(message: string) {
@@ -161,18 +161,16 @@ function errorData(data: unknown, message: string): ErrorData | undefined {
     if (isEngineErrorKind(data.kind)) {
       // `hint` is shown; `detail` is logged, and shown behind the jobs
       // inspector's disclosure. The engine puts a filename in the hint for
-      // an I/O failure, so the path comes out of the sentence here and
-      // stays in the detail. This is not where a URL's key is taken out:
-      // `withoutPaths` does not match a URL, and every error is redacted on
-      // its way to the page in `ipc-shape.ts` (issue 207). Nor is it the
-      // only place a path comes out: the same door takes out every path
-      // under a folder the main process knows, from all three fields, and
-      // runs `withoutPaths` again (issue 419), which changes nothing it
-      // already took out here.
+      // an I/O failure, and it is kept here as the engine wrote it: the
+      // paths come out of all three fields at the one door every error
+      // goes through on its way to the page (`ipc-shape.ts`, issue 419),
+      // by the folders the main process knows. Until then the hint lost
+      // its path here, by a guess that stopped at the first space, which
+      // also left the door nothing of the folder to match.
       return {
         kind: data.kind,
         detail: data.detail,
-        hint: withoutPaths(data.hint),
+        hint: data.hint,
         // Only render.stage's refusal carries the three, and its kind is
         // `layout`; on any other kind they are left behind.
         ...(data.kind === 'layout' ? notYet(data) : {}),

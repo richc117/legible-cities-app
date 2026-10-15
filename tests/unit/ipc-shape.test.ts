@@ -2,7 +2,17 @@ import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { describe, expect, it } from 'vitest'
 import { registerEngineHandlers, type EngineSource } from '../../src/main/engine-ipc'
 import { registerExportHandlers, type ExportSource } from '../../src/main/export-ipc'
-import { badCall, NO_ROOTS, redactShape, toShape, type PathRoots } from '../../src/main/ipc-shape'
+import {
+  badCall,
+  CUT,
+  FIELD_CHARS,
+  NO_ROOTS,
+  redactShape,
+  toShape,
+  UNCHECKED,
+  URLS_ONLY,
+  type PathRoots,
+} from '../../src/main/ipc-shape'
 import { CHANNELS, type EngineSettled } from '../../src/shared/api'
 import { EngineError, ERROR_CODES, type EngineErrorShape } from '../../src/shared/engine'
 import type { ExportPreview, ExportSettled } from '../../src/shared/export'
@@ -28,7 +38,7 @@ const feedFailure = (): EngineError =>
 
 describe('an error on its way to the page', () => {
   it('carries no key in its message, its hint or its detail', () => {
-    const shape = toShape(feedFailure())
+    const shape = toShape(feedFailure(), NO_ROOTS)
     expect(shape.message).not.toContain(SECRET)
     expect(shape.data?.hint).not.toContain(SECRET)
     expect(shape.data?.detail).not.toContain(SECRET)
@@ -40,13 +50,13 @@ describe('an error on its way to the page', () => {
   })
 
   it('keeps the code and the kind', () => {
-    const shape = toShape(feedFailure())
+    const shape = toShape(feedFailure(), NO_ROOTS)
     expect(shape.code).toBe(-32000)
     expect(shape.data?.kind).toBe('feed')
   })
 
   it('redacts an error that is not the engine’s, too', () => {
-    const shape = toShape(new Error(`fetch failed for ${URL_WITH_KEY}`))
+    const shape = toShape(new Error(`fetch failed for ${URL_WITH_KEY}`), NO_ROOTS)
     expect(shape).toEqual({
       code: -32603,
       message: 'fetch failed for https://feeds.example.org/gtfs.zip?api_key=<redacted>',
@@ -60,6 +70,7 @@ describe('an error on its way to the page', () => {
         hint: 'https://me:pw@feeds.example.org/g.zip#tok did not return a zip (12 bytes)',
         detail: 'd',
       }),
+      NO_ROOTS,
     )
     expect(shape.data?.hint).toBe(
       'https://<redacted>@feeds.example.org/g.zip#<redacted> did not return a zip (12 bytes)',
@@ -67,7 +78,7 @@ describe('an error on its way to the page', () => {
   })
 
   it('redacts the app’s own refusals on the same way out', () => {
-    const answer = badCall(`nothing may be fetched from ${URL_WITH_KEY}`)
+    const answer = badCall(`nothing may be fetched from ${URL_WITH_KEY}`, NO_ROOTS)
     expect(answer.accepted).toBe(false)
     const error = (answer as { error: ReturnType<typeof toShape> }).error
     for (const text of [error.message, error.data?.hint, error.data?.detail])
@@ -80,13 +91,13 @@ describe('an error on its way to the page', () => {
       hint: 'a feed needs a source',
       detail: 'the layout stage failed (topo.py:12)',
     })
-    expect(toShape(plain)).toEqual(plain.toJSON())
+    expect(toShape(plain, NO_ROOTS)).toEqual(plain.toJSON())
   })
 
   it('leaves the error it was given as it was, for the log', () => {
     const error = feedFailure()
-    redactShape(error.toJSON())
-    toShape(error)
+    redactShape(error.toJSON(), NO_ROOTS)
+    toShape(error, NO_ROOTS)
     expect(error.message).toContain(SECRET)
     expect(error.data?.hint).toContain(SECRET)
   })
@@ -97,20 +108,21 @@ describe('a person’s own text in a refusal', () => {
     // Review of A5.6-06: a name quoted with curly quotes read as a path
     // whose query was the closing quote.
     const sentence = inUseSentence(['24/7?'])
-    const answer = badCall(sentence)
+    const answer = badCall(sentence, NO_ROOTS)
     const error = (answer as { error: ReturnType<typeof toShape> }).error
     expect(error.data?.hint).toBe(sentence)
     expect(error.message).toBe(sentence)
   })
 
-  it('comes through the paths’ removal whole, a name with a slash between two words included', () => {
-    // The door takes paths out of the app's own refusals too since issue
-    // 419, and a slash with a space after it starts no path. The bridges
-    // always name their folders; with none, `withoutPaths` works alone.
-    const sentence = inUseSentence(['LA / Metro', 'A/C/E', 'Line 1 / 2'])
-    const error = (badCall(sentence, NO_ROOTS) as { error: EngineErrorShape }).error
+  it('comes through the paths’ removal whole, a name that looks like the start of a path included', () => {
+    // The door takes the known folders out of the app's own refusals since
+    // issue 419, and guesses at nothing else in them: `withoutPaths` reads
+    // "/night”" as a path, the closing quote with it.
+    const sentence = inUseSentence(['Muni /night', 'LA / Metro', 'A/C/E'])
+    const error = (badCall(sentence, ROOTS) as { error: EngineErrorShape }).error
     expect(error.data?.hint).toBe(sentence)
     expect(error.message).toBe(sentence)
+    expect(error.data?.detail).toBe(sentence)
   })
 })
 
@@ -188,6 +200,122 @@ describe('a path on its way to the page', () => {
   })
 })
 
+// The engine's sentences for an I/O failure as its `classify` writes them,
+// "{reason}: {filename}", and Python's own, which quotes the file. Until
+// issue 419 the hint lost its path in the JSON-RPC client, only up to the
+// first space and not at all behind a quote; the client now hands it on as
+// written and it is taken out here, whole, with the engine's home known and
+// with no folder known at all.
+describe('the engine’s I/O sentences at the door', () => {
+  const macHome = ['', 'Users', 'jane'].join('/')
+  const engineHome = [macHome, 'Library', 'Application Support', 'Legible Cities', 'engine'].join(
+    '/',
+  )
+  const winFile = [ENGINE_HOME, 'data', 'x.zip'].join('\\')
+  const cases: [string, string][] = [
+    [`Permission denied: ${engineHome}/data/feeds/bart.zip`, 'Permission denied: a file'],
+    [
+      `[Errno 2] No such file or directory: '${engineHome}/out/abc/bart.html'`,
+      "[Errno 2] No such file or directory: 'a file'",
+    ],
+    [`Access is denied: ${winFile}`, 'Access is denied: a file'],
+    [`[WinError 5] Access is denied: '${winFile}'`, "[WinError 5] Access is denied: 'a file'"],
+    // Quoted, a name with a space at the very end is still the path's.
+    [
+      `[Errno 21] Is a directory: '${macHome}/Desktop/My Maps'`,
+      "[Errno 21] Is a directory: 'a file'",
+    ],
+    // A path under no folder with no space keeps what it had.
+    ['FeedError: /x/y has no stops.txt', 'FeedError: a file has no stops.txt'],
+  ]
+  const known: PathRoots = () => [macHome, engineHome, HOME, ENGINE_HOME]
+
+  for (const [name, roots] of [
+    ['with the folders known', known],
+    ['with no folder known', NO_ROOTS],
+  ] as const) {
+    it(`takes a path with spaces or quotes out of the hint and the message, whole, ${name}`, () => {
+      for (const [hint, shown] of cases) {
+        const error = new EngineError(-32000, hint, {
+          kind: 'io',
+          detail: `OSError: ${hint} (feeds.py:12)`,
+          hint,
+        })
+        const shape = toShape(error, roots)
+        expect(shape.data?.hint, hint).toBe(shown)
+        expect(shape.message, hint).toBe(shown)
+        for (const text of everyField(shape))
+          expect(text, hint).not.toMatch(/jane|Doe|Support|Cities|AppData|Maps/i)
+        expect(error.data?.hint, 'the error itself keeps the path, for the log').toBe(hint)
+      }
+    })
+  }
+})
+
+// The work on one error is bounded whatever the engine sent: each field is
+// cut after its URLs are redacted and before its paths are looked for.
+describe('a field too long to look through', () => {
+  it('is cut to the bound, with a marker, after the URL redaction', () => {
+    const huge = `fetched ${URL_WITH_KEY} ${'word '.repeat(220_000)}`
+    const shape = toShape(
+      new EngineError(-32000, huge, { kind: 'feed', hint: huge, detail: huge }),
+      ROOTS,
+    )
+    for (const text of everyField(shape)) {
+      expect(text.length).toBeLessThanOrEqual(FIELD_CHARS)
+      expect(text.endsWith(CUT)).toBe(true)
+      expect(text).not.toContain(SECRET)
+    }
+    // Stable: a shape cut once comes through the door again unchanged.
+    expect(redactShape(shape, ROOTS)).toEqual(shape)
+  })
+
+  it('goes back to a space rather than leave half of a folder’s name for the backstop', () => {
+    // The cut falls after "Jane Do": the space before it is the last one,
+    // so the field ends at "Jane", a path the backstop takes whole, and not
+    // at "Do", which the backstop would leave as a word.
+    const filler = 'x'.repeat(FIELD_CHARS - CUT.length - `see ${HOME}`.length)
+    const said = `${filler} see ${HOME}\\Desktop\\x.zip`
+    const shape = toShape(new Error(said), NO_ROOTS)
+    expect(shape.message.length).toBeLessThanOrEqual(FIELD_CHARS)
+    expect(shape.message).not.toMatch(/Jane|Do\b|Doe/)
+  })
+})
+
+describe('a field the paths cannot be looked for in', () => {
+  it('is replaced by a fixed sentence, and the request still settles', async () => {
+    const { ipc, call } = fakeIpc()
+    const sent: { channel: string; payload: unknown }[] = []
+    const engine: EngineSource = {
+      state: { state: 'ready', version: '0.2.0', protocol: 1 },
+      request: () => ({ id: 1, result: Promise.reject(ioFailure()) }),
+      cancel: () => {},
+      onState: () => () => {},
+      onNotification: () => () => {},
+    }
+    // A folder that is not a string makes the scrub throw, which is how a
+    // pattern too large for the engine's own stack would.
+    const broken: PathRoots = () => [42 as unknown as string]
+    registerEngineHandlers(
+      ipc,
+      engine,
+      () => true,
+      (channel, payload) => sent.push({ channel, payload }),
+      () => {},
+      undefined,
+      broken,
+    )
+    await call(CHANNELS.engineRequest, 'tok-1', 'map.build', {})
+    await tick()
+    const settled = sent.find((s) => s.channel === CHANNELS.engineSettled)?.payload as
+      EngineSettled | undefined
+    expect(settled, 'the request was answered').toBeDefined()
+    const error = (settled as { error: EngineErrorShape }).error
+    expect(everyField(error)).toEqual([UNCHECKED, UNCHECKED, UNCHECKED])
+    expect(error.data?.kind).toBe('io')
+  })
+})
+
 type Handler = (event: IpcMainInvokeEvent, ...args: unknown[]) => Promise<unknown>
 
 /** An `ipcMain` that keeps its handlers, and a call to one of them from the top frame. */
@@ -253,7 +381,10 @@ describe('both bridges hand the door their folders', () => {
       fileOf: () => null,
       onProgress: () => () => {},
       // The exporter shapes its own refusal, with no folders to hand.
-      preview: async (): Promise<ExportPreview> => ({ ok: false, error: toShape(ioFailure()) }),
+      preview: async (): Promise<ExportPreview> => ({
+        ok: false,
+        error: toShape(ioFailure(), URLS_ONLY),
+      }),
     }
     registerExportHandlers(
       ipc,

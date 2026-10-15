@@ -57,7 +57,7 @@
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { CHANNELS, type EngineAccepted, type EngineSettled } from '../shared/api'
 import type { EngineState, JobLog, JobProgress } from '../shared/engine'
-import { badCall, isObject, NO_ROOTS, TOKEN, toShape, type PathRoots } from './ipc-shape'
+import { badCall, isObject, TOKEN, toShape, type PathRoots } from './ipc-shape'
 import { redactUrls } from './redact'
 import type { Notification } from './sidecar'
 
@@ -93,8 +93,11 @@ export function registerEngineHandlers(
   send: Send,
   log: (message: string) => void,
   guard: Guard = async () => null,
-  /** The folders a path in an error can start with, for the door (issue 419). */
-  roots: PathRoots = NO_ROOTS,
+  /**
+   * The folders a path in an error can start with, for the door (issue 419).
+   * Required: a bridge that named none would be a quieter door.
+   */
+  roots: PathRoots,
 ): () => void {
   const idOf = new Map<string, number>()
   const tokenOf = new Map<number, string>()

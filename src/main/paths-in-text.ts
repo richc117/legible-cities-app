@@ -24,7 +24,9 @@
 // comma, a semicolon or a colon before a space, a closing parenthesis, or
 // the end of the line. The whole path becomes "a file", the words the
 // engine's sentences already read with. Then `withoutPaths` runs over what
-// is left, as the backstop for a path under no folder named here.
+// is left, as the backstop for a path under no folder named here - except
+// over the app's own refusals, which can quote a person's project name and
+// get the known folders alone (`backstop: false`).
 //
 // Nothing here reads Electron or the disk except through what it is handed,
 // so the rule and the lookups are asserted in unit tests.
@@ -63,12 +65,13 @@ function rootPattern(root: string, platform: string): RegExp | null {
 
 /**
  * A function that takes the paths out of a text: every path under one of
- * the roots, then the backstop. The patterns are made once, so a door that
- * cleans three fields of one error makes them once.
+ * the roots, then, unless told not to, the backstop. The patterns are made
+ * once, so a door that cleans three fields of one error makes them once.
  */
 export function pathScrubber(
   roots: readonly string[],
   platform: string = process.platform,
+  { backstop = true }: { backstop?: boolean } = {},
 ): (text: string) => string {
   const patterns = [...new Set(roots)]
     // The longest first, so a folder inside another is replaced whole before
@@ -83,7 +86,7 @@ export function pathScrubber(
         quote === undefined ? A_FILE : `${quote}${A_FILE}${quote}`,
       )
     }
-    return withoutPaths(out)
+    return backstop ? withoutPaths(out) : out
   }
 }
 
@@ -138,6 +141,13 @@ function asked<T>(lookup: () => Promise<T>): Promise<T> {
  * with, never one per error. A lookup that fails in time is asked again at
  * the next error, since the folder may not have been made yet (the export
  * folder is made by the first export).
+ *
+ * The folders are first looked up at the first error, not at launch: the
+ * export folder is on the desktop by default, which macOS keeps behind a
+ * privacy prompt, and a lookup at launch would move that prompt from a
+ * person's first export to the Library screen. The home's other forms are
+ * asked at once; that lookup reads the home folder and, on Windows, the
+ * temporary folders, and nothing a prompt guards.
  */
 export function knownRoots(sources: RootSources): () => string[] {
   const lookups = new Map<string, Lookup>()
@@ -170,6 +180,5 @@ export function knownRoots(sources: RootSources): () => string[] {
     // `homePattern` still matches by shape on Windows.
     () => undefined,
   )
-  current()
   return current
 }

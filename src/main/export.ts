@@ -45,7 +45,7 @@ import {
   type CaptureOptions,
   type CaptureResult,
 } from './capture'
-import { isObject, toShape } from './ipc-shape'
+import { isObject, toShape, URLS_ONLY } from './ipc-shape'
 import { RESERVED_NAME } from './paths'
 import { PickedPaths } from './picked'
 import { contains, inTime, LAPSED, oneAtATime, type FolderResolver } from './settings'
@@ -433,7 +433,9 @@ export class Exporter {
         notes: notesOf(plan),
       }
     } catch (error) {
-      return { ok: false, error: toShape(normalise(error)) }
+      // Not the door: the export bridge takes the paths out, with the
+      // folders it knows (issue 419).
+      return { ok: false, error: toShape(normalise(error), URLS_ONLY) }
     }
   }
 
