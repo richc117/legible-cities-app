@@ -46,12 +46,20 @@ const DEV_HMR_SOCKET = 'ws://localhost:5173'
  * `'self'` would match nothing inside that opaque origin, which is harmless
  * while the page asks for nothing, and is the thing to remember the day the
  * engine emits a sibling asset.
+ *
+ * What the page needs, and nothing more: inline script, inline style,
+ * `img-src data:` for the toolbar's icon masks, and `font-src data:` for a
+ * face the page embeds as a `data:` URL when `label_font` is anything but
+ * `system`. Without that last one Chromium refuses the font and the names
+ * fall through to the system face, on screen and in an export. The page
+ * makes no fetch, so there is no `connect-src`.
  */
 const PROJECT_CSP = [
   "default-src 'none'",
   "script-src 'unsafe-inline'",
   "style-src 'unsafe-inline'",
   'img-src data:',
+  'font-src data:',
   "frame-ancestors 'self'",
   "base-uri 'none'",
   "form-action 'none'",

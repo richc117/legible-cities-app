@@ -59,13 +59,29 @@ describe('a generated project page', () => {
     expect(csp).toContain("script-src 'unsafe-inline'")
     expect(csp).toContain("style-src 'unsafe-inline'")
     expect(csp).toContain("default-src 'none'")
-    expect(csp).toContain('img-src data:')
+    // Whole directives, so `font-src data: https:` cannot pass for `data:`.
+    const directives = csp.split('; ')
+    expect(directives).toContain('img-src data:')
+    // A bundled label face is embedded as a data: URL; without this the
+    // names fall through to the system face and nothing else notices.
+    expect(directives).toContain('font-src data:')
     // And no route out: no connections, no forms, no base rewriting.
     expect(csp).not.toContain('connect-src')
     expect(csp).toContain("form-action 'none'")
     expect(csp).toContain("base-uri 'none'")
     // Never eval, whatever else is allowed.
     expect(csp).not.toContain('unsafe-eval')
+  })
+
+  it('carries font-src data: in the capture window’s form of the handler too', async () => {
+    // Exports are captured through `projectsOnly`; a face refused there is
+    // refused in the file.
+    const response = await handleAppRequest(new Request(`app://local/projects/${ID}/la.html`), {
+      engineHome: home,
+      projectsOnly: true,
+    })
+    const csp = response.headers.get('content-security-policy') as string
+    expect(csp.split('; ')).toContain('font-src data:')
   })
 
   it('carries the same policy for every file it serves, not just the page', async () => {
