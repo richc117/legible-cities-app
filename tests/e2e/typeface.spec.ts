@@ -43,24 +43,21 @@ const MAP_DRAWN = 'The map is drawn.'
  * between two loads, answers an empty list: the caller polls.
  */
 async function faces(app: ElectronApplication, address: 'present=1' | 'frame='): Promise<string[]> {
-  return app.evaluate(
-    async ({ BrowserWindow }, needle) => {
-      const main = BrowserWindow.getAllWindows()[0].webContents.mainFrame
-      // Never cell 01's stage view, which is `srcdoc`.
-      const frame = main.frames.find(
-        (f) => f !== main && f.url !== 'about:srcdoc' && f.url.includes(needle),
-      )
-      if (!frame) return []
-      try {
-        return (await frame.executeJavaScript(
-          'document.fonts.ready.then(() => [...document.fonts].map((f) => f.family.replace(/["\']/g, "") + ":" + f.status))',
-        )) as string[]
-      } catch {
-        return []
-      }
-    },
-    address,
-  )
+  return app.evaluate(async ({ BrowserWindow }, needle) => {
+    const main = BrowserWindow.getAllWindows()[0].webContents.mainFrame
+    // Never cell 01's stage view, which is `srcdoc`.
+    const frame = main.frames.find(
+      (f) => f !== main && f.url !== 'about:srcdoc' && f.url.includes(needle),
+    )
+    if (!frame) return []
+    try {
+      return (await frame.executeJavaScript(
+        'document.fonts.ready.then(() => [...document.fonts].map((f) => f.family.replace(/["\']/g, "") + ":" + f.status))',
+      )) as string[]
+    } catch {
+      return []
+    }
+  }, address)
 }
 
 test('Inter, chosen in cell 04, is loaded in the map’s frame and in cell 06’s preview', async () => {
