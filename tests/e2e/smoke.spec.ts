@@ -183,7 +183,12 @@ test('the spellchecker is off in both sessions, so no dictionary is fetched', as
   const app = await launch(home, userData)
   const child = app.process()
   try {
-    await app.firstWindow()
+    const window = await app.firstWindow()
+    // Closing while the engine starts overruns the quit path's bounds under
+    // xvfb, so wait for its status to settle first.
+    await expect(window.getByRole('status', { name: 'Engine' })).toContainText(/ready/i, {
+      timeout: 20_000,
+    })
     const partition = CAPTURE_PARTITION
     const enabled = await app.evaluate(
       ({ session }, name) => ({
