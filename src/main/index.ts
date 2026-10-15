@@ -10,7 +10,6 @@ import { BrowserWindow, app, clipboard, dialog, ipcMain, session, shell } from '
 import pins from '../../vendor/pins.json'
 import { CHANNELS } from '../shared/api'
 import type { AppSettings, FolderSource } from '../shared/settings'
-import { CAPTURE_PARTITION } from './capture'
 import { abortCaptures, capture, configureCapture } from './capture-window'
 import {
   describeConfig,
@@ -196,10 +195,6 @@ function sourceOf(source: Source): FolderSource {
 }
 
 function createWindow(): BrowserWindow {
-  // The spellchecker service is the session's and fetches dictionaries on
-  // Windows and Linux whatever the windows say (constitution IV).
-  session.defaultSession.setSpellCheckerEnabled(false)
-  session.fromPartition(CAPTURE_PARTITION).setSpellCheckerEnabled(false)
   const window = new BrowserWindow({
     title: PRODUCT_NAME,
     width: 1100,
@@ -368,6 +363,11 @@ if (!hasLock) {
   })
 
   app.whenReady().then(async () => {
+    // The spellchecker service is the session's and fetches dictionaries on
+    // Windows and Linux whatever the windows say (constitution IV). Off on
+    // every platform, macOS included, for one behaviour everywhere; set
+    // before anything else touches the session.
+    session.defaultSession.setSpellCheckerEnabled(false)
     // The log files before anything worth logging, the engine above all:
     // its first lines are how a launch that failed is diagnosed.
     await openLogs()

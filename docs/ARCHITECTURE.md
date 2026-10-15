@@ -35,7 +35,8 @@ what.
   nothing else. `contextIsolation` on, `nodeIntegration` off, `sandbox` on,
   and the spellchecker off, in the main window (`spellcheck: false`) and in
   both sessions (`setSpellCheckerEnabled(false)`), because on Windows and
-  Linux its service fetches dictionaries from a CDN.
+  Linux its service fetches dictionaries from a CDN; off on every platform,
+  macOS included, for one behaviour everywhere.
 - **Renderer** (`src/renderer/`): React. It draws the Library (the front
   door) and its New project sheet, and a project as a notebook of six
   cells with the viewer's sandboxed frame in the column between cells 02
