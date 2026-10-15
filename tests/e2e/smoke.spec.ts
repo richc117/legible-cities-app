@@ -197,8 +197,9 @@ test('the spellchecker is off in both sessions, so no dictionary is fetched', as
     await app.close()
   }
   await expect.poll(() => child.exitCode, { timeout: 10_000 }).not.toBeNull()
-  // Chromium writes Hunspell dictionaries into this folder on Windows and
-  // Linux and nothing on macOS, so the check bites on the Ubuntu runner.
+  // Chromium keeps downloaded Hunspell dictionaries under the profile on
+  // Linux; a one-way check (a download cut short by the quit leaves nothing),
+  // not yet seen to fail: no run has reached it with the checker on.
   expect(existsSync(join(userData, 'Dictionaries'))).toBe(false)
   rmSync(userData, { recursive: true, force: true })
   rmSync(home, { recursive: true, force: true })
