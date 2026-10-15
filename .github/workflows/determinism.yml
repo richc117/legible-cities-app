@@ -34,6 +34,10 @@
 # documentation alone costs three runners nothing. The weekly schedule runs it
 # whatever changed. Should it become a required check, remove the filter, or a
 # pull request that skips it waits for it forever.
+#
+# The typeface spec (tests/e2e/typeface.spec.ts, issue 417) rides in this job
+# too, because this job alone provides the pinned engine and the BART fixture
+# it reads a drawn page with.
 name: determinism
 
 on:
