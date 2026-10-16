@@ -659,7 +659,8 @@ and the log cell 02 draws carry the same bytes the log file does. An
 error is the fourth: `src/main/ipc-shape.ts` redacts the `message`, `hint`
 and `detail` of every error shape that crosses to the page, the engine's
 and the app's own refusals alike, since until engine v0.10.1 a failed
-download's error named the whole URL in all three (issue 207). What
+download's error named the whole URL in all three (issue 207). The same
+door takes the paths out of them, as the next paragraph says. What
 redacts is one function (`src/main/redact.ts`): a URL can carry a key, and
 whatever prints one on the engine's stderr or into an error is redacted
 here, whoever wrote it. Since v0.10.1 the engine redacts a person's feed
@@ -686,6 +687,64 @@ before its `?`; and a URL with whitespace inside it. Each run of text is
 looked at once, and percent-encoded addresses are walked with a cursor, so
 a long line costs linear time. `tests/unit/redact-generated.test.ts` puts
 600 seeded URLs through the engine's message shapes.
+
+Since issue 419 the error door takes paths out of the same three fields.
+Until then the only rule was `withoutPaths` (`src/shared/engine.ts`), on
+the engine's hint in the JSON-RPC client and on the export's own errors,
+and it stopped at the first space and did not see a path behind a quote:
+on the default macOS install the engine's home is under "Application
+Support", so an I/O failure showed the rest of the engine's data path, and
+Python's `OSError`, which quotes its file, showed all of it. The client now
+hands the hint on as the engine wrote it. The main process knows every
+folder such a path starts with - the engine's home, the user-data folder,
+the resources folder, the home folder and the export folder in force,
+which Settings can change and is therefore asked at each error - and
+`src/main/paths-in-text.ts` matches each whole, whatever its names hold, in
+every form the diagnostics copy matches the home in (either separator,
+separators doubled as `repr` and JSON print them, percent-encoded, any case
+on Windows and macOS, and on Windows the 8.3 short name). Each folder's
+real path, and the home's short form from the diagnostics copy's own
+lookup, are added once their lookups answer, bounded at
+`HOMES_TIMEOUT_MS`. The folders are first looked up at the first error,
+not at launch, because the export folder is on the desktop by default,
+which macOS keeps behind a privacy prompt; the door never waits, so until
+then, and for good if a lookup lapses, the folder as named is what is
+matched. From the folder the path runs to the quote that closes it where a
+quote opened it (the quote with a space, punctuation or the end after it,
+since Node does not escape a quote inside a path). Bare, it runs to a
+space, unless a later word in the same clause carries it on (has a
+separator in it and starts no path of its own); a double quote ends it,
+and a comma, a semicolon, a colon, an apostrophe or a closing parenthesis
+ends it only before a space, punctuation, a quote or the end of the line.
+The whole path becomes "a file", the words the engine's sentences already
+used. `withoutPaths` then runs as the backstop for a path under no known
+folder, by the same rules, and leaves a slash with a space after it alone.
+The app's own refusals (`badCall`) get the known folders and not the
+backstop, because they can quote a person's project name, which a guess
+would rewrite. Before any of this each field is cut to 4,096 characters,
+ending "[cut to fit]", after its URLs are redacted and before its paths are
+looked for; a field the scrub fails on is replaced by a fixed sentence, so
+a request is always answered. Every caller names the folders, which is a
+type error to forget; a shape made with `URLS_ONLY` has its URLs redacted
+and its paths left, which is the exporter's preview shaping its own refusal
+before the export bridge puts it through the door. The error a shape is
+made from is not changed, and the engine logs its own failures, paths
+included, to `engine.log`; an export's own failure is the exception,
+because `normalise` takes the path out of the error itself and nothing logs
+that failure. Not covered: a path under no known folder whose last name has
+a space in it shows the rest of that name after the space, and so does a
+name with a space at the end of a path under a known folder; a project's
+own export folder (A5.5-19) is not among the known folders, so a path in it
+gets the backstop alone; prose after a path is eaten when a later word in
+its clause has a slash in it (`/x/y.zip has 114/114 stops` becomes `a file
+stops`), which is accepted because it fails toward removing too much; the
+export plan's notes, in the progress sentence and in the preview's `ok`
+answer, get the backstop alone (`notesOf` in `src/main/export.ts`); the
+progress message, the log lines cell 02 draws and the engine state's reason
+are redacted for URLs only; an error thrown from any other handler (the
+projects', Settings', a destination's) does not pass this door and relies
+on its own sentence carrying no path; and the renderer still runs
+`withoutPaths` itself where it did before.
 
 Lines logged before the app is ready are held in memory, two thousand at
 most, and written first once the files open, which is the first thing the
@@ -1557,7 +1616,11 @@ and Escape closes it.
 A job is one read-only shape (`src/shared/jobs.ts`): an id per attempt, a
 kind (`layout`, `rebuild`, `export`, `feed-add`), the project's id, a
 label, the state, the stages, the last sentence, the engine's hint and
-detail when it failed, the last 200 log lines and the start and end. The
+detail when it failed (both with their paths already taken out at the
+error door since issue 419, so a copied log says "a file" where the detail
+named one, and `engine.log` keeps the path for the engine's own failures;
+an export's own failure keeps it nowhere), the last 200 log lines and the
+start and end. The
 runs do not change: `LayoutRun`, `ExportRun` and `FeedAdd` each gain a
 `job()` derived from the snapshot they already keep, plus what the
 snapshot does not hold - the times, the detail and a bounded log buffer

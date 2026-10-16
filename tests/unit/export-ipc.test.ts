@@ -11,6 +11,7 @@ import {
   type ExportSource,
 } from '../../src/main/export-ipc'
 import { Destinations } from '../../src/main/export'
+import { NO_ROOTS } from '../../src/main/ipc-shape'
 import { CHANNELS } from '../../src/shared/api'
 import { EngineError, ERROR_CODES } from '../../src/shared/engine'
 import type { ExportChoice, ExportProgress, ExportResult } from '../../src/shared/export'
@@ -91,6 +92,8 @@ function harness(topFrame = true, blocked: string | null = null) {
     (path) => revealed.push(path),
     destinations,
     () => blocked,
+    // No folder known: the door's own tests are in ipc-shape.test.ts.
+    NO_ROOTS,
   )
   const event = {} as IpcMainInvokeEvent
   const call = (channel: string, ...args: unknown[]) => handlers.get(channel)!(event, ...args)
@@ -240,6 +243,7 @@ describe('registerExportHandlers', () => {
       () => undefined,
       destinations,
       () => gate.now,
+      NO_ROOTS,
     )
     const call = (channel: string, ...args: unknown[]) =>
       handlers.get(channel)!({} as IpcMainInvokeEvent, ...args)
@@ -269,6 +273,7 @@ describe('registerExportHandlers', () => {
       () => undefined,
       quiet,
       () => gate.now,
+      NO_ROOTS,
     )
     await call(CHANNELS.exportChooseDestination, 'abcdefghijk1')
     await call(CHANNELS.exportUseAppFolder, 'abcdefghijk1')
@@ -301,6 +306,7 @@ describe('registerExportHandlers', () => {
       () => undefined,
       during,
       () => gate.now,
+      NO_ROOTS,
     )
     await expect(call(CHANNELS.exportUseAppFolder, 'abcdefghijk1')).rejects.toThrow(why)
     expect(written, 'nothing was written when it was taken back').toEqual([])

@@ -182,6 +182,32 @@ describe('JsonRpcClient', () => {
     const other = (await third.result.catch((e: unknown) => e)) as EngineError
     expect(other.data, 'not on a kind that is not layout').toEqual(params)
   })
+  // The engine's hint for an I/O failure is "{reason}: {filename}" (its
+  // `classify`). Since issue 419 the client keeps it as the engine wrote it,
+  // and the paths come out of all three fields at the door, by the folders
+  // the main process knows (ipc-shape.test.ts has the sentences). A guess
+  // here would cut the folder before the door could match it. The path is
+  // assembled from pieces at run time, so no literal path of a user's shape
+  // is committed: bin/preflight refuses one.
+  it('hands the hint on as the engine wrote it, path and all, for the door', async () => {
+    const engineHome = [
+      '',
+      'Users',
+      'jane',
+      'Library',
+      'Application Support',
+      'Legible Cities',
+      'engine',
+    ].join('/')
+    const hint = `Permission denied: ${engineHome}/data/feeds/bart.zip`
+    const data = { kind: 'io', detail: `PermissionError: [Errno 13] ${hint} (feeds.py:12)`, hint }
+    const { c, reply } = client()
+    const r = c.request('feeds.add', { key: 'x' })
+    reply({ jsonrpc: '2.0', id: 1, error: { code: -32000, message: hint, data } })
+    const error = (await r.result.catch((e: unknown) => e)) as EngineError
+    expect(error.data).toEqual(data)
+  })
+
   // A kind outside the engine's seven cannot come from an engine of the
   // pinned version. It is read as the engine failing in a way it never
   // described, and everything it sent is kept where a log will show it.

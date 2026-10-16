@@ -88,19 +88,106 @@ export const ERROR_CODES = {
   cancelled: -32800,
 } as const
 
+// Where a path ends, for `withoutPaths` below and for the folders the main
+// process knows at the error door (`src/main/paths-in-text.ts`, issue 419),
+// so the two agree.
+//
+// A path character is anything but whitespace, a quote, or a clause's
+// punctuation (`, ; : )` and the apostrophe), and that punctuation too where
+// another path character follows it: a device path's `C:\`, `Program Files
+// (x86)\` and a name with a comma or an apostrophe in it stay in one piece,
+// while a colon or a comma before a space, and a `)` before a space or a
+// full stop, end the path.
+const PATH_CHAR = String.raw`(?:[^\s'",;:)]|[',;:)](?=[^\s'",;:).]))`
+
+/**
+ * One separator: either slash, or either one percent-encoded as a file URL
+ * writes it. A known folder's pattern accepts all four
+ * (`src/main/paths-in-text.ts`), so all four end a word here.
+ */
+const SEP = String.raw`(?:[\\/]|%2[Ff]|%5[Cc])`
+
+/** Where a path starts: a separator, or a drive and a separator, its colon plain or percent-encoded. */
+const PATH_START = String.raw`(?:[A-Za-z](?::|%3[Aa]))?${SEP}`
+
+/**
+ * A word that is a path of its own, quoted or not, or a web address, and so
+ * never the rest of the one before. Every form a known folder's pattern can
+ * start on is one of these, so a scan for the rest of a path ends wherever
+ * the next known folder could begin, and a line full of them costs linear
+ * time.
+ */
+export const STARTS_ANEW = String.raw`(?:['"]?${PATH_START}|[A-Za-z][\w+.-]*:[\\/]{2})`
+
+/** A later word with no separator in it. */
+const WORD = String.raw`(?:(?!${SEP})${PATH_CHAR})+`
+
+/** A later word that carries the path on: one with a separator in it that starts nothing of its own. */
+const CARRIES_ON = String.raw`(?!${STARTS_ANEW})(?:(?!${SEP})${PATH_CHAR})*${SEP}${PATH_CHAR}*`
+
+/**
+ * The rest of a path once its start is found: its first word, then the
+ * words after it on the same line and in the same clause, up to the last
+ * that carries it on. "Application Support/Legible Cities/engine" and
+ * "Jane Doe\AppData" are one path each, because the word after each space
+ * has a separator in it; "/x/y has no stops.txt" is a path and four words,
+ * because none of them does.
+ */
+export const PATH_REST = String.raw`${PATH_CHAR}*(?:[ \t]+(?:${WORD}[ \t]+)*${CARRIES_ON})*`
+
+/** Where a quoted path ends: at its own quote, with a space, punctuation or the end of the text after it. */
+export const QUOTE_CLOSES = String.raw`(?=[\s,;:.)\]}>'"]|$)`
+
+/**
+ * A character inside a quoted path: anything on the line but a quote that
+ * starts another path, in any form a known folder can start on, which also
+ * bounds how far the closing quote is looked for, so a line of unclosed
+ * quotes costs linear time.
+ */
+export const QUOTED_CHAR = String.raw`(?:(?!['"]${PATH_START})[^\r\n])`
+
+/**
+ * A path behind a single or a double quote, as Python's `OSError` and
+ * Node's file-system errors print one: a separator or a drive right after
+ * the quote, and everything to the quote that closes it, spaces and colons
+ * included. A quote followed at once by its twin (`'/'`) is not a path.
+ */
+const QUOTED_PATH = new RegExp(
+  String.raw`(['"])(?:[A-Za-z]:)?[\\/](?!\1)${QUOTED_CHAR}*?\1${QUOTE_CLOSES}`,
+  'g',
+)
+
+/**
+ * A path with no quote around it: a separator or a drive at the start of the
+ * text or after a space, `(`, `=` or an unclosed quote, then at least one
+ * path character, so a slash on its own between two words is left alone.
+ */
+const BARE_PATH = new RegExp(
+  String.raw`(^|[\s('"=])(?:[A-Za-z]:)?[\\/]${PATH_CHAR}${PATH_REST}`,
+  'g',
+)
+
 /**
  * A sentence with any filesystem path taken out of it.
  *
  * The engine writes `hint` for a person, and for an I/O failure it writes
  * "{reason}: {filename}" with an absolute path in it (its `classify`). A
- * path is not for a screen (constitution V), and this is the sentence the
- * interface shows, so the path comes out here, at the boundary, once, for
- * every consumer. `detail` keeps the whole of it for the log.
+ * path is not for a screen (constitution V).
+ *
+ * Since issue 419 this is the backstop, not the rule: at the one door every
+ * error goes through on its way to the page, the main process first takes
+ * out every path under a folder it knows - the engine's home, the home
+ * folder and the rest - matching the folder whole, whatever its names hold
+ * (`src/main/paths-in-text.ts`), and then runs this over what is left. The
+ * renderer's own calls, and the export's for its own errors and the engine's
+ * notes on a plan, run it with no folder known. This guesses. A
+ * quoted path goes to its closing quote; an unquoted one runs on past a
+ * space only while a later word in its clause has a separator in it, so a
+ * path whose last name has a space in it (a home folder named "Jane Doe" at
+ * the very end of a sentence) still shows the words after the space here.
  */
 export function withoutPaths(sentence: string): string {
-  const stripped = sentence
-    .replace(/(^|[\s(])(?:[A-Za-z]:)?[\\/][^\s,;:)]*/g, '$1a file')
-    .replace(/(^|[\s(])[A-Za-z]:\\[^\s,;:)]*/g, '$1a file')
+  const stripped = sentence.replace(QUOTED_PATH, '$1a file$1').replace(BARE_PATH, '$1a file')
   return stripped.trim() === '' ? sentence : stripped
 }
 

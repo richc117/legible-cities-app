@@ -34,9 +34,10 @@ import { Outputs, registerOutputHandlers } from './outputs'
 import { byTag, holdingSink, log, setSink, toStderrRedacted } from './log'
 import { LOG_WAIT_MS, openLogFile, within, type LogFile } from './log-file'
 import { shortHomeFrom } from './diagnostics-text'
+import { knownRoots } from './paths-in-text'
 import { ProjectStore } from './projects'
 import { SettingsStore } from './settings'
-import { registerSettingsHandlers, SettingsService } from './settings-ipc'
+import { HOMES_TIMEOUT_MS, registerSettingsHandlers, SettingsService } from './settings-ipc'
 import { Viewer } from './viewer'
 import { registerAppProtocol } from './protocol'
 import { registerAppScheme } from './scheme'
@@ -604,6 +605,28 @@ if (!hasLock) {
       isTopFrame,
     )
 
+    // What a path in an error can start with, for the one door every error
+    // goes through on its way to the page (issue 419): the engine's home, the
+    // user-data folder, the resources folder, the home folder and the export
+    // folder in force, which Settings can change while the app runs, so it is
+    // asked at each error and never kept. Their real paths, and the home's
+    // 8.3 short form from the diagnostics copy's own lookup, are found in the
+    // background and bounded as that lookup is; until they answer, the
+    // folders as named are used.
+    const userData = app.getPath('userData')
+    const pathRoots = knownRoots({
+      roots: () => [
+        config.home,
+        userData,
+        process.resourcesPath,
+        homedir(),
+        settingsService.exportFolderNow(),
+      ],
+      realpath: (path) => realpath(path),
+      homes: () => settingsService.homesToHide(),
+      ms: HOMES_TIMEOUT_MS,
+    })
+
     // The registry's gate, and in front of it the reset's: while the engine
     // home is being removed, nothing may ask the engine to write into it.
     //
@@ -627,6 +650,7 @@ if (!hasLock) {
       (message) => log.warn('engine', message),
       async (method, params) =>
         resetInProgress() ?? (await registry(method, params)) ?? resetInProgress(),
+      pathRoots,
     )
     // Electron grants a permission request by default. Nothing this app
     // shows has any business asking for one, and the viewer's page least of
@@ -713,6 +737,7 @@ if (!hasLock) {
       // the home a reset is removing: it is refused while that runs, as
       // every other record write is.
       resetInProgress,
+      pathRoots,
     )
     // What the project has already made, read from the sidecars beside the
     // files rather than from this session (A5.5-21). A read reaches the

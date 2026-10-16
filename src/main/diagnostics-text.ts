@@ -154,9 +154,10 @@ function shortNameSource(segment: string): string | null {
  * separator, a doubled backslash from an escaped string, percent-encoded as
  * in a file URL, on Windows its 8.3 short name, and on Windows and macOS in
  * any case. It matches only a whole folder name, so a home ending in `al`
- * does not match a folder called `alice` beside it.
+ * does not match a folder called `alice` beside it. The error door matches
+ * every folder it knows with it too (`paths-in-text.ts`, issue 419).
  */
-function homePattern(home: string, platform: string): RegExp | null {
+export function homePattern(home: string, platform: string): RegExp | null {
   const segments = segmentsOf(home)
   if (segments === null) return null
   // A leading separator is one, not a run: `file:///tmp/x` keeps its
