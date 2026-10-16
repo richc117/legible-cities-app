@@ -18,8 +18,9 @@ candidates before it stay on the page, marked "Pre-release".
 installers for both Macs and for Windows are built in CI, attached to a
 GitHub Release drafted from its tag, and then installed and driven through
 most of [the acceptance checklist](docs/acceptance.md) on a macOS and a
-Windows runner; 0.1.0 passed that run on both. The same checklist walked
-by people is still owed for it. Work proceeds through the issues and
+Windows runner; 0.1.0 passed that run on both. The runs of the release
+gate that only a person can make were reported done on 8 October 2026,
+with no issue noted. Work proceeds through the issues and
 milestones on this repository.
 
 ## What it does
@@ -33,16 +34,16 @@ have added.
 2. **Or start from your own feed**: a GTFS zip on your computer, or one at
    an address.
 
-A project opens as a notebook of six numbered cells, under a map that stays
-in view while you work down them:
+A project opens as a notebook of six numbered cells in one scrolling column,
+with the map between cells 02 and 03:
 
 | Cell | What you do there |
 | --- | --- |
 | 01 Data | Read what is in the feed: its routes, operators and service window, and the network drawn where it really runs. Choose which mode and operator to keep. |
 | 02 Process | Lay the network out, stage by stage, and read what the build had to fudge. |
 | 03 Frame and service day | Pick the day the map is drawn for, scrub its clock, play the day and set the speed. |
-| 04 Style | Choose the map's theme. |
-| 05 Lines | Set each line's colour and the order the lines stack in. |
+| 04 Style | Choose the map's theme, its sizes and looks, the markers, the label face and the trains. |
+| 05 Lines | Set each line's colour and the order the lines stack in, and under each line its own options. |
 | 06 Export | Make stills, reels and GIFs for Instagram, LinkedIn, Bluesky and X, from the social presets the engine defines. |
 
 What a project has exported is listed beside the cells, each with a Reveal
@@ -77,7 +78,7 @@ processes and the bridge are put together; `docs/DESIGN.md` sections 8.2
 and 9 and `specs/028-the-notebook/contracts/run-graph.md` say how the
 notebook is.
 
-You need Node.js 22 or later. Optionally, for the development loop and the
+You need Node.js 22.12 or later (`engines` in `package.json`). Optionally, for the development loop and the
 tokens test, check out the engine beside this repository and point
 `LEGIBLE_ENGINE_CHECKOUT` at it in `.env.local`:
 
