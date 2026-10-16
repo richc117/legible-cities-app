@@ -17,7 +17,7 @@ import { cp, rm } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
 import { claimFramesRoot, reasonOf } from './frames'
 import { frameTotal, type CaptureJob } from '../shared/capture'
-import { EngineError, ERROR_CODES, engineError, withoutPaths } from '../shared/engine'
+import { cameTooLate, EngineError, ERROR_CODES, engineError, withoutPaths } from '../shared/engine'
 import {
   needsStoryboards,
   OPENING_UNMADE,
@@ -691,8 +691,25 @@ export class Exporter {
       const files = isObject(encoded) && Array.isArray(encoded.files) ? encoded.files : []
       const written = files.find((f) => isObject(f) && f.path === dest) ?? files[0]
       const bytes = isObject(written) && typeof written.bytes === 'number' ? written.bytes : 0
-      log(`exported ${plan.filename}: ${captured.frames} frames, ${bytes} bytes`)
-      return { result: { file: plan.filename, bytes, frames: captured.frames }, path: dest }
+      // An answer is the file and its sidecar at the destination, a cancel
+      // or not: the engine's cancelled error is the only answer that says
+      // nothing was kept (engine v0.18.0). One whose cancel reached the
+      // engine after it had moved the two into place says so, and the page
+      // is told the export finished late rather than that it was cancelled.
+      const late = cameTooLate(encoded)
+      log(
+        `exported ${plan.filename}: ${captured.frames} frames, ${bytes} bytes` +
+          (late ? '; the cancel came after the file was kept' : ''),
+      )
+      return {
+        result: {
+          file: plan.filename,
+          bytes,
+          frames: captured.frames,
+          ...(late ? { late: true as const } : {}),
+        },
+        path: dest,
+      }
     } finally {
       this.#writing.delete(dest)
       const keep = this.#options.keepFrames ?? null

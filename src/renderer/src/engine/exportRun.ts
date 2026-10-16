@@ -64,6 +64,13 @@ export function sentenceFor(reason: unknown): string {
   return reason instanceof Error ? reason.message : 'The export did not finish.'
 }
 
+/**
+ * What an export says when it was cancelled after the engine had moved the
+ * file and its sidecar into place (engine v0.18.0): it finished, and the file
+ * is kept.
+ */
+export const EXPORT_KEPT = 'The export was already written when you cancelled; it is kept.'
+
 /** The engine died or stopped answering: whatever it was writing, it did not clean up. */
 const ENGINE_GONE = new Set<number>([ERROR_CODES.engineExited, ERROR_CODES.inactive])
 
@@ -206,10 +213,15 @@ export class ExportRun {
         if (this.#id !== request.id) return
         this.#id = null
         this.#written = request.id
+        // A result is a finished export whoever cancelled: the file and its
+        // sidecar are at the destination. One the main process says the
+        // cancel came too late for is said to be kept, read as data.
+        const late = (result as { late?: unknown }).late === true
         this.#set({
           state: 'done',
           stages: this.#snapshot.stages.map((s) => ({ ...s, state: 'done' as const })),
           file: result.file,
+          ...(late ? { message: EXPORT_KEPT } : {}),
         })
       },
       (reason: unknown) => {

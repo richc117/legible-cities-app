@@ -561,6 +561,61 @@ describe('cancelling', () => {
     expect(h.exporter.fileOf('tok-1')).toBeNull()
   })
 
+  it('during the encode, a cancel the engine answers too late is a finished export, said to be late', async () => {
+    // Engine v0.18.0 (its issue 80): a cancel that reaches the encode after
+    // the file and its sidecar were moved into place is answered with the
+    // result and `cancel_too_late`. The file is at the destination, so the
+    // export finished: its name and size, the reveal, and the page told it
+    // finished late. Mutation: the field not read in `#run` - the page is
+    // then told a plain finish, and says nothing of the cancel it pressed.
+    const h = harness()
+    const { result } = h.exporter.start('tok-1', 'abcdefghijk1', REEL)
+    await settle()
+    h.eng.requests[0].resolve(plan())
+    await until('the capture', () => h.cap.calls.length === 1)
+    h.cap.calls[0].finish()
+    await settle()
+    h.exporter.cancel('tok-1')
+    expect(h.eng.cancelled, 'the encode was asked to stop').toEqual([2])
+    const dest = join(h.exportFolder, 'Los Angeles', 'la-metro-rail-instagram-reel.mp4')
+    h.eng.requests[1].resolve({
+      files: [{ path: dest, bytes: 1234 }],
+      sidecar: {},
+      cancel_too_late: true,
+    })
+    await expect(result).resolves.toEqual({
+      file: 'la-metro-rail-instagram-reel.mp4',
+      bytes: 1234,
+      frames: 60,
+      late: true,
+    })
+    expect(h.exporter.fileOf('tok-1'), 'the file can be revealed').toBe(dest)
+    expect(existsSync(join(h.framesRoot, 'tok-1')), 'the frames are gone').toBe(false)
+    expect(h.log.at(-1)).toBe(
+      'exported la-metro-rail-instagram-reel.mp4: 60 frames, 1234 bytes; the cancel came after the file was kept',
+    )
+  })
+
+  it('during the encode, a result without the field after a cancel is a finished export', async () => {
+    // The cancel reached the engine after it had answered: the file is at
+    // the destination all the same, and nothing says the cancel came late.
+    const h = harness()
+    const { result } = h.exporter.start('tok-1', 'abcdefghijk1', REEL)
+    await settle()
+    h.eng.requests[0].resolve(plan())
+    await until('the capture', () => h.cap.calls.length === 1)
+    h.cap.calls[0].finish()
+    await settle()
+    h.exporter.cancel('tok-1')
+    const dest = join(h.exportFolder, 'Los Angeles', 'la-metro-rail-instagram-reel.mp4')
+    h.eng.requests[1].resolve({ files: [{ path: dest, bytes: 1234 }], sidecar: {} })
+    await expect(result).resolves.toEqual({
+      file: 'la-metro-rail-instagram-reel.mp4',
+      bytes: 1234,
+      frames: 60,
+    })
+  })
+
   it('between the plan and the capture never starts the capture', async () => {
     const h = harness()
     const { result } = h.exporter.start('tok-1', 'abcdefghijk1', REEL)
@@ -612,6 +667,33 @@ describe('failing', () => {
     })
     expect(existsSync(join(h.framesRoot, 'tok-1'))).toBe(false)
     expect(h.exporter.live).toBe(0)
+  })
+
+  it('an encode refused for a destination that is its own source carries the engine’s params sentence', async () => {
+    // Engine v0.18.0 (its issue 79) refuses, before anything is written, a
+    // destination that is the source, or whose sidecar or either .part name
+    // is, as a params error. It reaches the page as every other refusal
+    // does, in the engine's own words and kind. Mutation: `normalise` not
+    // passing an engine error through - the refusal then arrives as the
+    // app's own export failure, kind io.
+    const sentence =
+      'dest must not be the source, or put its sidecar or a .part file on it: the source is read and never written to'
+    const h = harness()
+    const { result } = h.exporter.start('tok-1', 'abcdefghijk1', REEL)
+    await settle()
+    h.eng.requests[0].resolve(plan())
+    await until('the capture', () => h.cap.calls.length === 1)
+    h.cap.calls[0].finish()
+    await settle()
+    h.eng.requests[1].reject(
+      new EngineError(-32602, sentence, { kind: 'params', detail: sentence, hint: sentence }),
+    )
+    await expect(result).rejects.toMatchObject({
+      code: -32602,
+      data: { kind: 'params', hint: sentence },
+    })
+    expect(h.exporter.fileOf('tok-1')).toBeNull()
+    expect(existsSync(join(h.framesRoot, 'tok-1'))).toBe(false)
   })
 
   it('a failed capture carries its sentence as an export failure', async () => {
