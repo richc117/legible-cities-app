@@ -143,6 +143,7 @@ describe('the window', () => {
     expect(prefs.nodeIntegration).toBe(false)
     expect(prefs.contextIsolation).toBe(true)
     expect(prefs.sandbox).toBe(true)
+    expect(prefs.spellcheck, 'the checker would fetch dictionaries').toBe(false)
     expect(prefs.partition, 'the interface session persists a per-host zoom level').toBe(
       CAPTURE_PARTITION,
     )

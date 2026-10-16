@@ -10,6 +10,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  rmSync,
   readFileSync,
   symlinkSync,
   writeFileSync,
@@ -25,16 +26,21 @@ import {
   type Locator,
   type Page,
 } from '@playwright/test'
+import { CAPTURE_PARTITION } from '../../src/main/capture'
 import { RECORD_VERSION } from '../../src/shared/project'
 import { cellLabel } from '../support/project'
 
 const repoRoot = resolve(__dirname, '../..')
 
-function launch(home: string): Promise<ElectronApplication> {
+function launch(home: string, userData?: string): Promise<ElectronApplication> {
   return electron.launch({
     args: ['.'],
     cwd: repoRoot,
-    env: { ...process.env, SCHEMATIC_HOME: home },
+    env: {
+      ...process.env,
+      SCHEMATIC_HOME: home,
+      ...(userData === undefined ? {} : { LEGIBLE_USER_DATA: userData }),
+    },
     timeout: 30_000,
   })
 }
@@ -167,6 +173,64 @@ test('opens to an empty Library on the app://local origin, and quits', async () 
     await app.close()
   }
   await expect.poll(() => child.exitCode, { timeout: 10_000 }).not.toBeNull()
+})
+
+test('the spellchecker is off in both sessions, so no dictionary is fetched', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'legible-cities-e2e-'))
+  // The spellchecker's flag is persisted per profile: on the developer's own
+  // it would be read back from an earlier run, so this launch has a fresh one.
+  const userData = mkdtempSync(join(tmpdir(), 'legible-cities-e2e-profile-'))
+  const app = await launch(home, userData)
+  const child = app.process()
+  try {
+    const window = await app.firstWindow()
+    // Closing while the app is still starting overruns the quit path's
+    // bounds under xvfb, so wait for the Library to be drawn, as the other
+    // tests do, and for the engine's status to settle: ready where a run
+    // names an engine, unavailable where none does (CI's smoke step).
+    await expect(window.locator('.empty').getByRole('status')).toContainText(
+      'Legible Cities draws a transit network',
+    )
+    await expect(window.getByRole('status', { name: 'Engine' })).toContainText(
+      /ready|unavailable|mismatch/i,
+      { timeout: 20_000 },
+    )
+    const partition = CAPTURE_PARTITION
+    const state = await app.evaluate(
+      ({ session }, name) => ({
+        interface: session.defaultSession.isSpellCheckerEnabled(),
+        capture: session.fromPartition(name).isSpellCheckerEnabled(),
+        // Switching the checker off does not stop Linux fetching the
+        // dictionaries of the languages a session holds; holding none does.
+        languages: [
+          ...session.defaultSession.getSpellCheckerLanguages(),
+          ...session.fromPartition(name).getSpellCheckerLanguages(),
+        ],
+      }),
+      partition,
+    )
+    // macOS uses the system's checker, fetches nothing, and keeps its own
+    // language list whatever is set, so the list is only held elsewhere.
+    expect(state).toEqual({
+      interface: false,
+      capture: false,
+      languages: process.platform === 'darwin' ? state.languages : [],
+    })
+  } finally {
+    await app.close()
+  }
+  await expect.poll(() => child.exitCode, { timeout: 10_000 }).not.toBeNull()
+  // Chromium creates an empty Dictionaries folder in the profile on Linux
+  // whatever the checker's state (CI's Ubuntu run saw it), so the folder is
+  // no evidence; a downloaded dictionary is a .bdic file inside it. A
+  // one-way check: a download cut short by the quit leaves nothing.
+  const dictionaries = join(userData, 'Dictionaries')
+  const downloaded = existsSync(dictionaries)
+    ? readdirSync(dictionaries).filter((name) => name.endsWith('.bdic'))
+    : []
+  expect(downloaded).toEqual([])
+  rmSync(userData, { recursive: true, force: true })
+  rmSync(home, { recursive: true, force: true })
 })
 
 test('creates, opens, renames and deletes a project, and serves its output', async () => {

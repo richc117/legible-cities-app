@@ -32,7 +32,11 @@ what.
   identity and injected into from here; ADR-028, ADR-046), and the
   engine's supervisor: the one child process the app starts.
 - **Preload** (`src/preload/`): a `contextBridge` exposing `window.api` and
-  nothing else. `contextIsolation` on, `nodeIntegration` off, `sandbox` on.
+  nothing else. `contextIsolation` on, `nodeIntegration` off, `sandbox` on,
+  and the spellchecker off, in the main window (`spellcheck: false`) and in
+  both sessions (`setSpellCheckerEnabled(false)`), because on Windows and
+  Linux its service fetches dictionaries from a CDN; off on every platform,
+  macOS included, for one behaviour everywhere.
 - **Renderer** (`src/renderer/`): React. It draws the Library (the front
   door) and its New project sheet, and a project as a notebook of six
   cells with the viewer's sandboxed frame in the column between cells 02
@@ -1215,7 +1219,9 @@ Escape. The hygiene checks (`gitleaks`, `bin/preflight`) run beside them.
 
 The export path's middle, built before its ends (A5-02a; ADR-024). A
 project page is loaded as the top-level document of a hidden offscreen
-`BrowserWindow` with no preload, no node integration, the sandbox on, and a
+`BrowserWindow` with no preload, no node integration, the sandbox on, the
+spellchecker off in the window and in its session (it would fetch
+dictionaries from a CDN), and a
 session of its own - the in-memory partition `capture`, which serves
 project pages and nothing else and refuses every permission. Nothing the
 interface's session holds reaches it, and a persisted per-host zoom level,

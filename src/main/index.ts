@@ -207,6 +207,9 @@ function createWindow(): BrowserWindow {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      // The checker would fetch dictionaries from a CDN on Windows and Linux;
+      // the app makes no network call but a feed (constitution IV).
+      spellcheck: false,
     },
   })
   // Nothing this app shows may open a window or move the one it has. The
@@ -360,6 +363,14 @@ if (!hasLock) {
   })
 
   app.whenReady().then(async () => {
+    // The spellchecker service is the session's and fetches dictionaries on
+    // Windows and Linux whatever the windows say (constitution IV). Off on
+    // every platform, macOS included, for one behaviour everywhere; set
+    // before anything else touches the session.
+    session.defaultSession.setSpellCheckerEnabled(false)
+    // Off is not enough on Linux: the service still fetches the dictionary of
+    // each language the session holds. No languages, no fetch (issue 418).
+    session.defaultSession.setSpellCheckerLanguages([])
     // The log files before anything worth logging, the engine above all:
     // its first lines are how a launch that failed is diagnosed.
     await openLogs()

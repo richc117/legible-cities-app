@@ -44,6 +44,12 @@ export function configureCapture(options: { engineHome: string }): void {
     callback(false)
   })
   ses.setPermissionCheckHandler(() => false)
+  // The service is the session's and would fetch dictionaries on Windows and
+  // Linux (constitution IV); off on every platform, as the interface's is.
+  ses.setSpellCheckerEnabled(false)
+  // Off is not enough on Linux: the service still fetches the dictionary of
+  // each language the session holds. No languages, no fetch (issue 418).
+  ses.setSpellCheckerLanguages([])
   registerAppProtocol({
     session: ses,
     projectsOnly: true,
