@@ -120,6 +120,48 @@ describe('the outputs a project has', () => {
     expect((await outputs().outputs.list(PROJECT.id)).map((r) => r.file)).toEqual(['la-reel.mp4'])
   })
 
+  it('passes over an export still being written, or left half written, beside a finished one', async () => {
+    // Since engine v0.18.0 (its issue 79) `export.encode` writes the file and
+    // its sidecar beside the destination as `<file>.part` and
+    // `<file>.json.part`, and moves them into place once whole; a process
+    // killed mid-encode leaves the two for the next export to write over.
+    // `map.build` stages its files in a hidden `.<key>.writing-<pid>-<token>`
+    // folder the same way. None of them is an export, and the finished one
+    // beside them is listed as it was, at the time its own sidecar was
+    // written. Mutation: a sidecar taken to be any name holding `.json`, the
+    // file named by what comes before it - the half-written sidecar then
+    // lists a second row for the file, at its own time.
+    await wrote('la-reel.mp4', 'instagram-reel', '2026-09-20T10:00:00.000Z')
+    await writeFile(join(folder(), 'la-reel.mp4.part'), 'half a reel')
+    const part = join(folder(), 'la-reel.mp4.json.part')
+    await writeFile(part, JSON.stringify({ file: 'la-reel.mp4', preset: 'instagram-reel' }))
+    const later = new Date('2026-09-21T10:00:00.000Z')
+    await utimes(part, later, later)
+    // A first export that never finished: only its two .part files.
+    await writeFile(join(folder(), 'la-post.png.part'), 'half a still')
+    await writeFile(
+      join(folder(), 'la-post.png.json.part'),
+      JSON.stringify({ file: 'la-post.png', preset: 'instagram-post' }),
+    )
+    const staging = join(folder(), '.la-metro-rail.writing-4242-a1b2c3')
+    await mkdir(staging)
+    await writeFile(join(staging, 'la-metro-rail.html'), '<html></html>')
+    await writeFile(join(staging, 'la-metro-rail.html.json'), JSON.stringify({ file: 'x' }))
+
+    const { outputs: o, shown } = outputs()
+    expect(await o.list(PROJECT.id)).toEqual([
+      {
+        file: 'la-reel.mp4',
+        preset: 'instagram-reel',
+        made: '2026-09-20T10:00:00.000Z',
+        present: true,
+      },
+    ])
+    for (const name of ['la-reel.mp4.part', 'la-post.png', 'la-post.png.part'])
+      expect(await o.reveal(PROJECT.id, name), name).toBe(false)
+    expect(shown).toEqual([])
+  })
+
   it('names the file but never the folder it is in', async () => {
     await wrote('la-reel.mp4', 'instagram-reel', '2026-09-20T10:00:00.000Z')
     const rows = await outputs().outputs.list(PROJECT.id)
