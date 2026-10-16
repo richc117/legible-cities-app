@@ -10,8 +10,8 @@
 //
 // The handler is replaced where Electron keeps it, `ipcMain`'s own map of
 // invoke handlers. That is not a public API: Electron has kept the map under
-// that name since `ipcMain.handle` came in, and the 44.5.1 framework this was
-// written against still names it. A release that moves it fails here, by
+// that name since `ipcMain.handle` came in, and the 44.7.1 framework this runs
+// against still names it. A release that moves it fails here, by
 // name, rather than letting a test go on without a hold and pass for the
 // wrong reason. The app's own handler still runs, with every check it
 // makes, once the write is let through, and is put back as it is.
