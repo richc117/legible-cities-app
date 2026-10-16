@@ -3,7 +3,7 @@ import type { CreateProjectInput, PickedZip } from '../../shared/api'
 import type { EngineState } from '../../shared/engine'
 import { DEFAULT_FEED, uniqueName, validateFeedKey, validateName } from '../../shared/project'
 import type { FeedRecord } from '../../shared/protocol'
-import type { FeedAdd } from './engine/feedAdd'
+import { ADD_CANCELLED, FEED_KEPT, type FeedAdd } from './engine/feedAdd'
 import { placeOf } from './FeedList'
 import Icon from './icons/Icon'
 import Button from './kit/Button'
@@ -657,9 +657,11 @@ export default function NewProjectSheet({
             />
             <p className="progress-message" role="status" aria-live="polite">
               {snapshot.state === 'cancelled'
-                ? 'Cancelled. A download stopped keeps nothing; a check already finished may have kept the feed, and the list says which.'
+                ? ADD_CANCELLED
                 : snapshot.state === 'done'
-                  ? 'The feed is in.'
+                  ? snapshot.late
+                    ? FEED_KEPT
+                    : 'The feed is in.'
                   : (snapshot.message ?? 'Starting.')}
             </p>
           </section>

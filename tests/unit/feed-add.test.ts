@@ -2,7 +2,14 @@
 // skips the download, the engine's sentence, and a cancel.
 
 import { describe, expect, it } from 'vitest'
-import { FeedAdd, sentenceFor, type AddClient } from '../../src/renderer/src/engine/feedAdd'
+import {
+  ADD_CANCELLED,
+  FEED_KEPT,
+  FeedAdd,
+  sentenceFor,
+  type AddClient,
+} from '../../src/renderer/src/engine/feedAdd'
+import { relistAfterAdd } from '../../src/renderer/src/Library'
 import { filledName, startingFeed, validateFeedUrl } from '../../src/renderer/src/NewProjectSheet'
 import { placeOf } from '../../src/renderer/src/FeedList'
 import { ERROR_CODES, type EngineState } from '../../src/shared/engine'
@@ -142,6 +149,47 @@ describe('FeedAdd', () => {
     run.reset()
     run.start({ url: 'https://agency.example/other.zip' }, READY)
     expect(calls).toHaveLength(2)
+  })
+
+  it('a cancel the engine read after the feed was kept ends with the feed added, said to be kept', async () => {
+    // Engine v0.18.0 (its issue 80): the answer is the feed's record with
+    // `cancel_too_late`, and the feed is registered and cached. Mutation: the
+    // field not read - the add then says the feed is in, as though nobody had
+    // pressed Cancel.
+    const { client, calls } = stub()
+    const run = new FeedAdd(client)
+    run.start({ url: 'https://agency.example/gtfs.zip' }, READY)
+    calls[0].report('download', 1, 'downloaded 10,240 of 10,240 bytes')
+    run.cancel()
+    expect(calls[0].cancelled).toBe(true)
+    calls[0].resolve({ ...FEED, cancel_too_late: true })
+    await tick()
+    expect(run.snapshot).toMatchObject({ state: 'done', late: true, message: FEED_KEPT })
+    expect(run.snapshot.feed?.key).toBe('mine')
+    expect(run.job()?.message).toBe(FEED_KEPT)
+    // The next add starts with no word of the last one's cancel.
+    run.reset()
+    run.start({ url: 'https://agency.example/other.zip' }, READY)
+    expect(run.snapshot).toMatchObject({ state: 'running', late: false, message: null })
+    calls[1].resolve(FEED)
+    await tick()
+    expect(run.snapshot).toMatchObject({ state: 'done', late: false })
+    expect(ADD_CANCELLED, 'a cancel in time kept nothing').toMatch(/^Cancelled\. Nothing/)
+  })
+
+  it('reads the front door’s list again when an add ends with a feed, the sheet open or not', () => {
+    // A close of the sheet cancels the add and the sheet says nothing after
+    // it; an add the engine kept then ends with its feed, and only this
+    // lists it. Mutation: the rule as it was, a read on a cancelled add -
+    // a feed kept after a cancel is then not listed until something else
+    // reads the list.
+    const running = { state: 'running' as const, feed: null }
+    expect(relistAfterAdd('running', { state: 'done', feed: FEED })).toBe(true)
+    expect(relistAfterAdd('running', { state: 'cancelled', feed: null })).toBe(false)
+    expect(relistAfterAdd('running', { state: 'failed', feed: null })).toBe(false)
+    expect(relistAfterAdd('done', { state: 'done', feed: FEED }), 'once per ending').toBe(false)
+    expect(relistAfterAdd('running', { state: 'done', feed: null })).toBe(false)
+    expect(relistAfterAdd('idle', running)).toBe(false)
   })
 
   it('refuses while the engine is not ready, and calls nothing', () => {
