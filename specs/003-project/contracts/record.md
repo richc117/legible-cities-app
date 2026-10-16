@@ -272,7 +272,9 @@ The on-disk form of `ProjectRecord` (`data-model.md`), version 2:
   `built`, and `drawn` with its `style`, `lines` and each station. Such a
   key is never read, never reaches the interface or the engine, and is
   written back where it was found. A key with a known field's name is that
-  field's, and is read and written by the field's own rule. Inside
+  field's, and is read and written by the field's own rule. A key named
+  `__proto__` is the one not carried at all, since a plain object cannot be
+  given it by assignment. Inside
   `drawn`, `service`, `built` and `laidOutWith`, a writer that records a
   new draw or a new layout run writes the block whole, carrying nothing
   from the old one. `opened` alone is written onto the file as stored, by
