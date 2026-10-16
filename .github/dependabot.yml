@@ -12,7 +12,8 @@
 version: 2
 
 updates:
-  # The actions in .github/workflows/, pinned by tag and updated here.
+  # The actions in .github/workflows/, pinned by commit SHA with the version in
+  # a trailing comment, and updated here (Dependabot rewrites both).
   - package-ecosystem: github-actions
     directory: "/"
     schedule:

@@ -1,6 +1,8 @@
 # Build the LOOM binaries from the pinned commit and upload them as
-# artefacts. Never on every push: the pins change rarely and the build is
-# minutes, so it runs when vendor/pins.json changes or when asked.
+# artefacts. Never on a push of its own: build.yml calls it for every pull
+# request and tag that changes what it builds (its path filter covers every
+# file this one's did), so a push trigger ran the chain twice. It runs when
+# build.yml calls it or when asked.
 #
 # Written during the A0-05 spike and first run on 2026-09-07, once the
 # repository had runners; see docs/adr/spikes/loom-native.md. LOOM is green
@@ -21,14 +23,6 @@
 name: vendor
 
 on:
-  push:
-    # Branches named, so a pushed tag does not start this workflow on its
-    # own: GitHub ignores path filters on a tag push, and build.yml already
-    # runs these jobs for a tag through workflow_call.
-    branches: ['**']
-    # check-vendored.mjs is here because the python job runs its licence
-    # agreement (ADR-042).
-    paths: ['vendor/pins.json', '.github/workflows/vendor.yml', 'scripts/vendor-python.sh', 'scripts/vendor-python-licences.sh', 'scripts/vendor-ffmpeg.sh', 'scripts/vendor-signature.sh', 'scripts/check-vendored.mjs', 'scripts/electron-ffmpeg-source.sh']
   workflow_dispatch:
   # .github/workflows/build.yml runs these jobs in its own run, so the
   # installers are packaged from artefacts built from the pins it checked
@@ -54,7 +48,7 @@ jobs:
           - { os: macos-15-intel, target: darwin-x64   }
           - { os: ubuntu-22.04, target: linux-x64    }
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -138,7 +132,7 @@ jobs:
         working-directory: loom-src/build
         run: ./loom --help > /dev/null && ./octi --help > /dev/null
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: loom-${{ matrix.target }}
           path: |
@@ -173,7 +167,7 @@ jobs:
           - { os: macos-15-intel, target: darwin-x64   }
           - { os: windows-latest, target: win-x64      }
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Read the engine's pin
@@ -213,7 +207,7 @@ jobs:
           fi
           echo "$PINNED_REPO is tagged $PINNED_TAG"
       - name: Check out the engine at its pin
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ steps.engine.outputs.repo }}
           ref: ${{ steps.engine.outputs.tag }}
@@ -375,7 +369,7 @@ jobs:
             echo "::error::timing wrote bytecode into the runtime about to be uploaded"
             exit 1
           fi
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: python-${{ matrix.target }}
           path: vendor/python/${{ matrix.target }}
@@ -393,13 +387,13 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # Runner labels: macos-13 was retired and macos-14 is deprecated in
       # GitHub's runner-images table (checked 2026-09-07); macos-15 and
       # macos-15-intel are the current arm64 and x64 images.
-      - uses: msys2/setup-msys2@v2
+      - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
         with:
           msystem: UCRT64
           update: true
@@ -548,7 +542,7 @@ jobs:
         shell: msys2 {0}
         working-directory: loom-src/build
         run: ./loom.exe --help > /dev/null && ./octi.exe --help > /dev/null
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: loom-win-x64
           path: |
@@ -559,7 +553,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
       # build.yml's release job puts this beside LOOM's source in the Release.
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: loom-windows-toolchain
           path: loom-windows-toolchain
@@ -600,7 +594,7 @@ jobs:
       TARGET: ${{ matrix.target }}
       HOMEBREW_NO_AUTO_UPDATE: '1'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Build tools
@@ -738,7 +732,7 @@ jobs:
           line="$TARGET: ffmpeg and ffprobe $bytes bytes, $(awk -v b="$bytes" 'BEGIN { printf "%.1f", b / 1000000 }') MB"
           echo "$line"
           echo "$line" >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: matrix.target != 'linux-x64'
         with:
           name: ffmpeg-${{ matrix.target }}
@@ -761,10 +755,10 @@ jobs:
     env:
       TARGET: win-x64
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: msys2/setup-msys2@v2
+      - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
         with:
           msystem: UCRT64
           update: true
@@ -857,7 +851,7 @@ jobs:
           line="$TARGET: ffmpeg and ffprobe $bytes bytes, $(awk -v b="$bytes" 'BEGIN { printf "%.1f", b / 1000000 }') MB"
           echo "$line"
           echo "$line" >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ffmpeg-win-x64
           path: vendor/ffmpeg/win-x64
@@ -878,13 +872,13 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Fetch and verify the sources
         shell: bash
         run: bash scripts/vendor-ffmpeg.sh --sources ffmpeg-source
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ffmpeg-source
           path: ffmpeg-source
@@ -909,7 +903,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Fetch LOOM and the Windows port at their pins, and archive them
@@ -1043,7 +1037,7 @@ jobs:
             echo "topo, loom and octi. The toolchains are the runners' own."
           } > "$out/BUILD.txt"
           ls -l "$out" "$out/build"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: loom-source
           path: loom-source
@@ -1061,7 +1055,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Fetch the engine at its pinned tag, and archive it
@@ -1127,7 +1121,7 @@ jobs:
             echo "into python-build-standalone's runtime."
           } > "$out/BUILD.txt"
           ls -l "$out" "$out/build"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: engine-source
           path: engine-source
@@ -1150,13 +1144,13 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Fetch and verify the source of Electron's FFmpeg library, and archive it
         shell: bash
         run: bash scripts/electron-ffmpeg-source.sh electron-ffmpeg-source
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: electron-ffmpeg-source
           path: electron-ffmpeg-source
