@@ -1,5 +1,5 @@
 import type { Methods, RenderStageResult, StageName } from '../../../shared/protocol'
-import type { RunSnapshot } from './layoutRun'
+import { isRedraw, type RunSnapshot } from './layoutRun'
 
 // One stage drawing per layout, set, stage, width and day per session. The
 // engine draws a stored stage on request (render.stage, E15) and the answer
@@ -274,7 +274,7 @@ type RevealFacts = Pick<
  */
 export function revealOf(run: RevealFacts, job: string | null, settling: boolean): Reveal | null {
   if (job === null || run.layout === null) return null
-  if (run.rebuilt || run.recoloured || run.reordered || run.restyled) return null
+  if (isRedraw(run)) return null
   if (run.state === 'idle' || (run.state === 'done' && !settling)) return null
   const stateOf = (stage: StageName): string | undefined =>
     run.stages.find((s) => s.id === stage)?.state

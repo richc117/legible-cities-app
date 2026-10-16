@@ -1,7 +1,12 @@
 import { useEffect, useId, useRef, useState, type JSX } from 'react'
 import type { ProjectRecord } from '../../shared/project'
 import { caveatsSentence, copyText, metrics } from './engine/diagnostics'
-import type { LayoutRun as Run, RunReport, RunSnapshot } from './engine/layoutRun'
+import {
+  isTuningRedraw,
+  type LayoutRun as Run,
+  type RunReport,
+  type RunSnapshot,
+} from './engine/layoutRun'
 import Button from './kit/Button'
 import Icon from './icons/Icon'
 import { useSnapshot } from './useSnapshot'
@@ -27,7 +32,7 @@ export function figuresToShow(
   drawn: RunReport | null,
   run: Pick<RunSnapshot, 'state' | 'report' | 'recoloured' | 'reordered' | 'restyled'>,
 ): RunReport | null {
-  if (!run.recoloured && !run.reordered && !run.restyled) return run.report
+  if (!isTuningRedraw(run)) return run.report
   if (drawn === null) return null
   if (run.state === 'running') return drawn
   return run.report

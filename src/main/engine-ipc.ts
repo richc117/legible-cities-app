@@ -57,6 +57,7 @@
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { CHANNELS, type EngineAccepted, type EngineSettled } from '../shared/api'
 import type { EngineState, JobLog, JobProgress } from '../shared/engine'
+import type { Method } from '../shared/protocol'
 import { badCall, isObject, TOKEN, toShape, type PathRoots } from './ipc-shape'
 import { redactUrls } from './redact'
 import type { Notification } from './sidecar'
@@ -85,6 +86,31 @@ const LEVELS = new Set(['debug', 'info', 'warning', 'error'])
 
 /** A layout's id as the engine writes one: 64 hex digits (`LayoutId`). */
 const LAYOUT_ID = /^[0-9a-f]{64}$/
+
+/**
+ * The engine methods the interface calls (issue 429). A page's request naming
+ * any other is answered with the bridge's bad-call shape before the guard is
+ * asked: `export.plan` and `export.encode` are the main process's own (the
+ * export takes the plan, drives the capture and encodes into a folder it
+ * judged), and `engine.shutdown` belongs to the supervisor. Adding a method
+ * here is a decision, which is the point.
+ */
+export const PAGE_METHODS = [
+  'engine.info',
+  'graph.build',
+  'map.build',
+  'style.presets',
+  'export.presets',
+  'export.storyboards',
+  'feeds.service',
+  'feeds.list',
+  'feeds.add',
+  'feeds.remove',
+  'feeds.inspect',
+  'render.stage',
+] as const satisfies readonly Method[]
+
+const PAGE_METHOD_SET: ReadonlySet<string> = new Set(PAGE_METHODS)
 
 export function registerEngineHandlers(
   ipcMain: IpcMain,
@@ -122,6 +148,7 @@ export function registerEngineHandlers(
       return badCall('a request needs an id', roots)
     if (typeof method !== 'string' || method === '')
       return badCall('a request needs a method name', roots)
+    if (!PAGE_METHOD_SET.has(method)) return badCall('the engine has no such method', roots)
     if (params !== undefined && !isObject(params))
       return badCall('parameters must be an object', roots)
     if (idOf.has(token)) return badCall('a request with this id is already running', roots)

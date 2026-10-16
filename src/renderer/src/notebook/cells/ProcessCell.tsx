@@ -2,6 +2,7 @@ import type { JSX } from 'react'
 import type { ProjectRecord } from '../../../../shared/project'
 import DiagnosticsView from '../../Diagnostics'
 import LayoutRunView from '../../LayoutRun'
+import { isTuningRedraw } from '../../engine/layoutRun'
 import LayoutTuning from '../../LayoutTuning'
 import Cell from '../Cell'
 import { processFooter } from '../CellFooter'
@@ -70,10 +71,7 @@ export default function ProcessCell({ cell, state, open, onToggle }: CellViewPro
       state={state}
       summary={processSummary(project)}
       progress={runRowStatus(runSnapshot, cell.id)}
-      hold={
-        runSnapshot.state === 'running' &&
-        (runSnapshot.recoloured || runSnapshot.reordered || runSnapshot.restyled)
-      }
+      hold={runSnapshot.state === 'running' && isTuningRedraw(runSnapshot)}
       open={open}
       onToggle={onToggle}
       footer={processFooter(project, engine)}

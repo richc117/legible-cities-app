@@ -6,7 +6,7 @@ import {
   type ProjectRecord,
 } from '../../shared/project'
 import type { ExportSnapshot } from './engine/exportRun'
-import { downloading, type RunSnapshot } from './engine/layoutRun'
+import { downloading, kindOfRun, type RunSnapshot } from './engine/layoutRun'
 import { sameOrder } from './order'
 
 // The run graph: the six cells of the notebook, the order they run in, and
@@ -142,10 +142,18 @@ export function cellOfRun(run: RunFacts | null): CellId | null {
   // layout (issue 178, engine v0.10.0). Whether it ended there is the
   // registry's answer (`feedMissing`), never how far the bytes had come.
   if (run.state === 'running' ? downloading(run) : run.feedMissing === true) return 'data'
-  if (run.rebuilt) return 'frame'
-  if (run.restyled) return 'style'
-  if (run.recoloured || run.reordered) return 'lines'
-  return 'process'
+  switch (kindOfRun(run).kind) {
+    case 'rebuild':
+      return 'frame'
+    case 'sizes':
+      return 'style'
+    case 'colours':
+    case 'options':
+    case 'order':
+      return 'lines'
+    case 'layout':
+      return 'process'
+  }
 }
 
 /**

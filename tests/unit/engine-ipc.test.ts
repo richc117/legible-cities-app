@@ -4,7 +4,7 @@
 
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { describe, expect, it } from 'vitest'
-import { registerEngineHandlers, type EngineSource } from '../../src/main/engine-ipc'
+import { PAGE_METHODS, registerEngineHandlers, type EngineSource } from '../../src/main/engine-ipc'
 import { NO_ROOTS } from '../../src/main/ipc-shape'
 import type { Notification } from '../../src/main/sidecar'
 import { CHANNELS } from '../../src/shared/api'
@@ -507,6 +507,44 @@ describe('the guard in front of the engine', () => {
 
   // How the main process composes the two gates (src/main/index.ts): a
   // reset of the engine's home refuses everything, and only when nothing is
+  // Issue 429: the page may ask for the twelve methods the interface calls and
+  // no other. The guard is never asked about a refused method.
+  it('refuses a method the interface does not call, before the guard', async () => {
+    const asked: string[] = []
+    const h = harness(true, async (method) => {
+      asked.push(method)
+      return null
+    })
+    for (const [token, method] of [
+      ['tok1', 'export.encode'],
+      ['tok2', 'export.plan'],
+      ['tok3', 'engine.shutdown'],
+      ['tok4', 'no.such.method'],
+    ] as const) {
+      const answer = (await h.call(CHANNELS.engineRequest, token, method, {})) as {
+        accepted: boolean
+        error?: unknown
+      }
+      expect(answer.accepted, method).toBe(false)
+      expect(answer.error, method).toBeDefined()
+    }
+    expect(h.requests, 'nothing reached the engine').toEqual([])
+    expect(asked, 'the guard was not asked').toEqual([])
+  })
+  it('lets each of the twelve methods the interface calls reach the engine', async () => {
+    expect(PAGE_METHODS).toHaveLength(12)
+    for (const method of PAGE_METHODS) {
+      const h = harness()
+      const answer = (await h.call(CHANNELS.engineRequest, 'tok-ok', method, {})) as {
+        accepted: boolean
+      }
+      expect(answer.accepted, method).toBe(true)
+      expect(
+        h.requests.map((r) => r.method),
+        method,
+      ).toEqual([method])
+    }
+  })
   // being reset does the registry's own gate get a say. Every engine
   // request writes under that home, not just the registry's two (A1-04).
   it('refuses every method while the engine data is being reset, registry or not', async () => {
