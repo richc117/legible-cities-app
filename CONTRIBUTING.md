@@ -11,13 +11,8 @@ a project as a notebook of six cells under its map, the engine supervised
 as a child process, and exports for the engine's social presets, with
 checks on three
 platforms (`README.md`, "What it does" and "Developing"). The roadmap is
-the milestones on this repository: Phase 0 - Foundation, Phase 1 - Engine
-boundary, Phase 1.5 - First reel (one preset feed through layout, viewer
-and export, before anything broadens), Phase 2 - Library and inspect,
-Phase 3 - Schematic, Phase 4 - Style, Phase 5 - Export, Phase 5.5 - The
-notebook, Phase 5.6 - The front door, Phase 6 - Release readiness, After
-0.1.0, Phase 7 - Polish and Consolidation. Version 0.1.0 has been
-released; **Consolidation is the current milestone**. An issue with the `type:spike` label is a timeboxed
+the milestones on this repository, which its Milestones page lists in
+order. Version 0.1.0 has been released. An issue with the `type:spike` label is a timeboxed
 experiment whose deliverable is a decision record, not code.
 
 ### Labels, milestones and issue codes
@@ -70,8 +65,9 @@ launches of the app at once: its single-instance lock makes the second quit.
 - The checks green: lint, typecheck, test and build locally, and `ci` on the
   pull request.
 - `bin/preflight` clean, and `gitleaks` if you have it.
-- An interface change drawn in the design system: tokens from the four
-  stylesheets under `src/renderer/src/styles/`, controls from the wrappers
+- An interface change drawn in the design system: tokens from the token
+  stylesheets under `src/renderer/src/styles/` (`theme.css`, `scale.css`,
+  `figui-adapter.css`), controls from the wrappers
   in `src/renderer/src/kit/`, no colour, size or duration literal in a
   component file, and a new component's rule added to `docs/DESIGN.md`
   section 8.2.
@@ -122,8 +118,8 @@ changing these in the same pull request.
 - `Co-Authored-By:` trailers are welcome for pair and tool-assisted work.
   Do not add trailers that link to tool sessions or private services.
 - **Sign-off.** The project does not currently ask for a `Signed-off-by`
-  line. `bin/preflight` refuses one that carries a personal address, so
-  leave such lines out. (This sentence stands until the maintainer decides
+  line. `bin/preflight` refuses a commit message that contains a personal
+  address (it lists the domains it checks), so leave such lines out. (This sentence stands until the maintainer decides
   whether sign-off is used.)
 - Never put a closing keyword (`Closes #N`) in a commit message; it belongs
   in the pull request body, and `bin/preflight` refuses it.
