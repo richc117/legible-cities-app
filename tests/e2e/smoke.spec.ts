@@ -208,10 +208,15 @@ test('the spellchecker is off in both sessions, so no dictionary is fetched', as
     await app.close()
   }
   await expect.poll(() => child.exitCode, { timeout: 10_000 }).not.toBeNull()
-  // Chromium keeps downloaded Hunspell dictionaries under the profile on
-  // Linux; a one-way check (a download cut short by the quit leaves nothing),
-  // not yet seen to fail: no run has reached it with the checker on.
-  expect(existsSync(join(userData, 'Dictionaries'))).toBe(false)
+  // Chromium creates an empty Dictionaries folder in the profile on Linux
+  // whatever the checker's state (CI's Ubuntu run saw it), so the folder is
+  // no evidence; a downloaded dictionary is a .bdic file inside it. A
+  // one-way check: a download cut short by the quit leaves nothing.
+  const dictionaries = join(userData, 'Dictionaries')
+  const downloaded = existsSync(dictionaries)
+    ? readdirSync(dictionaries).filter((name) => name.endsWith('.bdic'))
+    : []
+  expect(downloaded).toEqual([])
   rmSync(userData, { recursive: true, force: true })
   rmSync(home, { recursive: true, force: true })
 })
