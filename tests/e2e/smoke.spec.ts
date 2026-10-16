@@ -184,11 +184,17 @@ test('the spellchecker is off in both sessions, so no dictionary is fetched', as
   const child = app.process()
   try {
     const window = await app.firstWindow()
-    // Closing while the engine starts overruns the quit path's bounds under
-    // xvfb, so wait for its status to settle first.
-    await expect(window.getByRole('status', { name: 'Engine' })).toContainText(/ready/i, {
-      timeout: 20_000,
-    })
+    // Closing while the app is still starting overruns the quit path's
+    // bounds under xvfb, so wait for the Library to be drawn, as the other
+    // tests do, and for the engine's status to settle: ready where a run
+    // names an engine, unavailable where none does (CI's smoke step).
+    await expect(window.locator('.empty').getByRole('status')).toContainText(
+      'Legible Cities draws a transit network',
+    )
+    await expect(window.getByRole('status', { name: 'Engine' })).toContainText(
+      /ready|unavailable|mismatch/i,
+      { timeout: 20_000 },
+    )
     const partition = CAPTURE_PARTITION
     const enabled = await app.evaluate(
       ({ session }, name) => ({
