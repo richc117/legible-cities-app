@@ -67,7 +67,7 @@ already cites the number you mean to use.
 | 034 | [Assistant plugins are opted in per repository](034-assistant-plugins-are-opted-in-per-repository.md) | Accepted |
 | 035 | [Installers are built from the same run's vendor artefacts](035-installers-are-built-from-the-same-runs-vendor-artefacts.md) | Accepted |
 | 036 | [The inspector spans projects](036-the-inspector-spans-projects.md) | Accepted |
-| 037 | [The first release is unsigned](037-the-first-release-is-unsigned.md) | Proposed |
+| 037 | [The first release is unsigned](037-the-first-release-is-unsigned.md) | Accepted |
 | 038 | [The sidecar runtime, measured on three targets](038-the-sidecar-runtime-measured-on-three-targets.md) | Accepted |
 | 039 | [The determinism gate judges the capture, and the file for its structure](039-the-determinism-gate-judges-the-capture.md) | Accepted |
 | 040 | [FFmpeg is built here, from pinned sources, with only what the export uses](040-ffmpeg-is-built-from-pinned-sources.md) | Accepted |
@@ -81,9 +81,10 @@ already cites the number you mean to use.
 | 048 | [Route mode is a trip the page finds](048-route-mode-is-a-trip-the-page-finds.md) | Accepted |
 | 049 | [Style goes on the wire as the engine's own fields](049-style-on-the-wire.md) | Accepted |
 | 050 | [The frame is padded, never cropped](050-the-frame-is-padded-never-cropped.md) | Accepted |
-| 051 | [A storyboard is a name or a list of beats, and the opening beat is named](051-inline-beats-and-the-opening-beat.md) | Proposed |
-| 052 | [A caption, the clock's corner, and the safe zones as data](052-caption-clock-corner-and-safe-zones-as-data.md) | Proposed |
-| 053 | [A line can be renamed and hidden; width, casing and dash wait on the pitch](053-per-line-name-and-hidden.md) | Proposed |
+| 051 | [A storyboard is a name or a list of beats, and the opening beat is named](051-inline-beats-and-the-opening-beat.md) | Accepted |
+| 052 | [A caption, the clock's corner, and the safe zones as data](052-caption-clock-corner-and-safe-zones-as-data.md) | Accepted |
+| 053 | [A line can be renamed and hidden; width, casing and dash wait on the pitch](053-per-line-name-and-hidden.md) | Accepted |
+| 054 | Reserved: a decision recorded outside this index until it is written | - |
 | 055 | [A GIF export takes a fixed palette composed from the plan](055-a-fixed-palette-for-gif-exports.md) | Accepted |
 
 ## Amending rather than superseding

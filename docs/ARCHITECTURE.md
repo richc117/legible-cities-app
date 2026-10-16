@@ -76,7 +76,7 @@ into it from the privileged side (ADR-028).
 ## The bridge: `window.api`
 
 Typed in `src/shared/api.ts`, which the preload and the renderer both
-import. Fourteen methods under `api.projects`, three under `api.viewer`, the
+import. The methods under `api.projects` (the interface in `src/shared/api.ts` is the list, and the table below describes them), the viewer's under `api.viewer`, the
 engine under `api.engine`, the export under `api.export`, one clipboard
 write under `api.clipboard`, a job's copied log under `api.jobs`, and the
 app's own settings under `api.settings`:
@@ -170,7 +170,7 @@ set, and the app is otherwise usable.
 process group of its own on POSIX, and an environment built from an
 allowlist (the path, the home, the temporary directory, the locale, proxy
 and certificate variables, `DOCKER_*` for the development backend, the
-engine's four `SCHEMATIC_*` keys, and `PYTHONPATH` in development only, which
+engine's `SCHEMATIC_*` keys (set in `engineEnvironment`, `src/main/interpreter.ts`, which is the list), and `PYTHONPATH` in development only, which
 is how the tests substitute a stand-in engine). Every stderr line goes to the
 log as it arrives under the `engine` tag. `src/main/jsonrpc.ts` speaks
 JSON-RPC 2.0 with `Content-Length` framing over the child's stdio, our own
@@ -286,11 +286,11 @@ the origin's rule and its reserved-name check accept. The record is JSON,
 pretty-printed so a person can read it, and carries every field a later
 feature owns at its default - mode, agency, service day, style, colour
 overrides, default colour, line order, theme, stored layout - so that
-feature changes a value, not the shape. The defaults mirror the engine's
+feature usually changes a value, not the shape. A field added since is optional and absent until a person sets it, and the version does not move for it (below). The defaults mirror the engine's
 own and are stored as data, not interpreted. Contract:
 `specs/003-project/contracts/record.md`.
 
-**Versioning.** Every record carries `version: 1`. A record from an earlier
+**Versioning.** Every record carries a `version`, the number `RECORD_VERSION` in `src/shared/project.ts` (the contract in `specs/003-project/contracts/record.md` says what each number changed). The version moves when what an existing field means changes, and for no other reason: a field that is only added, optional, does not move it. A record from an earlier
 version is read with its missing fields at their defaults and written back
 in the current form only when something else changes. A record from a
 later version - a higher number - is read-only: the Library lists it, the
@@ -792,8 +792,9 @@ same way, separately, and whichever answered are used.
 
 ## Design tokens
 
-Three stylesheets, loaded from `src/renderer/src/main.tsx` in this order,
-each building on the one before; the design system they implement is
+The stylesheets are loaded from `src/renderer/src/main.tsx` in the order its
+imports give, each building on the one before; the first three, which carry the
+tokens, are described here and the rest are the screens' own rules; the design system they implement is
 [`docs/DESIGN.md`](DESIGN.md), and every interface issue cites it.
 
 | File | Holds |
@@ -802,7 +803,7 @@ each building on the one before; the design system they implement is
 | `styles/scale.css` | everything that is not a colour: the two type tracks, the 4px spacing grid, control heights, radii, layers, motion |
 | `styles/figui-adapter.css` | the mapping from the app's tokens onto the control kit's own variables, so a kit control is drawn in the app's colours and at the app's sizes without a rule of its own |
 
-There is a fourth, `styles/tokens.css`, which nothing loads. It is a
+There is one more, `styles/tokens.css`, which nothing loads. It is a
 verbatim copy of the two theme blocks in the engine's animation page, kept
 so a retheme on the engine's side is still caught: `tests/unit/tokens.test.ts`
 is its only reader, and it fails when the copy drifts from the checkout
@@ -833,11 +834,11 @@ with the decision's sentence, so the wrong half cannot ship by accident.
 The kit injects its styles into each element's shadow root, which is why
 the renderer's Content Security Policy allows inline styles and nothing
 else inline (`specs/001-electron-skeleton/contracts/origin.md`). The
-renderer reaches the kit through three thin wrappers (`kit/Button.tsx`,
-`TextInput.tsx`, `Select.tsx`) that own the custom element's attributes
-and listeners, because React sets an unknown attribute as a property and
-the kit reads attributes; the select is the native element, styled with
-the tokens (ADR-026).
+renderer reaches the kit through thin wrappers in `src/renderer/src/kit/`
+(`Button.tsx`, `TextInput.tsx`, `Select.tsx`) that own the custom element's
+attributes and listeners, because React sets an unknown attribute as a
+property and the kit reads attributes; the select is the native element,
+styled with the tokens (ADR-026). Two more files in the folder are not FigUI3's: `Combobox.tsx` and `Disclosure.tsx`, each saying why in its own header.
 
 Icons are Phosphor (ADR-026), vendored as plain SVG files under
 `icons/phosphor/` with their licence: the light weight at 16px and the

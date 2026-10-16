@@ -1,6 +1,6 @@
 # ADR-053: A line can be renamed and hidden; width, casing and dash wait on the pitch
 
-- **Status:** Proposed
+- **Status:** Accepted, 16 Oct 2026
 - **Date:** 2026-10-02
 - **Supersedes:** none
 - **Superseded by:** none
@@ -42,3 +42,5 @@ A trip through a hidden line is #49's question. Labelling a terminus differently
 **As of 6 Oct 2026: yes, because hiding is done once, on the graph.** `map.build` removes the hidden labels from the line graph it reads (an edge left with no line, then a node left with no edge, dropped) before matching, scheduling, drawing and animating, so `names` (`animate.py:353–356`), the linear rows and the morph, which pairs drawn tracks by `station_id` (`animate.py:120–212`), see only drawn stations; the `loom` graph needs no filter. Measured: Grey hidden on BART drops two stations, 112 of 118 tracks pairing (113 of 119 whole); K hidden on LA drops ten, 113 of 113 pairing. Cell 01's geographic pane and its words describe the layout, every line: `render.stage` takes no hidden set. Criterion: with Grey hidden, Oakland International Airport is absent from the SVG, `names` and both thumbnails, `data.lines` has no Grey, the stage files hash as before, and `render.stage`'s description still lists Grey.
 
 **As of 7 Oct 2026, hiding every line is refused, and what hiding leaves alone.** The engine refuses a map with every line hidden, with the `feed` kind and the sentence "every line on this map is hidden; show at least one line to draw it", which cell 05 must treat as a choice to undo rather than a feed fault. The service day is still chosen over every line, so hiding never moves the day. A station that was an interchange only because of the hidden line is drawn as a plain station.
+
+**As of 16 Oct 2026:** the maintainer accepted this record with the approval batch of the codebase review. It shipped (issue 394).
