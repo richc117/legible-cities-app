@@ -1,5 +1,10 @@
 import { LAYOUT_STAGES, type RunState } from '../../../shared/layout'
-import { isEngineErrorShape, ERROR_CODES, type EngineState } from '../../../shared/engine'
+import {
+  cameTooLate,
+  isEngineErrorShape,
+  ERROR_CODES,
+  type EngineState,
+} from '../../../shared/engine'
 import {
   drawnDate,
   orderOf,
@@ -54,6 +59,23 @@ import { askedWith, tuningParams } from '../tuningRules'
 // sizes (issue 350). Every draw, whichever started it, sends the palette,
 // the order, the style and the line options (issue 394) the project is
 // being drawn with, so the map on screen and the record never disagree.
+//
+// A cancel stops the run between its calls, and asks the call in flight to
+// stop. What that call answers decides what happened, not when the cancel
+// was pressed (engine v0.18.0, its issue 80): the cancelled error means it
+// wrote nothing a client sees, and a result means it finished and wrote
+// what the result names - with `cancel_too_late` when the cancel reached it
+// after its point of no return. So a map.build that answers a result is a
+// finished draw whoever cancelled: the record is written as for any draw,
+// `drawn` moves and the frame is loaded again, and the run says the cancel
+// came too late. A graph.build that answers a result has stored its layout;
+// the run stops there, before feeds.service, and says the layout was kept.
+
+/** What a run says when its map was drawn before the cancel reached it. */
+export const MAP_KEPT = 'The map was already drawn when you cancelled; it is kept.'
+
+/** What a layout run says when its layout was stored before the cancel reached it. */
+export const LAYOUT_KEPT = 'The layout was already made when you cancelled; it is kept.'
 
 export interface RunSnapshot {
   state: RunState
@@ -767,9 +789,15 @@ export class LayoutRun {
       // stored set; whatever happens from here, the screen must say so.
       if (force) this.#set({ replaced: true })
       // The handle's cancel is a no-op once its request has settled, so a
-      // cancel that lands between the calls, or while the record is being
-      // written, is caught here instead.
-      if (this.#cancelled) return this.#stopped()
+      // cancel that lands between the calls is caught here instead, and
+      // nothing more is asked. The layout the call answered is stored either
+      // way: a result is a finished call (engine v0.18.0), and one the
+      // cancel reached too late says so, which the run says in turn, with
+      // the layout's id as the engine answered it.
+      if (this.#cancelled)
+        return this.#stopped(
+          cameTooLate(built) ? { message: LAYOUT_KEPT, layout: built.layout } : {},
+        )
 
       // Which day to draw: the engine's rule from the machine's date as the
       // anchor, counting trips on the lines the layout drew, so the day is
@@ -789,8 +817,9 @@ export class LayoutRun {
       const date = project.date ?? window.busiest_weekday
 
       // The map is drawn from the layout just answered, by its id; the
-      // engine never lays out on the way to a map.
-      const { report, stations } = await this.#draw(
+      // engine never lays out on the way to a map. Whatever it answers is a
+      // map on disk, a cancel or not (`#draw`), so the record is written.
+      const { report, stations, late } = await this.#draw(
         project,
         built.layout,
         date,
@@ -799,7 +828,6 @@ export class LayoutRun {
         project.style,
         project.lines,
       )
-      if (this.#cancelled) return this.#stopped()
 
       const written = await complete(project.id, {
         date,
@@ -825,7 +853,7 @@ export class LayoutRun {
       })
       // The store cannot see `force`: a re-layout from this project moves
       // `made` too, and that is not another project's doing.
-      this.#finish({ changed: written.changed, relaid: written.relaid && !force }, report)
+      this.#finish({ changed: written.changed, relaid: written.relaid && !force }, report, late)
     } catch (reason) {
       this.#failed(reason)
     }
@@ -891,7 +919,7 @@ export class LayoutRun {
     // after it leaves a page the record does not describe (`unkept`).
     let drawn = false
     try {
-      const { report, stations } = await this.#draw(
+      const { report, stations, late } = await this.#draw(
         project,
         layout,
         date,
@@ -900,10 +928,9 @@ export class LayoutRun {
         project.style,
         project.lines,
       )
-      if (this.#cancelled) return this.#stopped()
       drawn = true
       await completeRebuild(project.id, { date, ...stationsOf(stations) })
-      this.#finish({ changed: false, relaid: false }, report)
+      this.#finish({ changed: false, relaid: false }, report, late)
     } catch (reason) {
       this.#failed(reason, drawn)
     }
@@ -1078,7 +1105,7 @@ export class LayoutRun {
       // after it leaves a page the record does not describe (`unkept`).
       let drawn = false
       try {
-        const { report, stations } = await this.#draw(
+        const { report, stations, late } = await this.#draw(
           project,
           layout,
           date,
@@ -1087,12 +1114,11 @@ export class LayoutRun {
           project.style,
           project.lines,
         )
-        if (this.#cancelled) return this.#stopped()
         drawn = true
         await (stations === null
           ? completeColors(project.id, palette)
           : completeColors(project.id, palette, stations))
-        this.#finish({ changed: false, relaid: false }, report)
+        this.#finish({ changed: false, relaid: false }, report, late)
       } catch (reason) {
         this.#failed(reason, drawn)
       }
@@ -1150,7 +1176,7 @@ export class LayoutRun {
       // after it leaves a page the record does not describe (`unkept`).
       let drawn = false
       try {
-        const { report, stations } = await this.#draw(
+        const { report, stations, late } = await this.#draw(
           project,
           layout,
           date,
@@ -1159,12 +1185,11 @@ export class LayoutRun {
           project.style,
           project.lines,
         )
-        if (this.#cancelled) return this.#stopped()
         drawn = true
         await (stations === null
           ? completeOrder(project.id, order)
           : completeOrder(project.id, order, stations))
-        this.#finish({ changed: false, relaid: false }, report)
+        this.#finish({ changed: false, relaid: false }, report, late)
       } catch (reason) {
         this.#failed(reason, drawn)
       }
@@ -1229,7 +1254,7 @@ export class LayoutRun {
       // after it leaves a page the record does not describe (`unkept`).
       let drawn = false
       try {
-        const { report, stations } = await this.#draw(
+        const { report, stations, late } = await this.#draw(
           project,
           layout,
           date,
@@ -1238,12 +1263,11 @@ export class LayoutRun {
           style,
           project.lines,
         )
-        if (this.#cancelled) return this.#stopped()
         drawn = true
         await (stations === null
           ? completeStyle(project.id, style)
           : completeStyle(project.id, style, stations))
-        this.#finish({ changed: false, relaid: false }, report)
+        this.#finish({ changed: false, relaid: false }, report, late)
       } catch (reason) {
         this.#failed(reason, drawn)
       }
@@ -1308,7 +1332,7 @@ export class LayoutRun {
       // after it leaves a page the record does not describe (`unkept`).
       let drawn = false
       try {
-        const { report, stations } = await this.#draw(
+        const { report, stations, late } = await this.#draw(
           project,
           layout,
           date,
@@ -1317,12 +1341,11 @@ export class LayoutRun {
           project.style,
           lines,
         )
-        if (this.#cancelled) return this.#stopped()
         drawn = true
         await (stations === null
           ? completeLines(project.id, lines)
           : completeLines(project.id, lines, stations))
-        this.#finish({ changed: false, relaid: false }, report)
+        this.#finish({ changed: false, relaid: false }, report, late)
       } catch (reason) {
         this.#failed(reason, drawn)
       }
@@ -1442,6 +1465,16 @@ export class LayoutRun {
    * resize draw from the stored set as it is now, which another project may
    * have laid out again since, so the list is the build's and not the
    * record's to assume.
+   *
+   * This is the one place any run asks for a map - a layout, a rebuild, Run
+   * all, the four redraws - so it is the one place that decides what a map
+   * call's answer means after a cancel (engine v0.18.0). The cancelled error
+   * rejects, as any error does, and nothing was written. A result is a map
+   * on disk, the files it names drawn and in place, whoever pressed Cancel
+   * and whenever: the caller writes the record from it as from any draw.
+   * `late` is the result's own `cancel_too_late`, read as untrusted data,
+   * and says only that the cancel reached the engine after its point of no
+   * return, for the sentence; never when the press came.
    */
   async #draw(
     project: ProjectRecord,
@@ -1451,7 +1484,7 @@ export class LayoutRun {
     order: LineOrder,
     style: ProjectStyle,
     lines: ProjectLines | undefined,
-  ): Promise<{ report: RunReport | null; stations: Station[] | null }> {
+  ): Promise<{ report: RunReport | null; stations: Station[] | null; late: boolean }> {
     const map = this.#options.client.request('map.build', {
       key: project.feed,
       layout,
@@ -1491,10 +1524,24 @@ export class LayoutRun {
     this.#inFlight = null
     // What the engine measured drawing this map: kept for the panel, and
     // for a rebuild too, which draws the same way for another day.
-    return { report: reportOf(drawn, date), stations: stationsFrom(drawn) }
+    return {
+      report: reportOf(drawn, date),
+      stations: stationsFrom(drawn),
+      late: cameTooLate(drawn),
+    }
   }
 
-  #finish(outcome: { changed: boolean; relaid: boolean }, report: RunReport | null): void {
+  /**
+   * A run that finished: its map drawn and its record written. `late` says
+   * the map call's answer carried `cancel_too_late` (`#draw`): the person
+   * pressed Cancel and the map was already in place, so the run says the
+   * map is kept, beside the sentence for what was drawn.
+   */
+  #finish(
+    outcome: { changed: boolean; relaid: boolean },
+    report: RunReport | null,
+    late = false,
+  ): void {
     // The run's own write, and the record the screen reads back after it,
     // are newer than any answer kept for the beat before a render (issue
     // 407, `#current`); kept past them, it would rest on the store's clock
@@ -1507,6 +1554,7 @@ export class LayoutRun {
       relaid: outcome.relaid,
       replaced: false,
       report,
+      ...(late ? { message: MAP_KEPT } : {}),
     })
   }
 
@@ -1579,8 +1627,14 @@ export class LayoutRun {
     })
   }
 
-  /** Cancelled between the awaits: nothing was written, and nothing is. */
-  #stopped(): void {
+  /**
+   * Cancelled between the awaits, before the next call was asked: the record
+   * is not written, and nothing more is asked of the engine. A call that had
+   * answered keeps what it did - a layout graph.build stored stays stored -
+   * and `kept` is what the run then says of it: the sentence, and the
+   * layout's id as the call answered it, where its cancel came too late.
+   */
+  #stopped(kept: { message?: string; layout?: string } = {}): void {
     this.#end({
       state: 'cancelled',
       stages: this.#snapshot.stages.map((s) =>
@@ -1590,6 +1644,8 @@ export class LayoutRun {
       // as they were; the figures of a map nobody is looking at would
       // describe something else (spec 017).
       report: null,
+      ...(kept.message === undefined ? {} : { message: kept.message }),
+      ...(kept.layout === undefined ? {} : { layout: kept.layout }),
     })
   }
 

@@ -4,7 +4,9 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import {
+  LAYOUT_KEPT,
   LayoutRun,
+  MAP_KEPT,
   advance,
   freshStages,
   readDiagnostics,
@@ -27,7 +29,7 @@ import { refusedAtStart, stoppedNow, type Seen } from '../../src/renderer/src/pa
 import { runAllPlan } from '../../src/renderer/src/runAll'
 import { cellOfRun } from '../../src/renderer/src/runGraph'
 import { LAYOUT_STAGES } from '../../src/shared/layout'
-import { ERROR_CODES, type EngineState } from '../../src/shared/engine'
+import { cameTooLate, ERROR_CODES, type EngineState } from '../../src/shared/engine'
 import { drawnFrom, type ProjectRecord } from '../../src/shared/project'
 
 interface Pending {
@@ -1087,7 +1089,7 @@ describe('recolour', () => {
     await tick()
     run.cancel()
     expect(calls[0].cancelled).toBe(true)
-    calls[0].resolve({ files: {} })
+    calls[0].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
     await tick()
     expect(completeColors).not.toHaveBeenCalled()
     expect(run.snapshot.state).toBe('cancelled')
@@ -1176,7 +1178,7 @@ describe('reorder', () => {
     await tick()
     run.cancel()
     expect(calls[0].cancelled).toBe(true)
-    calls[0].resolve({ files: {} })
+    calls[0].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
     await tick()
     expect(completeOrder).not.toHaveBeenCalled()
     expect(run.snapshot.state).toBe('cancelled')
@@ -1583,7 +1585,7 @@ describe('restyle', () => {
     await tick()
     run.cancel()
     expect(calls[0].cancelled).toBe(true)
-    calls[0].resolve({ files: {} })
+    calls[0].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
     await tick()
     expect(completeStyle).not.toHaveBeenCalled()
     expect(run.snapshot.state).toBe('cancelled')
@@ -1730,8 +1732,11 @@ describe('redrawLines', () => {
   })
 
   it('writes nothing when the build fails or is cancelled', async () => {
-    // Mutation: the cancel not looked at after the draw - a stopped redraw
-    // would then write options the map on screen does not show.
+    // Mutation: the cancelled error taken for a finished draw - a stopped
+    // redraw would then write options the map on disk does not show. Since
+    // engine v0.18.0 the cancelled error is the only answer that says the
+    // draw stopped; a result is a map drawn (below, "a cancel that came too
+    // late").
     const failing = setup(stored)
     failing.run.redrawLines(failing.record, READY, lines)
     await tick()
@@ -1749,7 +1754,7 @@ describe('redrawLines', () => {
     cancelled.run.redrawLines(cancelled.record, READY, lines)
     await tick()
     cancelled.run.cancel()
-    cancelled.calls[0].resolve({ files: {} })
+    cancelled.calls[0].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
     await tick()
     expect(cancelled.completeLines).not.toHaveBeenCalled()
     expect(cancelled.run.snapshot.state).toBe('cancelled')
@@ -2641,7 +2646,7 @@ describe('Run all with a write to the record on its way', () => {
     expect(run.job()).toMatchObject({ kind: 'rebuild', label: 'Rebuild for 2026-09-12' })
 
     run.cancel()
-    calls[0].resolve({ files: {} })
+    calls[0].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
     await tick()
     expect(run.snapshot).toMatchObject({ state: 'cancelled', rebuilt: true, feedMissing: false })
     expect(onDisk, 'the registry is not asked about a rebuild').not.toHaveBeenCalled()
@@ -2687,7 +2692,7 @@ describe('Run all with a write to the record on its way', () => {
       defaultColor: '#888888',
     })
     redrawn.run.cancel()
-    redrawn.calls[0].resolve({ files: {} })
+    redrawn.calls[0].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
     await tick()
     expect(redrawn.run.snapshot).toMatchObject({ state: 'cancelled', recoloured: true })
     let seen: Seen = { state: 'cancelled', own: true }
@@ -2879,7 +2884,7 @@ describe('a press tells what holds a choice back, before it reads the record', (
     run.start(record, READY)
     expect(heard, 'refused: a run is going').not.toHaveBeenCalled()
     run.cancel()
-    calls[0].resolve({ files: {} })
+    calls[0].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
     await tick()
     expect(run.snapshot.state).toBe('cancelled')
     run.start(record, READY)
@@ -3008,5 +3013,207 @@ describe('a write made from the record the writes ahead of it leave', () => {
     await tick()
     expect(sub).toHaveBeenCalledWith(expect.objectContaining({ mode: 'subway' }))
     expect(metro).toHaveBeenCalledWith(expect.objectContaining({ mode: 'subway', agency: 'SUB' }))
+  })
+})
+
+// Engine v0.18.0 (its issue 80). A cancel that reaches a call after its point
+// of no return is answered with the call's result, carrying
+// `cancel_too_late`, over what the result names, written; the cancelled error
+// means nothing a client sees was written. So a map call's result is a map
+// on disk whoever pressed Cancel: every path that draws - a layout, a
+// rebuild, Run all, the four redraws, all through `#draw` - writes the
+// record from it and finishes, and says the map is kept where the result
+// says the cancel came too late. A layout call's result is a stored layout:
+// the run stops there, before the day is asked for, and says so.
+describe('a cancel that came too late', () => {
+  const stored = { layout: LAYOUT, date: '2026-09-15', service: WINDOW }
+  const late = (answer: object): object => ({ ...answer, cancel_too_late: true })
+
+  it('reads the field as data: only true says the cancel came too late', () => {
+    expect(cameTooLate({ cancel_too_late: true })).toBe(true)
+    for (const answer of [
+      { cancel_too_late: 'true' },
+      { cancel_too_late: 1 },
+      { cancel_too_late: false },
+      {},
+      null,
+      'cancel_too_late',
+    ])
+      expect(cameTooLate(answer), JSON.stringify(answer)).toBe(false)
+  })
+
+  it('a layout run whose map call answers too late writes the record and finishes, the map kept', async () => {
+    // Mutation: the cancel looked at again after the draw (`if
+    // (this.#cancelled) return this.#stopped()` after `#draw` in `#layOut`)
+    // - the run then ends cancelled over a map on disk, with no record.
+    const { run, calls, complete, begin } = setup()
+    begin()
+    await laidOut(calls)
+    run.cancel()
+    expect(calls[2].method).toBe('map.build')
+    expect(calls[2].cancelled, 'the map call was asked to stop').toBe(true)
+    calls[2].resolve(late(MAP))
+    await tick()
+    expect(complete).toHaveBeenCalledTimes(1)
+    expect(complete).toHaveBeenCalledWith('p1', expect.objectContaining({ layout: LAYOUT }))
+    expect(run.snapshot).toMatchObject({ state: 'done', message: MAP_KEPT })
+    expect(run.snapshot.report, 'the figures of the map that was drawn').not.toBeNull()
+    expect(run.job()?.message, 'and the inspector says it too').toBe(MAP_KEPT)
+  })
+
+  it('a rebuild whose map call answers too late writes the day and finishes', async () => {
+    // Mutation: the cancel looked at again after the draw in `#drawDay`.
+    const { run, calls, completeRebuild, record } = setup(stored)
+    run.rebuild(record, READY, '2026-09-12')
+    run.cancel()
+    calls[0].resolve(late(MAP))
+    await tick()
+    expect(completeRebuild).toHaveBeenCalledWith('p1', { date: '2026-09-12' })
+    expect(run.snapshot).toMatchObject({ state: 'done', rebuilt: true, message: MAP_KEPT })
+  })
+
+  it('Run all’s rebuild whose map call answers too late writes the day and finishes', async () => {
+    // Run all draws through `#drawDay` as a rebuild does. Mutation: as above.
+    const drawn = project({
+      layout: LAYOUT,
+      made: MADE,
+      built: { mode: 'all', agency: null },
+      service: WINDOW,
+      date: '2026-09-15',
+    })
+    const { run, calls, completeRebuild, record } = setup({
+      ...drawn,
+      drawn: drawnFrom(drawn),
+      date: '2026-09-12',
+    })
+    expect(runAllPlan(record, run.snapshot)).toEqual({ kind: 'rebuild', date: '2026-09-12' })
+    run.runAll(record, READY, runAllPlan)
+    run.cancel()
+    calls[0].resolve(late(MAP))
+    await tick()
+    expect(completeRebuild).toHaveBeenCalledWith('p1', { date: '2026-09-12' })
+    expect(run.snapshot).toMatchObject({ state: 'done', rebuilt: true, message: MAP_KEPT })
+  })
+
+  it('each of the four redraws whose map call answers too late writes what it drew, and says the map is kept', async () => {
+    // Mutation: the cancel looked at again after the draw in any one of
+    // `recolour`, `reorder`, `restyle` and `redrawLines` - that redraw then
+    // ends cancelled, its choice unwritten over a map on disk drawn with it.
+    const palette = { colors: { A: '#ff0000' }, defaultColor: '#00ff00' }
+    const order = ['B', 'A']
+    const style = { lineWidth: 12 }
+    const lines = { A: { name: 'Alpha' } }
+    const redraws = [
+      {
+        name: 'recolour',
+        press: (s: ReturnType<typeof setup>) => s.run.recolour(s.record, READY, palette),
+        written: (s: ReturnType<typeof setup>) => s.completeColors,
+        value: palette,
+        kind: { recoloured: true },
+      },
+      {
+        name: 'reorder',
+        press: (s: ReturnType<typeof setup>) => s.run.reorder(s.record, READY, order),
+        written: (s: ReturnType<typeof setup>) => s.completeOrder,
+        value: order,
+        kind: { reordered: true },
+      },
+      {
+        name: 'restyle',
+        press: (s: ReturnType<typeof setup>) => s.run.restyle(s.record, READY, style),
+        written: (s: ReturnType<typeof setup>) => s.completeStyle,
+        value: style,
+        kind: { restyled: true },
+      },
+      {
+        name: 'redrawLines',
+        press: (s: ReturnType<typeof setup>) => s.run.redrawLines(s.record, READY, lines),
+        written: (s: ReturnType<typeof setup>) => s.completeLines,
+        value: lines,
+        kind: { recoloured: true, optioned: true },
+      },
+    ]
+    for (const redraw of redraws) {
+      const s = setup(stored)
+      redraw.press(s)
+      await tick()
+      s.run.cancel()
+      expect(s.calls[0].cancelled, `${redraw.name}: the map call was asked to stop`).toBe(true)
+      s.calls[0].resolve(late({ files: {} }))
+      await tick()
+      expect(redraw.written(s), redraw.name).toHaveBeenCalledWith('p1', redraw.value)
+      expect(s.run.snapshot, redraw.name).toMatchObject({
+        state: 'done',
+        message: MAP_KEPT,
+        ...redraw.kind,
+      })
+    }
+  })
+
+  it('a map call that answers a result without the field after a cancel is a finished draw, in the ordinary words', async () => {
+    // The cancel reached the engine after it had answered, so the engine
+    // never saw it: the map is on disk all the same, and the result is what
+    // says so, not the order the press and the answer came in. Mutation: the
+    // cancel looked at again after the draw in `recolour`.
+    const { run, calls, completeColors, record } = setup(stored)
+    const palette = { colors: { A: '#ff0000' }, defaultColor: '#00ff00' }
+    run.recolour(record, READY, palette)
+    await tick()
+    run.cancel()
+    calls[0].resolve({ files: {} })
+    await tick()
+    expect(completeColors).toHaveBeenCalledWith('p1', palette)
+    expect(run.snapshot.state).toBe('done')
+    expect(run.snapshot.message, 'no cancel came too late as far as the engine knows').not.toBe(
+      MAP_KEPT,
+    )
+  })
+
+  it('a layout call that answers too late stops the run there, asks nothing more, and says the layout was kept', async () => {
+    // Mutation: the field not read (`cameTooLate(built)` taken as false in
+    // `#layOut`) - the run then says nothing of the layout the engine kept.
+    const { run, calls, complete, begin } = setup()
+    begin()
+    run.cancel()
+    expect(calls[0].cancelled).toBe(true)
+    calls[0].resolve(late(BUILT))
+    await tick()
+    expect(calls, 'neither the day nor the map is asked for').toHaveLength(1)
+    expect(complete).not.toHaveBeenCalled()
+    expect(run.snapshot).toMatchObject({
+      state: 'cancelled',
+      message: LAYOUT_KEPT,
+      layout: LAYOUT,
+      replaced: false,
+    })
+    expect(stoppedSentence('cancelled', false)).toBe(
+      'The run was cancelled. The project is as it was.',
+    )
+  })
+
+  it('a forced layout call that answers too late is a replaced layout, and says it was kept', async () => {
+    const { run, calls, record } = setup({ layout: LAYOUT })
+    run.start(record, READY, { force: true })
+    run.cancel()
+    calls[0].resolve(late(BUILT))
+    await tick()
+    expect(calls).toHaveLength(1)
+    expect(run.snapshot).toMatchObject({
+      state: 'cancelled',
+      forced: true,
+      replaced: true,
+      message: LAYOUT_KEPT,
+    })
+  })
+
+  it('a layout call that answers without the field after a cancel stops there in the ordinary words', async () => {
+    const { run, calls, begin } = setup()
+    begin()
+    run.cancel()
+    calls[0].resolve(BUILT)
+    await tick()
+    expect(calls).toHaveLength(1)
+    expect(run.snapshot.state).toBe('cancelled')
+    expect(run.snapshot.message).not.toBe(LAYOUT_KEPT)
   })
 })
