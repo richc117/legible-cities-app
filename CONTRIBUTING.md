@@ -11,24 +11,23 @@ a project as a notebook of six cells under its map, the engine supervised
 as a child process, and exports for the engine's social presets, with
 checks on three
 platforms (`README.md`, "What it does" and "Developing"). The roadmap is
-the milestones on this repository, in order: Phase 0 (foundation and
-spikes), Phase 1 (engine boundary), First reel (one preset feed through
-layout, viewer and export, before anything broadens), Phases 2 to 5, then
-5.5 (the notebook) and 5.6 (the front door), and Phase 6, release
-readiness. An issue with the `type:spike` label is a timeboxed
+the milestones on this repository: Phase 0 - Foundation, Phase 1 - Engine
+boundary, Phase 1.5 - First reel (one preset feed through layout, viewer
+and export, before anything broadens), Phase 2 - Library and inspect,
+Phase 3 - Schematic, Phase 4 - Style, Phase 5 - Export, Phase 5.5 - The
+notebook, Phase 5.6 - The front door, Phase 6 - Release readiness, After
+0.1.0, Phase 7 - Polish and Consolidation. Version 0.1.0 has been
+released; **Consolidation is the current milestone**. An issue with the `type:spike` label is a timeboxed
 experiment whose deliverable is a decision record, not code.
 
 ### Labels, milestones and issue codes
 
-Planned issues carry four labels: a phase (`phase:0` to `phase:6`, and
+Planned issues carry four labels: a phase (`phase:0` to `phase:7`, and
 `phase:5.5`), a type (`type:spike`, `type:feature`, `type:chore`,
 `type:docs`), an area (`area:shell`, `area:sidecar`, `area:capture`,
 `area:export`, `area:ui`, `area:ci`, `area:release`) and a size (`size:S`,
 `size:M`, `size:L`). A defect found along the way carries `bug`, and
-`accessibility` where it is one. The milestones are the seven phases,
-three between them and one after: Foundation, Engine boundary, First reel
-(1.5), Library and inspect, Schematic, Style, Export, The notebook (5.5),
-The front door (5.6), Release readiness, and After 0.1.0. First reel
+`accessibility` where it is one. The milestones are the ones listed above. First reel
 carries no phase label of its own; its issues keep the label of the
 capability they belong to, and the milestone says when. The front door's
 issues carry `phase:5.5`. The maintainer creates labels and milestones before the
@@ -38,6 +37,57 @@ already exists.
 Planned issues carry a short code in their title, such as `A2-03`: the
 repository (`A` for this app, `E` for the engine), the phase, and a sequence
 number. It is a reading aid, not something a tool checks.
+
+## Setting up a checkout
+
+You need Node.js 22.12 or later (`engines` in `package.json`; CI runs
+Node 22). The app starts the `legible-cities` engine as a sidecar. For the
+development loop, and for the tests that talk to the real engine, check out
+the engine beside this repository at the tag the app pins (`engine.tag` in
+`vendor/pins.json`), give that checkout its own virtual environment with the
+package installed in it, and name it in `.env.local` (gitignored; copy
+`.env.example`) as `LEGIBLE_ENGINE_CHECKOUT`. Without one, the suite that
+needs the real engine skips and the rest runs against a stand-in. Anything
+the app needs from the pipeline is a change to the engine, versioned and
+tagged, never a copy here.
+
+```
+cp .env.example .env.local        # then edit; the file is gitignored
+npm ci
+npx install-electron --no         # the Electron binary is fetched separately since Electron 42
+npm run dev                       # the app against the sibling engine
+npm run lint && npm run typecheck && npm test && npm run build
+npm run test:e2e                  # Playwright launches the built app
+```
+
+`README.md`, "Developing", says what each check proves. Do not run two
+launches of the app at once: its single-instance lock makes the second quit.
+
+## What a pull request carries
+
+- One issue, one branch, one pull request.
+- A spec under `specs/` first, if it is a feature (see **Specs**).
+- The checks green: lint, typecheck, test and build locally, and `ci` on the
+  pull request.
+- `bin/preflight` clean, and `gitleaks` if you have it.
+- An interface change drawn in the design system: tokens from the four
+  stylesheets under `src/renderer/src/styles/`, controls from the wrappers
+  in `src/renderer/src/kit/`, no colour, size or duration literal in a
+  component file, and a new component's rule added to `docs/DESIGN.md`
+  section 8.2.
+- The gate documents changed too when an app sentence or a control name
+  changes (below).
+- No machine paths, e-mail addresses, private hostnames, keys or planning
+  notes anywhere in the diff, the commit messages or the pull request.
+
+### The gate documents
+
+The people who test a release follow documents that quote the app's own
+sentences and control names: `docs/acceptance.md` (the acceptance
+checklist), `docs/acceptance-stranger.md` (the stranger's timed run) and
+`docs/accessibility.md` (the screen-reader walkthrough and the
+per-screen record). Changing a sentence or a control name in the app means
+changing these in the same pull request.
 
 ## How work happens
 
@@ -71,6 +121,12 @@ number. It is a reading aid, not something a tool checks.
 - Subject: an imperative sentence under 72 characters. Body: why, not what.
 - `Co-Authored-By:` trailers are welcome for pair and tool-assisted work.
   Do not add trailers that link to tool sessions or private services.
+- **Sign-off.** The project does not currently ask for a `Signed-off-by`
+  line. `bin/preflight` refuses one that carries a personal address, so
+  leave such lines out. (This sentence stands until the maintainer decides
+  whether sign-off is used.)
+- Never put a closing keyword (`Closes #N`) in a commit message; it belongs
+  in the pull request body, and `bin/preflight` refuses it.
 - Run `bin/preflight` before pushing. It refuses personal file paths,
   private addresses, keys and session links, none of which belong in a
   public repository, and a symbolic link whose target is absolute, begins
