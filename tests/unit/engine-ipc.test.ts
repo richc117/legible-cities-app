@@ -505,8 +505,6 @@ describe('the guard in front of the engine', () => {
     expect(h.requests.map((r) => r.method)).toEqual(['feeds.list'])
   })
 
-  // How the main process composes the two gates (src/main/index.ts): a
-  // reset of the engine's home refuses everything, and only when nothing is
   // Issue 429: the page may ask for the twelve methods the interface calls and
   // no other. The guard is never asked about a refused method.
   it('refuses a method the interface does not call, before the guard', async () => {
@@ -545,6 +543,9 @@ describe('the guard in front of the engine', () => {
       ).toEqual([method])
     }
   })
+
+  // How the main process composes the two gates (src/main/index.ts): a
+  // reset of the engine's home refuses everything, and only when nothing is
   // being reset does the registry's own gate get a say. Every engine
   // request writes under that home, not just the registry's two (A1-04).
   it('refuses every method while the engine data is being reset, registry or not', async () => {
