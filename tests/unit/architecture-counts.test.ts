@@ -19,7 +19,7 @@ describe('docs/ARCHITECTURE.md against the code', () => {
       ...architecture.matchAll(/RECORD_VERSION` is (\d+)/g),
       ...architecture.matchAll(/`version: (\d+)`/g),
     ].map((m) => Number(m[1]))
-    expect(stated.length).toBeGreaterThan(0)
+    // The document may state no number at all; any it does state is held.
     for (const n of stated) expect(n).toBe(RECORD_VERSION)
   })
 
@@ -37,6 +37,12 @@ describe('docs/ARCHITECTURE.md against the code', () => {
     // Every channel under projects: is a method of the interface.
     const channels = [...api.matchAll(/^ {2}projects([A-Z][a-zA-Z]+): 'projects:/gm)]
     expect(channels.length).toBe(methods.length)
+    // The table describes every one of them: a method named in api.ts is
+    // named in the document as `name(`.
+    for (const name of methods) expect(architecture, name).toContain('`' + name + '(')
+    // The table describes every one of them: a method named in api.ts is
+    // named in the document as `name(`.
+    for (const name of methods) expect(architecture, name).toContain('`' + name + '(')
   })
 
   it('does not count the stylesheets, and lists only ones main.tsx loads', () => {

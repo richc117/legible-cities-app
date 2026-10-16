@@ -94,6 +94,8 @@ app's own settings under `api.settings`:
 | `setInputs(id, { mode, agency })` | stores the mode and agency a person chose with the feed in view; the next layout passes them to the engine, which names a layout for them (A2-02) |
 | `setDate(id, date)` | stores the service day a person chose, at once and before anything is drawn for it; it refuses exactly what `completeRebuild` refuses and never touches `drawn`, so a day chosen and not yet drawn is what the notebook's cell 03 reports (A5.5-15) |
 | `completeColors(id, palette)` | records the line colours a person chose, once the map has been drawn with them; every label and every colour is checked on the main side first (A4-01) |
+| `completeLines(id, lines, stations?)` | records each line's own options (its name and whether it is hidden, issue 394) once the map has been drawn with them, as the colours are; the whole set the cell showed is written and the record keeps only the fields away from the engine's own; every label and field is checked on the main side first |
+| `setTuning(id, tuning)` | records the layout's tuning (the grid and the numeric fields, issue 385) at once, with nothing laid out for it; the record keeps only the fields away from LOOM's own, and the grid and every number are held to the engine's own rules on the main side first |
 | `completeOrder(id, order)` | records the order a person arranged the lines in, once the map has been drawn in it; every label is checked on the main side first, and the same line twice is refused (A4-02) |
 | `completeStyle(id, style)` | records the sizes a person chose for the map - up to eight numbers in the engine's own names - once the map has been drawn with them, as the colours and the order are; every number is held to the engine's range and the two radii to the engine's rule on the main side first, in the engine's own sentences (issue 350, ADR-049) |
 | `setTheme(id, theme)` | records the theme the project's map is drawn in, at once rather than after a build: a theme is neither a layout nor a render, and the page restyles in place when told (the app calls its `setTheme` after the write; the next load carries the theme on its address; A4-03, issue 349) |
@@ -998,9 +1000,9 @@ day's. The block is read rather than assumed, to the depth the panel
 reaches into it: the renderer has no error boundary, so a block that is
 not whole would take the window blank after the map had been drawn, and is
 simply not shown instead. They are deliberately not written to the record: `parseRecord`
-drops what it does not know and `RECORD_VERSION` is 2, so a new field
-would make a record read-only to an older app, for numbers that go stale
-the moment another project re-lays out the set this one draws from.
+drops what it does not know, so an older app would lose the block on its
+next write, for numbers that go stale the moment another project re-lays
+out the set this one draws from.
 
 The app formats and never computes. Two of the engine's names are worth
 reading twice: `degraded.skipped_calls` counts *trips* that skip an
