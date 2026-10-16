@@ -132,7 +132,9 @@ A field may be added at the current version when all three hold:
    (the style, the export choice and its options, the tuning, each line's
    options and casing, and the four blocks below). The parser hands those
    keys to the store beside the record, never in it, so they reach neither
-   the renderer nor the engine. A newer build therefore finds a field it
+   the renderer nor the engine. The one key never carried is one named
+   `__proto__`, which a plain object cannot be given by assignment, so no
+   field may take that name. A newer build therefore finds a field it
    added exactly as it left it, whatever an older one wrote in between,
    with two exceptions a new field is placed to avoid:
    - **Inside a fact a writer renews.** `drawn`, `service`, `built` and

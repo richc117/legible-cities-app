@@ -320,8 +320,12 @@ export class ProjectStore {
    * just recorded anew (`A_DRAW`, `A_LAYOUT`), inside which nothing old is
    * carried.
    *
-   * Every writer of a record it read goes through here: `writeAtomic` takes
-   * no `ProjectRecord`, so a writer that skipped this would not compile.
+   * Every writer of a record it read goes through here. `writeAtomic` takes
+   * no `ProjectRecord`, so handing it the record as it stands does not
+   * compile, though a spread of it would; what holds every writer to this
+   * is `tests/unit/record-carries.test.ts`, which runs each through a table
+   * and fails while any member of the store is neither a row nor named as
+   * one that writes no record it read.
    */
   async #save(
     id: string,
@@ -333,9 +337,21 @@ export class ProjectStore {
   }
 
   private async writeAtomic(id: string, json: Record<string, unknown>): Promise<void> {
-    const text = JSON.stringify(json, null, 2) + '\n'
     const temp = join(this.dir(id), tempFile())
     await this.#track(async () => {
+      let text: string
+      try {
+        // Serialised here, where a failure is a save that failed and is said
+        // as one. The indented form recurses, and a value a later build wrote
+        // some thousands of levels deep, carried back untouched (ADR-056),
+        // overflows it where `JSON.parse` did not: the write is refused
+        // before anything touches the disk, and the record stays as it was.
+        text = JSON.stringify(json, null, 2) + '\n'
+      } catch (error) {
+        const kind = error instanceof Error ? error.name : 'unknown error'
+        this.log(`projects/${id}: could not be written as JSON (${kind})`)
+        throw new Error('the project could not be saved', { cause: error })
+      }
       try {
         await writeFile(temp, text, 'utf8')
         // Only the rename is tried again, only on Windows, and only while

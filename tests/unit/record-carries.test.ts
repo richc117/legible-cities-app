@@ -11,7 +11,7 @@
 // mutation is named beside it.
 
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -327,6 +327,92 @@ describe('what the parser carries', () => {
     const again = parseRecord(written)
     expect('record' in again && again.record.tuning).toBeUndefined()
   })
+
+  it('carries no key named __proto__, and reads the record past one', () => {
+    // `JSON.parse` makes such a key an own property; assigning it back would
+    // set the written object's prototype instead.
+    // Mutation: the `__proto__` skip removed from `keep` - the top level's
+    // and the style's written objects then take the stored one as their
+    // prototype.
+    const text = JSON.stringify(later())
+      .replace(/^\{/, '{"__proto__":{"polluted":true},')
+      .replace('"style":{', '"style":{"__proto__":{"polluted":true},')
+    const parsed = parseRecord(JSON.parse(text))
+    if (!('record' in parsed)) throw new Error(parsed.error)
+    const written = parsed.carried.onto(parsed.record)
+    expect(Object.getPrototypeOf(written)).toBe(Object.prototype)
+    expect(Object.getPrototypeOf(written.style)).toBe(Object.prototype)
+    expect(written).toEqual(later())
+  })
+
+  it('answers for any input and never throws: a record it cannot read whole is one that will not read', () => {
+    // An object whose fields throw as they are read stands for whatever a
+    // reader might one day fail on. The answer is the store's "skip it and
+    // name it" error, never a throw that would reject a list of every
+    // project, and never a record that would be written back without what
+    // it carried.
+    // Mutation: the `try` around `readRecord` in `parseRecord` removed - the
+    // getter's error is then thrown out of it.
+    const unknownTrap: Record<string, unknown> = later()
+    Object.defineProperty(unknownTrap, 'fromALaterBuild', {
+      enumerable: true,
+      get() {
+        throw new RangeError('trap')
+      },
+    })
+    expect(parseRecord(unknownTrap)).toEqual({ error: 'could not be read (RangeError)' })
+    const knownTrap: Record<string, unknown> = later()
+    Object.defineProperty(knownTrap, 'style', {
+      enumerable: true,
+      get() {
+        throw new TypeError('trap')
+      },
+    })
+    expect(parseRecord(knownTrap)).toEqual({ error: 'could not be read (TypeError)' })
+  })
+})
+
+describe('a value no copy could take', () => {
+  // 200,000 levels: `JSON.parse` takes it; `structuredClone` and the store's
+  // indented `JSON.stringify` overflow the stack at some thousands.
+  const DEPTH = 200_000
+
+  /** `later()` with an unknown key holding an array that deep, as text, since no indented stringify can make it. */
+  function deepText(): string {
+    const whole = JSON.stringify(later(), null, 2)
+    const deep = '['.repeat(DEPTH) + ']'.repeat(DEPTH)
+    return `${whole.slice(0, whole.lastIndexOf('}')).trimEnd()},\n  "deep": ${deep}\n}\n`
+  }
+
+  it('reads, lists and is counted by the reset’s question, and a writer refuses it whole', async () => {
+    // Which of the two: the write fails, with the store's own sentence, and
+    // the file is left exactly as it was. The store writes the record
+    // indented (record.md), and the indented form recurses where the parser
+    // did not; writing it compact would break that contract, and rewriting
+    // the value would be reading it. So this build reads and lists such a
+    // record and never writes it, and never loses it.
+    // Mutation 1: `structuredClone` back on each carried value in `keep` -
+    // the parse fails, the record is skipped and the list is empty.
+    // Mutation 2: the serialisation moved back out of the write's `try` -
+    // the writer rejects with the stack's RangeError instead.
+    const said: string[] = []
+    const logged = new ProjectStore(home, (line) => said.push(line))
+    await mkdir(join(home, 'projects', A), { recursive: true })
+    const text = deepText()
+    await writeFile(file(), text, 'utf8')
+
+    expect((await logged.list()).map((summary) => summary.id)).toEqual([A])
+    expect((await logged.get(A)).name).toBe('Los Angeles')
+    await expect(logged.destinations()).resolves.toEqual([])
+
+    await expect(logged.rename(A, 'Renamed')).rejects.toThrow(/^the project could not be saved$/)
+    expect(await readFile(file(), 'utf8'), 'the record as it was').toBe(text)
+    expect(await readdir(join(home, 'projects', A)), 'and no temporary file').toEqual([
+      'project.json',
+    ])
+    expect(logged.writing).toBe(0)
+    expect(said).toEqual([`projects/${A}: could not be written as JSON (RangeError)`])
+  })
 })
 
 describe('every writer carries what it does not know', () => {
@@ -380,6 +466,22 @@ describe('every writer carries what it does not know', () => {
     const read = await store.get(A)
     expect(read.tuning, 'and this build has no tuning').toBeUndefined()
     expect(read.lines, 'nor any line options').toBeUndefined()
+  })
+
+  it('puts back a line called toString, not the function every object inherits', async () => {
+    // A line label is data, and a plain object answers to these names.
+    // Mutation: `put` reads `out[key]` for a label the writer removed - it
+    // gets `Object.prototype.toString`, which JSON then leaves out, and the
+    // later build's options for the two lines are lost.
+    await seed({
+      ...later(),
+      lines: { toString: { opacity: 0.5 }, constructor: { opacity: 0.25 } },
+    })
+    await store.completeLines(A, {})
+    expect((await onDisk()).lines).toEqual({
+      toString: { opacity: 0.5 },
+      constructor: { opacity: 0.25 },
+    })
   })
 
   it('carries them through every writer in turn', async () => {

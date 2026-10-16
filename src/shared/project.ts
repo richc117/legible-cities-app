@@ -1754,7 +1754,14 @@ interface Kept {
   readonly inner: ReadonlyMap<string, Kept>
 }
 
-/** What an object holds that its shape does not name, at every depth; null for nothing. */
+/**
+ * What an object holds that its shape does not name, at every depth; null
+ * for nothing. A carried value is held as the parser was handed it, by
+ * reference and never copied: the store's is the JSON it has just parsed,
+ * which nothing else holds, and a copy would recurse into a value of any
+ * depth on every read - a list of every project included - where
+ * `JSON.parse` does not.
+ */
 function keep(value: unknown, shape: Shape): Kept | null {
   const own: [string, unknown][] = []
   const inner = new Map<string, Kept>()
@@ -1767,15 +1774,15 @@ function keep(value: unknown, shape: Shape): Kept | null {
   } else {
     if (!isObject(value)) return null
     for (const [key, field] of Object.entries(value)) {
-      // Never carried: assigning this name to a plain object sets its
-      // prototype rather than a key, so it could not be written back as one
-      // (the line label is refused for the same reason).
+      // The one key never carried: assigning this name to a plain object
+      // sets its prototype rather than a key, so it could not be written back
+      // as one (the line label is refused for the same reason).
       if (key === '__proto__') continue
       if ('entries' in shape) {
         const inside = keep(field, shape.entries)
         if (inside !== null) inner.set(key, inside)
       } else if (!shape.fields.includes(key)) {
-        own.push([key, structuredClone(field)])
+        own.push([key, field])
       } else if (shape.inner?.[key] !== undefined) {
         const inside = keep(field, shape.inner[key])
         if (inside !== null) inner.set(key, inside)
@@ -1791,7 +1798,8 @@ function keep(value: unknown, shape: Shape): Kept | null {
  * that answer, and carries nothing; a key the writer left out where the
  * record had an object (a tuning reset, a line's options reset) gets an
  * object back holding only what was carried, which this build reads as
- * nothing set.
+ * nothing set. Carried values go in by reference, for the store to
+ * serialise at once; nothing here copies them.
  */
 function put(value: unknown, kept: Kept, shape: Shape): unknown {
   if ('items' in shape) {
@@ -1806,11 +1814,14 @@ function put(value: unknown, kept: Kept, shape: Shape): unknown {
   for (const [key, inside] of kept.inner) {
     const nested = 'entries' in shape ? shape.entries : shape.inner?.[key]
     if (nested === undefined) continue
-    const merged = put(out[key], inside, nested)
+    // Only the writer's own key: a line label is data, and one called
+    // `toString` or `constructor` would otherwise read the function every
+    // plain object inherits under that name.
+    const merged = put(Object.hasOwn(out, key) ? out[key] : undefined, inside, nested)
     if (merged !== undefined) out[key] = merged
   }
   // After the writer's own fields, so a known one is never overwritten.
-  for (const [key, field] of kept.own) out[key] = structuredClone(field)
+  for (const [key, field] of kept.own) out[key] = field
   return out
 }
 
@@ -1832,7 +1843,8 @@ function put(value: unknown, kept: Kept, shape: Shape): unknown {
  *
  * A key with a known field's name is that field's and never carried, valid or
  * not: a value this build refuses is the known field's to read, by the
- * field's own rule.
+ * field's own rule. And a key named `__proto__` is not carried at all: a
+ * plain object cannot be given one by assignment.
  */
 export class Carried {
   /** A record that carries nothing: a new one, which no other build has written. */
@@ -1885,8 +1897,24 @@ const isColor = isHexColor
  * marks the record read-only (data-model.md). Beside the record, what it
  * held that this build does not read (`carried`, ADR-056), which the store
  * writes back and nothing else sees.
+ *
+ * It answers for any input and never throws. A record it cannot read whole,
+ * what it carries included, is an error like any other record that will not
+ * read: the store skips it and names it in the log, as it does a file that
+ * is not JSON. That is the record kept out of every write, never one
+ * written back without what it carried, and never a list of projects or a
+ * reset refused over one file.
  */
 export function parseRecord(json: unknown): Parsed {
+  try {
+    return readRecord(json)
+  } catch (error) {
+    // The kind only: a message could quote what the file holds.
+    return { error: `could not be read (${error instanceof Error ? error.name : 'unknown'})` }
+  }
+}
+
+function readRecord(json: unknown): Parsed {
   if (!isObject(json)) return { error: 'not an object' }
   const version = json.version
   if (typeof version !== 'number' || !Number.isInteger(version) || version < 1) {
