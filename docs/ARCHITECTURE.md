@@ -1535,9 +1535,13 @@ says "The export was already written when you cancelled; it is kept." The
 one failure that leaves something is the sidecar's own move, after the
 file's, which leaves the new file beside the sidecar the folder had, so a
 failure while the encode runs does not say "Nothing was written." outright
-(`unfinishedSentence` in `ExportRun.tsx`); a cancel, and a failure before
-the encode, still do. A destination that is its own source is refused as a
-params error, shown as any refusal is. The Outputs list reads only
+(`unfinishedSentence` in `ExportRun.tsx`); a cancel, a failure before the
+encode, and the engine's params error still do. The engine judges an
+encode's parameters before its job starts, so that refusal - a destination
+that is its own source among them - comes back while the encode stage is
+running and has written nothing; it is shown in the engine's words, as any
+refusal is, and kept apart (`refused`) so "export again" is not offered for
+a request that would only be refused again. The Outputs list reads only
 sidecars, so neither a `.part` file nor `map.build`'s hidden staging folder
 is ever a row. A layout run and an export of one project cannot overlap,
 because the export reads the page a layout would rewrite: each button is

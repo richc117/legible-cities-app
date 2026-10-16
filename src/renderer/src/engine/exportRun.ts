@@ -35,6 +35,14 @@ export interface ExportSnapshot {
    * died with it, so a partial file may be left where the reel would go.
    */
   left: boolean
+  /**
+   * True when the engine refused the request with its params error
+   * (-32602). The engine judges a request's parameters before its job starts
+   * - for `export.encode` the source, the destination (one that is the
+   * source among them) and the provenance, engine v0.18.0 - so nothing was
+   * written, whichever stage was running. Cleared at every start.
+   */
+  refused: boolean
 }
 
 /** What the page can do with an export, and no more; a test passes a stub. */
@@ -81,7 +89,11 @@ const IDLE: ExportSnapshot = {
   error: null,
   file: null,
   left: false,
+  refused: false,
 }
+
+/** The engine's own code for parameters it refuses, before any work (JSON-RPC's invalid params). */
+const INVALID_PARAMS = -32602
 
 /** What the run keeps about its latest attempt beyond the snapshot, for the inspector (A1-03). */
 interface Attempt {
@@ -187,11 +199,17 @@ export class ExportRun {
           engine === null
             ? 'The engine is still starting. Try again in a moment.'
             : `The engine is not ready to export: ${engine.state}.`,
+        // A start refused here is not the last export's refusal.
+        refused: false,
       })
       return
     }
     if (project.layout === null) {
-      this.#set({ state: 'failed', error: 'Lay the project out before exporting it.' })
+      this.#set({
+        state: 'failed',
+        error: 'Lay the project out before exporting it.',
+        refused: false,
+      })
       return
     }
 
@@ -204,6 +222,7 @@ export class ExportRun {
       error: null,
       file: null,
       left: false,
+      refused: false,
     })
 
     const request = this.#bridge.run(project.id, choice)
@@ -244,6 +263,7 @@ export class ExportRun {
           state: 'failed',
           error: sentenceFor(reason),
           left: encoding && isEngineErrorShape(reason) && ENGINE_GONE.has(reason.code),
+          refused: isEngineErrorShape(reason) && reason.code === INVALID_PARAMS,
           stages: this.#snapshot.stages.map((s) =>
             s.state === 'running' ? { ...s, state: 'failed' as const } : s,
           ),

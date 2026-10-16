@@ -35,7 +35,7 @@ export default function ExportRun({
    */
   disabled?: boolean
 }): JSX.Element {
-  const { state, stages, message, error, file, left } = useSnapshot(run)
+  const { state, stages, message, error, file, left, refused } = useSnapshot(run)
   const begin = (): void => run.start(project, engine, choice)
   // "Export" gives way to Cancel, and Cancel to "Reveal" or "Export" again
   // when the export ends; focus on the one that went goes to the one that
@@ -87,7 +87,7 @@ export default function ExportRun({
         {(state === 'cancelled' || state === 'failed') && (
           <>
             <p className="prose" role="status">
-              {unfinishedSentence(state, left, stages)}
+              {unfinishedSentence(state, left, stages, refused)}
             </p>
             <div className="toolbar">{exportButton}</div>
           </>
@@ -132,18 +132,24 @@ export const ENCODE_UNFINISHED =
 
 /**
  * What an export that did not finish says under its line. A cancel, and a
- * failure before the encode, wrote nothing; the engine stopping while it
- * encoded may leave its `.part` files for the next export to write over; and
- * any other failure while it encoded is `ENCODE_UNFINISHED`.
+ * failure before the encode, wrote nothing; so did a request the engine
+ * refused with its params error (`refused`), which it judges before its job
+ * starts, though the encode stage is the one running when the refusal
+ * comes back - a destination that is its own source among them, where
+ * "export again" would only be refused again. The engine stopping while it
+ * encoded may leave its `.part` files for the next export to write over;
+ * and any other failure while it encoded is `ENCODE_UNFINISHED`.
  */
 export function unfinishedSentence(
   state: 'cancelled' | 'failed',
   left: boolean,
   stages: readonly Pick<Stage, 'id' | 'state'>[],
+  refused = false,
 ): string {
   if (state === 'cancelled') return 'The export was cancelled. Nothing was written.'
   if (left)
     return 'The engine stopped while writing the file. Export again to replace whatever it left.'
+  if (refused) return 'Nothing was written.'
   return stages.some((stage) => stage.id === 'encode' && stage.state === 'failed')
     ? ENCODE_UNFINISHED
     : 'Nothing was written.'

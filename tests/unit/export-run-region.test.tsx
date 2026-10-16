@@ -26,7 +26,12 @@ import type { RunState } from '../../src/shared/layout'
 import { describePair, duplicatedNames } from '../support/a11y-names'
 
 /** The export run in one state, drawn as the cell draws it. */
-function draw(state: RunState, stages: Stage[] = freshStages(), left = false): string {
+function draw(
+  state: RunState,
+  stages: Stage[] = freshStages(),
+  left = false,
+  refused = false,
+): string {
   const run = {
     snapshot: {
       state,
@@ -35,6 +40,7 @@ function draw(state: RunState, stages: Stage[] = freshStages(), left = false): s
       error: null,
       file: 'la-metro-rail.mp4',
       left,
+      refused,
     },
     subscribe: () => () => undefined,
     start: () => undefined,
@@ -151,5 +157,14 @@ describe('the export run, as it ends without a file', () => {
     expect(prose(draw('failed', failedAt('encode'), true))).toBe(
       'The engine stopped while writing the file. Export again to replace whatever it left.',
     )
+  })
+
+  it('says nothing was written for a request the engine refused, though the encode was running', () => {
+    // The engine judges `export.encode`'s parameters before its job starts
+    // (engine v0.18.0: the source, a destination that is the source, the
+    // provenance), so its params error means nothing was written, and an
+    // "export again" would only be refused again. Mutation: the `refused`
+    // branch dropped from `unfinishedSentence`.
+    expect(prose(draw('failed', failedAt('encode'), false, true))).toBe('Nothing was written.')
   })
 })
