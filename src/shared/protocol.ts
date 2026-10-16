@@ -1,7 +1,7 @@
 // Generated from the engine's own description of its protocol.
 // Run `npm run typegen` to regenerate; edits here are lost.
 //
-// Engine: v0.17.1, protocol 1.
+// Engine: v0.18.0, protocol 1.
 // Source: vendor/protocol.schema.json, printed by the engine's
 // `python -m schematic.serve --schema` and committed verbatim.
 
@@ -311,6 +311,12 @@ export interface GraphBuildResult {
     loom: string
     octi: string
   }
+  /**
+   * Present, and true, only when a cancel arrived after the point of no
+   * return, the move of a newly made layout into the store: the layout this
+   * answer names is stored. Absent otherwise.
+   */
+  cancel_too_late?: true
 }
 
 /**
@@ -697,6 +703,12 @@ export interface MapBuildResult {
    * proportion; 0 is clean. What the atlas is ordered by.
    */
   issues: number
+  /**
+   * Present, and true, only when a cancel arrived after the point of no
+   * return, the move of the map's files into place: the files this answer
+   * names are the ones drawn. Absent otherwise.
+   */
+  cancel_too_late?: true
 }
 
 /**
@@ -1107,8 +1119,17 @@ export interface Provenance {
 /**
  * The frames the client captured (a directory of 000000.png onwards), or its
  * still, to the deliverable at dest with its sidecar beside it. The source
- * is read and never touched; a cancel, a failure or a file over the
- * platform's limit leaves nothing at dest.
+ * is read and never touched. Both are written beside dest under .part names
+ * and moved into place once the file is whole and within the platform's
+ * limit, the file first: a cancel, a failure or a file over the limit
+ * removes the .part files and leaves dest and its sidecar as they were, an
+ * earlier export under the same name included (only a failure of the
+ * sidecar's own move, after the file's, leaves the new file beside the old
+ * sidecar, and is answered as the failure). A process ended mid-encode, by a
+ * crash or a kill, may leave the .part files beside dest, which nothing
+ * removes; the next export to the same dest writes over them. The move is
+ * the point of no return: a cancel after it is too late, both files are at
+ * dest, and the answer carries cancel_too_late.
  */
 export interface ExportEncodeParams {
   plan: CaptureJob
@@ -1118,7 +1139,9 @@ export interface ExportEncodeParams {
    */
   source: AbsolutePath
   /**
-   * The file to write; its folder is created.
+   * The file to write; its folder is created. Refused when it is the source,
+   * or when its sidecar (dest with .json appended) or either's .part name
+   * is.
    */
   dest: AbsolutePath
   provenance?: Provenance
@@ -1134,6 +1157,12 @@ export interface ExportEncodeResult {
    * caveats, alt text.
    */
   sidecar: Record<string, unknown>
+  /**
+   * Present, and true, only when a cancel arrived after the point of no
+   * return, the move of the file and its sidecar into place: both are at
+   * dest. Absent otherwise.
+   */
+  cancel_too_late?: true
 }
 
 /**
@@ -1169,6 +1198,13 @@ export interface FeedRecord {
    */
   source: 'preset' | 'user'
   cached: boolean
+  /**
+   * In feeds.add's answer alone: present, and true, only when a cancel
+   * arrived after the point of no return, taken just before the feed's zip
+   * is moved into the cache and the registry written, so the feed is kept.
+   * Absent otherwise, and never in feeds.list.
+   */
+  cancel_too_late?: true
 }
 
 export interface FeedsList {
@@ -1184,7 +1220,9 @@ export interface FeedsList {
  * behind. A cancel is honoured until the moment the feed is kept, and
  * answers with the cancelled error (-32800): the feed is then in neither the
  * registry nor the cache, so a client told an add was cancelled need not go
- * looking for one. The name defaults to the feed's first agency, the key to
+ * looking for one. That moment is the point of no return: a cancel after it
+ * is too late, the feed is kept, and the answer is its record with
+ * cancel_too_late. The name defaults to the feed's first agency, the key to
  * a slug of the name made unique.
  */
 export interface FeedsAddParams {
