@@ -292,7 +292,8 @@ them:
   drawn the map, whoever cancelled, and one the cancel reached after its
   files were in place says so with `cancel_too_late`. The run takes it as
   the finished draw it is - `done`, the record and `drawn` written, the
-  page loaded again, the map said to be kept - so the cell reads **ready**
+  page loaded again, and, where the result carries `cancel_too_late`, the
+  map said to be kept - so the cell reads **ready**
   over what was drawn rather than going back to what it was. Only the
   engine's cancelled error, which means nothing was written, stops a draw.
   A layout call that answers a result after a cancel has stored its
@@ -389,4 +390,4 @@ because a reader will otherwise assume one of them is live:
   that made it. Since engine v0.18.0 a re-layout whose cancel reached
   `graph.build` after the new set was moved in is one of these as well:
   the call answers its result with `cancel_too_late`, and the run stops
-  with `replaced` raised, saying the layout was kept.
+  with `replaced` raised, saying the next run draws from the layout.

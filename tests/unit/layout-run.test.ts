@@ -3169,9 +3169,12 @@ describe('a cancel that came too late', () => {
     )
   })
 
-  it('a layout call that answers too late stops the run there, asks nothing more, and says the layout was kept', async () => {
+  it('a layout call that answers too late stops the run there, asks nothing more, and says the next run draws from it', async () => {
     // Mutation: the field not read (`cameTooLate(built)` taken as false in
     // `#layOut`) - the run then says nothing of the layout the engine kept.
+    // And the words themselves, which the cell shows above "The run was
+    // cancelled. The project is as it was.": a sentence saying the layout
+    // "is kept" read there as a second, contrary answer.
     const { run, calls, complete, begin } = setup()
     begin()
     run.cancel()
@@ -3186,12 +3189,13 @@ describe('a cancel that came too late', () => {
       layout: LAYOUT,
       replaced: false,
     })
-    expect(stoppedSentence('cancelled', false)).toBe(
-      'The run was cancelled. The project is as it was.',
+    expect(run.snapshot.message).toBe(
+      'The layout was already made when you cancelled; the next run draws from it.',
     )
+    expect(run.job()?.message, 'the inspector says the same').toBe(run.snapshot.message)
   })
 
-  it('a forced layout call that answers too late is a replaced layout, and says it was kept', async () => {
+  it('a forced layout call that answers too late is a replaced layout, and says the next run draws from it', async () => {
     const { run, calls, record } = setup({ layout: LAYOUT })
     run.start(record, READY, { force: true })
     run.cancel()

@@ -28,9 +28,9 @@ did: `map.build`'s is a map on disk, so the run goes on to step 5, writes
 the record, ends `done` and says "The map was already drawn when you
 cancelled; it is kept."; `graph.build`'s is a stored layout, so the run
 stops there, before step 4, `cancelled` and saying "The layout was already
-made when you cancelled; it is kept.", with `replaced` raised for a
-re-layout. The field is read from the result, never inferred from when the
-cancel was pressed.
+made when you cancelled; the next run draws from it.", with `replaced`
+raised for a re-layout. The field is read from the result, never inferred
+from when the cancel was pressed.
 
 Cancelling after the run has finished does nothing, as the client's handle
 already guarantees.

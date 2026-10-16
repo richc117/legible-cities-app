@@ -892,13 +892,15 @@ means the call wrote nothing a client sees, and a result means it finished
 and wrote what the result names, carrying `cancel_too_late` where the
 cancel reached it after its point of no return. A map call that answers a
 result is a finished draw, whoever cancelled: the record is written,
-`drawn` moves, the frame loads the new page, and the run says "The map was
-already drawn when you cancelled; it is kept." Every draw - a layout, a
-rebuild, Run all, the four redraws - reaches `map.build` through one place
-in the run (`#draw` in `layoutRun.ts`), which is where that is decided. A
-layout call that answers a result has stored its layout: the run stops
-there, before the day is asked for, and says "The layout was already made
-when you cancelled; it is kept."
+`drawn` moves and the frame loads the new page; and, where the result
+carries `cancel_too_late`, the run says "The map was already drawn when you
+cancelled; it is kept." Every draw - a layout, a rebuild, Run all, the four
+redraws - reaches `map.build` through one place in the run (`#draw` in
+`layoutRun.ts`), which is where that is decided. A layout call that answers
+a result after a cancel has stored its layout: the run stops there, before
+the day is asked for; and, where the result carries `cancel_too_late`, it
+says "The layout was already made when you cancelled; the next run draws
+from it."
 
 "Re-layout" runs the layout call with `force`, behind a warning that the
 layout engine is heuristic and a new layout may place stations differently.

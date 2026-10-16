@@ -69,13 +69,16 @@ import { askedWith, tuningParams } from '../tuningRules'
 // finished draw whoever cancelled: the record is written as for any draw,
 // `drawn` moves and the frame is loaded again, and the run says the cancel
 // came too late. A graph.build that answers a result has stored its layout;
-// the run stops there, before feeds.service, and says the layout was kept.
+// the run stops there, before feeds.service, and where the cancel came too
+// late says the next run draws from that layout. It does not say the layout
+// is kept: beside "The project is as it was" that would read as two answers.
 
 /** What a run says when its map was drawn before the cancel reached it. */
 export const MAP_KEPT = 'The map was already drawn when you cancelled; it is kept.'
 
 /** What a layout run says when its layout was stored before the cancel reached it. */
-export const LAYOUT_KEPT = 'The layout was already made when you cancelled; it is kept.'
+export const LAYOUT_KEPT =
+  'The layout was already made when you cancelled; the next run draws from it.'
 
 export interface RunSnapshot {
   state: RunState
