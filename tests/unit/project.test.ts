@@ -259,7 +259,6 @@ describe('parseRecord', () => {
     for (const broken of [
       'instagram-reel',
       { preset: 'portfolio-svg', options: {} },
-      { preset: 'bluesky-video', options: { safe: true } },
       { preset: 'bluesky-video', storyboard: 'tour', options: { tag: 'a b' } },
     ]) {
       const read = parseRecord({ ...structuredClone(full), export: broken })
@@ -267,6 +266,28 @@ describe('parseRecord', () => {
         preset: 'instagram-reel',
         options: {},
       })
+    }
+  })
+
+  // Issue 425 (ADR-056): a key this build does not know, beside the options or
+  // among them, is a later build's. The choice is judged without it, and the
+  // record never holds it, so it is never planned or sent - `safe` included,
+  // which the export tab never sets.
+  it('reads a choice whole past a key it does not know, and holds none of them', () => {
+    // Mutation: `readStoredChoice` judging the stored choice with its unknown
+    // keys - the choice is then given up for the reel.
+    for (const later of [
+      { preset: 'bluesky-video', options: { safe: true } },
+      { preset: 'bluesky-video', options: { subtitles: 'en' } },
+      { preset: 'bluesky-video', loop: 3, options: {} },
+    ]) {
+      const read = parseRecord({ ...structuredClone(full), export: later })
+      if (!('record' in read)) throw new Error(read.error)
+      expect(read.record.export, JSON.stringify(later)).toEqual({
+        preset: 'bluesky-video',
+        options: {},
+      })
+      expect(read.carried.empty, 'and the key is carried, not dropped').toBe(false)
     }
   })
 
@@ -305,8 +326,13 @@ describe('parseRecord', () => {
     }
   })
 
-  it('reads a full record as written', () => {
-    expect(parseRecord(structuredClone(full))).toEqual({ record: full, readOnly: false })
+  it('reads a full record as written, carrying nothing', () => {
+    const parsed = parseRecord(structuredClone(full))
+    if (!('record' in parsed)) throw new Error(parsed.error)
+    expect(parsed.record).toEqual(full)
+    expect(parsed.readOnly).toBe(false)
+    // Every key is one this build reads (ADR-056).
+    expect(parsed.carried.empty).toBe(true)
   })
   it('fills defaults for missing optional fields', () => {
     const parsed = parseRecord({

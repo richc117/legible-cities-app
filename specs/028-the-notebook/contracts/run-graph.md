@@ -124,11 +124,39 @@ A field may be added at the current version when all three hold:
    reading that leaves an older project alone. `drawn: null` is "we cannot
    prove this map is current", which renders as ready; it is not "nothing
    has been drawn" and not "everything is stale".
-3. **An older build that writes the record loses nothing a person would
-   notice.** Every writer reads the record and writes it whole, so an older
-   build drops a field it does not know. That is acceptable for a field the
-   app can recompute or re-observe - `drawn` is rewritten by the next draw -
-   and is not acceptable for anything a person typed.
+3. **An older build that writes the record loses nothing.** *As of 16 Oct
+   2026* (issue 425, ADR-056): every writer reads the record, changes its
+   own fields, and writes back the fields it knows as it read them **with
+   every key it does not know put back where it was found** - at the top
+   level and inside every object the parser rebuilds from the keys it knows
+   (the style, the export choice and its options, the tuning, each line's
+   options and casing, and the four blocks below). The parser hands those
+   keys to the store beside the record, never in it, so they reach neither
+   the renderer nor the engine. A newer build therefore finds a field it
+   added exactly as it left it, whatever an older one wrote in between,
+   with two exceptions a new field is placed to avoid:
+   - **Inside a fact a writer renews.** `drawn`, `service`, `built` and
+     `laidOutWith` record a draw or the engine's answer at a layout run. A
+     writer that records a new one - a draw for `drawn`, a layout run for
+     all four - writes its block whole, and nothing from the old block is
+     carried into it, because this build's draw or layout did not send what
+     an unknown key there says it did. A field that describes a fact goes
+     inside that fact's block, where it is renewed with it. One put beside
+     the block is carried past the renewal and goes on describing the old
+     fact.
+   - **A known field's value the older build cannot read.** A key with a
+     known field's name is that field's. A value the older build refuses
+     reads as that field's default and is written so. A change of what a
+     known field may hold is the misreading below, and moves the version.
+
+   The wording changed with ADR-056. Until then every writer but
+   `markOpened` wrote only the fields it knew, so an older build dropped a
+   field it did not know. This criterion then allowed a new field only
+   where the app could recompute or re-observe it (`drawn` is rewritten by
+   the next draw), never for anything a person typed. That held while the
+   one released build read a version-2 record as read-only. It did not hold
+   between two version-2 builds, which would each have dropped the other's
+   fields (the codebase review's R6-01).
 
 `RECORD_VERSION` moves only when a record written by this build would be
 *misread* by an older one - a field whose meaning changed, or one whose

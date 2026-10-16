@@ -357,7 +357,14 @@ describe('reading the options a record holds', () => {
           F: { casing: { width: 0.25, color: '#112233' } },
         },
       }).lines,
-    ).toEqual({ A: { dash: 'dashed' }, F: { casing: { width: 0.25, color: '#112233' } } })
+    ).toEqual({
+      A: { dash: 'dashed' },
+      // A key the reader does not know - `extra` in the casing, `colour` beside
+      // it - is a later build's (issue 425, ADR-056): not held, and no longer
+      // a reason to give up the casing's own two fields.
+      C: { casing: { width: 0.5, color: '#112233' } },
+      F: { casing: { width: 0.25, color: '#112233' } },
+    })
     expect(readLines({ A: { name: `a${BREAKS[2]}b` } })).toBeUndefined()
   })
 

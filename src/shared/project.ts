@@ -2,7 +2,12 @@
 // so the preload, the renderer and the main process share one definition
 // and the unit tests run in Node. Contract: specs/003-project/contracts/record.md.
 
-import { readStoredChoice, type ExportChoice } from './export'
+import {
+  CHOICE_OPTION_KEYS,
+  EXPORT_CHOICE_FIELDS,
+  readStoredChoice,
+  type ExportChoice,
+} from './export'
 import { isLayoutId } from './layout'
 import type { LineOptions } from './protocol'
 import { isStorableFolder } from './settings'
@@ -1294,17 +1299,14 @@ export function isLineDash(value: unknown): value is LineDash {
   return LINE_DASHES.some((dash) => dash === value)
 }
 
-/** A whole casing the engine takes: exactly a width in range and a `#rrggbb` colour. */
+/**
+ * A whole casing the engine takes, as a record holds it: a width in range and
+ * a `#rrggbb` colour, both. Any other key in it is a later build's, which the
+ * reader does not take and the store carries back to the file (ADR-056); it
+ * no longer costs the casing its two fields.
+ */
 function isCasing(value: unknown): value is { width: number; color: string } {
-  if (!isObject(value)) return false
-  const keys = Object.keys(value)
-  return (
-    keys.length === 2 &&
-    keys.includes('width') &&
-    keys.includes('color') &&
-    isCasingWidth(value.width) &&
-    isHexColor(value.color)
-  )
+  return isObject(value) && isCasingWidth(value.width) && isHexColor(value.color)
 }
 
 /**
@@ -1483,7 +1485,8 @@ export function readLines(value: unknown): ProjectLines | undefined {
     if (isLineName(stored.name)) choice.name = stored.name
     if (typeof stored.hidden === 'boolean') choice.hidden = stored.hidden
     if (isLineWidth(stored.width)) choice.width = stored.width
-    if (isCasing(stored.casing)) choice.casing = { ...stored.casing }
+    if (isCasing(stored.casing))
+      choice.casing = { width: stored.casing.width, color: stored.casing.color }
     if (isLineDash(stored.dash)) choice.dash = stored.dash
     const line = settledLine(label, choice)
     if (Object.keys(line).length === 0) continue
@@ -1614,7 +1617,262 @@ export function serviceDayRefusal(
   return null
 }
 
-type Parsed = { record: ProjectRecord; readOnly: boolean } | { error: string }
+// ---- What a record holds that this build does not read (issue 425, ADR-056)
+
+/**
+ * The four blocks that record a fact rather than a choice: what a draw drew
+ * from, and what the engine answered at a layout run - the window, the
+ * inputs and the tuning the layout was asked with. A writer that records a
+ * new one (`drew`, `redrew`, `completeLayout`) renews its block whole, and
+ * the keys a later build kept inside the old block are not carried onto the
+ * new one: they described a draw or an answer that is no longer the one on
+ * disk, and this build's draw did not send what they say it did.
+ */
+export const RECORD_FACTS = [
+  'drawn',
+  'service',
+  'built',
+  'laidOutWith',
+] as const satisfies readonly (keyof ProjectRecord)[]
+
+export type RecordFact = (typeof RECORD_FACTS)[number]
+
+/**
+ * Which keys this build reads in one object of the record. An object of
+ * named fields carries every key not on its list; a map keyed by data (a
+ * line label) has no key of its own that is unknown, only entries; a list
+ * carries what its items do, by position.
+ */
+type Shape =
+  | { readonly fields: readonly string[]; readonly inner?: Readonly<Record<string, Shape>> }
+  | { readonly entries: Shape }
+  | { readonly items: Shape }
+
+/**
+ * Every key of a type, named: a field added to the type and not here is a
+ * type error, so it can never be mistaken for a later build's and carried
+ * past its own writer.
+ */
+const fieldsOf = <T>(fields: Readonly<Record<keyof T, true>>): readonly string[] =>
+  Object.keys(fields)
+
+let recordShape: Shape | undefined
+
+/**
+ * The record's shape, every object the parser rebuilds from the keys it
+ * knows. Built on first use, not at load: `./export` and this module import
+ * each other, and the export's two lists may not exist yet while this one
+ * loads.
+ */
+function shapeOfRecord(): Shape {
+  if (recordShape !== undefined) return recordShape
+  // The lists the readers themselves read by: what `readStyle`, `readTuning`
+  // and `readLines` take, so the reader and the carry never disagree.
+  const style: Shape = { fields: STYLE_GROUP }
+  const tuning: Shape = { fields: TUNING_FIELDS }
+  const lines: Shape = {
+    entries: {
+      fields: LINE_FIELDS,
+      inner: {
+        casing: {
+          fields: fieldsOf<NonNullable<LineChoice['casing']>>({ width: true, color: true }),
+        },
+      },
+    },
+  }
+  recordShape = {
+    fields: fieldsOf<ProjectRecord>({
+      version: true,
+      id: true,
+      name: true,
+      feed: true,
+      mode: true,
+      agency: true,
+      date: true,
+      service: true,
+      style: true,
+      colors: true,
+      defaultColor: true,
+      lineOrder: true,
+      lines: true,
+      theme: true,
+      export: true,
+      destination: true,
+      tuning: true,
+      layout: true,
+      built: true,
+      laidOutWith: true,
+      made: true,
+      drawn: true,
+      opened: true,
+      created: true,
+      modified: true,
+    }),
+    inner: {
+      style,
+      tuning,
+      laidOutWith: tuning,
+      lines,
+      export: {
+        fields: EXPORT_CHOICE_FIELDS,
+        inner: { options: { fields: CHOICE_OPTION_KEYS } },
+      },
+      service: {
+        fields: fieldsOf<ServiceWindow>({ start: true, end: true, busiest: true, anchor: true }),
+      },
+      built: { fields: fieldsOf<ProjectInputs>({ mode: true, agency: true }) },
+      drawn: {
+        fields: fieldsOf<DrawnFrom>({
+          layout: true,
+          made: true,
+          date: true,
+          colors: true,
+          defaultColor: true,
+          lineOrder: true,
+          theme: true,
+          style: true,
+          lines: true,
+          stations: true,
+        }),
+        inner: {
+          style,
+          lines,
+          stations: { items: { fields: fieldsOf<Station>({ id: true, name: true }) } },
+        },
+      },
+    },
+  }
+  return recordShape
+}
+
+/**
+ * What was carried from one object: its keys this build does not read, in
+ * their order, and what was carried from inside the ones it does.
+ */
+interface Kept {
+  readonly own: readonly (readonly [string, unknown])[]
+  readonly inner: ReadonlyMap<string, Kept>
+}
+
+/** What an object holds that its shape does not name, at every depth; null for nothing. */
+function keep(value: unknown, shape: Shape): Kept | null {
+  const own: [string, unknown][] = []
+  const inner = new Map<string, Kept>()
+  if ('items' in shape) {
+    if (!Array.isArray(value)) return null
+    value.forEach((item, index) => {
+      const inside = keep(item, shape.items)
+      if (inside !== null) inner.set(String(index), inside)
+    })
+  } else {
+    if (!isObject(value)) return null
+    for (const [key, field] of Object.entries(value)) {
+      // Never carried: assigning this name to a plain object sets its
+      // prototype rather than a key, so it could not be written back as one
+      // (the line label is refused for the same reason).
+      if (key === '__proto__') continue
+      if ('entries' in shape) {
+        const inside = keep(field, shape.entries)
+        if (inside !== null) inner.set(key, inside)
+      } else if (!shape.fields.includes(key)) {
+        own.push([key, structuredClone(field)])
+      } else if (shape.inner?.[key] !== undefined) {
+        const inside = keep(field, shape.inner[key])
+        if (inside !== null) inner.set(key, inside)
+      }
+    }
+  }
+  return own.length === 0 && inner.size === 0 ? null : { own, inner }
+}
+
+/**
+ * A writer's value with what was carried put back into it. A known field
+ * whose own answer is that there is no object here - `null`, a string - is
+ * that answer, and carries nothing; a key the writer left out where the
+ * record had an object (a tuning reset, a line's options reset) gets an
+ * object back holding only what was carried, which this build reads as
+ * nothing set.
+ */
+function put(value: unknown, kept: Kept, shape: Shape): unknown {
+  if ('items' in shape) {
+    if (!Array.isArray(value)) return value
+    return value.map((item: unknown, index) => {
+      const inside = kept.inner.get(String(index))
+      return inside === undefined ? item : put(item, inside, shape.items)
+    })
+  }
+  if (value !== undefined && !isObject(value)) return value
+  const out: Record<string, unknown> = { ...value }
+  for (const [key, inside] of kept.inner) {
+    const nested = 'entries' in shape ? shape.entries : shape.inner?.[key]
+    if (nested === undefined) continue
+    const merged = put(out[key], inside, nested)
+    if (merged !== undefined) out[key] = merged
+  }
+  // After the writer's own fields, so a known one is never overwritten.
+  for (const [key, field] of kept.own) out[key] = structuredClone(field)
+  return out
+}
+
+/**
+ * What a stored record holds that this build does not read (issue 425,
+ * ADR-056): every key a later build wrote that the parser does not know, at
+ * the top level and inside every object the parser rebuilds from the keys it
+ * knows - the style, the export choice and its options, the tuning and what
+ * the layout was asked with, each line's options and its casing, the window,
+ * the inputs, and what the map was drawn from with its stations.
+ *
+ * It is the parser's second answer and never part of a `ProjectRecord`, so
+ * nothing built from the record can hold one: not the renderer, which is
+ * handed the record, and not the engine, which is sent what is read from it.
+ * Its keys are private fields, so a spread of it adds nothing and the
+ * bridge's structured clone sends `{}`. They come out in one place, `onto`,
+ * which is what the store writes. A key is carried as it was read and never
+ * interpreted: not validated, not compared, not sent.
+ *
+ * A key with a known field's name is that field's and never carried, valid or
+ * not: a value this build refuses is the known field's to read, by the
+ * field's own rule.
+ */
+export class Carried {
+  /** A record that carries nothing: a new one, which no other build has written. */
+  static readonly NONE = new Carried(null)
+
+  readonly #kept: Kept | null
+
+  private constructor(kept: Kept | null) {
+    this.#kept = kept
+  }
+
+  /** What a record's parsed JSON holds beyond what this build reads. */
+  static of(json: unknown): Carried {
+    const kept = keep(json, shapeOfRecord())
+    return kept === null ? Carried.NONE : new Carried(kept)
+  }
+
+  /** Whether the record held anything this build does not read. */
+  get empty(): boolean {
+    return this.#kept === null
+  }
+
+  /**
+   * The record as it is written: the writer's record, every field as the
+   * writer left it, and every carried key back in the object it was found
+   * in, after the known ones. Inside a fact the writer renews (`renewed`,
+   * one of `RECORD_FACTS`), nothing is carried: the block is the writer's
+   * new fact, whole.
+   */
+  onto(record: ProjectRecord, renewed: readonly RecordFact[] = []): Record<string, unknown> {
+    const kept = this.#kept
+    if (kept === null) return { ...record }
+    const inner = new Map(
+      [...kept.inner].filter(([key]) => !(renewed as readonly string[]).includes(key)),
+    )
+    return put(record, { own: kept.own, inner }, shapeOfRecord()) as Record<string, unknown>
+  }
+}
+
+type Parsed = { record: ProjectRecord; readOnly: boolean; carried: Carried } | { error: string }
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -1624,7 +1882,9 @@ const isColor = isHexColor
 /**
  * Read a record from parsed JSON. Missing optional fields take their
  * defaults; a missing identity field is an error; a version above ours
- * marks the record read-only (data-model.md).
+ * marks the record read-only (data-model.md). Beside the record, what it
+ * held that this build does not read (`carried`, ADR-056), which the store
+ * writes back and nothing else sees.
  */
 export function parseRecord(json: unknown): Parsed {
   if (!isObject(json)) return { error: 'not an object' }
@@ -1699,7 +1959,7 @@ export function parseRecord(json: unknown): Parsed {
   // left of them once read.
   const lines = readLines(json.lines)
   if (lines !== undefined) record.lines = lines
-  return { record, readOnly: version > RECORD_VERSION }
+  return { record, readOnly: version > RECORD_VERSION, carried: Carried.of(json) }
 }
 
 /**
