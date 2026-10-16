@@ -86,6 +86,7 @@ already cites the number you mean to use.
 | 053 | [A line can be renamed and hidden; width, casing and dash wait on the pitch](053-per-line-name-and-hidden.md) | Accepted |
 | 054 | Reserved: a decision recorded outside this index until it is written | - |
 | 055 | [A GIF export takes a fixed palette composed from the plan](055-a-fixed-palette-for-gif-exports.md) | Accepted |
+| 056 | [A record keeps the keys it does not know](056-the-record-keeps-unknown-keys.md) | Accepted |
 
 ## Amending rather than superseding
 

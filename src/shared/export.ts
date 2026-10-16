@@ -131,6 +131,19 @@ export interface ExportChoice {
   drawInSecs?: number
 }
 
+/**
+ * The fields of a choice, which the validator takes and refuses any other.
+ * A record's reader judges a stored choice on these alone, and the store
+ * carries any other key a later build wrote back to the file (ADR-056).
+ */
+export const EXPORT_CHOICE_FIELDS = [
+  'preset',
+  'storyboard',
+  'options',
+  'alt',
+  ...OPENING_KEYS,
+] as const satisfies readonly (keyof ExportChoice)[]
+
 /** What the one button exported before this: the reel, with the engine's defaults. */
 export const DEFAULT_CHOICE: ExportChoice = { preset: 'instagram-reel', options: {} }
 
@@ -293,13 +306,7 @@ function storedAltProblem(alt: unknown): string | null {
 export function validateExportChoice(choice: unknown): string | null {
   if (!isPlainObject(choice)) return 'the export choice must be an object'
   for (const key of Object.keys(choice))
-    if (
-      key !== 'preset' &&
-      key !== 'storyboard' &&
-      key !== 'options' &&
-      key !== 'alt' &&
-      !(OPENING_KEYS as readonly string[]).includes(key)
-    )
+    if (!(EXPORT_CHOICE_FIELDS as readonly string[]).includes(key))
       return `${key} is not part of an export choice`
   if (!isOfferedPreset(choice.preset)) return 'the app does not offer that preset'
   if (choice.storyboard !== undefined && !isStoryboardName(choice.storyboard))
@@ -563,12 +570,20 @@ export type ExportSettled =
  * every export before it sent. Any other fault gives the choice up for the
  * reel, opening and all, as the service window is (a half-valid choice is not
  * half-trusted).
+ *
+ * A key this build does not know, beside the options or among them, is not a
+ * fault: it is a later build's, the choice is judged without it, and the store
+ * carries it back to the file on the next write without reading it (issue
+ * 425, ADR-056). Until then one such key gave the whole choice up for the reel.
+ * A known key holding a value this build refuses is still a fault.
  */
 export function readStoredChoice(value: unknown): ExportChoice {
   let candidate = value
   let opening: OpeningChoice = {}
   if (isPlainObject(value)) {
-    const without = { ...value }
+    const without = knownOf(value, EXPORT_CHOICE_FIELDS)
+    if (isPlainObject(without.options))
+      without.options = knownOf(without.options, CHOICE_OPTION_KEYS)
     if (without.alt !== undefined && validateAlt(without.alt) !== null) delete without.alt
     opening = readOpeningFields(without)
     for (const key of OPENING_KEYS) delete without[key]
@@ -578,3 +593,10 @@ export function readStoredChoice(value: unknown): ExportChoice {
     ? copyChoice({ ...(candidate as ExportChoice), ...opening })
     : copyChoice(DEFAULT_CHOICE)
 }
+
+/** The keys of an object that are on a list, and nothing else. */
+const knownOf = (
+  value: Record<string, unknown>,
+  keys: readonly string[],
+): Record<string, unknown> =>
+  Object.fromEntries(Object.entries(value).filter(([key]) => keys.includes(key)))

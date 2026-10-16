@@ -208,9 +208,11 @@ The on-disk form of `ProjectRecord` (`data-model.md`), version 2:
   what a person changed from the engine's defaults among `view`, `labels`,
   `title`, `clock`, `at` (the engine's `Clock`), `lines` (labels under the
   `colors` rules), `quality` and `tag` (the engine's `Token`). The theme,
-  the safe zones and the fade are never in it. A block that is not that
-  shape reads as the reel with no options, which is what the one button
-  exported before, and is refused on write
+  the safe zones and the fade are never in it. A key not among these,
+  beside the options or in them, is a later build's: the choice is read
+  without it, and the key is carried back on write (ADR-056). A block that
+  is otherwise not that shape reads as the reel with no options, which is
+  what the one button exported before, and is refused on write
   (specs/022-export-tab). Since issue 392 it may hold three more, beside
   `options` and not in them: `opening` (`card`, `draw-in` or
   `card-then-draw-in`; absent is none, which is never stored), `cardSecs`
@@ -260,6 +262,20 @@ The on-disk form of `ProjectRecord` (`data-model.md`), version 2:
   `ProjectRecord` without moving `RECORD_VERSION`". The folder never
   crosses the bridge inward: it is chosen in the platform's own dialog,
   which the main process opens, and applied there (A1-04's shape).
-- A write stores the record as the reader normalised it, stamped with the
-  current `version`: unknown keys are dropped, an invalid colour, theme or
-  date falls back to its default, and a missing timestamp becomes the epoch.
+- A write stores the fields this build knows as the reader normalised them,
+  stamped with the current `version`: an invalid colour, theme or date
+  falls back to its default, and a missing timestamp becomes the epoch. A
+  key the reader does not know is not dropped (issue 425, ADR-056). That
+  holds at the top level and inside every object the reader rebuilds from
+  the keys it knows: `style`, `export` and its `options`, `tuning`,
+  `laidOutWith`, each entry of `lines` and its `casing`, `service`,
+  `built`, and `drawn` with its `style`, `lines` and each station. Such a
+  key is never read, never reaches the interface or the engine, and is
+  written back where it was found. A key with a known field's name is that
+  field's, and is read and written by the field's own rule. A key named
+  `__proto__` is the one not carried at all, since a plain object cannot be
+  given it by assignment. Inside
+  `drawn`, `service`, `built` and `laidOutWith`, a writer that records a
+  new draw or a new layout run writes the block whole, carrying nothing
+  from the old one. `opened` alone is written onto the file as stored, by
+  `markOpened`.

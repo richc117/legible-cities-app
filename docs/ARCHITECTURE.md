@@ -999,10 +999,10 @@ none, and why a rebuild for another day replaces the figures with that
 day's. The block is read rather than assumed, to the depth the panel
 reaches into it: the renderer has no error boundary, so a block that is
 not whole would take the window blank after the map had been drawn, and is
-simply not shown instead. They are deliberately not written to the record: `parseRecord`
-drops what it does not know, so an older app would lose the block on its
-next write, for numbers that go stale the moment another project re-lays
-out the set this one draws from.
+simply not shown instead. They are deliberately not written to the record: The
+numbers go stale the moment another project re-lays out the set this one
+draws from, and a record keeps what a build does not know (ADR-056), so a
+figure written once would be carried by every build after it.
 
 The app formats and never computes. Two of the engine's names are worth
 reading twice: `degraded.skipped_calls` counts *trips* that skip an

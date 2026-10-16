@@ -11,6 +11,7 @@ import type { Dirent } from 'node:fs'
 import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
+  Carried,
   DEFAULT_COLOR,
   DEFAULT_MODE,
   DEFAULT_THEME,
@@ -46,6 +47,7 @@ import {
   type ProjectSummary,
   type ProjectTuning,
   type RebuildDone,
+  type RecordFact,
   type Theme,
   validateMade,
   serviceDayRefusal,
@@ -117,6 +119,21 @@ function redrew(record: ProjectRecord, stations?: Station[]): ProjectRecord {
   return { ...record, drawn: { ...drawn, date: before.date } }
 }
 
+/**
+ * The facts a draw renews: what the map was drawn from. Every writer that
+ * goes through `drew` or `redrew` names it when it writes, so the keys a
+ * later build kept inside the old block are not stamped on a map this build
+ * drew without them (ADR-056).
+ */
+const A_DRAW: readonly RecordFact[] = ['drawn']
+
+/**
+ * The facts a layout run renews: the draw's, and what the engine answered -
+ * the window, the inputs the layout was made with, and the tuning it was
+ * asked with.
+ */
+const A_LAYOUT: readonly RecordFact[] = ['drawn', 'service', 'built', 'laidOutWith']
+
 const RECORD_FILE = 'project.json'
 // A fresh temporary name per write, written first and then renamed over the
 // record, so a crash mid-write leaves the previous record whole (FR-004) and
@@ -159,7 +176,12 @@ function check(problem: string | null): void {
   if (problem !== null) throw new Error(problem)
 }
 
-type Loaded = { record: ProjectRecord; readOnly: boolean }
+/**
+ * A record as read: the record, whether this build may write it, and what
+ * the file held that this build does not read, which every writer hands back
+ * to `#save` and nothing hands anywhere else (ADR-056).
+ */
+type Loaded = { record: ProjectRecord; readOnly: boolean; carried: Carried }
 type ReadResult = Loaded | { missing: true } | { reason: string }
 
 export class ProjectStore {
@@ -289,13 +311,47 @@ export class ProjectStore {
     throw new Error('not found')
   }
 
-  private async writeAtomic(
+  /**
+   * A record as this build has it, written with what the file it was read
+   * from carried back where it was found (issue 425, ADR-056): a record a
+   * later build wrote, with fields this build does not know, comes back
+   * field for field after any writer here has written it. The markOpened
+   * rule, made every writer's. `renewed` names the facts the writer has
+   * just recorded anew (`A_DRAW`, `A_LAYOUT`), inside which nothing old is
+   * carried.
+   *
+   * Every writer of a record it read goes through here. `writeAtomic` takes
+   * no `ProjectRecord`, so handing it the record as it stands does not
+   * compile, though a spread of it would; what holds every writer to this
+   * is `tests/unit/record-carries.test.ts`, which runs each through a table
+   * and fails while any member of the store is neither a row nor named as
+   * one that writes no record it read.
+   */
+  async #save(
     id: string,
-    record: ProjectRecord | Record<string, unknown>,
+    record: ProjectRecord,
+    carried: Carried,
+    renewed: readonly RecordFact[] = [],
   ): Promise<void> {
-    const text = JSON.stringify(record, null, 2) + '\n'
+    await this.writeAtomic(id, carried.onto(record, renewed))
+  }
+
+  private async writeAtomic(id: string, json: Record<string, unknown>): Promise<void> {
     const temp = join(this.dir(id), tempFile())
     await this.#track(async () => {
+      let text: string
+      try {
+        // Serialised here, where a failure is a save that failed and is said
+        // as one. The indented form recurses, and a value a later build wrote
+        // some thousands of levels deep, carried back untouched (ADR-056),
+        // overflows it where `JSON.parse` did not: the write is refused
+        // before anything touches the disk, and the record stays as it was.
+        text = JSON.stringify(json, null, 2) + '\n'
+      } catch (error) {
+        const kind = error instanceof Error ? error.name : 'unknown error'
+        this.log(`projects/${id}: could not be written as JSON (${kind})`)
+        throw new Error('the project could not be saved', { cause: error })
+      }
       try {
         await writeFile(temp, text, 'utf8')
         // Only the rename is tried again, only on Windows, and only while
@@ -441,6 +497,11 @@ export class ProjectStore {
     return found.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
   }
 
+  /**
+   * The record as this build reads it. What the file carries beyond that
+   * stays here (ADR-056): this is what the bridge hands the renderer and
+   * what an export plans from, so a key a later build wrote reaches neither.
+   */
   async get(id: string): Promise<ProjectRecord & { readOnly: boolean }> {
     const { record, readOnly } = await this.load(id)
     return { ...record, readOnly }
@@ -494,7 +555,7 @@ export class ProjectStore {
       modified: now,
     }
     try {
-      await this.writeAtomic(id, record)
+      await this.#save(id, record, Carried.NONE)
     } catch (error) {
       // An empty folder would be logged as a broken project on every listing.
       await rm(this.dir(id), { recursive: true, force: true }).catch(() => undefined)
@@ -511,7 +572,7 @@ export class ProjectStore {
     this.checkId(id)
     const trimmed = name.trim()
     check(validateName(trimmed))
-    const { record, readOnly } = await this.load(id)
+    const { record, readOnly, carried } = await this.load(id)
     if (readOnly) throw new Error('read-only')
     // Written back in the current form: the reader normalised the record,
     // so the version it carries is ours (record.md).
@@ -521,7 +582,7 @@ export class ProjectStore {
       name: trimmed,
       modified: new Date().toISOString(),
     }
-    await this.writeAtomic(id, updated)
+    await this.#save(id, updated, carried)
     return updated
   }
 
@@ -540,7 +601,7 @@ export class ProjectStore {
     const agency = inputs.agency == null ? null : inputs.agency.trim() || null
     check(validateMode(inputs.mode))
     check(validateAgency(agency))
-    const { record, readOnly } = await this.load(id)
+    const { record, readOnly, carried } = await this.load(id)
     if (readOnly) throw new Error('read-only')
     if (record.mode === inputs.mode && record.agency === agency) return record
     const updated: ProjectRecord = {
@@ -550,7 +611,7 @@ export class ProjectStore {
       agency,
       modified: new Date().toISOString(),
     }
-    await this.writeAtomic(id, updated)
+    await this.#save(id, updated, carried)
     return updated
   }
 
@@ -579,7 +640,7 @@ export class ProjectStore {
     check(validateMode(done.built?.mode ?? ''))
     check(validateAgency(done.built?.agency ?? null))
     check(validateTuning(done.tuning ?? {}))
-    const { record, readOnly } = await this.load(id)
+    const { record, readOnly, carried } = await this.load(id)
     if (readOnly) throw new Error('read-only')
     if (!isLayoutId(done.layout))
       throw new Error('the layout run did not say which layout it drew from')
@@ -606,7 +667,7 @@ export class ProjectStore {
       ),
       done.stations,
     )
-    await this.writeAtomic(id, updated)
+    await this.#save(id, updated, carried, A_LAYOUT)
     // A different id is a different layout. The same id with a different
     // `made` is the same inputs laid out again since this project last drew
     // from them, by another project sharing the set (A3-06). A record with
@@ -629,7 +690,7 @@ export class ProjectStore {
 
   async #completeRebuildTracked(id: string, done: RebuildDone): Promise<ProjectRecord> {
     this.checkId(id)
-    const { record, readOnly } = await this.load(id)
+    const { record, readOnly, carried } = await this.load(id)
     if (readOnly) throw new Error('read-only')
     check(serviceDayRefusal(record, done.date))
     const updated: ProjectRecord = drew(
@@ -641,7 +702,7 @@ export class ProjectStore {
       },
       done.stations,
     )
-    await this.writeAtomic(id, updated)
+    await this.#save(id, updated, carried, A_DRAW)
     return updated
   }
 
@@ -665,7 +726,7 @@ export class ProjectStore {
 
   async #setDateTracked(id: string, date: string): Promise<ProjectRecord> {
     this.checkId(id)
-    const { record, readOnly } = await this.load(id)
+    const { record, readOnly, carried } = await this.load(id)
     if (readOnly) throw new Error('read-only')
     // The same gate a rebuild passes, and for the same reason: a day that
     // could be chosen but never drawn is a project stuck stale.
@@ -677,7 +738,7 @@ export class ProjectStore {
       date,
       modified: new Date().toISOString(),
     }
-    await this.writeAtomic(id, updated)
+    await this.#save(id, updated, carried)
     return updated
   }
 
@@ -701,7 +762,7 @@ export class ProjectStore {
   ): Promise<ProjectRecord> {
     this.checkId(id)
     check(validatePalette(palette))
-    const { record, readOnly } = await this.load(id)
+    const { record, readOnly, carried } = await this.load(id)
     if (readOnly) throw new Error('read-only')
     if (record.layout === null) throw new Error('lay the project out first')
     const updated: ProjectRecord = redrew(
@@ -714,7 +775,7 @@ export class ProjectStore {
       },
       stations,
     )
-    await this.writeAtomic(id, updated)
+    await this.#save(id, updated, carried, A_DRAW)
     return updated
   }
 
@@ -737,7 +798,7 @@ export class ProjectStore {
   ): Promise<ProjectRecord> {
     this.checkId(id)
     check(validateLineOrder(order))
-    const { record, readOnly } = await this.load(id)
+    const { record, readOnly, carried } = await this.load(id)
     if (readOnly) throw new Error('read-only')
     if (record.layout === null) throw new Error('lay the project out first')
     const updated: ProjectRecord = redrew(
@@ -749,7 +810,7 @@ export class ProjectStore {
       },
       stations,
     )
-    await this.writeAtomic(id, updated)
+    await this.#save(id, updated, carried, A_DRAW)
     return updated
   }
 
@@ -783,7 +844,7 @@ export class ProjectStore {
   ): Promise<ProjectRecord> {
     this.checkId(id)
     check(validateStyle(style))
-    const { record, readOnly } = await this.load(id)
+    const { record, readOnly, carried } = await this.load(id)
     if (readOnly) throw new Error('read-only')
     if (record.layout === null) throw new Error('lay the project out first')
     const updated: ProjectRecord = redrew(
@@ -795,7 +856,7 @@ export class ProjectStore {
       },
       stations,
     )
-    await this.writeAtomic(id, updated)
+    await this.#save(id, updated, carried, A_DRAW)
     return updated
   }
 
@@ -828,14 +889,14 @@ export class ProjectStore {
   ): Promise<ProjectRecord> {
     this.checkId(id)
     check(validateLines(lines))
-    const { record, readOnly } = await this.load(id)
+    const { record, readOnly, carried } = await this.load(id)
     if (readOnly) throw new Error('read-only')
     if (record.layout === null) throw new Error('lay the project out first')
     const updated: ProjectRecord = redrew(
       withLines({ ...record, version: RECORD_VERSION, modified: new Date().toISOString() }, lines),
       stations,
     )
-    await this.writeAtomic(id, updated)
+    await this.#save(id, updated, carried, A_DRAW)
     return updated
   }
 
@@ -859,12 +920,14 @@ export class ProjectStore {
     if (readOnly) return record
     const opened = new Date().toISOString()
     // Then written onto the file as it stands, not onto what the parser made
-    // of it. Every other writer is an edit and writes the record whole, as
-    // this build understands it; an opening is not an edit, and writing the
-    // parsed record back would turn an export choice, a colour or a field
-    // this build does not know into its defaults just because a person
-    // looked at the project (review of A5.6-04). Placed before `created`,
-    // where the contract's order has it, when the record does not hold one.
+    // of it. Every other writer is an edit and writes the fields this build
+    // knows as it understands them, with the ones it does not carried back
+    // (`#save`, ADR-056); an opening is not an edit, so it goes further and
+    // leaves even a known field this build cannot read - an export choice
+    // it does not offer, a colour it would drop - exactly as stored, rather
+    // than turning it into its default just because a person looked at the
+    // project (review of A5.6-04). Placed before `created`, where the
+    // contract's order has it, when the record does not hold one.
     const stored = JSON.parse(await readFile(this.file(id), 'utf8')) as Record<string, unknown>
     const written: Record<string, unknown> = {}
     for (const [key, value] of Object.entries(stored)) {
@@ -895,7 +958,7 @@ export class ProjectStore {
   async #setTuningTracked(id: string, tuning: ProjectTuning): Promise<ProjectRecord> {
     this.checkId(id)
     check(validateTuning(tuning))
-    const { record, readOnly } = await this.load(id)
+    const { record, readOnly, carried } = await this.load(id)
     if (readOnly) throw new Error('read-only')
     if (sameTuning(record.tuning, tuning)) return record
     const updated: ProjectRecord = withTuning(
@@ -903,7 +966,7 @@ export class ProjectStore {
       'tuning',
       tuning,
     )
-    await this.writeAtomic(id, updated)
+    await this.#save(id, updated, carried)
     return updated
   }
 
@@ -922,7 +985,7 @@ export class ProjectStore {
   async #setThemeTracked(id: string, theme: Theme): Promise<ProjectRecord> {
     this.checkId(id)
     check(validateTheme(theme))
-    const { record, readOnly } = await this.load(id)
+    const { record, readOnly, carried } = await this.load(id)
     if (readOnly) throw new Error('read-only')
     const updated: ProjectRecord = {
       ...record,
@@ -930,7 +993,7 @@ export class ProjectStore {
       theme,
       modified: new Date().toISOString(),
     }
-    await this.writeAtomic(id, updated)
+    await this.#save(id, updated, carried)
     return updated
   }
 
@@ -946,7 +1009,7 @@ export class ProjectStore {
   async #setExportTracked(id: string, choice: ExportChoice): Promise<ProjectRecord> {
     this.checkId(id)
     check(validateExportChoice(choice))
-    const { record, readOnly } = await this.load(id)
+    const { record, readOnly, carried } = await this.load(id)
     if (readOnly) throw new Error('read-only')
     const updated: ProjectRecord = {
       ...record,
@@ -954,7 +1017,7 @@ export class ProjectStore {
       export: copyChoice(choice),
       modified: new Date().toISOString(),
     }
-    await this.writeAtomic(id, updated)
+    await this.#save(id, updated, carried)
     return updated
   }
 
@@ -977,7 +1040,7 @@ export class ProjectStore {
   async #setDestinationTracked(id: string, destination: string | null): Promise<ProjectRecord> {
     this.checkId(id)
     check(validateDestination(destination))
-    const { record, readOnly } = await this.load(id)
+    const { record, readOnly, carried } = await this.load(id)
     if (readOnly) throw new Error('read-only')
     const updated: ProjectRecord = {
       ...record,
@@ -985,7 +1048,7 @@ export class ProjectStore {
       destination,
       modified: new Date().toISOString(),
     }
-    await this.writeAtomic(id, updated)
+    await this.#save(id, updated, carried)
     return updated
   }
 
