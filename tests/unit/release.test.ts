@@ -1039,7 +1039,10 @@ describe("the source of Electron's FFmpeg library", () => {
     expect(job).toContain('run: bash scripts/electron-ffmpeg-source.sh electron-ffmpeg-source')
     expect(job).toContain('name: electron-ffmpeg-source\n')
     expect(job).toContain('if-no-files-found: error')
-    expect(vendor).toContain("'scripts/electron-ffmpeg-source.sh'")
+    // vendor.yml has no push trigger of its own (issue 430); build.yml calls
+    // it, so the path filter that starts the chain is build.yml's.
+    const build = readFileSync(join(repo, '.github', 'workflows', 'build.yml'), 'utf8')
+    expect(build).toContain("'scripts/electron-ffmpeg-source.sh'")
   })
 
   it('is pinned for the Electron package.json and package-lock.json install, by object id', () => {
