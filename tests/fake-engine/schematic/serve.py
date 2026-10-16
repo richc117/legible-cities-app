@@ -85,6 +85,15 @@ writes before the app starts (every key optional):
     forget_stall_ms   wait this long in a build's forgetting of itself, before its entry goes: a
                       build that answers before it forgets itself leaves its stages drawable
                       for a moment, as a starved thread would on a loaded machine (default 0)
+    cancel_too_late   {method: ms}, for graph.build, map.build, export.encode and feeds.add: a
+                      cancel of that method comes after its point of no return, as engine
+                      v0.18.0 answers one (its issue 80). No cancel stops the method's own
+                      steps (a preset's download inside graph.build still stops at one, as
+                      the engine's does); it does its write whole, then waits up to that many
+                      ms for a cancel, and answers its result with "cancel_too_late": true if
+                      a cancel arrived at all, or exactly as it would if none did. A method not
+                      named answers a cancel between its steps with the cancelled error and
+                      has written nothing, as before
 
 ``export.plan`` takes a list's ``card`` and ``draw_in`` as engine v0.15.0 does
 (its issue 44): with the engine's bounds and its sentences (``authored_beats``),
@@ -875,6 +884,30 @@ class Engine:
             except OSError:
                 pass
 
+    def late(self, method: str) -> bool:
+        """Whether the control file makes a cancel of ``method`` too late."""
+        return method in (self.control.get("cancel_too_late") or {})
+
+    def stops(self, msg_id, method: str) -> bool:
+        """Whether a cancel stops ``method`` here, between two of its steps:
+        one has arrived, and the control file does not make it too late."""
+        return msg_id in self.cancelled and not self.late(method)
+
+    def answer(self, msg_id, method: str, result: dict) -> None:
+        """A method's result, once its write is done. For a method the control
+        file makes too late (``cancel_too_late``), it waits up to the ms named
+        there for a cancel, and the result carries ``cancel_too_late: true``
+        when one arrived at all, as the engine's does after its point of no
+        return (v0.18.0); with none, it is the result as it always was."""
+        waits = self.control.get("cancel_too_late") or {}
+        if method in waits:
+            deadline = time.monotonic() + float(waits[method]) / 1000
+            while msg_id not in self.cancelled and time.monotonic() < deadline:
+                time.sleep(0.01)
+            if msg_id in self.cancelled:
+                result = {**result, "cancel_too_late": True}
+        write({"jsonrpc": "2.0", "id": msg_id, "result": result})
+
     def info(self) -> dict:
         return {"engine": self.control.get("version", "0.2.0"),
                 "protocol": self.control.get("protocol", 1),
@@ -1170,7 +1203,7 @@ class Engine:
                 flags) -> None:
         builds = entry is not None
         for i, stage in enumerate(("gtfs2graph", "topo", "loom", "octi"), start=1):
-            if stage == "octi" and self.control.get("octi_child"):
+            if stage == "octi" and self.control.get("octi_child") and not self.late("graph.build"):
                 if self.octi(msg_id):
                     # Forgotten before the answer, as the engine unregisters a
                     # build before it answers: a client that asks for a stage
@@ -1181,7 +1214,7 @@ class Engine:
                     return
             else:
                 time.sleep(delay)
-            if msg_id in self.cancelled:
+            if self.stops(msg_id, "graph.build"):
                 self.forget_build(layout, entry)
                 write({"jsonrpc": "2.0", "id": msg_id,
                        "error": {"code": -32800, "message": "Request Cancelled"}})
@@ -1223,8 +1256,10 @@ class Engine:
                                          ["octi", flags["octi"]]],
                 "engine": self.control.get("version", "0.2.0"),
                 "made": self.layouts[layout], "migrated": False}
-        write({"jsonrpc": "2.0", "id": msg_id, "result": {
-            "layout": layout, "meta": meta, "stages": stages, "paths": paths}})
+        # The layout is stored by now: a cancel the control file makes too late
+        # is answered with it (engine v0.18.0).
+        self.answer(msg_id, "graph.build", {
+            "layout": layout, "meta": meta, "stages": stages, "paths": paths})
 
 
     # Since engine v0.13.0 (issue 49) map.build answers `stations`: the stations
@@ -1277,7 +1312,11 @@ class Engine:
                   "schedule", "render", "animate", "write")
         for i, stage in enumerate(stages, start=1):
             time.sleep(delay)
-            if msg_id in self.cancelled:
+            # Every file is written after the last stage, so a cancel that
+            # stops the draw here has written nothing a client sees, as the
+            # engine's map.build since v0.18.0, which draws everything before
+            # it writes anything.
+            if self.stops(msg_id, "map.build"):
                 write({"jsonrpc": "2.0", "id": msg_id,
                        "error": {"code": -32800, "message": "Request Cancelled"}})
                 return
@@ -1351,7 +1390,9 @@ class Engine:
                 diagnostics[key] = merged
             else:
                 diagnostics[key] = value
-        write({"jsonrpc": "2.0", "id": msg_id, "result": {
+        # The five files are in place: a cancel the control file makes too
+        # late is answered with them (engine v0.18.0).
+        self.answer(msg_id, "map.build", {
             "layout": params["layout"], "date": params["date"], "files": files,
             "stations": self.map_stations(),
             "summary": "the stand-in drew a map",
@@ -1360,7 +1401,7 @@ class Engine:
             # the weighted proportion the atlas is ordered by. A clean
             # network answers no sentences and a score of zero.
             "caveats": list(self.control.get("map_caveats", [])),
-            "issues": self.control.get("map_issues", 0)}})
+            "issues": self.control.get("map_issues", 0)})
 
 
     # -- render.stage (E15), in shape: an SVG naming the stage, and the
@@ -1694,7 +1735,7 @@ class Engine:
             total = 10240
             for i in range(1, 11):
                 time.sleep(delay)
-                if msg_id in self.cancelled:
+                if self.stops(msg_id, "feeds.add"):
                     write({"jsonrpc": "2.0", "id": msg_id,
                            "error": {"code": -32800, "message": "Request Cancelled"}})
                     return
@@ -1759,8 +1800,10 @@ class Engine:
             users[key] = record
             self.write_user_feeds(users)
         # The engine decides `headways` from the zip's frequencies.txt; a
-        # stand-in feed has none, so it is false here.
-        write({"jsonrpc": "2.0", "id": msg_id, "result": dict(record, cached=True)})
+        # stand-in feed has none, so it is false here. The feed is kept by
+        # now: a cancel the control file makes too late is answered with its
+        # record (engine v0.18.0).
+        self.answer(msg_id, "feeds.add", dict(record, cached=True))
 
     def service(self, msg_id, params: dict) -> None:
         """feeds.service, in shape: the window and the busiest weekday from
@@ -1981,8 +2024,15 @@ class Engine:
     def encode(self, msg_id, params: dict) -> None:
         """export.encode, in shape: reads the frames the app captured, reports
         five steps of progress, writes the file and the sidecar beside it, and
-        answers with what it wrote. A cancel between steps, or a failure asked
-        for by the control file, removes both, as the real encode does."""
+        answers with what it wrote. As engine v0.18.0 does (its issues 79 and
+        80), both are written beside the destination under .part names and
+        moved into place once whole, the file first, and that move is the
+        point of no return: a cancel before it, or a failure asked for by the
+        control file, removes the .part files and leaves the destination and
+        its sidecar as they were, an earlier export included. A destination
+        that is the source, or whose sidecar or either .part name is, is
+        refused before anything is written, with the params kind and the
+        engine's sentence."""
         plan = params.get("plan") or {}
         source = Path(params.get("source") or "")
         dest = Path(params.get("dest") or "")
@@ -1995,6 +2045,17 @@ class Engine:
                     error(msg_id, -32602,
                           f"plan.beats[{i}] has a {flag} that is not true or false", "params")
                     return
+        # The source is read and never written to (engine v0.18.0, its issue
+        # 79): judged as the engine's `_absolute` judges `dest`, after the
+        # plan and before the provenance.
+        sidecar = dest.with_name(dest.name + ".json")
+        part = dest.with_name(dest.name + ".part")
+        sidecar_part = sidecar.with_name(sidecar.name + ".part")
+        written = {path.resolve() for path in (dest, part, sidecar, sidecar_part)}
+        if params.get("source") and params.get("dest") and source.resolve() in written:
+            error(msg_id, -32602, "dest must not be the source, or put its sidecar or a .part "
+                  "file on it: the source is read and never written to", "params")
+            return
         # Since engine v0.12.0 a person's own alt text goes into the sidecar
         # in place of the sentence the engine writes, trimmed and otherwise
         # as given; the engine refuses one that is not text, one over 1,000
@@ -2029,27 +2090,29 @@ class Engine:
             return
         else:
             frames = sorted(source.glob("*.png"))
-        sidecar = dest.with_name(dest.name + ".json")
         dest.parent.mkdir(parents=True, exist_ok=True)
         delay = self.control.get("encode_delay_ms", 30) / 1000
         steps = 5
 
         def remove() -> None:
-            for path in (dest, sidecar):
+            for path in (part, sidecar_part):
                 try:
                     path.unlink()
                 except FileNotFoundError:
                     pass
 
+        def cancelled() -> None:
+            remove()
+            write({"jsonrpc": "2.0", "id": msg_id,
+                   "error": {"code": -32800, "message": "Request Cancelled"}})
+
         for i in range(1, steps + 1):
             time.sleep(delay)
-            if msg_id in self.cancelled:
-                remove()
-                write({"jsonrpc": "2.0", "id": msg_id,
-                       "error": {"code": -32800, "message": "Request Cancelled"}})
-                return
-            # A partial file, so a cancel has something to leave no trace of.
-            dest.write_bytes(b"stand-in %s, step %d of %d\n" % (plan.get("format", "").encode(), i, steps))
+            if self.stops(msg_id, "export.encode"):
+                return cancelled()
+            # A partial file, under the .part name, so a cancel has something
+            # to leave no trace of and the destination is never half written.
+            part.write_bytes(b"stand-in %s, step %d of %d\n" % (plan.get("format", "").encode(), i, steps))
             write({"jsonrpc": "2.0", "method": "job/progress",
                    "params": {"id": msg_id, "stage": "encode", "fraction": i / steps,
                               "message": f"{len(frames) * i // steps} of {len(frames)} frames"}})
@@ -2057,7 +2120,7 @@ class Engine:
             remove()
             error(msg_id, -32000, "the stand-in could not encode", "export")
             return
-        dest.write_bytes(b"stand-in %s: %d frames\n" % (plan.get("format", "").encode(), len(frames)))
+        part.write_bytes(b"stand-in %s: %d frames\n" % (plan.get("format", "").encode(), len(frames)))
         provenance = params.get("provenance") or {}
         preset = PRESETS.get(plan.get("preset"), {})
         feed = FEEDS.get(plan.get("key"), {})
@@ -2067,7 +2130,7 @@ class Engine:
         # v0.10.1: the engine names a person's own feed without the secrets
         # in its address (`source`), and this stand-in has only presets,
         # whose public addresses the engine writes whole as well.
-        meta = {"file": dest.name, "bytes": dest.stat().st_size, "feed": plan.get("key"),
+        meta = {"file": dest.name, "bytes": part.stat().st_size, "feed": plan.get("key"),
                 "city": feed.get("city"), "network": feed.get("network"),
                 "preset": plan.get("preset"), "platform": preset.get("platform"),
                 "size": (f"{preset['width']}x{preset['height']}" if preset.get("width")
@@ -2078,9 +2141,15 @@ class Engine:
                 "service_date": provenance.get("service_date"),
                 "trips": provenance.get("trips"), "caveats": provenance.get("caveats", []),
                 "notes": list(feed.get("notes", [])), "source": feed.get("url")}
-        sidecar.write_text(json.dumps(meta, indent=2) + "\n")
-        write({"jsonrpc": "2.0", "id": msg_id, "result": {
-            "files": [{"path": str(dest), "bytes": dest.stat().st_size}], "sidecar": meta}})
+        sidecar_part.write_text(json.dumps(meta, indent=2) + "\n")
+        # The point of no return: the last word before the moves, after which
+        # a cancel is too late and both files are kept.
+        if self.stops(msg_id, "export.encode"):
+            return cancelled()
+        replace_file(part, dest)
+        replace_file(sidecar_part, sidecar)
+        self.answer(msg_id, "export.encode", {
+            "files": [{"path": str(dest), "bytes": dest.stat().st_size}], "sidecar": meta})
 
 
 def main() -> int:
