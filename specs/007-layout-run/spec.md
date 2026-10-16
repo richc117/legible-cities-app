@@ -95,6 +95,15 @@ launch.
 2. **Given** a run in progress, **When** the app quits, **Then** no engine or layout-tool process survives and the record is unchanged.
 3. **Given** a run that fails at any stage, **When** the failure is handled, **Then** the record is not written.
 
+*As of 15 Oct 2026* (issue 423, engine v0.18.0): scenario 1 and FR-004 hold
+for a cancel the engine honours, which it answers with its cancelled error
+and after which nothing a client sees has been written. A cancel that
+reaches `map.build` after the map's files are in place is too late: the
+engine answers the result with `cancel_too_late`, the map on disk is the
+one drawn, and the run completes and writes the record, so the record
+never disagrees with the disk, which is this story's promise. The screen
+says the map was already drawn and is kept.
+
 ---
 
 ### Edge Cases
