@@ -1,5 +1,6 @@
 import { useRef, type JSX } from 'react'
 import type { ProjectRecord } from '../../../../shared/project'
+import { isTuningRedraw } from '../../engine/layoutRun'
 import StyleFields from '../../StyleFields'
 import ThemeSwitch, { themeWord } from '../../ThemeSwitch'
 import { sizesWords } from '../../styleRules'
@@ -47,9 +48,7 @@ export function styleSummary(project: Pick<ProjectRecord, 'theme' | 'style'>): s
 export default function StyleCell({ cell, state, open, onToggle }: CellViewProps): JSX.Element {
   const { project, engine, run, runSnapshot, exporter, setTheme, exporting, layingOut, settling } =
     useProject()
-  const redrawing =
-    runSnapshot.state === 'running' &&
-    (runSnapshot.recoloured || runSnapshot.reordered || runSnapshot.restyled)
+  const redrawing = runSnapshot.state === 'running' && isTuningRedraw(runSnapshot)
   const heading = useRef<HTMLHeadingElement>(null)
   const busyNow = (): boolean => exporter.snapshot.state === 'running'
   return (

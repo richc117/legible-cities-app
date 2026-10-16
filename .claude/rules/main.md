@@ -77,6 +77,9 @@ JSON-RPC 2.0 over stdio. The types are generated from the engine's JSON
 Schema, so a change on one side is a build error on the other rather than a
 runtime surprise. Do not hand-write a method signature, and do not add a
 method here before the engine has it and the pin has moved. See ADR-010.
+The page reaches only the methods in `PAGE_METHODS` (`src/main/engine-ipc.ts`):
+a new method the interface calls is added there, on purpose; `export.plan`,
+`export.encode` and `engine.shutdown` are main-only and stay off it.
 
 ## Capture
 

@@ -8,7 +8,7 @@ import { inWords } from './stages'
 import type { EngineState } from '../../shared/engine'
 import { shortLayoutId } from '../../shared/layout'
 import { drawnDate, type ProjectRecord } from '../../shared/project'
-import { downloading, type LayoutRun as Run } from './engine/layoutRun'
+import { downloading, kindOfRun, type LayoutRun as Run, type RunKindOf } from './engine/layoutRun'
 import { NOT_LAID_OUT, WAITING_FOR_FEED } from './DownloadLine'
 import { tuningNotice } from './tuningRules'
 import { useSnapshot } from './useSnapshot'
@@ -228,17 +228,11 @@ export default function LayoutRun({
         {state === 'done' && (
           <>
             <p className="prose" role="status">
-              {restyled
-                ? restyledSentence()
-                : reordered
-                  ? reorderedSentence()
-                  : optioned
-                    ? optionedSentence()
-                    : recoloured
-                      ? recolouredSentence()
-                      : rebuilt
-                        ? drawnSentence(day)
-                        : doneSentence(forced, changed, relaid)}
+              {doneSentenceFor(
+                kindOfRun({ rebuilt, recoloured, reordered, restyled, optioned, forced, day }),
+                changed,
+                relaid,
+              )}
             </p>
             {movedNotice}
             {tunedNotice}
@@ -266,24 +260,39 @@ export default function LayoutRun({
  * keep what it was drawn with (issue 399); null for a run that is not a
  * redraw, whose own sentence is already true.
  */
-export function unkeptSentence(
-  rebuilt: boolean,
-  recoloured: boolean,
-  reordered: boolean,
-  restyled: boolean,
-  optioned: boolean,
-): string | null {
-  if (restyled)
-    return 'The map was drawn in those sizes, but the project could not keep them. Nothing was written: it keeps the sizes it had, and the next build draws the map in them again. An export made before then is taken from the map as drawn.'
-  if (reordered)
-    return 'The map was drawn in that order, but the project could not keep it. Nothing was written: it keeps the order it had, and the next build draws the map in it again. An export made before then is taken from the map as drawn.'
-  if (optioned)
-    return 'The map was drawn with those line options, but the project could not keep them. Nothing was written: it keeps the line options it had, and the next build draws the map with them again. An export made before then is taken from the map as drawn.'
-  if (recoloured)
-    return 'The map was drawn in those colours, but the project could not keep them. Nothing was written: it keeps the colours it had, and the next build draws the map in them again. An export made before then is taken from the map as drawn.'
-  if (rebuilt)
-    return 'The map was drawn for that day, but the project could not keep it. Nothing was written: it keeps its day, and the next build draws the map for it again. An export made before then is taken from the map as drawn.'
-  return null
+export function unkeptSentence(kind: RunKindOf): string | null {
+  switch (kind.kind) {
+    case 'sizes':
+      return 'The map was drawn in those sizes, but the project could not keep them. Nothing was written: it keeps the sizes it had, and the next build draws the map in them again. An export made before then is taken from the map as drawn.'
+    case 'order':
+      return 'The map was drawn in that order, but the project could not keep it. Nothing was written: it keeps the order it had, and the next build draws the map in it again. An export made before then is taken from the map as drawn.'
+    case 'options':
+      return 'The map was drawn with those line options, but the project could not keep them. Nothing was written: it keeps the line options it had, and the next build draws the map with them again. An export made before then is taken from the map as drawn.'
+    case 'colours':
+      return 'The map was drawn in those colours, but the project could not keep them. Nothing was written: it keeps the colours it had, and the next build draws the map in them again. An export made before then is taken from the map as drawn.'
+    case 'rebuild':
+      return 'The map was drawn for that day, but the project could not keep it. Nothing was written: it keeps its day, and the next build draws the map for it again. An export made before then is taken from the map as drawn.'
+    case 'layout':
+      return null
+  }
+}
+
+/** What a finished run of this kind says; the one place a kind picks its sentence. */
+export function doneSentenceFor(kind: RunKindOf, changed: boolean, relaid = false): string {
+  switch (kind.kind) {
+    case 'sizes':
+      return restyledSentence()
+    case 'order':
+      return reorderedSentence()
+    case 'options':
+      return optionedSentence()
+    case 'colours':
+      return recolouredSentence()
+    case 'rebuild':
+      return drawnSentence(kind.day)
+    case 'layout':
+      return doneSentence(kind.forced, changed, relaid)
+  }
 }
 
 /**
@@ -363,41 +372,56 @@ export function stoppedSentence(
   optioned = false,
   unkept = false,
 ): string {
+  return stoppedSentenceFor(
+    kindOfRun({ rebuilt, recoloured, reordered, restyled, optioned }),
+    state,
+    replaced,
+    unkept,
+  )
+}
+
+/** The same, from the run's kind: the one function that names a stopped run's sentence. */
+export function stoppedSentenceFor(
+  kind: RunKindOf,
+  state: string,
+  replaced: boolean,
+  unkept = false,
+): string {
+  const cancelled = state === 'cancelled'
   if (unkept && state === 'failed') {
-    const kept = unkeptSentence(rebuilt, recoloured, reordered, restyled, optioned)
+    const kept = unkeptSentence(kind)
     if (kept !== null) return kept
   }
-  if (restyled) {
-    return state === 'cancelled'
-      ? 'The redraw was cancelled. The project keeps the sizes it had; the map on screen may be the old one until the next build.'
-      : 'The map was not drawn in those sizes. The project keeps the sizes it had; the map on screen may be the old one until the next build.'
-  }
-  if (reordered) {
-    return state === 'cancelled'
-      ? 'The redraw was cancelled. The project keeps the order it had; the map on screen may be the old one until the next build.'
-      : 'The map was not drawn in that order. The project keeps the order it had; the map on screen may be the old one until the next build.'
-  }
-  if (optioned) {
-    return state === 'cancelled'
-      ? 'The redraw was cancelled. The project keeps the line options it had; the map on screen may be the old one until the next build.'
-      : 'The map was not drawn with those line options. The project keeps the line options it had; the map on screen may be the old one until the next build.'
-  }
-  if (recoloured) {
-    return state === 'cancelled'
-      ? 'The redraw was cancelled. The project keeps the colours it had; the map on screen may be the old one until the next build.'
-      : 'The map was not drawn in those colours. The project keeps the colours it had; the map on screen may be the old one until the next build.'
-  }
-  if (rebuilt) {
-    return state === 'cancelled'
-      ? 'The rebuild was cancelled. The project keeps its day; the map on screen may be the old one until the next build.'
-      : 'The map was not drawn for that day. The project keeps its day; the map on screen may be the old one until the next build.'
+  switch (kind.kind) {
+    case 'sizes':
+      return cancelled
+        ? 'The redraw was cancelled. The project keeps the sizes it had; the map on screen may be the old one until the next build.'
+        : 'The map was not drawn in those sizes. The project keeps the sizes it had; the map on screen may be the old one until the next build.'
+    case 'order':
+      return cancelled
+        ? 'The redraw was cancelled. The project keeps the order it had; the map on screen may be the old one until the next build.'
+        : 'The map was not drawn in that order. The project keeps the order it had; the map on screen may be the old one until the next build.'
+    case 'options':
+      return cancelled
+        ? 'The redraw was cancelled. The project keeps the line options it had; the map on screen may be the old one until the next build.'
+        : 'The map was not drawn with those line options. The project keeps the line options it had; the map on screen may be the old one until the next build.'
+    case 'colours':
+      return cancelled
+        ? 'The redraw was cancelled. The project keeps the colours it had; the map on screen may be the old one until the next build.'
+        : 'The map was not drawn in those colours. The project keeps the colours it had; the map on screen may be the old one until the next build.'
+    case 'rebuild':
+      return cancelled
+        ? 'The rebuild was cancelled. The project keeps its day; the map on screen may be the old one until the next build.'
+        : 'The map was not drawn for that day. The project keeps its day; the map on screen may be the old one until the next build.'
+    case 'layout':
+      break
   }
   if (replaced) {
-    return state === 'cancelled'
+    return cancelled
       ? 'The run was cancelled after the layout had been laid out again, before the map was drawn from it. The project keeps its record; lay out to draw the new layout.'
       : 'The layout was laid out again, but the map was not drawn from it. The project keeps its record; lay out to draw the new layout.'
   }
-  return state === 'cancelled'
+  return cancelled
     ? 'The run was cancelled. The project is as it was.'
     : 'Nothing was saved. The project is as it was.'
 }

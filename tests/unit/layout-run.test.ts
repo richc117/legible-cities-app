@@ -15,7 +15,15 @@ import {
   sentenceFor,
   type RunClient,
 } from '../../src/renderer/src/engine/layoutRun'
-import { ON_DISK_DEADLINE, downloading } from '../../src/renderer/src/engine/layoutRun'
+import {
+  ON_DISK_DEADLINE,
+  downloading,
+  isRedraw,
+  isTuningRedraw,
+  kindFlags,
+  kindOfRun,
+  type RunKindOf,
+} from '../../src/renderer/src/engine/layoutRun'
 import {
   doneSentence,
   drawnSentence,
@@ -3219,5 +3227,51 @@ describe('a cancel that came too late', () => {
     expect(calls).toHaveLength(1)
     expect(run.snapshot.state).toBe('cancelled')
     expect(run.snapshot.message).not.toBe(LAYOUT_KEPT)
+  })
+})
+
+describe("a run's kind is one union, and the flags are derived from it (issue 429)", () => {
+  const kinds: RunKindOf[] = [
+    { kind: 'layout', forced: false },
+    { kind: 'layout', forced: true },
+    { kind: 'rebuild', day: '2026-09-12' },
+    { kind: 'colours', day: '2026-09-12' },
+    { kind: 'options', day: '2026-09-12' },
+    { kind: 'order', day: '2026-09-12' },
+    { kind: 'sizes', day: '2026-09-12' },
+  ]
+  it('reads back the kind it was written from', () => {
+    for (const kind of kinds) expect(kindOfRun(kindFlags(kind)), kind.kind).toEqual(kind)
+  })
+  it('sets exactly the flags the readers have always read', () => {
+    expect(kindFlags({ kind: 'options', day: 'd' })).toEqual({
+      forced: false,
+      rebuilt: false,
+      recoloured: true,
+      optioned: true,
+      reordered: false,
+      restyled: false,
+      day: 'd',
+    })
+  })
+  it('answers "is this a redraw?" once: a day counts, a tuning redraw excludes it', () => {
+    expect(kinds.map((k) => isRedraw(kindFlags(k)))).toEqual([
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+    ])
+    expect(kinds.map((k) => isTuningRedraw(kindFlags(k)))).toEqual([
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+    ])
   })
 })

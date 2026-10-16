@@ -400,15 +400,9 @@ const IDLE: RunSnapshot = {
   error: null,
   changed: false,
   relaid: false,
-  forced: false,
+  ...kindFlags({ kind: 'layout', forced: false }),
   replaced: false,
-  rebuilt: false,
-  recoloured: false,
-  optioned: false,
-  reordered: false,
-  restyled: false,
   unkept: false,
-  day: null,
   report: null,
   download: null,
   feedMissing: false,
@@ -473,6 +467,27 @@ const writtenAfter = (record: ProjectRecord, other: ProjectRecord): boolean =>
 /** What Run all would start for a record (issue 407): `runAllPlan`'s answer, handed in. */
 type RunAllPlanOf = (record: ProjectRecord, run: RunSnapshot) => RunAllPlan
 
+/**
+ * Which kind of run is going (issue 429). The snapshot still carries the
+ * kind as flags, because a dozen readers and their tests ask one flag each;
+ * but the flags are set here and nowhere else, from this union, and every
+ * question that spans kinds is a function of it below, so that "is this a
+ * redraw?" is not written out again in each reader.
+ *
+ * - `layout`: the stages and the map; `forced` is a re-layout.
+ * - `rebuild`: the map alone, for a chosen day (cell 03).
+ * - `colours`, `order`, `sizes`: the map alone, for a chosen palette, line
+ *   order or set of sizes (cells 05, 05, 04).
+ * - `options`: the colours' kind of run, refined: the map alone, for chosen
+ *   line options (issue 394), so everything that reads `recoloured` still
+ *   holds for it and only the words differ.
+ *
+ * `day` is the day the map is drawn for; a layout has none.
+ */
+export type RunKindOf =
+  | { kind: 'layout'; forced: boolean }
+  | { kind: 'rebuild' | 'colours' | 'options' | 'order' | 'sizes'; day: string | null }
+
 /** The snapshot's flags that say which kind of run is going. */
 interface RunKind {
   forced: boolean
@@ -484,25 +499,56 @@ interface RunKind {
   day: string | null
 }
 
-const layoutKind = (force: boolean): RunKind => ({
-  forced: force,
-  rebuilt: false,
-  recoloured: false,
-  optioned: false,
-  reordered: false,
-  restyled: false,
-  day: null,
-})
+/** The flags a kind of run sets on the snapshot: the one place they are written. */
+export function kindFlags(k: RunKindOf): RunKind {
+  return {
+    forced: k.kind === 'layout' && k.forced,
+    rebuilt: k.kind === 'rebuild',
+    recoloured: k.kind === 'colours' || k.kind === 'options',
+    optioned: k.kind === 'options',
+    reordered: k.kind === 'order',
+    restyled: k.kind === 'sizes',
+    day: k.kind === 'layout' ? null : k.day,
+  }
+}
 
-const rebuildKind = (date: string): RunKind => ({
-  forced: false,
-  rebuilt: true,
-  recoloured: false,
-  optioned: false,
-  reordered: false,
-  restyled: false,
-  day: date,
-})
+/**
+ * The kind of run a snapshot's flags describe. Takes any part of the
+ * snapshot, so a reader that picked only the flags it needs can ask. The
+ * order of the tests is the order the sentences were always chosen in:
+ * sizes, order, options, colours, day.
+ */
+export function kindOfRun(
+  flags: Partial<
+    Pick<
+      RunSnapshot,
+      'forced' | 'rebuilt' | 'recoloured' | 'optioned' | 'reordered' | 'restyled' | 'day'
+    >
+  >,
+): RunKindOf {
+  const day = flags.day ?? null
+  if (flags.restyled === true) return { kind: 'sizes', day }
+  if (flags.reordered === true) return { kind: 'order', day }
+  if (flags.optioned === true) return { kind: 'options', day }
+  if (flags.recoloured === true) return { kind: 'colours', day }
+  if (flags.rebuilt === true) return { kind: 'rebuild', day }
+  return { kind: 'layout', forced: flags.forced === true }
+}
+
+type KindFlags = Parameters<typeof kindOfRun>[0]
+
+/** A run that draws the map alone from the stored layout: a day, colours, line options, an order or sizes. */
+export const isRedraw = (flags: KindFlags): boolean => kindOfRun(flags).kind !== 'layout'
+
+/**
+ * A redraw for a cheap edit - colours, line options, an order or sizes - as
+ * against a day's rebuild: the runs whose panel holds its control while they
+ * go and whose figures stay until their own arrive.
+ */
+export const isTuningRedraw = (flags: KindFlags): boolean => {
+  const { kind } = kindOfRun(flags)
+  return kind !== 'layout' && kind !== 'rebuild'
+}
 
 export class LayoutRun {
   #snapshot: RunSnapshot = IDLE
@@ -737,7 +783,7 @@ export class LayoutRun {
   /** `start` once a second run has been refused: the job, the engine's refusal, the record read. */
   #startLayout(handed: ProjectRecord, engine: EngineState | null, force: boolean): void {
     this.#open('layout', force ? 'Re-layout' : 'Layout run', handed.id)
-    if (!this.#begin(engine, layoutKind(force))) return
+    if (!this.#begin(engine, kindFlags({ kind: 'layout', forced: force }))) return
     // Only a layout can download its feed; a redraw works from the stored
     // layout, whose feed is on disk. No writer moves the feed.
     this.#feedKey = handed.feed
@@ -887,14 +933,8 @@ export class LayoutRun {
       this.#set({
         state: 'failed',
         error: 'Lay the project out before choosing a day.',
-        forced: false,
+        ...kindFlags({ kind: 'rebuild', day: date }),
         replaced: false,
-        rebuilt: true,
-        recoloured: false,
-        optioned: false,
-        reordered: false,
-        restyled: false,
-        day: date,
         unkept: false,
         download: null,
         feedMissing: false,
@@ -902,7 +942,7 @@ export class LayoutRun {
       })
       return
     }
-    if (!this.#begin(engine, rebuildKind(date))) return
+    if (!this.#begin(engine, kindFlags({ kind: 'rebuild', day: date }))) return
 
     void (async () => {
       const project = this.#writes.size === 0 ? handed : await this.#afterWrites(handed)
@@ -980,7 +1020,7 @@ export class LayoutRun {
     // have landed. The engine is ready, so `#begin` starts it.
     if (pressed.kind === 'rebuild') {
       this.#open('rebuild', `Rebuild for ${pressed.date}`, now.id)
-      this.#begin(engine, rebuildKind(pressed.date))
+      this.#begin(engine, kindFlags({ kind: 'rebuild', day: pressed.date }))
     } else {
       // A plan of nothing goes this way too, as a layout, for as long as the
       // wait: cell 02 reads running and the inspector lists a layout run
@@ -988,7 +1028,7 @@ export class LayoutRun {
       // only for a plan of its own, so this is a record read newer than the
       // render's - and nothing runs unless the writes leave a run to make.
       this.#open('layout', 'Layout run', now.id)
-      this.#begin(engine, layoutKind(false))
+      this.#begin(engine, kindFlags({ kind: 'layout', forced: false }))
       this.#feedKey = now.feed
     }
 
@@ -998,11 +1038,15 @@ export class LayoutRun {
       const plan = planOf(project, before.snapshot)
       if (plan.kind === 'none') return this.#withdraw(before)
       if (plan.kind === 'layout' || project.layout === null) {
-        this.#become('layout', 'Layout run', layoutKind(false))
+        this.#become('layout', 'Layout run', kindFlags({ kind: 'layout', forced: false }))
         this.#feedKey = project.feed
         return this.#layOut(project, false)
       }
-      this.#become('rebuild', `Rebuild for ${plan.date}`, rebuildKind(plan.date))
+      this.#become(
+        'rebuild',
+        `Rebuild for ${plan.date}`,
+        kindFlags({ kind: 'rebuild', day: plan.date }),
+      )
       this.#feedKey = null
       return this.#drawDay(project, project.layout, plan.date)
     })()
@@ -1047,8 +1091,7 @@ export class LayoutRun {
   #withdraw(before: { snapshot: RunSnapshot; attempt: Attempt | null }): void {
     const was = before.snapshot
     const stoppedRedraw =
-      (was.state === 'cancelled' || was.state === 'failed') &&
-      (was.recoloured || was.optioned || was.reordered || was.restyled)
+      (was.state === 'cancelled' || was.state === 'failed') && isTuningRedraw(was)
     this.#feedKey = null
     this.#attempt = before.attempt
     this.#snapshot = stoppedRedraw ? IDLE : was
@@ -1075,14 +1118,8 @@ export class LayoutRun {
       this.#set({
         state: 'failed',
         error: 'Lay the project out before choosing colours.',
-        forced: false,
+        ...kindFlags({ kind: 'colours', day: date }),
         replaced: false,
-        rebuilt: false,
-        recoloured: true,
-        optioned: false,
-        reordered: false,
-        restyled: false,
-        day: date,
         unkept: false,
         download: null,
         feedMissing: false,
@@ -1090,18 +1127,7 @@ export class LayoutRun {
       })
       return
     }
-    if (
-      !this.#begin(engine, {
-        forced: false,
-        rebuilt: false,
-        recoloured: true,
-        optioned: false,
-        reordered: false,
-        restyled: false,
-        day: date,
-      })
-    )
-      return
+    if (!this.#begin(engine, kindFlags({ kind: 'colours', day: date }))) return
 
     void (async () => {
       // Whether the map was drawn before anything failed: a write refused
@@ -1146,14 +1172,8 @@ export class LayoutRun {
       this.#set({
         state: 'failed',
         error: 'Lay the project out before arranging the lines.',
-        forced: false,
+        ...kindFlags({ kind: 'order', day: date }),
         replaced: false,
-        rebuilt: false,
-        recoloured: false,
-        optioned: false,
-        reordered: true,
-        restyled: false,
-        day: date,
         unkept: false,
         download: null,
         feedMissing: false,
@@ -1161,18 +1181,7 @@ export class LayoutRun {
       })
       return
     }
-    if (
-      !this.#begin(engine, {
-        forced: false,
-        rebuilt: false,
-        recoloured: false,
-        optioned: false,
-        reordered: true,
-        restyled: false,
-        day: date,
-      })
-    )
-      return
+    if (!this.#begin(engine, kindFlags({ kind: 'order', day: date }))) return
 
     void (async () => {
       // Whether the map was drawn before anything failed: a write refused
@@ -1224,14 +1233,8 @@ export class LayoutRun {
       this.#set({
         state: 'failed',
         error: 'Lay the project out before choosing sizes.',
-        forced: false,
+        ...kindFlags({ kind: 'sizes', day: date }),
         replaced: false,
-        rebuilt: false,
-        recoloured: false,
-        optioned: false,
-        reordered: false,
-        restyled: true,
-        day: date,
         unkept: false,
         download: null,
         feedMissing: false,
@@ -1239,18 +1242,7 @@ export class LayoutRun {
       })
       return
     }
-    if (
-      !this.#begin(engine, {
-        forced: false,
-        rebuilt: false,
-        recoloured: false,
-        optioned: false,
-        reordered: false,
-        restyled: true,
-        day: date,
-      })
-    )
-      return
+    if (!this.#begin(engine, kindFlags({ kind: 'sizes', day: date }))) return
 
     void (async () => {
       // Whether the map was drawn before anything failed: a write refused
@@ -1302,14 +1294,8 @@ export class LayoutRun {
       this.#set({
         state: 'failed',
         error: 'Lay the project out before choosing line options.',
-        forced: false,
+        ...kindFlags({ kind: 'options', day: date }),
         replaced: false,
-        rebuilt: false,
-        recoloured: true,
-        optioned: true,
-        reordered: false,
-        restyled: false,
-        day: date,
         unkept: false,
         download: null,
         feedMissing: false,
@@ -1317,18 +1303,7 @@ export class LayoutRun {
       })
       return
     }
-    if (
-      !this.#begin(engine, {
-        forced: false,
-        rebuilt: false,
-        recoloured: true,
-        optioned: true,
-        reordered: false,
-        restyled: false,
-        day: date,
-      })
-    )
-      return
+    if (!this.#begin(engine, kindFlags({ kind: 'options', day: date }))) return
 
     void (async () => {
       // Whether the map was drawn before anything failed: a write refused
