@@ -14,7 +14,13 @@ since the project feature, both `null` and both waiting for this one.
 | `modified` | the run's completion time                        | with the other two                 |
 
 All three are written in one atomic replacement of the record, or none is.
-A cancelled or failed run writes nothing at all.
+A cancelled or failed run writes nothing at all. *As of 15 Oct 2026*
+(issue 423, engine v0.18.0): a run is cancelled only where the call in
+flight answered the engine's cancelled error, or before the next call was
+asked. A map call that answers a result after a cancel - with
+`cancel_too_late` where the cancel reached it after its files were in
+place - has drawn the map, and the run is completed and writes the record
+as any run does.
 
 ## The layout identifier
 

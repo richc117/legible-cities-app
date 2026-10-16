@@ -454,6 +454,50 @@ test('adds a feed from a URL with its download on the line, and a cancel keeps n
   })
 })
 
+// Engine v0.18.0 (its issue 80): a cancel that reaches feeds.add after the
+// feed was kept is too late, and the answer is the feed's record with
+// `cancel_too_late`. Closing the New project sheet while it adds cancels
+// the add, and the closed sheet says nothing after it; the front door's own
+// watch on the add (`followAdds` in Library.tsx) is then the only thing that
+// lists the feed. The first Escape cancels the add and keeps the sheet (its
+// cancel event is cancelable while the press on "Add the feed" is unspent);
+// the second closes it. The stand-in's `cancel_too_late` control lets no
+// cancel stop the download, whose ten steps take five seconds here, so the
+// sheet is shut well before the feed is kept.
+//
+// Written, not run, by the lane that added it (issue 423). The mutation it
+// is to be watched failing under: the relist taken out of `followAdds`
+// (`if (relistAfterAdd(previous, snapshot)) relist()`) - the feed is then
+// registered and never listed.
+test('a feed kept after its sheet was closed on the add is listed on the front door', async () => {
+  test.setTimeout(90_000)
+  const engineHome = home({ add_delay_ms: 500, cancel_too_late: { 'feeds.add': 20_000 } })
+  await withApp(engineHome, async (page) => {
+    const dialog = await openSheet(page, 'address')
+    await dialog.getByLabel('Feed address').fill('https://agency.example/gtfs.zip')
+    await dialog.getByRole('button', { name: 'Add the feed' }).click()
+    const run = dialog.getByRole('region', { name: 'Adding the feed' })
+    await expect(run.getByRole('status')).toContainText(/downloaded [\d,]+ of 10,240 bytes/)
+    const lists = (): number =>
+      readFileSync(join(engineHome, 'fake-engine.received'), 'utf8').split('"feeds.list"').length -
+      1
+    const before = lists()
+    await page.keyboard.press('Escape')
+    await page.keyboard.press('Escape')
+    await expect(dialog, 'the sheet is shut while the add still runs').toBeHidden()
+    await expect(feedRow(page, 'Remote Transit'), 'not listed before it is kept').toHaveCount(0)
+
+    await expect(feedRow(page, 'Remote Transit')).toBeVisible({ timeout: 30_000 })
+    expect(lists(), 'the list was read again').toBeGreaterThan(before)
+    const received = readFileSync(join(engineHome, 'fake-engine.received'), 'utf8')
+    expect(received, 'the close cancelled the add').toContain('$/cancelRequest')
+    const records = JSON.parse(
+      readFileSync(join(engineHome, 'data', 'feeds', 'user-feeds.json'), 'utf8'),
+    ) as { key: string }[]
+    expect(records.map((r) => r.key)).toEqual(['remote-transit'])
+  })
+})
+
 // Issue 207. Until v0.10.1 a failed download's error was the engine's
 // `FeedError` with the address whole: "{url} could not be fetched: ...",
 // message, hint and detail alike, and the stand-in engine still answers

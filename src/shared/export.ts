@@ -503,6 +503,13 @@ export interface ExportResult {
   file: string
   bytes: number
   frames: number
+  /**
+   * Present, and true, when the export was cancelled after the engine had
+   * moved the file and its sidecar into place (engine v0.18.0, its issue
+   * 80): the encode answered its result with `cancel_too_late`, so the
+   * export finished and the page says the file was kept. Absent otherwise.
+   */
+  late?: true
 }
 
 /**

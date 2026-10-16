@@ -32,7 +32,7 @@ import type { Debounced } from '../../src/renderer/src/debounce'
 import { runAllPlan } from '../../src/renderer/src/runAll'
 import { useDayChoice } from '../../src/renderer/src/ServiceDay'
 import { usePutBack } from '../../src/renderer/src/usePutBack'
-import type { EngineState } from '../../src/shared/engine'
+import { ERROR_CODES, type EngineState } from '../../src/shared/engine'
 import { drawnFrom, type ProjectRecord } from '../../src/shared/project'
 
 const runs = vi.hoisted(() => ({
@@ -119,22 +119,35 @@ function recordingClient(): { client: RunClient; sent: { method: string; params:
 /** A run whose every request is answered when the test says, and what it asked, in order. */
 function answeringRun(complete = vi.fn(async () => ({ changed: false, relaid: false }))): {
   run: LayoutRun
-  asked: { method: string; params: Record<string, unknown>; resolve: (value: unknown) => void }[]
+  asked: {
+    method: string
+    params: Record<string, unknown>
+    resolve: (value: unknown) => void
+    reject: (error: unknown) => void
+  }[]
   complete: typeof complete
 } {
   const asked: {
     method: string
     params: Record<string, unknown>
     resolve: (value: unknown) => void
+    reject: (error: unknown) => void
   }[] = []
   const run = new LayoutRun({
     client: {
       request(method, params) {
         let resolve!: (value: unknown) => void
-        const result = new Promise((yes) => {
+        let reject!: (error: unknown) => void
+        const result = new Promise((yes, no) => {
           resolve = yes
+          reject = no
         })
-        asked.push({ method, params: params as unknown as Record<string, unknown>, resolve })
+        asked.push({
+          method,
+          params: params as unknown as Record<string, unknown>,
+          resolve,
+          reject,
+        })
         return {
           result,
           onProgress: () => () => undefined,
@@ -635,7 +648,9 @@ describe('Run all with nothing to run, after a redraw for colours was stopped', 
     )
     act(() => shown.run.cancel())
     await act(async () => {
-      asked[0].resolve({ files: {} })
+      // Stopped: the engine's cancelled error, the one answer that says the
+      // draw wrote nothing (engine v0.18.0); a result would be a map drawn.
+      asked[0].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
       await tick()
     })
     expect(shown.runSnapshot).toMatchObject({ state: 'cancelled', recoloured: true })
@@ -666,5 +681,43 @@ describe('Run all with nothing to run, after a redraw for colours was stopped', 
       error: null,
       report: null,
     })
+  })
+})
+
+// Engine v0.18.0 (its issue 80): a map call the cancel reached after the
+// map's files were in place answers its result with `cancel_too_late`, and
+// the map on disk is the one drawn. The screen treats it as any finished
+// draw: the record the run wrote is read back, and the viewer's address
+// moves on (`drawn`), so the frame loads the page the engine wrote. Before,
+// a cancelled redraw left the old page in the frame over new files on disk.
+describe('a redraw the cancel reached too late', () => {
+  it('reads the record back and loads the page again, as after any draw', async () => {
+    // Mutation: the cancel looked at again after the draw in `recolour` - the
+    // run then ends cancelled, nothing is read back and the frame keeps the
+    // page from before.
+    const { run, asked } = answeringRun()
+    runs.layout = run
+    const before = { ...RECORD, drawn: drawnFrom(RECORD) } as ProjectRecord
+    api.projects.get.mockImplementation(async () => ({ ...before, readOnly: false }))
+    await act(async () => root.render(<Harness />))
+    await act(tick)
+    const loads = shown.drawn
+    const reads = api.projects.get.mock.calls.length
+
+    const chosen = { colors: { A: '#ff0000' }, defaultColor: '#888888' }
+    act(() => shown.run.recolour(shown.project as ProjectRecord, shown.engine, chosen))
+    act(() => shown.run.cancel())
+    // What the store holds once the run has written the colours it drew.
+    const after = { ...before, colors: chosen.colors, drawn: drawnFrom({ ...before, ...chosen }) }
+    api.projects.get.mockImplementation(async () => ({ ...after, readOnly: false }))
+    await act(async () => {
+      asked[0].resolve({ files: {}, cancel_too_late: true })
+      await tick()
+      await tick()
+    })
+    expect(shown.runSnapshot).toMatchObject({ state: 'done', recoloured: true })
+    expect(api.projects.get.mock.calls.length, 'the record is read back').toBe(reads + 1)
+    expect(shown.project?.colors, 'and is the one the run wrote').toEqual(chosen.colors)
+    expect(shown.drawn, 'the frame loads the page the engine wrote').toBe(loads + 1)
   })
 })

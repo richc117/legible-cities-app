@@ -142,6 +142,14 @@ export class Outputs {
     }
     const candidates: Candidate[] = []
     for (const sidecar of names) {
+      // A sidecar's name ends in the suffix, and nothing else is opened. That
+      // is also what keeps an export being written out of the list: since
+      // engine v0.18.0 (its issue 79) the encode writes `<file>.part` and
+      // `<file>.json.part` and moves them into place whole, and a process
+      // killed mid-encode leaves the two for the next export to write over;
+      // neither name ends in the suffix, and nor does the hidden folder
+      // `map.build` stages its files in (`.<key>.writing-<pid>-<token>`),
+      // which is not a file anyway.
       if (!sidecar.endsWith(SIDECAR_SUFFIX) || sidecar.length === SIDECAR_SUFFIX.length) continue
       try {
         const stamp = await stat(join(folder, sidecar))

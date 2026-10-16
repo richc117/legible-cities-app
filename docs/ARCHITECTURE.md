@@ -885,13 +885,31 @@ layout drew): a short call once the feed is cached, reporting no stage; the
 sentence on screen says the day is being chosen. When every call has
 returned, one bridge call writes the record: the service day, the layout's
 id, the feed's window and the modification time, together or not at all.
-A cancelled or failed run writes nothing, and can be run again.
+A failed run writes nothing, and can be run again; so does one cancelled in
+time. Since engine v0.18.0 (its issue 80) what the call in flight answers
+says which a cancel was, never when Cancel was pressed: the cancelled error
+means the call wrote nothing a client sees, and a result means it finished
+and wrote what the result names, carrying `cancel_too_late` where the
+cancel reached it after its point of no return. A map call that answers a
+result is a finished draw, whoever cancelled: the record is written,
+`drawn` moves and the frame loads the new page; and, where the result
+carries `cancel_too_late`, the run says "The map was already drawn when you
+cancelled; it is kept." Every draw - a layout, a rebuild, Run all, the four
+redraws - reaches `map.build` through one place in the run (`#draw` in
+`layoutRun.ts`), which is where that is decided. A layout call that answers
+a result after a cancel has stored its layout: the run stops there, before
+the day is asked for; and, where the result carries `cancel_too_late`, it
+says "The layout was already made when you cancelled; the next run draws
+from it."
 
 "Re-layout" runs the layout call with `force`, behind a warning that the
 layout engine is heuristic and a new layout may place stations differently.
-The engine keeps the stored layout until the new set is whole, so a cancel
-or a failure leaves the project exactly as it was; the record is written
-only when the run finishes, and says the map came from a fresh layout.
+The engine keeps the stored layout until the new set is whole, so a failure,
+or a cancel before the new set is moved in, leaves the project exactly as it
+was; a cancel after that is too late (engine v0.18.0), and the run stops
+with the layout replaced, as a re-layout stopped between its calls does.
+The record is written only when the run finishes, and says the map came
+from a fresh layout.
 "Lay out again" is the unforced case, which reuses the stored layout.
 
 A run belongs to its project rather than to the screen showing it, so a
@@ -953,12 +971,13 @@ the stations do not move, and `completeRebuild` writes the day again with
 only while the gap is open and the record knows what the map was drawn for.
 It is the notebook's only Revert; the run-graph contract says why cells 04
 and 05 have none. Both writers refuse the same days in the same sentences,
-in the main process, a day outside the window included. A cancelled or
-failed rebuild keeps the chosen day and leaves the map where it was, so the
-cells below stay stale and the press is still offered. The app parses and
-shows no time of day: a trip past midnight keeps its `25:44`-style time in
-the page, which is the engine's (`specs/012-service-date`,
-`specs/028-the-notebook`).
+in the main process, a day outside the window included. A failed rebuild,
+or one cancelled in time, keeps the chosen day and leaves the map where it
+was, so the cells below stay stale and the press is still offered; one whose
+cancel came too late drew the day, and is written as any rebuild is. The
+app parses and shows no time of day: a trip past midnight keeps its
+`25:44`-style time in the page, which is the engine's
+(`specs/012-service-date`, `specs/028-the-notebook`).
 
 ### What the build had to fudge
 
@@ -1016,10 +1035,12 @@ release while a run or an export holds the page waits and builds once
 when the way is clear. Only the line order is still debounced. A colour
 is a render, never a layout, so the stations do not move (ADR-023). The
 palette is written only when the map has been drawn, through
-`completeColors`, as a chosen day is; a cancelled or failed build leaves
-the record alone and the panel goes back to it. Every draw the run makes
-carries the record's palette, so a layout, a re-layout and a chosen day
-all draw the colours the project chose (`specs/018-colours`).
+`completeColors`, as a chosen day is; a failed build, or one cancelled in
+time, leaves the record alone and the panel goes back to it, and one whose
+cancel came too late drew the colours and is written as any build is.
+Every draw the run makes carries the record's palette, so a layout, a
+re-layout and a chosen day all draw the colours the project chose
+(`specs/018-colours`).
 
 The engine ignores a colour for a label its stored layout does not carry,
 which is why the panel can list the feed's labels rather than the layout's
@@ -1112,8 +1133,11 @@ each with whether its zip is downloaded, which is the engine's `cached`
 and never the app's guess. A feed is added from a zip on disk or from a
 URL through `feeds.add`, run from the page through the typed client with
 the download's bytes and then the check on a progress line; a cancel
-lands between the download's chunks and the engine keeps nothing; a
-refusal is the engine's own sentence, which names the missing table. A
+lands between the download's chunks and the engine keeps nothing, and
+since engine v0.18.0 a cancel that comes after the feed is kept is too
+late: the add ends with the feed, says so, and the front door lists it
+whether or not the sheet is still open (`relistAfterAdd`); a refusal is
+the engine's own sentence, which names the missing table. A
 feed a person added is removed through `feeds.remove` behind a
 confirmation; a preset has no Remove, and the engine refuses one anyway.
 
@@ -1258,10 +1282,11 @@ paths it refuses, the layout run's state machine against a stub, and the
 viewer's method list and frame discipline. One Playwright
 suite drives a layout against the stand-in: the stages on screen,
 what a completed run writes, that a cancelled one writes nothing and can be
-repeated, and that no path reaches the screen. Another loads a hostile page
-in the viewer's frame and asserts it cannot read or call the bridge, reach
-the interface's document, navigate the window or open one, and that the
-frame's sandbox is exactly the one flag. One further test lays a
+repeated, that a redraw whose cancel came too late is written and loaded as
+any finished one, and that no path reaches the screen. Another loads a
+hostile page in the viewer's frame and asserts it cannot read or call the
+bridge, reach the interface's document, navigate the window or open one,
+and that the frame's sandbox is exactly the one flag. One further test lays a
 project out against the real engine and asserts the eight stage names in
 order; it needs a checkout with a warm layout cache and skips, saying so,
 without one, so it never runs in continuous integration. The design system's own tests recompute the WCAG contrast of every
@@ -1500,11 +1525,27 @@ Progress is three stages on the progress line - plan, capture, encode -
 with a sentence each: the plan's frame count and rate, then frames captured
 of the total, then frames encoded from the fraction ffmpeg reports through
 the engine. A cancel reaches the export wherever it is: the plan or encode
-request is cancelled, the capture aborted; the engine removes a partial
-file and its sidecar, the app removes the frames. A layout run and an
-export of one project cannot overlap, because the export reads the page a
-layout would rewrite: each button is disabled while the other runs, and so
-is delete.
+request is cancelled, the capture aborted, and the app removes the frames.
+Since engine v0.18.0 (its issues 79 and 80) the encode writes the file and
+its sidecar beside the destination as `.part` files and moves them into
+place once whole, so a cancel or a failure before that removes only the
+`.part` files and leaves an earlier export of the same name as it was; a
+cancel after it is too late, and the export finishes, its file kept, and
+says "The export was already written when you cancelled; it is kept." The
+one failure that leaves something is the sidecar's own move, after the
+file's, which leaves the new file beside the sidecar the folder had, so a
+failure while the encode runs does not say "Nothing was written." outright
+(`unfinishedSentence` in `ExportRun.tsx`); a cancel, a failure before the
+encode, and the engine's params error still do. The engine judges an
+encode's parameters before its job starts, so that refusal - a destination
+that is its own source among them - comes back while the encode stage is
+running and has written nothing; it is shown in the engine's words, as any
+refusal is, and kept apart (`refused`) so "export again" is not offered for
+a request that would only be refused again. The Outputs list reads only
+sidecars, so neither a `.part` file nor `map.build`'s hidden staging folder
+is ever a row. A layout run and an export of one project cannot overlap,
+because the export reads the page a layout would rewrite: each button is
+disabled while the other runs, and so is delete.
 
 ### The export's choices
 
@@ -1598,7 +1639,8 @@ cleanup against a fake engine, a fake store and a fake capture, and
 `tests/unit/export-ipc.test.ts` the bridge's checks; `tests/e2e/export.spec.ts`
 drives the built app against the stand-in engine, which plans a short job
 for the animated stand-in page and encodes in shape - five steps of
-progress, a file, a sidecar, a cancel that removes both; and
+progress, a file and a sidecar written as `.part` files and moved into
+place, a cancel before that which leaves the destination as it was; and
 `tests/e2e/reel.spec.ts`, opt-in with an engine checkout and ffmpeg,
 exports the real Los Angeles reel twice and compares the two files frame by
 frame in RGB with the tolerance of 8.

@@ -1,4 +1,5 @@
 import {
+  cameTooLate,
   isEngineErrorShape,
   ERROR_CODES,
   withoutPaths,
@@ -14,6 +15,21 @@ import type { Stage } from '../ProgressLine'
 // file needs no download, so only the check reports. A cancel lands
 // between the download's chunks and leaves nothing behind (engine E09c).
 // The engine's hint is what a person reads when it refuses.
+//
+// Since engine v0.18.0 (its issue 80) the add's point of no return is the
+// moment the feed is kept: a cancel before it is answered with the cancelled
+// error, and the feed is in neither the registry nor the cache; one after it
+// is too late, and the answer is the feed's record with `cancel_too_late`.
+// That is a feed added, whoever pressed Cancel, and the add says it was kept.
+
+/**
+ * What an add says when it was cancelled in time: the cancelled error, so the
+ * feed is in neither the registry nor the cache (engine v0.18.0).
+ */
+export const ADD_CANCELLED = 'Cancelled. Nothing was added.'
+
+/** What an add says when the feed was kept before the cancel reached the engine. */
+export const FEED_KEPT = 'The feed was already added when you cancelled; it is kept.'
 
 export const ADD_STAGES = ['download', 'check'] as const
 
@@ -26,6 +42,8 @@ export interface AddSnapshot {
   error: string | null
   /** The feed, once added. */
   feed: FeedRecord | null
+  /** Set when the feed was added after a cancel the engine read too late. */
+  late: boolean
 }
 
 interface Handle<T> {
@@ -64,6 +82,7 @@ const IDLE: AddSnapshot = {
   message: null,
   error: null,
   feed: null,
+  late: false,
 }
 
 /** What the add keeps about its latest attempt beyond the snapshot, for the inspector (A1-03). */
@@ -168,7 +187,7 @@ export class FeedAdd {
     const first = 'url' in source ? 0 : 1
     if (first === 1) stages[0] = { ...stages[0], state: 'done' }
     stages[first] = { ...stages[first], state: 'running' }
-    this.#set({ state: 'running', stages, message: null, error: null, feed: null })
+    this.#set({ state: 'running', stages, message: null, error: null, feed: null, late: false })
 
     const handle = this.#client.request('feeds.add', {
       source: 'url' in source ? source.url : source.file,
@@ -179,10 +198,15 @@ export class FeedAdd {
     void handle.result.then(
       (feed) => {
         this.#inFlight = null
+        // A record is a feed added, a cancel or not; the field, read as
+        // data, says the cancel came after the feed was kept.
+        const late = cameTooLate(feed)
         this.#set({
           state: 'done',
           stages: this.#snapshot.stages.map((s) => ({ ...s, state: 'done' as const })),
           feed,
+          late,
+          ...(late ? { message: FEED_KEPT } : {}),
         })
       },
       (reason: unknown) => {

@@ -3,12 +3,14 @@
 
 import { describe, expect, it } from 'vitest'
 import {
+  EXPORT_KEPT,
   ExportRun,
   freshStages,
   sentenceFor,
   stagesAt,
   type ExportBridge,
 } from '../../src/renderer/src/engine/exportRun'
+import { ENCODE_UNFINISHED, unfinishedSentence } from '../../src/renderer/src/ExportRun'
 import { ERROR_CODES, type EngineState } from '../../src/shared/engine'
 import type { ExportChoice, ExportProgress, ExportResult } from '../../src/shared/export'
 import { DEFAULT_STYLE, type ProjectRecord } from '../../src/shared/project'
@@ -168,6 +170,83 @@ describe('ExportRun', () => {
     expect(run.snapshot.error).toBeNull()
     run.reveal()
     expect(stub.revealed, 'nothing to reveal').toEqual([])
+  })
+
+  it('ends done with the file when the cancel came too late, and says the export was kept', async () => {
+    // The main process finished the export the engine answered after the
+    // cancel with `cancel_too_late` (engine v0.18.0), and said so in the
+    // result. Mutation: `late` not read - the page then says nothing of the
+    // cancel a person pressed.
+    const stub = stubBridge()
+    const run = new ExportRun(stub.bridge)
+    run.start(project(), READY, REEL)
+    stub.report({
+      id: 'tok-1',
+      stage: 'encode',
+      fraction: 0.9,
+      message: 'Encoded 54 of 60 frames.',
+    })
+    run.cancel()
+    expect(stub.cancelled).toEqual(['tok-1'])
+    stub.resolve({ file: 'x.mp4', bytes: 10, frames: 60, late: true })
+    await tick()
+    expect(run.snapshot).toMatchObject({ state: 'done', file: 'x.mp4', message: EXPORT_KEPT })
+    expect(run.job()?.message).toBe(EXPORT_KEPT)
+    run.reveal()
+    expect(stub.revealed, 'the file kept can be revealed').toEqual(['tok-1'])
+
+    // Only `true` is the flag: anything else is a finish in the ordinary words.
+    const plain = stubBridge()
+    const other = new ExportRun(plain.bridge)
+    other.start(project(), READY, REEL)
+    plain.resolve({ file: 'x.mp4', bytes: 10, frames: 60, late: 'yes' } as unknown as ExportResult)
+    await tick()
+    expect(other.snapshot.state).toBe('done')
+    expect(other.snapshot.message).not.toBe(EXPORT_KEPT)
+  })
+
+  it('ends failed with the engine’s sentence for a destination that is its own source', async () => {
+    // Engine v0.18.0 refuses it before anything is written (its issue 79),
+    // as a params error, shown as every refusal is. Mutation: `left` set for
+    // any failure during the encode - the page would then say a file may
+    // have been left where the engine wrote none. And the sentence beneath:
+    // the refusal comes back while the encode stage is the one running, but
+    // the engine judged the request before its job started, so nothing was
+    // written and "export again" would only be refused again. Mutation: the
+    // `refused` branch dropped from `unfinishedSentence` - the page then
+    // says the file may have been written without its sidecar.
+    const sentence =
+      'dest must not be the source, or put its sidecar or a .part file on it: the source is read and never written to'
+    const stub = stubBridge()
+    const run = new ExportRun(stub.bridge)
+    run.start(project(), READY, REEL)
+    stub.report({ id: 'tok-1', stage: 'encode', fraction: 0, message: 'Encoding 60 frames.' })
+    stub.reject({
+      code: -32602,
+      message: sentence,
+      data: { kind: 'params', detail: sentence, hint: sentence },
+    })
+    await tick()
+    expect(run.snapshot).toMatchObject({
+      state: 'failed',
+      error: sentence,
+      left: false,
+      refused: true,
+    })
+    expect(run.snapshot.stages.find((s) => s.id === 'encode')?.state).toBe('failed')
+    const { left, stages, refused } = run.snapshot
+    expect(unfinishedSentence('failed', left, stages, refused)).toBe('Nothing was written.')
+
+    // Another failure while it encodes is not a refusal, and says so.
+    run.start(project(), READY, REEL)
+    expect(run.snapshot.refused, 'cleared at the start').toBe(false)
+    stub.report({ id: 'tok-2', stage: 'encode', fraction: 0.5, message: 'Encoded 30 of 60.' })
+    stub.reject({ code: -32000, message: 'ffmpeg exited 1', data: { kind: 'export' } })
+    await tick()
+    expect(run.snapshot).toMatchObject({ state: 'failed', refused: false })
+    expect(
+      unfinishedSentence('failed', run.snapshot.left, run.snapshot.stages, run.snapshot.refused),
+    ).toBe(ENCODE_UNFINISHED)
   })
 
   it("ends failed with the engine's hint and the running stage marked", async () => {
@@ -362,7 +441,7 @@ describe('the export as a job', () => {
       hint: expect.stringMatching(/Lay the project out/),
     })
     expect(Object.keys(run.snapshot).sort()).toEqual(
-      ['state', 'stages', 'message', 'error', 'file', 'left'].sort(),
+      ['state', 'stages', 'message', 'error', 'file', 'left', 'refused'].sort(),
     )
   })
 })

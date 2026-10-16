@@ -251,3 +251,21 @@ export function describeState(state: EngineState): string {
       return `Engine stopped: ${state.reason}`
   }
 }
+
+/**
+ * Whether a result says a cancel came too late (engine v0.18.0, its issue
+ * 80): `graph.build`, `map.build`, `export.encode` and `feeds.add` each have
+ * a point of no return, the first write a client sees, and a cancel that
+ * arrives after it is answered with the method's result carrying
+ * `cancel_too_late: true`, over what the result names, written. The result
+ * crosses from another process, so it is read rather than assumed, and only
+ * `true` is the field. A cancel before the point of no return is answered
+ * with the cancelled error instead, and nothing a client sees was written.
+ */
+export function cameTooLate(result: unknown): boolean {
+  return (
+    typeof result === 'object' &&
+    result !== null &&
+    (result as { cancel_too_late?: unknown }).cancel_too_late === true
+  )
+}

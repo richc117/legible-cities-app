@@ -287,6 +287,18 @@ them:
 
 - **A cancelled run is not an error.** Stop returns a cell to what it was
   (A5.5-10). Only `failed` is an error.
+- **A draw whose cancel came too late is not cancelled.** *As of 15 Oct
+  2026* (issue 423, engine v0.18.0): a map call that answers a result has
+  drawn the map, whoever cancelled, and one the cancel reached after its
+  files were in place says so with `cancel_too_late`. The run takes it as
+  the finished draw it is - `done`, the record and `drawn` written, the
+  page loaded again, and, where the result carries `cancel_too_late`, the
+  map said to be kept - so the cell reads **ready**
+  over what was drawn rather than going back to what it was. Only the
+  engine's cancelled error, which means nothing was written, stops a draw.
+  A layout call that answers a result after a cancel has stored its
+  layout; the run stops there, `cancelled`, and a re-layout's `replaced` is
+  raised as before.
 - **Running does not propagate.** A cell running makes nothing below it
   stale: running is not a change to anything yet.
 - **A cell's own failure wins over what is above it.** The specific thing
@@ -375,4 +387,7 @@ because a reader will otherwise assume one of them is live:
   ready over a page drawn from geometry the engine has replaced. Putting it
   on the record is a change to the record, not to this derivation; until
   something does, cell 02's provenance is honest only within the session
-  that made it.
+  that made it. Since engine v0.18.0 a re-layout whose cancel reached
+  `graph.build` after the new set was moved in is one of these as well:
+  the call answers its result with `cancel_too_late`, and the run stops
+  with `replaced` raised, saying the next run draws from the layout.

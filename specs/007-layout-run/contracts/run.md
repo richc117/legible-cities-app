@@ -19,6 +19,19 @@ layout-tool process it is waiting on and answers with its cancelled error.
 The run's state becomes `cancelled`, nothing is written, and the project
 keeps whatever it had.
 
+*As of 15 Oct 2026* (issue 423, engine v0.18.0): that holds where the
+engine answers the cancelled error, which since v0.18.0 means it wrote
+nothing a client sees, and where the cancel lands between two calls,
+before the next is asked. A call the cancel reached after its point of no
+return answers its result with `cancel_too_late`, and a result is what it
+did: `map.build`'s is a map on disk, so the run goes on to step 5, writes
+the record, ends `done` and says "The map was already drawn when you
+cancelled; it is kept."; `graph.build`'s is a stored layout, so the run
+stops there, before step 4, `cancelled` and saying "The layout was already
+made when you cancelled; the next run draws from it.", with `replaced`
+raised for a re-layout. The field is read from the result, never inferred
+from when the cancel was pressed.
+
 Cancelling after the run has finished does nothing, as the client's handle
 already guarantees.
 

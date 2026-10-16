@@ -86,6 +86,21 @@ against the stand-in; quit during the capture; count what is left.
    window is destroyed before the engine stops, and the next start removes
    whatever frames a crash would have left.
 
+*As of 15 Oct 2026* (issue 423, engine v0.18.0, its issues 79 and 80):
+the engine writes the file and its sidecar beside the destination as
+`.part` files and moves them into place once whole, the file first, and
+that move is its point of no return. A cancel before it, a failure before
+the encode, and a request the engine refuses with its params error write
+nothing, and an earlier export of the same name stays as it was. A failed
+encode removes its `.part` files; a process killed mid-encode may leave
+them, for the next export to the same name to write over; and, rarely, a
+failure of the sidecar's own move, after the file's, leaves the new file
+beside the sidecar the folder had, so the page does not promise nothing
+was written for a failure while the encode ran. A cancel after the point
+of no return is too late: the engine answers the result with
+`cancel_too_late`, both files are at the destination, and the export
+finishes, saying the file was kept. Scenarios 2 and 3 hold in that light.
+
 ---
 
 ### User Story 3 - The page never learns a path (Priority: P1)
@@ -218,6 +233,14 @@ runs, the other's button is disabled, and so is delete.
   engine's sentence and leaves the same nothing; a quit mid-export and a
   start with a stale frames folder leave the folder holding nothing but its
   mark; an unmarked frames folder is left with its contents untouched.
+  *As of 15 Oct 2026* (issue 423, engine v0.18.0): "no file, no sidecar"
+  is of the cancel or failure itself - an earlier export of the same name
+  is left as it was - and holds for a cancel before the engine's point of
+  no return; a cancel after it finishes the export. A failed encode leaves
+  no `.part` file unless the engine was killed mid-encode, which may leave
+  its `.part` files; and in the one failure the engine documents that
+  leaves something, its sidecar's own move, the new file is left beside
+  the sidecar the folder had (Story 2's note).
 - **SC-003**: The Los Angeles reel exported twice on a machine with the
   engine checkout and ffmpeg decodes to the same number of frames with no
   channel differing by more than 8; the run's timings and whether the two

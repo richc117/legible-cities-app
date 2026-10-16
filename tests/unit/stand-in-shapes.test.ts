@@ -16,7 +16,10 @@
 // `clock_corner`, and a storyboard may be a list of beats, which since
 // v0.15.0 may open on a title card and a draw-in), `export.encode`
 // (a person's `alt` replaces the engine's sentence) and the two tables
-// `export.presets` and `export.storyboards`. The requests the tests send are
+// `export.presets` and `export.storyboards`; and, since v0.18.0, the result
+// of `graph.build`, `map.build`, `export.encode` and `feeds.add` that a
+// cancel came too late for, which carries `cancel_too_late` (never a
+// `feeds.list` entry). The requests the tests send are
 // held to the description's params as well, so a test cannot ask the stand-in
 // for something the engine would refuse for its shape. The refusals it
 // answers are held to the engine's handler as well, over the protocol: the
@@ -2234,5 +2237,320 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s opening${WHY}`, () => 
     await expect(
       ask('export.encode', { plan: bad, source: frames, dest: join(home, 'exports', 'bad.gif') }),
     ).rejects.toMatchObject({ message: 'plan.beats[0] has a card that is not true or false' })
+  })
+})
+
+// ------------------------------- a cancel after the point of no return (v0.18.0)
+
+// Engine v0.18.0 (its issues 79 and 80): graph.build, map.build, export.encode
+// and feeds.add each have a point of no return, and a cancel that arrives
+// after it is answered with the method's result carrying `cancel_too_late:
+// true`, over what the result names, written; a cancel before it is the
+// cancelled error, with nothing a client sees written. export.encode writes
+// beside its destination under .part names and moves the two files into
+// place whole, and refuses a destination that is its own source. The
+// stand-in's `cancel_too_late` control makes a method's cancel too late, so
+// the app's tests can drive the late path; without it a cancel is answered as
+// before, and writes nothing. Each test starts a stand-in of its own, because
+// the control file is read once.
+describe.skipIf(PYTHON === null)(`the stand-in engine’s late cancel${WHY}`, () => {
+  const running: { sidecar: Sidecar; home: string }[] = []
+
+  afterEach(async () => {
+    for (const { sidecar, home } of running.splice(0)) {
+      await sidecar.stop()
+      rmSync(home, { recursive: true, force: true })
+    }
+  })
+
+  async function standIn(
+    control: Record<string, unknown>,
+  ): Promise<{ sidecar: Sidecar; home: string; progress: Record<string, unknown>[] }> {
+    const home = mkdtempSync(join(tmpdir(), 'lc-late-'))
+    writeFileSync(join(home, 'fake-engine.json'), JSON.stringify(control))
+    const sidecar = new Sidecar({
+      command: [PYTHON as string, '-m', 'schematic.serve'],
+      env: engineEnvironment({
+        config: { home, loomBin: null, loomCommit: null, ffmpeg: null },
+        base: { ...process.env, PYTHONPATH: FAKE_ENGINE },
+        development: true,
+      }),
+      pin: PIN,
+      log: () => {},
+      bounds: { handshakeMs: READY_MS, inactivityMs: READY_MS },
+    })
+    const progress: Record<string, unknown>[] = []
+    sidecar.onNotification((n) => {
+      if (n.method === 'job/progress' && typeof n.params === 'object' && n.params !== null)
+        progress.push(n.params as Record<string, unknown>)
+    })
+    running.push({ sidecar, home })
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('the stand-in never became ready')), READY_MS)
+      sidecar.onState((state) => {
+        if (state.state === 'ready') {
+          clearTimeout(timer)
+          resolve()
+        }
+      })
+      sidecar.start()
+    })
+    return { sidecar, home, progress }
+  }
+
+  async function until(predicate: () => boolean, what: string): Promise<void> {
+    const deadline = Date.now() + 20_000
+    while (!predicate()) {
+      if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`)
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+  }
+
+  const rejection = async (result: Promise<unknown>): Promise<EngineError> => {
+    const error = (await result.catch((e: unknown) => e)) as EngineError
+    expect(error, 'a rejection, not an answer').toBeInstanceOf(EngineError)
+    return error
+  }
+
+  /** The five files map.build writes for the stand-in's LA, in out/<token>/. */
+  const mapFiles = (home: string, token: string): string[] =>
+    [
+      'la-metro-rail.svg',
+      'la-metro-rail.html',
+      'la-metro-rail.positions.json',
+      'la-metro-rail-thumb-dark.svg',
+      'la-metro-rail-thumb-light.svg',
+    ].map((name) => join(home, 'out', token, name))
+
+  const layoutIn = async (sidecar: Sidecar): Promise<string> =>
+    (
+      (await sidecar.request('graph.build', { key: 'la-metro-rail' }, { deadlineMs: READY_MS })
+        .result) as { layout: string }
+    ).layout
+
+  it('answers a map.build cancelled after its files are in place with its result and cancel_too_late', async () => {
+    // Mutation: `answer` not adding the field - the result then comes back
+    // as though nobody had cancelled, and the first expectation fails.
+    const { sidecar, home } = await standIn({
+      map_draws: true,
+      progress_delay_ms: 1,
+      cancel_too_late: { 'map.build': 20_000 },
+    })
+    const layout = await layoutIn(sidecar)
+    const page = mapFiles(home, 'p1')[1]
+    const draw = sidecar.request('map.build', {
+      key: 'la-metro-rail',
+      layout,
+      date: '2026-06-16',
+      out: 'p1',
+    })
+    await until(() => existsSync(page), 'the page to be in place')
+    sidecar.cancel(draw.id)
+    const answer = (await draw.result) as Record<string, unknown>
+    expect(answer.cancel_too_late, 'the result, told it came too late').toBe(true)
+    expect(answerProblems('map.build', answer)).toEqual([])
+    expect(answerProblems('map.build', { ...answer, cancel_too_late: false })).not.toEqual([])
+    for (const file of mapFiles(home, 'p1')) expect(existsSync(file), file).toBe(true)
+  })
+
+  it('answers a method the control names exactly as before when nobody cancels it', async () => {
+    // Mutation: `answer` adding the field whether or not a cancel arrived.
+    const { sidecar } = await standIn({
+      map_draws: true,
+      progress_delay_ms: 1,
+      cancel_too_late: { 'map.build': 100, 'graph.build': 100 },
+    })
+    const layout = await layoutIn(sidecar)
+    const answer = (await sidecar.request('map.build', {
+      key: 'la-metro-rail',
+      layout,
+      date: '2026-06-16',
+    }).result) as Record<string, unknown>
+    expect('cancel_too_late' in answer).toBe(false)
+    expect(answerProblems('map.build', answer)).toEqual([])
+  })
+
+  it('answers a map.build cancelled between its stages with the cancelled error, and writes no file', async () => {
+    // Mutation: `stops` never stopping - the draw then runs to its end, writes
+    // the five files and answers a result.
+    const { sidecar, home, progress } = await standIn({ map_draws: true, progress_delay_ms: 200 })
+    const layout = await layoutIn(sidecar)
+    const draw = sidecar.request('map.build', {
+      key: 'la-metro-rail',
+      layout,
+      date: '2026-06-16',
+      out: 'p1',
+    })
+    await until(
+      () => progress.some((p) => p.id === draw.id && p.stage === 'schedule'),
+      'the draw to reach its schedule step',
+    )
+    sidecar.cancel(draw.id)
+    const error = await rejection(draw.result)
+    expect(error.code).toBe(ERROR_CODES.cancelled)
+    for (const file of mapFiles(home, 'p1')) expect(existsSync(file), file).toBe(false)
+  })
+
+  it('stores a layout a late cancel came for, and answers it with cancel_too_late', async () => {
+    // Mutation: `stops` ignoring the control - the build is then stopped at
+    // its next stage and answered with the cancelled error.
+    const { sidecar, progress } = await standIn({
+      map_draws: true,
+      progress_delay_ms: 200,
+      cancel_too_late: { 'graph.build': 20_000 },
+    })
+    const build = sidecar.request('graph.build', { key: 'la-metro-rail' })
+    await until(
+      () => progress.some((p) => p.id === build.id && p.stage === 'gtfs2graph'),
+      'the build’s first stage',
+    )
+    sidecar.cancel(build.id)
+    const answer = (await build.result) as Record<string, unknown>
+    expect(answer.cancel_too_late).toBe(true)
+    expect(answerProblems('graph.build', answer)).toEqual([])
+    expect(answerProblems('graph.build', { ...answer, cancel_too_late: false })).not.toEqual([])
+    // Stored: a map is drawn from it.
+    const drawn = await sidecar.request('map.build', {
+      key: 'la-metro-rail',
+      layout: answer.layout,
+      date: '2026-06-16',
+    }).result
+    expect(answerProblems('map.build', drawn)).toEqual([])
+  })
+
+  it('keeps a feed a late cancel came for, answering its record with cancel_too_late and listing it without', async () => {
+    // Mutation: `answer` not adding the field.
+    const { sidecar, home } = await standIn({
+      add_delay_ms: 1,
+      cancel_too_late: { 'feeds.add': 20_000 },
+    })
+    const add = sidecar.request('feeds.add', {
+      source: 'https://feeds.example.org/late.zip',
+      key: 'late',
+    })
+    const registry = join(home, 'data', 'feeds', 'user-feeds.json')
+    await until(
+      () => existsSync(registry) && readFileSync(registry, 'utf8').includes('"late"'),
+      'the registry to name the feed',
+    )
+    sidecar.cancel(add.id)
+    const answer = (await add.result) as Record<string, unknown>
+    expect(answer).toMatchObject({ key: 'late', cancel_too_late: true })
+    expect(answerProblems('feeds.add', answer)).toEqual([])
+    const listed = (await sidecar.request('feeds.list').result) as {
+      feeds: Record<string, unknown>[]
+    }
+    expect(answerProblems('feeds.list', listed)).toEqual([])
+    expect(listed.feeds.map((f) => f.key)).toContain('late')
+    expect(
+      listed.feeds.filter((f) => 'cancel_too_late' in f),
+      'never in feeds.list',
+    ).toEqual([])
+  })
+
+  /** A still's plan, its one captured frame, and where an export of it goes. */
+  async function still(
+    sidecar: Sidecar,
+    home: string,
+  ): Promise<{ plan: unknown; source: string; dest: string }> {
+    const plan = await sidecar.request('export.plan', {
+      key: 'la-metro-rail',
+      preset: 'instagram-post',
+    }).result
+    mkdirSync(join(home, 'shots'), { recursive: true })
+    const source = join(home, 'shots', '000000.png')
+    writeFileSync(source, 'a still')
+    return { plan, source, dest: join(home, 'exports', 'la.png') }
+  }
+
+  it('moves an export and its sidecar into place whole after a late cancel, and leaves no .part', async () => {
+    // Mutation: `answer` not adding the field.
+    const { sidecar, home } = await standIn({
+      encode_delay_ms: 1,
+      cancel_too_late: { 'export.encode': 20_000 },
+    })
+    const { plan, source, dest } = await still(sidecar, home)
+    const encode = sidecar.request('export.encode', { plan, source, dest })
+    await until(() => existsSync(`${dest}.json`), 'the sidecar to be in place')
+    sidecar.cancel(encode.id)
+    const answer = (await encode.result) as Record<string, unknown>
+    expect(answer.cancel_too_late).toBe(true)
+    expect(answerProblems('export.encode', answer)).toEqual([])
+    expect(answerProblems('export.encode', { ...answer, cancel_too_late: false })).not.toEqual([])
+    expect(existsSync(dest)).toBe(true)
+    expect(JSON.parse(readFileSync(`${dest}.json`, 'utf8'))).toMatchObject({ file: 'la.png' })
+    expect(existsSync(`${dest}.part`), 'no .part is left').toBe(false)
+    expect(existsSync(`${dest}.json.part`), 'nor the sidecar’s').toBe(false)
+  })
+
+  it('keeps an earlier export whole when a re-export is cancelled before its point of no return', async () => {
+    // Mutation: the partial file written to the destination itself, as
+    // v0.17.1's encode did - the earlier export is then truncated and gone.
+    const { sidecar, home, progress } = await standIn({ encode_delay_ms: 300 })
+    const { plan, source, dest } = await still(sidecar, home)
+    mkdirSync(join(home, 'exports'), { recursive: true })
+    writeFileSync(dest, 'the earlier export')
+    writeFileSync(`${dest}.json`, '{"file": "la.png"}\n')
+    const encode = sidecar.request('export.encode', { plan, source, dest })
+    await until(
+      () => progress.some((p) => p.id === encode.id && p.stage === 'encode'),
+      'the encode to be under way',
+    )
+    sidecar.cancel(encode.id)
+    const error = await rejection(encode.result)
+    expect(error.code).toBe(ERROR_CODES.cancelled)
+    expect(readFileSync(dest, 'utf8')).toBe('the earlier export')
+    expect(readFileSync(`${dest}.json`, 'utf8')).toBe('{"file": "la.png"}\n')
+    expect(existsSync(`${dest}.part`)).toBe(false)
+    expect(existsSync(`${dest}.json.part`)).toBe(false)
+  })
+
+  it('refuses a source or a destination that is not an absolute path, and answers it', async () => {
+    // As the engine's `_absolute` does, before anything is asked of either.
+    // Mutation: the check removed - a missing destination then raises on
+    // the stand-in's thread and the request is never answered, which the
+    // deadline here ends with the inactivity error instead.
+    const { sidecar, home } = await standIn({ encode_delay_ms: 1 })
+    const { plan, source, dest } = await still(sidecar, home)
+    const asked = (paths: Record<string, unknown>): Promise<EngineError> =>
+      rejection(sidecar.request('export.encode', { plan, ...paths }, { deadlineMs: 5_000 }).result)
+    const noDest = await asked({ source })
+    expect(noDest.code).toBe(-32602)
+    expect(noDest.data).toMatchObject({ kind: 'params', hint: 'dest must be an absolute path' })
+    const relative = await asked({ source: 'shots/000000.png', dest })
+    expect(relative.code).toBe(-32602)
+    expect(relative.data).toMatchObject({
+      kind: 'params',
+      hint: 'source must be an absolute path',
+    })
+    expect(existsSync(dest), 'nothing was written').toBe(false)
+  })
+
+  it('refuses a destination that is its own source, or whose .part would be, as the engine’s handler does', async () => {
+    // Mutation: the check removed - the still is then copied over itself.
+    const { sidecar, home } = await standIn({ encode_delay_ms: 1 })
+    const { plan, source } = await still(sidecar, home)
+    const sentence =
+      'dest must not be the source, or put its sidecar or a .part file on it: the source is read and never written to'
+    // The source itself as the destination.
+    const itself = await rejection(
+      sidecar.request('export.encode', { plan, source, dest: source }).result,
+    )
+    expect(itself.code).toBe(-32602)
+    expect(itself.data).toMatchObject({ kind: 'params', hint: sentence })
+    // A source that is the .part the destination would be written to.
+    const shotPart = join(home, 'shots', 'x.png.part')
+    writeFileSync(shotPart, 'a still')
+    const beside = await rejection(
+      sidecar.request('export.encode', {
+        plan,
+        source: shotPart,
+        dest: join(home, 'shots', 'x.png'),
+      }).result,
+    )
+    expect(beside.code).toBe(-32602)
+    expect(beside.data).toMatchObject({ kind: 'params', hint: sentence })
+    expect(readFileSync(source, 'utf8'), 'the source is as it was').toBe('a still')
+    expect(readFileSync(shotPart, 'utf8')).toBe('a still')
   })
 })

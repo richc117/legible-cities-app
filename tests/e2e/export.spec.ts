@@ -245,20 +245,145 @@ test('cancelled during the capture: nothing written, no frames left, and it can 
   })
 })
 
+/**
+ * Until the stand-in's encode has written its first step: the page shows
+ * "Encoded <n> of <m> frames." only from the encode's first `job/progress`,
+ * which the stand-in sends after it has written that step (`encode` in
+ * tests/fake-engine/schematic/serve.py). "Encoding <m> frames." is the main
+ * process's own sentence as the stage starts, before the engine has done
+ * anything, so a Cancel pressed on it can land before any write at all and
+ * prove nothing about what a write leaves.
+ */
+async function encodedAStep(page: Page): Promise<void> {
+  await expect(
+    page
+      .getByRole('region', { name: 'Export run', exact: true })
+      .getByRole('status')
+      .filter({ hasText: /^Encoded \d+ of \d+ frames\./ }),
+  ).toBeVisible({ timeout: 30_000 })
+}
+
+// Since engine v0.18.0 (its issue 79) the encode writes the file and its
+// sidecar beside the destination as `.part` files, and a cancel before they
+// are moved into place removes those and nothing else, so what is checked
+// is that no `.part` is left as well as that nothing reached the
+// destination. Cancel is pressed once a `.part` is on disk, so there is one
+// for the cancel to remove.
+//
+// The mutation it is to be watched failing under: the stand-in's `remove()`
+// inside `encode` made a no-op (its body `pass`), so a cancel leaves the
+// `.part` it wrote.
 test('cancelled during the encode: no partial file and no sidecar', async () => {
   const h = home({ encode_delay_ms: 600 })
   await withApp(h, async (page) => {
     await laidOutProject(page, h)
     await exportButton(page).click()
-    await expect(page.getByText(/^Encod/)).toBeVisible({ timeout: 30_000 })
+    await encodedAStep(page)
+    await expect
+      .poll(() => existsSync(deliverable(h) + '.part'), {
+        timeout: 20_000,
+        message: 'the stand-in has written a step of the file under its .part name',
+      })
+      .toBe(true)
     await page.getByRole('button', { name: 'Cancel' }).click()
     await expect(page.getByText(/was cancelled/i)).toBeVisible({ timeout: 20_000 })
     expect(existsSync(deliverable(h))).toBe(false)
     expect(existsSync(deliverable(h) + '.json')).toBe(false)
+    expect(existsSync(deliverable(h) + '.part'), 'no .part of the file is left').toBe(false)
+    expect(existsSync(deliverable(h) + '.json.part'), 'nor of its sidecar').toBe(false)
     expect(framesLeft(h)).toEqual([])
   })
 })
 
+// A later export of the same options replaces an earlier one by design, so
+// before engine v0.18.0 a re-export that was cancelled - or failed - took the
+// earlier file and its sidecar with it: the encode truncated the destination
+// as it began, and its cleanup removed both (engine issue 79). Now the
+// earlier export is as it was.
+//
+// Cancel is pressed once the stand-in has written a step (`encodedAStep`),
+// so a write exists for the earlier export to survive.
+//
+// The mutation it is to be watched failing under: the stand-in's encode
+// writing its partial file to the destination itself (`dest.write_bytes`
+// for `part.write_bytes` in the step loop of `encode`,
+// tests/fake-engine/schematic/serve.py), as the engine did before - the
+// earlier file is then truncated by the first step, before the cancel.
+test('a re-export cancelled during the encode leaves the earlier export as it was', async () => {
+  const h = home({ encode_delay_ms: 600 })
+  await withApp(h, async (page) => {
+    await laidOutProject(page, h)
+    mkdirSync(join(h.exportFolder, 'Los Angeles'), { recursive: true })
+    writeFileSync(deliverable(h), 'the earlier export')
+    const earlierSidecar = JSON.stringify({ file: REEL, preset: 'instagram-reel' })
+    writeFileSync(deliverable(h) + '.json', earlierSidecar)
+    await exportButton(page).click()
+    await encodedAStep(page)
+    await page.getByRole('button', { name: 'Cancel' }).click()
+    await expect(page.getByText(/was cancelled/i)).toBeVisible({ timeout: 20_000 })
+    expect(readFileSync(deliverable(h), 'utf8'), 'the earlier file').toBe('the earlier export')
+    expect(readFileSync(deliverable(h) + '.json', 'utf8'), 'and its sidecar').toBe(earlierSidecar)
+    expect(existsSync(deliverable(h) + '.part')).toBe(false)
+    expect(existsSync(deliverable(h) + '.json.part')).toBe(false)
+    expect(framesLeft(h)).toEqual([])
+  })
+})
+
+// Engine v0.18.0 (its issues 79 and 80): the encode writes the file and its
+// sidecar as `.part` files beside the destination and moves them into place
+// once whole, and a cancel that comes after that move is too late. The
+// engine answers the result with `cancel_too_late`, both files are at the
+// destination, and the export is finished: the file named, the reveal
+// offered, and the run saying it was kept rather than that it was
+// cancelled. The stand-in's `cancel_too_late` control has the encode wait,
+// once both files are in place, for the cancel pressed below.
+//
+// Written, not run, by the lane that added it (issue 423). The mutations it
+// is to be watched failing under: the field left unread in the main
+// process (`const late = false` in src/main/export.ts) - the run then says
+// "Exported" with no word of the cancel; and a cancel looked at after the
+// encode's answer (`this.#stopIfCancelled(control)` after the
+// `export.encode` request) - the run then says the export was cancelled
+// over a file on disk.
+test('cancelled during the encode after the file was in place: the export finishes and says so', async () => {
+  test.setTimeout(120_000)
+  const h = home({ cancel_too_late: { 'export.encode': 20_000 } })
+  await withApp(h, async (page) => {
+    await laidOutProject(page, h)
+    await exportButton(page).click()
+    const run = page.getByRole('region', { name: 'Export run', exact: true })
+    // Both files are in place, and the stand-in is waiting for the cancel.
+    await expect.poll(() => existsSync(deliverable(h) + '.json'), { timeout: 45_000 }).toBe(true)
+    await run.getByRole('button', { name: 'Cancel' }).click()
+    await expect(
+      run.getByText('The export was already written when you cancelled; it is kept.'),
+    ).toBeVisible({ timeout: 20_000 })
+    await expect(run.getByRole('status').filter({ hasText: /^Exported / })).toHaveText(
+      `Exported ${REEL}.`,
+    )
+    await expect(run.getByRole('button', { name: 'Reveal' })).toBeVisible()
+    await expect(run.getByText(/was cancelled/i)).toHaveCount(0)
+    expect(existsSync(deliverable(h)), 'the file is at the destination').toBe(true)
+    const sidecar = JSON.parse(readFileSync(deliverable(h) + '.json', 'utf8')) as {
+      file: string
+    }
+    expect(sidecar.file).toBe(REEL)
+    expect(existsSync(deliverable(h) + '.part'), 'no .part is left').toBe(false)
+    expect(existsSync(deliverable(h) + '.json.part')).toBe(false)
+    expect(framesLeft(h), 'the frames are gone').toEqual([])
+    const cancels = readFileSync(join(h.engineHome, 'fake-engine.received'), 'utf8')
+      .split('\n')
+      .filter((line) => line.includes('"$/cancelRequest"'))
+    expect(cancels, 'the cancel reached the engine').toHaveLength(1)
+  })
+})
+
+// A failure while the encode runs no longer says "Nothing was written."
+// outright (engine v0.18.0, its issue 79): the one failure the engine
+// documents that leaves something, the sidecar's own move after the
+// file's, leaves the new file beside the sidecar the folder had, and the
+// page cannot tell which failure it was. The stand-in's failure is before
+// the moves, so nothing is at the destination and no `.part` is left.
 test("a failed encode shows the engine's own sentence and leaves nothing", async () => {
   const h = home({ encode_fails: true })
   await withApp(h, async (page) => {
@@ -267,8 +392,14 @@ test("a failed encode shows the engine's own sentence and leaves nothing", async
     await expect(page.getByText('the stand-in could not encode')).toBeVisible({
       timeout: 30_000,
     })
-    await expect(page.getByText('Nothing was written.')).toBeVisible()
+    await expect(
+      page.getByText(
+        'Export again to write the file and its sidecar together. Nothing was written, unless the file reached its folder before its sidecar could.',
+      ),
+    ).toBeVisible()
     expect(existsSync(deliverable(h))).toBe(false)
+    expect(existsSync(deliverable(h) + '.part')).toBe(false)
+    expect(existsSync(deliverable(h) + '.json.part')).toBe(false)
     expect(framesLeft(h)).toEqual([])
   })
 })
