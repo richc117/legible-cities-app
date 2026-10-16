@@ -1,6 +1,6 @@
 # ADR-052: A caption, the clock's corner, and the safe zones as data
 
-- **Status:** Proposed
+- **Status:** Accepted, 16 Oct 2026
 - **Date:** 2026-10-02
 - **Supersedes:** none
 - **Superseded by:** none
@@ -47,4 +47,6 @@ Zones: **(a)** numbers in `present.js`; **(b)** a table in `export.py` that the 
 
 **What to watch.** Meta moving its zones: the table carries a date. TikTok has no preset; if one comes, it is a row in the table, not a number in the page.
 
-**As of 8 Oct 2026, the app's half landed (issue 352).** Cell 06 offers a Caption, a Clock corner and Alt text for the file's sidecar. The caption and the corner are plan options and so are on the preview's address and in `CaptureJob`; the alt text rides in `export.encode`'s provenance. The corner list is the engine's rules restated for the select only (no bottom right on a preset with safe zones, no top left while the title or a caption is drawn), the default corner is never sent, and the engine still judges whatever is sent. Status stays Proposed until the measurement this record asks for is made on the runners.
+**As of 8 Oct 2026, the app's half landed (issue 352).** Cell 06 offers a Caption, a Clock corner and Alt text for the file's sidecar. The caption and the corner are plan options and so are on the preview's address and in `CaptureJob`; the alt text rides in `export.encode`'s provenance. The corner list is the engine's rules restated for the select only (no bottom right on a preset with safe zones, no top left while the title or a caption is drawn), the default corner is never sent, and the engine still judges whatever is sent. The measurement this record asks for on the runners had not been made then; the acceptance below does not claim it was.
+
+**As of 16 Oct 2026:** the maintainer accepted this record with the approval batch of the codebase review. It shipped (issue 352).

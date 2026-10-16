@@ -1,6 +1,6 @@
 # ADR-051: A storyboard is a name or a list of beats, and the opening beat is named
 
-- **Status:** Proposed
+- **Status:** Accepted, 16 Oct 2026
 - **Date:** 2026-10-02
 - **Supersedes:** none
 - **Superseded by:** none
@@ -52,3 +52,5 @@ For the alt text: name the storyboard, or describe the views visited.
 | encode, 750 frames, standard | 3.5–4.8 s | main.log |
 | 90 s at standard (scaled from earlier exports) | LA reel 7.1 MB; NYC reel 15.5 MB; CDMX bluesky-video 12.3 MB | existing mp4s |
 | 90 s at high (lower bound) | NYC reel 50.4 MB; CDMX bluesky-video 42.0 MB; LA bluesky-video 13.9 MB | standard exports upscaled ×2 and re-encoded at crf 16 with the engine's x264 settings |
+
+**As of 16 Oct 2026:** the maintainer accepted this record with the approval batch of the codebase review. It shipped (issue 352).
