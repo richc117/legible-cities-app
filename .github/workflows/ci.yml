@@ -11,10 +11,11 @@ on:
 permissions:
   contents: read
 
-# A newer push to a pull request's branch cancels the run it supersedes;
-# a push to main never cancels another, so every merge keeps its record.
+# A newer push to a pull request's branch cancels the run it supersedes.
+# A push has a group of its own per commit, so no push run is cancelled or
+# replaced while pending, and every merge to main keeps its record.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name == 'push' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
