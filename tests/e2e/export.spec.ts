@@ -259,6 +259,55 @@ test('cancelled during the encode: no partial file and no sidecar', async () => 
   })
 })
 
+// Engine v0.18.0 (its issues 79 and 80): the encode writes the file and its
+// sidecar as `.part` files beside the destination and moves them into place
+// once whole, and a cancel that comes after that move is too late. The
+// engine answers the result with `cancel_too_late`, both files are at the
+// destination, and the export is finished: the file named, the reveal
+// offered, and the run saying it was kept rather than that it was
+// cancelled. The stand-in's `cancel_too_late` control has the encode wait,
+// once both files are in place, for the cancel pressed below.
+//
+// Written, not run, by the lane that added it (issue 423). The mutations it
+// is to be watched failing under: the field left unread in the main
+// process (`const late = false` in src/main/export.ts) - the run then says
+// "Exported" with no word of the cancel; and a cancel looked at after the
+// encode's answer (`this.#stopIfCancelled(control)` after the
+// `export.encode` request) - the run then says the export was cancelled
+// over a file on disk.
+test('cancelled during the encode after the file was in place: the export finishes and says so', async () => {
+  test.setTimeout(120_000)
+  const h = home({ cancel_too_late: { 'export.encode': 20_000 } })
+  await withApp(h, async (page) => {
+    await laidOutProject(page, h)
+    await exportButton(page).click()
+    const run = page.getByRole('region', { name: 'Export run', exact: true })
+    // Both files are in place, and the stand-in is waiting for the cancel.
+    await expect.poll(() => existsSync(deliverable(h) + '.json'), { timeout: 45_000 }).toBe(true)
+    await run.getByRole('button', { name: 'Cancel' }).click()
+    await expect(
+      run.getByText('The export was already written when you cancelled; it is kept.'),
+    ).toBeVisible({ timeout: 20_000 })
+    await expect(run.getByRole('status').filter({ hasText: /^Exported / })).toHaveText(
+      `Exported ${REEL}.`,
+    )
+    await expect(run.getByRole('button', { name: 'Reveal' })).toBeVisible()
+    await expect(run.getByText(/was cancelled/i)).toHaveCount(0)
+    expect(existsSync(deliverable(h)), 'the file is at the destination').toBe(true)
+    const sidecar = JSON.parse(readFileSync(deliverable(h) + '.json', 'utf8')) as {
+      file: string
+    }
+    expect(sidecar.file).toBe(REEL)
+    expect(existsSync(deliverable(h) + '.part'), 'no .part is left').toBe(false)
+    expect(existsSync(deliverable(h) + '.json.part')).toBe(false)
+    expect(framesLeft(h), 'the frames are gone').toEqual([])
+    const cancels = readFileSync(join(h.engineHome, 'fake-engine.received'), 'utf8')
+      .split('\n')
+      .filter((line) => line.includes('"$/cancelRequest"'))
+    expect(cancels, 'the cancel reached the engine').toHaveLength(1)
+  })
+})
+
 test("a failed encode shows the engine's own sentence and leaves nothing", async () => {
   const h = home({ encode_fails: true })
   await withApp(h, async (page) => {

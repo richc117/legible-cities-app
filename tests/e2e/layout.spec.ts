@@ -696,6 +696,71 @@ test('a cancelled rebuild keeps the chosen day, and leaves the map where it was'
   })
 })
 
+// Engine v0.18.0 (its issue 80): a cancel that reaches map.build after the
+// map's files are in place is too late. The engine answers the result with
+// `cancel_too_late`, and the map on disk is the one drawn, so the rebuild is
+// a finished draw: the day recorded with `drawn` beside it, the page loaded
+// again, and the run saying the map was kept. Before, the run took any
+// cancel to mean nothing was written and left the old page in the frame
+// over the new one on disk. The stand-in's `cancel_too_late` control has
+// every map.build wait, once its files are in place, up to eight seconds for
+// a cancel - the first layout spends them waiting for one nobody sends - so
+// the press below always lands after the point of no return.
+//
+// Written, not run, by the lane that added it (issue 423). The mutation it
+// is to be watched failing under: the cancel looked at again after the draw
+// in `#drawDay` (`if (this.#cancelled) return this.#stopped()` put back after
+// `#draw`, src/renderer/src/engine/layoutRun.ts) - the run then says the
+// rebuild was cancelled, `drawn.date` stays the 16th and the frame's address
+// does not move.
+test('a rebuild whose cancel came too late records the day it drew and loads the page again', async () => {
+  test.setTimeout(120_000)
+  const engineHome = home({
+    map_draws: true,
+    progress_delay_ms: 10,
+    cancel_too_late: { 'map.build': 8_000 },
+  })
+  await withApp(engineHome, async (page) => {
+    await openNewProject(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    const before = readRecord(engineHome)
+    expect((before.drawn as { date: string }).date).toBe('2026-06-16')
+    const frame = page.locator('iframe.viewer-frame')
+    await expect(frame).toHaveAttribute('src', /.+/, { timeout: 20_000 })
+    const address = await frame.getAttribute('src')
+
+    const section = cell(page, 'frame')
+    await section.getByLabel('Draw for another day').fill('2026-06-20')
+    await expect.poll(() => readRecord(engineHome).date).toBe('2026-06-20')
+    await section.getByRole('button', { name: 'Draw for this day' }).click()
+    // Pressed once the stand-in has the map call, so the cancel reaches the
+    // draw and not the run's wait for a write still on its way.
+    await expect.poll(() => received(engineHome, 'map.build').length, { timeout: 20_000 }).toBe(2)
+    await page.getByRole('button', { name: /cancel/i }).click()
+
+    const run = await openCell(page, 'process')
+    await expect(
+      run.getByText('The map was already drawn when you cancelled; it is kept.'),
+    ).toBeVisible({ timeout: 20_000 })
+    await expect(run.getByText(/^Drawn for 2026-06-20 from the stored layout/)).toBeVisible()
+    await expect(page.getByText(/The rebuild was cancelled/)).toHaveCount(0)
+    const after = readRecord(engineHome)
+    expect(after.date, 'the day stays chosen').toBe('2026-06-20')
+    expect(
+      (after.drawn as { date: string }).date,
+      'and is the day the map on disk was drawn for',
+    ).toBe('2026-06-20')
+    expect(after.layout, 'from the stored layout').toEqual(before.layout)
+    await expect(frame, 'the frame loads the page the engine wrote').not.toHaveAttribute(
+      'src',
+      address ?? '',
+      { timeout: 20_000 },
+    )
+    expect(received(engineHome, '$/cancelRequest'), 'the cancel reached the engine').toHaveLength(1)
+  })
+})
+
 // A5.5-15: choosing and drawing are two acts. The day reaches the record
 // when it is chosen, which is the only way cell 03's staleness can exist -
 // until this, `date` and `drawn.date` were written in one breath and could

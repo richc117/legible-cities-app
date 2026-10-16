@@ -1016,6 +1016,68 @@ test('a colour chosen after a cancelled redraw waits for an export, and a rename
   )
 })
 
+// Engine v0.18.0 (its issue 80): a cancel that reaches a redraw's map.build
+// after the map's files are in place is too late, and the engine answers
+// the result with `cancel_too_late`. The colour is on the map on disk, so
+// the redraw is a finished one: the colour recorded with `drawn` beside it,
+// the swatch keeping it rather than going back to the feed's, the page
+// loaded again, and cell 02 saying the map was kept. Before, the run took
+// the cancel to mean nothing was written: the swatch went back, the record
+// kept the feed's colour, and the page on disk, its thumbnail and the next
+// export showed the colour the screen said was cancelled. The stand-in's
+// `cancel_too_late` control has every map.build wait, once its files are in
+// place, up to eight seconds for a cancel; the first layout spends them.
+//
+// Written, not run, by the lane that added it (issue 423). The mutation it
+// is to be watched failing under: the cancel looked at again after the draw
+// in `recolour` (`if (this.#cancelled) return this.#stopped()` put back
+// after `#draw`, src/renderer/src/engine/layoutRun.ts) - the redraw then
+// ends cancelled, the swatch goes back to #0072bc and the record's colours
+// stay empty.
+test('a colour whose redraw was cancelled too late is kept, recorded and loaded', async () => {
+  test.setTimeout(120_000)
+  const engineHome = home({ cancel_too_late: { 'map.build': 8_000 } })
+  await withApp(engineHome, async (page) => {
+    await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
+    const frame = page.locator('iframe.viewer-frame')
+    await expect(frame).toHaveAttribute('src', /.+/, { timeout: 20_000 })
+    const address = await frame.getAttribute('src')
+    const panel = cell(page, 'lines')
+    const lineA = panel
+      .getByRole('list', { name: 'Lines', exact: true })
+      .getByRole('listitem')
+      .nth(0)
+    const picker = panel.getByRole('group', { name: 'Colour for line A' })
+    await panel.getByRole('button', { name: /^Choose the colour of line A/ }).click()
+    await picker.getByLabel('Hex value').fill('#ff0000')
+    await picker.getByRole('button', { name: 'Use this colour' }).click()
+    await expect(picker).toBeHidden()
+    // Pressed once the stand-in has the redraw's map call, which it answers
+    // only when the cancel comes or its eight seconds are up.
+    await expect.poll(() => buildsOf(engineHome), { timeout: 20_000 }).toBe(2)
+    const layoutRun = await openCell(page, 'process')
+    await layoutRun.getByRole('button', { name: 'Cancel', exact: true }).click()
+
+    await expect(
+      layoutRun.getByText('The map was already drawn when you cancelled; it is kept.'),
+    ).toBeVisible({ timeout: 20_000 })
+    await expect(page.getByText(/^The redraw was cancelled\./)).toHaveCount(0)
+    await expect(lineA).toContainText('your colour, #ff0000')
+    const record = readRecord(engineHome)
+    expect(record.colors, 'the colour the map was drawn in').toEqual({ A: '#ff0000' })
+    expect(
+      (record.drawn as { colors: Record<string, string> }).colors,
+      'and the map on disk is said to carry it',
+    ).toEqual({ A: '#ff0000' })
+    await expect(frame, 'the frame loads the page the engine wrote').not.toHaveAttribute(
+      'src',
+      address ?? '',
+      { timeout: 20_000 },
+    )
+    expect(received(engineHome, '$/cancelRequest'), 'the cancel reached the engine').toHaveLength(1)
+  })
+})
+
 test('a colour put back while its build runs is drawn once that build has written', async () => {
   // Issue 399. Line A in #ff0000, and reset to the feed's colour while the
   // build of it runs: the reset equals the record still on disk, which that
