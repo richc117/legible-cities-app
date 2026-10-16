@@ -245,17 +245,46 @@ test('cancelled during the capture: nothing written, no frames left, and it can 
   })
 })
 
+/**
+ * Until the stand-in's encode has written its first step: the page shows
+ * "Encoded <n> of <m> frames." only from the encode's first `job/progress`,
+ * which the stand-in sends after it has written that step (`encode` in
+ * tests/fake-engine/schematic/serve.py). "Encoding <m> frames." is the main
+ * process's own sentence as the stage starts, before the engine has done
+ * anything, so a Cancel pressed on it can land before any write at all and
+ * prove nothing about what a write leaves.
+ */
+async function encodedAStep(page: Page): Promise<void> {
+  await expect(
+    page
+      .getByRole('region', { name: 'Export run', exact: true })
+      .getByRole('status')
+      .filter({ hasText: /^Encoded \d+ of \d+ frames\./ }),
+  ).toBeVisible({ timeout: 30_000 })
+}
+
 // Since engine v0.18.0 (its issue 79) the encode writes the file and its
 // sidecar beside the destination as `.part` files, and a cancel before they
 // are moved into place removes those and nothing else, so what is checked
 // is that no `.part` is left as well as that nothing reached the
-// destination.
+// destination. Cancel is pressed once a `.part` is on disk, so there is one
+// for the cancel to remove.
+//
+// The mutation it is to be watched failing under: the stand-in's `remove()`
+// inside `encode` made a no-op (its body `pass`), so a cancel leaves the
+// `.part` it wrote.
 test('cancelled during the encode: no partial file and no sidecar', async () => {
   const h = home({ encode_delay_ms: 600 })
   await withApp(h, async (page) => {
     await laidOutProject(page, h)
     await exportButton(page).click()
-    await expect(page.getByText(/^Encod/)).toBeVisible({ timeout: 30_000 })
+    await encodedAStep(page)
+    await expect
+      .poll(() => existsSync(deliverable(h) + '.part'), {
+        timeout: 20_000,
+        message: 'the stand-in has written a step of the file under its .part name',
+      })
+      .toBe(true)
     await page.getByRole('button', { name: 'Cancel' }).click()
     await expect(page.getByText(/was cancelled/i)).toBeVisible({ timeout: 20_000 })
     expect(existsSync(deliverable(h))).toBe(false)
@@ -272,11 +301,14 @@ test('cancelled during the encode: no partial file and no sidecar', async () => 
 // as it began, and its cleanup removed both (engine issue 79). Now the
 // earlier export is as it was.
 //
-// Written, not run, by the lane that added it (issue 423). The mutation it
-// is to be watched failing under: the stand-in's encode writing its partial
-// file to the destination itself (`dest.write_bytes` for `part.write_bytes`
-// in the step loop of `encode`, tests/fake-engine/schematic/serve.py), as
-// the engine did before - the earlier file is then truncated.
+// Cancel is pressed once the stand-in has written a step (`encodedAStep`),
+// so a write exists for the earlier export to survive.
+//
+// The mutation it is to be watched failing under: the stand-in's encode
+// writing its partial file to the destination itself (`dest.write_bytes`
+// for `part.write_bytes` in the step loop of `encode`,
+// tests/fake-engine/schematic/serve.py), as the engine did before - the
+// earlier file is then truncated by the first step, before the cancel.
 test('a re-export cancelled during the encode leaves the earlier export as it was', async () => {
   const h = home({ encode_delay_ms: 600 })
   await withApp(h, async (page) => {
@@ -286,7 +318,7 @@ test('a re-export cancelled during the encode leaves the earlier export as it wa
     const earlierSidecar = JSON.stringify({ file: REEL, preset: 'instagram-reel' })
     writeFileSync(deliverable(h) + '.json', earlierSidecar)
     await exportButton(page).click()
-    await expect(page.getByText(/^Encod/)).toBeVisible({ timeout: 30_000 })
+    await encodedAStep(page)
     await page.getByRole('button', { name: 'Cancel' }).click()
     await expect(page.getByText(/was cancelled/i)).toBeVisible({ timeout: 20_000 })
     expect(readFileSync(deliverable(h), 'utf8'), 'the earlier file').toBe('the earlier export')
