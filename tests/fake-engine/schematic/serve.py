@@ -2045,14 +2045,24 @@ class Engine:
                     error(msg_id, -32602,
                           f"plan.beats[{i}] has a {flag} that is not true or false", "params")
                     return
+        # The source and the destination are paths the client owns, judged as
+        # the engine's `_absolute` judges them, after the plan and before the
+        # provenance: each absolute, or a params error in the engine's words.
+        # Refused here, so nothing below is asked of a path that is missing,
+        # which would raise on this thread and leave the request unanswered.
+        for name in ("source", "dest"):
+            value = params.get(name)
+            if not isinstance(value, str) or not value or not Path(value).is_absolute():
+                error(msg_id, -32602, f"{name} must be an absolute path", "params")
+                return
         # The source is read and never written to (engine v0.18.0, its issue
-        # 79): judged as the engine's `_absolute` judges `dest`, after the
-        # plan and before the provenance.
+        # 79), so a destination that is the source, or whose sidecar or
+        # either .part name is, is refused before anything is written.
         sidecar = dest.with_name(dest.name + ".json")
         part = dest.with_name(dest.name + ".part")
         sidecar_part = sidecar.with_name(sidecar.name + ".part")
         written = {path.resolve() for path in (dest, part, sidecar, sidecar_part)}
-        if params.get("source") and params.get("dest") and source.resolve() in written:
+        if source.resolve() in written:
             error(msg_id, -32602, "dest must not be the source, or put its sidecar or a .part "
                   "file on it: the source is read and never written to", "params")
             return

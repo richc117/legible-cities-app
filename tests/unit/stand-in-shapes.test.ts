@@ -2505,6 +2505,27 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s late cancel${WHY}`, ()
     expect(existsSync(`${dest}.json.part`)).toBe(false)
   })
 
+  it('refuses a source or a destination that is not an absolute path, and answers it', async () => {
+    // As the engine's `_absolute` does, before anything is asked of either.
+    // Mutation: the check removed - a missing destination then raises on
+    // the stand-in's thread and the request is never answered, which the
+    // deadline here ends with the inactivity error instead.
+    const { sidecar, home } = await standIn({ encode_delay_ms: 1 })
+    const { plan, source, dest } = await still(sidecar, home)
+    const asked = (paths: Record<string, unknown>): Promise<EngineError> =>
+      rejection(sidecar.request('export.encode', { plan, ...paths }, { deadlineMs: 5_000 }).result)
+    const noDest = await asked({ source })
+    expect(noDest.code).toBe(-32602)
+    expect(noDest.data).toMatchObject({ kind: 'params', hint: 'dest must be an absolute path' })
+    const relative = await asked({ source: 'shots/000000.png', dest })
+    expect(relative.code).toBe(-32602)
+    expect(relative.data).toMatchObject({
+      kind: 'params',
+      hint: 'source must be an absolute path',
+    })
+    expect(existsSync(dest), 'nothing was written').toBe(false)
+  })
+
   it('refuses a destination that is its own source, or whose .part would be, as the engine’s handler does', async () => {
     // Mutation: the check removed - the still is then copied over itself.
     const { sidecar, home } = await standIn({ encode_delay_ms: 1 })
