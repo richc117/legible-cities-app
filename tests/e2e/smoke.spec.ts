@@ -196,14 +196,26 @@ test('the spellchecker is off in both sessions, so no dictionary is fetched', as
       { timeout: 20_000 },
     )
     const partition = CAPTURE_PARTITION
-    const enabled = await app.evaluate(
+    const state = await app.evaluate(
       ({ session }, name) => ({
         interface: session.defaultSession.isSpellCheckerEnabled(),
         capture: session.fromPartition(name).isSpellCheckerEnabled(),
+        // Switching the checker off does not stop Linux fetching the
+        // dictionaries of the languages a session holds; holding none does.
+        languages: [
+          ...session.defaultSession.getSpellCheckerLanguages(),
+          ...session.fromPartition(name).getSpellCheckerLanguages(),
+        ],
       }),
       partition,
     )
-    expect(enabled).toEqual({ interface: false, capture: false })
+    // macOS uses the system's checker, fetches nothing, and keeps its own
+    // language list whatever is set, so the list is only held elsewhere.
+    expect(state).toEqual({
+      interface: false,
+      capture: false,
+      languages: process.platform === 'darwin' ? state.languages : [],
+    })
   } finally {
     await app.close()
   }

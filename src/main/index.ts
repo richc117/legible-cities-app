@@ -368,6 +368,9 @@ if (!hasLock) {
     // every platform, macOS included, for one behaviour everywhere; set
     // before anything else touches the session.
     session.defaultSession.setSpellCheckerEnabled(false)
+    // Off is not enough on Linux: the service still fetches the dictionary of
+    // each language the session holds. No languages, no fetch (issue 418).
+    session.defaultSession.setSpellCheckerLanguages([])
     // The log files before anything worth logging, the engine above all:
     // its first lines are how a launch that failed is diagnosed.
     await openLogs()
