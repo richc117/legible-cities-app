@@ -4,7 +4,7 @@ import { ERROR_CODES, isEngineErrorShape } from '../../shared/engine'
 import type { FeedRecord } from '../../shared/protocol'
 import { uniqueName } from '../../shared/project'
 import Card from './Card'
-import { sentenceFor, type AddSnapshot } from './engine/feedAdd'
+import { sentenceFor, type AddSnapshot, type FeedAdd } from './engine/feedAdd'
 import { forgetFeedList, forgetInspection } from './engine/inspections'
 import { engineClient, feedAdd, peekLayoutRun, subscribeToRuns } from './engine/runs'
 import ConfirmDialog from './ConfirmDialog'
@@ -91,6 +91,30 @@ export function relistAfterAdd(
   now: Pick<AddSnapshot, 'state' | 'feed'>,
 ): boolean {
   return now.state === 'done' && previous !== 'done' && now.feed !== null
+}
+
+/**
+ * The front door's watch on the one feed add, as its effect subscribes it:
+ * the list read again as an add ends with a feed (`relistAfterAdd`), and a
+ * feed added anew under a key seen before forgotten by the inspections, so
+ * it is inspected as the new feed it is. A function of its own so the watch
+ * itself is tested against a real add, with the sheet's close - a cancel of
+ * the add, and nothing said after it - played as the sheet plays it.
+ */
+export function followAdds(
+  adder: Pick<FeedAdd, 'snapshot' | 'subscribe'>,
+  relist: () => void,
+  forget: (key: string) => void,
+): () => void {
+  let previous = adder.snapshot.state
+  const stop = adder.subscribe((snapshot) => {
+    if (relistAfterAdd(previous, snapshot)) relist()
+    if (snapshot.state === 'done' && snapshot.feed !== null) forget(snapshot.feed.key)
+    previous = snapshot.state
+  })
+  return () => {
+    stop()
+  }
 }
 
 /** How a removal ended, as far as the screen is concerned, with the sentence to say. */
@@ -464,15 +488,15 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
   // still open to say so (`relistAfterAdd`): one cancelled too late for the
   // engine to stop ends with its feed kept after a close of the sheet has
   // cancelled it.
-  useEffect(() => {
-    let previous = adder.snapshot.state
-    return adder.subscribe((snapshot) => {
-      if (relistAfterAdd(previous, snapshot)) void refreshFeeds()
-      // A feed added anew under a key seen before is a new feed to inspect.
-      if (snapshot.state === 'done' && snapshot.feed !== null) forgetInspection(snapshot.feed.key)
-      previous = snapshot.state
-    })
-  }, [adder, refreshFeeds])
+  useEffect(
+    () =>
+      followAdds(
+        adder,
+        () => void refreshFeeds(),
+        (key) => forgetInspection(key),
+      ),
+    [adder, refreshFeeds],
+  )
 
   // The engine forgets the feed, its zip and its layouts; the main process
   // refuses first when a project names it, and that sentence is shown. The

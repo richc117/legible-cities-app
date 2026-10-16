@@ -1,15 +1,14 @@
 // Adding a feed, against a stub client: the two stages, the file that
 // skips the download, the engine's sentence, and a cancel.
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
-  ADD_CANCELLED,
   FEED_KEPT,
   FeedAdd,
   sentenceFor,
   type AddClient,
 } from '../../src/renderer/src/engine/feedAdd'
-import { relistAfterAdd } from '../../src/renderer/src/Library'
+import { followAdds, relistAfterAdd } from '../../src/renderer/src/Library'
 import { filledName, startingFeed, validateFeedUrl } from '../../src/renderer/src/NewProjectSheet'
 import { placeOf } from '../../src/renderer/src/FeedList'
 import { ERROR_CODES, type EngineState } from '../../src/shared/engine'
@@ -174,7 +173,6 @@ describe('FeedAdd', () => {
     calls[1].resolve(FEED)
     await tick()
     expect(run.snapshot).toMatchObject({ state: 'done', late: false })
-    expect(ADD_CANCELLED, 'a cancel in time kept nothing').toMatch(/^Cancelled\. Nothing/)
   })
 
   it('reads the front door’s list again when an add ends with a feed, the sheet open or not', () => {
@@ -190,6 +188,46 @@ describe('FeedAdd', () => {
     expect(relistAfterAdd('done', { state: 'done', feed: FEED }), 'once per ending').toBe(false)
     expect(relistAfterAdd('running', { state: 'done', feed: null })).toBe(false)
     expect(relistAfterAdd('idle', running)).toBe(false)
+  })
+
+  it('lists a feed the engine kept after the sheet was closed on its add, and nothing for an add cancelled in time', async () => {
+    // The front door's watch, against a real add. Closing the New project
+    // sheet while it adds cancels the add (`closed` in NewProjectSheet.tsx)
+    // and the sheet says nothing after it, so when the engine answers the
+    // feed's record with `cancel_too_late` this watch is the only thing that
+    // lists it. Mutation: the relist taken out of `followAdds` (the line
+    // `if (relistAfterAdd(previous, snapshot)) relist()`) - the feed is kept
+    // and never listed.
+    const { client, calls } = stub()
+    const run = new FeedAdd(client)
+    const relist = vi.fn()
+    const forget = vi.fn()
+    const stop = followAdds(run, relist, forget)
+
+    run.start({ url: 'https://agency.example/gtfs.zip' }, READY)
+    run.cancel()
+    expect(calls[0].cancelled, 'what closing the sheet does').toBe(true)
+    calls[0].resolve({ ...FEED, cancel_too_late: true })
+    await tick()
+    expect(relist, 'the list is read again').toHaveBeenCalledTimes(1)
+    expect(forget, 'and the feed is a new one to inspect').toHaveBeenCalledWith('mine')
+
+    // A cancel in time: the engine kept nothing, so there is nothing to list.
+    run.reset()
+    run.start({ url: 'https://agency.example/other.zip' }, READY)
+    run.cancel()
+    calls[1].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
+    await tick()
+    expect(run.snapshot.state).toBe('cancelled')
+    expect(relist).toHaveBeenCalledTimes(1)
+
+    // Once the screen has gone, an add that ends asks nothing of it.
+    stop()
+    run.reset()
+    run.start({ url: 'https://agency.example/third.zip' }, READY)
+    calls[2].resolve(FEED)
+    await tick()
+    expect(relist).toHaveBeenCalledTimes(1)
   })
 
   it('refuses while the engine is not ready, and calls nothing', () => {
