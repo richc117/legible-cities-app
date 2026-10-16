@@ -19,21 +19,22 @@
 
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import ExportRun from '../../src/renderer/src/ExportRun'
-import { freshStages } from '../../src/renderer/src/engine/exportRun'
+import ExportRun, { ENCODE_UNFINISHED } from '../../src/renderer/src/ExportRun'
+import { freshStages, stagesAt } from '../../src/renderer/src/engine/exportRun'
+import type { Stage } from '../../src/renderer/src/ProgressLine'
 import type { RunState } from '../../src/shared/layout'
 import { describePair, duplicatedNames } from '../support/a11y-names'
 
 /** The export run in one state, drawn as the cell draws it. */
-function draw(state: RunState): string {
+function draw(state: RunState, stages: Stage[] = freshStages(), left = false): string {
   const run = {
     snapshot: {
       state,
-      stages: freshStages(),
+      stages,
       message: null,
       error: null,
       file: 'la-metro-rail.mp4',
-      left: false,
+      left,
     },
     subscribe: () => () => undefined,
     start: () => undefined,
@@ -107,5 +108,48 @@ describe('the export run, named for the run', () => {
     expect(duplicatedNames(old, []).pairs.map(describePair)).toEqual([
       'region "Export" contains button "Export"',
     ])
+  })
+})
+
+// What an export that did not finish says beneath its line. Since engine
+// v0.18.0 (its issue 79) the file and its sidecar are moved into place from
+// `.part` files, the file first, and the engine documents one failure that
+// leaves something: the sidecar's own move, after the file's, which leaves
+// the new file beside the sidecar the folder had. So a failure while the
+// encode ran no longer says "Nothing was written." outright, and a failure
+// before it, or a cancel, still does.
+describe('the export run, as it ends without a file', () => {
+  /** The stages as the run leaves them when it fails at `stage`. */
+  const failedAt = (stage: string): Stage[] =>
+    stagesAt(freshStages(), stage).map((s) =>
+      s.state === 'running' ? { ...s, state: 'failed' as const } : s,
+    )
+  /** The sentence under the line: the prose status, not the progress message. */
+  const prose = (html: string): string | null =>
+    /<p class="prose" role="status">([^<]*)<\/p>/.exec(html)?.[1] ?? null
+
+  it('says a failure while it encoded may have left the file without its sidecar', () => {
+    // Mutation: the encode's own branch dropped from `unfinishedSentence` -
+    // the failure then says "Nothing was written." over a folder that may
+    // hold the new file.
+    const said = prose(draw('failed', failedAt('encode')))
+    expect(said).toBe(ENCODE_UNFINISHED)
+    expect(said).toBe(
+      'Export again to write the file and its sidecar together. Nothing was written, unless the file reached its folder before its sidecar could.',
+    )
+  })
+
+  it('says nothing was written for a failure before the encode, and for a cancel', () => {
+    expect(prose(draw('failed', failedAt('plan')))).toBe('Nothing was written.')
+    expect(prose(draw('failed', failedAt('capture')))).toBe('Nothing was written.')
+    expect(prose(draw('cancelled', stagesAt(freshStages(), 'encode')))).toBe(
+      'The export was cancelled. Nothing was written.',
+    )
+  })
+
+  it('says the engine stopped when it stopped while writing, whatever stage it was at', () => {
+    expect(prose(draw('failed', failedAt('encode'), true))).toBe(
+      'The engine stopped while writing the file. Export again to replace whatever it left.',
+    )
   })
 })

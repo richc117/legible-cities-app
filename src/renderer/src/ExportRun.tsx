@@ -7,6 +7,7 @@ import type { EngineState } from '../../shared/engine'
 import type { ExportChoice } from '../../shared/export'
 import type { ProjectRecord } from '../../shared/project'
 import type { ExportRun as Run } from './engine/exportRun'
+import type { Stage } from './ProgressLine'
 import { useSnapshot } from './useSnapshot'
 
 // The export on screen: the three stages on the progress line as the main
@@ -86,11 +87,7 @@ export default function ExportRun({
         {(state === 'cancelled' || state === 'failed') && (
           <>
             <p className="prose" role="status">
-              {state === 'cancelled'
-                ? 'The export was cancelled. Nothing was written.'
-                : left
-                  ? 'The engine stopped while writing the file. Export again to replace whatever it left.'
-                  : 'Nothing was written.'}
+              {unfinishedSentence(state, left, stages)}
             </p>
             <div className="toolbar">{exportButton}</div>
           </>
@@ -120,4 +117,34 @@ function describe(state: string, message: string | null): string {
   if (state === 'cancelled') return 'The export was cancelled.'
   if (state === 'done') return 'The export finished.'
   return message === null ? 'The export is starting.' : `Running: ${message}`
+}
+
+/**
+ * What a failure during the encode says (engine v0.18.0, its issue 79). The
+ * file and its sidecar are written as `.part` files and moved into place,
+ * the file first; a failure before the moves leaves the folder as it was,
+ * but a failure of the sidecar's own move leaves the new file beside the
+ * sidecar the folder had. The app cannot tell which from here, and the
+ * engine's own sentence, above, says which it was.
+ */
+export const ENCODE_UNFINISHED =
+  'Export again to write the file and its sidecar together. Nothing was written, unless the file reached its folder before its sidecar could.'
+
+/**
+ * What an export that did not finish says under its line. A cancel, and a
+ * failure before the encode, wrote nothing; the engine stopping while it
+ * encoded may leave its `.part` files for the next export to write over; and
+ * any other failure while it encoded is `ENCODE_UNFINISHED`.
+ */
+export function unfinishedSentence(
+  state: 'cancelled' | 'failed',
+  left: boolean,
+  stages: readonly Pick<Stage, 'id' | 'state'>[],
+): string {
+  if (state === 'cancelled') return 'The export was cancelled. Nothing was written.'
+  if (left)
+    return 'The engine stopped while writing the file. Export again to replace whatever it left.'
+  return stages.some((stage) => stage.id === 'encode' && stage.state === 'failed')
+    ? ENCODE_UNFINISHED
+    : 'Nothing was written.'
 }

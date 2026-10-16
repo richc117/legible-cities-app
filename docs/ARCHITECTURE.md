@@ -1531,13 +1531,17 @@ its sidecar beside the destination as `.part` files and moves them into
 place once whole, so a cancel or a failure before that removes only the
 `.part` files and leaves an earlier export of the same name as it was; a
 cancel after it is too late, and the export finishes, its file kept, and
-says "The export was already written when you cancelled; it is kept." A
-destination that is its own source is refused as a params error, shown as
-any refusal is. The Outputs list reads only sidecars, so neither a `.part`
-file nor `map.build`'s hidden staging folder is ever a row. A layout run
-and an export of one project cannot overlap, because the export reads the
-page a layout would rewrite: each button is disabled while the other runs,
-and so is delete.
+says "The export was already written when you cancelled; it is kept." The
+one failure that leaves something is the sidecar's own move, after the
+file's, which leaves the new file beside the sidecar the folder had, so a
+failure while the encode runs does not say "Nothing was written." outright
+(`unfinishedSentence` in `ExportRun.tsx`); a cancel, and a failure before
+the encode, still do. A destination that is its own source is refused as a
+params error, shown as any refusal is. The Outputs list reads only
+sidecars, so neither a `.part` file nor `map.build`'s hidden staging folder
+is ever a row. A layout run and an export of one project cannot overlap,
+because the export reads the page a layout would rewrite: each button is
+disabled while the other runs, and so is delete.
 
 ### The export's choices
 
