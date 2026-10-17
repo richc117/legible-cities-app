@@ -146,12 +146,15 @@ jobs:
   # The Python sidecar runtime. ADR-020 chose python-build-standalone over
   # PyInstaller; scripts/vendor-python.sh verifies the pinned checksum and
   # fails rather than continuing if the asset changed. The engine it
-  # installs is the pinned one (A1-02 wired the block in), with the
-  # dependencies it declares, and the script refuses a runtime whose
-  # `schematic.serve --schema` does not start or does not hash to the pinned
-  # schema. Every step runs under bash, which on windows-latest is Git Bash;
-  # scripts/vendor-python.sh says what that constrains. The engine's tags are
-  # public since 2026-09-08, and the refuse-early step below guards that.
+  # installs is the pinned one (A1-02 wired the block in), checked out at
+  # engine.commit, which the tag must still name, and every other package is
+  # installed by its hash from vendor/python-requirements.txt, the engine's
+  # own lock (issue 434); the script refuses a runtime whose packages are not
+  # exactly that file's and python.pip's, or whose `schematic.serve --schema`
+  # does not start or does not hash to the pinned schema. Every step runs
+  # under bash, which on windows-latest is Git Bash; scripts/vendor-python.sh
+  # says what that constrains. The engine's tags are public since 2026-09-08,
+  # and the refuse-early step below guards that.
   python:
     name: python (${{ matrix.target }})
     # No runtime carrying the GPL engine is uploaded in a run without the
@@ -188,45 +191,68 @@ jobs:
               raise SystemExit(f"engine.repo is not a GitHub URL: {engine['repo']}")
           print(f"repo={owner_repo}")
           print(f"tag={engine['tag']}")
+          print(f"commit={engine['commit']}")
           print(f"version={engine['version']}")
           PY
-      - name: Refuse early if the engine's tag is not published
+      - name: Refuse early if the engine's tag is not published, or names another commit
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           PINNED_REPO: ${{ steps.engine.outputs.repo }}
           PINNED_TAG: ${{ steps.engine.outputs.tag }}
+          PINNED_COMMIT: ${{ steps.engine.outputs.commit }}
         run: |
           # Without this the checkout below fails with a bare "couldn't find
           # ref", which says nothing about what to do. The engine is tagged
           # in its own repository and pushed by hand; until that happens
           # this job cannot vendor a runtime with the engine in it.
-          if ! gh api "repos/$PINNED_REPO/git/ref/tags/$PINNED_TAG" >/dev/null 2>&1; then
+          if ! ref=$(gh api "repos/$PINNED_REPO/git/ref/tags/$PINNED_TAG" --jq '.object.type + " " + .object.sha' 2>/dev/null); then
             echo "::error::$PINNED_REPO has no tag $PINNED_TAG. The engine's tags are pushed by hand; this job vendors the runtime once that is done."
             exit 1
           fi
-          echo "$PINNED_REPO is tagged $PINNED_TAG"
-      - name: Check out the engine at its pin
+          # A lightweight tag names its commit; an annotated one names a tag
+          # object, peeled here until a commit is reached (issue 434). A tag
+          # moved since the pin was written is refused, not followed.
+          type=${ref%% *}
+          sha=${ref#* }
+          while [ "$type" = tag ]; do
+            ref=$(gh api "repos/$PINNED_REPO/git/tags/$sha" --jq '.object.type + " " + .object.sha')
+            type=${ref%% *}
+            sha=${ref#* }
+          done
+          if [ "$type" != commit ] || [ "$sha" != "$PINNED_COMMIT" ]; then
+            echo "::error::$PINNED_REPO's tag $PINNED_TAG names $type $sha, and vendor/pins.json pins engine.commit $PINNED_COMMIT. A tag that moved is not vendored: move the pin, with its lock (scripts/lock-python.sh), or put the tag back."
+            exit 1
+          fi
+          echo "$PINNED_REPO is tagged $PINNED_TAG at $sha"
+      - name: Check out the engine at its pinned commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ steps.engine.outputs.repo }}
-          ref: ${{ steps.engine.outputs.tag }}
+          ref: ${{ steps.engine.outputs.commit }}
           path: engine
           persist-credentials: false
-      - name: Refuse an engine that is not the pinned version
+      - name: Refuse an engine that is not the pinned version and commit
         shell: bash
         env:
           PINNED_VERSION: ${{ steps.engine.outputs.version }}
           PINNED_TAG: ${{ steps.engine.outputs.tag }}
+          PINNED_COMMIT: ${{ steps.engine.outputs.commit }}
         run: |
-          # The pin names a tag and a version; a tag that has moved would
-          # otherwise vendor an engine the app was not built against.
+          # The pin names a tag, its commit and a version, and each is held
+          # to the checkout; scripts/vendor-python.sh holds the commit to the
+          # checkout again and records it inside the runtime.
           found=$(grep -oE '__version__ *= *"[^"]+"' engine/src/schematic/__init__.py | head -1 | cut -d'"' -f2)
           if [ "$found" != "$PINNED_VERSION" ]; then
-            echo "::error::the pin says $PINNED_VERSION, the tag holds $found"
+            echo "::error::the pin says $PINNED_VERSION, the commit holds $found"
             exit 1
           fi
-          echo "engine $found at $PINNED_TAG"
+          head=$(git -C engine rev-parse HEAD)
+          if [ "$head" != "$PINNED_COMMIT" ]; then
+            echo "::error::the checkout is at $head, and vendor/pins.json pins engine.commit $PINNED_COMMIT"
+            exit 1
+          fi
+          echo "engine $found at $PINNED_TAG, commit $head"
       - name: Find zstd and Node for the licence texts
         shell: bash
         run: |

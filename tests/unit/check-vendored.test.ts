@@ -47,6 +47,11 @@ const PINS_TEXT = (() => {
   return JSON.stringify(pins, null, 2)
 })()
 writeFileSync(PINS_FILE, PINS_TEXT)
+// The requirements manifest sits beside the pins it is held to (issue 434),
+// so the repository's own goes beside the fixtures' pins, whose
+// python.requirements.sha256 is the repository's and names it.
+const REQUIREMENTS_TEXT = readFileSync(join(repo, 'vendor', 'python-requirements.txt'), 'utf8')
+writeFileSync(join(PINS_DIR, 'python-requirements.txt'), REQUIREMENTS_TEXT)
 afterAll(() => rmSync(PINS_DIR, { recursive: true, force: true }))
 
 const PINS = JSON.parse(PINS_TEXT) as {
@@ -57,8 +62,10 @@ const PINS = JSON.parse(PINS_TEXT) as {
       { triple: string; full: { asset: string; sha256: string }; licences: LicenceLists }
     >
     licence_texts: { cpython_incorporated: { file: string; sha256: string } }
+    pip: { version: string; sha256: string }
+    requirements: { sha256: string }
   }
-  engine: { version: string }
+  engine: { version: string; tag: string; commit: string }
   loom: { commit: string }
   ffmpeg: {
     source: { sha256: string }
@@ -80,6 +87,8 @@ interface Context {
 interface Module {
   readArchitecture(header: Uint8Array): { format: string; archs: string[] } | null
   targetOf(platform: string, arch: number | string): string | null
+  markerEnvironment(target: string, pythonVersion: string): Record<string, string> | null
+  evaluateMarker(marker: string, env: Record<string, string>): boolean
   checkVendor(options: { target: string; vendor: string; pinsFile: string }): {
     problems: string[]
     manifestPath: string | null
@@ -131,6 +140,33 @@ function pe(arch: Arch): Buffer {
 const header = (target: Target): Buffer =>
   target === 'win-x64' ? pe('x64') : machO(target === 'darwin-arm64' ? 'arm64' : 'x64')
 
+/**
+ * The packages the manifest pins for a target, read here and not by the
+ * script under test, so a parser that read nothing could not make the
+ * fixtures agree with it: every `name==version` line, the one marker the
+ * lock carries judged by hand. A new marker fails here, naming it, until
+ * this learns it.
+ */
+function locked(target: Target): { name: string; version: string }[] {
+  const out: { name: string; version: string }[] = []
+  for (const match of REQUIREMENTS_TEXT.matchAll(
+    /^([A-Za-z0-9][A-Za-z0-9._-]*)==(\S+?)(?: ; (.+?))? \\$/gm,
+  )) {
+    const [, name, version, marker] = match
+    if (marker !== undefined) {
+      // tzdata, which pandas needs on Windows alone.
+      expect(marker).toBe("sys_platform == 'emscripten' or sys_platform == 'win32'")
+      if (target !== 'win-x64') continue
+    }
+    out.push({ name, version })
+  }
+  return out
+}
+
+/** A distribution's `.dist-info` folder name, as pip writes it: `-` in the name becomes `_`. */
+const distInfo = (name: string, version: string): string =>
+  `${name.replace(/[-.]/g, '_')}-${version}.dist-info`
+
 function put(path: string, bytes: Buffer | string, executable = false): void {
   mkdirSync(dirname(path), { recursive: true })
   writeFileSync(path, bytes)
@@ -157,6 +193,61 @@ interface TreeOptions {
     | 'absent-carried'
     | 'listed-not-carried'
     | 'unshipped-variant'
+  /** Spoil the runtime's packages one way against the manifest (issue 434). */
+  packages?: 'missing' | 'other-version' | 'unlisted' | 'tzdata-everywhere' | 'tzdata-nowhere'
+  pipVersion?: string
+  /** Spoil the record vendor-python.sh writes into the runtime one way. */
+  record?: 'missing' | 'unreadable' | 'other-commit' | 'other-requirements'
+}
+
+/**
+ * The packages a runtime carries besides the engine: the manifest's for the
+ * target and pip at its pin, or those spoiled one way.
+ */
+function packagesFor(target: Target, options: TreeOptions): { name: string; version: string }[] {
+  const pip = { name: 'pip', version: options.pipVersion ?? PINS.python.pip.version }
+  let packages = [...locked(target), pip]
+  switch (options.packages) {
+    case 'missing':
+      packages = packages.filter((p) => p.name !== 'requests')
+      break
+    case 'other-version':
+      // What the unlocked build shipped beside engine 0.10.1: pandas moved on.
+      packages = packages.map((p) => (p.name === 'pandas' ? { ...p, version: '3.0.6' } : p))
+      break
+    case 'unlisted':
+      packages.push({ name: 'setuptools', version: '80.9.0' })
+      break
+    case 'tzdata-everywhere':
+      if (target !== 'win-x64') packages.push({ name: 'tzdata', version: '2026.3' })
+      break
+    case 'tzdata-nowhere':
+      packages = packages.filter((p) => p.name !== 'tzdata')
+      break
+  }
+  return packages
+}
+
+/** The record scripts/vendor-python.sh writes at the runtime's root, or that record spoiled. */
+function vendorRecord(python: string, spoil: TreeOptions['record']): void {
+  if (spoil === 'missing') return
+  const path = join(python, 'vendor-record.json')
+  if (spoil === 'unreadable') return put(path, '{"engine": ')
+  put(
+    path,
+    JSON.stringify({
+      engine: {
+        tag: PINS.engine.tag,
+        version: PINS.engine.version,
+        commit:
+          spoil === 'other-commit'
+            ? 'd9c465fda2f53b96f1d226a0fd1f9abf877d6ec6'
+            : PINS.engine.commit,
+      },
+      requirements_sha256:
+        spoil === 'other-requirements' ? '0'.repeat(64) : PINS.python.requirements.sha256,
+    }),
+  )
 }
 
 /**
@@ -245,14 +336,17 @@ function tree(
     )
     put(join(windows ? python : lib, 'LICENSE.txt'), 'PSF\n')
     licenceTexts(target, python, options.licences)
+    vendorRecord(python, options.record)
     const site = join(lib, 'site-packages')
     mkdirSync(
-      join(site, `openschematicmaps-${options.engineVersion ?? PINS.engine.version}.dist-info`),
+      join(site, distInfo('openschematicmaps', options.engineVersion ?? PINS.engine.version)),
       {
         recursive: true,
       },
     )
-    mkdirSync(join(site, 'python_dateutil-2.9.0.post0.dist-info'), { recursive: true })
+    for (const { name, version } of packagesFor(target, options)) {
+      mkdirSync(join(site, distInfo(name, version)), { recursive: true })
+    }
     // Two modules, one from the standard library and the engine's entry
     // point, compiled or not as the case needs.
     for (const module of [join(lib, 'string'), join(site, 'schematic', 'serve')]) {
@@ -360,10 +454,27 @@ describe('check-vendored.mjs, as the build runs it', () => {
       expect(manifest.components.ffmpeg.zlib.sha256 ?? null, target).toBe(
         target === 'win-x64' ? PINS.ffmpeg.zlib.sha256 : null,
       )
-      expect(manifest.components.python_packages).toEqual([
-        { name: 'openschematicmaps', version: PINS.engine.version },
-        { name: 'python_dateutil', version: '2.9.0.post0' },
-      ])
+      // Every package the runtime carries, as its .dist-info names it, and
+      // where the list came from (issue 434).
+      expect(manifest.components.python_packages).toEqual(
+        [
+          { name: 'openschematicmaps', version: PINS.engine.version },
+          ...packagesFor(target, {}).map(({ name, version }) => ({
+            name: name.replace(/[-.]/g, '_'),
+            version,
+          })),
+        ].sort((a, b) => a.name.localeCompare(b.name)),
+      )
+      // Not an empty list agreeing with an empty reading: the engine's three
+      // dependencies, pip, and tzdata on Windows alone.
+      const names = manifest.components.python_packages.map((p: { name: string }) => p.name)
+      for (const name of ['pandas', 'python_lsp_jsonrpc', 'requests', 'numpy', 'pip']) {
+        expect(names, target).toContain(name)
+      }
+      expect(names.includes('tzdata'), target).toBe(target === 'win-x64')
+      expect(manifest.components.engine.commit).toBe(PINS.engine.commit)
+      expect(manifest.components.python.requirements_sha256).toBe(PINS.python.requirements.sha256)
+      expect(manifest.components.python.pip).toBe(PINS.python.pip.version)
       expect(Boolean(manifest.components.loom.windows_port), target).toBe(target === 'win-x64')
       // Where the runtime's licence texts came from (ADR-042).
       expect(manifest.components.python.licence_texts.full_sha256).toBe(
@@ -448,6 +559,156 @@ describe('check-vendored.mjs, as the build runs it', () => {
     writeFileSync(pins, JSON.stringify(moved))
     const stale = check('darwin-arm64', vendorTree('darwin-arm64'), pins)
     expect(stale.stderr).toContain('vendor/pins.json pins 99.0.0, so it is stale')
+  })
+
+  // Issue 434: the runtime is locked. Its packages are the manifest's, the
+  // engine's uv.lock exported, and pip is python.pip's, each at exactly
+  // that version and none besides; its record names engine.commit and the
+  // manifest the pins name; and the manifest is the one they name.
+  describe('the locked runtime', () => {
+    const refused = (target: Target, options: TreeOptions, pins = PINS_FILE): string => {
+      const result = check(target, vendorTree(target, options), pins)
+      expect(result.status, `${target} ${JSON.stringify(options)}`).toBe(1)
+      return result.stderr
+    }
+    const version = (target: Target, name: string): string => {
+      const found = locked(target).find((p) => p.name === name)
+      expect(found, `${name} in the manifest for ${target}`).toBeDefined()
+      return (found as { version: string }).version
+    }
+    /** A pins file of the fixtures' own beside a manifest of the test's, or none. */
+    const beside = (manifest: string | null, edit?: (pins: typeof PINS) => void): string => {
+      const dir = scratch()
+      const pins = JSON.parse(PINS_TEXT)
+      edit?.(pins)
+      writeFileSync(join(dir, 'pins.json'), JSON.stringify(pins))
+      if (manifest !== null) writeFileSync(join(dir, 'python-requirements.txt'), manifest)
+      return join(dir, 'pins.json')
+    }
+
+    it('refuses a runtime that lacks a package the manifest pins', () => {
+      expect(refused('darwin-arm64', { packages: 'missing' })).toContain(
+        `darwin-arm64: python lacks requests ${version('darwin-arm64', 'requests')}, which python-requirements.txt pins`,
+      )
+    })
+
+    it('refuses a package at another version than the manifest pins', () => {
+      expect(refused('win-x64', { packages: 'other-version' })).toContain(
+        `win-x64: python carries pandas 3.0.6; python-requirements.txt pins ${version('win-x64', 'pandas')}`,
+      )
+    })
+
+    it('refuses a package the manifest does not list', () => {
+      expect(refused('darwin-x64', { packages: 'unlisted' })).toContain(
+        'darwin-x64: python carries setuptools 80.9.0, which python-requirements.txt does not list for darwin-x64',
+      )
+    })
+
+    it("judges the manifest's markers for each target: tzdata on Windows and nowhere else", () => {
+      const tzdata = version('win-x64', 'tzdata')
+      expect(refused('darwin-arm64', { packages: 'tzdata-everywhere' })).toContain(
+        `darwin-arm64: python carries tzdata ${tzdata}, which python-requirements.txt does not list for darwin-arm64`,
+      )
+      expect(refused('win-x64', { packages: 'tzdata-nowhere' })).toContain(
+        `win-x64: python lacks tzdata ${tzdata}, which python-requirements.txt pins`,
+      )
+    })
+
+    it('refuses a pip other than the one python.pip pins', () => {
+      expect(refused('darwin-arm64', { pipVersion: '25.0.1' })).toContain(
+        `darwin-arm64: python carries pip 25.0.1; vendor/pins.json pins ${PINS.python.pip.version}`,
+      )
+    })
+
+    it('refuses a runtime built from another engine commit', () => {
+      expect(refused('darwin-arm64', { record: 'other-commit' })).toContain(
+        `darwin-arm64: engine was built from commit d9c465fda2f53b96f1d226a0fd1f9abf877d6ec6; vendor/pins.json pins ${PINS.engine.commit}, so it is stale`,
+      )
+    })
+
+    it('refuses a runtime installed from another manifest', () => {
+      expect(refused('win-x64', { record: 'other-requirements' })).toContain(
+        `win-x64: python was installed from a requirements manifest whose sha256 is ${'0'.repeat(64)}; vendor/pins.json names ${PINS.python.requirements.sha256}, so it is stale`,
+      )
+    })
+
+    it('refuses a runtime without a readable record of how it was built', () => {
+      for (const record of ['missing', 'unreadable'] as const) {
+        expect(refused('darwin-x64', { record })).toContain(
+          'darwin-x64: python carries no readable vendor record',
+        )
+      }
+    })
+
+    it('refuses a manifest that is not the one the pins name, or none, whatever the runtime carries', () => {
+      // A comment changes nothing pip installs and still makes it another
+      // file than the one the pins name, so the hash is the only refusal.
+      const edited = refused('darwin-arm64', {}, beside(`${REQUIREMENTS_TEXT}# edited by hand\n`))
+      const sha = createHash('sha256')
+        .update(`${REQUIREMENTS_TEXT}# edited by hand\n`)
+        .digest('hex')
+      expect(edited).toContain(
+        `darwin-arm64: python has a requirements manifest, python-requirements.txt, whose sha256 is ${sha}; vendor/pins.json names ${PINS.python.requirements.sha256}: regenerate it with scripts/lock-python.sh`,
+      )
+      expect(edited.trim().split('\n')).toHaveLength(2)
+      expect(refused('darwin-arm64', {}, beside(null))).toContain(
+        'darwin-arm64: python has no requirements manifest to be held to',
+      )
+    })
+
+    it('refuses a manifest line without a hash, not at one version, or with a marker it cannot judge', () => {
+      const hash = `--hash=sha256:${'b'.repeat(64)}`
+      const manifest = [
+        `requests==2.34.2`,
+        `pandas>=2.2 \\\n    ${hash}`,
+        `tzdata==2026.3 ; platform_release == '24.0.0' \\\n    ${hash}`,
+        `six==1.17.0 \\\n    --hash=md5:${'c'.repeat(32)}`,
+        '',
+      ].join('\n')
+      const sha = createHash('sha256').update(manifest).digest('hex')
+      const stderr = refused(
+        'darwin-arm64',
+        {},
+        beside(manifest, (pins) => {
+          pins.python.requirements.sha256 = sha
+        }),
+      )
+      for (const problem of [
+        'pins requests 2.34.2 without a hash',
+        'holds "pandas>=2.2", which is not one package at one version',
+        "whose marker for tzdata cannot be judged for darwin-arm64 (does not know the marker platform_release): platform_release == '24.0.0'",
+        `gives six --hash=md5:${'c'.repeat(32)}, which is not a sha256 hash`,
+      ]) {
+        expect(stderr).toContain(
+          `darwin-arm64: python has a requirements manifest ${problem.startsWith('whose') ? '' : 'that '}${problem}`,
+        )
+      }
+    })
+
+    it('checks one runtime alone, as the vendor job does once it has installed it', () => {
+      const run = (vendor: string) =>
+        spawnSync(
+          process.execPath,
+          [
+            SCRIPT,
+            'win-x64',
+            '--packages',
+            join(vendor, 'python', 'win-x64', 'python'),
+            '--pins',
+            PINS_FILE,
+          ],
+          { encoding: 'utf8', timeout: 30_000, windowsHide: true },
+        )
+      const agreed = run(vendorTree('win-x64'))
+      expect(agreed.stderr).toBe('')
+      expect(agreed.status).toBe(0)
+      expect(agreed.stdout).toContain('win-x64: the runtime carries the packages')
+      const other = run(vendorTree('win-x64', { packages: 'other-version' }))
+      expect(other.status).toBe(1)
+      expect(other.stderr).toContain(
+        `  python carries pandas 3.0.6; python-requirements.txt pins ${version('win-x64', 'pandas')}`,
+      )
+    })
   })
 
   it.skipIf(!posixHost)('refuses a macOS binary without its executable bit', () => {
@@ -612,6 +873,49 @@ describe('readArchitecture and targetOf', () => {
   })
 })
 
+// The manifest's environment markers (PEP 508), judged per target as pip
+// judges them on that target's runtime (issue 434).
+describe('evaluateMarker', () => {
+  it('judges the markers uv writes, for each target', async () => {
+    const { evaluateMarker, markerEnvironment } = await load()
+    const env = (target: string) => markerEnvironment(target, '3.12.14') as Record<string, string>
+    const tzdata = "sys_platform == 'emscripten' or sys_platform == 'win32'"
+    expect(evaluateMarker(tzdata, env('win-x64'))).toBe(true)
+    expect(evaluateMarker(tzdata, env('darwin-arm64'))).toBe(false)
+    expect(evaluateMarker(tzdata, env('darwin-x64'))).toBe(false)
+    const machine = "platform_machine == 'arm64' and (os_name != 'nt' or python_version < '3.10')"
+    expect(evaluateMarker(machine, env('darwin-arm64'))).toBe(true)
+    expect(evaluateMarker(machine, env('darwin-x64'))).toBe(false)
+    // Versions as numbers, where text would say the opposite: 3.12.14 is
+    // after 3.9 and after 3.12.9.
+    expect(evaluateMarker("python_full_version >= '3.9'", env('win-x64'))).toBe(true)
+    expect(evaluateMarker("python_full_version < '3.12.9'", env('win-x64'))).toBe(false)
+    expect(evaluateMarker("python_version == '3.12'", env('win-x64'))).toBe(true)
+    // `in` is a substring, as PEP 508 has it ('win' is in 'darwin' too).
+    expect(evaluateMarker('"win32" in sys_platform', env('win-x64'))).toBe(true)
+    expect(evaluateMarker("'win32' not in sys_platform", env('darwin-x64'))).toBe(true)
+  })
+
+  it('refuses a marker it cannot judge rather than guessing, wherever it sits', async () => {
+    const { evaluateMarker, markerEnvironment } = await load()
+    const env = markerEnvironment('darwin-arm64', '3.12.14') as Record<string, string>
+    expect(() => evaluateMarker("extra == 'notebooks'", env)).toThrow(
+      'does not know the marker extra',
+    )
+    expect(() => evaluateMarker("sys_platform ~= 'darwin'", env)).toThrow('cannot judge ~= there')
+    expect(() => evaluateMarker("(sys_platform == 'darwin'", env)).toThrow(
+      'a bracket is not closed',
+    )
+    // After a comparison that already decided: still read, still refused.
+    expect(() =>
+      evaluateMarker("sys_platform == 'win32' and platform_release == '24.0.0'", env),
+    ).toThrow('does not know the marker platform_release')
+    expect(() =>
+      evaluateMarker("sys_platform == 'darwin' or platform_release == '24.0.0'", env),
+    ).toThrow('does not know the marker platform_release')
+  })
+})
+
 describe('the afterPack hook, where the packaged app will look', () => {
   const productFilename = 'Legible Cities'
   function packaged(
@@ -697,6 +1001,26 @@ describe('the afterPack hook, where the packaged app will look', () => {
         }),
       ).rejects.toThrow(`${target}: electron is missing LICENSES.chromium.html`)
     }
+  })
+
+  // The packager copies the runtime with its record, and the hook holds both
+  // to the pins and the manifest beside them again (issue 434).
+  it("refuses a packaged runtime whose packages or record are not the pins'", async () => {
+    const { afterPack } = await load()
+    await expect(
+      afterPack(packaged('darwin-arm64', { bytecodeFlags: 1, packages: 'unlisted' }), {
+        LEGIBLE_VENDOR_TARGET: 'darwin-arm64',
+      }),
+    ).rejects.toThrow(
+      'darwin-arm64: python carries setuptools 80.9.0, which python-requirements.txt does not list',
+    )
+    await expect(
+      afterPack(packaged('win-x64', { bytecodeFlags: 1, record: 'other-commit' }), {
+        LEGIBLE_VENDOR_TARGET: 'win-x64',
+      }),
+    ).rejects.toThrow(
+      'win-x64: engine was built from commit d9c465fda2f53b96f1d226a0fd1f9abf877d6ec6',
+    )
   })
 
   it('refuses a partial app even when no target is required', async () => {

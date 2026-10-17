@@ -334,9 +334,14 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     # The one job that can write: to create and edit the draft and upload its
-    # assets. Every other job keeps the workflow's contents: read.
+    # assets, and to attest them. Every other job keeps the workflow's
+    # contents: read. id-token mints the OIDC token Sigstore's short-lived
+    # signing certificate is issued for, and attestations stores the signed
+    # provenance with the repository; nothing else needs either (issue 434).
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     # Two runs for one tag (a rerun while the first is drafting) take turns.
     concurrency:
       group: release-${{ github.ref }}
@@ -344,9 +349,10 @@ jobs:
     env:
       TAG: ${{ github.ref_name }}
     # The actions here are pinned to full commits, the version in the
-    # comment: checkout and setup-node take github.token as their default
-    # token input in the one job that can write. download-artifact does
-    # not; it reads this run's artefacts with the runner's own token.
+    # comment: checkout, setup-node and attest-build-provenance take
+    # github.token as their default token input in the one job that can
+    # write. download-artifact does not; it reads this run's artefacts with
+    # the runner's own token.
     steps:
       # The whole history, so the tag's commit can be tested against main's.
       # checkout uses the token to fetch and, with persist-credentials off,
@@ -415,6 +421,24 @@ jobs:
       - name: Assemble the assets and their checksums
         shell: bash
         run: node scripts/release.mjs assemble "$TAG" downloaded release-assets
+
+      # Signed SLSA build provenance for each installer and for
+      # SHA256SUMS.txt, which names every other asset by its hash (issue 434).
+      # SHA256SUMS.txt beside the files it lists shows that a download
+      # arrived whole, not who made it: anyone who could replace a file could
+      # replace its line too. An attestation is signed by Sigstore for this
+      # workflow, this repository and this tag's commit, and kept by GitHub
+      # apart from the Release, so `gh attestation verify` shows a download
+      # was built here (docs/install.md). Before the draft is written, so no
+      # draft exists without one; a draft a later step fails to write leaves
+      # attestations only for files this run built.
+      - name: Attest the installers and SHA256SUMS.txt
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            release-assets/*.dmg
+            release-assets/*.exe
+            release-assets/SHA256SUMS.txt
 
       - name: Write the notes from the template
         shell: bash

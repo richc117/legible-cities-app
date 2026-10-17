@@ -68,6 +68,31 @@ PowerShell prints it in capital letters and the file has small ones; that
 difference does not matter, only the letters and digits do. If they
 differ, delete the file and download it again.
 
+### Check who built it (optional)
+
+A checksum shows that a file arrived whole, not who made it: whoever could
+replace a file on the release could replace its line in `SHA256SUMS.txt`
+too. So each installer and `SHA256SUMS.txt` also has a signed attestation,
+kept by GitHub apart from the release, saying it was built by this
+repository's build workflow from the release's tagged commit. Releases after
+0.1.0 have one; 0.1.0 was published before it was added.
+
+To check one, install the GitHub command-line tool from
+[cli.github.com](https://cli.github.com), sign in with `gh auth login`, and
+run this in the folder that holds the download, with the file's own name:
+
+```
+gh attestation verify Legible-Cities-<version>-mac-arm64.dmg --repo richc117/legible-cities-app
+```
+
+It says the verification succeeded, and names the repository and the
+workflow that built the file, or it fails. If it fails, delete the file and
+do not open it. Adding
+`--signer-workflow richc117/legible-cities-app/.github/workflows/build.yml`
+also requires that the build workflow itself made it. Checking
+`SHA256SUMS.txt` the same way, and then each file against its line as
+above, covers the source archives as well.
+
 ## Install on a Mac
 
 1. Open the `.dmg` file you downloaded. A window opens showing Legible
