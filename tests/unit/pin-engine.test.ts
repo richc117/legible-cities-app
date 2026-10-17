@@ -12,6 +12,7 @@ import {
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readlinkSync,
   realpathSync,
   rmSync,
@@ -324,5 +325,55 @@ describe.skipIf(skip || !hasUv)('scripts/pin-engine.sh pinning', () => {
     const r = run(f, ['v1.0.0'], {}, tmpdir())
     expect(r.status).toBe(0)
     expect(readlinkSync(join(f.root, 'lc-engine-current'))).toBe('lc-engine-v1.0.0')
+  })
+
+  it('does not move the link when schematic is imported from outside the worktree', () => {
+    const f = fixture()
+    expect(run(f, ['v1.0.0']).status).toBe(0)
+    // A stale .pth, read before the editable one, puts another tree first;
+    // its schematic reports the pinned version, so only where it lives is wrong.
+    const stale = join(f.root, 'stale')
+    mkdirSync(join(stale, 'schematic'), { recursive: true })
+    writeFileSync(join(stale, 'schematic', '__init__.py'), '__version__ = "1.0.0"\n')
+    const lib = join(f.root, 'lc-engine-v1.0.0', '.venv', 'lib')
+    const py = readdirSync(lib).find((d) => d.startsWith('python')) as string
+    writeFileSync(join(lib, py, 'site-packages', 'aaa_stale.pth'), `${stale}\n`)
+    // The link goes to v2.0.0 first, so a wrongly moved link shows.
+    expect(run(f, ['--force', 'v2.0.0']).status).toBe(0)
+    const r = run(f, ['v1.0.0'])
+    expect(r.status).toBe(1)
+    expect(r.out).toContain('not from')
+    expect(readlinkSync(join(f.root, 'lc-engine-current'))).toBe('lc-engine-v2.0.0')
+  })
+
+  it('refuses an existing folder that is a worktree of another repository, writing nothing', () => {
+    const f = fixture()
+    const other = join(f.root, 'other')
+    mkdirSync(other)
+    git(other, 'init', '-q', '-b', 'main')
+    git(other, 'config', 'user.email', 'test@example.invalid')
+    git(other, 'config', 'user.name', 'test')
+    git(other, 'config', 'commit.gpgsign', 'false')
+    writeFileSync(join(other, 'a.txt'), 'a')
+    git(other, 'add', '-A')
+    git(other, 'commit', '-q', '-m', 'a')
+    const wt = join(f.root, 'lc-engine-v1.0.0')
+    git(other, 'worktree', 'add', '-q', '--detach', wt, 'HEAD')
+    const r = run(f, ['v1.0.0'])
+    expect(r.status).toBe(1)
+    expect(r.out).toContain('is not a worktree of')
+    expect(existsSync(join(wt, '.venv'))).toBe(false)
+    expect(existsSync(join(f.root, 'lc-engine-current'))).toBe(false)
+  })
+
+  it('reuses its worktree when --engine is itself a linked worktree', () => {
+    const f = fixture()
+    const linked = join(f.root, 'linked engine')
+    git(f.engine, 'worktree', 'add', '-q', '--detach', linked, 'main')
+    expect(lstatSync(join(linked, '.git')).isFile()).toBe(true)
+    expect(run(f, ['--engine', linked, 'v1.0.0']).status).toBe(0)
+    const again = run(f, ['--engine', linked, 'v1.0.0'])
+    expect(again.out).toContain('reused')
+    expect(again.status).toBe(0)
   })
 })

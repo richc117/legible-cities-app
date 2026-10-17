@@ -26,15 +26,16 @@
 #      that lives under the worktree and reports the version the pins name,
 #      and refuses, leaving the link where it was, when it does not;
 #   4. moves the link lc-engine-current, beside this checkout, to the
-#      worktree (ln -sfn, which is not atomic). Name ../lc-engine-current as LEGIBLE_ENGINE_CHECKOUT in
-#      .env.local once, and it never needs another edit.
+#      worktree (ln -sfn, which is not atomic). Name ../lc-engine-current
+#      as LEGIBLE_ENGINE_CHECKOUT in .env.local once, and it never needs
+#      another edit.
 #
 # It never commits, never pushes, never edits .env.local and never touches
 # another worktree. It writes only the worktree (beside the engine
 # repository, wherever --engine or LEGIBLE_ENGINE_REPO put that), what uv
-# puts in it, and the link (beside this checkout). Argument arrays throughout, no
-# eval. Needs bash, git, uv and node; runs on macOS and Linux. Windows is not
-# supported here.
+# puts in it, and the link (beside this checkout). Argument arrays
+# throughout, no eval. Needs bash, git, uv and node; runs on macOS and
+# Linux. Windows is not supported here.
 
 set -euo pipefail
 
@@ -76,7 +77,7 @@ case "$tag" in
   *[!A-Za-z0-9._-]* | -* | .*) die "'$tag' is not a tag name this script will use." ;;
 esac
 
-here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)" || die "cannot find this checkout."
 beside="$(dirname "$here")"
 
 # Where the engine repository is.
@@ -96,9 +97,9 @@ else
   die "no engine repository: pass --engine <path>, set LEGIBLE_ENGINE_REPO, or put it beside this checkout as OpenSchematicMaps or legible-cities."
 fi
 [ -d "$engine" ] || die "the engine repository '$engine' is not a folder."
-engine="$(cd "$engine" && pwd -P)"
+engine="$(cd "$engine" && pwd -P)" || die "$engine cannot be entered."
 top="$(git -C "$engine" rev-parse --show-toplevel 2> /dev/null)" || die "'$engine' is not a git repository."
-top="$(cd "$top" && pwd -P)"
+top="$(cd "$top" && pwd -P)" || die "$top cannot be entered."
 [ "$top" = "$engine" ] || die "'$engine' is inside a repository but is not its top; name the top ($top)."
 echo "engine repository: $engine ($how)"
 
@@ -126,7 +127,6 @@ fi
 
 command -v uv > /dev/null 2>&1 || die "uv is not installed; see https://docs.astral.sh/uv/ ."
 
-
 # The worktree, beside the engine repository.
 wt="$(dirname "$engine")/lc-engine-$tag"
 made=0
@@ -134,10 +134,11 @@ if [ -e "$wt" ] || [ -L "$wt" ]; then
   want="$(git -C "$engine" rev-parse "refs/tags/$tag^{commit}")"
   have="$(git -C "$wt" rev-parse HEAD 2> /dev/null)" \
     || die "$wt exists and is not a git worktree; move it away first."
-  common="$(git -C "$wt" rev-parse --path-format=absolute --git-common-dir 2> /dev/null)" \
+  common="$(cd "$wt" && cd "$(git rev-parse --git-common-dir)" && pwd -P)" \
     || die "$wt exists and its git folder cannot be read; move it away first."
-  common="$(cd "$common" && pwd -P)"
-  [ "$common" = "$(cd "$engine/.git" && pwd -P)" ] \
+  engine_common="$(cd "$engine" && cd "$(git rev-parse --git-common-dir)" && pwd -P)" \
+    || die "the git folder of $engine cannot be read."
+  [ "$common" = "$engine_common" ] \
     || die "$wt exists but is not a worktree of $engine; move it away first."
   [ "$have" = "$want" ] \
     || die "$wt exists but is at $have, not at $tag ($want); move it away first."
@@ -148,7 +149,7 @@ else
   made=1
   echo "worktree: made $wt at $tag."
 fi
-wt="$(cd "$wt" && pwd -P)"
+wt="$(cd "$wt" && pwd -P)" || die "$wt cannot be entered."
 
 # Its environment.
 if [ -x "$wt/.venv/bin/python" ]; then
