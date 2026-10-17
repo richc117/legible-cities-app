@@ -10,24 +10,29 @@
 #   ../OpenSchematicMaps, then ../legible-cities, beside this checkout
 #
 # What it does, in order, and nothing else:
-#   1. refuses (exit 1, one sentence) when the tag does not exist in the
-#      engine repository, when it is not the engine tag in vendor/pins.json
-#      (unless --force), when uv is not installed, or when lc-engine-current
-#      beside this checkout is a real folder or file instead of a link;
+#   1. refuses (exit 1, one sentence) when --engine is not the top of a git
+#      repository, when the tag does not exist in it, when the tag is not
+#      the engine tag in vendor/pins.json (unless --force), when
+#      lc-engine-current beside this checkout is a real folder or file
+#      instead of a link, or when uv is not installed;
 #   2. makes lc-engine-<tag> beside the engine repository as a git worktree
-#      at the tag (left as it is when it exists), runs `uv venv` and
-#      `uv pip install -e .` in it, links the repository's data folder into
-#      it and makes out a real folder (a link there made one serve test
-#      fail);
-#   3. checks that the worktree's interpreter imports schematic and reports
-#      the version the pins name, and says what differs when it does not;
+#      at the tag (an existing one is reused only if it is a worktree of
+#      that repository at that tag's commit, and is otherwise refused
+#      untouched), runs `uv venv` and `uv pip install -e .` in it, links
+#      the repository's data folder into it and, in a worktree made in this
+#      run, makes out a real folder (a link there made one serve test fail);
+#   3. checks that the worktree's own interpreter, run from inside the
+#      worktree and isolated from the caller's folder, imports a schematic
+#      that lives under the worktree and reports the version the pins name,
+#      and refuses, leaving the link where it was, when it does not;
 #   4. moves the link lc-engine-current, beside this checkout, to the
-#      worktree. Name ../lc-engine-current as LEGIBLE_ENGINE_CHECKOUT in
+#      worktree (ln -sfn, which is not atomic). Name ../lc-engine-current as LEGIBLE_ENGINE_CHECKOUT in
 #      .env.local once, and it never needs another edit.
 #
 # It never commits, never pushes, never edits .env.local and never touches
-# another worktree. It writes only the worktree, the link, and what uv puts
-# in the worktree, all beside the checkouts. Argument arrays throughout, no
+# another worktree. It writes only the worktree (beside the engine
+# repository, wherever --engine or LEGIBLE_ENGINE_REPO put that), what uv
+# puts in it, and the link (beside this checkout). Argument arrays throughout, no
 # eval. Needs bash, git, uv and node; runs on macOS and Linux. Windows is not
 # supported here.
 
@@ -92,7 +97,9 @@ else
 fi
 [ -d "$engine" ] || die "the engine repository '$engine' is not a folder."
 engine="$(cd "$engine" && pwd -P)"
-git -C "$engine" rev-parse --git-dir > /dev/null 2>&1 || die "'$engine' is not a git repository."
+top="$(git -C "$engine" rev-parse --show-toplevel 2> /dev/null)" || die "'$engine' is not a git repository."
+top="$(cd "$top" && pwd -P)"
+[ "$top" = "$engine" ] || die "'$engine' is inside a repository but is not its top; name the top ($top)."
 echo "engine repository: $engine ($how)"
 
 # Refusals, before anything is written.
@@ -112,20 +119,33 @@ if [ "$tag" != "$pinned_tag" ]; then
   fi
 fi
 
-command -v uv > /dev/null 2>&1 || die "uv is not installed; see https://docs.astral.sh/uv/ ."
-
 link="$beside/lc-engine-current"
 if [ -e "$link" ] && [ ! -L "$link" ]; then
   die "$link exists and is not a link; move it away first."
 fi
 
+command -v uv > /dev/null 2>&1 || die "uv is not installed; see https://docs.astral.sh/uv/ ."
+
+
 # The worktree, beside the engine repository.
 wt="$(dirname "$engine")/lc-engine-$tag"
-if [ -e "$wt" ]; then
-  echo "worktree: $wt exists; left as it is."
+made=0
+if [ -e "$wt" ] || [ -L "$wt" ]; then
+  want="$(git -C "$engine" rev-parse "refs/tags/$tag^{commit}")"
+  have="$(git -C "$wt" rev-parse HEAD 2> /dev/null)" \
+    || die "$wt exists and is not a git worktree; move it away first."
+  common="$(git -C "$wt" rev-parse --path-format=absolute --git-common-dir 2> /dev/null)" \
+    || die "$wt exists and its git folder cannot be read; move it away first."
+  common="$(cd "$common" && pwd -P)"
+  [ "$common" = "$(cd "$engine/.git" && pwd -P)" ] \
+    || die "$wt exists but is not a worktree of $engine; move it away first."
+  [ "$have" = "$want" ] \
+    || die "$wt exists but is at $have, not at $tag ($want); move it away first."
+  echo "worktree: $wt exists at $tag; reused."
 else
-  git -C "$engine" worktree add --detach "$wt" "$tag" > /dev/null 2>&1 \
+  git -C "$engine" worktree add --detach "$wt" "refs/tags/$tag" \
     || die "git could not make the worktree $wt at $tag."
+  made=1
   echo "worktree: made $wt at $tag."
 fi
 wt="$(cd "$wt" && pwd -P)"
@@ -148,13 +168,27 @@ else
   echo "note: $engine/data does not exist, so there is nothing to link as data."
 fi
 if [ -L "$wt/out" ]; then
-  rm "$wt/out"
+  if [ "$made" -eq 1 ]; then
+    rm "$wt/out"
+    mkdir "$wt/out"
+  else
+    echo "note: $wt/out is a link and the worktree is not new, so it is left alone."
+  fi
+else
+  mkdir -p "$wt/out"
 fi
-mkdir -p "$wt/out"
 
 # The version the interpreter reports.
-actual="$("$wt/.venv/bin/python" -c 'import schematic; print(schematic.__version__)' 2> /dev/null)" \
+# Run inside the worktree and isolated (-I), so a schematic folder in the
+# caller's directory cannot be the one that answers.
+reported="$(cd "$wt" && "$wt/.venv/bin/python" -I -c 'import os, schematic; print(os.path.realpath(schematic.__file__)); print(schematic.__version__)' 2> /dev/null)" \
   || die "$wt/.venv/bin/python cannot import schematic; the link was not moved."
+where="$(printf '%s\n' "$reported" | sed -n 1p)"
+actual="$(printf '%s\n' "$reported" | sed -n 2p)"
+case "$where" in
+  "$wt"/*) ;;
+  *) die "schematic was imported from $where, not from $wt; the link was not moved." ;;
+esac
 if [ "$actual" != "$pinned_version" ]; then
   if [ "$force" -eq 1 ]; then
     echo "note: schematic reports $actual; vendor/pins.json names $pinned_version."

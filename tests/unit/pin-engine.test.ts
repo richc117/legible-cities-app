@@ -27,6 +27,7 @@ const SCRIPT = join(repo, 'scripts', 'pin-engine.sh')
 
 const hasUv = spawnSync('uv', ['--version']).status === 0
 const hasGit = spawnSync('git', ['--version']).status === 0
+const skip = process.platform === 'win32' || !hasGit
 
 const BACKEND = `import base64, hashlib, os, zipfile
 def _wheel(d):
@@ -73,7 +74,7 @@ interface Fixture {
 
 /** A stand-in checkout holding the script and pins, beside an engine repository with tags v1.0.0 and v2.0.0. */
 function fixture(): Fixture {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'lc-pin-engine-')))
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'lc pin engine-')))
   roots.push(root)
   const app = join(root, 'app')
   const engine = join(root, 'OpenSchematicMaps')
@@ -106,12 +107,30 @@ function fixture(): Fixture {
   writeFileSync(join(engine, 'src', 'schematic', '__init__.py'), '__version__ = "2.0.0"\n')
   git(engine, 'commit', '-q', '-a', '-m', 'two')
   git(engine, 'tag', 'v2.0.0')
+  writeFileSync(join(engine, 'src', 'schematic', '__init__.py'), 'raise ImportError("broken")\n')
+  git(engine, 'commit', '-q', '-a', '-m', 'three')
+  git(engine, 'tag', 'v3.0.0')
   return { root, app, engine, script }
 }
 
-function run(f: Fixture, args: string[], env: NodeJS.ProcessEnv = {}) {
+function setPins(f: Fixture, tag: string, version: string): void {
+  writeFileSync(join(f.app, 'vendor', 'pins.json'), JSON.stringify({ engine: { tag, version } }))
+}
+
+/** A PATH holding only git, node and dirname: no uv. */
+function pathWithoutUv(f: Fixture): string {
+  const bin = join(f.root, 'bin')
+  mkdirSync(bin)
+  for (const tool of ['git', 'node', 'dirname']) {
+    const found = spawnSync('which', [tool], { encoding: 'utf8' }).stdout.trim()
+    symlinkSync(found, join(bin, tool))
+  }
+  return bin
+}
+
+function run(f: Fixture, args: string[], env: NodeJS.ProcessEnv = {}, cwd = f.app) {
   const r = spawnSync('/bin/bash', [f.script, ...args], {
-    cwd: f.app,
+    cwd,
     encoding: 'utf8',
     timeout: 120_000,
     env: { ...process.env, LEGIBLE_ENGINE_REPO: '', ...env },
@@ -127,7 +146,7 @@ const isLink = (p: string): boolean => {
   }
 }
 
-describe.skipIf(!hasGit)('scripts/pin-engine.sh refusals', () => {
+describe.skipIf(skip)('scripts/pin-engine.sh refusals', () => {
   it('refuses a tag the engine repository does not have, and writes nothing', () => {
     const f = fixture()
     const r = run(f, ['v9.9.9'])
@@ -161,20 +180,39 @@ describe.skipIf(!hasGit)('scripts/pin-engine.sh refusals', () => {
 
   it('refuses when uv is not installed, and writes nothing', () => {
     const f = fixture()
-    const bin = join(f.root, 'bin')
-    mkdirSync(bin)
-    for (const tool of ['git', 'node', 'dirname']) {
-      const found = spawnSync('which', [tool], { encoding: 'utf8' }).stdout.trim()
-      symlinkSync(found, join(bin, tool))
-    }
-    const r = run(f, ['v1.0.0'], { PATH: bin })
+    const r = run(f, ['v1.0.0'], { PATH: pathWithoutUv(f) })
     expect(r.status).toBe(1)
     expect(r.out).toContain('uv is not installed')
     expect(existsSync(join(f.root, 'lc-engine-v1.0.0'))).toBe(false)
   })
+
+  it('refuses a real folder in the way without needing uv', () => {
+    const f = fixture()
+    mkdirSync(join(f.root, 'lc-engine-current'))
+    const r = run(f, ['v1.0.0'], { PATH: pathWithoutUv(f) })
+    expect(r.status).toBe(1)
+    expect(r.out).toContain('is not a link')
+  })
+
+  it('refuses --engine naming a folder inside the repository, not its top', () => {
+    const f = fixture()
+    const r = run(f, ['--engine', join(f.engine, 'src'), 'v1.0.0'])
+    expect(r.status).toBe(1)
+    expect(r.out).toContain('is not its top')
+    expect(existsSync(join(f.engine, 'lc-engine-v1.0.0'))).toBe(false)
+  })
+
+  it('refuses an existing folder that is not a worktree at the tag, writing nothing into it', () => {
+    const f = fixture()
+    const wt = join(f.root, 'lc-engine-v1.0.0')
+    mkdirSync(wt)
+    expect(run(f, ['v1.0.0']).out).toContain('is not a git worktree')
+    expect(existsSync(join(wt, '.venv'))).toBe(false)
+    expect(existsSync(join(f.root, 'lc-engine-current'))).toBe(false)
+  })
 })
 
-describe.skipIf(!hasGit || !hasUv)('scripts/pin-engine.sh pinning', () => {
+describe.skipIf(skip || !hasUv)('scripts/pin-engine.sh pinning', () => {
   it('makes the worktree, installs it and moves the one link', () => {
     const f = fixture()
     const r = run(f, ['v1.0.0'])
@@ -222,5 +260,69 @@ describe.skipIf(!hasGit || !hasUv)('scripts/pin-engine.sh pinning', () => {
     expect(dirname(realpathSync(join(f.root, 'lc-engine-current')))).toBe(realpathSync(moved))
     const viaEnv = run(f, ['v1.0.0'], { LEGIBLE_ENGINE_REPO: target })
     expect(viaEnv.out).toContain('(LEGIBLE_ENGINE_REPO)')
+  })
+
+  it('reuses a worktree at the tag but refuses one at another commit', () => {
+    const f = fixture()
+    expect(run(f, ['v1.0.0']).status).toBe(0)
+    expect(run(f, ['v1.0.0']).out).toContain('reused')
+    const wt = join(f.root, 'lc-engine-v1.0.0')
+    git(wt, 'checkout', '-q', '--detach', 'v2.0.0')
+    const r = run(f, ['v1.0.0'])
+    expect(r.status).toBe(1)
+    expect(r.out).toContain('not at v1.0.0')
+  })
+
+  it('leaves a link called out in a reused worktree alone', () => {
+    const f = fixture()
+    expect(run(f, ['v1.0.0']).status).toBe(0)
+    const out = join(f.root, 'lc-engine-v1.0.0', 'out')
+    rmSync(out, { recursive: true })
+    symlinkSync(f.engine, out)
+    const r = run(f, ['v1.0.0'])
+    expect(r.status).toBe(0)
+    expect(r.out).toContain('is a link and the worktree is not new')
+    expect(isLink(out)).toBe(true)
+  })
+
+  it('does not move the link when the version differs from the pins', () => {
+    const f = fixture()
+    expect(run(f, ['v1.0.0']).status).toBe(0)
+    setPins(f, 'v2.0.0', '1.0.0')
+    const r = run(f, ['v2.0.0'])
+    expect(r.status).toBe(1)
+    expect(r.out).toContain('schematic reports 2.0.0 but vendor/pins.json names 1.0.0')
+    expect(readlinkSync(join(f.root, 'lc-engine-current'))).toBe('lc-engine-v1.0.0')
+  })
+
+  it('does not move the link when schematic cannot be imported', () => {
+    const f = fixture()
+    expect(run(f, ['v1.0.0']).status).toBe(0)
+    setPins(f, 'v3.0.0', '3.0.0')
+    const r = run(f, ['v3.0.0'])
+    expect(r.status).toBe(1)
+    expect(r.out).toContain('cannot import schematic')
+    expect(readlinkSync(join(f.root, 'lc-engine-current'))).toBe('lc-engine-v1.0.0')
+  })
+
+  it('is not fooled by a schematic folder in the folder it is run from', () => {
+    const f = fixture()
+    // The worktree at v2.0.0 reports 2.0.0; the pins ask for 1.0.0; a stray
+    // schematic in the working folder says 1.0.0.
+    mkdirSync(join(f.engine, 'schematic'))
+    writeFileSync(join(f.engine, 'schematic', '__init__.py'), '__version__ = "1.0.0"\n')
+    setPins(f, 'v2.0.0', '1.0.0')
+    const r = run(f, ['v2.0.0'], {}, f.engine)
+    expect(r.status).toBe(1)
+    expect(r.out).toContain('schematic reports 2.0.0')
+    expect(existsSync(join(f.root, 'lc-engine-current'))).toBe(false)
+  })
+
+  it('works from another folder, with a space in every path', () => {
+    const f = fixture()
+    expect(f.root).toContain(' ')
+    const r = run(f, ['v1.0.0'], {}, tmpdir())
+    expect(r.status).toBe(0)
+    expect(readlinkSync(join(f.root, 'lc-engine-current'))).toBe('lc-engine-v1.0.0')
   })
 })
