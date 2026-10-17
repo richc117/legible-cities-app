@@ -4,7 +4,10 @@
 - **Date:** 2026-09-07
 - **Supersedes:** none
 - **Superseded by:** none
-- **Amended by:** [ADR-038](038-the-sidecar-runtime-measured-on-three-targets.md)
+- **Amended by:** [ADR-038](038-the-sidecar-runtime-measured-on-three-targets.md);
+  [ADR-057](057-the-shipped-python-runtime-is-locked-and-attested.md): the
+  runtime's packages are the engine's lock, installed by their hashes, with
+  pip and the engine's commit pinned
 
 ## Context
 

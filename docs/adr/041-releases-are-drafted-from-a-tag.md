@@ -4,6 +4,9 @@
 - **Date:** 2026-09-13
 - **Supersedes:** none
 - **Superseded by:** none
+- **Amended by:** [ADR-057](057-the-shipped-python-runtime-is-locked-and-attested.md):
+  the engine's commit is pinned, and the assets are attested by a job of
+  its own, the only one the OIDC token reaches
 
 ## Context
 
