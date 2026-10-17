@@ -207,7 +207,8 @@ describe.skipIf(skip)('scripts/pin-engine.sh refusals', () => {
     const f = fixture()
     const wt = join(f.root, 'lc-engine-v1.0.0')
     mkdirSync(wt)
-    expect(run(f, ['v1.0.0']).out).toContain('is not a git worktree')
+    // Judged before uv is asked for, so it holds on a machine without uv.
+    expect(run(f, ['v1.0.0'], { PATH: pathWithoutUv(f) }).out).toContain('is not a git worktree')
     expect(existsSync(join(wt, '.venv'))).toBe(false)
     expect(existsSync(join(f.root, 'lc-engine-current'))).toBe(false)
   })

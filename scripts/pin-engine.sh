@@ -44,6 +44,10 @@ die() {
   exit 1
 }
 
+need_uv() {
+  command -v uv > /dev/null 2>&1 || die "uv is not installed; see https://docs.astral.sh/uv/ ."
+}
+
 usage() {
   echo "usage: scripts/pin-engine.sh [--engine <path>] [--force] <tag>" >&2
   exit 2
@@ -125,8 +129,6 @@ if [ -e "$link" ] && [ ! -L "$link" ]; then
   die "$link exists and is not a link; move it away first."
 fi
 
-command -v uv > /dev/null 2>&1 || die "uv is not installed; see https://docs.astral.sh/uv/ ."
-
 # The worktree, beside the engine repository.
 wt="$(dirname "$engine")/lc-engine-$tag"
 made=0
@@ -142,8 +144,10 @@ if [ -e "$wt" ] || [ -L "$wt" ]; then
     || die "$wt exists but is not a worktree of $engine; move it away first."
   [ "$have" = "$want" ] \
     || die "$wt exists but is at $have, not at $tag ($want); move it away first."
+  need_uv
   echo "worktree: $wt exists at $tag; reused."
 else
+  need_uv
   git -C "$engine" worktree add --detach "$wt" "refs/tags/$tag" \
     || die "git could not make the worktree $wt at $tag."
   made=1
