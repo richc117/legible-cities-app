@@ -57,7 +57,8 @@ Lane code is the issue code. The branch is `<CODE>-<slug>`, the worktree
 the engine's worktree at the tag, installs it, and moves the one link
 `../lc-engine-current` that `.env.local` names, so a pin is no longer a hand
 edit. It refuses a tag that `vendor/pins.json` does not name unless given
-`--force`. Run it from the main checkout, before the wave.
+`--force`. Run it from the main checkout, before the wave. The pin's pull
+request also relocks the shipped runtime (`scripts/lock-python.sh`, ADR-057).
 
 ## The nine steps
 
