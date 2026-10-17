@@ -258,7 +258,7 @@ jobs:
       # file to the pins; only this holds it to the engine. uv is installed by
       # pip, by the hash of its wheel for this target, into a throwaway
       # environment the runner's Python makes, rather than by a setup action:
-      # no other publisher's code runs in the job, and the binary is checked
+      # no setup action's code runs in the job, and the binary is checked
       # the way every package the runtime carries is. It never ships. Before
       # the runtime is fetched, so a stale manifest fails in seconds.
       - name: Refuse a manifest that is not the engine's lock

@@ -69,14 +69,6 @@ updates:
   # The Python sidecar's own requirements, once it has any.
   - package-ecosystem: pip
     directory: "/"
-    # vendor/python-requirements.txt is the engine's uv.lock exported with
-    # every file's hash (ADR-057): a package moves there only when the
-    # engine relocks and the pin moves, so a bump of that file alone would
-    # diverge from the lock and fail the unit tests that hold it to the
-    # pins. Dependabot scans every directory under `directory` unless told
-    # otherwise.
-    exclude-paths:
-      - "vendor/**"
     schedule:
       interval: weekly
     open-pull-requests-limit: 5

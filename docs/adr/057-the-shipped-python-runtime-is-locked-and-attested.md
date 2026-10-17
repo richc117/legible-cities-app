@@ -123,10 +123,11 @@ pin move edits it too.
 pandas or urllib3 reaches the installers through an engine commit that
 relocks, a new engine tag, and a pin move here, each a pull request; a
 vendor run follows. That is the cost the issue named, and it is the point.
-Dependabot's version updates no longer scan `vendor/` (`exclude-paths`),
-because a bump of the manifest alone would diverge from the engine's lock
-and fail the unit tests; a security alert on a manifest's package is a
-reason to relock the engine.
+Dependabot's pip entry looks at the repository root and does not read
+`vendor/python-requirements.txt`, so it proposes no bump of the manifest
+(a bump of the manifest alone would diverge from the engine's lock and
+fail the unit tests); a security alert on a manifest's package is a reason
+to relock the engine.
 
 **A pin move needs uv at the pinned version** on the machine that moves it,
 and moving uv's own version means rereading its wheels' hashes.
