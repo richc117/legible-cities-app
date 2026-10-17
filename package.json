@@ -30,7 +30,7 @@
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@playwright/test": "1.64.0",
-    "@rogieking/figui3": "9.0.7",
+    "@rogieking/figui3": "11.1.5",
     "@swc/core": "1.16.18",
     "@types/node": "24.19.2",
     "@types/react": "19.3.0",
