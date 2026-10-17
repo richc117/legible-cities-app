@@ -87,6 +87,7 @@ already cites the number you mean to use.
 | 054 | Reserved: a decision recorded outside this index until it is written | - |
 | 055 | [A GIF export takes a fixed palette composed from the plan](055-a-fixed-palette-for-gif-exports.md) | Accepted |
 | 056 | [A record keeps the keys it does not know](056-the-record-keeps-unknown-keys.md) | Accepted |
+| 057 | [The shipped Python runtime is locked, and the release is attested](057-the-shipped-python-runtime-is-locked-and-attested.md) | Accepted |
 
 ## Amending rather than superseding
 

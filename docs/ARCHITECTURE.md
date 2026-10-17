@@ -1859,7 +1859,7 @@ vendor workflow's three Corresponding Source artefacts, `ffmpeg-source`,
 `loom-source` (LOOM at its commit with its submodules, the Windows port,
 the patch script, and zlib's and bzip2's upstream tarballs, with the
 `loom-windows` job's MSYS2 source packages for the exact revisions it
-linked, and its record of those packages, put inside) and `engine-source` (the engine at its tag), one tar each, owners
+linked, and its record of those packages, put inside) and `engine-source` (the engine at its pinned commit, with the hashed manifest its runtime's packages are installed from), one tar each, owners
 and times fixed; writes `SHA256SUMS.txt` over them; and fills the notes from
 `.github/release-notes.md` and the pins. Then one step holding the token
 lists the Releases, creates a draft for the tag or updates the one draft
@@ -1868,8 +1868,14 @@ the maintainer may have edited; removing any asset this run does not
 attach), refuses a
 published Release for the tag untouched, uploads with replacement, and
 reads the draft back to compare every asset's name, size and GitHub's
-sha256 digest with the files. An `-rc.N` draft is a prerelease. Nothing
-is published: the maintainer reads the draft and publishes it by hand.
+sha256 digest with the files. An `-rc.N` draft is a prerelease. Before
+the draft is written, the same folder is uploaded as the `release-assets`
+artefact, and a last job, `attest`, the only one with `id-token: write`
+and with nothing else that writes, holds each file to its line in
+`SHA256SUMS.txt` and attests the installers and `SHA256SUMS.txt` with
+Sigstore through `actions/attest-build-provenance` (issue 434, ADR-057).
+Nothing is published: the maintainer reads the draft and publishes it by
+hand, only after the attest job is green.
 `docs/install.md` is what a person follows with the assets, and the
 first-run dialog's "How to install" opens it on `main`.
 

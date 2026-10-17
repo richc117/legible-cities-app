@@ -5,11 +5,16 @@
 //
 //   node scripts/check-vendored.mjs <target> [--vendor <dir>] [--pins <file>] [--out <file>]
 //   node scripts/check-vendored.mjs <target> --licences <python-dir> [--pins <file>]
+//   node scripts/check-vendored.mjs <target> --packages <python-dir> [--pins <file>]
 //   npm run dist:check darwin-arm64
 //
 // With --licences it checks only one runtime's licence texts against its
 // build metadata and the pins' lists (ADR-042): scripts/vendor-python.sh
 // runs it before a runtime is vendored, as the same check runs here later.
+// With --packages it checks only one runtime's packages against
+// vendor/python-requirements.txt and python.pip, and its vendor record
+// against engine.commit and python.requirements.sha256 (issue 434):
+// scripts/vendor-python.sh runs it once it has installed them.
 //
 // Targets: darwin-arm64, darwin-x64, win-x64. The tree it reads is the one
 // .github/workflows/build.yml lays out from the same run's vendor artefacts:
@@ -407,6 +412,353 @@ function installedPackages(sitePackages) {
 }
 
 /**
+ * The requirements manifest's name, beside the pins file: every package the
+ * runtime carries besides the engine and pip, exported from the engine's
+ * uv.lock by scripts/lock-python.sh, each at one version with its hashes
+ * (issue 434).
+ */
+export const REQUIREMENTS = 'python-requirements.txt'
+
+/** What scripts/vendor-python.sh writes into the runtime's root about how it was built. */
+export const VENDOR_RECORD = 'vendor-record.json'
+
+/** The manifest beside a pins file, as bytes, or null where there is none to read. */
+export function readRequirements(pinsFile) {
+  const path = join(dirname(pinsFile), REQUIREMENTS)
+  try {
+    return { path, bytes: readFileSync(path) }
+  } catch {
+    return { path, bytes: null }
+  }
+}
+
+/** PEP 503's form of a distribution's name, so `python_dateutil` and `python-dateutil` are one. */
+export function normalName(name) {
+  return String(name)
+    .toLowerCase()
+    .replace(/[-_.]+/g, '-')
+}
+
+/**
+ * The PEP 508 environment markers a target's runtime has. Only these are
+ * known; a marker naming anything else is refused rather than guessed at.
+ */
+export function markerEnvironment(target, pythonVersion) {
+  const platform = {
+    'darwin-arm64': {
+      sys_platform: 'darwin',
+      platform_system: 'Darwin',
+      platform_machine: 'arm64',
+    },
+    'darwin-x64': { sys_platform: 'darwin', platform_system: 'Darwin', platform_machine: 'x86_64' },
+    'win-x64': { sys_platform: 'win32', platform_system: 'Windows', platform_machine: 'AMD64' },
+  }[target]
+  if (platform === undefined) return null
+  return {
+    ...platform,
+    os_name: target.startsWith('win-') ? 'nt' : 'posix',
+    implementation_name: 'cpython',
+    platform_python_implementation: 'CPython',
+    python_version: String(pythonVersion).split('.').slice(0, 2).join('.'),
+    python_full_version: String(pythonVersion),
+  }
+}
+
+const VERSION_MARKERS = new Set(['python_version', 'python_full_version'])
+
+/**
+ * Whether a PEP 508 marker holds in `env`. What uv writes is read:
+ * comparisons joined by `and` and `or`, bracketed or not; `==`, `!=`, `in`
+ * and `not in` on any marker, and `<`, `<=`, `>` and `>=` besides on the two
+ * Python versions, compared as numbers. Anything else throws, saying what,
+ * so a manifest the check cannot judge is refused rather than misread.
+ * Every comparison is read, whatever the ones before it decided.
+ */
+export function evaluateMarker(marker, env) {
+  const tokens = []
+  const pattern =
+    /\s*(?:(\()|(\))|'([^']*)'|"([^"]*)"|(===|==|!=|<=|>=|~=|<|>)|([A-Za-z_][A-Za-z0-9_.]*))/y
+  let at = 0
+  while (marker.slice(at).trim() !== '') {
+    pattern.lastIndex = at
+    const match = pattern.exec(marker)
+    if (match === null) throw new Error(`cannot read ${JSON.stringify(marker.slice(at).trim())}`)
+    at = pattern.lastIndex
+    if (match[1] !== undefined) tokens.push({ kind: '(' })
+    else if (match[2] !== undefined) tokens.push({ kind: ')' })
+    else if (match[3] !== undefined || match[4] !== undefined)
+      tokens.push({ kind: 'string', value: match[3] ?? match[4] })
+    else if (match[5] !== undefined) tokens.push({ kind: 'op', value: match[5] })
+    else tokens.push({ kind: 'word', value: match[6] })
+  }
+  let next = 0
+  const word = (token, value) => token?.kind === 'word' && token.value === value
+  const operand = () => {
+    const token = tokens[next++]
+    if (token?.kind === 'string') return { literal: token.value }
+    if (token?.kind === 'word' && !['and', 'or', 'not', 'in'].includes(token.value)) {
+      if (!Object.prototype.hasOwnProperty.call(env, token.value)) {
+        throw new Error(`does not know the marker ${token.value}`)
+      }
+      return { marker: token.value, value: env[token.value] }
+    }
+    throw new Error('expected a marker or a quoted string')
+  }
+  const numbers = (text) => {
+    if (!/^\d+(\.\d+)*$/.test(text))
+      throw new Error(`cannot compare ${JSON.stringify(text)} as a version`)
+    return text.split('.').map(Number)
+  }
+  const order = (a, b) => {
+    const [x, y] = [numbers(a), numbers(b)]
+    for (let i = 0; i < Math.max(x.length, y.length); i += 1) {
+      const d = (x[i] ?? 0) - (y[i] ?? 0)
+      if (d !== 0) return Math.sign(d)
+    }
+    return 0
+  }
+  const comparison = () => {
+    if (tokens[next]?.kind === '(') {
+      next += 1
+      const value = either()
+      if (tokens[next++]?.kind !== ')') throw new Error('a bracket is not closed')
+      return value
+    }
+    const left = operand()
+    const token = tokens[next++]
+    let op
+    if (token?.kind === 'op') op = token.value
+    else if (word(token, 'in')) op = 'in'
+    else if (word(token, 'not') && word(tokens[next], 'in')) {
+      next += 1
+      op = 'not in'
+    } else throw new Error('expected a comparison')
+    const right = operand()
+    const [a, b] = [left.value ?? left.literal, right.value ?? right.literal]
+    if (op === 'in') return b.includes(a)
+    if (op === 'not in') return !b.includes(a)
+    const versions = VERSION_MARKERS.has(left.marker) || VERSION_MARKERS.has(right.marker)
+    if (versions && ['==', '!=', '<', '<=', '>', '>='].includes(op)) {
+      const sign = order(a, b)
+      return {
+        '==': sign === 0,
+        '!=': sign !== 0,
+        '<': sign < 0,
+        '<=': sign <= 0,
+        '>': sign > 0,
+        '>=': sign >= 0,
+      }[op]
+    }
+    if (op === '==') return a === b
+    if (op === '!=') return a !== b
+    throw new Error(`cannot judge ${op} there`)
+  }
+  const both = () => {
+    let value = comparison()
+    while (word(tokens[next], 'and')) {
+      next += 1
+      value = comparison() && value
+    }
+    return value
+  }
+  const either = () => {
+    let value = both()
+    while (word(tokens[next], 'or')) {
+      next += 1
+      value = both() || value
+    }
+    return value
+  }
+  const value = either()
+  if (next !== tokens.length) throw new Error('has more after the marker ends')
+  return value
+}
+
+/**
+ * The requirements manifest read, line by line as pip reads it: each
+ * package at its one version with its marker and its hashes, and what in it
+ * is not that shape, each a phrase to follow "a requirements manifest that".
+ */
+export function parseRequirements(text) {
+  const requirements = []
+  const problems = []
+  const lines = []
+  let carried = ''
+  for (const raw of String(text).split(/\r?\n/)) {
+    const line = raw.replace(/(^|\s)#.*$/, '').trimEnd()
+    if (line.endsWith('\\')) {
+      carried += `${line.slice(0, -1)} `
+      continue
+    }
+    lines.push(carried + line)
+    carried = ''
+  }
+  lines.push(carried)
+  for (const line of lines.map((l) => l.trim()).filter((l) => l !== '')) {
+    const at = line.search(/\s--/)
+    const requirement = at === -1 ? line : line.slice(0, at)
+    const options = at === -1 ? [] : line.slice(at).trim().split(/\s+/)
+    const semicolon = requirement.indexOf(';')
+    const spec = (semicolon === -1 ? requirement : requirement.slice(0, semicolon)).trim()
+    const marker = semicolon === -1 ? null : requirement.slice(semicolon + 1).trim()
+    const pinned = /^([A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)\s*==\s*([A-Za-z0-9.!+_-]+)$/.exec(
+      spec,
+    )
+    if (pinned === null) {
+      problems.push(
+        `holds ${JSON.stringify(requirement.trim())}, which is not one package at one version`,
+      )
+      continue
+    }
+    const [, name, version] = pinned
+    const hashes = []
+    for (const option of options) {
+      const hash = /^--hash=sha256:([0-9a-f]{64})$/.exec(option)
+      if (hash === null) problems.push(`gives ${name} ${option}, which is not a sha256 hash`)
+      else hashes.push(hash[1])
+    }
+    if (hashes.length === 0) problems.push(`pins ${name} ${version} without a hash`)
+    requirements.push({ name, version, marker, hashes })
+  }
+  if (requirements.length === 0) problems.push('lists no package')
+  return { requirements, problems }
+}
+
+/**
+ * Whether a runtime carries exactly the packages the pins name, and was
+ * built from what they name (issue 434): the manifest beside the pins is the
+ * one python.requirements.sha256 names; the runtime's vendor record names
+ * engine.commit and that hash; and its packages, the engine aside (its
+ * version is checked on its own), are the manifest's for this target, its
+ * markers judged for it, with pip at python.pip.version, each at exactly
+ * that version, none missing and none besides.
+ *
+ * @param {object} options
+ * @param {string} options.python the runtime's root (`python/`)
+ * @param {string} options.target
+ * @param {any} options.pins the parsed vendor/pins.json
+ * @param {{ path: string, bytes: Buffer | null }} options.requirements what readRequirements answered
+ * @returns {string[]} the problems, each beginning with the component it is about
+ */
+export function checkPythonPackages({ python, target, pins, requirements }) {
+  const pinned = pins.python?.requirements?.sha256
+  const pip = pins.python?.pip?.version
+  const commit = pins.engine?.commit
+  if ([pinned, pip, commit].some((value) => typeof value !== 'string' || value === '')) {
+    return [
+      'python has no python.requirements.sha256, python.pip.version or engine.commit in vendor/pins.json to be held to',
+    ]
+  }
+  const problems = []
+  const file = basename(requirements.path)
+
+  /** @type {Map<string, { name: string, version: string, source: string }> | null} */
+  let expected = null
+  if (requirements.bytes === null) {
+    problems.push(
+      `python has no requirements manifest to be held to (looked for ${requirements.path})`,
+    )
+  } else {
+    const got = createHash('sha256').update(requirements.bytes).digest('hex')
+    if (got !== pinned) {
+      problems.push(
+        `python has a requirements manifest, ${file}, whose sha256 is ${got}; vendor/pins.json names ${pinned}: regenerate it with scripts/lock-python.sh and move python.requirements.sha256 with it`,
+      )
+    }
+    const parsed = parseRequirements(requirements.bytes.toString('utf8'))
+    for (const problem of parsed.problems) {
+      problems.push(`python has a requirements manifest that ${problem}`)
+    }
+    const env = markerEnvironment(target, pins.python.version)
+    expected = new Map()
+    for (const requirement of parsed.requirements) {
+      let applies = true
+      if (requirement.marker !== null) {
+        try {
+          applies = evaluateMarker(requirement.marker, env ?? {})
+        } catch (error) {
+          problems.push(
+            `python has a requirements manifest whose marker for ${requirement.name} cannot be judged for ${target} (${error.message}): ${requirement.marker}`,
+          )
+          continue
+        }
+      }
+      if (!applies) continue
+      const key = normalName(requirement.name)
+      if (key === 'pip' || key === 'openschematicmaps') {
+        problems.push(
+          `python has a requirements manifest that lists ${requirement.name}, which vendor/pins.json pins on its own`,
+        )
+        continue
+      }
+      if (expected.has(key)) {
+        problems.push(
+          `python has a requirements manifest that lists ${requirement.name} twice for ${target}`,
+        )
+      }
+      expected.set(key, {
+        name: requirement.name,
+        version: requirement.version,
+        source: file,
+      })
+    }
+    expected.set('pip', { name: 'pip', version: pip, source: 'vendor/pins.json' })
+  }
+
+  // How it was built, from the record vendor-python.sh wrote into it.
+  const recordPath = join(python, VENDOR_RECORD)
+  let record = null
+  try {
+    record = JSON.parse(readFileSync(recordPath, 'utf8'))
+  } catch {
+    problems.push(
+      `python carries no readable vendor record (looked for ${recordPath}); scripts/vendor-python.sh writes it`,
+    )
+  }
+  if (record !== null) {
+    const built = record?.engine?.commit
+    if (built !== commit) {
+      problems.push(
+        `engine was built from commit ${built ?? '(none recorded)'}; vendor/pins.json pins ${commit}, so it is stale`,
+      )
+    }
+    const installedFrom = record?.requirements_sha256
+    if (installedFrom !== pinned) {
+      problems.push(
+        `python was installed from a requirements manifest whose sha256 is ${installedFrom ?? '(none recorded)'}; vendor/pins.json names ${pinned}, so it is stale`,
+      )
+    }
+  }
+
+  // What it carries.
+  if (expected !== null) {
+    const installed = new Map()
+    for (const found of installedPackages(runtimePaths(python, target).sitePackages)) {
+      const key = normalName(found.name)
+      if (key !== 'openschematicmaps') installed.set(key, found)
+    }
+    for (const [key, want] of expected) {
+      const have = installed.get(key)
+      if (have === undefined) {
+        problems.push(`python lacks ${want.name} ${want.version}, which ${want.source} pins`)
+      } else if (have.version !== want.version) {
+        problems.push(
+          `python carries ${want.name} ${have.version}; ${want.source} pins ${want.version}`,
+        )
+      }
+    }
+    for (const [key, have] of installed) {
+      if (!expected.has(key)) {
+        problems.push(
+          `python carries ${have.name} ${have.version}, which ${file} does not list for ${target}`,
+        )
+      }
+    }
+  }
+  return problems
+}
+
+/**
  * Check one target's components under `paths` against `pins`.
  *
  * @param {object} options
@@ -417,9 +769,11 @@ function installedPackages(sitePackages) {
  *   bytecode, hash-based and unchecked (after the build compiled it)
  * @param {boolean} [options.executableBits] require the executable bit on
  *   the macOS binaries; true on a POSIX build machine by default
+ * @param {{ path: string, bytes: Buffer | null }} options.requirements the
+ *   requirements manifest beside the pins, as readRequirements answers it
  * @returns {{ problems: string[], packages: { name: string, version: string }[] }}
  */
-export function checkTree({ target, paths, pins, bytecode = false, executableBits }) {
+export function checkTree({ target, paths, pins, requirements, bytecode = false, executableBits }) {
   const problems = []
   const refuse = (component, message) => problems.push(`${target}: ${component} ${message}`)
   const expected = EXPECTED[target]
@@ -499,6 +853,17 @@ export function checkTree({ target, paths, pins, bytecode = false, executableBit
         'engine',
         `is ${engine.version}; vendor/pins.json pins ${pins.engine.version}, so it is stale`,
       )
+    }
+    // Locked (issue 434): every other package the manifest's and pip the
+    // pins', at exactly those versions, and the engine's commit and the
+    // manifest's hash as the runtime's own record has them.
+    for (const problem of checkPythonPackages({
+      python: paths.python,
+      target,
+      pins,
+      requirements,
+    })) {
+      problems.push(`${target}: ${problem}`)
     }
     if (bytecode) {
       const { sources, missing, timestamped } = bytecodeOf(runtime.lib)
@@ -597,10 +962,15 @@ export function buildManifest({ target, pins, pinsSha256, packages, app }) {
         },
         licence: python.licence,
         bytecode: 'compiled at build, --invalidation-mode unchecked-hash',
+        // Where python_packages came from: the locked manifest, by its
+        // hash, and pip's own pin (issue 434).
+        requirements_sha256: python.requirements.sha256,
+        pip: python.pip.version,
       },
       engine: {
         repo: engine.repo,
         tag: engine.tag,
+        commit: engine.commit,
         version: engine.version,
         protocol: engine.protocol,
         schema_sha256: engine.schema_sha256,
@@ -676,7 +1046,8 @@ export function checkVendor({ target, vendor, pinsFile, out }) {
   const pins = JSON.parse(readFileSync(pinsFile, 'utf8'))
   const paths = layout('vendor', vendor, target)
   const manifestPath = out ?? paths.manifest
-  const { problems, packages } = checkTree({ target, paths, pins })
+  const requirements = readRequirements(pinsFile)
+  const { problems, packages } = checkTree({ target, paths, pins, requirements })
   if (problems.length > 0) {
     rmSync(manifestPath, { force: true })
     return { problems, manifestPath: null }
@@ -700,7 +1071,8 @@ export function checkVendor({ target, vendor, pinsFile, out }) {
 export function checkResources({ target, resources, pinsFile, bytecode = true }) {
   const pins = JSON.parse(readFileSync(pinsFile, 'utf8'))
   const paths = layout('resources', resources, target)
-  const { problems } = checkTree({ target, paths, pins, bytecode })
+  const requirements = readRequirements(pinsFile)
+  const { problems } = checkTree({ target, paths, pins, requirements, bytecode })
   for (const path of Object.values(electronLicencePaths(resources, target))) {
     if (!isFile(path)) {
       problems.push(
@@ -822,6 +1194,7 @@ function parseArgs(argv) {
     pinsFile: null,
     out: null,
     licences: null,
+    packages: null,
   }
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]
@@ -835,6 +1208,7 @@ function parseArgs(argv) {
     else if (arg === '--pins') options.pinsFile = value()
     else if (arg === '--out') options.out = value()
     else if (arg === '--licences') options.licences = value()
+    else if (arg === '--packages') options.packages = value()
     else if (arg.startsWith('-')) throw new Error(`unknown option ${arg}`)
     else if (options.target === null) options.target = arg
     else throw new Error(`one target at a time; got ${options.target} and ${arg}`)
@@ -854,9 +1228,32 @@ function main(argv) {
   if (options.target === null || !TARGETS.includes(options.target)) {
     process.stderr.write(
       `usage: check-vendored.mjs <${TARGETS.join('|')}> [--vendor <dir>] [--pins <file>] [--out <file>]\n` +
-        `       check-vendored.mjs <${TARGETS.join('|')}> --licences <python-dir> [--pins <file>]\n`,
+        `       check-vendored.mjs <${TARGETS.join('|')}> --licences <python-dir> [--pins <file>]\n` +
+        `       check-vendored.mjs <${TARGETS.join('|')}> --packages <python-dir> [--pins <file>]\n`,
     )
     return 2
+  }
+  if (options.licences !== null && options.packages !== null) {
+    process.stderr.write('--licences and --packages check one thing each; give one\n')
+    return 2
+  }
+  if (options.packages !== null) {
+    const pins = JSON.parse(readFileSync(options.pinsFile, 'utf8'))
+    const problems = checkPythonPackages({
+      python: options.packages,
+      target: options.target,
+      pins,
+      requirements: readRequirements(options.pinsFile),
+    })
+    if (problems.length > 0) {
+      process.stderr.write(`the ${options.target} runtime is not the one the pins name:\n`)
+      for (const problem of problems) process.stderr.write(`  ${problem}\n`)
+      return 1
+    }
+    process.stdout.write(
+      `${options.target}: the runtime carries the packages ${REQUIREMENTS} and python.pip pin, at those versions and no others, and records engine.commit\n`,
+    )
+    return 0
   }
   if (options.licences !== null) {
     const pins = JSON.parse(readFileSync(options.pinsFile, 'utf8'))

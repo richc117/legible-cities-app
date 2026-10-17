@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Fetch the pinned python-build-standalone runtime for one target, verify it
 # against the checksum in vendor/pins.json, unpack it, add the licence texts
-# it owes, install the engine with its declared dependencies, strip what a
+# it owes, install the locked packages of vendor/python-requirements.txt by
+# their hashes and the engine at its pinned commit beside them, strip what a
 # sidecar never runs, and prove the result starts the sidecar the app runs.
 #
 #   scripts/vendor-python.sh <target> <engine-path> [outdir]
@@ -26,6 +27,19 @@
 # Doc/license.rst, whose incorporated-software notices LICENSE.txt lacks.
 # The full archive is .tar.zst, so this needs a `zstd` on PATH, and Node
 # for the check.
+#
+# The lock (issue 434, ADR-057): every package the runtime carries is
+# installed by its hash from vendor/python-requirements.txt, pip at
+# python.pip's version and hash, and the engine from its own wheel built at
+# engine.commit. One thing is still fetched unpinned and unhashed: the
+# engine's build backend. `pip wheel` builds the engine in an isolated
+# environment into which pip installs whatever hatchling PyPI has that day
+# (the engine's pyproject.toml asks for `hatchling` with no version). It does
+# not ship, but it writes the wheel that does. What would close it: a second
+# hashed manifest for hatchling and its dependencies, installed into a build
+# environment of its own, and the wheel built there with
+# --no-build-isolation; or the engine publishing its wheel by tag with a
+# hash the pins record.
 #
 # See docs/adr/020-sidecar-packaging.md for why this and not PyInstaller.
 set -euo pipefail
@@ -67,7 +81,8 @@ sha256() {
   "$host_py" -c 'import hashlib, sys; sys.stdout.write(hashlib.sha256(sys.stdin.buffer.read()).hexdigest())' < "$1"
 }
 
-read -r release asset want schema_want <<EOP
+read -r release asset want schema_want engine_tag engine_version engine_commit \
+  requirements_want pip_version pip_sha256 <<EOP
 $("$host_py" - "$pins" "$target" <<'PY'
 import json, sys
 pins, target = sys.argv[1], sys.argv[2]
@@ -76,13 +91,47 @@ d = p["python"]
 t = d["targets"].get(target)
 if not t:
     sys.exit(f"no pin for target {target}; known: {', '.join(d['targets'])}")
+e = p["engine"]
 # write, not print: a Windows Python ends a printed line in \r\n, and the
 # \r would become part of the last field read below.
-sys.stdout.write(" ".join([d["release"], t["asset"], t["sha256"], p["engine"]["schema_sha256"]]))
+sys.stdout.write(" ".join([d["release"], t["asset"], t["sha256"], e["schema_sha256"],
+    e["tag"], e["version"], e["commit"], d["requirements"]["sha256"],
+    d["pip"]["version"], d["pip"]["sha256"]]))
 PY
 )
 EOP
-[ -n "${schema_want:-}" ] || { echo "could not read the pins for $target" >&2; exit 1; }
+[ -n "${pip_sha256:-}" ] || { echo "could not read the pins for $target" >&2; exit 1; }
+
+# The engine at the pinned commit and the locked packages the pins name
+# (issue 434), both refused before anything is fetched. The engine's wheel is
+# built from the working tree, so a change in it, or a file in it git does
+# not track, would ship: the checkout must be clean as well as at the commit.
+requirements=vendor/python-requirements.txt
+[ -f "$requirements" ] || {
+  echo "no $requirements; scripts/lock-python.sh writes it from the engine's uv.lock" >&2; exit 1; }
+requirements_got=$(sha256 "$requirements")
+if [ "$requirements_got" != "$requirements_want" ]; then
+  echo "$requirements is not the manifest vendor/pins.json names" >&2
+  echo "  python.requirements.sha256 $requirements_want" >&2
+  echo "  $requirements $requirements_got" >&2
+  echo "Regenerate it with scripts/lock-python.sh and move the pin with it." >&2
+  exit 1
+fi
+engine_head=$(git -C "$engine" rev-parse HEAD 2>/dev/null) || {
+  echo "$engine is not a git checkout, so its commit cannot be held to engine.commit" >&2; exit 1; }
+if [ "$engine_head" != "$engine_commit" ]; then
+  echo "the engine checkout is not the pinned commit" >&2
+  echo "  engine.commit $engine_commit ($engine_tag)" >&2
+  echo "  checked out   $engine_head" >&2
+  exit 1
+fi
+engine_changes=$(git -C "$engine" status --porcelain)
+if [ -n "$engine_changes" ]; then
+  echo "the engine checkout at $engine_commit has changes, which its wheel would carry:" >&2
+  printf '%s\n' "$engine_changes" | head -n 20 >&2
+  exit 1
+fi
+echo "engine $engine_tag at $engine_commit; $requirements $requirements_got"
 
 url="https://github.com/astral-sh/python-build-standalone/releases/download/$release/$asset"
 work=$(mktemp -d)
@@ -174,26 +223,51 @@ cp "$work/$notices_file" "$stage/python/licenses/$notices_file"
 
 "$node_bin" scripts/check-vendored.mjs "$target" --licences "$(absolute "$stage/python")"
 
-# The engine with the dependencies it declares, which since E02 are exactly
-# what the sidecar imports (pandas, python-lsp-jsonrpc, requests); nothing is
-# named here, so the engine's pyproject.toml stays the one list.
+# The packages, locked (issue 434). Until then pip resolved the engine's
+# minimums on the day, any later version and any major allowed, nothing
+# hashed, and upgraded itself to whatever was newest. Now every package is in
+# vendor/python-requirements.txt at one version with the sha256 of each file
+# it may come from, exported from the engine's own uv.lock at the pinned tag
+# (scripts/lock-python.sh), and --require-hashes makes pip refuse a file
+# whose hash is not listed and a requirement that is not pinned and hashed,
+# dependencies included, so nothing outside the file is resolved.
+# --only-binary :all: so nothing is compiled on the runner: a package with no
+# wheel for the target fails the build rather than building from source with
+# whatever compiler the image has.
 #
-# --only-binary :all: so nothing is compiled on the runner: a dependency with
-# no wheel for the target fails the build rather than building from source
-# with whatever compiler the image has. The engine itself is a source tree,
-# which that flag refuses, so its wheel is built first (pure Python, through
-# its hatchling backend) and installed from the file.
-#
-# This is not a lock: the engine's minimums allow any later version, majors
-# included, and nothing is hashed. The freeze below records what each run
-# shipped; see the spike report's "Still open".
-"$py" -m pip install --quiet --upgrade pip
+# pip first, at python.pip's version, from a requirement written here with
+# the pinned wheel's hash. The asset of the pinned release already carries
+# that version, so pip changes nothing and the asset's checksum covers it; at
+# another release pip fetches the pinned wheel and checks it.
+export PIP_DISABLE_PIP_VERSION_CHECK=1
+printf 'pip==%s --hash=sha256:%s\n' "$pip_version" "$pip_sha256" > "$work/pip.txt"
+"$py" -m pip install --quiet --require-hashes --only-binary :all: -r "$(absolute "$work")/pip.txt"
+"$py" -m pip install --quiet --require-hashes --only-binary :all: -r "$requirements"
+
+# The engine itself is a source tree, which --only-binary refuses, so its
+# wheel is built first (pure Python, through its hatchling backend, which pip
+# fetches unpinned into an isolated build environment and which does not
+# ship: the one gap the header names) and installed from the file with --no-deps: its dependencies are the
+# manifest's, already in place. `pip check` then holds every installed
+# package's requirements, the engine's included, to what is installed, so a
+# manifest the engine has outgrown fails here and not at the first import.
 mkdir -p "$work/wheels"
 "$py" -m pip wheel --quiet --no-deps -w "$(absolute "$work/wheels")" "$engine"
 wheel=$(cd "$work/wheels" && ls openschematicmaps-*.whl)
-"$py" -m pip install --quiet --only-binary :all: "$(absolute "$work/wheels")/$wheel"
+"$py" -m pip install --quiet --no-deps --only-binary :all: "$(absolute "$work/wheels")/$wheel"
+"$py" -m pip check
 echo "installed, as pip freeze reports it:"
 "$py" -m pip list --format=freeze | tr -d '\r' | sed 's/^/  /'
+
+# What this runtime was built from that only this script knows: the
+# engine's commit as checked out and the hash of the manifest it installed.
+# scripts/check-vendored.mjs holds both to the pins, and the packages the
+# runtime carries to the manifest and python.pip, here and again at
+# packaging, where the record travels with the runtime.
+# shellcheck disable=SC2016 # "$comment" is the record's key, not a variable
+printf '{\n  "$comment": "Written by scripts/vendor-python.sh: what this runtime was built from. scripts/check-vendored.mjs holds it to vendor/pins.json.",\n  "engine": { "tag": "%s", "version": "%s", "commit": "%s" },\n  "requirements_sha256": "%s"\n}\n' \
+  "$engine_tag" "$engine_version" "$engine_head" "$requirements_got" > "$stage/python/vendor-record.json"
+"$node_bin" scripts/check-vendored.mjs "$target" --packages "$(absolute "$stage/python")"
 
 # Strip what never runs in a sidecar. Measured at 78 MB and 4184 files on
 # macOS arm64; see the spike report. The .pdb files are Windows' debug

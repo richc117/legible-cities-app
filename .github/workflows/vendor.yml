@@ -146,12 +146,15 @@ jobs:
   # The Python sidecar runtime. ADR-020 chose python-build-standalone over
   # PyInstaller; scripts/vendor-python.sh verifies the pinned checksum and
   # fails rather than continuing if the asset changed. The engine it
-  # installs is the pinned one (A1-02 wired the block in), with the
-  # dependencies it declares, and the script refuses a runtime whose
-  # `schematic.serve --schema` does not start or does not hash to the pinned
-  # schema. Every step runs under bash, which on windows-latest is Git Bash;
-  # scripts/vendor-python.sh says what that constrains. The engine's tags are
-  # public since 2026-09-08, and the refuse-early step below guards that.
+  # installs is the pinned one (A1-02 wired the block in), checked out at
+  # engine.commit, which the tag must still name, and every other package is
+  # installed by its hash from vendor/python-requirements.txt, the engine's
+  # own lock (issue 434); the script refuses a runtime whose packages are not
+  # exactly that file's and python.pip's, or whose `schematic.serve --schema`
+  # does not start or does not hash to the pinned schema. Every step runs
+  # under bash, which on windows-latest is Git Bash; scripts/vendor-python.sh
+  # says what that constrains. The engine's tags are public since 2026-09-08,
+  # and the refuse-early step below guards that.
   python:
     name: python (${{ matrix.target }})
     # No runtime carrying the GPL engine is uploaded in a run without the
@@ -188,45 +191,117 @@ jobs:
               raise SystemExit(f"engine.repo is not a GitHub URL: {engine['repo']}")
           print(f"repo={owner_repo}")
           print(f"tag={engine['tag']}")
+          print(f"commit={engine['commit']}")
           print(f"version={engine['version']}")
           PY
-      - name: Refuse early if the engine's tag is not published
+      - name: Refuse early if the engine's tag is not published, or names another commit
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           PINNED_REPO: ${{ steps.engine.outputs.repo }}
           PINNED_TAG: ${{ steps.engine.outputs.tag }}
+          PINNED_COMMIT: ${{ steps.engine.outputs.commit }}
         run: |
           # Without this the checkout below fails with a bare "couldn't find
           # ref", which says nothing about what to do. The engine is tagged
           # in its own repository and pushed by hand; until that happens
           # this job cannot vendor a runtime with the engine in it.
-          if ! gh api "repos/$PINNED_REPO/git/ref/tags/$PINNED_TAG" >/dev/null 2>&1; then
+          if ! ref=$(gh api "repos/$PINNED_REPO/git/ref/tags/$PINNED_TAG" --jq '.object.type + " " + .object.sha' 2>/dev/null); then
             echo "::error::$PINNED_REPO has no tag $PINNED_TAG. The engine's tags are pushed by hand; this job vendors the runtime once that is done."
             exit 1
           fi
-          echo "$PINNED_REPO is tagged $PINNED_TAG"
-      - name: Check out the engine at its pin
+          # A lightweight tag names its commit; an annotated one names a tag
+          # object, peeled here until a commit is reached (issue 434). A tag
+          # moved since the pin was written is refused, not followed.
+          type=${ref%% *}
+          sha=${ref#* }
+          while [ "$type" = tag ]; do
+            ref=$(gh api "repos/$PINNED_REPO/git/tags/$sha" --jq '.object.type + " " + .object.sha')
+            type=${ref%% *}
+            sha=${ref#* }
+          done
+          if [ "$type" != commit ] || [ "$sha" != "$PINNED_COMMIT" ]; then
+            echo "::error::$PINNED_REPO's tag $PINNED_TAG names $type $sha, and vendor/pins.json pins engine.commit $PINNED_COMMIT. A tag that moved is not vendored: move the pin, with its lock (scripts/lock-python.sh), or put the tag back."
+            exit 1
+          fi
+          echo "$PINNED_REPO is tagged $PINNED_TAG at $sha"
+      - name: Check out the engine at its pinned commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ steps.engine.outputs.repo }}
-          ref: ${{ steps.engine.outputs.tag }}
+          ref: ${{ steps.engine.outputs.commit }}
           path: engine
           persist-credentials: false
-      - name: Refuse an engine that is not the pinned version
+      - name: Refuse an engine that is not the pinned version and commit
         shell: bash
         env:
           PINNED_VERSION: ${{ steps.engine.outputs.version }}
           PINNED_TAG: ${{ steps.engine.outputs.tag }}
+          PINNED_COMMIT: ${{ steps.engine.outputs.commit }}
         run: |
-          # The pin names a tag and a version; a tag that has moved would
-          # otherwise vendor an engine the app was not built against.
+          # The pin names a tag, its commit and a version, and each is held
+          # to the checkout; scripts/vendor-python.sh holds the commit to the
+          # checkout again and records it inside the runtime.
           found=$(grep -oE '__version__ *= *"[^"]+"' engine/src/schematic/__init__.py | head -1 | cut -d'"' -f2)
           if [ "$found" != "$PINNED_VERSION" ]; then
-            echo "::error::the pin says $PINNED_VERSION, the tag holds $found"
+            echo "::error::the pin says $PINNED_VERSION, the commit holds $found"
             exit 1
           fi
-          echo "engine $found at $PINNED_TAG"
+          head=$(git -C engine rev-parse HEAD)
+          if [ "$head" != "$PINNED_COMMIT" ]; then
+            echo "::error::the checkout is at $head, and vendor/pins.json pins engine.commit $PINNED_COMMIT"
+            exit 1
+          fi
+          echo "engine $found at $PINNED_TAG, commit $head"
+      # The committed manifest is the engine's own lock, exported at the
+      # pinned commit by the pinned uv (issue 434). The unit tests hold the
+      # file to the pins; only this holds it to the engine. uv is installed by
+      # pip, by the hash of its wheel for this target, into a throwaway
+      # environment the runner's Python makes, rather than by a setup action:
+      # no setup action's code runs in the job, and the binary is checked
+      # the way every package the runtime carries is. It never ships. Before
+      # the runtime is fetched, so a stale manifest fails in seconds.
+      - name: Refuse a manifest that is not the engine's lock
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          host_py=python3
+          "$host_py" -c 'import sys' >/dev/null 2>&1 || host_py=python
+          read -r version sha <<< "$("$host_py" -c "import json, sys; uv = json.load(open('vendor/pins.json'))['python']['requirements']['uv']; sys.stdout.write(uv['version'] + ' ' + uv['sha256'][sys.argv[1]])" "$TARGET")"
+          # A folder of its own, named to Python in the form it reads: on
+          # Windows that is Git Bash's `pwd -W` (D:/...), as in vendor-python.sh.
+          work=$(mktemp -d)
+          native=$(cd "$work" && { pwd -W 2>/dev/null || pwd; })
+          "$host_py" -m venv "$native/venv"
+          case "$RUNNER_OS" in
+            Windows) uv_py="$work/venv/Scripts/python.exe" ;;
+            *)       uv_py="$work/venv/bin/python" ;;
+          esac
+          printf 'uv==%s --hash=sha256:%s\n' "$version" "$sha" > "$work/uv.txt"
+          "$uv_py" -m pip install --quiet --disable-pip-version-check --require-hashes --only-binary :all: -r "$native/uv.txt"
+          found=$("$uv_py" -m uv --version | tr -d '\r' | cut -d' ' -f2)
+          if [ "$found" != "$version" ]; then
+            echo "::error::pip installed uv $found, and python.requirements.uv.version is $version"
+            exit 1
+          fi
+          # Offline and without fetching a Python, set in the environment so
+          # the command uv writes into its header is the one lock-python.sh
+          # ran. The body is the manifest from uv's own header on: what
+          # lock-python.sh writes above it names the pins, which the unit
+          # tests hold it to.
+          exported=$(cd engine && UV_OFFLINE=1 UV_PYTHON_DOWNLOADS=never "$uv_py" -m uv export --frozen --no-dev --hashes --no-emit-project | tr -d '\r')
+          committed=$(sed -n '/^# This file was autogenerated by uv/,$p' vendor/python-requirements.txt)
+          if [ -z "$committed" ]; then
+            echo "::error::vendor/python-requirements.txt has no uv export in it; scripts/lock-python.sh writes it"
+            exit 1
+          fi
+          if [ "$exported" != "$committed" ]; then
+            echo "::error::vendor/python-requirements.txt is not the engine's lock at $(git -C engine rev-parse HEAD) as uv $version exports it: regenerate it with scripts/lock-python.sh and move python.requirements.sha256 with it"
+            diff <(printf '%s\n' "$committed") <(printf '%s\n' "$exported") | head -n 80 || true
+            exit 1
+          fi
+          echo "vendor/python-requirements.txt is the engine's lock at $(git -C engine rev-parse HEAD), as uv $version exports it: $(grep -c '^[A-Za-z0-9]' <<< "$committed") packages"
       - name: Find zstd and Node for the licence texts
         shell: bash
         run: |
@@ -1044,12 +1119,15 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  # The engine's source at the pinned tag, as the python job installs it into
-  # the runtime the installers carry (A6-01, ADR-041). The pins record the
-  # engine's tag and version, not a commit, so the tag's version is checked
-  # as the python job checks it, and the commit it resolved to is written
-  # into BUILD.txt. The release job in build.yml attaches this artefact, by
-  # this name, to each GitHub Release.
+  # The engine's source at the pinned commit, as the python job installs it
+  # into the runtime the installers carry (A6-01, ADR-041). The pins record
+  # the engine's tag, the commit it names and the version (issue 434,
+  # ADR-057): the tag is cloned, and refused when it no longer names
+  # engine.commit or its version is not the pinned one, as the python job
+  # refuses them. The hashed manifest the packages beside it are installed
+  # from, and the scripts that write, install and check it, go into build/.
+  # The release job in build.yml attaches this artefact, by this name, to
+  # each GitHub Release.
   engine-source:
     name: engine (source)
     runs-on: ubuntu-22.04
@@ -1058,13 +1136,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Fetch the engine at its pinned tag, and archive it
+      - name: Fetch the engine at its pinned tag and commit, and archive it
         shell: bash
         run: |
           set -euo pipefail
           read_pin() { python3 -c "import json,sys;print(json.load(open('vendor/pins.json'))['engine'][sys.argv[1]])" "$1"; }
           repo=$(read_pin repo)
           tag=$(read_pin tag)
+          pinned=$(read_pin commit)
           version=$(read_pin version)
           work="$RUNNER_TEMP/engine-source"
           out=engine-source
@@ -1083,6 +1162,12 @@ jobs:
             exit 1
           fi
           commit=$(git -C "$work/engine" rev-parse HEAD)
+          # A tag moved since the pin was written is not archived: the source
+          # attached must be the commit the runtime was built from.
+          if [ "$commit" != "$pinned" ]; then
+            echo "::error::the tag $tag names $commit, and vendor/pins.json pins engine.commit $pinned"
+            exit 1
+          fi
           when=$(git -C "$work/engine" log -1 --format=%ct)
           name="legible-cities-$tag"
           mv "$work/engine" "$work/$name"
@@ -1101,24 +1186,33 @@ jobs:
             echo "::error::$name.tar.gz does not hold the engine's package"
             exit 1
           fi
-          cp scripts/vendor-python.sh scripts/vendor-python-licences.sh .github/workflows/vendor.yml "$out/build/"
+          cp scripts/vendor-python.sh scripts/vendor-python-licences.sh scripts/lock-python.sh \
+            scripts/check-vendored.mjs .github/workflows/vendor.yml "$out/build/"
           cp vendor/pins.json "$out/build/pins.json"
+          cp vendor/python-requirements.txt "$out/build/python-requirements.txt"
           {
             echo "The source of the legible-cities engine Legible Cities ships, installed"
             echo "into its bundled Python runtime."
             echo
             echo "Written by the engine-source job of .github/workflows/vendor.yml, of"
             echo "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY at commit ${GITHUB_SHA:-unknown}."
-            echo "Copies of that workflow, of vendor/pins.json, of"
-            echo "scripts/vendor-python.sh and of scripts/vendor-python-licences.sh,"
-            echo "which it runs for the licence texts, as they were then are in build/."
+            echo "Copies of that workflow, of vendor/pins.json and"
+            echo "vendor/python-requirements.txt, of scripts/vendor-python.sh, of"
+            echo "scripts/vendor-python-licences.sh, which it runs for the licence texts,"
+            echo "of scripts/check-vendored.mjs, which it runs to check the runtime, and of"
+            echo "scripts/lock-python.sh, which writes python-requirements.txt, as they were"
+            echo "then are in build/."
             echo
             echo "$name.tar.gz"
             echo "  The engine $version at tag $tag of $repo, commit $commit."
             echo
-            echo "The python job of build/vendor.yml checks out the same tag and"
-            echo "build/vendor-python.sh installs it, with the dependencies it declares,"
-            echo "into python-build-standalone's runtime."
+            echo "The python job of build/vendor.yml checks out the same commit, and"
+            echo "build/vendor-python.sh installs into python-build-standalone's runtime the"
+            echo "packages build/python-requirements.txt lists, every one at one version and"
+            echo "checked against its sha256 (pip install --require-hashes), then the"
+            echo "engine's own wheel, built from this commit, without resolving anything"
+            echo "else. python-requirements.txt is the engine's uv.lock at this commit,"
+            echo "exported by build/lock-python.sh."
           } > "$out/BUILD.txt"
           ls -l "$out" "$out/build"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
