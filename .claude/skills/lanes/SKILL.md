@@ -53,6 +53,13 @@ Lane code is the issue code. The branch is `<CODE>-<slug>`, the worktree
    answered, or explicitly allowed to survive, before the brief is written.
    The agent never resolves one.
 
+**A new engine pin is made with `scripts/pin-engine.sh <tag>`**: it makes
+the engine's worktree at the tag, installs it, and moves the one link
+`../lc-engine-current` that `.env.local` names, so a pin is no longer a hand
+edit. It refuses a tag that `vendor/pins.json` does not name unless given
+`--force`. Run it from the main checkout, before the wave. The pin's pull
+request also relocks the shipped runtime (`scripts/lock-python.sh`, ADR-057).
+
 ## The nine steps
 
 Run by the main session from the main checkout unless a step says "agent".

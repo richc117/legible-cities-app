@@ -569,7 +569,16 @@ at length, and load when the files they cover are read.
 ## The engine
 
 Development expects a checkout of the engine beside this repository; the
-path is a personal setting (`CLAUDE.local.md`, later `.env.local`). Its own
+path is a personal setting (`CLAUDE.local.md`, later `.env.local`). A new pin
+is one command, `scripts/pin-engine.sh <tag>`: it makes the engine's worktree
+at the tag (`lc-engine-<tag>`, beside the engine repository, wherever that
+is), gives it a venv and `data` and `out`, and moves one link,
+`lc-engine-current`, beside this checkout, which `.env.local` names as
+`LEGIBLE_ENGINE_CHECKOUT` once and never edits again; it refuses a tag that is not `engine.tag` in
+`vendor/pins.json` unless given `--force`. A new pin also moves the shipped
+runtime's lock: run `scripts/lock-python.sh` on the engine at the tag, then move
+`engine.commit` and `python.requirements.sha256` in `vendor/pins.json` (ADR-057).
+Its own
 notes explain the pipeline (`gtfs2graph → topo → loom → octi`, then render,
 schedule, animate, export). Anything the app needs from the pipeline is a
 change to the engine, versioned and tagged, never a copy.
