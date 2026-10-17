@@ -843,3 +843,31 @@ describe('a folder that cannot be flushed after the rename (issue 432)', () => {
     expect(lines.some((l) => l.includes('write failed'))).toBe(false)
   })
 })
+
+describe('a log sink that throws after a landed write (issue 432)', () => {
+  it('does not turn the saved write into a failed one', async () => {
+    const logs: string[] = []
+    const grumpy = new SettingsStore(
+      dir,
+      (m) => {
+        logs.push(m)
+        throw new Error('the sink is broken')
+      },
+      {
+        platform: 'linux',
+        open: (async (path: string, flags: string) => {
+          if (flags === 'r') throw Object.assign(new Error('denied'), { code: 'EACCES' })
+          return openFile(path, flags)
+        }) as never,
+      },
+    )
+    const after = await grumpy.update((s) => ({ ...s, theme: 'sepia' }))
+    expect(after.theme).toBe('sepia')
+    expect(
+      logs.some((l) => l.includes('could not be flushed')),
+      'the line was tried',
+    ).toBe(true)
+    expect((await new SettingsStore(dir, () => undefined).load()).theme).toBe('sepia')
+    expect((await grumpy.update((s) => s)).theme, 'memory matches the file').toBe('sepia')
+  })
+})

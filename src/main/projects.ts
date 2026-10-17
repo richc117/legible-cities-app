@@ -365,10 +365,16 @@ export class ProjectStore {
         // cause of issue 93 (replace-file.ts). Readers keep opening
         // project.json meanwhile and read the previous record whole.
         const renamed = await replaceFile(temp, this.file(id), text, this.replace)
-        const retried = retriedWords(renamed)
-        if (retried !== null) this.log(`projects/${id}: ${retried}`)
-        const unflushed = folderWords(renamed)
-        if (unflushed !== null) this.log(`projects/${id}: ${unflushed}`)
+        // The write has landed: a log line about it must not turn it into a
+        // failed save, so a sink that throws is ignored here.
+        try {
+          const retried = retriedWords(renamed)
+          if (retried !== null) this.log(`projects/${id}: ${retried}`)
+          const unflushed = folderWords(renamed)
+          if (unflushed !== null) this.log(`projects/${id}: ${unflushed}`)
+        } catch {
+          // nothing to do about a log that cannot be written
+        }
       } catch (error) {
         await rm(temp, { force: true }).catch(() => undefined)
         this.log(`projects/${id}: ${failedWords(error)}`)

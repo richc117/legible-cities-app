@@ -174,10 +174,16 @@ export class SettingsStore {
       // record's is: a defence, since a held file is suspected and not
       // proven to have lost a choice (replace-file.ts, issue 93).
       const renamed = await replaceFile(temp, this.file, text, this.replace)
-      const retried = retriedWords(renamed)
-      if (retried !== null) this.log(`settings: ${retried}`)
-      const unflushed = folderWords(renamed)
-      if (unflushed !== null) this.log(`settings: ${unflushed}`)
+      // The write has landed: a log line about it must not turn it into a
+      // failed save, so a sink that throws is ignored here.
+      try {
+        const retried = retriedWords(renamed)
+        if (retried !== null) this.log(`settings: ${retried}`)
+        const unflushed = folderWords(renamed)
+        if (unflushed !== null) this.log(`settings: ${unflushed}`)
+      } catch {
+        // nothing to do about a log that cannot be written
+      }
     } catch (error) {
       await rm(temp, { force: true }).catch(() => undefined)
       this.log(`settings: ${failedWords(error)}`)
