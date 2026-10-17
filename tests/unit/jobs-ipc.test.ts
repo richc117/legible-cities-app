@@ -27,7 +27,7 @@ function deps(over: Partial<JobsDeps> = {}) {
   const d: JobsDeps = {
     homes: async () => [HOME],
     platform: 'linux',
-    writeText: (text) => copied.push(text),
+    writeText: async (text) => void copied.push(text),
     log: (m) => logs.push(m),
     ...over,
   }

@@ -42,6 +42,7 @@ import { readStations, type Station } from '../shared/trip'
 import { isViewerRole, type ViewerRole } from '../shared/viewer'
 import type { ProjectStore } from './projects'
 import type { Viewer } from './viewer'
+import { writeClipboard, type WriteText } from './clipboard'
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -291,7 +292,7 @@ export const CLIPBOARD_LIMIT = 64 * 1024
 
 export function registerClipboardHandler(
   ipcMain: IpcMain,
-  writeText: (text: string) => void,
+  writeText: WriteText,
   isTopFrame: (event: IpcMainInvokeEvent) => boolean,
 ): void {
   ipcMain.handle(CHANNELS.clipboardWrite, async (event, raw: unknown) => {
@@ -303,7 +304,7 @@ export function registerClipboardHandler(
     // not: a code unit is not a byte.
     if (Buffer.byteLength(raw, 'utf8') > CLIPBOARD_LIMIT)
       throw new Error('that is too much text to copy')
-    writeText(raw)
+    await writeClipboard(writeText, raw)
   })
 }
 

@@ -5,6 +5,7 @@
 import {
   mkdir,
   mkdtemp,
+  open as openFile,
   readdir,
   readFile,
   realpath,
@@ -793,5 +794,25 @@ describe('realOrResolved', () => {
     expect(outcome.removed).not.toContain('projects')
     expect(outcome.failed).toEqual([{ folder: 'projects', reason: expect.stringMatching(/link/) }])
     expect(await readFile(join(elsewhere, 'p1', 'project.json'), 'utf8')).toBe('{}')
+  })
+})
+
+describe('a flush that fails (issue 432)', () => {
+  it('fails the write, keeps the old file and leaves no temporary file', async () => {
+    await store.write({ ...DEFAULT_SETTINGS, theme: 'sepia' })
+    const failing = new SettingsStore(dir, (m) => lines.push(m), {
+      open: (async (path: string, flags: string) => {
+        const handle = await openFile(path, flags)
+        handle.sync = async () => {
+          throw Object.assign(new Error('EIO: i/o error, fsync'), { code: 'EIO' })
+        }
+        return handle
+      }) as never,
+    })
+    await expect(failing.write({ ...DEFAULT_SETTINGS, theme: 'warm-dark' })).rejects.toThrow(
+      /could not be saved/,
+    )
+    expect(await readdir(dir)).toEqual([SETTINGS_FILE])
+    expect((await new SettingsStore(dir, () => undefined).load()).theme).toBe('sepia')
   })
 })

@@ -20,7 +20,8 @@
 // not change by waiting and fails at once. The temporary file is the
 // writer's own, so a failure to write it is never tried again either.
 
-import { rename as renameFile } from 'node:fs/promises'
+import { open as openFile, rename as renameFile } from 'node:fs/promises'
+import { dirname } from 'node:path'
 
 /**
  * The waits between attempts, in milliseconds: eight attempts in all, over
@@ -52,6 +53,10 @@ export interface ReplaceOptions {
   rename?: Rename
   wait?: Wait
   codes?: ReadonlySet<string>
+  /** Open a path for writing or, for a folder, for reading; replaced by a test that watches the order. */
+  open?: typeof openFile
+  /** `process.platform`; replaced by a test to reach the Windows branch. */
+  platform?: string
 }
 
 /** The code of a filesystem failure, never its message, which names the path. */
@@ -134,4 +139,46 @@ export function failedWords(error: unknown): string {
   if (error instanceof RenameRefused)
     return `write failed (${error.code}, ${error.attempts} ${error.attempts === 1 ? 'attempt' : 'attempts'})`
   return `write failed (${codeOf(error)})`
+}
+
+/** What a folder's sync says where the filesystem cannot sync one; the rename has landed, so it is not a failed save. */
+const DIRECTORY_SYNC_UNSUPPORTED: ReadonlySet<string> = new Set(['EINVAL', 'ENOTSUP'])
+
+/**
+ * Write `text` to `temp`, flush it to the disk, rename it over `target`, and
+ * on POSIX flush the folder that holds `target` (issue 432, R5-07). Without
+ * the first flush a power cut after the rename can leave the new name on an
+ * empty file; without the second the rename itself can be forgotten. The
+ * temporary file is the caller's to remove on any throw, and a throw before
+ * the rename leaves `target` as it was.
+ *
+ * Windows cannot open a folder for a sync (the open is refused), and NTFS
+ * journals the rename itself, so the folder's sync is skipped there.
+ */
+export async function replaceFile(
+  temp: string,
+  target: string,
+  text: string,
+  options: ReplaceOptions = {},
+): Promise<Renamed> {
+  const open = options.open ?? openFile
+  const handle = await open(temp, 'w')
+  try {
+    await handle.writeFile(text, 'utf8')
+    await handle.sync()
+  } finally {
+    await handle.close()
+  }
+  const renamed = await renameOver(temp, target, options)
+  if ((options.platform ?? process.platform) !== 'win32') {
+    const folder = await open(dirname(target), 'r')
+    try {
+      await folder.sync()
+    } catch (error) {
+      if (!DIRECTORY_SYNC_UNSUPPORTED.has(codeOf(error))) throw error
+    } finally {
+      await folder.close()
+    }
+  }
+  return renamed
 }

@@ -12,13 +12,14 @@ import { CHANNELS } from '../shared/api'
 import { JOB_LOG_BYTES } from '../shared/jobs'
 import { containsHome, shortenHome } from './diagnostics-text'
 import { redactUrls } from './redact'
+import { writeClipboard, type WriteText } from './clipboard'
 
 export interface JobsDeps {
   /** Every form of the home folder, from the settings service; rejects when the home does not answer in time. */
   homes: () => Promise<string[]>
   platform: string
   /** The system clipboard, the same writer the other copies use. */
-  writeText: (text: string) => void
+  writeText: WriteText
   log: (message: string) => void
 }
 
@@ -45,7 +46,7 @@ export function jobLogText(text: string, homes: readonly string[], platform: str
 export async function copyJobLog(raw: unknown, deps: JobsDeps): Promise<void> {
   if (!isJobLog(raw)) throw new Error('the log to copy is not a short piece of text')
   const text = jobLogText(raw, await deps.homes(), deps.platform)
-  deps.writeText(text)
+  await writeClipboard(deps.writeText, text)
   deps.log(`copied a job's log (${Buffer.byteLength(text, 'utf8')} bytes) to the clipboard`)
 }
 

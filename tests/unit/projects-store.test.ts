@@ -6,6 +6,7 @@ import {
   chmod,
   mkdir,
   mkdtemp,
+  open,
   readdir,
   readFile,
   rename,
@@ -1972,5 +1973,28 @@ describe('a record the platform holds', () => {
       expect(reading.listed, 'and the list still has the project').toBe(1)
     }
     expect((await store.get(project.id)).export).toEqual(choice)
+  })
+})
+
+describe('a flush that fails (issue 432)', () => {
+  it('fails the save, keeps the old record and leaves no temporary file', async () => {
+    const created = await store.create({ name: 'Kept', feed: 'la-metro-rail' })
+    const failing = new ProjectStore(home, (m) => lines.push(m), {
+      // The temporary file is made and written; only its flush fails.
+      open: (async (path: string, flags: string) => {
+        const handle = await open(path, flags)
+        handle.sync = async () => {
+          throw Object.assign(new Error('EIO: i/o error, fsync'), { code: 'EIO' })
+        }
+        return handle
+      }) as never,
+    })
+    await expect(failing.rename(created.id, 'Changed')).rejects.toThrow(
+      /project could not be saved/,
+    )
+    const folder = await readdir(join(root, created.id))
+    expect(folder).toEqual(['project.json'])
+    expect((await store.get(created.id))?.name).toBe('Kept')
+    expect(lines.some((l) => l.includes('write failed (EIO)'))).toBe(true)
   })
 })
