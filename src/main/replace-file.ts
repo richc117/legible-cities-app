@@ -87,6 +87,8 @@ export class RenameRefused extends Error {
 export interface Renamed {
   attempts: number
   refused: string[]
+  /** The code of a folder flush that failed after the rename landed; the write still stands. */
+  folderRefused?: string
 }
 
 const sleep: Wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -149,8 +151,13 @@ const DIRECTORY_SYNC_UNSUPPORTED: ReadonlySet<string> = new Set(['EINVAL', 'ENOT
  * on POSIX flush the folder that holds `target` (issue 432, R5-07). Without
  * the first flush a power cut after the rename can leave the new name on an
  * empty file; without the second the rename itself can be forgotten. The
- * temporary file is the caller's to remove on any throw, and a throw before
- * the rename leaves `target` as it was.
+ * temporary file is the caller's to remove on a throw. **A throw means the
+ * write did not land**: it comes only from writing or flushing the file or
+ * from the rename, and `target` is as it was. **After the rename nothing
+ * throws**: the folder step is best effort, and a refusal is returned as
+ * `folderRefused` (a code, never a message or path) for the caller to log;
+ * EINVAL and ENOTSUP, a filesystem that cannot flush a folder, are not even
+ * reported.
  *
  * Windows cannot open a folder for a sync (the open is refused), and NTFS
  * journals the rename itself, so the folder's sync is skipped there.
@@ -170,15 +177,29 @@ export async function replaceFile(
     await handle.close()
   }
   const renamed = await renameOver(temp, target, options)
+  // From here the write has landed. Nothing below may throw: a caller that
+  // sees a throw removes the temporary file, reports a failed save and (for
+  // settings) keeps stale values in memory against a file that has the new
+  // ones. A folder that cannot be flushed is a lost guarantee, said as a code.
   if ((options.platform ?? process.platform) !== 'win32') {
-    const folder = await open(dirname(target), 'r')
     try {
-      await folder.sync()
+      const folder = await open(dirname(target), 'r')
+      try {
+        await folder.sync()
+      } finally {
+        await folder.close()
+      }
     } catch (error) {
-      if (!DIRECTORY_SYNC_UNSUPPORTED.has(codeOf(error))) throw error
-    } finally {
-      await folder.close()
+      const code = codeOf(error)
+      if (!DIRECTORY_SYNC_UNSUPPORTED.has(code)) renamed.folderRefused = code
     }
   }
   return renamed
+}
+
+/** The words a log line gives a write that landed but whose folder could not be flushed, or null. */
+export function folderWords({ folderRefused }: Renamed): string | null {
+  return folderRefused === undefined
+    ? null
+    : `saved, but its folder could not be flushed (${folderRefused})`
 }

@@ -28,7 +28,7 @@ import { destinationRefusal, Destinations, Exporter, keptFramesFolder } from './
 import { claimFramesRoot, clearFrames, describeSweep, FRAMES_FOLDER } from './frames'
 import { registerExportHandlers } from './export-ipc'
 import { engineCommand, engineEnvironment, resolveInterpreter } from './interpreter'
-import { registerProcessHandlers, watchRendererCrash } from './process-handlers'
+import { crashBox, registerProcessHandlers, watchRendererCrash } from './process-handlers'
 import { registerClipboardHandler, registerProjectHandlers, registerViewerHandlers } from './ipc'
 import { registerJobsHandlers } from './jobs-ipc'
 import { Outputs, registerOutputHandlers } from './outputs'
@@ -255,19 +255,7 @@ function createWindow(): BrowserWindow {
   // dialog is the thing that is gone.
   watchRendererCrash(
     window.webContents,
-    async (canReload) => {
-      const { response } = await dialog.showMessageBox(window, {
-        type: 'error',
-        message: `${PRODUCT_NAME}'s window stopped working.`,
-        detail: canReload
-          ? 'Reload the window to carry on, or quit. Your projects are saved as you make each choice.'
-          : 'It stopped again straight after reloading. Quit and open the app again.',
-        buttons: canReload ? ['Reload', 'Quit'] : ['Quit'],
-        defaultId: 0,
-        cancelId: canReload ? 1 : 0,
-      })
-      return canReload && response === 0 ? 'reload' : 'quit'
-    },
+    crashBox((options) => dialog.showMessageBox(options), PRODUCT_NAME),
     () => app.quit(),
   )
 

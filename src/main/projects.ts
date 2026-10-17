@@ -64,7 +64,13 @@ import {
 import { isLayoutId, type LayoutDone, type LayoutResult } from '../shared/layout'
 import { readStations, type Station } from '../shared/trip'
 import { isValidProjectId } from './paths'
-import { failedWords, replaceFile, retriedWords, type ReplaceOptions } from './replace-file'
+import {
+  failedWords,
+  folderWords,
+  replaceFile,
+  retriedWords,
+  type ReplaceOptions,
+} from './replace-file'
 
 /**
  * The record a draw has just produced, with `drawn` set from its own
@@ -361,6 +367,8 @@ export class ProjectStore {
         const renamed = await replaceFile(temp, this.file(id), text, this.replace)
         const retried = retriedWords(renamed)
         if (retried !== null) this.log(`projects/${id}: ${retried}`)
+        const unflushed = folderWords(renamed)
+        if (unflushed !== null) this.log(`projects/${id}: ${unflushed}`)
       } catch (error) {
         await rm(temp, { force: true }).catch(() => undefined)
         this.log(`projects/${id}: ${failedWords(error)}`)

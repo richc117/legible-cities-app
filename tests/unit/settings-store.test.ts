@@ -816,3 +816,30 @@ describe('a flush that fails (issue 432)', () => {
     expect((await new SettingsStore(dir, () => undefined).load()).theme).toBe('sepia')
   })
 })
+
+describe('a folder that cannot be flushed after the rename (issue 432)', () => {
+  it('still counts as saved: memory holds the new value and the log has the code only', async () => {
+    await store.write({ ...DEFAULT_SETTINGS, theme: 'sepia' })
+    const flaky = new SettingsStore(dir, (m) => lines.push(m), {
+      platform: 'linux',
+      open: (async (path: string, flags: string) => {
+        if (flags === 'r')
+          throw Object.assign(new Error("EACCES: denied, open '/private/place'"), {
+            code: 'EACCES',
+          })
+        return openFile(path, flags)
+      }) as never,
+    })
+    const after = await flaky.update((s) => ({ ...s, theme: 'warm-dark' }))
+    expect(after.theme).toBe('warm-dark')
+    expect((await flaky.update((s) => s)).theme, 'memory matches the file').toBe('warm-dark')
+    expect((await new SettingsStore(dir, () => undefined).load()).theme).toBe('warm-dark')
+    const said = lines.filter((l) => l.includes('could not be flushed'))
+    expect(said.length, 'one line per write').toBe(2)
+    for (const line of said) {
+      expect(line).toContain('EACCES')
+      expect(line).not.toContain('/private')
+    }
+    expect(lines.some((l) => l.includes('write failed'))).toBe(false)
+  })
+})

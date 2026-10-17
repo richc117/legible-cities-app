@@ -16,10 +16,40 @@ export interface ProcessLike {
   on(event: 'unhandledRejection', listener: (reason: unknown) => void): unknown
 }
 
-/** The kind of the failure and its message, for a line; never the stack, which names paths. */
+/** Printable ASCII only, cut to a length (the same rule as capture.ts's, kept local so this module imports nothing of Electron's). */
+function printable(text: string, max: number): string {
+  return text
+    .replace(/[^ -~]/g, '')
+    .slice(0, max)
+    .trim()
+}
+
+/**
+ * The failure as a line: its name and, for a system error, its code, and
+ * nothing of the message, which names a path. An error with no code has its
+ * message cut to 200 characters. Never the stack. Never throws: a thrown
+ * object whose getters throw is "an error that could not be read".
+ */
 function describe(error: unknown): string {
-  if (error instanceof Error) return `${error.name}: ${error.message}`
-  return typeof error === 'string' ? error : 'a value that is not an error'
+  try {
+    if (error instanceof Error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (typeof code === 'string') return `${printable(error.name, 80)} (${printable(code, 40)})`
+      return `${printable(error.name, 80)}: ${printable(String(error.message), 200)}`
+    }
+    return typeof error === 'string' ? printable(error, 200) : 'a value that is not an error'
+  } catch {
+    return 'an error that could not be read'
+  }
+}
+
+/** A line that cannot throw into a process handler. */
+function logQuietly(message: string): void {
+  try {
+    log.error('process', message)
+  } catch {
+    // Nowhere left to say it.
+  }
 }
 
 /**
@@ -30,17 +60,19 @@ function describe(error: unknown): string {
 export function registerProcessHandlers(proc: ProcessLike, quit: () => void): void {
   let quitting = false
   proc.on('uncaughtException', (error) => {
-    log.error('process', `uncaught exception: ${describe(error)}`)
+    // Logged first and quietly: a log that throws must not keep the app
+    // from leaving, and a second exception during the quit only adds a line.
+    logQuietly(`uncaught exception: ${describe(error)}`)
     if (quitting) return
     quitting = true
     try {
       quit()
     } catch (failure) {
-      log.error('process', `quit after an exception failed: ${describe(failure)}`)
+      logQuietly(`quit after an exception failed: ${describe(failure)}`)
     }
   })
   proc.on('unhandledRejection', (reason) => {
-    log.error('process', `unhandled rejection: ${describe(reason)}`)
+    logQuietly(`unhandled rejection: ${describe(reason)}`)
   })
 }
 
@@ -86,11 +118,46 @@ export function watchRendererCrash(
         } else quit()
       })
       .catch((error: unknown) => {
-        log.error('window', `the crash box failed: ${describe(error)}`)
+        logQuietly(`the crash box failed: ${describe(error)}`)
         quit()
       })
       .finally(() => {
         asking = false
       })
   })
+}
+
+/** The slice of `dialog` the crash box uses. */
+export type ShowMessageBox = (options: {
+  type: 'error'
+  message: string
+  detail: string
+  buttons: string[]
+  defaultId: number
+  cancelId: number
+}) => Promise<{ response: number }>
+
+/**
+ * The crash box, for `watchRendererCrash`. Deliberately unparented: the window
+ * it would hang from is the one whose page just died, and a parented box held
+ * a quit on Linux (.claude/rules/main.md). The signature takes no window, so
+ * a parent cannot be passed by mistake.
+ */
+export function crashBox(
+  show: ShowMessageBox,
+  product: string,
+): (canReload: boolean) => Promise<CrashChoice> {
+  return async (canReload) => {
+    const { response } = await show({
+      type: 'error',
+      message: `${product}'s window stopped working.`,
+      detail: canReload
+        ? 'Reload the window to carry on, or quit. Your projects are saved as you make each choice.'
+        : 'It stopped again straight after reloading. Quit and open the app again.',
+      buttons: canReload ? ['Reload', 'Quit'] : ['Quit'],
+      defaultId: 0,
+      cancelId: canReload ? 1 : 0,
+    })
+    return canReload && response === 0 ? 'reload' : 'quit'
+  }
 }

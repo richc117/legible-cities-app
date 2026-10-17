@@ -4,8 +4,9 @@
 
 import { EventEmitter } from 'node:events'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { setSink, toStderr } from '../../src/main/log'
+import { log, setSink, toStderr } from '../../src/main/log'
 import {
+  crashBox,
   RELOAD_GRACE_MS,
   registerProcessHandlers,
   watchRendererCrash,
@@ -32,6 +33,55 @@ describe('registerProcessHandlers', () => {
       '[process] error: uncaught exception: TypeError: first',
       '[process] error: uncaught exception: Error: during the quit',
     ])
+  })
+
+  it('names a system error by its code and never by its message, which holds a path', () => {
+    capture()
+    const proc = new EventEmitter()
+    registerProcessHandlers(proc as never, vi.fn())
+    const fs = Object.assign(new Error("ENOENT: no such file, open '/data/someone/x.json'"), {
+      code: 'ENOENT',
+    })
+    proc.emit('unhandledRejection', fs)
+    proc.emit('unhandledRejection', new Error('x'.repeat(500)))
+    expect(lines[0]).toBe('[process] error: unhandled rejection: Error (ENOENT)')
+    expect(lines[1].length, 'a message with no code is cut').toBeLessThan(300)
+  })
+
+  it('still quits once when logging itself throws on the first line', () => {
+    const proc = new EventEmitter()
+    const quit = vi.fn()
+    // The logger swallows a failing sink, so the line is made to throw here.
+    const spy = vi.spyOn(log, 'error').mockImplementationOnce(() => {
+      throw new Error('log down')
+    })
+    registerProcessHandlers(proc as never, quit)
+    expect(() => proc.emit('uncaughtException', new Error('x'))).not.toThrow()
+    expect(quit).toHaveBeenCalledTimes(1)
+    spy.mockRestore()
+  })
+
+  it('does not throw for a thrown object whose getters throw', () => {
+    capture()
+    const proc = new EventEmitter()
+    const quit = vi.fn()
+    registerProcessHandlers(proc as never, quit)
+    const hostile = Object.create(Error.prototype, {
+      name: {
+        get() {
+          throw new Error('no name')
+        },
+      },
+      message: {
+        get() {
+          throw new Error('no message')
+        },
+      },
+    })
+    expect(() => proc.emit('uncaughtException', hostile)).not.toThrow()
+    expect(() => proc.emit('unhandledRejection', hostile)).not.toThrow()
+    expect(quit).toHaveBeenCalledTimes(1)
+    expect(lines[0]).toContain('an error that could not be read')
   })
 
   it('logs a rejection and does not quit', () => {
@@ -127,6 +177,26 @@ describe('watchRendererCrash', () => {
     watchRendererCrash(contents as never, () => Promise.reject(new Error('no box')), quit)
     contents.emit('render-process-gone', {}, { reason: 'crashed' })
     await new Promise((r) => setTimeout(r, 0))
+    // Quitting is the only thing a failed box can lead to: the choice path
+    // never ran, so this call is the .catch's.
     expect(quit).toHaveBeenCalledTimes(1)
+    expect(contents.reload).not.toHaveBeenCalled()
+    expect(lines.some((l) => l.includes('the crash box failed'))).toBe(true)
+  })
+})
+
+describe('crashBox', () => {
+  it('is shown with the options alone, never with a parent window', async () => {
+    const show = vi.fn(async () => ({ response: 0 })) as unknown as ReturnType<typeof vi.fn>
+    const choice = await crashBox(show as never, 'Legible Cities')(true)
+    expect(choice).toBe('reload')
+    expect(show.mock.calls[0] as unknown[]).toHaveLength(1)
+    expect(show.mock.calls[0][0]).toMatchObject({ buttons: ['Reload', 'Quit'] })
+  })
+
+  it('offers only Quit when a reload is not offered', async () => {
+    const show = vi.fn(async () => ({ response: 0 })) as unknown as ReturnType<typeof vi.fn>
+    expect(await crashBox(show as never, 'Legible Cities')(false)).toBe('quit')
+    expect(show.mock.calls[0][0]).toMatchObject({ buttons: ['Quit'] })
   })
 })

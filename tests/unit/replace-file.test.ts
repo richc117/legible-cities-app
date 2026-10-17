@@ -17,6 +17,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   failedWords,
+  folderWords,
   RENAME_RETRY_CODES,
   RENAME_RETRY_DELAYS_MS,
   renameOver,
@@ -275,6 +276,7 @@ describe('replaceFile: the disk is told before and after the rename (issue 432)'
       }),
     ).rejects.toMatchObject({ code: 'EIO' })
     expect(events).not.toContain('rename')
+    expect(events, 'the file handle is closed after a failed flush').toContain('close file')
     expect(await readFile(target, 'utf8')).toBe('old')
   })
 
@@ -296,5 +298,77 @@ describe('replaceFile: the disk is told before and after the rename (issue 432)'
     }) as unknown as typeof realOpen
     await replaceFile(join(dir, 't.tmp'), target, 'new', { open, platform: 'linux' })
     expect(await readFile(target, 'utf8')).toBe('new')
+  })
+})
+
+describe('replaceFile: once the rename has landed nothing throws (issue 432)', () => {
+  type Step = 'open folder' | 'sync folder' | 'close folder' | 'close file'
+
+  /** Real files; the named step fails with `code` and a message that names a path. */
+  function failing(step: Step, code: string): typeof realOpen {
+    const boom = (): never => {
+      throw Object.assign(new Error(`${code}: refused, '/some/private/folder'`), { code })
+    }
+    return (async (path: string, flags: string) => {
+      const isFolder = flags === 'r'
+      if (isFolder && step === 'open folder') boom()
+      const handle = await realOpen(path, flags)
+      return new Proxy(handle, {
+        get(t, key) {
+          if (key === 'sync' && isFolder && step === 'sync folder') return async () => boom()
+          if (key === 'close' && step === (isFolder ? 'close folder' : 'close file'))
+            return async () => {
+              await t.close()
+              boom()
+            }
+          const v = Reflect.get(t, key) as unknown
+          return typeof v === 'function' ? v.bind(t) : v
+        },
+      })
+    }) as unknown as typeof realOpen
+  }
+
+  const folderSteps: [Step, string][] = [
+    ['open folder', 'EACCES'],
+    ['sync folder', 'EIO'],
+    ['close folder', 'EIO'],
+  ]
+
+  it.each(folderSteps)(
+    'a failed %s (%s) leaves the new content, resolves and reports the code only',
+    async (step, code) => {
+      const target = join(dir, 'project.json')
+      await writeFile(target, 'old')
+      const renamed = await replaceFile(join(dir, 't.tmp'), target, 'new', {
+        open: failing(step, code),
+        platform: 'linux',
+      })
+      expect(await readFile(target, 'utf8')).toBe('new')
+      expect(renamed.folderRefused).toBe(code)
+      const words = folderWords(renamed) ?? ''
+      expect(words).toContain(code)
+      expect(words).not.toContain('/some/private')
+    },
+  )
+
+  it('a folder that cannot be flushed at all is not even reported', async () => {
+    const target = join(dir, 'project.json')
+    const renamed = await replaceFile(join(dir, 't.tmp'), target, 'new', {
+      open: failing('sync folder', 'ENOTSUP'),
+      platform: 'linux',
+    })
+    expect(folderWords(renamed)).toBeNull()
+  })
+
+  it('a failing close of the file handle fails the write before the rename and leaves the target', async () => {
+    const target = join(dir, 'project.json')
+    await writeFile(target, 'old')
+    await expect(
+      replaceFile(join(dir, 't.tmp'), target, 'new', {
+        open: failing('close file', 'EIO'),
+        platform: 'linux',
+      }),
+    ).rejects.toMatchObject({ code: 'EIO' })
+    expect(await readFile(target, 'utf8')).toBe('old')
   })
 })

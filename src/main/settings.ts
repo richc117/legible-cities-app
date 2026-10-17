@@ -20,7 +20,13 @@ import {
   type AppSettings,
   type FolderSize,
 } from '../shared/settings'
-import { failedWords, replaceFile, retriedWords, type ReplaceOptions } from './replace-file'
+import {
+  failedWords,
+  folderWords,
+  replaceFile,
+  retriedWords,
+  type ReplaceOptions,
+} from './replace-file'
 
 export const SETTINGS_FILE = 'settings.json'
 
@@ -170,6 +176,8 @@ export class SettingsStore {
       const renamed = await replaceFile(temp, this.file, text, this.replace)
       const retried = retriedWords(renamed)
       if (retried !== null) this.log(`settings: ${retried}`)
+      const unflushed = folderWords(renamed)
+      if (unflushed !== null) this.log(`settings: ${unflushed}`)
     } catch (error) {
       await rm(temp, { force: true }).catch(() => undefined)
       this.log(`settings: ${failedWords(error)}`)

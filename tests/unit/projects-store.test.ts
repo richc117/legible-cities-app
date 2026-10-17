@@ -1998,3 +1998,27 @@ describe('a flush that fails (issue 432)', () => {
     expect(lines.some((l) => l.includes('write failed (EIO)'))).toBe(true)
   })
 })
+
+describe('a folder that cannot be flushed after the rename (issue 432)', () => {
+  it('is a saved record, not a failed save, and the log has the code only', async () => {
+    const created = await store.create({ name: 'Kept', feed: 'la-metro-rail' })
+    const flaky = new ProjectStore(home, (m) => lines.push(m), {
+      platform: 'linux',
+      open: (async (path: string, flags: string) => {
+        if (flags === 'r')
+          throw Object.assign(new Error("EMFILE: too many open files, open '/private/place'"), {
+            code: 'EMFILE',
+          })
+        return open(path, flags)
+      }) as never,
+    })
+    await flaky.rename(created.id, 'Changed')
+    expect((await store.get(created.id))?.name).toBe('Changed')
+    expect(await readdir(join(root, created.id))).toEqual(['project.json'])
+    const said = lines.filter((l) => l.includes('could not be flushed'))
+    expect(said).toHaveLength(1)
+    expect(said[0]).toContain('EMFILE')
+    expect(said[0]).not.toContain('/private')
+    expect(lines.some((l) => l.includes('write failed'))).toBe(false)
+  })
+})
