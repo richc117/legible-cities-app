@@ -213,9 +213,11 @@ jobs:
       # at its pin with the engine installed, as the vendor workflow proves it.
       # Cached by the pins and the scripts, which together say exactly what
       # was vendored: a changed pin or script is a new key and a fresh, proven
-      # runtime. The runtime's dependencies are not locked, so on a cache hit
-      # they stay as first resolved until the pins change, while the Linux job
-      # resolves them afresh on every run.
+      # runtime. The runtime's packages are locked: vendor-python.sh installs
+      # them by their hashes from vendor/python-requirements.txt, whose hash
+      # the pins carry, so the key moves whenever they do (issue 434). The
+      # Linux job, which has no runtime pin, still installs the engine with
+      # the dependencies pip resolves on the day, afresh on every run.
       - name: Restore the vendored runtime (macOS, Windows)
         if: runner.os != 'Linux'
         id: python-cache

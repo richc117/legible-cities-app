@@ -17,9 +17,12 @@
 # It refuses, before writing anything, a checkout that is not a git checkout,
 # that has changes, that is not at the pinned tag, or whose tag is not the
 # pinned commit: the lock read from any of those is not the one that ships.
-# It needs uv (https://docs.astral.sh/uv/), which reads the lock as it is
-# (--frozen) and resolves nothing, and Node, which this repository's tools
-# already need, to read the pins and take the hash.
+# It needs uv (https://docs.astral.sh/uv/) at python.requirements.uv.version,
+# which reads the lock as it is (--frozen) and resolves nothing, and refuses
+# any other uv: the python job installs that version by its hash and runs the
+# same export at engine.commit, refusing a file whose body differs, and
+# another uv may write the same lock differently. Node, which this
+# repository's tools already need, reads the pins and takes the hash.
 set -euo pipefail
 
 engine=${1:-}
@@ -32,15 +35,27 @@ out="$root/vendor/python-requirements.txt"
 
 refuse() { echo "refused: the engine checkout at $engine $1" >&2; exit 1; }
 
-read -r repo tag commit pinned <<EOP
+read -r repo tag commit pinned uv_pinned <<EOP
 $(node -e '
   const pins = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))
-  const values = [pins.engine.repo, pins.engine.tag, pins.engine.commit, pins.python.requirements.sha256]
+  const requirements = pins.python.requirements
+  const values = [pins.engine.repo, pins.engine.tag, pins.engine.commit, requirements.sha256, requirements.uv.version]
   if (values.some((value) => typeof value !== "string" || /\s/.test(value) || value === "")) process.exit(1)
   process.stdout.write(values.join(" "))
 ' "$pins")
 EOP
-[ -n "${pinned:-}" ] || { echo "could not read engine.repo, .tag, .commit and python.requirements.sha256 from $pins" >&2; exit 1; }
+[ -n "${uv_pinned:-}" ] || {
+  echo "could not read engine.repo, .tag, .commit, python.requirements.sha256 and .uv.version from $pins" >&2; exit 1; }
+
+command -v uv >/dev/null 2>&1 || {
+  echo "no uv on PATH; install uv $uv_pinned, as \`pip install uv==$uv_pinned\` does" >&2; exit 1; }
+uv_found=$(uv --version | awk '{ print $2 }')
+if [ "$uv_found" != "$uv_pinned" ]; then
+  echo "uv $uv_found is on PATH, and the manifest is written by uv $uv_pinned (python.requirements.uv.version)," >&2
+  echo "the version the python job proves it with: install that one, as \`pip install uv==$uv_pinned\` does," >&2
+  echo "or move the pin with the hashes of the new version's wheels." >&2
+  exit 1
+fi
 
 git -C "$engine" rev-parse --git-dir >/dev/null 2>&1 || refuse "is not a git checkout"
 # Untracked files count: hatchling packages what is in the tree, and a lock
@@ -56,7 +71,6 @@ head=$(git -C "$engine" rev-parse HEAD)
 [ "$head" = "$tagged" ] || refuse "is at $head, not at $tag ($tagged)"
 [ "$tagged" = "$commit" ] ||
   refuse "has $tag at $tagged, and vendor/pins.json pins engine.commit $commit: move the pin, or fetch the tag again"
-command -v uv >/dev/null 2>&1 || { echo "no uv on PATH; see https://docs.astral.sh/uv/" >&2; exit 1; }
 
 # Written beside the file and moved over it whole, so a failed export leaves
 # the committed one as it was.
@@ -76,6 +90,7 @@ trap 'rm -f "$tmp"' EXIT
 #   engine  $repo
 #   tag     $tag
 #   commit  $commit
+#   uv      $uv_pinned
 #
 # Written by scripts/lock-python.sh; never edited by hand. To regenerate it,
 # from a clean checkout of the engine at the pinned tag:
@@ -89,6 +104,8 @@ HEADER
   (cd "$engine" && uv export --frozen --no-dev --hashes --no-emit-project)
 } > "$tmp"
 grep -qE '^[A-Za-z0-9][A-Za-z0-9._-]*==' "$tmp" || { echo "uv exported no package from $engine" >&2; exit 1; }
+# mktemp makes the file readable by its owner alone; the committed one is not.
+chmod 644 "$tmp"
 mv "$tmp" "$out"
 trap - EXIT
 

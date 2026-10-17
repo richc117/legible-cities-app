@@ -73,6 +73,11 @@ on:
       - 'package-lock.json'
       - 'scripts/vendor-python.sh'
       - 'scripts/vendor-python-licences.sh'
+      # The runtime's locked packages and what writes them (issue 434). A
+      # move of the manifest moves its hash in the pins too, but a branch
+      # that changes only the script still packages.
+      - 'vendor/python-requirements.txt'
+      - 'scripts/lock-python.sh'
       - 'scripts/vendor-ffmpeg.sh'
       - 'scripts/vendor-signature.sh'
       - 'scripts/electron-ffmpeg-source.sh'
@@ -334,14 +339,11 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     # The one job that can write: to create and edit the draft and upload its
-    # assets, and to attest them. Every other job keeps the workflow's
-    # contents: read. id-token mints the OIDC token Sigstore's short-lived
-    # signing certificate is issued for, and attestations stores the signed
-    # provenance with the repository; nothing else needs either (issue 434).
+    # assets. Every other job keeps the workflow's contents: read. It cannot
+    # mint an OIDC token: the attest job after it attests the assets, and is
+    # the only job that can (issue 434, ADR-057).
     permissions:
       contents: write
-      id-token: write
-      attestations: write
     # Two runs for one tag (a rerun while the first is drafting) take turns.
     concurrency:
       group: release-${{ github.ref }}
@@ -349,10 +351,10 @@ jobs:
     env:
       TAG: ${{ github.ref_name }}
     # The actions here are pinned to full commits, the version in the
-    # comment: checkout, setup-node and attest-build-provenance take
-    # github.token as their default token input in the one job that can
-    # write. download-artifact does not; it reads this run's artefacts with
-    # the runner's own token.
+    # comment: checkout and setup-node take github.token as their default
+    # token input in the one job that can write. download-artifact and
+    # upload-artifact do not; they use the runner's own token for this run's
+    # artefacts.
     steps:
       # The whole history, so the tag's commit can be tested against main's.
       # checkout uses the token to fetch and, with persist-credentials off,
@@ -422,23 +424,21 @@ jobs:
         shell: bash
         run: node scripts/release.mjs assemble "$TAG" downloaded release-assets
 
-      # Signed SLSA build provenance for each installer and for
-      # SHA256SUMS.txt, which names every other asset by its hash (issue 434).
-      # SHA256SUMS.txt beside the files it lists shows that a download
-      # arrived whole, not who made it: anyone who could replace a file could
-      # replace its line too. An attestation is signed by Sigstore for this
-      # workflow, this repository and this tag's commit, and kept by GitHub
-      # apart from the Release, so `gh attestation verify` shows a download
-      # was built here (docs/install.md). Before the draft is written, so no
-      # draft exists without one; a draft a later step fails to write leaves
-      # attestations only for files this run built.
-      - name: Attest the installers and SHA256SUMS.txt
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+      # The assets as they are about to be drafted, for the attest job: the
+      # same folder the draft is uploaded from, once SHA256SUMS.txt is written
+      # and before anything is drafted, and nothing writes into it after. The
+      # attest job holds every file to its line in SHA256SUMS.txt, and the
+      # step below holds every uploaded asset to the same files by GitHub's
+      # digest, so the bytes attested are the bytes the draft carries. A
+      # rerun replaces the artefact, as it replaces the draft's assets.
+      - name: Hand the assets to the attest job
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          subject-path: |
-            release-assets/*.dmg
-            release-assets/*.exe
-            release-assets/SHA256SUMS.txt
+          name: release-assets
+          path: release-assets/
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 7
 
       - name: Write the notes from the template
         shell: bash
@@ -495,9 +495,71 @@ jobs:
           {
             echo "### Draft: $NAME"
             echo
-            echo "Not published. Read it on the repository's Releases page, then publish it by hand."
+            echo "Not published. Read it on the repository's Releases page and, once this run's attest job is green, publish it by hand."
             echo
             echo '~~~'
             cat release-assets/SHA256SUMS.txt
             echo '~~~'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # Signed SLSA build provenance for each installer and for SHA256SUMS.txt,
+  # which names every other asset by its hash (issue 434, ADR-057).
+  # SHA256SUMS.txt beside the files it lists shows a download arrived whole,
+  # not who made it: whoever could replace a file could replace its line too.
+  # An attestation is signed through Sigstore for this workflow, this
+  # repository and the tag's commit, and kept by GitHub apart from the
+  # Release, so `gh attestation verify` shows a download was built here
+  # (docs/install.md).
+  #
+  # A job of its own, because id-token: write is job-wide: here only
+  # download-artifact, a shell check and the attest action can mint the OIDC
+  # token Sigstore's certificate is issued for, never checkout, setup-node or
+  # this repository's scripts, and the job cannot write to the repository.
+  # It reads the release-assets artefact the release job uploaded before it
+  # wrote the draft, never the draft. The draft is published by hand only
+  # after this job is green.
+  attest:
+    name: attest (provenance)
+    needs: release
+    if: ${{ !cancelled() && needs.release.result == 'success' }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    # id-token mints the OIDC token Sigstore's short-lived signing certificate
+    # is issued for; attestations stores the signed statement with the
+    # repository. Nothing else in the workflow has either.
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Download the assets the release job drafted
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-assets
+          path: release-assets
+
+      # Every file is the one SHA256SUMS.txt names, byte for byte, and no file
+      # is there that it does not name, so what is attested is what the
+      # release job checked the draft against.
+      - name: Refuse a file whose sha256 is not its line in SHA256SUMS.txt
+        shell: bash
+        working-directory: release-assets
+        run: |
+          set -euo pipefail
+          sha256sum --check --strict SHA256SUMS.txt
+          listed=$(awk '{ print $2 }' SHA256SUMS.txt | LC_ALL=C sort)
+          present=$(ls -1A | { grep -vx 'SHA256SUMS.txt' || true; } | LC_ALL=C sort)
+          if [ -z "$listed" ] || [ "$listed" != "$present" ]; then
+            echo "::error::the downloaded assets and SHA256SUMS.txt name different files"
+            diff <(printf '%s\n' "$listed") <(printf '%s\n' "$present") || true
+            exit 1
+          fi
+          echo "every file is the one SHA256SUMS.txt names: $(wc -l <<< "$present" | tr -d ' ') files"
+
+      - name: Attest the installers and SHA256SUMS.txt
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            release-assets/*.dmg
+            release-assets/*.exe
+            release-assets/SHA256SUMS.txt

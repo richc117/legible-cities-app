@@ -82,7 +82,16 @@
     "note": "Upstream publishes no checksum manifest and no per-asset .sha256, so these hashes were computed on first download and are what every later build is checked against. A changed hash means the asset changed, which is the point.",
     "requirements": {
       "note": "The sha256 of vendor/python-requirements.txt: every package the runtime carries besides the engine and pip, exported from the engine's uv.lock at engine.tag by scripts/lock-python.sh (`uv export --frozen --no-dev --hashes --no-emit-project`), each at one version with the sha256 of every file it may be installed from (issue 434). scripts/vendor-python.sh refuses a file with another hash and installs it with `pip install --require-hashes --only-binary :all:`, the engine's own wheel after it with --no-deps, then `pip check`; it records the hash inside the runtime, and scripts/check-vendored.mjs refuses, in the vendor job and again at packaging, a file or a record with another hash and a runtime carrying any package, or any version, the file does not list for its target (its environment markers judged for that target). A move of the engine pin or of its lock moves this hash with it, and costs a vendor run.",
-      "sha256": "2e4f4550b36c9c9f7fd86dca6231b6812c79c75ea610e2feff12fac2f4d6b2c9"
+      "sha256": "8bf0d3ff185e5e11133791b6404121ec56fd5856762a679093f78234b435af67",
+      "uv": {
+        "note": "The uv that writes the file and the one that proves it: scripts/lock-python.sh refuses any other version, since another uv may write the same lock differently, and the python job installs this version into a throwaway virtual environment with pip under --require-hashes, by the hash of its target's wheel, runs the same export in the engine's checkout at engine.commit, and refuses a file whose body below its header differs from it. It never ships. Each sha256 is PyPI's digest for that target's uv-0.10.2-py3-none-<platform>.whl, and each wheel downloaded on 16 Oct 2026 hashed to it.",
+        "version": "0.10.2",
+        "sha256": {
+          "darwin-arm64": "acc08e420abab21de987151059991e3f04bc7f4044d94ca58b5dd547995b4843",
+          "darwin-x64": "0b7eef95c36fe92e7aac399c0dce555474432cbfeaaa23975ed83a63923f78fd",
+          "win-x64": "7b3685aa1da15acbe080b4cba8684afbb6baf11c9b04d4d4b347cc18b7b9cfa0"
+        }
+      }
     },
     "pip": {
       "note": "pip at one version: scripts/vendor-python.sh installs `pip==version` with this wheel's hash under --require-hashes, never `--upgrade pip`, which took whatever was newest that day, and scripts/check-vendored.mjs refuses a runtime carrying any other pip. Every target's install_only asset of release 20260901 already carries pip 26.2.1 (its site-packages/pip-26.2.1.dist-info, read from the three assets, each matching its sha256 below, on 16 Oct 2026), so the install changes nothing there and the asset's checksum covers that pip; at another release it fetches this wheel from PyPI and checks it. `sha256` is PyPI's digest for pip-26.2.1-py3-none-any.whl, and the wheel downloaded on 16 Oct 2026 hashed to it.",

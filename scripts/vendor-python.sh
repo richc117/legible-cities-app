@@ -28,6 +28,19 @@
 # The full archive is .tar.zst, so this needs a `zstd` on PATH, and Node
 # for the check.
 #
+# The lock (issue 434, ADR-057): every package the runtime carries is
+# installed by its hash from vendor/python-requirements.txt, pip at
+# python.pip's version and hash, and the engine from its own wheel built at
+# engine.commit. One thing is still fetched unpinned and unhashed: the
+# engine's build backend. `pip wheel` builds the engine in an isolated
+# environment into which pip installs whatever hatchling PyPI has that day
+# (the engine's pyproject.toml asks for `hatchling` with no version). It does
+# not ship, but it writes the wheel that does. What would close it: a second
+# hashed manifest for hatchling and its dependencies, installed into a build
+# environment of its own, and the wheel built there with
+# --no-build-isolation; or the engine publishing its wheel by tag with a
+# hash the pins record.
+#
 # See docs/adr/020-sidecar-packaging.md for why this and not PyInstaller.
 set -euo pipefail
 
@@ -233,8 +246,8 @@ printf 'pip==%s --hash=sha256:%s\n' "$pip_version" "$pip_sha256" > "$work/pip.tx
 
 # The engine itself is a source tree, which --only-binary refuses, so its
 # wheel is built first (pure Python, through its hatchling backend, which pip
-# fetches into an isolated build environment and which does not ship) and
-# installed from the file with --no-deps: its dependencies are the
+# fetches unpinned into an isolated build environment and which does not
+# ship: the one gap the header names) and installed from the file with --no-deps: its dependencies are the
 # manifest's, already in place. `pip check` then holds every installed
 # package's requirements, the engine's included, to what is installed, so a
 # manifest the engine has outgrown fails here and not at the first import.

@@ -10,6 +10,7 @@
 #   engine  https://github.com/richc117/legible-cities
 #   tag     v0.18.0
 #   commit  996c1a01ba049dcd4aa27d6816185c8dcb31c085
+#   uv      0.10.2
 #
 # Written by scripts/lock-python.sh; never edited by hand. To regenerate it,
 # from a clean checkout of the engine at the pinned tag:
