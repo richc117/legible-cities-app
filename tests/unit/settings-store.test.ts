@@ -5,6 +5,7 @@
 import {
   mkdir,
   mkdtemp,
+  open as openFile,
   readdir,
   readFile,
   realpath,
@@ -793,5 +794,80 @@ describe('realOrResolved', () => {
     expect(outcome.removed).not.toContain('projects')
     expect(outcome.failed).toEqual([{ folder: 'projects', reason: expect.stringMatching(/link/) }])
     expect(await readFile(join(elsewhere, 'p1', 'project.json'), 'utf8')).toBe('{}')
+  })
+})
+
+describe('a flush that fails (issue 432)', () => {
+  it('fails the write, keeps the old file and leaves no temporary file', async () => {
+    await store.write({ ...DEFAULT_SETTINGS, theme: 'sepia' })
+    const failing = new SettingsStore(dir, (m) => lines.push(m), {
+      open: (async (path: string, flags: string) => {
+        const handle = await openFile(path, flags)
+        handle.sync = async () => {
+          throw Object.assign(new Error('EIO: i/o error, fsync'), { code: 'EIO' })
+        }
+        return handle
+      }) as never,
+    })
+    await expect(failing.write({ ...DEFAULT_SETTINGS, theme: 'warm-dark' })).rejects.toThrow(
+      /could not be saved/,
+    )
+    expect(await readdir(dir)).toEqual([SETTINGS_FILE])
+    expect((await new SettingsStore(dir, () => undefined).load()).theme).toBe('sepia')
+  })
+})
+
+describe('a folder that cannot be flushed after the rename (issue 432)', () => {
+  it('still counts as saved: memory holds the new value and the log has the code only', async () => {
+    await store.write({ ...DEFAULT_SETTINGS, theme: 'sepia' })
+    const flaky = new SettingsStore(dir, (m) => lines.push(m), {
+      platform: 'linux',
+      open: (async (path: string, flags: string) => {
+        if (flags === 'r')
+          throw Object.assign(new Error("EACCES: denied, open '/private/place'"), {
+            code: 'EACCES',
+          })
+        return openFile(path, flags)
+      }) as never,
+    })
+    const after = await flaky.update((s) => ({ ...s, theme: 'warm-dark' }))
+    expect(after.theme).toBe('warm-dark')
+    expect((await flaky.update((s) => s)).theme, 'memory matches the file').toBe('warm-dark')
+    expect((await new SettingsStore(dir, () => undefined).load()).theme).toBe('warm-dark')
+    const said = lines.filter((l) => l.includes('could not be flushed'))
+    expect(said.length, 'one line per write').toBe(2)
+    for (const line of said) {
+      expect(line).toContain('EACCES')
+      expect(line).not.toContain('/private')
+    }
+    expect(lines.some((l) => l.includes('write failed'))).toBe(false)
+  })
+})
+
+describe('a log sink that throws after a landed write (issue 432)', () => {
+  it('does not turn the saved write into a failed one', async () => {
+    const logs: string[] = []
+    const grumpy = new SettingsStore(
+      dir,
+      (m) => {
+        logs.push(m)
+        throw new Error('the sink is broken')
+      },
+      {
+        platform: 'linux',
+        open: (async (path: string, flags: string) => {
+          if (flags === 'r') throw Object.assign(new Error('denied'), { code: 'EACCES' })
+          return openFile(path, flags)
+        }) as never,
+      },
+    )
+    const after = await grumpy.update((s) => ({ ...s, theme: 'sepia' }))
+    expect(after.theme).toBe('sepia')
+    expect(
+      logs.some((l) => l.includes('could not be flushed')),
+      'the line was tried',
+    ).toBe(true)
+    expect((await new SettingsStore(dir, () => undefined).load()).theme).toBe('sepia')
+    expect((await grumpy.update((s) => s)).theme, 'memory matches the file').toBe('sepia')
   })
 })

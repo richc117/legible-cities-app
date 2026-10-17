@@ -26,6 +26,7 @@ import {
 } from '../shared/settings'
 import type { FirstRunResult } from '../shared/first-run'
 import { areReports, diagnosticsText, tailLog, type DiagnosticsInput } from './diagnostics-text'
+import { writeClipboard, type WriteText } from './clipboard'
 import { LOG_WAIT_MS, within } from './log-file'
 import { PickedPaths } from './picked'
 import {
@@ -139,7 +140,7 @@ export interface DiagnosticsDeps {
   shortHomes: () => Promise<string | null>[]
   platform: string
   /** The system clipboard, the same writer the diagnostics panel's handler uses. */
-  writeText: (text: string) => void
+  writeText: WriteText
 }
 
 /**
@@ -450,7 +451,7 @@ export class SettingsService {
       await this.#homes(),
       d.platform,
     )
-    d.writeText(text)
+    await writeClipboard(d.writeText, text)
     this.#deps.log(`copied diagnostics (${Buffer.byteLength(text, 'utf8')} bytes) to the clipboard`)
   }
 

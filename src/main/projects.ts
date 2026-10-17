@@ -8,7 +8,7 @@
 
 import { randomBytes } from 'node:crypto'
 import type { Dirent } from 'node:fs'
-import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   Carried,
@@ -64,7 +64,13 @@ import {
 import { isLayoutId, type LayoutDone, type LayoutResult } from '../shared/layout'
 import { readStations, type Station } from '../shared/trip'
 import { isValidProjectId } from './paths'
-import { failedWords, renameOver, retriedWords, type ReplaceOptions } from './replace-file'
+import {
+  failedWords,
+  folderWords,
+  replaceFile,
+  retriedWords,
+  type ReplaceOptions,
+} from './replace-file'
 
 /**
  * The record a draw has just produced, with `drawn` set from its own
@@ -353,14 +359,22 @@ export class ProjectStore {
         throw new Error('the project could not be saved', { cause: error })
       }
       try {
-        await writeFile(temp, text, 'utf8')
-        // Only the rename is tried again, only on Windows, and only while
+        // Flushed to the disk before the rename and the folder after it
+        // (replaceFile). Only the rename is tried again, only on Windows, and only while
         // another handle holds the record: a defence against the suspected
         // cause of issue 93 (replace-file.ts). Readers keep opening
         // project.json meanwhile and read the previous record whole.
-        const renamed = await renameOver(temp, this.file(id), this.replace)
-        const retried = retriedWords(renamed)
-        if (retried !== null) this.log(`projects/${id}: ${retried}`)
+        const renamed = await replaceFile(temp, this.file(id), text, this.replace)
+        // The write has landed: a log line about it must not turn it into a
+        // failed save, so a sink that throws is ignored here.
+        try {
+          const retried = retriedWords(renamed)
+          if (retried !== null) this.log(`projects/${id}: ${retried}`)
+          const unflushed = folderWords(renamed)
+          if (unflushed !== null) this.log(`projects/${id}: ${unflushed}`)
+        } catch {
+          // nothing to do about a log that cannot be written
+        }
       } catch (error) {
         await rm(temp, { force: true }).catch(() => undefined)
         this.log(`projects/${id}: ${failedWords(error)}`)

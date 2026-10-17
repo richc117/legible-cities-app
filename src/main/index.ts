@@ -28,6 +28,7 @@ import { destinationRefusal, Destinations, Exporter, keptFramesFolder } from './
 import { claimFramesRoot, clearFrames, describeSweep, FRAMES_FOLDER } from './frames'
 import { registerExportHandlers } from './export-ipc'
 import { engineCommand, engineEnvironment, resolveInterpreter } from './interpreter'
+import { crashBox, registerProcessHandlers, watchRendererCrash } from './process-handlers'
 import { registerClipboardHandler, registerProjectHandlers, registerViewerHandlers } from './ipc'
 import { registerJobsHandlers } from './jobs-ipc'
 import { Outputs, registerOutputHandlers } from './outputs'
@@ -249,6 +250,15 @@ function createWindow(): BrowserWindow {
     log.warn('window', 'refused a frame trying to leave the origin')
   })
 
+  // A renderer that dies leaves a blank window; say so and offer the way out
+  // (issue 432). The platform's own box, because the page that would draw a
+  // dialog is the thing that is gone.
+  watchRendererCrash(
+    window.webContents,
+    crashBox((options) => dialog.showMessageBox(options), PRODUCT_NAME),
+    () => app.quit(),
+  )
+
   window.on('ready-to-show', () => window.show())
   // The page must not rename the window; the title is a contract (FR-003).
   window.on('page-title-updated', (event) => event.preventDefault())
@@ -362,6 +372,10 @@ if (!hasLock) {
       mainWindow = createWindow()
     }
   })
+
+  // Nothing uncaught goes unlogged, and an exception ends the app through
+  // its ordinary quit, which stops the engine first (issue 432).
+  registerProcessHandlers(process, () => app.quit())
 
   app.whenReady().then(async () => {
     // The spellchecker service is the session's and fetches dictionaries on

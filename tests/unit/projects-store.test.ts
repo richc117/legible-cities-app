@@ -6,6 +6,7 @@ import {
   chmod,
   mkdir,
   mkdtemp,
+  open,
   readdir,
   readFile,
   rename,
@@ -1972,5 +1973,52 @@ describe('a record the platform holds', () => {
       expect(reading.listed, 'and the list still has the project').toBe(1)
     }
     expect((await store.get(project.id)).export).toEqual(choice)
+  })
+})
+
+describe('a flush that fails (issue 432)', () => {
+  it('fails the save, keeps the old record and leaves no temporary file', async () => {
+    const created = await store.create({ name: 'Kept', feed: 'la-metro-rail' })
+    const failing = new ProjectStore(home, (m) => lines.push(m), {
+      // The temporary file is made and written; only its flush fails.
+      open: (async (path: string, flags: string) => {
+        const handle = await open(path, flags)
+        handle.sync = async () => {
+          throw Object.assign(new Error('EIO: i/o error, fsync'), { code: 'EIO' })
+        }
+        return handle
+      }) as never,
+    })
+    await expect(failing.rename(created.id, 'Changed')).rejects.toThrow(
+      /project could not be saved/,
+    )
+    const folder = await readdir(join(root, created.id))
+    expect(folder).toEqual(['project.json'])
+    expect((await store.get(created.id))?.name).toBe('Kept')
+    expect(lines.some((l) => l.includes('write failed (EIO)'))).toBe(true)
+  })
+})
+
+describe('a folder that cannot be flushed after the rename (issue 432)', () => {
+  it('is a saved record, not a failed save, and the log has the code only', async () => {
+    const created = await store.create({ name: 'Kept', feed: 'la-metro-rail' })
+    const flaky = new ProjectStore(home, (m) => lines.push(m), {
+      platform: 'linux',
+      open: (async (path: string, flags: string) => {
+        if (flags === 'r')
+          throw Object.assign(new Error("EMFILE: too many open files, open '/private/place'"), {
+            code: 'EMFILE',
+          })
+        return open(path, flags)
+      }) as never,
+    })
+    await flaky.rename(created.id, 'Changed')
+    expect((await store.get(created.id))?.name).toBe('Changed')
+    expect(await readdir(join(root, created.id))).toEqual(['project.json'])
+    const said = lines.filter((l) => l.includes('could not be flushed'))
+    expect(said).toHaveLength(1)
+    expect(said[0]).toContain('EMFILE')
+    expect(said[0]).not.toContain('/private')
+    expect(lines.some((l) => l.includes('write failed'))).toBe(false)
   })
 })

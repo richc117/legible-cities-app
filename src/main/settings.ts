@@ -10,7 +10,7 @@
 // and an error thrown here is what the renderer shows.
 
 import { randomBytes } from 'node:crypto'
-import { lstat, mkdir, readdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, readdir, readFile, realpath, rm, stat } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, parse, resolve, sep } from 'node:path'
 import { NAME_MAX } from '../shared/project'
 import {
@@ -20,7 +20,13 @@ import {
   type AppSettings,
   type FolderSize,
 } from '../shared/settings'
-import { failedWords, renameOver, retriedWords, type ReplaceOptions } from './replace-file'
+import {
+  failedWords,
+  folderWords,
+  replaceFile,
+  retriedWords,
+  type ReplaceOptions,
+} from './replace-file'
 
 export const SETTINGS_FILE = 'settings.json'
 
@@ -164,13 +170,20 @@ export class SettingsStore {
     const temp = join(this.dir, tempFile())
     try {
       await mkdir(this.dir, { recursive: true })
-      await writeFile(temp, text, 'utf8')
       // Tried again on Windows while another handle holds the file, as a
       // record's is: a defence, since a held file is suspected and not
       // proven to have lost a choice (replace-file.ts, issue 93).
-      const renamed = await renameOver(temp, this.file, this.replace)
-      const retried = retriedWords(renamed)
-      if (retried !== null) this.log(`settings: ${retried}`)
+      const renamed = await replaceFile(temp, this.file, text, this.replace)
+      // The write has landed: a log line about it must not turn it into a
+      // failed save, so a sink that throws is ignored here.
+      try {
+        const retried = retriedWords(renamed)
+        if (retried !== null) this.log(`settings: ${retried}`)
+        const unflushed = folderWords(renamed)
+        if (unflushed !== null) this.log(`settings: ${unflushed}`)
+      } catch {
+        // nothing to do about a log that cannot be written
+      }
     } catch (error) {
       await rm(temp, { force: true }).catch(() => undefined)
       this.log(`settings: ${failedWords(error)}`)

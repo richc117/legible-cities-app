@@ -30,6 +30,15 @@ the bridge is all it needs. A native `dialog.showMessageBox` with no parent
 runs synchronously on macOS and blocks the main process, quit included;
 with a parent it still held a quit on Linux under a display server. Keep
 native dialogs for what only the OS can do (choosing a file or a folder).
+One deliberate exception: the box shown when the main window's renderer dies
+(`crashBox`, issue 432) is unparented, because the page is what died and a
+box hung from its window must never hold a quit.
+
+## Uncaught failures
+
+`src/main/process-handlers.ts` logs an uncaught exception and quits once, and
+logs an unhandled rejection and carries on: a bug that used to be loud is now
+a log line, so read the logs (`main.log`) when something odd happens.
 
 ## Ordering over the bridge
 

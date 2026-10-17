@@ -186,7 +186,7 @@ async function harness(
         over.realHome ?? (async () => over.homes?.(root)[1] ?? over.homes?.(root)[0] ?? root),
       shortHomes: over.shortHomes ?? (() => []),
       platform: over.platform ?? 'linux',
-      writeText: (text) => copied.push(text),
+      writeText: async (text) => void copied.push(text),
     },
     log: (m) => logs.push(m),
   }
@@ -1061,7 +1061,7 @@ describe('resetting the engine data', () => {
         realHome: async () => root,
         shortHomes: () => [],
         platform: 'linux',
-        writeText: () => undefined,
+        writeText: async () => undefined,
       },
       log: () => undefined,
     })

@@ -521,7 +521,7 @@ describe('registerClipboardHandler', () => {
     const written: string[] = []
     registerClipboardHandler(
       ipc,
-      (text) => written.push(text),
+      async (text) => void written.push(text),
       () => topFrame,
     )
     const event = {} as IpcMainInvokeEvent
