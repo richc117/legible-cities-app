@@ -171,3 +171,34 @@ describe('the Licences buttons', () => {
     expect(describeUnavailable('texts', 'available')).toBeNull()
   })
 })
+
+describe('the MIT notices the installers carry', () => {
+  const notices = readFileSync(resolve(repo, 'THIRD_PARTY_NOTICES.md'), 'utf8')
+  const quoted = (name: string): string | undefined =>
+    notices.match(new RegExp(`^ {2}> ${name}: (Copyright .+)$`, 'm'))?.[1]
+  const installed = (pkg: string): string | undefined =>
+    readFileSync(resolve(repo, 'node_modules', pkg, 'LICENSE'), 'utf8').match(
+      /^Copyright .+$/m,
+    )?.[0]
+
+  it('quotes the copyright line of each compiled-in MIT component', () => {
+    for (const name of ['FigUI3 core', 'Phosphor Icons', 'react-colorful', 'React']) {
+      expect(quoted(name), `${name} in the quoted notice`).toBeTruthy()
+    }
+  })
+
+  it('quotes React and FigUI3 as their installed packages state them', () => {
+    // react and react-dom are devDependencies, bundled by Vite (issue 435): no
+    // licence file reaches the app on its own, so the quoted line is the notice.
+    expect(quoted('React')).toBe(installed('react'))
+    expect(installed('react-dom')).toBe(installed('react'))
+    expect(quoted('FigUI3 core')).toBe(installed('@rogieking/figui3'))
+  })
+
+  it('keeps react and react-dom out of the production dependencies', () => {
+    const pkg = JSON.parse(readFileSync(resolve(repo, 'package.json'), 'utf8'))
+    expect(Object.keys(pkg.dependencies ?? {})).toEqual([])
+    expect(pkg.devDependencies.react).toBeTruthy()
+    expect(pkg.devDependencies['react-dom']).toBeTruthy()
+  })
+})
