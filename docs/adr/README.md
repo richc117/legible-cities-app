@@ -84,7 +84,7 @@ already cites the number you mean to use.
 | 051 | [A storyboard is a name or a list of beats, and the opening beat is named](051-inline-beats-and-the-opening-beat.md) | Accepted |
 | 052 | [A caption, the clock's corner, and the safe zones as data](052-caption-clock-corner-and-safe-zones-as-data.md) | Accepted |
 | 053 | [A line can be renamed and hidden; width, casing and dash wait on the pitch](053-per-line-name-and-hidden.md) | Accepted |
-| 054 | Reserved: a decision recorded outside this index until it is written | - |
+| 054 | [1.0 ships unsigned, with no automatic update](054-1-0-ships-unsigned-with-no-automatic-update.md) | Accepted |
 | 055 | [A GIF export takes a fixed palette composed from the plan](055-a-fixed-palette-for-gif-exports.md) | Accepted |
 | 056 | [A record keeps the keys it does not know](056-the-record-keeps-unknown-keys.md) | Accepted |
 | 057 | [The shipped Python runtime is locked, and the release is attested](057-the-shipped-python-runtime-is-locked-and-attested.md) | Accepted |

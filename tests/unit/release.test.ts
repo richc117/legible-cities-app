@@ -793,6 +793,7 @@ describe('the notes', () => {
       expect(text).toContain(value)
     }
     expect(text).toContain('not signed')
+    expect(text).toContain('does not check for updates')
     expect(text).not.toContain('release candidate')
   })
 

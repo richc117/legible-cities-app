@@ -6,7 +6,7 @@
 ; $LOCALAPPDATA\${APP_INSTALLER_STORE_FILE}, which NsisTarget.js defines as
 ; `<package name>-updater\installer.exe` (appInfo.updaterCacheDirName). That
 ; copy is for electron-updater's differential updates, and this app has no
-; updater (A6-05), so it is about 160 MB kept for nothing, and the
+; updater (ADR-037, ADR-054), so it is about 160 MB kept for nothing, and the
 ; template's uninstaller never removes it. customInstall removes it straight
 ; after the copy (installSection.nsh inserts customInstall after
 ; installApplicationFiles), and customUnInstall removes it again, for an
@@ -83,7 +83,7 @@
 
 ; Not when an installer runs this uninstaller to replace the version it
 ; belongs to (installUtil.nsh's uninstallOldVersion passes --updated): with
-; an updater (A6-05) the installer running then could be the one in this
+; an updater (ADR-054) the installer running then could be the one in this
 ; folder. The new installer's customInstall removes the folder instead.
 !macro customUnInstall
   ${ifNot} ${isUpdated}

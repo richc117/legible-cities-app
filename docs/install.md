@@ -5,9 +5,11 @@ transit timetable (a GTFS feed) into a schematic map and an animation, and
 exports stills, reels and GIFs. This page is for installing it from a
 release. You do not need anything else: the app carries everything it runs.
 
-The app is at its first release, 0.1.0, and its installers are **not
-signed**. Your computer will warn you before it opens the app the first
-time, and this page shows you how to get past that warning on each system.
+The installers are **not signed**, and the app does not update itself. Your
+computer will warn you before it opens the app the first time, and this page
+shows you how to get past that warning on each system. To get a newer version,
+download it from the Releases page and install it over the old one; your
+projects and settings stay where they are.
 
 - [What you need](#what-you-need)
 - [Which file to download](#which-file-to-download)
@@ -133,8 +135,10 @@ described for macOS 15, works on these versions too.
 
 ### After the first time
 
-You only do this once. From then on the app opens like any other, from
-Applications, Launchpad or the Dock.
+You do this once for each version you install. From then on that version
+opens like any other app, from Applications, Launchpad or the Dock. To
+install a newer version over an old one, quit the app first; on a Mac, choose
+**Replace** when the Finder asks, because **Keep Both** leaves two copies.
 
 If macOS says the app **is damaged and can't be opened**, the download did
 not arrive intact: move the app to the Trash, download the `.dmg` again, and
