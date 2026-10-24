@@ -1538,9 +1538,11 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s answers${WHY}`, () => 
 // suite sees it against this stand-in, so the stand-in is held to the
 // engine's shapes and its choices here: the reports, the drawing from the
 // build, the refusal's code, kind, sentence and data, a day waiting on octi,
-// a re-layout's stored set answering until the build has the stage, and
-// nothing left to draw after a cancel. One stand-in of its own, reporting
-// slowly, so a stage can be asked for between two reports.
+// and a re-layout's stored set answering until the build has the stage. One
+// stand-in of its own, reporting slowly, so a stage can be asked for between
+// two reports. (Nothing left to draw after a cancel is judged against a
+// stand-in that holds the build until it is cancelled, below: a cancel read
+// while a build is being timed is a race.)
 describe.skipIf(PYTHON === null)(`the stand-in engine draws a layout as it solves${WHY}`, () => {
   const STEP_MS = 250
   let home = ''
@@ -1721,23 +1723,6 @@ describe.skipIf(PYTHON === null)(`the stand-in engine draws a layout as it solve
     await again.result
     expect(buildOf(((await ask({ ...at, stage: 'topo' })) as { svg: string }).svg)).toBe(fresh)
   }, 30_000)
-
-  it('leaves nothing to draw of a build that was cancelled', async () => {
-    const build = sidecar.request(
-      'graph.build',
-      { key: 'la-metro-rail', mode: 'rail' },
-      { deadlineMs: READY_MS },
-    )
-    await reportedBy(build.id, 'gtfs2graph')
-    const layout = reports(build.id)[0].layout as string
-    sidecar.cancel(build.id)
-    const ended = await refused(build.result)
-    expect(ended.code).toBe(ERROR_CODES.cancelled)
-    const gone = await refused(ask({ key: 'la-metro-rail', layout, stage: 'gtfs2graph' }))
-    expect(gone.code).toBe(-32000)
-    expect(gone.data, 'neither stored nor building').toMatchObject({ kind: 'layout' })
-    expect(gone.data).not.toHaveProperty('building')
-  }, 30_000)
 })
 
 // ------------------------- a cancelled build is forgotten before its answer
@@ -1749,18 +1734,25 @@ describe.skipIf(PYTHON === null)(`the stand-in engine draws a layout as it solve
 // machine would be, so an answer written first is read by a client that asks at
 // once - on Windows in the CI of 12 Oct 2026 it was, and the test above failed
 // with "the stand-in drew a stage the engine refuses".
-describe.skipIf(PYTHON === null)(
-  `the stand-in engine forgets a build before it answers${WHY}`,
-  () => {
+//
+// A cancel can be read in two places, and a clock must decide neither: inside
+// octi, where the build waits for it (`octi_child`), and at the check between
+// two stages, where `holds_after_stage` holds the build (issue 481). Each has
+// a test of its own, so each `forget_build` has a guard that cannot be missed.
+
+function forgetsABuildBeforeItAnswers(
+  title: string,
+  control: Record<string, unknown>,
+  cancelAfter: string,
+  where: string,
+): void {
+  describe.skipIf(PYTHON === null)(`${title}${WHY}`, () => {
     let home = ''
     let sidecar: Sidecar
 
     beforeAll(async () => {
       home = mkdtempSync(join(tmpdir(), 'lc-forget-'))
-      writeFileSync(
-        join(home, 'fake-engine.json'),
-        JSON.stringify({ progress_delay_ms: 50, forget_stall_ms: 600 }),
-      )
+      writeFileSync(join(home, 'fake-engine.json'), JSON.stringify(control))
       sidecar = new Sidecar({
         command: [PYTHON as string, '-m', 'schematic.serve'],
         env: engineEnvironment({
@@ -1792,9 +1784,14 @@ describe.skipIf(PYTHON === null)(
       if (home !== '') rmSync(home, { recursive: true, force: true })
     })
 
-    it('answers a cancelled build only after its stages are gone, so nothing is drawn at once', async () => {
+    it(`answers a cancelled build only after its stages are gone, so nothing is drawn at once (${where})`, async () => {
       // Mutation: the entry forgotten after the answer is written, as it was -
       // the stage asked for the moment the cancellation is read is drawn.
+      // The cancel is read ${where}, whatever the machine's speed: the build
+      // is held there until it comes. With the hold removed the build passes
+      // its last stop check in a few ms and answers about 600 ms later
+      // (`forget_stall_ms` stalls the success path's forgetting too), with a
+      // result where the cancellation should be, and `ended` is null.
       const seen: Record<string, unknown>[] = []
       sidecar.onNotification((n) => {
         if (n.method === 'job/progress' && typeof n.params === 'object' && n.params !== null)
@@ -1806,8 +1803,8 @@ describe.skipIf(PYTHON === null)(
         { deadlineMs: READY_MS },
       )
       const deadline = Date.now() + 10_000
-      while (!seen.some((n) => n.id === build.id && n.stage === 'gtfs2graph')) {
-        if (Date.now() > deadline) throw new Error('the build never reported gtfs2graph')
+      while (!seen.some((n) => n.id === build.id && n.stage === cancelAfter)) {
+        if (Date.now() > deadline) throw new Error(`the build never reported ${cancelAfter}`)
         await new Promise((resolve) => setTimeout(resolve, 10))
       }
       const layout = seen.find((n) => n.id === build.id)?.layout as string
@@ -1828,7 +1825,29 @@ describe.skipIf(PYTHON === null)(
       expect(gone?.data).toMatchObject({ kind: 'layout' })
       expect(gone?.data).not.toHaveProperty('building')
     }, 30_000)
+  })
+}
+
+// In octi: the cancel is sent after the loom report, and nothing checks for a
+// cancel between that report and octi's own wait for one.
+forgetsABuildBeforeItAnswers(
+  'the stand-in engine forgets a build cancelled in octi before it answers',
+  { progress_delay_ms: 1, forget_stall_ms: 600, octi_child: true, octi_ms: 30_000 },
+  'loom',
+  'in octi',
+)
+
+// Between two stages: the build is held after the gtfs2graph report, and the
+// cancel is read at the topo stage's check.
+forgetsABuildBeforeItAnswers(
+  'the stand-in engine forgets a build cancelled between stages before it answers',
+  {
+    progress_delay_ms: 1,
+    forget_stall_ms: 600,
+    holds_after_stage: { 'graph.build': { stage: 'gtfs2graph', ms: 30_000 } },
   },
+  'gtfs2graph',
+  'between stages',
 )
 
 // ------------------------------- two builds of one layout (issue 382)
@@ -1926,6 +1945,29 @@ describe.skipIf(PYTHON === null)(`the stand-in engine's two builds of one layout
     sidecar.cancel(second.id)
     expect(await cancelled(second.result), 'the second, cancelled').toBe(ERROR_CODES.cancelled)
     expect(Date.now() - started, 'at the cancel, not at the hold’s end').toBeLessThan(5_000)
+  }, 30_000)
+
+  it('leaves nothing to draw of a build that was cancelled', async () => {
+    // Held in octi until the cancel, so the build cannot answer first.
+    const build = sidecar.request(
+      'graph.build',
+      { key: 'la-metro-rail', mode: 'rail' },
+      { deadlineMs: READY_MS },
+    )
+    await reported(build.id, 'gtfs2graph')
+    const layout = notes.find((n) => n.id === build.id)?.layout as string
+    sidecar.cancel(build.id)
+    expect(await cancelled(build.result), 'the build, cancelled').toBe(ERROR_CODES.cancelled)
+    const gone = (await sidecar
+      .request('render.stage', { key: 'la-metro-rail', layout, stage: 'gtfs2graph' })
+      .result.then(
+        () => null,
+        (e: unknown) => e,
+      )) as EngineError | null
+    expect(gone, 'a stage of a cancelled build is not drawn').not.toBeNull()
+    expect(gone?.code).toBe(-32000)
+    expect(gone?.data, 'neither stored nor building').toMatchObject({ kind: 'layout' })
+    expect(gone?.data).not.toHaveProperty('building')
   }, 30_000)
 })
 
@@ -2421,7 +2463,13 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s late cancel${WHY}`, ()
   it('answers a map.build cancelled between its stages with the cancelled error, and writes no file', async () => {
     // Mutation: `stops` never stopping - the draw then runs to its end, writes
     // the five files and answers a result.
-    const { sidecar, home, progress } = await standIn({ map_draws: true, progress_delay_ms: 200 })
+    // The draw is held after its schedule step until the cancel, however slow
+    // the machine (issue 481): without the hold it ends in a few ms.
+    const { sidecar, home, progress } = await standIn({
+      map_draws: true,
+      progress_delay_ms: 1,
+      holds_after_stage: { 'map.build': { stage: 'schedule', ms: 20_000 } },
+    })
     const layout = await layoutIn(sidecar)
     const draw = sidecar.request('map.build', {
       key: 'la-metro-rail',
@@ -2534,7 +2582,12 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s late cancel${WHY}`, ()
   it('keeps an earlier export whole when a re-export is cancelled before its point of no return', async () => {
     // Mutation: the partial file written to the destination itself, as
     // v0.17.1's encode did - the earlier export is then truncated and gone.
-    const { sidecar, home, progress } = await standIn({ encode_delay_ms: 300 })
+    // Held after its first step until the cancel, however slow the machine
+    // (issue 481): without the hold it ends in a few ms.
+    const { sidecar, home, progress } = await standIn({
+      encode_delay_ms: 1,
+      holds_after_stage: { 'export.encode': { stage: 'encode', ms: 20_000 } },
+    })
     const { plan, source, dest } = await still(sidecar, home)
     mkdirSync(join(home, 'exports'), { recursive: true })
     writeFileSync(dest, 'the earlier export')
