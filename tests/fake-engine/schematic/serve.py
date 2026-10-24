@@ -809,6 +809,22 @@ def write(message: dict) -> None:
         OUT.flush()
 
 
+def write_page(path: Path, text: str) -> None:
+    """Write a file by a staging one beside it and `replace_file` over it, so
+    a reader never sees half of it and the swap is tried again where Windows
+    refuses it. The end-to-end suite keeps a page written over the stand-in's
+    every few milliseconds by renaming a file over it, and an open that met
+    that rename raised PermissionError on the draw's thread (issue 464). A
+    swap that still fails is raised, and answered by `replying`."""
+    staging = path.with_name(path.name + ".writing")
+    try:
+        staging.write_text(text)
+        replace_file(staging, path)
+    except Exception:
+        staging.unlink(missing_ok=True)
+        raise
+
+
 def read_message(stream) -> dict | None:
     length = None
     while True:
@@ -970,7 +986,10 @@ class Engine:
                 # v0.16.0) hides and names lines in the page it writes, and its
                 # stroke is drawn by nothing. fake-engine.received keeps them
                 # all, so a test reads what the app sent.
-                threading.Thread(target=self.draw, args=(msg_id, params),
+                # Inside `replying`, so a draw that raises is answered with
+                # an error and not left running for ever (issue 464).
+                threading.Thread(target=self.replying,
+                                 args=(msg_id, self.draw, msg_id, params),
                                  daemon=True).start()
             else:
                 error(msg_id, -32000, "the stand-in draws nothing", "engine")
@@ -1351,7 +1370,11 @@ class Engine:
         for name, suffix in (("svg", ".svg"), ("html", ".html"),
                              ("positions", ".positions.json")):
             path = out / f"{key}{suffix}"
-            path.write_text("<svg/>" if suffix == ".svg" else page if suffix == ".html" else "{}")
+            text = "<svg/>" if suffix == ".svg" else page if suffix == ".html" else "{}"
+            if suffix == ".html":
+                write_page(path, text)
+            else:
+                path.write_text(text)
             files[name] = str(path)
         # Since engine v0.11.0 (issue 51) a pair of small pictures of the map
         # is written into the same folder as the page, `<key>-thumb-dark.svg`

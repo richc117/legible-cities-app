@@ -631,6 +631,23 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s answers${WHY}`, () => 
     expect(readFileSync(dark, 'utf8')).not.toBe(readFileSync(light, 'utf8'))
   })
 
+  it('answers a map.build whose page cannot be written, rather than never answering', async () => {
+    // Issue 464: the draw runs on a thread, and one that raised used to die
+    // there and leave the request unanswered for ever, which a run on the
+    // screen shows as a map that never finishes. A folder where the page
+    // goes cannot be written over on any platform, so the draw raises.
+    const built = (await ask('graph.build', { key: 'la-metro-rail' })) as { layout: string }
+    mkdirSync(join(home, 'out', 'unwritable', 'la-metro-rail.html'), { recursive: true })
+    await expect(
+      ask('map.build', {
+        key: 'la-metro-rail',
+        layout: built.layout,
+        date: '2026-06-16',
+        out: 'unwritable',
+      }),
+    ).rejects.toThrow(/the stand-in failed/)
+  })
+
   it('adds a feed as a registry entry and removes it with the removal’s own answer', async () => {
     const added = await ask('feeds.add', {
       source: 'https://feeds.example.org/mine.zip',
