@@ -51,6 +51,7 @@ import {
   openProject,
 } from '../support/project'
 import { VIEWER_SANDBOX } from '../../src/shared/viewer'
+import { EVERY_SEAM } from '../support/standInPage'
 
 // The empty state's two sentences, as the release documents quote them
 // (`notebook/Preview.tsx`). Restated rather than imported: the component
@@ -207,6 +208,9 @@ const mapPage = (): string =>
     '  state: function () { return { now: now, clock: "07:00",',
     '                               viewName: viewName, labels: labels } },',
     '};',
+    // A page the pinned engine drew, so the project is not redrawn as it
+    // opens (issue 465): the seams this spec does not read do nothing.
+    EVERY_SEAM,
     '</script></body>',
   ].join('\n')
 

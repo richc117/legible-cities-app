@@ -36,7 +36,7 @@ import {
 } from '../support/a11y'
 import { describePair, duplicatedNames } from '../support/a11y-names'
 import { cell, cellHandback, cellHeading, closeCell, openCell } from '../support/project'
-import { standInPage } from '../support/standInPage'
+import { EVERY_SEAM, standInPage } from '../support/standInPage'
 import { crossingOf, type StepAnswer } from '../support/tab-walk'
 
 test.skip(PYTHON === null, 'no python3 or python on the PATH to run the stand-in engine')
@@ -737,6 +737,7 @@ ${buttons}
   document.getElementById('where').textContent = location.search
   if (!/[?&]controls=1(&|$)/.test(location.search)) document.getElementById('controls').remove()
   window.__present = { state: function () { return {} } }
+  ${EVERY_SEAM}
 </script>
 </body>
 `

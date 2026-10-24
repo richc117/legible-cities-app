@@ -6,6 +6,7 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import {
+  SEAMS_SCRIPT,
   VIEWER_ARGUMENTS,
   VIEWER_ARGUMENTS_MAX,
   Viewer,
@@ -15,9 +16,13 @@ import {
 import { COLORS_MAX, LABEL_MAX } from '../../src/shared/project'
 import {
   MISSING_METHOD,
+  PAGE_SEAMS,
+  SEAMS_MAX,
   VIEWER_METHODS,
   VIEWER_SANDBOX,
+  isOlderPage,
   isViewerMethod,
+  readSeams,
 } from '../../src/shared/viewer'
 
 interface StubFrame {
@@ -580,5 +585,75 @@ describe('the list of methods', () => {
     for (const other of [null, undefined, 7, {}, 'State', ' state']) {
       expect(isViewerMethod(other), String(other)).toBe(false)
     }
+  })
+})
+
+// What the map's page has on its seam (issue 465), which is how a page an
+// older engine drew is told from a current one. The script is the main
+// process's own and is run here against pages, as the dispatcher is above;
+// the answer is the page's, so what comes back is read as data.
+describe('asking the page what its seam has', () => {
+  const run = (window: unknown): unknown => new Function('window', `return ${SEAMS_SCRIPT}`)(window)
+
+  it('names the functions on the seam and nothing else, calling none of them', () => {
+    let called = false
+    const touch = (): void => {
+      called = true
+    }
+    const answer = run({
+      __present: { seek: touch, state: touch, setTheme: touch, label: 'not a method', n: 7 },
+    })
+    expect(answer).toEqual(['seek', 'state', 'setTheme'])
+    expect(called, 'it calls nothing on the page').toBe(false)
+  })
+
+  it('tells a page from before engine v0.11.0 from one drawn at the pin', () => {
+    const fns = (names: readonly string[]): Record<string, () => void> =>
+      Object.fromEntries(names.map((name) => [name, () => undefined]))
+    const older = run({ __present: fns(PAGE_SEAMS.filter((name) => name !== 'setTheme')) })
+    const current = run({ __present: fns(PAGE_SEAMS) })
+    expect(isOlderPage(readSeams(older))).toBe(true)
+    expect(isOlderPage(readSeams(current))).toBe(false)
+  })
+
+  it('answers null for a page with no seam yet, or one that throws as it is read', () => {
+    expect(run({})).toBeNull()
+    const hostile = {
+      get __present(): never {
+        throw new Error('no')
+      },
+    }
+    expect(run(hostile)).toBeNull()
+  })
+
+  it('stops past its bound, so the answer is refused whole', () => {
+    const many = Object.fromEntries(
+      Array.from({ length: SEAMS_MAX * 2 }, (_, i) => [`m${i}`, () => undefined]),
+    )
+    const answer = run({ __present: many }) as string[]
+    expect(answer.length).toBe(SEAMS_MAX + 1)
+    expect(readSeams(answer)).toBeNull()
+  })
+
+  it('asks the map, reads the answer as data, and never the export’s frame', async () => {
+    const { contents, main, child } = stub()
+    const preview = frameAt(PLANNED_SAFE)
+    main.frames.push(preview)
+    const viewer = new Viewer()
+    viewer.attach(contents, 'abcdefghijk1', 'map')
+    viewer.attach(contents, 'abcdefghijk1', 'export')
+    child.executeJavaScript.mockResolvedValueOnce(['seek', 'state', 'seek'])
+    await expect(viewer.seams(contents)).resolves.toEqual(['seek', 'state'])
+    expect(child.executeJavaScript).toHaveBeenCalledWith(SEAMS_SCRIPT)
+    expect(preview.executeJavaScript).not.toHaveBeenCalled()
+    child.executeJavaScript.mockResolvedValueOnce(['seek', '<script>'])
+    await expect(viewer.seams(contents), 'a bad name is no answer').resolves.toBeNull()
+    child.executeJavaScript.mockRejectedValueOnce(new Error('gone'))
+    await expect(viewer.seams(contents), 'a failed injection is no answer').resolves.toBeNull()
+  })
+
+  it('refuses while no map is held', async () => {
+    const { contents } = stub()
+    await expect(new Viewer().seams(contents)).rejects.toThrow('the map is not on the screen')
   })
 })

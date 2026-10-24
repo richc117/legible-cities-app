@@ -44,6 +44,7 @@ import {
   openProject,
   withoutOpened,
 } from '../support/project'
+import { EVERY_SEAM } from '../support/standInPage'
 
 const repoRoot = resolve(__dirname, '../..')
 const fixture = resolve(__dirname, '../fixtures/capture-page.html')
@@ -79,6 +80,8 @@ function home(control: Record<string, unknown> = {}): Home {
 async function withApp(
   h: Home,
   run: (page: Page, app: ElectronApplication) => Promise<void>,
+  /** Laid over the launch's environment: an engine that is not there, for one. */
+  env: Record<string, string> = {},
 ): Promise<void> {
   const app = await electron.launch({
     args: ['.'],
@@ -91,6 +94,7 @@ async function withApp(
       LEGIBLE_USER_DATA: h.userData,
       LEGIBLE_ENGINE_PYTHON: PYTHON as string,
       PYTHONPATH: FAKE_ENGINE,
+      ...env,
     } as Record<string, string>,
     timeout: 30_000,
   })
@@ -157,7 +161,10 @@ const exportFrame = (page: Page) => page.locator('iframe.export-frame')
  *
  * `current: false` is a page the engine wrote before v0.11.0: the same page
  * with no `setTheme` and no `theme` in `state()`, which still boots in the
- * theme its address names, as every generated page has.
+ * theme its address names, as every generated page has. A current page has
+ * every other seam the pinned engine's page has too, doing nothing
+ * (`EVERY_SEAM`), so it is not taken for an older engine's and redrawn as its
+ * project opens (issue 465); the older one has none of them.
  */
 const pageSource = (current: boolean): string =>
   [
@@ -200,6 +207,7 @@ const pageSource = (current: boolean): string =>
     `    return { now: at, clock: fmt(at), viewName: "schematic", labels: true${current ? ', theme: themeName()' : ''} };`,
     '  },',
     '};',
+    ...(current ? [EVERY_SEAM] : []),
     '</script></body>',
   ].join('\n')
 
@@ -316,6 +324,39 @@ async function factsOf(app: ElectronApplication): Promise<Facts | null> {
     }
   })) as Facts | null
 }
+
+/**
+ * Put the current page in place of whatever the stand-in engine writes over
+ * the older one, until the returned function is called, and leave the older
+ * page alone until then: the redraw a project's opening makes writes `{}`,
+ * and the page the pinned engine would have drawn is the one that should
+ * arrive. A whole file is renamed over it each time, so a load never reads
+ * half of one.
+ */
+function keepCurrentOverDrawn(h: Home): () => void {
+  const file = pageFile(h)
+  const timer = setInterval(() => {
+    try {
+      const now = readFileSync(file, 'utf8')
+      if (now === OLDER_PAGE || now === THEMED_PAGE) return
+      writeFileSync(`${file}.next`, THEMED_PAGE)
+      renameSync(`${file}.next`, file)
+    } catch {
+      // Windows refuses a rename over a file a reader has open; the next
+      // tick tries again.
+    }
+  }, 5)
+  return () => clearInterval(timer)
+}
+
+/** An interpreter that is not there, so the engine never starts: "the engine is away". */
+const NO_ENGINE = (h: Home): Record<string, string> => ({
+  LEGIBLE_ENGINE_PYTHON: join(
+    h.engineHome,
+    'nowhere',
+    process.platform === 'win32' ? 'python.exe' : 'python',
+  ),
+})
 
 /**
  * A laid-out project whose page carries the seam and a theme, open on cell
@@ -622,70 +663,204 @@ test('a chosen theme restyles the page in place, is stored, and asks the engine 
   })
 })
 
-// A page the engine wrote before v0.11.0 has no `setTheme`, and nothing would
-// show a choice made on one. The page says so ("this map cannot do that") and the
-// viewer does what it did before the seam had a theme: the frame goes to the
-// address with the project's theme, by the path a redraw takes, so the hour
-// the page was at is given back.
-test('a page with no setTheme is loaded again at the new theme, once', async () => {
+// A page the engine wrote before v0.11.0 has no `setTheme`. Since issue 465
+// such a page is redrawn from its stored layout as its project opens (the two
+// tests after this one), so the case left is the one where that redraw
+// cannot run: here, the engine is away. A choice made on the page then has
+// nothing to show it but its address. The page says so ("this map cannot do
+// that") and the viewer does what it did before the seam had a theme: the
+// frame goes to the address with the project's theme, by the path a redraw
+// takes, so the hour the page was at is given back.
+test('a page with no setTheme is loaded again at the new theme, once, while the engine is away', async () => {
+  test.setTimeout(120_000)
+  const h = home()
+  // Laid out with the engine there, and the older page written over the map.
+  await withApp(h, async (page) => {
+    await project(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    themedPage(h, OLDER_PAGE)
+  })
+  const asked = received(h, 'map.build').length
+  // Opened again with no engine, so nothing can redraw the page.
+  await withApp(
+    h,
+    async (page, app) => {
+      await expect(page.getByRole('status', { name: 'Engine' })).toContainText(
+        /engine unavailable/i,
+      )
+      await page.getByRole('button', { name: 'Open Los Angeles' }).click()
+      await openCell(page, 'style')
+      await expect
+        .poll(async () => (await factsOf(app))?.document ?? null, {
+          message: 'the older page loaded in the map’s frame',
+          timeout: 20_000,
+        })
+        .not.toBeNull()
+      await expect
+        .poll(() => stateOf(page), { message: 'the page answers state() through the bridge' })
+        .not.toBeNull()
+      const address = await frame(page).getAttribute('src')
+      expect(address, 'the project opens in the theme its record holds').toContain(
+        'theme=warm-dark',
+      )
+      expect(address, 'and on the page as it stands, not redrawn').toContain('redraw=0')
+
+      const LATER = 50_000
+      await askPage(page, 'seek', LATER)
+      expect((await stateOf(page))?.now, 'the page took the seek').toBe(LATER)
+      const before = await factsOf(app)
+      expect(before?.document, 'the page is a document with an identity to compare').toBeTruthy()
+      expect(before?.boot, 'and it booted in warm dark').toBe('warm-dark')
+
+      await frame(page).evaluate((element) => {
+        const counted = window as unknown as { __loads?: number }
+        counted.__loads = 0
+        element.addEventListener('load', () => {
+          counted.__loads = (counted.__loads ?? 0) + 1
+        })
+      })
+      const navigated: string[] = []
+      page.on('framenavigated', (moved) => {
+        if (moved !== page.mainFrame() && moved.url().includes('controls=1'))
+          navigated.push(moved.url())
+      })
+
+      await card(page, 'Sepia').click()
+      await expect
+        .poll(() => readRecord(h).theme, { message: 'the record holds the theme' })
+        .toBe('sepia')
+      await expect(
+        frame(page),
+        'the page could not be told, so the frame was sent to the address with the new theme',
+      ).toHaveAttribute('src', /theme=sepia/)
+      await expect
+        .poll(async () => (await factsOf(app))?.boot ?? null, {
+          message: 'the page that arrived booted in sepia: its address said so',
+          timeout: 20_000,
+        })
+        .toBe('sepia')
+
+      // Once is once: a second navigation would be a state read and a load
+      // away; the pause is longer than that.
+      await page.waitForTimeout(1500)
+      expect(
+        await page.evaluate(() => (window as unknown as { __loads?: number }).__loads),
+        'the frame loaded once',
+      ).toBe(1)
+      expect(navigated, 'and was navigated once').toHaveLength(1)
+      const after = await factsOf(app)
+      expect(after?.document, 'to a new document').not.toBe(before?.document)
+      expect(after?.attribute, 'which is wearing sepia').toBe('sepia')
+      expect(
+        after?.seen,
+        'and, as after a redraw, was given back the hour it was at',
+      ).toContainEqual(['seek', LATER])
+      expect(received(h, 'map.build'), 'nothing was drawn again').toHaveLength(asked)
+      expect(received(h, 'graph.build'), 'and nothing was laid out').toHaveLength(1)
+    },
+    NO_ENGINE(h),
+  )
+})
+
+// Issue 465: a project whose stored page an older engine drew is redrawn from
+// its stored layout as it opens - one `map.build`, never a re-layout, for the
+// day the map shows - and the page that arrives is told a theme in place,
+// with no "this map cannot do that" and no reload of the frame for it.
+test('a page an older engine drew is redrawn once as its project opens, and then takes a theme in place', async () => {
+  test.setTimeout(120_000)
   const h = home()
   await withApp(h, async (page, app) => {
-    await openWithAPage(page, app, h, OLDER_PAGE)
-    const address = await frame(page).getAttribute('src')
-    expect(address, 'the project opens in the theme its record holds').toContain('theme=warm-dark')
+    await project(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    themedPage(h, OLDER_PAGE)
+    await page.getByRole('button', { name: 'Back to Library' }).click()
     const asked = received(h, 'map.build').length
+    const day = readRecord(h).date
+    expect(day, 'the layout chose a day').toBeTruthy()
 
-    const LATER = 50_000
-    await askPage(page, 'seek', LATER)
-    expect((await stateOf(page))?.now, 'the page took the seek').toBe(LATER)
-    const before = await factsOf(app)
-    expect(before?.document, 'the page is a document with an identity to compare').toBeTruthy()
-    expect(before?.boot, 'and it booted in warm dark').toBe('warm-dark')
+    const stop = keepCurrentOverDrawn(h)
+    try {
+      await page.getByRole('button', { name: 'Open Los Angeles' }).click()
+      await expect
+        .poll(() => received(h, 'map.build').length, {
+          message: 'the older page was redrawn as the project opened',
+          timeout: 20_000,
+        })
+        .toBe(asked + 1)
+      const sent = JSON.parse(received(h, 'map.build')[asked]) as {
+        params?: { date?: unknown; layout?: unknown }
+      }
+      expect(sent.params?.date, 'for the day the map already showed').toBe(day)
+      expect(sent.params?.layout, 'from the stored layout').toBe(readRecord(h).layout)
+      await expect(
+        frame(page),
+        'and the frame was sent to the page the redraw wrote',
+      ).toHaveAttribute('src', /redraw=1/)
+      await expect
+        .poll(async () => (await factsOf(app))?.seen ?? null, {
+          message: 'the page that arrived can be told a theme: its restore told it one',
+          timeout: 20_000,
+        })
+        .toContainEqual(['setTheme', 'warm-dark'])
+    } finally {
+      stop()
+    }
 
-    await frame(page).evaluate((element) => {
-      const counted = window as unknown as { __loads?: number }
-      counted.__loads = 0
-      element.addEventListener('load', () => {
-        counted.__loads = (counted.__loads ?? 0) + 1
-      })
-    })
-    const navigated: string[] = []
-    page.on('framenavigated', (moved) => {
-      if (moved !== page.mainFrame() && moved.url().includes('controls=1'))
-        navigated.push(moved.url())
-    })
+    // Once: nothing redraws it again, and nothing was laid out.
+    await page.waitForTimeout(1500)
+    expect(received(h, 'map.build'), 'the page was redrawn once').toHaveLength(asked + 1)
+    expect(received(h, 'graph.build'), 'and nothing was laid out').toHaveLength(1)
+    expect(readRecord(h).date, 'and the day is the one it was').toBe(day)
 
+    // A theme now is taken in place, as on any page the pinned engine drew.
+    await openCell(page, 'style')
     await card(page, 'Sepia').click()
     await expect
       .poll(() => readRecord(h).theme, { message: 'the record holds the theme' })
       .toBe('sepia')
-    await expect(
-      frame(page),
-      'the page could not be told, so the frame was sent to the address with the new theme',
-    ).toHaveAttribute('src', /theme=sepia/)
     await expect
-      .poll(async () => (await factsOf(app))?.boot ?? null, {
-        message: 'the page that arrived booted in sepia: its address said so',
+      .poll(async () => (await factsOf(app))?.seen ?? null, {
+        message: 'the page was told the theme in place',
         timeout: 20_000,
       })
-      .toBe('sepia')
-
-    // Once is once: a second navigation would be a state read and a load
-    // away; the pause is longer than that.
+      .toContainEqual(['setTheme', 'sepia'])
+    await expect.poll(() => themeOf(page), { message: 'and says so' }).toBe('sepia')
     await page.waitForTimeout(1500)
-    expect(
-      await page.evaluate(() => (window as unknown as { __loads?: number }).__loads),
-      'the frame loaded once',
-    ).toBe(1)
-    expect(navigated, 'and was navigated once').toHaveLength(1)
-    const after = await factsOf(app)
-    expect(after?.document, 'to a new document').not.toBe(before?.document)
-    expect(after?.attribute, 'which is wearing sepia').toBe('sepia')
-    expect(after?.seen, 'and, as after a redraw, was given back the hour it was at').toContainEqual(
-      ['seek', LATER],
+    const address = await frame(page).getAttribute('src')
+    expect(address, 'the frame was not loaded again for it').not.toContain('reload=')
+    expect(address, 'and is on the address the redraw sent it to').toContain('theme=warm-dark')
+    expect(received(h, 'map.build'), 'and nothing was drawn for it').toHaveLength(asked + 1)
+  })
+})
+
+test('a page the pinned engine drew is not redrawn as its project opens', async () => {
+  test.setTimeout(120_000)
+  const h = home()
+  await withApp(h, async (page, app) => {
+    await project(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    themedPage(h, THEMED_PAGE)
+    await page.getByRole('button', { name: 'Back to Library' }).click()
+    const asked = received(h, 'map.build').length
+
+    await page.getByRole('button', { name: 'Open Los Angeles' }).click()
+    await expect
+      .poll(async () => (await factsOf(app))?.seen ?? null, {
+        message: 'the current page loaded and was given back its theme',
+        timeout: 20_000,
+      })
+      .toContainEqual(['setTheme', 'warm-dark'])
+    // Longer than a redraw takes to be asked for: the seam is asked after the
+    // restore, and the stand-in answers a map.build in well under this.
+    await page.waitForTimeout(2000)
+    expect(received(h, 'map.build'), 'nothing was redrawn').toHaveLength(asked)
+    await expect(frame(page), 'and the frame is on the page as it stood').toHaveAttribute(
+      'src',
+      /redraw=0/,
     )
-    expect(received(h, 'map.build'), 'nothing was drawn again').toHaveLength(asked)
-    expect(received(h, 'graph.build'), 'and nothing was laid out').toHaveLength(1)
   })
 })
 

@@ -207,6 +207,12 @@ export interface Api {
     release(role: ViewerRole): Promise<void>
     /** One of the page's own methods, with its arguments, in the frame held for the role. */
     call(role: ViewerRole, method: ViewerMethod, ...args: unknown[]): Promise<unknown>
+    /**
+     * The names of the methods the map's page has on its seam, or null where
+     * it did not say: how a page an older engine drew is told (issue 465,
+     * `isOlderPage`). Rejects while there is no map on the screen.
+     */
+    seams(): Promise<string[] | null>
   }
   // Untyped beyond "a method name and an object" on purpose: the bridge is
   // transport and should not know the engine's methods. The typed client
@@ -392,6 +398,7 @@ export const CHANNELS = {
   viewerAttach: 'viewer:attach',
   viewerRelease: 'viewer:release',
   viewerCall: 'viewer:call',
+  viewerSeams: 'viewer:seams',
   engineState: 'engine:state',
   engineRequest: 'engine:request',
   engineCancel: 'engine:cancel',

@@ -1112,13 +1112,32 @@ last therefore carries the same theme, and a theme written between an
 address being made and its document arriving, or while the restore is being
 sent, is never lost.
 
-The one case that still navigates is a page the engine wrote before
-v0.11.0, which has no `setTheme` and says "this map cannot do that". The
-press then counts a reload, and the frame is sent to the address with the
-project's theme by the path a redraw takes, so the hour, the view, the
-labels, the speed and the pause are given back. "The map is not on the
-screen" and every other failure are swallowed, because the next load carries
-the theme.
+A page an older engine drew is redrawn when its project opens (issue 465).
+Neither the page nor the record says which engine drew it, so the page's
+seam is asked instead: once the first page the map's frame loads has been
+given back its state, the main process lists the functions on its
+`window.__present` by a fixed script that calls none of them
+(`Viewer.seams`, `viewer.seams()` on the bridge), and a page lacking any
+method the pinned engine's page has (`PAGE_SEAMS` in `src/shared/viewer.ts`,
+held to the engine's template by `tests/unit/viewer-real.test.ts`) is older,
+whichever seam it lacks. The screen then asks for the rebuild cell 03 makes
+for a day, for the day the record holds and the map already shows: a
+`map.build` from the stored layout with the record's colours, order, style
+and line options, never a re-layout (ADR-023), shown and written as that
+rebuild always is. It is asked once per opening of the screen, waits while
+the engine is not ready or a run or an export holds the page, and is not
+asked at all where a draw would show something the map did not already
+show - a day chosen and not drawn, a layout the map was not drawn from, a
+day the store would refuse - or the record is not this build's to write
+(`notebook/olderPage.ts`). A redraw that fails is not asked for again.
+
+The one case that still navigates for a theme is such a page where that
+redraw could not run, the engine away for one: it has no `setTheme` and
+says "this map cannot do that". The press then counts a reload, and the
+frame is sent to the address with the project's theme by the path a redraw
+takes, so the hour, the view, the labels, the speed and the pause are given
+back. "The map is not on the screen" and every other failure are swallowed,
+because the next load carries the theme.
 
 Nothing is rebuilt for a theme, and no engine request is made at all: the
 SVG carries its furniture's colours as CSS variables with literal

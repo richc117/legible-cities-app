@@ -21,6 +21,7 @@ import {
   nameProject,
 } from '../engine/runs'
 import { stageFor } from '../engine/stages'
+import { isOlderPage } from '../../../shared/viewer'
 import { skipTarget } from '../SkipPastMap'
 import { forgetTheme, rememberTheme } from '../themeMemory'
 import { writeThenRestyle } from '../themeWrites'
@@ -28,6 +29,7 @@ import type { TextInputHandle } from '../kit/TextInput'
 import { tunedProject } from '../tuningRules'
 import { useEngineState } from '../useEngineState'
 import { useSnapshot } from '../useSnapshot'
+import { redrawOnOpen } from './olderPage'
 
 // Everything the project screen holds, in one hook (A5.5-08).
 //
@@ -92,6 +94,12 @@ export interface ProjectState {
    * it; the viewer's address carries it, as it carries `drawn`.
    */
   themeReloads: number
+  /**
+   * Told what each page the map's frame loads has on its seam (`Viewer.tsx`'s
+   * `onSeams`). The first answer decides whether the page the screen opened
+   * on is redrawn, once, because an older engine drew it (issue 465).
+   */
+  pageSeams: (seams: string[] | null) => void
   /** The feed's registry entry's mode and agency, when the Library listed it. */
   registry: { mode: string; agency: string | null } | null
   /** The feed as the engine reads it, cached by the inspection module. */
@@ -327,6 +335,39 @@ export function useProjectState(
     // The record and the engine becoming ready are what move this.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project, engine?.state])
+
+  // A page an older engine drew is redrawn when the project opens (issue
+  // 465): a rebuild for the day the map already shows, from the stored
+  // layout, with the record's own choices, as `olderPage.ts` decides. The
+  // first page the frame reports on is the one judged; once that judgement
+  // has been acted on - a redraw asked, or nothing to do - nothing here runs
+  // again for this screen, so a redraw that fails, or one that leaves a page
+  // no newer, is not asked for again. While the engine is away or the page is
+  // held by a run or an export it waits; a run that draws meanwhile settles
+  // it, since that page is the pinned engine's.
+  const [opened, setOpened] = useState<{ older: boolean | null } | null>(null)
+  const seamsHeard = useRef(false)
+  const pageSeams = useCallback((seams: string[] | null): void => {
+    if (seamsHeard.current) return
+    seamsHeard.current = true
+    setOpened({ older: isOlderPage(seams) })
+  }, [])
+  const redrawSettled = useRef(false)
+  useEffect(() => {
+    if (redrawSettled.current || opened === null || project === null) return
+    const now = redrawOnOpen({
+      older: opened.older,
+      project,
+      engineReady: engine?.state === 'ready',
+      busy: layingOut || exporting || settling,
+      drawnHere: drawn,
+    })
+    if (now.kind === 'wait') return
+    redrawSettled.current = true
+    if (now.kind === 'redraw') run.rebuild(project, engine, now.date)
+    // The record, the engine, the runs and the redraw count are what move this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opened, project, engine?.state, layingOut, exporting, settling, drawn])
 
   // A sample opened from its card and cancelled while its feed downloaded
   // leaves nothing behind: not the zip (the engine keeps none, v0.10.0), and
@@ -593,6 +634,7 @@ export function useProjectState(
     exporting,
     drawn,
     themeReloads,
+    pageSeams,
     registry,
     inspect,
     readStage,

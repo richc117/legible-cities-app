@@ -31,7 +31,9 @@ import { COLORS_MAX, LABEL_MAX, isTheme } from '../shared/project'
 import { isStationId } from '../shared/trip'
 import {
   EXPORT_FRAME_METHODS,
+  SEAMS_MAX,
   isViewerMethod,
+  readSeams,
   type ViewerMethod,
   type ViewerRole,
 } from '../shared/viewer'
@@ -267,7 +269,50 @@ export class Viewer {
     }
     return answer.value
   }
+
+  /**
+   * The names of the methods the map's page has on its seam, or null where
+   * it did not say (issue 465): which is how a page an older engine drew is
+   * told from a current one (`isOlderPage`). Asked of the map's frame only,
+   * by a fixed script that names nothing a caller sent and calls nothing on
+   * the page, and the answer is the page's, so it is read as data here
+   * (`readSeams`) before it goes anywhere.
+   */
+  async seams(contents: WebContents): Promise<string[] | null> {
+    const frame = this.#usable(contents, 'map')
+    if (frame === null) throw new Error('the map is not on the screen')
+    let answer: unknown
+    try {
+      answer = await frame.executeJavaScript(SEAMS_SCRIPT)
+    } catch {
+      return null
+    }
+    return readSeams(answer)
+  }
 }
+
+/**
+ * What the map's page is asked to say about its seam: the names of the
+ * functions on `window.__present`, and nothing else. Fixed, with nothing in
+ * it from a caller, and it calls none of them: a getter on the page's object
+ * could run when it is read, and that is the page's own code in its own
+ * realm, which it could have run anyway. It stops past `SEAMS_MAX` names,
+ * which `readSeams` then refuses whole.
+ */
+export const SEAMS_SCRIPT = `(function () {
+  try {
+    var present = window.__present
+    if (!present || typeof present !== 'object') return null
+    var names = []
+    for (var name in present) {
+      if (names.length > ${SEAMS_MAX}) break
+      if (typeof present[name] === 'function') names.push(String(name))
+    }
+    return names
+  } catch (e) {
+    return null
+  }
+})()`
 
 /**
  * The injected text. Fixed but for the method's name, which has already been
