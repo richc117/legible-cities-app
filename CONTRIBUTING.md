@@ -30,13 +30,12 @@ Planned issues carry four labels: a phase (`phase:0` to `phase:7`, and
 `phase:5.5`), a type (`type:spike`, `type:feature`, `type:chore`,
 `type:docs`), an area (`area:shell`, `area:sidecar`, `area:capture`,
 `area:export`, `area:ui`, `area:ci`, `area:release`) and a size (`size:S`,
-`size:M`, `size:L`). A defect found along the way carries `bug`, and
-`accessibility` where it is one. The milestones are the ones listed above. First reel
-carries no phase label of its own; its issues keep the label of the
-capability they belong to, and the milestone says when. The front door's
-issues carry `phase:5.5`. The maintainer creates labels and milestones before the
-first issues are posted; the issue templates apply a type label only when it
-already exists.
+`size:M`, `size:L`). A defect carries `bug` (there is no `type:bug`), and
+`accessibility` where it is one; `good first issue` and `help wanted` mark
+work open to a newcomer. The milestones are the ones listed above, and the
+front door's issues carry `phase:5.5`. The maintainer creates labels and
+milestones before the first issues are posted; the issue templates apply a
+label only when it already exists.
 
 Planned issues carry a short code in their title, such as `A2-03`: the
 repository (`A` for this app, `E` for the engine), the phase, and a sequence
@@ -64,15 +63,32 @@ The app starts the Python engine, `legible-cities`
 sidecar, and each release of the app pins one tag of it (`engine.tag` in
 `vendor/pins.json`). **Without an engine checkout, most of the work runs:**
 the unit tests run against a stand-in engine (`tests/fake-engine/`, which
-needs a `python3` on your `PATH`), and so do the end-to-end tests that
-can be run against it. CI is set up that way too, so a green `ci`
-does not exercise the real engine. **What needs the real engine** is
-`npm run dev`, the unit tests whose names end in `-real`, and the
-end-to-end specs that generate a map with the engine's own pipeline (the
-export, reel, capture, layout, feeds, inspect and determinism specs among
-them); each skips when no engine is named, and the end-to-end run prints a
-warning at its start saying so. If your change touches any of that, name an
-engine checkout, run them, and say in the pull request that you did.
+needs a `python3` on your `PATH`), and so does most of the end-to-end suite
+(the export, layout, feeds, inspect and settings specs among them). CI is set
+up that way too, so a green `ci` does not exercise the real engine.
+
+**What needs the real engine**, each on its own condition:
+
+- `npm run dev` runs the app against the engine named by
+  `LEGIBLE_ENGINE_CHECKOUT`.
+- The unit tests `sidecar-real`, `feeds-real`, `protocol-real`,
+  `opening-real` and `layout-real` read only `LEGIBLE_ENGINE_CHECKOUT` and use
+  that checkout's own `.venv`; `LEGIBLE_ENGINE_PYTHON` does not reach them.
+  `determinism-real` takes either.
+- `layout-real` also needs a layout the engine has cached for
+  `la-metro-rail` in the checkout (`data/graphs/la-metro-rail/<id>/`),
+  `viewer-real` a page the engine has generated under the checkout's `out/`,
+  and `tokens` only the checkout's source (`src/schematic/page/page.html`).
+- The end-to-end `capture` spec needs `out/la-metro-rail.html` in the
+  checkout. The `reel` spec needs the same page, the checkout's `.venv`,
+  `ffmpeg` on your `PATH` and `LEGIBLE_REEL_TEST=1`. The `typeface` spec needs
+  `LEGIBLE_ENGINE_PYTHON` in the environment.
+- The `determinism` spec runs only with `LEGIBLE_DETERMINISM_TEST=1`, and then
+  it **fails rather than skips** unless `LEGIBLE_ENGINE_PYTHON` names an
+  interpreter with the pinned engine and `SCHEMATIC_FFMPEG` names an ffmpeg
+  with `ffprobe` beside it. The `determinism` workflow runs it, and the
+  `typeface` spec, on pull requests that touch the app (it is not a required
+  check).
 
 To get one on macOS or Linux, you need [`uv`](https://docs.astral.sh/uv/)
 and a clone of the engine beside this repository (in a folder called
@@ -93,11 +109,30 @@ In `.env.local`, set `LEGIBLE_ENGINE_CHECKOUT` to the path of that link
 (`../lc-engine-current`) once; a new pin then needs no further edit. A
 variable set in the environment outranks the file, so
 `LEGIBLE_ENGINE_CHECKOUT` and `LEGIBLE_ENGINE_PYTHON` given as absolute paths
-on a command point one run at another engine. On Windows the script does not
-run: make the checkout and its environment by hand and name them in the same
-two variables. Anything the app needs from the pipeline is a change to the
+on a command point one run at another engine. On Windows the script is not supported
+(its own words): make the checkout and its environment by hand and name them
+in the same two variables. Anything the app needs from the pipeline is a change to the
 engine, versioned and tagged, never a copy here; send that to the engine's
 repository.
+
+A fresh pin has no generated page and no cached layout, so run the engine once
+on that feed before the tests that read them (it needs LOOM, below, and fetches
+the feed):
+
+```
+cd ../lc-engine-current && .venv/bin/python -c 'from schematic import pipeline; print(pipeline.run("la-metro-rail").summary())'
+```
+
+If your change touches any of this, name an engine checkout, run the tests it
+unlocks, and tick the box for it in the pull request. (The end-to-end run
+warns at its start only when there is neither the variable nor an
+`.env.local`, so do not count on it to tell you a run proved less.)
+
+The engine runs LOOM for a layout and the app needs ffmpeg for an export. With
+a pinned checkout, `npm run dev` therefore wants LOOM, as the engine's Docker
+image (the engine's README) or as a folder of native `gtfs2graph`, `topo`,
+`loom` and `octi` named by `SCHEMATIC_LOOM_BIN`, and `SCHEMATIC_FFMPEG` naming
+an ffmpeg for an export.
 
 ## What a pull request carries
 
@@ -129,8 +164,9 @@ repository.
 The checks that must be green before a merge are `gitleaks`, `preflight`
 and the three `ci` jobs (Ubuntu, macOS, Windows), and the branch must be up
 to date with `main` (`docs/repository-settings.md` lists the protection).
-Other workflows (the installers, the determinism run, the acceptance run)
-are the maintainer's and run on dispatch, on a tag or on a schedule.
+Other workflows are not required: the determinism run also starts on pull
+requests that touch the app, and the installers and the acceptance run are the
+maintainer's, on a tag or by hand.
 
 ### The gate documents
 
@@ -159,15 +195,16 @@ changing these in the same pull request.
    themselves.** The repository is set to require approval for workflows from
    first-time contributors (`docs/repository-settings.md`), so a pull request
    from a fork shows its checks as waiting until the maintainer approves
-   them, and a contributor's later pull requests run on their own. Nothing
-   is wrong when the checks wait. The workflows run with read-only access
+   them. That stops being needed once you have had a pull request **merged**;
+   approving one does not do it. Nothing is wrong when the checks wait. The workflows run with read-only access
    and without the repository's secrets, so a fork's run can prove less
    than the maintainer's but cannot reach more. Run the checks locally
    meanwhile, so approval finds them green.
    **`main` must be up to date.** When GitHub says your branch is behind
    `main`, rebase it onto `main` (`git fetch origin && git rebase
-   origin/main`) and push with `git push --force-with-lease`; do not merge
-   `main` into it. The checks run again, after approval if you are new.
+   origin/main`) and push with `git push --force-with-lease`. Do not use
+   GitHub's "Update branch" button, which merges `main` into your branch.
+   The checks run again, after approval if you are new.
    **A failed check is re-run once before it is believed**
    (`gh run rerun <id> --failed`). The end-to-end tests launch a real
    application on shared runners, and a few of them still fail now and
@@ -181,7 +218,14 @@ changing these in the same pull request.
    sixty times on one platform, with or without load, from a hand dispatch.
 5. **Squash merge.** The maintainer merges, and `main` reads as one commit per
    issue, so your pull request's title becomes the subject line: write it as
-   one.
+   one. The maintainer does **not** use GitHub's default squash message, which
+   carries every commit's message and adds a `Co-authored-by:` trailer with
+   each other author's commit address: a personal address there would sit on
+   `main` for good, because `preflight` reads the whole history on every push
+   and force pushes are blocked. The squash message is written by hand and
+   run through `bin/preflight --message-file` first, and any `Co-authored-by:`
+   with a personal address is removed or rewritten to a no-reply address
+   before the merge is confirmed.
 
 ## Commits
 
@@ -204,7 +248,10 @@ changing these in the same pull request.
   fields, which git records and which stay in the public history: if you do
   not want your own address there, set `git config user.email` to the same
   no-reply address before you commit, and turn on "Keep my email addresses
-  private" on GitHub.
+  private" and "Block command line pushes that expose my email" on GitHub.
+  Do this whatever you decide about trailers: a commit address can reach a
+  `Co-authored-by:` trailer when the pull request is merged, and the
+  maintainer should not have to catch it.
 - Never put a closing keyword (`Closes #N`) in a commit message; it belongs
   in the pull request body, and `bin/preflight` refuses it.
 - Run `bin/preflight` before pushing. It refuses personal file paths,
