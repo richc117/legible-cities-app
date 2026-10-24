@@ -389,12 +389,27 @@ matters, since `drawn` is what everything else trusts.
 **`drawn.theme` describes the last draw, not what is on screen.** A theme
 is taken through the page's seam, which restyles it in place at the press
 (A4-03, issue 349; a page from before engine v0.11.0 is loaded again at an
-address carrying it), with no draw at all, so the map on screen always
+address carrying it, which since issue 465 is the fallback - see below),
+with no draw at all, so the map on screen always
 carries `record.theme` while `drawn.theme` holds the theme of the last
 draw. It is exempt from staleness either way, and it is deliberately not in
 `drawnMatchesEdits`, which would otherwise answer "the map does not show
 it" about the one field of which that is never true. It is also why cell 04
 has no Revert (above).
+
+*As of 24 Oct 2026* (issue 465): **opening a project whose page lacks a
+seam the pinned engine's page has starts cell 03's rebuild with no press.**
+It is the rebuild for the day the record holds and the map already shows,
+from the stored layout, so it raises no source: cell 03 reads `running`
+while it goes and `ready` after, and where it fails it is cell 03's own
+failure, `error` in cell 03 and `upstream` below it, like any rebuild that
+failed. It is started through Run all (`notebook/olderPage.ts`), so its day
+is the record's once the writes on their way have landed, and where that
+record asks for nothing it withdraws without a trace. It is not started
+where the record has no `drawn`, holds a day not yet drawn, names a layout
+or a `made` the map was not drawn from, or is read-only. Where it does not
+run - the engine away, for one - the reload with the theme in the address,
+above, is the fallback, and so is the trip's old-page sentence.
 
 **Neither `made` nor `layout` has a live path to divergence yet, and
 `replaced` does not survive.** All three are worth stating together,

@@ -29,7 +29,7 @@ import type { TextInputHandle } from '../kit/TextInput'
 import { tunedProject } from '../tuningRules'
 import { useEngineState } from '../useEngineState'
 import { useSnapshot } from '../useSnapshot'
-import { redrawOnOpen } from './olderPage'
+import { redrawOnOpen, redrawPageOnOpen } from './olderPage'
 
 // Everything the project screen holds, in one hook (A5.5-08).
 //
@@ -338,7 +338,9 @@ export function useProjectState(
 
   // A page an older engine drew is redrawn when the project opens (issue
   // 465): a rebuild for the day the map already shows, from the stored
-  // layout, with the record's own choices, as `olderPage.ts` decides. The
+  // layout, with the record's own choices, as `olderPage.ts` decides, started
+  // through Run all so the day is the record's once the writes on their way
+  // have landed (issue 407). The
   // first page the frame reports on is the one judged; once that judgement
   // has been acted on - a redraw asked, or nothing to do - nothing here runs
   // again for this screen, so a redraw that fails, or one that leaves a page
@@ -364,7 +366,8 @@ export function useProjectState(
     })
     if (now.kind === 'wait') return
     redrawSettled.current = true
-    if (now.kind === 'redraw') run.rebuild(project, engine, now.date)
+    if (now.kind === 'redraw')
+      redrawPageOnOpen(run, project, engine, { older: opened.older, drawnHere: drawn })
     // The record, the engine, the runs and the redraw count are what move this.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opened, project, engine?.state, layingOut, exporting, settling, drawn])

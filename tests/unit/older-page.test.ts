@@ -147,7 +147,7 @@ describe('redrawing the page a project opened on', () => {
 
   it('never redraws a project with no layout or no day', () => {
     expect(redrawOnOpen(facts({}, { layout: null }))).toEqual({ kind: 'never' })
-    expect(redrawOnOpen(facts({}, { date: null, drawn: null }))).toEqual({ kind: 'never' })
+    expect(redrawOnOpen(facts({}, { date: null }))).toEqual({ kind: 'never' })
   })
 
   it('leaves a day chosen and not drawn to the person who chose it', () => {
@@ -168,7 +168,7 @@ describe('redrawing the page a project opened on', () => {
     expect(redrawOnOpen(facts({}, { service: null }))).toEqual({ kind: 'never' })
   })
 
-  it('redraws a record from before `drawn` existed, for its own day', () => {
-    expect(redrawOnOpen(facts({}, { drawn: null }))).toEqual({ kind: 'redraw', date: '2026-06-16' })
+  it('never redraws a record from before `drawn` existed, which keeps today’s fallback', () => {
+    expect(redrawOnOpen(facts({}, { drawn: null }))).toEqual({ kind: 'never' })
   })
 })
