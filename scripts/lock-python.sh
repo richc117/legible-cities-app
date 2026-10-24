@@ -5,7 +5,7 @@
 # sha256 of every file it may be installed from (issue 434).
 #
 #   scripts/lock-python.sh <engine-checkout>
-#   scripts/lock-python.sh ../lc-engine-v0.18.0
+#   scripts/lock-python.sh ../lc-engine-current
 #
 # scripts/vendor-python.sh installs from that file with pip's --require-hashes
 # and nothing else resolved, and scripts/check-vendored.mjs refuses a runtime
